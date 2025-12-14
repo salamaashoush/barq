@@ -1,0 +1,24 @@
+{
+  "name": "zest-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Zest - A lightweight, signal-based UI framework",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd packages/zest-kitchen-sink dev",
+    "build": "bun run --filter '*' build",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test",
+    "lint": "bunx @biomejs/biome check packages",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe packages",
+    "format": "bunx @biomejs/biome format --write packages",
+    "benchmark": "bun run --cwd packages/zest-benchmark start"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/bun": "^1.3.3",
+    "typescript": "^5.9.3"
+  }
+}

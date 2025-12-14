@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zest vs SolidJS Benchmark</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 20px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      color: #58a6ff;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      color: #8b949e;
+      font-size: 14px;
+      font-weight: normal;
+      margin-bottom: 20px;
+    }
+
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: #238636;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    button:hover {
+      background: #2ea043;
+    }
+
+    button:disabled {
+      background: #21262d;
+      color: #484f58;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #21262d;
+      border: 1px solid #30363d;
+    }
+
+    button.secondary:hover {
+      background: #30363d;
+    }
+
+    .progress {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #161b22;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: #21262d;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #238636;
+      transition: width 0.3s;
+    }
+
+    .results {
+      background: #161b22;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      overflow: hidden;
+    }
+
+    .suite {
+      border-bottom: 1px solid #30363d;
+    }
+
+    .suite:last-child {
+      border-bottom: none;
+    }
+
+    .suite-header {
+      padding: 15px;
+      background: #21262d;
+      font-weight: 600;
+      color: #58a6ff;
+    }
+
+    .benchmark-row {
+      display: grid;
+      grid-template-columns: 200px 1fr 1fr 150px;
+      padding: 10px 15px;
+      border-bottom: 1px solid #21262d;
+      align-items: center;
+    }
+
+    .benchmark-row:last-child {
+      border-bottom: none;
+    }
+
+    .benchmark-row.header {
+      background: #161b22;
+      font-weight: 600;
+      color: #8b949e;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .operation {
+      color: #c9d1d9;
+    }
+
+    .metric {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 13px;
+    }
+
+    .metric.zest {
+      color: #7ee787;
+    }
+
+    .metric.solid {
+      color: #79c0ff;
+    }
+
+    .winner {
+      font-weight: 600;
+    }
+
+    .winner.zest {
+      color: #7ee787;
+    }
+
+    .winner.solid {
+      color: #79c0ff;
+    }
+
+    .winner.tie {
+      color: #8b949e;
+    }
+
+    .summary {
+      margin-top: 20px;
+      padding: 20px;
+      background: #161b22;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+    }
+
+    .summary h3 {
+      color: #58a6ff;
+      margin-bottom: 15px;
+    }
+
+    .summary-stats {
+      display: flex;
+      gap: 30px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .stat-value.zest {
+      color: #7ee787;
+    }
+
+    .stat-value.solid {
+      color: #79c0ff;
+    }
+
+    .stat-value.tie {
+      color: #8b949e;
+    }
+
+    .stat-label {
+      color: #8b949e;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    #benchmark-container {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Zest vs SolidJS Benchmark</h1>
+  <h2>Comparing fine-grained reactivity frameworks in the browser</h2>
+
+  <div class="controls">
+    <button id="run-all">Run All Benchmarks</button>
+    <button id="run-signals" class="secondary">Signals Only</button>
+    <button id="run-dom" class="secondary">DOM Only</button>
+  </div>
+
+  <div class="progress" id="progress" style="display: none;">
+    <div id="progress-text">Running benchmarks...</div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+    </div>
+  </div>
+
+  <div class="results" id="results"></div>
+
+  <div class="summary" id="summary" style="display: none;">
+    <h3>Final Score</h3>
+    <div class="summary-stats">
+      <div class="stat">
+        <div class="stat-value zest" id="zest-wins">0</div>
+        <div class="stat-label">Zest Wins</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value solid" id="solid-wins">0</div>
+        <div class="stat-label">Solid Wins</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value tie" id="ties">0</div>
+        <div class="stat-label">Ties</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="benchmark-container"></div>
+
+  <script type="module" src="./dist/browser.js"></script>
+</body>
+</html>

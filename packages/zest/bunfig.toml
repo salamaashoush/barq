@@ -1,0 +1,27 @@
+# Bun configuration for box-ui-framework
+# https://bun.sh/docs/runtime/bunfig
+
+[test]
+# Test file patterns
+root = "./src"
+
+# Coverage settings
+coverage = true
+coverageDir = "./coverage"
+
+# Timeout per test (ms)
+timeout = 10000
+
+# Run tests in parallel
+smol = true
+
+[install]
+# Don't freeze lockfile during development
+frozen = false
+
+# Auto-install peer dependencies
+peer = true
+
+[run]
+# Show output from scripts
+silent = false

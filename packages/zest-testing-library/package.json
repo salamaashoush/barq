@@ -1,0 +1,24 @@
+{
+  "name": "zest-testing-library",
+  "version": "0.1.0",
+  "description": "Testing utilities for zest components",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "zest": "workspace:*"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^15.11.7",
+    "@types/bun": "latest",
+    "happy-dom": "^15.11.7",
+    "typescript": "^5.7.2"
+  }
+}
