@@ -142,9 +142,9 @@ export function batch(fn: () => void): void {
  * Similar to SolidJS's createRoot - the callback receives a dispose function
  */
 export function createScope<T>(fn: (dispose: () => void) => T): T {
-  let result: T;
-  let disposeRef: (() => void) | undefined;
+  let result: T | undefined;
   const cleanups: (() => void)[] = [];
+  const disposeRef: { current: (() => void) | undefined } = { current: undefined };
 
   const dispose = alienEffectScope(() => {
     // Set up cleanup tracking for this scope
@@ -155,15 +155,15 @@ export function createScope<T>(fn: (dispose: () => void) => T): T {
       result = fn(() => {
         // Run all cleanup functions when disposing
         for (const c of cleanups) c();
-        disposeRef?.();
+        disposeRef.current?.();
       });
     } finally {
       currentCleanups = prevCleanups;
     }
   });
-  disposeRef = dispose;
+  disposeRef.current = dispose;
 
-  return result!;
+  return result as T;
 }
 
 /**
@@ -189,8 +189,7 @@ export function untrack<T>(fn: () => T): T {
 export interface Context<T> {
   id: symbol;
   defaultValue: T | undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Provider: (props: { value: T | (() => T); children: any }) => any;
+  Provider: (props: { value: T | (() => T); children: unknown }) => Node | null;
 }
 
 // Global context stack - each context can have nested providers
@@ -230,14 +229,11 @@ export function createContext<T>(defaultValue?: T): Context<T> {
     contextStacks.set(id, [defaultSignal]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Provider = (props: { value: T | (() => T); children: any }): any => {
+  const Provider = (props: { value: T | (() => T); children: unknown }): Node | null => {
     // Create a signal for this provider's value
     // If value is a getter, create a computed to track it reactively
     const getValue = () =>
-      typeof props.value === "function"
-        ? (props.value as () => T)()
-        : props.value;
+      typeof props.value === "function" ? (props.value as () => T)() : props.value;
 
     // Create a computed signal that tracks the value
     const valueSignal = computed(getValue);
@@ -266,7 +262,7 @@ export function createContext<T>(defaultValue?: T): Context<T> {
     // a reference to our signal through useContext
     stack.pop();
 
-    return result;
+    return result as Node | null;
   };
 
   return {

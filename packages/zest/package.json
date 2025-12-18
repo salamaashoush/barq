@@ -3,30 +3,35 @@
   "version": "0.1.0",
   "description": "Tiny JSX renderer with fine-grained reactivity via signals. No build tools BS, just DOM.",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./src/index.ts",
-      "types": "./src/index.ts"
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./jsx-runtime": {
-      "import": "./src/jsx-runtime.ts",
-      "types": "./src/jsx-runtime.ts"
+      "bun": "./src/jsx-runtime.ts",
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
-      "import": "./src/jsx-runtime.ts",
-      "types": "./src/jsx-runtime.ts"
+      "bun": "./src/jsx-runtime.ts",
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.js"
     }
   },
+  "files": ["dist", "src"],
   "scripts": {
-    "build": "bun build src/index.ts src/jsx-runtime.ts --outdir dist --target browser --splitting",
-    "dev": "bun build src/index.ts src/jsx-runtime.ts --outdir dist --target browser --splitting --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
     "format": "bunx @biomejs/biome format --write src",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "alien-signals": "^1.0.5"
@@ -42,11 +47,14 @@
   "engines": {
     "bun": ">=1.1.0"
   },
-  "keywords": [
-    "ui",
-    "framework",
-    "signals",
-    "jsx",
-    "reactive"
-  ]
+  "keywords": ["ui", "framework", "signals", "jsx", "reactive"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/user/zest.git"
+  },
+  "homepage": "https://github.com/user/zest#readme",
+  "bugs": {
+    "url": "https://github.com/user/zest/issues"
+  }
 }

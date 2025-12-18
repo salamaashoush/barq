@@ -3,23 +3,26 @@
   "version": "0.1.0",
   "description": "Extra utilities for zest: CSS-in-JS (goober), clsx, variants, and utility hooks",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./src/index.ts",
-      "types": "./src/index.ts"
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
+  "files": ["dist", "src"],
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target browser --splitting",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
-    "format": "bunx @biomejs/biome format --write src"
+    "format": "bunx @biomejs/biome format --write src",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "zest": "workspace:*",
     "goober": "^2.1.18",
     "@tanstack/query-core": "^5.62.0"
   },
@@ -29,14 +32,18 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "zest": "workspace:*",
+    "zest": ">=0.1.0",
     "@tanstack/query-core": "^5.0.0"
   },
-  "keywords": [
-    "zest",
-    "css-in-js",
-    "clsx",
-    "variants",
-    "hooks"
-  ]
+  "keywords": ["zest", "css-in-js", "clsx", "variants", "hooks"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/user/zest.git",
+    "directory": "packages/zest-extra"
+  },
+  "homepage": "https://github.com/user/zest#readme",
+  "bugs": {
+    "url": "https://github.com/user/zest/issues"
+  }
 }

@@ -3,8 +3,8 @@
  * Fine-grained reactive DOM updates using comment markers
  */
 
+import { clearRange, createMarkerPair, insertNodes } from "./markers.ts";
 import { effect } from "./signals.ts";
-import { createMarkerPair, clearRange, insertNodes } from "./markers.ts";
 
 export type Child = Node | string | number | boolean | null | undefined | (() => Child) | Child[];
 export type Props = Record<string, unknown> & { children?: Child | Child[] };
@@ -137,7 +137,11 @@ export type { JSXElement as Element };
  * Overloaded to support both intrinsic elements (strings) and components with proper type inference
  */
 export function createElement(tag: string, props: Props | null, ...children: Child[]): JSXElement;
-export function createElement<P>(tag: Component<P>, props: P | null, ...children: Child[]): JSXElement;
+export function createElement<P>(
+  tag: Component<P>,
+  props: P | null,
+  ...children: Child[]
+): JSXElement;
 export function createElement(
   tag: string | Component<unknown>,
   props: Record<string, unknown> | null,
@@ -359,7 +363,7 @@ function setStylePropDirect(
   style: CSSStyleDeclaration,
   cssProperty: string,
   _prop: string,
-  value: unknown
+  value: unknown,
 ): void {
   if (value == null || value === false) {
     style.removeProperty(cssProperty);
@@ -526,12 +530,26 @@ export function template(html: string, isSVG = false): () => Node {
       // For SVG, wrap in svg element and extract
       const wrapper = document.createElement("template");
       wrapper.innerHTML = `<svg xmlns="${SVG_NS}">${html}</svg>`;
-      return wrapper.content.firstChild!.firstChild!;
+      const svgEl = wrapper.content.firstChild;
+      const innerEl = svgEl?.firstChild;
+      if (!innerEl) {
+        throw new Error("Invalid SVG template");
+      }
+      return innerEl;
     }
     const t = document.createElement("template");
     t.innerHTML = html;
-    return t.content.firstChild!;
+    const node = t.content.firstChild;
+    if (!node) {
+      throw new Error("Invalid template");
+    }
+    return node;
   };
 
-  return () => (cached || (cached = create())).cloneNode(true);
+  return () => {
+    if (!cached) {
+      cached = create();
+    }
+    return cached.cloneNode(true);
+  };
 }

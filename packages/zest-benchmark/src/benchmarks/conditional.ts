@@ -3,14 +3,14 @@
  * Compares Show/Switch component performance
  */
 
-import { benchmark } from "../utils.ts";
 import type { BenchmarkResult } from "../types.ts";
+import { benchmark } from "../utils.ts";
 
 // Zest imports
-import { createElement as h, render as zestRender, useState, Show } from "zest";
+import { Show, createElement as h, useState, render as zestRender } from "zest";
 
 // SolidJS imports
-import { createSignal, Show as SolidShow } from "solid-js";
+import { Show as SolidShow, createSignal } from "solid-js";
 import { render as solidRender } from "solid-js/web";
 
 export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
@@ -35,8 +35,8 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
           setVisible(i % 2 === 0);
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -63,12 +63,12 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         }, container);
 
         for (let i = 0; i < 100; i++) {
-          setVisible!(i % 2 === 0);
+          setVisible?.(i % 2 === 0);
         }
         dispose();
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Show with fallback toggle
@@ -91,8 +91,8 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
           setVisible(i % 2 === 0);
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -125,12 +125,12 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         }, container);
 
         for (let i = 0; i < 100; i++) {
-          setVisible!(i % 2 === 0);
+          setVisible?.(i % 2 === 0);
         }
         dispose();
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Multiple conditions (simulate tabs)
@@ -164,7 +164,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
           h(Show, {
             when: () => tab() === 4,
             children: h("div", null, "Tab 4"),
-          })
+          }),
         );
         zestRender(el, container);
 
@@ -172,8 +172,8 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
           setTab(i % 5);
         }
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   results.push(
@@ -202,12 +202,12 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         }, container);
 
         for (let i = 0; i < 100; i++) {
-          setTab!(i % 5);
+          setTab?.(i % 5);
         }
         dispose();
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   return results;

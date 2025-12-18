@@ -3,14 +3,14 @@
  * Compares signal creation, updates, and propagation
  */
 
-import { benchmark } from "../utils.ts";
 import type { BenchmarkResult } from "../types.ts";
+import { benchmark } from "../utils.ts";
 
 // Zest imports
-import { useState, useMemo, useEffect } from "zest";
+import { useEffect, useMemo, useState } from "zest";
 
 // SolidJS imports
-import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
+import { createEffect, createMemo, createRoot, createSignal } from "solid-js";
 
 export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
@@ -19,7 +19,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   results.push(
     await benchmark("signals", "zest", "create signal", () => {
       useState(0);
-    })
+    }),
   );
 
   results.push(
@@ -27,7 +27,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       createRoot(() => {
         createSignal(0);
       });
-    })
+    }),
   );
 
   // Signal update (1000 updates)
@@ -42,8 +42,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           setCount(i);
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -60,8 +60,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           dispose();
         });
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Computed/Memo creation
@@ -69,7 +69,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
     await benchmark("signals", "zest", "create computed", () => {
       const [count] = useState(0);
       useMemo(() => count() * 2);
-    })
+    }),
   );
 
   results.push(
@@ -79,7 +79,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
         createMemo(() => count() * 2);
         dispose();
       });
-    })
+    }),
   );
 
   // Effect creation and trigger
@@ -99,8 +99,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           setCount(i);
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -122,8 +122,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           dispose();
         });
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Chain of computed values (dependency graph)
@@ -145,8 +145,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           f(); // read final value
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -170,8 +170,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           dispose();
         });
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Wide dependency graph (many signals -> one computed)
@@ -189,8 +189,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           sum();
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -210,8 +210,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
           dispose();
         });
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   return results;

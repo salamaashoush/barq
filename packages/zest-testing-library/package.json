@@ -3,22 +3,47 @@
   "version": "0.1.0",
   "description": "Testing utilities for zest components",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
+  "files": ["dist", "src"],
   "scripts": {
-    "test": "bun test"
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
+    "format": "bunx @biomejs/biome format --write src",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@testing-library/dom": "^10.4.0",
-    "zest": "workspace:*"
+    "@testing-library/dom": "^10.4.0"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^15.11.7",
     "@types/bun": "latest",
     "happy-dom": "^15.11.7",
     "typescript": "^5.7.2"
+  },
+  "peerDependencies": {
+    "zest": ">=0.1.0"
+  },
+  "keywords": ["zest", "testing", "testing-library"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/user/zest.git",
+    "directory": "packages/zest-testing-library"
+  },
+  "homepage": "https://github.com/user/zest#readme",
+  "bugs": {
+    "url": "https://github.com/user/zest/issues"
   }
 }

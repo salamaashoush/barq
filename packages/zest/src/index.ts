@@ -6,7 +6,15 @@
  */
 
 // Core reactivity
-export { batch, untrack, createScope, onCleanup, onMount, createContext, useContext } from "./signals.ts";
+export {
+  batch,
+  untrack,
+  createScope,
+  onCleanup,
+  onMount,
+  createContext,
+  useContext,
+} from "./signals.ts";
 
 // Types
 export type { Signal, Computed, Context } from "./signals.ts";
@@ -23,7 +31,18 @@ export { useState, useMemo, useEffect } from "./hooks.ts";
 export { useResource } from "./hooks.ts";
 
 // DOM
-export { createElement, render, useRef, template, type Child, type Props, type Component, type JSXElement, type Element, type ArrayElement } from "./dom.ts";
+export {
+  createElement,
+  render,
+  useRef,
+  template,
+  type Child,
+  type Props,
+  type Component,
+  type JSXElement,
+  type Element,
+  type ArrayElement,
+} from "./dom.ts";
 
 // Components
 export {

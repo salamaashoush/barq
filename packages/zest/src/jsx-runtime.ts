@@ -13,7 +13,14 @@
  */
 
 import { Fragment } from "./components.ts";
-import { type Child, type Props, type JSXElement, type ArrayElement, type Component, createElement } from "./dom.ts";
+import {
+  type ArrayElement,
+  type Child,
+  type Component,
+  type JSXElement,
+  type Props,
+  createElement,
+} from "./dom.ts";
 
 export { Fragment };
 
@@ -51,22 +58,22 @@ export type MaybeAccessor<T> = FunctionMaybe<T>;
  * PropsWithChildren - adds children prop to any props type
  * Commonly used when defining component props
  */
-export type PropsWithChildren<P = {}> = P & { children?: Child };
+export type PropsWithChildren<P = Record<string, never>> = P & { children?: Child };
 
 /**
  * ParentProps - alias for PropsWithChildren (SolidJS naming)
  */
-export type ParentProps<P = {}> = PropsWithChildren<P>;
+export type ParentProps<P = Record<string, never>> = PropsWithChildren<P>;
 
 /**
  * VoidProps - props for components that don't accept children
  */
-export type VoidProps<P = {}> = P & { children?: never };
+export type VoidProps<P = Record<string, never>> = P & { children?: never };
 
 /**
  * FlowProps - props for components that must have children
  */
-export type FlowProps<P = {}, C = Child> = P & { children: C };
+export type FlowProps<P = Record<string, never>, C = Child> = P & { children: C };
 
 /**
  * ComponentProps - extract props type from a component
@@ -118,14 +125,12 @@ export namespace JSX {
   /**
    * Event handler with proper currentTarget typing
    */
-  export interface EventHandler<T, E extends Event> {
-    (
-      e: E & {
-        currentTarget: T;
-        target: globalThis.Element;
-      }
-    ): void;
-  }
+  export type EventHandler<T, E extends Event> = (
+    e: E & {
+      currentTarget: T;
+      target: globalThis.Element;
+    },
+  ) => void;
 
   /**
    * Bound event handler - tuple of [handler, data] for passing data without closure
@@ -143,16 +148,18 @@ export namespace JSX {
   /**
    * Input event handler with proper target typing for form elements
    */
-  export interface InputEventHandler<T, E extends Event> {
-    (
-      e: E & {
-        currentTarget: T;
-        target: T extends HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement ? T : globalThis.Element;
-      }
-    ): void;
-  }
+  export type InputEventHandler<T, E extends Event> = (
+    e: E & {
+      currentTarget: T;
+      target: T extends HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        ? T
+        : globalThis.Element;
+    },
+  ) => void;
 
-  export type InputEventHandlerUnion<T, E extends Event> = InputEventHandler<T, E> | BoundEventHandler<T, E>;
+  export type InputEventHandlerUnion<T, E extends Event> =
+    | InputEventHandler<T, E>
+    | BoundEventHandler<T, E>;
 
   // Intrinsic attributes shared by all elements
   export interface IntrinsicAttributes {
@@ -457,7 +464,9 @@ export namespace JSX {
   }
 
   // Base HTML attributes
-  interface HTMLAttributes<T extends HTMLElement> extends DOMEventHandlers<T>, DOMEventHandlersLowerCase<T> {
+  interface HTMLAttributes<T extends HTMLElement>
+    extends DOMEventHandlers<T>,
+      DOMEventHandlersLowerCase<T> {
     // Core attributes - all support reactive accessors
     id?: FunctionMaybe<string>;
     class?: FunctionMaybe<string | string[] | Record<string, boolean | undefined>>;
@@ -587,8 +596,12 @@ export namespace JSX {
     size?: FunctionMaybe<number>;
     form?: FunctionMaybe<string>;
     list?: FunctionMaybe<string>;
-    inputMode?: FunctionMaybe<"none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search">;
-    inputmode?: FunctionMaybe<"none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search">;
+    inputMode?: FunctionMaybe<
+      "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search"
+    >;
+    inputmode?: FunctionMaybe<
+      "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search"
+    >;
     enterKeyHint?: FunctionMaybe<"enter" | "done" | "go" | "next" | "previous" | "search" | "send">;
     enterkeyhint?: FunctionMaybe<"enter" | "done" | "go" | "next" | "previous" | "search" | "send">;
 
@@ -602,7 +615,9 @@ export namespace JSX {
   }
 
   // SVG attributes
-  interface SVGAttributes<T extends SVGElement> extends DOMEventHandlers<T>, DOMEventHandlersLowerCase<T> {
+  interface SVGAttributes<T extends SVGElement>
+    extends DOMEventHandlers<T>,
+      DOMEventHandlersLowerCase<T> {
     // Core SVG attributes
     id?: FunctionMaybe<string>;
     class?: FunctionMaybe<string | string[] | Record<string, boolean | undefined>>;
@@ -754,7 +769,11 @@ export namespace JSX {
  */
 export function jsx(type: string, props: Props | null, _key?: string): JSXElement;
 export function jsx<P>(type: Component<P>, props: P | null, _key?: string): JSXElement;
-export function jsx<P>(type: string | Component<P>, props: P | Props | null, _key?: string): JSXElement {
+export function jsx<P>(
+  type: string | Component<P>,
+  props: P | Props | null,
+  _key?: string,
+): JSXElement {
   const { children, ...rest } = (props ?? {}) as Props;
   const childArray = children == null ? [] : Array.isArray(children) ? children : [children];
   return createElement(type as string, rest, ...childArray);

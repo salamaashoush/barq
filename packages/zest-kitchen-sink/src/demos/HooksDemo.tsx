@@ -5,26 +5,26 @@
  *        useClickOutside, useKeyboard, useTitle, useInterval, useTimeout
  */
 
-import { useState, useRef, Show } from "zest";
+import { Show, useRef, useState } from "zest";
 import {
-  useFetch,
-  useDebounce,
-  useThrottle,
-  usePrevious,
-  useToggle,
+  useClickOutside,
   useCounter,
+  useDebounce,
+  useFetch,
+  useIntersection,
+  useInterval,
+  useKeyboard,
   useLocalStorage,
   useMediaQuery,
-  useWindowSize,
-  useIntersection,
-  useClickOutside,
-  useKeyboard,
-  useTitle,
-  useInterval,
+  usePrevious,
+  useThrottle,
   useTimeout,
+  useTitle,
+  useToggle,
+  useWindowSize,
 } from "zest-extra";
 import { css } from "zest-extra";
-import { DemoSection, DemoCard, Button, Log } from "./shared";
+import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function HooksDemo() {
   return (
@@ -62,7 +62,9 @@ function FetchDemo() {
         <ul class={listStyle}>
           {() =>
             users()?.map((user) => (
-              <li class={listItemStyle}>{user.name} - {user.email}</li>
+              <li class={listItemStyle}>
+                {user.name} - {user.email}
+              </li>
             ))
           }
         </ul>
@@ -91,15 +93,15 @@ function DebounceThrottleDemo() {
 
       <div class={valuesStyle}>
         <div>
-          <label>Raw:</label>
+          <strong>Raw:</strong>
           <span>{value}</span>
         </div>
         <div>
-          <label>Debounced (500ms):</label>
+          <strong>Debounced (500ms):</strong>
           <span>{debounced}</span>
         </div>
         <div>
-          <label>Throttled (500ms):</label>
+          <strong>Throttled (500ms):</strong>
           <span>{throttled}</span>
         </div>
       </div>
@@ -114,8 +116,12 @@ function PreviousDemo() {
 
   return (
     <DemoCard title="usePrevious">
-      <p>Current: <strong>{count}</strong></p>
-      <p>Previous: <strong>{() => previous() ?? "N/A"}</strong></p>
+      <p>
+        Current: <strong>{count}</strong>
+      </p>
+      <p>
+        Previous: <strong>{() => previous() ?? "N/A"}</strong>
+      </p>
 
       <div class={buttonRowStyle}>
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
@@ -135,7 +141,9 @@ function ToggleCounterDemo() {
     <DemoCard title="useToggle & useCounter">
       <div class={rowStyle}>
         <div class={boxStyle}>
-          <p>Toggle: <strong>{() => (isOn() ? "ON" : "OFF")}</strong></p>
+          <p>
+            Toggle: <strong>{() => (isOn() ? "ON" : "OFF")}</strong>
+          </p>
           <div class={buttonRowStyle}>
             <Button onClick={toggle}>Toggle</Button>
             <Button onClick={() => setIsOn(true)}>Set ON</Button>
@@ -144,7 +152,9 @@ function ToggleCounterDemo() {
         </div>
 
         <div class={boxStyle}>
-          <p>Counter: <strong>{counter.count}</strong></p>
+          <p>
+            Counter: <strong>{counter.count}</strong>
+          </p>
           <div class={buttonRowStyle}>
             <Button onClick={counter.decrement}>-</Button>
             <Button onClick={counter.increment}>+</Button>
@@ -164,33 +174,35 @@ function LocalStorageDemo() {
   return (
     <DemoCard title="useLocalStorage">
       <div class={fieldStyle}>
-        <label>Name (persisted):</label>
-        <input
-          type="text"
-          value={name()}
-          onInput={(e: Event) => setName((e.target as HTMLInputElement).value)}
-          placeholder="Enter your name"
-          class={inputStyle}
-        />
+        <label>
+          Name (persisted):
+          <input
+            type="text"
+            value={name()}
+            onInput={(e: Event) => setName((e.target as HTMLInputElement).value)}
+            placeholder="Enter your name"
+            class={inputStyle}
+          />
+        </label>
       </div>
 
       <div class={fieldStyle}>
-        <label>Theme (persisted):</label>
-        <select
-          value={theme()}
-          onChange={(e: Event) =>
-            setTheme((e.target as HTMLSelectElement).value as "light" | "dark")
-          }
-          class={selectStyle}
-        >
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
+        <label>
+          Theme (persisted):
+          <select
+            value={theme()}
+            onChange={(e: Event) =>
+              setTheme((e.target as HTMLSelectElement).value as "light" | "dark")
+            }
+            class={selectStyle}
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
       </div>
 
-      <p class={noteStyle}>
-        Values persist in localStorage. Refresh the page to verify.
-      </p>
+      <p class={noteStyle}>Values persist in localStorage. Refresh the page to verify.</p>
     </DemoCard>
   );
 }
@@ -215,9 +227,7 @@ function MediaQueryDemo() {
         </li>
       </ul>
 
-      <p class={noteStyle}>
-        Resize window or change system settings to see changes.
-      </p>
+      <p class={noteStyle}>Resize window or change system settings to see changes.</p>
     </DemoCard>
   );
 }
@@ -288,13 +298,11 @@ function ClickOutsideDemo() {
 
   return (
     <DemoCard title="useClickOutside">
-      <p>Outside clicks detected: <strong>{clickCount}</strong></p>
+      <p>
+        Outside clicks detected: <strong>{clickCount}</strong>
+      </p>
 
-      <div
-        ref={ref}
-        class={dropdownStyle}
-        style={{ background: isOpen() ? "#3b82f6" : "#475569" }}
-      >
+      <div ref={ref} class={dropdownStyle} style={{ background: isOpen() ? "#3b82f6" : "#475569" }}>
         <Button onClick={() => setIsOpen((o) => !o)}>
           {() => (isOpen() ? "Close" : "Open")} Dropdown
         </Button>
@@ -325,9 +333,15 @@ function KeyboardDemo() {
     <DemoCard title="useKeyboard">
       <p>Try these shortcuts:</p>
       <ul class={shortcutListStyle}>
-        <li><code>Escape</code> - Log escape</li>
-        <li><code>Ctrl+S</code> - Log save</li>
-        <li><code>Shift+Enter</code> - Log shift+enter</li>
+        <li>
+          <code>Escape</code> - Log escape
+        </li>
+        <li>
+          <code>Ctrl+S</code> - Log save
+        </li>
+        <li>
+          <code>Shift+Enter</code> - Log shift+enter
+        </li>
       </ul>
 
       <Log logs={logs} />
@@ -341,29 +355,27 @@ function TimerDemo() {
   const [intervalActive, setIntervalActive] = useState(false);
   const [message, setMessage] = useState("");
 
-  useInterval(
-    () => setCount((c) => c + 1),
-    intervalActive() ? 1000 : null
-  );
+  useInterval(() => setCount((c) => c + 1), intervalActive() ? 1000 : null);
 
   const [showTimeout, setShowTimeout] = useState(false);
-  useTimeout(
-    () => setMessage("Timeout fired!"),
-    showTimeout() ? 2000 : null
-  );
+  useTimeout(() => setMessage("Timeout fired!"), showTimeout() ? 2000 : null);
 
   return (
     <DemoCard title="useInterval & useTimeout">
       <div class={rowStyle}>
         <div class={boxStyle}>
-          <p>Interval count: <strong>{count}</strong></p>
+          <p>
+            Interval count: <strong>{count}</strong>
+          </p>
           <Button onClick={() => setIntervalActive((a) => !a)}>
             {() => (intervalActive() ? "Stop" : "Start")} Interval
           </Button>
         </div>
 
         <div class={boxStyle}>
-          <p>Message: <strong>{() => message || "(none)"}</strong></p>
+          <p>
+            Message: <strong>{() => message || "(none)"}</strong>
+          </p>
           <Button
             onClick={() => {
               setMessage("");

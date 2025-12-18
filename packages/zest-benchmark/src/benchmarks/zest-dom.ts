@@ -3,19 +3,23 @@
  * Measures zest-specific DOM operations (no solid comparison needed)
  */
 
-import { benchmark, generateItems } from "../utils.ts";
 import type { BenchmarkResult } from "../types.ts";
+import { benchmark, generateItems } from "../utils.ts";
 
 import {
+  type Child,
+  type Component,
+  For,
+  Fragment,
+  Show,
   createElement as h,
   render,
-  useState,
-  useMemo,
   useEffect,
-  For,
-  Show,
-  Fragment,
+  useMemo,
+  useState,
 } from "zest";
+
+type Item = { id: number; name: string; value: number };
 
 export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
@@ -24,7 +28,7 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
   results.push(
     await benchmark("zest-dom", "zest", "create div (simple)", () => {
       h("div", { class: "test" }, "Hello");
-    })
+    }),
   );
 
   // Nested structure (3 levels)
@@ -33,9 +37,9 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
       h(
         "div",
         { class: "container" },
-        h("div", { class: "row" }, h("span", { class: "cell" }, "Content"))
+        h("div", { class: "row" }, h("span", { class: "cell" }, "Content")),
       );
-    })
+    }),
   );
 
   // Deep nesting (10 levels)
@@ -45,7 +49,7 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
       for (let i = 0; i < 10; i++) {
         el = h("div", { class: `level-${i}` }, el);
       }
-    })
+    }),
   );
 
   // Create 100 elements
@@ -59,8 +63,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
           h("div", { class: "item", "data-id": String(i) }, `Item ${i}`);
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Create 1000 elements
@@ -74,8 +78,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
           h("div", { class: "item", "data-id": String(i) }, `Item ${i}`);
         }
       },
-      { iterations: 100 }
-    )
+      { iterations: 100 },
+    ),
   );
 
   // Element with many attributes
@@ -93,7 +97,7 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
         tabIndex: 0,
         role: "button",
       });
-    })
+    }),
   );
 
   // Render and mount
@@ -107,8 +111,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
         const el = h("div", { class: "app" }, h("span", null, "Hello"));
         render(el, container);
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Render with reactive text
@@ -126,8 +130,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
           setCount(i);
         }
       },
-      { iterations: 100 }
-    )
+      { iterations: 100 },
+    ),
   );
 
   // Render with reactive class
@@ -145,8 +149,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
           setActive(i % 2 === 0);
         }
       },
-      { iterations: 100 }
-    )
+      { iterations: 100 },
+    ),
   );
 
   // Render with reactive style
@@ -169,8 +173,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
           setWidth(i);
         }
       },
-      { iterations: 100 }
-    )
+      { iterations: 100 },
+    ),
   );
 
   // Show component toggle
@@ -191,8 +195,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
           setVisible(i % 2 === 0);
         }
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   // Show with fallback
@@ -214,8 +218,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
           setVisible(i % 2 === 0);
         }
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   // For component render
@@ -228,15 +232,15 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
       () => {
         const container = document.createElement("div");
         const [items] = useState(items100);
-        const el = h(For as any, {
+        const el = h(For<Item>, {
           each: items,
-          children: (item: any, index: () => number) =>
+          children: (item: Item, index: () => number) =>
             h("div", { "data-id": String(item.id) }, item.name),
         });
         render(el, container);
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   const items1000 = generateItems(1000);
@@ -248,24 +252,24 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
       () => {
         const container = document.createElement("div");
         const [items] = useState(items1000);
-        const el = h(For as any, {
+        const el = h(For<Item>, {
           each: items,
-          children: (item: any, index: () => number) =>
+          children: (item: Item, index: () => number) =>
             h("div", { "data-id": String(item.id) }, item.name),
         });
         render(el, container);
       },
-      { iterations: 50 }
-    )
+      { iterations: 50 },
+    ),
   );
 
   // Component render
-  function Card(props: { title: string; children: any }) {
+  function Card(props: { title: string; children: Child }) {
     return h(
       "div",
       { class: "card" },
       h("h2", { class: "card-title" }, props.title),
-      h("div", { class: "card-body" }, props.children)
+      h("div", { class: "card-body" }, props.children),
     );
   }
 
@@ -283,8 +287,8 @@ export async function runZestDOMBenchmarks(): Promise<BenchmarkResult[]> {
         const el = h("div", null, ...cards);
         render(el, container);
       },
-      { iterations: 100 }
-    )
+      { iterations: 100 },
+    ),
   );
 
   return results;

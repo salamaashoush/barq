@@ -2,8 +2,8 @@
  * Shared components for demos
  */
 
-import { For, type Child } from "zest";
-import { css, clsx } from "zest-extra";
+import { type Child, For } from "zest";
+import { clsx, css } from "zest-extra";
 
 // Demo section container
 export function DemoSection(props: { children: Child }) {
@@ -45,6 +45,7 @@ export function Button(props: {
 
   return (
     <button
+      type="button"
       class={() => {
         const variant = getVariant();
         return clsx(buttonBaseStyle, {
@@ -66,9 +67,7 @@ export function Button(props: {
 export function Log(props: { logs: () => string[] }) {
   return (
     <div class={logContainerStyle}>
-      <For each={props.logs}>
-        {(log) => <div class={logLineStyle}>{log}</div>}
-      </For>
+      <For each={props.logs}>{(log) => <div class={logLineStyle}>{log}</div>}</For>
     </div>
   );
 }

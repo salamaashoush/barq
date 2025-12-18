@@ -3,8 +3,8 @@
  * Builds and serves the benchmark page
  */
 
-import { watch } from "fs";
-import { join, dirname } from "path";
+import { watch } from "node:fs";
+import { dirname, join } from "node:path";
 
 const projectRoot = dirname(dirname(import.meta.path));
 const distDir = join(projectRoot, "dist");

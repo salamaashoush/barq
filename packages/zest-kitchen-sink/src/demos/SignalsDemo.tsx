@@ -4,21 +4,21 @@
  */
 
 import {
-  useState,
-  useMemo,
-  useEffect,
+  Show,
   batch,
-  untrack,
+  createContext,
   createScope,
-  useRef,
   onCleanup,
   onMount,
-  createContext,
+  untrack,
   useContext,
-  Show,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "zest";
 import { css } from "zest-extra";
-import { DemoSection, DemoCard, Button, Log } from "./shared";
+import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function SignalsDemo() {
   return (
@@ -44,8 +44,12 @@ function CounterDemo() {
 
   return (
     <DemoCard title="useState - Counter">
-      <p>Count: <strong>{count}</strong></p>
-      <p>Step: <strong>{step}</strong></p>
+      <p>
+        Count: <strong>{count}</strong>
+      </p>
+      <p>
+        Step: <strong>{step}</strong>
+      </p>
       <div class={buttonRowStyle}>
         <Button onClick={() => setCount((c) => c - step())}>-{step}</Button>
         <Button onClick={() => setCount((c) => c + step())}>+{step}</Button>
@@ -94,16 +98,18 @@ function MemoDemo() {
           class={inputStyle}
         />
       </div>
-      <p>Full name: <strong>{fullName}</strong></p>
+      <p>
+        Full name: <strong>{fullName}</strong>
+      </p>
 
       <hr class={dividerStyle} />
 
       <p>Items: {() => items().join(", ")}</p>
-      <p>Sum: <strong>{sum}</strong></p>
+      <p>
+        Sum: <strong>{sum}</strong>
+      </p>
       <p>Doubled: {() => doubled().join(", ")}</p>
-      <Button onClick={() => setItems((arr) => [...arr, arr.length + 1])}>
-        Add Item
-      </Button>
+      <Button onClick={() => setItems((arr) => [...arr, arr.length + 1])}>Add Item</Button>
     </DemoCard>
   );
 }
@@ -141,7 +147,9 @@ function EffectDemo() {
 
   return (
     <DemoCard title="useEffect - Side Effects">
-      <p>Count: <strong>{count}</strong></p>
+      <p>
+        Count: <strong>{count}</strong>
+      </p>
       <div class={buttonRowStyle}>
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
         <Button onClick={() => setIntervalActive((a) => !a)}>
@@ -178,12 +186,24 @@ function BatchDemo() {
 
   return (
     <DemoCard title="batch - Batched Updates">
-      <p>A: <strong>{a}</strong>, B: <strong>{b}</strong></p>
-      <p>Effect runs: <strong>{renderCount}</strong></p>
+      <p>
+        A: <strong>{a}</strong>, B: <strong>{b}</strong>
+      </p>
+      <p>
+        Effect runs: <strong>{renderCount}</strong>
+      </p>
       <div class={buttonRowStyle}>
         <Button onClick={unbatchedUpdate}>Unbatched +1</Button>
         <Button onClick={batchedUpdate}>Batched +1</Button>
-        <Button onClick={() => { setA(0); setB(0); setRenderCount(0); }}>Reset</Button>
+        <Button
+          onClick={() => {
+            setA(0);
+            setB(0);
+            setRenderCount(0);
+          }}
+        >
+          Reset
+        </Button>
       </div>
       <p class={noteStyle}>
         Batched updates trigger effects once, unbatched may trigger multiple times.
@@ -208,9 +228,15 @@ function UntrackDemo() {
 
   return (
     <DemoCard title="untrack - Dependency Control">
-      <p>Tracked: <strong>{tracked}</strong></p>
-      <p>Untracked: <strong>{untracked_}</strong></p>
-      <p>Effect runs: <strong>{effectRuns}</strong></p>
+      <p>
+        Tracked: <strong>{tracked}</strong>
+      </p>
+      <p>
+        Untracked: <strong>{untracked_}</strong>
+      </p>
+      <p>
+        Effect runs: <strong>{effectRuns}</strong>
+      </p>
       <div class={buttonRowStyle}>
         <Button onClick={() => setTracked((t) => t + 1)}>
           Increment Tracked (triggers effect)
@@ -276,7 +302,9 @@ function ScopeDemo() {
 
   return (
     <DemoCard title="createScope - Effect Isolation">
-      <p>Scope active: <strong>{() => (scopeActive() ? "Yes" : "No")}</strong></p>
+      <p>
+        Scope active: <strong>{() => (scopeActive() ? "Yes" : "No")}</strong>
+      </p>
       <div class={buttonRowStyle}>
         <Button onClick={startScope} disabled={() => scopeActive()}>
           Create Scope
@@ -286,9 +314,7 @@ function ScopeDemo() {
         </Button>
       </div>
       <Log logs={logs} />
-      <p class={noteStyle}>
-        Scopes isolate effects and clean them up together.
-      </p>
+      <p class={noteStyle}>Scopes isolate effects and clean them up together.</p>
     </DemoCard>
   );
 }
@@ -345,15 +371,15 @@ function OnCleanupDemo() {
 
   return (
     <DemoCard title="onCleanup - Effect Cleanup">
-      <p>Count: <strong>{count}</strong></p>
+      <p>
+        Count: <strong>{count}</strong>
+      </p>
       <div class={buttonRowStyle}>
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
         <Button onClick={() => setCount(0)}>Reset</Button>
       </div>
       <Log logs={logs} />
-      <p class={noteStyle}>
-        onCleanup runs before effect re-runs and when disposed.
-      </p>
+      <p class={noteStyle}>onCleanup runs before effect re-runs and when disposed.</p>
     </DemoCard>
   );
 }
@@ -385,12 +411,10 @@ function OnMountDemo() {
       <p>onMount runs once after the component renders.</p>
       <div class={buttonRowStyle}>
         <Button onClick={() => setShowChild((s) => !s)}>
-          {() => showChild() ? "Hide" : "Show"} Child
+          {() => (showChild() ? "Hide" : "Show")} Child
         </Button>
       </div>
-      <Show when={() => showChild()}>
-        {() => <ChildComponent />}
-      </Show>
+      <Show when={() => showChild()}>{() => <ChildComponent />}</Show>
       <Log logs={logs} />
     </DemoCard>
   );
@@ -406,9 +430,11 @@ function ContextDemo() {
 
   return (
     <DemoCard title="Context - Dependency Injection">
-      <p>Current theme setting: <strong>{theme}</strong></p>
+      <p>
+        Current theme setting: <strong>{theme}</strong>
+      </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setTheme((t) => t === "light" ? "dark" : "light")}>
+        <Button onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}>
           Toggle Theme
         </Button>
       </div>
@@ -421,9 +447,7 @@ function ContextDemo() {
         )}
       </ThemeContext.Provider>
 
-      <p class={noteStyle}>
-        Context provides dependency injection without prop drilling.
-      </p>
+      <p class={noteStyle}>Context provides dependency injection without prop drilling.</p>
     </DemoCard>
   );
 }
@@ -444,8 +468,12 @@ function ContextConsumer() {
         border: 1px solid ${theme() === "dark" ? "#475569" : "#cbd5e1"};
       `}
     >
-      <p>Theme from context: <strong>{theme}</strong></p>
-      <p>User: <strong>{() => user().name}</strong> ({() => user().role})</p>
+      <p>
+        Theme from context: <strong>{theme}</strong>
+      </p>
+      <p>
+        User: <strong>{() => user().name}</strong> ({() => user().role})
+      </p>
     </div>
   );
 }

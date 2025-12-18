@@ -18,10 +18,17 @@
  * ```
  */
 
-import { getQueriesForElement, prettyDOM, configure as configureDTL } from "@testing-library/dom";
+import { configure as configureDTL, getQueriesForElement, prettyDOM } from "@testing-library/dom";
 import { render as zestRender } from "zest";
 
-import type { Ui, RenderOptions, RenderResult, RenderHookOptions, RenderHookResult, MountedRef } from "./types.ts";
+import type {
+  MountedRef,
+  RenderHookOptions,
+  RenderHookResult,
+  RenderOptions,
+  RenderResult,
+  Ui,
+} from "./types.ts";
 
 // Track mounted containers for cleanup
 const mountedContainers = new Set<MountedRef>();
@@ -74,9 +81,11 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
     container,
     baseElement,
     asFragment: () => container.innerHTML,
-    debug: (el = baseElement, maxLength, opts) => {
+    debug: (el, maxLength, opts) => {
       if (Array.isArray(el)) {
-        el.forEach((e) => console.log(prettyDOM(e as Element, maxLength, opts)));
+        for (const e of el) {
+          console.log(prettyDOM(e as Element, maxLength, opts));
+        }
       } else {
         console.log(prettyDOM(el as Element, maxLength, opts));
       }
@@ -119,7 +128,7 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
  */
 export function renderHook<TResult, TProps = unknown>(
   hook: (props: TProps) => TResult,
-  options: RenderHookOptions<TProps> = {}
+  options: RenderHookOptions<TProps> = {},
 ): RenderHookResult<TResult, TProps> {
   const { initialProps, wrapper } = options;
 
@@ -133,7 +142,9 @@ export function renderHook<TResult, TProps = unknown>(
     return document.createComment("hook");
   };
 
-  const wrappedComponent = wrapper ? () => wrapper({ children: renderHookComponent() }) : renderHookComponent;
+  const wrappedComponent = wrapper
+    ? () => wrapper({ children: renderHookComponent() })
+    : renderHookComponent;
 
   dispose = zestRender(wrappedComponent(), container);
   mountedContainers.add({ container, dispose });
@@ -160,17 +171,17 @@ export function renderHook<TResult, TProps = unknown>(
  * Can be called manually if needed.
  */
 export function cleanup(): void {
-  mountedContainers.forEach(({ container, dispose }) => {
+  for (const { container, dispose } of mountedContainers) {
     try {
       dispose();
-    } catch (e) {
+    } catch {
       // Ignore disposal errors
     }
 
     if (container.parentNode) {
       container.parentNode.removeChild(container);
     }
-  });
+  }
   mountedContainers.clear();
 }
 
@@ -185,7 +196,7 @@ export function cleanup(): void {
  */
 export async function waitFor<T>(
   callback: () => T | Promise<T>,
-  options: { timeout?: number; interval?: number } = {}
+  options: { timeout?: number; interval?: number } = {},
 ): Promise<T> {
   const { timeout = 1000, interval = 50 } = options;
   const startTime = Date.now();
@@ -309,7 +320,7 @@ export const screen = new Proxy({} as ReturnType<typeof getQueriesForElement>, {
     if (typeof document === "undefined" || !document.body) {
       throw new TypeError(
         "For queries bound to document.body a global document has to be available. " +
-        "Ensure happy-dom GlobalRegistrator.register() is called before tests run."
+          "Ensure happy-dom GlobalRegistrator.register() is called before tests run.",
       );
     }
     const queries = getQueriesForElement(document.body);

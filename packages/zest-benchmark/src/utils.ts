@@ -12,7 +12,7 @@ export async function benchmark(
   framework: "zest" | "solid",
   operation: string,
   fn: () => void | Promise<void>,
-  options: { iterations?: number; warmup?: number } = {}
+  options: { iterations?: number; warmup?: number } = {},
 ): Promise<BenchmarkResult> {
   const { iterations = 1000, warmup = 100 } = options;
 

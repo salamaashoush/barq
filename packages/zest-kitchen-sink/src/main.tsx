@@ -2,15 +2,9 @@
  * Zest Kitchen Sink - Test all features
  */
 
+import { QueryClient } from "@tanstack/query-core";
 import { render } from "zest";
-import {
-  globalCss,
-  css,
-  Router,
-  defineRoutes,
-  QueryClient,
-  setQueryClient,
-} from "zest-extra";
+import { Router, css, defineRoutes, globalCss, setQueryClient } from "zest-extra";
 
 import { App } from "./App";
 
@@ -82,12 +76,14 @@ const routes = defineRoutes([
 ]);
 
 // Mount app
-const container = document.getElementById("app")!;
-render(
-  <Router config={{ routes }}>
-    <App />
-  </Router>,
-  container
-);
+const container = document.getElementById("app");
+if (container) {
+  render(
+    <Router config={{ routes }}>
+      <App />
+    </Router>,
+    container,
+  );
+}
 
 console.log("Zest Kitchen Sink mounted");

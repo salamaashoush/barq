@@ -3,15 +3,15 @@
  * Compares raw element creation speed
  */
 
-import { benchmark, generateItems } from "../utils.ts";
 import type { BenchmarkResult } from "../types.ts";
+import { benchmark, generateItems } from "../utils.ts";
 
 // Zest imports
 import { createElement as zestCreate } from "zest";
 
 // SolidJS imports - we'll use the raw h function equivalent
 import { createComponent, mergeProps } from "solid-js";
-import { insert, template, createComponent as solidCreateComponent } from "solid-js/web";
+import { insert, createComponent as solidCreateComponent, template } from "solid-js/web";
 
 export async function runCreateElementBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
@@ -20,14 +20,14 @@ export async function runCreateElementBenchmarks(): Promise<BenchmarkResult[]> {
   results.push(
     await benchmark("create-elements", "zest", "create div (simple)", () => {
       zestCreate("div", { class: "test" }, "Hello");
-    })
+    }),
   );
 
   results.push(
     await benchmark("create-elements", "solid", "create div (simple)", () => {
       const t = template("<div class=test>Hello</div>");
       t();
-    })
+    }),
   );
 
   // Nested structure
@@ -36,20 +36,18 @@ export async function runCreateElementBenchmarks(): Promise<BenchmarkResult[]> {
       zestCreate(
         "div",
         { class: "container" },
-        zestCreate(
-          "div",
-          { class: "row" },
-          zestCreate("span", { class: "cell" }, "Content")
-        )
+        zestCreate("div", { class: "row" }, zestCreate("span", { class: "cell" }, "Content")),
       );
-    })
+    }),
   );
 
   results.push(
     await benchmark("create-elements", "solid", "create nested (3 levels)", () => {
-      const t = template("<div class=container><div class=row><span class=cell>Content</span></div></div>");
+      const t = template(
+        "<div class=container><div class=row><span class=cell>Content</span></div></div>",
+      );
       t();
-    })
+    }),
   );
 
   // Create 100 elements
@@ -63,8 +61,8 @@ export async function runCreateElementBenchmarks(): Promise<BenchmarkResult[]> {
           zestCreate("div", { class: "item", "data-id": String(i) }, `Item ${i}`);
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -80,8 +78,8 @@ export async function runCreateElementBenchmarks(): Promise<BenchmarkResult[]> {
           el.textContent = `Item ${i}`;
         }
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Complex element with many attributes
@@ -99,14 +97,16 @@ export async function runCreateElementBenchmarks(): Promise<BenchmarkResult[]> {
         tabIndex: 0,
         role: "button",
       });
-    })
+    }),
   );
 
   results.push(
     await benchmark("create-elements", "solid", "create with 10 attrs", () => {
-      const t = template("<div id=test class='foo bar baz' data-a=1 data-b=2 data-c=3 data-d=4 data-e=5 title=tooltip tabindex=0 role=button></div>");
+      const t = template(
+        "<div id=test class='foo bar baz' data-a=1 data-b=2 data-c=3 data-d=4 data-e=5 title=tooltip tabindex=0 role=button></div>",
+      );
       t();
-    })
+    }),
   );
 
   return results;

@@ -11,9 +11,9 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 // Setup DOM environment
 GlobalRegistrator.register();
 
-import type { BenchmarkResult } from "./types.ts";
-import { formatResult, formatComparison } from "./types.ts";
 import { runSignalBenchmarks } from "./benchmarks/signals.ts";
+import type { BenchmarkResult } from "./types.ts";
+import { formatComparison, formatResult } from "./types.ts";
 
 async function main() {
   console.log("=".repeat(80));
@@ -58,7 +58,10 @@ async function main() {
     if (!operations.has(key)) {
       operations.set(key, {});
     }
-    operations.get(key)![result.framework] = result;
+    const op = operations.get(key);
+    if (op) {
+      op[result.framework] = result;
+    }
   }
 
   // Calculate wins

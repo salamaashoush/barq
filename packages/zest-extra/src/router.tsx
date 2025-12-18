@@ -38,21 +38,21 @@
  */
 
 import {
+  type Child,
   Fragment,
-  useEffect,
-  useState,
-  useMemo,
-  createContext,
-  useContext,
-  onCleanup,
+  type JSXElement,
   batch,
-  untrack,
+  childToNodes,
+  clearRange,
+  createContext,
   createMarkerPair,
   insertNodes,
-  clearRange,
-  childToNodes,
-  type Child,
-  type JSXElement,
+  onCleanup,
+  untrack,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
 } from "zest";
 
 // ============================================================================
@@ -83,7 +83,9 @@ export interface LoaderContext<P extends Params = Params> {
 }
 
 /** Route loader function */
-export type Loader<T = unknown, P extends Params = Params> = (ctx: LoaderContext<P>) => T | Promise<T>;
+export type Loader<T = unknown, P extends Params = Params> = (
+  ctx: LoaderContext<P>,
+) => T | Promise<T>;
 
 /**
  * Route component props - flexible typing for route components
@@ -107,7 +109,7 @@ export type RouteComponent<T = unknown, P extends Params = Params> =
   | ((props: { data: T }) => Child)
   | ((props: { params: P }) => Child)
   | ((props: { children?: Child }) => Child)
-  | ((props: {}) => Child)
+  | ((props: Record<string, never>) => Child)
   | (() => Child);
 
 /** Route definition - use `route()` helper for type-safe route creation */
@@ -115,7 +117,7 @@ export interface RouteDefinition<T = unknown, P extends Params = Params> {
   path: string;
   component: RouteComponent<T, P>;
   loader?: Loader<T, P>;
-  children?: RouteDefinition<any, any>[];
+  children?: RouteDefinition[];
 }
 
 /** Matched route with extracted params */
@@ -232,7 +234,9 @@ function matchRoutes(
 
     if (isLayout) {
       // Check if pathname starts with this route's path
-      const prefixPattern = compilePath(route.path.endsWith("/") ? route.path + "*" : route.path + "/*");
+      const prefixPattern = compilePath(
+        route.path.endsWith("/") ? `${route.path}*` : `${route.path}/*`,
+      );
       const exactMatch = matchPath(pathname, pattern);
       const prefixMatch = matchPath(pathname, prefixPattern);
 
@@ -302,7 +306,9 @@ const OutletLevelContext = createContext<number>(0);
 /** Parse current browser location */
 function parseLocation(base: string): Location {
   const pathname = window.location.pathname;
-  const adjustedPathname = pathname.startsWith(base) ? pathname.slice(base.length) || "/" : pathname;
+  const adjustedPathname = pathname.startsWith(base)
+    ? pathname.slice(base.length) || "/"
+    : pathname;
 
   return {
     pathname: adjustedPathname,
@@ -417,7 +423,9 @@ export function navigate(to: string, options: { replace?: boolean; state?: unkno
 
   // Parse and set new location
   const url = new URL(fullPath, window.location.origin);
-  const pathname = url.pathname.startsWith(base) ? url.pathname.slice(base.length) || "/" : url.pathname;
+  const pathname = url.pathname.startsWith(base)
+    ? url.pathname.slice(base.length) || "/"
+    : url.pathname;
 
   const newLocation: Location = {
     pathname,
@@ -554,7 +562,9 @@ export function NavLink(props: NavLinkProps): JSXElement {
   // Use useMemo for reactive class computation
   const className = useMemo(() => {
     const loc = location();
-    const isActive = props.exact ? loc.pathname === props.href : loc.pathname.startsWith(props.href);
+    const isActive = props.exact
+      ? loc.pathname === props.href
+      : loc.pathname.startsWith(props.href);
 
     const classes: string[] = [];
     if (props.class) classes.push(props.class);
@@ -611,9 +621,9 @@ export function Outlet(): JSXElement {
   // Helper to render the current route
   const renderRoute = () => {
     // Read matchedRoutes directly to establish dependency tracking
-    const routes = routerState!.matchedRoutes();
-    const allData = routerState!.loaderData();
-    const params = routerState!.params();
+    const routes = routerState?.matchedRoutes() ?? [];
+    const allData = routerState?.loaderData() ?? [];
+    const params = routerState?.params() ?? {};
 
     // Get route at our level
     const route = level < routes.length ? routes[level] : null;
@@ -635,8 +645,8 @@ export function Outlet(): JSXElement {
 
     if (!route) {
       // No route at this level - show fallback if root, nothing if nested
-      if (level === 0 && routerState!.config.fallback) {
-        const fallbackNodes = childToNodes(routerState!.config.fallback());
+      if (level === 0 && routerState?.config.fallback) {
+        const fallbackNodes = childToNodes(routerState?.config.fallback());
         insertNodes(endMarker, fallbackNodes);
         currentNodes = fallbackNodes;
       } else if (level === 0) {
@@ -648,13 +658,16 @@ export function Outlet(): JSXElement {
     }
 
     // Render the route component with level+1 context for nested outlets
+    const RouteComp = route.component as (props: RouteComponentProps) => Child;
     const content = (
       <OutletLevelContext.Provider value={() => level + 1}>
-        {() => route.component({
-          params,
-          data: data as never,
-          children: undefined,
-        })}
+        {() =>
+          RouteComp({
+            params,
+            data,
+            children: undefined,
+          })
+        }
       </OutletLevelContext.Provider>
     );
 
@@ -718,9 +731,9 @@ export function Router(props: RouterProps): JSXElement {
     if (!match) {
       // No match - clear routes (Outlet will show 404)
       batch(() => {
-        routerState!.setMatchedRoutes([]);
-        routerState!.setLoaderData([]);
-        routerState!.setParams({});
+        routerState?.setMatchedRoutes([]);
+        routerState?.setLoaderData([]);
+        routerState?.setParams({});
       });
       return;
     }
@@ -731,7 +744,7 @@ export function Router(props: RouterProps): JSXElement {
     // Load data for all routes in parallel
     const loadData = async () => {
       const loaderPromises = allRoutes.map((route) =>
-        executeLoader(route, match.params, loc.searchParams, signal)
+        executeLoader(route, match.params, loc.searchParams, signal),
       );
 
       try {
@@ -740,18 +753,18 @@ export function Router(props: RouterProps): JSXElement {
 
         // Update routes, data, and params atomically - this triggers Outlet effects
         batch(() => {
-          routerState!.setMatchedRoutes(allRoutes);
-          routerState!.setLoaderData(results);
-          routerState!.setParams(match.params);
+          routerState?.setMatchedRoutes(allRoutes);
+          routerState?.setLoaderData(results);
+          routerState?.setParams(match.params);
         });
       } catch (err) {
         if (signal.aborted) return;
         console.error("Router loader error:", err);
         // Still set routes so UI can show error state
         batch(() => {
-          routerState!.setMatchedRoutes(allRoutes);
-          routerState!.setLoaderData(allRoutes.map(() => undefined));
-          routerState!.setParams(match.params);
+          routerState?.setMatchedRoutes(allRoutes);
+          routerState?.setLoaderData(allRoutes.map(() => undefined));
+          routerState?.setParams(match.params);
         });
       }
     };
@@ -760,9 +773,9 @@ export function Router(props: RouterProps): JSXElement {
     const hasLoaders = allRoutes.some((r) => r.loader);
     if (!hasLoaders) {
       batch(() => {
-        routerState!.setMatchedRoutes(allRoutes);
-        routerState!.setLoaderData(allRoutes.map(() => undefined));
-        routerState!.setParams(match.params);
+        routerState?.setMatchedRoutes(allRoutes);
+        routerState?.setLoaderData(allRoutes.map(() => undefined));
+        routerState?.setParams(match.params);
       });
     } else {
       loadData();
@@ -827,7 +840,9 @@ export function defineRoute<T, P extends Params = Params>(
  * Define routes array - automatically widens types for mixed route array
  * For better type inference on individual routes, use route() for each
  */
-export function defineRoutes(routes: RouteDefinition<unknown, Params>[]): RouteDefinition<unknown, Params>[] {
+export function defineRoutes(
+  routes: RouteDefinition<unknown, Params>[],
+): RouteDefinition<unknown, Params>[] {
   return routes;
 }
 

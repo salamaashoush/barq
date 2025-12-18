@@ -3,11 +3,11 @@
  * Compares reactive DOM update performance
  */
 
-import { benchmark } from "../utils.ts";
 import type { BenchmarkResult } from "../types.ts";
+import { benchmark } from "../utils.ts";
 
 // Zest imports
-import { createElement as h, render as zestRender, useState } from "zest";
+import { createElement as h, useState, render as zestRender } from "zest";
 
 // SolidJS imports
 import { createSignal } from "solid-js";
@@ -32,8 +32,8 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
           setCount(i);
         }
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   results.push(
@@ -54,12 +54,12 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         }, container);
 
         for (let i = 0; i < 1000; i++) {
-          setCount!(i);
+          setCount?.(i);
         }
         dispose();
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   // Update class 1000 times
@@ -78,8 +78,8 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
           setActive(i % 2 === 0);
         }
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   results.push(
@@ -100,12 +100,12 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         }, container);
 
         for (let i = 0; i < 1000; i++) {
-          setActive!(i % 2 === 0);
+          setActive?.(i % 2 === 0);
         }
         dispose();
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   // Update style 1000 times
@@ -130,8 +130,8 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
           setWidth(i % 500);
         }
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   results.push(
@@ -154,12 +154,12 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         }, container);
 
         for (let i = 0; i < 1000; i++) {
-          setWidth!(i % 500);
+          setWidth?.(i % 500);
         }
         dispose();
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   // Update multiple attributes at once
@@ -184,8 +184,8 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
           setState({ x: i, y: i * 2, scale: 1 + i * 0.01 });
         }
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   results.push(
@@ -206,12 +206,12 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         }, container);
 
         for (let i = 0; i < 500; i++) {
-          setState!({ x: i, y: i * 2, scale: 1 + i * 0.01 });
+          setState?.({ x: i, y: i * 2, scale: 1 + i * 0.01 });
         }
         dispose();
       },
-      { iterations: 200 }
-    )
+      { iterations: 200 },
+    ),
   );
 
   return results;

@@ -3,14 +3,14 @@
  * Compares rendering lists of items
  */
 
-import { benchmark, generateItems, shuffle } from "../utils.ts";
 import type { BenchmarkResult } from "../types.ts";
+import { benchmark, generateItems, shuffle } from "../utils.ts";
 
 // Zest imports
-import { createElement as h, render as zestRender, useState, For } from "zest";
+import { For, createElement as h, useState, render as zestRender } from "zest";
 
 // SolidJS imports
-import { createSignal, For as SolidFor } from "solid-js";
+import { For as SolidFor, createSignal } from "solid-js";
 import { render as solidRender } from "solid-js/web";
 
 export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
@@ -34,8 +34,8 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
         });
         zestRender(el, container);
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   results.push(
@@ -58,12 +58,12 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
                 return div;
               },
             }),
-          container
+          container,
         );
         dispose();
       },
-      { iterations: 500 }
-    )
+      { iterations: 500 },
+    ),
   );
 
   // Initial render of 1000 items
@@ -84,8 +84,8 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
         });
         zestRender(el, container);
       },
-      { iterations: 100 }
-    )
+      { iterations: 100 },
+    ),
   );
 
   results.push(
@@ -108,12 +108,12 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
                 return div;
               },
             }),
-          container
+          container,
         );
         dispose();
       },
-      { iterations: 100 }
-    )
+      { iterations: 100 },
+    ),
   );
 
   return results;

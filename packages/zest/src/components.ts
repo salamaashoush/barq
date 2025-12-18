@@ -5,8 +5,8 @@
 
 import type { Resource } from "./async.ts";
 import type { Child, JSXElement } from "./dom.ts";
-import { effect, signal, computed, untrack, type Signal } from "./signals.ts";
-import { createMarker, createMarkerPair, clearRange, insertNodes } from "./markers.ts";
+import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
+import { type Signal, computed, effect, signal, untrack } from "./signals.ts";
 
 // Re-export marker utilities for external use
 export { createMarker, createMarkerPair, clearRange, insertNodes };
@@ -141,7 +141,13 @@ export function Show<T>(props: {
  * ```
  */
 export function For<T, U extends JSXElement>(props: {
-  each: readonly T[] | T[] | undefined | null | false | (() => readonly T[] | T[] | undefined | null | false);
+  each:
+    | readonly T[]
+    | T[]
+    | undefined
+    | null
+    | false
+    | (() => readonly T[] | T[] | undefined | null | false);
   fallback?: JSXElement;
   keyFn?: (item: T) => unknown;
   children: (item: T, index: () => number) => U;
@@ -257,7 +263,7 @@ function reconcileNodes(
   endMarker: Node,
   oldKeys: unknown[],
   newKeys: unknown[],
-  cache: Map<unknown, { nodes: Node[]; indexSignal: Signal<number> }>
+  cache: Map<unknown, { nodes: Node[]; indexSignal: Signal<number> }>,
 ): void {
   const newLen = newKeys.length;
 
@@ -380,7 +386,13 @@ function longestIncreasingSubsequence(arr: number[]): number[] {
  * ```
  */
 export function Index<T, U extends JSXElement>(props: {
-  each: readonly T[] | T[] | undefined | null | false | (() => readonly T[] | T[] | undefined | null | false);
+  each:
+    | readonly T[]
+    | T[]
+    | undefined
+    | null
+    | false
+    | (() => readonly T[] | T[] | undefined | null | false);
   fallback?: JSXElement;
   children: (item: () => T, index: number) => U;
 }): JSXElement {
@@ -536,7 +548,10 @@ export function Match<T>(props: MatchProps<T>): JSXElement {
  * Switch component - renders first matching Match child
  * Evaluates conditions in order, renders first truthy match
  */
-export function Switch(props: { fallback?: JSXElement; children: JSXElement | JSXElement[] }): JSXElement {
+export function Switch(props: {
+  fallback?: JSXElement;
+  children: JSXElement | JSXElement[];
+}): JSXElement {
   const [startMarker, endMarker] = createMarkerPair("Switch");
 
   const fragment = document.createDocumentFragment();
@@ -544,7 +559,7 @@ export function Switch(props: { fallback?: JSXElement; children: JSXElement | JS
   fragment.appendChild(endMarker);
 
   let currentNodes: Node[] = [];
-  let currentMatchIndex: number = -1;
+  let currentMatchIndex = -1;
   let currentValue: unknown = undefined;
 
   // Create a computed that finds the matching case
@@ -695,7 +710,8 @@ export function ErrorBoundary(props: {
 
     try {
       // Try to render children
-      const children = typeof props.children === "function" ? (props.children as () => Child)() : props.children;
+      const children =
+        typeof props.children === "function" ? (props.children as () => Child)() : props.children;
       return { children };
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));

@@ -3,17 +3,17 @@
  * Tests: useQuery, useMutation, useInfiniteQuery, useQueryClient, useIsFetching, useIsMutating
  */
 
-import { useState, Show, For } from "zest";
+import { For, Show, useState } from "zest";
 import {
-  useQuery,
-  useMutation,
   useInfiniteQuery,
-  useQueryClient,
   useIsFetching,
   useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
 } from "zest-extra";
 import { css } from "zest-extra";
-import { DemoSection, DemoCard, Button } from "./shared";
+import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {
   id: number;
@@ -59,9 +59,15 @@ function BasicQueryDemo() {
   return (
     <DemoCard title="useQuery - Basic">
       <div class={statusRowStyle}>
-        <span>Status: <code>{() => query().status}</code></span>
-        <span>Stale: <code>{() => String(query().isStale)}</code></span>
-        <span>Fetching: <code>{() => String(query().isFetching)}</code></span>
+        <span>
+          Status: <code>{() => query().status}</code>
+        </span>
+        <span>
+          Stale: <code>{() => String(query().isStale)}</code>
+        </span>
+        <span>
+          Fetching: <code>{() => String(query().isFetching)}</code>
+        </span>
       </div>
 
       <Show when={() => query().isPending}>
@@ -69,9 +75,7 @@ function BasicQueryDemo() {
       </Show>
 
       <Show when={() => query().isError}>
-        <div class={errorStyle}>
-          Error: {() => (query().error as Error)?.message}
-        </div>
+        <div class={errorStyle}>Error: {() => (query().error as Error)?.message}</div>
       </Show>
 
       <Show when={() => query().isSuccess}>
@@ -87,9 +91,7 @@ function BasicQueryDemo() {
         </ul>
       </Show>
 
-      <Button onClick={() => query().refetch()}>
-        Refetch
-      </Button>
+      <Button onClick={() => query().refetch()}>Refetch</Button>
     </DemoCard>
   );
 }
@@ -110,22 +112,13 @@ function QueryWithParamsDemo() {
   return (
     <DemoCard title="useQuery - Dynamic Params">
       <div class={buttonRowStyle}>
-        <Button
-          onClick={() => setUserId(1)}
-          variant={userId() === 1 ? "primary" : "secondary"}
-        >
+        <Button onClick={() => setUserId(1)} variant={userId() === 1 ? "primary" : "secondary"}>
           User 1
         </Button>
-        <Button
-          onClick={() => setUserId(2)}
-          variant={userId() === 2 ? "primary" : "secondary"}
-        >
+        <Button onClick={() => setUserId(2)} variant={userId() === 2 ? "primary" : "secondary"}>
           User 2
         </Button>
-        <Button
-          onClick={() => setUserId(3)}
-          variant={userId() === 3 ? "primary" : "secondary"}
-        >
+        <Button onClick={() => setUserId(3)} variant={userId() === 3 ? "primary" : "secondary"}>
           User 3
         </Button>
       </div>
@@ -143,9 +136,7 @@ function QueryWithParamsDemo() {
         </Show>
       </div>
 
-      <p class={noteStyle}>
-        Query automatically refetches when userId changes.
-      </p>
+      <p class={noteStyle}>Query automatically refetches when userId changes.</p>
     </DemoCard>
   );
 }
@@ -185,8 +176,12 @@ function MutationDemo() {
   return (
     <DemoCard title="useMutation">
       <div class={statusRowStyle}>
-        <span>Status: <code>{() => mutation().status}</code></span>
-        <span>Pending: <code>{() => String(mutation().isPending)}</code></span>
+        <span>
+          Status: <code>{() => mutation().status}</code>
+        </span>
+        <span>
+          Pending: <code>{() => String(mutation().isPending)}</code>
+        </span>
       </div>
 
       <Button onClick={handleCreate} disabled={() => mutation().isPending}>
@@ -194,15 +189,11 @@ function MutationDemo() {
       </Button>
 
       <Show when={() => mutation().isSuccess}>
-        <div class={successStyle}>
-          Created: {() => (mutation().data as User)?.name}
-        </div>
+        <div class={successStyle}>Created: {() => (mutation().data as User)?.name}</div>
       </Show>
 
       <div class={logBoxStyle}>
-        <For each={logs}>
-          {(log) => <div class={logLineStyle}>{log}</div>}
-        </For>
+        <For each={logs}>{(log) => <div class={logLineStyle}>{log}</div>}</For>
       </div>
     </DemoCard>
   );
@@ -230,8 +221,12 @@ function InfiniteQueryDemo() {
   return (
     <DemoCard title="useInfiniteQuery - Pagination">
       <div class={statusRowStyle}>
-        <span>Pages: <code>{() => query().data?.pages?.length || 0}</code></span>
-        <span>Has More: <code>{() => String(query().hasNextPage)}</code></span>
+        <span>
+          Pages: <code>{() => query().data?.pages?.length || 0}</code>
+        </span>
+        <span>
+          Has More: <code>{() => String(query().hasNextPage)}</code>
+        </span>
       </div>
 
       <Show when={() => query().isPending && !query().data}>
@@ -258,8 +253,8 @@ function InfiniteQueryDemo() {
           query().isFetchingNextPage
             ? "Loading more..."
             : query().hasNextPage
-            ? "Load More"
-            : "No more posts"
+              ? "Load More"
+              : "No more posts"
         }
       </Button>
     </DemoCard>
@@ -286,30 +281,20 @@ function GlobalStateDemo() {
       </div>
 
       <Show when={() => isFetching() > 0}>
-        <div class={globalLoadingStyle}>
-          Global loading indicator active...
-        </div>
+        <div class={globalLoadingStyle}>Global loading indicator active...</div>
       </Show>
 
       <div class={buttonRowStyle}>
-        <Button
-          onClick={() => queryClient.invalidateQueries({ queryKey: ["users"] })}
-        >
+        <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["users"] })}>
           Invalidate Users
         </Button>
-        <Button
-          onClick={() => queryClient.invalidateQueries({ queryKey: ["posts"] })}
-        >
+        <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["posts"] })}>
           Invalidate Posts
         </Button>
-        <Button onClick={() => queryClient.invalidateQueries()}>
-          Invalidate All
-        </Button>
+        <Button onClick={() => queryClient.invalidateQueries()}>Invalidate All</Button>
       </div>
 
-      <p class={noteStyle}>
-        useIsFetching/useIsMutating track global query state.
-      </p>
+      <p class={noteStyle}>useIsFetching/useIsMutating track global query state.</p>
     </DemoCard>
   );
 }

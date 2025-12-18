@@ -4,23 +4,23 @@
  */
 
 import {
-  useState,
-  Show,
-  For,
-  useRef,
-  type PropsWithChildren,
-  type ParentProps,
-  type VoidProps,
-  type FlowProps,
   type Accessor,
+  type Child,
+  type FlowProps,
+  For,
   type FunctionMaybe,
+  type ParentProps,
+  type PropsWithChildren,
   type Ref,
   type RefCallback,
   type RefObject,
-  type Child,
+  Show,
+  type VoidProps,
+  useRef,
+  useState,
 } from "zest";
-import { css, clsx } from "zest-extra";
-import { DemoSection, DemoCard, Button, Log } from "./shared";
+import { clsx, css } from "zest-extra";
+import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 // ============================================================================
 // Type Tests - These demonstrate correct typing at compile time
@@ -76,11 +76,7 @@ interface WrapperProps {
 }
 
 function Wrapper(props: FlowProps<WrapperProps>) {
-  return (
-    <div style={{ padding: `${props.padding ?? 10}px` }}>
-      {props.children}
-    </div>
-  );
+  return <div style={{ padding: `${props.padding ?? 10}px` }}>{props.children}</div>;
 }
 
 // Test Accessor and FunctionMaybe types
@@ -109,14 +105,7 @@ interface RefDemoProps {
 }
 
 function RefInput(props: RefDemoProps) {
-  return (
-    <input
-      type="text"
-      ref={props.inputRef}
-      class={inputStyle}
-      placeholder="Type here..."
-    />
-  );
+  return <input type="text" ref={props.inputRef} class={inputStyle} placeholder="Type here..." />;
 }
 
 // ============================================================================
@@ -170,16 +159,15 @@ function ReactiveAttributesDemo() {
       <div class={rowStyle}>
         {/* Reactive disabled attribute - tests FunctionMaybe<boolean> */}
         <button
+          type="button"
           disabled={disabled}
           onClick={() => addLog("Button clicked!")}
           class={buttonStyle}
         >
-          {() => disabled() ? "Disabled" : "Click Me"}
+          {() => (disabled() ? "Disabled" : "Click Me")}
         </button>
 
-        <Button onClick={() => setDisabled((d) => !d)}>
-          Toggle Disabled
-        </Button>
+        <Button onClick={() => setDisabled((d) => !d)}>Toggle Disabled</Button>
       </div>
 
       <div class={rowStyle}>
@@ -189,7 +177,7 @@ function ReactiveAttributesDemo() {
         </div>
 
         <Button onClick={() => setHidden((h) => !h)}>
-          Toggle Hidden ({() => hidden() ? "show" : "hide"})
+          Toggle Hidden ({() => (hidden() ? "show" : "hide")})
         </Button>
       </div>
 
@@ -206,17 +194,21 @@ function ReactiveAttributesDemo() {
         </div>
 
         <div class={buttonRowStyle}>
-          <Button variant="secondary" onClick={() => setClassName("default")}>Default</Button>
-          <Button variant="secondary" onClick={() => setClassName("active")}>Active</Button>
-          <Button variant="danger" onClick={() => setClassName("error")}>Error</Button>
+          <Button variant="secondary" onClick={() => setClassName("default")}>
+            Default
+          </Button>
+          <Button variant="secondary" onClick={() => setClassName("active")}>
+            Active
+          </Button>
+          <Button variant="danger" onClick={() => setClassName("error")}>
+            Error
+          </Button>
         </div>
       </div>
 
       <Log logs={logs} />
 
-      <p class={noteStyle}>
-        All attributes support reactive accessors via FunctionMaybe&lt;T&gt;.
-      </p>
+      <p class={noteStyle}>All attributes support reactive accessors via FunctionMaybe&lt;T&gt;.</p>
     </DemoCard>
   );
 }
@@ -238,6 +230,7 @@ function EventHandlersDemo() {
       {/* Standard event handlers */}
       <div class={rowStyle}>
         <button
+          type="button"
           onClick={(e) => {
             addLog(`onClick: button ${e.currentTarget.tagName}`);
           }}
@@ -286,7 +279,9 @@ function EventHandlersDemo() {
         }}
         class={trackingAreaStyle}
       >
-        <p>Mouse: ({() => coords().x}, {() => coords().y})</p>
+        <p>
+          Mouse: ({() => coords().x}, {() => coords().y})
+        </p>
       </div>
 
       <Log logs={logs} />
@@ -331,12 +326,7 @@ function RefTypesDemo() {
     <DemoCard title="Ref Types">
       <div class={rowStyle}>
         <label>RefObject:</label>
-        <input
-          type="text"
-          ref={refObject}
-          class={inputStyle}
-          placeholder="RefObject ref"
-        />
+        <input type="text" ref={refObject} class={inputStyle} placeholder="RefObject ref" />
         <Button onClick={focusRef}>Focus</Button>
       </div>
 
@@ -344,7 +334,9 @@ function RefTypesDemo() {
         <label>Variable ref:</label>
         <input
           type="text"
-          ref={(el) => { refVariable = el; }}
+          ref={(el) => {
+            refVariable = el;
+          }}
           class={inputStyle}
           placeholder="Variable ref"
         />
@@ -353,12 +345,7 @@ function RefTypesDemo() {
 
       <div class={rowStyle}>
         <label>Callback ref:</label>
-        <input
-          type="text"
-          ref={refCallback}
-          class={inputStyle}
-          placeholder="Callback ref"
-        />
+        <input type="text" ref={refCallback} class={inputStyle} placeholder="Callback ref" />
       </div>
 
       {/* Ref via component prop */}
@@ -409,17 +396,11 @@ function HelperTypesDemo() {
       {/* Accessor and FunctionMaybe */}
       <div class={rowStyle}>
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
-        <ReactiveDisplay
-          value="Static string"
-          count={count}
-        />
+        <ReactiveDisplay value="Static string" count={count} />
       </div>
 
       <div class={rowStyle}>
-        <ReactiveDisplay
-          value={() => `Dynamic: ${count()}`}
-          count={count}
-        />
+        <ReactiveDisplay value={() => `Dynamic: ${count()}`} count={count} />
       </div>
 
       <p class={noteStyle}>
@@ -440,9 +421,7 @@ function StyleAttributesDemo() {
   return (
     <DemoCard title="Style Attributes">
       {/* String style */}
-      <div style="padding: 10px; border: 1px solid #475569; border-radius: 4px;">
-        String style
-      </div>
+      <div style="padding: 10px; border: 1px solid #475569; border-radius: 4px;">String style</div>
 
       {/* Object style with reactive values */}
       <div
@@ -468,7 +447,7 @@ function StyleAttributesDemo() {
           min="50"
           max="200"
           value={size()}
-          onInput={(e: Event) => setSize(parseInt((e.target as HTMLInputElement).value))}
+          onInput={(e: Event) => setSize(Number.parseInt((e.target as HTMLInputElement).value))}
         />
       </div>
 
@@ -507,7 +486,7 @@ function AriaAndDataDemo() {
           onClick={() => setExpanded((e) => !e)}
           class={buttonStyle}
         >
-          {() => expanded() ? "Collapse" : "Expand"} (aria-expanded)
+          {() => (expanded() ? "Collapse" : "Expand")} (aria-expanded)
         </button>
       </div>
 
@@ -539,7 +518,7 @@ function AriaAndDataDemo() {
           min="0"
           max="100"
           value={progress()}
-          onInput={(e: Event) => setProgress(parseInt((e.target as HTMLInputElement).value))}
+          onInput={(e: Event) => setProgress(Number.parseInt((e.target as HTMLInputElement).value))}
         />
       </div>
 
@@ -547,17 +526,15 @@ function AriaAndDataDemo() {
       <div
         data-testid="demo-element"
         data-value={() => progress()}
-        data-active={() => expanded() ? "true" : "false"}
+        data-active={() => (expanded() ? "true" : "false")}
         class={dataBoxStyle}
       >
         <p>data-testid="demo-element"</p>
         <p>data-value={progress}</p>
-        <p>data-active={() => expanded() ? "true" : "false"}</p>
+        <p>data-active={() => (expanded() ? "true" : "false")}</p>
       </div>
 
-      <p class={noteStyle}>
-        ARIA and data-* attributes support reactive values.
-      </p>
+      <p class={noteStyle}>ARIA and data-* attributes support reactive values.</p>
     </DemoCard>
   );
 }

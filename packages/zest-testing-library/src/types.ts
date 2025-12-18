@@ -1,4 +1,4 @@
-import type { queries, BoundFunctions, prettyFormat } from "@testing-library/dom";
+import type { BoundFunctions, prettyFormat, queries } from "@testing-library/dom";
 import type { JSXElement } from "zest";
 
 export type Ui = () => JSXElement;
@@ -27,7 +27,7 @@ export interface RenderResult extends BoundFunctions<typeof queries> {
   debug: (
     el?: Element | DocumentFragment | Array<Element | DocumentFragment>,
     maxLength?: number,
-    options?: prettyFormat.OptionsReceived
+    options?: prettyFormat.OptionsReceived,
   ) => void;
   /** Unmounts the component and cleans up */
   unmount: () => void;

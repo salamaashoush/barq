@@ -5,7 +5,7 @@
  * Updates to nested properties only trigger effects that read those specific paths.
  */
 
-import { type Signal, signal, batch } from "./signals.ts";
+import { type Signal, batch, signal } from "./signals.ts";
 
 /**
  * Deep readonly type for store state
@@ -86,7 +86,9 @@ export function useStore<T extends object>(initialState: T): Store<T> {
           // setState(key, partialUpdate) - merge into nested object
           const current = initialState[key];
           if (typeof current === "object" && current !== null) {
-            applyUpdates(current as object, value as Partial<T[keyof T] & object>, signalMap, [String(key)]);
+            applyUpdates(current as object, value as Partial<T[keyof T] & object>, signalMap, [
+              String(key),
+            ]);
           } else {
             updateProperty(initialState, key, value as T[keyof T], signalMap, []);
           }
@@ -107,7 +109,7 @@ export function useStore<T extends object>(initialState: T): Store<T> {
 function createReactiveProxy<T extends object>(
   target: T,
   signalMap: Map<string | symbol, Signal<unknown>>,
-  path: string[]
+  path: string[],
 ): T {
   return new Proxy(target, {
     get(obj, prop) {
@@ -156,7 +158,7 @@ function updateProperty<T extends object>(
   key: keyof T,
   value: T[keyof T],
   signalMap: Map<string | symbol, Signal<unknown>>,
-  path: string[]
+  path: string[],
 ): void {
   const fullKey = [...path, String(key)].join(".");
 
@@ -182,7 +184,7 @@ function applyUpdates<T extends object>(
   target: T,
   updates: Partial<T>,
   signalMap: Map<string | symbol, Signal<unknown>>,
-  path: string[]
+  path: string[],
 ): void {
   for (const [key, value] of Object.entries(updates)) {
     updateProperty(target, key as keyof T, value as T[keyof T], signalMap, path);
@@ -209,7 +211,7 @@ function getValueByPath(obj: unknown, path: string): unknown {
 function updateNestedSignals(
   newValue: unknown,
   signalMap: Map<string | symbol, Signal<unknown>>,
-  prefix: string
+  prefix: string,
 ): void {
   for (const [key, sig] of signalMap) {
     if (typeof key === "string" && key.startsWith(`${prefix}.`)) {
@@ -276,10 +278,11 @@ export interface ReconcileOptions<T> {
  */
 export function reconcile<T extends Record<string, unknown>>(
   newData: T[],
-  keyOrOptions?: keyof T | ReconcileOptions<T>
+  keyOrOptions?: keyof T | ReconcileOptions<T>,
 ): (prev: T[]) => T[] {
   // Parse options
-  const options: ReconcileOptions<T> = typeof keyOrOptions === "object" ? keyOrOptions : { key: keyOrOptions };
+  const options: ReconcileOptions<T> =
+    typeof keyOrOptions === "object" ? keyOrOptions : { key: keyOrOptions };
 
   const key = options.key;
   const merge = options.merge !== false;

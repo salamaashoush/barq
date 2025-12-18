@@ -2,19 +2,19 @@
  * Main App component with all demos
  */
 
-import { useState, For, Switch, Match } from "zest";
-import { css, clsx } from "zest-extra";
+import { For, Match, Switch, useState } from "zest";
+import { clsx, css } from "zest-extra";
 
-// Demo components
-import { SignalsDemo } from "./demos/SignalsDemo";
-import { ComponentsDemo } from "./demos/ComponentsDemo";
-import { StoreDemo } from "./demos/StoreDemo";
 import { AsyncDemo } from "./demos/AsyncDemo";
+import { ComponentsDemo } from "./demos/ComponentsDemo";
 import { CssDemo } from "./demos/CssDemo";
 import { HooksDemo } from "./demos/HooksDemo";
+import { JsxTypesDemo } from "./demos/JsxTypesDemo";
 import { QueryDemo } from "./demos/QueryDemo";
 import { RoutingDemo } from "./demos/RoutingDemo";
-import { JsxTypesDemo } from "./demos/JsxTypesDemo";
+// Demo components
+import { SignalsDemo } from "./demos/SignalsDemo";
+import { StoreDemo } from "./demos/StoreDemo";
 
 const sections = [
   { id: "signals", label: "Signals & State", component: SignalsDemo },
@@ -115,10 +115,7 @@ export function App() {
           {(section) => (
             <a
               href={`#${section.id}`}
-              class={clsx(
-                navItemStyle,
-                activeSection() === section.id && navItemActiveStyle
-              )}
+              class={clsx(navItemStyle, activeSection() === section.id && navItemActiveStyle)}
               onClick={(e: MouseEvent) => {
                 e.preventDefault();
                 setActiveSection(section.id);
@@ -132,39 +129,19 @@ export function App() {
 
       <main class={mainStyle}>
         <header class={headerStyle}>
-          <h1 class={titleStyle}>
-            {() => sections.find((s) => s.id === activeSection())?.label}
-          </h1>
+          <h1 class={titleStyle}>{() => sections.find((s) => s.id === activeSection())?.label}</h1>
         </header>
 
         <Switch fallback={<div>Select a section</div>}>
-          <Match when={() => activeSection() === "signals"}>
-            {() => <SignalsDemo />}
-          </Match>
-          <Match when={() => activeSection() === "components"}>
-            {() => <ComponentsDemo />}
-          </Match>
-          <Match when={() => activeSection() === "store"}>
-            {() => <StoreDemo />}
-          </Match>
-          <Match when={() => activeSection() === "async"}>
-            {() => <AsyncDemo />}
-          </Match>
-          <Match when={() => activeSection() === "css"}>
-            {() => <CssDemo />}
-          </Match>
-          <Match when={() => activeSection() === "hooks"}>
-            {() => <HooksDemo />}
-          </Match>
-          <Match when={() => activeSection() === "query"}>
-            {() => <QueryDemo />}
-          </Match>
-          <Match when={() => activeSection() === "routing"}>
-            {() => <RoutingDemo />}
-          </Match>
-          <Match when={() => activeSection() === "jsx-types"}>
-            {() => <JsxTypesDemo />}
-          </Match>
+          <Match when={() => activeSection() === "signals"}>{() => <SignalsDemo />}</Match>
+          <Match when={() => activeSection() === "components"}>{() => <ComponentsDemo />}</Match>
+          <Match when={() => activeSection() === "store"}>{() => <StoreDemo />}</Match>
+          <Match when={() => activeSection() === "async"}>{() => <AsyncDemo />}</Match>
+          <Match when={() => activeSection() === "css"}>{() => <CssDemo />}</Match>
+          <Match when={() => activeSection() === "hooks"}>{() => <HooksDemo />}</Match>
+          <Match when={() => activeSection() === "query"}>{() => <QueryDemo />}</Match>
+          <Match when={() => activeSection() === "routing"}>{() => <RoutingDemo />}</Match>
+          <Match when={() => activeSection() === "jsx-types"}>{() => <JsxTypesDemo />}</Match>
         </Switch>
       </main>
     </div>

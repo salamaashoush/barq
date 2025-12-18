@@ -3,19 +3,9 @@
  * Tests: Show, For, Index, Switch, Match, Portal, Fragment, ErrorBoundary
  */
 
-import {
-  useState,
-  Show,
-  For,
-  Index,
-  Switch,
-  Match,
-  Portal,
-  Fragment,
-  ErrorBoundary,
-} from "zest";
+import { ErrorBoundary, For, Fragment, Index, Match, Portal, Show, Switch, useState } from "zest";
 import { css } from "zest-extra";
-import { DemoSection, DemoCard, Button } from "./shared";
+import { Button, DemoCard, DemoSection } from "./shared";
 
 export function ComponentsDemo() {
   return (
@@ -39,12 +29,8 @@ function ShowDemo() {
   return (
     <DemoCard title="Show - Conditional Rendering">
       <div class={buttonRowStyle}>
-        <Button onClick={() => setVisible((v) => !v)}>
-          Toggle Content
-        </Button>
-        <Button onClick={() => setLoading((l) => !l)}>
-          Toggle Loading
-        </Button>
+        <Button onClick={() => setVisible((v) => !v)}>Toggle Content</Button>
+        <Button onClick={() => setLoading((l) => !l)}>Toggle Loading</Button>
       </div>
 
       <Show when={() => loading()} fallback={null}>
@@ -108,10 +94,7 @@ function ForDemo() {
               <span>
                 {() => index() + 1}. {item.name} (id: {item.id})
               </span>
-              <button
-                class={removeButtonStyle}
-                onClick={() => removeItem(item.id)}
-              >
+              <button type="button" class={removeButtonStyle} onClick={() => removeItem(item.id)}>
                 Remove
               </button>
             </li>
@@ -160,18 +143,14 @@ function IndexDemo() {
               class={indexInputStyle}
               type="text"
               value={value()}
-              onInput={(e: Event) =>
-                updateValue(index, (e.target as HTMLInputElement).value)
-              }
+              onInput={(e: Event) => updateValue(index, (e.target as HTMLInputElement).value)}
               placeholder={`Index ${index}`}
             />
           )}
         </Index>
       </div>
 
-      <p class={noteStyle}>
-        Index keeps nodes stable - only values update when items change.
-      </p>
+      <p class={noteStyle}>Index keeps nodes stable - only values update when items change.</p>
     </DemoCard>
   );
 }
@@ -206,7 +185,9 @@ function SwitchDemo() {
         </Switch>
       </div>
 
-      <p>Current status: <code>{status}</code></p>
+      <p>
+        Current status: <code>{status}</code>
+      </p>
     </DemoCard>
   );
 }
@@ -226,11 +207,17 @@ function PortalDemo() {
       <Show when={() => showModal()}>
         {() => (
           <Portal>
-            <div class={overlayStyle} onClick={closeModal}>
+            <div
+              class={overlayStyle}
+              onClick={closeModal}
+              onKeyDown={(e: KeyboardEvent) => e.key === "Escape" && closeModal()}
+              role="dialog"
+              aria-modal="true"
+            >
               <div class={modalStyle} onClick={(e: MouseEvent) => e.stopPropagation()}>
                 <h3>Modal Title</h3>
                 <p>This modal is rendered via Portal to document.body</p>
-                <button class={closeButtonStyle} onClick={closeModal}>
+                <button type="button" class={closeButtonStyle} onClick={closeModal}>
                   Close Modal
                 </button>
               </div>
@@ -239,9 +226,7 @@ function PortalDemo() {
         )}
       </Show>
 
-      <p class={noteStyle}>
-        Portal renders children outside the current DOM hierarchy.
-      </p>
+      <p class={noteStyle}>Portal renders children outside the current DOM hierarchy.</p>
     </DemoCard>
   );
 }
@@ -297,9 +282,7 @@ function FragmentDemo() {
 
       <div class={fragmentContainerStyle}>
         <Fragment>
-          <For each={items}>
-            {(item) => <span class={fragmentItemStyle}>{item}</span>}
-          </For>
+          <For each={items}>{(item) => <span class={fragmentItemStyle}>{item}</span>}</For>
         </Fragment>
       </div>
 
@@ -307,9 +290,7 @@ function FragmentDemo() {
         Add Item
       </Button>
 
-      <p class={noteStyle}>
-        Fragment groups elements without adding extra DOM nodes.
-      </p>
+      <p class={noteStyle}>Fragment groups elements without adding extra DOM nodes.</p>
     </DemoCard>
   );
 }

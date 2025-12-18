@@ -8,24 +8,24 @@ import { benchmark, generateItems } from "./utils.ts";
 
 // Zest imports
 import {
-  createElement as h,
-  render as zestRender,
-  useState,
-  useMemo,
-  useEffect,
   For,
   Show,
   createScope,
+  createElement as h,
+  useEffect,
+  useMemo,
+  useState,
+  render as zestRender,
 } from "zest";
 
 // SolidJS imports
 import {
-  createSignal,
-  createMemo,
-  createEffect,
-  createRoot,
   For as SolidFor,
   Show as SolidShow,
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
 } from "solid-js";
 import { render as solidRender, template } from "solid-js/web";
 
@@ -185,12 +185,8 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           createRoot((dispose) => {
-            const signals = Array.from({ length: 10 }, (_, i) =>
-              createSignal(i)
-            );
-            const sum = createMemo(() =>
-              signals.reduce((acc, [s]) => acc + s(), 0)
-            );
+            const signals = Array.from({ length: 10 }, (_, i) => createSignal(i));
+            const sum = createMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
 
             for (let i = 0; i < 100; i++) {
               signals[i % 10][1](i);
@@ -221,16 +217,12 @@ const suites: BenchmarkSuite[] = [
           h(
             "div",
             { class: "container" },
-            h(
-              "div",
-              { class: "row" },
-              h("span", { class: "cell" }, "Content")
-            )
+            h("div", { class: "row" }, h("span", { class: "cell" }, "Content")),
           );
         },
         solid: () => {
           const t = template(
-            "<div class=container><div class=row><span class=cell>Content</span></div></div>"
+            "<div class=container><div class=row><span class=cell>Content</span></div></div>",
           );
           t();
         },
@@ -270,7 +262,7 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           const t = template(
-            "<div id=test class='foo bar baz' data-a=1 data-b=2 data-c=3 data-d=4 data-e=5 title=tooltip tabindex=0 role=button></div>"
+            "<div id=test class='foo bar baz' data-a=1 data-b=2 data-c=3 data-d=4 data-e=5 title=tooltip tabindex=0 role=button></div>",
           );
           t();
         },
@@ -309,7 +301,7 @@ const suites: BenchmarkSuite[] = [
                   return div;
                 },
               }),
-            container
+            container,
           );
           dispose();
         },
@@ -343,7 +335,7 @@ const suites: BenchmarkSuite[] = [
                   return div;
                 },
               }),
-            container
+            container,
           );
           dispose();
         },
@@ -377,7 +369,7 @@ const suites: BenchmarkSuite[] = [
                   return div;
                 },
               }),
-            container
+            container,
           );
           dispose();
         },
@@ -427,7 +419,7 @@ const suites: BenchmarkSuite[] = [
           }, container);
 
           for (let i = 0; i < 100; i++) {
-            setVisible!(i % 2 === 0);
+            setVisible?.(i % 2 === 0);
           }
           dispose();
         },
@@ -479,7 +471,7 @@ const suites: BenchmarkSuite[] = [
           }, container);
 
           for (let i = 0; i < 100; i++) {
-            setVisible!(i % 2 === 0);
+            setVisible?.(i % 2 === 0);
           }
           dispose();
         },
@@ -520,7 +512,7 @@ const suites: BenchmarkSuite[] = [
           }, container);
 
           for (let i = 0; i < 1000; i++) {
-            setCount!(i);
+            setCount?.(i);
           }
           dispose();
         },
@@ -558,7 +550,7 @@ const suites: BenchmarkSuite[] = [
           }, container);
 
           for (let i = 0; i < 1000; i++) {
-            setActive!(i % 2 === 0);
+            setActive?.(i % 2 === 0);
           }
           dispose();
         },
@@ -602,7 +594,7 @@ const suites: BenchmarkSuite[] = [
           }, container);
 
           for (let i = 0; i < 1000; i++) {
-            setWidth!(i % 500);
+            setWidth?.(i % 500);
           }
           dispose();
         },
@@ -648,7 +640,7 @@ const suites: BenchmarkSuite[] = [
           }, container);
 
           for (let i = 0; i < 500; i++) {
-            setState!({ x: i, y: i * 2, scale: 1 + i * 0.01 });
+            setState?.({ x: i, y: i * 2, scale: 1 + i * 0.01 });
           }
           dispose();
         },
@@ -682,7 +674,7 @@ function updateProgress(current: number, total: number, text: string) {
 }
 
 function renderResults(
-  results: Map<string, { zest?: BenchmarkResult; solid?: BenchmarkResult }[]>
+  results: Map<string, { zest?: BenchmarkResult; solid?: BenchmarkResult }[]>,
 ) {
   let html = "";
 
@@ -727,14 +719,14 @@ function renderResults(
       </div>`;
     }
 
-    html += `</div>`;
+    html += "</div>";
   }
 
   resultsDiv.innerHTML = html;
 }
 
 function updateSummary(
-  results: Map<string, { zest?: BenchmarkResult; solid?: BenchmarkResult }[]>
+  results: Map<string, { zest?: BenchmarkResult; solid?: BenchmarkResult }[]>,
 ) {
   let zestWins = 0;
   let solidWins = 0;
@@ -767,10 +759,7 @@ async function runBenchmarks(suitesToRun: BenchmarkSuite[]) {
   summaryDiv.style.display = "none";
   resultsDiv.innerHTML = "";
 
-  const results = new Map<
-    string,
-    { zest?: BenchmarkResult; solid?: BenchmarkResult }[]
-  >();
+  const results = new Map<string, { zest?: BenchmarkResult; solid?: BenchmarkResult }[]>();
 
   let totalBenchmarks = 0;
   for (const suite of suitesToRun) {
@@ -780,18 +769,13 @@ async function runBenchmarks(suitesToRun: BenchmarkSuite[]) {
   let completed = 0;
 
   for (const suite of suitesToRun) {
-    const suiteResults: { zest?: BenchmarkResult; solid?: BenchmarkResult }[] =
-      [];
+    const suiteResults: { zest?: BenchmarkResult; solid?: BenchmarkResult }[] = [];
 
     for (const bench of suite.benchmarks) {
       const pair: { zest?: BenchmarkResult; solid?: BenchmarkResult } = {};
 
       // Run zest
-      updateProgress(
-        completed,
-        totalBenchmarks,
-        `${suite.name}: ${bench.operation} (zest)`
-      );
+      updateProgress(completed, totalBenchmarks, `${suite.name}: ${bench.operation} (zest)`);
       await new Promise((r) => setTimeout(r, 10)); // Let UI update
 
       try {
@@ -800,7 +784,7 @@ async function runBenchmarks(suitesToRun: BenchmarkSuite[]) {
           "zest",
           bench.operation,
           bench.zest,
-          { iterations: bench.iterations }
+          { iterations: bench.iterations },
         );
       } catch (e) {
         console.error(`Zest ${bench.operation} failed:`, e);
@@ -820,11 +804,7 @@ async function runBenchmarks(suitesToRun: BenchmarkSuite[]) {
       completed++;
 
       // Run solid
-      updateProgress(
-        completed,
-        totalBenchmarks,
-        `${suite.name}: ${bench.operation} (solid)`
-      );
+      updateProgress(completed, totalBenchmarks, `${suite.name}: ${bench.operation} (solid)`);
       await new Promise((r) => setTimeout(r, 10)); // Let UI update
 
       try {
@@ -833,7 +813,7 @@ async function runBenchmarks(suitesToRun: BenchmarkSuite[]) {
           "solid",
           bench.operation,
           bench.solid,
-          { iterations: bench.iterations }
+          { iterations: bench.iterations },
         );
       } catch (e) {
         console.error(`Solid ${bench.operation} failed:`, e);
@@ -860,17 +840,17 @@ async function runBenchmarks(suitesToRun: BenchmarkSuite[]) {
 runAllBtn.addEventListener("click", () => runBenchmarks(suites));
 
 runSignalsBtn.addEventListener("click", () =>
-  runBenchmarks(suites.filter((s) => s.name === "Signals/Reactivity"))
+  runBenchmarks(suites.filter((s) => s.name === "Signals/Reactivity")),
 );
 
 runDomBtn.addEventListener("click", () =>
   runBenchmarks(
     suites.filter((s) =>
       ["Element Creation", "List Rendering", "Conditional Rendering", "DOM Updates"].includes(
-        s.name
-      )
-    )
-  )
+        s.name,
+      ),
+    ),
+  ),
 );
 
 console.log("Benchmark ready. Click a button to start.");

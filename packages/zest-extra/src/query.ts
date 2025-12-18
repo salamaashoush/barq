@@ -5,23 +5,23 @@
  * Uses @tanstack/query-core for the framework-agnostic query logic.
  */
 
-import { useEffect, useState } from "zest";
 import {
   type DefaultError,
   type InfiniteData,
+  InfiniteQueryObserver,
   type InfiniteQueryObserverOptions,
   type InfiniteQueryObserverResult,
+  MutationObserver,
   type MutationObserverOptions,
   type MutationObserverResult,
   type QueryClient,
   type QueryKey,
+  QueryObserver,
   type QueryObserverOptions,
   type QueryObserverResult,
-  InfiniteQueryObserver,
-  MutationObserver,
-  QueryObserver,
   notifyManager,
 } from "@tanstack/query-core";
+import { useEffect, useState } from "zest";
 
 // ============================================================================
 // Types
@@ -38,7 +38,10 @@ export type UseQueryOptions<
 > = QueryObserverOptions<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>;
 
 /** Query result from useQuery */
-export type UseQueryResult<TData = unknown, TError = DefaultError> = QueryObserverResult<TData, TError>;
+export type UseQueryResult<TData = unknown, TError = DefaultError> = QueryObserverResult<
+  TData,
+  TError
+>;
 
 /** Mutation options for useMutation */
 export type UseMutationOptions<
@@ -139,7 +142,10 @@ export function useQuery<
   const client = getQueryClient();
   const opts = options();
 
-  const observer = new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>(client, opts);
+  const observer = new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>(
+    client,
+    opts,
+  );
 
   const [state, setState] = useState<UseQueryResult<TData, TError>>(observer.getCurrentResult());
 
@@ -208,9 +214,11 @@ export function useMutation<
     observer.setOptions(options());
 
     const unsubscribe = observer.subscribe(
-      notifyManager.batchCalls((result: MutationObserverResult<TData, TError, TVariables, TContext>) => {
-        setState(result);
-      }),
+      notifyManager.batchCalls(
+        (result: MutationObserverResult<TData, TError, TVariables, TContext>) => {
+          setState(result);
+        },
+      ),
     );
 
     return () => {
@@ -278,7 +286,10 @@ export function useInfiniteQuery<
   const opts = options();
 
   // Cast to unknown first to work around strict generic constraints in v5
-  const observer = new InfiniteQueryObserver(client, opts as unknown as InfiniteQueryObserverOptions);
+  const observer = new InfiniteQueryObserver(
+    client,
+    opts as unknown as InfiniteQueryObserverOptions,
+  );
 
   const [state, setState] = useState<UseInfiniteQueryResult<TData, TError>>(
     observer.getCurrentResult() as UseInfiniteQueryResult<TData, TError>,
@@ -405,9 +416,7 @@ export function useSuspenseQuery<
   TError = DefaultError,
   TData = TQueryFnData,
   TQueryKey extends QueryKey = QueryKey,
->(
-  options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
-): () => TData {
+>(options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>): () => TData {
   const query = useQuery(() => ({
     ...options(),
     throwOnError: true,
@@ -479,7 +488,13 @@ export async function prefetchInfiniteQuery<
   TQueryKey extends QueryKey = QueryKey,
   TPageParam = unknown,
 >(
-  options: UseInfiniteQueryOptions<TQueryFnData, TError, InfiniteData<TQueryFnData>, TQueryKey, TPageParam>,
+  options: UseInfiniteQueryOptions<
+    TQueryFnData,
+    TError,
+    InfiniteData<TQueryFnData>,
+    TQueryKey,
+    TPageParam
+  >,
 ): Promise<void> {
   const client = getQueryClient();
   await client.prefetchInfiniteQuery(options);

@@ -3,9 +3,9 @@
  * Tests: useStore, produce, reconcile
  */
 
-import { useStore, produce, reconcile, For, Index, Show } from "zest";
+import { For, Index, Show, produce, reconcile, useStore } from "zest";
 import { css } from "zest-extra";
-import { DemoSection, DemoCard, Button } from "./shared";
+import { Button, DemoCard, DemoSection } from "./shared";
 
 interface Todo {
   id: number;
@@ -43,17 +43,17 @@ function BasicStoreDemo() {
 
   return (
     <DemoCard title="Basic Store">
-      <p>Count: <strong>{() => state.count}</strong></p>
-      <p>Message: <strong>{() => state.message}</strong></p>
+      <p>
+        Count: <strong>{() => state.count}</strong>
+      </p>
+      <p>
+        Message: <strong>{() => state.message}</strong>
+      </p>
 
       <div class={buttonRowStyle}>
-        <Button onClick={() => setState("count", (c) => c + 1)}>
-          Increment
-        </Button>
+        <Button onClick={() => setState("count", (c) => c + 1)}>Increment</Button>
         <Button onClick={() => setState("count", 0)}>Reset</Button>
-        <Button onClick={() => setState("message", "Updated!")}>
-          Update Message
-        </Button>
+        <Button onClick={() => setState("message", "Updated!")}>Update Message</Button>
       </div>
 
       <p class={noteStyle}>
@@ -77,44 +77,46 @@ function NestedStoreDemo() {
   return (
     <DemoCard title="Nested Store Paths">
       <div class={fieldStyle}>
-        <label>Name:</label>
-        <input
-          type="text"
-          value={user.name}
-          onInput={(e: Event) =>
-            setUser("name", (e.target as HTMLInputElement).value)
-          }
-          class={inputStyle}
-        />
+        <label>
+          Name:
+          <input
+            type="text"
+            value={user.name}
+            onInput={(e: Event) => setUser("name", (e.target as HTMLInputElement).value)}
+            class={inputStyle}
+          />
+        </label>
       </div>
 
       <div class={fieldStyle}>
-        <label>Email:</label>
-        <input
-          type="text"
-          value={user.email}
-          onInput={(e: Event) =>
-            setUser("email", (e.target as HTMLInputElement).value)
-          }
-          class={inputStyle}
-        />
+        <label>
+          Email:
+          <input
+            type="text"
+            value={user.email}
+            onInput={(e: Event) => setUser("email", (e.target as HTMLInputElement).value)}
+            class={inputStyle}
+          />
+        </label>
       </div>
 
       <div class={fieldStyle}>
-        <label>Theme:</label>
-        <select
-          value={user.preferences.theme}
-          onChange={(e: Event) =>
-            setUser("preferences", {
-              ...user.preferences,
-              theme: (e.target as HTMLSelectElement).value as "light" | "dark",
-            })
-          }
-          class={selectStyle}
-        >
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
+        <label>
+          Theme:
+          <select
+            value={user.preferences.theme}
+            onChange={(e: Event) =>
+              setUser("preferences", {
+                ...user.preferences,
+                theme: (e.target as HTMLSelectElement).value as "light" | "dark",
+              })
+            }
+            class={selectStyle}
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
       </div>
 
       <div class={fieldStyle}>
@@ -134,7 +136,13 @@ function NestedStoreDemo() {
       </div>
 
       <pre class={previewStyle}>
-        {() => JSON.stringify({ name: user.name, email: user.email, preferences: user.preferences }, null, 2)}
+        {() =>
+          JSON.stringify(
+            { name: user.name, email: user.email, preferences: user.preferences },
+            null,
+            2,
+          )
+        }
       </pre>
     </DemoCard>
   );
@@ -156,19 +164,14 @@ function TodoStoreDemo() {
 
     // Read nextId BEFORE the setState callback to get current value
     const id = state.nextId;
-    setState("todos", (todos) => [
-      ...todos,
-      { id, text, completed: false },
-    ]);
+    setState("todos", (todos) => [...todos, { id, text, completed: false }]);
     setState("nextId", id + 1);
     setInputValue("text", "");
   };
 
   const toggleTodo = (id: number) => {
     setState("todos", (todos) =>
-      todos.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      )
+      todos.map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)),
     );
   };
 
@@ -194,9 +197,7 @@ function TodoStoreDemo() {
         <input
           type="text"
           value={() => inputValue.text}
-          onInput={(e: Event) =>
-            setInputValue("text", (e.target as HTMLInputElement).value)
-          }
+          onInput={(e: Event) => setInputValue("text", (e.target as HTMLInputElement).value)}
           onKeyDown={(e: KeyboardEvent) => e.key === "Enter" && addTodo()}
           placeholder="Add a todo..."
           class={inputStyle}
@@ -206,19 +207,19 @@ function TodoStoreDemo() {
 
       <div class={filterRowStyle}>
         <Button
-          variant={() => state.filter === "all" ? "primary" : "secondary"}
+          variant={() => (state.filter === "all" ? "primary" : "secondary")}
           onClick={() => setState("filter", "all")}
         >
           All
         </Button>
         <Button
-          variant={() => state.filter === "active" ? "primary" : "secondary"}
+          variant={() => (state.filter === "active" ? "primary" : "secondary")}
           onClick={() => setState("filter", "active")}
         >
           Active
         </Button>
         <Button
-          variant={() => state.filter === "completed" ? "primary" : "secondary"}
+          variant={() => (state.filter === "completed" ? "primary" : "secondary")}
           onClick={() => setState("filter", "completed")}
         >
           Completed
@@ -234,7 +235,7 @@ function TodoStoreDemo() {
             <For each={filteredTodos} keyFn={(todo) => todo.id}>
               {(todo) => (
                 <li class={todoItemStyle}>
-                  <label class={() => todo.completed ? completedStyle : ""}>
+                  <label class={() => (todo.completed ? completedStyle : "")}>
                     <input
                       type="checkbox"
                       checked={todo.completed}
@@ -243,6 +244,7 @@ function TodoStoreDemo() {
                     {todo.text}
                   </label>
                   <button
+                    type="button"
                     class={deleteButtonStyle}
                     onClick={() => removeTodo(todo.id)}
                   >
@@ -274,7 +276,7 @@ function ProduceDemo() {
       produce((users) => {
         const user = users.find((u) => u.id === id);
         if (user) user.score += 10;
-      })
+      }),
     );
   };
 
@@ -283,7 +285,7 @@ function ProduceDemo() {
       "users",
       produce((users) => {
         users.sort((a, b) => b.score - a.score);
-      })
+      }),
     );
   };
 
@@ -304,9 +306,7 @@ function ProduceDemo() {
 
       <Button onClick={sortByScore}>Sort by Score</Button>
 
-      <p class={noteStyle}>
-        produce() allows mutable-style syntax with immutable updates.
-      </p>
+      <p class={noteStyle}>produce() allows mutable-style syntax with immutable updates.</p>
     </DemoCard>
   );
 }
@@ -354,9 +354,7 @@ function ReconcileDemo() {
         <Button onClick={shuffleItems}>Shuffle</Button>
       </div>
 
-      <p class={noteStyle}>
-        reconcile() efficiently diffs arrays by key, minimizing DOM updates.
-      </p>
+      <p class={noteStyle}>reconcile() efficiently diffs arrays by key, minimizing DOM updates.</p>
     </DemoCard>
   );
 }

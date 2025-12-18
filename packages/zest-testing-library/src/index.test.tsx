@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test";
-import { useState } from "zest";
-import { render, renderHook, screen, fireEvent, cleanup, waitFor } from "./index.ts";
+import { describe, expect, test } from "bun:test";
+import { type JSXElement, useState } from "zest";
+import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index.ts";
 
 // Simple counter component for testing
 function Counter({ initial = 0 }: { initial?: number }) {
@@ -8,8 +8,12 @@ function Counter({ initial = 0 }: { initial?: number }) {
   return (
     <div>
       <span data-testid="count">Count: {count}</span>
-      <button onClick={() => setCount((c) => c + 1)}>Increment</button>
-      <button onClick={() => setCount((c) => c - 1)}>Decrement</button>
+      <button type="button" onClick={() => setCount((c) => c + 1)}>
+        Increment
+      </button>
+      <button type="button" onClick={() => setCount((c) => c - 1)}>
+        Decrement
+      </button>
     </div>
   );
 }
@@ -25,14 +29,14 @@ function AsyncComponent() {
   return (
     <div>
       <span data-testid="status">{() => data() ?? "idle"}</span>
-      <button onClick={loadData}>Load</button>
+      <button type="button" onClick={loadData}>
+        Load
+      </button>
     </div>
   );
 }
 
 describe("render", () => {
-  
-
   test("renders a component", () => {
     const { container } = render(() => <div>Hello World</div>);
     expect(container.textContent).toBe("Hello World");
@@ -71,7 +75,7 @@ describe("render", () => {
   });
 
   test("works with wrapper", () => {
-    const ThemeContext = ({ children }: { children: Node }) => (
+    const ThemeContext = ({ children }: { children: JSXElement }) => (
       <div data-testid="theme-wrapper">{children}</div>
     );
 
@@ -83,8 +87,6 @@ describe("render", () => {
 });
 
 describe("reactive updates", () => {
-  
-
   test("updates are synchronous", () => {
     render(() => <Counter />);
 
@@ -107,8 +109,6 @@ describe("reactive updates", () => {
 });
 
 describe("renderHook", () => {
-  
-
   test("renders a hook", () => {
     const { result } = renderHook(() => {
       const [count, setCount] = useState(0);
@@ -138,7 +138,7 @@ describe("renderHook", () => {
         const [count] = useState(props.initial);
         return count;
       },
-      { initialProps: { initial: 5 } }
+      { initialProps: { initial: 5 } },
     );
 
     expect(result.current()).toBe(5);
@@ -146,8 +146,6 @@ describe("renderHook", () => {
 });
 
 describe("waitFor", () => {
-  
-
   test("waits for async updates", async () => {
     render(() => <AsyncComponent />);
 
@@ -171,7 +169,7 @@ describe("waitFor", () => {
             throw new Error("Not found");
           }
         },
-        { timeout: 100 }
+        { timeout: 100 },
       );
     } catch {
       threw = true;
@@ -196,8 +194,6 @@ describe("cleanup", () => {
 });
 
 describe("debug", () => {
-  
-
   test("debug logs to console", () => {
     const logs: string[] = [];
     const originalLog = console.log;

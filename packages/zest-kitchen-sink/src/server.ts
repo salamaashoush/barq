@@ -89,7 +89,7 @@ const server = Bun.serve({
   <script type="module" src="/app.js"></script>
 </body>
 </html>`,
-      { headers: { "Content-Type": "text/html" } }
+      { headers: { "Content-Type": "text/html" } },
     );
   },
 });

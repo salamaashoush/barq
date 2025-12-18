@@ -3,20 +3,20 @@
  * Tests: css, styled, keyframe, globalCss, clsx, variants, createTheme, token, cssVar, defineVars
  */
 
-import { useState, For } from "zest";
+import { For, useState } from "zest";
 import {
-  css,
-  styled,
-  keyframe,
+  type DesignTokens,
   clsx,
-  variants,
   createTheme,
-  token,
+  css,
   cssVar,
   defineVars,
-  type DesignTokens,
+  keyframe,
+  styled,
+  token,
+  variants,
 } from "zest-extra";
-import { DemoSection, DemoCard, Button } from "./shared";
+import { Button, DemoCard, DemoSection } from "./shared";
 
 export function CssDemo() {
   return (
@@ -72,9 +72,7 @@ function CssBasicDemo() {
         <strong>This is styled via nested selector</strong>
       </div>
 
-      <p class={noteStyle}>
-        css`` creates a class name from template literal styles.
-      </p>
+      <p class={noteStyle}>css`` creates a class name from template literal styles.</p>
     </DemoCard>
   );
 }
@@ -89,15 +87,17 @@ function StyledDemo() {
       padding: 20px;
       border-radius: 12px;
       font-weight: 500;
-      ${props.variant === "primary"
-        ? `
+      ${
+        props.variant === "primary"
+          ? `
           background: #3b82f6;
           color: white;
         `
-        : `
+          : `
           background: #475569;
           color: #e2e8f0;
-        `}
+        `
+      }
     `;
 
     return <div class={cardStyle}>{props.children}</div>;
@@ -110,9 +110,7 @@ function StyledDemo() {
         <Card variant="secondary">Secondary Card</Card>
       </div>
 
-      <p class={noteStyle}>
-        Create styled components with dynamic props using css``.
-      </p>
+      <p class={noteStyle}>Create styled components with dynamic props using css``.</p>
     </DemoCard>
   );
 }
@@ -234,22 +232,16 @@ function ClsxDemo() {
   `;
 
   const computedClass = () =>
-    clsx(
-      baseClass,
-      active() && activeClass,
-      disabled() && disabledClass,
-      { [smClass]: size() === "sm", [lgClass]: size() === "lg" }
-    );
+    clsx(baseClass, active() && activeClass, disabled() && disabledClass, {
+      [smClass]: size() === "sm",
+      [lgClass]: size() === "lg",
+    });
 
   return (
     <DemoCard title="clsx - Class Composition">
       <div class={buttonRowStyle}>
-        <Button onClick={() => setActive((a) => !a)}>
-          Toggle Active
-        </Button>
-        <Button onClick={() => setDisabled((d) => !d)}>
-          Toggle Disabled
-        </Button>
+        <Button onClick={() => setActive((a) => !a)}>Toggle Active</Button>
+        <Button onClick={() => setDisabled((d) => !d)}>Toggle Disabled</Button>
         <Button onClick={() => setSize("sm")}>Small</Button>
         <Button onClick={() => setSize("md")}>Medium</Button>
         <Button onClick={() => setSize("lg")}>Large</Button>
@@ -327,7 +319,11 @@ function VariantsDemo() {
           class={selectStyle}
           value={intent()}
           onChange={(e: Event) =>
-            setIntent((e.target as HTMLSelectElement).value as typeof intent extends () => infer T ? T : never)
+            setIntent(
+              (e.target as HTMLSelectElement).value as typeof intent extends () => infer T
+                ? T
+                : never,
+            )
           }
         >
           <option value="primary">Primary</option>
@@ -339,7 +335,11 @@ function VariantsDemo() {
           class={selectStyle}
           value={size()}
           onChange={(e: Event) =>
-            setSize((e.target as HTMLSelectElement).value as typeof size extends () => infer T ? T : never)
+            setSize(
+              (e.target as HTMLSelectElement).value as typeof size extends () => infer T
+                ? T
+                : never,
+            )
           }
         >
           <option value="sm">Small</option>
@@ -348,13 +348,11 @@ function VariantsDemo() {
         </select>
       </div>
 
-      <button class={() => button({ intent: intent(), size: size() })}>
+      <button type="button" class={() => button({ intent: intent(), size: size() })}>
         Variant Button
       </button>
 
-      <p class={noteStyle}>
-        variants() creates type-safe variant-based styling.
-      </p>
+      <p class={noteStyle}>variants() creates type-safe variant-based styling.</p>
     </DemoCard>
   );
 }
@@ -433,9 +431,7 @@ function ThemeDemo() {
         </p>
       </div>
 
-      <p class={noteStyle}>
-        Design tokens provide consistent values across your app.
-      </p>
+      <p class={noteStyle}>Design tokens provide consistent values across your app.</p>
     </DemoCard>
   );
 }
@@ -468,10 +464,19 @@ function CssVarDemo() {
           border-radius: 8px;
           margin-top: 12px;
         `}
-        style={{ ...Object.fromEntries(vars.split(";").filter(Boolean).map(v => {
-          const [key, val] = v.split(":");
-          return [key.trim(), val?.trim()];
-        })), background: cssVar("primary-color"), color: "white" }}
+        style={{
+          ...Object.fromEntries(
+            vars
+              .split(";")
+              .filter(Boolean)
+              .map((v) => {
+                const [key, val] = v.split(":");
+                return [key.trim(), val?.trim()];
+              }),
+          ),
+          background: cssVar("primary-color"),
+          color: "white",
+        }}
       >
         <p>Background uses {cssVar("primary-color")}</p>
       </div>

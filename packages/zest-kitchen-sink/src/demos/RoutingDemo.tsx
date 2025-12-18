@@ -3,23 +3,24 @@
  * Tests: Router, params, search params, loaders, layouts, navigation
  */
 
-import { useState, Show, For } from "zest";
-import { css, clsx } from "zest-extra";
+import { For, Show, useState } from "zest";
+import { clsx, css } from "zest-extra";
 import {
-  Router,
-  Outlet,
   Link,
+  type LoaderContext,
   NavLink,
+  Outlet,
+  type Params,
+  type RouteDefinition,
+  Router,
   navigate,
-  useParams,
-  useSearchParams,
+  route,
   useLocation,
   useNavigate,
-  route,
-  type Params,
-  type LoaderContext,
+  useParams,
+  useSearchParams,
 } from "zest-extra";
-import { DemoSection, DemoCard, Button, Input } from "./shared";
+import { Button, DemoCard, DemoSection, Input } from "./shared";
 
 // Simulated data
 const users = [
@@ -137,9 +138,7 @@ function UsersList(props: { data: UsersData }) {
         </For>
       </ul>
 
-      <p class={noteStyle}>
-        Search params: role={currentFilter()}
-      </p>
+      <p class={noteStyle}>Search params: role={currentFilter()}</p>
     </div>
   );
 }
@@ -168,23 +167,24 @@ function UserDetail(props: { data: UserDetailData }) {
       <h3 class={pageTitle}>{user.name}</h3>
 
       <div class={detailCardStyle}>
-        <p><strong>Email:</strong> {user.email}</p>
-        <p><strong>Role:</strong> <span class={tagStyle}>{user.role}</span></p>
-        <p><strong>ID:</strong> {user.id}</p>
+        <p>
+          <strong>Email:</strong> {user.email}
+        </p>
+        <p>
+          <strong>Role:</strong> <span class={tagStyle}>{user.role}</span>
+        </p>
+        <p>
+          <strong>ID:</strong> {user.id}
+        </p>
       </div>
 
       <h4 class={subTitleStyle}>Posts by {user.name}</h4>
-      <Show
-        when={() => userPosts.length > 0}
-        fallback={<p class={emptyStyle}>No posts yet</p>}
-      >
+      <Show when={() => userPosts.length > 0} fallback={<p class={emptyStyle}>No posts yet</p>}>
         <ul class={listStyle}>
           <For each={() => userPosts}>
             {(post) => (
               <li class={listItemStyle}>
-                <Link href={`/demo/dashboard/posts/${post.id}`}>
-                  {post.title}
-                </Link>
+                <Link href={`/demo/dashboard/posts/${post.id}`}>{post.title}</Link>
               </li>
             )}
           </For>
@@ -204,7 +204,7 @@ function PostsList(props: { data: PostsData }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentCategory = () => searchParams().get("category") || "all";
-  const currentPage = () => parseInt(searchParams().get("page") || "1", 10);
+  const currentPage = () => Number.parseInt(searchParams().get("page") || "1", 10);
 
   const filteredPosts = () => {
     const cat = currentCategory();
@@ -259,13 +259,17 @@ function PostsList(props: { data: PostsData }) {
       <div class={paginationStyle}>
         <Button
           disabled={() => currentPage() <= 1}
-          onClick={() => setSearchParams((p) => ({ ...Object.fromEntries(p), page: String(currentPage() - 1) }))}
+          onClick={() =>
+            setSearchParams((p) => ({ ...Object.fromEntries(p), page: String(currentPage() - 1) }))
+          }
         >
           Previous
         </Button>
         <span>Page {currentPage}</span>
         <Button
-          onClick={() => setSearchParams((p) => ({ ...Object.fromEntries(p), page: String(currentPage() + 1) }))}
+          onClick={() =>
+            setSearchParams((p) => ({ ...Object.fromEntries(p), page: String(currentPage() + 1) }))
+          }
         >
           Next
         </Button>
@@ -303,22 +307,22 @@ function PostDetail(props: { data: PostDetailData }) {
       <h3 class={pageTitle}>{post.title}</h3>
 
       <div class={detailCardStyle}>
-        <p><strong>Category:</strong> <span class={categoryTagStyle}>{post.category}</span></p>
+        <p>
+          <strong>Category:</strong> <span class={categoryTagStyle}>{post.category}</span>
+        </p>
         <p>
           <strong>Author:</strong>{" "}
           <Show when={() => author} fallback={<span>Unknown</span>}>
-            {(auth) => (
-              <Link href={`/demo/dashboard/users/${auth.id}`}>{auth.name}</Link>
-            )}
+            {(auth) => <Link href={`/demo/dashboard/users/${auth.id}`}>{auth.name}</Link>}
           </Show>
         </p>
-        <p><strong>ID:</strong> {post.id}</p>
+        <p>
+          <strong>ID:</strong> {post.id}
+        </p>
       </div>
 
       <div class={buttonRowStyle}>
-        <Button onClick={() => nav("/demo/dashboard/posts")}>
-          Back to Posts
-        </Button>
+        <Button onClick={() => nav("/demo/dashboard/posts")}>Back to Posts</Button>
         <Show when={() => author}>
           {(auth) => (
             <Button variant="secondary" onClick={() => nav(`/demo/dashboard/users/${auth.id}`)}>
@@ -406,7 +410,7 @@ async function postDetailLoader(ctx: LoaderContext) {
 // Route Definitions - using route() helper for type safety
 // ============================================================================
 
-const routes = [
+const routes: RouteDefinition[] = [
   route({
     path: "/demo/dashboard",
     component: DashboardLayout,
@@ -447,7 +451,7 @@ const routes = [
         path: "/settings/notifications",
         component: Settings,
       }),
-    ],
+    ] as RouteDefinition[],
   }),
 ];
 
@@ -460,8 +464,8 @@ export function RoutingDemo() {
     <DemoSection>
       <DemoCard title="Router Demo">
         <p class={introStyle}>
-          This demo showcases the zest router with params, search params, loaders, and nested layouts.
-          The router is embedded within this demo card.
+          This demo showcases the zest router with params, search params, loaders, and nested
+          layouts. The router is embedded within this demo card.
         </p>
 
         <div class={routerContainerStyle}>
@@ -489,16 +493,10 @@ function ProgrammaticNavigationDemo() {
 
   return (
     <DemoCard title="Programmatic Navigation">
-      <Input
-        value={path}
-        onInput={(v) => setPath(v)}
-        placeholder="Enter path..."
-      />
+      <Input value={path} onInput={(v) => setPath(v)} placeholder="Enter path..." />
 
       <div class={buttonRowStyle}>
-        <Button onClick={() => navigate(path())}>
-          navigate(path)
-        </Button>
+        <Button onClick={() => navigate(path())}>navigate(path)</Button>
         <Button variant="secondary" onClick={() => navigate(path(), { replace: true })}>
           navigate(path, replace)
         </Button>
@@ -508,13 +506,17 @@ function ProgrammaticNavigationDemo() {
         <Button variant="secondary" onClick={() => navigate("/demo/dashboard/users/1")}>
           Go to User 1
         </Button>
-        <Button variant="secondary" onClick={() => navigate("/demo/dashboard/posts?category=tutorial")}>
+        <Button
+          variant="secondary"
+          onClick={() => navigate("/demo/dashboard/posts?category=tutorial")}
+        >
           Tutorials
         </Button>
       </div>
 
       <p class={noteStyle}>
-        Use navigate() for programmatic routing. The replace option uses replaceState instead of pushState.
+        Use navigate() for programmatic routing. The replace option uses replaceState instead of
+        pushState.
       </p>
     </DemoCard>
   );
@@ -540,9 +542,7 @@ function SearchParamsDemo() {
       </div>
 
       <div class={buttonRowStyle}>
-        <Button onClick={() => setSearchParams({ [key()]: value() })}>
-          Set Param
-        </Button>
+        <Button onClick={() => setSearchParams({ [key()]: value() })}>Set Param</Button>
         <Button variant="secondary" onClick={() => setSearchParams({})}>
           Clear All
         </Button>
@@ -553,9 +553,7 @@ function SearchParamsDemo() {
         <pre>{() => searchParams().toString() || "(empty)"}</pre>
       </div>
 
-      <p class={noteStyle}>
-        useSearchParams() returns [getter, setter] for URL search params.
-      </p>
+      <p class={noteStyle}>useSearchParams() returns [getter, setter] for URL search params.</p>
     </DemoCard>
   );
 }
@@ -568,22 +566,22 @@ function RouteInfoDemo() {
     <DemoCard title="Route Information">
       <div class={codeBlockStyle}>
         <pre>
-          {() => JSON.stringify(
-            {
-              pathname: location().pathname,
-              search: location().search,
-              hash: location().hash,
-              params: location().params,
-            },
-            null,
-            2
-          )}
+          {() =>
+            JSON.stringify(
+              {
+                pathname: location().pathname,
+                search: location().search,
+                hash: location().hash,
+                params: location().params,
+              },
+              null,
+              2,
+            )
+          }
         </pre>
       </div>
 
-      <p class={noteStyle}>
-        useLocation() provides reactive access to current route information.
-      </p>
+      <p class={noteStyle}>useLocation() provides reactive access to current route information.</p>
     </DemoCard>
   );
 }

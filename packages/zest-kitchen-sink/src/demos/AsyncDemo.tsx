@@ -3,9 +3,9 @@
  * Tests: useResource, Suspense, Await
  */
 
-import { useState, useResource, Show, Suspense, Await, ErrorBoundary } from "zest";
+import { Await, ErrorBoundary, Show, Suspense, useResource, useState } from "zest";
 import { css } from "zest-extra";
-import { DemoSection, DemoCard, Button } from "./shared";
+import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {
   id: number;
@@ -34,7 +34,7 @@ function ResourceDemo() {
       const res = await fetch("/api/users");
       if (!res.ok) throw new Error("Failed to fetch users");
       return res.json() as Promise<User[]>;
-    }
+    },
   );
 
   return (
@@ -75,7 +75,7 @@ function ResourceWithSourceDemo() {
       const res = await fetch(`/api/users/${id}`);
       if (!res.ok) throw new Error("Failed to fetch user");
       return res.json() as Promise<User>;
-    }
+    },
   );
 
   return (
@@ -86,7 +86,9 @@ function ResourceWithSourceDemo() {
         <Button onClick={() => setUserId(3)}>User 3</Button>
       </div>
 
-      <p>Selected user ID: <strong>{userId}</strong></p>
+      <p>
+        Selected user ID: <strong>{userId}</strong>
+      </p>
 
       <div class={resultBoxStyle}>
         <Show when={() => user.loading()}>
@@ -95,16 +97,20 @@ function ResourceWithSourceDemo() {
 
         <Show when={() => !user.loading() && user()}>
           <div>
-            <p><strong>Name:</strong> {() => user()?.name}</p>
-            <p><strong>Email:</strong> {() => user()?.email}</p>
-            <p><strong>Bio:</strong> {() => user()?.bio || "No bio"}</p>
+            <p>
+              <strong>Name:</strong> {() => user()?.name}
+            </p>
+            <p>
+              <strong>Email:</strong> {() => user()?.email}
+            </p>
+            <p>
+              <strong>Bio:</strong> {() => user()?.bio || "No bio"}
+            </p>
           </div>
         </Show>
       </div>
 
-      <p class={noteStyle}>
-        Resource automatically refetches when source signal changes.
-      </p>
+      <p class={noteStyle}>Resource automatically refetches when source signal changes.</p>
     </DemoCard>
   );
 }
@@ -119,14 +125,12 @@ function AwaitDemo() {
       if (fetchId() === 0) return null;
       const res = await fetch("/api/slow");
       return res.json();
-    }
+    },
   );
 
   return (
     <DemoCard title="Await - Resource State Rendering">
-      <Button onClick={() => setFetchId((id) => id + 1)}>
-        Fetch Slow Data
-      </Button>
+      <Button onClick={() => setFetchId((id) => id + 1)}>Fetch Slow Data</Button>
 
       <div class={resultBoxStyle}>
         <Await
@@ -136,17 +140,13 @@ function AwaitDemo() {
         >
           {(data) => (
             <Show when={() => data !== null} fallback={<p>Click button to fetch</p>}>
-              <div class={successStyle}>
-                Response: {() => JSON.stringify(data)}
-              </div>
+              <div class={successStyle}>Response: {() => JSON.stringify(data)}</div>
             </Show>
           )}
         </Await>
       </div>
 
-      <p class={noteStyle}>
-        Await renders different content based on resource state.
-      </p>
+      <p class={noteStyle}>Await renders different content based on resource state.</p>
     </DemoCard>
   );
 }
@@ -162,14 +162,12 @@ function ErrorResourceDemo() {
       const res = await globalThis.fetch("/api/error");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
-    }
+    },
   );
 
   return (
     <DemoCard title="Resource Error Handling">
-      <Button onClick={() => setShouldFetch(true)}>
-        Fetch (will fail)
-      </Button>
+      <Button onClick={() => setShouldFetch(true)}>Fetch (will fail)</Button>
 
       <div class={resultBoxStyle}>
         <Show when={() => errorData.loading()}>
@@ -189,9 +187,7 @@ function ErrorResourceDemo() {
         </Show>
       </div>
 
-      <p class={noteStyle}>
-        Resources expose error state for graceful error handling.
-      </p>
+      <p class={noteStyle}>Resources expose error state for graceful error handling.</p>
     </DemoCard>
   );
 }
@@ -205,7 +201,7 @@ function RefetchDemo() {
     async () => {
       const res = await fetch("/api/users");
       return res.json() as Promise<User[]>;
-    }
+    },
   );
 
   const handleMutate = () => {
@@ -216,7 +212,9 @@ function RefetchDemo() {
 
   return (
     <DemoCard title="Refetch & Mutate">
-      <p>Mutation count: <strong>{counter}</strong></p>
+      <p>
+        Mutation count: <strong>{counter}</strong>
+      </p>
 
       <div class={buttonRowStyle}>
         <Button onClick={() => data.refetch()}>Refetch</Button>
@@ -230,9 +228,11 @@ function RefetchDemo() {
 
         <Show when={() => !data.loading() && data()}>
           <ul class={compactListStyle}>
-            {() => data()?.slice(0, 3).map((user) => (
-              <li>{user.name}</li>
-            ))}
+            {() =>
+              data()
+                ?.slice(0, 3)
+                .map((user) => <li>{user.name}</li>)
+            }
           </ul>
         </Show>
       </div>
