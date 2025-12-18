@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "no-unused-vars": "error",
+    "no-console": "off",
+    "eqeqeq": "error",
+    "no-var": "error",
+    "prefer-const": "warn",
+    "no-await-in-loop": "off",
+
+    "unicorn/no-null": "off",
+    "unicorn/prefer-top-level-await": "off",
+    "unicorn/no-nested-ternary": "off",
+    "unicorn/prevent-abbreviations": "off",
+    "unicorn/filename-case": "off",
+    "unicorn/no-new-array": "off",
+    "unicorn/prefer-global-this": "off",
+    "unicorn/prefer-dom-node-append": "off",
+    "unicorn/prefer-string-replace-all": "off",
+    "unicorn/prefer-string-raw": "off",
+    "unicorn/no-array-for-each": "off",
+    "unicorn/no-array-reduce": "off",
+    "unicorn/prefer-spread": "off",
+    "unicorn/prefer-array-flat-map": "off",
+
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/explicit-function-return-type": "off",
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
+    "@typescript-eslint/await-thenable": "error",
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error",
+    "@typescript-eslint/require-await": "warn",
+    "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+    "@typescript-eslint/no-unsafe-type-assertion": "off",
+    "@typescript-eslint/no-unsafe-argument": "warn",
+
+    "import/no-cycle": "error",
+    "import/no-self-import": "error",
+    "import/group-exports": "off",
+
+    "promise/no-nesting": "off"
+  },
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.d.ts"]
+}
