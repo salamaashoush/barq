@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD700"/>
+      <stop offset="100%" stop-color="#FF6B00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Lightning bolt icon -->
+  <path d="M35 8 L18 28 L28 28 L22 52 L42 30 L31 30 L40 8 Z"
+        fill="url(#gradient)"/>
+
+  <!-- Text "barq" -->
+  <text x="52" y="40" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="700" fill="#1a1a2e">
+    barq
+  </text>
+</svg>

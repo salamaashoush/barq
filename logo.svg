@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bolt-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD700"/>
+      <stop offset="50%" stop-color="#FFA500"/>
+      <stop offset="100%" stop-color="#FF6B00"/>
+    </linearGradient>
+    <linearGradient id="bolt-shadow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#CC5500"/>
+      <stop offset="100%" stop-color="#993D00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#1a1a2e"/>
+
+  <!-- Lightning bolt shadow -->
+  <path d="M290 80 L170 240 L240 240 L200 432 L340 250 L265 250 L320 80 Z"
+        fill="url(#bolt-shadow)"
+        transform="translate(8, 8)"/>
+
+  <!-- Lightning bolt main -->
+  <path d="M290 80 L170 240 L240 240 L200 432 L340 250 L265 250 L320 80 Z"
+        fill="url(#bolt-gradient)"/>
+
+  <!-- Highlight -->
+  <path d="M290 80 L250 160 L300 160 L240 240 L280 240 L200 432 L220 350 L260 250 L220 250 L290 80 Z"
+        fill="white"
+        opacity="0.2"/>
+</svg>
