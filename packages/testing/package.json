@@ -1,0 +1,56 @@
+{
+  "name": "@barqjs/testing",
+  "version": "0.1.0",
+  "description": "Testing utilities for Barq components",
+  "keywords": [
+    "barq",
+    "testing",
+    "testing-library"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/testing"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
+    "format": "bunx @biomejs/biome format --write src",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@testing-library/dom": "^10.4.0"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^15.11.7",
+    "@types/bun": "latest",
+    "happy-dom": "^15.11.7",
+    "typescript": "^5.7.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.1.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@barqjs/benchmark",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "bun run src/run.ts",
+    "bench:browser": "bun run src/server.ts",
+    "build": "bun build src/browser.ts --outdir dist --target browser --format esm"
+  },
+  "dependencies": {
+    "solid-js": "^1.9.3"
+  },
+  "devDependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4",
+    "@barqjs/core": "workspace:*",
+    "@happy-dom/global-registrator": "^15.11.7",
+    "@types/bun": "latest",
+    "typescript": "^5.7.2"
+  }
+}
