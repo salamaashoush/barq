@@ -10,7 +10,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "zest",
+    "jsxImportSource": "@barqjs/core",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["@types/bun"]
   },

@@ -21,7 +21,7 @@ import {
   type QueryObserverResult,
   notifyManager,
 } from "@tanstack/query-core";
-import { useEffect, useState } from "zest";
+import { useEffect, useState } from "@barqjs/core";
 
 // ============================================================================
 // Types

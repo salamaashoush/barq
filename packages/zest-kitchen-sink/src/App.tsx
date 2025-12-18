@@ -2,8 +2,8 @@
  * Main App component with all demos
  */
 
-import { For, Match, Switch, useState } from "zest";
-import { clsx, css } from "zest-extra";
+import { For, Match, Switch, useState } from "@barqjs/core";
+import { clsx, css } from "@barqjs/extra";
 
 import { AsyncDemo } from "./demos/AsyncDemo";
 import { ComponentsDemo } from "./demos/ComponentsDemo";

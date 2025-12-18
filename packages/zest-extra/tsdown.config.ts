@@ -8,6 +8,6 @@ export default defineConfig({
   external: ["zest", "goober", "@tanstack/query-core"],
   esbuildOptions: {
     jsx: "automatic",
-    jsxImportSource: "zest",
+    jsxImportSource: "@barqjs/core",
   },
 });

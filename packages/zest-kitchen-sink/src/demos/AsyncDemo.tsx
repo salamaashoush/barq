@@ -3,8 +3,8 @@
  * Tests: useResource, Suspense, Await
  */
 
-import { Await, ErrorBoundary, Show, Suspense, useResource, useState } from "zest";
-import { css } from "zest-extra";
+import { Await, ErrorBoundary, Show, Suspense, useResource, useState } from "@barqjs/core";
+import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {

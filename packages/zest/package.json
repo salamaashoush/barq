@@ -1,7 +1,7 @@
 {
-  "name": "zest",
+  "name": "@barqjs/core",
   "version": "0.1.0",
-  "description": "Tiny JSX renderer with fine-grained reactivity via signals. No build tools BS, just DOM.",
+  "description": "Barq - Lightning fast JSX renderer with fine-grained reactivity via signals. No virtual DOM, just direct DOM.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -47,14 +47,15 @@
   "engines": {
     "bun": ">=1.1.0"
   },
-  "keywords": ["ui", "framework", "signals", "jsx", "reactive"],
+  "keywords": ["barq", "ui", "framework", "signals", "jsx", "reactive", "fine-grained"],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/user/zest.git"
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/core"
   },
-  "homepage": "https://github.com/user/zest#readme",
+  "homepage": "https://github.com/salamaashoush/barq#readme",
   "bugs": {
-    "url": "https://github.com/user/zest/issues"
+    "url": "https://github.com/salamaashoush/barq/issues"
   }
 }

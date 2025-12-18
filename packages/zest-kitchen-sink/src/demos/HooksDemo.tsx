@@ -5,7 +5,7 @@
  *        useClickOutside, useKeyboard, useTitle, useInterval, useTimeout
  */
 
-import { Show, useRef, useState } from "zest";
+import { Show, useRef, useState } from "@barqjs/core";
 import {
   useClickOutside,
   useCounter,
@@ -22,8 +22,8 @@ import {
   useTitle,
   useToggle,
   useWindowSize,
-} from "zest-extra";
-import { css } from "zest-extra";
+} from "@barqjs/extra";
+import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function HooksDemo() {

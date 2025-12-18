@@ -16,8 +16,8 @@ import {
   useMemo,
   useRef,
   useState,
-} from "zest";
-import { css } from "zest-extra";
+} from "@barqjs/core";
+import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function SignalsDemo() {

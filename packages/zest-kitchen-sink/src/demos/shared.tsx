@@ -2,8 +2,8 @@
  * Shared components for demos
  */
 
-import { type Child, For } from "zest";
-import { clsx, css } from "zest-extra";
+import { type Child, For } from "@barqjs/core";
+import { clsx, css } from "@barqjs/extra";
 
 // Demo section container
 export function DemoSection(props: { children: Child }) {

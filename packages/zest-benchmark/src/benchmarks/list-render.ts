@@ -7,7 +7,7 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark, generateItems, shuffle } from "../utils.ts";
 
 // Zest imports
-import { For, createElement as h, useState, render as zestRender } from "zest";
+import { For, createElement as h, useState, render as zestRender } from "@barqjs/core";
 
 // SolidJS imports
 import { For as SolidFor, createSignal } from "solid-js";

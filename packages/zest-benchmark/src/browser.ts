@@ -16,7 +16,7 @@ import {
   useMemo,
   useState,
   render as zestRender,
-} from "zest";
+} from "@barqjs/core";
 
 // SolidJS imports
 import {

@@ -1,7 +1,7 @@
 {
-  "name": "zest-extra",
+  "name": "@barqjs/extra",
   "version": "0.1.0",
-  "description": "Extra utilities for zest: CSS-in-JS (goober), clsx, variants, and utility hooks",
+  "description": "Extra utilities for Barq: CSS-in-JS (goober), clsx, variants, router, and query hooks",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -32,18 +32,18 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "zest": ">=0.1.0",
+    "@barqjs/core": ">=0.1.0",
     "@tanstack/query-core": "^5.0.0"
   },
-  "keywords": ["zest", "css-in-js", "clsx", "variants", "hooks"],
+  "keywords": ["barq", "css-in-js", "clsx", "variants", "router", "query"],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/user/zest.git",
-    "directory": "packages/zest-extra"
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/extra"
   },
-  "homepage": "https://github.com/user/zest#readme",
+  "homepage": "https://github.com/salamaashoush/barq#readme",
   "bugs": {
-    "url": "https://github.com/user/zest/issues"
+    "url": "https://github.com/salamaashoush/barq/issues"
   }
 }

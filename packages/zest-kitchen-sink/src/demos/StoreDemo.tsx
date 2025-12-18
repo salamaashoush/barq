@@ -3,8 +3,8 @@
  * Tests: useStore, produce, reconcile
  */
 
-import { For, Index, Show, produce, reconcile, useStore } from "zest";
-import { css } from "zest-extra";
+import { For, Index, Show, produce, reconcile, useStore } from "@barqjs/core";
+import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface Todo {

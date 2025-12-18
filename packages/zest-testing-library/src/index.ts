@@ -19,7 +19,7 @@
  */
 
 import { configure as configureDTL, getQueriesForElement, prettyDOM } from "@testing-library/dom";
-import { render as zestRender } from "zest";
+import { render as zestRender } from "@barqjs/core";
 
 import type {
   MountedRef,

@@ -1,7 +1,7 @@
 {
-  "name": "zest-testing-library",
+  "name": "@barqjs/testing",
   "version": "0.1.0",
-  "description": "Testing utilities for zest components",
+  "description": "Testing utilities for Barq components",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,17 +33,17 @@
     "typescript": "^5.7.2"
   },
   "peerDependencies": {
-    "zest": ">=0.1.0"
+    "@barqjs/core": ">=0.1.0"
   },
-  "keywords": ["zest", "testing", "testing-library"],
+  "keywords": ["barq", "testing", "testing-library"],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/user/zest.git",
-    "directory": "packages/zest-testing-library"
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/testing"
   },
-  "homepage": "https://github.com/user/zest#readme",
+  "homepage": "https://github.com/salamaashoush/barq#readme",
   "bugs": {
-    "url": "https://github.com/user/zest/issues"
+    "url": "https://github.com/salamaashoush/barq/issues"
   }
 }

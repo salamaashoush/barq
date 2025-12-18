@@ -2,7 +2,7 @@
  * Extra hooks - utility hooks for common patterns
  */
 
-import { type Resource, useEffect, useResource, useState } from "zest";
+import { type Resource, useEffect, useResource, useState } from "@barqjs/core";
 
 /**
  * Async data fetching with fetch API

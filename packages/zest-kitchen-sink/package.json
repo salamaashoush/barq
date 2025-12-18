@@ -1,5 +1,5 @@
 {
-  "name": "zest-kitchen-sink",
+  "name": "@barqjs/kitchen-sink",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zest": "workspace:*",
-    "zest-extra": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/extra": "workspace:*",
     "@tanstack/query-core": "^5.62.16"
   },
   "devDependencies": {

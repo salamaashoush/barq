@@ -8,6 +8,6 @@ export default defineConfig({
   external: ["zest", "@testing-library/dom"],
   esbuildOptions: {
     jsx: "automatic",
-    jsxImportSource: "zest",
+    jsxImportSource: "@barqjs/core",
   },
 });

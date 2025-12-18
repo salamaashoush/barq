@@ -7,7 +7,7 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Zest imports
-import { useEffect, useMemo, useState } from "zest";
+import { useEffect, useMemo, useState } from "@barqjs/core";
 
 // SolidJS imports
 import { createEffect, createMemo, createRoot, createSignal } from "solid-js";

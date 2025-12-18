@@ -1,8 +1,8 @@
 {
-  "name": "zest-monorepo",
+  "name": "barq-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "Zest - A lightweight, signal-based UI framework",
+  "description": "Barq - Lightning fast JSX renderer with fine-grained reactivity via signals",
   "workspaces": [
     "packages/*"
   ],

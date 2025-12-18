@@ -3,7 +3,7 @@
  * Tests: css, styled, keyframe, globalCss, clsx, variants, createTheme, token, cssVar, defineVars
  */
 
-import { For, useState } from "zest";
+import { For, useState } from "@barqjs/core";
 import {
   type DesignTokens,
   clsx,
@@ -15,7 +15,7 @@ import {
   styled,
   token,
   variants,
-} from "zest-extra";
+} from "@barqjs/extra";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 export function CssDemo() {

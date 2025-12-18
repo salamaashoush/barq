@@ -3,8 +3,8 @@
  */
 
 import { QueryClient } from "@tanstack/query-core";
-import { render } from "zest";
-import { Router, css, defineRoutes, globalCss, setQueryClient } from "zest-extra";
+import { render } from "@barqjs/core";
+import { Router, css, defineRoutes, globalCss, setQueryClient } from "@barqjs/extra";
 
 import { App } from "./App";
 

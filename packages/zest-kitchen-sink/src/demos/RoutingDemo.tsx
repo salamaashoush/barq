@@ -3,8 +3,8 @@
  * Tests: Router, params, search params, loaders, layouts, navigation
  */
 
-import { For, Show, useState } from "zest";
-import { clsx, css } from "zest-extra";
+import { For, Show, useState } from "@barqjs/core";
+import { clsx, css } from "@barqjs/extra";
 import {
   Link,
   type LoaderContext,
@@ -19,7 +19,7 @@ import {
   useNavigate,
   useParams,
   useSearchParams,
-} from "zest-extra";
+} from "@barqjs/extra";
 import { Button, DemoCard, DemoSection, Input } from "./shared";
 
 // Simulated data

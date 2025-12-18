@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type JSXElement, useState } from "zest";
+import { type JSXElement, useState } from "@barqjs/core";
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index.ts";
 
 // Simple counter component for testing

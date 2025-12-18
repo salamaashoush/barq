@@ -3,8 +3,8 @@
  * Tests: Show, For, Index, Switch, Match, Portal, Fragment, ErrorBoundary
  */
 
-import { ErrorBoundary, For, Fragment, Index, Match, Portal, Show, Switch, useState } from "zest";
-import { css } from "zest-extra";
+import { ErrorBoundary, For, Fragment, Index, Match, Portal, Show, Switch, useState } from "@barqjs/core";
+import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 export function ComponentsDemo() {

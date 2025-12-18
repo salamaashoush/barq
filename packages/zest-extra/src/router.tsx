@@ -53,7 +53,7 @@ import {
   useEffect,
   useMemo,
   useState,
-} from "zest";
+} from "@barqjs/core";
 
 // ============================================================================
 // Types

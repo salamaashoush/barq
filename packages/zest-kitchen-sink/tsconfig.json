@@ -11,7 +11,7 @@
     "types": ["@types/bun"],
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "zest"
+    "jsxImportSource": "@barqjs/core"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

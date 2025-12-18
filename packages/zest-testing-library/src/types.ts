@@ -1,5 +1,5 @@
 import type { BoundFunctions, prettyFormat, queries } from "@testing-library/dom";
-import type { JSXElement } from "zest";
+import type { JSXElement } from "@barqjs/core";
 
 export type Ui = () => JSXElement;
 

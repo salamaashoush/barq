@@ -3,7 +3,7 @@
  * Tests: useQuery, useMutation, useInfiniteQuery, useQueryClient, useIsFetching, useIsMutating
  */
 
-import { For, Show, useState } from "zest";
+import { For, Show, useState } from "@barqjs/core";
 import {
   useInfiniteQuery,
   useIsFetching,
@@ -11,8 +11,8 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-} from "zest-extra";
-import { css } from "zest-extra";
+} from "@barqjs/extra";
+import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {

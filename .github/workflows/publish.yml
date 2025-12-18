@@ -63,44 +63,35 @@ jobs:
             echo "$pkg build verified"
           done
 
-      - name: Publish zest (dry-run)
+      - name: Setup npm authentication
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Publish @barqjs/core (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/zest
-        run: bun publish --dry-run
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --dry-run --provenance --access public
 
-      - name: Publish zest-extra (dry-run)
+      - name: Publish @barqjs/extra (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/zest-extra
-        run: bun publish --dry-run
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --dry-run --provenance --access public
 
-      - name: Publish zest-testing-library (dry-run)
+      - name: Publish @barqjs/testing (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/zest-testing-library
-        run: bun publish --dry-run
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --dry-run --provenance --access public
 
-      - name: Publish zest
+      - name: Publish @barqjs/core
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/zest
-        run: bun publish --access public
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
-      - name: Publish zest-extra
+      - name: Publish @barqjs/extra
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/zest-extra
-        run: bun publish --access public
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
-      - name: Publish zest-testing-library
+      - name: Publish @barqjs/testing
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/zest-testing-library
-        run: bun publish --access public
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

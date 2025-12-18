@@ -12,7 +12,7 @@
       },
     },
     "packages/zest": {
-      "name": "zest",
+      "name": "@barqjs/core",
       "version": "0.1.0",
       "dependencies": {
         "alien-signals": "^1.0.5",
@@ -27,21 +27,21 @@
       },
     },
     "packages/zest-benchmark": {
-      "name": "zest-benchmark",
+      "name": "@barqjs/benchmark",
       "version": "0.1.0",
       "dependencies": {
         "solid-js": "^1.9.3",
       },
       "devDependencies": {
         "@anthropic-ai/tokenizer": "^0.0.4",
+        "@barqjs/core": "workspace:*",
         "@happy-dom/global-registrator": "^15.11.7",
         "@types/bun": "latest",
         "typescript": "^5.7.2",
-        "zest": "workspace:*",
       },
     },
     "packages/zest-extra": {
-      "name": "zest-extra",
+      "name": "@barqjs/extra",
       "version": "0.1.0",
       "dependencies": {
         "@tanstack/query-core": "^5.62.0",
@@ -53,17 +53,17 @@
         "typescript": "^5.9.3",
       },
       "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
         "@tanstack/query-core": "^5.0.0",
-        "zest": ">=0.1.0",
       },
     },
     "packages/zest-kitchen-sink": {
-      "name": "zest-kitchen-sink",
+      "name": "@barqjs/kitchen-sink",
       "version": "0.1.0",
       "dependencies": {
+        "@barqjs/core": "workspace:*",
+        "@barqjs/extra": "workspace:*",
         "@tanstack/query-core": "^5.62.16",
-        "zest": "workspace:*",
-        "zest-extra": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -71,7 +71,7 @@
       },
     },
     "packages/zest-testing-library": {
-      "name": "zest-testing-library",
+      "name": "@barqjs/testing",
       "version": "0.1.0",
       "dependencies": {
         "@testing-library/dom": "^10.4.0",
@@ -83,7 +83,7 @@
         "typescript": "^5.7.2",
       },
       "peerDependencies": {
-        "zest": ">=0.1.0",
+        "@barqjs/core": ">=0.1.0",
       },
     },
   },
@@ -103,6 +103,16 @@
     "@babel/runtime": ["@babel/runtime@7.28.4", "", {}, "sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ=="],
 
     "@babel/types": ["@babel/types@7.28.5", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-qQ5m48eI/MFLQ5PxQj4PFaprjyCTLI37ElWMmNs0K8Lk3dVeOdNpB3ks8jc7yM5CDmVC73eMVk/trk3fgmrUpA=="],
+
+    "@barqjs/benchmark": ["@barqjs/benchmark@workspace:packages/zest-benchmark"],
+
+    "@barqjs/core": ["@barqjs/core@workspace:packages/zest"],
+
+    "@barqjs/extra": ["@barqjs/extra@workspace:packages/zest-extra"],
+
+    "@barqjs/kitchen-sink": ["@barqjs/kitchen-sink@workspace:packages/zest-kitchen-sink"],
+
+    "@barqjs/testing": ["@barqjs/testing@workspace:packages/zest-testing-library"],
 
     "@biomejs/biome": ["@biomejs/biome@1.9.4", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "1.9.4", "@biomejs/cli-darwin-x64": "1.9.4", "@biomejs/cli-linux-arm64": "1.9.4", "@biomejs/cli-linux-arm64-musl": "1.9.4", "@biomejs/cli-linux-x64": "1.9.4", "@biomejs/cli-linux-x64-musl": "1.9.4", "@biomejs/cli-win32-arm64": "1.9.4", "@biomejs/cli-win32-x64": "1.9.4" }, "bin": { "biome": "bin/biome" } }, "sha512-1rkd7G70+o9KkTn5KLmDYXihGoTaIGO9PIIN2ZB7UJxFrWw04CZHPYiMRjYsaDvVV7hP1dYNRLxSANLaBFGpog=="],
 
@@ -289,15 +299,5 @@
     "webidl-conversions": ["webidl-conversions@7.0.0", "", {}, "sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g=="],
 
     "whatwg-mimetype": ["whatwg-mimetype@3.0.0", "", {}, "sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q=="],
-
-    "zest": ["zest@workspace:packages/zest"],
-
-    "zest-benchmark": ["zest-benchmark@workspace:packages/zest-benchmark"],
-
-    "zest-extra": ["zest-extra@workspace:packages/zest-extra"],
-
-    "zest-kitchen-sink": ["zest-kitchen-sink@workspace:packages/zest-kitchen-sink"],
-
-    "zest-testing-library": ["zest-testing-library@workspace:packages/zest-testing-library"],
   }
 }

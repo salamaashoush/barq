@@ -17,7 +17,7 @@ import {
   useEffect,
   useMemo,
   useState,
-} from "zest";
+} from "@barqjs/core";
 
 type Item = { id: number; name: string; value: number };
 

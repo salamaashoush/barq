@@ -1,5 +1,5 @@
 {
-  "name": "zest-benchmark",
+  "name": "@barqjs/benchmark",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,6 +16,6 @@
     "@happy-dom/global-registrator": "^15.11.7",
     "@types/bun": "latest",
     "typescript": "^5.7.2",
-    "zest": "workspace:*"
+    "@barqjs/core": "workspace:*"
   }
 }

@@ -18,8 +18,8 @@ import {
   type VoidProps,
   useRef,
   useState,
-} from "zest";
-import { clsx, css } from "zest-extra";
+} from "@barqjs/core";
+import { clsx, css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 // ============================================================================
