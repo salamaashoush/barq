@@ -32,17 +32,17 @@ jobs:
       - name: Run lint and format check
         run: bun run ci
 
-      - name: Run type check
-        run: bun run typecheck
-
-      - name: Run tests
-        run: bun run test
-
       - name: Build publishable packages
         run: |
           bun run --cwd packages/core build
           bun run --cwd packages/extra build
           bun run --cwd packages/testing build
+
+      - name: Run type check
+        run: bun run typecheck
+
+      - name: Run tests
+        run: bun run test
 
       - name: Verify build artifacts
         run: |
