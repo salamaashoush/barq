@@ -2,7 +2,7 @@
  * Extra hooks - utility hooks for common patterns
  */
 
-import { type Resource, useEffect, useResource, useState } from "@barqjs/core";
+import { type Resource, onMount, useEffect, useResource, useState } from "@barqjs/core";
 
 /**
  * Async data fetching with fetch API
@@ -25,14 +25,14 @@ export function useFetch<T>(url: string | (() => string), options?: RequestInit)
  */
 export function useDebounce<T>(source: () => T, delay: number): () => T {
   const [debounced, setDebounced] = useState(source());
-  let timeout: ReturnType<typeof setTimeout>;
 
   useEffect(() => {
     const value = source();
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       setDebounced(value);
     }, delay);
+
+    return () => clearTimeout(timeout);
   });
 
   return debounced;
@@ -59,18 +59,21 @@ export function useThrottle<T>(source: () => T, limit: number): () => T {
 }
 
 /**
- * Previous value
+ * Previous value - returns a reactive getter
  */
 export function usePrevious<T>(source: () => T): () => T | undefined {
-  let prev: T | undefined;
-  let current: T | undefined;
+  const [prev, setPrev] = useState<T | undefined>(undefined);
+  const current = { value: undefined as T | undefined };
 
   useEffect(() => {
-    prev = current;
-    current = source();
+    const value = source();
+    // On first run, current.value is undefined, so prev stays undefined
+    // On subsequent runs, prev gets the previous value
+    setPrev(current.value);
+    current.value = value;
   });
 
-  return () => prev;
+  return prev;
 }
 
 /**
@@ -133,13 +136,17 @@ export function useLocalStorage<T>(key: string, initialValue: T): [() => T, (val
 export function useMediaQuery(query: string): () => boolean {
   const [matches, setMatches] = useState(false);
 
-  if (typeof window !== "undefined") {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const mediaQuery = window.matchMedia(query);
     setMatches(mediaQuery.matches);
 
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
     mediaQuery.addEventListener("change", handler);
-  }
+
+    return () => mediaQuery.removeEventListener("change", handler);
+  });
 
   return matches;
 }
@@ -151,13 +158,17 @@ export function useWindowSize(): { width: () => number; height: () => number } {
   const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 0);
   const [height, setHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 0);
 
-  if (typeof window !== "undefined") {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const handler = () => {
       setWidth(window.innerWidth);
       setHeight(window.innerHeight);
     };
     window.addEventListener("resize", handler);
-  }
+
+    return () => window.removeEventListener("resize", handler);
+  });
 
   return { width, height };
 }
@@ -166,21 +177,35 @@ export function useWindowSize(): { width: () => number; height: () => number } {
  * Intersection observer
  */
 export function useIntersection(
-  ref: { current: Element | null },
+  ref: { current: Element | null } | (() => Element | null),
   options?: IntersectionObserverInit,
 ): () => boolean {
   const [isIntersecting, setIsIntersecting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  let observer: IntersectionObserver | null = null;
+
+  // Trigger re-run after mount when ref.current is set
+  onMount(() => setMounted(true));
 
   useEffect(() => {
-    if (!ref.current) return;
+    // Read mounted to create dependency
+    mounted();
 
-    const observer = new IntersectionObserver(([entry]) => {
+    const element = typeof ref === "function" ? ref() : ref.current;
+    if (!element) return;
+
+    observer = new IntersectionObserver(([entry]) => {
       setIsIntersecting(entry.isIntersecting);
     }, options);
 
-    observer.observe(ref.current);
+    observer.observe(element);
 
-    return () => observer.disconnect();
+    return () => {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+    };
   });
 
   return isIntersecting;
@@ -189,11 +214,15 @@ export function useIntersection(
 /**
  * Click outside detection
  */
-export function useClickOutside(ref: { current: Element | null }, handler: () => void): void {
+export function useClickOutside(
+  ref: { current: Element | null } | (() => Element | null),
+  handler: () => void,
+): void {
   useEffect(() => {
     const listener = (event: Event) => {
+      const element = typeof ref === "function" ? ref() : ref.current;
       const target = event.target;
-      if (!ref.current || (target instanceof Node && ref.current.contains(target))) {
+      if (!element || (target instanceof Node && element.contains(target))) {
         return;
       }
       handler();
@@ -244,25 +273,47 @@ export function useTitle(title: string | (() => string)): void {
 }
 
 /**
- * Interval
+ * Interval - accepts reactive delay
  */
-export function useInterval(callback: () => void, delay: number | null): void {
-  useEffect(() => {
-    if (delay === null) return;
+export function useInterval(
+  callback: () => void,
+  delay: number | null | (() => number | null),
+): void {
+  // Store callback in a ref so we always call the latest version
+  let savedCallback = callback;
 
-    const id = setInterval(callback, delay);
+  useEffect(() => {
+    savedCallback = callback;
+  });
+
+  useEffect(() => {
+    const d = typeof delay === "function" ? delay() : delay;
+    if (d === null) return;
+
+    const id = setInterval(() => savedCallback(), d);
     return () => clearInterval(id);
   });
 }
 
 /**
- * Timeout
+ * Timeout - accepts reactive delay
  */
-export function useTimeout(callback: () => void, delay: number | null): void {
-  useEffect(() => {
-    if (delay === null) return;
+export function useTimeout(
+  callback: () => void,
+  delay: number | null | (() => number | null),
+): void {
+  // Store callback in a ref so we always call the latest version
+  let savedCallback = callback;
 
-    const id = setTimeout(callback, delay);
+  useEffect(() => {
+    savedCallback = callback;
+  });
+
+  useEffect(() => {
+    const d = typeof delay === "function" ? delay() : delay;
+    if (d === null) return;
+
+    const id = setTimeout(() => savedCallback(), d);
     return () => clearTimeout(id);
   });
 }
