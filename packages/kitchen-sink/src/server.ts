@@ -1,6 +1,10 @@
 /**
  * Development server for kitchen sink app
+ * Run with: bun --hot src/server.ts
  */
+
+// Track build count for hot reload
+let buildCount = 0;
 
 const server = Bun.serve({
   port: 3456,
@@ -9,7 +13,7 @@ const server = Bun.serve({
 
     // API endpoints for testing
     if (url.pathname === "/api/users") {
-      await Bun.sleep(500); // Simulate latency
+      await Bun.sleep(500);
       return Response.json([
         { id: 1, name: "Alice", email: "alice@example.com" },
         { id: 2, name: "Bob", email: "bob@example.com" },
@@ -50,24 +54,36 @@ const server = Bun.serve({
       return new Response("Internal Server Error", { status: 500 });
     }
 
-    // Build the app
+    // Build the app fresh on every request
     if (url.pathname === "/app.js") {
+      buildCount++;
+
       const result = await Bun.build({
         entrypoints: ["./src/main.tsx"],
         target: "browser",
         format: "esm",
         minify: false,
         sourcemap: "inline",
+        conditions: ["bun"], // Use source files from workspace packages
       });
 
       if (!result.success) {
         console.error("Build failed:", result.logs);
-        return new Response("Build failed", { status: 500 });
+        return new Response(
+          `console.error("Build failed:", ${JSON.stringify(result.logs)})`,
+          {
+            status: 500,
+            headers: { "Content-Type": "application/javascript" },
+          }
+        );
       }
 
       const output = await result.outputs[0].text();
       return new Response(output, {
-        headers: { "Content-Type": "application/javascript" },
+        headers: {
+          "Content-Type": "application/javascript",
+          "Cache-Control": "no-store",
+        },
       });
     }
 
@@ -89,9 +105,14 @@ const server = Bun.serve({
   <script type="module" src="/app.js"></script>
 </body>
 </html>`,
-      { headers: { "Content-Type": "text/html" } },
+      {
+        headers: {
+          "Content-Type": "text/html",
+          "Cache-Control": "no-store",
+        },
+      }
     );
   },
 });
 
-console.log(`Kitchen Sink running at http://localhost:${server.port}`);
+console.log(`Kitchen Sink running at http://localhost:${server.port} (build #${buildCount})`);
