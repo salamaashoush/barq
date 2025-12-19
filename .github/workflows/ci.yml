@@ -24,7 +24,10 @@ jobs:
         run: bun run ci
 
       - name: Build packages (required for typecheck)
-        run: bun run build
+        run: |
+          bun run --cwd packages/core build
+          bun run --cwd packages/extra build
+          bun run --cwd packages/testing build
 
       - name: Run type check
         run: bun run typecheck
