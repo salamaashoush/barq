@@ -23,6 +23,9 @@ jobs:
       - name: Run lint and format check
         run: bun run ci
 
+      - name: Build packages (required for typecheck)
+        run: bun run build
+
       - name: Run type check
         run: bun run typecheck
 
