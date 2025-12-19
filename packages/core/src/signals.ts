@@ -1,20 +1,103 @@
 /**
- * Reactive signals layer built on alien-signals
+ * Reactive signals - custom implementation with fine-grained reactivity
+ * Push-pull reactivity with automatic dependency tracking and disposal
  */
 
-import {
-  computed as alienComputed,
-  effect as alienEffect,
-  effectScope as alienEffectScope,
-  signal as alienSignal,
-  endBatch,
-  pauseTracking,
-  resumeTracking,
-  startBatch,
-} from "alien-signals";
+// ============================================================================
+// Internal Types and State
+// ============================================================================
 
-// Track cleanup functions for the current effect/scope
-let currentCleanups: (() => void)[] | null = null;
+/** Reactive node in the dependency graph */
+interface ReactiveNode {
+  /** Unique version for change detection */
+  version: number;
+  /** Nodes that depend on this one */
+  subscribers: Set<Subscriber>;
+}
+
+/** Subscriber (computed or effect) that tracks dependencies */
+interface Subscriber extends ReactiveNode {
+  /** Sources this subscriber depends on */
+  sources: Set<ReactiveNode>;
+  /** Whether this needs to recompute */
+  dirty: boolean;
+  /** Function to execute */
+  fn: () => unknown;
+  /** Cleanup function from previous run */
+  cleanup?: () => void;
+  /** Cleanup functions registered via onCleanup */
+  cleanups: (() => void)[];
+  /** Whether this is an effect (vs computed) */
+  isEffect: boolean;
+  /** Whether disposed */
+  disposed: boolean;
+}
+
+// Global state
+let currentSubscriber: Subscriber | null = null;
+let trackingEnabled = true;
+let batchDepth = 0;
+let isFlushing = false;
+const pendingEffects: Set<Subscriber> = new Set();
+
+// ============================================================================
+// Owner Tracking
+// ============================================================================
+
+/**
+ * Owner represents a reactive scope that can own child computations.
+ * When an owner is disposed, all its children are automatically disposed.
+ */
+export interface Owner {
+  /** Cleanup functions to run when disposed */
+  cleanups: (() => void)[];
+  /** Dispose function */
+  dispose: () => void;
+  /** Child subscribers owned by this scope */
+  children: Subscriber[];
+  /** Whether disposed */
+  disposed: boolean;
+}
+
+/** Stack of active owners for nested scope tracking */
+const ownerStack: Owner[] = [];
+
+/** Get current owner (top of stack) */
+function getCurrentOwner(): Owner | null {
+  return ownerStack.length > 0 ? ownerStack[ownerStack.length - 1] : null;
+}
+
+/**
+ * Get the current owner context.
+ * Useful for capturing owner to restore later in async callbacks.
+ */
+export function getOwner(): Owner | null {
+  return getCurrentOwner();
+}
+
+/**
+ * Run a function with a specific owner context.
+ * Use this to restore owner in async callbacks or setTimeout.
+ */
+export function runWithOwner<T>(owner: Owner | null, fn: () => T): T | undefined {
+  if (owner) {
+    ownerStack.push(owner);
+  }
+  try {
+    return fn();
+  } catch (err) {
+    console.error("Error in runWithOwner:", err);
+    return undefined;
+  } finally {
+    if (owner) {
+      ownerStack.pop();
+    }
+  }
+}
+
+// ============================================================================
+// Core Reactive Primitives
+// ============================================================================
 
 /**
  * Reactive signal - holds a value that can be read and written
@@ -38,32 +121,134 @@ export interface Computed<T> {
  * Create a reactive signal
  */
 export function signal<T>(initialValue: T): Signal<T> {
-  const s = alienSignal(initialValue);
+  let value = initialValue;
+  const node: ReactiveNode = {
+    version: 0,
+    subscribers: new Set(),
+  };
 
-  const accessor = (() => s()) as Signal<T>;
-  accessor.set = (value: T) => s(value);
-  accessor.update = (fn: (prev: T) => T) => s(fn(s()));
-  accessor.peek = () => {
-    pauseTracking();
-    const value = s();
-    resumeTracking();
+  const read = (): T => {
+    if (trackingEnabled && currentSubscriber && !currentSubscriber.disposed) {
+      node.subscribers.add(currentSubscriber);
+      currentSubscriber.sources.add(node);
+    }
     return value;
   };
 
+  const write = (newValue: T): void => {
+    if (Object.is(value, newValue)) return;
+
+    value = newValue;
+    node.version++;
+
+    // Mark all subscribers dirty and queue effects
+    markDirty(node);
+
+    // Flush if not batching and not already flushing
+    if (batchDepth === 0 && !isFlushing) {
+      flushEffects();
+    }
+  };
+
+  const accessor = read as Signal<T>;
+  accessor.set = write;
+  accessor.update = (fn: (prev: T) => T) => write(fn(value));
+  accessor.peek = () => value;
+
   return accessor;
+}
+
+/**
+ * Mark all subscribers of a node as dirty, recursively for computeds
+ */
+function markDirty(node: ReactiveNode): void {
+  for (const sub of node.subscribers) {
+    if (sub.disposed || sub.dirty) continue;
+
+    sub.dirty = true;
+
+    if (sub.isEffect) {
+      pendingEffects.add(sub);
+    } else {
+      // Computed: propagate dirty to its subscribers
+      markDirty(sub);
+    }
+  }
 }
 
 /**
  * Create a computed signal that derives its value from other signals
  */
 export function computed<T>(fn: () => T): Computed<T> {
-  const c = alienComputed(fn);
+  let value: T;
+  let initialized = false;
 
-  const accessor = (() => c()) as Computed<T>;
+  const sub: Subscriber = {
+    version: 0,
+    subscribers: new Set(),
+    sources: new Set(),
+    dirty: true,
+    fn,
+    cleanups: [],
+    isEffect: false,
+    disposed: false,
+  };
+
+  // Register with owner for disposal
+  const owner = getCurrentOwner();
+  if (owner) {
+    owner.children.push(sub);
+  }
+
+  const compute = (): T => {
+    if (!sub.dirty && initialized) {
+      return value;
+    }
+
+    // Clean up old dependencies
+    cleanupSources(sub);
+
+    // Track new dependencies
+    const prevSubscriber = currentSubscriber;
+    currentSubscriber = sub;
+
+    try {
+      value = fn();
+      initialized = true;
+      sub.dirty = false;
+      sub.version++;
+    } finally {
+      currentSubscriber = prevSubscriber;
+    }
+
+    return value;
+  };
+
+  const read = (): T => {
+    if (sub.disposed) {
+      return value;
+    }
+
+    // Track dependency if there's an active subscriber
+    if (trackingEnabled && currentSubscriber && !currentSubscriber.disposed) {
+      sub.subscribers.add(currentSubscriber);
+      currentSubscriber.sources.add(sub);
+    }
+
+    return compute();
+  };
+
+  const accessor = read as Computed<T>;
   accessor.peek = () => {
-    pauseTracking();
-    const value = c();
-    resumeTracking();
+    if (sub.dirty || !initialized) {
+      const prevTracking = trackingEnabled;
+      trackingEnabled = false;
+      try {
+        return compute();
+      } finally {
+        trackingEnabled = prevTracking;
+      }
+    }
     return value;
   };
 
@@ -71,57 +256,175 @@ export function computed<T>(fn: () => T): Computed<T> {
 }
 
 /**
- * Run a side effect when signals change
- * Returns a cleanup function
+ * Clean up a subscriber's source dependencies
  */
-export function effect(fn: () => void | (() => void)): () => void {
-  let cleanup: (() => void) | undefined;
-  let cleanups: (() => void)[] = [];
-
-  const stop = alienEffect(() => {
-    // Run previous cleanup
-    if (cleanup) cleanup();
-    // Run all registered onCleanup functions
-    for (const c of cleanups) c();
-    cleanups = [];
-
-    // Set up cleanup tracking for this effect run
-    const prevCleanups = currentCleanups;
-    currentCleanups = cleanups;
-
-    try {
-      const result = fn();
-      cleanup = typeof result === "function" ? result : undefined;
-    } finally {
-      currentCleanups = prevCleanups;
-    }
-  });
-
-  return () => {
-    if (cleanup) cleanup();
-    for (const c of cleanups) c();
-    stop();
-  };
+function cleanupSources(sub: Subscriber): void {
+  for (const source of sub.sources) {
+    source.subscribers.delete(sub);
+  }
+  sub.sources.clear();
 }
 
 /**
- * Register a cleanup function for the current effect/scope
- * Like SolidJS's onCleanup - runs when effect re-runs or is disposed
+ * Dispose a subscriber completely
  */
-export function onCleanup(fn: () => void): void {
-  if (currentCleanups) {
-    currentCleanups.push(fn);
+function disposeSubscriber(sub: Subscriber): void {
+  if (sub.disposed) return;
+  sub.disposed = true;
+
+  // Run cleanup functions
+  if (sub.cleanup) {
+    try {
+      sub.cleanup();
+    } catch (err) {
+      console.error("Error in effect cleanup:", err);
+    }
+    sub.cleanup = undefined;
+  }
+
+  for (const cleanup of sub.cleanups) {
+    try {
+      cleanup();
+    } catch (err) {
+      console.error("Error in onCleanup:", err);
+    }
+  }
+  sub.cleanups.length = 0;
+
+  // Remove from pending effects
+  pendingEffects.delete(sub);
+
+  // Clean up dependencies
+  cleanupSources(sub);
+
+  // Clear subscribers
+  sub.subscribers.clear();
+}
+
+/**
+ * Run an effect subscriber
+ */
+function runEffect(sub: Subscriber): void {
+  if (sub.disposed || !sub.dirty) return;
+
+  // Run previous cleanup
+  if (sub.cleanup) {
+    try {
+      sub.cleanup();
+    } catch (err) {
+      console.error("Error in effect cleanup:", err);
+    }
+    sub.cleanup = undefined;
+  }
+
+  // Run onCleanup functions from previous run
+  for (const cleanup of sub.cleanups) {
+    try {
+      cleanup();
+    } catch (err) {
+      console.error("Error in onCleanup:", err);
+    }
+  }
+  sub.cleanups.length = 0;
+
+  // Clean up old dependencies
+  cleanupSources(sub);
+
+  // Push effect owner for onCleanup registration
+  const effectOwner: Owner = {
+    cleanups: sub.cleanups,
+    dispose: () => disposeSubscriber(sub),
+    children: [],
+    disposed: false,
+  };
+  ownerStack.push(effectOwner);
+
+  // Track new dependencies
+  const prevSubscriber = currentSubscriber;
+  currentSubscriber = sub;
+
+  try {
+    const result = sub.fn();
+    sub.cleanup = typeof result === "function" ? (result as () => void) : undefined;
+    sub.dirty = false;
+  } finally {
+    currentSubscriber = prevSubscriber;
+    ownerStack.pop();
   }
 }
 
 /**
- * Run a callback after the component has mounted (after first render)
- * Like SolidJS's onMount - runs once after initial render
+ * Run a side effect when signals change.
+ * Returns a cleanup function to manually stop the effect.
+ */
+export function effect(fn: () => void | (() => void)): () => void {
+  const sub: Subscriber = {
+    version: 0,
+    subscribers: new Set(),
+    sources: new Set(),
+    dirty: true,
+    fn,
+    cleanups: [],
+    isEffect: true,
+    disposed: false,
+  };
+
+  // Register with owner for disposal
+  const owner = getCurrentOwner();
+  if (owner) {
+    owner.children.push(sub);
+  }
+
+  // Run immediately
+  runEffect(sub);
+
+  // Return dispose function
+  return () => disposeSubscriber(sub);
+}
+
+/**
+ * Flush all pending effects
+ */
+function flushEffects(): void {
+  if (isFlushing) return;
+  isFlushing = true;
+
+  try {
+    // Keep flushing until no more pending effects
+    while (pendingEffects.size > 0) {
+      const effects = Array.from(pendingEffects);
+      pendingEffects.clear();
+
+      for (const eff of effects) {
+        runEffect(eff);
+      }
+    }
+  } finally {
+    isFlushing = false;
+  }
+}
+
+/**
+ * Register a cleanup function for the current owner.
+ */
+export function onCleanup(fn: () => void): void {
+  const owner = getCurrentOwner();
+  if (owner) {
+    owner.cleanups.push(fn);
+  }
+}
+
+/**
+ * Run a callback after the component has mounted (after first render).
  */
 export function onMount(fn: () => void): void {
-  // Use queueMicrotask to run after the current synchronous rendering
+  const owner = getCurrentOwner();
   queueMicrotask(() => {
-    untrack(fn);
+    if (owner) {
+      runWithOwner(owner, () => untrack(fn));
+    } else {
+      untrack(fn);
+    }
   });
 }
 
@@ -129,62 +432,85 @@ export function onMount(fn: () => void): void {
  * Batch multiple signal updates into a single render
  */
 export function batch(fn: () => void): void {
-  startBatch();
+  batchDepth++;
   try {
     fn();
   } finally {
-    endBatch();
+    batchDepth--;
+    if (batchDepth === 0) {
+      flushEffects();
+    }
   }
 }
 
 /**
- * Create an effect scope for automatic cleanup
- * Similar to SolidJS's createRoot - the callback receives a dispose function
+ * Create a new reactive scope.
+ * All effects created inside are automatically disposed when the scope is disposed.
  */
 export function createScope<T>(fn: (dispose: () => void) => T): T {
-  let result: T | undefined;
-  const cleanups: (() => void)[] = [];
-  const disposeRef: { current: (() => void) | undefined } = { current: undefined };
+  let result: T;
+  let disposed = false;
 
-  const dispose = alienEffectScope(() => {
-    // Set up cleanup tracking for this scope
-    const prevCleanups = currentCleanups;
-    currentCleanups = cleanups;
+  const owner: Owner = {
+    cleanups: [],
+    dispose: () => {},
+    children: [],
+    disposed: false,
+  };
 
-    try {
-      result = fn(() => {
-        // Run all cleanup functions when disposing
-        for (const c of cleanups) c();
-        disposeRef.current?.();
-      });
-    } finally {
-      currentCleanups = prevCleanups;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    owner.disposed = true;
+
+    // Dispose all child subscribers
+    for (const child of owner.children) {
+      disposeSubscriber(child);
     }
-  });
-  disposeRef.current = dispose;
+    owner.children.length = 0;
 
-  return result as T;
+    // Run all cleanup functions
+    for (const cleanup of owner.cleanups) {
+      try {
+        cleanup();
+      } catch (err) {
+        console.error("Error in scope cleanup:", err);
+      }
+    }
+    owner.cleanups.length = 0;
+  };
+
+  owner.dispose = dispose;
+
+  ownerStack.push(owner);
+  try {
+    result = fn(dispose);
+  } finally {
+    ownerStack.pop();
+  }
+
+  return result;
 }
 
 /**
  * Untrack - read signals without creating dependencies
  */
 export function untrack<T>(fn: () => T): T {
-  pauseTracking();
+  const prevTracking = trackingEnabled;
+  trackingEnabled = false;
   try {
     return fn();
   } finally {
-    resumeTracking();
+    trackingEnabled = prevTracking;
   }
 }
 
 // ============================================================================
-// Context API - like SolidJS's createContext/useContext
+// Context API
 // ============================================================================
 
 /**
  * Context object type
- * Provider accepts children as a render function for proper context scoping
  */
 export interface Context<T> {
   id: symbol;
@@ -192,64 +518,33 @@ export interface Context<T> {
   Provider: (props: { value: T | (() => T); children: unknown }) => Node | null;
 }
 
-// Global context stack - each context can have nested providers
-// Using a stack allows nested providers to shadow outer ones
 const contextStacks: Map<symbol, Signal<unknown>[]> = new Map();
 
 /**
  * Create a context for dependency injection
- * Like SolidJS's createContext
- *
- * Usage:
- * ```tsx
- * const ThemeContext = createContext<"light" | "dark">("light");
- *
- * // Provide a value (use render function for children)
- * // Value can be static or a getter for reactivity
- * <ThemeContext.Provider value={theme}>
- *   {() => <App />}
- * </ThemeContext.Provider>
- *
- * // Or with reactive getter:
- * <ThemeContext.Provider value={() => theme()}>
- *   {() => <App />}
- * </ThemeContext.Provider>
- *
- * // Consume the value (returns a getter for reactivity)
- * const theme = useContext(ThemeContext);
- * console.log(theme()); // Access the value
- * ```
  */
 export function createContext<T>(defaultValue?: T): Context<T> {
   const id = Symbol("context");
 
-  // Initialize stack with default value if provided
   if (defaultValue !== undefined) {
     const defaultSignal = signal(defaultValue);
     contextStacks.set(id, [defaultSignal]);
   }
 
   const Provider = (props: { value: T | (() => T); children: unknown }): Node | null => {
-    // Create a signal for this provider's value
-    // If value is a getter, create a computed to track it reactively
     const getValue = () =>
       typeof props.value === "function" ? (props.value as () => T)() : props.value;
 
-    // Create a computed signal that tracks the value
     const valueSignal = computed(getValue);
 
-    // Get or create the stack for this context
     let stack = contextStacks.get(id);
     if (!stack) {
       stack = [];
       contextStacks.set(id, stack);
     }
 
-    // Push our signal onto the stack
     stack.push(valueSignal as Signal<unknown>);
 
-    // If children is a function, call it to get the actual children
-    // This ensures children render AFTER the context value is set
     let result: unknown;
     if (typeof props.children === "function") {
       result = (props.children as () => unknown)();
@@ -257,9 +552,6 @@ export function createContext<T>(defaultValue?: T): Context<T> {
       result = props.children;
     }
 
-    // Pop this provider from the stack
-    // Note: This happens synchronously, but consumers have already captured
-    // a reference to our signal through useContext
     stack.pop();
 
     return result as Node | null;
@@ -274,23 +566,16 @@ export function createContext<T>(defaultValue?: T): Context<T> {
 
 /**
  * Get the current value from a context
- * Like SolidJS's useContext
- *
- * Returns a getter function that reactively reads the context value.
- * The getter will track the current provider's value signal.
  */
 export function useContext<T>(context: Context<T>): () => T {
   const stack = contextStacks.get(context.id);
 
   if (stack && stack.length > 0) {
-    // Get the topmost signal (current provider)
     const currentSignal = stack[stack.length - 1];
-    // Return a getter that reads from this signal
     return () => currentSignal() as T;
   }
 
   if (context.defaultValue !== undefined) {
-    // Return a getter for the default value
     return () => context.defaultValue as T;
   }
 
