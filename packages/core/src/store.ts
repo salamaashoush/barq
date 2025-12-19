@@ -124,16 +124,13 @@ function createReactiveProxy<T extends object>(
         // Create new signal with current value
         sig = signal(actualValue);
         signalMap.set(key, sig);
-      } else {
-        // Sync signal with actual object value if they differ
-        // This handles the case where a parent was replaced with a new object/array
-        const signalValue = sig.peek();
-        if (signalValue !== actualValue) {
-          sig.set(actualValue);
-        }
       }
 
-      const value = sig();
+      // Track dependency by reading the signal
+      sig();
+
+      // Return actual value from object (signal is just for tracking)
+      const value = actualValue;
 
       // Recursively wrap nested objects
       if (typeof value === "object" && value !== null) {
