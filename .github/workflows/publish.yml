@@ -70,41 +70,29 @@ jobs:
       - name: Publish @barqjs/core (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/core
-        run: npm publish --dry-run --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --dry-run --access public
 
       - name: Publish @barqjs/extra (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/extra
-        run: npm publish --dry-run --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --dry-run --access public
 
       - name: Publish @barqjs/testing (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/testing
-        run: npm publish --dry-run --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --dry-run --access public
 
       - name: Publish @barqjs/core
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/core
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Publish @barqjs/extra
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/extra
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Publish @barqjs/testing
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/testing
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
