@@ -60,39 +60,44 @@ jobs:
             echo "$pkg build verified"
           done
 
-      - name: Setup npm authentication
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       - name: Publish @barqjs/core (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/core
         run: npm publish --dry-run --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @barqjs/extra (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/extra
         run: npm publish --dry-run --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @barqjs/testing (dry-run)
         if: github.event.inputs.dry-run == 'true'
         working-directory: packages/testing
         run: npm publish --dry-run --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @barqjs/core
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/core
         run: npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @barqjs/extra
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/extra
         run: npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @barqjs/testing
         if: github.event.inputs.dry-run != 'true' && startsWith(github.ref, 'refs/tags/v')
         working-directory: packages/testing
         run: npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
