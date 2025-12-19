@@ -10,7 +10,7 @@ import { type Resource, useEffect, useResource, useState } from "@barqjs/core";
 export function useFetch<T>(url: string | (() => string), options?: RequestInit): Resource<T> {
   const getUrl = typeof url === "function" ? url : () => url;
 
-  return useResource(getUrl, async (currentUrl) => {
+  return useResource(getUrl, async (currentUrl: string) => {
     const response = await fetch(currentUrl, options);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
