@@ -69,13 +69,10 @@ const server = Bun.serve({
 
       if (!result.success) {
         console.error("Build failed:", result.logs);
-        return new Response(
-          `console.error("Build failed:", ${JSON.stringify(result.logs)})`,
-          {
-            status: 500,
-            headers: { "Content-Type": "application/javascript" },
-          }
-        );
+        return new Response(`console.error("Build failed:", ${JSON.stringify(result.logs)})`, {
+          status: 500,
+          headers: { "Content-Type": "application/javascript" },
+        });
       }
 
       const output = await result.outputs[0].text();
@@ -110,7 +107,7 @@ const server = Bun.serve({
           "Content-Type": "text/html",
           "Cache-Control": "no-store",
         },
-      }
+      },
     );
   },
 });

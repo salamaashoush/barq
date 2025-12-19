@@ -1,12 +1,13 @@
 /**
  * Built-in utility components
  * Uses comment markers for fine-grained DOM updates (like SolidJS)
+ * All dynamic rendering uses createScope for proper effect disposal
  */
 
 import type { Resource } from "./async.ts";
 import type { Child, JSXElement } from "./dom.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
-import { type Signal, computed, effect, signal, untrack } from "./signals.ts";
+import { type Signal, computed, createScope, effect, signal, untrack } from "./signals.ts";
 
 // Re-export marker utilities for external use
 export { createMarker, createMarkerPair, clearRange, insertNodes };
@@ -64,13 +65,7 @@ export function Fragment(props: { children?: Child | Child[] }): JSXElement {
 
 /**
  * Show component - conditional rendering using comment markers
- *
- * Uses DocumentFragments to preserve entire subtrees (including content
- * between nested component markers) when hiding. This ensures that when
- * re-showing, nested components like Await have their content intact.
- *
- * The `when` prop accepts any truthy/falsy value accessor (like SolidJS),
- * not just strict booleans.
+ * Uses createScope for proper effect disposal when content changes
  */
 export function Show<T>(props: {
   when: () => T | undefined | null | false;
@@ -86,29 +81,45 @@ export function Show<T>(props: {
   // Memoize the condition to ensure stable reactivity
   const condition = computed(props.when);
 
+  // Track dispose function for current content
+  let disposeContent: (() => void) | null = null;
+
   effect(() => {
     const value = condition();
     const parent = endMarker.parentNode;
     if (!parent) return;
 
+    // Dispose previous content's effects
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+
     // Clear existing content
     clearRange(startMarker, endMarker);
 
     if (value) {
-      // Render children - support both static and callback patterns
-      const children =
-        typeof props.children === "function"
-          ? props.children.length > 0
-            ? (props.children as (item: NonNullable<T>) => Child)(value)
-            : (props.children as () => Child)()
-          : props.children;
-      const nodes = childToNodes(children);
-      insertNodes(endMarker, nodes);
-    } else {
-      // Render fallback if provided
-      if (props.fallback !== null && props.fallback !== undefined) {
-        const nodes = childToNodes(props.fallback);
+      // Render children in a scope for proper disposal
+      createScope((dispose) => {
+        disposeContent = dispose;
+
+        const children =
+          typeof props.children === "function"
+            ? props.children.length > 0
+              ? (props.children as (item: NonNullable<T>) => Child)(value)
+              : (props.children as () => Child)()
+            : props.children;
+        const nodes = childToNodes(children);
         insertNodes(endMarker, nodes);
+      });
+    } else {
+      // Render fallback if provided (also in a scope)
+      if (props.fallback !== null && props.fallback !== undefined) {
+        createScope((dispose) => {
+          disposeContent = dispose;
+          const nodes = childToNodes(props.fallback);
+          insertNodes(endMarker, nodes);
+        });
       }
     }
   });
@@ -118,27 +129,7 @@ export function Show<T>(props: {
 
 /**
  * For component - keyed list rendering with efficient reconciliation
- *
- * Like SolidJS's For: items are keyed by reference (or by keyFn if provided).
- * The item value is static, but the index is a signal that updates when position changes.
- *
- * Uses a proper keyed diffing algorithm that only moves/adds/removes changed nodes.
- *
- * Accepts either a direct array or a getter function for reactivity:
- * - Direct: `<For each={items}>` - static list
- * - Getter: `<For each={() => items()}>` - reactive list
- *
- * @example
- * ```tsx
- * <For each={users}>
- *   {(user, index) => <div>{index()}: {user.name}</div>}
- * </For>
- *
- * // With explicit key function
- * <For each={users} keyFn={(user) => user.id}>
- *   {(user, index) => <div>{user.name}</div>}
- * </For>
- * ```
+ * Uses createScope for each item to ensure proper effect disposal
  */
 export function For<T, U extends JSXElement>(props: {
   each:
@@ -158,15 +149,19 @@ export function For<T, U extends JSXElement>(props: {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
-  // Cache: key -> { nodes, indexSignal }
+  // Cache: key -> { nodes, indexSignal, dispose }
   type CacheEntry = {
     nodes: Node[];
     indexSignal: Signal<number>;
+    dispose: () => void;
   };
   const cache = new Map<unknown, CacheEntry>();
 
   // Track current order of keys
   let currentKeys: unknown[] = [];
+
+  // Track fallback dispose
+  let disposeFallback: (() => void) | null = null;
 
   // Get key for an item
   const getKey = props.keyFn ?? ((item: T) => item);
@@ -180,13 +175,27 @@ export function For<T, U extends JSXElement>(props: {
 
     // Handle empty/falsy list
     if (!items || items.length === 0) {
-      clearRange(startMarker, endMarker);
+      // Dispose all cached entries
+      for (const entry of cache.values()) {
+        entry.dispose();
+      }
       cache.clear();
+      clearRange(startMarker, endMarker);
       currentKeys = [];
+
       if (props.fallback !== null && props.fallback !== undefined) {
-        insertNodes(endMarker, childToNodes(props.fallback));
+        createScope((dispose) => {
+          disposeFallback = dispose;
+          insertNodes(endMarker, childToNodes(props.fallback));
+        });
       }
       return;
+    }
+
+    // Dispose fallback if it was showing
+    if (disposeFallback) {
+      disposeFallback();
+      disposeFallback = null;
     }
 
     const newKeys = items.map(getKey);
@@ -197,6 +206,8 @@ export function For<T, U extends JSXElement>(props: {
       if (!newKeySet.has(key)) {
         const entry = cache.get(key);
         if (entry) {
+          // Dispose effects before removing nodes
+          entry.dispose();
           // Remove nodes from DOM
           for (const node of entry.nodes) {
             if (node.parentNode) {
@@ -223,29 +234,28 @@ export function For<T, U extends JSXElement>(props: {
       let entry = cache.get(key);
 
       if (!entry) {
-        // Create new entry with reactive index signal
+        // Create new entry with reactive index signal in a scope
         const indexSignal = signal(i);
+        let entryNodes: Node[] = [];
+        let entryDispose!: () => void;
 
-        // Create the nodes from JSXElement
-        const result = props.children(item, indexSignal);
-        const nodes = childToNodes(result);
+        createScope((dispose) => {
+          entryDispose = dispose;
+          const result = props.children(item, indexSignal);
+          entryNodes = childToNodes(result);
+        });
 
-        entry = { nodes, indexSignal };
+        entry = { nodes: entryNodes, indexSignal, dispose: entryDispose };
         cache.set(key, entry);
       } else {
         // Update index signal if changed
         if (entry.indexSignal() !== i) {
           entry.indexSignal.set(i);
         }
-        // Note: We don't re-render when item content changes because:
-        // 1. Store proxies wrap items, creating new proxy refs on each access
-        // 2. For keyed reconciliation means same key = keep same DOM nodes
-        // For reactive item properties, use Index component instead
       }
     }
 
     // Reconcile DOM order using efficient algorithm
-    // Find the longest increasing subsequence to minimize moves
     reconcileNodes(parent, endMarker, currentKeys, newKeys, cache);
 
     currentKeys = newKeys;
@@ -256,14 +266,13 @@ export function For<T, U extends JSXElement>(props: {
 
 /**
  * Efficient DOM reconciliation using longest increasing subsequence
- * Only moves nodes that are out of order, minimizing DOM operations
  */
 function reconcileNodes(
   parent: Node,
   endMarker: Node,
   oldKeys: unknown[],
   newKeys: unknown[],
-  cache: Map<unknown, { nodes: Node[]; indexSignal: Signal<number> }>,
+  cache: Map<unknown, { nodes: Node[]; indexSignal: Signal<number>; dispose: () => void }>,
 ): void {
   const newLen = newKeys.length;
 
@@ -292,10 +301,8 @@ function reconcileNodes(
   );
 
   // Find longest increasing subsequence of old indices
-  // These nodes don't need to move
   const lis = longestIncreasingSubsequence(sources.filter((s) => s !== -1));
 
-  // Determine which nodes need to be moved/inserted
   // Work backwards from end to use insertBefore efficiently
   let lisIndex = lis.length - 1;
   let nextNode: Node = endMarker;
@@ -313,7 +320,7 @@ function reconcileNodes(
         parent.insertBefore(entry.nodes[j], nextNode);
       }
     } else if (lisIndex >= 0 && lis[lisIndex] === oldIndex) {
-      // Node is in LIS - don't move, just update nextNode
+      // Node is in LIS - don't move
       lisIndex--;
     } else {
       // Node needs to move
@@ -322,14 +329,12 @@ function reconcileNodes(
       }
     }
 
-    // Update nextNode for next iteration
     nextNode = entry.nodes[0];
   }
 }
 
 /**
  * Find longest increasing subsequence
- * Returns the actual values (not indices) that form the LIS
  */
 function longestIncreasingSubsequence(arr: number[]): number[] {
   if (arr.length === 0) return [];
@@ -354,7 +359,6 @@ function longestIncreasingSubsequence(arr: number[]): number[] {
     }
   }
 
-  // Reconstruct the subsequence
   const result: number[] = [];
   let idx = maxIdx;
   while (idx !== -1) {
@@ -367,23 +371,7 @@ function longestIncreasingSubsequence(arr: number[]): number[] {
 
 /**
  * Index component - index-keyed list rendering with efficient updates
- *
- * Like SolidJS's Index: items are keyed by their index position.
- * The index is static, but the item is a signal that updates when value at that position changes.
- *
- * Nodes are never moved - only values update. This is more efficient for lists where
- * items change but the number of items stays relatively constant.
- *
- * Use this for:
- * - Lists of primitives (strings, numbers)
- * - When you care about position stability, not value identity
- *
- * @example
- * ```tsx
- * <Index each={() => names()}>
- *   {(name, index) => <div>{index}: {name()}</div>}
- * </Index>
- * ```
+ * Uses createScope for each item to ensure proper effect disposal
  */
 export function Index<T, U extends JSXElement>(props: {
   each:
@@ -402,17 +390,18 @@ export function Index<T, U extends JSXElement>(props: {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
-  // Cache by index: index -> { nodes, itemSignal }
+  // Cache by index: index -> { nodes, itemSignal, dispose }
   type CacheEntry = {
     nodes: Node[];
     itemSignal: Signal<T>;
+    dispose: () => void;
   };
   const cache: CacheEntry[] = [];
 
   let currentLength = 0;
+  let disposeFallback: (() => void) | null = null;
 
   effect(() => {
-    // Support both getter function and direct array
     const rawEach = props.each;
     const items = typeof rawEach === "function" ? rawEach() : rawEach;
     const parent = endMarker.parentNode;
@@ -420,8 +409,9 @@ export function Index<T, U extends JSXElement>(props: {
 
     // Handle empty/falsy list
     if (!items || items.length === 0) {
-      // Remove all cached nodes
+      // Dispose all cached entries
       for (const entry of cache) {
+        entry.dispose();
         for (const node of entry.nodes) {
           if (node.parentNode) {
             node.parentNode.removeChild(node);
@@ -430,24 +420,31 @@ export function Index<T, U extends JSXElement>(props: {
       }
       cache.length = 0;
       currentLength = 0;
+
       if (props.fallback !== null && props.fallback !== undefined) {
-        insertNodes(endMarker, childToNodes(props.fallback));
+        createScope((dispose) => {
+          disposeFallback = dispose;
+          insertNodes(endMarker, childToNodes(props.fallback));
+        });
       }
       return;
     }
 
-    const newLength = items.length;
-
-    // Clear fallback if present
-    if (currentLength === 0 && props.fallback !== null && props.fallback !== undefined) {
+    // Dispose fallback if it was showing
+    if (disposeFallback) {
+      disposeFallback();
+      disposeFallback = null;
       clearRange(startMarker, endMarker);
     }
+
+    const newLength = items.length;
 
     // Remove excess entries if array shrunk
     if (newLength < currentLength) {
       for (let i = newLength; i < currentLength; i++) {
         const entry = cache[i];
         if (entry) {
+          entry.dispose();
           for (const node of entry.nodes) {
             if (node.parentNode) {
               node.parentNode.removeChild(node);
@@ -464,18 +461,22 @@ export function Index<T, U extends JSXElement>(props: {
       let entry = cache[i];
 
       if (!entry) {
-        // Create new entry with reactive item signal
+        // Create new entry with reactive item signal in a scope
         const itemSignal = signal(item);
+        let entryNodes: Node[] = [];
+        let entryDispose!: () => void;
 
-        // Create the nodes with static index
-        const result = props.children(itemSignal, i);
-        const nodes = childToNodes(result);
+        createScope((dispose) => {
+          entryDispose = dispose;
+          const result = props.children(itemSignal, i);
+          entryNodes = childToNodes(result);
+        });
 
-        entry = { nodes, itemSignal };
+        entry = { nodes: entryNodes, itemSignal, dispose: entryDispose };
         cache[i] = entry;
 
         // Insert new nodes at the end
-        for (const node of nodes) {
+        for (const node of entryNodes) {
           parent.insertBefore(node, endMarker);
         }
       } else {
@@ -494,59 +495,20 @@ export function Index<T, U extends JSXElement>(props: {
 
 /**
  * Switch/Match components - pattern matching (SolidJS-style)
- *
- * Match just returns its props - Switch does all the work.
- * Children MUST be a function to enable lazy evaluation.
- *
- * Usage:
- * ```tsx
- * <Switch fallback={<div>Not Found</div>}>
- *   <Match when={() => route() === "home"}>
- *     {() => <Home />}
- *   </Match>
- *   <Match when={() => route() === "settings"}>
- *     {() => <Settings />}
- *   </Match>
- * </Switch>
- *
- * // With render prop (receives the truthy value):
- * <Match when={() => user()}>
- *   {(u) => <div>{u.name}</div>}
- * </Match>
- *
- * // With keyed - recreates children when value changes:
- * <Match when={() => selectedId()} keyed>
- *   {(id) => <ItemDetails id={id} />}
- * </Match>
- * ```
  */
-
 export interface MatchProps<T> {
-  /** Condition to evaluate - must be an accessor function for reactivity */
   when: () => T | undefined | null | false;
-  /**
-   * When true, children are recreated when the truthy value changes.
-   * When false (default), children are reused if condition stays truthy.
-   */
   keyed?: boolean;
-  /**
-   * Children MUST be a function for lazy evaluation.
-   * Can be () => JSX or (value) => JSX to receive the truthy value.
-   */
   children: (() => Child) | ((item: NonNullable<T>) => Child);
 }
 
-/**
- * Match component - just returns props for Switch to process
- * Like SolidJS, this is not a real component - it's a marker for Switch
- */
 export function Match<T>(props: MatchProps<T>): JSXElement {
   return props as unknown as JSXElement;
 }
 
 /**
  * Switch component - renders first matching Match child
- * Evaluates conditions in order, renders first truthy match
+ * Uses createScope for proper effect disposal when match changes
  */
 export function Switch(props: {
   fallback?: JSXElement;
@@ -561,17 +523,15 @@ export function Switch(props: {
   let currentNodes: Node[] = [];
   let currentMatchIndex = -1;
   let currentValue: unknown = undefined;
+  let disposeContent: (() => void) | null = null;
 
-  // Create a computed that finds the matching case
   const getMatch = computed(() => {
     const children = Array.isArray(props.children) ? props.children : [props.children];
 
     for (let i = 0; i < children.length; i++) {
       const child = children[i] as unknown as MatchProps<unknown>;
-      // Skip non-Match children
       if (!child || typeof child !== "object" || !("when" in child)) continue;
 
-      // Evaluate the condition
       const when = child.when;
       const conditionValue = typeof when === "function" ? (when as () => unknown)() : when;
 
@@ -585,16 +545,19 @@ export function Switch(props: {
   effect(() => {
     const result = getMatch();
 
-    // Determine if we need to re-render
     const needsRender = !result
-      ? currentMatchIndex !== -1 // Was showing something, now showing fallback
-      : currentMatchIndex !== result.index || // Different match
-        (result.match.keyed && currentValue !== result.value); // Same match but keyed and value changed
+      ? currentMatchIndex !== -1
+      : currentMatchIndex !== result.index || (result.match.keyed && currentValue !== result.value);
 
     if (!needsRender && result && currentMatchIndex === result.index) {
-      // Same match, not keyed or value unchanged - keep existing content
       currentValue = result.value;
       return;
+    }
+
+    // Dispose previous content
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
     }
 
     // Clear existing content
@@ -607,21 +570,24 @@ export function Switch(props: {
       const { index, value, match } = result;
       const children = match.children as (item?: unknown) => Child;
 
-      // Children is always a function - call it untracked
-      // If function.length > 0, it expects the truthy value as argument
-      const content = untrack(() => (children.length > 0 ? children(value) : children()));
+      createScope((dispose) => {
+        disposeContent = dispose;
+        const content = untrack(() => (children.length > 0 ? children(value) : children()));
+        const nodes = childToNodes(content);
+        insertNodes(endMarker, nodes);
+        currentNodes = nodes;
+      });
 
-      const nodes = childToNodes(content);
-      insertNodes(endMarker, nodes);
-      currentNodes = nodes;
       currentMatchIndex = index;
       currentValue = value;
     } else {
-      // No match - show fallback
       if (props.fallback !== null && props.fallback !== undefined) {
-        const nodes = childToNodes(props.fallback);
-        insertNodes(endMarker, nodes);
-        currentNodes = nodes;
+        createScope((dispose) => {
+          disposeContent = dispose;
+          const nodes = childToNodes(props.fallback);
+          insertNodes(endMarker, nodes);
+          currentNodes = nodes;
+        });
       }
       currentMatchIndex = -1;
       currentValue = undefined;
@@ -642,22 +608,31 @@ export function Suspense(props: { fallback: JSXElement; children: Child }): JSXE
   fragment.appendChild(endMarker);
 
   let showFallback = true;
+  let disposeContent: (() => void) | null = null;
 
   const renderContent = () => {
+    // Dispose previous content
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+
     clearRange(startMarker, endMarker);
 
-    if (showFallback) {
-      insertNodes(endMarker, childToNodes(props.fallback));
-    } else {
-      const nodes = childToNodes(props.children);
-      insertNodes(endMarker, nodes);
-    }
+    createScope((dispose) => {
+      disposeContent = dispose;
+
+      if (showFallback) {
+        insertNodes(endMarker, childToNodes(props.fallback));
+      } else {
+        const nodes = childToNodes(props.children);
+        insertNodes(endMarker, nodes);
+      }
+    });
   };
 
-  // Initially show fallback
   queueMicrotask(() => renderContent());
 
-  // Use microtask to attempt showing content
   queueMicrotask(() => {
     queueMicrotask(() => {
       try {
@@ -680,13 +655,7 @@ export function Suspense(props: { fallback: JSXElement; children: Child }): JSXE
 
 /**
  * ErrorBoundary component using comment markers
- *
- * Children should be a function to enable reactive error catching:
- * ```tsx
- * <ErrorBoundary fallback={(err, reset) => <Error error={err} onReset={reset} />}>
- *   {() => <MaybeThrows />}
- * </ErrorBoundary>
- * ```
+ * Uses createScope for proper effect disposal
  */
 export function ErrorBoundary(props: {
   fallback: (error: Error, reset: () => void) => JSXElement;
@@ -698,50 +667,53 @@ export function ErrorBoundary(props: {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
-  // Track error state with a signal
   const errorSignal = signal<Error | null>(null);
+  let disposeContent: (() => void) | null = null;
 
-  // Computed that tries to evaluate children and catches errors
   const content = computed(() => {
     const err = errorSignal();
     if (err) {
-      // Return error marker - we'll render fallback
       return { error: err };
     }
 
     try {
-      // Try to render children
       const children =
         typeof props.children === "function" ? (props.children as () => Child)() : props.children;
       return { children };
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
-      // Don't set signal inside computed - return error instead
       return { error };
     }
   });
 
-  // Effect to render based on computed result
   effect(() => {
     const result = content();
+
+    // Dispose previous content
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+
     clearRange(startMarker, endMarker);
 
-    if ("error" in result && result.error) {
-      // Update error signal if this is a new error from children
-      if (errorSignal.peek() !== result.error) {
-        // Use queueMicrotask to avoid setting signal during effect
-        queueMicrotask(() => errorSignal.set(result.error));
+    createScope((dispose) => {
+      disposeContent = dispose;
+
+      if ("error" in result && result.error) {
+        if (errorSignal.peek() !== result.error) {
+          queueMicrotask(() => errorSignal.set(result.error));
+        }
+        const reset = () => {
+          errorSignal.set(null);
+        };
+        const fallbackResult = props.fallback(result.error, reset);
+        insertNodes(endMarker, childToNodes(fallbackResult));
+      } else if ("children" in result) {
+        const nodes = childToNodes(result.children);
+        insertNodes(endMarker, nodes);
       }
-      // Render fallback
-      const reset = () => {
-        errorSignal.set(null);
-      };
-      const fallbackResult = props.fallback(result.error, reset);
-      insertNodes(endMarker, childToNodes(fallbackResult));
-    } else if ("children" in result) {
-      const nodes = childToNodes(result.children);
-      insertNodes(endMarker, nodes);
-    }
+    });
   });
 
   return fragment;
@@ -749,6 +721,7 @@ export function ErrorBoundary(props: {
 
 /**
  * Await component - render based on resource state using comment markers
+ * Uses createScope for proper effect disposal
  */
 export function Await<T>(props: {
   resource: Resource<T>;
@@ -762,41 +735,52 @@ export function Await<T>(props: {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
+  let disposeContent: (() => void) | null = null;
+
   effect(() => {
     const status = props.resource.state();
 
-    // Clear existing content
-    clearRange(startMarker, endMarker);
-
-    let nodes: Node[] = [];
-
-    switch (status) {
-      case "unresolved":
-      case "pending":
-        if (props.loading !== null && props.loading !== undefined) {
-          nodes = childToNodes(props.loading);
-        }
-        break;
-      case "errored": {
-        const err = props.resource.error();
-        if (props.error && err) {
-          nodes = childToNodes(props.error(err));
-        } else if (err) {
-          nodes = [document.createTextNode(err.message)];
-        }
-        break;
-      }
-      case "ready":
-      case "refreshing": {
-        const data = props.resource.latest();
-        if (data !== undefined) {
-          nodes = childToNodes(props.children(data));
-        }
-        break;
-      }
+    // Dispose previous content
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
     }
 
-    insertNodes(endMarker, nodes);
+    clearRange(startMarker, endMarker);
+
+    createScope((dispose) => {
+      disposeContent = dispose;
+
+      let nodes: Node[] = [];
+
+      switch (status) {
+        case "unresolved":
+        case "pending":
+          if (props.loading !== null && props.loading !== undefined) {
+            nodes = childToNodes(props.loading);
+          }
+          break;
+        case "errored": {
+          const err = props.resource.error();
+          if (props.error && err) {
+            nodes = childToNodes(props.error(err));
+          } else if (err) {
+            nodes = [document.createTextNode(err.message)];
+          }
+          break;
+        }
+        case "ready":
+        case "refreshing": {
+          const data = props.resource.latest();
+          if (data !== undefined) {
+            nodes = childToNodes(props.children(data));
+          }
+          break;
+        }
+      }
+
+      insertNodes(endMarker, nodes);
+    });
   });
 
   return fragment;
@@ -804,14 +788,18 @@ export function Await<T>(props: {
 
 /**
  * Portal component - render children outside the component tree
- * Uses MutationObserver for cleanup when marker is removed from DOM
  */
 export function Portal(props: { target?: HTMLElement | string; children: Child }): JSXElement {
   const marker = createMarker("Portal");
   let container: HTMLDivElement | null = null;
   let observer: MutationObserver | null = null;
+  let disposeContent: (() => void) | null = null;
 
   const cleanup = () => {
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
     if (observer) {
       observer.disconnect();
       observer = null;
@@ -822,11 +810,9 @@ export function Portal(props: { target?: HTMLElement | string; children: Child }
     }
   };
 
-  // Mount after marker is in DOM
   queueMicrotask(() => {
     if (!marker.isConnected) return;
 
-    // Resolve target
     let target: HTMLElement | null = null;
     if (typeof props.target === "string") {
       const el = document.querySelector(props.target);
@@ -838,19 +824,20 @@ export function Portal(props: { target?: HTMLElement | string; children: Child }
     }
     if (!target) return;
 
-    // Create container for portal content
     container = document.createElement("div");
     container.style.display = "contents";
 
-    // Mount children
-    const nodes = childToNodes(props.children);
-    for (const node of nodes) {
-      container.appendChild(node);
-    }
+    // Render children in a scope
+    createScope((dispose) => {
+      disposeContent = dispose;
+      const nodes = childToNodes(props.children);
+      for (const node of nodes) {
+        container!.appendChild(node);
+      }
+    });
+
     target.appendChild(container);
 
-    // Watch for marker removal using MutationObserver
-    // Observe the marker's parent for child removal
     const parent = marker.parentNode;
     if (parent) {
       observer = new MutationObserver((mutations) => {
@@ -862,7 +849,6 @@ export function Portal(props: { target?: HTMLElement | string; children: Child }
             }
           }
         }
-        // Also check if marker is no longer connected
         if (!marker.isConnected) {
           cleanup();
         }

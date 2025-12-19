@@ -3,24 +3,21 @@
  * Tests: Router, params, search params, loaders, layouts, navigation
  */
 
-import { For, Show, useState } from "@barqjs/core";
+import { For, Show } from "@barqjs/core";
 import { clsx, css } from "@barqjs/extra";
 import {
   Link,
   type LoaderContext,
+  MemoryRouter,
   NavLink,
   Outlet,
-  type Params,
   type RouteDefinition,
-  Router,
-  navigate,
   route,
   useLocation,
   useNavigate,
-  useParams,
   useSearchParams,
 } from "@barqjs/extra";
-import { Button, DemoCard, DemoSection, Input } from "./shared";
+import { Button, DemoCard, DemoSection } from "./shared";
 
 // Simulated data
 const users = [
@@ -464,12 +461,13 @@ export function RoutingDemo() {
     <DemoSection>
       <DemoCard title="Router Demo">
         <p class={introStyle}>
-          This demo showcases the Barq router with params, search params, loaders, and nested
-          layouts. The router is embedded within this demo card.
+          Explore the dashboard below. Try navigating between sections, filtering users by role,
+          filtering posts by category, and viewing individual items.
         </p>
 
         <div class={routerContainerStyle}>
-          <Router
+          <MemoryRouter
+            initialPath="/demo/dashboard"
             config={{
               routes,
               fallback: NotFound,
@@ -477,190 +475,7 @@ export function RoutingDemo() {
           />
         </div>
       </DemoCard>
-
-      <ProgrammaticNavigationDemo />
-      <SearchParamsDemo />
-      <RouteInfoDemo />
-      <RoutePatternsDemo />
-      <NestedLayoutsDemo />
     </DemoSection>
-  );
-}
-
-// Programmatic Navigation Demo
-function ProgrammaticNavigationDemo() {
-  const [path, setPath] = useState("/demo/dashboard");
-
-  return (
-    <DemoCard title="Programmatic Navigation">
-      <Input value={path} onInput={(v) => setPath(v)} placeholder="Enter path..." />
-
-      <div class={buttonRowStyle}>
-        <Button onClick={() => navigate(path())}>navigate(path)</Button>
-        <Button variant="secondary" onClick={() => navigate(path(), { replace: true })}>
-          navigate(path, replace)
-        </Button>
-      </div>
-
-      <div class={buttonRowStyle}>
-        <Button variant="secondary" onClick={() => navigate("/demo/dashboard/users/1")}>
-          Go to User 1
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => navigate("/demo/dashboard/posts?category=tutorial")}
-        >
-          Tutorials
-        </Button>
-      </div>
-
-      <p class={noteStyle}>
-        Use navigate() for programmatic routing. The replace option uses replaceState instead of
-        pushState.
-      </p>
-    </DemoCard>
-  );
-}
-
-// Search Params Demo
-function SearchParamsDemo() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [key, setKey] = useState("filter");
-  const [value, setValue] = useState("active");
-
-  return (
-    <DemoCard title="Search Params">
-      <div class={inputRowStyle}>
-        <div>
-          <label>Key:</label>
-          <Input value={key} onInput={(v) => setKey(v)} placeholder="key" />
-        </div>
-        <div>
-          <label>Value:</label>
-          <Input value={value} onInput={(v) => setValue(v)} placeholder="value" />
-        </div>
-      </div>
-
-      <div class={buttonRowStyle}>
-        <Button onClick={() => setSearchParams({ [key()]: value() })}>Set Param</Button>
-        <Button variant="secondary" onClick={() => setSearchParams({})}>
-          Clear All
-        </Button>
-      </div>
-
-      <div class={codeBlockStyle}>
-        <strong>Current search params:</strong>
-        <pre>{() => searchParams().toString() || "(empty)"}</pre>
-      </div>
-
-      <p class={noteStyle}>useSearchParams() returns [getter, setter] for URL search params.</p>
-    </DemoCard>
-  );
-}
-
-// Route Info Demo
-function RouteInfoDemo() {
-  const location = useLocation();
-
-  return (
-    <DemoCard title="Route Information">
-      <div class={codeBlockStyle}>
-        <pre>
-          {() =>
-            JSON.stringify(
-              {
-                pathname: location().pathname,
-                search: location().search,
-                hash: location().hash,
-                params: location().params,
-              },
-              null,
-              2,
-            )
-          }
-        </pre>
-      </div>
-
-      <p class={noteStyle}>useLocation() provides reactive access to current route information.</p>
-    </DemoCard>
-  );
-}
-
-// Route Patterns Demo
-function RoutePatternsDemo() {
-  return (
-    <DemoCard title="Supported Route Patterns">
-      <div class={codeBlockStyle}>
-        <pre>{`// Dynamic params (required)
-/users/:id              -> { id: "123" }
-/posts/:postId/comments/:commentId
-
-// Optional params
-/users/:id?             -> {} or { id: "123" }
-
-// Catch-all wildcard
-/files/*                -> { "*": "path/to/file.txt" }
-
-// Named splat (rest of path)
-/docs/:path*            -> { path: "api/router/usage" }
-
-// One-or-more segments
-/api/:segments+         -> { segments: "v1/users/123" }
-
-// Combined patterns
-/api/:version/:resource/:id?
-/files/:bucket/:path*`}</pre>
-      </div>
-
-      <p class={noteStyle}>
-        Route patterns follow Express/React Router conventions with extensions.
-      </p>
-    </DemoCard>
-  );
-}
-
-// Nested Layouts Demo
-function NestedLayoutsDemo() {
-  return (
-    <DemoCard title="Nested Layouts with Outlet">
-      <div class={codeBlockStyle}>
-        <pre>{`// Layout component uses <Outlet /> for children
-function DashboardLayout() {
-  return (
-    <div class="dashboard">
-      <nav>
-        <NavLink href="/dashboard">Overview</NavLink>
-        <NavLink href="/dashboard/users">Users</NavLink>
-      </nav>
-      <main>
-        <Outlet />  {/* Child routes render here */}
-      </main>
-    </div>
-  );
-}
-
-// Route definition with nested children
-const routes = [
-  route({
-    path: "/dashboard",
-    component: DashboardLayout,
-    children: [
-      route({ path: "/", component: Overview }),
-      route({ path: "/users", component: UsersList }),
-      route({
-        path: "/users/:id",
-        component: UserDetail,
-        loader: async ({ params }) => fetchUser(params.id)
-      }),
-    ]
-  })
-];`}</pre>
-      </div>
-
-      <p class={noteStyle}>
-        Layouts use &lt;Outlet /&gt; to render child routes (React Router v6 pattern).
-      </p>
-    </DemoCard>
   );
 }
 
@@ -945,45 +760,6 @@ const buttonRowStyle = css`
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 12px;
-`;
-
-const inputRowStyle = css`
-  display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-
-  > div {
-    flex: 1;
-
-    label {
-      display: block;
-      font-size: 12px;
-      color: #94a3b8;
-      margin-bottom: 4px;
-    }
-  }
-`;
-
-const codeBlockStyle = css`
-  background: #0f172a;
-  padding: 12px;
-  border-radius: 6px;
-  font-family: monospace;
-  font-size: 12px;
-  color: #94a3b8;
-  margin-top: 12px;
-
-  strong {
-    display: block;
-    margin-bottom: 8px;
-    color: #e2e8f0;
-  }
-
-  pre {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
 `;
 
 const noteStyle = css`

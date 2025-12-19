@@ -1,0 +1,9 @@
+# Bun configuration for kitchen-sink development
+
+[bundle]
+# Use "bun" condition to resolve workspace packages to source files
+conditions = ["bun"]
+
+[bundle.define]
+# Development mode
+"process.env.NODE_ENV" = '"development"'

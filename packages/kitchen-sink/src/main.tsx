@@ -4,7 +4,7 @@
 
 import { QueryClient } from "@tanstack/query-core";
 import { render } from "@barqjs/core";
-import { Router, css, defineRoutes, globalCss, setQueryClient } from "@barqjs/extra";
+import { globalCss, setQueryClient } from "@barqjs/extra";
 
 import { App } from "./App";
 
@@ -67,23 +67,10 @@ const queryClient = new QueryClient({
 });
 setQueryClient(queryClient);
 
-// Routes
-const routes = defineRoutes([
-  {
-    path: "/",
-    component: () => <App />,
-  },
-]);
-
-// Mount app
+// Mount app (App component contains its own Router)
 const container = document.getElementById("app");
 if (container) {
-  render(
-    <Router config={{ routes }}>
-      <App />
-    </Router>,
-    container,
-  );
+  render(<App />, container);
 }
 
 console.log("Barq Kitchen Sink mounted");

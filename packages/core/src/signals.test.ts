@@ -1,13 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  batch,
-  computed,
-  createScope,
-  effect,
-  onCleanup,
-  signal,
-  untrack,
-} from "./signals.ts";
+import { batch, computed, createScope, effect, onCleanup, signal, untrack } from "./signals.ts";
 
 describe("signal", () => {
   test("creates a signal with initial value", () => {

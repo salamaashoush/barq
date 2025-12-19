@@ -60,6 +60,7 @@ export type {
 } from "./router.tsx";
 export {
   Router,
+  MemoryRouter,
   Outlet,
   Link,
   NavLink,

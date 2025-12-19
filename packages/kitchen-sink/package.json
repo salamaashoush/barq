@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run src/server.ts",
-    "build": "bun build src/main.tsx --outdir dist --target browser",
+    "dev": "bun --hot run src/server.ts",
+    "build": "bun build src/main.tsx --outdir dist --target browser --conditions bun",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -169,28 +169,28 @@ function KeyframeDemo() {
       <div class={animationRowStyle}>
         <div
           class={animatedBoxStyle}
-          style={{
+          style={() => ({
             animation: animating() ? `${pulse} 1s ease-in-out infinite` : "none",
-          }}
+          })}
         >
           Pulse
         </div>
 
         <div
           class={animatedBoxStyle}
-          style={{
+          style={() => ({
             animation: animating() ? `${spin} 2s linear infinite` : "none",
             borderRadius: "50%",
-          }}
+          })}
         >
           Spin
         </div>
 
         <div
           class={animatedBoxStyle}
-          style={{
+          style={() => ({
             animation: animating() ? `${bounce} 0.6s ease-in-out infinite` : "none",
-          }}
+          })}
         >
           Bounce
         </div>
@@ -440,11 +440,13 @@ function ThemeDemo() {
 function CssVarDemo() {
   const [hue, setHue] = useState(220);
 
-  const vars = defineVars({
-    "primary-hue": String(hue()),
-    "primary-color": `hsl(${hue()}, 70%, 50%)`,
-    "primary-light": `hsl(${hue()}, 70%, 70%)`,
-  });
+  // Make vars reactive by using a getter function
+  const getVars = () =>
+    defineVars({
+      "primary-hue": String(hue()),
+      "primary-color": `hsl(${hue()}, 70%, 50%)`,
+      "primary-light": `hsl(${hue()}, 70%, 70%)`,
+    });
 
   return (
     <DemoCard title="cssVar & defineVars">
@@ -464,24 +466,27 @@ function CssVarDemo() {
           border-radius: 8px;
           margin-top: 12px;
         `}
-        style={{
-          ...Object.fromEntries(
-            vars
-              .split(";")
-              .filter(Boolean)
-              .map((v) => {
-                const [key, val] = v.split(":");
-                return [key.trim(), val?.trim()];
-              }),
-          ),
-          background: cssVar("primary-color"),
-          color: "white",
+        style={() => {
+          const vars = getVars();
+          return {
+            ...Object.fromEntries(
+              vars
+                .split(";")
+                .filter(Boolean)
+                .map((v) => {
+                  const [key, val] = v.split(":");
+                  return [key.trim(), val?.trim()];
+                }),
+            ),
+            background: cssVar("primary-color"),
+            color: "white",
+          };
         }}
       >
         <p>Background uses {cssVar("primary-color")}</p>
       </div>
 
-      <pre class={previewStyle}>{vars}</pre>
+      <pre class={previewStyle}>{getVars}</pre>
     </DemoCard>
   );
 }

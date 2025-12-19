@@ -46,6 +46,7 @@ import {
   clearRange,
   createContext,
   createMarkerPair,
+  createScope,
   insertNodes,
   onCleanup,
   useContext,
@@ -239,14 +240,31 @@ function matchRoutes(
       const exactMatch = matchPath(pathname, pattern);
       const prefixMatch = matchPath(pathname, prefixPattern);
 
+      if (exactMatch && route.children) {
+        // Exact match on layout route - look for index child route ("/")
+        const indexMatch = matchRoutes("/", route.children, [...parents, route]);
+        if (indexMatch) {
+          return {
+            ...indexMatch,
+            params: { ...exactMatch, ...indexMatch.params },
+          };
+        }
+        // No index route - just render the layout
+        return { route, params: exactMatch, parents };
+      }
+
       if (exactMatch) {
-        // Exact match on layout route (e.g., /dashboard matches /dashboard)
+        // Exact match on leaf layout route (no children matched)
         return { route, params: exactMatch, parents };
       }
 
       if (prefixMatch && route.children) {
         // Prefix match - try to match children
-        const childPathname = pathname.slice(route.path.length) || "/";
+        let childPathname = pathname.slice(route.path.length) || "/";
+        // Ensure child pathname has leading slash (handles root "/" case)
+        if (!childPathname.startsWith("/")) {
+          childPathname = `/${childPathname}`;
+        }
         const childMatch = matchRoutes(childPathname, route.children, [...parents, route]);
         if (childMatch) {
           // Merge params from parent
@@ -286,18 +304,23 @@ interface RouterState {
   config: RouterConfig;
   loaderCache: Map<string, { data: unknown; timestamp: number }>;
   base: string;
+  // Navigate function for this router instance
+  navigate: (to: string, options?: { replace?: boolean; state?: unknown }) => void;
 }
 
-// Global router state - single router per page
-let routerState: RouterState | null = null;
+// Global router state - for the main browser router
+let globalRouterState: RouterState | null = null;
 
 // Event listener cleanup references
 let popstateHandler: (() => void) | null = null;
 let clickHandler: ((e: MouseEvent) => void) | null = null;
 
 // ============================================================================
-// Outlet Context - tracks the outlet level in the component tree
+// Router Context - for nested/memory routers
 // ============================================================================
+
+// Context holds the current router state (null means use global)
+const RouterContext = createContext<RouterState | null>(null);
 
 // Context just tracks the current outlet level
 const OutletLevelContext = createContext<number>(0);
@@ -318,8 +341,8 @@ function parseLocation(base: string): Location {
   };
 }
 
-/** Cleanup router state and event listeners */
-function cleanupRouter(): void {
+/** Cleanup global router state and event listeners */
+function cleanupGlobalRouter(): void {
   if (popstateHandler) {
     window.removeEventListener("popstate", popstateHandler);
     popstateHandler = null;
@@ -328,21 +351,48 @@ function cleanupRouter(): void {
     document.removeEventListener("click", clickHandler);
     clickHandler = null;
   }
-  routerState = null;
+  globalRouterState = null;
 }
 
-/** Initialize the router */
-function initRouter(config: RouterConfig): () => void {
-  // Clean up any existing router first
-  cleanupRouter();
+/** Create a location object from a path string */
+function createLocation(pathname: string, search = "", hash = ""): Location {
+  return {
+    pathname,
+    search,
+    hash,
+    params: {},
+    searchParams: new URLSearchParams(search),
+  };
+}
 
+/** Initialize the global browser router */
+function initBrowserRouter(config: RouterConfig): RouterState {
   const base = config.base || "";
   const [location, setLocation] = useState<Location>(parseLocation(base));
   const [params, setParams] = useState<Params>({});
   const [matchedRoutes, setMatchedRoutes] = useState<RouteDefinition[]>([]);
   const [loaderData, setLoaderData] = useState<unknown[]>([]);
 
-  routerState = {
+  // Navigation function for browser router
+  const browserNavigate = (to: string, options: { replace?: boolean; state?: unknown } = {}) => {
+    const fullPath = to.startsWith("/") ? base + to : to;
+
+    if (options.replace) {
+      window.history.replaceState(options.state ?? null, "", fullPath);
+    } else {
+      window.history.pushState(options.state ?? null, "", fullPath);
+    }
+
+    // Parse and set new location
+    const url = new URL(fullPath, window.location.origin);
+    const pathname = url.pathname.startsWith(base)
+      ? url.pathname.slice(base.length) || "/"
+      : url.pathname;
+
+    setLocation(createLocation(pathname, url.search, url.hash));
+  };
+
+  const state: RouterState = {
     location,
     setLocation,
     params,
@@ -354,18 +404,64 @@ function initRouter(config: RouterConfig): () => void {
     config,
     loaderCache: new Map(),
     base,
+    navigate: browserNavigate,
   };
+
+  return state;
+}
+
+/** Initialize a memory router (isolated, no browser history) */
+function initMemoryRouter(config: RouterConfig, initialPath: string): RouterState {
+  const base = config.base || "";
+  const [location, setLocation] = useState<Location>(createLocation(initialPath));
+  const [params, setParams] = useState<Params>({});
+  const [matchedRoutes, setMatchedRoutes] = useState<RouteDefinition[]>([]);
+  const [loaderData, setLoaderData] = useState<unknown[]>([]);
+
+  // Navigation function for memory router - only updates internal state
+  const memoryNavigate = (to: string, _options: { replace?: boolean; state?: unknown } = {}) => {
+    // Parse the path
+    const url = new URL(to, "http://localhost");
+    const pathname = url.pathname.startsWith(base)
+      ? url.pathname.slice(base.length) || "/"
+      : url.pathname;
+
+    setLocation(createLocation(pathname, url.search, url.hash));
+  };
+
+  const state: RouterState = {
+    location,
+    setLocation,
+    params,
+    setParams,
+    matchedRoutes,
+    setMatchedRoutes,
+    loaderData,
+    setLoaderData,
+    config,
+    loaderCache: new Map(),
+    base,
+    navigate: memoryNavigate,
+  };
+
+  return state;
+}
+
+/** Setup global browser event listeners */
+function setupBrowserListeners(state: RouterState): () => void {
+  const base = state.base;
 
   // Listen for popstate (back/forward)
   popstateHandler = () => {
-    if (routerState) {
-      routerState.setLocation(parseLocation(base));
-    }
+    state.setLocation(parseLocation(base));
   };
   window.addEventListener("popstate", popstateHandler);
 
   // Intercept link clicks for SPA navigation
   clickHandler = (e: MouseEvent) => {
+    // Skip if already handled by another router (e.g., MemoryRouter)
+    if (e.defaultPrevented) return;
+
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
     const anchor = target.closest("a");
@@ -394,68 +490,52 @@ function initRouter(config: RouterConfig): () => void {
     }
 
     e.preventDefault();
-    navigate(href);
+    state.navigate(href);
   };
   document.addEventListener("click", clickHandler);
 
   // Return cleanup function
-  return cleanupRouter;
+  return cleanupGlobalRouter;
 }
 
 // ============================================================================
 // Navigation
 // ============================================================================
 
-/** Navigate to a new path */
+/** Navigate to a new path (uses global router) */
 export function navigate(to: string, options: { replace?: boolean; state?: unknown } = {}): void {
-  if (!routerState) {
+  if (!globalRouterState) {
     throw new Error("Router not initialized. Use <Router> component first.");
   }
-
-  const base = routerState.config.base || "";
-  const fullPath = to.startsWith("/") ? base + to : to;
-
-  if (options.replace) {
-    window.history.replaceState(options.state ?? null, "", fullPath);
-  } else {
-    window.history.pushState(options.state ?? null, "", fullPath);
-  }
-
-  // Parse and set new location
-  const url = new URL(fullPath, window.location.origin);
-  const pathname = url.pathname.startsWith(base)
-    ? url.pathname.slice(base.length) || "/"
-    : url.pathname;
-
-  const newLocation: Location = {
-    pathname,
-    search: url.search,
-    hash: url.hash,
-    params: {},
-    searchParams: new URLSearchParams(url.search),
-  };
-
-  routerState.setLocation(newLocation);
+  globalRouterState.navigate(to, options);
 }
 
 // ============================================================================
 // Hooks
 // ============================================================================
 
+/** Get current router state from context or global */
+function useRouterState(): RouterState {
+  // Try to get from context first (for MemoryRouter)
+  const contextState = useContext(RouterContext);
+  const state = contextState() || globalRouterState;
+
+  if (!state) {
+    throw new Error("Router not initialized. Use <Router> or <MemoryRouter> component first.");
+  }
+  return state;
+}
+
 /** Get current location */
 export function useLocation(): () => Location {
-  if (!routerState) {
-    throw new Error("Router not initialized. Use <Router> component first.");
-  }
-  return routerState.location;
+  const state = useRouterState();
+  return state.location;
 }
 
 /** Get current route params */
 export function useParams<P extends Params = Params>(): () => P {
-  if (!routerState) {
-    throw new Error("Router not initialized. Use <Router> component first.");
-  }
-  return routerState.params as () => P;
+  const state = useRouterState();
+  return state.params as () => P;
 }
 
 /** Get current search params */
@@ -463,7 +543,8 @@ export function useSearchParams(): [
   () => SearchParams,
   (params: Record<string, string> | ((prev: SearchParams) => Record<string, string>)) => void,
 ] {
-  const location = useLocation();
+  const state = useRouterState();
+  const location = state.location;
 
   const getSearchParams = () => location().searchParams;
 
@@ -474,15 +555,19 @@ export function useSearchParams(): [
     const newParams = typeof params === "function" ? params(current) : params;
     const searchString = new URLSearchParams(newParams).toString();
     const search = searchString ? `?${searchString}` : "";
-    navigate(location().pathname + search, { replace: true });
+    state.navigate(location().pathname + search, { replace: true });
   };
 
   return [getSearchParams, setSearchParams];
 }
 
-/** Get navigate function */
-export function useNavigate(): typeof navigate {
-  return navigate;
+/** Get navigate function for current router */
+export function useNavigate(): (
+  to: string,
+  options?: { replace?: boolean; state?: unknown },
+) => void {
+  const state = useRouterState();
+  return state.navigate;
 }
 
 // ============================================================================
@@ -496,16 +581,16 @@ function loaderCacheKey(path: string, params: Params, search: string): string {
 
 /** Execute loader with caching */
 async function executeLoader<T>(
+  state: RouterState,
   route: RouteDefinition<T>,
   params: Params,
   searchParams: SearchParams,
   signal: AbortSignal,
 ): Promise<T | undefined> {
   if (!route.loader) return undefined;
-  if (!routerState) return undefined;
 
   const cacheKey = loaderCacheKey(route.path, params, searchParams.toString());
-  const cached = routerState.loaderCache.get(cacheKey);
+  const cached = state.loaderCache.get(cacheKey);
 
   // Return cached if fresh (5 seconds)
   if (cached && Date.now() - cached.timestamp < 5000) {
@@ -514,7 +599,7 @@ async function executeLoader<T>(
 
   const data = await route.loader({ params, searchParams, signal });
 
-  routerState.loaderCache.set(cacheKey, { data, timestamp: Date.now() });
+  state.loaderCache.set(cacheKey, { data, timestamp: Date.now() });
 
   return data;
 }
@@ -532,12 +617,17 @@ interface LinkProps {
 
 /** Link component for SPA navigation */
 export function Link(props: LinkProps): JSXElement {
+  // Get navigate at render time - captures the current router context
+  const state = useRouterState();
+
   const handleClick = (e: MouseEvent) => {
-    if (props.replace) {
-      e.preventDefault();
-      navigate(props.href, { replace: true });
+    // Skip if modifier keys or not left click
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      return;
     }
-    // Normal clicks are handled by the global click handler
+    e.preventDefault();
+    e.stopPropagation(); // Stop event from bubbling to document handler
+    state.navigate(props.href, { replace: props.replace });
   };
 
   return (
@@ -558,6 +648,7 @@ interface NavLinkProps {
 /** NavLink - link with active state */
 export function NavLink(props: NavLinkProps): JSXElement {
   const location = useLocation();
+  const state = useRouterState();
 
   // Use useMemo for reactive class computation
   const className = useMemo(() => {
@@ -573,8 +664,18 @@ export function NavLink(props: NavLinkProps): JSXElement {
     return classes.join(" ");
   });
 
+  const handleClick = (e: MouseEvent) => {
+    // Skip if modifier keys or not left click
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation(); // Stop event from bubbling to document handler
+    state.navigate(props.href);
+  };
+
   return (
-    <a href={props.href} class={() => className()}>
+    <a href={props.href} class={() => className()} onClick={handleClick}>
       {props.children}
     </a>
   );
@@ -605,7 +706,11 @@ export function Outlet(): JSXElement {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
-  if (!routerState) {
+  // Get router state from context or global
+  const contextState = useContext(RouterContext);
+  const state = contextState() || globalRouterState;
+
+  if (!state) {
     insertNodes(endMarker, [document.createTextNode("Router not initialized")]);
     return fragment;
   }
@@ -617,13 +722,15 @@ export function Outlet(): JSXElement {
   // Track the previous route path at this level to detect changes
   let prevRoutePath: string | null = null;
   let currentNodes: Node[] = [];
+  // Track dispose function for current route's reactive scope
+  let disposeCurrentRoute: (() => void) | null = null;
 
   // Helper to render the current route
   const renderRoute = () => {
     // Read matchedRoutes directly to establish dependency tracking
-    const routes = routerState?.matchedRoutes() ?? [];
-    const allData = routerState?.loaderData() ?? [];
-    const params = routerState?.params() ?? {};
+    const routes = state.matchedRoutes();
+    const allData = state.loaderData();
+    const params = state.params();
 
     // Get route at our level
     const route = level < routes.length ? routes[level] : null;
@@ -639,14 +746,20 @@ export function Outlet(): JSXElement {
 
     prevRoutePath = currentRoutePath;
 
+    // Dispose previous route's effects before clearing DOM
+    if (disposeCurrentRoute) {
+      disposeCurrentRoute();
+      disposeCurrentRoute = null;
+    }
+
     // Clear current content at this level
     clearRange(startMarker, endMarker);
     currentNodes = [];
 
     if (!route) {
       // No route at this level - show fallback if root, nothing if nested
-      if (level === 0 && routerState?.config.fallback) {
-        const fallbackNodes = childToNodes(routerState?.config.fallback());
+      if (level === 0 && state.config.fallback) {
+        const fallbackNodes = childToNodes(state.config.fallback());
         insertNodes(endMarker, fallbackNodes);
         currentNodes = fallbackNodes;
       } else if (level === 0) {
@@ -657,23 +770,35 @@ export function Outlet(): JSXElement {
       return;
     }
 
-    // Render the route component with level+1 context for nested outlets
+    // Render the route component inside a scope so its effects can be disposed
+    // when the route changes. This prevents orphaned effects from accumulating.
     const RouteComp = route.component as (props: RouteComponentProps) => Child;
-    const content = (
-      <OutletLevelContext.Provider value={() => level + 1}>
-        {() =>
-          RouteComp({
-            params,
-            data,
-            children: undefined,
-          })
-        }
-      </OutletLevelContext.Provider>
-    );
 
-    const nodes = childToNodes(content);
-    insertNodes(endMarker, nodes);
-    currentNodes = nodes;
+    createScope((dispose) => {
+      disposeCurrentRoute = dispose;
+
+      // Render with proper context for nested outlets
+      // Must wrap in RouterContext.Provider so Links/NavLinks inside get the correct router
+      const content = (
+        <RouterContext.Provider value={() => state}>
+          {() => (
+            <OutletLevelContext.Provider value={() => level + 1}>
+              {() =>
+                RouteComp({
+                  params,
+                  data,
+                  children: undefined,
+                })
+              }
+            </OutletLevelContext.Provider>
+          )}
+        </RouterContext.Provider>
+      );
+
+      const nodes = childToNodes(content);
+      insertNodes(endMarker, nodes);
+      currentNodes = nodes;
+    });
   };
 
   // Use queueMicrotask to defer effect creation to outside any parent effect context
@@ -684,7 +809,7 @@ export function Outlet(): JSXElement {
 
   // Only do initial render synchronously if routes are already available
   // (avoids 404 flash when Router effect hasn't run yet)
-  if (routerState.matchedRoutes().length > 0) {
+  if (state.matchedRoutes().length > 0) {
     renderRoute();
   }
 
@@ -696,13 +821,8 @@ interface RouterProps {
   children?: Child;
 }
 
-/** Main Router component */
-export function Router(props: RouterProps): JSXElement {
-  const cleanup = initRouter(props.config);
-
-  // Register cleanup when router unmounts
-  onCleanup(cleanup);
-
+/** Shared route matching effect logic */
+function useRouteMatching(state: RouterState): void {
   let currentController: AbortController | null = null;
 
   // Cleanup abort controller
@@ -715,9 +835,7 @@ export function Router(props: RouterProps): JSXElement {
 
   // Effect to match routes and load data when location changes
   useEffect(() => {
-    if (!routerState) return;
-
-    const loc = routerState.location();
+    const loc = state.location();
 
     // Cancel previous loaders
     if (currentController) {
@@ -726,14 +844,14 @@ export function Router(props: RouterProps): JSXElement {
     currentController = new AbortController();
     const signal = currentController.signal;
 
-    const match = matchRoutes(loc.pathname, routerState.config.routes);
+    const match = matchRoutes(loc.pathname, state.config.routes);
 
     if (!match) {
       // No match - clear routes (Outlet will show 404)
       batch(() => {
-        routerState?.setMatchedRoutes([]);
-        routerState?.setLoaderData([]);
-        routerState?.setParams({});
+        state.setMatchedRoutes([]);
+        state.setLoaderData([]);
+        state.setParams({});
       });
       return;
     }
@@ -744,7 +862,7 @@ export function Router(props: RouterProps): JSXElement {
     // Load data for all routes in parallel
     const loadData = async () => {
       const loaderPromises = allRoutes.map((route) =>
-        executeLoader(route, match.params, loc.searchParams, signal),
+        executeLoader(state, route, match.params, loc.searchParams, signal),
       );
 
       try {
@@ -753,18 +871,18 @@ export function Router(props: RouterProps): JSXElement {
 
         // Update routes, data, and params atomically - this triggers Outlet effects
         batch(() => {
-          routerState?.setMatchedRoutes(allRoutes);
-          routerState?.setLoaderData(results);
-          routerState?.setParams(match.params);
+          state.setMatchedRoutes(allRoutes);
+          state.setLoaderData(results);
+          state.setParams(match.params);
         });
       } catch (err) {
         if (signal.aborted) return;
         console.error("Router loader error:", err);
         // Still set routes so UI can show error state
         batch(() => {
-          routerState?.setMatchedRoutes(allRoutes);
-          routerState?.setLoaderData(allRoutes.map(() => undefined));
-          routerState?.setParams(match.params);
+          state.setMatchedRoutes(allRoutes);
+          state.setLoaderData(allRoutes.map(() => undefined));
+          state.setParams(match.params);
         });
       }
     };
@@ -773,14 +891,37 @@ export function Router(props: RouterProps): JSXElement {
     const hasLoaders = allRoutes.some((r) => r.loader);
     if (!hasLoaders) {
       batch(() => {
-        routerState?.setMatchedRoutes(allRoutes);
-        routerState?.setLoaderData(allRoutes.map(() => undefined));
-        routerState?.setParams(match.params);
+        state.setMatchedRoutes(allRoutes);
+        state.setLoaderData(allRoutes.map(() => undefined));
+        state.setParams(match.params);
       });
     } else {
       void loadData();
     }
   });
+}
+
+/**
+ * Main Router component - uses browser history
+ *
+ * Use this for your main application router. Only one Router should exist
+ * at the root of your app. For embedded routing demos or isolated routing,
+ * use MemoryRouter instead.
+ */
+export function Router(props: RouterProps): JSXElement {
+  // Clean up any existing global router
+  cleanupGlobalRouter();
+
+  // Initialize browser router state
+  const state = initBrowserRouter(props.config);
+  globalRouterState = state;
+
+  // Setup browser event listeners
+  const cleanup = setupBrowserListeners(state);
+  onCleanup(cleanup);
+
+  // Setup route matching
+  useRouteMatching(state);
 
   // Return outlet or children
   if (props.children) {
@@ -788,6 +929,68 @@ export function Router(props: RouterProps): JSXElement {
   }
 
   return <Outlet />;
+}
+
+interface MemoryRouterProps {
+  config: RouterConfig;
+  /** Initial path for the memory router (defaults to "/") */
+  initialPath?: string;
+  children?: Child;
+}
+
+/**
+ * Memory Router - isolated router that doesn't affect browser URL
+ *
+ * Use this for:
+ * - Embedded routing demos
+ * - Testing
+ * - Isolated routing areas within a page
+ *
+ * The MemoryRouter maintains its own internal location state and doesn't
+ * interact with browser history. Multiple MemoryRouters can coexist.
+ *
+ * @example
+ * ```tsx
+ * // Embedded routing demo
+ * <MemoryRouter
+ *   initialPath="/dashboard"
+ *   config={{ routes: demoRoutes }}
+ * />
+ * ```
+ */
+export function MemoryRouter(props: MemoryRouterProps): JSXElement {
+  const initialPath = props.initialPath || "/";
+
+  // Initialize memory router state
+  const state = initMemoryRouter(props.config, initialPath);
+
+  // Do initial route match synchronously so first render has routes
+  const initialMatch = matchRoutes(initialPath, state.config.routes);
+  if (initialMatch) {
+    const allRoutes = [...initialMatch.parents, initialMatch.route];
+    batch(() => {
+      state.setMatchedRoutes(allRoutes);
+      state.setLoaderData(allRoutes.map(() => undefined));
+      state.setParams(initialMatch.params);
+    });
+  }
+
+  // Setup route matching for future navigations
+  useRouteMatching(state);
+
+  // Provide state via context so hooks and Outlet use this router
+  // Also reset OutletLevelContext to 0 so nested Outlets start fresh
+  // NOTE: Must use function children for RouterContext.Provider so inner JSX
+  // is evaluated AFTER the context is pushed onto the stack
+  return (
+    <RouterContext.Provider value={() => state}>
+      {() => (
+        <OutletLevelContext.Provider value={() => 0}>
+          {() => (props.children ? <Fragment>{props.children}</Fragment> : <Outlet />)}
+        </OutletLevelContext.Provider>
+      )}
+    </RouterContext.Provider>
+  );
 }
 
 // ============================================================================

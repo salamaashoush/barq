@@ -355,10 +355,16 @@ function TimerDemo() {
   const [intervalActive, setIntervalActive] = useState(false);
   const [message, setMessage] = useState("");
 
-  useInterval(() => setCount((c) => c + 1), () => (intervalActive() ? 1000 : null));
+  useInterval(
+    () => setCount((c) => c + 1),
+    () => (intervalActive() ? 1000 : null),
+  );
 
   const [showTimeout, setShowTimeout] = useState(false);
-  useTimeout(() => setMessage("Timeout fired!"), () => (showTimeout() ? 2000 : null));
+  useTimeout(
+    () => setMessage("Timeout fired!"),
+    () => (showTimeout() ? 2000 : null),
+  );
 
   return (
     <DemoCard title="useInterval & useTimeout">

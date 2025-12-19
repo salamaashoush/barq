@@ -2,8 +2,9 @@
  * Main App component with all demos
  */
 
-import { For, Match, Switch, useState } from "@barqjs/core";
-import { clsx, css } from "@barqjs/extra";
+import { For } from "@barqjs/core";
+import { css } from "@barqjs/extra";
+import { NavLink, Outlet, type RouteDefinition, Router, route, useLocation } from "@barqjs/extra";
 
 import { AsyncDemo } from "./demos/AsyncDemo";
 import { ComponentsDemo } from "./demos/ComponentsDemo";
@@ -12,7 +13,6 @@ import { HooksDemo } from "./demos/HooksDemo";
 import { JsxTypesDemo } from "./demos/JsxTypesDemo";
 import { QueryDemo } from "./demos/QueryDemo";
 import { RoutingDemo } from "./demos/RoutingDemo";
-// Demo components
 import { SignalsDemo } from "./demos/SignalsDemo";
 import { StoreDemo } from "./demos/StoreDemo";
 
@@ -27,6 +27,65 @@ const sections = [
   { id: "routing", label: "Routing", component: RoutingDemo },
   { id: "jsx-types", label: "JSX Types", component: JsxTypesDemo },
 ] as const;
+
+// Build routes from sections
+const routes: RouteDefinition[] = [
+  route({
+    path: "/",
+    component: Layout,
+    children: [
+      // Default route redirects to signals
+      route({ path: "/", component: SignalsDemo }),
+      ...sections.map((section) =>
+        route({
+          path: `/${section.id}`,
+          component: section.component,
+        }),
+      ),
+    ] as RouteDefinition[],
+  }),
+];
+
+// Layout with sidebar navigation
+function Layout() {
+  const location = useLocation();
+
+  const currentSection = () => {
+    const path = location().pathname;
+    if (path === "/") return sections[0];
+    const id = path.slice(1); // Remove leading /
+    return sections.find((s) => s.id === id) || sections[0];
+  };
+
+  return (
+    <div class={layoutStyle}>
+      <nav class={sidebarStyle}>
+        <div class={logoStyle}>Barq</div>
+        <div class={subtitleStyle}>Kitchen Sink Demo</div>
+
+        <For each={sections}>
+          {(section) => (
+            <NavLink href={`/${section.id}`} class={navItemStyle} activeClass={navItemActiveStyle}>
+              {section.label}
+            </NavLink>
+          )}
+        </For>
+      </nav>
+
+      <main class={mainStyle}>
+        <header class={headerStyle}>
+          <h1 class={titleStyle}>{() => currentSection()?.label}</h1>
+        </header>
+
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
+export function App() {
+  return <Router config={{ routes }} />;
+}
 
 // Styles
 const layoutStyle = css`
@@ -66,11 +125,11 @@ const navItemStyle = css`
   color: #94a3b8;
   margin-bottom: 4px;
   transition: all 0.15s;
+  text-decoration: none;
 
   &:hover {
     background: #334155;
     color: #e2e8f0;
-    text-decoration: none;
   }
 `;
 
@@ -101,49 +160,3 @@ const titleStyle = css`
   font-weight: bold;
   color: #f8fafc;
 `;
-
-export function App() {
-  const [activeSection, setActiveSection] = useState<string>("signals");
-
-  return (
-    <div class={layoutStyle}>
-      <nav class={sidebarStyle}>
-        <div class={logoStyle}>Barq</div>
-        <div class={subtitleStyle}>Kitchen Sink Demo</div>
-
-        <For each={sections}>
-          {(section) => (
-            <a
-              href={`#${section.id}`}
-              class={clsx(navItemStyle, activeSection() === section.id && navItemActiveStyle)}
-              onClick={(e: MouseEvent) => {
-                e.preventDefault();
-                setActiveSection(section.id);
-              }}
-            >
-              {section.label}
-            </a>
-          )}
-        </For>
-      </nav>
-
-      <main class={mainStyle}>
-        <header class={headerStyle}>
-          <h1 class={titleStyle}>{() => sections.find((s) => s.id === activeSection())?.label}</h1>
-        </header>
-
-        <Switch fallback={<div>Select a section</div>}>
-          <Match when={() => activeSection() === "signals"}>{() => <SignalsDemo />}</Match>
-          <Match when={() => activeSection() === "components"}>{() => <ComponentsDemo />}</Match>
-          <Match when={() => activeSection() === "store"}>{() => <StoreDemo />}</Match>
-          <Match when={() => activeSection() === "async"}>{() => <AsyncDemo />}</Match>
-          <Match when={() => activeSection() === "css"}>{() => <CssDemo />}</Match>
-          <Match when={() => activeSection() === "hooks"}>{() => <HooksDemo />}</Match>
-          <Match when={() => activeSection() === "query"}>{() => <QueryDemo />}</Match>
-          <Match when={() => activeSection() === "routing"}>{() => <RoutingDemo />}</Match>
-          <Match when={() => activeSection() === "jsx-types"}>{() => <JsxTypesDemo />}</Match>
-        </Switch>
-      </main>
-    </div>
-  );
-}
