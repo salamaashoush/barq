@@ -334,7 +334,7 @@ function RefTypesDemo() {
         <label>Variable ref:</label>
         <input
           type="text"
-          ref={(el) => {
+          ref={(el: HTMLInputElement) => {
             refVariable = el;
           }}
           class={inputStyle}
