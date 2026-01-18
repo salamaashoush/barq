@@ -1,9 +1,12 @@
 /**
  * Store Demo
  * Tests: useStore, produce, reconcile
+ *
+ * NOTE: This file uses clean syntax that the compiler transforms.
+ * Store access like `state.count` is automatically wrapped.
  */
 
-import { For, Index, Show, produce, reconcile, useStore } from "@barqjs/core";
+import { For, Show, produce, reconcile, unwrap, useEffect, useState, useStore } from "@barqjs/core";
 import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection } from "./shared";
 
@@ -44,10 +47,10 @@ function BasicStoreDemo() {
   return (
     <DemoCard title="Basic Store">
       <p>
-        Count: <strong>{() => state.count}</strong>
+        Count: <strong>{state.count}</strong>
       </p>
       <p>
-        Message: <strong>{() => state.message}</strong>
+        Message: <strong>{state.message}</strong>
       </p>
 
       <div class={buttonRowStyle}>
@@ -72,6 +75,22 @@ function NestedStoreDemo() {
       theme: "dark",
       notifications: true,
     },
+  });
+
+  // Signal to hold the raw JSON snapshot
+  const [rawJson, setRawJson] = useState("");
+
+  // Effect tracks store changes, then stores unwrapped raw value
+  useEffect(() => {
+    // Access through proxy to track changes
+    user.name;
+    user.email;
+    user.preferences.theme;
+    user.preferences.notifications;
+
+    // Get raw object and store as JSON
+    const raw = unwrap(user);
+    setRawJson(JSON.stringify(raw, null, 2));
   });
 
   return (
@@ -106,10 +125,7 @@ function NestedStoreDemo() {
           <select
             value={user.preferences.theme}
             onChange={(e: Event) =>
-              setUser("preferences", {
-                ...user.preferences,
-                theme: (e.target as HTMLSelectElement).value as "light" | "dark",
-              })
+              setUser("preferences", "theme", (e.target as HTMLSelectElement).value as "light" | "dark")
             }
             class={selectStyle}
           >
@@ -125,10 +141,7 @@ function NestedStoreDemo() {
             type="checkbox"
             checked={user.preferences.notifications}
             onChange={() =>
-              setUser("preferences", {
-                ...user.preferences,
-                notifications: !user.preferences.notifications,
-              })
+              setUser("preferences", "notifications", (prev: boolean) => !prev)
             }
           />
           Enable Notifications
@@ -136,14 +149,13 @@ function NestedStoreDemo() {
       </div>
 
       <pre class={previewStyle}>
-        {() =>
-          JSON.stringify(
-            { name: user.name, email: user.email, preferences: user.preferences },
-            null,
-            2,
-          )
-        }
+        {/* Rendered from signal updated by effect with unwrap() */}
+        {rawJson}
       </pre>
+
+      <p class={noteStyle}>
+        Effect tracks store → <code>unwrap()</code> gets raw object → updates signal for display.
+      </p>
     </DemoCard>
   );
 }
@@ -170,9 +182,11 @@ function TodoStoreDemo() {
   };
 
   const toggleTodo = (id: number) => {
-    setState("todos", (todos) =>
-      todos.map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)),
-    );
+    // Find index and use path-based setter for cleaner code
+    const index = state.todos.findIndex((t) => t.id === id);
+    if (index !== -1) {
+      setState("todos", index, "completed", (prev: boolean) => !prev);
+    }
   };
 
   const removeTodo = (id: number) => {
@@ -196,7 +210,7 @@ function TodoStoreDemo() {
       <div class={inputRowStyle}>
         <input
           type="text"
-          value={() => inputValue.text}
+          value={inputValue.text}
           onInput={(e: Event) => setInputValue("text", (e.target as HTMLInputElement).value)}
           onKeyDown={(e: KeyboardEvent) => e.key === "Enter" && addTodo()}
           placeholder="Add a todo..."
@@ -207,19 +221,19 @@ function TodoStoreDemo() {
 
       <div class={filterRowStyle}>
         <Button
-          variant={() => (state.filter === "all" ? "primary" : "secondary")}
+          variant={state.filter === "all" ? "primary" : "secondary"}
           onClick={() => setState("filter", "all")}
         >
           All
         </Button>
         <Button
-          variant={() => (state.filter === "active" ? "primary" : "secondary")}
+          variant={state.filter === "active" ? "primary" : "secondary"}
           onClick={() => setState("filter", "active")}
         >
           Active
         </Button>
         <Button
-          variant={() => (state.filter === "completed" ? "primary" : "secondary")}
+          variant={state.filter === "completed" ? "primary" : "secondary"}
           onClick={() => setState("filter", "completed")}
         >
           Completed
@@ -227,34 +241,32 @@ function TodoStoreDemo() {
       </div>
 
       <Show
-        when={() => filteredTodos().length > 0}
+        when={filteredTodos().length > 0}
         fallback={<div class={emptyStyle}>No todos yet!</div>}
       >
-        {() => (
-          <ul class={todoListStyle}>
-            <For each={filteredTodos} keyFn={(todo) => todo.id}>
-              {(todo) => (
-                <li class={todoItemStyle}>
-                  <label class={() => (todo.completed ? completedStyle : "")}>
-                    <input
-                      type="checkbox"
-                      checked={todo.completed}
-                      onChange={() => toggleTodo(todo.id)}
-                    />
-                    {todo.text}
-                  </label>
-                  <button
-                    type="button"
-                    class={deleteButtonStyle}
-                    onClick={() => removeTodo(todo.id)}
-                  >
-                    Delete
-                  </button>
-                </li>
-              )}
-            </For>
-          </ul>
-        )}
+        <ul class={todoListStyle}>
+          <For each={filteredTodos} keyFn={(todo) => todo.id}>
+            {(todo) => (
+              <li class={todoItemStyle}>
+                <label class={todo.completed ? completedStyle : ""}>
+                  <input
+                    type="checkbox"
+                    checked={todo.completed}
+                    onChange={() => toggleTodo(todo.id)}
+                  />
+                  {todo.text}
+                </label>
+                <button
+                  type="button"
+                  class={deleteButtonStyle}
+                  onClick={() => removeTodo(todo.id)}
+                >
+                  Delete
+                </button>
+              </li>
+            )}
+          </For>
+        </ul>
       </Show>
     </DemoCard>
   );
@@ -292,7 +304,7 @@ function ProduceDemo() {
   return (
     <DemoCard title="produce - Immutable Updates">
       <ul class={userListStyle}>
-        <For each={() => state.users}>
+        <For each={state.users}>
           {(user) => (
             <li class={userItemStyle}>
               <span>
@@ -340,7 +352,7 @@ function ReconcileDemo() {
   return (
     <DemoCard title="reconcile - Efficient Diffing">
       <ul class={userListStyle}>
-        <For each={() => state.items} keyFn={(item) => item.id}>
+        <For each={state.items} keyFn={(item) => item.id}>
           {(item) => (
             <li class={userItemStyle}>
               ID: {item.id}, Value: <strong>{item.value}</strong>

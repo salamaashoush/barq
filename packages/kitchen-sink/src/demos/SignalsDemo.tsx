@@ -1,6 +1,12 @@
 /**
  * Signals & State Demo
  * Tests: useState, useMemo, useEffect, batch, untrack, createScope, onCleanup, onMount, Context
+ *
+ * NOTE: This file uses clean syntax that the compiler transforms:
+ * - Signal reads: `count` instead of `count()`
+ * - JSX expressions: `{count + 1}` instead of `{() => count() + 1}`
+ * - Control flow: `when={visible}` instead of `when={() => visible()}`
+ * - Auto-computed: `const doubled = count * 2` instead of `useMemo(() => count() * 2)`
  */
 
 import {
@@ -13,7 +19,6 @@ import {
   untrack,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "@barqjs/core";
@@ -51,8 +56,8 @@ function CounterDemo() {
         Step: <strong>{step}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setCount((c) => c - step())}>-{step}</Button>
-        <Button onClick={() => setCount((c) => c + step())}>+{step}</Button>
+        <Button onClick={() => setCount((c) => c - step)}>-{step}</Button>
+        <Button onClick={() => setCount((c) => c + step)}>+{step}</Button>
         <Button onClick={() => setCount(0)}>Reset</Button>
       </div>
       <div class={buttonRowStyle}>
@@ -64,35 +69,33 @@ function CounterDemo() {
   );
 }
 
-// Derived values with useMemo
+// Derived values with auto-computed (compiler transforms to useMemo)
 function MemoDemo() {
   const [firstName, setFirstName] = useState("John");
   const [lastName, setLastName] = useState("Doe");
 
-  // Computed value
-  const fullName = useMemo(() => `${firstName()} ${lastName()}`);
+  // Auto-computed: compiler transforms `firstName + " " + lastName` to useMemo(() => firstName() + " " + lastName())
+  const fullName = `${firstName} ${lastName}`;
 
   // Expensive computation (simulated)
   const [items, setItems] = useState([1, 2, 3, 4, 5]);
-  const sum = useMemo(() => {
-    console.log("Computing sum...");
-    return items().reduce((a, b) => a + b, 0);
-  });
-  const doubled = useMemo(() => items().map((x) => x * 2));
+  // Auto-computed values
+  const sum = items.reduce((a: number, b: number) => a + b, 0);
+  const doubled = items.map((x: number) => x * 2);
 
   return (
-    <DemoCard title="useMemo - Derived State">
+    <DemoCard title="Auto-Computed - Derived State">
       <div class={inputRowStyle}>
         <input
           type="text"
-          value={firstName()}
+          value={firstName}
           onInput={(e: Event) => setFirstName((e.target as HTMLInputElement).value)}
           placeholder="First name"
           class={inputStyle}
         />
         <input
           type="text"
-          value={lastName()}
+          value={lastName}
           onInput={(e: Event) => setLastName((e.target as HTMLInputElement).value)}
           placeholder="Last name"
           class={inputStyle}
@@ -104,11 +107,11 @@ function MemoDemo() {
 
       <hr class={dividerStyle} />
 
-      <p>Items: {() => items().join(", ")}</p>
+      <p>Items: {items.join(", ")}</p>
       <p>
         Sum: <strong>{sum}</strong>
       </p>
-      <p>Doubled: {() => doubled().join(", ")}</p>
+      <p>Doubled: {doubled.join(", ")}</p>
       <Button onClick={() => setItems((arr) => [...arr, arr.length + 1])}>Add Item</Button>
     </DemoCard>
   );
@@ -123,7 +126,7 @@ function EffectDemo() {
     setLogs((l) => [...l.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
   };
 
-  // Effect that runs on count change
+  // Effect that runs on count change - still need count() in effects
   useEffect(() => {
     addLog(`Count changed to ${count()}`);
   });
@@ -153,7 +156,7 @@ function EffectDemo() {
       <div class={buttonRowStyle}>
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
         <Button onClick={() => setIntervalActive((a) => !a)}>
-          {() => (intervalActive() ? "Stop" : "Start")} Interval
+          {intervalActive ? "Stop" : "Start"} Interval
         </Button>
       </div>
       <Log logs={logs} />
@@ -215,13 +218,13 @@ function BatchDemo() {
 // Untracked reads
 function UntrackDemo() {
   const [tracked, setTracked] = useState(0);
-  const [untracked_, setUntracked] = useState(0);
+  const [untrackedVal, setUntracked] = useState(0);
   const [effectRuns, setEffectRuns] = useState(0);
 
   useEffect(() => {
     // This effect depends on tracked, but reads untracked without dependency
     const t = tracked();
-    const u = untrack(() => untracked_());
+    const u = untrack(() => untrackedVal());
     console.log(`Effect: tracked=${t}, untracked=${u}`);
     setEffectRuns((c) => c + 1);
   });
@@ -232,7 +235,7 @@ function UntrackDemo() {
         Tracked: <strong>{tracked}</strong>
       </p>
       <p>
-        Untracked: <strong>{untracked_}</strong>
+        Untracked: <strong>{untrackedVal}</strong>
       </p>
       <p>
         Effect runs: <strong>{effectRuns}</strong>
@@ -303,13 +306,13 @@ function ScopeDemo() {
   return (
     <DemoCard title="createScope - Effect Isolation">
       <p>
-        Scope active: <strong>{() => (scopeActive() ? "Yes" : "No")}</strong>
+        Scope active: <strong>{scopeActive ? "Yes" : "No"}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={startScope} disabled={() => scopeActive()}>
+        <Button onClick={startScope} disabled={scopeActive}>
           Create Scope
         </Button>
-        <Button onClick={stopScope} disabled={() => !scopeActive()}>
+        <Button onClick={stopScope} disabled={!scopeActive}>
           Dispose Scope
         </Button>
       </div>
@@ -337,7 +340,7 @@ function RefDemo() {
       <input
         ref={inputRef}
         type="text"
-        value={value()}
+        value={value}
         onInput={(e: Event) => setValue((e.target as HTMLInputElement).value)}
         placeholder="Type something..."
         class={inputStyle}
@@ -411,10 +414,12 @@ function OnMountDemo() {
       <p>onMount runs once after the component renders.</p>
       <div class={buttonRowStyle}>
         <Button onClick={() => setShowChild((s) => !s)}>
-          {() => (showChild() ? "Hide" : "Show")} Child
+          {showChild ? "Hide" : "Show"} Child
         </Button>
       </div>
-      <Show when={() => showChild()}>{() => <ChildComponent />}</Show>
+      <Show when={showChild}>
+        <ChildComponent />
+      </Show>
       <Log logs={logs} />
     </DemoCard>
   );
@@ -439,12 +444,10 @@ function ContextDemo() {
         </Button>
       </div>
 
-      <ThemeContext.Provider value={() => theme()}>
-        {() => (
-          <UserContext.Provider value={() => user()}>
-            {() => <ContextConsumer />}
-          </UserContext.Provider>
-        )}
+      <ThemeContext.Provider value={theme}>
+        <UserContext.Provider value={user}>
+          <ContextConsumer />
+        </UserContext.Provider>
       </ThemeContext.Provider>
 
       <p class={noteStyle}>Context provides dependency injection without prop drilling.</p>
@@ -459,20 +462,20 @@ function ContextConsumer() {
 
   return (
     <div
-      class={() => css`
+      class={css`
         padding: 12px;
         border-radius: 6px;
         margin-top: 12px;
-        background: ${theme() === "dark" ? "#1e293b" : "#f1f5f9"};
-        color: ${theme() === "dark" ? "#e2e8f0" : "#1e293b"};
-        border: 1px solid ${theme() === "dark" ? "#475569" : "#cbd5e1"};
+        background: ${theme === "dark" ? "#1e293b" : "#f1f5f9"};
+        color: ${theme === "dark" ? "#e2e8f0" : "#1e293b"};
+        border: 1px solid ${theme === "dark" ? "#475569" : "#cbd5e1"};
       `}
     >
       <p>
         Theme from context: <strong>{theme}</strong>
       </p>
       <p>
-        User: <strong>{() => user().name}</strong> ({() => user().role})
+        User: <strong>{user.name}</strong> ({user.role})
       </p>
     </div>
   );

@@ -1,4 +1,4 @@
-# Bun configuration for box-ui-framework
+# Bun configuration for @barqjs/extra
 # https://bun.sh/docs/runtime/bunfig
 
 [test]

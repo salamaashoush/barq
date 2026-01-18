@@ -12,21 +12,22 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
 import { runSignalBenchmarks } from "./benchmarks/signals.ts";
+import { runStoreBenchmarks } from "./benchmarks/store.ts";
 import type { BenchmarkResult } from "./types.ts";
 import { formatComparison, formatResult } from "./types.ts";
 
 async function main() {
   console.log("=".repeat(80));
-  console.log("BARQ vs SOLID-JS BENCHMARK - Signals/Reactivity");
+  console.log("BARQ vs SOLID-JS BENCHMARK - Signals & Store");
   console.log("=".repeat(80));
   console.log();
   console.log("Both frameworks use fine-grained reactivity.");
-  console.log("This benchmark compares the core signal primitives.");
+  console.log("This benchmark compares signals and store primitives.");
   console.log();
 
   const allResults: BenchmarkResult[] = [];
 
-  // Run signal benchmarks only (these work correctly in Node/Bun)
+  // Run signal benchmarks
   console.log("-".repeat(80));
   console.log("Running: Signals/Reactivity");
   console.log("-".repeat(80));
@@ -41,7 +42,25 @@ async function main() {
     }
     console.log();
   } catch (error) {
-    console.error("Error running benchmarks:", error);
+    console.error("Error running signal benchmarks:", error);
+  }
+
+  // Run store benchmarks
+  console.log("-".repeat(80));
+  console.log("Running: Store");
+  console.log("-".repeat(80));
+
+  try {
+    const results = await runStoreBenchmarks();
+    allResults.push(...results);
+
+    // Print results
+    for (const result of results) {
+      console.log(formatResult(result));
+    }
+    console.log();
+  } catch (error) {
+    console.error("Error running store benchmarks:", error);
   }
 
   // Print comparisons

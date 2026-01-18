@@ -12,6 +12,7 @@ import {
   keyframes,
   setup,
 } from "goober";
+import { onCleanup } from "@barqjs/core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -159,10 +160,105 @@ export function keyframe(strings: TemplateStringsArray, ...values: (string | num
  * `;
  * ```
  */
+// Track injected global CSS to avoid duplicates
+const injectedGlobalCss = new Set<string>();
+
 export function globalCss(strings: TemplateStringsArray, ...values: (string | number)[]): void {
   ensureSetup();
-  glob(strings, ...values);
+
+  // Build the CSS string from template literal
+  let cssText = strings[0];
+  for (let i = 0; i < values.length; i++) {
+    cssText += String(values[i]) + strings[i + 1];
+  }
+
+  // Skip if already injected
+  const trimmed = cssText.trim();
+  if (injectedGlobalCss.has(trimmed)) return;
+  injectedGlobalCss.add(trimmed);
+
+  // Inject directly into goober's style sheet (append, don't replace)
+  // This fixes goober's glob behavior which replaces previous global CSS
+  if (typeof document !== "undefined") {
+    const GOOBER_ID = "_goober";
+    let styleEl = document.getElementById(GOOBER_ID) as HTMLStyleElement | null;
+
+    if (!styleEl) {
+      // Create goober's style element if it doesn't exist
+      styleEl = document.createElement("style");
+      styleEl.id = GOOBER_ID;
+      styleEl.textContent = " ";
+      document.head.appendChild(styleEl);
+    }
+
+    // Append our global CSS to the existing content
+    styleEl.textContent = (styleEl.textContent || "") + cssText;
+  }
 }
+
+/**
+ * Create a global style component (like styled-components' createGlobalStyle)
+ *
+ * Styles are injected when the component mounts and removed when it unmounts.
+ * This is useful for styles that should only be active while a component is rendered,
+ * or for theme-dependent global styles.
+ *
+ * @example
+ * ```tsx
+ * const GlobalStyle = createGlobalStyle`
+ *   body {
+ *     background: ${props => props.dark ? '#000' : '#fff'};
+ *   }
+ *
+ *   ::view-transition-old(root) {
+ *     animation: fade-out 0.3s ease-out;
+ *   }
+ * `;
+ *
+ * function App() {
+ *   return (
+ *     <>
+ *       <GlobalStyle dark={isDarkMode()} />
+ *       <MyContent />
+ *     </>
+ *   );
+ * }
+ * ```
+ */
+export function createGlobalStyle<P extends Record<string, unknown> = Record<string, never>>(
+  strings: TemplateStringsArray,
+  ...interpolations: Array<string | number | ((props: P) => string | number)>
+): (props?: P) => null {
+  return function GlobalStyleComponent(props?: P): null {
+    // We need to import onCleanup dynamically to avoid circular deps
+    // For now, use a simple approach with a style element per instance
+    if (typeof document === "undefined") return null;
+
+    const resolvedProps = props || ({} as P);
+
+    // Build the CSS string, resolving any interpolations
+    let cssText = strings[0];
+    for (let i = 0; i < interpolations.length; i++) {
+      const interp = interpolations[i];
+      const value = typeof interp === "function" ? interp(resolvedProps) : interp;
+      cssText += String(value) + strings[i + 1];
+    }
+
+    // Create a unique style element for this component instance
+    const styleEl = document.createElement("style");
+    styleEl.setAttribute("data-global-style", "");
+    styleEl.textContent = cssText;
+    document.head.appendChild(styleEl);
+
+    // Register cleanup to remove styles when component unmounts
+    onCleanup(() => {
+      styleEl.remove();
+    });
+
+    return null;
+  };
+}
+
 
 /**
  * Extract all generated CSS (useful for SSR)

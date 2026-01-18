@@ -10,6 +10,7 @@ export {
   styled,
   keyframe,
   globalCss,
+  createGlobalStyle,
   getStyleTag,
   setupCss,
   // Class utilities
@@ -48,6 +49,7 @@ export {
 
 // Router
 export type {
+  // Core types
   Location,
   Params,
   SearchParams,
@@ -57,22 +59,51 @@ export type {
   RouteComponentProps,
   RouteComponent,
   RouterConfig,
+  NavigateOptions,
+  // Type-safe path params
+  ExtractRouteParams,
+  PathParams,
+  // Guards
+  NavigationGuard,
+  NavigationGuardContext,
+  // Config types
+  CacheConfig,
+  ScrollRestorationConfig,
+  ViewTransitionConfig,
+  PrefetchConfig,
+  // Error handling
+  ErrorBoundaryProps,
 } from "./router.tsx";
 export {
+  // Components
   Router,
   MemoryRouter,
   Outlet,
   Link,
   NavLink,
   Redirect,
+  Loading,
+  // Navigation
   navigate,
+  prefetch,
+  resolvePath,
+  // Hooks
   useLocation,
   useParams,
   useSearchParams,
   useNavigate,
+  useIsLoading,
+  useMatchedRoutes,
+  // Route builders
   route,
   defineRoute,
   defineRoutes,
+  // Utilities
+  compilePath,
+  matchPath,
+  matchRoutes,
+  clearPathCache,
+  setRouterDebugMode,
 } from "./router.tsx";
 
 // TanStack Query adapter

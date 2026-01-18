@@ -45,7 +45,7 @@ export interface Resource<T> {
  *
  * Following SolidJS patterns:
  * 1. Memoize the source to prevent unnecessary refetches
- * 2. Use scheduled flag to prevent concurrent fetches
+ * 2. Abort in-flight requests when source changes
  * 3. Run fetcher in untracked context
  * 4. Track "refreshing" state separately from "pending"
  */
@@ -55,22 +55,12 @@ export function resource<T, S = unknown>(
 ): Resource<T> {
   const internalState = signal<ResourceState<T>>({ status: "unresolved" });
   let abortController: AbortController | null = null;
-  let scheduled = false;
 
   // Memoize source to only trigger on actual changes (SolidJS pattern)
   const memoizedSource = computed(source);
 
   const load = async (refetching = false) => {
-    // Prevent concurrent fetches
-    if (scheduled && !refetching) return;
-    scheduled = true;
-
-    // Schedule reset of flag
-    queueMicrotask(() => {
-      scheduled = false;
-    });
-
-    // Abort any in-flight request
+    // Abort any in-flight request (this handles concurrent fetches)
     if (abortController) {
       abortController.abort();
     }

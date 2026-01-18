@@ -27,6 +27,8 @@ interface Subscriber extends ReactiveNode {
   cleanup?: () => void;
   /** Cleanup functions registered via onCleanup */
   cleanups: (() => void)[];
+  /** Child subscribers created during execution (for disposal on re-run) */
+  children: Subscriber[];
   /** Whether this is an effect (vs computed) */
   isEffect: boolean;
   /** Whether disposed */
@@ -190,6 +192,7 @@ export function computed<T>(fn: () => T): Computed<T> {
     dirty: true,
     fn,
     cleanups: [],
+    children: [],
     isEffect: false,
     disposed: false,
   };
@@ -291,6 +294,12 @@ function disposeSubscriber(sub: Subscriber): void {
   }
   sub.cleanups.length = 0;
 
+  // Dispose child subscribers
+  for (const child of sub.children) {
+    disposeSubscriber(child);
+  }
+  sub.children.length = 0;
+
   // Remove from pending effects
   pendingEffects.delete(sub);
 
@@ -327,14 +336,21 @@ function runEffect(sub: Subscriber): void {
   }
   sub.cleanups.length = 0;
 
+  // Dispose child subscribers from previous run
+  for (const child of sub.children) {
+    disposeSubscriber(child);
+  }
+  sub.children.length = 0;
+
   // Clean up old dependencies
   cleanupSources(sub);
 
   // Push effect owner for onCleanup registration
+  // Use sub.children so nested effects are tracked for disposal on re-run
   const effectOwner: Owner = {
     cleanups: sub.cleanups,
     dispose: () => disposeSubscriber(sub),
-    children: [],
+    children: sub.children,
     disposed: false,
   };
   ownerStack.push(effectOwner);
@@ -365,6 +381,7 @@ export function effect(fn: () => void | (() => void)): () => void {
     dirty: true,
     fn,
     cleanups: [],
+    children: [],
     isEffect: true,
     disposed: false,
   };
@@ -446,8 +463,14 @@ export function batch(fn: () => void): void {
 /**
  * Create a new reactive scope.
  * All effects created inside are automatically disposed when the scope is disposed.
+ *
+ * @param fn Function to run in the scope, receives dispose function
+ * @param detached If true, don't register with parent owner (for manual lifecycle management)
  */
-export function createScope<T>(fn: (dispose: () => void) => T): T {
+export function createScope<T>(
+  fn: (dispose: () => void) => T,
+  detached = false,
+): T {
   let result: T;
   let disposed = false;
 
@@ -481,6 +504,15 @@ export function createScope<T>(fn: (dispose: () => void) => T): T {
   };
 
   owner.dispose = dispose;
+
+  // Register with parent owner for automatic cleanup when parent disposes
+  // (unless detached for manual lifecycle management)
+  if (!detached) {
+    const parentOwner = getCurrentOwner();
+    if (parentOwner) {
+      parentOwner.cleanups.push(dispose);
+    }
+  }
 
   ownerStack.push(owner);
   try {

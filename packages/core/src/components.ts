@@ -7,7 +7,7 @@
 import type { Resource } from "./async.ts";
 import type { Child, JSXElement } from "./dom.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
-import { type Signal, computed, createScope, effect, signal, untrack } from "./signals.ts";
+import { type Signal, computed, createScope, effect, onCleanup, signal, untrack } from "./signals.ts";
 
 // Re-export marker utilities for external use
 export { createMarker, createMarkerPair, clearRange, insertNodes };
@@ -95,6 +95,14 @@ export function Show<T>(props: {
       disposeContent = null;
     }
 
+    // Register cleanup for when effect is disposed (component unmount)
+    onCleanup(() => {
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
+      }
+    });
+
     // Clear existing content
     clearRange(startMarker, endMarker);
 
@@ -103,11 +111,11 @@ export function Show<T>(props: {
       createScope((dispose) => {
         disposeContent = dispose;
 
+        // Always pass the value to function children - the function can choose to use it or not
+        // Using .length is unreliable (default params have length 0)
         const children =
           typeof props.children === "function"
-            ? props.children.length > 0
-              ? (props.children as (item: NonNullable<T>) => Child)(value)
-              : (props.children as () => Child)()
+            ? (props.children as (item: NonNullable<T>) => Child)(value)
             : props.children;
         const nodes = childToNodes(children);
         insertNodes(endMarker, nodes);
@@ -149,10 +157,11 @@ export function For<T, U extends JSXElement>(props: {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
-  // Cache: key -> { nodes, indexSignal, dispose }
+  // Cache: key -> { nodes, indexSignal, item, dispose }
   type CacheEntry = {
     nodes: Node[];
     indexSignal: Signal<number>;
+    item: T; // Track item value to detect changes
     dispose: () => void;
   };
   const cache = new Map<unknown, CacheEntry>();
@@ -165,6 +174,19 @@ export function For<T, U extends JSXElement>(props: {
 
   // Get key for an item
   const getKey = props.keyFn ?? ((item: T) => item);
+
+  // Register cleanup at component level (not effect level) for when parent unmounts
+  // This ensures item scopes are disposed even though they're detached
+  onCleanup(() => {
+    for (const entry of cache.values()) {
+      entry.dispose();
+    }
+    cache.clear();
+    if (disposeFallback) {
+      disposeFallback();
+      disposeFallback = null;
+    }
+  });
 
   effect(() => {
     // Support both getter function and direct array
@@ -196,6 +218,8 @@ export function For<T, U extends JSXElement>(props: {
     if (disposeFallback) {
       disposeFallback();
       disposeFallback = null;
+      // Clear the fallback nodes from DOM
+      clearRange(startMarker, endMarker);
     }
 
     const newKeys = items.map(getKey);
@@ -227,15 +251,39 @@ export function For<T, U extends JSXElement>(props: {
       }
     }
 
+    // Track which keys were re-rendered (same key but different value)
+    const rerenderedKeys = new Set<unknown>();
+
     // Process new items - create entries and update indices
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const key = newKeys[i];
       let entry = cache.get(key);
 
-      if (!entry) {
-        // Create new entry with reactive index signal in a scope
-        const indexSignal = signal(i);
+      // Check if item value changed (same key, different value)
+      const needsRerender = entry && !Object.is(entry.item, item);
+
+      if (!entry || needsRerender) {
+        // Dispose old entry if re-rendering
+        if (entry) {
+          rerenderedKeys.add(key);
+          entry.dispose();
+          for (const node of entry.nodes) {
+            if (node.parentNode) {
+              node.parentNode.removeChild(node);
+            }
+          }
+        }
+
+        // Create new entry with reactive index signal in a detached scope
+        // (detached because we manage the lifecycle manually via cache)
+        const indexSignal = entry?.indexSignal ?? signal(i);
+        if (entry) {
+          // Reuse index signal, just update if needed
+          if (indexSignal() !== i) {
+            indexSignal.set(i);
+          }
+        }
         let entryNodes: Node[] = [];
         let entryDispose!: () => void;
 
@@ -243,9 +291,9 @@ export function For<T, U extends JSXElement>(props: {
           entryDispose = dispose;
           const result = props.children(item, indexSignal);
           entryNodes = childToNodes(result);
-        });
+        }, true); // detached
 
-        entry = { nodes: entryNodes, indexSignal, dispose: entryDispose };
+        entry = { nodes: entryNodes, indexSignal, item, dispose: entryDispose };
         cache.set(key, entry);
       } else {
         // Update index signal if changed
@@ -255,8 +303,13 @@ export function For<T, U extends JSXElement>(props: {
       }
     }
 
+    // Filter out re-rendered keys from oldKeys so they're treated as new
+    const effectiveOldKeys = rerenderedKeys.size > 0
+      ? currentKeys.filter(k => !rerenderedKeys.has(k))
+      : currentKeys;
+
     // Reconcile DOM order using efficient algorithm
-    reconcileNodes(parent, endMarker, currentKeys, newKeys, cache);
+    reconcileNodes(parent, endMarker, effectiveOldKeys, newKeys, cache);
 
     currentKeys = newKeys;
   });
@@ -272,7 +325,7 @@ function reconcileNodes(
   endMarker: Node,
   oldKeys: unknown[],
   newKeys: unknown[],
-  cache: Map<unknown, { nodes: Node[]; indexSignal: Signal<number>; dispose: () => void }>,
+  cache: Map<unknown, { nodes: Node[] }>,
 ): void {
   const newLen = newKeys.length;
 
@@ -334,36 +387,56 @@ function reconcileNodes(
 }
 
 /**
- * Find longest increasing subsequence
+ * Find longest increasing subsequence using patience sorting + binary search
+ * O(n log n) time complexity
  */
 function longestIncreasingSubsequence(arr: number[]): number[] {
   if (arr.length === 0) return [];
 
   const n = arr.length;
-  const dp: number[] = Array.from({ length: n }, () => 1);
-  const prev: number[] = Array.from({ length: n }, () => -1);
+  // tails[i] = smallest tail value for LIS of length i+1
+  const tails: number[] = [];
+  // indices[i] = index in arr for tails[i]
+  const indices: number[] = [];
+  // parent[i] = index of previous element in LIS ending at arr[i]
+  const parent: number[] = new Array(n).fill(-1);
 
-  let maxLen = 1;
-  let maxIdx = 0;
+  for (let i = 0; i < n; i++) {
+    const val = arr[i];
 
-  for (let i = 1; i < n; i++) {
-    for (let j = 0; j < i; j++) {
-      if (arr[j] < arr[i] && dp[j] + 1 > dp[i]) {
-        dp[i] = dp[j] + 1;
-        prev[i] = j;
+    // Binary search for position where val can extend an LIS
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (tails[mid] < val) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
       }
     }
-    if (dp[i] > maxLen) {
-      maxLen = dp[i];
-      maxIdx = i;
+
+    // lo is the position where val fits
+    if (lo === tails.length) {
+      tails.push(val);
+      indices.push(i);
+    } else {
+      tails[lo] = val;
+      indices[lo] = i;
+    }
+
+    // Track parent for reconstruction
+    if (lo > 0) {
+      parent[i] = indices[lo - 1];
     }
   }
 
-  const result: number[] = [];
-  let idx = maxIdx;
-  while (idx !== -1) {
-    result.unshift(arr[idx]);
-    idx = prev[idx];
+  // Reconstruct the LIS by following parent pointers
+  const result: number[] = new Array(tails.length);
+  let idx = indices[indices.length - 1];
+  for (let i = result.length - 1; i >= 0; i--) {
+    result[i] = arr[idx];
+    idx = parent[idx];
   }
 
   return result;
@@ -461,7 +534,8 @@ export function Index<T, U extends JSXElement>(props: {
       let entry = cache[i];
 
       if (!entry) {
-        // Create new entry with reactive item signal in a scope
+        // Create new entry with reactive item signal in a detached scope
+        // (detached because we manage the lifecycle manually via cache)
         const itemSignal = signal(item);
         let entryNodes: Node[] = [];
         let entryDispose!: () => void;
@@ -470,7 +544,7 @@ export function Index<T, U extends JSXElement>(props: {
           entryDispose = dispose;
           const result = props.children(itemSignal, i);
           entryNodes = childToNodes(result);
-        });
+        }, true); // detached
 
         entry = { nodes: entryNodes, itemSignal, dispose: entryDispose };
         cache[i] = entry;
@@ -488,6 +562,18 @@ export function Index<T, U extends JSXElement>(props: {
     }
 
     currentLength = newLength;
+  });
+
+  // Register cleanup at component level (not effect level) for when parent unmounts
+  onCleanup(() => {
+    for (const entry of cache) {
+      entry.dispose();
+    }
+    cache.length = 0;
+    if (disposeFallback) {
+      disposeFallback();
+      disposeFallback = null;
+    }
   });
 
   return fragment;
@@ -570,13 +656,17 @@ export function Switch(props: {
       const { index, value, match } = result;
       const children = match.children as (item?: unknown) => Child;
 
+      // Use detached scope so it's not auto-disposed when effect re-runs
+      // This preserves inner effects for non-keyed matches
       createScope((dispose) => {
         disposeContent = dispose;
-        const content = untrack(() => (children.length > 0 ? children(value) : children()));
+        // Always pass the value - function can choose to use it or not
+        // Don't use untrack here as it prevents inner effects from tracking
+        const content = children(value);
         const nodes = childToNodes(content);
         insertNodes(endMarker, nodes);
         currentNodes = nodes;
-      });
+      }, true); // detached
 
       currentMatchIndex = index;
       currentValue = value;
@@ -587,10 +677,18 @@ export function Switch(props: {
           const nodes = childToNodes(props.fallback);
           insertNodes(endMarker, nodes);
           currentNodes = nodes;
-        });
+        }, true); // detached
       }
       currentMatchIndex = -1;
       currentValue = undefined;
+    }
+  });
+
+  // Register cleanup at component level for when parent unmounts
+  onCleanup(() => {
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
     }
   });
 
@@ -792,7 +890,6 @@ export function Await<T>(props: {
 export function Portal(props: { target?: HTMLElement | string; children: Child }): JSXElement {
   const marker = createMarker("Portal");
   let container: HTMLDivElement | null = null;
-  let observer: MutationObserver | null = null;
   let disposeContent: (() => void) | null = null;
 
   const cleanup = () => {
@@ -800,15 +897,14 @@ export function Portal(props: { target?: HTMLElement | string; children: Child }
       disposeContent();
       disposeContent = null;
     }
-    if (observer) {
-      observer.disconnect();
-      observer = null;
-    }
     if (container?.parentNode) {
       container.parentNode.removeChild(container);
       container = null;
     }
   };
+
+  // Register cleanup with owner for automatic disposal
+  onCleanup(cleanup);
 
   queueMicrotask(() => {
     if (!marker.isConnected) return;
@@ -827,35 +923,174 @@ export function Portal(props: { target?: HTMLElement | string; children: Child }
     container = document.createElement("div");
     container.style.display = "contents";
 
-    // Render children in a scope
+    // Render children in a detached scope (cleanup handled by onCleanup above)
     createScope((dispose) => {
       disposeContent = dispose;
       const nodes = childToNodes(props.children);
       for (const node of nodes) {
         container!.appendChild(node);
       }
-    });
+    }, true); // detached
 
     target.appendChild(container);
-
-    const parent = marker.parentNode;
-    if (parent) {
-      observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          for (const removed of mutation.removedNodes) {
-            if (removed === marker || removed.contains(marker)) {
-              cleanup();
-              return;
-            }
-          }
-        }
-        if (!marker.isConnected) {
-          cleanup();
-        }
-      });
-      observer.observe(parent, { childList: true, subtree: true });
-    }
   });
 
   return marker;
+}
+
+/**
+ * Dynamic component - render different components based on a reactive value
+ * Similar to SolidJS's Dynamic component
+ */
+export function Dynamic<T extends keyof HTMLElementTagNameMap | ((props: Record<string, unknown>) => JSXElement)>(
+  props: { component: T | (() => T) } & Record<string, unknown>,
+): JSXElement {
+  const [startMarker, endMarker] = createMarkerPair("Dynamic");
+
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(startMarker);
+  fragment.appendChild(endMarker);
+
+  let disposeContent: (() => void) | null = null;
+
+  const getComponent = computed(() => {
+    const comp = props.component;
+    return typeof comp === "function" && !((comp as () => unknown).length === 0 && typeof comp() !== "undefined")
+      ? comp
+      : typeof comp === "function"
+        ? (comp as () => T)()
+        : comp;
+  });
+
+  effect(() => {
+    const component = getComponent();
+
+    // Dispose previous content
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+
+    clearRange(startMarker, endMarker);
+
+    if (!component) return;
+
+    createScope((dispose) => {
+      disposeContent = dispose;
+
+      // Extract component prop and pass rest to the component
+      const { component: _, ...rest } = props;
+      let nodes: Node[];
+
+      if (typeof component === "string") {
+        // Intrinsic element
+        const element = document.createElement(component);
+        for (const key in rest) {
+          if (key === "children") continue;
+          const value = rest[key];
+          if (key.startsWith("on") && typeof value === "function") {
+            element.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
+          } else if (value !== undefined && value !== null) {
+            element.setAttribute(key, String(value));
+          }
+        }
+        if (rest.children) {
+          const childNodes = childToNodes(rest.children as Child);
+          for (const node of childNodes) {
+            element.appendChild(node);
+          }
+        }
+        nodes = [element];
+      } else {
+        // Function component
+        const result = (component as (props: Record<string, unknown>) => JSXElement)(rest);
+        nodes = childToNodes(result as Child);
+      }
+
+      insertNodes(endMarker, nodes);
+    }, true);
+  });
+
+  // Cleanup when parent disposes
+  onCleanup(() => {
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+  });
+
+  return fragment;
+}
+
+/**
+ * Split props into two objects based on keys
+ * @param props The props object to split
+ * @param keys Keys to extract into the first object
+ * @returns Tuple of [extracted, remaining]
+ */
+export function splitProps<T extends Record<string, unknown>, K extends keyof T>(
+  props: T,
+  keys: K[],
+): [Pick<T, K>, Omit<T, K>] {
+  const keySet = new Set(keys);
+  const picked: Partial<Pick<T, K>> = {};
+  const rest: Partial<Omit<T, K>> = {};
+
+  for (const key in props) {
+    if (keySet.has(key as unknown as K)) {
+      (picked as Record<string, unknown>)[key] = props[key];
+    } else {
+      (rest as Record<string, unknown>)[key] = props[key];
+    }
+  }
+
+  return [picked as Pick<T, K>, rest as Omit<T, K>];
+}
+
+/**
+ * Merge multiple props objects, with later objects overriding earlier ones
+ * @param sources Props objects to merge
+ * @returns Merged props object
+ */
+export function mergeProps<T extends Record<string, unknown>[]>(
+  ...sources: T
+): T extends (infer U)[] ? U : never {
+  const result: Record<string, unknown> = {};
+
+  for (const source of sources) {
+    if (!source) continue;
+    for (const key in source) {
+      const value = source[key];
+      // Special handling for children - concat arrays
+      if (key === "children" && result.children !== undefined) {
+        const existing = result.children;
+        if (Array.isArray(existing) && Array.isArray(value)) {
+          result.children = [...existing, ...value];
+        } else if (Array.isArray(existing)) {
+          result.children = [...existing, value];
+        } else if (Array.isArray(value)) {
+          result.children = [existing, ...value];
+        } else {
+          result.children = [existing, value];
+        }
+      } else if (value !== undefined) {
+        result[key] = value;
+      }
+    }
+  }
+
+  return result as T extends (infer U)[] ? U : never;
+}
+
+/**
+ * Resolve children from props, handling functions and arrays
+ * @param fn Function that may return children
+ * @returns Resolved children
+ */
+export function children(fn: () => Child): () => Node[] {
+  const memo = computed(() => {
+    const result = fn();
+    return childToNodes(result);
+  });
+  return memo;
 }

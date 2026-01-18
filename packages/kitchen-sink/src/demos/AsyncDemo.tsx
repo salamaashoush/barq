@@ -1,9 +1,12 @@
 /**
  * Async & Resources Demo
  * Tests: useResource, Suspense, Await
+ *
+ * NOTE: useResource returns accessors that need explicit () calls.
+ * The compiler handles JSX expressions but resource methods need manual calls.
  */
 
-import { Await, ErrorBoundary, Show, Suspense, useResource, useState } from "@barqjs/core";
+import { Await, Show, useResource, useState } from "@barqjs/core";
 import { css } from "@barqjs/extra";
 import { Button, DemoCard, DemoSection } from "./shared";
 
@@ -39,24 +42,22 @@ function ResourceDemo() {
 
   return (
     <DemoCard title="useResource - Basic">
-      <Show when={() => users.loading()}>
+      <Show when={users.loading()}>
         <div class={loadingStyle}>Loading users...</div>
       </Show>
 
-      <Show when={() => users.error()}>
-        <div class={errorStyle}>Error: {() => users.error()?.message}</div>
+      <Show when={users.error()}>
+        <div class={errorStyle}>Error: {users.error()?.message}</div>
       </Show>
 
-      <Show when={() => !users.loading() && !users.error() && users()}>
+      <Show when={!users.loading() && !users.error() && users()}>
         <ul class={listStyle}>
-          {() =>
-            users()?.map((user) => (
-              <li class={listItemStyle}>
-                <strong>{user.name}</strong>
-                <span>{user.email}</span>
-              </li>
-            ))
-          }
+          {users()?.map((user) => (
+            <li class={listItemStyle}>
+              <strong>{user.name}</strong>
+              <span>{user.email}</span>
+            </li>
+          ))}
         </ul>
       </Show>
 
@@ -91,20 +92,20 @@ function ResourceWithSourceDemo() {
       </p>
 
       <div class={resultBoxStyle}>
-        <Show when={() => user.loading()}>
+        <Show when={user.loading()}>
           <div class={loadingStyle}>Loading user {userId}...</div>
         </Show>
 
-        <Show when={() => !user.loading() && user()}>
+        <Show when={!user.loading() && user()}>
           <div>
             <p>
-              <strong>Name:</strong> {() => user()?.name}
+              <strong>Name:</strong> {user()?.name}
             </p>
             <p>
-              <strong>Email:</strong> {() => user()?.email}
+              <strong>Email:</strong> {user()?.email}
             </p>
             <p>
-              <strong>Bio:</strong> {() => user()?.bio || "No bio"}
+              <strong>Bio:</strong> {user()?.bio || "No bio"}
             </p>
           </div>
         </Show>
@@ -139,8 +140,8 @@ function AwaitDemo() {
           error={(err) => <div class={errorStyle}>Error: {err.message}</div>}
         >
           {(data) => (
-            <Show when={() => data !== null} fallback={<p>Click button to fetch</p>}>
-              <div class={successStyle}>Response: {() => JSON.stringify(data)}</div>
+            <Show when={data !== null} fallback={<p>Click button to fetch</p>}>
+              <div class={successStyle}>Response: {JSON.stringify(data)}</div>
             </Show>
           )}
         </Await>
@@ -170,19 +171,19 @@ function ErrorResourceDemo() {
       <Button onClick={() => setShouldFetch(true)}>Fetch (will fail)</Button>
 
       <div class={resultBoxStyle}>
-        <Show when={() => errorData.loading()}>
+        <Show when={errorData.loading()}>
           <div class={loadingStyle}>Fetching...</div>
         </Show>
 
-        <Show when={() => errorData.error()}>
+        <Show when={errorData.error()}>
           <div class={errorStyle}>
             <strong>Error caught:</strong>
-            <p>{() => errorData.error()?.message}</p>
+            <p>{errorData.error()?.message}</p>
             <Button onClick={() => errorData.refetch()}>Retry</Button>
           </div>
         </Show>
 
-        <Show when={() => !shouldFetch() && !errorData.loading() && !errorData.error()}>
+        <Show when={!shouldFetch && !errorData.loading() && !errorData.error()}>
           <p>Click button to trigger an error</p>
         </Show>
       </div>
@@ -222,17 +223,15 @@ function RefetchDemo() {
       </div>
 
       <div class={resultBoxStyle}>
-        <Show when={() => data.loading()}>
+        <Show when={data.loading()}>
           <div class={loadingStyle}>Loading...</div>
         </Show>
 
-        <Show when={() => !data.loading() && data()}>
+        <Show when={!data.loading() && data()}>
           <ul class={compactListStyle}>
-            {() =>
-              data()
-                ?.slice(0, 3)
-                .map((user) => <li>{user.name}</li>)
-            }
+            {data()
+              ?.slice(0, 3)
+              .map((user) => <li>{user.name}</li>)}
           </ul>
         </Show>
       </div>

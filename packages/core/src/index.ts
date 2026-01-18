@@ -22,7 +22,7 @@ export type { Resource, ResourceState, ResourceStatus } from "./async.ts";
 export type { Store } from "./store.ts";
 
 // Store - fine-grained nested reactivity
-export { useStore, produce, reconcile } from "./store.ts";
+export { useStore, produce, reconcile, unwrap } from "./store.ts";
 
 // Core hooks
 export { useState, useMemo, useEffect } from "./hooks.ts";
@@ -56,6 +56,11 @@ export {
   ErrorBoundary,
   Await,
   Portal,
+  Dynamic,
+  // Props utilities
+  splitProps,
+  mergeProps,
+  children,
   // DOM marker utilities
   createMarkerPair,
   insertNodes,

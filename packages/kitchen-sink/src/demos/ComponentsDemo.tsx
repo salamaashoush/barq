@@ -1,6 +1,10 @@
 /**
  * Components Demo
  * Tests: Show, For, Index, Switch, Match, Portal, Fragment, ErrorBoundary
+ *
+ * NOTE: This file uses clean syntax that the compiler transforms:
+ * - Control flow: `when={visible}` instead of `when={() => visible()}`
+ * - Children: direct JSX instead of `{() => <div>...</div>}`
  */
 
 import {
@@ -43,21 +47,19 @@ function ShowDemo() {
         <Button onClick={() => setLoading((l) => !l)}>Toggle Loading</Button>
       </div>
 
-      <Show when={() => loading()} fallback={null}>
-        {() => <div class={loadingStyle}>Loading...</div>}
+      <Show when={loading} fallback={null}>
+        <div class={loadingStyle}>Loading...</div>
       </Show>
 
       <Show
-        when={() => visible() && !loading()}
+        when={visible && !loading}
         fallback={<div class={fallbackStyle}>Content is hidden</div>}
       >
-        {() => (
-          <div class={contentStyle}>
-            This content is conditionally rendered using Show.
-            <br />
-            Visible: {() => (visible() ? "Yes" : "No")}
-          </div>
-        )}
+        <div class={contentStyle}>
+          This content is conditionally rendered using Show.
+          <br />
+          Visible: {visible ? "Yes" : "No"}
+        </div>
       </Show>
     </DemoCard>
   );
@@ -93,8 +95,8 @@ function ForDemo() {
         <Button onClick={shuffleItems}>Shuffle</Button>
       </div>
 
-      <Show when={() => items().length === 0}>
-        {() => <div class={emptyStyle}>No items. Add some!</div>}
+      <Show when={items.length === 0}>
+        <div class={emptyStyle}>No items. Add some!</div>
       </Show>
 
       <ul class={listStyle}>
@@ -102,7 +104,7 @@ function ForDemo() {
           {(item, index) => (
             <li class={listItemStyle}>
               <span>
-                {() => index() + 1}. {item.name} (id: {item.id})
+                {index + 1}. {item.name} (id: {item.id})
               </span>
               <button type="button" class={removeButtonStyle} onClick={() => removeItem(item.id)}>
                 Remove
@@ -152,7 +154,7 @@ function IndexDemo() {
             <input
               class={indexInputStyle}
               type="text"
-              value={value()}
+              value={value}
               onInput={(e: Event) => updateValue(index, (e.target as HTMLInputElement).value)}
               placeholder={`Index ${index}`}
             />
@@ -180,17 +182,17 @@ function SwitchDemo() {
 
       <div class={statusBoxStyle}>
         <Switch fallback={<span>Unknown status</span>}>
-          <Match when={() => status() === "idle"}>
-            {() => <span class={idleStyle}>Idle - Ready to start</span>}
+          <Match when={status === "idle"}>
+            <span class={idleStyle}>Idle - Ready to start</span>
           </Match>
-          <Match when={() => status() === "loading"}>
-            {() => <span class={loadingTextStyle}>Loading...</span>}
+          <Match when={status === "loading"}>
+            <span class={loadingTextStyle}>Loading...</span>
           </Match>
-          <Match when={() => status() === "success"}>
-            {() => <span class={successStyle}>Success! Operation completed.</span>}
+          <Match when={status === "success"}>
+            <span class={successStyle}>Success! Operation completed.</span>
           </Match>
-          <Match when={() => status() === "error"}>
-            {() => <span class={errorStyle}>Error! Something went wrong.</span>}
+          <Match when={status === "error"}>
+            <span class={errorStyle}>Error! Something went wrong.</span>
           </Match>
         </Switch>
       </div>
@@ -214,26 +216,24 @@ function PortalDemo() {
     <DemoCard title="Portal - Render Outside DOM Tree">
       <Button onClick={() => setShowModal(true)}>Open Modal</Button>
 
-      <Show when={() => showModal()}>
-        {() => (
-          <Portal>
-            <div
-              class={overlayStyle}
-              onClick={closeModal}
-              onKeyDown={(e: KeyboardEvent) => e.key === "Escape" && closeModal()}
-              role="dialog"
-              aria-modal="true"
-            >
-              <div class={modalStyle} onClick={(e: MouseEvent) => e.stopPropagation()}>
-                <h3>Modal Title</h3>
-                <p>This modal is rendered via Portal to document.body</p>
-                <button type="button" class={closeButtonStyle} onClick={closeModal}>
-                  Close Modal
-                </button>
-              </div>
+      <Show when={showModal}>
+        <Portal>
+          <div
+            class={overlayStyle}
+            onClick={closeModal}
+            onKeyDown={(e: KeyboardEvent) => e.key === "Escape" && closeModal()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div class={modalStyle} onClick={(e: MouseEvent) => e.stopPropagation()}>
+              <h3>Modal Title</h3>
+              <p>This modal is rendered via Portal to document.body</p>
+              <button type="button" class={closeButtonStyle} onClick={closeModal}>
+                Close Modal
+              </button>
             </div>
-          </Portal>
-        )}
+          </div>
+        </Portal>
       </Show>
 
       <p class={noteStyle}>Portal renders children outside the current DOM hierarchy.</p>
@@ -248,7 +248,7 @@ function ErrorBoundaryDemo() {
   return (
     <DemoCard title="ErrorBoundary - Error Handling">
       <Button onClick={() => setShouldError((e) => !e)}>
-        {() => (shouldError() ? "Fix Component" : "Break Component")}
+        {shouldError ? "Fix Component" : "Break Component"}
       </Button>
 
       <div class={boundaryBoxStyle}>

@@ -2,9 +2,22 @@
  * Main App component with all demos
  */
 
-import { For } from "@barqjs/core";
-import { css } from "@barqjs/extra";
-import { NavLink, Outlet, type RouteDefinition, Router, route, useLocation } from "@barqjs/extra";
+import { For, Show } from "@barqjs/core";
+import { css, globalCss } from "@barqjs/extra";
+import {
+  NavLink,
+  type NavigationGuard,
+  Outlet,
+  type RouteDefinition,
+  Router,
+  route,
+  setRouterDebugMode,
+  useIsLoading,
+  useLocation,
+} from "@barqjs/extra";
+
+// Enable router debug mode
+setRouterDebugMode(true);
 
 import { AsyncDemo } from "./demos/AsyncDemo";
 import { ComponentsDemo } from "./demos/ComponentsDemo";
@@ -28,6 +41,21 @@ const sections = [
   { id: "jsx-types", label: "JSX Types", component: JsxTypesDemo },
 ] as const;
 
+// Navigation guard - logs all navigations
+const logGuard: NavigationGuard = (ctx) => {
+  console.log(`[Router] Navigation: ${ctx.from.pathname} → ${ctx.to.pathname}`);
+  return true;
+};
+
+// Test loader with delay to demonstrate loading bar
+// Use Date.now() to prevent caching
+const testLoader = async () => {
+  console.log("[testLoader] Starting load...");
+  await new Promise((r) => setTimeout(r, 800));
+  console.log("[testLoader] Load complete");
+  return { loaded: true, timestamp: Date.now() };
+};
+
 // Build routes from sections
 const routes: RouteDefinition[] = [
   route({
@@ -40,11 +68,65 @@ const routes: RouteDefinition[] = [
         route({
           path: `/${section.id}`,
           component: section.component,
+          // Add loader to Store and Query routes to demo loading bar
+          loader: section.id === "store" || section.id === "query" ? testLoader : undefined,
         }),
       ),
     ] as RouteDefinition[],
   }),
 ];
+
+// View transition styles
+globalCss`
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.3s;
+    animation-timing-function: ease-in-out;
+  }
+
+  ::view-transition-old(root) {
+    animation-name: vt-slide-to-left;
+  }
+
+  ::view-transition-new(root) {
+    animation-name: vt-slide-from-right;
+  }
+
+  @keyframes vt-slide-to-left {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(-100px);
+    }
+  }
+
+  @keyframes vt-slide-from-right {
+    from {
+      opacity: 0;
+      transform: translateX(100px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+`;
+
+// Global Loading Indicator
+function GlobalLoadingIndicator() {
+  const isLoading = useIsLoading();
+
+  return (
+    <Show when={isLoading}>
+      <div class={globalLoadingStyle}>
+        <div class={loadingBarStyle} />
+      </div>
+    </Show>
+  );
+}
 
 // Layout with sidebar navigation
 function Layout() {
@@ -59,6 +141,7 @@ function Layout() {
 
   return (
     <div class={layoutStyle}>
+      <GlobalLoadingIndicator />
       <nav class={sidebarStyle}>
         <div class={logoStyle}>Barq</div>
         <div class={subtitleStyle}>Kitchen Sink Demo</div>
@@ -84,8 +167,53 @@ function Layout() {
 }
 
 export function App() {
-  return <Router config={{ routes }} />;
+  return (
+    <Router
+      config={{
+        routes,
+        // Disable loader caching to demo loading bar
+        cache: { ttl: 0 },
+        // View transitions for smooth page changes
+        viewTransitions: {
+          enabled: true,
+          onTransitionStart: () => console.log("[Router] View transition starting"),
+          onTransitionEnd: () => console.log("[Router] View transition complete"),
+        },
+        // Navigation guards
+        beforeEach: [logGuard],
+        afterEach: [(ctx) => console.log(`[Router] Navigation complete: ${ctx.to.pathname}`)],
+        // Scroll restoration
+        scrollRestoration: {
+          enabled: true,
+          behavior: "smooth",
+        },
+      }}
+    />
+  );
 }
+
+// Loading indicator styles
+const globalLoadingStyle = css`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(59, 130, 246, 0.2);
+  z-index: 9999;
+`;
+
+const loadingBarStyle = css`
+  height: 100%;
+  background: #3b82f6;
+  animation: loading 1s ease-in-out infinite;
+
+  @keyframes loading {
+    0% { width: 0%; margin-left: 0; }
+    50% { width: 50%; margin-left: 25%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+`;
 
 // Styles
 const layoutStyle = css`

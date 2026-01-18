@@ -1,15 +1,19 @@
 /**
  * Routing Demo
- * Tests: Router, params, search params, loaders, layouts, navigation
+ * Tests: Router, params, search params, loaders, layouts, navigation, guards
+ *
+ * Note: View transitions and scroll restoration work with the main app Router.
+ * This demo uses MemoryRouter for isolated nested route demos.
  */
 
-import { For, Show } from "@barqjs/core";
+import { For, Show, useState } from "@barqjs/core";
 import { clsx, css } from "@barqjs/extra";
 import {
   Link,
   type LoaderContext,
   MemoryRouter,
   NavLink,
+  type NavigationGuard,
   Outlet,
   type RouteDefinition,
   route,
@@ -36,13 +40,50 @@ const posts = [
 // Simulate API delays
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Simulated auth state
+let isAuthenticated = true;
+let userRole = "admin";
+
+// ============================================================================
+// Route Guards
+// ============================================================================
+
+// Auth guard - redirects to login if not authenticated
+const authGuard: NavigationGuard = async () => {
+  if (!isAuthenticated) {
+    return "/demo/dashboard/login";
+  }
+  return true;
+};
+
+// Admin guard - only allows admin users
+const adminGuard: NavigationGuard = async () => {
+  if (userRole !== "admin") {
+    return "/demo/dashboard";
+  }
+  return true;
+};
+
 // ============================================================================
 // Route Components
 // ============================================================================
 
 // Dashboard Layout - wraps all dashboard routes
-// Uses <Outlet /> to render child routes (React Router v6 pattern)
 function DashboardLayout() {
+  const [authState, setAuthState] = useState(true);
+  const [roleState, setRoleState] = useState("admin");
+
+  // Sync local state with module-level state
+  const toggleAuth = () => {
+    isAuthenticated = !isAuthenticated;
+    setAuthState(isAuthenticated);
+  };
+
+  const toggleRole = () => {
+    userRole = userRole === "admin" ? "user" : "admin";
+    setRoleState(userRole);
+  };
+
   return (
     <div class={dashboardLayoutStyle}>
       <nav class={dashboardNavStyle}>
@@ -55,13 +96,46 @@ function DashboardLayout() {
         <NavLink href="/demo/dashboard/posts" activeClass={activeNavStyle}>
           Posts
         </NavLink>
-        <NavLink href="/demo/dashboard/settings" activeClass={activeNavStyle}>
-          Settings
+        <NavLink href="/demo/dashboard/admin" activeClass={activeNavStyle}>
+          Admin
         </NavLink>
+
+        <div class={authControlsStyle}>
+          <div class={authStatusStyle}>
+            Auth: <span class={() => (authState() ? greenText : redText)}>{() => (authState() ? "Yes" : "No")}</span>
+          </div>
+          <div class={authStatusStyle}>
+            Role: <span class={blueText}>{roleState}</span>
+          </div>
+          <button class={smallBtnStyle} onClick={toggleAuth}>
+            Toggle Auth
+          </button>
+          <button class={smallBtnStyle} onClick={toggleRole}>
+            Toggle Role
+          </button>
+        </div>
       </nav>
       <div class={dashboardContentStyle}>
         <Outlet />
       </div>
+    </div>
+  );
+}
+
+// Login page (shown when auth guard fails)
+function LoginPage() {
+  const nav = useNavigate();
+
+  const handleLogin = () => {
+    isAuthenticated = true;
+    nav("/demo/dashboard");
+  };
+
+  return (
+    <div class={loginPageStyle}>
+      <h3 class={pageTitle}>Login Required</h3>
+      <p class={noteStyle}>You were redirected here by the auth guard.</p>
+      <Button onClick={handleLogin}>Simulate Login</Button>
     </div>
   );
 }
@@ -81,6 +155,9 @@ function DashboardOverview() {
           <div class={statLabelStyle}>Total Posts</div>
         </div>
       </div>
+      <p class={noteStyle}>
+        Try toggling auth/role in the sidebar, then navigate to see guards in action.
+      </p>
     </div>
   );
 }
@@ -107,7 +184,7 @@ function UsersList(props: { data: UsersData }) {
       <h3 class={pageTitle}>Users</h3>
 
       <div class={filterBarStyle}>
-        <span>Filter by role:</span>
+        <span>Filter:</span>
         <select
           value={currentFilter()}
           onChange={(e: Event) => {
@@ -134,8 +211,6 @@ function UsersList(props: { data: UsersData }) {
           )}
         </For>
       </ul>
-
-      <p class={noteStyle}>Search params: role={currentFilter()}</p>
     </div>
   );
 }
@@ -164,15 +239,8 @@ function UserDetail(props: { data: UserDetailData }) {
       <h3 class={pageTitle}>{user.name}</h3>
 
       <div class={detailCardStyle}>
-        <p>
-          <strong>Email:</strong> {user.email}
-        </p>
-        <p>
-          <strong>Role:</strong> <span class={tagStyle}>{user.role}</span>
-        </p>
-        <p>
-          <strong>ID:</strong> {user.id}
-        </p>
+        <p><strong>Email:</strong> {user.email}</p>
+        <p><strong>Role:</strong> <span class={tagStyle}>{user.role}</span></p>
       </div>
 
       <h4 class={subTitleStyle}>Posts by {user.name}</h4>
@@ -191,28 +259,19 @@ function UserDetail(props: { data: UserDetailData }) {
   );
 }
 
-// Posts List with search params for filtering and pagination
+// Posts List
 interface PostsData {
   posts: typeof posts;
-  total: number;
 }
 
 function PostsList(props: { data: PostsData }) {
   const [searchParams, setSearchParams] = useSearchParams();
-
   const currentCategory = () => searchParams().get("category") || "all";
-  const currentPage = () => Number.parseInt(searchParams().get("page") || "1", 10);
 
   const filteredPosts = () => {
     const cat = currentCategory();
     if (cat === "all") return props.data.posts;
     return props.data.posts.filter((p) => p.category === cat);
-  };
-
-  const setCategory = (category: string) => {
-    const params: Record<string, string> = { page: "1" };
-    if (category !== "all") params.category = category;
-    setSearchParams(params);
   };
 
   return (
@@ -222,19 +281,19 @@ function PostsList(props: { data: PostsData }) {
       <div class={filterBarStyle}>
         <button
           class={clsx(filterBtnStyle, currentCategory() === "all" && filterBtnActiveStyle)}
-          onClick={() => setCategory("all")}
+          onClick={() => setSearchParams({})}
         >
           All
         </button>
         <button
           class={clsx(filterBtnStyle, currentCategory() === "tutorial" && filterBtnActiveStyle)}
-          onClick={() => setCategory("tutorial")}
+          onClick={() => setSearchParams({ category: "tutorial" })}
         >
           Tutorials
         </button>
         <button
           class={clsx(filterBtnStyle, currentCategory() === "advanced" && filterBtnActiveStyle)}
-          onClick={() => setCategory("advanced")}
+          onClick={() => setSearchParams({ category: "advanced" })}
         >
           Advanced
         </button>
@@ -252,29 +311,6 @@ function PostsList(props: { data: PostsData }) {
           )}
         </For>
       </ul>
-
-      <div class={paginationStyle}>
-        <Button
-          disabled={() => currentPage() <= 1}
-          onClick={() =>
-            setSearchParams((p) => ({ ...Object.fromEntries(p), page: String(currentPage() - 1) }))
-          }
-        >
-          Previous
-        </Button>
-        <span>Page {currentPage}</span>
-        <Button
-          onClick={() =>
-            setSearchParams((p) => ({ ...Object.fromEntries(p), page: String(currentPage() + 1) }))
-          }
-        >
-          Next
-        </Button>
-      </div>
-
-      <p class={noteStyle}>
-        Query: category={currentCategory()}, page={currentPage}
-      </p>
     </div>
   );
 }
@@ -304,58 +340,30 @@ function PostDetail(props: { data: PostDetailData }) {
       <h3 class={pageTitle}>{post.title}</h3>
 
       <div class={detailCardStyle}>
-        <p>
-          <strong>Category:</strong> <span class={categoryTagStyle}>{post.category}</span>
-        </p>
+        <p><strong>Category:</strong> <span class={categoryTagStyle}>{post.category}</span></p>
         <p>
           <strong>Author:</strong>{" "}
           <Show when={() => author} fallback={<span>Unknown</span>}>
             {(auth) => <Link href={`/demo/dashboard/users/${auth.id}`}>{auth.name}</Link>}
           </Show>
         </p>
-        <p>
-          <strong>ID:</strong> {post.id}
-        </p>
       </div>
 
-      <div class={buttonRowStyle}>
-        <Button onClick={() => nav("/demo/dashboard/posts")}>Back to Posts</Button>
-        <Show when={() => author}>
-          {(auth) => (
-            <Button variant="secondary" onClick={() => nav(`/demo/dashboard/users/${auth.id}`)}>
-              View Author
-            </Button>
-          )}
-        </Show>
-      </div>
+      <Button onClick={() => nav("/demo/dashboard/posts")}>Back to Posts</Button>
     </div>
   );
 }
 
-// Settings with nested tabs
-function Settings() {
-  const location = useLocation();
-
+// Admin Only Page (protected by admin guard)
+function AdminPage() {
   return (
     <div>
-      <h3 class={pageTitle}>Settings</h3>
-
-      <div class={tabsStyle}>
-        <NavLink href="/demo/dashboard/settings" activeClass={tabActiveStyle} exact>
-          General
-        </NavLink>
-        <NavLink href="/demo/dashboard/settings/security" activeClass={tabActiveStyle}>
-          Security
-        </NavLink>
-        <NavLink href="/demo/dashboard/settings/notifications" activeClass={tabActiveStyle}>
-          Notifications
-        </NavLink>
-      </div>
-
-      <div class={settingsContentStyle}>
-        <p>Current path: {() => location().pathname}</p>
+      <h3 class={pageTitle}>Admin Panel</h3>
+      <div class={adminPanelStyle}>
+        <p>This page is protected by an admin guard.</p>
+        <p>Only users with "admin" role can access this page.</p>
         <p class={noteStyle}>
-          This demonstrates nested route matching. Each settings tab could be its own route.
+          Toggle role to "user" in sidebar, navigate away, then try to come back.
         </p>
       </div>
     </div>
@@ -380,74 +388,49 @@ function NotFound() {
 // ============================================================================
 
 async function usersLoader() {
-  await delay(300); // Simulate network
+  await delay(200);
   return { users, total: users.length };
 }
 
 async function userDetailLoader(ctx: LoaderContext) {
-  await delay(200);
+  await delay(100);
   const user = users.find((u) => u.id === ctx.params.id);
   const userPosts = posts.filter((p) => p.author === ctx.params.id);
   return { user, posts: userPosts };
 }
 
 async function postsLoader() {
-  await delay(300);
+  await delay(200);
   return { posts, total: posts.length };
 }
 
 async function postDetailLoader(ctx: LoaderContext) {
-  await delay(200);
+  await delay(100);
   const post = posts.find((p) => p.id === ctx.params.id);
   const author = post ? users.find((u) => u.id === post.author) : undefined;
   return { post, author };
 }
 
 // ============================================================================
-// Route Definitions - using route() helper for type safety
+// Route Definitions
 // ============================================================================
 
 const routes: RouteDefinition[] = [
   route({
+    path: "/demo/dashboard/login",
+    component: LoginPage,
+  }),
+  route({
     path: "/demo/dashboard",
     component: DashboardLayout,
+    beforeEnter: authGuard,
     children: [
-      route({
-        path: "/",
-        component: DashboardOverview,
-      }),
-      route({
-        path: "/users",
-        component: UsersList,
-        loader: usersLoader,
-      }),
-      route({
-        path: "/users/:id",
-        component: UserDetail,
-        loader: userDetailLoader,
-      }),
-      route({
-        path: "/posts",
-        component: PostsList,
-        loader: postsLoader,
-      }),
-      route({
-        path: "/posts/:id",
-        component: PostDetail,
-        loader: postDetailLoader,
-      }),
-      route({
-        path: "/settings",
-        component: Settings,
-      }),
-      route({
-        path: "/settings/security",
-        component: Settings,
-      }),
-      route({
-        path: "/settings/notifications",
-        component: Settings,
-      }),
+      route({ path: "/", component: DashboardOverview }),
+      route({ path: "/users", component: UsersList, loader: usersLoader }),
+      route({ path: "/users/:id", component: UserDetail, loader: userDetailLoader }),
+      route({ path: "/posts", component: PostsList, loader: postsLoader }),
+      route({ path: "/posts/:id", component: PostDetail, loader: postDetailLoader }),
+      route({ path: "/admin", component: AdminPage, beforeEnter: adminGuard }),
     ] as RouteDefinition[],
   }),
 ];
@@ -459,10 +442,48 @@ const routes: RouteDefinition[] = [
 export function RoutingDemo() {
   return (
     <DemoSection>
-      <DemoCard title="Router Demo">
+      <DemoCard title="Router Features">
         <p class={introStyle}>
-          Explore the dashboard below. Try navigating between sections, filtering users by role,
-          filtering posts by category, and viewing individual items.
+          The main app uses the Router with view transitions, scroll restoration, and navigation guards.
+          Navigate between sections in the sidebar to see these features in action.
+        </p>
+
+        <div class={featureListStyle}>
+          <div class={featureItemStyle}>
+            <span class={featureIconStyle}>✨</span>
+            <div>
+              <strong>View Transitions</strong>
+              <p>Navigate between sidebar items to see smooth fade transitions (Chrome/Edge).</p>
+            </div>
+          </div>
+          <div class={featureItemStyle}>
+            <span class={featureIconStyle}>📜</span>
+            <div>
+              <strong>Scroll Restoration</strong>
+              <p>Scroll position is saved and restored when navigating back.</p>
+            </div>
+          </div>
+          <div class={featureItemStyle}>
+            <span class={featureIconStyle}>🛡️</span>
+            <div>
+              <strong>Route Guards</strong>
+              <p>Guards can redirect or block navigation. Demo below shows auth/admin guards.</p>
+            </div>
+          </div>
+          <div class={featureItemStyle}>
+            <span class={featureIconStyle}>📦</span>
+            <div>
+              <strong>Loaders & Caching</strong>
+              <p>Route loaders fetch data with automatic caching and cancellation.</p>
+            </div>
+          </div>
+        </div>
+      </DemoCard>
+
+      <DemoCard title="Nested Routes Demo (MemoryRouter)">
+        <p class={introStyle}>
+          This isolated demo shows nested routes, params, search params, loaders, and guards.
+          Use the auth/role toggles to test guard behavior.
         </p>
 
         <div class={routerContainerStyle}>
@@ -471,6 +492,7 @@ export function RoutingDemo() {
             config={{
               routes,
               fallback: NotFound,
+              cache: { ttl: 5000, maxSize: 20 },
             }}
           />
         </div>
@@ -488,32 +510,62 @@ const introStyle = css`
   margin-bottom: 16px;
 `;
 
+const featureListStyle = css`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+`;
+
+const featureItemStyle = css`
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: #1e293b;
+  border-radius: 8px;
+
+  strong {
+    color: #e2e8f0;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  p {
+    color: #64748b;
+    font-size: 12px;
+    margin: 0;
+  }
+`;
+
+const featureIconStyle = css`
+  font-size: 24px;
+`;
+
 const routerContainerStyle = css`
   border: 1px solid #334155;
   border-radius: 8px;
-  min-height: 400px;
+  min-height: 350px;
   overflow: hidden;
 `;
 
 const dashboardLayoutStyle = css`
   display: flex;
-  min-height: 400px;
+  min-height: 350px;
 `;
 
 const dashboardNavStyle = css`
-  width: 160px;
+  width: 140px;
   background: #0f172a;
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 
   a {
-    padding: 8px 12px;
+    padding: 8px 10px;
     border-radius: 6px;
     color: #94a3b8;
     text-decoration: none;
-    font-size: 14px;
+    font-size: 13px;
 
     &:hover {
       background: #1e293b;
@@ -527,47 +579,88 @@ const activeNavStyle = css`
   color: white !important;
 `;
 
+const authControlsStyle = css`
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
+const authStatusStyle = css`
+  font-size: 11px;
+  color: #64748b;
+`;
+
+const greenText = css`
+  color: #22c55e;
+`;
+
+const redText = css`
+  color: #ef4444;
+`;
+
+const blueText = css`
+  color: #60a5fa;
+`;
+
+const smallBtnStyle = css`
+  padding: 4px 6px;
+  font-size: 10px;
+  background: #334155;
+  border: none;
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+
+  &:hover {
+    background: #475569;
+    color: #e2e8f0;
+  }
+`;
+
 const dashboardContentStyle = css`
   flex: 1;
-  padding: 20px;
+  padding: 16px;
   background: #1e293b;
 `;
 
 const pageTitle = css`
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #f8fafc;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 `;
 
 const subTitleStyle = css`
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: #e2e8f0;
-  margin: 20px 0 12px;
+  margin: 16px 0 8px;
 `;
 
 const statsGridStyle = css`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 12px;
 `;
 
 const statCardStyle = css`
   background: #334155;
-  padding: 20px;
+  padding: 16px;
   border-radius: 8px;
   text-align: center;
 `;
 
 const statValueStyle = css`
-  font-size: 32px;
+  font-size: 28px;
   font-weight: bold;
   color: #60a5fa;
 `;
 
 const statLabelStyle = css`
-  font-size: 14px;
+  font-size: 12px;
   color: #94a3b8;
   margin-top: 4px;
 `;
@@ -575,27 +668,28 @@ const statLabelStyle = css`
 const filterBarStyle = css`
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 12px;
   color: #94a3b8;
+  font-size: 13px;
 `;
 
 const selectStyle = css`
-  padding: 6px 12px;
+  padding: 4px 8px;
   border: 1px solid #475569;
-  border-radius: 6px;
+  border-radius: 4px;
   background: #334155;
   color: #e2e8f0;
-  font-size: 14px;
+  font-size: 12px;
 `;
 
 const filterBtnStyle = css`
-  padding: 6px 12px;
+  padding: 4px 10px;
   border: 1px solid #475569;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: #94a3b8;
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
 
   &:hover {
@@ -608,10 +702,6 @@ const filterBtnActiveStyle = css`
   background: #3b82f6;
   border-color: #3b82f6;
   color: white;
-
-  &:hover {
-    background: #2563eb;
-  }
 `;
 
 const listStyle = css`
@@ -621,10 +711,10 @@ const listStyle = css`
 `;
 
 const listItemStyle = css`
-  padding: 12px;
+  padding: 10px;
   background: #334155;
   border-radius: 6px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 
   a {
     display: flex;
@@ -632,6 +722,7 @@ const listItemStyle = css`
     align-items: center;
     color: #e2e8f0;
     text-decoration: none;
+    font-size: 13px;
 
     &:hover {
       color: #60a5fa;
@@ -640,131 +731,99 @@ const listItemStyle = css`
 `;
 
 const tagStyle = css`
-  padding: 2px 8px;
+  padding: 2px 6px;
   background: #475569;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   color: #94a3b8;
 `;
 
 const categoryTagStyle = css`
-  padding: 2px 8px;
+  padding: 2px 6px;
   background: #1e3a5f;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   color: #60a5fa;
 `;
 
 const breadcrumbStyle = css`
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  margin-bottom: 16px;
-  font-size: 14px;
+  margin-bottom: 12px;
+  font-size: 12px;
   color: #64748b;
 
   a {
     color: #60a5fa;
     text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
+    &:hover { text-decoration: underline; }
   }
 `;
 
 const detailCardStyle = css`
   background: #334155;
-  padding: 16px;
+  padding: 12px;
   border-radius: 8px;
+  font-size: 13px;
 
   p {
-    margin: 8px 0;
+    margin: 6px 0;
     color: #e2e8f0;
   }
 `;
 
-const paginationStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-  color: #94a3b8;
-`;
-
-const tabsStyle = css`
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #334155;
-  padding-bottom: 8px;
-
-  a {
-    padding: 8px 16px;
-    border-radius: 6px 6px 0 0;
-    color: #94a3b8;
-    text-decoration: none;
-    font-size: 14px;
-
-    &:hover {
-      background: #334155;
-      color: #e2e8f0;
-    }
-  }
-`;
-
-const tabActiveStyle = css`
-  background: #334155 !important;
-  color: #60a5fa !important;
-`;
-
-const settingsContentStyle = css`
+const adminPanelStyle = css`
   padding: 16px;
-  background: #334155;
+  background: linear-gradient(135deg, #1e3a5f 0%, #312e81 100%);
   border-radius: 8px;
   color: #e2e8f0;
+  font-size: 13px;
+
+  p { margin: 6px 0; }
+`;
+
+const loginPageStyle = css`
+  text-align: center;
+  padding: 30px 16px;
 `;
 
 const notFoundStyle = css`
   text-align: center;
-  padding: 40px 20px;
+  padding: 30px 16px;
   color: #94a3b8;
 
   h2 {
     color: #ef4444;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
+    font-size: 18px;
   }
 
   a {
     color: #60a5fa;
-    margin-top: 16px;
+    margin-top: 12px;
     display: inline-block;
   }
 `;
 
 const errorStyle = css`
-  padding: 20px;
+  padding: 16px;
   background: #7f1d1d;
   border-radius: 8px;
   color: #fecaca;
   text-align: center;
+  font-size: 13px;
 `;
 
 const emptyStyle = css`
   color: #64748b;
   font-style: italic;
-`;
-
-const buttonRowStyle = css`
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 12px;
+  font-size: 13px;
 `;
 
 const noteStyle = css`
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
   font-style: italic;
-  margin-top: 12px;
+  margin-top: 8px;
 `;
