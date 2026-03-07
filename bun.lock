@@ -52,6 +52,9 @@
     "packages/core": {
       "name": "@barqjs/core",
       "version": "0.1.0",
+      "dependencies": {
+        "csstype": "^3.2.3",
+      },
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@happy-dom/global-registrator": "^20.3.1",

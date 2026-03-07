@@ -1,46 +1,272 @@
 /**
- * Reactive signals - custom implementation with fine-grained reactivity
- * Push-pull reactivity with automatic dependency tracking and disposal
+ * Reactive signals - SolidJS-inspired implementation with fine-grained reactivity
+ * Push-pull reactivity with automatic dependency tracking, topological ordering, and disposal
+ *
+ * Key features:
+ * - Linked list dependency tracking for O(1) operations
+ * - Height-based topological ordering via heap scheduler
+ * - CHECK/DIRTY flag pattern for efficient propagation
+ * - Custom equality function support
+ * - Glitch-free diamond dependency handling
+ * - Owner-based context inheritance (like SolidJS)
  */
 
 // ============================================================================
-// Internal Types and State
+// Constants (matching SolidJS)
 // ============================================================================
 
-/** Reactive node in the dependency graph */
-interface ReactiveNode {
-  /** Unique version for change detection */
-  version: number;
-  /** Nodes that depend on this one */
-  subscribers: Set<Subscriber>;
+// @ts-ignore - Used for completeness, may be used in future
+const REACTIVE_NONE = 0;
+const REACTIVE_CHECK = 1 << 0; // Might need update, check deps first
+const REACTIVE_DIRTY = 1 << 1; // Definitely needs recompute
+const REACTIVE_RECOMPUTING_DEPS = 1 << 2; // Currently recomputing
+const REACTIVE_IN_HEAP = 1 << 3; // In the dirty heap for recompute
+const REACTIVE_IN_HEAP_HEIGHT = 1 << 4; // In heap for height adjustment only
+const REACTIVE_DISPOSED = 1 << 5; // Has been disposed
+
+// ============================================================================
+// Error Classes
+// ============================================================================
+
+/**
+ * Error thrown when trying to access context outside a reactive root
+ */
+export class NoOwnerError extends Error {
+  constructor() {
+    super("Context can only be accessed under a reactive root.");
+    this.name = "NoOwnerError";
+  }
 }
 
-/** Subscriber (computed or effect) that tracks dependencies */
-interface Subscriber extends ReactiveNode {
-  /** Sources this subscriber depends on */
-  sources: Set<ReactiveNode>;
-  /** Whether this needs to recompute */
-  dirty: boolean;
-  /** Function to execute */
-  fn: () => unknown;
-  /** Cleanup function from previous run */
-  cleanup?: () => void;
-  /** Cleanup functions registered via onCleanup */
-  cleanups: (() => void)[];
-  /** Child subscribers created during execution (for disposal on re-run) */
-  children: Subscriber[];
-  /** Whether this is an effect (vs computed) */
-  isEffect: boolean;
-  /** Whether disposed */
-  disposed: boolean;
+/**
+ * Error thrown when context is not found and no default value provided
+ */
+export class ContextNotFoundError extends Error {
+  constructor() {
+    super(
+      "Context must either be created with a default value or a value must be provided before accessing it."
+    );
+    this.name = "ContextNotFoundError";
+  }
 }
 
-// Global state
-let currentSubscriber: Subscriber | null = null;
-let trackingEnabled = true;
+// ============================================================================
+// Types
+// ============================================================================
+
+/** Linked list node for dependency tracking */
+interface Link {
+  _dep: SignalNode<unknown> | ComputedNode<unknown>;
+  _sub: ComputedNode<unknown>;
+  _nextDep: Link | null; // Next dependency of the subscriber
+  _prevSub: Link | null; // Previous subscriber of the dependency
+  _nextSub: Link | null; // Next subscriber of the dependency
+}
+
+/** Options for signal/computed creation */
+export interface SignalOptions<T> {
+  name?: string;
+  equals?: false | ((prev: T, next: T) => boolean);
+}
+
+/** Context record for owner */
+export type ContextRecord = Record<string | symbol, unknown>;
+
+/** Base signal node */
+interface SignalNode<T> {
+  _value: T;
+  _subs: Link | null; // Head of subscribers linked list
+  _subsTail: Link | null; // Tail of subscribers linked list
+  _equals: false | ((a: T, b: T) => boolean);
+  _name?: string;
+}
+
+/** Computed node extends signal with computation state */
+interface ComputedNode<T> extends SignalNode<T> {
+  _fn: (prev?: T) => T;
+  _deps: Link | null; // Head of dependencies linked list
+  _depsTail: Link | null; // Tail of dependencies linked list
+  _flags: number;
+  _height: number; // Topological height for ordering
+  _nextHeap: ComputedNode<unknown> | undefined;
+  _prevHeap: ComputedNode<unknown>;
+  _isEffect: boolean;
+  _cleanup?: () => void;
+  _cleanups: (() => void)[];
+  _children: ComputedNode<unknown>[]; // Child computeds for disposal
+  _owner: Owner | null;
+  _effectOwner?: Owner; // Cached owner for effects (avoid allocation per run)
+}
+
+// ============================================================================
+// Heap Scheduler (SolidJS-style)
+// ============================================================================
+
+interface Heap {
+  _heap: (ComputedNode<unknown> | undefined)[];
+  _marked: boolean;
+  _min: number;
+  _max: number;
+}
+
+const dirtyHeap: Heap = {
+  _heap: new Array(2000).fill(undefined),
+  _marked: false,
+  _min: 0,
+  _max: 0,
+};
+
+/** Actually insert node into heap at its height level */
+function actualInsertIntoHeap(node: ComputedNode<unknown>, heap: Heap): void {
+  const height = node._height;
+
+  // Grow heap if needed
+  if (height >= heap._heap.length) {
+    heap._heap.length = height + 100;
+  }
+
+  const heapAtHeight = heap._heap[height];
+  if (heapAtHeight === undefined) {
+    heap._heap[height] = node;
+    node._prevHeap = node;
+    node._nextHeap = undefined;
+  } else {
+    // Add to end of circular list
+    const tail = heapAtHeight._prevHeap;
+    tail._nextHeap = node;
+    node._prevHeap = tail;
+    node._nextHeap = undefined;
+    heapAtHeight._prevHeap = node;
+  }
+
+  if (height > heap._max) heap._max = height;
+}
+
+/** Insert node into heap for recomputation */
+function insertIntoHeap(node: ComputedNode<unknown>, heap: Heap): void {
+  const flags = node._flags;
+  if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS)) return;
+
+  // If already marked CHECK, upgrade to DIRTY
+  if (flags & REACTIVE_CHECK) {
+    node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | REACTIVE_DIRTY | REACTIVE_IN_HEAP;
+  } else {
+    node._flags = flags | REACTIVE_IN_HEAP;
+  }
+
+  // Only insert if not already in heap for height adjustment
+  if (!(flags & REACTIVE_IN_HEAP_HEIGHT)) {
+    actualInsertIntoHeap(node, heap);
+  }
+}
+
+/** Insert node into heap for height adjustment only */
+function insertIntoHeapHeight(node: ComputedNode<unknown>, heap: Heap): void {
+  const flags = node._flags;
+  if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS | REACTIVE_IN_HEAP_HEIGHT)) return;
+
+  node._flags = flags | REACTIVE_IN_HEAP_HEIGHT;
+  actualInsertIntoHeap(node, heap);
+}
+
+/** Remove node from heap */
+function deleteFromHeap(node: ComputedNode<unknown>, heap: Heap): void {
+  const flags = node._flags;
+  if (!(flags & (REACTIVE_IN_HEAP | REACTIVE_IN_HEAP_HEIGHT))) return;
+
+  node._flags = flags & ~(REACTIVE_IN_HEAP | REACTIVE_IN_HEAP_HEIGHT);
+
+  const height = node._height;
+  const heapHead = heap._heap[height];
+  if (!heapHead) return;
+
+  if (node._prevHeap === node) {
+    // Only node at this height
+    heap._heap[height] = undefined;
+  } else {
+    const next = node._nextHeap;
+    const end = next ?? heapHead;
+    if (node === heapHead) {
+      heap._heap[height] = next;
+    } else {
+      node._prevHeap._nextHeap = next;
+    }
+    end._prevHeap = node._prevHeap;
+  }
+
+  node._prevHeap = node;
+  node._nextHeap = undefined;
+}
+
+/** Adjust height of a node based on its dependencies */
+function adjustHeight(node: ComputedNode<unknown>, heap: Heap): void {
+  deleteFromHeap(node, heap);
+
+  let newHeight = node._height;
+  for (let d = node._deps; d !== null; d = d._nextDep) {
+    const dep = d._dep as ComputedNode<unknown>;
+    // Check if dep is a computed (has _fn) and update height
+    if ("_fn" in dep && dep._height >= newHeight) {
+      newHeight = dep._height + 1;
+    }
+  }
+
+  if (node._height !== newHeight) {
+    node._height = newHeight;
+    // Propagate height change to subscribers
+    for (let s = node._subs; s !== null; s = s._nextSub) {
+      insertIntoHeapHeight(s._sub, heap);
+    }
+  }
+}
+
+/** Mark all nodes in heap with DIRTY flag and propagate CHECK to subscribers */
+// @ts-ignore - Reserved for future microtask scheduling optimizations
+function _markHeap(heap: Heap): void {
+  if (heap._marked) return;
+  heap._marked = true;
+
+  for (let i = 0; i <= heap._max; i++) {
+    for (let el = heap._heap[i]; el !== undefined; el = el._nextHeap) {
+      if (el._flags & REACTIVE_IN_HEAP) {
+        markNode(el, REACTIVE_DIRTY);
+      }
+    }
+  }
+}
+
+/** Run heap - process all dirty nodes in topological order */
+function runHeap(heap: Heap): void {
+  heap._marked = false;
+
+  for (heap._min = 0; heap._min <= heap._max; heap._min++) {
+    let node = heap._heap[heap._min];
+    while (node !== undefined) {
+      if (node._flags & REACTIVE_IN_HEAP) {
+        // Node needs recomputation
+        recompute(node);
+      } else {
+        // Node only needs height adjustment
+        adjustHeight(node, heap);
+      }
+      node = heap._heap[heap._min];
+    }
+  }
+
+  heap._max = 0;
+}
+
+// ============================================================================
+// Global State
+// ============================================================================
+
+let currentObserver: ComputedNode<unknown> | null = null;
+let tracking = false; // Only true during computation (like SolidJS)
 let batchDepth = 0;
-let isFlushing = false;
-const pendingEffects: Set<Subscriber> = new Set();
+let scheduled = false;
+let clock = 0;
+
+const defaultContext: ContextRecord = {};
 
 // ============================================================================
 // Owner Tracking
@@ -51,22 +277,24 @@ const pendingEffects: Set<Subscriber> = new Set();
  * When an owner is disposed, all its children are automatically disposed.
  */
 export interface Owner {
-  /** Cleanup functions to run when disposed */
+  /** Cleanup functions to run when disposed (LIFO order) */
   cleanups: (() => void)[];
   /** Dispose function */
   dispose: () => void;
-  /** Child subscribers owned by this scope */
-  children: Subscriber[];
+  /** Child computeds owned by this scope */
+  children: ComputedNode<unknown>[];
   /** Whether disposed */
   disposed: boolean;
+  /** Parent owner for hierarchy */
+  _parent: Owner | null;
+  /** Context record inherited from parent */
+  _context: ContextRecord;
 }
 
-/** Stack of active owners for nested scope tracking */
-const ownerStack: Owner[] = [];
+let currentOwner: Owner | null = null;
 
-/** Get current owner (top of stack) */
 function getCurrentOwner(): Owner | null {
-  return ownerStack.length > 0 ? ownerStack[ownerStack.length - 1] : null;
+  return currentOwner;
 }
 
 /**
@@ -74,7 +302,7 @@ function getCurrentOwner(): Owner | null {
  * Useful for capturing owner to restore later in async callbacks.
  */
 export function getOwner(): Owner | null {
-  return getCurrentOwner();
+  return currentOwner;
 }
 
 /**
@@ -82,339 +310,324 @@ export function getOwner(): Owner | null {
  * Use this to restore owner in async callbacks or setTimeout.
  */
 export function runWithOwner<T>(owner: Owner | null, fn: () => T): T | undefined {
-  if (owner) {
-    ownerStack.push(owner);
-  }
+  const prevOwner = currentOwner;
+  currentOwner = owner;
   try {
     return fn();
   } catch (err) {
     console.error("Error in runWithOwner:", err);
     return undefined;
   } finally {
-    if (owner) {
-      ownerStack.pop();
-    }
+    currentOwner = prevOwner;
   }
 }
 
 // ============================================================================
-// Core Reactive Primitives
+// Link Management (Dependency Graph)
 // ============================================================================
 
-/**
- * Reactive signal - holds a value that can be read and written
- */
-export interface Signal<T> {
-  (): T;
-  set(value: T): void;
-  update(fn: (prev: T) => T): void;
-  peek(): T;
-}
+function link(dep: SignalNode<unknown> | ComputedNode<unknown>, sub: ComputedNode<unknown>): void {
+  const prevDep = sub._depsTail;
 
-/**
- * Computed signal - derives value from other signals
- */
-export interface Computed<T> {
-  (): T;
-  peek(): T;
-}
+  // Quick check: if last dep is same, skip
+  if (prevDep !== null && prevDep._dep === dep) return;
 
-/**
- * Create a reactive signal
- */
-export function signal<T>(initialValue: T): Signal<T> {
-  let value = initialValue;
-  const node: ReactiveNode = {
-    version: 0,
-    subscribers: new Set(),
+  let nextDep: Link | null = null;
+  const isRecomputing = sub._flags & REACTIVE_RECOMPUTING_DEPS;
+
+  if (isRecomputing) {
+    // During recompute, try to reuse existing links
+    nextDep = prevDep !== null ? prevDep._nextDep : sub._deps;
+    if (nextDep !== null && nextDep._dep === dep) {
+      sub._depsTail = nextDep;
+      return;
+    }
+  }
+
+  // Check if already subscribed
+  const prevSub = dep._subsTail;
+  if (prevSub !== null && prevSub._sub === sub) return;
+
+  // Create new link
+  const newLink: Link = {
+    _dep: dep,
+    _sub: sub,
+    _nextDep: nextDep,
+    _prevSub: prevSub,
+    _nextSub: null,
   };
 
-  const read = (): T => {
-    if (trackingEnabled && currentSubscriber && !currentSubscriber.disposed) {
-      node.subscribers.add(currentSubscriber);
-      currentSubscriber.sources.add(node);
-    }
-    return value;
-  };
+  // Add to subscriber's deps list
+  sub._depsTail = newLink;
+  if (prevDep !== null) {
+    prevDep._nextDep = newLink;
+  } else {
+    sub._deps = newLink;
+  }
 
-  const write = (newValue: T): void => {
-    if (Object.is(value, newValue)) return;
-
-    value = newValue;
-    node.version++;
-
-    // Mark all subscribers dirty and queue effects
-    markDirty(node);
-
-    // Flush if not batching and not already flushing
-    if (batchDepth === 0 && !isFlushing) {
-      flushEffects();
-    }
-  };
-
-  const accessor = read as Signal<T>;
-  accessor.set = write;
-  accessor.update = (fn: (prev: T) => T) => write(fn(value));
-  accessor.peek = () => value;
-
-  return accessor;
+  // Add to dependency's subs list
+  dep._subsTail = newLink;
+  if (prevSub !== null) {
+    prevSub._nextSub = newLink;
+  } else {
+    dep._subs = newLink;
+  }
 }
 
-/**
- * Mark all subscribers of a node as dirty, recursively for computeds
- */
-function markDirty(node: ReactiveNode): void {
-  for (const sub of node.subscribers) {
-    if (sub.disposed || sub.dirty) continue;
+function unlinkSubs(linkNode: Link): Link | null {
+  const dep = linkNode._dep;
+  const nextDep = linkNode._nextDep;
+  const nextSub = linkNode._nextSub;
+  const prevSub = linkNode._prevSub;
 
-    sub.dirty = true;
+  if (nextSub !== null) {
+    nextSub._prevSub = prevSub;
+  } else {
+    dep._subsTail = prevSub;
+  }
 
-    if (sub.isEffect) {
-      pendingEffects.add(sub);
-    } else {
-      // Computed: propagate dirty to its subscribers
-      markDirty(sub);
-    }
+  if (prevSub !== null) {
+    prevSub._nextSub = nextSub;
+  } else {
+    dep._subs = nextSub;
+  }
+
+  return nextDep;
+}
+
+function cleanupDeps(sub: ComputedNode<unknown>): void {
+  let link = sub._deps;
+  while (link !== null) {
+    link = unlinkSubs(link);
+  }
+  sub._deps = null;
+  sub._depsTail = null;
+}
+
+// ============================================================================
+// Mark/Propagate Pattern (SolidJS-style)
+// ============================================================================
+
+/** Mark node as dirty/check and propagate CHECK to subscribers */
+function markNode(node: ComputedNode<unknown>, newState: number = REACTIVE_DIRTY): void {
+  const flags = node._flags;
+  if (flags & REACTIVE_DISPOSED) return;
+
+  // Already marked with equal or higher priority
+  if ((flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) >= newState) return;
+
+  node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
+
+  // Propagate CHECK to subscribers
+  for (let link = node._subs; link !== null; link = link._nextSub) {
+    markNode(link._sub, REACTIVE_CHECK);
   }
 }
 
 /**
- * Create a computed signal that derives its value from other signals
+ * Notify all subscribers that a signal/computed has changed.
+ * Inserts ALL subscribers into heap for processing in topological order.
  */
-export function computed<T>(fn: () => T): Computed<T> {
-  let value: T;
-  let initialized = false;
+function notifySubs(node: SignalNode<unknown>): void {
+  for (let link = node._subs; link !== null; link = link._nextSub) {
+    const sub = link._sub;
 
-  const sub: Subscriber = {
-    version: 0,
-    subscribers: new Set(),
-    sources: new Set(),
-    dirty: true,
-    fn,
-    cleanups: [],
-    children: [],
-    isEffect: false,
-    disposed: false,
-  };
+    // Update heap min to process lower heights first
+    if (dirtyHeap._min > sub._height) {
+      dirtyHeap._min = sub._height;
+    }
 
-  // Register with owner for disposal
-  const owner = getCurrentOwner();
-  if (owner) {
-    owner.children.push(sub);
+    // Mark DIRTY and insert into heap
+    sub._flags |= REACTIVE_DIRTY;
+    insertIntoHeap(sub, dirtyHeap);
   }
+}
 
-  const compute = (): T => {
-    if (!sub.dirty && initialized) {
-      return value;
-    }
+// ============================================================================
+// Update Logic
+// ============================================================================
 
-    // Clean up old dependencies
-    cleanupSources(sub);
+function updateIfNecessary(node: ComputedNode<unknown>): void {
+  if (node._flags & REACTIVE_DISPOSED) return;
 
-    // Track new dependencies
-    const prevSubscriber = currentSubscriber;
-    currentSubscriber = sub;
-
-    try {
-      value = fn();
-      initialized = true;
-      sub.dirty = false;
-      sub.version++;
-    } finally {
-      currentSubscriber = prevSubscriber;
-    }
-
-    return value;
-  };
-
-  const read = (): T => {
-    if (sub.disposed) {
-      return value;
-    }
-
-    // Track dependency if there's an active subscriber
-    if (trackingEnabled && currentSubscriber && !currentSubscriber.disposed) {
-      sub.subscribers.add(currentSubscriber);
-      currentSubscriber.sources.add(sub);
-    }
-
-    return compute();
-  };
-
-  const accessor = read as Computed<T>;
-  accessor.peek = () => {
-    if (sub.dirty || !initialized) {
-      const prevTracking = trackingEnabled;
-      trackingEnabled = false;
-      try {
-        return compute();
-      } finally {
-        trackingEnabled = prevTracking;
+  if (node._flags & REACTIVE_CHECK) {
+    // Check all dependencies first
+    for (let d = node._deps; d !== null; d = d._nextDep) {
+      const dep = d._dep as ComputedNode<unknown>;
+      // Check if dep is a computed (has _fn)
+      if ("_fn" in dep) {
+        updateIfNecessary(dep);
+      }
+      if (node._flags & REACTIVE_DIRTY) {
+        break;
       }
     }
-    return value;
-  };
+  }
 
-  return accessor;
+  if (node._flags & REACTIVE_DIRTY) {
+    recompute(node);
+  }
+
+  node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
 }
 
-/**
- * Clean up a subscriber's source dependencies
- */
-function cleanupSources(sub: Subscriber): void {
-  for (const source of sub.sources) {
-    source.subscribers.delete(sub);
-  }
-  sub.sources.clear();
-}
+function recompute(node: ComputedNode<unknown>): void {
+  if (node._flags & REACTIVE_DISPOSED) return;
 
-/**
- * Dispose a subscriber completely
- */
-function disposeSubscriber(sub: Subscriber): void {
-  if (sub.disposed) return;
-  sub.disposed = true;
+  deleteFromHeap(node, dirtyHeap);
 
-  // Run cleanup functions
-  if (sub.cleanup) {
-    try {
-      sub.cleanup();
-    } catch (err) {
-      console.error("Error in effect cleanup:", err);
+  // Run cleanups for effects (in reverse order - LIFO)
+  if (node._isEffect) {
+    if (node._cleanup) {
+      try {
+        node._cleanup();
+      } catch (err) {
+        console.error("Error in effect cleanup:", err);
+      }
+      node._cleanup = undefined;
     }
-    sub.cleanup = undefined;
-  }
 
-  for (const cleanup of sub.cleanups) {
-    try {
-      cleanup();
-    } catch (err) {
-      console.error("Error in onCleanup:", err);
+    // Run cleanups in reverse order (LIFO like SolidJS)
+    for (let i = node._cleanups.length - 1; i >= 0; i--) {
+      try {
+        node._cleanups[i]();
+      } catch (err) {
+        console.error("Error in onCleanup:", err);
+      }
     }
-  }
-  sub.cleanups.length = 0;
+    node._cleanups.length = 0;
 
-  // Dispose child subscribers
-  for (const child of sub.children) {
-    disposeSubscriber(child);
-  }
-  sub.children.length = 0;
-
-  // Remove from pending effects
-  pendingEffects.delete(sub);
-
-  // Clean up dependencies
-  cleanupSources(sub);
-
-  // Clear subscribers
-  sub.subscribers.clear();
-}
-
-/**
- * Run an effect subscriber
- */
-function runEffect(sub: Subscriber): void {
-  if (sub.disposed || !sub.dirty) return;
-
-  // Run previous cleanup
-  if (sub.cleanup) {
-    try {
-      sub.cleanup();
-    } catch (err) {
-      console.error("Error in effect cleanup:", err);
+    // Dispose children in reverse order (LIFO)
+    for (let i = node._children.length - 1; i >= 0; i--) {
+      disposeNode(node._children[i]);
     }
-    sub.cleanup = undefined;
+    node._children.length = 0;
   }
 
-  // Run onCleanup functions from previous run
-  for (const cleanup of sub.cleanups) {
-    try {
-      cleanup();
-    } catch (err) {
-      console.error("Error in onCleanup:", err);
-    }
+  // Reset deps tail for fresh tracking
+  node._depsTail = null;
+
+  const prevObserver = currentObserver;
+  const prevTracking = tracking;
+  currentObserver = node;
+  node._flags |= REACTIVE_RECOMPUTING_DEPS;
+  tracking = true; // Enable tracking during computation
+
+  // For effects, use cached owner (avoid allocation per run)
+  const prevOwner = currentOwner;
+  if (node._isEffect && node._effectOwner) {
+    node._effectOwner.disposed = false;
+    currentOwner = node._effectOwner;
   }
-  sub.cleanups.length = 0;
 
-  // Dispose child subscribers from previous run
-  for (const child of sub.children) {
-    disposeSubscriber(child);
-  }
-  sub.children.length = 0;
-
-  // Clean up old dependencies
-  cleanupSources(sub);
-
-  // Push effect owner for onCleanup registration
-  // Use sub.children so nested effects are tracked for disposal on re-run
-  const effectOwner: Owner = {
-    cleanups: sub.cleanups,
-    dispose: () => disposeSubscriber(sub),
-    children: sub.children,
-    disposed: false,
-  };
-  ownerStack.push(effectOwner);
-
-  // Track new dependencies
-  const prevSubscriber = currentSubscriber;
-  currentSubscriber = sub;
-
+  let newValue: unknown;
   try {
-    const result = sub.fn();
-    sub.cleanup = typeof result === "function" ? (result as () => void) : undefined;
-    sub.dirty = false;
+    newValue = node._fn(node._value);
+  } catch (err) {
+    console.error("Error in computation:", err);
+    newValue = node._value;
   } finally {
-    currentSubscriber = prevSubscriber;
-    ownerStack.pop();
-  }
-}
-
-/**
- * Run a side effect when signals change.
- * Returns a cleanup function to manually stop the effect.
- */
-export function effect(fn: () => void | (() => void)): () => void {
-  const sub: Subscriber = {
-    version: 0,
-    subscribers: new Set(),
-    sources: new Set(),
-    dirty: true,
-    fn,
-    cleanups: [],
-    children: [],
-    isEffect: true,
-    disposed: false,
-  };
-
-  // Register with owner for disposal
-  const owner = getCurrentOwner();
-  if (owner) {
-    owner.children.push(sub);
+    tracking = prevTracking;
+    currentObserver = prevObserver;
+    node._flags &= ~REACTIVE_RECOMPUTING_DEPS;
+    currentOwner = prevOwner;
   }
 
-  // Run immediately
-  runEffect(sub);
+  // Cleanup old unused deps (depsTail may have changed during fn execution via tracking)
+  const depsTail = node._depsTail as Link | null;
+  let toRemove = depsTail !== null ? depsTail._nextDep : node._deps;
+  if (toRemove !== null) {
+    if (depsTail !== null) {
+      depsTail._nextDep = null;
+    } else {
+      node._deps = null;
+    }
+    while (toRemove !== null) {
+      toRemove = unlinkSubs(toRemove);
+    }
+  }
 
-  // Return dispose function
-  return () => disposeSubscriber(sub);
+  // Check if value changed
+  const valueChanged =
+    node._equals === false || !node._equals(node._value as any, newValue as any);
+
+  if (valueChanged) {
+    node._value = newValue as any;
+    notifySubs(node);
+  }
+
+  if (node._isEffect) {
+    node._cleanup = typeof newValue === "function" ? (newValue as () => void) : undefined;
+  }
+
+  node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
 }
 
-/**
- * Flush all pending effects
- */
-function flushEffects(): void {
+function disposeNode(node: ComputedNode<unknown>): void {
+  if (node._flags & REACTIVE_DISPOSED) return;
+  node._flags |= REACTIVE_DISPOSED;
+
+  // Dispose children first (reverse order - LIFO)
+  for (let i = node._children.length - 1; i >= 0; i--) {
+    disposeNode(node._children[i]);
+  }
+  node._children.length = 0;
+
+  // Run cleanup
+  if (node._cleanup) {
+    try {
+      node._cleanup();
+    } catch (err) {
+      console.error("Error in cleanup:", err);
+    }
+    node._cleanup = undefined;
+  }
+
+  // Run cleanups in reverse order (LIFO)
+  for (let i = node._cleanups.length - 1; i >= 0; i--) {
+    try {
+      node._cleanups[i]();
+    } catch (err) {
+      console.error("Error in onCleanup:", err);
+    }
+  }
+  node._cleanups.length = 0;
+
+  // Remove from heap
+  deleteFromHeap(node, dirtyHeap);
+
+  // Cleanup deps
+  cleanupDeps(node);
+
+  // Clear subs
+  node._subs = null;
+  node._subsTail = null;
+}
+
+// ============================================================================
+// Scheduling
+// ============================================================================
+
+let isFlushing = false;
+
+function schedule(): void {
+  if (batchDepth > 0 || isFlushing) return;
+  flushSync();
+}
+
+function flushSync(): void {
   if (isFlushing) return;
   isFlushing = true;
+  scheduled = true;
 
   try {
-    // Keep flushing until no more pending effects
-    while (pendingEffects.size > 0) {
-      const effects = Array.from(pendingEffects);
-      pendingEffects.clear();
-
-      for (const eff of effects) {
-        runEffect(eff);
-      }
+    // Keep flushing until no more scheduled work
+    let count = 0;
+    while (scheduled) {
+      if (++count === 100000) throw new Error("Potential infinite loop detected");
+      scheduled = false;
+      clock++;
+      runHeap(dirtyHeap);
     }
   } finally {
     isFlushing = false;
@@ -422,31 +635,262 @@ function flushEffects(): void {
 }
 
 /**
- * Register a cleanup function for the current owner.
+ * Synchronously flush all pending updates
  */
-export function onCleanup(fn: () => void): void {
+export function flush(): void {
+  flushSync();
+}
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+export interface Signal<T> {
+  (): T;
+  set(value: T): void;
+  update(fn: (prev: T) => T): void;
+  peek(): T;
+}
+
+export interface Computed<T> {
+  (): T;
+  peek(): T;
+}
+
+function defaultEquals<T>(a: T, b: T): boolean {
+  // Fast path: strict equality (handles most cases)
+  // Also handles NaN correctly (NaN !== NaN but we want NaN === NaN for reactivity)
+  return a === b || (a !== a && b !== b);
+}
+
+/**
+ * Create a reactive signal
+ */
+export function signal<T>(initialValue: T, options?: SignalOptions<T>): Signal<T> {
+  const node: SignalNode<T> = {
+    _value: initialValue,
+    _subs: null,
+    _subsTail: null,
+    _equals: options?.equals !== undefined ? options.equals : defaultEquals,
+    _name: options?.name,
+  };
+
+  const read = (): T => {
+    // Fast path: not tracking
+    if (!tracking) return node._value;
+    // Track dependency during computation
+    if (currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
+      link(node as SignalNode<unknown>, currentObserver);
+    }
+    return node._value;
+  };
+
+  const write = (newValue: T): void => {
+    const valueChanged =
+      node._equals === false || !node._equals(node._value, newValue);
+
+    if (!valueChanged) return;
+
+    node._value = newValue;
+    notifySubs(node as SignalNode<unknown>);
+    schedule();
+  };
+
+  const accessor = read as Signal<T>;
+  accessor.set = write;
+  accessor.update = (fn: (prev: T) => T) => write(fn(node._value));
+  accessor.peek = () => node._value;
+
+  return accessor;
+}
+
+/**
+ * Create a computed signal that derives its value from other signals
+ */
+export function computed<T>(fn: () => T, options?: SignalOptions<T>): Computed<T> {
+  const owner = getCurrentOwner();
+
+  // Calculate initial height based on parent context (like SolidJS)
+  let initialHeight = 0;
+  if (currentObserver) {
+    initialHeight = currentObserver._height + 1;
+  }
+
+  const node: ComputedNode<T> = {
+    _value: undefined as T,
+    _subs: null,
+    _subsTail: null,
+    _equals: options?.equals !== undefined ? options.equals : defaultEquals,
+    _name: options?.name,
+    _fn: fn as (prev?: T) => T,
+    _deps: null,
+    _depsTail: null,
+    _flags: REACTIVE_DIRTY,
+    _height: initialHeight,
+    _nextHeap: undefined,
+    _prevHeap: null as any,
+    _isEffect: false,
+    _cleanups: [],
+    _children: [],
+    _owner: owner,
+  };
+  node._prevHeap = node as ComputedNode<unknown>;
+
+  // Register with owner
+  if (owner) {
+    owner.children.push(node as ComputedNode<unknown>);
+  }
+
+  // Compute immediately (eager like SolidJS)
+  recompute(node as ComputedNode<unknown>);
+
+  const read = (): T => {
+    // Fast path: not disposed, not tracking, not dirty
+    const flags = node._flags;
+    if (!(flags & (REACTIVE_DISPOSED | REACTIVE_CHECK | REACTIVE_DIRTY)) && !tracking) {
+      return node._value;
+    }
+
+    // Disposed - just return cached value
+    if (flags & REACTIVE_DISPOSED) {
+      return node._value;
+    }
+
+    // Track dependency during computation
+    if (tracking && currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
+      link(node as ComputedNode<unknown>, currentObserver);
+      if (node._height >= currentObserver._height) {
+        currentObserver._height = node._height + 1;
+      }
+    }
+
+    // Update if necessary
+    if (flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
+      updateIfNecessary(node as ComputedNode<unknown>);
+    }
+
+    return node._value;
+  };
+
+  const accessor = read as Computed<T>;
+  accessor.peek = (): T => {
+    if (node._flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
+      const prevTracking = tracking;
+      tracking = false;
+      try {
+        updateIfNecessary(node as ComputedNode<unknown>);
+      } finally {
+        tracking = prevTracking;
+      }
+    }
+    return node._value;
+  };
+
+  return accessor;
+}
+
+/**
+ * Run a side effect when signals change
+ */
+export function effect(fn: () => void | (() => void)): () => void {
+  const owner = getCurrentOwner();
+
+  // Calculate initial height based on parent context
+  let initialHeight = 0;
+  if (currentObserver) {
+    initialHeight = currentObserver._height + 1;
+  }
+
+  const node: ComputedNode<void | (() => void)> = {
+    _value: undefined,
+    _subs: null,
+    _subsTail: null,
+    _equals: false, // Effects always run when deps change
+    _fn: fn as (prev?: void | (() => void)) => void | (() => void),
+    _deps: null,
+    _depsTail: null,
+    _flags: REACTIVE_DIRTY,
+    _height: initialHeight,
+    _nextHeap: undefined,
+    _prevHeap: null as any,
+    _isEffect: true,
+    _cleanups: [],
+    _children: [],
+    _owner: owner,
+  };
+  node._prevHeap = node as ComputedNode<unknown>;
+
+  // Create cached owner for effect (reused across reruns)
+  node._effectOwner = {
+    cleanups: node._cleanups,
+    dispose: () => disposeNode(node as ComputedNode<unknown>),
+    children: node._children as ComputedNode<unknown>[],
+    disposed: false,
+    _parent: owner,
+    _context: owner?._context ?? defaultContext,
+  };
+
+  // Register with owner
+  if (owner) {
+    owner.children.push(node as ComputedNode<unknown>);
+  }
+
+  // Run immediately (synchronously)
+  recompute(node as ComputedNode<unknown>);
+
+  return () => disposeNode(node as ComputedNode<unknown>);
+}
+
+/**
+ * Register a cleanup function for the current owner.
+ * Returns the function for convenience (like SolidJS).
+ * If no owner, returns the function immediately without registering.
+ */
+export function onCleanup<T extends () => void>(fn: T): T {
   const owner = getCurrentOwner();
   if (owner) {
     owner.cleanups.push(fn);
   }
+  return fn;
 }
 
 /**
- * Run a callback after the component has mounted (after first render).
+ * Schedule a callback to run after reactive setup is complete (like SolidJS onSettled).
+ * The callback runs untracked after the current flush cycle.
+ * Can return a cleanup function that runs when the owner is disposed.
+ *
+ * @param fn Callback to run after mount, can return cleanup function
  */
-export function onMount(fn: () => void): void {
+export function onMount(fn: () => void | (() => void)): void {
+  let cleanup: (() => void) | void;
   const owner = getCurrentOwner();
+
+  // Register cleanup handler if we have an owner
+  if (owner) {
+    onCleanup(() => cleanup?.());
+  }
+
+  // Schedule to run after current sync work
   queueMicrotask(() => {
-    if (owner) {
-      runWithOwner(owner, () => untrack(fn));
+    // Run in owner context if available
+    if (owner && !owner.disposed) {
+      const prevOwner = currentOwner;
+      currentOwner = owner;
+      try {
+        cleanup = untrack(fn);
+      } finally {
+        currentOwner = prevOwner;
+      }
     } else {
-      untrack(fn);
+      cleanup = untrack(fn);
+      // If no owner, run cleanup immediately if returned
+      if (!owner) cleanup?.();
     }
   });
 }
 
 /**
- * Batch multiple signal updates into a single render
+ * Batch multiple signal updates into a single flush
  */
 export function batch(fn: () => void): void {
   batchDepth++;
@@ -455,23 +899,37 @@ export function batch(fn: () => void): void {
   } finally {
     batchDepth--;
     if (batchDepth === 0) {
-      flushEffects();
+      flushSync();
     }
   }
 }
 
 /**
- * Create a new reactive scope.
- * All effects created inside are automatically disposed when the scope is disposed.
+ * Create a reactive scope with optional automatic disposal.
+ *
+ * - `createScope(fn)` - Auto-disposed when parent disposes (default)
+ * - `createScope(fn, true)` - Detached, requires manual disposal
+ *
+ * Use this for:
+ * - Top-level application roots (detached)
+ * - Nested reactive scopes (attached)
+ * - Conditional rendering contexts
+ * - Component-like boundaries
  *
  * @param fn Function to run in the scope, receives dispose function
- * @param detached If true, don't register with parent owner (for manual lifecycle management)
+ * @param detached If true, scope is NOT auto-disposed with parent
+ * @returns The return value of fn
  */
 export function createScope<T>(
   fn: (dispose: () => void) => T,
   detached = false,
 ): T {
-  let result: T;
+  const owner = createOwnerScope(!detached);
+  return runInOwner(owner, fn);
+}
+
+/** Internal: Create an owner scope */
+function createOwnerScope(registerWithParent: boolean): Owner {
   let disposed = false;
 
   const owner: Owner = {
@@ -479,6 +937,8 @@ export function createScope<T>(
     dispose: () => {},
     children: [],
     disposed: false,
+    _parent: currentOwner,
+    _context: currentOwner?._context ?? defaultContext,
   };
 
   const dispose = () => {
@@ -486,16 +946,16 @@ export function createScope<T>(
     disposed = true;
     owner.disposed = true;
 
-    // Dispose all child subscribers
-    for (const child of owner.children) {
-      disposeSubscriber(child);
+    // Dispose children in reverse order (LIFO)
+    for (let i = owner.children.length - 1; i >= 0; i--) {
+      disposeNode(owner.children[i]);
     }
     owner.children.length = 0;
 
-    // Run all cleanup functions
-    for (const cleanup of owner.cleanups) {
+    // Run cleanups in reverse order (LIFO)
+    for (let i = owner.cleanups.length - 1; i >= 0; i--) {
       try {
-        cleanup();
+        owner.cleanups[i]();
       } catch (err) {
         console.error("Error in scope cleanup:", err);
       }
@@ -505,88 +965,84 @@ export function createScope<T>(
 
   owner.dispose = dispose;
 
-  // Register with parent owner for automatic cleanup when parent disposes
-  // (unless detached for manual lifecycle management)
-  if (!detached) {
-    const parentOwner = getCurrentOwner();
-    if (parentOwner) {
-      parentOwner.cleanups.push(dispose);
-    }
+  // Register with parent owner if requested
+  if (registerWithParent && currentOwner) {
+    currentOwner.cleanups.push(dispose);
   }
 
-  ownerStack.push(owner);
+  return owner;
+}
+
+/** Internal: Run function within an owner context */
+function runInOwner<T>(owner: Owner, fn: (dispose: () => void) => T): T {
+  const prevOwner = currentOwner;
+  currentOwner = owner;
   try {
-    result = fn(dispose);
+    return fn(owner.dispose);
   } finally {
-    ownerStack.pop();
+    currentOwner = prevOwner;
   }
-
-  return result;
 }
 
 /**
- * Untrack - read signals without creating dependencies
+ * Read signals without creating dependencies.
+ * Note: Owner context is maintained (only tracking is disabled).
  */
 export function untrack<T>(fn: () => T): T {
-  const prevTracking = trackingEnabled;
-  trackingEnabled = false;
+  const prevTracking = tracking;
+  tracking = false;
   try {
     return fn();
   } finally {
-    trackingEnabled = prevTracking;
+    tracking = prevTracking;
   }
 }
 
 // ============================================================================
-// Context API
+// Context API (SolidJS-style)
 // ============================================================================
 
+/** Value can be static or a reactive accessor */
+type MaybeAccessor<T> = T | (() => T);
+
 /**
- * Context object type
+ * Context object type (matches SolidJS)
  */
 export interface Context<T> {
-  id: symbol;
-  defaultValue: T | undefined;
-  Provider: (props: { value: T | (() => T); children: unknown }) => Node | null;
+  readonly id: symbol;
+  readonly defaultValue: T | undefined;
+  /** Provider component for JSX usage - accepts value or accessor */
+  Provider: (props: { value: MaybeAccessor<T>; children: unknown }) => unknown;
 }
 
-const contextStacks: Map<symbol, Signal<unknown>[]> = new Map();
-
 /**
- * Create a context for dependency injection
+ * Create a context for dependency injection.
+ * A default value can be provided which will be used when no value is set via setContext.
+ *
+ * @description https://docs.solidjs.com/reference/component-apis/create-context
  */
-export function createContext<T>(defaultValue?: T): Context<T> {
-  const id = Symbol("context");
+export function createContext<T>(defaultValue?: T, description?: string): Context<T> {
+  const id = Symbol(description ?? "context");
 
-  if (defaultValue !== undefined) {
-    const defaultSignal = signal(defaultValue);
-    contextStacks.set(id, [defaultSignal]);
-  }
+  // Provider creates a new scope and sets context for children (like SolidJS)
+  const Provider = (props: { value: MaybeAccessor<T>; children: unknown }): unknown => {
+    // Create a new root scope for children with context set
+    return createScope(() => {
+      // Set context on the new scope - store value as-is (may be accessor)
+      const owner = getCurrentOwner();
+      if (owner) {
+        owner._context = {
+          ...owner._context,
+          [id]: props.value,
+        };
+      }
 
-  const Provider = (props: { value: T | (() => T); children: unknown }): Node | null => {
-    const getValue = () =>
-      typeof props.value === "function" ? (props.value as () => T)() : props.value;
-
-    const valueSignal = computed(getValue);
-
-    let stack = contextStacks.get(id);
-    if (!stack) {
-      stack = [];
-      contextStacks.set(id, stack);
-    }
-
-    stack.push(valueSignal as Signal<unknown>);
-
-    let result: unknown;
-    if (typeof props.children === "function") {
-      result = (props.children as () => unknown)();
-    } else {
-      result = props.children;
-    }
-
-    stack.pop();
-
-    return result as Node | null;
+      // Resolve children
+      if (typeof props.children === "function") {
+        return (props.children as () => unknown)();
+      }
+      return props.children;
+    }, true);
   };
 
   return {
@@ -597,19 +1053,78 @@ export function createContext<T>(defaultValue?: T): Context<T> {
 }
 
 /**
- * Get the current value from a context
+ * Get a context value for the given context.
+ *
+ * @throws `NoOwnerError` if there's no owner at the time of call.
+ * @throws `ContextNotFoundError` if context value has not been set and no default.
+ *
+ * @description https://docs.solidjs.com/reference/component-apis/use-context
+ */
+export function getContext<T>(context: Context<T>, owner: Owner | null = getOwner()): T {
+  if (!owner) {
+    throw new NoOwnerError();
+  }
+
+  const value = hasContext(context, owner)
+    ? (owner._context[context.id] as T)
+    : context.defaultValue;
+
+  if (value === undefined && context.defaultValue === undefined) {
+    throw new ContextNotFoundError();
+  }
+
+  return value as T;
+}
+
+/**
+ * Set a context value on the current owner.
+ *
+ * @throws `NoOwnerError` if there's no owner at the time of call.
+ */
+export function setContext<T>(context: Context<T>, value?: T, owner: Owner | null = getOwner()): void {
+  if (!owner) {
+    throw new NoOwnerError();
+  }
+
+  // Create new context object to avoid child values being exposed to parent
+  owner._context = {
+    ...owner._context,
+    [context.id]: value === undefined ? context.defaultValue : value,
+  };
+}
+
+/**
+ * Check if a context has been set on the owner or its ancestors.
+ */
+export function hasContext<T>(context: Context<T>, owner: Owner | null = getOwner()): boolean {
+  if (!owner) return false;
+  return context.id in owner._context;
+}
+
+/**
+ * Get the current value from a context.
+ * Always returns an accessor function for consistent API.
+ * If Provider received an accessor, that accessor is returned.
+ * If Provider received a static value, a wrapper accessor is returned.
+ *
+ * @description https://docs.solidjs.com/reference/component-apis/use-context
  */
 export function useContext<T>(context: Context<T>): () => T {
-  const stack = contextStacks.get(context.id);
+  const owner = getCurrentOwner();
 
-  if (stack && stack.length > 0) {
-    const currentSignal = stack[stack.length - 1];
-    return () => currentSignal() as T;
+  if (owner && hasContext(context, owner)) {
+    const stored = owner._context[context.id];
+    // If stored value is already an accessor, return it
+    if (typeof stored === "function") {
+      return stored as () => T;
+    }
+    // Otherwise wrap in accessor
+    return () => stored as T;
   }
 
   if (context.defaultValue !== undefined) {
     return () => context.defaultValue as T;
   }
 
-  throw new Error("Context not found and no default value provided");
+  throw new ContextNotFoundError();
 }

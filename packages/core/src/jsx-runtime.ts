@@ -12,6 +12,7 @@
  * Type patterns follow SolidJS conventions for reactive JSX.
  */
 
+import type * as CSS from "csstype";
 import { Fragment } from "./components.ts";
 import {
   type ArrayElement,
@@ -313,9 +314,13 @@ export namespace JSX {
     children: unknown;
   }
 
-  // CSS style properties type
+  /**
+   * CSS style properties using csstype for comprehensive type coverage.
+   * Supports CSS custom properties (variables) with `--` prefix.
+   * All properties can be reactive (FunctionMaybe).
+   */
   type CSSProperties = {
-    [K in keyof CSSStyleDeclaration]?: FunctionMaybe<CSSStyleDeclaration[K]>;
+    [K in keyof CSS.Properties]?: FunctionMaybe<CSS.Properties[K]>;
   } & {
     [key: `--${string}`]: FunctionMaybe<string | number>;
   };

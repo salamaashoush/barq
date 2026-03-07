@@ -56,8 +56,8 @@ function CounterDemo() {
         Step: <strong>{step}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setCount((c) => c - step)}>-{step}</Button>
-        <Button onClick={() => setCount((c) => c + step)}>+{step}</Button>
+        <Button onClick={() => setCount((c) => c - step())}>-{step}</Button>
+        <Button onClick={() => setCount((c) => c + step())}>+{step}</Button>
         <Button onClick={() => setCount(0)}>Reset</Button>
       </div>
       <div class={buttonRowStyle}>
@@ -79,9 +79,9 @@ function MemoDemo() {
 
   // Expensive computation (simulated)
   const [items, setItems] = useState([1, 2, 3, 4, 5]);
-  // Auto-computed values
-  const sum = items.reduce((a: number, b: number) => a + b, 0);
-  const doubled = items.map((x: number) => x * 2);
+  // Auto-computed values - need to call items() for method access
+  const sum = () => items().reduce((a: number, b: number) => a + b, 0);
+  const doubled = () => items().map((x: number) => x * 2);
 
   return (
     <DemoCard title="Auto-Computed - Derived State">
@@ -107,11 +107,11 @@ function MemoDemo() {
 
       <hr class={dividerStyle} />
 
-      <p>Items: {items.join(", ")}</p>
+      <p>Items: {items().join(", ")}</p>
       <p>
         Sum: <strong>{sum}</strong>
       </p>
-      <p>Doubled: {doubled.join(", ")}</p>
+      <p>Doubled: {doubled().join(", ")}</p>
       <Button onClick={() => setItems((arr) => [...arr, arr.length + 1])}>Add Item</Button>
     </DemoCard>
   );
@@ -156,7 +156,7 @@ function EffectDemo() {
       <div class={buttonRowStyle}>
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
         <Button onClick={() => setIntervalActive((a) => !a)}>
-          {intervalActive ? "Stop" : "Start"} Interval
+          {intervalActive() ? "Stop" : "Start"} Interval
         </Button>
       </div>
       <Log logs={logs} />
@@ -306,7 +306,7 @@ function ScopeDemo() {
   return (
     <DemoCard title="createScope - Effect Isolation">
       <p>
-        Scope active: <strong>{scopeActive ? "Yes" : "No"}</strong>
+        Scope active: <strong>{scopeActive() ? "Yes" : "No"}</strong>
       </p>
       <div class={buttonRowStyle}>
         <Button onClick={startScope} disabled={scopeActive}>
@@ -414,7 +414,7 @@ function OnMountDemo() {
       <p>onMount runs once after the component renders.</p>
       <div class={buttonRowStyle}>
         <Button onClick={() => setShowChild((s) => !s)}>
-          {showChild ? "Hide" : "Show"} Child
+          {showChild() ? "Hide" : "Show"} Child
         </Button>
       </div>
       <Show when={showChild}>
@@ -466,16 +466,16 @@ function ContextConsumer() {
         padding: 12px;
         border-radius: 6px;
         margin-top: 12px;
-        background: ${theme === "dark" ? "#1e293b" : "#f1f5f9"};
-        color: ${theme === "dark" ? "#e2e8f0" : "#1e293b"};
-        border: 1px solid ${theme === "dark" ? "#475569" : "#cbd5e1"};
+        background: ${theme() === "dark" ? "#1e293b" : "#f1f5f9"};
+        color: ${theme() === "dark" ? "#e2e8f0" : "#1e293b"};
+        border: 1px solid ${theme() === "dark" ? "#475569" : "#cbd5e1"};
       `}
     >
       <p>
         Theme from context: <strong>{theme}</strong>
       </p>
       <p>
-        User: <strong>{user.name}</strong> ({user.role})
+        User: <strong>{user()?.name}</strong> ({user()?.role})
       </p>
     </div>
   );

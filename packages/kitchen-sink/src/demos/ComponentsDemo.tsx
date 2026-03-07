@@ -52,13 +52,13 @@ function ShowDemo() {
       </Show>
 
       <Show
-        when={visible && !loading}
+        when={visible() && !loading()}
         fallback={<div class={fallbackStyle}>Content is hidden</div>}
       >
         <div class={contentStyle}>
           This content is conditionally rendered using Show.
           <br />
-          Visible: {visible ? "Yes" : "No"}
+          Visible: {visible() ? "Yes" : "No"}
         </div>
       </Show>
     </DemoCard>
@@ -95,7 +95,7 @@ function ForDemo() {
         <Button onClick={shuffleItems}>Shuffle</Button>
       </div>
 
-      <Show when={items.length === 0}>
+      <Show when={items().length === 0}>
         <div class={emptyStyle}>No items. Add some!</div>
       </Show>
 
@@ -104,7 +104,7 @@ function ForDemo() {
           {(item, index) => (
             <li class={listItemStyle}>
               <span>
-                {index + 1}. {item.name} (id: {item.id})
+                {index() + 1}. {item.name} (id: {item.id})
               </span>
               <button type="button" class={removeButtonStyle} onClick={() => removeItem(item.id)}>
                 Remove
@@ -182,23 +182,23 @@ function SwitchDemo() {
 
       <div class={statusBoxStyle}>
         <Switch fallback={<span>Unknown status</span>}>
-          <Match when={status === "idle"}>
+          <Match when={status() === "idle"}>
             <span class={idleStyle}>Idle - Ready to start</span>
           </Match>
-          <Match when={status === "loading"}>
+          <Match when={status() === "loading"}>
             <span class={loadingTextStyle}>Loading...</span>
           </Match>
-          <Match when={status === "success"}>
+          <Match when={status() === "success"}>
             <span class={successStyle}>Success! Operation completed.</span>
           </Match>
-          <Match when={status === "error"}>
+          <Match when={status() === "error"}>
             <span class={errorStyle}>Error! Something went wrong.</span>
           </Match>
         </Switch>
       </div>
 
       <p>
-        Current status: <code>{status}</code>
+        Current status: <code>{status()}</code>
       </p>
     </DemoCard>
   );
@@ -248,7 +248,7 @@ function ErrorBoundaryDemo() {
   return (
     <DemoCard title="ErrorBoundary - Error Handling">
       <Button onClick={() => setShouldError((e) => !e)}>
-        {shouldError ? "Fix Component" : "Break Component"}
+        {shouldError() ? "Fix Component" : "Break Component"}
       </Button>
 
       <div class={boundaryBoxStyle}>

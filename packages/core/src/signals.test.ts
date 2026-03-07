@@ -75,7 +75,7 @@ describe("computed", () => {
     expect(squared.peek()).toBe(49);
   });
 
-  test("is lazy - only computes when read", () => {
+  test("computes eagerly on creation (like SolidJS)", () => {
     const count = signal(0);
     let computeCount = 0;
 
@@ -84,11 +84,11 @@ describe("computed", () => {
       return count() * 2;
     });
 
-    expect(computeCount).toBe(0); // Not computed yet
+    expect(computeCount).toBe(1); // Computed immediately on creation
     doubled();
-    expect(computeCount).toBe(1);
+    expect(computeCount).toBe(1); // Cached, no recompute
     doubled();
-    expect(computeCount).toBe(1); // Cached
+    expect(computeCount).toBe(1); // Still cached
   });
 
   test("recomputes when dependency changes", () => {
@@ -461,7 +461,7 @@ describe("onCleanup", () => {
     expect(cleanupCount).toBe(1);
   });
 
-  test("multiple cleanups run in order", () => {
+  test("multiple cleanups run in reverse order (LIFO)", () => {
     const order: number[] = [];
 
     const stop = effect(() => {
@@ -471,7 +471,8 @@ describe("onCleanup", () => {
     });
 
     stop();
-    expect(order).toEqual([1, 2, 3]);
+    // Cleanups run in LIFO order (like SolidJS)
+    expect(order).toEqual([3, 2, 1]);
   });
 });
 

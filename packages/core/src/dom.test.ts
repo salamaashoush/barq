@@ -4,7 +4,7 @@
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { createElement, render, useRef, template } from "./dom.ts";
-import { signal, effect, computed, batch, createScope, onCleanup } from "./signals.ts";
+import { signal, computed, createScope } from "./signals.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;

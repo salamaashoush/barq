@@ -5,6 +5,7 @@
  */
 
 import type { Resource } from "./async.ts";
+import type { IsCompilerMode, StrictAccessor, StrictArrayAccessor } from "./config.ts";
 import type { Child, JSXElement } from "./dom.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
 import { type Signal, computed, createScope, effect, onCleanup, signal, untrack } from "./signals.ts";
@@ -66,9 +67,22 @@ export function Fragment(props: { children?: Child | Child[] }): JSXElement {
 /**
  * Show component - conditional rendering using comment markers
  * Uses createScope for proper effect disposal when content changes
+ *
+ * @example
+ * ```tsx
+ * // Strict mode (default) - requires accessor
+ * <Show when={() => count() > 5} fallback={<Loading />}>
+ *   {(value) => <div>Count is {value}</div>}
+ * </Show>
+ *
+ * // Compiler mode - allows raw expressions (compiler wraps them)
+ * <Show when={count() > 5} fallback={<Loading />}>
+ *   <div>Count is greater than 5</div>
+ * </Show>
+ * ```
  */
 export function Show<T>(props: {
-  when: () => T | undefined | null | false;
+  when: StrictAccessor<T | undefined | null | false>;
   fallback?: JSXElement;
   children: Child | ((item: NonNullable<T>) => Child);
 }): JSXElement {
@@ -78,8 +92,10 @@ export function Show<T>(props: {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
+  // Normalize accessor - handle both function and raw value for defensive runtime
+  const whenAccessor = typeof props.when === "function" ? props.when : () => props.when;
   // Memoize the condition to ensure stable reactivity
-  const condition = computed(props.when);
+  const condition = computed(whenAccessor as () => T | undefined | null | false);
 
   // Track dispose function for current content
   let disposeContent: (() => void) | null = null;
@@ -138,15 +154,22 @@ export function Show<T>(props: {
 /**
  * For component - keyed list rendering with efficient reconciliation
  * Uses createScope for each item to ensure proper effect disposal
+ *
+ * @example
+ * ```tsx
+ * // Strict mode (default) - requires accessor
+ * <For each={() => items()} fallback={<Empty />}>
+ *   {(item, index) => <li>{index()}: {item.name}</li>}
+ * </For>
+ *
+ * // Compiler mode - allows raw array (compiler wraps it)
+ * <For each={items()} fallback={<Empty />}>
+ *   {(item, index) => <li>{index()}: {item.name}</li>}
+ * </For>
+ * ```
  */
 export function For<T, U extends JSXElement>(props: {
-  each:
-    | readonly T[]
-    | T[]
-    | undefined
-    | null
-    | false
-    | (() => readonly T[] | T[] | undefined | null | false);
+  each: StrictArrayAccessor<T>;
   fallback?: JSXElement;
   keyFn?: (item: T) => unknown;
   children: (item: T, index: () => number) => U;
@@ -445,15 +468,22 @@ function longestIncreasingSubsequence(arr: number[]): number[] {
 /**
  * Index component - index-keyed list rendering with efficient updates
  * Uses createScope for each item to ensure proper effect disposal
+ *
+ * @example
+ * ```tsx
+ * // Strict mode (default) - requires accessor
+ * <Index each={() => items()} fallback={<Empty />}>
+ *   {(item, index) => <li>{index}: {item().name}</li>}
+ * </Index>
+ *
+ * // Compiler mode - allows raw array (compiler wraps it)
+ * <Index each={items()} fallback={<Empty />}>
+ *   {(item, index) => <li>{index}: {item().name}</li>}
+ * </Index>
+ * ```
  */
 export function Index<T, U extends JSXElement>(props: {
-  each:
-    | readonly T[]
-    | T[]
-    | undefined
-    | null
-    | false
-    | (() => readonly T[] | T[] | undefined | null | false);
+  each: StrictArrayAccessor<T>;
   fallback?: JSXElement;
   children: (item: () => T, index: number) => U;
 }): JSXElement {
@@ -581,11 +611,33 @@ export function Index<T, U extends JSXElement>(props: {
 
 /**
  * Switch/Match components - pattern matching (SolidJS-style)
+ *
+ * @example
+ * ```tsx
+ * // Strict mode (default) - requires accessor
+ * <Switch fallback={<Default />}>
+ *   <Match when={() => status() === 'loading'}>
+ *     <Loading />
+ *   </Match>
+ *   <Match when={() => status() === 'error'}>
+ *     {(err) => <Error message={err} />}
+ *   </Match>
+ * </Switch>
+ *
+ * // Compiler mode - allows raw expressions (compiler wraps them)
+ * <Switch fallback={<Default />}>
+ *   <Match when={status() === 'loading'}>
+ *     <Loading />
+ *   </Match>
+ * </Switch>
+ * ```
  */
 export interface MatchProps<T> {
-  when: () => T | undefined | null | false;
+  when: StrictAccessor<T | undefined | null | false>;
   keyed?: boolean;
-  children: (() => Child) | ((item: NonNullable<T>) => Child);
+  children: IsCompilerMode extends true
+    ? Child | (() => Child) | ((item: NonNullable<T>) => Child)
+    : (() => Child) | ((item: NonNullable<T>) => Child);
 }
 
 export function Match<T>(props: MatchProps<T>): JSXElement {

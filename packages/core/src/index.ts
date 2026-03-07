@@ -5,8 +5,11 @@
  * For CSS-in-JS and utility hooks, see @barqjs/extra
  */
 
-// Core reactivity
+// Core reactivity - primitives
 export {
+  signal,
+  computed,
+  effect,
   batch,
   untrack,
   createScope,
@@ -14,12 +17,38 @@ export {
   onMount,
   createContext,
   useContext,
+  getContext,
+  setContext,
+  hasContext,
+  flush,
+  getOwner,
+  runWithOwner,
+  // Error classes
+  NoOwnerError,
+  ContextNotFoundError,
 } from "./signals.ts";
+
+// createRoot: detached scope for SolidJS compatibility
+import { createScope as _createScope } from "./signals.ts";
+export function createRoot<T>(fn: (dispose: () => void) => T): T {
+  return _createScope(fn, true);
+}
+
+export type { SignalOptions, Owner, ContextRecord } from "./signals.ts";
 
 // Types
 export type { Signal, Computed, Context } from "./signals.ts";
 export type { Resource, ResourceState, ResourceStatus } from "./async.ts";
 export type { Store } from "./store.ts";
+
+// Type configuration - for compiler mode opt-in
+export type {
+  BarqConfig,
+  IsCompilerMode,
+  StrictAccessor,
+  StrictArrayAccessor,
+  StrictChild,
+} from "./config.ts";
 
 // Store - fine-grained nested reactivity
 export { useStore, produce, reconcile, unwrap } from "./store.ts";

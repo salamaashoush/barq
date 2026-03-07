@@ -2,7 +2,7 @@
  * Async Tests - Edge cases for resources and async data loading
  */
 
-import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { resource, createResource, suspend, awaitAll, type Resource } from "./async.ts";
 import { signal, effect, createScope, batch } from "./signals.ts";
 
@@ -136,16 +136,16 @@ describe("resource", () => {
 
   test("aborts in-flight request when source changes", async () => {
     const source = signal(1);
-    let aborted = false;
+    let _aborted = false;
 
     const r = resource(
       () => source(),
-      async (s, { }) => {
+      async (s, _info) => {
         try {
           await delay(100);
           return `data-${s}`;
         } catch {
-          aborted = true;
+          _aborted = true;
           throw new Error("aborted");
         }
       },
@@ -382,13 +382,13 @@ describe("awaitAll", () => {
 describe("Resource edge cases", () => {
   test("EDGE CASE: rapid source changes", async () => {
     const source = signal(0);
-    let fetchCount = 0;
+    let _fetchCount = 0;
     const fetchedValues: number[] = [];
 
     const r = resource(
       () => source(),
       async (s) => {
-        fetchCount++;
+        _fetchCount++;
         fetchedValues.push(s);
         await delay(10);
         return `data-${s}`;
@@ -528,12 +528,12 @@ describe("Resource edge cases", () => {
   test("EDGE CASE: dispose resource effects in scope", async () => {
     const source = signal(1);
     let fetchCount = 0;
-    let r: Resource<string>;
+    let _r: Resource<string>;
     let dispose: (() => void) | undefined;
 
     createScope((d) => {
       dispose = d;
-      r = resource(
+      _r = resource(
         () => source(),
         async (s) => {
           fetchCount++;
@@ -635,7 +635,7 @@ describe("Resource edge cases", () => {
     const source = signal(1);
     let fetchCount = 0;
 
-    const r = resource(
+    const _r = resource(
       () => source(),
       async (s) => {
         fetchCount++;

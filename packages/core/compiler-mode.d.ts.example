@@ -1,0 +1,33 @@
+/**
+ * Barq Compiler Mode Type Configuration
+ *
+ * Copy this file to your project and rename it to enable permissive types
+ * when using the Barq compiler (@barqjs/compiler).
+ *
+ * With compiler mode enabled:
+ * - Control flow props (when, each) accept raw values or accessors
+ * - The compiler automatically wraps expressions in thunks
+ *
+ * Without compiler mode (default):
+ * - Control flow props require explicit accessors () => T
+ * - Types enforce manual thunk wrapping for correctness
+ *
+ * Usage:
+ * 1. Copy this file to your project (e.g., src/barq.d.ts)
+ * 2. Rename to remove .example extension
+ * 3. Ensure your tsconfig.json includes this file
+ */
+
+declare global {
+  namespace Barq {
+    interface Config {
+      /**
+       * Enable compiler mode for permissive types.
+       * Set to true when using @barqjs/compiler.
+       */
+      COMPILER_MODE: true;
+    }
+  }
+}
+
+export {};

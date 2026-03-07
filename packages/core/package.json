@@ -55,7 +55,9 @@
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {},
+  "dependencies": {
+    "csstype": "^3.2.3"
+  },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@happy-dom/global-registrator": "^20.3.1",
