@@ -7,11 +7,7 @@
 import type { Resource } from "./async.ts";
 import type { IsCompilerMode, StrictAccessor, StrictArrayAccessor } from "./config.ts";
 import type { Child, JSXElement } from "./dom.ts";
-import {
-  type RevealHandle,
-  REVEAL_COORD,
-  createRevealCoordinator,
-} from "./boundaries.ts";
+import { type RevealHandle, REVEAL_COORD, createRevealCoordinator } from "./boundaries.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
 import {
   ERROR_BOUNDARY,
@@ -1058,7 +1054,6 @@ export function Loading(props: {
   return fragment;
 }
 
-
 /**
  * Reveal component (Solid 2.0, replaces SuspenseList) - coordinates how
  * descendant Loading boundaries reveal their content.
@@ -1483,7 +1478,12 @@ export function Dynamic<
           if (key.startsWith("on") && typeof value === "function") {
             element.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
           } else if (value !== undefined && value !== null) {
-            element.setAttribute(key, String(value));
+            element.setAttribute(
+              key,
+              typeof value === "object"
+                ? JSON.stringify(value)
+                : String(value as string | number | boolean),
+            );
           }
         }
         if (rest.children) {

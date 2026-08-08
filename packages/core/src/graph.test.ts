@@ -9,8 +9,8 @@
  * - Dynamic dependency changes
  */
 
-import { describe, expect, test, mock } from "bun:test";
-import { signal, computed, effect, batch, flush, createScope } from "./signals.ts";
+import { describe, expect, test } from "bun:test";
+import { signal, computed, effect, batch, flush } from "./signals.ts";
 
 describe("graph correctness", () => {
   test("should drop X->B->X updates", () => {

@@ -251,7 +251,7 @@ interface FlattenOptions {
 }
 
 function isNonRendered(value: unknown): boolean {
-  return value == null || value === true || value === false || value === "";
+  return value === null || value === undefined || value === true || value === false || value === "";
 }
 
 function unwrapAccessor(value: unknown): unknown {

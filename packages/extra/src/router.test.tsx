@@ -12,7 +12,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { render, createScope, onCleanup } from "@barqjs/core";
+import { render, createScope } from "@barqjs/core";
 import {
   compilePath,
   matchPath,
@@ -28,7 +28,6 @@ import {
   Link,
   NavLink,
   Redirect,
-  Loading,
   useLocation,
   useParams,
   useSearchParams,
@@ -289,10 +288,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Home");
@@ -313,10 +309,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Home");
@@ -333,17 +326,16 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/start" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/start" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Start");
     });
 
     test("shows fallback for 404", async () => {
-      const routes: RouteDefinition<any, any>[] = [route({ path: "/", component: () => <div>Home</div> })];
+      const routes: RouteDefinition<any, any>[] = [
+        route({ path: "/", component: () => <div>Home</div> }),
+      ];
 
       const container = document.createElement("div");
       render(
@@ -359,13 +351,12 @@ describe("Router Components", () => {
     });
 
     test("shows default 404 without fallback", async () => {
-      const routes: RouteDefinition<any, any>[] = [route({ path: "/", component: () => <div>Home</div> })];
+      const routes: RouteDefinition<any, any>[] = [
+        route({ path: "/", component: () => <div>Home</div> }),
+      ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/nonexistent" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/nonexistent" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("404");
@@ -387,10 +378,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -413,10 +401,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Home");
@@ -443,10 +428,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -477,10 +459,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -508,10 +487,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const links = container.querySelectorAll("a");
@@ -536,10 +512,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/users/123" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -567,10 +540,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/users/123" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -591,10 +561,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -618,10 +585,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/layout/child" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/layout/child" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Layout Header");
@@ -652,10 +616,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/a/b/c" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/a/b/c" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("A");
@@ -672,10 +633,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/old" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/old" config={{ routes }} />, container);
 
       await wait(100);
       expect(container.textContent).toContain("New Page");
@@ -706,10 +664,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/test?foo=bar#hash" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/test?foo=bar#hash" config={{ routes }} />, container);
 
       await wait(10);
       expect(location!().pathname).toBe("/test");
@@ -738,10 +693,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/a" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/a" config={{ routes }} />, container);
 
       await wait(10);
       expect(location!().pathname).toBe("/a");
@@ -767,10 +719,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/users/123/posts/456" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/users/123/posts/456" config={{ routes }} />, container);
 
       await wait(10);
       expect(params!()).toEqual({ userId: "123", postId: "456" });
@@ -792,10 +741,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/users/1" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/users/1" config={{ routes }} />, container);
 
       await wait(10);
       expect(params!().id).toBe("1");
@@ -821,10 +767,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/search?q=hello&page=1" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/search?q=hello&page=1" config={{ routes }} />, container);
 
       await wait(10);
       const [getParams] = searchParams!;
@@ -846,10 +789,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/search?q=hello" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/search?q=hello" config={{ routes }} />, container);
 
       await wait(10);
       const [getParams, setParams] = searchParams!;
@@ -876,10 +816,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/search?q=hello" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/search?q=hello" config={{ routes }} />, container);
 
       await wait(10);
       const [getParams, setParams] = searchParams!;
@@ -909,10 +846,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(typeof nav!).toBe("function");
@@ -937,10 +871,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/a" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/a" config={{ routes }} />, container);
 
       await wait(10);
       await nav!("/b", { replace: true });
@@ -970,10 +901,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       // isLoading should be true while loader is pending
@@ -1006,10 +934,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/parent/child" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/parent/child" config={{ routes }} />, container);
 
       await wait(10);
       const routes_ = matchedRoutes!();
@@ -1043,10 +968,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     expect(loaderCalled).toBe(true);
@@ -1068,10 +990,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/users/123" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
 
     await wait(100);
     expect(receivedParams).toEqual({ id: "123" });
@@ -1092,10 +1011,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/search?q=test" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/search?q=test" config={{ routes }} />, container);
 
     await wait(100);
     expect(receivedSearch?.get("q")).toBe("test");
@@ -1116,10 +1032,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     expect(signalReceived).toBe(true);
@@ -1139,10 +1052,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     // Should still render the component even on loader error
@@ -1166,10 +1076,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     expect(container.textContent).toContain("Error: Loader failed");
@@ -1220,10 +1127,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/parent/child" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/parent/child" config={{ routes }} />, container);
 
     await wait(20);
     // Both loaders should start immediately (parallel)
@@ -1263,18 +1167,15 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/a" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/a" config={{ routes }} />, container);
 
     await wait(10);
 
     // Rapid fire navigations
-    nav!("/b");
-    nav!("/c");
-    nav!("/a");
-    nav!("/b");
+    void nav!("/b");
+    void nav!("/c");
+    void nav!("/a");
+    void nav!("/b");
 
     await wait(200);
     // Should end up at /b
@@ -1290,10 +1191,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/日本語/世界" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/日本語/世界" config={{ routes }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("世界");
@@ -1304,10 +1202,7 @@ describe("Edge Cases", () => {
 
     const container = document.createElement("div");
     render(
-      <MemoryRouter
-        initialPath="/"
-        config={{ routes, fallback: () => <div>No routes</div> }}
-      />,
+      <MemoryRouter initialPath="/" config={{ routes, fallback: () => <div>No routes</div> }} />,
       container,
     );
 
@@ -1354,10 +1249,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/a/b/c/d" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/a/b/c/d" config={{ routes }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("A");
@@ -1372,10 +1264,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/users/" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/users/" config={{ routes }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("Users");
@@ -1395,10 +1284,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/page#section" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/page#section" config={{ routes }} />, container);
 
     await wait(10);
     expect(location!().hash).toBe("#section");
@@ -1418,23 +1304,19 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/search/hello%20world" config={{ routes }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/search/hello%20world" config={{ routes }} />, container);
 
     await wait(10);
     expect(params!().query).toBe("hello%20world");
   });
 
   test("handles base path configuration", async () => {
-    const routes: RouteDefinition<any, any>[] = [route({ path: "/page", component: () => <div>Page</div> })];
+    const routes: RouteDefinition<any, any>[] = [
+      route({ path: "/page", component: () => <div>Page</div> }),
+    ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter initialPath="/page" config={{ routes, base: "/app" }} />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/page" config={{ routes, base: "/app" }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("Page");
@@ -1475,17 +1357,16 @@ describe("Memory & Cleanup", () => {
   afterEach(cleanup);
 
   test("cleans up router on unmount", async () => {
-    const routes: RouteDefinition<any, any>[] = [route({ path: "/", component: () => <div>Home</div> })];
+    const routes: RouteDefinition<any, any>[] = [
+      route({ path: "/", component: () => <div>Home</div> }),
+    ];
 
     const container = document.createElement("div");
     let dispose: (() => void) | undefined;
 
     createScope((d) => {
       dispose = d;
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
     });
 
     await wait(10);
@@ -1518,13 +1399,7 @@ describe("Memory & Cleanup", () => {
     ];
 
     const container = document.createElement("div");
-    render(
-      <MemoryRouter
-        initialPath="/"
-        config={{ routes, cache: { ttl: 50 } }}
-      />,
-      container,
-    );
+    render(<MemoryRouter initialPath="/" config={{ routes, cache: { ttl: 50 } }} />, container);
 
     await wait(100);
     expect(callCount).toBe(1);
@@ -1578,13 +1453,7 @@ describe("New Features", () => {
       };
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter
-          initialPath="/"
-          config={{ routes, beforeEach: [guard] }}
-        />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes, beforeEach: [guard] }} />, container);
 
       await wait(10);
       await nav!("/admin");
@@ -1618,13 +1487,7 @@ describe("New Features", () => {
       };
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter
-          initialPath="/"
-          config={{ routes, beforeEach: [guard] }}
-        />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes, beforeEach: [guard] }} />, container);
 
       await wait(10);
       await nav!("/admin");
@@ -1657,10 +1520,7 @@ describe("New Features", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       await nav!("/protected");
@@ -1728,10 +1588,7 @@ describe("New Features", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/users" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/users" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -1754,10 +1611,7 @@ describe("New Features", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/a/b" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/a/b" config={{ routes }} />, container);
 
       await wait(10);
       await nav!("../c"); // Relative navigation from /a/b to /a/c
@@ -1801,15 +1655,12 @@ describe("New Features", () => {
       ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
 
       // Navigate to the route with a slow loader
-      nav!("/slow");
+      void nav!("/slow");
 
       // Give time for navigation to start and loading state to be set
       await wait(20);
@@ -1832,13 +1683,12 @@ describe("New Features", () => {
       setRouterDebugMode(true);
 
       // Trigger some router activity that would log
-      const routes: RouteDefinition<any, any>[] = [route({ path: "/", component: () => <div>Home</div> })];
+      const routes: RouteDefinition<any, any>[] = [
+        route({ path: "/", component: () => <div>Home</div> }),
+      ];
 
       const container = document.createElement("div");
-      render(
-        <MemoryRouter initialPath="/" config={{ routes }} />,
-        container,
-      );
+      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(50);
 

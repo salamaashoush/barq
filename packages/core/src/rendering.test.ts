@@ -4,9 +4,22 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { createElement, render } from "./dom.ts";
+import { createElement } from "./dom.ts";
 import { signal, effect, computed, createScope, batch, onCleanup, flush } from "./signals.ts";
-import { Show, For, Index, Switch, Match, Portal, Suspense, ErrorBoundary, Await, Dynamic, splitProps, mergeProps, children } from "./components.ts";
+import {
+  Show,
+  For,
+  Index,
+  Switch,
+  Match,
+  Portal,
+  ErrorBoundary,
+  Await,
+  Dynamic,
+  splitProps,
+  mergeProps,
+  children,
+} from "./components.ts";
 import { resource } from "./async.ts";
 
 let container: HTMLDivElement;
@@ -36,7 +49,7 @@ describe("For component item updates", () => {
     const element = For({
       each: items,
       keyFn: (item) => item.id,
-      children: (item, index) => {
+      children: (item, _index) => {
         renderCount++;
         // In SolidJS, `item` is the actual value, not reactive
         // But the component should re-render when the item changes
@@ -190,7 +203,7 @@ describe("Index component reactivity", () => {
 
     const element = Index({
       each: items,
-      children: (itemAccessor, idx) => {
+      children: (itemAccessor, _idx) => {
         const span = document.createElement("span");
         effect(() => {
           effectRuns++;
@@ -256,7 +269,7 @@ describe("ErrorBoundary", () => {
     };
 
     const element = ErrorBoundary({
-      fallback: (error, reset) => createElement("div", null, `Error: ${error.message}`),
+      fallback: (error, _reset) => createElement("div", null, `Error: ${error.message}`),
       children: ThrowingComponent,
     });
 
@@ -631,9 +644,13 @@ describe("Event handler lifecycle", () => {
 
     const element = Show({
       when: show,
-      children: createElement("button", {
-        onClick: () => clickCount++,
-      }, "Click me"),
+      children: createElement(
+        "button",
+        {
+          onClick: () => clickCount++,
+        },
+        "Click me",
+      ),
     });
 
     container.appendChild(element as Node);

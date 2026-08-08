@@ -47,5 +47,16 @@
 
     "promise/no-nesting": "off"
   },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/profile-hot.ts"],
+      "rules": {
+        "@typescript-eslint/await-thenable": "off",
+        "@typescript-eslint/unbound-method": "off",
+        "@typescript-eslint/no-base-to-string": "off",
+        "@typescript-eslint/restrict-template-expressions": "off"
+      }
+    }
+  ],
   "ignorePatterns": ["**/dist/**", "**/node_modules/**", "**/*.d.ts"]
 }

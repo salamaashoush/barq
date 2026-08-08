@@ -2,7 +2,7 @@
  * Store Tests - Comprehensive tests for reactive state management
  */
 
-import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { useStore, produce, reconcile, unwrap } from "./store.ts";
 import { effect, createScope, batch } from "./signals.ts";
 
@@ -59,7 +59,7 @@ describe("useStore", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.count; // Subscribe
+      void state.count; // Subscribe
       effectRuns++;
     });
 
@@ -78,12 +78,12 @@ describe("useStore", () => {
     let bEffectRuns = 0;
 
     effect(() => {
-      state.a;
+      void state.a;
       aEffectRuns++;
     });
 
     effect(() => {
-      state.b;
+      void state.b;
       bEffectRuns++;
     });
 
@@ -120,7 +120,7 @@ describe("Nested store reactivity", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.user.address.city;
+      void state.user.address.city;
       effectRuns++;
     });
 
@@ -138,7 +138,7 @@ describe("Nested store reactivity", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.level1.level2.level3.value;
+      void state.level1.level2.level3.value;
       effectRuns++;
     });
 
@@ -155,7 +155,10 @@ describe("Nested store reactivity", () => {
 
   test("handles arrays in store", () => {
     const [state, setState] = useStore({
-      items: [{ id: 1, name: "one" }, { id: 2, name: "two" }],
+      items: [
+        { id: 1, name: "one" },
+        { id: 2, name: "two" },
+      ],
     });
 
     expect(state.items[0].name).toBe("one");
@@ -178,7 +181,7 @@ describe("Nested store reactivity", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.items[0];
+      void state.items[0];
       effectRuns++;
     });
 
@@ -195,7 +198,7 @@ describe("Nested store reactivity", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.items.length;
+      void state.items.length;
       effectRuns++;
     });
 
@@ -212,8 +215,8 @@ describe("Store batching", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.a;
-      state.b;
+      void state.a;
+      void state.b;
       effectRuns++;
     });
 
@@ -238,10 +241,13 @@ describe("produce function", () => {
       user: { name: "John", score: 0 },
     });
 
-    setState("user", produce((draft) => {
-      draft.name = "Jane";
-      draft.score += 10;
-    }));
+    setState(
+      "user",
+      produce((draft) => {
+        draft.name = "Jane";
+        draft.score += 10;
+      }),
+    );
 
     expect(state.user.name).toBe("Jane");
     expect(state.user.score).toBe(10);
@@ -252,10 +258,13 @@ describe("produce function", () => {
       items: [1, 2, 3],
     });
 
-    setState("items", produce((draft) => {
-      draft.push(4);
-      draft[0] = 100;
-    }));
+    setState(
+      "items",
+      produce((draft) => {
+        draft.push(4);
+        draft[0] = 100;
+      }),
+    );
 
     expect(state.items).toEqual([100, 2, 3, 4]);
   });
@@ -270,10 +279,13 @@ describe("produce function", () => {
       },
     });
 
-    setState("data", produce((draft) => {
-      const user = draft.users.find((u) => u.id === 1);
-      if (user) user.score = 100;
-    }));
+    setState(
+      "data",
+      produce((draft) => {
+        const user = draft.users.find((u) => u.id === 1);
+        if (user) user.score = 100;
+      }),
+    );
 
     expect(state.data.users[0].score).toBe(100);
     expect(state.data.users[1].score).toBe(0);
@@ -289,10 +301,16 @@ describe("reconcile function", () => {
       ],
     });
 
-    setState("items", reconcile([
-      { id: 1, name: "ONE" }, // Update name, should preserve extra
-      { id: 3, name: "three" }, // New item
-    ], { key: "id" }));
+    setState(
+      "items",
+      reconcile(
+        [
+          { id: 1, name: "ONE" }, // Update name, should preserve extra
+          { id: 3, name: "three" }, // New item
+        ],
+        { key: "id" },
+      ),
+    );
 
     expect(state.items.length).toBe(2);
     expect(state.items[0].name).toBe("ONE");
@@ -305,9 +323,7 @@ describe("reconcile function", () => {
       items: [{ id: 1, value: "old" }],
     });
 
-    setState("items", reconcile([
-      { id: 1, value: "new" },
-    ], "id"));
+    setState("items", reconcile([{ id: 1, value: "new" }], "id"));
 
     expect(state.items[0].value).toBe("new");
   });
@@ -317,9 +333,7 @@ describe("reconcile function", () => {
       items: [{ id: 1, name: "one", extra: "data" }],
     });
 
-    setState("items", reconcile([
-      { id: 1, name: "ONE" },
-    ], { key: "id", merge: false }));
+    setState("items", reconcile([{ id: 1, name: "ONE" }], { key: "id", merge: false }));
 
     expect(state.items[0].name).toBe("ONE");
     expect((state.items[0] as { extra?: string }).extra).toBeUndefined();
@@ -359,7 +373,7 @@ describe("Store edge cases", () => {
 
     effect(() => {
       // Access a property that may or may not exist
-      (state as { count?: number }).count;
+      void (state as { count?: number }).count;
       effectRuns++;
     });
 
@@ -374,7 +388,7 @@ describe("Store edge cases", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.value;
+      void state.value;
       effectRuns++;
     });
 
@@ -399,12 +413,12 @@ describe("Store edge cases", () => {
     let cEffectRuns = 0;
 
     effect(() => {
-      state.a.b.c.d.value;
+      void state.a.b.c.d.value;
       dEffectRuns++;
     });
 
     effect(() => {
-      state.a.b.c;
+      void state.a.b.c;
       cEffectRuns++;
     });
 
@@ -443,7 +457,7 @@ describe("Store edge cases", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.count;
+      void state.count;
       effectRuns++;
     });
 
@@ -464,7 +478,7 @@ describe("Store edge cases", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.count;
+      void state.count;
       effectRuns++;
     });
 
@@ -490,7 +504,7 @@ describe("Store with effects disposal", () => {
     createScope((d) => {
       dispose = d;
       effect(() => {
-        state.count;
+        void state.count;
         effectRuns++;
       });
     });
@@ -520,12 +534,12 @@ describe("Store with effects disposal", () => {
       dispose = d;
 
       effect(() => {
-        state.show;
+        void state.show;
         outerRuns++;
 
         if (state.show) {
           effect(() => {
-            state.data.value;
+            void state.data.value;
             innerRuns++;
           });
         }
@@ -625,12 +639,12 @@ describe("Path-based setters", () => {
     let cityEffectRuns = 0;
 
     effect(() => {
-      state.user.name;
+      void state.user.name;
       nameEffectRuns++;
     });
 
     effect(() => {
-      state.user.address.city;
+      void state.user.address.city;
       cityEffectRuns++;
     });
 
@@ -678,7 +692,7 @@ describe("unwrap utility", () => {
     effect(() => {
       // Access via unwrapped object
       const raw = unwrap(state);
-      raw.count;
+      void raw.count;
       effectRuns++;
     });
 
@@ -727,7 +741,7 @@ describe("Improved produce (proxy-based)", () => {
 
   test("returns original if nothing modified", () => {
     const original = { count: 5 };
-    const updater = produce<typeof original>((draft) => {
+    const updater = produce<typeof original>((_draft) => {
       // No modifications
     });
 
@@ -845,7 +859,7 @@ describe("Additional edge cases", () => {
     let effectRuns = 0;
 
     effect(() => {
-      state.value;
+      void state.value;
       effectRuns++;
     });
 
@@ -873,7 +887,7 @@ describe("Additional edge cases", () => {
 
     let effectRuns = 0;
     effect(() => {
-      state.user.address.city;
+      void state.user.address.city;
       effectRuns++;
     });
 
@@ -893,7 +907,7 @@ describe("Additional edge cases", () => {
 
     let effectRuns = 0;
     effect(() => {
-      state.items.length;
+      void state.items.length;
       effectRuns++;
     });
 
@@ -913,7 +927,7 @@ describe("Additional edge cases", () => {
 
     let effectRuns = 0;
     effect(() => {
-      state.a + state.b + state.c;
+      void (state.a + state.b + state.c);
       effectRuns++;
     });
 
@@ -950,7 +964,7 @@ describe("Additional edge cases", () => {
   });
 
   test("path-based setter throws on null parent", () => {
-    const [state, setState] = useStore<{ user: { address: null | { city: string } } }>({
+    const [_state, setState] = useStore<{ user: { address: null | { city: string } } }>({
       user: { address: null },
     });
 

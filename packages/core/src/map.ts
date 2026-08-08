@@ -99,113 +99,116 @@ export function mapArray<Item, MappedItem>(
     }
   };
 
-  const node = computed<MappedItem[]>(() => {
-    const source = list();
-    const items = (source || []) as readonly Item[];
-    const newLen = items.length;
+  const node = computed<MappedItem[]>(
+    () => {
+      const source = list();
+      const items = (source || []) as readonly Item[];
+      const newLen = items.length;
 
-    if (newLen === 0) {
-      if (rows.length > 0) {
-        for (const row of rows) disposeRow(row);
-        rows = [];
-        keys = [];
-        mapped = [];
-      }
-      if (fallback) {
-        if (fallbackRow === null) {
-          fallbackRow = createFallbackRow(fallback);
-          mapped = [fallbackRow._value as MappedItem];
+      if (newLen === 0) {
+        if (rows.length > 0) {
+          for (const row of rows) disposeRow(row);
+          rows = [];
+          keys = [];
+          mapped = [];
+        }
+        if (fallback) {
+          if (fallbackRow === null) {
+            fallbackRow = createFallbackRow(fallback);
+            mapped = [fallbackRow._value as MappedItem];
+          }
+          return mapped;
         }
         return mapped;
       }
-      return mapped;
-    }
 
-    clearFallback();
+      clearFallback();
 
-    const newKeys: unknown[] = keyFn
-      ? items.map(keyFn)
-      : byIndex
-        ? // Positional rows: identity is the slot, so keys are the indices
-          items.map((_, i) => i)
-        : (items.slice() as unknown[]);
+      const newKeys: unknown[] = keyFn
+        ? items.map(keyFn)
+        : byIndex
+          ? // Positional rows: identity is the slot, so keys are the indices
+            items.map((_, i) => i)
+          : (items.slice() as unknown[]);
 
-    const oldLen = rows.length;
-    const nextRows: Row<Item, MappedItem>[] = new Array(newLen);
-    let changed = oldLen !== newLen;
+      const oldLen = rows.length;
+      const nextRows: Row<Item, MappedItem>[] = new Array(newLen);
+      let changed = oldLen !== newLen;
 
-    // Common prefix: same key in the same slot, nothing to move
-    let start = 0;
-    const shortest = oldLen < newLen ? oldLen : newLen;
-    while (start < shortest && keys[start] === newKeys[start]) {
-      nextRows[start] = rows[start];
-      start++;
-    }
-
-    // Common suffix
-    let oldEnd = oldLen - 1;
-    let newEnd = newLen - 1;
-    while (oldEnd >= start && newEnd >= start && keys[oldEnd] === newKeys[newEnd]) {
-      nextRows[newEnd] = rows[oldEnd];
-      if (oldEnd !== newEnd) changed = true;
-      oldEnd--;
-      newEnd--;
-    }
-
-    if (start <= newEnd || start <= oldEnd) changed = true;
-
-    // Middle section: match by key, reusing each old row at most once.
-    // newIndicesNext chains duplicate keys so repeats map to distinct rows.
-    const newIndices = new Map<unknown, number>();
-    const newIndicesNext: number[] = new Array(newEnd + 1);
-    for (let j = newEnd; j >= start; j--) {
-      const key = newKeys[j];
-      const existing = newIndices.get(key);
-      newIndicesNext[j] = existing === undefined ? -1 : existing;
-      newIndices.set(key, j);
-    }
-
-    for (let i = start; i <= oldEnd; i++) {
-      const key = keys[i];
-      const j = newIndices.get(key);
-      if (j !== undefined && j !== -1) {
-        nextRows[j] = rows[i];
-        newIndices.set(key, newIndicesNext[j]);
-      } else {
-        disposeRow(rows[i]);
+      // Common prefix: same key in the same slot, nothing to move
+      let start = 0;
+      const shortest = oldLen < newLen ? oldLen : newLen;
+      while (start < shortest && keys[start] === newKeys[start]) {
+        nextRows[start] = rows[start];
+        start++;
       }
-    }
 
-    for (let j = start; j <= newEnd; j++) {
-      if (nextRows[j] === undefined) {
-        nextRows[j] = createRow(items[j], j);
+      // Common suffix
+      let oldEnd = oldLen - 1;
+      let newEnd = newLen - 1;
+      while (oldEnd >= start && newEnd >= start && keys[oldEnd] === newKeys[newEnd]) {
+        nextRows[newEnd] = rows[oldEnd];
+        if (oldEnd !== newEnd) changed = true;
+        oldEnd--;
+        newEnd--;
       }
-    }
 
-    // Re-point reused rows at their (possibly new) item and index
-    for (let j = 0; j < newLen; j++) {
-      const row = nextRows[j];
-      if (row._item !== undefined) {
-        const item = items[j];
-        if (row._item.peek() !== item) {
-          row._item.set(item);
-          changed = true;
+      if (start <= newEnd || start <= oldEnd) changed = true;
+
+      // Middle section: match by key, reusing each old row at most once.
+      // newIndicesNext chains duplicate keys so repeats map to distinct rows.
+      const newIndices = new Map<unknown, number>();
+      const newIndicesNext: number[] = new Array(newEnd + 1);
+      for (let j = newEnd; j >= start; j--) {
+        const key = newKeys[j];
+        const existing = newIndices.get(key);
+        newIndicesNext[j] = existing === undefined ? -1 : existing;
+        newIndices.set(key, j);
+      }
+
+      for (let i = start; i <= oldEnd; i++) {
+        const key = keys[i];
+        const j = newIndices.get(key);
+        if (j !== undefined && j !== -1) {
+          nextRows[j] = rows[i];
+          newIndices.set(key, newIndicesNext[j]);
+        } else {
+          disposeRow(rows[i]);
         }
       }
-      if (row._index !== undefined && row._index.peek() !== j) {
-        row._index.set(j);
+
+      for (let j = start; j <= newEnd; j++) {
+        if (nextRows[j] === undefined) {
+          nextRows[j] = createRow(items[j], j);
+        }
       }
-    }
 
-    rows = nextRows;
-    keys = newKeys;
+      // Re-point reused rows at their (possibly new) item and index
+      for (let j = 0; j < newLen; j++) {
+        const row = nextRows[j];
+        if (row._item !== undefined) {
+          const item = items[j];
+          if (row._item.peek() !== item) {
+            row._item.set(item);
+            changed = true;
+          }
+        }
+        if (row._index !== undefined && row._index.peek() !== j) {
+          row._index.set(j);
+        }
+      }
 
-    if (changed || mapped.length !== newLen) {
-      mapped = new Array(newLen);
-      for (let j = 0; j < newLen; j++) mapped[j] = nextRows[j]._value;
-    }
-    return mapped;
-  }, options?.name !== undefined ? { name: options.name } : undefined);
+      rows = nextRows;
+      keys = newKeys;
+
+      if (changed || mapped.length !== newLen) {
+        mapped = new Array(newLen);
+        for (let j = 0; j < newLen; j++) mapped[j] = nextRows[j]._value;
+      }
+      return mapped;
+    },
+    options?.name !== undefined ? { name: options.name } : undefined,
+  );
 
   return node;
 }
@@ -264,53 +267,56 @@ export function repeat<MappedItem>(
     return row;
   };
 
-  return computed<MappedItem[]>(() => {
-    const total = count();
-    const from = fromFn ? fromFn() : 0;
-    const newLen = total < 0 ? 0 : total;
+  return computed<MappedItem[]>(
+    () => {
+      const total = count();
+      const from = fromFn ? fromFn() : 0;
+      const newLen = total < 0 ? 0 : total;
 
-    if (newLen === 0) {
-      if (rows.length > 0) {
-        for (const row of rows) row._dispose();
-        rows = [];
-        mapped = [];
-      }
-      if (fallback) {
-        if (fallbackRow === null) {
-          fallbackRow = createFallbackRow(fallback);
-          mapped = [fallbackRow._value];
+      if (newLen === 0) {
+        if (rows.length > 0) {
+          for (const row of rows) row._dispose();
+          rows = [];
+          mapped = [];
+        }
+        if (fallback) {
+          if (fallbackRow === null) {
+            fallbackRow = createFallbackRow(fallback);
+            mapped = [fallbackRow._value];
+          }
+          return mapped;
         }
         return mapped;
       }
+
+      if (fallbackRow !== null) {
+        fallbackRow._dispose();
+        fallbackRow = null;
+        mapped = [];
+      }
+
+      // A shifted range invalidates every row: the index each mapper closed over
+      // no longer matches its slot
+      if (from !== prevFrom) {
+        for (const row of rows) row._dispose();
+        rows = [];
+        prevFrom = from;
+      }
+
+      const oldLen = rows.length;
+      if (newLen === oldLen) return mapped;
+
+      if (newLen < oldLen) {
+        for (let i = newLen; i < oldLen; i++) rows[i]._dispose();
+        rows.length = newLen;
+      } else {
+        for (let i = oldLen; i < newLen; i++) rows[i] = createRow(from + i);
+      }
+
+      mapped = new Array(newLen);
+      for (let i = 0; i < newLen; i++) mapped[i] = rows[i]._value;
       return mapped;
-    }
-
-    if (fallbackRow !== null) {
-      fallbackRow._dispose();
-      fallbackRow = null;
-      mapped = [];
-    }
-
-    // A shifted range invalidates every row: the index each mapper closed over
-    // no longer matches its slot
-    if (from !== prevFrom) {
-      for (const row of rows) row._dispose();
-      rows = [];
-      prevFrom = from;
-    }
-
-    const oldLen = rows.length;
-    if (newLen === oldLen) return mapped;
-
-    if (newLen < oldLen) {
-      for (let i = newLen; i < oldLen; i++) rows[i]._dispose();
-      rows.length = newLen;
-    } else {
-      for (let i = oldLen; i < newLen; i++) rows[i] = createRow(from + i);
-    }
-
-    mapped = new Array(newLen);
-    for (let i = 0; i < newLen; i++) mapped[i] = rows[i]._value;
-    return mapped;
-  }, options?.name !== undefined ? { name: options.name } : undefined);
+    },
+    options?.name !== undefined ? { name: options.name } : undefined,
+  );
 }

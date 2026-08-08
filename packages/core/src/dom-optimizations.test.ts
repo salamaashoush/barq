@@ -5,7 +5,7 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { createElement, hydrate, insert, render, setProp, spread } from "./dom.ts";
+import { createElement, hydrate, insert, setProp, spread } from "./dom.ts";
 import type { JSXElement } from "./dom.ts";
 import { flush, signal } from "./signals.ts";
 
@@ -225,7 +225,16 @@ describe("pre-hydration event replay", () => {
     let stopCalled = false;
     const g = globalThis as Record<string, unknown>;
     g.__BARQ_EVTS__ = [
-      { type: "click", x: 10, y: 10, button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false },
+      {
+        type: "click",
+        x: 10,
+        y: 10,
+        button: 0,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      },
     ];
     g.__BARQ_EVTS_STOP__ = () => {
       stopCalled = true;

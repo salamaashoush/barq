@@ -409,6 +409,7 @@ let tracking = false; // Only true during computation
 let batchDepth = 0;
 let scheduled = false;
 let latestDepth = 0; // Inside latest(): pending reads return stale values
+// oxlint-disable-next-line no-unused-vars -- flush-pass counter, not read yet
 let clock = 0;
 
 const defaultContext: ContextRecord = {};
@@ -2026,7 +2027,8 @@ export interface ExternalSourceConfig {
   untrack?: <T>(fn: () => T) => T;
 }
 
-let externalSource: { factory: ExternalSourceFactory; untrack: <T>(fn: () => T) => T } | null = null;
+let externalSource: { factory: ExternalSourceFactory; untrack: <T>(fn: () => T) => T } | null =
+  null;
 
 /**
  * Bridge another reactive library (MobX, Vue refs, ...) into the graph: every

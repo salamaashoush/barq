@@ -13,7 +13,7 @@ function bench(name: string, fn: () => void): void {
   const start = Bun.nanoseconds();
   for (let i = 0; i < N; i++) fn();
   const elapsed = (Bun.nanoseconds() - start) / 1e6;
-  console.log(`${name.padEnd(44)} ${(elapsed / N * 1e6).toFixed(0).padStart(8)} ns/op`);
+  console.log(`${name.padEnd(44)} ${((elapsed / N) * 1e6).toFixed(0).padStart(8)} ns/op`);
 }
 
 // Phase 1: creation only
@@ -30,7 +30,7 @@ bench("create: scope+signal+effect+dispose", () => {
 // Phase 2: writes only (subscribed effect, batched, no flush yet)
 {
   const s = signal(0);
-  let runs = 0;
+  let _runs = 0;
   effect(() => {
     s();
     runs++;

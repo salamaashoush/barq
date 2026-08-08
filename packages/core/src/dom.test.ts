@@ -271,7 +271,9 @@ describe("Class handling", () => {
   });
 
   test("filters falsy values from class array", () => {
-    const el = createElement("div", { class: ["foo", "", null, "bar", false, "baz"] }) as HTMLDivElement;
+    const el = createElement("div", {
+      class: ["foo", "", null, "bar", false, "baz"],
+    }) as HTMLDivElement;
     expect(el.className).toBe("foo bar baz");
   });
 
@@ -463,11 +465,7 @@ describe("Reactive children", () => {
     const el = createElement(
       "div",
       null,
-      createElement(
-        "div",
-        null,
-        createElement("div", null, inner),
-      ),
+      createElement("div", null, createElement("div", null, inner)),
     ) as HTMLDivElement;
 
     container.appendChild(el);
@@ -768,12 +766,7 @@ describe("Edge cases and error handling", () => {
   });
 
   test("handles nested arrays in children", () => {
-    const el = createElement(
-      "div",
-      null,
-      ["a", ["b", "c"]],
-      "d",
-    ) as HTMLDivElement;
+    const el = createElement("div", null, ["a", ["b", "c"]], "d") as HTMLDivElement;
 
     expect(el.textContent).toBe("abcd");
   });
@@ -799,10 +792,14 @@ describe("Edge cases and error handling", () => {
   });
 
   test("kebab-case SVG attributes", () => {
-    const el = createElement("svg", null, createElement("rect", {
-      strokeWidth: "2",
-      fillOpacity: "0.5",
-    })) as SVGSVGElement;
+    const el = createElement(
+      "svg",
+      null,
+      createElement("rect", {
+        strokeWidth: "2",
+        fillOpacity: "0.5",
+      }),
+    ) as SVGSVGElement;
 
     const rect = el.querySelector("rect");
     expect(rect?.getAttribute("stroke-width")).toBe("2");

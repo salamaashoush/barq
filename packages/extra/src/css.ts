@@ -4,14 +4,7 @@
  * Provides styled components and css utilities with automatic setup
  */
 
-import {
-  extractCss,
-  glob,
-  css as gooberCss,
-  styled as gooberStyled,
-  keyframes,
-  setup,
-} from "goober";
+import { extractCss, css as gooberCss, styled as gooberStyled, keyframes, setup } from "goober";
 import { onCleanup } from "@barqjs/core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -258,7 +251,6 @@ export function createGlobalStyle<P extends Record<string, unknown> = Record<str
     return null;
   };
 }
-
 
 /**
  * Extract all generated CSS (useful for SSR)

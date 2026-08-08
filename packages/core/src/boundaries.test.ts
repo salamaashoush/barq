@@ -302,7 +302,7 @@ describe("enforceLoadingBoundary", () => {
         });
         expect(() => {
           effect(() => {
-            data();
+            void data();
           });
         }).toThrow(/ASYNC_OUTSIDE_LOADING_BOUNDARY/);
       } finally {
@@ -322,7 +322,7 @@ describe("enforceLoadingBoundary", () => {
       });
       try {
         effect(() => {
-          data();
+          void data();
         });
       } catch {
         ok = false;

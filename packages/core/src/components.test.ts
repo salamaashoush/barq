@@ -16,8 +16,7 @@ import {
   clearRange,
   insertNodes,
 } from "./components.ts";
-import { signal, effect, createScope, computed, batch, onCleanup, flush } from "./signals.ts";
-import { createElement, render } from "./dom.ts";
+import { signal, effect, createScope, batch, onCleanup, flush } from "./signals.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;
@@ -711,7 +710,7 @@ describe("For component", () => {
       each: items,
       children: (item: string) => {
         effect(() => {
-          item; // track
+          void item; // track
           effectRuns++;
         });
         return document.createTextNode(item);
@@ -756,7 +755,7 @@ describe("Index component", () => {
 
     const element = Index({
       each: items,
-      children: (item: () => string, index: number) => {
+      children: (item: () => string, _index: number) => {
         effect(() => {
           item(); // subscribe
           updateCount++;
@@ -1058,7 +1057,7 @@ describe("Switch/Match components", () => {
 describe("Marker utilities", () => {
   test("createMarkerPair creates unique markers", () => {
     const [start1, end1] = createMarkerPair("Test");
-    const [start2, end2] = createMarkerPair("Test");
+    const [start2, _end2] = createMarkerPair("Test");
 
     expect(start1.textContent).toMatch(/^Test:\d+$/);
     expect(end1.textContent).toMatch(/^\/Test:\d+$/);
@@ -1088,10 +1087,7 @@ describe("Marker utilities", () => {
     container.appendChild(start);
     container.appendChild(end);
 
-    insertNodes(end, [
-      document.createTextNode("a"),
-      document.createTextNode("b"),
-    ]);
+    insertNodes(end, [document.createTextNode("a"), document.createTextNode("b")]);
 
     expect(container.textContent).toBe("ab");
     expect(container.childNodes[1].textContent).toBe("a");

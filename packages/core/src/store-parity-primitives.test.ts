@@ -37,7 +37,7 @@ describe("$TRACK", () => {
       const [state, setState] = useStore<Record<string, number>>({ a: 1 });
       let runs = 0;
       effect(() => {
-        (state as unknown as Record<symbol, unknown>)[$TRACK];
+        void (state as unknown as Record<symbol, unknown>)[$TRACK];
         runs++;
       });
       flush();

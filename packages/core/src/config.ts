@@ -106,7 +106,13 @@ export type StrictAccessor<T> = IsCompilerMode extends true ? T | Accessor<T> : 
  * ```
  */
 export type StrictArrayAccessor<T> = IsCompilerMode extends true
-  ? readonly T[] | T[] | undefined | null | false | Accessor<readonly T[] | T[] | undefined | null | false>
+  ?
+      | readonly T[]
+      | T[]
+      | undefined
+      | null
+      | false
+      | Accessor<readonly T[] | T[] | undefined | null | false>
   : Accessor<readonly T[] | T[] | undefined | null | false>;
 
 /**

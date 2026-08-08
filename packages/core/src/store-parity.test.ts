@@ -38,11 +38,11 @@ describe("draft-first setters", () => {
     let bRuns = 0;
 
     effect(() => {
-      state.a;
+      void state.a;
       aRuns++;
     });
     effect(() => {
-      state.b;
+      void state.b;
       bRuns++;
     });
     expect(aRuns).toBe(1);
@@ -122,11 +122,11 @@ describe("createProjection", () => {
     let doubledRuns = 0;
     let constantRuns = 0;
     effect(() => {
-      proj.doubled;
+      void proj.doubled;
       doubledRuns++;
     });
     effect(() => {
-      proj.constant;
+      void proj.constant;
       constantRuns++;
     });
 

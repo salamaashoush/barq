@@ -574,7 +574,7 @@ describe("onCleanup", () => {
 describe("writable derived signals", () => {
   test("signal(fn) derives from dependencies and accepts writes", () => {
     const source = signal(1);
-    const derived = signal((prev?: number) => source() * 10);
+    const derived = signal((_prev?: number) => source() * 10);
 
     expect(derived()).toBe(10);
 

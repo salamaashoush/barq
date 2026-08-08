@@ -180,9 +180,7 @@ function delegatedEventHandler(e: Event): void {
 }
 
 function isEventHandlerValue(value: unknown): boolean {
-  return (
-    typeof value === "function" || (Array.isArray(value) && typeof value[0] === "function")
-  );
+  return typeof value === "function" || (Array.isArray(value) && typeof value[0] === "function");
 }
 
 /** Wrap a tuple handler for direct (non-delegated) listeners */
@@ -630,7 +628,8 @@ function reconcileNodeArrays(parent: Node, a: Node[], b: Node[], after: Node): v
     }
     if (aEnd === aStart) {
       // Append remaining new nodes
-      const anchor = bEnd < bLength ? (bStart ? b[bStart - 1].nextSibling : b[bEnd - bStart]) : after;
+      const anchor =
+        bEnd < bLength ? (bStart ? b[bStart - 1].nextSibling : b[bEnd - bStart]) : after;
       while (bStart < bEnd) parent.insertBefore(b[bStart++], anchor);
     } else if (bEnd === bStart) {
       // Remove remaining old nodes
