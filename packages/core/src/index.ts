@@ -58,6 +58,10 @@ export {
   enableExternalSource,
   resetExternalSource,
   markInMotion,
+  setSnapshotCapture,
+  markSnapshotScope,
+  releaseSnapshotScope,
+  clearSnapshots,
   SUPPORTS_PROXY,
 } from "./signals.ts";
 export type { ExternalSource, ExternalSourceConfig, ExternalSourceFactory } from "./signals.ts";

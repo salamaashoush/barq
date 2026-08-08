@@ -96,9 +96,40 @@ describe("markInMotion", () => {
     dispose();
   });
 
-  test("rejects plain signals", () => {
-    const a = signal(1);
-    expect(() => markInMotion(a)).toThrow(/derived value/);
+  test("works on plain signals too", () => {
+    const dispose = createScope((d) => {
+      const a = signal(1);
+      expect(untrack(() => a())).toBe(1);
+
+      const release = markInMotion(a);
+      expect(isPending(() => a())).toBe(true);
+      expect(untrack(() => latest(() => a()))).toBe(1);
+
+      release();
+      expect(isPending(() => a())).toBe(false);
+      expect(untrack(() => a())).toBe(1);
+      return d;
+    }, true);
+    dispose();
+  });
+
+  test("a marked signal makes its readers pending", () => {
+    const dispose = createScope((d) => {
+      const a = signal(2);
+      const double = computed(() => a() * 2);
+      expect(untrack(() => double())).toBe(4);
+
+      const release = markInMotion(a);
+      expect(isPending(() => double())).toBe(true);
+      release();
+      expect(untrack(() => double())).toBe(4);
+      return d;
+    }, true);
+    dispose();
+  });
+
+  test("rejects things this runtime did not create", () => {
+    expect(() => markInMotion(() => 1)).toThrow(/created by this runtime/);
   });
 });
 

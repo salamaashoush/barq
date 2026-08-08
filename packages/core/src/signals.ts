@@ -24,6 +24,8 @@ const STATUS_PENDING = 1 << 7; // Async value in flight
 const STATUS_ERROR = 1 << 8; // Last computation threw
 const REACTIVE_CHILDREN_FORBIDDEN = 1 << 9; // Leaf effect: may not own primitives
 const REACTIVE_AFFECTED = 1 << 10; // Declared in motion: reads as pending until released
+const REACTIVE_IN_SNAPSHOT_SCOPE = 1 << 11; // Reads captured values, not live ones
+const REACTIVE_SNAPSHOT_STALE = 1 << 12; // Was served a snapshot that diverged
 
 const EFFECT_PURE = 0;
 const EFFECT_RENDER = 1;
@@ -95,6 +97,8 @@ export interface SignalOptions<T> {
   unobserved?: () => void;
   /** Suppress the REACTIVE_WRITE_IN_OWNED_SCOPE diagnostic for this signal */
   ownedWrite?: boolean;
+  /** Exclude this signal from snapshot capture */
+  noSnapshot?: boolean;
 }
 
 // ============================================================================
@@ -191,6 +195,8 @@ interface SignalNode<T> {
   _unobserved: (() => void) | undefined;
   _epoch: number; // Last mark epoch this node propagated in (write dedupe)
   _fn: ((prev?: T) => T) | undefined; // undefined on plain signals; discriminates the two kinds
+  _affected: number; // affects() refcount; non-zero means the value reads as pending
+  _snapshot: unknown; // Captured value, or NO_SNAPSHOT when nothing was captured
 }
 
 /** Computed node extends signal with computation state */
@@ -435,6 +441,8 @@ export interface Owner {
   _parent: Owner | null;
   /** Context record inherited from parent */
   _context: ContextRecord;
+  /** Root of a snapshot scope (see markSnapshotScope) */
+  _snapshotScope?: boolean;
 }
 
 let currentOwner: Owner | null = null;
@@ -1166,10 +1174,19 @@ export function signal<T>(
     _unobserved: options?.unobserved,
     _epoch: 0,
     _fn: undefined,
+    _affected: 0,
+    _snapshot: NO_SNAPSHOT,
   };
 
+  if (slowSignalRead !== 0 && snapshotCaptureActive && options?.noSnapshot !== true) {
+    node._snapshot = initialValue;
+    snapshotSources.add(node as SignalNode<unknown>);
+  }
+
   const read = (): T => {
-    // Fast path: not tracking
+    // One global load decides whether any of the rare read modes are live.
+    // Zero in every ordinary app, so the common path stays two branches.
+    if (slowSignalRead !== 0) return readSignalSlow(node as SignalNode<unknown>) as T;
     if (!tracking) return node._value;
     if (currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
       link(node as SignalNode<unknown>, currentObserver);
@@ -1226,6 +1243,14 @@ function createComputedNode<T>(
 ): ComputedNode<T> {
   const owner = getCurrentOwner();
 
+  let inheritedFlags = 0;
+  if (owner !== null) {
+    const ownerFlags = (owner as ComputedNode<unknown>)._flags;
+    if (owner._snapshotScope === true || (ownerFlags & REACTIVE_IN_SNAPSHOT_SCOPE) !== 0) {
+      inheritedFlags = REACTIVE_IN_SNAPSHOT_SCOPE;
+    }
+  }
+
   if (owner !== null && (owner as ComputedNode<unknown>)._flags & REACTIVE_CHILDREN_FORBIDDEN) {
     emitDiagnostic(
       "PRIMITIVE_IN_FORBIDDEN_SCOPE",
@@ -1254,9 +1279,11 @@ function createComputedNode<T>(
     _unobserved: options?.unobserved,
     _epoch: 0,
     _fn: fn,
+    _affected: 0,
+    _snapshot: NO_SNAPSHOT,
     _deps: null,
     _depsTail: null,
-    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED,
+    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED | inheritedFlags,
     _height: initialHeight,
     _nextHeap: undefined,
     _prevHeap: null as never,
@@ -1968,6 +1995,110 @@ export function refresh(target: () => unknown): void {
   schedule();
 }
 
+// ============================================================================
+// Snapshot capture (hydration resume)
+// ============================================================================
+
+/** Distinguishes "nothing captured" from a captured `undefined` */
+const NO_SNAPSHOT: unique symbol = Symbol("no-snapshot");
+
+/**
+ * Non-zero while any rare read mode is live (snapshot capture, affects marks).
+ * The signal read tests this one global before doing anything unusual.
+ */
+let slowSignalRead = 0;
+
+let snapshotCaptureActive = false;
+const snapshotSources = new Set<SignalNode<unknown>>();
+
+/**
+ * Start or stop recording snapshots. While active, every signal created
+ * captures its initial value, and computations inside a snapshot scope read
+ * that captured value instead of the live one.
+ */
+export function setSnapshotCapture(active: boolean): void {
+  if (active === snapshotCaptureActive) return;
+  snapshotCaptureActive = active;
+  slowSignalRead += active ? 1 : -1;
+}
+
+/**
+ * Mark an owner's subtree as reading snapshot values. Computations created
+ * under it see the captured values until the scope is released.
+ */
+export function markSnapshotScope(owner: Owner): void {
+  owner._snapshotScope = true;
+  for (const child of owner.children ?? []) {
+    child._flags |= REACTIVE_IN_SNAPSHOT_SCOPE;
+  }
+}
+
+/**
+ * Release a snapshot scope: computations that were served a snapshot value
+ * differing from the live one are re-run against live state.
+ */
+export function releaseSnapshotScope(owner: Owner): void {
+  owner._snapshotScope = false;
+  releaseSnapshotSubtree(owner);
+  schedule();
+}
+
+function releaseSnapshotSubtree(owner: Owner): void {
+  const children = owner.children;
+  if (children === null) return;
+  for (const child of children) {
+    if ((child as unknown as Owner)._snapshotScope === true) continue; // nested scope owns its release
+    child._flags &= ~REACTIVE_IN_SNAPSHOT_SCOPE;
+    if (child._flags & REACTIVE_SNAPSHOT_STALE) {
+      child._flags = (child._flags & ~REACTIVE_SNAPSHOT_STALE) | REACTIVE_DIRTY;
+      if (child._kind !== EFFECT_PURE) insertIntoHeap(child, heapFor(child));
+      propagate(child, REACTIVE_DIRTY);
+    }
+    releaseSnapshotSubtree(child);
+  }
+}
+
+/** Drop every captured snapshot and stop capturing. */
+export function clearSnapshots(): void {
+  for (const source of snapshotSources) {
+    source._snapshot = NO_SNAPSHOT;
+  }
+  snapshotSources.clear();
+  setSnapshotCapture(false);
+}
+
+/**
+ * The read path taken while snapshot capture or an affects mark is live.
+ * Kept out of line so the ordinary read stays small enough to inline.
+ */
+function readSignalSlow<T>(node: SignalNode<T>): T {
+  if (node._affected !== 0 && latestDepth === 0) {
+    if (tracking && currentObserver !== null && !(currentObserver._flags & REACTIVE_DISPOSED)) {
+      link(node as SignalNode<unknown>, currentObserver);
+    }
+    throw new NotReadyError();
+  }
+
+  if (!tracking) return node._value;
+
+  const observer = currentObserver;
+  if (observer === null || observer._flags & REACTIVE_DISPOSED) return node._value;
+  link(node as SignalNode<unknown>, observer);
+
+  if (
+    snapshotCaptureActive &&
+    observer._flags & REACTIVE_IN_SNAPSHOT_SCOPE &&
+    node._snapshot !== NO_SNAPSHOT
+  ) {
+    const captured = node._snapshot as T;
+    // Remember that the snapshot diverged, so releasing the scope re-runs this
+    if (captured !== node._value) observer._flags |= REACTIVE_SNAPSHOT_STALE;
+    return captured;
+  }
+
+  return node._value;
+}
+
 /**
  * Declare that a derived value is in motion: it and everything downstream read
  * as pending (Loading boundaries show fallbacks, `latest()` keeps the last
@@ -1978,14 +2109,21 @@ export function refresh(target: () => unknown): void {
  * status channel to carry the mark.
  */
 export function markInMotion(target: () => unknown): () => void {
-  const node = (target as unknown as { _node?: ComputedNode<unknown> })._node;
-  if (!node || node._fn === undefined) {
-    throw new Error("affects() needs a derived value (computed/createAsync), not a plain signal.");
+  const node = (target as unknown as { _node?: SignalNode<unknown> })._node;
+  if (!node) {
+    throw new Error("affects() needs a signal or derived value created by this runtime.");
   }
-  const count = (affectsCounts.get(node) ?? 0) + 1;
-  affectsCounts.set(node, count);
+
+  const derived = node._fn !== undefined;
+  const count = node._affected + 1;
+  node._affected = count;
+
   if (count === 1) {
-    node._flags |= REACTIVE_AFFECTED;
+    if (derived) {
+      (node as ComputedNode<unknown>)._flags |= REACTIVE_AFFECTED;
+    } else {
+      slowSignalRead++;
+    }
     propagate(node, REACTIVE_DIRTY);
     schedule();
   }
@@ -1994,19 +2132,16 @@ export function markInMotion(target: () => unknown): () => void {
   return () => {
     if (released) return;
     released = true;
-    const remaining = (affectsCounts.get(node) ?? 1) - 1;
-    if (remaining > 0) {
-      affectsCounts.set(node, remaining);
-      return;
+    if (--node._affected > 0) return;
+    if (derived) {
+      (node as ComputedNode<unknown>)._flags &= ~REACTIVE_AFFECTED;
+    } else {
+      slowSignalRead--;
     }
-    affectsCounts.delete(node);
-    node._flags &= ~REACTIVE_AFFECTED;
     propagate(node, REACTIVE_DIRTY);
     schedule();
   };
 }
-
-const affectsCounts = new WeakMap<ComputedNode<unknown>, number>();
 
 // ============================================================================
 // External reactive sources
