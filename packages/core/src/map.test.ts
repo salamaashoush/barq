@@ -83,7 +83,7 @@ describe("mapArray - keyed by identity (default)", () => {
       return d;
     }, true);
     dispose();
-    expect(disposed.sort((a, b) => a - b)).toEqual([1, 2]);
+    expect(disposed.toSorted((a, b) => a - b)).toEqual([1, 2]);
   });
 
   test("handles duplicate keys as distinct rows", () => {

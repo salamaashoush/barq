@@ -6,7 +6,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Loading } from "./components.ts";
 import { createElement, hydrate } from "./dom.ts";
-import type { JSXElement } from "./dom.ts";
 import {
   clearRenderData,
   generateHydrationScript,
@@ -38,9 +37,8 @@ describe("renderToString", () => {
     const count = signal(41);
     const doubled = computed(() => count() + 1);
 
-    const html = renderToString(
-      () =>
-        createElement("div", { class: "app" }, "Count: ", () => String(doubled())) as JSXElement,
+    const html = renderToString(() =>
+      createElement("div", { class: "app" }, "Count: ", () => String(doubled())),
     );
 
     expect(html).toContain('<div class="app">');
@@ -50,7 +48,7 @@ describe("renderToString", () => {
 
   test("escapes HTML in text content (XSS-safe by construction)", () => {
     const userInput = '<img src=x onerror="alert(1)">';
-    const html = renderToString(() => createElement("p", null, userInput) as JSXElement);
+    const html = renderToString(() => createElement("p", null, userInput));
 
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
@@ -62,19 +60,18 @@ describe("renderToString", () => {
       return "late";
     });
 
-    const html = renderToString(
-      () =>
-        Loading({
-          fallback: document.createTextNode("loading..."),
-          children: () => {
-            try {
-              return document.createTextNode(data());
-            } catch (err) {
-              if (err instanceof NotReadyError) throw err;
-              throw err;
-            }
-          },
-        }) as JSXElement,
+    const html = renderToString(() =>
+      Loading({
+        fallback: document.createTextNode("loading..."),
+        children: () => {
+          try {
+            return document.createTextNode(data());
+          } catch (err) {
+            if (err instanceof NotReadyError) throw err;
+            throw err;
+          }
+        },
+      }),
     );
 
     expect(html).toContain("loading...");
@@ -92,12 +89,11 @@ describe("renderToStringAsync", () => {
       { key: "user" },
     );
 
-    const html = await renderToStringAsync(
-      () =>
-        Loading({
-          fallback: document.createTextNode("loading..."),
-          children: () => document.createTextNode(`Hello ${user().name}`),
-        }) as JSXElement,
+    const html = await renderToStringAsync(() =>
+      Loading({
+        fallback: document.createTextNode("loading..."),
+        children: () => document.createTextNode(`Hello ${user().name}`),
+      }),
     );
 
     expect(html).toContain("Hello Ada");
@@ -109,7 +105,7 @@ describe("renderToStringAsync", () => {
     const b = createAsync(
       async () => {
         // waterfall: depends on a
-        return (a() as number) + 1;
+        return a() + 1;
       },
       { key: "b" },
     );
@@ -117,7 +113,7 @@ describe("renderToStringAsync", () => {
     await renderToStringAsync(() => {
       return createElement("div", null, () => {
         return String(b());
-      }) as JSXElement;
+      });
     });
 
     const data = getRenderData();
@@ -128,9 +124,7 @@ describe("renderToStringAsync", () => {
   test("generateHydrationScript escapes script-breaking content", async () => {
     const evil = createAsync(async () => "</script><script>alert(1)</script>", { key: "evil" });
 
-    await renderToStringAsync(
-      () => createElement("div", null, () => evil().length.toString()) as JSXElement,
-    );
+    await renderToStringAsync(() => createElement("div", null, () => evil().length.toString()));
 
     const script = generateHydrationScript();
     expect(script.startsWith("<script>window.__BARQ_DATA__=")).toBe(true);
@@ -156,7 +150,7 @@ describe("hydrate", () => {
         Loading({
           fallback: document.createTextNode("loading..."),
           children: () => document.createTextNode(`Hello ${user()}`),
-        }) as JSXElement;
+        });
     };
 
     const serverHtml = await renderToStringAsync(makeApp());
@@ -186,7 +180,7 @@ describe("hydrate", () => {
           "button",
           { onClick: () => count.update((n) => n + 1) },
           () => `clicks: ${count()}`,
-        ) as JSXElement;
+        );
     };
 
     const serverHtml = renderToString(makeApp());
@@ -220,7 +214,7 @@ describe("concurrent server renders", () => {
         Loading({
           fallback: document.createTextNode("..."),
           children: () => document.createTextNode(`got:${data()}`),
-        }) as JSXElement;
+        });
     };
 
     const [fastHtml, slowHtml] = await Promise.all([
@@ -246,7 +240,7 @@ describe("settle", () => {
           return 1;
         });
         const second = createAsync(async () => {
-          const base = first() as number; // throws NotReady until first resolves
+          const base = first(); // throws NotReady until first resolves
           await tick();
           return base + 1;
         });

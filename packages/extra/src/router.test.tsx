@@ -184,7 +184,7 @@ describe("Path Matching", () => {
 
   describe("matchRoutes", () => {
     test("matches simple routes", () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({ path: "/", component: () => "Home" }),
         route({ path: "/about", component: () => "About" }),
       ];
@@ -196,7 +196,7 @@ describe("Path Matching", () => {
     });
 
     test("matches nested routes", () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/dashboard",
           component: () => "Layout",
@@ -215,7 +215,7 @@ describe("Path Matching", () => {
     });
 
     test("matches index routes on layout", () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/app",
           component: () => "Layout",
@@ -229,7 +229,7 @@ describe("Path Matching", () => {
     });
 
     test("matches routes with params", () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/users/:id",
           component: () => "User",
@@ -242,7 +242,7 @@ describe("Path Matching", () => {
     });
 
     test("returns null for no match", () => {
-      const routes: RouteDefinition<any, any>[] = [route({ path: "/", component: () => "Home" })];
+      const routes: RouteDefinition[] = [route({ path: "/", component: () => "Home" })];
 
       const match = matchRoutes("/nonexistent", routes);
       expect(match).toBeNull();
@@ -282,7 +282,7 @@ describe("Router Components", () => {
 
   describe("MemoryRouter", () => {
     test("renders with initial path", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({ path: "/", component: () => <div>Home</div> }),
         route({ path: "/about", component: () => <div>About</div> }),
       ];
@@ -297,7 +297,7 @@ describe("Router Components", () => {
     test("navigates between routes", async () => {
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => {
@@ -320,7 +320,7 @@ describe("Router Components", () => {
     });
 
     test("supports custom initial path", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({ path: "/", component: () => <div>Home</div> }),
         route({ path: "/start", component: () => <div>Start</div> }),
       ];
@@ -333,9 +333,7 @@ describe("Router Components", () => {
     });
 
     test("shows fallback for 404", async () => {
-      const routes: RouteDefinition<any, any>[] = [
-        route({ path: "/", component: () => <div>Home</div> }),
-      ];
+      const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
 
       const container = document.createElement("div");
       render(
@@ -351,9 +349,7 @@ describe("Router Components", () => {
     });
 
     test("shows default 404 without fallback", async () => {
-      const routes: RouteDefinition<any, any>[] = [
-        route({ path: "/", component: () => <div>Home</div> }),
-      ];
+      const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
 
       const container = document.createElement("div");
       render(<MemoryRouter initialPath="/nonexistent" config={{ routes }} />, container);
@@ -365,7 +361,7 @@ describe("Router Components", () => {
 
   describe("Link", () => {
     test("renders anchor element", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => (
@@ -387,7 +383,7 @@ describe("Router Components", () => {
     });
 
     test("navigates on click", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => (
@@ -414,7 +410,7 @@ describe("Router Components", () => {
     });
 
     test("skips navigation with modifier keys", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => (
@@ -446,7 +442,7 @@ describe("Router Components", () => {
     });
 
     test("supports replace option", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => (
@@ -469,7 +465,7 @@ describe("Router Components", () => {
 
   describe("NavLink", () => {
     test("adds active class when route matches", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => (
@@ -496,7 +492,7 @@ describe("Router Components", () => {
     });
 
     test("uses prefix matching by default", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/users",
           component: () => (
@@ -521,7 +517,7 @@ describe("Router Components", () => {
     });
 
     test("supports end prop for exact matching", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/users",
           component: () => (
@@ -549,7 +545,7 @@ describe("Router Components", () => {
     });
 
     test("deprecated exact prop works same as end", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => (
@@ -571,7 +567,7 @@ describe("Router Components", () => {
 
   describe("Outlet", () => {
     test("renders child routes", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/layout",
           component: () => (
@@ -593,7 +589,7 @@ describe("Router Components", () => {
     });
 
     test("renders nested outlets", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/a",
           component: () => (
@@ -627,7 +623,7 @@ describe("Router Components", () => {
 
   describe("Redirect", () => {
     test("redirects on render", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({ path: "/old", component: () => <Redirect to="/new" /> }),
         route({ path: "/new", component: () => <div>New Page</div> }),
       ];
@@ -653,7 +649,7 @@ describe("Hooks", () => {
     test("returns current location", async () => {
       let location: ReturnType<typeof useLocation>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/test",
           component: () => {
@@ -674,7 +670,7 @@ describe("Hooks", () => {
       let location: ReturnType<typeof useLocation>;
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/a",
           component: () => {
@@ -708,7 +704,7 @@ describe("Hooks", () => {
     test("returns route params", async () => {
       let params: ReturnType<typeof useParams>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/users/:userId/posts/:postId",
           component: () => {
@@ -729,7 +725,7 @@ describe("Hooks", () => {
       let params: ReturnType<typeof useParams>;
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/users/:id",
           component: () => {
@@ -756,7 +752,7 @@ describe("Hooks", () => {
     test("returns search params", async () => {
       let searchParams: ReturnType<typeof useSearchParams>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/search",
           component: () => {
@@ -778,7 +774,7 @@ describe("Hooks", () => {
     test("setSearchParams updates URL", async () => {
       let searchParams: ReturnType<typeof useSearchParams>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/search",
           component: () => {
@@ -805,7 +801,7 @@ describe("Hooks", () => {
     test("setSearchParams filters empty values", async () => {
       let searchParams: ReturnType<typeof useSearchParams>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/search",
           component: () => {
@@ -834,7 +830,7 @@ describe("Hooks", () => {
     test("returns navigate function", async () => {
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => {
@@ -859,7 +855,7 @@ describe("Hooks", () => {
     test("supports replace option", async () => {
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/a",
           component: () => {
@@ -889,7 +885,7 @@ describe("Hooks", () => {
         resolveLoader = resolve;
       });
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           loader: () => loaderPromise,
@@ -917,7 +913,7 @@ describe("Hooks", () => {
     test("returns matched route chain", async () => {
       let matchedRoutes: ReturnType<typeof useMatchedRoutes>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/parent",
           component: () => {
@@ -956,7 +952,7 @@ describe("Loaders", () => {
   test("executes loader on route match", async () => {
     let loaderCalled = false;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/",
         loader: async () => {
@@ -978,7 +974,7 @@ describe("Loaders", () => {
   test("passes params to loader", async () => {
     let receivedParams: unknown;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/users/:id",
         loader: async ({ params }) => {
@@ -999,7 +995,7 @@ describe("Loaders", () => {
   test("passes searchParams to loader", async () => {
     let receivedSearch: URLSearchParams | undefined;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/search",
         loader: async ({ searchParams }) => {
@@ -1020,7 +1016,7 @@ describe("Loaders", () => {
   test("provides abort signal to loader", async () => {
     let signalReceived = false;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/",
         loader: async ({ signal }) => {
@@ -1041,7 +1037,7 @@ describe("Loaders", () => {
   test("handles loader errors", async () => {
     const consoleSpy = spyOn(console, "error").mockImplementation(() => {});
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/",
         loader: async () => {
@@ -1064,7 +1060,7 @@ describe("Loaders", () => {
   test("route errorElement catches loader errors", async () => {
     const consoleSpy = spyOn(console, "error").mockImplementation(() => {});
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/",
         loader: async () => {
@@ -1096,7 +1092,7 @@ describe("Loaders", () => {
       childResolve = resolve;
     });
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/parent",
         loader: async () => {
@@ -1154,7 +1150,7 @@ describe("Edge Cases", () => {
   test("handles rapid navigation", async () => {
     let nav: ReturnType<typeof useNavigate>;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/a",
         component: () => {
@@ -1183,7 +1179,7 @@ describe("Edge Cases", () => {
   });
 
   test("handles unicode paths", async () => {
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/日本語/:name",
         component: ({ params }) => <div>Hello {params.name}</div>,
@@ -1198,7 +1194,7 @@ describe("Edge Cases", () => {
   });
 
   test("handles empty routes array", async () => {
-    const routes: RouteDefinition<any, any>[] = [];
+    const routes: RouteDefinition[] = [];
 
     const container = document.createElement("div");
     render(
@@ -1211,7 +1207,7 @@ describe("Edge Cases", () => {
   });
 
   test("handles deeply nested routes", async () => {
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/a",
         component: () => (
@@ -1259,7 +1255,7 @@ describe("Edge Cases", () => {
   });
 
   test("handles route with trailing slash", async () => {
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({ path: "/users/", component: () => <div>Users</div> }),
     ];
 
@@ -1273,7 +1269,7 @@ describe("Edge Cases", () => {
   test("handles hash-only navigation", async () => {
     let location: ReturnType<typeof useLocation>;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/page",
         component: () => {
@@ -1293,7 +1289,7 @@ describe("Edge Cases", () => {
   test("handles special characters in params", async () => {
     let params: ReturnType<typeof useParams>;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/search/:query",
         component: () => {
@@ -1311,9 +1307,7 @@ describe("Edge Cases", () => {
   });
 
   test("handles base path configuration", async () => {
-    const routes: RouteDefinition<any, any>[] = [
-      route({ path: "/page", component: () => <div>Page</div> }),
-    ];
+    const routes: RouteDefinition[] = [route({ path: "/page", component: () => <div>Page</div> })];
 
     const container = document.createElement("div");
     render(<MemoryRouter initialPath="/page" config={{ routes, base: "/app" }} />, container);
@@ -1357,9 +1351,7 @@ describe("Memory & Cleanup", () => {
   afterEach(cleanup);
 
   test("cleans up router on unmount", async () => {
-    const routes: RouteDefinition<any, any>[] = [
-      route({ path: "/", component: () => <div>Home</div> }),
-    ];
+    const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
 
     const container = document.createElement("div");
     let dispose: (() => void) | undefined;
@@ -1383,7 +1375,7 @@ describe("Memory & Cleanup", () => {
     let callCount = 0;
     let nav: ReturnType<typeof useNavigate>;
 
-    const routes: RouteDefinition<any, any>[] = [
+    const routes: RouteDefinition[] = [
       route({
         path: "/",
         loader: async () => {
@@ -1433,7 +1425,7 @@ describe("New Features", () => {
       let blocked = false;
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => {
@@ -1467,7 +1459,7 @@ describe("New Features", () => {
     test("beforeEach guard can redirect", async () => {
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => {
@@ -1501,7 +1493,7 @@ describe("New Features", () => {
       let guardCalled = false;
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => {
@@ -1534,7 +1526,7 @@ describe("New Features", () => {
       let afterCalled = false;
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => {
@@ -1571,7 +1563,7 @@ describe("New Features", () => {
 
   describe("Relative Navigation", () => {
     test("Link resolves relative href", async () => {
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/users",
           component: () => (
@@ -1599,7 +1591,7 @@ describe("New Features", () => {
     test("navigate supports relative paths", async () => {
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/a/b",
           component: () => {
@@ -1631,7 +1623,7 @@ describe("New Features", () => {
         resolveLoader = () => resolve({ data: "loaded" });
       });
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           component: () => {
@@ -1683,9 +1675,7 @@ describe("New Features", () => {
       setRouterDebugMode(true);
 
       // Trigger some router activity that would log
-      const routes: RouteDefinition<any, any>[] = [
-        route({ path: "/", component: () => <div>Home</div> }),
-      ];
+      const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
 
       const container = document.createElement("div");
       render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
@@ -1710,7 +1700,7 @@ describe("New Features", () => {
       let callCount = 0;
       let nav: ReturnType<typeof useNavigate>;
 
-      const routes: RouteDefinition<any, any>[] = [
+      const routes: RouteDefinition[] = [
         route({
           path: "/",
           loader: async () => {

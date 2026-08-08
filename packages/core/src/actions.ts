@@ -89,13 +89,13 @@ export function action<Args extends unknown[], R>(
       const result = runInContext(() => fn(...args));
 
       if (isIterator(result)) {
-        const gen = result as Generator<unknown, R, unknown> | AsyncGenerator<unknown, R, unknown>;
+        const gen = result;
         let input: unknown;
         while (true) {
           const step = await runInContext(() => gen.next(input));
           if (step.done) {
             completeAction(ctx);
-            return step.value as R;
+            return step.value;
           }
           // Awaited by the runner; the generator resumes in-context
           input = await step.value;

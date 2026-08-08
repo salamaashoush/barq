@@ -36,7 +36,10 @@
     "@typescript-eslint/await-thenable": "error",
     "@typescript-eslint/no-floating-promises": "error",
     "@typescript-eslint/no-misused-promises": "error",
-    "@typescript-eslint/require-await": "warn",
+    // Off: promise-returning API contracts (resource fetchers, route loaders,
+    // action bodies) are legitimately `async` with no `await` inside - the
+    // keyword is the return-type guarantee, not dead syntax.
+    "@typescript-eslint/require-await": "off",
     "@typescript-eslint/no-unnecessary-type-assertion": "warn",
     "@typescript-eslint/no-unsafe-type-assertion": "off",
     "@typescript-eslint/no-unsafe-argument": "warn",
@@ -45,7 +48,13 @@
     "import/no-self-import": "error",
     "import/group-exports": "off",
 
-    "promise/no-nesting": "off"
+    "promise/no-nesting": "off",
+    // Off: the runtime's internal settle handlers are terminal side-effect
+    // arms, not links in a value-producing chain.
+    "promise/always-return": "off",
+    // Off: fights the factory pattern the primitives are built on, where inner
+    // closures capture the factory's state by design.
+    "unicorn/consistent-function-scoping": "off"
   },
   "overrides": [
     {

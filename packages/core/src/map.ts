@@ -102,7 +102,7 @@ export function mapArray<Item, MappedItem>(
   const node = computed<MappedItem[]>(
     () => {
       const source = list();
-      const items = (source || []) as readonly Item[];
+      const items = source || [];
       const newLen = items.length;
 
       if (newLen === 0) {
@@ -115,7 +115,7 @@ export function mapArray<Item, MappedItem>(
         if (fallback) {
           if (fallbackRow === null) {
             fallbackRow = createFallbackRow(fallback);
-            mapped = [fallbackRow._value as MappedItem];
+            mapped = [fallbackRow._value];
           }
           return mapped;
         }

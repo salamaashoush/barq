@@ -6,7 +6,6 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { createElement, hydrate, insert, setProp, spread } from "./dom.ts";
-import type { JSXElement } from "./dom.ts";
 import { flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
@@ -218,8 +217,7 @@ describe("[handler, data] delegation tuples", () => {
 describe("pre-hydration event replay", () => {
   test("captured clicks replay against the hydrated DOM", () => {
     let clicks = 0;
-    const makeApp = () => () =>
-      createElement("button", { onClick: () => clicks++ }, "go") as JSXElement;
+    const makeApp = () => () => createElement("button", { onClick: () => clicks++ }, "go");
 
     // Simulate the inline capture script's leftovers
     let stopCalled = false;

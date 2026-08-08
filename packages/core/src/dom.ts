@@ -381,7 +381,7 @@ const STYLE_MAP = Symbol("barq-style-map");
 interface StyleMap extends Record<string, string> {}
 
 function isStyleMap(value: unknown): value is StyleMap {
-  return typeof value === "object" && value !== null && STYLE_MAP in (value as object);
+  return typeof value === "object" && value !== null && STYLE_MAP in value;
 }
 
 /**

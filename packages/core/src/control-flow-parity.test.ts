@@ -6,7 +6,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { For, Repeat, Show, dynamic } from "./components.ts";
 import { createElement, render } from "./dom.ts";
-import type { JSXElement } from "./dom.ts";
 import { createScope, flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
@@ -29,7 +28,7 @@ describe("For keyed unification", () => {
           return createElement("li", null, () => `${index}:${item()}`) as Node;
         },
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
 
@@ -59,7 +58,7 @@ describe("For keyed unification", () => {
           return createElement("li", null, () => item().text) as Node;
         },
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(renders).toBe(2);
@@ -84,7 +83,7 @@ describe("Repeat", () => {
         count: () => count(),
         children: (i) => createElement("span", null, String(i)) as Node,
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(container.textContent).toBe("012");
@@ -108,7 +107,7 @@ describe("Repeat", () => {
         fallback: document.createTextNode("empty"),
         children: (i) => createElement("span", null, String(i)) as Node,
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(container.textContent).toBe("empty");
@@ -133,7 +132,7 @@ describe("Show keyed semantics", () => {
           return createElement("div", null, () => u().name) as Node;
         },
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(container.textContent).toBe("John");
@@ -167,7 +166,7 @@ describe("Show keyed semantics", () => {
           return createElement("div", null, u.name) as Node;
         },
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(container.textContent).toBe("John");
@@ -186,7 +185,7 @@ describe("dynamic() factory", () => {
 
     createScope(() => {
       const el = Dyn({ class: "x", children: "hi" });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(container.querySelector("div.x")?.textContent).toBe("hi");

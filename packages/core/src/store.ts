@@ -181,7 +181,7 @@ const readHandler: ProxyHandler<object> = {
 
   has(target, prop) {
     if (typeof prop !== "symbol" && isTracking()) {
-      trackProperty(target, prop, (target as Record<string, unknown>)[prop as string]);
+      trackProperty(target, prop, (target as Record<string, unknown>)[prop]);
     }
     return Reflect.has(target, prop);
   },
@@ -353,7 +353,7 @@ export function useStore<T extends object>(initialState: T): Store<T> {
           // setState(key, partialUpdate) - merge into nested object
           const current = initialState[key];
           if (typeof current === "object" && current !== null) {
-            applyUpdates(current as object, value as Partial<object>);
+            applyUpdates(current as object, value);
           } else {
             writeProperty(initialState, key as PropertyKey, value);
           }
@@ -465,7 +465,7 @@ export function createProjection<T extends object>(
   const [state, setState] = useStore(seed);
 
   renderEffect(() => {
-    setState((draftState) => fn(draftState as T) as Partial<T> | void);
+    setState((draftState) => fn(draftState) as Partial<T> | void);
   });
 
   return state;
@@ -556,7 +556,7 @@ function createDraftProxy<T extends object>(
 
       // Recursively wrap nested objects
       if (typeof value === "object" && value !== null) {
-        return createDraftProxy(value as object, copies, parents, proxies, {
+        return createDraftProxy(value, copies, parents, proxies, {
           parent: obj,
           key: prop,
         });

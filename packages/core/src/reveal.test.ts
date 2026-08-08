@@ -53,7 +53,7 @@ describe("Loading revalidation", () => {
         fallback: document.createTextNode("loading..."),
         children: asyncChild(() => data(), "v"),
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(container.textContent).toBe("loading...");
@@ -101,7 +101,7 @@ describe("Reveal", () => {
           }),
         ]) as unknown as JSXElement,
       });
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     return { a, b };

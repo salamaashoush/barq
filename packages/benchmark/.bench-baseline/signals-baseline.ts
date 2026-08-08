@@ -22,10 +22,6 @@ const REACTIVE_DISPOSED = 1 << 5; // Has been disposed
 const REACTIVE_UNINITIALIZED = 1 << 6; // Lazy computed not yet evaluated
 const STATUS_PENDING = 1 << 7; // Async value in flight
 const STATUS_ERROR = 1 << 8; // Last computation threw
-const REACTIVE_CHILDREN_FORBIDDEN = 1 << 9; // Leaf effect: may not own primitives
-const REACTIVE_AFFECTED = 1 << 10; // Declared in motion: reads as pending until released
-const REACTIVE_IN_SNAPSHOT_SCOPE = 1 << 11; // Reads captured values, not live ones
-const REACTIVE_SNAPSHOT_STALE = 1 << 12; // Was served a snapshot that diverged
 
 const EFFECT_PURE = 0;
 const EFFECT_RENDER = 1;
@@ -80,13 +76,6 @@ interface Link {
   _prevSub: Link | null; // Previous subscriber of the dependency
   _nextSub: Link | null; // Next subscriber of the dependency
   _lastValue: unknown; // Dep value snapshot at link time (gates recompute)
-  /**
-   * `_sub._depGen` when this link was created or last revalidated in read
-   * order. A link stamped with the subscriber's current generation sits in
-   * the already-validated `[_deps.._depsTail]` prefix - an O(1) stand-in for
-   * scanning the dep list.
-   */
-  _gen: number;
 }
 
 /** Options for signal/computed creation */
@@ -97,8 +86,6 @@ export interface SignalOptions<T> {
   unobserved?: () => void;
   /** Suppress the REACTIVE_WRITE_IN_OWNED_SCOPE diagnostic for this signal */
   ownedWrite?: boolean;
-  /** Exclude this signal from snapshot capture */
-  noSnapshot?: boolean;
 }
 
 // ============================================================================
@@ -116,18 +103,6 @@ export interface DiagnosticEvent {
 
 let diagnosticSequence = 0;
 const diagnosticListeners = new Set<(event: DiagnosticEvent) => void>();
-/** Mirrors `diagnosticListeners.size !== 0` as a single load for hot paths */
-let diagnosticsOn = false;
-
-function addDiagnosticListener(listener: (event: DiagnosticEvent) => void): void {
-  diagnosticListeners.add(listener);
-  diagnosticsOn = true;
-}
-
-function removeDiagnosticListener(listener: (event: DiagnosticEvent) => void): void {
-  diagnosticListeners.delete(listener);
-  diagnosticsOn = diagnosticListeners.size !== 0;
-}
 
 function emitDiagnostic(
   code: string,
@@ -136,7 +111,7 @@ function emitDiagnostic(
   nodeName?: string,
   data?: unknown,
 ): void {
-  if (!diagnosticsOn) return;
+  if (diagnosticListeners.size === 0) return;
   const event: DiagnosticEvent = {
     sequence: diagnosticSequence++,
     code,
@@ -159,18 +134,18 @@ function emitDiagnostic(
 export const DEV = {
   diagnostics: {
     subscribe(listener: (event: DiagnosticEvent) => void): () => void {
-      addDiagnosticListener(listener);
-      return () => removeDiagnosticListener(listener);
+      diagnosticListeners.add(listener);
+      return () => diagnosticListeners.delete(listener);
     },
     capture(): { stop(): DiagnosticEvent[] } {
       const events: DiagnosticEvent[] = [];
       const listener = (event: DiagnosticEvent) => {
         events.push(event);
       };
-      addDiagnosticListener(listener);
+      diagnosticListeners.add(listener);
       return {
         stop() {
-          removeDiagnosticListener(listener);
+          diagnosticListeners.delete(listener);
           return events;
         },
       };
@@ -181,22 +156,15 @@ export const DEV = {
 /** Context record for owner */
 export type ContextRecord = Record<string | symbol, unknown>;
 
-/**
- * Base signal node. Every field is present on every instance: the engine
- * reads `_fn`/`_equals`/`_epoch` off both node kinds, so a missing slot
- * would make those loads polymorphic.
- */
+/** Base signal node */
 interface SignalNode<T> {
   _value: T;
   _subs: Link | null; // Head of subscribers linked list
   _subsTail: Link | null; // Tail of subscribers linked list
   _equals: false | ((a: T, b: T) => boolean);
-  _name: string | undefined;
-  _unobserved: (() => void) | undefined;
-  _epoch: number; // Last mark epoch this node propagated in (write dedupe)
-  _fn: ((prev?: T) => T) | undefined; // undefined on plain signals; discriminates the two kinds
-  _affected: number; // affects() refcount; non-zero means the value reads as pending
-  _snapshot: unknown; // Captured value, or NO_SNAPSHOT when nothing was captured
+  _name?: string;
+  _unobserved?: () => void;
+  _epoch?: number; // Last mark epoch this node propagated in (write dedupe)
 }
 
 /** Computed node extends signal with computation state */
@@ -209,8 +177,7 @@ interface ComputedNode<T> extends SignalNode<T> {
   _nextHeap: ComputedNode<unknown> | undefined;
   _prevHeap: ComputedNode<unknown>;
   _kind: number; // EFFECT_PURE | EFFECT_RENDER | EFFECT_USER
-  _depGen: number; // Bumped when a recompute starts re-reading dependencies
-  _cleanup: (() => void) | undefined;
+  _cleanup?: () => void;
   // Owner implementation (a computation owns what it creates during a run)
   cleanups: (() => void)[] | null;
   children: ComputedNode<unknown>[] | null;
@@ -218,15 +185,12 @@ interface ComputedNode<T> extends SignalNode<T> {
   dispose: () => void;
   _parent: Owner | null;
   _context: ContextRecord;
-  _apply: ((value: unknown, prev: unknown) => void | (() => void)) | undefined; // Split-form effect phase
-  _error: unknown; // Stored error when STATUS_ERROR
-  _wave: number; // Last propagation epoch that visited this node
-  // Cold: only ever touched on async / SSR paths, so they stay off the base
-  // shape - paying 6 slots on every computed costs more than the rare
-  // structure transition on the few nodes that actually go async.
+  _apply?: (value: unknown, prev: unknown) => void | (() => void); // Split-form effect phase
   _appliedValue?: unknown; // Last value passed to _apply
+  _error?: unknown; // Stored error when STATUS_ERROR
   _asyncId?: number; // Guards stale async resolutions
   _boundary?: LoadingBoundaryHandle | null; // Boundary this pending effect registered with
+  _wave?: number; // Last propagation wave that visited this node
   _serializeKey?: string; // SSR: record resolved value under this key
   _inFlight?: Promise<unknown>; // Current async promise (settle registry hygiene)
   _session?: symbol | null; // Sticky async session (waterfall fetches keep attribution)
@@ -249,21 +213,13 @@ export const ERROR_BOUNDARY: unique symbol = Symbol("error-boundary");
 
 interface Heap {
   _heap: (ComputedNode<unknown> | undefined)[];
-  _min: number; // Lowest occupied height (maintained by insert/delete)
-  _max: number; // Highest occupied height
+  _min: number;
+  _max: number;
   _count: number;
 }
 
-/** Sentinel for "no occupied height"; any real height compares lower */
-const HEAP_EMPTY_MIN = 0x7fffffff;
-
 function createHeap(): Heap {
-  return {
-    _heap: new Array(256).fill(undefined),
-    _min: HEAP_EMPTY_MIN,
-    _max: 0,
-    _count: 0,
-  };
+  return { _heap: new Array(256).fill(undefined), _min: 0, _max: 0, _count: 0 };
 }
 
 const renderHeap = createHeap();
@@ -359,7 +315,7 @@ function adjustHeight(node: ComputedNode<unknown>, heap: Heap): void {
   let newHeight = node._height;
   for (let d = node._deps; d !== null; d = d._nextDep) {
     const dep = d._dep as ComputedNode<unknown>;
-    if (dep._fn !== undefined && dep._height >= newHeight) {
+    if ("_fn" in dep && dep._height >= newHeight) {
       newHeight = dep._height + 1;
     }
   }
@@ -382,11 +338,8 @@ function adjustHeight(node: ComputedNode<unknown>, heap: Heap): void {
  */
 function runHeap(heap: Heap): void {
   while (heap._count > 0) {
-    // _min/_max are maintained by insert/delete, so a node re-inserted below
-    // the cursor lowers _min and is picked up by the next pass
-    const end = heap._max;
-    for (let height = heap._min; height <= end; height++) {
-      let node = heap._heap[height];
+    for (heap._min = 0; heap._min <= heap._max; heap._min++) {
+      let node = heap._heap[heap._min];
       while (node !== undefined) {
         if (node._flags & REACTIVE_IN_HEAP) {
           updateIfNecessary(node);
@@ -395,15 +348,11 @@ function runHeap(heap: Heap): void {
         } else {
           adjustHeight(node, heap);
         }
-        node = heap._heap[height];
+        node = heap._heap[heap._min];
       }
     }
+    heap._max = 0;
   }
-  // Drained: widen the window back so stale bounds never shrink a later scan.
-  // (deleteFromHeap deliberately leaves them alone - it is inlined into the
-  // recompute/dispose paths and must stay small.)
-  heap._min = HEAP_EMPTY_MIN;
-  heap._max = 0;
 }
 
 // ============================================================================
@@ -415,7 +364,6 @@ let tracking = false; // Only true during computation
 let batchDepth = 0;
 let scheduled = false;
 let latestDepth = 0; // Inside latest(): pending reads return stale values
-// oxlint-disable-next-line no-unused-vars -- flush-pass counter, not read yet
 let clock = 0;
 
 const defaultContext: ContextRecord = {};
@@ -441,8 +389,6 @@ export interface Owner {
   _parent: Owner | null;
   /** Context record inherited from parent */
   _context: ContextRecord;
-  /** Root of a snapshot scope (see markSnapshotScope) */
-  _snapshotScope?: boolean;
 }
 
 let currentOwner: Owner | null = null;
@@ -498,25 +444,14 @@ function link(dep: SignalNode<unknown> | ComputedNode<unknown>, sub: ComputedNod
     nextDep = prevDep !== null ? prevDep._nextDep : sub._deps;
     if (nextDep !== null && nextDep._dep === dep) {
       nextDep._lastValue = dep._value;
-      nextDep._gen = sub._depGen;
       sub._depsTail = nextDep;
       return;
     }
   }
 
-  // Already subscribed, and the link was validated earlier in THIS pass, so
-  // it sits in the [_deps.._depsTail] prefix and needs no re-linking. A link
-  // left over from a previous pass does not qualify: the read order changed,
-  // and reusing it here would leave it beyond _depsTail, where the stale-dep
-  // trim at the end of recompute unsubscribes a dependency that was read.
+  // Check if already subscribed
   const prevSub = dep._subsTail;
-  if (
-    prevSub !== null &&
-    prevSub._sub === sub &&
-    (!isRecomputing || prevSub._gen === sub._depGen)
-  ) {
-    return;
-  }
+  if (prevSub !== null && prevSub._sub === sub) return;
 
   // Create new link. Topology changed: write-propagation dedupe must reset
   // so the new subscriber sees the next write.
@@ -528,7 +463,6 @@ function link(dep: SignalNode<unknown> | ComputedNode<unknown>, sub: ComputedNod
     _prevSub: prevSub,
     _nextSub: null,
     _lastValue: dep._value,
-    _gen: sub._depGen,
   };
 
   // Add to subscriber's deps list
@@ -586,24 +520,23 @@ function cleanupDeps(sub: ComputedNode<unknown>): void {
 // Invalidation (push phase)
 // ============================================================================
 
+let markWave = 0;
+
 /**
  * Bumped whenever any invalidation mark is consumed (recompute, validation,
- * self-mark drop) or the topology changes. While the epoch is unchanged,
- * marks already placed are still standing, so neither a signal that already
- * propagated nor a pure node already visited needs to be walked again.
- * Doubles as the propagation wave id.
+ * self-mark drop). While the epoch is unchanged, a signal that already
+ * propagated doesn't need to re-propagate: its marks are still standing.
  */
 let markEpoch = 1;
-let markWave = 0;
 
 /**
  * Mark a node CHECK or DIRTY. Effects are inserted into their heap;
  * pure computeds propagate CHECK to their subscribers (lazy pull).
  *
- * Epoch stamps make a propagation re-traverse pure nodes that are still
- * marked from an earlier epoch (a downstream effect may have dropped its
- * self-mark since), while deduplicating within one epoch - diamonds visit
- * each node once, and so do repeated writes that consumed no marks.
+ * Wave stamps make each propagation re-traverse pure nodes that are
+ * still marked from an earlier wave (a downstream effect may have
+ * dropped its self-mark since), while deduplicating within one wave
+ * (diamonds visit each node once).
  */
 function markNode(node: ComputedNode<unknown>, newState: number): void {
   const flags = node._flags;
@@ -624,8 +557,7 @@ function markNode(node: ComputedNode<unknown>, newState: number): void {
   }
 
   if (node._wave === markWave) {
-    // Already visited this epoch: only handle a CHECK -> DIRTY upgrade.
-    // Subscribers are already CHECK from that visit, which is enough.
+    // Already visited this wave: only handle a CHECK -> DIRTY upgrade
     if (current < newState) {
       node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
     }
@@ -643,7 +575,7 @@ function markNode(node: ComputedNode<unknown>, newState: number): void {
 }
 
 /**
- * Notify subscribers of a changed node.
+ * Notify subscribers of a changed node (starts a new propagation wave).
  * `state` is DIRTY for unconditional recompute (equals: false sources,
  * errors, async transitions), CHECK otherwise (value comparison gates).
  */
@@ -683,7 +615,7 @@ function updateIfNecessary(node: ComputedNode<unknown>): void {
 
   for (let d = node._deps; d !== null; d = d._nextDep) {
     const dep = d._dep;
-    if (dep._fn !== undefined) {
+    if ("_fn" in dep) {
       updateIfNecessary(dep as ComputedNode<unknown>);
       // A recomputed dep may have marked this node DIRTY (e.g. equals: false)
       if (node._flags & REACTIVE_DIRTY) {
@@ -748,45 +680,18 @@ function runEffectCleanups(node: ComputedNode<unknown>): void {
   }
 }
 
-/** When set, a pending read with no Loading boundary above it is an error */
-let loadingBoundaryRequired = false;
-
-/**
- * Make a pending async read with no enclosing Loading boundary throw instead
- * of warning. Off by default.
- */
-export function enforceLoadingBoundary(enabled: boolean): void {
-  loadingBoundaryRequired = enabled;
-}
-
-/** Latched when an error escaped every boundary during a flush */
-let escapedError = false;
-
-/**
- * Clear the latched "an error escaped every boundary" state. barq rethrows
- * such errors rather than halting the graph, so this only drops the latch.
- */
-export function resetErrorHalt(): void {
-  escapedError = false;
-}
-
-/** Whether an error has escaped every boundary since the last reset */
-export function hasEscapedError(): boolean {
-  return escapedError;
-}
-
 function registerWithBoundary(node: ComputedNode<unknown>): void {
   const handle = node._context[LOADING_BOUNDARY] as LoadingBoundaryHandle | undefined;
   if (handle) {
     node._boundary = handle;
     handle.add(node);
-    return;
-  }
-  const message =
-    "An effect read a pending async value with no Loading boundary above it; it will retry when the value resolves but nothing renders a fallback.";
-  emitDiagnostic("ASYNC_OUTSIDE_LOADING_BOUNDARY", "warning", message, node._name);
-  if (loadingBoundaryRequired) {
-    throw new Error(`[ASYNC_OUTSIDE_LOADING_BOUNDARY] ${message}`);
+  } else {
+    emitDiagnostic(
+      "ASYNC_OUTSIDE_LOADING_BOUNDARY",
+      "warning",
+      "An effect read a pending async value with no Loading boundary above it; it will retry when the value resolves but nothing renders a fallback.",
+      node._name,
+    );
   }
 }
 
@@ -811,7 +716,6 @@ function handleEffectError(node: ComputedNode<unknown>, error: unknown): void {
     handler(error);
     return;
   }
-  escapedError = true;
   if (isFlushing) {
     if (!flushError) flushError = { error };
     return;
@@ -840,14 +744,11 @@ function recompute(node: ComputedNode<unknown>): void {
 
   // Clear invalidation BEFORE running: anything set during the run is a
   // feedback write and must survive to trigger another pass
-  // AFFECTED deliberately survives: it is released by its declarer, not by a run
   node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY | STATUS_PENDING | STATUS_ERROR);
   node._error = undefined;
 
-  // Reset deps tail for fresh tracking; the generation bump invalidates every
-  // link stamp from the previous pass so read-order changes are detected
+  // Reset deps tail for fresh tracking
   node._depsTail = null;
-  node._depGen++;
 
   const prevObserver = currentObserver;
   const prevTracking = tracking;
@@ -1172,21 +1073,10 @@ export function signal<T>(
     _equals: options?.equals !== undefined ? options.equals : defaultEquals,
     _name: options?.name,
     _unobserved: options?.unobserved,
-    _epoch: 0,
-    _fn: undefined,
-    _affected: 0,
-    _snapshot: NO_SNAPSHOT,
   };
 
-  if (slowSignalRead !== 0 && snapshotCaptureActive && options?.noSnapshot !== true) {
-    node._snapshot = initialValue;
-    snapshotSources.add(node as SignalNode<unknown>);
-  }
-
   const read = (): T => {
-    // One global load decides whether any of the rare read modes are live.
-    // Zero in every ordinary app, so the common path stays two branches.
-    if (slowSignalRead !== 0) return readSignalSlow(node as SignalNode<unknown>) as T;
+    // Fast path: not tracking
     if (!tracking) return node._value;
     if (currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
       link(node as SignalNode<unknown>, currentObserver);
@@ -1198,7 +1088,6 @@ export function signal<T>(
 
   const write = (newValue: T): void => {
     if (
-      diagnosticsOn &&
       !ownedWrite &&
       tracking &&
       currentObserver !== null &&
@@ -1243,23 +1132,6 @@ function createComputedNode<T>(
 ): ComputedNode<T> {
   const owner = getCurrentOwner();
 
-  let inheritedFlags = 0;
-  if (owner !== null) {
-    const ownerFlags = (owner as ComputedNode<unknown>)._flags;
-    if (owner._snapshotScope === true || (ownerFlags & REACTIVE_IN_SNAPSHOT_SCOPE) !== 0) {
-      inheritedFlags = REACTIVE_IN_SNAPSHOT_SCOPE;
-    }
-  }
-
-  if (owner !== null && (owner as ComputedNode<unknown>)._flags & REACTIVE_CHILDREN_FORBIDDEN) {
-    emitDiagnostic(
-      "PRIMITIVE_IN_FORBIDDEN_SCOPE",
-      "error",
-      "Reactive primitives cannot be created inside createTrackedEffect; it is a leaf effect for wiring external sources.",
-      options?.name,
-    );
-  }
-
   let initialHeight = 0;
   if (currentObserver) {
     initialHeight = currentObserver._height + 1;
@@ -1277,18 +1149,14 @@ function createComputedNode<T>(
         : false,
     _name: options?.name,
     _unobserved: options?.unobserved,
-    _epoch: 0,
     _fn: fn,
-    _affected: 0,
-    _snapshot: NO_SNAPSHOT,
     _deps: null,
     _depsTail: null,
-    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED | inheritedFlags,
+    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED,
     _height: initialHeight,
     _nextHeap: undefined,
     _prevHeap: null as never,
     _kind: kind,
-    _depGen: 0,
     // Owner fields: the node itself owns computations created during its
     // run (disposed before the next run and on node disposal)
     cleanups: null,
@@ -1297,20 +1165,12 @@ function createComputedNode<T>(
     dispose: null as unknown as () => void,
     _parent: owner,
     _context: owner !== null ? owner._context : defaultContext,
-    _cleanup: undefined,
-    _apply: undefined,
-    _error: undefined,
-    _wave: 0,
   };
   node._prevHeap = node as ComputedNode<unknown>;
   node.dispose = () => disposeNode(node as ComputedNode<unknown>);
 
   if (owner) {
     (owner.children ??= []).push(node as ComputedNode<unknown>);
-  }
-
-  if (externalSource !== null) {
-    wireExternalSource(node as ComputedNode<unknown>, owner);
   }
 
   return node;
@@ -1323,15 +1183,7 @@ function computedRead<T>(node: ComputedNode<T>): T {
   // Fast path: clean, settled, not tracking
   if (
     !tracking &&
-    !(
-      flags &
-      (REACTIVE_CHECK |
-        REACTIVE_DIRTY |
-        REACTIVE_DISPOSED |
-        STATUS_PENDING |
-        STATUS_ERROR |
-        REACTIVE_AFFECTED)
-    )
+    !(flags & (REACTIVE_CHECK | REACTIVE_DIRTY | REACTIVE_DISPOSED | STATUS_PENDING | STATUS_ERROR))
   ) {
     return node._value;
   }
@@ -1357,7 +1209,7 @@ function computedRead<T>(node: ComputedNode<T>): T {
     throw node._error;
   }
 
-  if (node._flags & (STATUS_PENDING | REACTIVE_AFFECTED)) {
+  if (node._flags & STATUS_PENDING) {
     if (latestDepth > 0 && !(node._flags & REACTIVE_UNINITIALIZED)) {
       return node._value;
     }
@@ -1438,9 +1290,9 @@ function createEffectNode(
   node._apply = apply;
 
   // First run is synchronous at creation; subsequent runs are scheduled
-  recompute(node);
+  recompute(node as ComputedNode<unknown>);
 
-  return () => disposeNode(node);
+  return () => disposeNode(node as ComputedNode<unknown>);
 }
 
 /**
@@ -1477,132 +1329,6 @@ export function renderEffect<T>(
     apply as ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
     EFFECT_RENDER,
   );
-}
-
-/**
- * Effect for bridging external sources (event emitters, sockets, stores from
- * other libraries). Tracked like a normal effect, but pinned ahead of the
- * ordered user effects and forbidden from creating child reactive primitives,
- * so it stays a leaf that only wires subscriptions up.
- *
- * The returned function, if any, is the cleanup: it runs before each re-run
- * and on disposal.
- */
-export function createTrackedEffect(
-  compute: () => void | (() => void),
-  options?: { name?: string },
-): () => void {
-  const node = createComputedNode(
-    compute as (prev?: unknown) => unknown,
-    EFFECT_USER,
-    options as SignalOptions<unknown>,
-  );
-  // Leaf effect: no graph position of its own, and no owned primitives
-  node._height = 0;
-  node._flags |= REACTIVE_CHILDREN_FORBIDDEN;
-  recompute(node);
-  return () => disposeNode(node);
-}
-
-/**
- * Manual tracking: `track(fn)` subscribes to whatever `fn` reads and fires
- * `onInvalidate` once when any of it changes. The subscription is consumed by
- * that single fire - call `track` again to re-arm.
- *
- * `onInvalidate` may return a cleanup, run before the next fire and on
- * disposal of the owner that created the reaction.
- */
-export function createReaction(
-  onInvalidate: () => void | (() => void),
-): (tracking: () => void) => void {
-  let pendingCleanup: (() => void) | undefined;
-  const owner = getCurrentOwner();
-  let disposeArm: (() => void) | undefined;
-
-  if (owner !== null) {
-    (owner.cleanups ??= []).push(() => {
-      disposeArm?.();
-      disposeArm = undefined;
-      pendingCleanup?.();
-      pendingCleanup = undefined;
-    });
-  }
-
-  return (tracking: () => void): void => {
-    // Replacing an arm must dispose the old one, otherwise its sources stay
-    // live and a superseded dependency still fires the callback
-    disposeArm?.();
-    disposeArm = undefined;
-
-    runWithOwner(owner, () => {
-      let armed = false;
-      let disposeSelf: (() => void) | undefined;
-      const dispose = createEffectNode(
-        () => {
-          tracking();
-        },
-        () => {
-          // The arming run itself is not an invalidation
-          if (!armed) {
-            armed = true;
-            return;
-          }
-          disposeArm = undefined;
-          pendingCleanup?.();
-          pendingCleanup = onInvalidate() as (() => void) | undefined;
-          disposeSelf?.();
-        },
-        EFFECT_USER,
-      );
-      disposeSelf = dispose;
-      disposeArm = dispose;
-    });
-  };
-}
-
-/**
- * Resolve a reactive expression to its first fully settled value.
- * Pending async reads are awaited; the promise rejects if the expression
- * settles with an error. Does not subscribe - call it outside tracking.
- */
-export function resolve<T>(fn: () => T): Promise<T> {
-  if (tracking && currentObserver !== null) {
-    return Promise.reject(
-      new Error("resolve() cannot be called inside a tracked scope; it does not subscribe."),
-    );
-  }
-  return new Promise<T>((res, rej) => {
-    const owner = createOwnerScope(false);
-    let settled = false;
-    const finish = (): void => {
-      settled = true;
-      // Deferred: the effect node is mid-run, so tear down after it unwinds
-      queueMicrotask(() => owner.dispose());
-    };
-    // A private boundary pair: pending reads retry silently instead of warning
-    // about a missing Loading boundary, and errors reject rather than escape
-    owner._context = {
-      ...owner._context,
-      [LOADING_BOUNDARY]: { add() {}, delete() {} } satisfies LoadingBoundaryHandle,
-      [ERROR_BOUNDARY]: (err: unknown) => {
-        if (settled) return;
-        finish();
-        rej(err);
-      },
-    };
-    runInOwner(owner, () => {
-      createEffectNode(
-        fn as (prev?: unknown) => unknown,
-        (value) => {
-          if (settled) return;
-          finish();
-          res(value as T);
-        },
-        EFFECT_USER,
-      );
-    });
-    schedule();
-  });
 }
 
 /**
@@ -1749,83 +1475,10 @@ export function isTracking(): boolean {
 }
 
 /**
- * Create an owner scope without running anything in it; pair with
- * runWithOwner. Disposed with its parent, or manually via dispose().
- */
-export function createOwner(): Owner {
-  return createOwnerScope(true);
-}
-
-/**
- * The computation currently tracking reads, or null outside a tracked scope.
- * Distinct from getOwner(), which is the lifecycle scope and stays set inside
- * untrack() and effect apply phases.
- */
-export function getObserver(): Owner | null {
-  return tracking ? currentObserver : null;
-}
-
-/** Whether an owner (or computation) has been disposed. */
-export function isDisposed(node: Owner): boolean {
-  return node.disposed;
-}
-
-/** The default signal comparator: strict equality, with NaN equal to NaN. */
-export function isEqual<T>(a: T, b: T): boolean {
-  return a === b || (a !== a && b !== b);
-}
-
-/** Whether the runtime has Proxy (stores degrade without it). */
-export const SUPPORTS_PROXY: boolean = typeof Proxy === "function";
-
-// ============================================================================
-// Stable child ids (hydration / SSR correlation)
-// ============================================================================
-
-const childCounts = new WeakMap<Owner, number>();
-const ownerIds = new WeakMap<Owner, string>();
-let rootIdCounter = 0;
-
-function formatChildId(prefix: string, index: number): string {
-  const num = index.toString(36);
-  const len = num.length - 1;
-  return prefix + (len ? String.fromCharCode(64 + len) : "") + num;
-}
-
-function ownerId(owner: Owner): string {
-  let id = ownerIds.get(owner);
-  if (id === undefined) {
-    const parent = owner._parent;
-    id = parent !== null ? getNextChildId(parent) : `r${(rootIdCounter++).toString(36)}`;
-    ownerIds.set(owner, id);
-  }
-  return id;
-}
-
-/** Allocate the next stable child id for `owner` (consumes the counter). */
-export function getNextChildId(owner: Owner): string {
-  const next = childCounts.get(owner) ?? 0;
-  childCounts.set(owner, next + 1);
-  return formatChildId(ownerId(owner), next);
-}
-
-/** The id getNextChildId would return next, without consuming it. */
-export function peekNextChildId(owner: Owner): string {
-  return formatChildId(ownerId(owner), childCounts.get(owner) ?? 0);
-}
-
-/**
  * Read signals without creating dependencies.
  * Note: Owner context is maintained (only tracking is disabled).
  */
 export function untrack<T>(fn: () => T): T {
-  if (externalSource !== null) {
-    return externalSource.untrack(() => untrackInner(fn));
-  }
-  return untrackInner(fn);
-}
-
-function untrackInner<T>(fn: () => T): T {
   const prevTracking = tracking;
   tracking = false;
   try {
@@ -1986,232 +1639,13 @@ export function latest<T>(fn: () => T): T {
  */
 export function refresh(target: () => unknown): void {
   const node = (target as unknown as { _node?: ComputedNode<unknown> })._node;
-  if (!node || node._fn === undefined) return;
+  if (!node || !("_fn" in node)) return;
   node._flags = (node._flags & ~REACTIVE_CHECK) | REACTIVE_DIRTY;
   propagate(node, REACTIVE_DIRTY);
   if (node._kind !== EFFECT_PURE) {
     insertIntoHeap(node, heapFor(node));
   }
   schedule();
-}
-
-// ============================================================================
-// Snapshot capture (hydration resume)
-// ============================================================================
-
-/** Distinguishes "nothing captured" from a captured `undefined` */
-const NO_SNAPSHOT: unique symbol = Symbol("no-snapshot");
-
-/**
- * Non-zero while any rare read mode is live (snapshot capture, affects marks).
- * The signal read tests this one global before doing anything unusual.
- */
-let slowSignalRead = 0;
-
-let snapshotCaptureActive = false;
-const snapshotSources = new Set<SignalNode<unknown>>();
-
-/**
- * Start or stop recording snapshots. While active, every signal created
- * captures its initial value, and computations inside a snapshot scope read
- * that captured value instead of the live one.
- */
-export function setSnapshotCapture(active: boolean): void {
-  if (active === snapshotCaptureActive) return;
-  snapshotCaptureActive = active;
-  slowSignalRead += active ? 1 : -1;
-}
-
-/**
- * Mark an owner's subtree as reading snapshot values. Computations created
- * under it see the captured values until the scope is released.
- */
-export function markSnapshotScope(owner: Owner): void {
-  owner._snapshotScope = true;
-  for (const child of owner.children ?? []) {
-    child._flags |= REACTIVE_IN_SNAPSHOT_SCOPE;
-  }
-}
-
-/**
- * Release a snapshot scope: computations that were served a snapshot value
- * differing from the live one are re-run against live state.
- */
-export function releaseSnapshotScope(owner: Owner): void {
-  owner._snapshotScope = false;
-  releaseSnapshotSubtree(owner);
-  schedule();
-}
-
-function releaseSnapshotSubtree(owner: Owner): void {
-  const children = owner.children;
-  if (children === null) return;
-  for (const child of children) {
-    if ((child as unknown as Owner)._snapshotScope === true) continue; // nested scope owns its release
-    child._flags &= ~REACTIVE_IN_SNAPSHOT_SCOPE;
-    if (child._flags & REACTIVE_SNAPSHOT_STALE) {
-      child._flags = (child._flags & ~REACTIVE_SNAPSHOT_STALE) | REACTIVE_DIRTY;
-      if (child._kind !== EFFECT_PURE) insertIntoHeap(child, heapFor(child));
-      propagate(child, REACTIVE_DIRTY);
-    }
-    releaseSnapshotSubtree(child);
-  }
-}
-
-/** Drop every captured snapshot and stop capturing. */
-export function clearSnapshots(): void {
-  for (const source of snapshotSources) {
-    source._snapshot = NO_SNAPSHOT;
-  }
-  snapshotSources.clear();
-  setSnapshotCapture(false);
-}
-
-/**
- * The read path taken while snapshot capture or an affects mark is live.
- * Kept out of line so the ordinary read stays small enough to inline.
- */
-function readSignalSlow<T>(node: SignalNode<T>): T {
-  if (node._affected !== 0 && latestDepth === 0) {
-    if (tracking && currentObserver !== null && !(currentObserver._flags & REACTIVE_DISPOSED)) {
-      link(node as SignalNode<unknown>, currentObserver);
-    }
-    throw new NotReadyError();
-  }
-
-  if (!tracking) return node._value;
-
-  const observer = currentObserver;
-  if (observer === null || observer._flags & REACTIVE_DISPOSED) return node._value;
-  link(node as SignalNode<unknown>, observer);
-
-  if (
-    snapshotCaptureActive &&
-    observer._flags & REACTIVE_IN_SNAPSHOT_SCOPE &&
-    node._snapshot !== NO_SNAPSHOT
-  ) {
-    const captured = node._snapshot as T;
-    // Remember that the snapshot diverged, so releasing the scope re-runs this
-    if (captured !== node._value) observer._flags |= REACTIVE_SNAPSHOT_STALE;
-    return captured;
-  }
-
-  return node._value;
-}
-
-/**
- * Declare that a derived value is in motion: it and everything downstream read
- * as pending (Loading boundaries show fallbacks, `latest()` keeps the last
- * settled value) until the returned release is called.
- *
- * Marks stack, so overlapping declarations each need their own release.
- * Targets must be derived (`computed` / `createAsync`); a plain signal has no
- * status channel to carry the mark.
- */
-export function markInMotion(target: () => unknown): () => void {
-  const node = (target as unknown as { _node?: SignalNode<unknown> })._node;
-  if (!node) {
-    throw new Error("affects() needs a signal or derived value created by this runtime.");
-  }
-
-  const derived = node._fn !== undefined;
-  const count = node._affected + 1;
-  node._affected = count;
-
-  if (count === 1) {
-    if (derived) {
-      (node as ComputedNode<unknown>)._flags |= REACTIVE_AFFECTED;
-    } else {
-      slowSignalRead++;
-    }
-    propagate(node, REACTIVE_DIRTY);
-    schedule();
-  }
-
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    if (--node._affected > 0) return;
-    if (derived) {
-      (node as ComputedNode<unknown>)._flags &= ~REACTIVE_AFFECTED;
-    } else {
-      slowSignalRead--;
-    }
-    propagate(node, REACTIVE_DIRTY);
-    schedule();
-  };
-}
-
-// ============================================================================
-// External reactive sources
-// ============================================================================
-
-export interface ExternalSource {
-  track: (prev: unknown) => unknown;
-  dispose: () => void;
-}
-
-export type ExternalSourceFactory = (
-  fn: (prev?: unknown) => unknown,
-  trigger: () => void,
-) => ExternalSource;
-
-export interface ExternalSourceConfig {
-  factory: ExternalSourceFactory;
-  untrack?: <T>(fn: () => T) => T;
-}
-
-let externalSource: { factory: ExternalSourceFactory; untrack: <T>(fn: () => T) => T } | null =
-  null;
-
-/**
- * Bridge another reactive library (MobX, Vue refs, ...) into the graph: every
- * computation created afterwards runs inside the external tracker, and an
- * external change re-runs it.
- *
- * Repeat calls compose - each factory wraps the previous one.
- */
-export function enableExternalSource(config: ExternalSourceConfig): void {
-  const factory = config.factory;
-  const untrackFn = config.untrack ?? (<T>(fn: () => T): T => fn());
-
-  if (externalSource !== null) {
-    const previous = externalSource;
-    externalSource = {
-      factory: (fn, trigger) => {
-        const outer = previous.factory(fn, trigger);
-        const inner = factory((prev) => outer.track(prev), trigger);
-        return {
-          track: (prev) => inner.track(prev),
-          dispose() {
-            inner.dispose();
-            outer.dispose();
-          },
-        };
-      },
-      untrack: <T>(fn: () => T): T => previous.untrack(() => untrackFn(fn)),
-    };
-  } else {
-    externalSource = { factory, untrack: untrackFn };
-  }
-}
-
-/** Remove any registered external source bridge (does not rewire existing nodes). */
-export function resetExternalSource(): void {
-  externalSource = null;
-}
-
-function wireExternalSource(node: ComputedNode<unknown>, owner: Owner | null): void {
-  const bridge = signal<undefined>(undefined, { equals: false, ownedWrite: true });
-  const source = externalSource!.factory(node._fn, () => bridge.set(undefined));
-  if (owner !== null) {
-    (owner.cleanups ??= []).push(() => source.dispose());
-  }
-  node._fn = (prev?: unknown): unknown => {
-    bridge();
-    return source.track(prev);
-  };
 }
 
 /**

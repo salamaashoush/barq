@@ -123,7 +123,7 @@ describe("LIS algorithm performance", () => {
 
     // Reverse the list - this should use LIS for minimal moves
     const start = performance.now();
-    items.set([...initialItems].reverse());
+    items.set(initialItems.toReversed());
     flush();
     const elapsed = performance.now() - start;
 
@@ -154,7 +154,7 @@ describe("LIS algorithm performance", () => {
     container.appendChild(element as Node);
 
     // Shuffle
-    const shuffled = [...items()].sort(() => Math.random() - 0.5);
+    const shuffled = items().toSorted(() => Math.random() - 0.5);
     const start = performance.now();
     items.set(shuffled);
     flush();

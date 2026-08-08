@@ -821,7 +821,7 @@ function cleanLoaderCache(state: RouterState): void {
 
   // Remove oldest entries if over max size
   if (state.loaderCache.size > maxSize) {
-    const entries = Array.from(state.loaderCache.entries()).sort(
+    const entries = Array.from(state.loaderCache.entries()).toSorted(
       (a, b) => a[1].timestamp - b[1].timestamp,
     );
 
