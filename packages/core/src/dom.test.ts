@@ -4,7 +4,7 @@
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { createElement, render, useRef, template } from "./dom.ts";
-import { signal, computed, createScope } from "./signals.ts";
+import { signal, computed, createScope, flush } from "./signals.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;
@@ -80,7 +80,9 @@ describe("createElement", () => {
 });
 
 describe("Event handling", () => {
-  test("attaches onClick handler", () => {
+  // Common events are delegated to a document-level listener (like Solid),
+  // so elements must be connected and events must bubble.
+  test("attaches onClick handler (delegated)", () => {
     let clicked = false;
     const el = createElement("button", {
       onClick: () => {
@@ -88,11 +90,12 @@ describe("Event handling", () => {
       },
     }) as HTMLButtonElement;
 
+    container.appendChild(el);
     el.click();
     expect(clicked).toBe(true);
   });
 
-  test("attaches onInput handler", () => {
+  test("attaches onInput handler (delegated)", () => {
     let value = "";
     const el = createElement("input", {
       onInput: (e: Event) => {
@@ -102,18 +105,50 @@ describe("Event handling", () => {
 
     container.appendChild(el);
     el.value = "test";
-    el.dispatchEvent(new Event("input"));
+    el.dispatchEvent(new Event("input", { bubbles: true }));
     expect(value).toBe("test");
   });
 
-  test("handles multiple event handlers", () => {
+  test("delegated click bubbles from a nested child", () => {
+    let clicks = 0;
+    const el = createElement(
+      "div",
+      { onClick: () => clicks++ },
+      createElement("span", null, "inner"),
+    ) as HTMLDivElement;
+
+    container.appendChild(el);
+    (el.querySelector("span") as HTMLElement).dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    expect(clicks).toBe(1);
+  });
+
+  test("stopPropagation halts the delegated walk", () => {
+    let outerClicks = 0;
+    const el = createElement(
+      "div",
+      { onClick: () => outerClicks++ },
+      createElement("button", {
+        onClick: (e: Event) => e.stopPropagation(),
+      }),
+    ) as HTMLDivElement;
+
+    container.appendChild(el);
+    (el.querySelector("button") as HTMLButtonElement).click();
+    expect(outerClicks).toBe(0);
+  });
+
+  test("handles multiple event handlers (delegated + direct)", () => {
     const events: string[] = [];
     const el = createElement("button", {
       onClick: () => events.push("click"),
+      // mouseenter/mouseleave do not bubble: attached directly
       onMouseEnter: () => events.push("enter"),
       onMouseLeave: () => events.push("leave"),
     }) as HTMLButtonElement;
 
+    container.appendChild(el);
     el.click();
     el.dispatchEvent(new MouseEvent("mouseenter"));
     el.dispatchEvent(new MouseEvent("mouseleave"));
@@ -200,6 +235,7 @@ describe("Style handling", () => {
     expect(el.style.color).toBe("red");
 
     color.set("blue");
+    flush();
     expect(el.style.color).toBe("blue");
   });
 
@@ -213,6 +249,7 @@ describe("Style handling", () => {
     expect(el.style.width).toBe("100px");
 
     width.set(null);
+    flush();
     expect(el.style.width).toBe("");
   });
 });
@@ -265,6 +302,7 @@ describe("Reactive props", () => {
     expect(el.title).toBe("initial");
 
     title.set("updated");
+    flush();
     expect(el.title).toBe("updated");
   });
 
@@ -276,6 +314,7 @@ describe("Reactive props", () => {
     expect(el.getAttribute("aria-label")).toBe("label 1");
 
     ariaLabel.set("label 2");
+    flush();
     expect(el.getAttribute("aria-label")).toBe("label 2");
   });
 
@@ -287,6 +326,7 @@ describe("Reactive props", () => {
     expect(el.hasAttribute("disabled")).toBe(true);
 
     disabled.set(false);
+    flush();
     expect(el.hasAttribute("disabled")).toBe(false);
   });
 
@@ -299,6 +339,7 @@ describe("Reactive props", () => {
     expect(el.title).toBe("Count: 0");
 
     count.set(5);
+    flush();
     expect(el.title).toBe("Count: 5");
   });
 });
@@ -312,6 +353,7 @@ describe("Reactive children", () => {
     expect(el.textContent).toContain("hello");
 
     text.set("world");
+    flush();
     expect(el.textContent).toContain("world");
   });
 
@@ -324,6 +366,7 @@ describe("Reactive children", () => {
     expect(el.textContent).toContain("Count: 0");
 
     count.set(10);
+    flush();
     expect(el.textContent).toContain("Count: 10");
   });
 
@@ -337,6 +380,7 @@ describe("Reactive children", () => {
 
     a.set("X");
     b.set("Y");
+    flush();
     expect(el.textContent).toContain("X-Y");
   });
 
@@ -354,10 +398,12 @@ describe("Reactive children", () => {
     expect(el.textContent).toContain("text");
 
     content.set(["a", "b", "c"]);
+    flush();
     expect(el.querySelectorAll("span").length).toBe(3);
 
     // Switch back to text
     content.set("back to text");
+    flush();
     expect(el.textContent).toContain("back to text");
     expect(el.querySelectorAll("span").length).toBe(0);
   });
@@ -372,10 +418,12 @@ describe("Reactive children", () => {
     expect(el.querySelector("span")).not.toBeNull();
 
     showNode.set(false);
+    flush();
     expect(el.querySelector("span")).toBeNull();
     expect(el.textContent).toContain("primitive");
 
     showNode.set(true);
+    flush();
     expect(el.querySelector("span")).not.toBeNull();
   });
 
@@ -388,6 +436,7 @@ describe("Reactive children", () => {
     for (let i = 1; i <= 100; i++) {
       count.set(i);
     }
+    flush();
 
     expect(el.textContent).toContain("100");
   });
@@ -400,10 +449,12 @@ describe("Reactive children", () => {
     expect(el.textContent).toContain("visible");
 
     content.set(null);
+    flush();
     // Should clear content
     expect(el.textContent).not.toContain("visible");
 
     content.set("back");
+    flush();
     expect(el.textContent).toContain("back");
   });
 
@@ -423,6 +474,7 @@ describe("Reactive children", () => {
     expect(el.textContent).toContain("deep");
 
     inner.set("updated");
+    flush();
     expect(el.textContent).toContain("updated");
   });
 });
@@ -458,6 +510,7 @@ describe("DOM properties vs attributes", () => {
     expect(el.value).toBe("initial");
 
     value.set("changed");
+    flush();
     expect(el.value).toBe("changed");
   });
 
@@ -469,6 +522,7 @@ describe("DOM properties vs attributes", () => {
     expect(el.checked).toBe(false);
 
     checked.set(true);
+    flush();
     expect(el.checked).toBe(true);
   });
 });
@@ -611,11 +665,13 @@ describe("Memory and cleanup", () => {
     expect(effectRuns).toBe(1);
 
     title.set("changed");
+    flush();
     expect(effectRuns).toBe(2);
 
     dispose!();
 
     title.set("after dispose");
+    flush();
     expect(effectRuns).toBe(2); // Should not increase
   });
 
@@ -640,11 +696,13 @@ describe("Memory and cleanup", () => {
     expect(effectRuns).toBe(1);
 
     text.set("changed");
+    flush();
     expect(effectRuns).toBe(2);
 
     dispose!();
 
     text.set("after dispose");
+    flush();
     expect(effectRuns).toBe(2); // Should not increase
   });
 
@@ -669,11 +727,13 @@ describe("Memory and cleanup", () => {
     expect(effectRuns).toBe(1);
 
     color.set("blue");
+    flush();
     expect(effectRuns).toBe(2);
 
     dispose!();
 
     color.set("green");
+    flush();
     expect(effectRuns).toBe(2); // Should not increase
   });
 });
@@ -702,6 +762,7 @@ describe("Edge cases and error handling", () => {
     expect(el.textContent).toContain("computed: dynamic");
 
     dynamic.set("updated");
+    flush();
     expect(el.textContent).toContain("updated");
     expect(el.textContent).toContain("computed: updated");
   });
@@ -791,10 +852,12 @@ describe("BUG: textNode stale reference", () => {
 
     // Change to a node
     content.set(createElement("span", null, "node") as Node);
+    flush();
     expect(el.querySelector("span")).not.toBeNull();
 
     // Change back to primitive - should work correctly
     content.set("back to text");
+    flush();
     expect(el.textContent).toContain("back to text");
     expect(el.querySelector("span")).toBeNull();
 
@@ -804,6 +867,7 @@ describe("BUG: textNode stale reference", () => {
     content.set("text2");
     content.set(createElement("span", null, "span") as Node);
     content.set("final");
+    flush();
 
     expect(el.textContent).toContain("final");
   });

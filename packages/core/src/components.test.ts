@@ -16,7 +16,7 @@ import {
   clearRange,
   insertNodes,
 } from "./components.ts";
-import { signal, effect, createScope, computed, batch, onCleanup } from "./signals.ts";
+import { signal, effect, createScope, computed, batch, onCleanup, flush } from "./signals.ts";
 import { createElement, render } from "./dom.ts";
 
 // Simple DOM setup for testing
@@ -141,9 +141,11 @@ describe("Show component", () => {
     expect(container.textContent).toContain("shown");
 
     show.set(false);
+    flush();
     expect(container.textContent).toContain("hidden");
 
     show.set(true);
+    flush();
     expect(container.textContent).toContain("shown");
   });
 
@@ -178,6 +180,7 @@ describe("Show component", () => {
     for (let i = 0; i < 10; i++) {
       show.set(i % 2 === 0);
     }
+    flush();
 
     // Should end with "off" (last was false)
     expect(container.textContent).toContain("off");
@@ -214,13 +217,16 @@ describe("Show component", () => {
     expect(effectRunCount).toBe(1);
 
     innerSignal.set(1);
+    flush();
     expect(effectRunCount).toBe(2);
 
     // Hide - should dispose inner effect
     show.set(false);
+    flush();
 
     // Inner effect should not run anymore
     innerSignal.set(2);
+    flush();
     expect(effectRunCount).toBe(2);
   });
 
@@ -237,6 +243,7 @@ describe("Show component", () => {
     expect(container.textContent).toContain("empty");
 
     count.set(5);
+    flush();
     expect(container.textContent).toContain("count: 5");
   });
 
@@ -252,6 +259,7 @@ describe("Show component", () => {
     expect(container.textContent).toContain("empty");
 
     text.set("hello");
+    flush();
     expect(container.textContent).toContain("hello");
   });
 
@@ -340,6 +348,7 @@ describe("For component", () => {
     expect(container.textContent).toContain("ab");
 
     items.set(["x", "y", "z"]);
+    flush();
     expect(container.textContent).toContain("xyz");
   });
 
@@ -367,10 +376,12 @@ describe("For component", () => {
     expect(container.textContent).toContain("empty");
 
     items.set(["a"]);
+    flush();
     expect(container.textContent).toContain("a");
     expect(container.textContent).not.toContain("empty");
 
     items.set([]);
+    flush();
     expect(container.textContent).toContain("empty");
   });
 
@@ -393,6 +404,7 @@ describe("For component", () => {
 
     // Reverse the array - indices should update
     items.set(["c", "b", "a"]);
+    flush();
     // New indices should be pushed
     expect(indices.length).toBeGreaterThan(3);
   });
@@ -422,6 +434,7 @@ describe("For component", () => {
       { id: 2, name: "two" },
       { id: 1, name: "one" },
     ]);
+    flush();
 
     // Items reordered, not re-rendered
     expect(container.textContent).toContain("twoone");
@@ -442,6 +455,7 @@ describe("For component", () => {
     expect(container.textContent).toBe("bc");
 
     items.set(["a", "b", "c"]);
+    flush();
     expect(container.textContent).toBe("abc");
   });
 
@@ -460,6 +474,7 @@ describe("For component", () => {
     expect(container.textContent).toBe("ab");
 
     items.set(["a", "b", "c"]);
+    flush();
     expect(container.textContent).toBe("abc");
   });
 
@@ -478,6 +493,7 @@ describe("For component", () => {
     expect(container.textContent).toBe("abc");
 
     items.set(["a", "c"]);
+    flush();
     expect(container.textContent).toBe("ac");
   });
 
@@ -496,6 +512,7 @@ describe("For component", () => {
     expect(container.textContent).toBe("abc");
 
     items.set(["x", "y"]);
+    flush();
     expect(container.textContent).toBe("xy");
   });
 
@@ -519,13 +536,16 @@ describe("For component", () => {
     expect(effectCounts).toEqual({ a: 1, b: 1 });
 
     trigger.set(1);
+    flush();
     expect(effectCounts).toEqual({ a: 2, b: 2 });
 
     // Remove 'b'
     items.set(["a"]);
+    flush();
 
     // Trigger again - only 'a' should update
     trigger.set(2);
+    flush();
     expect(effectCounts.a).toBe(3);
     expect(effectCounts.b).toBe(2); // Should not increase
   });
@@ -553,6 +573,7 @@ describe("For component", () => {
     expect(container.textContent).toContain("ab");
 
     items.set(["x", "y", "z"]);
+    flush();
     expect(container.textContent).toContain("xyz");
   });
 
@@ -603,6 +624,7 @@ describe("For component", () => {
       { id: 2, v: "b" },
       { id: 1, v: "a" },
     ]);
+    flush();
 
     expect(container.textContent).toBe("dcba");
     // New objects = new renders (4 initial + 4 reversed)
@@ -642,6 +664,7 @@ describe("For component", () => {
 
     // Reverse using SAME object references - should reorder, not re-render
     items.set([d, c, b, a]);
+    flush();
 
     expect(container.textContent).toBe("dcba");
     // Should still be 4 - reused existing elements (same object references)
@@ -671,10 +694,12 @@ describe("For component", () => {
 
     // Insert b and d
     items.set(["a", "b", "c", "d", "e"]);
+    flush();
     expect(container.textContent).toBe("abcde");
 
     // Remove b and d
     items.set(["a", "c", "e"]);
+    flush();
     expect(container.textContent).toBe("ace");
   });
 
@@ -750,6 +775,7 @@ describe("Index component", () => {
 
     // Update value at index 1
     items.set(["a", "X", "c"]);
+    flush();
     expect(container.textContent).toBe("aXc");
     // Only index 1's item signal should trigger
     expect(updateCount).toBe(4);
@@ -772,6 +798,7 @@ describe("Index component", () => {
     expect(container.textContent).toBe("abcd");
 
     items.set(["a", "b"]);
+    flush();
     expect(container.textContent).toBe("ab");
   });
 
@@ -792,6 +819,7 @@ describe("Index component", () => {
     expect(container.textContent).toBe("a");
 
     items.set(["a", "b", "c"]);
+    flush();
     expect(container.textContent).toBe("abc");
   });
 
@@ -816,12 +844,15 @@ describe("Index component", () => {
     expect(effectCounts).toEqual([1, 1, 1]);
 
     trigger.set(1);
+    flush();
     expect(effectCounts).toEqual([2, 2, 2]);
 
     // Shrink to 1 item
     items.set(["x"]);
+    flush();
 
     trigger.set(2);
+    flush();
     // Only index 0 should update
     expect(effectCounts[0]).toBe(4); // +1 for value change, +1 for trigger
     expect(effectCounts[1]).toBe(2); // disposed
@@ -840,6 +871,7 @@ describe("Index component", () => {
     expect(container.textContent).toContain("empty");
 
     items.set(["first"]);
+    flush();
     expect(container.textContent).toContain("first");
     expect(container.textContent).not.toContain("empty");
   });
@@ -873,10 +905,12 @@ describe("Switch/Match components", () => {
     expect(container.textContent).toContain("one");
 
     value.set(2);
+    flush();
     expect(container.textContent).toContain("two");
     expect(container.textContent).not.toContain("one");
 
     value.set(3);
+    flush();
     expect(container.textContent).toContain("three");
   });
 
@@ -917,6 +951,7 @@ describe("Switch/Match components", () => {
 
     // Change value - should re-render because keyed
     user.set({ id: 2, name: "Bob" });
+    flush();
     expect(container.textContent).toContain("Bob");
     expect(renderCount).toBe(2);
   });
@@ -948,6 +983,7 @@ describe("Switch/Match components", () => {
 
     // Change value - should NOT re-render, just update via effect
     user.set({ id: 2, name: "Bob" });
+    flush();
     expect(container.textContent).toContain("Bob");
     expect(renderCount).toBe(1); // Still 1
   });
@@ -988,14 +1024,17 @@ describe("Switch/Match components", () => {
     expect(effect2Runs).toBe(0);
 
     trigger.set(1);
+    flush();
     expect(effect1Runs).toBe(2);
 
     // Switch to second match
     value.set(2);
+    flush();
     expect(effect2Runs).toBe(1);
 
     // Trigger should only affect second match now
     trigger.set(2);
+    flush();
     expect(effect1Runs).toBe(2); // Should not increase
     expect(effect2Runs).toBe(2);
   });
@@ -1103,13 +1142,16 @@ describe("Memory and cleanup", () => {
     expect(innerEffectRuns).toBe(1);
 
     trigger.set(1);
+    flush();
     expect(outerEffectRuns).toBe(2);
     expect(innerEffectRuns).toBe(2);
 
     // Hide outer - should dispose both
     outer.set(false);
+    flush();
 
     trigger.set(2);
+    flush();
     expect(outerEffectRuns).toBe(2); // Should not increase
     expect(innerEffectRuns).toBe(2); // Should not increase
   });
@@ -1139,12 +1181,15 @@ describe("Memory and cleanup", () => {
     expect(totalEffectRuns).toBe(2);
 
     trigger.set(1);
+    flush();
     expect(totalEffectRuns).toBe(4);
 
     // Hide - should dispose all item effects
     show.set(false);
+    flush();
 
     trigger.set(2);
+    flush();
     expect(totalEffectRuns).toBe(4); // Should not increase
   });
 });

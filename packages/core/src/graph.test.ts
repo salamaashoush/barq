@@ -279,7 +279,7 @@ describe("graph correctness", () => {
         seq += "b1";
         return undefined;
       },
-      { equals: false }
+      { equals: false },
     );
     const b2 = computed(
       () => {
@@ -287,7 +287,7 @@ describe("graph correctness", () => {
         seq += "b2";
         return undefined;
       },
-      { equals: false }
+      { equals: false },
     );
     const c1 = computed(
       () => {
@@ -296,7 +296,7 @@ describe("graph correctness", () => {
         seq += "c1";
         return undefined;
       },
-      { equals: false }
+      { equals: false },
     );
 
     // Initialize
@@ -305,6 +305,7 @@ describe("graph correctness", () => {
 
     a1.set(true);
     flush();
+    c1(); // lazy: pull resolves in topological order
 
     expect(seq).toBe("b1b2c1");
   });
@@ -339,6 +340,7 @@ describe("graph correctness", () => {
 
     d.set(1);
     flush();
+    g(); // lazy: pull
 
     expect(gcount).toBe(1);
   });
@@ -378,6 +380,7 @@ describe("graph correctness", () => {
 
     d.set(1);
     flush();
+    h(); // lazy: pull
 
     expect(hcount).toBe(1);
   });
@@ -394,9 +397,9 @@ describe("graph correctness", () => {
       t1();
     });
 
-    // Initialize
+    // Initialize (lazy: t2 starts evaluating, then pulls t1)
     t2();
-    expect(order).toBe("t1c1");
+    expect(order).toBe("c1t1");
 
     order = "";
     s1.set(1);
@@ -526,6 +529,7 @@ describe("dynamic dependencies", () => {
 
     e.set(5);
     flush();
+    f(); // lazy: pull
     expect(fevals).toBe(1); // e is now tracked
   });
 
@@ -550,9 +554,9 @@ describe("dynamic dependencies", () => {
       return d() + 10;
     });
 
-    // Initialize
+    // Initialize (lazy: c starts evaluating, then pulls b; d/e untouched)
     c();
-    expect(order).toBe("bcd");
+    expect(order).toBe("cb");
 
     order = "";
     a.set(-1);
@@ -565,7 +569,8 @@ describe("dynamic dependencies", () => {
     a.set(0);
     flush();
     c();
-    expect(order).toBe("bdc");
+    // b validates first (dep order), c re-runs and drops e without evaluating it
+    expect(order).toBe("bc");
     expect(c()).toBe(1);
   });
 });
@@ -586,6 +591,7 @@ describe("effect correctness", () => {
     expect(effectCount).toBe(1);
 
     x.set(1);
+    flush();
     expect(effectCount).toBe(2);
   });
 
@@ -622,7 +628,7 @@ describe("computed with equals: false", () => {
         s();
         return "static";
       },
-      { equals: false }
+      { equals: false },
     );
 
     let effectCount = 0;
@@ -634,19 +640,18 @@ describe("computed with equals: false", () => {
     expect(effectCount).toBe(1);
 
     s.set(2);
+    flush();
     expect(effectCount).toBe(2);
 
     s.set(3);
+    flush();
     expect(effectCount).toBe(3);
   });
 });
 
 describe("custom equality", () => {
   test("uses custom equality function", () => {
-    const s = signal(
-      { id: 1, name: "test" },
-      { equals: (a, b) => a.id === b.id }
-    );
+    const s = signal({ id: 1, name: "test" }, { equals: (a, b) => a.id === b.id });
 
     let effectCount = 0;
     effect(() => {
@@ -658,10 +663,12 @@ describe("custom equality", () => {
 
     // Same id, should not trigger
     s.set({ id: 1, name: "different" });
+    flush();
     expect(effectCount).toBe(1);
 
     // Different id, should trigger
     s.set({ id: 2, name: "test" });
+    flush();
     expect(effectCount).toBe(2);
   });
 });

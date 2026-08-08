@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { batch, computed, createScope, effect, onCleanup, signal, untrack } from "./signals.ts";
+import {
+  batch,
+  computed,
+  createScope,
+  effect,
+  flush,
+  onCleanup,
+  signal,
+  untrack,
+} from "./signals.ts";
 
 describe("signal", () => {
   test("creates a signal with initial value", () => {
@@ -35,6 +44,7 @@ describe("signal", () => {
 
     expect(effectCount).toBe(1);
     count.set(0); // Same value
+    flush();
     expect(effectCount).toBe(1); // Should not re-run
   });
 
@@ -49,6 +59,7 @@ describe("signal", () => {
 
     expect(effectCount).toBe(1);
     num.set(NaN);
+    flush();
     expect(effectCount).toBe(1); // NaN === NaN with Object.is
   });
 });
@@ -75,7 +86,7 @@ describe("computed", () => {
     expect(squared.peek()).toBe(49);
   });
 
-  test("computes eagerly on creation (like SolidJS)", () => {
+  test("computes lazily on first read (like Solid 2.0)", () => {
     const count = signal(0);
     let computeCount = 0;
 
@@ -84,11 +95,11 @@ describe("computed", () => {
       return count() * 2;
     });
 
-    expect(computeCount).toBe(1); // Computed immediately on creation
+    expect(computeCount).toBe(0); // Lazy: not computed at creation
+    doubled();
+    expect(computeCount).toBe(1); // Computed on first read
     doubled();
     expect(computeCount).toBe(1); // Cached, no recompute
-    doubled();
-    expect(computeCount).toBe(1); // Still cached
   });
 
   test("recomputes when dependency changes", () => {
@@ -108,6 +119,28 @@ describe("computed", () => {
     expect(computeCount).toBe(2);
   });
 
+  test("does not recompute unobserved computeds on write", () => {
+    const count = signal(0);
+    let computeCount = 0;
+
+    const doubled = computed(() => {
+      computeCount++;
+      return count() * 2;
+    });
+
+    doubled();
+    expect(computeCount).toBe(1);
+
+    // No observers: writes alone must not recompute (lazy pull)
+    count.set(1);
+    count.set(2);
+    flush();
+    expect(computeCount).toBe(1);
+
+    expect(doubled()).toBe(4);
+    expect(computeCount).toBe(2);
+  });
+
   test("handles diamond dependencies (glitch-free)", () => {
     const a = signal(1);
     const b = computed(() => a() * 2);
@@ -124,6 +157,7 @@ describe("computed", () => {
 
     expect(effectCount).toBe(1);
     a.set(2);
+    flush();
     expect(d()).toBe(10); // 4 + 6
     expect(effectCount).toBe(2); // Effect runs once, not twice
   });
@@ -160,6 +194,7 @@ describe("effect", () => {
 
     expect(effectCount).toBe(1);
     count.set(1);
+    flush();
     expect(effectCount).toBe(2);
   });
 
@@ -176,7 +211,34 @@ describe("effect", () => {
 
     expect(cleanedUp).toBe(false);
     count.set(1);
+    flush();
     expect(cleanedUp).toBe(true);
+  });
+
+  test("split form: apply runs untracked with value and prev", () => {
+    const count = signal(1);
+    const log: Array<[number, number | undefined]> = [];
+    let cleanups = 0;
+
+    effect(
+      () => count() * 2,
+      (value, prev) => {
+        log.push([value, prev]);
+        return () => {
+          cleanups++;
+        };
+      },
+    );
+
+    expect(log).toEqual([[2, undefined]]);
+
+    count.set(5);
+    flush();
+    expect(log).toEqual([
+      [2, undefined],
+      [10, 2],
+    ]);
+    expect(cleanups).toBe(1); // cleanup from first apply ran before second
   });
 
   test("returns stop function", () => {
@@ -191,6 +253,7 @@ describe("effect", () => {
     expect(effectCount).toBe(1);
     stop();
     count.set(1);
+    flush();
     expect(effectCount).toBe(1); // Should not run after stop
   });
 
@@ -221,18 +284,23 @@ describe("effect", () => {
     expect(value).toBe(1);
 
     a.set(10);
+    flush();
     expect(value).toBe(10);
 
     b.set(20); // Should not trigger since we're tracking a
+    flush();
     expect(value).toBe(10);
 
     useA.set(false); // Now track b
+    flush();
     expect(value).toBe(20);
 
     a.set(100); // Should not trigger since we're now tracking b
+    flush();
     expect(value).toBe(20);
 
     b.set(200);
+    flush();
     expect(value).toBe(200);
   });
 
@@ -256,6 +324,7 @@ describe("effect", () => {
     expect(innerCount).toBe(1);
 
     inner.set(1);
+    flush();
     expect(innerCount).toBe(2);
     expect(outerCount).toBe(1); // Outer should not re-run
   });
@@ -307,6 +376,23 @@ describe("batch", () => {
     expect(effectCount).toBe(2);
     expect(count()).toBe(4);
   });
+
+  test("writes that revert within a batch do not re-trigger effects", () => {
+    const a = signal(0);
+    let effectCount = 0;
+
+    effect(() => {
+      a();
+      effectCount++;
+    });
+    expect(effectCount).toBe(1);
+
+    batch(() => {
+      a.set(5);
+      a.set(0);
+    });
+    expect(effectCount).toBe(1); // value reverted: no run
+  });
 });
 
 describe("untrack", () => {
@@ -324,9 +410,11 @@ describe("untrack", () => {
     expect(effectCount).toBe(1);
 
     untracked.set(1);
+    flush();
     expect(effectCount).toBe(1); // Should not re-run
 
     tracked.set(1);
+    flush();
     expect(effectCount).toBe(2); // Should re-run
   });
 });
@@ -346,10 +434,12 @@ describe("createScope", () => {
 
     expect(effectCount).toBe(1);
     count.set(1);
+    flush();
     expect(effectCount).toBe(2);
 
     result(); // Dispose scope
     count.set(2);
+    flush();
     expect(effectCount).toBe(2); // Should not run after dispose
   });
 
@@ -384,6 +474,7 @@ describe("createScope", () => {
         });
 
         count.set(1);
+        flush();
         expect(innerEffectCount).toBe(2);
         expect(outerEffectCount).toBe(2);
 
@@ -391,6 +482,7 @@ describe("createScope", () => {
       });
 
       count.set(2);
+      flush();
       expect(innerEffectCount).toBe(2); // Inner disposed
       expect(outerEffectCount).toBe(3); // Outer still running
 
@@ -398,6 +490,7 @@ describe("createScope", () => {
     });
 
     count.set(3);
+    flush();
     expect(innerEffectCount).toBe(2);
     expect(outerEffectCount).toBe(3); // Both disposed
   });
@@ -442,8 +535,10 @@ describe("onCleanup", () => {
 
     expect(cleanupCount).toBe(0);
     count.set(1);
+    flush();
     expect(cleanupCount).toBe(1);
     count.set(2);
+    flush();
     expect(cleanupCount).toBe(2);
   });
 
@@ -476,6 +571,22 @@ describe("onCleanup", () => {
   });
 });
 
+describe("writable derived signals", () => {
+  test("signal(fn) derives from dependencies and accepts writes", () => {
+    const source = signal(1);
+    const derived = signal((prev?: number) => source() * 10);
+
+    expect(derived()).toBe(10);
+
+    derived.set(99);
+    expect(derived()).toBe(99);
+
+    // A dependency change recomputes over the manual write
+    source.set(2);
+    expect(derived()).toBe(20);
+  });
+});
+
 describe("memory and reactivity leaks", () => {
   test("effect does not leak when disposed", () => {
     const count = signal(0);
@@ -493,6 +604,7 @@ describe("memory and reactivity leaks", () => {
     for (let i = 0; i < 100; i++) {
       count.set(i);
     }
+    flush();
 
     expect(effectRuns).toBe(1); // Effect never ran again
   });
@@ -540,14 +652,17 @@ describe("memory and reactivity leaks", () => {
 
     // Switch to using b
     useA.set(false);
+    flush();
     expect(effectRuns).toBe(2);
 
     // a should no longer be tracked
     a.set(100);
+    flush();
     expect(effectRuns).toBe(2); // No change
 
     // b should be tracked
     b.set(200);
+    flush();
     expect(effectRuns).toBe(3);
   });
 });

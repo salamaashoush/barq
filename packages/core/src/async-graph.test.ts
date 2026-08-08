@@ -1,0 +1,268 @@
+/**
+ * Solid 2.0-style async-as-state tests: promise-returning computeds carry
+ * pending/error status through the graph; Loading/Errored boundaries catch
+ * NotReadyError and effect errors.
+ */
+
+import { describe, expect, test } from "bun:test";
+import {
+  Errored,
+  Loading,
+  NotReadyError,
+  computed,
+  createAsync,
+  createScope,
+  effect,
+  flush,
+  isPending,
+  latest,
+  refresh,
+  render,
+  signal,
+} from "./index.ts";
+
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+describe("createAsync", () => {
+  test("read before resolution throws NotReadyError; resolves to value", async () => {
+    const data = createAsync(async () => {
+      await tick();
+      return 42;
+    });
+
+    expect(() => data()).toThrow(NotReadyError);
+
+    await tick();
+    await tick();
+    expect(data()).toBe(42);
+  });
+
+  test("re-fetches when a dependency changes, keeps stale value via latest", async () => {
+    const id = signal(1);
+    const user = createAsync(async () => {
+      const current = id();
+      await tick();
+      return `user-${current}`;
+    });
+
+    expect(isPending(() => user())).toBe(true);
+    await tick();
+    await tick();
+    expect(user()).toBe("user-1");
+
+    id.set(2);
+    flush();
+    // In flight: plain read is pending, latest() returns the stale value
+    expect(isPending(() => user())).toBe(true);
+    expect(latest(() => user())).toBe("user-1");
+
+    await tick();
+    await tick();
+    expect(user()).toBe("user-2");
+  });
+
+  test("rejection propagates as a thrown error on read", async () => {
+    const failing = createAsync(async () => {
+      await tick();
+      throw new Error("fetch failed");
+    });
+
+    expect(() => failing()).toThrow(NotReadyError);
+    await tick();
+    await tick();
+    expect(() => failing()).toThrow("fetch failed");
+  });
+
+  test("pending status propagates through derived computeds", async () => {
+    const data = createAsync(async () => {
+      await tick();
+      return 10;
+    });
+    const doubled = computed(() => data() * 2);
+
+    expect(isPending(() => doubled())).toBe(true);
+    await tick();
+    await tick();
+    expect(doubled()).toBe(20);
+  });
+});
+
+describe("isPending / latest", () => {
+  test("isPending is false for sync values", () => {
+    const s = signal(1);
+    expect(isPending(() => s())).toBe(false);
+  });
+
+  test("isPending rethrows non-NotReady errors", () => {
+    expect(() =>
+      isPending(() => {
+        throw new Error("boom");
+      }),
+    ).toThrow("boom");
+  });
+
+  test("latest throws NotReadyError for never-resolved values", () => {
+    const data = createAsync(async () => {
+      await tick();
+      return 1;
+    });
+    expect(() => latest(() => data())).toThrow(NotReadyError);
+  });
+});
+
+describe("refresh", () => {
+  test("recomputes a derived value on demand", () => {
+    let runs = 0;
+    const source = { value: 1 };
+    const c = computed(() => {
+      runs++;
+      return source.value;
+    });
+
+    expect(c()).toBe(1);
+    expect(runs).toBe(1);
+
+    source.value = 2;
+    expect(c()).toBe(1); // not reactive to plain mutation
+
+    refresh(c);
+    expect(c()).toBe(2);
+    expect(runs).toBe(2);
+  });
+
+  test("observed async computeds re-run and notify on refresh", async () => {
+    let fetches = 0;
+    const data = createAsync(async () => {
+      fetches++;
+      await tick();
+      return fetches;
+    });
+
+    const seen: number[] = [];
+    effect(() => {
+      try {
+        seen.push(data());
+      } catch (err) {
+        if (!(err instanceof NotReadyError)) throw err;
+      }
+    });
+
+    await tick();
+    await tick();
+    expect(seen).toEqual([1]);
+
+    refresh(data);
+    flush();
+    await tick();
+    await tick();
+    expect(seen).toEqual([1, 2]);
+    expect(fetches).toBe(2);
+  });
+});
+
+describe("Loading boundary", () => {
+  test("shows fallback while pending, content after resolution", async () => {
+    const container = document.createElement("div");
+    const data = createAsync(async () => {
+      await tick();
+      return "loaded";
+    });
+
+    createScope(() => {
+      const el = Loading({
+        fallback: document.createTextNode("loading..."),
+        children: () => {
+          // reactive child reading an async value
+          try {
+            return data();
+          } catch (err) {
+            if (err instanceof NotReadyError) throw err;
+            throw err;
+          }
+        },
+      });
+      render(el, container);
+    });
+    flush();
+
+    expect(container.textContent).toContain("loading...");
+
+    await tick();
+    await tick();
+    flush();
+    expect(container.textContent).toContain("loaded");
+    expect(container.textContent).not.toContain("loading...");
+  });
+});
+
+describe("Errored boundary", () => {
+  test("catches synchronous render errors", () => {
+    const container = document.createElement("div");
+
+    createScope(() => {
+      const el = Errored({
+        fallback: (error) => document.createTextNode(`error: ${error().message}`),
+        children: () => {
+          throw new Error("render exploded");
+        },
+      });
+      render(el, container);
+    });
+    flush();
+
+    expect(container.textContent).toContain("error: render exploded");
+  });
+
+  test("catches errors thrown by effects under the boundary", () => {
+    const container = document.createElement("div");
+    const trigger = signal(false);
+
+    createScope(() => {
+      const el = Errored({
+        fallback: (error) => document.createTextNode(`caught: ${error().message}`),
+        children: () => {
+          effect(() => {
+            if (trigger()) throw new Error("effect exploded");
+          });
+          return document.createTextNode("ok");
+        },
+      });
+      render(el, container);
+    });
+    flush();
+
+    expect(container.textContent).toContain("ok");
+
+    trigger.set(true);
+    flush();
+    expect(container.textContent).toContain("caught: effect exploded");
+  });
+
+  test("reset re-renders children", () => {
+    const container = document.createElement("div");
+    let shouldThrow = true;
+    let resetFn: (() => void) | null = null;
+
+    createScope(() => {
+      const el = Errored({
+        fallback: (error, reset) => {
+          resetFn = reset;
+          return document.createTextNode(`error: ${error().message}`);
+        },
+        children: () => {
+          if (shouldThrow) throw new Error("first");
+          return document.createTextNode("recovered");
+        },
+      });
+      render(el, container);
+    });
+    flush();
+
+    expect(container.textContent).toContain("error: first");
+
+    shouldThrow = false;
+    resetFn!();
+    flush();
+    expect(container.textContent).toContain("recovered");
+  });
+});

@@ -10,11 +10,13 @@ export {
   signal,
   computed,
   effect,
+  renderEffect,
   batch,
   untrack,
   createScope,
   onCleanup,
   onMount,
+  onSettled,
   createContext,
   useContext,
   getContext,
@@ -23,10 +25,42 @@ export {
   flush,
   getOwner,
   runWithOwner,
+  // Async helpers
+  createAsync,
+  isPending,
+  latest,
+  refresh,
+  settle,
+  setAsyncSession,
+  // Boundary context keys (used by Loading/Errored components)
+  LOADING_BOUNDARY,
+  ERROR_BOUNDARY,
+  // Dev diagnostics
+  DEV,
   // Error classes
   NoOwnerError,
   ContextNotFoundError,
+  NotReadyError,
 } from "./signals.ts";
+export type { LoadingBoundaryHandle, DiagnosticEvent } from "./signals.ts";
+
+// Solid 2.0 parity primitives
+export {
+  createOwner,
+  createReaction,
+  createTrackedEffect,
+  getNextChildId,
+  getObserver,
+  isDisposed,
+  isEqual,
+  peekNextChildId,
+  resolve,
+  enableExternalSource,
+  resetExternalSource,
+  markInMotion,
+  SUPPORTS_PROXY,
+} from "./signals.ts";
+export type { ExternalSource, ExternalSourceConfig, ExternalSourceFactory } from "./signals.ts";
 
 // createRoot: detached scope for SolidJS compatibility
 import { createScope as _createScope } from "./signals.ts";
@@ -51,9 +85,50 @@ export type {
 } from "./config.ts";
 
 // Store - fine-grained nested reactivity
-export { useStore, produce, reconcile, unwrap } from "./store.ts";
+export {
+  useStore,
+  produce,
+  reconcile,
+  unwrap,
+  snapshot,
+  createProjection,
+  deep,
+  isWrappable,
+  storePath,
+  $PROXY,
+  $TARGET,
+  $TRACK,
+} from "./store.ts";
+export type { Part, StorePathRange } from "./store.ts";
+
+// Actions & optimistic updates
+export { action, affects, createOptimistic, createOptimisticStore } from "./actions.ts";
+
+// Server-side rendering
+export {
+  renderToString,
+  renderToStringAsync,
+  renderPage,
+  generateHydrationScript,
+  getRenderData,
+  clearRenderData,
+} from "./server.ts";
 
 // Core hooks
+export {
+  createErrorBoundary,
+  createLoadingBoundary,
+  createRevealOrder,
+  enforceLoadingBoundary,
+  flatten,
+  hasEscapedError,
+  resetErrorHalt,
+} from "./boundaries.ts";
+export type { RevealDisplay, RevealOrder } from "./boundaries.ts";
+
+export { mapArray, repeat } from "./map.ts";
+export type { Maybe } from "./map.ts";
+
 export { useState, useMemo, useEffect } from "./hooks.ts";
 
 // Async data loading
@@ -63,8 +138,12 @@ export { useResource } from "./hooks.ts";
 export {
   createElement,
   render,
+  hydrate,
   useRef,
   template,
+  insert,
+  setProp,
+  spread,
   type Child,
   type Props,
   type Component,
@@ -79,16 +158,23 @@ export {
   Show,
   For,
   Index,
+  Repeat,
   Switch,
   Match,
   Suspense,
+  Loading,
+  Reveal,
   ErrorBoundary,
+  Errored,
   Await,
   Portal,
   Dynamic,
+  dynamic,
   // Props utilities
   splitProps,
   mergeProps,
+  merge,
+  omit,
   children,
   // DOM marker utilities
   createMarkerPair,

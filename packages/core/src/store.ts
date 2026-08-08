@@ -1,11 +1,15 @@
 /**
- * Store - Fine-grained reactive state management (SolidJS-style)
+ * Store - Fine-grained reactive state management (Solid 2.0-style)
  *
- * Provides nested reactive objects where each property is independently tracked.
- * Updates to nested properties only trigger effects that read those specific paths.
+ * Structural reactivity: every raw object in the store lazily owns a map of
+ * per-property nodes (signals). Reads through the proxy track the property
+ * node of the object actually holding the value; writes notify exactly that
+ * node. No string paths, no prefix scans - replacing a nested object only
+ * notifies its property node, and subscribers re-wire through the new value
+ * when they re-run.
  */
 
-import { type Signal, batch, signal } from "./signals.ts";
+import { type Signal, batch, isTracking, renderEffect, signal } from "./signals.ts";
 
 /**
  * Deep readonly type for store state
@@ -22,7 +26,7 @@ type PathSegment = string | number | symbol;
  *
  * Supports multiple calling conventions:
  * - setState(updates) - partial object update
- * - setState(fn) - function returning updates
+ * - setState(fn) - draft function: mutate the draft, or return a partial
  * - setState(key, value) - single property update
  * - setState(key, fn) - single property with updater function
  * - setState(key1, key2, value) - nested path update (2 levels)
@@ -31,9 +35,9 @@ type PathSegment = string | number | symbol;
  * - setState(...path, value) - arbitrary depth path update
  */
 type StoreSetter<T> = {
-  // Single arg: partial updates or function
+  // Single arg: partial updates or draft function (mutate draft, or return a partial)
   (updates: Partial<T>): void;
-  (fn: (state: T) => Partial<T>): void;
+  (fn: (state: T) => Partial<T> | void): void;
 
   // Two args: key + value/function/partial
   <K extends keyof T>(key: K, value: T[K] | ((prev: T[K]) => T[K])): void;
@@ -77,20 +81,217 @@ type StoreSetter<T> = {
  */
 export type Store<T extends object> = [DeepReadonly<T>, StoreSetter<T>];
 
-/**
- * Internal signal map for tracking nested properties
- */
-const STORE_SIGNALS = new WeakMap<object, Map<string, Signal<unknown>>>();
+/** Symbol to extract the raw target from a store proxy */
+const RAW = Symbol("barq-store-raw");
 
 /**
- * Cache for nested proxies to avoid creating new ones on every access
+ * Read `store[$TRACK]` to subscribe to the object's shape - any key added or
+ * removed - rather than to one property.
  */
-const PROXY_CACHE = new WeakMap<object, WeakMap<object, object>>();
+export const $TRACK: unique symbol = Symbol("barq-store-track");
+
+/** Read `store[$TARGET]` for the raw object behind a store proxy. */
+export const $TARGET: unique symbol = RAW as unknown as typeof $TARGET;
+
+// Internal state lives in non-enumerable symbol properties on the raw
+// objects themselves (faster than WeakMap lookups on the hot path).
+// Object.keys / for..in / spread (non-enumerable) / JSON all ignore them.
+const $NODES = Symbol("barq-store-nodes");
+const $SELF = Symbol("barq-store-self");
+/** Read `raw[$PROXY]` for the store proxy wrapping a raw object, if any. */
+export const $PROXY: unique symbol = Symbol("barq-store-proxy");
+const $DRAFT = Symbol("barq-store-draft");
+
+interface StoreTarget {
+  [$NODES]?: Map<PropertyKey, Signal<unknown>>;
+  [$SELF]?: Signal<number>;
+  [$PROXY]?: object;
+  [$DRAFT]?: object;
+}
+
+function setHidden<K extends PropertyKey>(target: object, key: K, value: unknown): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
+}
+
+/** Whether a value would be wrapped in a store proxy (plain object or array). */
+export function isWrappable(value: unknown): value is object {
+  if (value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return true;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function trackProperty(target: StoreTarget, prop: PropertyKey, value: unknown): void {
+  let nodes = target[$NODES];
+  if (!nodes) {
+    nodes = new Map();
+    setHidden(target, $NODES, nodes);
+  }
+  let node = nodes.get(prop);
+  if (!node) {
+    node = signal(value);
+    nodes.set(prop, node);
+  }
+  node();
+}
+
+function trackSelf(target: StoreTarget): void {
+  let node = target[$SELF];
+  if (!node) {
+    node = signal(0);
+    setHidden(target, $SELF, node);
+  }
+  node();
+}
+
+function bumpSelf(target: StoreTarget): void {
+  const node = target[$SELF];
+  if (node) node.update((n) => n + 1);
+}
+
+const readHandler: ProxyHandler<object> = {
+  get(target, prop) {
+    if (prop === RAW) return target;
+    if (prop === ($TRACK as symbol)) {
+      if (isTracking()) trackSelf(target);
+      return target;
+    }
+    if (prop === Symbol.toStringTag) return "Store";
+    if (typeof prop === "symbol") return Reflect.get(target, prop);
+
+    const value = (target as Record<string, unknown>)[prop];
+
+    // Prototype methods (Array.prototype.map, ...) are returned as-is;
+    // calling them with the proxy as `this` tracks indices/length reads
+    if (typeof value === "function" && !Object.hasOwn(target, prop)) {
+      return value;
+    }
+
+    if (isTracking()) {
+      trackProperty(target, prop, value);
+    }
+
+    return isWrappable(value) ? wrap(value) : value;
+  },
+
+  has(target, prop) {
+    if (typeof prop !== "symbol" && isTracking()) {
+      trackProperty(target, prop, (target as Record<string, unknown>)[prop as string]);
+    }
+    return Reflect.has(target, prop);
+  },
+
+  ownKeys(target) {
+    if (isTracking()) {
+      trackSelf(target);
+    }
+    return Reflect.ownKeys(target);
+  },
+
+  set() {
+    console.warn("Direct mutation not allowed. Use setState instead.");
+    return false;
+  },
+
+  deleteProperty() {
+    console.warn("Direct mutation not allowed. Use setState instead.");
+    return false;
+  },
+};
+
+/** Wrap a raw object in a (cached) read proxy */
+function wrap<T extends object>(target: T): T {
+  let proxy = (target as StoreTarget)[$PROXY];
+  if (!proxy) {
+    proxy = new Proxy(target, readHandler);
+    setHidden(target, $PROXY, proxy);
+  }
+  return proxy as T;
+}
 
 /**
- * Map from proxy to its raw target for unwrap()
+ * Write a property on a raw target, notifying exactly its node (if anyone
+ * is subscribed). Array length changes implied by index writes notify the
+ * length node too.
  */
-const PROXY_TO_RAW = new WeakMap<object, object>();
+function writeProperty(target: object, prop: PropertyKey, value: unknown): void {
+  const record = target as Record<PropertyKey, unknown>;
+  const had = prop in record;
+  const prev = record[prop];
+  if (had && (prev === value || (prev !== prev && value !== value))) return;
+
+  const isArray = Array.isArray(target);
+  const prevLength = isArray ? (target as unknown[]).length : 0;
+
+  record[prop] = value;
+
+  const nodes = (target as StoreTarget)[$NODES];
+  if (nodes) {
+    const node = nodes.get(prop);
+    if (node) node.set(value);
+  }
+
+  if (!had) bumpSelf(target);
+
+  if (isArray && prop !== "length") {
+    const newLength = (target as unknown[]).length;
+    if (newLength !== prevLength && nodes) {
+      const lengthNode = nodes.get("length");
+      if (lengthNode) lengthNode.set(newLength);
+    }
+  }
+}
+
+function deletePropertyOnTarget(target: object, prop: PropertyKey): void {
+  const record = target as Record<PropertyKey, unknown>;
+  if (!(prop in record)) return;
+  delete record[prop];
+
+  const nodes = (target as StoreTarget)[$NODES];
+  if (nodes) {
+    const node = nodes.get(prop);
+    if (node) node.set(undefined);
+  }
+  bumpSelf(target);
+}
+
+const draftHandler: ProxyHandler<object> = {
+  get(target, prop) {
+    if (prop === RAW) return target;
+    if (typeof prop === "symbol") return Reflect.get(target, prop);
+
+    const value = (target as Record<string, unknown>)[prop];
+    if (typeof value === "function" && !Object.hasOwn(target, prop)) {
+      return value;
+    }
+    return isWrappable(value) ? draft(value) : value;
+  },
+
+  set(target, prop, value) {
+    writeProperty(target, prop, value);
+    return true;
+  },
+
+  deleteProperty(target, prop) {
+    deletePropertyOnTarget(target, prop);
+    return true;
+  },
+};
+
+/** Wrap a raw object in a (cached) writable draft proxy */
+function draft<T extends object>(target: T): T {
+  let proxy = (target as StoreTarget)[$DRAFT];
+  if (!proxy) {
+    proxy = new Proxy(target, draftHandler);
+    setHidden(target, $DRAFT, proxy);
+  }
+  return proxy as T;
+}
 
 /**
  * Create a reactive store with fine-grained reactivity
@@ -105,33 +306,22 @@ const PROXY_TO_RAW = new WeakMap<object, object>();
  * // Read (creates subscription)
  * console.log(state.user.name); // "John"
  *
+ * // Draft-first update (Solid 2.0)
+ * setState(s => { s.user.age++; s.todos.push({ id: 2, text: "x", done: false }); });
+ *
  * // Update single property
  * setState("user", { name: "Jane" });
- *
- * // Update with function
- * setState("user", prev => ({ ...prev, age: prev.age + 1 }));
  *
  * // Deep path updates (SolidJS style)
  * setState("user", "address", "city", "NYC");
  *
  * // Array index updates
  * setState("todos", 0, "done", true);
- *
- * // Batch updates
- * setState({ user: { name: "Bob", age: 25 } });
  * ```
  */
 export function useStore<T extends object>(initialState: T): Store<T> {
-  const signalMap = new Map<string, Signal<unknown>>();
-  STORE_SIGNALS.set(initialState, signalMap);
+  const state = wrap(initialState) as DeepReadonly<T>;
 
-  // Initialize proxy cache for this store
-  PROXY_CACHE.set(initialState, new WeakMap());
-
-  // Create reactive proxy
-  const state = createReactiveProxy(initialState, signalMap, [], initialState) as DeepReadonly<T>;
-
-  // Setter function - wrapped in batch() like SolidJS to prevent multiple effect runs
   const setState: StoreSetter<T> = (...args: unknown[]) => {
     batch(() => {
       if (args.length === 0) return;
@@ -139,40 +329,43 @@ export function useStore<T extends object>(initialState: T): Store<T> {
       if (args.length === 1) {
         const arg = args[0];
         if (typeof arg === "function") {
-          // setState(fn: (state) => updates)
-          const updates = (arg as (state: T) => Partial<T>)(initialState);
-          applyUpdates(initialState, updates, signalMap, []);
+          // Draft-first setter (Solid 2.0): mutations on the draft commit
+          // fine-grained as they happen; a returned object is applied as a
+          // shallow partial update.
+          const returned = (arg as (state: T) => unknown)(draft(initialState));
+          if (returned !== undefined && typeof returned === "object" && returned !== null) {
+            applyUpdates(initialState, returned as Partial<T>);
+          }
         } else {
           // setState(updates)
-          applyUpdates(initialState, arg as Partial<T>, signalMap, []);
+          applyUpdates(initialState, arg as Partial<T>);
         }
       } else if (args.length === 2) {
         const [key, value] = args as [keyof T, unknown];
         if (typeof value === "function") {
           // setState(key, fn)
           const current = initialState[key];
-          const newValue = (value as (prev: T[keyof T]) => T[keyof T])(current);
-          updateProperty(initialState, key, newValue, signalMap, []);
+          if (!tryProduceInPlace(value, current)) {
+            const newValue = (value as (prev: T[keyof T]) => T[keyof T])(current);
+            writeProperty(initialState, key as PropertyKey, newValue);
+          }
         } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
           // setState(key, partialUpdate) - merge into nested object
           const current = initialState[key];
           if (typeof current === "object" && current !== null) {
-            applyUpdates(current as object, value as Partial<T[keyof T] & object>, signalMap, [
-              String(key),
-            ]);
+            applyUpdates(current as object, value as Partial<object>);
           } else {
-            updateProperty(initialState, key, value as T[keyof T], signalMap, []);
+            writeProperty(initialState, key as PropertyKey, value);
           }
         } else {
           // setState(key, value)
-          updateProperty(initialState, key, value as T[keyof T], signalMap, []);
+          writeProperty(initialState, key as PropertyKey, value);
         }
       } else {
         // Path-based setter: setState(k1, k2, ..., value)
-        // Last argument is the value, rest are path segments
         const path = args.slice(0, -1) as PathSegment[];
         const value = args[args.length - 1];
-        setByPath(initialState, path, value, signalMap);
+        setByPath(initialState, path, value);
       }
     });
   };
@@ -183,189 +376,43 @@ export function useStore<T extends object>(initialState: T): Store<T> {
 /**
  * Set a value at a deep path in the store
  */
-function setByPath(
-  root: object,
-  path: PathSegment[],
-  value: unknown,
-  signalMap: Map<string, Signal<unknown>>,
-): void {
+function setByPath(root: object, path: PathSegment[], value: unknown): void {
   if (path.length === 0) return;
 
-  // Navigate to the parent object
+  // Navigate raw objects to the parent
   let current: unknown = root;
-  const parentPath: string[] = [];
-
   for (let i = 0; i < path.length - 1; i++) {
     const segment = path[i];
-    parentPath.push(String(segment));
-
     if (current === null || current === undefined) {
-      throw new Error(`Cannot set path ${path.join(".")}: parent is null/undefined at ${segment}`);
+      throw new Error(
+        `Cannot set path ${path.map(String).join(".")}: parent is null/undefined at ${String(segment)}`,
+      );
     }
-
-    current = (current as Record<string | number | symbol, unknown>)[segment];
+    current = (current as Record<PropertyKey, unknown>)[segment];
   }
 
-  // Get the final key and set the value
-  const finalKey = path[path.length - 1];
-  const finalPath = [...parentPath, String(finalKey)].join(".");
+  if (current === null || typeof current !== "object") {
+    throw new Error(`Cannot set path ${path.map(String).join(".")}: parent is not an object`);
+  }
 
-  // Handle function updater
+  const finalKey = path[path.length - 1];
+
   let finalValue = value;
   if (typeof value === "function") {
-    const currentValue = (current as Record<string | number | symbol, unknown>)[finalKey];
+    const currentValue = (current as Record<PropertyKey, unknown>)[finalKey];
+    if (tryProduceInPlace(value, currentValue)) return;
     finalValue = (value as (prev: unknown) => unknown)(currentValue);
   }
 
-  // Update the actual object
-  (current as Record<string | number | symbol, unknown>)[finalKey] = finalValue;
-
-  // Update signal
-  const sig = signalMap.get(finalPath);
-  if (sig) {
-    sig.set(finalValue);
-  }
-
-  // If value is object/array, update nested signals
-  if (typeof finalValue === "object" && finalValue !== null) {
-    updateNestedSignals(finalValue, signalMap, finalPath);
-  }
+  writeProperty(current, finalKey, finalValue);
 }
 
 /**
- * Create a reactive proxy for an object with caching
+ * Apply partial updates to a raw object
  */
-function createReactiveProxy<T extends object>(
-  target: T,
-  signalMap: Map<string, Signal<unknown>>,
-  path: string[],
-  rootObject: object,
-): T {
-  // Check cache first
-  const cache = PROXY_CACHE.get(rootObject);
-  if (cache) {
-    const cached = cache.get(target);
-    if (cached) return cached as T;
-  }
-
-  const proxy = new Proxy(target, {
-    get(obj, prop) {
-      if (prop === Symbol.toStringTag) return "Store";
-      if (typeof prop === "symbol") return Reflect.get(obj, prop);
-
-      const key = [...path, String(prop)].join(".");
-      const actualValue = Reflect.get(obj, prop);
-      let sig = signalMap.get(key);
-
-      if (!sig) {
-        // Create new signal with current value
-        sig = signal(actualValue);
-        signalMap.set(key, sig);
-      }
-
-      // Track dependency by reading the signal
-      sig();
-
-      // Return actual value from object (signal is just for tracking)
-      const value = actualValue;
-
-      // Recursively wrap nested objects (with caching)
-      if (typeof value === "object" && value !== null) {
-        return createReactiveProxy(value, signalMap, [...path, String(prop)], rootObject);
-      }
-
-      return value;
-    },
-
-    set() {
-      console.warn("Direct mutation not allowed. Use setState instead.");
-      return false;
-    },
-  });
-
-  // Cache the proxy
-  if (cache) {
-    cache.set(target, proxy);
-  }
-
-  // Store reverse mapping for unwrap
-  PROXY_TO_RAW.set(proxy, target);
-
-  return proxy;
-}
-
-/**
- * Update a single property
- */
-function updateProperty<T extends object>(
-  target: T,
-  key: keyof T,
-  value: T[keyof T],
-  signalMap: Map<string, Signal<unknown>>,
-  path: string[],
-): void {
-  const fullKey = [...path, String(key)].join(".");
-
-  // Update the actual object
-  (target as Record<string, unknown>)[key as string] = value;
-
-  // Update signal
-  const sig = signalMap.get(fullKey);
-  if (sig) {
-    sig.set(value);
-  }
-
-  // If value is object/array, update nested signals with new values
-  if (typeof value === "object" && value !== null) {
-    updateNestedSignals(value, signalMap, fullKey);
-  }
-}
-
-/**
- * Apply partial updates to an object
- */
-function applyUpdates<T extends object>(
-  target: T,
-  updates: Partial<T>,
-  signalMap: Map<string, Signal<unknown>>,
-  path: string[],
-): void {
-  for (const [key, value] of Object.entries(updates)) {
-    updateProperty(target, key as keyof T, value as T[keyof T], signalMap, path);
-  }
-}
-
-/**
- * Get a nested value from an object by path
- */
-function getValueByPath(obj: unknown, path: string): unknown {
-  const parts = path.split(".");
-  let current = obj;
-  for (const part of parts) {
-    if (current === null || current === undefined) return undefined;
-    current = (current as Record<string, unknown>)[part];
-  }
-  return current;
-}
-
-/**
- * Update nested signals when parent object/array changes
- * This ensures effects subscribed to nested paths get the new values
- */
-function updateNestedSignals(
-  newValue: unknown,
-  signalMap: Map<string, Signal<unknown>>,
-  prefix: string,
-): void {
-  for (const [key, sig] of signalMap) {
-    if (key.startsWith(`${prefix}.`)) {
-      // Get the relative path: "todos.0.text" -> "0.text"
-      const relativePath = key.slice(prefix.length + 1);
-      // Get the new value from the updated object
-      const newNestedValue = getValueByPath(newValue, relativePath);
-      // Update signal with new value (this notifies subscribed effects)
-      sig.set(newNestedValue);
-    }
+function applyUpdates<T extends object>(target: T, updates: Partial<T>): void {
+  for (const key of Object.keys(updates)) {
+    writeProperty(target, key, (updates as Record<string, unknown>)[key]);
   }
 }
 
@@ -388,11 +435,40 @@ function updateNestedSignals(
  * ```
  */
 export function unwrap<T extends object>(proxy: T): T {
-  const raw = PROXY_TO_RAW.get(proxy);
-  if (raw) return raw as T;
+  const raw = (proxy as { [RAW]?: T })[RAW];
+  return raw ?? proxy;
+}
 
-  // If not a proxy, return as-is
-  return proxy;
+/** Solid 2.0 name for unwrap: non-reactive plain value of a store */
+export const snapshot = unwrap;
+
+/**
+ * Create a read-only derived store (Solid 2.0).
+ *
+ * The derive function runs reactively against a mutable draft of the
+ * projection's state; reads of signals/stores inside it re-run the
+ * projection, and only the properties that actually changed notify
+ * their subscribers (fine-grained). Generalizes createSelector.
+ *
+ * @example
+ * ```ts
+ * const selected = createProjection<Record<string, boolean>>((draft) => {
+ *   for (const key of Object.keys(draft)) draft[key] = false;
+ *   draft[selectedId()] = true;
+ * }, {});
+ * ```
+ */
+export function createProjection<T extends object>(
+  fn: (draft: T) => void | T,
+  seed: T = {} as T,
+): DeepReadonly<T> {
+  const [state, setState] = useStore(seed);
+
+  renderEffect(() => {
+    setState((draftState) => fn(draftState as T) as Partial<T> | void);
+  });
+
+  return state;
 }
 
 /**
@@ -408,25 +484,23 @@ export function unwrap<T extends object>(proxy: T): T {
  *   const user = draft.find(u => u.id === 1);
  *   if (user) user.score += 10;
  * }));
- *
- * setState(produce(draft => {
- *   draft.user.name = "New Name";
- *   draft.todos.push({ id: 2, text: "New todo" });
- * }));
  * ```
  */
+/** Marks updaters created by produce() for the store's in-place fast path */
+const PRODUCE_FN = Symbol("barq-produce-fn");
+
 export function produce<T>(fn: (draft: T) => void): (state: T) => T {
-  return (state: T) => {
+  const updater = (state: T) => {
     // Track copies and parent relationships
     const copies = new Map<object, object>();
     const parents = new Map<object, { parent: object; key: string | symbol }>();
     const proxies = new Map<object, object>();
 
     // Create a draft proxy that records mutations
-    const draft = createDraftProxy(state as object, copies, parents, proxies, null) as T;
+    const draftProxy = createDraftProxy(state as object, copies, parents, proxies, null) as T;
 
     // Run the mutation function
-    fn(draft);
+    fn(draftProxy);
 
     // If nothing was copied, return original
     if (copies.size === 0) {
@@ -436,6 +510,20 @@ export function produce<T>(fn: (draft: T) => void): (state: T) => T {
     // Return the copy with modifications (or original if root wasn't copied)
     return (copies.get(state as object) as T) ?? state;
   };
+  (updater as { [PRODUCE_FN]?: (draft: T) => void })[PRODUCE_FN] = fn;
+  return updater;
+}
+
+/**
+ * If `updater` came from produce() and the target is a store object, run
+ * its mutation function directly against the store draft (fine-grained
+ * in-place writes, no copying). Returns true if handled.
+ */
+function tryProduceInPlace(updater: unknown, current: unknown): boolean {
+  const inner = (updater as { [PRODUCE_FN]?: (draft: unknown) => void })?.[PRODUCE_FN];
+  if (!inner || !isWrappable(current)) return false;
+  inner(draft(current));
+  return true;
 }
 
 /**
@@ -468,7 +556,10 @@ function createDraftProxy<T extends object>(
 
       // Recursively wrap nested objects
       if (typeof value === "object" && value !== null) {
-        return createDraftProxy(value as object, copies, parents, proxies, { parent: obj, key: prop });
+        return createDraftProxy(value as object, copies, parents, proxies, {
+          parent: obj,
+          key: prop,
+        });
       }
 
       return value;
@@ -525,6 +616,136 @@ function ensureCopy(
     (parentCopy as Record<string | symbol, unknown>)[parentInfo.key] = copy;
   }
 }
+
+/**
+ * Deep-read a store: subscribes to every nested property reached and returns
+ * a plain (non-proxied) copy. Use when a consumer genuinely depends on the
+ * whole subtree; prefer reading the specific properties otherwise.
+ */
+export function deep<T extends object>(store: T): T {
+  return deepRead(store, new Map()) as T;
+}
+
+function deepRead(value: unknown, seen: Map<object, unknown>): unknown {
+  if (!isWrappable(value)) return value;
+  const existing = seen.get(value);
+  if (existing !== undefined) return existing;
+
+  if (Array.isArray(value)) {
+    const out: unknown[] = [];
+    seen.set(value, out);
+    // Reading through the proxy is what registers the dependencies
+    for (let i = 0; i < value.length; i++) out.push(deepRead(value[i], seen));
+    return out;
+  }
+
+  const out: Record<string, unknown> = {};
+  seen.set(value, out);
+  for (const key of Object.keys(value)) {
+    out[key] = deepRead((value as Record<string, unknown>)[key], seen);
+  }
+  return out;
+}
+
+/** Passed as a storePath value to remove the property instead of setting it */
+const STORE_DELETE: unique symbol = Symbol("barq-store-delete");
+
+/** A slice of an array to address: inclusive from..to, stepping by `by` */
+export interface StorePathRange {
+  from?: number;
+  to?: number;
+  by?: number;
+}
+
+/** One segment of a store path */
+export type Part<T = unknown> =
+  | PropertyKey
+  | readonly PropertyKey[]
+  | StorePathRange
+  | ((item: T, index: number) => boolean);
+
+interface StorePathFn {
+  (...pathAndValue: unknown[]): (state: never) => void;
+  readonly DELETE: typeof STORE_DELETE;
+}
+
+function isRange(part: unknown): part is StorePathRange {
+  if (part === null || typeof part !== "object" || Array.isArray(part)) return false;
+  const r = part as StorePathRange;
+  return r.from !== undefined || r.to !== undefined || r.by !== undefined;
+}
+
+function assign(current: Record<PropertyKey, unknown>, key: PropertyKey, value: unknown): void {
+  let next = value;
+  if (typeof next === "function") {
+    next = (next as (prev: unknown) => unknown)(current[key]);
+  }
+  if (next === STORE_DELETE) {
+    delete current[key];
+    return;
+  }
+  current[key] = next;
+}
+
+function applyPath(current: unknown, parts: unknown[], index: number, value: unknown): void {
+  if (current === null || typeof current !== "object") return;
+  const record = current as Record<PropertyKey, unknown>;
+  const part = parts[index];
+  const isLast = index === parts.length - 1;
+
+  const step = (key: PropertyKey): void => {
+    if (isLast) assign(record, key, value);
+    else applyPath(record[key], parts, index + 1, value);
+  };
+
+  if (Array.isArray(part)) {
+    for (const key of part) step(key as PropertyKey);
+    return;
+  }
+  if (typeof part === "function") {
+    if (!Array.isArray(current)) return;
+    const filter = part as (item: unknown, index: number) => boolean;
+    for (let i = 0; i < current.length; i++) {
+      if (filter(current[i], i)) step(i);
+    }
+    return;
+  }
+  if (isRange(part)) {
+    if (!Array.isArray(current)) return;
+    const from = part.from ?? 0;
+    const to = part.to ?? current.length - 1;
+    const by = part.by ?? 1;
+    for (let i = from; i <= to; i += by) step(i);
+    return;
+  }
+  step(part as PropertyKey);
+}
+
+/**
+ * Path-style store update, for porting Solid 1.x `setStore("a", "b", value)`
+ * calls. Returns a draft mutator, so it composes with the normal setter:
+ * `setState(storePath("user", "name", "Grace"))`.
+ *
+ * A path segment can be a key, an array of keys, a `{ from, to, by }` range
+ * over an array, or a `(item, index) => boolean` filter. The last argument is
+ * the value or an updater `(prev) => next`; pass `storePath.DELETE` to remove.
+ */
+export const storePath: StorePathFn = Object.assign(
+  (...pathAndValue: unknown[]) =>
+    (state: never): void => {
+      if (pathAndValue.length === 0) return;
+      const value = pathAndValue[pathAndValue.length - 1];
+      const parts = pathAndValue.slice(0, -1);
+      if (parts.length === 0) {
+        if (value !== null && typeof value === "object") {
+          Object.assign(state as object, value);
+        }
+        return;
+      }
+      applyPath(state, parts, 0, value);
+    },
+  { DELETE: STORE_DELETE } as { readonly DELETE: typeof STORE_DELETE },
+);
 
 /**
  * Options for the reconcile function

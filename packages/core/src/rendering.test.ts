@@ -5,7 +5,7 @@
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { createElement, render } from "./dom.ts";
-import { signal, effect, computed, createScope, batch, onCleanup } from "./signals.ts";
+import { signal, effect, computed, createScope, batch, onCleanup, flush } from "./signals.ts";
 import { Show, For, Index, Switch, Match, Portal, Suspense, ErrorBoundary, Await, Dynamic, splitProps, mergeProps, children } from "./components.ts";
 import { resource } from "./async.ts";
 
@@ -56,6 +56,7 @@ describe("For component item updates", () => {
       { id: 1, name: "ALICE" }, // Changed name
       { id: 2, name: "Bob" },
     ]);
+    flush();
 
     // The item with id=1 should be re-rendered with new name
     // This is the expected SolidJS behavior for keyed lists
@@ -80,6 +81,7 @@ describe("For component item updates", () => {
 
     // Same key, different value
     items.set([{ id: 1, value: "b" }]);
+    flush();
     expect(container.textContent).toBe("b");
   });
 });
@@ -109,6 +111,7 @@ describe("LIS algorithm performance", () => {
     // Reverse the list - this should use LIS for minimal moves
     const start = performance.now();
     items.set([...initialItems].reverse());
+    flush();
     const elapsed = performance.now() - start;
 
     // With O(n log n) LIS, this should be fast
@@ -141,6 +144,7 @@ describe("LIS algorithm performance", () => {
     const shuffled = [...items()].sort(() => Math.random() - 0.5);
     const start = performance.now();
     items.set(shuffled);
+    flush();
     const elapsed = performance.now() - start;
 
     expect(elapsed).toBeLessThan(100);
@@ -175,6 +179,7 @@ describe("Index component reactivity", () => {
 
     // Change value at index 1
     items.set(["a", "B", "c"]);
+    flush();
     expect(container.textContent).toBe("aBc");
     expect(observedValues).toContain("1:B");
   });
@@ -200,6 +205,7 @@ describe("Index component reactivity", () => {
 
     // Update only one value
     items.set([1, 2, 30, 4, 5]); // Changed index 2
+    flush();
     expect(effectRuns).toBe(6); // Only one effect should re-run
   });
 });
@@ -282,7 +288,9 @@ describe("ErrorBoundary", () => {
 
     // Fix the error and reset
     throwSignal.set(false);
+    flush();
     resetFn?.();
+    flush();
 
     // Wait for re-render
     expect(container.textContent).toContain("Success");
@@ -417,17 +425,21 @@ describe("Show keyed rendering", () => {
 
     // Update counter - effect should run
     counter.set(1);
+    flush();
     expect(effectRuns).toBe(2);
 
     // Hide - effect should be disposed
     show.set(false);
+    flush();
 
     // Update counter - effect should NOT run (disposed)
     counter.set(2);
+    flush();
     expect(effectRuns).toBe(2);
 
     // Show again - new effect created
     show.set(true);
+    flush();
     expect(effectRuns).toBe(3);
   });
 });
@@ -571,12 +583,15 @@ describe("Switch/Match edge cases", () => {
     expect(container.textContent).toBe("A");
 
     value.set("b");
+    flush();
     expect(container.textContent).toBe("B");
 
     value.set("c");
+    flush();
     expect(container.textContent).toBe("C");
 
     value.set("a");
+    flush();
     expect(container.textContent).toBe("A");
   });
 
@@ -597,9 +612,11 @@ describe("Switch/Match edge cases", () => {
     expect(container.textContent).toBe("No match");
 
     value.set("a");
+    flush();
     expect(container.textContent).toBe("A");
 
     value.set(null);
+    flush();
     expect(container.textContent).toBe("No match");
   });
 });
@@ -662,15 +679,19 @@ describe("Deep nested reactivity", () => {
     expect(container.textContent).toBe("123");
 
     level2.set(false);
+    flush();
     expect(container.textContent).toBe("");
 
     level2.set(true);
+    flush();
     expect(container.textContent).toBe("123");
 
     items.set([4, 5]);
+    flush();
     expect(container.textContent).toBe("45");
 
     level1.set(false);
+    flush();
     expect(container.textContent).toBe("");
   });
 });
@@ -694,9 +715,11 @@ describe("Effect cleanup order", () => {
     expect(log).toEqual(["run:0"]);
 
     trigger.set(1);
+    flush();
     expect(log).toEqual(["run:0", "cleanup:0", "run:1"]);
 
     trigger.set(2);
+    flush();
     expect(log).toEqual(["run:0", "cleanup:0", "run:1", "cleanup:1", "run:2"]);
   });
 
@@ -723,11 +746,13 @@ describe("Effect cleanup order", () => {
     expect(log).toEqual(["outer:run", "inner:run:0"]);
 
     inner.set(1);
+    flush();
     expect(log).toContain("inner:cleanup:0");
     expect(log).toContain("inner:run:1");
 
     // Hide outer - should dispose inner too
     outer.set(false);
+    flush();
     expect(log).toContain("outer:cleanup");
     expect(log).toContain("inner:cleanup:1");
   });
@@ -753,11 +778,13 @@ describe("createScope disposal", () => {
     expect(effectRuns).toBe(1);
 
     trigger.set(1);
+    flush();
     expect(effectRuns).toBe(2);
 
     dispose();
 
     trigger.set(2);
+    flush();
     expect(effectRuns).toBe(2); // Should not run after dispose
   });
 
@@ -789,6 +816,7 @@ describe("createScope disposal", () => {
     expect(innerRuns).toBe(1);
 
     trigger.set(1);
+    flush();
     expect(outerRuns).toBe(2);
     expect(innerRuns).toBe(2);
 
@@ -796,6 +824,7 @@ describe("createScope disposal", () => {
     disposeOuter();
 
     trigger.set(2);
+    flush();
     expect(outerRuns).toBe(2); // Disposed
     expect(innerRuns).toBe(3); // Still running
 
@@ -803,6 +832,7 @@ describe("createScope disposal", () => {
     disposeInner();
 
     trigger.set(3);
+    flush();
     expect(innerRuns).toBe(3); // Now disposed
   });
 });
@@ -827,6 +857,7 @@ describe("Dynamic component", () => {
     expect(el?.textContent).toBe("Hello");
 
     tag.set("span");
+    flush();
     el = container.querySelector(".test");
     expect(el?.tagName).toBe("SPAN");
     expect(el?.textContent).toBe("Hello");
@@ -838,7 +869,8 @@ describe("Dynamic component", () => {
     const ComponentB = (props: { text: string }) =>
       createElement("span", { class: "b" }, props.text);
 
-    const current = signal<typeof ComponentA>(ComponentA);
+    // signal(fn) creates a writable derived signal; wrap to store a function value
+    const current = signal<typeof ComponentA>(() => ComponentA);
 
     const element = Dynamic({
       component: () => current(),
@@ -851,6 +883,7 @@ describe("Dynamic component", () => {
     expect(container.querySelector(".b")).toBeNull();
 
     current.set(ComponentB);
+    flush();
 
     expect(container.querySelector(".a")).toBeNull();
     expect(container.querySelector(".b")?.textContent).toBe("Hello");
@@ -868,6 +901,7 @@ describe("Dynamic component", () => {
     expect(container.textContent).toContain("Content");
 
     comp.set(null);
+    flush();
     expect(container.textContent).toBe("");
   });
 });

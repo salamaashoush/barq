@@ -3,7 +3,7 @@
  * Based on SolidJS createResource patterns
  */
 
-import { computed, effect, signal, untrack } from "./signals.ts";
+import { computed, renderEffect, signal, untrack } from "./signals.ts";
 
 /**
  * Resource status - matches SolidJS states
@@ -108,7 +108,7 @@ export function resource<T, S = unknown>(
 
   // Track memoized source and refetch on change
   // The memoized source ensures we only refetch when the actual value changes
-  effect(() => {
+  renderEffect(() => {
     // Reading memoizedSource creates the subscription
     memoizedSource();
     // Load data (will be prevented if already scheduled)
@@ -170,7 +170,7 @@ export function suspend<T>(resource: Resource<T>): T {
 
   if (status === "pending" || status === "unresolved") {
     throw new Promise<void>((resolve) => {
-      const unsubscribe = effect(() => {
+      const unsubscribe = renderEffect(() => {
         const current = resource.state();
         if (current !== "pending" && current !== "unresolved") {
           unsubscribe();
@@ -210,7 +210,7 @@ export async function awaitAll<T extends Resource<unknown>[]>(
             return;
           }
 
-          const unsub = effect(() => {
+          const unsub = renderEffect(() => {
             const s = r.state();
             if (s === "ready" || s === "errored") {
               unsub();

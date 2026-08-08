@@ -7,8 +7,25 @@
 import type { Resource } from "./async.ts";
 import type { IsCompilerMode, StrictAccessor, StrictArrayAccessor } from "./config.ts";
 import type { Child, JSXElement } from "./dom.ts";
+import {
+  type RevealHandle,
+  REVEAL_COORD,
+  createRevealCoordinator,
+} from "./boundaries.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
-import { type Signal, computed, createScope, effect, onCleanup, signal, untrack } from "./signals.ts";
+import {
+  ERROR_BOUNDARY,
+  LOADING_BOUNDARY,
+  type LoadingBoundaryHandle,
+  type Signal,
+  computed,
+  createScope,
+  getOwner,
+  onCleanup,
+  renderEffect,
+  signal,
+  untrack,
+} from "./signals.ts";
 
 // Re-export marker utilities for external use
 export { createMarker, createMarkerPair, clearRange, insertNodes };
@@ -81,11 +98,28 @@ export function Fragment(props: { children?: Child | Child[] }): JSXElement {
  * </Show>
  * ```
  */
-export function Show<T>(props: {
-  when: StrictAccessor<T | undefined | null | false>;
-  fallback?: JSXElement;
-  children: Child | ((item: NonNullable<T>) => Child);
-}): JSXElement {
+/**
+ * Show props - discriminated on `keyed` so children params infer:
+ * - omitted / true (keyed): function children get the raw value; content
+ *   re-renders when the value changes
+ * - false (Solid 2.0 non-keyed): function children get a narrowed
+ *   accessor; content only re-renders when truthiness flips
+ */
+export type ShowProps<T> =
+  | {
+      when: StrictAccessor<T | undefined | null | false>;
+      fallback?: JSXElement;
+      keyed?: true;
+      children: Child | ((item: NonNullable<T>) => Child);
+    }
+  | {
+      when: StrictAccessor<T | undefined | null | false>;
+      fallback?: JSXElement;
+      keyed: false;
+      children: Child | ((item: () => NonNullable<T>) => Child);
+    };
+
+export function Show<T>(props: ShowProps<T>): JSXElement {
   const [startMarker, endMarker] = createMarkerPair("Show");
 
   const fragment = document.createDocumentFragment();
@@ -94,13 +128,14 @@ export function Show<T>(props: {
 
   // Normalize accessor - handle both function and raw value for defensive runtime
   const whenAccessor = typeof props.when === "function" ? props.when : () => props.when;
-  // Memoize the condition to ensure stable reactivity
-  const condition = computed(whenAccessor as () => T | undefined | null | false);
+  const valueMemo = computed(whenAccessor as () => T | undefined | null | false);
+  // Non-keyed: the rendering effect tracks only truthiness
+  const condition = props.keyed === false ? computed(() => !!valueMemo()) : valueMemo;
 
   // Track dispose function for current content
   let disposeContent: (() => void) | null = null;
 
-  effect(() => {
+  renderEffect(() => {
     const value = condition();
     const parent = endMarker.parentNode;
     if (!parent) return;
@@ -127,11 +162,17 @@ export function Show<T>(props: {
       createScope((dispose) => {
         disposeContent = dispose;
 
-        // Always pass the value to function children - the function can choose to use it or not
-        // Using .length is unreliable (default params have length 0)
+        // Keyed (default): pass the raw value. Non-keyed: pass a narrowed
+        // accessor so content reads stay live without re-rendering.
         const children =
           typeof props.children === "function"
-            ? (props.children as (item: NonNullable<T>) => Child)(value)
+            ? props.keyed === false
+              ? (props.children as (item: () => NonNullable<T>) => Child)(
+                  valueMemo as () => NonNullable<T>,
+                )
+              : (props.children as (item: NonNullable<T>) => Child)(
+                  untrack(valueMemo) as NonNullable<T>,
+                )
             : props.children;
         const nodes = childToNodes(children);
         insertNodes(endMarker, nodes);
@@ -168,12 +209,37 @@ export function Show<T>(props: {
  * </For>
  * ```
  */
-export function For<T, U extends JSXElement>(props: {
-  each: StrictArrayAccessor<T>;
-  fallback?: JSXElement;
-  keyFn?: (item: T) => unknown;
-  children: (item: T, index: () => number) => U;
-}): JSXElement {
+/**
+ * For props - discriminated on `keyed` so children params infer correctly:
+ * - omitted / true / key fn: keyed - children get (item, indexAccessor)
+ * - false: non-keyed (old Index) - children get (itemAccessor, index)
+ */
+export type ForProps<T, U extends JSXElement> =
+  | {
+      each: StrictArrayAccessor<T>;
+      fallback?: JSXElement;
+      keyFn?: (item: T) => unknown;
+      keyed?: true | ((item: T) => unknown);
+      children: (item: T, index: () => number) => U;
+    }
+  | {
+      each: StrictArrayAccessor<T>;
+      fallback?: JSXElement;
+      keyFn?: never;
+      keyed: false;
+      children: (item: () => T, index: number) => U;
+    };
+
+export function For<T, U extends JSXElement>(props: ForProps<T, U>): JSXElement {
+  // Non-keyed mode delegates to Index semantics
+  if (props.keyed === false) {
+    return Index({
+      each: props.each,
+      fallback: props.fallback,
+      children: props.children as (item: () => T, index: number) => U,
+    });
+  }
+
   const [startMarker, endMarker] = createMarkerPair("For");
 
   const fragment = document.createDocumentFragment();
@@ -184,10 +250,15 @@ export function For<T, U extends JSXElement>(props: {
   type CacheEntry = {
     nodes: Node[];
     indexSignal: Signal<number>;
+    itemSignal?: Signal<T>; // keyed-fn mode: item flows through a signal
     item: T; // Track item value to detect changes
     dispose: () => void;
   };
   const cache = new Map<unknown, CacheEntry>();
+
+  // keyed-by-function rows receive (itemAccessor, indexAccessor) and are
+  // never re-rendered for a same-key item change - the item signal updates
+  const keyedByFn = typeof props.keyed === "function";
 
   // Track current order of keys
   let currentKeys: unknown[] = [];
@@ -195,8 +266,9 @@ export function For<T, U extends JSXElement>(props: {
   // Track fallback dispose
   let disposeFallback: (() => void) | null = null;
 
-  // Get key for an item
-  const getKey = props.keyFn ?? ((item: T) => item);
+  // Get key for an item: keyed function > keyFn > identity
+  const getKey =
+    typeof props.keyed === "function" ? props.keyed : (props.keyFn ?? ((item: T) => item));
 
   // Register cleanup at component level (not effect level) for when parent unmounts
   // This ensures item scopes are disposed even though they're detached
@@ -211,7 +283,7 @@ export function For<T, U extends JSXElement>(props: {
     }
   });
 
-  effect(() => {
+  renderEffect(() => {
     // Support both getter function and direct array
     const rawEach = props.each;
     const items = typeof rawEach === "function" ? rawEach() : rawEach;
@@ -284,9 +356,18 @@ export function For<T, U extends JSXElement>(props: {
       let entry = cache.get(key);
 
       // Check if item value changed (same key, different value)
-      const needsRerender = entry && !Object.is(entry.item, item);
+      const needsRerender = entry && !keyedByFn && !Object.is(entry.item, item);
 
-      if (!entry || needsRerender) {
+      if (entry && keyedByFn) {
+        // Same key: update the item signal in place, keep the row
+        if (!Object.is(entry.item, item)) {
+          entry.item = item;
+          entry.itemSignal?.set(item);
+        }
+        if (entry.indexSignal() !== i) {
+          entry.indexSignal.set(i);
+        }
+      } else if (!entry || needsRerender) {
         // Dispose old entry if re-rendering
         if (entry) {
           rerenderedKeys.add(key);
@@ -310,13 +391,20 @@ export function For<T, U extends JSXElement>(props: {
         let entryNodes: Node[] = [];
         let entryDispose!: () => void;
 
+        const itemSignal = keyedByFn ? signal(item) : undefined;
+
         createScope((dispose) => {
           entryDispose = dispose;
-          const result = props.children(item, indexSignal);
+          const result = keyedByFn
+            ? (props.children as unknown as (item: () => T, index: () => number) => U)(
+                itemSignal as Signal<T>,
+                indexSignal,
+              )
+            : (props.children as (item: T, index: () => number) => U)(item, indexSignal);
           entryNodes = childToNodes(result);
         }, true); // detached
 
-        entry = { nodes: entryNodes, indexSignal, item, dispose: entryDispose };
+        entry = { nodes: entryNodes, indexSignal, itemSignal, item, dispose: entryDispose };
         cache.set(key, entry);
       } else {
         // Update index signal if changed
@@ -327,9 +415,8 @@ export function For<T, U extends JSXElement>(props: {
     }
 
     // Filter out re-rendered keys from oldKeys so they're treated as new
-    const effectiveOldKeys = rerenderedKeys.size > 0
-      ? currentKeys.filter(k => !rerenderedKeys.has(k))
-      : currentKeys;
+    const effectiveOldKeys =
+      rerenderedKeys.size > 0 ? currentKeys.filter((k) => !rerenderedKeys.has(k)) : currentKeys;
 
     // Reconcile DOM order using efficient algorithm
     reconcileNodes(parent, endMarker, effectiveOldKeys, newKeys, cache);
@@ -504,7 +591,7 @@ export function Index<T, U extends JSXElement>(props: {
   let currentLength = 0;
   let disposeFallback: (() => void) | null = null;
 
-  effect(() => {
+  renderEffect(() => {
     const rawEach = props.each;
     const items = typeof rawEach === "function" ? rawEach() : rawEach;
     const parent = endMarker.parentNode;
@@ -610,6 +697,93 @@ export function Index<T, U extends JSXElement>(props: {
 }
 
 /**
+ * Repeat component (Solid 2.0) - render a block `count` times.
+ *
+ * No diffing: children receive a plain, stable index number. Growing
+ * appends, shrinking disposes from the end. For store-backed lists,
+ * skeletons, and windowing.
+ */
+export function Repeat(props: {
+  count: StrictAccessor<number> | number;
+  from?: number;
+  fallback?: JSXElement;
+  children: (index: number) => Child;
+}): JSXElement {
+  const [startMarker, endMarker] = createMarkerPair("Repeat");
+
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(startMarker);
+  fragment.appendChild(endMarker);
+
+  type CacheEntry = { nodes: Node[]; dispose: () => void };
+  const cache: CacheEntry[] = [];
+  let disposeFallback: (() => void) | null = null;
+
+  const countAccessor =
+    typeof props.count === "function" ? props.count : () => props.count as number;
+  const from = props.from ?? 0;
+
+  onCleanup(() => {
+    for (const entry of cache) entry.dispose();
+    cache.length = 0;
+    if (disposeFallback) {
+      disposeFallback();
+      disposeFallback = null;
+    }
+  });
+
+  renderEffect(() => {
+    const count = Math.max(0, countAccessor());
+    const parent = endMarker.parentNode;
+    if (!parent) return;
+
+    if (count === 0) {
+      for (const entry of cache) {
+        entry.dispose();
+        for (const node of entry.nodes) node.parentNode?.removeChild(node);
+      }
+      cache.length = 0;
+      if (props.fallback !== null && props.fallback !== undefined && !disposeFallback) {
+        createScope((dispose) => {
+          disposeFallback = dispose;
+          insertNodes(endMarker, childToNodes(props.fallback));
+        }, true);
+      }
+      return;
+    }
+
+    if (disposeFallback) {
+      disposeFallback();
+      disposeFallback = null;
+      clearRange(startMarker, endMarker);
+    }
+
+    // Shrink: dispose from the end
+    if (count < cache.length) {
+      for (let i = count; i < cache.length; i++) {
+        cache[i].dispose();
+        for (const node of cache[i].nodes) node.parentNode?.removeChild(node);
+      }
+      cache.length = count;
+    }
+
+    // Grow: append new blocks
+    for (let i = cache.length; i < count; i++) {
+      let entryNodes: Node[] = [];
+      let entryDispose!: () => void;
+      createScope((dispose) => {
+        entryDispose = dispose;
+        entryNodes = childToNodes(props.children(from + i));
+      }, true);
+      cache.push({ nodes: entryNodes, dispose: entryDispose });
+      insertNodes(endMarker, entryNodes);
+    }
+  });
+
+  return fragment;
+}
+
+/**
  * Switch/Match components - pattern matching (SolidJS-style)
  *
  * @example
@@ -680,7 +854,7 @@ export function Switch(props: {
     return null;
   });
 
-  effect(() => {
+  renderEffect(() => {
     const result = getMatch();
 
     const needsRender = !result
@@ -741,6 +915,262 @@ export function Switch(props: {
     if (disposeContent) {
       disposeContent();
       disposeContent = null;
+    }
+  });
+
+  return fragment;
+}
+
+/**
+ * Loading component (Solid 2.0) - async boundary.
+ *
+ * Children render inside a scope that provides a boundary handle via
+ * context. Effects under it that read a not-ready async value (throwing
+ * NotReadyError) register as pending; the fallback is shown while any
+ * registered effect is pending. Revalidation of already-resolved values
+ * does not re-show the fallback (content stays until replaced).
+ */
+export function Loading(props: {
+  fallback?: JSXElement;
+  /**
+   * When this expression changes while async work is pending, the
+   * boundary re-shows its fallback instead of keeping stale content.
+   */
+  on?: () => unknown;
+  children: Child;
+}): JSXElement {
+  const [startMarker, endMarker] = createMarkerPair("Loading");
+
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(startMarker);
+  fragment.appendChild(endMarker);
+
+  // Coordination with an enclosing Reveal, if any
+  const revealHandle = getOwner()?._context[REVEAL_COORD] as RevealHandle | undefined;
+
+  const pendingNodes = new Set<object>();
+  const pendingCount = signal(0);
+  const handle: LoadingBoundaryHandle = {
+    add(node) {
+      if (!pendingNodes.has(node)) {
+        pendingNodes.add(node);
+        pendingCount.set(pendingNodes.size);
+      }
+    },
+    delete(node) {
+      if (pendingNodes.delete(node)) {
+        pendingCount.set(pendingNodes.size);
+      }
+    },
+  };
+
+  // Content lives between its own markers so it can be parked off-DOM
+  // while the fallback shows, preserving state across swaps
+  const contentFragment = document.createDocumentFragment();
+  const [contentStart, contentEnd] = createMarkerPair("LoadingContent");
+  contentFragment.appendChild(contentStart);
+  contentFragment.appendChild(contentEnd);
+
+  let disposeContent: (() => void) | null = null;
+
+  // Render children under the boundary context; a function child is
+  // re-rendered reactively (NotReadyError throws register as pending)
+  createScope((dispose) => {
+    disposeContent = dispose;
+    const owner = getOwner();
+    if (owner) {
+      owner._context = { ...owner._context, [LOADING_BOUNDARY]: handle };
+    }
+    if (typeof props.children === "function") {
+      renderEffect(() => {
+        const resolved = (props.children as () => Child)();
+        clearRange(contentStart, contentEnd);
+        insertNodes(contentEnd, childToNodes(resolved));
+      });
+    } else {
+      insertNodes(contentEnd, childToNodes(props.children));
+    }
+  });
+
+  onCleanup(() => {
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+  });
+
+  const moveRange = (target: Node, before: Node | null, start: Node, end: Node): void => {
+    let node: Node | null = start;
+    while (node) {
+      const next: Node | null = node === end ? null : node.nextSibling;
+      target.insertBefore(node, before);
+      node = next;
+    }
+  };
+
+  // Fallback shows only until first readiness; revalidation keeps stale
+  // content - unless the `on` expression changes while pending
+  const revealed = signal(false);
+  renderEffect(() => {
+    if (pendingCount() === 0) revealed.set(true);
+  });
+  if (props.on) {
+    let first = true;
+    let lastOn: unknown;
+    renderEffect(() => {
+      const value = (props.on as () => unknown)();
+      if (!first && value !== lastOn && pendingCount.peek() > 0) {
+        revealed.set(false);
+      }
+      lastOn = value;
+      first = false;
+    });
+  }
+
+  const slot = revealHandle?.register({ settled: () => revealed() });
+
+  let showing: "content" | "fallback" | "nothing" | null = null;
+  renderEffect(() => {
+    const mode: "content" | "fallback" | "nothing" = slot
+      ? slot.display()
+      : pendingCount() > 0 && !revealed()
+        ? "fallback"
+        : "content";
+    if (mode === showing) return;
+    showing = mode;
+
+    if (mode === "content") {
+      clearRange(startMarker, endMarker);
+      const parent = endMarker.parentNode;
+      if (parent) {
+        moveRange(parent, endMarker, contentStart, contentEnd);
+      }
+    } else {
+      // Park content; show fallback (or nothing for collapsed Reveal)
+      moveRange(contentFragment, null, contentStart, contentEnd);
+      clearRange(startMarker, endMarker);
+      if (mode === "fallback" && props.fallback !== null && props.fallback !== undefined) {
+        insertNodes(endMarker, childToNodes(props.fallback));
+      }
+    }
+  });
+
+  return fragment;
+}
+
+
+/**
+ * Reveal component (Solid 2.0, replaces SuspenseList) - coordinates how
+ * descendant Loading boundaries reveal their content.
+ *
+ * - order="natural" (default): each boundary reveals as it becomes ready
+ * - order="together": all boundaries reveal at once when every one is ready
+ * - order="sequential": boundaries reveal in registration order; with
+ *   `collapsed`, boundaries past the frontier render nothing at all
+ */
+export function Reveal(props: {
+  order?: "sequential" | "together" | "natural";
+  collapsed?: boolean;
+  children: Child;
+}): JSXElement {
+  const handle = createRevealCoordinator(
+    () => props.order ?? "natural",
+    () => props.collapsed === true,
+  );
+
+  const fragment = document.createDocumentFragment();
+  createScope(() => {
+    const owner = getOwner();
+    if (owner) {
+      owner._context = { ...owner._context, [REVEAL_COORD]: handle };
+    }
+    const nodes = childToNodes(props.children);
+    for (const node of nodes) {
+      fragment.appendChild(node);
+    }
+  });
+
+  return fragment;
+}
+
+/**
+ * Errored component (Solid 2.0) - error boundary.
+ *
+ * Catches synchronous render errors AND errors thrown by effects under
+ * it (routed via the reactive graph). The fallback receives an error
+ * accessor and a reset action.
+ */
+export function Errored(props: {
+  fallback: (error: () => Error, reset: () => void) => JSXElement;
+  children: Child | (() => Child);
+}): JSXElement {
+  const [startMarker, endMarker] = createMarkerPair("Errored");
+
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(startMarker);
+  fragment.appendChild(endMarker);
+
+  const errorSignal = signal<Error | null>(null);
+  const handler = (err: unknown) => {
+    errorSignal.set(err instanceof Error ? err : new Error(String(err)));
+  };
+
+  let disposeContent: (() => void) | null = null;
+
+  onCleanup(() => {
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+  });
+
+  const renderFallback = (err: Error): void => {
+    createScope((dispose) => {
+      disposeContent = dispose;
+      const reset = () => errorSignal.set(null);
+      const nodes = childToNodes(props.fallback(() => err, reset));
+      insertNodes(endMarker, nodes);
+    }, true);
+  };
+
+  renderEffect(() => {
+    const err = errorSignal();
+
+    if (disposeContent) {
+      disposeContent();
+      disposeContent = null;
+    }
+    clearRange(startMarker, endMarker);
+
+    if (err) {
+      renderFallback(err);
+      return;
+    }
+
+    try {
+      createScope((dispose) => {
+        disposeContent = dispose;
+        const owner = getOwner();
+        if (owner) {
+          owner._context = { ...owner._context, [ERROR_BOUNDARY]: handler };
+        }
+        const children =
+          typeof props.children === "function" ? (props.children as () => Child)() : props.children;
+        insertNodes(endMarker, childToNodes(children));
+      }, true);
+    } catch (e) {
+      // Synchronous render error: record it (a write during our own run
+      // does not re-trigger this effect) and render the fallback inline
+      const error = e instanceof Error ? e : new Error(String(e));
+      errorSignal.set(error);
+      // TS can't see the createScope callback assignment
+      const dispose = disposeContent as (() => void) | null;
+      if (dispose) {
+        dispose();
+        disposeContent = null;
+      }
+      clearRange(startMarker, endMarker);
+      renderFallback(error);
     }
   });
 
@@ -836,7 +1266,7 @@ export function ErrorBoundary(props: {
     }
   });
 
-  effect(() => {
+  renderEffect(() => {
     const result = content();
 
     // Dispose previous content
@@ -860,6 +1290,16 @@ export function ErrorBoundary(props: {
         const fallbackResult = props.fallback(result.error, reset);
         insertNodes(endMarker, childToNodes(fallbackResult));
       } else if ("children" in result) {
+        // Route errors thrown by effects under this boundary here too
+        const owner = getOwner();
+        if (owner) {
+          owner._context = {
+            ...owner._context,
+            [ERROR_BOUNDARY]: (err: unknown) => {
+              errorSignal.set(err instanceof Error ? err : new Error(String(err)));
+            },
+          };
+        }
         const nodes = childToNodes(result.children);
         insertNodes(endMarker, nodes);
       }
@@ -887,7 +1327,7 @@ export function Await<T>(props: {
 
   let disposeContent: (() => void) | null = null;
 
-  effect(() => {
+  renderEffect(() => {
     const status = props.resource.state();
 
     // Dispose previous content
@@ -994,9 +1434,9 @@ export function Portal(props: { target?: HTMLElement | string; children: Child }
  * Dynamic component - render different components based on a reactive value
  * Similar to SolidJS's Dynamic component
  */
-export function Dynamic<T extends keyof HTMLElementTagNameMap | ((props: Record<string, unknown>) => JSXElement)>(
-  props: { component: T | (() => T) } & Record<string, unknown>,
-): JSXElement {
+export function Dynamic<
+  T extends keyof HTMLElementTagNameMap | ((props: Record<string, unknown>) => JSXElement),
+>(props: { component: T | (() => T) } & Record<string, unknown>): JSXElement {
   const [startMarker, endMarker] = createMarkerPair("Dynamic");
 
   const fragment = document.createDocumentFragment();
@@ -1005,16 +1445,16 @@ export function Dynamic<T extends keyof HTMLElementTagNameMap | ((props: Record<
 
   let disposeContent: (() => void) | null = null;
 
+  // A zero-arg function is an accessor returning the component; a function
+  // taking props is the component itself
   const getComponent = computed(() => {
     const comp = props.component;
-    return typeof comp === "function" && !((comp as () => unknown).length === 0 && typeof comp() !== "undefined")
-      ? comp
-      : typeof comp === "function"
-        ? (comp as () => T)()
-        : comp;
+    return typeof comp === "function" && (comp as () => T).length === 0
+      ? (comp as () => T)()
+      : comp;
   });
 
-  effect(() => {
+  renderEffect(() => {
     const component = getComponent();
 
     // Dispose previous content
@@ -1075,6 +1515,24 @@ export function Dynamic<T extends keyof HTMLElementTagNameMap | ((props: Record<
 }
 
 /**
+ * dynamic(source) factory (Solid 2.0): returns a stable component whose
+ * identity is driven reactively by `source`. Each instance renders the
+ * current component and swaps when the source changes.
+ */
+export function dynamic<P extends Record<string, unknown>>(
+  source: () =>
+    | keyof HTMLElementTagNameMap
+    | ((props: Record<string, unknown>) => JSXElement)
+    | undefined,
+): (props: P) => JSXElement {
+  return (props: P) =>
+    Dynamic({
+      ...props,
+      component: source as () => keyof HTMLElementTagNameMap,
+    });
+}
+
+/**
  * Split props into two objects based on keys
  * @param props The props object to split
  * @param keys Keys to extract into the first object
@@ -1132,6 +1590,41 @@ export function mergeProps<T extends Record<string, unknown>[]>(
   }
 
   return result as T extends (infer U)[] ? U : never;
+}
+
+/**
+ * Merge props objects (Solid 2.0): unlike mergeProps, `undefined` is a
+ * value — a later `undefined` overrides an earlier value.
+ */
+export function merge<T extends Record<string, unknown>[]>(
+  ...sources: T
+): T extends (infer U)[] ? U : never {
+  const result: Record<string, unknown> = {};
+  for (const source of sources) {
+    if (!source) continue;
+    for (const key in source) {
+      result[key] = source[key];
+    }
+  }
+  return result as T extends (infer U)[] ? U : never;
+}
+
+/**
+ * Omit keys from a props object (Solid 2.0 replacement for splitProps):
+ * returns the remaining props.
+ */
+export function omit<T extends Record<string, unknown>, K extends keyof T>(
+  props: T,
+  ...keys: K[]
+): Omit<T, K> {
+  const keySet = new Set<keyof T>(keys);
+  const rest: Partial<Omit<T, K>> = {};
+  for (const key in props) {
+    if (!keySet.has(key)) {
+      (rest as Record<string, unknown>)[key] = props[key];
+    }
+  }
+  return rest as Omit<T, K>;
 }
 
 /**

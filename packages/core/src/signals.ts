@@ -1,28 +1,33 @@
 /**
- * Reactive signals - SolidJS-inspired implementation with fine-grained reactivity
- * Push-pull reactivity with automatic dependency tracking, topological ordering, and disposal
+ * Reactive signals - push-pull reactivity aligned with Solid 2.0 semantics
  *
- * Key features:
- * - Linked list dependency tracking for O(1) operations
- * - Height-based topological ordering via heap scheduler
- * - CHECK/DIRTY flag pattern for efficient propagation
- * - Custom equality function support
- * - Glitch-free diamond dependency handling
- * - Owner-based context inheritance (like SolidJS)
+ * - Writes push CHECK/DIRTY invalidation; pure computeds recompute lazily on read
+ * - Only effects are scheduled (height-ordered heaps, render before user)
+ * - Flushes are batched on a microtask by default; flush() drains synchronously
+ * - Per-link value snapshots gate recomputation (reverted writes are no-ops)
+ * - Async: computeds may return promises; pending/error status flows through
+ *   the graph (NotReadyError) and is caught by Loading/Errored boundaries
  */
 
 // ============================================================================
-// Constants (matching SolidJS)
+// Constants
 // ============================================================================
 
-// @ts-ignore - Used for completeness, may be used in future
-const REACTIVE_NONE = 0;
-const REACTIVE_CHECK = 1 << 0; // Might need update, check deps first
+const REACTIVE_CHECK = 1 << 0; // Might need update, verify deps first
 const REACTIVE_DIRTY = 1 << 1; // Definitely needs recompute
 const REACTIVE_RECOMPUTING_DEPS = 1 << 2; // Currently recomputing
-const REACTIVE_IN_HEAP = 1 << 3; // In the dirty heap for recompute
-const REACTIVE_IN_HEAP_HEIGHT = 1 << 4; // In heap for height adjustment only
+const REACTIVE_IN_HEAP = 1 << 3; // In a heap for recompute
+const REACTIVE_IN_HEAP_HEIGHT = 1 << 4; // In a heap for height adjustment only
 const REACTIVE_DISPOSED = 1 << 5; // Has been disposed
+const REACTIVE_UNINITIALIZED = 1 << 6; // Lazy computed not yet evaluated
+const STATUS_PENDING = 1 << 7; // Async value in flight
+const STATUS_ERROR = 1 << 8; // Last computation threw
+const REACTIVE_CHILDREN_FORBIDDEN = 1 << 9; // Leaf effect: may not own primitives
+const REACTIVE_AFFECTED = 1 << 10; // Declared in motion: reads as pending until released
+
+const EFFECT_PURE = 0;
+const EFFECT_RENDER = 1;
+const EFFECT_USER = 2;
 
 // ============================================================================
 // Error Classes
@@ -44,9 +49,20 @@ export class NoOwnerError extends Error {
 export class ContextNotFoundError extends Error {
   constructor() {
     super(
-      "Context must either be created with a default value or a value must be provided before accessing it."
+      "Context must either be created with a default value or a value must be provided before accessing it.",
     );
     this.name = "ContextNotFoundError";
+  }
+}
+
+/**
+ * Thrown when reading an async value that has not resolved yet.
+ * Caught by Loading boundaries and by isPending()/latest().
+ */
+export class NotReadyError extends Error {
+  constructor() {
+    super("Async value is not ready yet.");
+    this.name = "NotReadyError";
   }
 }
 
@@ -61,24 +77,120 @@ interface Link {
   _nextDep: Link | null; // Next dependency of the subscriber
   _prevSub: Link | null; // Previous subscriber of the dependency
   _nextSub: Link | null; // Next subscriber of the dependency
+  _lastValue: unknown; // Dep value snapshot at link time (gates recompute)
+  /**
+   * `_sub._depGen` when this link was created or last revalidated in read
+   * order. A link stamped with the subscriber's current generation sits in
+   * the already-validated `[_deps.._depsTail]` prefix - an O(1) stand-in for
+   * scanning the dep list.
+   */
+  _gen: number;
 }
 
 /** Options for signal/computed creation */
 export interface SignalOptions<T> {
   name?: string;
   equals?: false | ((prev: T, next: T) => boolean);
+  /** Called when the computed loses its last subscriber */
+  unobserved?: () => void;
+  /** Suppress the REACTIVE_WRITE_IN_OWNED_SCOPE diagnostic for this signal */
+  ownedWrite?: boolean;
 }
+
+// ============================================================================
+// Dev diagnostics
+// ============================================================================
+
+export interface DiagnosticEvent {
+  sequence: number;
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+  nodeName?: string;
+  data?: unknown;
+}
+
+let diagnosticSequence = 0;
+const diagnosticListeners = new Set<(event: DiagnosticEvent) => void>();
+/** Mirrors `diagnosticListeners.size !== 0` as a single load for hot paths */
+let diagnosticsOn = false;
+
+function addDiagnosticListener(listener: (event: DiagnosticEvent) => void): void {
+  diagnosticListeners.add(listener);
+  diagnosticsOn = true;
+}
+
+function removeDiagnosticListener(listener: (event: DiagnosticEvent) => void): void {
+  diagnosticListeners.delete(listener);
+  diagnosticsOn = diagnosticListeners.size !== 0;
+}
+
+function emitDiagnostic(
+  code: string,
+  severity: "error" | "warning",
+  message: string,
+  nodeName?: string,
+  data?: unknown,
+): void {
+  if (!diagnosticsOn) return;
+  const event: DiagnosticEvent = {
+    sequence: diagnosticSequence++,
+    code,
+    severity,
+    message,
+    nodeName,
+    data,
+  };
+  for (const listener of diagnosticListeners) {
+    listener(event);
+  }
+}
+
+/**
+ * Structured dev diagnostics (Solid 2.0). Zero-cost when nothing is
+ * subscribed. Codes: REACTIVE_WRITE_IN_OWNED_SCOPE,
+ * ASYNC_OUTSIDE_LOADING_BOUNDARY, RUN_WITH_DISPOSED_OWNER,
+ * NO_OWNER_CLEANUP, INFINITE_LOOP.
+ */
+export const DEV = {
+  diagnostics: {
+    subscribe(listener: (event: DiagnosticEvent) => void): () => void {
+      addDiagnosticListener(listener);
+      return () => removeDiagnosticListener(listener);
+    },
+    capture(): { stop(): DiagnosticEvent[] } {
+      const events: DiagnosticEvent[] = [];
+      const listener = (event: DiagnosticEvent) => {
+        events.push(event);
+      };
+      addDiagnosticListener(listener);
+      return {
+        stop() {
+          removeDiagnosticListener(listener);
+          return events;
+        },
+      };
+    },
+  },
+};
 
 /** Context record for owner */
 export type ContextRecord = Record<string | symbol, unknown>;
 
-/** Base signal node */
+/**
+ * Base signal node. Every field is present on every instance: the engine
+ * reads `_fn`/`_equals`/`_epoch` off both node kinds, so a missing slot
+ * would make those loads polymorphic.
+ */
 interface SignalNode<T> {
   _value: T;
   _subs: Link | null; // Head of subscribers linked list
   _subsTail: Link | null; // Tail of subscribers linked list
   _equals: false | ((a: T, b: T) => boolean);
-  _name?: string;
+  _name: string | undefined;
+  _unobserved: (() => void) | undefined;
+  _epoch: number; // Last mark epoch this node propagated in (write dedupe)
+  _fn: ((prev?: T) => T) | undefined; // undefined on plain signals; discriminates the two kinds
 }
 
 /** Computed node extends signal with computation state */
@@ -90,37 +202,75 @@ interface ComputedNode<T> extends SignalNode<T> {
   _height: number; // Topological height for ordering
   _nextHeap: ComputedNode<unknown> | undefined;
   _prevHeap: ComputedNode<unknown>;
-  _isEffect: boolean;
-  _cleanup?: () => void;
-  _cleanups: (() => void)[];
-  _children: ComputedNode<unknown>[]; // Child computeds for disposal
-  _owner: Owner | null;
-  _effectOwner?: Owner; // Cached owner for effects (avoid allocation per run)
+  _kind: number; // EFFECT_PURE | EFFECT_RENDER | EFFECT_USER
+  _depGen: number; // Bumped when a recompute starts re-reading dependencies
+  _cleanup: (() => void) | undefined;
+  // Owner implementation (a computation owns what it creates during a run)
+  cleanups: (() => void)[] | null;
+  children: ComputedNode<unknown>[] | null;
+  disposed: boolean;
+  dispose: () => void;
+  _parent: Owner | null;
+  _context: ContextRecord;
+  _apply: ((value: unknown, prev: unknown) => void | (() => void)) | undefined; // Split-form effect phase
+  _error: unknown; // Stored error when STATUS_ERROR
+  _wave: number; // Last propagation epoch that visited this node
+  // Cold: only ever touched on async / SSR paths, so they stay off the base
+  // shape - paying 6 slots on every computed costs more than the rare
+  // structure transition on the few nodes that actually go async.
+  _appliedValue?: unknown; // Last value passed to _apply
+  _asyncId?: number; // Guards stale async resolutions
+  _boundary?: LoadingBoundaryHandle | null; // Boundary this pending effect registered with
+  _serializeKey?: string; // SSR: record resolved value under this key
+  _inFlight?: Promise<unknown>; // Current async promise (settle registry hygiene)
+  _session?: symbol | null; // Sticky async session (waterfall fetches keep attribution)
 }
 
+/** Handle that Loading boundaries provide via context */
+export interface LoadingBoundaryHandle {
+  add(node: object): void;
+  delete(node: object): void;
+}
+
+/** Context key for Loading boundaries (used by components) */
+export const LOADING_BOUNDARY: unique symbol = Symbol("loading-boundary");
+/** Context key for error boundaries; value is (err: unknown) => void */
+export const ERROR_BOUNDARY: unique symbol = Symbol("error-boundary");
+
 // ============================================================================
-// Heap Scheduler (SolidJS-style)
+// Heap Scheduler (height-ordered, effects only)
 // ============================================================================
 
 interface Heap {
   _heap: (ComputedNode<unknown> | undefined)[];
-  _marked: boolean;
-  _min: number;
-  _max: number;
+  _min: number; // Lowest occupied height (maintained by insert/delete)
+  _max: number; // Highest occupied height
+  _count: number;
 }
 
-const dirtyHeap: Heap = {
-  _heap: new Array(2000).fill(undefined),
-  _marked: false,
-  _min: 0,
-  _max: 0,
-};
+/** Sentinel for "no occupied height"; any real height compares lower */
+const HEAP_EMPTY_MIN = 0x7fffffff;
+
+function createHeap(): Heap {
+  return {
+    _heap: new Array(256).fill(undefined),
+    _min: HEAP_EMPTY_MIN,
+    _max: 0,
+    _count: 0,
+  };
+}
+
+const renderHeap = createHeap();
+const userHeap = createHeap();
+
+function heapFor(node: ComputedNode<unknown>): Heap {
+  return node._kind === EFFECT_USER ? userHeap : renderHeap;
+}
 
 /** Actually insert node into heap at its height level */
 function actualInsertIntoHeap(node: ComputedNode<unknown>, heap: Heap): void {
   const height = node._height;
 
-  // Grow heap if needed
   if (height >= heap._heap.length) {
     heap._heap.length = height + 100;
   }
@@ -140,6 +290,8 @@ function actualInsertIntoHeap(node: ComputedNode<unknown>, heap: Heap): void {
   }
 
   if (height > heap._max) heap._max = height;
+  if (height < heap._min) heap._min = height;
+  heap._count++;
 }
 
 /** Insert node into heap for recomputation */
@@ -147,12 +299,7 @@ function insertIntoHeap(node: ComputedNode<unknown>, heap: Heap): void {
   const flags = node._flags;
   if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS)) return;
 
-  // If already marked CHECK, upgrade to DIRTY
-  if (flags & REACTIVE_CHECK) {
-    node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | REACTIVE_DIRTY | REACTIVE_IN_HEAP;
-  } else {
-    node._flags = flags | REACTIVE_IN_HEAP;
-  }
+  node._flags = flags | REACTIVE_IN_HEAP;
 
   // Only insert if not already in heap for height adjustment
   if (!(flags & REACTIVE_IN_HEAP_HEIGHT)) {
@@ -196,6 +343,7 @@ function deleteFromHeap(node: ComputedNode<unknown>, heap: Heap): void {
 
   node._prevHeap = node;
   node._nextHeap = undefined;
+  heap._count--;
 }
 
 /** Adjust height of a node based on its dependencies */
@@ -205,54 +353,50 @@ function adjustHeight(node: ComputedNode<unknown>, heap: Heap): void {
   let newHeight = node._height;
   for (let d = node._deps; d !== null; d = d._nextDep) {
     const dep = d._dep as ComputedNode<unknown>;
-    // Check if dep is a computed (has _fn) and update height
-    if ("_fn" in dep && dep._height >= newHeight) {
+    if (dep._fn !== undefined && dep._height >= newHeight) {
       newHeight = dep._height + 1;
     }
   }
 
   if (node._height !== newHeight) {
     node._height = newHeight;
-    // Propagate height change to subscribers
     for (let s = node._subs; s !== null; s = s._nextSub) {
-      insertIntoHeapHeight(s._sub, heap);
-    }
-  }
-}
-
-/** Mark all nodes in heap with DIRTY flag and propagate CHECK to subscribers */
-// @ts-ignore - Reserved for future microtask scheduling optimizations
-function _markHeap(heap: Heap): void {
-  if (heap._marked) return;
-  heap._marked = true;
-
-  for (let i = 0; i <= heap._max; i++) {
-    for (let el = heap._heap[i]; el !== undefined; el = el._nextHeap) {
-      if (el._flags & REACTIVE_IN_HEAP) {
-        markNode(el, REACTIVE_DIRTY);
+      const sub = s._sub;
+      if (sub._kind !== EFFECT_PURE) {
+        insertIntoHeapHeight(sub, heapFor(sub));
       }
     }
   }
 }
 
-/** Run heap - process all dirty nodes in topological order */
+/**
+ * Run heap - process all scheduled effects in topological (height) order.
+ * Re-scans until fully drained: effects may write signals that re-insert
+ * nodes at lower heights (feedback writes).
+ */
 function runHeap(heap: Heap): void {
-  heap._marked = false;
-
-  for (heap._min = 0; heap._min <= heap._max; heap._min++) {
-    let node = heap._heap[heap._min];
-    while (node !== undefined) {
-      if (node._flags & REACTIVE_IN_HEAP) {
-        // Node needs recomputation
-        recompute(node);
-      } else {
-        // Node only needs height adjustment
-        adjustHeight(node, heap);
+  while (heap._count > 0) {
+    // _min/_max are maintained by insert/delete, so a node re-inserted below
+    // the cursor lowers _min and is picked up by the next pass
+    const end = heap._max;
+    for (let height = heap._min; height <= end; height++) {
+      let node = heap._heap[height];
+      while (node !== undefined) {
+        if (node._flags & REACTIVE_IN_HEAP) {
+          updateIfNecessary(node);
+          // updateIfNecessary may not recompute (deps reverted); ensure removal
+          deleteFromHeap(node, heap);
+        } else {
+          adjustHeight(node, heap);
+        }
+        node = heap._heap[height];
       }
-      node = heap._heap[heap._min];
     }
   }
-
+  // Drained: widen the window back so stale bounds never shrink a later scan.
+  // (deleteFromHeap deliberately leaves them alone - it is inlined into the
+  // recompute/dispose paths and must stay small.)
+  heap._min = HEAP_EMPTY_MIN;
   heap._max = 0;
 }
 
@@ -261,9 +405,10 @@ function runHeap(heap: Heap): void {
 // ============================================================================
 
 let currentObserver: ComputedNode<unknown> | null = null;
-let tracking = false; // Only true during computation (like SolidJS)
+let tracking = false; // Only true during computation
 let batchDepth = 0;
 let scheduled = false;
+let latestDepth = 0; // Inside latest(): pending reads return stale values
 let clock = 0;
 
 const defaultContext: ContextRecord = {};
@@ -277,12 +422,12 @@ const defaultContext: ContextRecord = {};
  * When an owner is disposed, all its children are automatically disposed.
  */
 export interface Owner {
-  /** Cleanup functions to run when disposed (LIFO order) */
-  cleanups: (() => void)[];
+  /** Cleanup functions to run when disposed (LIFO order); lazily allocated */
+  cleanups: (() => void)[] | null;
   /** Dispose function */
   dispose: () => void;
-  /** Child computeds owned by this scope */
-  children: ComputedNode<unknown>[];
+  /** Child computeds owned by this scope; lazily allocated */
+  children: ComputedNode<unknown>[] | null;
   /** Whether disposed */
   disposed: boolean;
   /** Parent owner for hierarchy */
@@ -307,16 +452,20 @@ export function getOwner(): Owner | null {
 
 /**
  * Run a function with a specific owner context.
- * Use this to restore owner in async callbacks or setTimeout.
+ * Errors propagate to the caller; the previous owner is always restored.
  */
-export function runWithOwner<T>(owner: Owner | null, fn: () => T): T | undefined {
+export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
+  if (owner?.disposed) {
+    emitDiagnostic(
+      "RUN_WITH_DISPOSED_OWNER",
+      "warning",
+      "runWithOwner called with a disposed owner; computations created inside will never be cleaned up by it.",
+    );
+  }
   const prevOwner = currentOwner;
   currentOwner = owner;
   try {
     return fn();
-  } catch (err) {
-    console.error("Error in runWithOwner:", err);
-    return undefined;
   } finally {
     currentOwner = prevOwner;
   }
@@ -339,22 +488,38 @@ function link(dep: SignalNode<unknown> | ComputedNode<unknown>, sub: ComputedNod
     // During recompute, try to reuse existing links
     nextDep = prevDep !== null ? prevDep._nextDep : sub._deps;
     if (nextDep !== null && nextDep._dep === dep) {
+      nextDep._lastValue = dep._value;
+      nextDep._gen = sub._depGen;
       sub._depsTail = nextDep;
       return;
     }
   }
 
-  // Check if already subscribed
+  // Already subscribed, and the link was validated earlier in THIS pass, so
+  // it sits in the [_deps.._depsTail] prefix and needs no re-linking. A link
+  // left over from a previous pass does not qualify: the read order changed,
+  // and reusing it here would leave it beyond _depsTail, where the stale-dep
+  // trim at the end of recompute unsubscribes a dependency that was read.
   const prevSub = dep._subsTail;
-  if (prevSub !== null && prevSub._sub === sub) return;
+  if (
+    prevSub !== null &&
+    prevSub._sub === sub &&
+    (!isRecomputing || prevSub._gen === sub._depGen)
+  ) {
+    return;
+  }
 
-  // Create new link
+  // Create new link. Topology changed: write-propagation dedupe must reset
+  // so the new subscriber sees the next write.
+  markEpoch++;
   const newLink: Link = {
     _dep: dep,
     _sub: sub,
     _nextDep: nextDep,
     _prevSub: prevSub,
     _nextSub: null,
+    _lastValue: dep._value,
+    _gen: sub._depGen,
   };
 
   // Add to subscriber's deps list
@@ -392,6 +557,10 @@ function unlinkSubs(linkNode: Link): Link | null {
     dep._subs = nextSub;
   }
 
+  if (dep._subs === null && dep._unobserved) {
+    dep._unobserved();
+  }
+
   return nextDep;
 }
 
@@ -405,127 +574,296 @@ function cleanupDeps(sub: ComputedNode<unknown>): void {
 }
 
 // ============================================================================
-// Mark/Propagate Pattern (SolidJS-style)
+// Invalidation (push phase)
 // ============================================================================
 
-/** Mark node as dirty/check and propagate CHECK to subscribers */
-function markNode(node: ComputedNode<unknown>, newState: number = REACTIVE_DIRTY): void {
+/**
+ * Bumped whenever any invalidation mark is consumed (recompute, validation,
+ * self-mark drop) or the topology changes. While the epoch is unchanged,
+ * marks already placed are still standing, so neither a signal that already
+ * propagated nor a pure node already visited needs to be walked again.
+ * Doubles as the propagation wave id.
+ */
+let markEpoch = 1;
+let markWave = 0;
+
+/**
+ * Mark a node CHECK or DIRTY. Effects are inserted into their heap;
+ * pure computeds propagate CHECK to their subscribers (lazy pull).
+ *
+ * Epoch stamps make a propagation re-traverse pure nodes that are still
+ * marked from an earlier epoch (a downstream effect may have dropped its
+ * self-mark since), while deduplicating within one epoch - diamonds visit
+ * each node once, and so do repeated writes that consumed no marks.
+ */
+function markNode(node: ComputedNode<unknown>, newState: number): void {
   const flags = node._flags;
   if (flags & REACTIVE_DISPOSED) return;
 
-  // Already marked with equal or higher priority
-  if ((flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) >= newState) return;
+  const current = flags & (REACTIVE_CHECK | REACTIVE_DIRTY);
 
-  node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
+  // Effects have no subscribers: no wave bookkeeping, just flag + enqueue
+  if (node._kind !== EFFECT_PURE) {
+    if (current < newState) {
+      node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
+    } else if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS)) {
+      return; // already queued (or running) at equal-or-higher priority
+    }
+    insertIntoHeap(node, heapFor(node));
+    schedule();
+    return;
+  }
 
-  // Propagate CHECK to subscribers
-  for (let link = node._subs; link !== null; link = link._nextSub) {
-    markNode(link._sub, REACTIVE_CHECK);
+  if (node._wave === markWave) {
+    // Already visited this epoch: only handle a CHECK -> DIRTY upgrade.
+    // Subscribers are already CHECK from that visit, which is enough.
+    if (current < newState) {
+      node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
+    }
+    return;
+  }
+
+  node._wave = markWave;
+  if (current < newState) {
+    node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
+  }
+
+  for (let l = node._subs; l !== null; l = l._nextSub) {
+    markNode(l._sub, REACTIVE_CHECK);
   }
 }
 
 /**
- * Notify all subscribers that a signal/computed has changed.
- * Inserts ALL subscribers into heap for processing in topological order.
+ * Notify subscribers of a changed node.
+ * `state` is DIRTY for unconditional recompute (equals: false sources,
+ * errors, async transitions), CHECK otherwise (value comparison gates).
  */
-function notifySubs(node: SignalNode<unknown>): void {
-  for (let link = node._subs; link !== null; link = link._nextSub) {
-    const sub = link._sub;
-
-    // Update heap min to process lower heights first
-    if (dirtyHeap._min > sub._height) {
-      dirtyHeap._min = sub._height;
-    }
-
-    // Mark DIRTY and insert into heap
-    sub._flags |= REACTIVE_DIRTY;
-    insertIntoHeap(sub, dirtyHeap);
+function propagate(node: SignalNode<unknown>, state: number): void {
+  markWave++;
+  for (let l = node._subs; l !== null; l = l._nextSub) {
+    markNode(l._sub, state);
   }
 }
 
 // ============================================================================
-// Update Logic
+// Validation / recompute (pull phase)
 // ============================================================================
 
-function updateIfNecessary(node: ComputedNode<unknown>): void {
-  if (node._flags & REACTIVE_DISPOSED) return;
+function depEquals(dep: SignalNode<unknown>, a: unknown, b: unknown): boolean {
+  const eq = dep._equals;
+  if (eq === false || eq === defaultEquals) {
+    return a === b || (a !== a && b !== b);
+  }
+  return eq(a, b);
+}
 
-  if (node._flags & REACTIVE_CHECK) {
-    // Check all dependencies first
-    for (let d = node._deps; d !== null; d = d._nextDep) {
-      const dep = d._dep as ComputedNode<unknown>;
-      // Check if dep is a computed (has _fn)
-      if ("_fn" in dep) {
-        updateIfNecessary(dep);
-      }
+/**
+ * Resolve CHECK/DIRTY state. CHECK walks deps in read order: computed deps
+ * are validated recursively, then each dep's current value is compared with
+ * the snapshot taken at link time. Only an actual change recomputes.
+ */
+function updateIfNecessary(node: ComputedNode<unknown>): void {
+  const flags = node._flags;
+  if (flags & REACTIVE_DISPOSED) return;
+  if (!(flags & (REACTIVE_CHECK | REACTIVE_DIRTY))) return;
+
+  if (flags & REACTIVE_DIRTY) {
+    recompute(node);
+    return;
+  }
+
+  for (let d = node._deps; d !== null; d = d._nextDep) {
+    const dep = d._dep;
+    if (dep._fn !== undefined) {
+      updateIfNecessary(dep as ComputedNode<unknown>);
+      // A recomputed dep may have marked this node DIRTY (e.g. equals: false)
       if (node._flags & REACTIVE_DIRTY) {
-        break;
+        recompute(node);
+        return;
       }
+      // Pending/errored deps force recompute so status propagates
+      if ((dep as ComputedNode<unknown>)._flags & (STATUS_PENDING | STATUS_ERROR)) {
+        recompute(node);
+        return;
+      }
+    }
+    if (!depEquals(dep, d._lastValue, dep._value)) {
+      recompute(node);
+      return;
     }
   }
 
-  if (node._flags & REACTIVE_DIRTY) {
-    recompute(node);
+  node._flags &= ~REACTIVE_CHECK;
+  markEpoch++; // a mark was consumed without recompute
+}
+
+/** Run disposal-phase callbacks untracked so reads don't leak into parents */
+function runUntracked(fn: () => void): void {
+  const prevTracking = tracking;
+  const prevObserver = currentObserver;
+  tracking = false;
+  currentObserver = null;
+  try {
+    fn();
+  } catch (err) {
+    console.error("Error in cleanup:", err);
+  } finally {
+    tracking = prevTracking;
+    currentObserver = prevObserver;
+  }
+}
+
+/** Effect cleanup before re-run/dispose: children first, then own cleanups */
+function runEffectCleanups(node: ComputedNode<unknown>): void {
+  // Dispose children first (inner cleanups run before outer)
+  const children = node.children;
+  if (children !== null) {
+    for (let i = children.length - 1; i >= 0; i--) {
+      disposeNode(children[i]);
+    }
+    children.length = 0;
   }
 
-  node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
+  if (node._cleanup) {
+    const cleanup = node._cleanup;
+    node._cleanup = undefined;
+    runUntracked(cleanup);
+  }
+
+  const cleanups = node.cleanups;
+  if (cleanups !== null) {
+    for (let i = cleanups.length - 1; i >= 0; i--) {
+      runUntracked(cleanups[i]);
+    }
+    cleanups.length = 0;
+  }
+}
+
+/** When set, a pending read with no Loading boundary above it is an error */
+let loadingBoundaryRequired = false;
+
+/**
+ * Make a pending async read with no enclosing Loading boundary throw instead
+ * of warning. Off by default.
+ */
+export function enforceLoadingBoundary(enabled: boolean): void {
+  loadingBoundaryRequired = enabled;
+}
+
+/** Latched when an error escaped every boundary during a flush */
+let escapedError = false;
+
+/**
+ * Clear the latched "an error escaped every boundary" state. barq rethrows
+ * such errors rather than halting the graph, so this only drops the latch.
+ */
+export function resetErrorHalt(): void {
+  escapedError = false;
+}
+
+/** Whether an error has escaped every boundary since the last reset */
+export function hasEscapedError(): boolean {
+  return escapedError;
+}
+
+function registerWithBoundary(node: ComputedNode<unknown>): void {
+  const handle = node._context[LOADING_BOUNDARY] as LoadingBoundaryHandle | undefined;
+  if (handle) {
+    node._boundary = handle;
+    handle.add(node);
+    return;
+  }
+  const message =
+    "An effect read a pending async value with no Loading boundary above it; it will retry when the value resolves but nothing renders a fallback.";
+  emitDiagnostic("ASYNC_OUTSIDE_LOADING_BOUNDARY", "warning", message, node._name);
+  if (loadingBoundaryRequired) {
+    throw new Error(`[ASYNC_OUTSIDE_LOADING_BOUNDARY] ${message}`);
+  }
+}
+
+function unregisterFromBoundary(node: ComputedNode<unknown>): void {
+  if (node._boundary) {
+    node._boundary.delete(node);
+    node._boundary = null;
+  }
+}
+
+let flushError: { error: unknown } | null = null;
+
+/**
+ * Route an effect error to the nearest error boundary, else rethrow.
+ * During a flush the rethrow is deferred to the end of the flush so the
+ * remaining queued effects still run (a failed effect must not strand
+ * unrelated work in the queue).
+ */
+function handleEffectError(node: ComputedNode<unknown>, error: unknown): void {
+  const handler = node._context[ERROR_BOUNDARY] as ((err: unknown) => void) | undefined;
+  if (handler) {
+    handler(error);
+    return;
+  }
+  escapedError = true;
+  if (isFlushing) {
+    if (!flushError) flushError = { error };
+    return;
+  }
+  throw error;
 }
 
 function recompute(node: ComputedNode<unknown>): void {
   if (node._flags & REACTIVE_DISPOSED) return;
 
-  deleteFromHeap(node, dirtyHeap);
+  markEpoch++; // marks are being consumed: future writes must re-propagate
 
-  // Run cleanups for effects (in reverse order - LIFO)
-  if (node._isEffect) {
-    if (node._cleanup) {
-      try {
-        node._cleanup();
-      } catch (err) {
-        console.error("Error in effect cleanup:", err);
-      }
-      node._cleanup = undefined;
-    }
+  const isEffect = node._kind !== EFFECT_PURE;
+  deleteFromHeap(node, isEffect ? heapFor(node) : renderHeap);
 
-    // Run cleanups in reverse order (LIFO like SolidJS)
-    for (let i = node._cleanups.length - 1; i >= 0; i--) {
-      try {
-        node._cleanups[i]();
-      } catch (err) {
-        console.error("Error in onCleanup:", err);
-      }
-    }
-    node._cleanups.length = 0;
-
-    // Dispose children in reverse order (LIFO)
-    for (let i = node._children.length - 1; i >= 0; i--) {
-      disposeNode(node._children[i]);
-    }
-    node._children.length = 0;
+  // Dispose inner computations / run cleanups from the previous run
+  if (
+    node._cleanup !== undefined ||
+    (node.cleanups !== null && node.cleanups.length > 0) ||
+    (node.children !== null && node.children.length > 0)
+  ) {
+    runEffectCleanups(node);
   }
 
-  // Reset deps tail for fresh tracking
+  const wasPending = (node._flags & STATUS_PENDING) !== 0;
+
+  // Clear invalidation BEFORE running: anything set during the run is a
+  // feedback write and must survive to trigger another pass
+  // AFFECTED deliberately survives: it is released by its declarer, not by a run
+  node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY | STATUS_PENDING | STATUS_ERROR);
+  node._error = undefined;
+
+  // Reset deps tail for fresh tracking; the generation bump invalidates every
+  // link stamp from the previous pass so read-order changes are detected
   node._depsTail = null;
+  node._depGen++;
 
   const prevObserver = currentObserver;
   const prevTracking = tracking;
+  const prevOwner = currentOwner;
   currentObserver = node;
   node._flags |= REACTIVE_RECOMPUTING_DEPS;
-  tracking = true; // Enable tracking during computation
+  tracking = true;
 
-  // For effects, use cached owner (avoid allocation per run)
-  const prevOwner = currentOwner;
-  if (node._isEffect && node._effectOwner) {
-    node._effectOwner.disposed = false;
-    currentOwner = node._effectOwner;
-  }
+  // The node itself is the owner of computations created during its run
+  node.disposed = false;
+  currentOwner = node;
 
   let newValue: unknown;
+  let threw = false;
+  let notReady = false;
+  let error: unknown;
   try {
-    newValue = node._fn(node._value);
+    newValue = node._fn(node._flags & REACTIVE_UNINITIALIZED ? undefined : node._value);
   } catch (err) {
-    console.error("Error in computation:", err);
-    newValue = node._value;
+    threw = true;
+    if (err instanceof NotReadyError) {
+      notReady = true;
+    } else {
+      error = err;
+    }
   } finally {
     tracking = prevTracking;
     currentObserver = prevObserver;
@@ -533,7 +871,7 @@ function recompute(node: ComputedNode<unknown>): void {
     currentOwner = prevOwner;
   }
 
-  // Cleanup old unused deps (depsTail may have changed during fn execution via tracking)
+  // Cleanup old unused deps (depsTail may have changed during fn execution)
   const depsTail = node._depsTail as Link | null;
   let toRemove = depsTail !== null ? depsTail._nextDep : node._deps;
   if (toRemove !== null) {
@@ -547,54 +885,168 @@ function recompute(node: ComputedNode<unknown>): void {
     }
   }
 
-  // Check if value changed
+  if (threw) {
+    if (notReady) {
+      node._flags |= STATUS_PENDING;
+      if (isEffect) {
+        registerWithBoundary(node);
+      } else {
+        // Remember the session even before the first real fetch: the fetch
+        // may start later from an unsessioned flush (waterfalls)
+        if (activeAsyncSession !== null) node._session = activeAsyncSession;
+        if (!wasPending) {
+          propagate(node, REACTIVE_DIRTY);
+        }
+      }
+    } else {
+      if (isEffect) {
+        clearSelfMarks(node);
+        handleEffectError(node, error);
+        return;
+      }
+      node._error = error;
+      node._flags |= STATUS_ERROR;
+      propagate(node, REACTIVE_DIRTY);
+    }
+    if (isEffect) clearSelfMarks(node);
+    return;
+  }
+
+  // Async computed: keep previous value, mark pending, commit on resolve
+  if (!isEffect && newValue instanceof Promise) {
+    const id = (node._asyncId = (node._asyncId ?? 0) + 1);
+    node._flags |= STATUS_PENDING;
+    if (!wasPending) {
+      propagate(node, REACTIVE_DIRTY);
+    }
+    if (node._inFlight) inFlight.delete(node._inFlight);
+    node._inFlight = newValue;
+    const session = activeAsyncSession ?? node._session ?? null;
+    node._session = session;
+    inFlight.set(newValue, session);
+    newValue.then(
+      (value) => {
+        inFlight.delete(newValue as Promise<unknown>);
+        if (node._flags & REACTIVE_DISPOSED || node._asyncId !== id) return;
+        node._flags &= ~(STATUS_PENDING | REACTIVE_UNINITIALIZED);
+        node._value = value;
+        if (node._serializeKey !== undefined) {
+          recordHydrationValue(node._session ?? null, node._serializeKey, value);
+        }
+        propagate(node, REACTIVE_DIRTY);
+        schedule();
+      },
+      (err) => {
+        inFlight.delete(newValue as Promise<unknown>);
+        if (node._flags & REACTIVE_DISPOSED || node._asyncId !== id) return;
+        node._flags = (node._flags & ~STATUS_PENDING) | STATUS_ERROR;
+        node._error = err;
+        propagate(node, REACTIVE_DIRTY);
+        schedule();
+      },
+    );
+    return;
+  }
+
+  if (isEffect && wasPending) {
+    unregisterFromBoundary(node);
+  }
+
+  const first = (node._flags & REACTIVE_UNINITIALIZED) !== 0;
   const valueChanged =
-    node._equals === false || !node._equals(node._value as any, newValue as any);
+    first ||
+    wasPending ||
+    node._equals === false ||
+    !node._equals(node._value as never, newValue as never);
 
   if (valueChanged) {
-    node._value = newValue as any;
-    notifySubs(node);
+    node._value = newValue;
+    if (!isEffect) {
+      propagate(node, node._equals === false || wasPending ? REACTIVE_DIRTY : REACTIVE_CHECK);
+    }
   }
 
-  if (node._isEffect) {
-    node._cleanup = typeof newValue === "function" ? (newValue as () => void) : undefined;
+  if (isEffect) {
+    if (node._apply) {
+      const prev = node._appliedValue;
+      node._appliedValue = newValue;
+      const apply = node._apply;
+      const prevT = tracking;
+      const prevO = currentObserver;
+      tracking = false;
+      currentObserver = null;
+      try {
+        const cleanup = apply(newValue, prev);
+        if (typeof cleanup === "function") node._cleanup = cleanup;
+      } finally {
+        tracking = prevT;
+        currentObserver = prevO;
+      }
+    } else if (typeof newValue === "function") {
+      node._cleanup = newValue as () => void;
+    }
   }
 
-  node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
+  node._flags &= ~REACTIVE_UNINITIALIZED;
+  if (isEffect) clearSelfMarks(node);
+}
+
+/**
+ * Writes from an effect to its own dependencies do not re-trigger the
+ * effect (self-marks are dropped after the run). Pure computeds keep
+ * self-marks so the next read revalidates.
+ *
+ * When a self-mark is dropped, dep snapshots are resynced to the values
+ * the effect itself wrote — those count as "seen", so only a later
+ * external change re-triggers the effect.
+ */
+function clearSelfMarks(node: ComputedNode<unknown>): void {
+  if (node._flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
+    for (let d = node._deps; d !== null; d = d._nextDep) {
+      d._lastValue = d._dep._value;
+    }
+    node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
+    markEpoch++; // marks dropped: future writes must re-propagate
+  }
 }
 
 function disposeNode(node: ComputedNode<unknown>): void {
   if (node._flags & REACTIVE_DISPOSED) return;
   node._flags |= REACTIVE_DISPOSED;
+  node.disposed = true;
+
+  if (node._inFlight) {
+    inFlight.delete(node._inFlight);
+    node._inFlight = undefined;
+  }
+
+  unregisterFromBoundary(node);
 
   // Dispose children first (reverse order - LIFO)
-  for (let i = node._children.length - 1; i >= 0; i--) {
-    disposeNode(node._children[i]);
+  const children = node.children;
+  if (children !== null) {
+    for (let i = children.length - 1; i >= 0; i--) {
+      disposeNode(children[i]);
+    }
+    children.length = 0;
   }
-  node._children.length = 0;
 
-  // Run cleanup
   if (node._cleanup) {
-    try {
-      node._cleanup();
-    } catch (err) {
-      console.error("Error in cleanup:", err);
-    }
+    const cleanup = node._cleanup;
     node._cleanup = undefined;
+    runUntracked(cleanup);
   }
 
-  // Run cleanups in reverse order (LIFO)
-  for (let i = node._cleanups.length - 1; i >= 0; i--) {
-    try {
-      node._cleanups[i]();
-    } catch (err) {
-      console.error("Error in onCleanup:", err);
+  const cleanups = node.cleanups;
+  if (cleanups !== null) {
+    for (let i = cleanups.length - 1; i >= 0; i--) {
+      runUntracked(cleanups[i]);
     }
+    cleanups.length = 0;
   }
-  node._cleanups.length = 0;
 
   // Remove from heap
-  deleteFromHeap(node, dirtyHeap);
+  deleteFromHeap(node, node._kind === EFFECT_USER ? userHeap : renderHeap);
 
   // Cleanup deps
   cleanupDeps(node);
@@ -610,24 +1062,49 @@ function disposeNode(node: ComputedNode<unknown>): void {
 
 let isFlushing = false;
 
+/** Schedule an async flush on the microtask queue (latches until flush) */
 function schedule(): void {
-  if (batchDepth > 0 || isFlushing) return;
-  flushSync();
+  // Inside batch() no microtask is needed: the batch flushes synchronously
+  if (scheduled || isFlushing || batchDepth > 0) return;
+  scheduled = true;
+  queueMicrotask(() => {
+    scheduled = false;
+    flushSync();
+  });
 }
 
+/**
+ * Synchronously drain all scheduled effects.
+ * Render effects always run before user effects within each pass.
+ */
 function flushSync(): void {
-  if (isFlushing) return;
+  if (isFlushing || batchDepth > 0) return;
   isFlushing = true;
-  scheduled = true;
 
+  flushError = null;
   try {
-    // Keep flushing until no more scheduled work
     let count = 0;
-    while (scheduled) {
-      if (++count === 100000) throw new Error("Potential infinite loop detected");
-      scheduled = false;
+    while (renderHeap._count > 0 || userHeap._count > 0) {
+      if (++count === 100000) {
+        emitDiagnostic(
+          "INFINITE_LOOP",
+          "error",
+          "Flush did not settle after 100000 iterations; an effect is likely writing a value it depends on.",
+        );
+        throw new Error("Potential infinite loop detected");
+      }
       clock++;
-      runHeap(dirtyHeap);
+      if (renderHeap._count > 0) {
+        runHeap(renderHeap);
+      } else {
+        runHeap(userHeap);
+      }
+    }
+    // TS can't see the handleEffectError assignment from inside runHeap
+    const pendingError = flushError as { error: unknown } | null;
+    if (pendingError) {
+      flushError = null;
+      throw pendingError.error;
     }
   } finally {
     isFlushing = false;
@@ -635,9 +1112,11 @@ function flushSync(): void {
 }
 
 /**
- * Synchronously flush all pending updates
+ * Synchronously flush all pending updates.
+ * With a callback, runs it first so its writes are applied by the flush.
  */
-export function flush(): void {
+export function flush(fn?: () => void): void {
+  if (fn) fn();
   flushSync();
 }
 
@@ -658,59 +1137,103 @@ export interface Computed<T> {
 }
 
 function defaultEquals<T>(a: T, b: T): boolean {
-  // Fast path: strict equality (handles most cases)
-  // Also handles NaN correctly (NaN !== NaN but we want NaN === NaN for reactivity)
+  // Strict equality with NaN === NaN for reactivity purposes
   return a === b || (a !== a && b !== b);
 }
 
 /**
- * Create a reactive signal
+ * Create a reactive signal.
+ *
+ * `signal(value)` - plain writable signal
+ * `signal(fn)` - writable derived signal: recomputed by fn(prev) when its
+ * dependencies change, and writable via set/update until they do.
  */
-export function signal<T>(initialValue: T, options?: SignalOptions<T>): Signal<T> {
+export function signal<T>(
+  initialValue: T | ((prev?: T) => T),
+  options?: SignalOptions<T>,
+): Signal<T> {
+  if (typeof initialValue === "function") {
+    return writableComputed(initialValue as (prev?: T) => T, options);
+  }
+
   const node: SignalNode<T> = {
     _value: initialValue,
     _subs: null,
     _subsTail: null,
     _equals: options?.equals !== undefined ? options.equals : defaultEquals,
     _name: options?.name,
+    _unobserved: options?.unobserved,
+    _epoch: 0,
+    _fn: undefined,
   };
 
   const read = (): T => {
     // Fast path: not tracking
     if (!tracking) return node._value;
-    // Track dependency during computation
     if (currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
       link(node as SignalNode<unknown>, currentObserver);
     }
     return node._value;
   };
 
-  const write = (newValue: T): void => {
-    const valueChanged =
-      node._equals === false || !node._equals(node._value, newValue);
+  const ownedWrite = options?.ownedWrite === true;
 
-    if (!valueChanged) return;
+  const write = (newValue: T): void => {
+    if (
+      diagnosticsOn &&
+      !ownedWrite &&
+      tracking &&
+      currentObserver !== null &&
+      currentObserver._kind === EFFECT_PURE
+    ) {
+      emitDiagnostic(
+        "REACTIVE_WRITE_IN_OWNED_SCOPE",
+        "warning",
+        "Signal written from inside a derived computation; derive the value instead, or create the signal with { ownedWrite: true }.",
+        node._name,
+      );
+    }
+
+    const eq = node._equals;
+    const prev = node._value;
+    if (eq === defaultEquals) {
+      if (prev === newValue || (prev !== prev && newValue !== newValue)) return;
+    } else if (eq !== false && eq(prev, newValue)) {
+      return;
+    }
 
     node._value = newValue;
-    notifySubs(node as SignalNode<unknown>);
-    schedule();
+    if (node._subs !== null && node._epoch !== markEpoch) {
+      node._epoch = markEpoch;
+      propagate(node as SignalNode<unknown>, eq === false ? REACTIVE_DIRTY : REACTIVE_CHECK);
+    }
   };
 
   const accessor = read as Signal<T>;
   accessor.set = write;
   accessor.update = (fn: (prev: T) => T) => write(fn(node._value));
   accessor.peek = () => node._value;
+  (accessor as unknown as { _node: SignalNode<T> })._node = node;
 
   return accessor;
 }
 
-/**
- * Create a computed signal that derives its value from other signals
- */
-export function computed<T>(fn: () => T, options?: SignalOptions<T>): Computed<T> {
+function createComputedNode<T>(
+  fn: (prev?: T) => T,
+  kind: number,
+  options?: SignalOptions<T>,
+): ComputedNode<T> {
   const owner = getCurrentOwner();
 
-  // Calculate initial height based on parent context (like SolidJS)
+  if (owner !== null && (owner as ComputedNode<unknown>)._flags & REACTIVE_CHILDREN_FORBIDDEN) {
+    emitDiagnostic(
+      "PRIMITIVE_IN_FORBIDDEN_SCOPE",
+      "error",
+      "Reactive primitives cannot be created inside createTrackedEffect; it is a leaf effect for wiring external sources.",
+      options?.name,
+    );
+  }
+
   let initialHeight = 0;
   if (currentObserver) {
     initialHeight = currentObserver._height + 1;
@@ -720,159 +1243,373 @@ export function computed<T>(fn: () => T, options?: SignalOptions<T>): Computed<T
     _value: undefined as T,
     _subs: null,
     _subsTail: null,
-    _equals: options?.equals !== undefined ? options.equals : defaultEquals,
+    _equals:
+      kind === EFFECT_PURE
+        ? options?.equals !== undefined
+          ? options.equals
+          : defaultEquals
+        : false,
     _name: options?.name,
-    _fn: fn as (prev?: T) => T,
+    _unobserved: options?.unobserved,
+    _epoch: 0,
+    _fn: fn,
     _deps: null,
     _depsTail: null,
-    _flags: REACTIVE_DIRTY,
+    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED,
     _height: initialHeight,
     _nextHeap: undefined,
-    _prevHeap: null as any,
-    _isEffect: false,
-    _cleanups: [],
-    _children: [],
-    _owner: owner,
+    _prevHeap: null as never,
+    _kind: kind,
+    _depGen: 0,
+    // Owner fields: the node itself owns computations created during its
+    // run (disposed before the next run and on node disposal)
+    cleanups: null,
+    children: null,
+    disposed: false,
+    dispose: null as unknown as () => void,
+    _parent: owner,
+    _context: owner !== null ? owner._context : defaultContext,
+    _cleanup: undefined,
+    _apply: undefined,
+    _error: undefined,
+    _wave: 0,
   };
   node._prevHeap = node as ComputedNode<unknown>;
+  node.dispose = () => disposeNode(node as ComputedNode<unknown>);
 
-  // Register with owner
   if (owner) {
-    owner.children.push(node as ComputedNode<unknown>);
+    (owner.children ??= []).push(node as ComputedNode<unknown>);
   }
 
-  // Compute immediately (eager like SolidJS)
-  recompute(node as ComputedNode<unknown>);
+  if (externalSource !== null) {
+    wireExternalSource(node as ComputedNode<unknown>, owner);
+  }
 
-  const read = (): T => {
-    // Fast path: not disposed, not tracking, not dirty
-    const flags = node._flags;
-    if (!(flags & (REACTIVE_DISPOSED | REACTIVE_CHECK | REACTIVE_DIRTY)) && !tracking) {
+  return node;
+}
+
+/** Shared read implementation for computed/writable-derived accessors */
+function computedRead<T>(node: ComputedNode<T>): T {
+  const flags = node._flags;
+
+  // Fast path: clean, settled, not tracking
+  if (
+    !tracking &&
+    !(
+      flags &
+      (REACTIVE_CHECK |
+        REACTIVE_DIRTY |
+        REACTIVE_DISPOSED |
+        STATUS_PENDING |
+        STATUS_ERROR |
+        REACTIVE_AFFECTED)
+    )
+  ) {
+    return node._value;
+  }
+
+  if (flags & REACTIVE_DISPOSED) {
+    return node._value;
+  }
+
+  if (flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
+    updateIfNecessary(node as ComputedNode<unknown>);
+  }
+
+  // Link AFTER updating so the snapshot is the settled value, but BEFORE
+  // throwing so pending/error resolution re-notifies the reader
+  if (tracking && currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
+    link(node as ComputedNode<unknown>, currentObserver);
+    if (node._height >= currentObserver._height) {
+      currentObserver._height = node._height + 1;
+    }
+  }
+
+  if (node._flags & STATUS_ERROR) {
+    throw node._error;
+  }
+
+  if (node._flags & (STATUS_PENDING | REACTIVE_AFFECTED)) {
+    if (latestDepth > 0 && !(node._flags & REACTIVE_UNINITIALIZED)) {
       return node._value;
     }
+    throw new NotReadyError();
+  }
 
-    // Disposed - just return cached value
-    if (flags & REACTIVE_DISPOSED) {
-      return node._value;
-    }
+  return node._value;
+}
 
-    // Track dependency during computation
-    if (tracking && currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
-      link(node as ComputedNode<unknown>, currentObserver);
-      if (node._height >= currentObserver._height) {
-        currentObserver._height = node._height + 1;
-      }
-    }
-
-    // Update if necessary
-    if (flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
+function computedPeek<T>(node: ComputedNode<T>): T {
+  if (node._flags & (REACTIVE_CHECK | REACTIVE_DIRTY) && !(node._flags & REACTIVE_DISPOSED)) {
+    const prevTracking = tracking;
+    const prevObserver = currentObserver;
+    tracking = false;
+    currentObserver = null;
+    try {
       updateIfNecessary(node as ComputedNode<unknown>);
+    } finally {
+      tracking = prevTracking;
+      currentObserver = prevObserver;
     }
+  }
+  return node._value;
+}
 
-    return node._value;
-  };
+/**
+ * Create a computed signal that derives its value from other signals.
+ * Lazy: evaluated on first read, revalidated on read after invalidation.
+ * May return a Promise - the computed then carries pending status until
+ * resolution (see NotReadyError, latest, isPending).
+ */
+export function computed<T>(fn: (prev?: T) => T, options?: SignalOptions<T>): Computed<T> {
+  const node = createComputedNode(fn, EFFECT_PURE, options);
 
-  const accessor = read as Computed<T>;
-  accessor.peek = (): T => {
-    if (node._flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
-      const prevTracking = tracking;
-      tracking = false;
-      try {
-        updateIfNecessary(node as ComputedNode<unknown>);
-      } finally {
-        tracking = prevTracking;
-      }
-    }
-    return node._value;
-  };
+  const accessor = (() => computedRead(node)) as Computed<T>;
+  accessor.peek = () => computedPeek(node);
+  (accessor as unknown as { _node: ComputedNode<T> })._node = node;
 
   return accessor;
 }
 
-/**
- * Run a side effect when signals change
- */
-export function effect(fn: () => void | (() => void)): () => void {
-  const owner = getCurrentOwner();
+/** Writable derived signal: signal(fn) */
+function writableComputed<T>(fn: (prev?: T) => T, options?: SignalOptions<T>): Signal<T> {
+  const node = createComputedNode(fn, EFFECT_PURE, options);
 
-  // Calculate initial height based on parent context
-  let initialHeight = 0;
-  if (currentObserver) {
-    initialHeight = currentObserver._height + 1;
-  }
-
-  const node: ComputedNode<void | (() => void)> = {
-    _value: undefined,
-    _subs: null,
-    _subsTail: null,
-    _equals: false, // Effects always run when deps change
-    _fn: fn as (prev?: void | (() => void)) => void | (() => void),
-    _deps: null,
-    _depsTail: null,
-    _flags: REACTIVE_DIRTY,
-    _height: initialHeight,
-    _nextHeap: undefined,
-    _prevHeap: null as any,
-    _isEffect: true,
-    _cleanups: [],
-    _children: [],
-    _owner: owner,
-  };
-  node._prevHeap = node as ComputedNode<unknown>;
-
-  // Create cached owner for effect (reused across reruns)
-  node._effectOwner = {
-    cleanups: node._cleanups,
-    dispose: () => disposeNode(node as ComputedNode<unknown>),
-    children: node._children as ComputedNode<unknown>[],
-    disposed: false,
-    _parent: owner,
-    _context: owner?._context ?? defaultContext,
+  const write = (newValue: T): void => {
+    // Ensure initialized so a later dep change can recompute over the write
+    if (node._flags & REACTIVE_UNINITIALIZED) {
+      computedPeek(node);
+    }
+    const valueChanged =
+      node._equals === false || !node._equals(node._value as never, newValue as never);
+    if (!valueChanged) return;
+    node._value = newValue;
+    if (node._subs !== null) {
+      propagate(
+        node as ComputedNode<unknown>,
+        node._equals === false ? REACTIVE_DIRTY : REACTIVE_CHECK,
+      );
+    }
   };
 
-  // Register with owner
-  if (owner) {
-    owner.children.push(node as ComputedNode<unknown>);
-  }
+  const accessor = (() => computedRead(node)) as Signal<T>;
+  accessor.set = write;
+  accessor.update = (f: (prev: T) => T) => write(f(computedPeek(node)));
+  accessor.peek = () => computedPeek(node);
+  (accessor as unknown as { _node: ComputedNode<T> })._node = node;
 
-  // Run immediately (synchronously)
+  return accessor;
+}
+
+function createEffectNode(
+  compute: (prev?: unknown) => unknown,
+  apply: ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
+  kind: number,
+): () => void {
+  const node = createComputedNode(compute, kind);
+  node._apply = apply;
+
+  // First run is synchronous at creation; subsequent runs are scheduled
   recompute(node as ComputedNode<unknown>);
 
   return () => disposeNode(node as ComputedNode<unknown>);
 }
 
 /**
+ * Run a side effect when signals change.
+ *
+ * `effect(fn)` - fn is tracked; an optionally returned function is the cleanup
+ * `effect(compute, apply)` - split form: compute is tracked and returns a
+ * value; apply(value, prev) runs untracked afterwards and may return cleanup
+ *
+ * User effects run after render effects, batched on the microtask queue.
+ * The first run is deferred to the next flush (use flush() to force).
+ */
+export function effect<T>(
+  compute: (prev?: T) => T | void | (() => void),
+  apply?: (value: T, prev: T | undefined) => void | (() => void),
+): () => void {
+  return createEffectNode(
+    compute as (prev?: unknown) => unknown,
+    apply as ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
+    EFFECT_USER,
+  );
+}
+
+/**
+ * Render-phase effect: runs synchronously at creation and before user
+ * effects on subsequent flushes. Used by the renderer for DOM bindings.
+ */
+export function renderEffect<T>(
+  compute: (prev?: T) => T | void | (() => void),
+  apply?: (value: T, prev: T | undefined) => void | (() => void),
+): () => void {
+  return createEffectNode(
+    compute as (prev?: unknown) => unknown,
+    apply as ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
+    EFFECT_RENDER,
+  );
+}
+
+/**
+ * Effect for bridging external sources (event emitters, sockets, stores from
+ * other libraries). Tracked like a normal effect, but pinned ahead of the
+ * ordered user effects and forbidden from creating child reactive primitives,
+ * so it stays a leaf that only wires subscriptions up.
+ *
+ * The returned function, if any, is the cleanup: it runs before each re-run
+ * and on disposal.
+ */
+export function createTrackedEffect(
+  compute: () => void | (() => void),
+  options?: { name?: string },
+): () => void {
+  const node = createComputedNode(
+    compute as (prev?: unknown) => unknown,
+    EFFECT_USER,
+    options as SignalOptions<unknown>,
+  );
+  // Leaf effect: no graph position of its own, and no owned primitives
+  node._height = 0;
+  node._flags |= REACTIVE_CHILDREN_FORBIDDEN;
+  recompute(node as ComputedNode<unknown>);
+  return () => disposeNode(node as ComputedNode<unknown>);
+}
+
+/**
+ * Manual tracking: `track(fn)` subscribes to whatever `fn` reads and fires
+ * `onInvalidate` once when any of it changes. The subscription is consumed by
+ * that single fire - call `track` again to re-arm.
+ *
+ * `onInvalidate` may return a cleanup, run before the next fire and on
+ * disposal of the owner that created the reaction.
+ */
+export function createReaction(
+  onInvalidate: () => void | (() => void),
+): (tracking: () => void) => void {
+  let pendingCleanup: (() => void) | undefined;
+  const owner = getCurrentOwner();
+  let disposeArm: (() => void) | undefined;
+
+  if (owner !== null) {
+    (owner.cleanups ??= []).push(() => {
+      disposeArm?.();
+      disposeArm = undefined;
+      pendingCleanup?.();
+      pendingCleanup = undefined;
+    });
+  }
+
+  return (tracking: () => void): void => {
+    // Replacing an arm must dispose the old one, otherwise its sources stay
+    // live and a superseded dependency still fires the callback
+    disposeArm?.();
+    disposeArm = undefined;
+
+    runWithOwner(owner, () => {
+      let armed = false;
+      let disposeSelf: (() => void) | undefined;
+      const dispose = createEffectNode(
+        () => {
+          tracking();
+        },
+        () => {
+          // The arming run itself is not an invalidation
+          if (!armed) {
+            armed = true;
+            return;
+          }
+          disposeArm = undefined;
+          pendingCleanup?.();
+          pendingCleanup = onInvalidate() as (() => void) | undefined;
+          disposeSelf?.();
+        },
+        EFFECT_USER,
+      );
+      disposeSelf = dispose;
+      disposeArm = dispose;
+    });
+  };
+}
+
+/**
+ * Resolve a reactive expression to its first fully settled value.
+ * Pending async reads are awaited; the promise rejects if the expression
+ * settles with an error. Does not subscribe - call it outside tracking.
+ */
+export function resolve<T>(fn: () => T): Promise<T> {
+  if (tracking && currentObserver !== null) {
+    return Promise.reject(
+      new Error("resolve() cannot be called inside a tracked scope; it does not subscribe."),
+    );
+  }
+  return new Promise<T>((res, rej) => {
+    const owner = createOwnerScope(false);
+    let settled = false;
+    const finish = (): void => {
+      settled = true;
+      // Deferred: the effect node is mid-run, so tear down after it unwinds
+      queueMicrotask(() => owner.dispose());
+    };
+    // A private boundary pair: pending reads retry silently instead of warning
+    // about a missing Loading boundary, and errors reject rather than escape
+    owner._context = {
+      ...owner._context,
+      [LOADING_BOUNDARY]: { add() {}, delete() {} } satisfies LoadingBoundaryHandle,
+      [ERROR_BOUNDARY]: (err: unknown) => {
+        if (settled) return;
+        finish();
+        rej(err);
+      },
+    };
+    runInOwner(owner, () => {
+      createEffectNode(
+        fn as (prev?: unknown) => unknown,
+        (value) => {
+          if (settled) return;
+          finish();
+          res(value as T);
+        },
+        EFFECT_USER,
+      );
+    });
+    schedule();
+  });
+}
+
+/**
  * Register a cleanup function for the current owner.
- * Returns the function for convenience (like SolidJS).
- * If no owner, returns the function immediately without registering.
+ * Returns the function for convenience.
  */
 export function onCleanup<T extends () => void>(fn: T): T {
   const owner = getCurrentOwner();
   if (owner) {
-    owner.cleanups.push(fn);
+    (owner.cleanups ??= []).push(fn);
+  } else {
+    emitDiagnostic(
+      "NO_OWNER_CLEANUP",
+      "warning",
+      "onCleanup called outside a reactive owner; the cleanup will never run.",
+    );
   }
   return fn;
 }
 
 /**
- * Schedule a callback to run after reactive setup is complete (like SolidJS onSettled).
- * The callback runs untracked after the current flush cycle.
+ * Schedule a callback to run after the current work settles.
+ * Runs untracked in the captured owner context after the next flush.
  * Can return a cleanup function that runs when the owner is disposed.
- *
- * @param fn Callback to run after mount, can return cleanup function
  */
 export function onMount(fn: () => void | (() => void)): void {
   let cleanup: (() => void) | void;
   const owner = getCurrentOwner();
 
-  // Register cleanup handler if we have an owner
   if (owner) {
     onCleanup(() => cleanup?.());
   }
 
-  // Schedule to run after current sync work
   queueMicrotask(() => {
-    // Run in owner context if available
+    flushSync();
     if (owner && !owner.disposed) {
       const prevOwner = currentOwner;
       currentOwner = owner;
@@ -881,16 +1618,19 @@ export function onMount(fn: () => void | (() => void)): void {
       } finally {
         currentOwner = prevOwner;
       }
-    } else {
+    } else if (!owner) {
       cleanup = untrack(fn);
-      // If no owner, run cleanup immediately if returned
-      if (!owner) cleanup?.();
+      cleanup?.();
     }
   });
 }
 
+/** Solid 2.0 name for onMount */
+export const onSettled = onMount;
+
 /**
- * Batch multiple signal updates into a single flush
+ * Compatibility shim: updates are batched on the microtask queue by default,
+ * so batch() just runs fn and flushes synchronously at the end.
  */
 export function batch(fn: () => void): void {
   batchDepth++;
@@ -909,21 +1649,8 @@ export function batch(fn: () => void): void {
  *
  * - `createScope(fn)` - Auto-disposed when parent disposes (default)
  * - `createScope(fn, true)` - Detached, requires manual disposal
- *
- * Use this for:
- * - Top-level application roots (detached)
- * - Nested reactive scopes (attached)
- * - Conditional rendering contexts
- * - Component-like boundaries
- *
- * @param fn Function to run in the scope, receives dispose function
- * @param detached If true, scope is NOT auto-disposed with parent
- * @returns The return value of fn
  */
-export function createScope<T>(
-  fn: (dispose: () => void) => T,
-  detached = false,
-): T {
+export function createScope<T>(fn: (dispose: () => void) => T, detached = false): T {
   const owner = createOwnerScope(!detached);
   return runInOwner(owner, fn);
 }
@@ -933,9 +1660,9 @@ function createOwnerScope(registerWithParent: boolean): Owner {
   let disposed = false;
 
   const owner: Owner = {
-    cleanups: [],
+    cleanups: null,
     dispose: () => {},
-    children: [],
+    children: null,
     disposed: false,
     _parent: currentOwner,
     _context: currentOwner?._context ?? defaultContext,
@@ -947,27 +1674,28 @@ function createOwnerScope(registerWithParent: boolean): Owner {
     owner.disposed = true;
 
     // Dispose children in reverse order (LIFO)
-    for (let i = owner.children.length - 1; i >= 0; i--) {
-      disposeNode(owner.children[i]);
+    const children = owner.children;
+    if (children !== null) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        disposeNode(children[i]);
+      }
+      children.length = 0;
     }
-    owner.children.length = 0;
 
     // Run cleanups in reverse order (LIFO)
-    for (let i = owner.cleanups.length - 1; i >= 0; i--) {
-      try {
-        owner.cleanups[i]();
-      } catch (err) {
-        console.error("Error in scope cleanup:", err);
+    const cleanups = owner.cleanups;
+    if (cleanups !== null) {
+      for (let i = cleanups.length - 1; i >= 0; i--) {
+        runUntracked(cleanups[i]);
       }
+      cleanups.length = 0;
     }
-    owner.cleanups.length = 0;
   };
 
   owner.dispose = dispose;
 
-  // Register with parent owner if requested
   if (registerWithParent && currentOwner) {
-    currentOwner.cleanups.push(dispose);
+    (currentOwner.cleanups ??= []).push(dispose);
   }
 
   return owner;
@@ -985,10 +1713,91 @@ function runInOwner<T>(owner: Owner, fn: (dispose: () => void) => T): T {
 }
 
 /**
+ * Whether a tracked computation is currently running.
+ * Used by the store to skip node allocation on untracked reads.
+ */
+export function isTracking(): boolean {
+  return tracking && currentObserver !== null;
+}
+
+/**
+ * Create an owner scope without running anything in it; pair with
+ * runWithOwner. Disposed with its parent, or manually via dispose().
+ */
+export function createOwner(): Owner {
+  return createOwnerScope(true);
+}
+
+/**
+ * The computation currently tracking reads, or null outside a tracked scope.
+ * Distinct from getOwner(), which is the lifecycle scope and stays set inside
+ * untrack() and effect apply phases.
+ */
+export function getObserver(): Owner | null {
+  return tracking ? currentObserver : null;
+}
+
+/** Whether an owner (or computation) has been disposed. */
+export function isDisposed(node: Owner): boolean {
+  return node.disposed === true;
+}
+
+/** The default signal comparator: strict equality, with NaN equal to NaN. */
+export function isEqual<T>(a: T, b: T): boolean {
+  return a === b || (a !== a && b !== b);
+}
+
+/** Whether the runtime has Proxy (stores degrade without it). */
+export const SUPPORTS_PROXY: boolean = typeof Proxy === "function";
+
+// ============================================================================
+// Stable child ids (hydration / SSR correlation)
+// ============================================================================
+
+const childCounts = new WeakMap<Owner, number>();
+const ownerIds = new WeakMap<Owner, string>();
+let rootIdCounter = 0;
+
+function formatChildId(prefix: string, index: number): string {
+  const num = index.toString(36);
+  const len = num.length - 1;
+  return prefix + (len ? String.fromCharCode(64 + len) : "") + num;
+}
+
+function ownerId(owner: Owner): string {
+  let id = ownerIds.get(owner);
+  if (id === undefined) {
+    const parent = owner._parent;
+    id = parent !== null ? getNextChildId(parent) : `r${(rootIdCounter++).toString(36)}`;
+    ownerIds.set(owner, id);
+  }
+  return id;
+}
+
+/** Allocate the next stable child id for `owner` (consumes the counter). */
+export function getNextChildId(owner: Owner): string {
+  const next = childCounts.get(owner) ?? 0;
+  childCounts.set(owner, next + 1);
+  return formatChildId(ownerId(owner), next);
+}
+
+/** The id getNextChildId would return next, without consuming it. */
+export function peekNextChildId(owner: Owner): string {
+  return formatChildId(ownerId(owner), childCounts.get(owner) ?? 0);
+}
+
+/**
  * Read signals without creating dependencies.
  * Note: Owner context is maintained (only tracking is disabled).
  */
 export function untrack<T>(fn: () => T): T {
+  if (externalSource !== null) {
+    return externalSource.untrack(() => untrackInner(fn));
+  }
+  return untrackInner(fn);
+}
+
+function untrackInner<T>(fn: () => T): T {
   const prevTracking = tracking;
   tracking = false;
   try {
@@ -999,36 +1808,341 @@ export function untrack<T>(fn: () => T): T {
 }
 
 // ============================================================================
-// Context API (SolidJS-style)
+// Async helpers (Solid 2.0)
+// ============================================================================
+
+/** In-flight async computations, stamped with the session that started them */
+const inFlight = new Map<Promise<unknown>, symbol | null>();
+
+/** Resolved values of keyed async computeds, bucketed by session (SSR) */
+const hydrationData = new Map<symbol | null, Map<string, unknown>>();
+
+function recordHydrationValue(session: symbol | null, key: string, value: unknown): void {
+  let bucket = hydrationData.get(session);
+  if (!bucket) {
+    bucket = new Map();
+    hydrationData.set(session, bucket);
+  }
+  bucket.set(key, value);
+}
+
+/** Session active while a fetch starts; lets settle() wait only its own work */
+let activeAsyncSession: symbol | null = null;
+
+/**
+ * Set the active async session; fetches started while it's set are
+ * attributed to it. Returns the previous session for restoring.
+ * Used by renderToStringAsync to isolate concurrent server renders.
+ */
+export function setAsyncSession(session: symbol | null): symbol | null {
+  const prev = activeAsyncSession;
+  activeAsyncSession = session;
+  return prev;
+}
+
+/**
+ * Wait until the reactive graph is quiet: flushes synchronously, awaits
+ * in-flight async computations, and repeats until nothing remains
+ * (covers async waterfalls). The backbone of renderToStringAsync; also
+ * handy in tests.
+ *
+ * With `session`, only waits for fetches attributed to that session (see
+ * setAsyncSession) - required on servers where concurrent renders share
+ * the module graph; fetches triggered by this settle's own flushes are
+ * attributed automatically.
+ */
+export async function settle(session?: symbol): Promise<void> {
+  const flushInSession = () => {
+    if (session === undefined) {
+      flushSync();
+      return;
+    }
+    const prev = activeAsyncSession;
+    activeAsyncSession = session;
+    try {
+      flushSync();
+    } finally {
+      activeAsyncSession = prev;
+    }
+  };
+
+  flushInSession();
+  while (true) {
+    const waiting: Promise<unknown>[] = [];
+    for (const [promise, owner] of inFlight) {
+      if (session === undefined || owner === session) {
+        waiting.push(promise);
+      }
+    }
+    if (waiting.length === 0) break;
+    await Promise.allSettled(waiting);
+    flushInSession();
+  }
+}
+
+/**
+ * SSR: resolved values of keyed async computeds, for serialization.
+ * With a session, returns that render's values (plus unsessioned ones).
+ */
+export function getHydrationData(session?: symbol): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  const nullBucket = hydrationData.get(null);
+  if (nullBucket) {
+    for (const [key, value] of nullBucket) result[key] = value;
+  }
+  if (session !== undefined) {
+    const bucket = hydrationData.get(session);
+    if (bucket) {
+      for (const [key, value] of bucket) result[key] = value;
+    }
+  } else {
+    for (const [bucketSession, bucket] of hydrationData) {
+      if (bucketSession === null) continue;
+      for (const [key, value] of bucket) result[key] = value;
+    }
+  }
+  return result;
+}
+
+/** SSR: reset recorded async data (one session's, or everything) */
+export function clearHydrationData(session?: symbol): void {
+  if (session !== undefined) {
+    hydrationData.delete(session);
+  } else {
+    hydrationData.clear();
+  }
+}
+
+/** Client: the payload emitted by generateHydrationScript, if present */
+function getSeed(key: string): { found: boolean; value?: unknown } {
+  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+  if (store && key in store) {
+    const value = store[key];
+    delete store[key]; // consume: a later refresh() refetches for real
+    return { found: true, value };
+  }
+  return { found: false };
+}
+
+/**
+ * Returns whether any value read by fn is currently pending.
+ * Reactive: subscribes to the values fn reads.
+ */
+export function isPending(fn: () => unknown): boolean {
+  try {
+    fn();
+    return false;
+  } catch (err) {
+    if (err instanceof NotReadyError) return true;
+    throw err;
+  }
+}
+
+/**
+ * Read the latest settled value of pending computations instead of
+ * throwing NotReadyError. Falls through (throws) for values that have
+ * never resolved.
+ */
+export function latest<T>(fn: () => T): T {
+  latestDepth++;
+  try {
+    return fn();
+  } finally {
+    latestDepth--;
+  }
+}
+
+/**
+ * Invalidate a derived/async computation and recompute it.
+ * Observed computations re-run on the next flush; unobserved ones on next read.
+ */
+export function refresh(target: () => unknown): void {
+  const node = (target as unknown as { _node?: ComputedNode<unknown> })._node;
+  if (!node || node._fn === undefined) return;
+  node._flags = (node._flags & ~REACTIVE_CHECK) | REACTIVE_DIRTY;
+  propagate(node, REACTIVE_DIRTY);
+  if (node._kind !== EFFECT_PURE) {
+    insertIntoHeap(node, heapFor(node));
+  }
+  schedule();
+}
+
+/**
+ * Declare that a derived value is in motion: it and everything downstream read
+ * as pending (Loading boundaries show fallbacks, `latest()` keeps the last
+ * settled value) until the returned release is called.
+ *
+ * Marks stack, so overlapping declarations each need their own release.
+ * Targets must be derived (`computed` / `createAsync`); a plain signal has no
+ * status channel to carry the mark.
+ */
+export function markInMotion(target: () => unknown): () => void {
+  const node = (target as unknown as { _node?: ComputedNode<unknown> })._node;
+  if (!node || node._fn === undefined) {
+    throw new Error("affects() needs a derived value (computed/createAsync), not a plain signal.");
+  }
+  const count = (affectsCounts.get(node) ?? 0) + 1;
+  affectsCounts.set(node, count);
+  if (count === 1) {
+    node._flags |= REACTIVE_AFFECTED;
+    propagate(node, REACTIVE_DIRTY);
+    schedule();
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const remaining = (affectsCounts.get(node) ?? 1) - 1;
+    if (remaining > 0) {
+      affectsCounts.set(node, remaining);
+      return;
+    }
+    affectsCounts.delete(node);
+    node._flags &= ~REACTIVE_AFFECTED;
+    propagate(node, REACTIVE_DIRTY);
+    schedule();
+  };
+}
+
+const affectsCounts = new WeakMap<ComputedNode<unknown>, number>();
+
+// ============================================================================
+// External reactive sources
+// ============================================================================
+
+export interface ExternalSource {
+  track: (prev: unknown) => unknown;
+  dispose: () => void;
+}
+
+export type ExternalSourceFactory = (
+  fn: (prev?: unknown) => unknown,
+  trigger: () => void,
+) => ExternalSource;
+
+export interface ExternalSourceConfig {
+  factory: ExternalSourceFactory;
+  untrack?: <T>(fn: () => T) => T;
+}
+
+let externalSource: { factory: ExternalSourceFactory; untrack: <T>(fn: () => T) => T } | null = null;
+
+/**
+ * Bridge another reactive library (MobX, Vue refs, ...) into the graph: every
+ * computation created afterwards runs inside the external tracker, and an
+ * external change re-runs it.
+ *
+ * Repeat calls compose - each factory wraps the previous one.
+ */
+export function enableExternalSource(config: ExternalSourceConfig): void {
+  const factory = config.factory;
+  const untrackFn = config.untrack ?? (<T>(fn: () => T): T => fn());
+
+  if (externalSource !== null) {
+    const previous = externalSource;
+    externalSource = {
+      factory: (fn, trigger) => {
+        const outer = previous.factory(fn, trigger);
+        const inner = factory((prev) => outer.track(prev), trigger);
+        return {
+          track: (prev) => inner.track(prev),
+          dispose() {
+            inner.dispose();
+            outer.dispose();
+          },
+        };
+      },
+      untrack: <T>(fn: () => T): T => previous.untrack(() => untrackFn(fn)),
+    };
+  } else {
+    externalSource = { factory, untrack: untrackFn };
+  }
+}
+
+/** Remove any registered external source bridge (does not rewire existing nodes). */
+export function resetExternalSource(): void {
+  externalSource = null;
+}
+
+function wireExternalSource(node: ComputedNode<unknown>, owner: Owner | null): void {
+  const bridge = signal<undefined>(undefined, { equals: false, ownedWrite: true });
+  const source = externalSource!.factory(node._fn, () => bridge.set(undefined));
+  if (owner !== null) {
+    (owner.cleanups ??= []).push(() => source.dispose());
+  }
+  node._fn = (prev?: unknown): unknown => {
+    bridge();
+    return source.track(prev);
+  };
+}
+
+/**
+ * Async derived value: a computed whose function returns a promise.
+ * Reading it before resolution throws NotReadyError (caught by Loading
+ * boundaries / isPending / latest).
+ *
+ * With `key`, the resolved value is recorded on the server (see
+ * getHydrationData / generateHydrationScript) and consumed from
+ * `__BARQ_DATA__` on the client: the first read resolves synchronously
+ * with the server value instead of refetching. Note the seeded first run
+ * doesn't track fn's dependencies; use refresh() to refetch.
+ */
+export function createAsync<T>(
+  fn: (prev?: T) => Promise<T> | T,
+  options?: SignalOptions<T> & { key?: string },
+): Computed<T> {
+  const key = options?.key;
+  if (key === undefined) {
+    return computed(fn as (prev?: T) => T, options);
+  }
+
+  let trySeed = true;
+  const wrapped = (prev?: T): T => {
+    if (trySeed) {
+      trySeed = false;
+      const seed = getSeed(key);
+      if (seed.found) {
+        return seed.value as T;
+      }
+    }
+    return fn(prev) as T;
+  };
+
+  const accessor = computed(wrapped, options);
+  (accessor as unknown as { _node: ComputedNode<T> })._node._serializeKey = key;
+  return accessor;
+}
+
+// ============================================================================
+// Context API
 // ============================================================================
 
 /** Value can be static or a reactive accessor */
 type MaybeAccessor<T> = T | (() => T);
 
+// Type-only: keeps Provider usable as a JSX component (no runtime cycle)
+import type { JSXElement } from "./dom.ts";
+
 /**
- * Context object type (matches SolidJS)
+ * Context object type
  */
 export interface Context<T> {
   readonly id: symbol;
   readonly defaultValue: T | undefined;
   /** Provider component for JSX usage - accepts value or accessor */
-  Provider: (props: { value: MaybeAccessor<T>; children: unknown }) => unknown;
+  Provider: (props: { value: MaybeAccessor<T>; children: unknown }) => JSXElement;
 }
 
 /**
  * Create a context for dependency injection.
- * A default value can be provided which will be used when no value is set via setContext.
- *
- * @description https://docs.solidjs.com/reference/component-apis/create-context
  */
 export function createContext<T>(defaultValue?: T, description?: string): Context<T> {
   const id = Symbol(description ?? "context");
 
-  // Provider creates a new scope and sets context for children (like SolidJS)
-  const Provider = (props: { value: MaybeAccessor<T>; children: unknown }): unknown => {
-    // Create a new root scope for children with context set
+  // Provider creates an owned scope so it is disposed with its parent
+  const Provider = (props: { value: MaybeAccessor<T>; children: unknown }): JSXElement => {
     return createScope(() => {
-      // Set context on the new scope - store value as-is (may be accessor)
       const owner = getCurrentOwner();
       if (owner) {
         owner._context = {
@@ -1037,12 +2151,11 @@ export function createContext<T>(defaultValue?: T, description?: string): Contex
         };
       }
 
-      // Resolve children
       if (typeof props.children === "function") {
-        return (props.children as () => unknown)();
+        return (props.children as () => JSXElement)();
       }
-      return props.children;
-    }, true);
+      return props.children as JSXElement;
+    });
   };
 
   return {
@@ -1057,8 +2170,6 @@ export function createContext<T>(defaultValue?: T, description?: string): Contex
  *
  * @throws `NoOwnerError` if there's no owner at the time of call.
  * @throws `ContextNotFoundError` if context value has not been set and no default.
- *
- * @description https://docs.solidjs.com/reference/component-apis/use-context
  */
 export function getContext<T>(context: Context<T>, owner: Owner | null = getOwner()): T {
   if (!owner) {
@@ -1081,7 +2192,11 @@ export function getContext<T>(context: Context<T>, owner: Owner | null = getOwne
  *
  * @throws `NoOwnerError` if there's no owner at the time of call.
  */
-export function setContext<T>(context: Context<T>, value?: T, owner: Owner | null = getOwner()): void {
+export function setContext<T>(
+  context: Context<T>,
+  value?: T,
+  owner: Owner | null = getOwner(),
+): void {
   if (!owner) {
     throw new NoOwnerError();
   }
@@ -1104,21 +2219,15 @@ export function hasContext<T>(context: Context<T>, owner: Owner | null = getOwne
 /**
  * Get the current value from a context.
  * Always returns an accessor function for consistent API.
- * If Provider received an accessor, that accessor is returned.
- * If Provider received a static value, a wrapper accessor is returned.
- *
- * @description https://docs.solidjs.com/reference/component-apis/use-context
  */
 export function useContext<T>(context: Context<T>): () => T {
   const owner = getCurrentOwner();
 
   if (owner && hasContext(context, owner)) {
     const stored = owner._context[context.id];
-    // If stored value is already an accessor, return it
     if (typeof stored === "function") {
       return stored as () => T;
     }
-    // Otherwise wrap in accessor
     return () => stored as T;
   }
 
