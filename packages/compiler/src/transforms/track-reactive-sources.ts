@@ -3,23 +3,24 @@ import type * as t from "@babel/types"
 import {
   type PluginState,
   type ReactiveBinding,
+  isReactiveIdentifier,
   registerReactiveBinding,
 } from "../types.js"
 
 /**
  * Reactive hooks that return [getter, setter] tuple
  */
-const SIGNAL_HOOKS = new Set(["useState", "signal", "useLocalStorage"])
+const SIGNAL_HOOKS = new Set(["useState", "signal", "useLocalStorage", "createOptimistic"])
 
 /**
  * Reactive hooks that return [state, setState] for stores
  */
-const STORE_HOOKS = new Set(["useStore"])
+const STORE_HOOKS = new Set(["useStore", "createOptimisticStore", "createProjection"])
 
 /**
  * Reactive hooks that return computed values
  */
-const COMPUTED_HOOKS = new Set(["useMemo", "computed"])
+const COMPUTED_HOOKS = new Set(["useMemo", "computed", "createAsync"])
 
 /**
  * Reactive hooks that return resources
@@ -47,13 +48,23 @@ export function trackReactiveSources(
   for (const declarator of path.node.declarations) {
     if (!declarator.init) continue
 
+    // Alias of an existing reactive binding: const c = count
+    if (declarator.init.type === "Identifier" && declarator.id.type === "Identifier") {
+      const source = isReactiveIdentifier(state, declarator.init.name)
+      if (source && source.setter !== declarator.init.name) {
+        registerReactiveBinding(state, { ...source, name: declarator.id.name })
+      }
+      continue
+    }
+
     // Check if it's a call expression
     if (declarator.init.type !== "CallExpression") continue
 
     const callee = declarator.init.callee
     if (callee.type !== "Identifier") continue
 
-    const hookName = callee.name
+    // Resolve renamed imports: import { signal as sig } from "@barqjs/core"
+    const hookName = state.importAliases?.get(callee.name) ?? callee.name
 
     // Handle [getter, setter] = useState/signal pattern
     if (SIGNAL_HOOKS.has(hookName)) {
@@ -143,6 +154,14 @@ function trackStoreBinding(
 
       registerReactiveBinding(state, binding)
     }
+  }
+  // Direct store proxy: const selected = createProjection(...)
+  else if (id.type === "Identifier") {
+    registerReactiveBinding(state, {
+      type: "store",
+      name: id.name,
+      storeName: id.name,
+    })
   }
 }
 

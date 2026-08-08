@@ -69,6 +69,13 @@ export interface BarqCompilerOptions {
    * @default false
    */
   dev?: boolean
+
+  /**
+   * Compile intrinsic JSX trees to hoisted cloneable templates with
+   * precomputed walks to dynamic holes (the optimizing pass)
+   * @default true
+   */
+  templates?: boolean
 }
 
 /**
@@ -82,6 +89,8 @@ export interface PluginState {
   needsUseMemo: boolean
   /** File-level imports from barq */
   barqImports: Set<string>
+  /** Renamed barq imports: local name -> canonical exported name */
+  importAliases?: Map<string, string>
   /** Current file path */
   filename?: string
 }
@@ -188,11 +197,14 @@ export const DEFAULT_CONTROL_FLOW = [
   "Match",
   "Switch",
   "ErrorBoundary",
+  "Errored",
   "Suspense",
+  "Loading",
+  "Reveal",
   "Await",
 ]
 
 /**
  * Default list components
  */
-export const DEFAULT_LIST_COMPONENTS = ["For", "Index"]
+export const DEFAULT_LIST_COMPONENTS = ["For", "Index", "Repeat"]

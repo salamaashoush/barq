@@ -18,6 +18,10 @@ import {
 } from "./transforms/jsx-expressions.js"
 import { transformControlFlow } from "./transforms/control-flow.js"
 import { transformAutoComputed } from "./transforms/auto-computed.js"
+import {
+  finalizeTemplates,
+  transformTemplateCodegen,
+} from "./transforms/template-codegen.js"
 
 /**
  * Barq Babel Plugin
@@ -61,10 +65,12 @@ export default function barqPlugin(
           providerComponents: opts.providerComponents ?? [],
           moduleSource: opts.moduleSource ?? "@barqjs/core",
           dev: opts.dev ?? false,
+          templates: opts.templates ?? true,
         },
         scopeStack: [{ reactiveBindings: new Map() }],
         needsUseMemo: false,
         barqImports: new Set(),
+        importAliases: new Map(),
         filename: this.filename,
       }
     },
@@ -84,6 +90,11 @@ export default function barqPlugin(
                   : specifier.imported.value
 
               state.barqImports.add(imported)
+
+              // Renamed import: local name maps back to the canonical hook
+              if (specifier.local.name !== imported) {
+                state.importAliases?.set(specifier.local.name, imported)
+              }
             }
           }
         }
@@ -108,22 +119,6 @@ export default function barqPlugin(
 
           popScope(state)
         },
-      },
-
-      // Track arrow function components
-      VariableDeclarator(path, passState) {
-        const state = (passState as PluginPass & { barqState: PluginState }).barqState
-        const id = path.node.id
-        const init = path.node.init
-
-        // Check if this is a component: const Foo = () => {...}
-        if (
-          id.type === "Identifier" &&
-          /^[A-Z]/.test(id.name) &&
-          init?.type === "ArrowFunctionExpression"
-        ) {
-          // Will be handled by ArrowFunctionExpression visitor
-        }
       },
 
       // Track arrow functions that are components
@@ -195,6 +190,17 @@ export default function barqPlugin(
       Program: {
         exit(path, passState) {
           const state = (passState as PluginPass & { barqState: PluginState }).barqState
+
+          // Optimizing pass: after all reactive-wrapping transforms ran,
+          // compile outermost intrinsic JSX trees to cloneable templates
+          if (state.opts.templates !== false) {
+            path.traverse({
+              JSXElement(jsxPath) {
+                transformTemplateCodegen(jsxPath, state)
+              },
+            })
+            finalizeTemplates(path, state)
+          }
 
           if (state.needsUseMemo && !state.barqImports.has("useMemo")) {
             // Find existing barq import

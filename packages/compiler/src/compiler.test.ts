@@ -17,22 +17,6 @@ function transform(code: string, opts = {}): string {
   return result?.code ?? ""
 }
 
-/**
- * Normalize whitespace for comparison
- */
-function normalize(code: string): string {
-  return code
-    .replace(/\s+/g, " ")
-    .replace(/\( /g, "(")
-    .replace(/ \)/g, ")")
-    .replace(/\{ /g, "{")
-    .replace(/ \}/g, "}")
-    .replace(/< /g, "<")
-    .replace(/ >/g, ">")
-    .replace(/ ,/g, ",")
-    .trim()
-}
-
 describe("Barq Compiler", () => {
   describe("Reactive Source Tracking", () => {
     it("should track useState bindings", () => {
@@ -98,9 +82,10 @@ describe("Barq Compiler", () => {
 
       const output = transform(input)
 
-      // Simple {count} should stay as {count}
-      expect(output).toContain("{count}")
-      expect(output).not.toContain("{count()}")
+      // Compiled: raw signal accessor passed to insert (not called eagerly)
+      expect(output).toContain("_$template(`<div><!----></div>`)")
+      expect(output).toContain("_$insert(_el$, count,")
+      expect(output).not.toContain("count()")
     })
 
     it("should wrap binary expressions with reactive values", () => {
@@ -168,8 +153,9 @@ describe("Barq Compiler", () => {
 
       // when should be wrapped: when={() => visible()}
       expect(output).toContain("when={() => visible()}")
-      // children should be wrapped: {() => <div>Content</div>}
-      expect(output).toContain("{() => <div>Content</div>}")
+      // children thunked; intrinsic content compiled to a template
+      expect(output).toContain("_$template(`<div>Content</div>`)")
+      expect(output).toMatch(/\{\(\) => \(\(\) => \{/)
     })
 
     it("should transform Show with fallback", () => {
@@ -189,8 +175,10 @@ describe("Barq Compiler", () => {
       const output = transform(input)
 
       expect(output).toContain("when={() => visible()}")
-      expect(output).toContain("fallback={() => <span>Hidden</span>}")
-      expect(output).toContain("{() => <div>Content</div>}")
+      // fallback thunked; both branches compiled to templates
+      expect(output).toContain("_$template(`<span>Hidden</span>`)")
+      expect(output).toContain("_$template(`<div>Content</div>`)")
+      expect(output).toMatch(/fallback=\{\(\) => \(\(\) => \{/)
     })
 
     it("should transform Switch/Match", () => {
@@ -415,9 +403,9 @@ describe("Barq Compiler", () => {
 
       const output = transform(input)
 
-      // Should not wrap since items is not reactive
-      expect(output).toContain("{items.length}")
-      expect(output).not.toContain("() => items.length")
+      // Member reads are thunked (store proxies need lazy reads); plain
+      // identifiers stay direct
+      expect(output).toContain("_$insert(_el$, () => items.length,")
     })
 
     it("should handle expressions already wrapped in arrow functions", () => {

@@ -83,7 +83,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
 
         return {
           code: result.code,
-          map: result.map,
+          map: (result.map ?? null) as TransformResult["map"],
         }
       } catch (error) {
         // Re-throw with better error message

@@ -99,7 +99,8 @@ function transformControlFlowComponent(
     const attrName = attr.name.name
 
     // Transform when={condition} → when={() => condition()}
-    if (attrName === "when") {
+    // (`on` is Loading's revalidation key - same accessor treatment)
+    if (attrName === "when" || attrName === "on") {
       wrapAttributeInArrowFunction(attr, state, true, path)
     }
     // Transform fallback={<Fallback />} → fallback={() => <Fallback />}
@@ -130,7 +131,8 @@ function transformListComponent(
     const attrName = attr.name.name
 
     // Transform each={items} → each={() => items()} if reactive
-    if (attrName === "each") {
+    // (Repeat is count-driven instead of each-driven)
+    if (attrName === "each" || (componentName === "Repeat" && attrName === "count")) {
       wrapAttributeInArrowFunction(attr, state, true, path)
     }
     // Transform fallback
@@ -138,6 +140,9 @@ function transformListComponent(
       wrapAttributeInArrowFunction(attr, state, false, path)
     }
   }
+
+  // Repeat children receive a plain index number - no item wrapping
+  if (componentName === "Repeat") return
 
   // For/Index children are callback functions, but we need to transform
   // the item access inside: {(item) => <li>{item.name}</li>}
@@ -206,7 +211,7 @@ function wrapAttributeInArrowFunction(
  */
 function transformChildrenToCallbacks(
   path: NodePath<t.JSXElement>,
-  state: PluginState
+  _state: PluginState
 ): void {
   const children = path.node.children
 
@@ -250,7 +255,7 @@ function transformChildrenToCallbacks(
  */
 function transformListChildCallback(
   path: NodePath<t.JSXElement>,
-  state: PluginState,
+  _state: PluginState,
   componentName: string
 ): void {
   const children = path.node.children
@@ -358,9 +363,9 @@ function transformListCallbackBody(
       if (parent && key !== undefined) {
         const callExpr = t.callExpression(t.identifier(node.name), [])
         if (index !== undefined) {
-          ;(parent as Record<string, unknown[]>)[key as string][index] = callExpr
+          ;(parent as unknown as Record<string, unknown[]>)[key as string][index] = callExpr
         } else {
-          ;(parent as Record<string, unknown>)[key as string] = callExpr
+          ;(parent as unknown as Record<string, unknown>)[key as string] = callExpr
         }
       }
     }
@@ -399,7 +404,7 @@ function addSignalCalls(
       const templateNode = node as t.TemplateLiteral
       for (let i = 0; i < templateNode.expressions.length; i++) {
         const texpr = templateNode.expressions[i]
-        if (texpr.type === "Identifier" && !currentShadowed.has(texpr.name)) {
+        if (texpr.type === "Identifier" && !currentShadowed?.has(texpr.name)) {
           const binding = isReactiveIdentifier(state, texpr.name)
           if (
             binding &&
@@ -416,7 +421,7 @@ function addSignalCalls(
     }
 
     if (node.type === "Identifier") {
-      if (currentShadowed.has(node.name)) return
+      if (currentShadowed?.has(node.name)) return
 
       const binding = isReactiveIdentifier(state, node.name)
 
@@ -455,9 +460,9 @@ function addSignalCalls(
         if (parent && key !== undefined) {
           const callExpr = t.callExpression(t.identifier(node.name), [])
           if (index !== undefined) {
-            ;(parent as Record<string, unknown[]>)[key][index] = callExpr
+            ;(parent as unknown as Record<string, unknown[]>)[key][index] = callExpr
           } else {
-            ;(parent as Record<string, unknown>)[key] = callExpr
+            ;(parent as unknown as Record<string, unknown>)[key] = callExpr
           }
         }
       }
@@ -538,7 +543,7 @@ function traverseWithScope(
   for (const k of Object.keys(node)) {
     if (k === "loc" || k === "start" || k === "end" || k === "type") continue
 
-    const child = (node as Record<string, unknown>)[k]
+    const child = (node as unknown as Record<string, unknown>)[k]
 
     if (Array.isArray(child)) {
       for (let i = 0; i < child.length; i++) {

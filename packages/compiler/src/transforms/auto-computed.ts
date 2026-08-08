@@ -242,7 +242,7 @@ function containsAwait(node: t.Node): boolean {
   for (const key of Object.keys(node)) {
     if (key === "loc" || key === "start" || key === "end" || key === "type") continue
 
-    const child = (node as Record<string, unknown>)[key]
+    const child = (node as unknown as Record<string, unknown>)[key]
 
     if (Array.isArray(child)) {
       for (const item of child) {
@@ -375,7 +375,7 @@ function traverseWithScopeAndParent(
   for (const key of Object.keys(node)) {
     if (key === "loc" || key === "start" || key === "end" || key === "type") continue
 
-    const child = (node as Record<string, unknown>)[key]
+    const child = (node as unknown as Record<string, unknown>)[key]
 
     if (Array.isArray(child)) {
       for (const item of child) {
@@ -418,7 +418,7 @@ function transformToThunk(
  */
 function addSignalCalls(
   node: t.Node,
-  state: PluginState,
+  _state: PluginState,
   reactiveRefs: Array<{ name: string; type: string }>
 ): void {
   const signalNames = new Set(
@@ -430,85 +430,6 @@ function addSignalCalls(
   traverseAndReplaceWithScope(node, new Set(), signalNames)
 }
 
-/**
- * Get root identifier from member expression
- */
-function getRootIdentifier(node: t.MemberExpression): string | null {
-  let current: t.Expression = node.object
-
-  while (current.type === "MemberExpression") {
-    current = current.object
-  }
-
-  if (current.type === "Identifier") {
-    return current.name
-  }
-
-  return null
-}
-
-/**
- * Traverse AST with proper scope tracking
- * Tracks function parameters to know when names are shadowed
- */
-function traverseWithScope(
-  node: t.Node,
-  shadowedNames: Set<string>,
-  visitor: (node: t.Node, shadowedNames: Set<string>) => void
-): void {
-  visitor(node, shadowedNames)
-
-  // Handle function expressions - collect parameter names as shadowed
-  if (
-    node.type === "ArrowFunctionExpression" ||
-    node.type === "FunctionExpression" ||
-    node.type === "FunctionDeclaration"
-  ) {
-    const funcNode = node as t.ArrowFunctionExpression | t.FunctionExpression | t.FunctionDeclaration
-    const newShadowed = new Set(shadowedNames)
-
-    // Add all parameter names to shadowed set
-    for (const param of funcNode.params) {
-      collectBindingNames(param, newShadowed)
-    }
-
-    // Traverse body with new shadowed names
-    if (funcNode.body) {
-      traverseWithScope(funcNode.body, newShadowed, visitor)
-    }
-    return
-  }
-
-  // Handle member expressions - only traverse object, skip property if not computed
-  // This prevents window.location from being confused with a signal named location
-  if (node.type === "MemberExpression") {
-    const memberNode = node as t.MemberExpression
-    // Always traverse the object part
-    traverseWithScope(memberNode.object, shadowedNames, visitor)
-    // Only traverse property if it's computed (e.g., obj[key])
-    if (memberNode.computed && memberNode.property) {
-      traverseWithScope(memberNode.property, shadowedNames, visitor)
-    }
-    return
-  }
-
-  // For other nodes, traverse children
-  for (const key of Object.keys(node)) {
-    if (key === "loc" || key === "start" || key === "end" || key === "type") continue
-
-    const child = (node as Record<string, unknown>)[key]
-
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (item && typeof item === "object" && "type" in item) {
-          traverseWithScope(item as t.Node, shadowedNames, visitor)
-        }
-      }
-    } else if (child && typeof child === "object" && "type" in child) {
-      traverseWithScope(child as t.Node, shadowedNames, visitor)
-    }
-  }
-}
 
 /**
  * Collect all binding names from a pattern (handles destructuring, etc.)
@@ -604,6 +525,20 @@ function traverseAndReplaceWithScope(
       return
     }
 
+    // Accessor methods live on the signal itself: count.set/update/peek
+    if (parent?.type === "MemberExpression" && (parent as t.MemberExpression).object === node) {
+      const memberParent = parent as t.MemberExpression
+      if (
+        !memberParent.computed &&
+        memberParent.property.type === "Identifier" &&
+        (memberParent.property.name === "set" ||
+          memberParent.property.name === "update" ||
+          memberParent.property.name === "peek")
+      ) {
+        return
+      }
+    }
+
     // For signals in member expressions (e.g., items.reduce()), we NEED to add ()
     // items.reduce(...) → items().reduce(...)
 
@@ -621,9 +556,9 @@ function traverseAndReplaceWithScope(
     if (parent && key !== undefined) {
       const callExpr = t.callExpression(t.identifier(node.name), [])
       if (index !== undefined) {
-        ;(parent as Record<string, unknown[]>)[key][index] = callExpr
+        ;(parent as unknown as Record<string, unknown[]>)[key][index] = callExpr
       } else {
-        ;(parent as Record<string, unknown>)[key] = callExpr
+        ;(parent as unknown as Record<string, unknown>)[key] = callExpr
       }
     }
     return
@@ -633,7 +568,7 @@ function traverseAndReplaceWithScope(
   for (const k of Object.keys(node)) {
     if (k === "loc" || k === "start" || k === "end" || k === "type") continue
 
-    const child = (node as Record<string, unknown>)[k]
+    const child = (node as unknown as Record<string, unknown>)[k]
 
     if (Array.isArray(child)) {
       for (let i = 0; i < child.length; i++) {
@@ -645,4 +580,21 @@ function traverseAndReplaceWithScope(
       traverseAndReplaceWithScope(child as t.Node, shadowedNames, signalNames, node, k)
     }
   }
+}
+
+/**
+ * Get root identifier from member expression: state.user.name → "state"
+ */
+function getRootIdentifier(node: t.MemberExpression): string | null {
+  let current: t.Expression = node.object
+
+  while (current.type === "MemberExpression") {
+    current = current.object
+  }
+
+  if (current.type === "Identifier") {
+    return current.name
+  }
+
+  return null
 }

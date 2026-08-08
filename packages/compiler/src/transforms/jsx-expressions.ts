@@ -325,6 +325,21 @@ function transformWithScopeAndReplace(
         return
       }
 
+      // Accessor methods live on the signal itself: count.set(...),
+      // count.update(...), count.peek() must NOT become count().set(...)
+      if (parent?.type === "MemberExpression" && (parent as t.MemberExpression).object === node) {
+        const memberParent = parent as t.MemberExpression
+        if (
+          !memberParent.computed &&
+          memberParent.property.type === "Identifier" &&
+          (memberParent.property.name === "set" ||
+            memberParent.property.name === "update" ||
+            memberParent.property.name === "peek")
+        ) {
+          return
+        }
+      }
+
       // For signals/computed in member expressions (e.g., items.join()), we NEED to add ()
       // items.join(", ") → items().join(", ")
 
@@ -342,9 +357,9 @@ function transformWithScopeAndReplace(
       if (parent && key !== undefined) {
         const callExpr = t.callExpression(t.identifier(node.name), [])
         if (index !== undefined) {
-          ;(parent as Record<string, unknown[]>)[key][index] = callExpr
+          ;(parent as unknown as Record<string, unknown[]>)[key][index] = callExpr
         } else {
-          ;(parent as Record<string, unknown>)[key] = callExpr
+          ;(parent as unknown as Record<string, unknown>)[key] = callExpr
         }
       }
     }
@@ -355,7 +370,7 @@ function transformWithScopeAndReplace(
   for (const k of Object.keys(node)) {
     if (k === "loc" || k === "start" || k === "end" || k === "type") continue
 
-    const child = (node as Record<string, unknown>)[k]
+    const child = (node as unknown as Record<string, unknown>)[k]
 
     if (Array.isArray(child)) {
       for (let i = 0; i < child.length; i++) {
@@ -463,7 +478,7 @@ function traverseWithScope(
   for (const key of Object.keys(node)) {
     if (key === "loc" || key === "start" || key === "end" || key === "type") continue
 
-    const child = (node as Record<string, unknown>)[key]
+    const child = (node as unknown as Record<string, unknown>)[key]
 
     if (Array.isArray(child)) {
       for (const item of child) {
