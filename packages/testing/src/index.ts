@@ -18,8 +18,13 @@
  * ```
  */
 
-import { render as barqRender } from "@barqjs/core";
-import { configure as configureDTL, getQueriesForElement, prettyDOM } from "@testing-library/dom";
+import { flush, render as barqRender } from "@barqjs/core";
+import {
+  configure as configureDTL,
+  fireEvent as dtlFireEvent,
+  getQueriesForElement,
+  prettyDOM,
+} from "@testing-library/dom";
 
 import type {
   MountedRef,
@@ -220,15 +225,35 @@ export async function waitFor<T>(
 /**
  * Act wrapper for batching updates
  *
- * Note: Barq updates are synchronous, so act is usually not needed.
- * This is provided for API compatibility with other testing libraries.
+ * Barq batches updates on the microtask queue; act() flushes them
+ * synchronously after the callback so assertions see the updated DOM.
  */
 export function act(callback: () => void | Promise<void>): Promise<void> {
   const result = callback();
   if (result instanceof Promise) {
-    return result;
+    return result.then(() => flush());
   }
+  flush();
   return Promise.resolve();
+}
+
+/**
+ * fireEvent wrapped to flush Barq's update queue after dispatching,
+ * so DOM assertions right after an event see the updated output.
+ */
+export const fireEvent: typeof dtlFireEvent = ((...args: Parameters<typeof dtlFireEvent>) => {
+  const result = dtlFireEvent(...args);
+  flush();
+  return result;
+}) as typeof dtlFireEvent;
+
+for (const key of Object.keys(dtlFireEvent) as Array<keyof typeof dtlFireEvent>) {
+  const original = dtlFireEvent[key] as (...args: unknown[]) => unknown;
+  (fireEvent as unknown as Record<string, unknown>)[key] = (...args: unknown[]) => {
+    const result = original(...args);
+    flush();
+    return result;
+  };
 }
 
 /**
@@ -296,7 +321,6 @@ export {
   isInaccessible,
   buildQueries,
   // Events
-  fireEvent,
   createEvent,
   // Wait utilities
   waitFor as dtlWaitFor,

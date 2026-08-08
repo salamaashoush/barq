@@ -173,16 +173,9 @@ export interface RouteComponentProps<T = unknown, P extends Params = Params> {
  * Route component type - accepts components with flexible prop requirements
  * Components don't need to accept all props, just the ones they use
  */
-export type RouteComponent<T = unknown, P extends Params = Params> =
-  | ((props: RouteComponentProps<T, P>) => Child)
-  | ((props: { params: P; data: T }) => Child)
-  | ((props: { data: T; children?: Child }) => Child)
-  | ((props: { params: P; children?: Child }) => Child)
-  | ((props: { data: T }) => Child)
-  | ((props: { params: P }) => Child)
-  | ((props: { children?: Child }) => Child)
-  | ((props: Record<string, never>) => Child)
-  | (() => Child)
+export type RouteComponent<T = unknown, P extends Params = Params> = (
+  props: RouteComponentProps<T, P>,
+) => Child
 
 /** Error boundary component props */
 export interface ErrorBoundaryProps {
@@ -490,6 +483,12 @@ interface RouterState {
   navigate: (to: string, options?: NavigateOptions) => Promise<void>
   // Abort controller for cleanup
   abortController: AbortController
+  // Monotonic navigation sequence: only the latest navigation may commit
+  navSeq: number
+  // Abort controller for the in-flight navigation (superseded navs abort)
+  navAbort: AbortController | null
+  // A view transition is currently animating (joins instead of skipping)
+  transitionInFlight: boolean
   // Loading state
   isLoading: () => boolean
   setIsLoading: (loading: boolean) => void
@@ -709,42 +708,85 @@ function supportsViewTransitions(): boolean {
   return typeof document !== 'undefined' && 'startViewTransition' in document
 }
 
-async function performNavigationWithTransition(
-  state: RouterState,
-  performNavigation: () => Promise<void>,
-): Promise<void> {
+/**
+ * Run the synchronous DOM commit of a navigation, wrapped in a view
+ * transition when enabled.
+ *
+ * Only the commit (state batch + render) goes inside the transition
+ * callback: loaders/guards have already finished by then. Keeping the
+ * transition short matters - while one is active the browser's snapshot
+ * overlay swallows pointer events, so long transitions block clicks.
+ */
+async function commitWithViewTransition(state: RouterState, commit: () => void): Promise<void> {
   const config = state.config.viewTransitions
 
-  debug('performNavigationWithTransition called', {
-    enabled: config?.enabled,
-    supportsViewTransitions: supportsViewTransitions(),
-  })
-
-  // Check if view transitions are enabled and supported
-  if (!config?.enabled || !supportsViewTransitions()) {
-    debug('View transitions disabled or not supported, falling back')
-    // Fallback: instant navigation
-    await performNavigation()
+  // Hidden/occluded tabs defer rendering: startViewTransition's callback
+  // may never run there, which would stall navigation indefinitely
+  if (
+    !config?.enabled ||
+    !supportsViewTransitions() ||
+    state.transitionInFlight ||
+    document.visibilityState === 'hidden'
+  ) {
+    commit()
     return
   }
 
   debug('Starting view transition')
+  state.transitionInFlight = true
   config.onTransitionStart?.()
 
-  try {
-    // Use the native View Transitions API
-    // The API exists because we checked supportsViewTransitions()
-    const transition = (
-      document as { startViewTransition: (cb: () => Promise<void>) => { finished: Promise<void> } }
-    ).startViewTransition(() => performNavigation())
-    await transition.finished
-    debug('View transition finished')
-  } catch (err) {
-    // View transition failed, navigation still happened
-    debug('View transition error:', err)
+  let committed = false
+  const doCommit = () => {
+    if (committed) return
+    committed = true
+    commit()
   }
 
-  config.onTransitionEnd?.()
+  try {
+    const transition = (
+      document as unknown as {
+        startViewTransition: (cb: () => void) => {
+          finished: Promise<void>
+          ready?: Promise<void>
+          updateCallbackDone?: Promise<void>
+          skipTransition?: () => void
+        }
+      }
+    ).startViewTransition(doCommit)
+    // A skipped transition rejects every promise it exposes; unhandled
+    // rejections surface to the page unless each one is observed
+    transition.ready?.catch(() => {})
+    transition.updateCallbackDone?.catch(() => {})
+
+    // Safety net: if the browser defers the snapshot (occlusion, frame
+    // throttling), commit anyway - navigation must never wait on paint
+    const guard = setTimeout(() => {
+      if (!committed) {
+        debug('View transition stalled, committing directly')
+        try {
+          transition.skipTransition?.()
+        } catch {
+          // ignore
+        }
+        doCommit()
+      }
+    }, 200)
+
+    await Promise.race([
+      transition.finished.catch(() => {}),
+      new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+    ])
+    clearTimeout(guard)
+    doCommit() // belt and braces: never exit without the commit applied
+    debug('View transition finished')
+  } catch (err) {
+    doCommit()
+    debug('View transition error:', err)
+  } finally {
+    state.transitionInFlight = false
+    config.onTransitionEnd?.()
+  }
 }
 
 // ============================================================================
@@ -815,6 +857,12 @@ async function executeLoader<T>(
 
 /** Perform the core navigation logic */
 async function performCoreNavigation(state: RouterState, to: string, options: NavigateOptions = {}): Promise<void> {
+  // Latest navigation wins: supersede (and abort) any in-flight one
+  const seq = ++state.navSeq
+  state.navAbort?.abort()
+  const navController = new AbortController()
+  state.navAbort = navController
+
   const currentLocation = state.location()
 
   // Resolve relative paths
@@ -837,12 +885,14 @@ async function performCoreNavigation(state: RouterState, to: string, options: Na
 
   if (!match) {
     // No match - clear routes (Outlet will show 404)
-    batch(() => {
-      state.setMatchedRoutes([])
-      state.setLoaderData([])
-      state.setParams({})
-      state.setRouteErrors([])
-      state.setLocation(newLocation)
+    await commitWithViewTransition(state, () => {
+      batch(() => {
+        state.setMatchedRoutes([])
+        state.setLoaderData([])
+        state.setParams({})
+        state.setRouteErrors([])
+        state.setLocation(newLocation)
+      })
     })
     return
   }
@@ -852,6 +902,9 @@ async function performCoreNavigation(state: RouterState, to: string, options: Na
 
   // Run navigation guards
   const guardResult = await runGuards(state, currentLocation, newLocation, match.params, allRoutes)
+
+  // Superseded while guards ran
+  if (seq !== state.navSeq) return
 
   if (!guardResult.allowed) {
     if (guardResult.redirect) {
@@ -880,7 +933,7 @@ async function performCoreNavigation(state: RouterState, to: string, options: Na
   }
 
   // Load data for all routes in parallel
-  const signal = state.abortController.signal
+  const signal = navController.signal
   const loadStart = Date.now()
   const minLoadTime = state.config.loadingMinTime ?? 0
 
@@ -899,12 +952,9 @@ async function performCoreNavigation(state: RouterState, to: string, options: Na
 
     const results = await Promise.all(loaderPromises)
 
-    if (signal.aborted) {
-      debug('Navigation aborted')
-      // Reset loading state even on abort
-      if (hasLoaders) {
-        state.setIsLoading(false)
-      }
+    if (signal.aborted || seq !== state.navSeq) {
+      debug('Navigation superseded, discarding result')
+      // The superseding navigation owns the loading state now
       return
     }
 
@@ -912,6 +962,7 @@ async function performCoreNavigation(state: RouterState, to: string, options: Na
     const elapsed = Date.now() - loadStart
     if (hasLoaders && elapsed < minLoadTime) {
       await new Promise((r) => setTimeout(r, minLoadTime - elapsed))
+      if (seq !== state.navSeq) return
     }
 
     // Process results and extract errors
@@ -928,14 +979,17 @@ async function performCoreNavigation(state: RouterState, to: string, options: Na
       }
     }
 
-    // Update state atomically
-    batch(() => {
-      state.setMatchedRoutes(allRoutes)
-      state.setLoaderData(loaderData)
-      state.setParams(match.params)
-      state.setRouteErrors(routeErrors)
-      state.setLocation(newLocation)
-      state.setIsLoading(false)
+    // Update state atomically; the view transition (if enabled) wraps only
+    // this synchronous commit, never the async loading above
+    await commitWithViewTransition(state, () => {
+      batch(() => {
+        state.setMatchedRoutes(allRoutes)
+        state.setLoaderData(loaderData)
+        state.setParams(match.params)
+        state.setRouteErrors(routeErrors)
+        state.setLocation(newLocation)
+        state.setIsLoading(false)
+      })
     })
 
     // Restore scroll position after navigation
@@ -949,7 +1003,7 @@ async function performCoreNavigation(state: RouterState, to: string, options: Na
     // Run after hooks
     runAfterHooks(state, currentLocation, newLocation, match.params)
   } catch (err) {
-    if (!signal.aborted) {
+    if (!signal.aborted && seq === state.navSeq) {
       console.error('Router loader error:', err)
       // Still set routes so UI can show error state
       batch(() => {
@@ -1001,6 +1055,9 @@ function initBrowserRouter(config: RouterConfig): RouterState {
     base,
     navigate: async () => {}, // Will be set below
     abortController,
+    navSeq: 0,
+    navAbort: null,
+    transitionInFlight: false,
     isLoading,
     setIsLoading,
     scrollPositions: new Map(),
@@ -1013,16 +1070,16 @@ function initBrowserRouter(config: RouterConfig): RouterState {
     const resolvedPath = resolvePath(to, state.location().pathname)
     const fullPath = resolvedPath.startsWith('/') ? base + resolvedPath : resolvedPath
 
-    await performNavigationWithTransition(state, async () => {
-      // Update browser history
-      if (options.replace) {
-        window.history.replaceState(options.state ?? null, '', fullPath)
-      } else {
-        window.history.pushState(options.state ?? null, '', fullPath)
-      }
+    // Update browser history
+    if (options.replace) {
+      window.history.replaceState(options.state ?? null, '', fullPath)
+    } else {
+      window.history.pushState(options.state ?? null, '', fullPath)
+    }
 
-      await performCoreNavigation(state, resolvedPath, options)
-    })
+    // Loading happens outside any view transition (commits are wrapped
+    // inside performCoreNavigation), so input stays responsive
+    await performCoreNavigation(state, resolvedPath, options)
   }
 
   registerRouter(state)
@@ -1068,6 +1125,9 @@ function initMemoryRouter(config: RouterConfig, initialPath: string): RouterStat
     base,
     navigate: async () => {}, // Will be set below
     abortController,
+    navSeq: 0,
+    navAbort: null,
+    transitionInFlight: false,
     isLoading,
     setIsLoading,
     scrollPositions: new Map(),
@@ -1106,6 +1166,10 @@ function setupBrowserListeners(state: RouterState): () => void {
     if (!(target instanceof HTMLElement)) return
     const anchor = target.closest('a')
     if (!anchor) return
+
+    // Link/NavLink manage their own navigation through barq's delegated
+    // click handler ($$click); intercepting here would navigate twice
+    if ((anchor as HTMLAnchorElement & { $$click?: unknown }).$$click) return
 
     const href = anchor.getAttribute('href')
     if (!href) return
@@ -1798,8 +1862,8 @@ export function route<TPath extends string, TData = unknown>(definition: {
   children?: RouteDefinition[]
   beforeEnter?: NavigationGuard
   errorElement?: (props: ErrorBoundaryProps) => Child
-}): RouteDefinition<TData, PathParams<TPath>> {
-  return definition as RouteDefinition<TData, PathParams<TPath>>
+}): RouteDefinition {
+  return definition as unknown as RouteDefinition
 }
 
 /** @deprecated Use `route()` instead */
