@@ -325,9 +325,29 @@ function buildChildren(
     lastWasText = false
   }
 
-  // Trailing dynamic children skip the placeholder (append at end);
-  // find the index of the last non-text child to know what's trailing
-  for (const child of children) {
+  // A hole that nothing follows needs no placeholder: insert() appends at the
+  // end of the parent. Only the last emitting child qualifies - two holes both
+  // anchored at "the end" would interleave each other's nodes on update.
+  const emitsNothing = (child: t.Node): boolean => {
+    if (child.type === "JSXText") {
+      return (preserveWhitespace ? child.value : cleanJSXText(child.value)) === ""
+    }
+    return (
+      child.type === "JSXExpressionContainer" &&
+      child.expression.type === "JSXEmptyExpression"
+    )
+  }
+  let lastEmittingIndex = -1
+  for (let i = children.length - 1; i >= 0; i--) {
+    if (!emitsNothing(children[i])) {
+      lastEmittingIndex = i
+      break
+    }
+  }
+
+  for (let childIndex = 0; childIndex < children.length; childIndex++) {
+    const child = children[childIndex]
+    const isTrailingHole = childIndex === lastEmittingIndex
     if (child.type === "JSXText") {
       const text = preserveWhitespace ? child.value : cleanJSXText(child.value)
       appendText(text)
@@ -349,10 +369,10 @@ function buildChildren(
       ctx.ops.push({
         kind: "insert",
         parentPath,
-        markerPath: [...parentPath, domIndex],
+        markerPath: isTrailingHole ? undefined : [...parentPath, domIndex],
         expr: wrapDynamicExpr(expr as t.Expression),
       })
-      appendNodeHtml("<!---->")
+      if (!isTrailingHole) appendNodeHtml("<!---->")
       continue
     }
 
@@ -360,10 +380,10 @@ function buildChildren(
       ctx.ops.push({
         kind: "insert",
         parentPath,
-        markerPath: [...parentPath, domIndex],
+        markerPath: isTrailingHole ? undefined : [...parentPath, domIndex],
         expr: child.expression,
       })
-      appendNodeHtml("<!---->")
+      if (!isTrailingHole) appendNodeHtml("<!---->")
       continue
     }
 
@@ -371,10 +391,10 @@ function buildChildren(
       ctx.ops.push({
         kind: "insert",
         parentPath,
-        markerPath: [...parentPath, domIndex],
+        markerPath: isTrailingHole ? undefined : [...parentPath, domIndex],
         expr: child as unknown as t.Expression,
       })
-      appendNodeHtml("<!---->")
+      if (!isTrailingHole) appendNodeHtml("<!---->")
       continue
     }
 
@@ -392,10 +412,10 @@ function buildChildren(
     ctx.ops.push({
       kind: "insert",
       parentPath,
-      markerPath: [...parentPath, domIndex],
+      markerPath: isTrailingHole ? undefined : [...parentPath, domIndex],
       expr: child as unknown as t.Expression,
     })
-    appendNodeHtml("<!---->")
+    if (!isTrailingHole) appendNodeHtml("<!---->")
   }
 
   return html
@@ -479,14 +499,12 @@ function generateInstance(
       )
     } else {
       const parent = refs.get(op.parentPath.join("."))!
-      const marker = op.markerPath
-        ? refs.get(op.markerPath.join("."))!
-        : t.nullLiteral()
       ts.imports.add("insert")
+      // No marker: the hole owns the tail of its parent, so insert() appends
+      const args: t.Expression[] = [parent, op.expr]
+      if (op.markerPath) args.push(refs.get(op.markerPath.join("."))!)
       statements.push(
-        t.expressionStatement(
-          t.callExpression(t.identifier("_$insert"), [parent, op.expr, marker]),
-        ),
+        t.expressionStatement(t.callExpression(t.identifier("_$insert"), args)),
       )
     }
   }

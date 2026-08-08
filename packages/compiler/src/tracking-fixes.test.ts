@@ -104,7 +104,7 @@ describe("tracking fixes", () => {
       }
     `)
     expect(output).toContain("count={() => n()}")
-    expect(output).toContain("_$insert(_el$, i,")
+    expect(output).toContain("_$insert(_el$, i)")
     expect(output).not.toContain("i()")
   })
 })

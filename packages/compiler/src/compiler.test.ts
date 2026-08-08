@@ -83,8 +83,8 @@ describe("Barq Compiler", () => {
       const output = transform(input)
 
       // Compiled: raw signal accessor passed to insert (not called eagerly)
-      expect(output).toContain("_$template(`<div><!----></div>`)")
-      expect(output).toContain("_$insert(_el$, count,")
+      expect(output).toContain("_$template(`<div></div>`)")
+      expect(output).toContain("_$insert(_el$, count)")
       expect(output).not.toContain("count()")
     })
 
@@ -405,7 +405,7 @@ describe("Barq Compiler", () => {
 
       // Member reads are thunked (store proxies need lazy reads); plain
       // identifiers stay direct
-      expect(output).toContain("_$insert(_el$, () => items.length,")
+      expect(output).toContain("_$insert(_el$, () => items.length)")
     })
 
     it("should handle expressions already wrapped in arrow functions", () => {

@@ -3,7 +3,6 @@
  * Fine-grained reactive DOM updates using comment markers
  */
 
-import { clearRange, createMarkerPair, insertNodes } from "./markers.ts";
 import { flush, renderEffect } from "./signals.ts";
 import {
   isString,
@@ -534,9 +533,9 @@ function appendChild(parent: Node, child: Child): void {
     return;
   }
 
-  // Reactive child (function) - use markers for updates
+  // Reactive child: the hole tracks its own nodes, appended at the end
   if (typeof child === "function") {
-    mountReactiveChild(parent, child as () => Child, null);
+    insert(parent, child as () => Child, null);
     return;
   }
 
@@ -606,7 +605,7 @@ function normalizeChildToNodes(value: Child, prev: Node[]): Node[] {
  * right for fine-grained rendering where rows keep their DOM nodes.
  * Adapted from https://github.com/WebReflection/udomdiff
  */
-function reconcileNodeArrays(parent: Node, a: Node[], b: Node[], after: Node): void {
+function reconcileNodeArrays(parent: Node, a: Node[], b: Node[], after: Node | null): void {
   const bLength = b.length;
   let aEnd = a.length;
   let bEnd = bLength;
@@ -678,89 +677,82 @@ function reconcileNodeArrays(parent: Node, a: Node[], b: Node[], after: Node): v
   }
 }
 
-/** Mount a reactive child between fresh markers, before `before` (or at end) */
-function mountReactiveChild(parent: Node, child: () => Child, before: Node | null): void {
-  const [startMarker, endMarker] = createMarkerPair("r");
-  parent.insertBefore(startMarker, before);
-  parent.insertBefore(endMarker, before);
+const EMPTY_NODES: Node[] = [];
 
-  // Track if we have a single text node for fast primitive updates
-  let textNode: Text | null = null;
-  // Nodes currently mounted between the markers (for reconciliation)
-  let currentNodes: Node[] = [];
-
-  renderEffect(() => {
-    const value = child();
-
-    // Fast path: primitive value with existing text node
-    if (textNode && (typeof value === "string" || typeof value === "number")) {
-      textNode.data = String(value);
-      return;
-    }
-
-    // Fast path: primitive value, create single text node
-    if (
-      (typeof value === "string" || typeof value === "number") &&
-      startMarker.nextSibling === endMarker
-    ) {
-      textNode = document.createTextNode(String(value));
-      parent.insertBefore(textNode, endMarker);
-      currentNodes = [textNode];
-      return;
-    }
-
-    textNode = null;
-    const nextNodes = normalizeChildToNodes(value, currentNodes);
-
-    if (currentNodes.length === 0) {
-      insertNodes(endMarker, nextNodes);
-    } else if (nextNodes.length === 0) {
-      clearRange(startMarker, endMarker);
-    } else {
-      // Reconcile in place: unchanged nodes don't move, text reused
-      const liveParent = endMarker.parentNode;
-      if (liveParent) {
-        reconcileNodeArrays(liveParent, currentNodes, nextNodes, endMarker);
-      }
-    }
-    currentNodes = nextNodes;
-
-    if (
-      nextNodes.length === 1 &&
-      nextNodes[0].nodeType === 3 &&
-      nextNodes[0] === startMarker.nextSibling
-    ) {
-      textNode = nextNodes[0] as Text;
-    }
-  });
+function removeNodes(nodes: Node[]): void {
+  for (let i = 0; i < nodes.length; i++) {
+    nodes[i].parentNode?.removeChild(nodes[i]);
+  }
 }
 
 /**
- * Insert a child into `parent` before `marker` (replacing the marker's
- * placeholder role) or appending when no marker. Compiled-template output
- * calls this for dynamic holes; reactive (function) children update
- * fine-grained between comment markers.
+ * Apply `value` into `parent`, replacing whatever this hole rendered last time
+ * (`current`), anchored before `marker` (null = end of parent). Returns the
+ * nodes the hole now owns.
+ *
+ * A hole tracks its own nodes instead of fencing them with comment markers, so
+ * it costs the nodes it actually renders: a lone text hole is one text node,
+ * not a text node between two comments.
  */
-export function insert(parent: Node, value: Child | (() => Child), marker?: Node | null): void {
-  const before = marker ?? null;
+function applyInsert(parent: Node, value: Child, current: Node[], marker: Node | null): Node[] {
+  const primitive = typeof value === "string" || typeof value === "number";
 
-  if (typeof value === "function") {
-    mountReactiveChild(parent, value as () => Child, before);
-  } else if (value !== null && value !== undefined && value !== true && value !== false) {
-    if (value instanceof Node) {
-      parent.insertBefore(value, before);
-    } else if (Array.isArray(value)) {
-      for (const node of childToNodes(value)) {
-        parent.insertBefore(node, before);
-      }
-    } else {
-      parent.insertBefore(document.createTextNode(String(value)), before);
+  if (primitive) {
+    // Same text node as last time: write through it
+    if (current.length === 1 && current[0].nodeType === 3) {
+      (current[0] as Text).data = String(value);
+      return current;
+    }
+    // Sole occupant of its parent: the element is the range, so no bookkeeping
+    if (marker === null && current.length === 0 && parent.firstChild === null) {
+      parent.textContent = String(value);
+      const node = parent.firstChild;
+      return node === null ? EMPTY_NODES : [node];
     }
   }
 
-  // Placeholder comments from compiled templates are consumed
-  if (marker && marker.nodeType === 8 /* comment */) {
-    marker.parentNode?.removeChild(marker);
+  const next = normalizeChildToNodes(value, current);
+
+  if (current.length === 0) {
+    for (let i = 0; i < next.length; i++) parent.insertBefore(next[i], marker);
+    return next;
+  }
+
+  if (next.length === 0) {
+    removeNodes(current);
+    return EMPTY_NODES;
+  }
+
+  const liveParent = current[0].parentNode ?? parent;
+  reconcileNodeArrays(liveParent, current, next, marker);
+  return next;
+}
+
+/**
+ * Insert a child into `parent` before `marker` (or append when absent).
+ * Compiled-template output calls this for dynamic holes; a function value
+ * updates fine-grained in place.
+ */
+export function insert(parent: Node, value: Child | (() => Child), marker?: Node | null): void {
+  const anchor = marker ?? null;
+
+  if (typeof value === "function") {
+    let current: Node[] = EMPTY_NODES;
+    renderEffect(() => {
+      current = applyInsert(parent, (value as () => Child)(), current, anchor);
+    });
+    return;
+  }
+
+  if (value === null || value === undefined || value === true || value === false) return;
+
+  if (value instanceof Node) {
+    parent.insertBefore(value, anchor);
+  } else if (Array.isArray(value)) {
+    const nodes = childToNodes(value);
+    for (let i = 0; i < nodes.length; i++) parent.insertBefore(nodes[i], anchor);
+  } else {
+    parent.insertBefore(document.createTextNode(String(value)), anchor);
   }
 }
 

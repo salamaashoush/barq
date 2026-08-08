@@ -76,10 +76,9 @@ describe("template codegen", () => {
         return <div><span>Hi {name}</span><b>!</b></div>
       }
     `)
-    expect(output).toContain("_$template(`<div><span>Hi <!----></span><b>!</b></div>`)")
+    expect(output).toContain("_$template(`<div><span>Hi </span><b>!</b></div>`)")
     expect(output).toContain("const _el$2 = _el$.firstChild")
-    expect(output).toContain("_el$2.firstChild.nextSibling")
-    expect(output).toContain("_$insert(_el$2, name,")
+    expect(output).toContain("_$insert(_el$2, name)")
   })
 
   it("component children become insert holes; surrounding statics stay in template", () => {
@@ -89,7 +88,7 @@ describe("template codegen", () => {
         return <div><h1>Title</h1><Show when={() => true}>{() => "y"}</Show></div>
       }
     `)
-    expect(output).toContain("_$template(`<div><h1>Title</h1><!----></div>`)")
+    expect(output).toContain("_$template(`<div><h1>Title</h1></div>`)")
     expect(output).toContain("_$insert(_el$, <Show")
   })
 
@@ -132,8 +131,8 @@ describe("template codegen", () => {
         return <section><div dangerouslySetInnerHTML={props.html}>x</div></section>
       }
     `)
-    expect(output).toContain("_$template(`<section><!----></section>`)")
-    expect(output).toContain("_$insert(_el$, <div dangerouslySetInnerHTML={props.html}>x</div>,")
+    expect(output).toContain("_$template(`<section></section>`)")
+    expect(output).toContain("_$insert(_el$, <div dangerouslySetInnerHTML={props.html}>x</div>)")
   })
 
   it("JSX whitespace rules: indentation-only text dropped, inline spaces kept", () => {
