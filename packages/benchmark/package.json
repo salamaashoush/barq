@@ -15,6 +15,7 @@
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@barqjs/core": "workspace:*",
     "@happy-dom/global-registrator": "^15.11.7",
+    "@solidjs/signals": "^2.0.0-beta.31",
     "@types/bun": "latest",
     "typescript": "^5.7.2"
   }
