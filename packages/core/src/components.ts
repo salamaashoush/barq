@@ -9,11 +9,10 @@ import type { IsCompilerMode, StrictAccessor, StrictArrayAccessor } from "./conf
 import type { Child, JSXElement } from "./dom.ts";
 import { type RevealHandle, REVEAL_COORD, createRevealCoordinator } from "./boundaries.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
+import { createErrorCollector, createPendingCollector } from "./boundaries.ts";
+import { mapArray, repeat } from "./map.ts";
 import {
   ERROR_BOUNDARY,
-  LOADING_BOUNDARY,
-  type LoadingBoundaryHandle,
-  type Signal,
   computed,
   createScope,
   getOwner,
@@ -236,259 +235,127 @@ export function For<T, U extends JSXElement>(props: ForProps<T, U>): JSXElement 
     });
   }
 
-  const [startMarker, endMarker] = createMarkerPair("For");
+  const each = (): readonly T[] | undefined | null => {
+    const raw = props.each;
+    return (typeof raw === "function" ? raw() : raw) as readonly T[] | undefined | null;
+  };
+
+  // keyed-by-function rows survive an item change: the row keeps its DOM and
+  // the item reaches children through a signal. Everything else keys on the
+  // item itself, so a changed item is a different row.
+  if (typeof props.keyed === "function") {
+    return renderRows(
+      "For",
+      mapArray(
+        each,
+        (item: () => T, index: () => number) =>
+          childToNodes(
+            (props.children as unknown as (i: () => T, n: () => number) => U)(item, index),
+          ),
+        { keyed: props.keyed, fallback: fallbackNodes(props) },
+      ),
+    );
+  }
+
+  return renderRows(
+    "For",
+    mapArray(
+      each,
+      (item: T, index: () => number) =>
+        childToNodes((props.children as (i: T, n: () => number) => U)(item, index)),
+      { fallback: fallbackNodes(props) },
+    ),
+  );
+}
+
+/** The fallback rendered as nodes, or undefined when there is none */
+function fallbackNodes(props: { fallback?: JSXElement }): (() => Node[]) | undefined {
+  return props.fallback === null || props.fallback === undefined
+    ? undefined
+    : () => childToNodes(props.fallback);
+}
+
+/**
+ * Mount an ordered list of row node-groups between markers and keep the DOM in
+ * that order as the list changes.
+ *
+ * Row lifecycle (creation, reuse, disposal) belongs to mapArray/repeat; this
+ * only moves nodes, so a group's array identity is what tracks a row.
+ */
+function renderRows(label: string, rows: () => Node[][]): JSXElement {
+  const [startMarker, endMarker] = createMarkerPair(label);
 
   const fragment = document.createDocumentFragment();
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
-  // Cache: key -> { nodes, indexSignal, item, dispose }
-  type CacheEntry = {
-    nodes: Node[];
-    indexSignal: Signal<number>;
-    itemSignal?: Signal<T>; // keyed-fn mode: item flows through a signal
-    item: T; // Track item value to detect changes
-    dispose: () => void;
-  };
-  const cache = new Map<unknown, CacheEntry>();
-
-  // keyed-by-function rows receive (itemAccessor, indexAccessor) and are
-  // never re-rendered for a same-key item change - the item signal updates
-  const keyedByFn = typeof props.keyed === "function";
-
-  // Track current order of keys
-  let currentKeys: unknown[] = [];
-
-  // Track fallback dispose
-  let disposeFallback: (() => void) | null = null;
-
-  // Get key for an item: keyed function > keyFn > identity
-  const getKey =
-    typeof props.keyed === "function" ? props.keyed : (props.keyFn ?? ((item: T) => item));
-
-  // Register cleanup at component level (not effect level) for when parent unmounts
-  // This ensures item scopes are disposed even though they're detached
-  onCleanup(() => {
-    for (const entry of cache.values()) {
-      entry.dispose();
-    }
-    cache.clear();
-    if (disposeFallback) {
-      disposeFallback();
-      disposeFallback = null;
-    }
-  });
+  let current: Node[][] = [];
 
   renderEffect(() => {
-    // Support both getter function and direct array
-    const rawEach = props.each;
-    const items = typeof rawEach === "function" ? rawEach() : rawEach;
+    const next = rows();
     const parent = endMarker.parentNode;
     if (!parent) return;
 
-    // Handle empty/falsy list
-    if (!items || items.length === 0) {
-      // Dispose all cached entries
-      for (const entry of cache.values()) {
-        entry.dispose();
-      }
-      cache.clear();
-      clearRange(startMarker, endMarker);
-      currentKeys = [];
-
-      if (props.fallback !== null && props.fallback !== undefined) {
-        createScope((dispose) => {
-          disposeFallback = dispose;
-          insertNodes(endMarker, childToNodes(props.fallback));
-        });
-      }
-      return;
-    }
-
-    // Dispose fallback if it was showing
-    if (disposeFallback) {
-      disposeFallback();
-      disposeFallback = null;
-      // Clear the fallback nodes from DOM
-      clearRange(startMarker, endMarker);
-    }
-
-    const newKeys = items.map(getKey);
-    const newKeySet = new Set(newKeys);
-
-    // Remove entries that are no longer in the list
-    for (const key of currentKeys) {
-      if (!newKeySet.has(key)) {
-        const entry = cache.get(key);
-        if (entry) {
-          // Dispose effects before removing nodes
-          entry.dispose();
-          // Remove nodes from DOM
-          for (const node of entry.nodes) {
-            if (node.parentNode) {
-              node.parentNode.removeChild(node);
-            }
-          }
-          cache.delete(key);
-        }
+    if (current.length > 0) {
+      const kept = new Set(next);
+      for (const group of current) {
+        if (kept.has(group)) continue;
+        for (const node of group) node.parentNode?.removeChild(node);
       }
     }
 
-    // Build map of current positions for existing keys
-    const currentKeyMap = new Map<unknown, number>();
-    for (let i = 0; i < currentKeys.length; i++) {
-      if (newKeySet.has(currentKeys[i])) {
-        currentKeyMap.set(currentKeys[i], i);
-      }
+    syncNodeOrder(parent, endMarker, current, next);
+    current = next;
+  });
+
+  onCleanup(() => {
+    for (const group of current) {
+      for (const node of group) node.parentNode?.removeChild(node);
     }
-
-    // Track which keys were re-rendered (same key but different value)
-    const rerenderedKeys = new Set<unknown>();
-
-    // Process new items - create entries and update indices
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const key = newKeys[i];
-      let entry = cache.get(key);
-
-      // Check if item value changed (same key, different value)
-      const needsRerender = entry && !keyedByFn && !Object.is(entry.item, item);
-
-      if (entry && keyedByFn) {
-        // Same key: update the item signal in place, keep the row
-        if (!Object.is(entry.item, item)) {
-          entry.item = item;
-          entry.itemSignal?.set(item);
-        }
-        if (entry.indexSignal() !== i) {
-          entry.indexSignal.set(i);
-        }
-      } else if (!entry || needsRerender) {
-        // Dispose old entry if re-rendering
-        if (entry) {
-          rerenderedKeys.add(key);
-          entry.dispose();
-          for (const node of entry.nodes) {
-            if (node.parentNode) {
-              node.parentNode.removeChild(node);
-            }
-          }
-        }
-
-        // Create new entry with reactive index signal in a detached scope
-        // (detached because we manage the lifecycle manually via cache)
-        const indexSignal = entry?.indexSignal ?? signal(i);
-        if (entry) {
-          // Reuse index signal, just update if needed
-          if (indexSignal() !== i) {
-            indexSignal.set(i);
-          }
-        }
-        let entryNodes: Node[] = [];
-        let entryDispose!: () => void;
-
-        const itemSignal = keyedByFn ? signal(item) : undefined;
-
-        createScope((dispose) => {
-          entryDispose = dispose;
-          const result = keyedByFn
-            ? (props.children as unknown as (item: () => T, index: () => number) => U)(
-                itemSignal as Signal<T>,
-                indexSignal,
-              )
-            : (props.children as (item: T, index: () => number) => U)(item, indexSignal);
-          entryNodes = childToNodes(result);
-        }, true); // detached
-
-        entry = { nodes: entryNodes, indexSignal, itemSignal, item, dispose: entryDispose };
-        cache.set(key, entry);
-      } else {
-        // Update index signal if changed
-        if (entry.indexSignal() !== i) {
-          entry.indexSignal.set(i);
-        }
-      }
-    }
-
-    // Filter out re-rendered keys from oldKeys so they're treated as new
-    const effectiveOldKeys =
-      rerenderedKeys.size > 0 ? currentKeys.filter((k) => !rerenderedKeys.has(k)) : currentKeys;
-
-    // Reconcile DOM order using efficient algorithm
-    reconcileNodes(parent, endMarker, effectiveOldKeys, newKeys, cache);
-
-    currentKeys = newKeys;
+    current = [];
   });
 
   return fragment;
 }
 
 /**
- * Efficient DOM reconciliation using longest increasing subsequence
+ * Move as few nodes as possible to bring the DOM into `next` order, keeping the
+ * longest increasing subsequence of already-correct rows in place.
  */
-function reconcileNodes(
-  parent: Node,
-  endMarker: Node,
-  oldKeys: unknown[],
-  newKeys: unknown[],
-  cache: Map<unknown, { nodes: Node[] }>,
-): void {
-  const newLen = newKeys.length;
+function syncNodeOrder(parent: Node, endMarker: Node, previous: Node[][], next: Node[][]): void {
+  const newLen = next.length;
 
-  // Fast path: first render or complete replacement
-  if (oldKeys.length === 0) {
+  if (previous.length === 0) {
     for (let i = 0; i < newLen; i++) {
-      const entry = cache.get(newKeys[i]);
-      if (!entry || entry.nodes.length === 0) continue;
-      for (const node of entry.nodes) {
-        parent.insertBefore(node, endMarker);
-      }
+      for (const node of next[i]) parent.insertBefore(node, endMarker);
     }
     return;
   }
 
-  // Build map of old key positions
-  const oldKeyIndex = new Map<unknown, number>();
-  for (let i = 0; i < oldKeys.length; i++) {
-    oldKeyIndex.set(oldKeys[i], i);
-  }
+  const previousIndex = new Map<Node[], number>();
+  for (let i = 0; i < previous.length; i++) previousIndex.set(previous[i], i);
 
-  // Find indices in old array for each new key (-1 if new)
-  const sources: number[] = Array.from(
-    { length: newLen },
-    (_, i) => oldKeyIndex.get(newKeys[i]) ?? -1,
-  );
+  const sources: number[] = new Array(newLen);
+  for (let i = 0; i < newLen; i++) sources[i] = previousIndex.get(next[i]) ?? -1;
 
-  // Find longest increasing subsequence of old indices
   const lis = longestIncreasingSubsequence(sources.filter((s) => s !== -1));
 
-  // Work backwards from end to use insertBefore efficiently
   let lisIndex = lis.length - 1;
   let nextNode: Node = endMarker;
 
   for (let i = newLen - 1; i >= 0; i--) {
-    const key = newKeys[i];
-    const entry = cache.get(key);
-    if (!entry || entry.nodes.length === 0) continue;
+    const group = next[i];
+    if (group.length === 0) continue;
 
-    const oldIndex = sources[i];
-
-    if (oldIndex === -1) {
-      // New node - insert it
-      for (let j = entry.nodes.length - 1; j >= 0; j--) {
-        parent.insertBefore(entry.nodes[j], nextNode);
-      }
-    } else if (lisIndex >= 0 && lis[lisIndex] === oldIndex) {
-      // Node is in LIS - don't move
-      lisIndex--;
+    if (sources[i] !== -1 && lisIndex >= 0 && lis[lisIndex] === sources[i]) {
+      lisIndex--; // already in the right place
     } else {
-      // Node needs to move
-      for (let j = entry.nodes.length - 1; j >= 0; j--) {
-        parent.insertBefore(entry.nodes[j], nextNode);
+      for (let j = group.length - 1; j >= 0; j--) {
+        parent.insertBefore(group[j], nextNode);
       }
     }
 
-    nextNode = entry.nodes[0];
+    nextNode = group[0];
   }
 }
 
@@ -570,126 +437,18 @@ export function Index<T, U extends JSXElement>(props: {
   fallback?: JSXElement;
   children: (item: () => T, index: number) => U;
 }): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Index");
-
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
-
-  // Cache by index: index -> { nodes, itemSignal, dispose }
-  type CacheEntry = {
-    nodes: Node[];
-    itemSignal: Signal<T>;
-    dispose: () => void;
+  const each = (): readonly T[] | undefined | null => {
+    const raw = props.each;
+    return (typeof raw === "function" ? raw() : raw) as readonly T[] | undefined | null;
   };
-  const cache: CacheEntry[] = [];
 
-  let currentLength = 0;
-  let disposeFallback: (() => void) | null = null;
-
-  renderEffect(() => {
-    const rawEach = props.each;
-    const items = typeof rawEach === "function" ? rawEach() : rawEach;
-    const parent = endMarker.parentNode;
-    if (!parent) return;
-
-    // Handle empty/falsy list
-    if (!items || items.length === 0) {
-      // Dispose all cached entries
-      for (const entry of cache) {
-        entry.dispose();
-        for (const node of entry.nodes) {
-          if (node.parentNode) {
-            node.parentNode.removeChild(node);
-          }
-        }
-      }
-      cache.length = 0;
-      currentLength = 0;
-
-      if (props.fallback !== null && props.fallback !== undefined) {
-        createScope((dispose) => {
-          disposeFallback = dispose;
-          insertNodes(endMarker, childToNodes(props.fallback));
-        });
-      }
-      return;
-    }
-
-    // Dispose fallback if it was showing
-    if (disposeFallback) {
-      disposeFallback();
-      disposeFallback = null;
-      clearRange(startMarker, endMarker);
-    }
-
-    const newLength = items.length;
-
-    // Remove excess entries if array shrunk
-    if (newLength < currentLength) {
-      for (let i = newLength; i < currentLength; i++) {
-        const entry = cache[i];
-        if (entry) {
-          entry.dispose();
-          for (const node of entry.nodes) {
-            if (node.parentNode) {
-              node.parentNode.removeChild(node);
-            }
-          }
-        }
-      }
-      cache.length = newLength;
-    }
-
-    // Update existing entries and add new ones
-    for (let i = 0; i < newLength; i++) {
-      const item = items[i];
-      let entry = cache[i];
-
-      if (!entry) {
-        // Create new entry with reactive item signal in a detached scope
-        // (detached because we manage the lifecycle manually via cache)
-        const itemSignal = signal(item);
-        let entryNodes: Node[] = [];
-        let entryDispose!: () => void;
-
-        createScope((dispose) => {
-          entryDispose = dispose;
-          const result = props.children(itemSignal, i);
-          entryNodes = childToNodes(result);
-        }, true); // detached
-
-        entry = { nodes: entryNodes, itemSignal, dispose: entryDispose };
-        cache[i] = entry;
-
-        // Insert new nodes at the end
-        for (const node of entryNodes) {
-          parent.insertBefore(node, endMarker);
-        }
-      } else {
-        // Update item signal if value changed
-        if (entry.itemSignal() !== item) {
-          entry.itemSignal.set(item);
-        }
-      }
-    }
-
-    currentLength = newLength;
-  });
-
-  // Register cleanup at component level (not effect level) for when parent unmounts
-  onCleanup(() => {
-    for (const entry of cache) {
-      entry.dispose();
-    }
-    cache.length = 0;
-    if (disposeFallback) {
-      disposeFallback();
-      disposeFallback = null;
-    }
-  });
-
-  return fragment;
+  return renderRows(
+    "Index",
+    mapArray(each, (item: () => T, index: number) => childToNodes(props.children(item, index)), {
+      keyed: false,
+      fallback: fallbackNodes(props),
+    }),
+  );
 }
 
 /**
@@ -705,78 +464,18 @@ export function Repeat(props: {
   fallback?: JSXElement;
   children: (index: number) => Child;
 }): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Repeat");
+  const count = (): number => {
+    const raw = props.count;
+    return typeof raw === "function" ? raw() : raw;
+  };
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
-
-  type CacheEntry = { nodes: Node[]; dispose: () => void };
-  const cache: CacheEntry[] = [];
-  let disposeFallback: (() => void) | null = null;
-
-  const countAccessor =
-    typeof props.count === "function" ? props.count : () => props.count as number;
-  const from = props.from ?? 0;
-
-  onCleanup(() => {
-    for (const entry of cache) entry.dispose();
-    cache.length = 0;
-    if (disposeFallback) {
-      disposeFallback();
-      disposeFallback = null;
-    }
-  });
-
-  renderEffect(() => {
-    const count = Math.max(0, countAccessor());
-    const parent = endMarker.parentNode;
-    if (!parent) return;
-
-    if (count === 0) {
-      for (const entry of cache) {
-        entry.dispose();
-        for (const node of entry.nodes) node.parentNode?.removeChild(node);
-      }
-      cache.length = 0;
-      if (props.fallback !== null && props.fallback !== undefined && !disposeFallback) {
-        createScope((dispose) => {
-          disposeFallback = dispose;
-          insertNodes(endMarker, childToNodes(props.fallback));
-        }, true);
-      }
-      return;
-    }
-
-    if (disposeFallback) {
-      disposeFallback();
-      disposeFallback = null;
-      clearRange(startMarker, endMarker);
-    }
-
-    // Shrink: dispose from the end
-    if (count < cache.length) {
-      for (let i = count; i < cache.length; i++) {
-        cache[i].dispose();
-        for (const node of cache[i].nodes) node.parentNode?.removeChild(node);
-      }
-      cache.length = count;
-    }
-
-    // Grow: append new blocks
-    for (let i = cache.length; i < count; i++) {
-      let entryNodes: Node[] = [];
-      let entryDispose!: () => void;
-      createScope((dispose) => {
-        entryDispose = dispose;
-        entryNodes = childToNodes(props.children(from + i));
-      }, true);
-      cache.push({ nodes: entryNodes, dispose: entryDispose });
-      insertNodes(endMarker, entryNodes);
-    }
-  });
-
-  return fragment;
+  return renderRows(
+    "Repeat",
+    repeat(count, (index: number) => childToNodes(props.children(index)), {
+      from: () => props.from ?? 0,
+      fallback: fallbackNodes(props),
+    }),
+  );
 }
 
 /**
@@ -944,21 +643,7 @@ export function Loading(props: {
   // Coordination with an enclosing Reveal, if any
   const revealHandle = getOwner()?._context[REVEAL_COORD] as RevealHandle | undefined;
 
-  const pendingNodes = new Set<object>();
-  const pendingCount = signal(0);
-  const handle: LoadingBoundaryHandle = {
-    add(node) {
-      if (!pendingNodes.has(node)) {
-        pendingNodes.add(node);
-        pendingCount.set(pendingNodes.size);
-      }
-    },
-    delete(node) {
-      if (pendingNodes.delete(node)) {
-        pendingCount.set(pendingNodes.size);
-      }
-    },
-  };
+  const pending = createPendingCollector();
 
   // Content lives between its own markers so it can be parked off-DOM
   // while the fallback shows, preserving state across swaps
@@ -974,9 +659,7 @@ export function Loading(props: {
   createScope((dispose) => {
     disposeContent = dispose;
     const owner = getOwner();
-    if (owner) {
-      owner._context = { ...owner._context, [LOADING_BOUNDARY]: handle };
-    }
+    if (owner) pending.install(owner);
     if (typeof props.children === "function") {
       renderEffect(() => {
         const resolved = (props.children as () => Child)();
@@ -1008,14 +691,14 @@ export function Loading(props: {
   // content - unless the `on` expression changes while pending
   const revealed = signal(false);
   renderEffect(() => {
-    if (pendingCount() === 0) revealed.set(true);
+    if (pending.count() === 0) revealed.set(true);
   });
   if (props.on) {
     let first = true;
     let lastOn: unknown;
     renderEffect(() => {
       const value = (props.on as () => unknown)();
-      if (!first && value !== lastOn && pendingCount.peek() > 0) {
+      if (!first && value !== lastOn && untrack(() => pending.count()) > 0) {
         revealed.set(false);
       }
       lastOn = value;
@@ -1029,7 +712,7 @@ export function Loading(props: {
   renderEffect(() => {
     const mode: "content" | "fallback" | "nothing" = slot
       ? slot.display()
-      : pendingCount() > 0 && !revealed()
+      : pending.count() > 0 && !revealed()
         ? "fallback"
         : "content";
     if (mode === showing) return;
@@ -1105,10 +788,8 @@ export function Errored(props: {
   fragment.appendChild(startMarker);
   fragment.appendChild(endMarker);
 
-  const errorSignal = signal<Error | null>(null);
-  const handler = (err: unknown) => {
-    errorSignal.set(err instanceof Error ? err : new Error(String(err)));
-  };
+  const collector = createErrorCollector();
+  const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
 
   let disposeContent: (() => void) | null = null;
 
@@ -1122,14 +803,14 @@ export function Errored(props: {
   const renderFallback = (err: Error): void => {
     createScope((dispose) => {
       disposeContent = dispose;
-      const reset = () => errorSignal.set(null);
+      const reset = () => collector.clear();
       const nodes = childToNodes(props.fallback(() => err, reset));
       insertNodes(endMarker, nodes);
     }, true);
   };
 
   renderEffect(() => {
-    const err = errorSignal();
+    const err = collector.failed() ? asError(collector.error()) : null;
 
     if (disposeContent) {
       disposeContent();
@@ -1146,9 +827,7 @@ export function Errored(props: {
       createScope((dispose) => {
         disposeContent = dispose;
         const owner = getOwner();
-        if (owner) {
-          owner._context = { ...owner._context, [ERROR_BOUNDARY]: handler };
-        }
+        if (owner) collector.install(owner);
         const children =
           typeof props.children === "function" ? (props.children as () => Child)() : props.children;
         insertNodes(endMarker, childToNodes(children));
@@ -1156,8 +835,8 @@ export function Errored(props: {
     } catch (e) {
       // Synchronous render error: record it (a write during our own run
       // does not re-trigger this effect) and render the fallback inline
-      const error = e instanceof Error ? e : new Error(String(e));
-      errorSignal.set(error);
+      const error = asError(e);
+      collector.capture(error);
       // TS can't see the createScope callback assignment
       const dispose = disposeContent as (() => void) | null;
       if (dispose) {

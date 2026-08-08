@@ -121,6 +121,82 @@ export function createRevealOrder<T>(
 // ============================================================================
 
 /**
+ * Collects the pending async work below a boundary. Install the handle on an
+ * owner and every pending computation under it registers here.
+ *
+ * Shared by createLoadingBoundary and the `<Loading>` component, which differ
+ * only in what they do once `count()` is non-zero.
+ */
+export interface PendingCollector {
+  handle: LoadingBoundaryHandle;
+  count: () => number;
+  install: (owner: Owner) => void;
+}
+
+export function createPendingCollector(): PendingCollector {
+  const pendingNodes = new Set<object>();
+  const count = signal(0, BOUNDARY_SIGNAL);
+
+  const handle: LoadingBoundaryHandle = {
+    add(node) {
+      if (!pendingNodes.has(node)) {
+        pendingNodes.add(node);
+        count.set(pendingNodes.size);
+      }
+    },
+    delete(node) {
+      if (pendingNodes.delete(node)) {
+        count.set(pendingNodes.size);
+      }
+    },
+  };
+
+  return {
+    handle,
+    count: () => count(),
+    install(owner) {
+      owner._context = { ...owner._context, [LOADING_BOUNDARY]: handle };
+    },
+  };
+}
+
+/**
+ * Captures errors raised below a boundary - both synchronous throws and
+ * errors surfacing later from effects. Shared by createErrorBoundary and the
+ * `<Errored>` component.
+ */
+export interface ErrorCollector {
+  error: () => unknown;
+  failed: () => boolean;
+  capture: (err: unknown) => void;
+  clear: () => void;
+  install: (owner: Owner) => void;
+}
+
+export function createErrorCollector(): ErrorCollector {
+  const error = signal<unknown>(undefined, BOUNDARY_SIGNAL);
+  const failed = signal(false, BOUNDARY_SIGNAL);
+
+  const capture = (err: unknown): void => {
+    error.set(err);
+    failed.set(true);
+  };
+
+  return {
+    error: () => error(),
+    failed: () => failed(),
+    capture,
+    clear() {
+      failed.set(false);
+      error.set(undefined);
+    },
+    install(owner) {
+      owner._context = { ...owner._context, [ERROR_BOUNDARY]: capture };
+    },
+  };
+}
+
+/**
  * Catch pending async reads inside `fn` and yield `fallback()` until they
  * settle. The accessor swaps back to the content once nothing below is
  * pending.
@@ -135,23 +211,8 @@ export function createLoadingBoundary<T, U>(
   options?: { on?: () => unknown },
 ): Computed<T | U> {
   const owner = createOwner();
-  const pendingNodes = new Set<object>();
-  const pendingCount = signal(0, BOUNDARY_SIGNAL);
-
-  const handle: LoadingBoundaryHandle = {
-    add(node) {
-      if (!pendingNodes.has(node)) {
-        pendingNodes.add(node);
-        pendingCount.set(pendingNodes.size);
-      }
-    },
-    delete(node) {
-      if (pendingNodes.delete(node)) {
-        pendingCount.set(pendingNodes.size);
-      }
-    },
-  };
-  owner._context = { ...owner._context, [LOADING_BOUNDARY]: handle };
+  const pending = createPendingCollector();
+  pending.install(owner);
 
   const content = runWithOwner(owner, () => computed(fn));
 
@@ -165,7 +226,7 @@ export function createLoadingBoundary<T, U>(
       const next = onFn();
       if (hasLastOn && next !== lastOn) {
         // The question changed: stale content must not survive the transition
-        showFallbackUntilSettled = untrack(() => pendingCount()) > 0;
+        showFallbackUntilSettled = untrack(() => pending.count()) > 0;
       }
       lastOn = next;
       hasLastOn = true;
@@ -179,7 +240,7 @@ export function createLoadingBoundary<T, U>(
       throw err;
     }
 
-    if (pendingCount() > 0) return fallback();
+    if (pending.count() > 0) return fallback();
     if (showFallbackUntilSettled) {
       showFallbackUntilSettled = false;
       return fallback();
@@ -205,36 +266,24 @@ export function createErrorBoundary<T, U>(
   fallback: (error: () => unknown, reset: () => void) => U,
 ): Computed<T | U> {
   const owner = createOwner();
-  const error = signal<unknown>(undefined, BOUNDARY_SIGNAL);
-  const failed = signal(false, BOUNDARY_SIGNAL);
-
-  owner._context = {
-    ...owner._context,
-    [ERROR_BOUNDARY]: (err: unknown) => {
-      error.set(err);
-      failed.set(true);
-    },
-  };
+  const collector = createErrorCollector();
+  collector.install(owner);
 
   const content = runWithOwner(owner, () => computed(fn));
 
   const reset = (): void => {
-    failed.set(false);
-    error.set(undefined);
+    collector.clear();
     refresh(content);
   };
 
-  const errorAccessor = (): unknown => error();
-
   return computed<T | U>(() => {
-    if (failed()) return fallback(errorAccessor, reset);
+    if (collector.failed()) return fallback(collector.error, reset);
     try {
       return content();
     } catch (err) {
       if (err instanceof NotReadyError) throw err;
-      error.set(err);
-      failed.set(true);
-      return fallback(errorAccessor, reset);
+      collector.capture(err);
+      return fallback(collector.error, reset);
     }
   });
 }
