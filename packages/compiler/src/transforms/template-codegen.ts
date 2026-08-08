@@ -449,12 +449,34 @@ function generateInstance(
     const cached = refs.get(key)
     if (cached) return cached
 
-    // Derive from the nearest cached ancestor or preceding sibling
-    const parent = getRef(path.slice(0, -1))
+    const parentPath = path.slice(0, -1)
     const index = path[path.length - 1]
-    let expr: t.Expression = t.memberExpression(parent, t.identifier("firstChild"))
-    for (let i = 0; i < index; i++) {
-      expr = t.memberExpression(expr, t.identifier("nextSibling"))
+
+    // Prefer stepping from the closest already-walked sibling: re-walking
+    // `firstChild.nextSibling...` from the parent for each child makes a row
+    // of n holes cost O(n^2) member reads at clone time.
+    let from: t.Expression | null = null
+    let steps = 0
+    for (let j = index - 1; j >= 0; j--) {
+      const sibling = refs.get([...parentPath, j].join("."))
+      if (sibling) {
+        from = sibling
+        steps = index - j
+        break
+      }
+    }
+
+    let expr: t.Expression
+    if (from !== null) {
+      expr = from
+      for (let i = 0; i < steps; i++) {
+        expr = t.memberExpression(expr, t.identifier("nextSibling"))
+      }
+    } else {
+      expr = t.memberExpression(getRef(parentPath), t.identifier("firstChild"))
+      for (let i = 0; i < index; i++) {
+        expr = t.memberExpression(expr, t.identifier("nextSibling"))
+      }
     }
 
     const id = t.identifier(`_el$${++refCounter}`)
@@ -466,14 +488,25 @@ function generateInstance(
   // Phase 1: materialize EVERY needed ref before any mutation runs -
   // insert ops consume their placeholder comments and splice in nodes,
   // which would invalidate sibling walks computed afterwards
+  const needed: HolePath[] = []
   for (const op of ops) {
     if (op.kind === "prop" || op.kind === "spread") {
-      getRef(op.path)
+      needed.push(op.path)
     } else {
-      getRef(op.parentPath)
-      if (op.markerPath) getRef(op.markerPath)
+      needed.push(op.parentPath)
+      if (op.markerPath) needed.push(op.markerPath)
     }
   }
+  // Document order, so a node's preceding siblings are already walked when it
+  // is reached and the sibling shortcut above can fire
+  needed.sort((a, b) => {
+    const len = a.length < b.length ? a.length : b.length
+    for (let i = 0; i < len; i++) {
+      if (a[i] !== b[i]) return a[i] - b[i]
+    }
+    return a.length - b.length
+  })
+  for (const path of needed) getRef(path)
 
   // Phase 2: run the ops against the captured node references
   for (const op of ops) {
