@@ -196,6 +196,22 @@ describe("Style handling", () => {
     expect(el.style.fontSize).toBe("14px");
   });
 
+  test("a string style keeps the author's bytes in the attribute", () => {
+    // The compiler folds a literal style into the template HTML, where the
+    // parser stores it verbatim. Writing it through style.cssText instead would
+    // round-trip it through the CSSOM serializer (which appends ";"), and the
+    // compiled and un-compiled paths would then disagree on the attribute.
+    const literal = "color: red; font-weight: bold";
+    const el = createElement("div", { style: literal }) as HTMLDivElement;
+    expect(el.getAttribute("style")).toBe(literal);
+
+    const parsed = document.createElement("template");
+    parsed.innerHTML = `<div style="${literal}"></div>`;
+    expect((parsed.content.firstChild as Element).getAttribute("style")).toBe(
+      el.getAttribute("style"),
+    );
+  });
+
   test("handles numeric values with px suffix", () => {
     const el = createElement("div", {
       style: { width: 100, height: 50 },

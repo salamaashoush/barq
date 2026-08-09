@@ -1,0 +1,71 @@
+{
+  "name": "@barqjs/compiler-rs",
+  "version": "0.1.0",
+  "description": "Barq compiler (Rust) - native JSX transform for fine-grained reactive code",
+  "keywords": [
+    "barq",
+    "compiler",
+    "jsx",
+    "napi",
+    "reactive",
+    "rust",
+    "signals"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/compiler-rs"
+  },
+  "license": "MIT",
+  "main": "./index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "types": "./index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "napi": {
+    "binaryName": "barq-compiler",
+    "packageName": "@barqjs/compiler-rs",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "cargo test && bun test",
+    "test:rust": "cargo test",
+    "typecheck": "tsc --noEmit",
+    "test:harness": "bun test",
+    "test:browser": "bun test test/browser.test.ts",
+    "test:browser:parse": "bun test/browser-parse-check.ts",
+    "test:browser:svg": "bun test/browser-svg-class-check.ts",
+    "test:browser:differential": "bun test/browser-differential.ts",
+    "artifacts": "napi artifacts",
+    "prepublishOnly": "napi prepublish -t npm"
+  },
+  "devDependencies": {
+    "@barqjs/core": "workspace:*",
+    "@happy-dom/global-registrator": "^20.3.1",
+    "@napi-rs/cli": "^3.8.2",
+    "@types/bun": "^1.3.3"
+  },
+  "engines": {
+    "node": ">=20.17.0"
+  }
+}

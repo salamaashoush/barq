@@ -1,0 +1,61 @@
+# Pre-existing TypeScript errors, as of the day the gate became real.
+#
+# These are NOT the compiler-rs project's work and nothing here was
+# weakened, deleted or @ts-ignored to make them go away. The gate fails
+# on any error NOT in this list, and equally on any line here that stops
+# reproducing — so the list can only shrink, never quietly grow.
+#
+# The 17 `packages/compiler-rs fixtures/…` rows are gaps in @barqjs/core's JSX
+# TYPE definitions that the fixture corpus surfaced when compiler-rs came under
+# the gate — MathML intrinsics, an index signature for custom elements,
+# `dangerouslySetInnerHTML`, and numeric values in a style object. All four are
+# supported at RUNTIME and proved so by the differential harness; it is the
+# declarations that are missing. Fixing them belongs to @barqjs/core.
+#
+# Regenerate with .github/scripts/typecheck.sh --write
+packages/compiler src/transforms/template-codegen.ts(372,9): error TS2322
+packages/compiler src/transforms/template-codegen.ts(383,9): error TS2322
+packages/compiler src/transforms/template-codegen.ts(394,9): error TS2322
+packages/compiler src/transforms/template-codegen.ts(415,7): error TS2322
+packages/compiler-rs fixtures/class-list-prop.tsx(16,23): error TS2322
+packages/compiler-rs fixtures/custom-elements.tsx(10,31): error TS2339
+packages/compiler-rs fixtures/custom-elements.tsx(10,7): error TS2339
+packages/compiler-rs fixtures/custom-elements.tsx(8,7): error TS2339
+packages/compiler-rs fixtures/custom-elements.tsx(9,7): error TS2339
+packages/compiler-rs fixtures/dangerously-set-inner-html.tsx(8,12): error TS2322
+packages/compiler-rs fixtures/mathml.tsx(10,7): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(4,7): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(5,9): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(6,11): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(6,16): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(7,11): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(7,16): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(8,11): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(8,16): error TS2339
+packages/compiler-rs fixtures/mathml.tsx(9,9): error TS2339
+packages/compiler-rs fixtures/style-object.tsx(8,13): error TS2322
+packages/core node_modules/reactive-framework-test-suite/src/behaviorDifferences.ts(54,11): error TS6133
+packages/core node_modules/reactive-framework-test-suite/src/computedEval.ts(344,9): error TS6133
+packages/core node_modules/reactive-framework-test-suite/src/cycleDetection.ts(3,1): error TS6133
+packages/core node_modules/reactive-framework-test-suite/src/dynamicDeps.ts(3,1): error TS6133
+packages/core node_modules/reactive-framework-test-suite/src/equality.ts(3,1): error TS6133
+packages/core node_modules/reactive-framework-test-suite/src/errorHandling.ts(231,9): error TS6133
+packages/core node_modules/reactive-framework-test-suite/src/innerWrite.ts(257,11): error TS6133
+packages/core node_modules/reactive-framework-test-suite/src/memoryGc.ts(3,1): error TS6133
+packages/core src/async.test.ts(139,9): error TS6133
+packages/core src/async.test.ts(355,36): error TS2345
+packages/core src/async.test.ts(366,36): error TS2345
+packages/core src/async.test.ts(378,27): error TS2345
+packages/core src/async.test.ts(459,25): error TS2345
+packages/core src/async.test.ts(531,9): error TS6133
+packages/core src/async.test.ts(638,11): error TS6133
+packages/core src/components.test.ts(164,32): error TS2769
+packages/core src/control-flow-parity.test.ts(53,22): error TS2345
+packages/core src/dom.test.ts(169,24): error TS2769
+packages/core src/rendering.test.ts(305,5): error TS2349
+packages/core src/rendering.test.ts(893,7): error TS2322
+packages/core src/rendering.test.ts(939,28): error TS2769
+packages/core src/store-parity.test.ts(156,19): error TS2339
+packages/core src/store.test.ts(349,36): error TS2769
+packages/core src/store.test.ts(732,9): error TS18046
+packages/core src/store.test.ts(972,7): error TS2578

@@ -148,6 +148,8 @@ export {
   insert,
   setProp,
   spread,
+  delegateEvents,
+  clearDelegatedEvents,
   type Child,
   type Props,
   type Component,

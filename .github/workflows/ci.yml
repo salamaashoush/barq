@@ -29,8 +29,41 @@ jobs:
           bun run --cwd packages/extra build
           bun run --cwd packages/testing build
 
+      # NOT `bun run typecheck`. That one exits non-zero correctly — which is
+      # the problem: it fails today on errors that predate this work, in
+      # @barqjs/core and in the Babel plugin scheduled for deletion at M6.
+      # The script runs each package on its own and diffs the result against
+      # .github/typecheck-baseline.txt, so a new error fails the build and a
+      # fixed one has to be struck off the list. Nothing is silenced: no
+      # @ts-ignore, no skipped file, and the count is printed on every run.
       - name: Run type check
-        run: bun run typecheck
+        run: .github/scripts/typecheck.sh
+
+  rust:
+    name: Rust (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/compiler-rs
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test
 
   test:
     name: Test
@@ -42,8 +75,44 @@ jobs:
         with:
           bun-version: latest
 
+      # index.js, index.d.ts and the .node binary are build artifacts, not
+      # sources. Without this step packages/compiler-rs has no binding to test
+      # against and its harness cannot even load.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/compiler-rs
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Build the native compiler
+        run: bun run --cwd packages/compiler-rs build
+
+      # packages/compiler-rs/test/browser.test.ts renders the whole fixture
+      # corpus in a real Chrome — both paths, driven through their steps and
+      # events — plus the template parse conformance sweep and the O5 probes.
+      # happy-dom has hidden three separate bug classes on this project already
+      # (foster parenting, the tokenizer's NUL/CR rewriting, SVGElement
+      # .className), so that suite is not optional. google-chrome-stable is
+      # preinstalled on the ubuntu runner images; the checks FAIL rather than
+      # skip when it is missing, so a runner image that drops it is visible
+      # instead of silently disarming them.
+      - name: Locate Chrome
+        run: |
+          CHROME=$(which google-chrome-stable || which google-chrome || which chromium)
+          echo "using $CHROME"
+          echo "CHROME_PATH=$CHROME" >> "$GITHUB_ENV"
+
+      # Its own step, and BEFORE the rest, so the per-fixture table lands in a
+      # log section of its own and a regression is attributable to the commit
+      # that caused it instead of buried in 300 lines of suite output. The
+      # asserted gate is the pass-stage RATIO, which does not move with the
+      # runner's speed — see the block at the bottom of throughput.test.ts.
+      - name: Compile throughput
+        run: bun test test/throughput.test.ts
+        working-directory: packages/compiler-rs
 
       - name: Run tests
         run: bun run test

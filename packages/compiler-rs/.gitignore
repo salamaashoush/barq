@@ -1,0 +1,6 @@
+/target
+/npm
+/artifacts
+*.node
+/index.js
+/index.d.ts

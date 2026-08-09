@@ -10,7 +10,6 @@ import {
   isObject,
   isArray,
   isNullish,
-  isHTMLElement,
   toString,
   setProperty,
   isRefCallback,
@@ -145,6 +144,25 @@ const DELEGATED_EVENTS = new Set([
 
 const installedDelegatedEvents = new Set<string>();
 
+// A document listener for one of these can never fire from a descendant, so a
+// compiler that emits delegateEvents([...]) for one has produced a dead handler.
+const NON_BUBBLING_EVENTS = new Set([
+  "abort",
+  "blur",
+  "error",
+  "focus",
+  "load",
+  "mouseenter",
+  "mouseleave",
+  "pointerenter",
+  "pointerleave",
+  "resize",
+  "scroll",
+  "unload",
+]);
+
+const warnedNonBubbling = new Set<string>();
+
 /** A delegated handler: plain listener or [handler, data] tuple (the tuple
  * form lets compiled list rows share one function without per-row closures) */
 type DelegatedHandler = EventListener | [(data: unknown, e: Event) => void, unknown];
@@ -161,20 +179,26 @@ function delegatedEventHandler(e: Event): void {
     },
   });
 
-  while (node) {
-    const handler = (node as Node & Record<string, unknown>)[key] as DelegatedHandler | undefined;
-    if (handler && !(node as Partial<HTMLButtonElement>).disabled) {
-      if (typeof handler === "function") {
-        handler.call(node, e);
-      } else if (Array.isArray(handler) && typeof handler[0] === "function") {
-        handler[0].call(node, handler[1], e);
+  try {
+    while (node) {
+      const handler = (node as Node & Record<string, unknown>)[key] as DelegatedHandler | undefined;
+      if (handler && !(node as Partial<HTMLButtonElement>).disabled) {
+        if (typeof handler === "function") {
+          handler.call(node, e);
+        } else if (Array.isArray(handler) && typeof handler[0] === "function") {
+          handler[0].call(node, handler[1], e);
+        }
+        if (e.cancelBubble) return;
       }
-      if (e.cancelBubble) return;
+      node =
+        (node.parentNode as Node | null) ??
+        ((node as Partial<ShadowRoot>).host as Node | undefined) ??
+        null;
     }
-    node =
-      (node.parentNode as Node | null) ??
-      ((node as Partial<ShadowRoot>).host as Node | undefined) ??
-      null;
+  } finally {
+    // The override outlives the walk otherwise, so anything reading
+    // currentTarget after dispatch would see `document` forever.
+    delete (e as Partial<Record<"currentTarget", unknown>>).currentTarget;
   }
 }
 
@@ -192,6 +216,47 @@ function ensureDelegatedListener(type: string): void {
   if (installedDelegatedEvents.has(type)) return;
   installedDelegatedEvents.add(type);
   document.addEventListener(type, delegatedEventHandler);
+}
+
+/**
+ * Install the document-level listener for each event type, idempotently.
+ *
+ * Compiled output writes handlers straight to the element as `$$<type>`
+ * (a function, or a `[fn, data]` tuple) and calls this once per module for
+ * the types it emitted; without it those expandos are dead, because nothing
+ * is listening.
+ */
+export function delegateEvents(types: string[]): void {
+  for (let i = 0; i < types.length; i++) {
+    const type = types[i];
+    if (NON_BUBBLING_EVENTS.has(type) && !warnedNonBubbling.has(type)) {
+      warnedNonBubbling.add(type);
+      console.warn(
+        `delegateEvents(["${type}"]): "${type}" does not bubble, so a $$${type} handler never runs. Bind it directly instead.`,
+      );
+    }
+    ensureDelegatedListener(type);
+  }
+}
+
+/**
+ * Remove the document-level listeners `delegateEvents` installed, so the next
+ * render starts from nothing.
+ *
+ * `installedDelegatedEvents` is module state that outlives any scope, so two
+ * renders in one process share it: the second inherits the first's listeners
+ * and its `$$<type>` expandos work whether or not it called `delegateEvents`
+ * itself. That makes the call unfalsifiable by any test that renders twice —
+ * a compiler that dropped it would still look green. Tear the state down
+ * between renders and the assertion has teeth again.
+ */
+export function clearDelegatedEvents(types?: string[]): void {
+  const removing = types ?? [...installedDelegatedEvents];
+  for (let i = 0; i < removing.length; i++) {
+    const type = removing[i];
+    if (!installedDelegatedEvents.delete(type)) continue;
+    document.removeEventListener(type, delegatedEventHandler);
+  }
 }
 
 // Cache for kebab-case conversions
@@ -336,14 +401,19 @@ function applyResolvedProp(
 ): unknown {
   // Style object: diff key-by-key against the previously applied map
   if (key === "style") {
+    const style = (element as Partial<ElementCSSInlineStyle>).style;
+    if (!style) return prev;
     if (isObject(value)) {
-      if (isHTMLElement(element)) {
-        return diffStyleObjects(element, value, isStyleMap(prev) ? prev : null);
-      }
-      return prev;
+      return diffStyleObjects(style, value, isStyleMap(prev) ? prev : null);
     }
-    if (isString(value) && isHTMLElement(element)) {
-      if (value !== prev) element.style.cssText = value;
+    if (isString(value)) {
+      // setAttribute, not style.cssText: cssText round-trips through the CSSOM
+      // serializer, so the style attribute comes back re-written (a trailing
+      // ";" at minimum). That makes a compile-time-folded `style="…"` in a
+      // template unable to match this path byte for byte, which blocks folding
+      // a literal style into the template at all. setAttribute replaces the
+      // same declaration block and keeps the author's text.
+      if (value !== prev) element.setAttribute("style", value);
       return value;
     }
     return prev;
@@ -355,6 +425,9 @@ function applyResolvedProp(
     if (className !== prev) {
       if (className === null) {
         element.removeAttribute("class");
+      } else if (isSvg) {
+        // SVGElement.className is a read-only SVGAnimatedString
+        element.setAttribute("class", className);
       } else {
         element.className = className;
       }
@@ -362,8 +435,13 @@ function applyResolvedProp(
     return className;
   }
 
+  // classList: additive per-key toggling, diffed against the previous map
+  if (key === "classList") {
+    return diffClassList(element, isObject(value) ? value : null, isClassMap(prev) ? prev : null);
+  }
+
   // Dangerous innerHTML
-  if (key === "dangerouslySetInnerHTML" && isObject(value) && isHTMLElement(element)) {
+  if (key === "dangerouslySetInnerHTML" && isObject(value)) {
     const html = (value as { __html?: string }).__html ?? "";
     if (html !== prev) element.innerHTML = html;
     return html;
@@ -388,11 +466,10 @@ function isStyleMap(value: unknown): value is StyleMap {
  * writing properties whose value changed. Returns the applied css map.
  */
 function diffStyleObjects(
-  element: HTMLElement,
+  style: CSSStyleDeclaration,
   next: Record<string, unknown>,
   prev: StyleMap | null,
 ): StyleMap {
-  const style = element.style;
   const applied = Object.defineProperty({} as StyleMap, STYLE_MAP, { value: true });
 
   for (const prop in next) {
@@ -428,6 +505,63 @@ function diffStyleObjects(
   }
 
   return applied;
+}
+
+const CLASS_MAP = Symbol("barq-class-map");
+
+interface ClassMap extends Record<string, true> {}
+
+function isClassMap(value: unknown): value is ClassMap {
+  return typeof value === "object" && value !== null && CLASS_MAP in value;
+}
+
+/**
+ * Apply a classList object: toggle every truthy key on, remove the keys that
+ * vanished since the previous run, and leave every other class on the element
+ * alone. A key may name several classes ("a b"), matching `classList.add`.
+ */
+function diffClassList(
+  element: Element,
+  next: Record<string, unknown> | null,
+  prev: ClassMap | null,
+): ClassMap {
+  const applied = Object.defineProperty({} as ClassMap, CLASS_MAP, { value: true });
+  const tokens = element.classList;
+
+  for (const key in next) {
+    const raw = next[key];
+
+    // Per-key reactive values keep their own effect (static object case)
+    if (isSignalGetter(raw)) {
+      renderEffect(() => {
+        toggleClassTokens(tokens, key, Boolean((raw as () => unknown)()));
+      });
+      continue;
+    }
+
+    if (!raw) continue;
+    applied[key] = true;
+    if (!prev || !prev[key]) toggleClassTokens(tokens, key, true);
+  }
+
+  if (prev) {
+    for (const key in prev) {
+      if (!(key in applied)) toggleClassTokens(tokens, key, false);
+    }
+  }
+
+  return applied;
+}
+
+function toggleClassTokens(tokens: DOMTokenList, key: string, on: boolean): void {
+  for (const token of key.split(/\s+/)) {
+    if (token === "") continue;
+    if (on) {
+      tokens.add(token);
+    } else {
+      tokens.remove(token);
+    }
+  }
 }
 
 /** Normalize a class value (string, array, or object) to a string or null */

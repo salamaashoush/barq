@@ -26,8 +26,19 @@ jobs:
         with:
           bun-version: latest
 
+      # `bun run test` fans out to packages/compiler-rs, which needs its native
+      # binding built from source before it can run.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/compiler-rs
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Build the native compiler
+        run: bun run --cwd packages/compiler-rs build
 
       - name: Run lint and format check
         run: bun run ci

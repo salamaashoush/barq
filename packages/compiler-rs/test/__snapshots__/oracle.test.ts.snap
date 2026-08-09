@@ -1,0 +1,119 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`marker channel auto-thunked-read: anchor layout 1`] = `"<div><p>attr</p><span>n=1</span><b>1</b></div>"`;
+
+exports[`marker channel boolean-and-nullish-props: anchor layout 1`] = `"<div><button>b</button><span></span></div>"`;
+
+exports[`marker channel class-list-array-object: anchor layout 1`] = `"<div><span>array</span><span>object</span></div>"`;
+
+exports[`marker channel class-list-prop: anchor layout 1`] = `"<div><span>keyed</span><span>reactive</span></div>"`;
+
+exports[`marker channel class-with-live-siblings: anchor layout 1`] = `"<div>x</div>"`;
+
+exports[`marker channel component-boundary-props: anchor layout 1`] = `"<section><p>Hello, world<!---->!</p><!----><p>Hello, static<!---->?</p></section>"`;
+
+exports[`marker channel component-spread: anchor layout 1`] = `"<div><span>first</span><!----><span>static</span></div>"`;
+
+exports[`marker channel conditional-children: anchor layout 1`] = `"<div><span>A</span><footer>end</footer></div>"`;
+
+exports[`marker channel context-provider: anchor layout 1`] = `"<div><span>dark</span><!----><span>light</span></div>"`;
+
+exports[`marker channel control-flow-await-suspense: anchor layout 1`] = `"<div><!--Suspense:#--><!--Await:#--><span>loading</span><!--/Await:#--><!--/Suspense:#--></div>"`;
+
+exports[`marker channel control-flow-error-boundary: anchor layout 1`] = `"<div><!--ErrorBoundary:#--><button>boom</button><!--/ErrorBoundary:#--></div>"`;
+
+exports[`marker channel control-flow-errored-loading: anchor layout 1`] = `"<!--Loading:#--><!--LoadingContent:#--><!--Errored:#--><button>nope</button><!--/Errored:#--><!--/LoadingContent:#--><!--/Loading:#-->"`;
+
+exports[`marker channel control-flow-for: anchor layout 1`] = `"<ul><!--For:#--><li>0: alpha</li><li>1: beta</li><!--/For:#--></ul>"`;
+
+exports[`marker channel control-flow-index: anchor layout 1`] = `"<ol><!--Index:#--><li>0=1</li><li>1=2</li><li>2=3</li><!--/Index:#--></ol>"`;
+
+exports[`marker channel control-flow-repeat: anchor layout 1`] = `"<div><!--Repeat:#--><span>0</span><span>1</span><!--/Repeat:#--></div>"`;
+
+exports[`marker channel control-flow-show: anchor layout 1`] = `"<div><!--Show:#--><p>shown</p><!--/Show:#--><footer>tail</footer></div>"`;
+
+exports[`marker channel control-flow-show-static-body: anchor layout 1`] = `"<!--Show:#--><!--/Show:#-->"`;
+
+exports[`marker channel control-flow-switch-match: anchor layout 1`] = `"<div><!--Switch:#--><p>Loading…</p><!--/Switch:#--></div>"`;
+
+exports[`marker channel custom-elements: anchor layout 1`] = `"<div><my-widget></my-widget><x-thing></x-thing><my-widget>with children</my-widget></div>"`;
+
+exports[`marker channel dangerously-set-inner-html: anchor layout 1`] = `"<div><div><b>bold</b></div><span>after</span></div>"`;
+
+exports[`marker channel dedup-identical-markup: anchor layout 1`] = `"<div><div><span>x</span></div><!----><div><span>x</span></div></div>"`;
+
+exports[`marker channel deep-walk: anchor layout 1`] = `"<div><div><div><div><div><span>L</span></div></div></div></div><p>sibling</p></div>"`;
+
+exports[`marker channel delegated-event: anchor layout 1`] = `"<button>clicked 0</button>"`;
+
+exports[`marker channel delegated-handler-tuple: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>none</li></ul>"`;
+
+exports[`marker channel dynamic: anchor layout 1`] = `"<div><!--Dynamic:#--><span>inner</span><!--/Dynamic:#--></div>"`;
+
+exports[`marker channel handler-by-reference: anchor layout 1`] = `"<div><button>0</button><button>reset</button></div>"`;
+
+exports[`marker channel handler-closure: anchor layout 1`] = `"<button>0</button>"`;
+
+exports[`marker channel handler-no-closure: anchor layout 1`] = `"<button>log</button>"`;
+
+exports[`marker channel html-entities: anchor layout 1`] = `"<div>a < b && c   d © e > f</div>"`;
+
+exports[`marker channel hygiene-shifted-uids: anchor layout 1`] = `"<div>start one<!----> end</div>"`;
+
+exports[`marker channel literal-class-style: anchor layout 1`] = `"<div><button>concat</button><span>ternary</span><i>literal style</i></div>"`;
+
+exports[`marker channel marker-literal-text: anchor layout 1`] = `"<div>&lt;!----&gt;<span>end</span></div>"`;
+
+exports[`marker channel mathml: anchor layout 1`] = `"<div><math><mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow></math></div>"`;
+
+exports[`marker channel multi-prop-one-element: anchor layout 1`] = `"<div></div>"`;
+
+exports[`marker channel nested-fragments: anchor layout 1`] = `"<div><span>one</span><span>mid</span><b>deep</b><span>two</span></div>"`;
+
+exports[`marker channel nested-template-element: anchor layout 1`] = `"<div><template><li><span>cell</span></li></template><ul></ul></div>"`;
+
+exports[`marker channel non-delegated-event: anchor layout 1`] = `"<div>out</div>"`;
+
+exports[`marker channel portal: anchor layout 1`] = `"<div><div><div><p>over here</p></div></div><!--Portal:#--></div>"`;
+
+exports[`marker channel pre-whitespace: anchor layout 1`] = `"<div><pre>  indented lines  kept</pre><textarea>raw   text</textarea></div>"`;
+
+exports[`marker channel property-attrs: anchor layout 1`] = `"<form><input><input><textarea></textarea></form>"`;
+
+exports[`marker channel reactive-attribute: anchor layout 1`] = `"<a>go</a>"`;
+
+exports[`marker channel ref-binding: anchor layout 1`] = `"<div><div>target</div><span>callback</span></div>"`;
+
+exports[`marker channel sibling-walk: anchor layout 1`] = `"<div><i>0</i><i>1</i><i>1</i><i>3</i><i>2</i></div>"`;
+
+exports[`marker channel spread-static-mix: anchor layout 1`] = `"<div>spread</div>"`;
+
+exports[`marker channel static-attribute-expression: anchor layout 1`] = `"<div><span>fixed</span></div>"`;
+
+exports[`marker channel static-only: anchor layout 1`] = `"<section><h2>Barq</h2><p>Nothing here ever changes.</p><ul><li>one</li><li>two</li><li>three</li></ul></section>"`;
+
+exports[`marker channel style-object: anchor layout 1`] = `"<div><span>sized</span></div>"`;
+
+exports[`marker channel svg: anchor layout 1`] = `"<svg:svg><svg:g><svg:circle></svg:circle><svg:path></svg:path></svg:g></svg:svg>"`;
+
+exports[`marker channel svg-dynamic-class: anchor layout 1`] = `"<svg:svg><svg:g><svg:circle></svg:circle></svg:g></svg:svg>"`;
+
+exports[`marker channel svg-nested-in-html: anchor layout 1`] = `"<div><svg:svg><svg:rect></svg:rect></svg:svg><span>label</span></div>"`;
+
+exports[`marker channel text-gt-hole: anchor layout 1`] = `"<div>a & b > c<span>tail</span>x<b>end</b></div>"`;
+
+exports[`marker channel text-hole-adjacent: anchor layout 1`] = `"<div>a<!---->b</div>"`;
+
+exports[`marker channel text-hole-followed: anchor layout 1`] = `"<div>0<span>items</span></div>"`;
+
+exports[`marker channel text-hole-fused: anchor layout 1`] = `"<p>Total: 0<!----> clicks</p>"`;
+
+exports[`marker channel text-hole-trailing: anchor layout 1`] = `"<div>0</div>"`;
+
+exports[`marker channel unicode-long-template: anchor layout 1`] = `"<p>This paragraph is deliberately long so that the accented word sits past the search budget — café naïve, 日本語のテキスト, and an emoji 🎉 for the astral case.<span>un</span></p>"`;
+
+exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><input><wbr></div>"`;
+
+exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
+
+exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;

@@ -1,0 +1,1413 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`emitted code snapshots auto-thunked-read 1`] = `
+"import { signal, template as _$template, insert as _$insert, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><p>attr</p><span></span><b></b></div>\`);
+export const count = signal(1);
+/**
+* O4 auto-thunking, and the ONE fixture that reaches the thunk the COMPILER
+* builds. Everything else in the corpus is explicit-thunk style (\`{() => x()}\`),
+* which η-reduces or passes the author's own arrow straight through, so the
+* arrow-construction path in \`codegen::dom::thunk\` was never executed by any
+* test — an accidentally-asynchronous arrow there (oxc takes \`r#async\` where
+* the caller expected \`expression\`) was reintroducible with both suites green.
+*
+* A bare \`count()\` inside a template literal cannot η-reduce, so each of these
+* three holes forces a fresh \`() => …\`:
+*   - an attribute value,
+*   - a child expression,
+*   - and a bare read, which DOES η-reduce, as the contrast.
+*
+* Under \`createElement\` all three are read once at construction and never
+* again; compiled, they are live bindings. That is exactly what compiling buys,
+* so the divergence after step 0 is declared as a win rather than hidden.
+*/
+export default function AutoThunkedRead() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$2.nextSibling;
+  const _el$4 = _el$1.lastChild;
+  _$setProp(_el$2, "title", () => \`count: \${count()}\`);
+  _$insert(_el$3, () => \`n=\${count()}\`);
+  _$insert(_el$4, count);
+  return _el$1;
+}
+export const steps = [() => count.set(2)];
+export const goesLive = [
+  "title={\`count: \${count()}\`}",
+  "{\`n=\${count()}\`}",
+  "{count()}"
+];
+export const wins = [{
+  kind: "step",
+  index: 0,
+  compiled: "<div><p title=\\"count: 2\\">attr</p><span>n=2</span><b>2</b></div>",
+  why: "the oracle read count() once at createElement time; the compiled path bound it"
+}];
+export const optimality = {
+  target: 1,
+  milestone: 3,
+  templates: 1,
+  emits: ["() => \`count: \${count()}\`", "() => \`n=\${count()}\`"]
+};
+"
+`;
+
+exports[`emitted code snapshots boolean-and-nullish-props 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><button type="button">b</button><span></span></div>\`);
+export const flag = signal<boolean>(false);
+export default function BooleanAndNullishProps() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$setProp(_el$2, "disabled", () => flag());
+  _$setProp(_el$3, "data-present", () => flag() ? "yes" : null);
+  return _el$1;
+}
+export const steps = [() => flag.set(true), () => flag.set(false)];
+"
+`;
+
+exports[`emitted code snapshots class-list-array-object 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><span>array</span><span>object</span></div>\`);
+export const on = signal(false);
+export default function ClassListArrayObject() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$setProp(_el$2, "class", ["a", "b"]);
+  _$setProp(_el$3, "class", () => ({
+    base: true,
+    active: on()
+  }));
+  return _el$1;
+}
+export const steps = [() => on.set(true), () => on.set(false)];
+"
+`;
+
+exports[`emitted code snapshots class-list-prop 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span class="badge">keyed</span><span>reactive</span></div>\`);
+export const on = signal(false);
+/**
+* \`classList\` is additive per key and diffed against the previous map, so it is
+* not the same channel as \`class\` and must never be baked into the template as
+* an attribute.
+*/
+export default function ClassListProp() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$setProp(_el$2, "classList", {
+    active: () => on(),
+    muted: false
+  });
+  _$setProp(_el$3, "classList", () => ({
+    "one two": on(),
+    three: !on()
+  }));
+  return _el$1;
+}
+export const steps = [() => on.set(true), () => on.set(false)];
+"
+`;
+
+exports[`emitted code snapshots class-with-live-siblings 1`] = `
+"import { signal, template as _$template, setProp as _$setProp, renderEffect as _$renderEffect } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div>x</div>\`);
+export const tone = signal("red");
+export const label = signal("first");
+/**
+* Target #4's boundary. \`title\` and \`id\` share one compiled effect; \`class\`
+* must NOT join them.
+*
+* \`applyResolvedProp\` diffs the normalised class string against the one it
+* applied last time, so the runtime's class effect only touches the DOM when
+* the class value itself changes. A compiled effect covering \`class\` alongside
+* \`title\` re-writes \`element.className\` whenever the TITLE changes, which wipes
+* whatever another channel put there — here the \`extra\` key that \`classList\`
+* added. Step 0 changes only \`label\`, so a regression shows up as \`extra\`
+* disappearing from the class attribute.
+*/
+export default function ClassWithLiveSiblings() {
+  const _el$1 = _tmpl$1();
+  _$setProp(_el$1, "class", () => tone());
+  _$renderEffect((_p$ = {}) => {
+    const _v$1 = label();
+    const _v$2 = label();
+    if (_v$1 !== _p$.title) _$setProp(_el$1, "title", _p$.title = _v$1);
+    if (_v$2 !== _p$.id) _$setProp(_el$1, "id", _p$.id = _v$2);
+    return _p$;
+  });
+  _$setProp(_el$1, "classList", { extra: true });
+  return _el$1;
+}
+export const steps = [() => label.set("second"), () => tone.set("blue")];
+export const optimality = {
+  target: 4,
+  milestone: 3,
+  effects: 2,
+  templates: 1,
+  emits: ["\\"class\\", () => tone()", "renderEffect("]
+};
+"
+`;
+
+exports[`emitted code snapshots component-boundary-props 1`] = `
+"import { signal, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="greeting">Hello, <!----></p>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<section><!----></section>\`);
+export const name = signal("world");
+function Greeting(props: {
+  name: () => string;
+  punctuation: string;
+}) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.lastChild;
+  _$insert(_el$1, () => props.name(), _el$2);
+  _$insert(_el$1, props.punctuation);
+  return _el$1;
+}
+export default function ComponentBoundaryProps() {
+  const _el$3 = _tmpl$2();
+  const _el$4 = _el$3.firstChild;
+  _$insert(_el$3, _$createElement(Greeting, {
+    name: () => name(),
+    punctuation: "!"
+  }), _el$4);
+  _$insert(_el$3, _$createElement(Greeting, {
+    name: () => "static",
+    punctuation: "?"
+  }));
+  return _el$3;
+}
+export const steps = [() => name.set("barq")];
+"
+`;
+
+exports[`emitted code snapshots component-spread 1`] = `
+"import { signal, template as _$template, insert as _$insert, setProp as _$setProp, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
+export const label = signal("first");
+function Chip(props: {
+  label: () => string;
+  tone: string;
+  id: string;
+}) {
+  const _el$1 = _tmpl$1();
+  _$setProp(_el$1, "data-tone", props.tone);
+  _$setProp(_el$1, "id", props.id);
+  _$insert(_el$1, () => props.label());
+  return _el$1;
+}
+export default function ComponentSpread() {
+  const shared = {
+    tone: "warm",
+    id: "chip-1"
+  };
+  const _el$2 = _tmpl$2();
+  const _el$3 = _el$2.firstChild;
+  _$insert(_el$2, _$createElement(Chip, {
+    label: () => label(),
+    ...shared
+  }), _el$3);
+  _$insert(_el$2, _$createElement(Chip, {
+    ...shared,
+    id: "chip-2",
+    label: () => "static"
+  }));
+  return _el$2;
+}
+export const steps = [() => label.set("second")];
+"
+`;
+
+exports[`emitted code snapshots conditional-children 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><footer>end</footer></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="a">A</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<em>B</em>\`);
+export const mode = signal<"a" | "b" | "none">("a");
+export default function ConditionalChildren() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$insert(_el$1, () => mode() === "a" ? _tmpl$2() : mode() === "b" ? _tmpl$3() : null, _el$2);
+  return _el$1;
+}
+export const steps = [
+  () => mode.set("b"),
+  () => mode.set("none"),
+  () => mode.set("a")
+];
+// The un-compiled path appends this hole with \`marker = null\`, so when the hole
+// re-renders, \`insert\` reconciles against "the end of the parent" and the new
+// node lands AFTER <footer>. The compiled path keeps an anchor for the hole, so
+// the replacement lands where the source puts it. Same initial DOM, and the
+// oracle is the one that is wrong afterwards.
+export const wins = [{
+  kind: "step" as const,
+  index: 0,
+  compiled: "<div><em>B</em><footer>end</footer></div>",
+  why: "createElement appends the hole with no anchor, so its replacement moves to the end"
+}, {
+  kind: "step" as const,
+  index: 2,
+  compiled: "<div><span class=\\"a\\">A</span><footer>end</footer></div>",
+  why: "createElement appends the hole with no anchor, so its replacement moves to the end"
+}];
+"
+`;
+
+exports[`emitted code snapshots context-provider 1`] = `
+"import { createContext, signal, useContext, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="badge"></span>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
+const Theme = createContext<() => string>(() => "light");
+export const theme = signal("dark");
+function Badge() {
+  const value = useContext(Theme);
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, () => value());
+  return _el$1;
+}
+export default function ContextProvider() {
+  const _el$2 = _tmpl$2();
+  const _el$3 = _el$2.firstChild;
+  _$insert(_el$2, _$createElement(Theme.Provider, { value: () => theme() }, () => _$createElement(Badge, null)), _el$3);
+  _$insert(_el$2, _$createElement(Badge, null));
+  return _el$2;
+}
+export const steps = [() => theme.set("sepia")];
+"
+`;
+
+exports[`emitted code snapshots control-flow-await-suspense 1`] = `
+"import { Await, Suspense, signal, useResource, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="pending">waiting</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<span class="loading">loading</span>\`);
+const _tmpl$4 = /* @__PURE__ */ _$template(\`<span class="failed"></span>\`);
+const _tmpl$5 = /* @__PURE__ */ _$template(\`<p class="loaded"></p>\`);
+export const settled = signal<((value: string) => void) | null>(null);
+const value = useResource<string>(() => null, () => new Promise<string>((resolve) => {
+  settled.set(resolve);
+}));
+export default function ControlFlowAwaitSuspense() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(Suspense, { fallback: _tmpl$2() }, _$createElement(Await, {
+    resource: value,
+    loading: _tmpl$3(),
+    error: (error: Error) => {
+      const _el$2 = _tmpl$4();
+      _$insert(_el$2, error.message);
+      return _el$2;
+    }
+  }, (data: string) => {
+    const _el$3 = _tmpl$5();
+    _$insert(_el$3, data);
+    return _el$3;
+  })));
+  return _el$1;
+}
+export const steps = [() => settled()?.("ready")];
+"
+`;
+
+exports[`emitted code snapshots control-flow-error-boundary 1`] = `
+"import { ErrorBoundary, signal, template as _$template, insert as _$insert, setProp as _$setProp, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="ok">recovered</p>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<div></div>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
+export const broken = signal(true);
+function Fragile() {
+  if (broken()) throw new Error("boom");
+  return _tmpl$1();
+}
+export default function ControlFlowErrorBoundary() {
+  const _el$1 = _tmpl$2();
+  _$insert(_el$1, _$createElement(ErrorBoundary, { fallback: (error, reset) => {
+    const _el$2 = _tmpl$3();
+    _$setProp(_el$2, "onClick", reset);
+    _$insert(_el$2, error.message);
+    return _el$2;
+  } }, () => _$createElement(Fragile, null)));
+  return _el$1;
+}
+// The boundary only retries on reset, so clearing the signal and clicking is one event.
+export const events = [(root: HTMLElement) => {
+  broken.set(false);
+  root.querySelector("button")?.click();
+}];
+"
+`;
+
+exports[`emitted code snapshots control-flow-errored-loading 1`] = `
+"import { Errored, Loading, Reveal, signal, template as _$template, insert as _$insert, setProp as _$setProp, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="fine">fine</p>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="busy">busy</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
+export const failing = signal(true);
+function Flaky() {
+  if (failing()) throw new Error("nope");
+  return _tmpl$1();
+}
+export default function ControlFlowErroredLoading() {
+  return _$createElement(Reveal, { order: "together" }, _$createElement(Loading, { fallback: _tmpl$2() }, _$createElement(Errored, { fallback: (error, reset) => {
+    const _el$1 = _tmpl$3();
+    _$setProp(_el$1, "onClick", reset);
+    _$insert(_el$1, error().message);
+    return _el$1;
+  } }, () => _$createElement(Flaky, null))));
+}
+export const events = [(root: HTMLElement) => {
+  failing.set(false);
+  root.querySelector("button")?.click();
+}];
+"
+`;
+
+exports[`emitted code snapshots control-flow-for 1`] = `
+"import { For, signal, template as _$template, insert as _$insert, setProp as _$setProp, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="list"></ul>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<li class="empty">none</li>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<li>: </li>\`);
+export const items = signal([{
+  id: 1,
+  name: "alpha"
+}, {
+  id: 2,
+  name: "beta"
+}]);
+export default function ControlFlowFor() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(For, {
+    each: () => items(),
+    fallback: _tmpl$2()
+  }, (item, index) => {
+    const _el$2 = _tmpl$3();
+    const _el$3 = _el$2.firstChild;
+    _$setProp(_el$2, "data-id", String(item.id));
+    _$insert(_el$2, () => index(), _el$3);
+    _$insert(_el$2, item.name);
+    return _el$2;
+  }));
+  return _el$1;
+}
+export const steps = [
+  () => items.update((v) => [...v, {
+    id: 3,
+    name: "gamma"
+  }]),
+  () => items.update((v) => v.slice(1)),
+  () => items.set([])
+];
+"
+`;
+
+exports[`emitted code snapshots control-flow-index 1`] = `
+"import { Index, signal, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<ol></ol>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<li>=</li>\`);
+export const nums = signal([
+  1,
+  2,
+  3
+]);
+export default function ControlFlowIndex() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(Index, { each: () => nums() }, (item, index) => {
+    const _el$2 = _tmpl$2();
+    const _el$3 = _el$2.firstChild;
+    _$insert(_el$2, index, _el$3);
+    _$insert(_el$2, () => item());
+    return _el$2;
+  }));
+  return _el$1;
+}
+export const steps = [
+  () => nums.set([
+    9,
+    2,
+    3
+  ]),
+  () => nums.set([9]),
+  () => nums.set([
+    1,
+    2,
+    3,
+    4
+  ])
+];
+"
+`;
+
+exports[`emitted code snapshots control-flow-repeat 1`] = `
+"import { Repeat, signal, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="cell"></span>\`);
+export const n = signal(2);
+export default function ControlFlowRepeat() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(Repeat, { count: () => n() }, (i) => {
+    const _el$2 = _tmpl$2();
+    _$insert(_el$2, i);
+    return _el$2;
+  }));
+  return _el$1;
+}
+export const steps = [() => n.set(4), () => n.set(1)];
+"
+`;
+
+exports[`emitted code snapshots control-flow-show 1`] = `
+"import { Show, signal, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><footer>tail</footer></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="empty">nothing</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="content">shown</p>\`);
+export const visible = signal(true);
+export default function ControlFlowShow() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$insert(_el$1, _$createElement(Show, {
+    when: () => visible(),
+    fallback: _tmpl$2()
+  }, () => _tmpl$3()), _el$2);
+  return _el$1;
+}
+export const steps = [() => visible.set(false), () => visible.set(true)];
+"
+`;
+
+exports[`emitted code snapshots control-flow-show-static-body 1`] = `
+"import { Show, signal, template as _$template, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>\`);
+export const on = signal(false);
+export default function ControlFlowShowStaticBody() {
+  return _$createElement(Show, { when: () => on() }, () => _tmpl$1());
+}
+export const steps = [
+  () => on.set(true),
+  () => on.set(false),
+  () => on.set(true)
+];
+"
+`;
+
+exports[`emitted code snapshots control-flow-switch-match 1`] = `
+"import { Match, Switch, signal, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="status"></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span>unknown</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<p>Loading…</p>\`);
+const _tmpl$4 = /* @__PURE__ */ _$template(\`<p class="ok">Ready</p>\`);
+export const status = signal<"loading" | "ready" | "error">("loading");
+export default function ControlFlowSwitchMatch() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(Switch, { fallback: _tmpl$2() }, _$createElement(Match, { when: () => status() === "loading" }, () => _tmpl$3()), _$createElement(Match, { when: () => status() === "ready" }, () => _tmpl$4())));
+  return _el$1;
+}
+export const steps = [
+  () => status.set("ready"),
+  () => status.set("error"),
+  () => status.set("loading")
+];
+"
+`;
+
+exports[`emitted code snapshots custom-elements 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><my-widget size="lg"></my-widget><x-thing></x-thing><my-widget>with children</my-widget></div>\`);
+export const value = signal("v1");
+export default function CustomElements() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild.nextSibling;
+  _$setProp(_el$2, "data-value", () => value());
+  return _el$1;
+}
+export const steps = [() => value.set("v2")];
+"
+`;
+
+exports[`emitted code snapshots dangerously-set-inner-html 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="wrap"><div></div><span>after</span></div>\`);
+export const html = signal("<b>bold</b>");
+export default function DangerouslySetInnerHtml() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$setProp(_el$2, "dangerouslySetInnerHTML", { __html: html() });
+  return _el$1;
+}
+"
+`;
+
+exports[`emitted code snapshots dedup-identical-markup 1`] = `
+"import { template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="cell"><span>x</span></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="grid"><!----></div>\`);
+function Left() {
+  return _tmpl$1();
+}
+function Right() {
+  return _tmpl$1();
+}
+export default function DedupIdenticalMarkup() {
+  const _el$1 = _tmpl$2();
+  const _el$2 = _el$1.firstChild;
+  _$insert(_el$1, _$createElement(Left, null), _el$2);
+  _$insert(_el$1, _$createElement(Right, null));
+  return _el$1;
+}
+export const optimality = {
+  target: 6,
+  milestone: 3,
+  // Left and Right emit byte-identical markup, so M4 folds them onto one
+  // template and the module keeps two: the shared cell and the grid around it.
+  templates: 2,
+  patchCalls: 2
+};
+"
+`;
+
+exports[`emitted code snapshots deep-walk 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><div><div><div><div><span class="deep"></span></div></div></div></div><p>sibling</p></div>\`);
+export const leaf = signal("L");
+export default function DeepWalk() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$2.firstChild;
+  const _el$4 = _el$3.firstChild;
+  const _el$5 = _el$4.firstChild;
+  const _el$6 = _el$5.firstChild;
+  _$insert(_el$6, () => leaf());
+  return _el$1;
+}
+export const steps = [() => leaf.set("LL")];
+export const optimality = {
+  target: 5,
+  milestone: 3,
+  templates: 1,
+  patchCalls: 1,
+  // Five nested single-child divs, so five hops is the cheapest route there is
+  // and \`lastChild\` buys nothing. The claim is that nothing is spent on top of
+  // it: no anchor to walk to, no sibling hop for the <p> that follows.
+  absent: [
+    ".nextSibling",
+    ".lastChild",
+    "<!---->"
+  ]
+};
+"
+`;
+
+exports[`emitted code snapshots delegated-event 1`] = `
+"import { signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button">clicked </button>\`);
+const _h$1 = () => count.update((n) => n + 1);
+_$delegateEvents(["click"]);
+export const count = signal(0);
+export default function DelegatedEvent() {
+  const _el$1 = _tmpl$1();
+  _el$1.$$click = _h$1;
+  _$insert(_el$1, () => count());
+  return _el$1;
+}
+export const steps = [() => count.set(1)];
+export const events = [(root: HTMLElement) => root.querySelector("button")?.click(), (root: HTMLElement) => root.querySelector("button")?.click()];
+export const optimality = {
+  target: 7,
+  milestone: 3,
+  emits: ["$$click", "delegateEvents("],
+  absent: ["addEventListener"]
+};
+"
+`;
+
+exports[`emitted code snapshots delegated-handler-tuple 1`] = `
+"import { signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul><li data-row="a">a</li><li data-row="b">b</li><li data-row="picked"></li></ul>\`);
+_$delegateEvents(["click"]);
+export const picked = signal("none");
+/** The [handler, data] form: one shared function, no per-row closure. */
+const pick = (label: unknown) => picked.set(String(label));
+export default function DelegatedHandlerTuple() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$2.nextSibling;
+  const _el$4 = _el$1.lastChild;
+  _el$2.$$click = [pick, "a"];
+  _el$3.$$click = [pick, "b"];
+  _$insert(_el$4, () => picked());
+  return _el$1;
+}
+export const events = [(root: HTMLElement) => root.querySelector<HTMLElement>("[data-row=\\"b\\"]")?.click(), (root: HTMLElement) => root.querySelector<HTMLElement>("[data-row=\\"a\\"]")?.click()];
+"
+`;
+
+exports[`emitted code snapshots dynamic 1`] = `
+"import { Dynamic, signal, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
+export const tag = signal<"span" | "b">("span");
+export default function DynamicFixture() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(Dynamic, {
+    component: () => tag(),
+    class: "dyn"
+  }, "inner"));
+  return _el$1;
+}
+export const steps = [() => tag.set("b"), () => tag.set("span")];
+"
+`;
+
+exports[`emitted code snapshots handler-by-reference 1`] = `
+"import { signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><button type="button"></button><button type="button">reset</button></div>\`);
+_$delegateEvents(["click"]);
+export const n = signal(0);
+const bump = () => n.update((v) => v + 1);
+/**
+* The commonest handler shape in real code, and the one target #7 used to miss:
+* a handler bound to a name rather than written inline. \`bump\` is \`const\` and
+* never reassigned, so the binding IS the callable and the expando can be
+* written directly — no \`setProp\`, no runtime \`isEventHandlerValue\` check.
+*
+* \`reset\` is declared inside the component and captures nothing that would
+* survive hoisting, which is the case that must NOT be moved to module scope:
+* the reference is emitted where it stands.
+*/
+export default function HandlerByReference() {
+  const reset = () => n.set(0);
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _el$2.$$click = bump;
+  _el$3.$$click = reset;
+  _$insert(_el$2, () => n());
+  return _el$1;
+}
+export const events = [
+  (root: HTMLElement) => root.querySelectorAll("button")[0]?.click(),
+  (root: HTMLElement) => root.querySelectorAll("button")[0]?.click(),
+  (root: HTMLElement) => root.querySelectorAll("button")[1]?.click()
+];
+export const optimality = {
+  target: 7,
+  milestone: 3,
+  templates: 1,
+  emits: ["$$click = bump", "$$click = reset"],
+  absent: ["addEventListener", "\\"onClick\\""]
+};
+"
+`;
+
+exports[`emitted code snapshots handler-closure 1`] = `
+"import { signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
+_$delegateEvents(["click"]);
+export const n = signal(0);
+export default function HandlerClosure() {
+  const step = 3;
+  const _el$1 = _tmpl$1();
+  _el$1.$$click = () => n.update((v) => v + step);
+  _$insert(_el$1, () => n());
+  return _el$1;
+}
+export const steps = [() => n.set(6)];
+export const events = [(root: HTMLElement) => root.querySelector("button")?.click(), (root: HTMLElement) => root.querySelector("button")?.click()];
+export const optimality = {
+  target: 7,
+  milestone: 2,
+  // \`ordered\` alone is satisfied by the un-compiled JSX, where the handler also
+  // trails the function it is written inside. The expando write is the clause
+  // that says the compiler did something.
+  emits: ["$$click = () => n.update"],
+  absent: ["addEventListener"],
+  ordered: [["function HandlerClosure", "n.update"]] as Array<[string, string]>
+};
+"
+`;
+
+exports[`emitted code snapshots handler-no-closure 1`] = `
+"import { template as _$template, delegateEvents as _$delegateEvents } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button">log</button>\`);
+const _h$1 = (e: Event) => (e.currentTarget as HTMLElement).setAttribute("data-clicked", "yes");
+_$delegateEvents(["click"]);
+export default function HandlerNoClosure() {
+  const _el$1 = _tmpl$1();
+  _el$1.$$click = _h$1;
+  return _el$1;
+}
+export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
+export const optimality = {
+  target: 7,
+  milestone: 3,
+  ordered: [["setAttribute(\\"data-clicked\\"", "function HandlerNoClosure"]] as Array<[string, string]>
+};
+"
+`;
+
+exports[`emitted code snapshots html-entities 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div title="a &amp; b < c">a &lt; b &amp;&amp; c   d © e &gt; f</div>\`);
+export default function HtmlEntities() {
+  return _tmpl$1();
+}
+"
+`;
+
+exports[`emitted code snapshots hygiene-shifted-uids 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$$$1 = /* @__PURE__ */ _$template(\`<div title="_el$1 and _tmpl$1 are ordinary text here">start <!----> end</div>\`);
+export const label = signal("one");
+/**
+* A module whose SOURCE spells the compiler's own uid prefixes, so every emitted
+* binding shifts from \`_el$N\` to \`_el$$N\` and from \`_tmpl$N\` to \`_tmpl$$N\`.
+*
+* That shift is what every module-wide scanner in the harness has to survive.
+* \`auditAnchors\` — the structural bound target #9 rests on — matched single-\`$\`
+* names, so on a module like this one it resolved nothing and reported a clean
+* \`unused: 0\` over a module it had never read. It now throws instead, and this
+* fixture is what keeps it honest: the hole sits between two text runs, so the
+* module really does bake one anchor for the audit to find.
+*/
+export default function HygieneShiftedUids() {
+  const _el$$$1 = _tmpl$$$1();
+  const _el$$$2 = _el$$$1.firstChild.nextSibling;
+  _$insert(_el$$$1, () => label(), _el$$$2);
+  return _el$$$1;
+}
+export const steps = [() => label.set("two"), () => label.set("")];
+"
+`;
+
+exports[`emitted code snapshots literal-class-style 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><button type="button" class="btn btn--primary">concat</button><span class="on">ternary</span><i style="color: red; font-weight: bold">literal style</i></div>\`);
+export default function LiteralClassStyle() {
+  return _tmpl$1();
+}
+export const optimality = {
+  target: 3,
+  milestone: 3,
+  effects: 0,
+  templates: 1,
+  patchCalls: 0,
+  emits: [
+    "class=\\"btn btn--primary\\"",
+    "class=\\"on\\"",
+    "style=\\"color: red; font-weight: bold\\""
+  ],
+  // The binding too, not just the interpolation: P3 folded the only read of
+  // \`base\`, so the declaration left behind is code nothing evaluates.
+  absent: ["\${base}", "const base ="]
+};
+"
+`;
+
+exports[`emitted code snapshots marker-literal-text 1`] = `
+"import { signal, template as _$$template, insert as _$$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$$template(\`<div data-note="<!---->" title="_$insert( is not a call site here"><span>end</span></div>\`);
+export const note = signal("<!---->");
+/**
+* A fixture whose SOURCE legitimately contains the characters the marker bound
+* counts, in every place they can reach the emitted module:
+*
+*  - \`data-note\` is static, so \`<!---->\` is baked into the template HTML as an
+*    ATTRIBUTE VALUE. It is characters, not a node, and a substring count of the
+*    template span reads it as an anchor that does not exist.
+*  - \`{() => note()}\` renders the same characters as TEXT. In the marker channel
+*    a text node and an anchor serialize identically unless the walk keeps them
+*    apart.
+*  - \`hint\` is a string holding the emitted helper's own name, which a
+*    module-wide \`_$insert(\` count reads as a hole. Every counted anchor it
+*    fakes is one the compiler could then drop without the bound noticing —
+*    which is precisely what target #9 makes possible.
+*
+* This module bakes ZERO anchors: the \`<!---->\` in \`data-note\` is an attribute
+* value, and the hole anchors on the \`<span>\` that follows it. That is what
+* makes \`compareToOracle\`'s "the templates carry none, so the DOM must carry
+* none" branch run at all — a substring count reads one here, takes the other
+* branch, and the check silently stops existing.
+*/
+export default function MarkerLiteralText() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$$insert(_el$1, () => note(), _el$2);
+  return _el$1;
+}
+export const steps = [() => note.set("<!---->x"), () => note.set("plain")];
+export const optimality = {
+  target: 9,
+  milestone: 2,
+  templates: 1,
+  patchCalls: 1,
+  emits: ["data-note=\\"<!---->\\""]
+};
+"
+`;
+
+exports[`emitted code snapshots mathml 1`] = `
+"import { template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow>\`);
+export default function MathMl() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement("math", { display: "block" }, _tmpl$2()));
+  return _el$1;
+}
+"
+`;
+
+exports[`emitted code snapshots multi-prop-one-element 1`] = `
+"import { signal, template as _$template, setProp as _$setProp, renderEffect as _$renderEffect } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
+export const id = signal("a");
+export const title = signal("first");
+export const width = signal(10);
+export default function MultiPropOneElement() {
+  const _el$1 = _tmpl$1();
+  _$renderEffect((_p$ = {}) => {
+    const _v$1 = id();
+    const _v$2 = title();
+    const _v$3 = String(width());
+    if (_v$1 !== _p$.id) _$setProp(_el$1, "id", _p$.id = _v$1);
+    if (_v$2 !== _p$.title) _$setProp(_el$1, "title", _p$.title = _v$2);
+    if (_v$3 !== _p$["data-width"]) _$setProp(_el$1, "data-width", _p$["data-width"] = _v$3);
+    return _p$;
+  });
+  return _el$1;
+}
+export const steps = [
+  () => id.set("b"),
+  () => title.set("second"),
+  () => width.set(20)
+];
+export const optimality = {
+  target: 4,
+  milestone: 3,
+  effects: 1,
+  templates: 1
+};
+"
+`;
+
+exports[`emitted code snapshots nested-fragments 1`] = `
+"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, Fragment as _$Fragment } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="outer"></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span>one</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<span></span>\`);
+const _tmpl$4 = /* @__PURE__ */ _$template(\`<b>deep</b>\`);
+const _tmpl$5 = /* @__PURE__ */ _$template(\`<span>two</span>\`);
+export const label = signal("mid");
+export default function NestedFragments() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(_$Fragment, null, _tmpl$2(), _$createElement(_$Fragment, null, (() => {
+    const _el$2 = _tmpl$3();
+    _$insert(_el$2, () => label());
+    return _el$2;
+  })(), _tmpl$4()), _tmpl$5()));
+  return _el$1;
+}
+export const steps = [() => label.set("changed")];
+"
+`;
+
+exports[`emitted code snapshots nested-template-element 1`] = `
+"import { template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><ul></ul></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<li class="row"><span>cell</span></li>\`);
+export default function NestedTemplateElement() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$insert(_el$1, _$createElement("template", { id: "row" }, _tmpl$2()), _el$2);
+  return _el$1;
+}
+"
+`;
+
+exports[`emitted code snapshots non-delegated-event 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
+const _h$1 = () => hovered.set(true);
+const _h$2 = () => hovered.set(false);
+const _h$3 = () => hovered.set(true);
+export const hovered = signal(false);
+export default function NonDelegatedEvent() {
+  const _el$1 = _tmpl$1();
+  _el$1.addEventListener("mouseenter", _h$1);
+  _el$1.addEventListener("mouseleave", _h$2);
+  _el$1.addEventListener("focus", _h$3);
+  _$insert(_el$1, () => hovered() ? "in" : "out");
+  return _el$1;
+}
+export const steps = [() => hovered.set(true)];
+export const events = [
+  (root: HTMLElement) => root.firstElementChild?.dispatchEvent(new Event("mouseleave")),
+  (root: HTMLElement) => root.firstElementChild?.dispatchEvent(new Event("mouseenter")),
+  (root: HTMLElement) => root.firstElementChild?.dispatchEvent(new Event("mouseleave")),
+  (root: HTMLElement) => root.firstElementChild?.dispatchEvent(new Event("focus"))
+];
+export const optimality = {
+  target: 7,
+  milestone: 3,
+  emits: ["addEventListener"],
+  absent: [
+    "$$mouseenter",
+    "$$mouseleave",
+    "$$focus"
+  ]
+};
+"
+`;
+
+exports[`emitted code snapshots portal 1`] = `
+"import { Portal, template as _$template, insert as _$insert, createElement as _$createElement } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><div id="portal-target"></div></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="teleported">over here</p>\`);
+export default function PortalFixture() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, _$createElement(Portal, { target: "#portal-target" }, _tmpl$2()));
+  return _el$1;
+}
+"
+`;
+
+exports[`emitted code snapshots pre-whitespace 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><pre>  indented lines  kept</pre><textarea>raw   text</textarea></div>\`);
+export default function PreWhitespace() {
+  return _tmpl$1();
+}
+"
+`;
+
+exports[`emitted code snapshots property-attrs 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<form><input type="text"><input type="checkbox"><textarea></textarea></form>\`);
+export const text = signal("typed");
+export const checked = signal(false);
+export default function PropertyAttrs() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$2.nextSibling;
+  const _el$4 = _el$1.lastChild;
+  _$setProp(_el$2, "value", () => text());
+  _$setProp(_el$2, "readOnly", true);
+  _$setProp(_el$3, "checked", () => checked());
+  _$setProp(_el$3, "disabled", true);
+  _$setProp(_el$4, "value", "static");
+  return _el$1;
+}
+export const steps = [() => checked.set(true), () => text.set("edited")];
+"
+`;
+
+exports[`emitted code snapshots reactive-attribute 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<a data-static="keep">go</a>\`);
+export const href = signal("/home");
+export const active = signal(false);
+export default function ReactiveAttribute() {
+  const _el$1 = _tmpl$1();
+  _$setProp(_el$1, "href", () => href());
+  _$setProp(_el$1, "class", () => active() ? "link active" : "link");
+  return _el$1;
+}
+export const steps = [
+  () => active.set(true),
+  () => href.set("/about"),
+  () => active.set(false)
+];
+/**
+* TWO effects, not one, and that is the correct answer.
+*
+* \`href\` gets a compiled effect. \`class\` does not join it: \`applyResolvedProp\`
+* threads the class string it applied last time through the RUNTIME's effect
+* and removes what vanished, so a compiled effect calling \`setProp\` afresh can
+* only ever add — and an unguarded \`element.className = …\` fired by an
+* unrelated prop wipes classes another channel put there. Unwrapped, the value
+* reaches the runtime exactly as the un-compiled path delivers it.
+*
+* class-with-live-siblings is the fixture that proves the boundary is where it
+* should be: two non-intercepted props on one element still share one effect.
+*/
+export const optimality = {
+  target: 4,
+  milestone: 3,
+  effects: 2,
+  templates: 1,
+  emits: ["\\"href\\", () => href()", "\\"class\\", () => active()"],
+  absent: ["renderEffect"]
+};
+"
+`;
+
+exports[`emitted code snapshots ref-binding 1`] = `
+"import { useRef, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><div class="boxed">target</div><span>callback</span></div>\`);
+export const box = useRef<HTMLDivElement>();
+export default function RefBinding() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$setProp(_el$2, "ref", box);
+  _$setProp(_el$3, "ref", (el: HTMLElement) => el.setAttribute("data-reffed", "yes"));
+  return _el$1;
+}
+// Reads the object ref back out: without this the useRef path never reaches the DOM.
+export const steps = [() => box.current?.setAttribute("data-ref-resolved", box.current.className)];
+"
+`;
+
+exports[`emitted code snapshots sibling-walk 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><i>0</i><i>1</i><i></i><i>3</i><i></i></div>\`);
+export const a = signal("1");
+export const b = signal("2");
+export default function SiblingWalk() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.lastChild;
+  const _el$3 = _el$2.previousSibling.previousSibling;
+  _$insert(_el$3, () => a());
+  _$insert(_el$2, () => b());
+  return _el$1;
+}
+export const steps = [() => a.set("A"), () => b.set("B")];
+export const optimality = {
+  target: 5,
+  milestone: 3,
+  templates: 1,
+  patchCalls: 2,
+  // Holes at index 2 and 4 of five children. Forward costs 2 + 4 hops; from the
+  // end it is 1 + 2, and the second hole is reached from the first.
+  emits: [".lastChild", ".previousSibling"],
+  absent: [".nextSibling"]
+};
+"
+`;
+
+exports[`emitted code snapshots spread-static-mix 1`] = `
+"import { signal, createElement as _$createElement } from "@barqjs/core";
+export const extra = signal<Record<string, unknown>>({
+  role: "button",
+  "data-n": "1"
+});
+// The steps below are deliberately inert: createElement receives a plain props
+// object, so the un-compiled runtime reads a spread exactly once. A reactive
+// _$spread would change the DOM here where the oracle does not.
+export default function SpreadStaticMix() {
+  return _$createElement("div", {
+    id: "fixed",
+    ...extra(),
+    class: "after-spread"
+  }, "spread");
+}
+export const steps = [() => extra.set({
+  role: "link",
+  "data-n": "2"
+}), () => extra.set({})];
+"
+`;
+
+exports[`emitted code snapshots static-attribute-expression 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="grid" data-columns="4" title="grid of 4"><span data-cells="16">fixed</span></div>\`);
+/**
+* Not one of these attribute values is a literal, and every one of them is
+* computable from a module-level \`const\` that nothing ever writes. Name
+* matching cannot tell that apart from a signal read; symbol resolution can,
+* which is the whole of target 1.
+*/
+export default function StaticAttributeExpression() {
+  return _tmpl$1();
+}
+export const optimality = {
+  target: 1,
+  milestone: 3,
+  effects: 0,
+  templates: 1,
+  patchCalls: 0,
+  emits: [
+    "class=\\"grid\\"",
+    "data-columns=\\"4\\"",
+    "title=\\"grid of 4\\"",
+    "data-cells=\\"16\\""
+  ],
+  absent: ["=>"]
+};
+"
+`;
+
+exports[`emitted code snapshots static-only 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<section class="card" data-kind="static"><h2 class="title">Barq</h2><p>Nothing here ever changes.</p><ul><li>one</li><li>two</li><li>three</li></ul></section>\`);
+export default function StaticOnly() {
+  return _tmpl$1();
+}
+export const optimality = {
+  target: 2,
+  milestone: 2,
+  effects: 0,
+  templates: 1,
+  patchCalls: 0,
+  absent: ["=>"]
+};
+"
+`;
+
+exports[`emitted code snapshots style-object 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><span>sized</span></div>\`);
+export const size = signal(12);
+export default function StyleObject() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$setProp(_el$1, "style", {
+    color: "blue",
+    fontSize: "14px"
+  });
+  _$setProp(_el$2, "style", () => ({
+    width: size(),
+    opacity: 1
+  }));
+  return _el$1;
+}
+export const steps = [() => size.set(30)];
+"
+`;
+
+exports[`emitted code snapshots svg 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<svg viewBox="0 0 24 24" width="24" height="24"><g class="group"><circle cx="12" cy="12" fill="currentColor"/><path d="M0 0h24v24H0z" stroke-width="2"/></g></svg>\`);
+export const radius = signal(4);
+export default function Svg() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$2.firstChild;
+  _$setProp(_el$3, "r", () => String(radius()));
+  return _el$1;
+}
+export const steps = [() => radius.set(8)];
+"
+`;
+
+exports[`emitted code snapshots svg-dynamic-class 1`] = `
+"import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<svg viewBox="0 0 24 24" width="24" height="24"><g class="group"><circle cx="12" cy="12" r="6"/></g></svg>\`);
+export const active = signal(false);
+/**
+* O5: \`element.className\` is a get-only SVGAnimatedString on an SVGElement, so
+* a dynamic class on an SVG child has no correct lowering unless the runtime
+* writes it with setAttribute. test/preload.ts installs the browser's property
+* shape, because happy-dom's writable className hides the bug.
+*/
+export default function SvgDynamicClass() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$2.firstChild;
+  _$setProp(_el$3, "class", () => active() ? "dot dot--on" : "dot");
+  _$setProp(_el$3, "stroke-width", () => active() ? "3" : "1");
+  return _el$1;
+}
+export const steps = [() => active.set(true), () => active.set(false)];
+"
+`;
+
+exports[`emitted code snapshots svg-nested-in-html 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="icon-wrap"><svg viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8"/></svg><span>label</span></div>\`);
+export default function SvgNestedInHtml() {
+  return _tmpl$1();
+}
+"
+`;
+
+exports[`emitted code snapshots text-gt-hole 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div>a &amp; b &gt; c<span>tail</span><b>end</b></div>\`);
+export const tail = signal("x");
+/**
+* A text run carrying \`>\`, followed by an element, a hole and another element —
+* the shape that made the two parsers in this harness disagree about how many
+* nodes a walk crosses.
+*
+* happy-dom splits a text run on a bare \`>\` where Chrome keeps one node, so
+* \`firstChild.nextSibling\` landed on \`<span>\` in Chrome and on a text node in
+* happy-dom. The compiler now escapes \`>\` as \`&gt;\` in template text, which is
+* what the HTML serialization spec writes anyway; this fixture is the corpus
+* evidence that the byte cannot come back.
+*/
+export default function TextGtHole() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.lastChild;
+  _$insert(_el$1, () => tail(), _el$2);
+  return _el$1;
+}
+export const steps = [() => tail.set("y"), () => tail.set("")];
+"
+`;
+
+exports[`emitted code snapshots text-hole-adjacent 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
+export const a = signal("a");
+export const b = signal("b");
+export default function TextHoleAdjacent() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$insert(_el$1, () => a(), _el$2);
+  _$insert(_el$1, () => b());
+  return _el$1;
+}
+export const steps = [
+  () => a.set("A"),
+  () => b.set("B"),
+  () => a.set("")
+];
+"
+`;
+
+exports[`emitted code snapshots text-hole-followed 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><span class="suffix">items</span></div>\`);
+export const count = signal(0);
+export default function TextHoleFollowed() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$insert(_el$1, () => count(), _el$2);
+  return _el$1;
+}
+export const steps = [() => count.set(3), () => count.set(7)];
+export const optimality = {
+  target: 9,
+  milestone: 3,
+  templates: 1,
+  patchCalls: 1,
+  // Something DOES follow the hole, and it is still not a comment: the <span>
+  // that follows is a stable node, so it is the anchor and no marker is baked.
+  // A marker is only needed where the next thing is text the template fuses.
+  absent: ["<!---->"]
+};
+"
+`;
+
+exports[`emitted code snapshots text-hole-fused 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<p>Total: <!----> clicks</p>\`);
+export const clicks = signal(0);
+export default function TextHoleFused() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild.nextSibling;
+  _$insert(_el$1, () => clicks(), _el$2);
+  return _el$1;
+}
+export const steps = [() => clicks.set(1), () => clicks.set(12)];
+"
+`;
+
+exports[`emitted code snapshots text-hole-trailing 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="counter"></div>\`);
+export const count = signal(0);
+export default function TextHoleTrailing() {
+  const _el$1 = _tmpl$1();
+  _$insert(_el$1, () => count());
+  return _el$1;
+}
+export const steps = [
+  () => count.set(1),
+  () => count.set(42),
+  () => count.set(0)
+];
+export const optimality = {
+  target: 9,
+  milestone: 3,
+  templates: 1,
+  patchCalls: 1,
+  // Nothing follows the hole, so \`insert\` can append and the anchor goes.
+  absent: ["<!---->"]
+};
+"
+`;
+
+exports[`emitted code snapshots unicode-long-template 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="lead" data-kind="prose">This paragraph is deliberately long so that the accented word sits past the search budget — café naïve, 日本語のテキスト, and an emoji 🎉 for the astral case.<span></span></p>\`);
+export const suffix = signal("un");
+/**
+* A template whose html carries multi-byte characters PAST byte 100.
+*
+* §6.2 locates a hoisted template by scanning a fixed byte budget past the
+* declaration name, and the budget lands exactly there: slicing a \`&str\` at it
+* split a two-byte character in half and took the whole compile down with a Rust
+* panic. Vite passes \`sourcemap: true\` unconditionally, so that was an ordinary
+* accented paragraph killing the build. No other fixture had a non-ASCII byte
+* inside a template longer than 100 bytes.
+*/
+export default function UnicodeLongTemplate() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.lastChild;
+  _$insert(_el$2, () => suffix());
+  return _el$1;
+}
+export const steps = [() => suffix.set("deux"), () => suffix.set("")];
+"
+`;
+
+exports[`emitted code snapshots void-elements 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><br><img src="a.png" alt="a"><hr><input type="text" name="q"><wbr></div>\`);
+export default function VoidElements() {
+  return _tmpl$1();
+}
+"
+`;
+
+exports[`emitted code snapshots walk-from-the-back 1`] = `
+"import { signal, template as _$template, insert as _$insert } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="row"><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li class="penultimate"></li><li class="last"></li></ul>\`);
+export const last = signal("Z");
+export const penultimate = signal("Y");
+/**
+* Target #5, from the other end. Both holes are near the END of a wide row, so
+* a forward walk pays six and five hops for them where reaching back from the
+* last child costs one and two. \`deep-walk\` is the same claim about depth; this
+* one is about breadth, and it is the case a forward-only addresser cannot
+* improve at all.
+*
+* The declaration below names the route rather than bounding its length: a
+* module that addresses nothing satisfies any bound on hop count.
+*/
+export default function WalkFromTheBack() {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.lastChild;
+  const _el$3 = _el$2.previousSibling;
+  _$insert(_el$3, () => penultimate());
+  _$insert(_el$2, () => last());
+  return _el$1;
+}
+export const steps = [() => last.set("ZZ"), () => penultimate.set("YY")];
+export const optimality = {
+  target: 5,
+  milestone: 3,
+  templates: 1,
+  patchCalls: 2,
+  emits: [".lastChild", ".previousSibling"],
+  absent: [".nextSibling"]
+};
+"
+`;
+
+exports[`emitted code snapshots whitespace-only 1`] = `
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<p><span>a</span> <span>b</span><i>c</i></p>\`);
+export default function WhitespaceOnly() {
+  return _tmpl$1();
+}
+"
+`;

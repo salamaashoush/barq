@@ -1,0 +1,29 @@
+[workspace]
+
+[package]
+name = "barq_compiler"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+napi = { version = "3", default-features = false, features = ["napi4", "dyn-symbols"] }
+napi-derive = "3"
+oxc = { version = "0.143.0", features = ["ast_visit", "codegen", "semantic"] }
+oxc_index = "5"
+# The same crate `oxc_codegen` returns its map in; named directly because the
+# `oxc` facade does not re-export it, and §6's template-interior segments have
+# to be merged into that map rather than into a second one.
+oxc_sourcemap = "8"
+rustc-hash = "2"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = "symbols"
