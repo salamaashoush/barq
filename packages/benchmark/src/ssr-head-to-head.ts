@@ -159,6 +159,9 @@ console.log(
 
 const TRIALS = 51;
 const ITERATIONS = 400;
+// The envelope row pays for a root scope per render, so it runs fewer iterations
+// per trial. One binding, interpolated into both the title and the options.
+const ENVELOPE_ITERATIONS = ITERATIONS / 4;
 
 function report(
   title: string,
@@ -190,7 +193,7 @@ function report(
 }
 
 report(
-  `100-row page, renderToString envelope — the shipping call (${TRIALS} trials x ${ITERATIONS} iters)`,
+  `100-row page, renderToString envelope — the shipping call (${TRIALS} trials x ${ENVELOPE_ITERATIONS} iters)`,
   multi(
     [
       {
@@ -212,7 +215,7 @@ report(
         },
       },
     ],
-    { trials: TRIALS, iterations: ITERATIONS / 4 },
+    { trials: TRIALS, iterations: ENVELOPE_ITERATIONS },
   ),
   "barq compiled",
 );

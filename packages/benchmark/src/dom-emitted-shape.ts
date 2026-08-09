@@ -100,8 +100,11 @@ function diff(used: readonly string[], emitted: Set<string>): string {
   return `DRIFT — ${parts.join("; ")}`;
 }
 
+const emittedBarq = new Map<string, string>();
+
 for (const c of cases) {
   const barqCode = compileBarq(SIGNAL_PRELUDE_BARQ + c.jsx, "case.tsx", false);
+  emittedBarq.set(c.benchmark, barqCode);
   const solidCode = await compileSolid(SIGNAL_PRELUDE_SOLID + c.jsx, "case.jsx", "dom");
 
   console.log(`\n${"=".repeat(78)}`);
@@ -123,6 +126,19 @@ for (const c of cases) {
   );
   console.log(`\n  barq  vs benchmark: ${diff(c.barqUses, helpers(barqCode))}`);
   console.log(`  solid vs benchmark: ${diff(c.solidUses, helpers(solidCode))}`);
+}
+
+/** What the compiler really did with a row, read out of the emit. */
+function rowShape(benchmark: string): string {
+  const code = emittedBarq.get(benchmark) ?? "";
+  const template = /_\$+template\(`([^`]*)`\)/.exec(code)?.[1] ?? null;
+  const fell = /_\$+createElement\(/.test(code);
+  const head = `      ${benchmark}: `;
+  if (template === null) return `${head}no template — ${fell ? "createElement" : "no DOM call"}`;
+  const count = code.match(/_\$+template\(/g)?.length ?? 0;
+  return `${head}${count} template${count === 1 ? "" : "s"}, first is \`${template}\`${
+    fell ? ", plus createElement" : ", no createElement"
+  }`;
 }
 
 // ---------------------------------------------------------------- liveness
@@ -250,11 +266,10 @@ console.log(`NOTES — differences that the helper-set diff above cannot see:
     make. Same direction on every insert case, against barq.
 
   * "list: create 100 rows" hand-writes \`template("<tr><td></td><td></td></tr>")\` for
-    both. barq does NOT emit a template for a bare top-level <tr> — see the case above,
-    it falls back to createElement, because a lone <tr> cannot be parsed by innerHTML
-    outside a table. Inside a real <table><tbody> the template it emits is the TABLE's,
-    and the rows still go through createElement. The benchmark is therefore measuring a
-    barq path the compiler does not produce for this markup.
+    both. Whether that is a shape barq produces is DERIVED, not asserted here by hand —
+    a hand-written claim about the compiler is the drift this file exists to catch:
+${rowShape("list: create 100 rows")}
+${rowShape("list: create 100 rows (in a real table)")}
 
   * "prop: class update" is FAIR despite the drift line above. \`class\` is a STATEFUL_DIFF
     channel: the compiler deliberately does not auto-thunk it, so the live form really is

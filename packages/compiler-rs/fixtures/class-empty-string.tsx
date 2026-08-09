@@ -1,6 +1,6 @@
 import { signal } from "@barqjs/core"
 
-export const label = signal<string | null>("")
+export const label = signal("")
 export const extra = signal(false)
 
 /**
@@ -12,6 +12,10 @@ export const extra = signal(false)
  * `class=""` on the element. The string backend has to draw the same line: it
  * omitted the attribute for both, so `class={() => ""}` rendered one attribute
  * on the client and none on the server.
+ *
+ * The nullish half is not spelled here because the JSX types do not admit a
+ * `class` thunk that returns one; it is pinned in `packages/core/src/ssr.test.ts`
+ * against `renderToString` of the same value.
  *
  * `classList` is the other half. `diffClassList` toggles the keys of an OBJECT
  * and does nothing at all with a string or an array, and no token means no
@@ -27,12 +31,15 @@ export default function ClassEmptyString() {
       <span data-p="static" class="" />
       <span data-p="dynamic" class={() => label()} />
       <span data-p="merged" class={() => (extra() ? "on" : "")} classList={{ hit: () => extra() }} />
-      <span data-p="not-an-object" classList={() => "a b"} />
+      {/* The cast is the claim: the type forbids a non-object `classList`
+          because `diffClassList` ignores one, and an author who defeats the
+          type must still get the same DOM out of both backends. */}
+      <span data-p="not-an-object" classList={"a b" as unknown as Record<string, boolean>} />
     </div>
   )
 }
 
-export const steps = [() => label.set("b"), () => extra.set(true), () => label.set(null)]
+export const steps = [() => label.set("b"), () => extra.set(true)]
 
 export const optimality = {
   target: 4,

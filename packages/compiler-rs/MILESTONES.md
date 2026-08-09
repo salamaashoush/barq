@@ -369,11 +369,21 @@ zero-DOM claim by having nothing to check. **99 of 106 fixtures** compile to pur
 (155 `_$html` literals, zero DOM ops); the other 7 fall back to the DOM backend and each carries a
 diagnostic naming the component and `renderToString`.
 
-Escaping is proved by a matrix of **9 contexts × 15 hostile values = 135 cells**, each asserted
+Escaping is proved by a matrix of **9 contexts × 16 hostile values = 144 cells**, each asserted
 against `renderToString` of the same value through `createElement` rather than a hand-written
 expectation, plus 2 raw-text tags × 18 values, 15 attribute-name cells, and 3 P1-refused
 (`<table>`-reshaped) probes. Every dynamic cell is required to emit a runtime escaper as an
 equality, so a future constant fold cannot silently swallow the dynamic half.
+
+**What the matrix is evidence of, and what it is not.** Every cell is a *parse*: the value is read
+back out of the markup and the two markups are compared as trees. That is the right question for
+"did the value become structure", and it is blind to any two spellings that parse the same —
+`&nbsp;` against a raw U+00A0, or a surrogate pair against the two halves it was written as. Both
+of those mutations leave the whole matrix green. The byte-level evidence for the escapers'
+*character set* is elsewhere and is named where it is used: `packages/core/src/ssr.test.ts`'s
+boundary corpus, and one row in `test/ssr.test.ts` ("the escapers' own BYTES, where a tree
+comparison is blind") that asserts the rendered bytes for U+00A0 and an astral pair in both a text
+and an attribute position, on both the runtime and the compile-time escaper.
 
 ### #11 — Compile throughput as a feature — **DELIVERED**
 
@@ -413,8 +423,16 @@ DOM nodes produced for one dynamic text hole (<span>{x}</span>):
   solid: 1  ->  hi
 ```
 
-Parity or better on six of seven; `replace all 100 rows` is 1–3% slower and inside run-to-run
-noise. Node count per text hole matches Solid at 1.
+Parity or better on six of seven; `replace all 100 rows` is 1–3% slower here. Node count per text
+hole matches Solid at 1.
+
+That one row was chased down afterwards with a dedicated paired harness
+(`packages/benchmark/src/dom-replace-all.ts`) whose CONTROL runs identical code on both sides and
+reads 0.997–0.999 — so the harness itself is unbiased to ~0.3% — and which puts the case at
+0.93–0.96 (barq faster) across independent processes. `protocol-spread.ts`, a different harness,
+puts the same case just above 1.0. The honest statement is that **it straddles 1.0**: the effect,
+whichever way it points, is at the scale of the harness rather than of the code. Do not report it
+as a win or a loss without the control beside it.
 
 ### SSR head to head against Solid
 
@@ -461,8 +479,12 @@ solid escape(String(42))             9.8 ns
 a replacement callback over four characters (`& < > U+00A0`); Solid scans manually and escapes
 three. This is the single highest-value follow-up in the project and it is listed in §5.
 
-**`ssr-head-to-head.ts` should be updated to time the compiled path.** I did not change it, because
-the brief for this pass was to measure and write.
+**Superseded by M7.** `ssr-head-to-head.ts` now compiles the fixture through both real compilers
+and times the emitted modules (G2), and the escaper was rewritten (G1). The same benchmark on the
+same page now reads barq **4.8 µs** against Solid's **9.3 µs** — the sign has flipped, and the
+size of the win is machine-dependent enough that it belongs in an envelope: see G2 for the IQR and
+the second machine's reading. Everything above this line is the pre-M7 measurement, kept because it
+is what the escaper rewrite was justified against.
 
 ### Corpus-wide structural wins, before and after
 
@@ -566,18 +588,33 @@ This is the section to read before touching anything.
 
 ### 5.1 Known gaps, in priority order
 
-**G1 — `esc()` is 3.6x slower than Solid's `escape()` and it is the whole SSR gap.**
-`packages/core/src/ssr.ts:88` — `value.replace(TEXT, textReplacement)` with a global regex and a
-function callback, over `/[&<> ]/g`. Measured 129.9 ns vs Solid's 36.5 ns on
-`"item 42 <&>"`. On a 100-row page that single function is 14.7 of the 15.2 µs. A manual
-`indexOf`-driven scan with a slice-and-append loop, the way Solid does it, should close most of the
-1.66x. Nothing about the escaping *semantics* needs to change — the 135-cell matrix pins the
-output bytes exactly, so this is a safe rewrite with a strong test underneath it.
+**G1 — CLOSED.** `esc()` was 3.6x slower than Solid's `escape()` and it was the whole SSR gap:
+`value.replace(TEXT, textReplacement)` with a global regex and a function callback over
+`/[&<>\u00a0]/g`, 129.9 ns against Solid's 36.5 ns on `"item 42 <&>"`, and 14.7 of the 15.2 µs a
+100-row page cost. Both escapers are now an `indexOf` probe followed by a slice-and-append scan.
+Measured on the emitted shape: `"item N <&>"` 132.5 → 18.9 ns, a clean ~120-character run
+74.0 → 23.1 ns, U+00A0 73.1 → 14.9 ns; the 100-row page 16.65 → 5.36 µs, with the output asserted
+byte-identical to the old escaper's over 400k+ fuzzed inputs.
 
-**G2 — `packages/benchmark/src/ssr-head-to-head.ts` measures the pre-M6 path.** It times
-`renderToString` over a `createElement` tree, so it reports "solid is 18.2x faster" for a path the
-compiler no longer takes. It should render the compiled emit (§3 shows the shape and the numbers).
-Until it is updated, that script's headline number is misleading in the project's own repo.
+The *semantics* did not change — but note what the evidence for that actually is. The escaping
+matrix compares parsed trees and cannot see a change of spelling (§2 #10 says so now). Byte
+identity was established by fuzzing the new escapers against a reference `String.replace`
+implementation over random and exhaustive corpora — lone surrogates, astral pairs and the
+probe-gate boundary included — and by `packages/core/src/ssr.test.ts`'s own boundary rows.
+
+**G2 — CLOSED.** `packages/benchmark/src/ssr-head-to-head.ts` used to time `renderToString` over a
+`createElement` tree — the *uncompiled* path — against Solid's compiled `ssr()` shape, and reported
+"solid is 18.2x faster" for a path the compiler no longer takes. It now compiles the fixture
+through the native binding with `ssr: true` and through `babel-preset-solid` with
+`generate: "ssr"`, writes both emits to disk, imports them, and times those; it throws if the two
+pages disagree. The uncompiled row is kept, labelled, for contrast.
+
+State the ratio as an envelope, not a point: barq's compiled string backend measures roughly
+**1.7x–2.5x faster than Solid's** on this page, depending on the machine and the run. Three
+readings of the same benchmark, 51 interleaved trials each: 4.87 vs 9.28 µs (IQR 1.75–1.97),
+4.78 vs 9.38 µs (1.98x), and 4.76 vs 9.32 µs (IQR 1.797–2.047, Wilcoxon p = 1.3e-9); a fourth run
+on a different box read 2.21–2.49. A single point estimate from any one of them is not reportable.
+What reproduces everywhere is the sign: before G1 this benchmark had barq 1.66x *slower*.
 
 **G3 — `Op::SetClass`, `Op::SetStyle` and `Op::Spread` are constructed by no pass.**
 `class`, `style`, `ref`, `innerHTML` and spreads all arrive as `SetOnce`/`SetLive`/`SetOpaque`
@@ -604,6 +641,13 @@ canonicalisation covers a `<textarea>`'s `value`/`defaultValue`, which come from
 `browser.test.ts` admits exactly this one parser disagreement and asserts it is still reached, and
 `fixtures/pre-leading-newline.tsx` is the fixture. Verified load-bearing by forcing the detection to
 "conforming" under happy-dom, which puts the fixture back in the red.
+
+Both canonicalisations are lossy by design, so neither half of O9 can be pinned by the dual render
+alone. The DOM half is pinned by `compile.rs`'s two O9 tests over the emitted template; the string
+half is pinned by `ssr.test.ts`'s "O9: the SSR chunks double a leading newline, byte for byte",
+which runs the FIXTURE's own `emits`/`absent` needles against the `ssr: true` emit — so an SSR
+backend that stopped doubling, or dropped the newline outright, goes red where `sameTree` would
+have compared equal.
 
 **G5 — Hydration is replace-based.** `dom.ts:1188` `hydrate()` calls `render()` and replays captured
 clicks; it does not reuse server-rendered nodes. This is DESIGN O8 and it was explicitly out of
@@ -755,10 +799,14 @@ speculatively.
 | `attr()` validates the attribute name against the XML `Name` production and throws | **Security.** `{...untrusted}` wrote attacker-controlled object keys as attribute names, where the DOM path throws `InvalidCharacterError` — SSR was the unsafe side of a real divergence. See G6. |
 | `rawText(value, tag?)` neutralises `</` + owning tag, and `<!--` in script data only | **Security.** A dynamic value inside `<script>`/`<style>`/`<iframe>`/`<noscript>`/`<noembed>`/`<noframes>`/`<xmp>` escaped its element and became a live `<img onerror>`; verified in real Chrome over CDP. `</` before a non-letter never opens an end tag, and `\/` is an identity escape in both a JS string and a CSS string, so a payload survives verbatim where it matters. |
 | `ssr.test.ts` (new, 523 lines) | coverage for all of the above, every hostile cell asserted against `renderToString` of the same value through `createElement` |
+| `classAttr` writes ` class=""` for an empty-but-present class; `clsList` answers `null` when it contributes no token, and only for an OBJECT; `cls` tracks presence separately from content | **A real divergence between the two backends.** `classToString` answers `null` for nullish and `false` — the DOM path calls `removeAttribute` — and `""` for an empty string, array or object, which it assigns to `className`, leaving `class=""` on the element. The string backend omitted the attribute for both, so `class={() => ""}` rendered one attribute on the client and none on the server. `classList` is the other half: `diffClassList` toggles the keys of an object and does nothing whatever with a string or an array, so `classList={"a b"}` wrote a class on the server that the client never writes. `fixtures/class-empty-string.tsx` carries all four shapes. |
 
 No signature was changed incompatibly across any of the six milestones. `attr` and `spreadAttrs`
 gained an optional third parameter; `rawText` gained an optional second; everything else is
-additive. The one behaviour change is `attr()`'s throw on an invalid attribute name (G6).
+additive. The two behaviour changes are `attr()`'s throw on an invalid attribute name (G6) and
+`clsList`'s `string` → `string | null` return, whose two callers — `attr`'s `classList` branch and
+`cls` — are in the same file and updated with it; the compiler emits `clsList` only as an argument
+to `cls`.
 
 ---
 

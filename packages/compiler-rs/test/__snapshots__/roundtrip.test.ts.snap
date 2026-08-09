@@ -187,7 +187,7 @@ export const optimality = {
 exports[`emitted code snapshots class-empty-string 1`] = `
 "import { signal, template as _$template, setProp as _$setProp } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span data-p="static" class=""></span><span data-p="dynamic"></span><span data-p="merged"></span><span data-p="not-an-object"></span></div>\`);
-export const label = signal<string | null>("");
+export const label = signal("");
 export const extra = signal(false);
 /**
 * An empty class is PRESENT; an absent class is not, and \`classList\` is neither.
@@ -198,6 +198,10 @@ export const extra = signal(false);
 * \`class=""\` on the element. The string backend has to draw the same line: it
 * omitted the attribute for both, so \`class={() => ""}\` rendered one attribute
 * on the client and none on the server.
+*
+* The nullish half is not spelled here because the JSX types do not admit a
+* \`class\` thunk that returns one; it is pinned in \`packages/core/src/ssr.test.ts\`
+* against \`renderToString\` of the same value.
 *
 * \`classList\` is the other half. \`diffClassList\` toggles the keys of an OBJECT
 * and does nothing at all with a string or an array, and no token means no
@@ -212,14 +216,10 @@ export default function ClassEmptyString() {
   _$setProp(_el$4, "class", () => label());
   _$setProp(_el$3, "class", () => extra() ? "on" : "");
   _$setProp(_el$3, "classList", { hit: () => extra() });
-  _$setProp(_el$2, "classList", () => "a b");
+  _$setProp(_el$2, "classList", ("a b" as unknown) as Record<string, boolean>);
   return _el$1;
 }
-export const steps = [
-  () => label.set("b"),
-  () => extra.set(true),
-  () => label.set(null)
-];
+export const steps = [() => label.set("b"), () => extra.set(true)];
 export const optimality = {
   target: 4,
   milestone: 6,

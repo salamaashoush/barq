@@ -8,6 +8,8 @@ exports[`marker channel auto-thunked-read: anchor layout 1`] = `"<div><p>attr</p
 
 exports[`marker channel boolean-and-nullish-props: anchor layout 1`] = `"<div><button>b</button><span></span></div>"`;
 
+exports[`marker channel class-empty-string: anchor layout 1`] = `"<div><span></span><span></span><span></span><span></span></div>"`;
+
 exports[`marker channel class-list-array-object: anchor layout 1`] = `"<div><span>array</span><span>object</span></div>"`;
 
 exports[`marker channel class-list-prop: anchor layout 1`] = `"<div><span>keyed</span><span>reactive</span></div>"`;
@@ -220,5 +222,3 @@ exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><
 exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
 
 exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;
-
-exports[`marker channel class-empty-string: anchor layout 1`] = `"<div><span></span><span></span><span></span><span></span></div>"`;
