@@ -37,6 +37,41 @@ let disagreements: ShapeDivergence[]
 let svg: SvgClassResult
 let differential: DifferentialReport
 let corrupted: DifferentialReport
+let reordered: DifferentialReport
+let truncated: DifferentialReport
+let unanchored: DifferentialReport
+
+/** Reverse the attribute order every template bakes in, exactly as oracle.test.ts does. */
+function reverseBakedAttributes(code: string): string {
+  return code.replace(/(_\$+template\(`)([\s\S]*?)(`)/g, (_m, open, html: string, close) =>
+    open +
+    html.replace(/<([a-zA-Z][\w:-]*)((?:\s+[^\s=>/]+="[^"]*"){2,})/g, (_match, tag, attrs: string) => {
+      const pairs = [...attrs.matchAll(/\s+([^\s=>/]+="[^"]*")/g)].map((p) => p[1])
+      return `<${tag} ${pairs.reverse().join(" ")}`
+    }) +
+    close,
+  )
+}
+
+/**
+ * Keep only the first scripted step, so the compiled run produces fewer frames.
+ *
+ * The array is RENAMED and re-exported truncated rather than rewritten in place:
+ * a fixture's steps are arbitrary JS across arbitrary lines, and a regex that
+ * tries to cut one out of the middle produces a module that does not parse — at
+ * which point every fixture reports `threw` and the row measures nothing.
+ */
+function dropLaterSteps(code: string): string {
+  if (!code.includes("export const steps = ")) return code
+  return `${code.replace("export const steps = ", "const _stepsAll = ")}
+export const steps = _stepsAll.slice(0, 1);
+`
+}
+
+/** Drop the third argument of every `_$insert`, so the compiled path appends. */
+function dropInsertAnchors(code: string): string {
+  return code.replace(/(_\$+insert\([\s\S]*?), (_el\$+\d+)\)/g, "$1)")
+}
 
 beforeAll(async () => {
   templates = corpus()
@@ -51,8 +86,24 @@ beforeAll(async () => {
     corrupted = await checkDifferential(page, (_name, code) =>
       code.replace(/_\$+template\(`/, (open) => `${open}<u data-corrupted="1"></u>`),
     )
+    // And the same corpus with every template's attributes emitted backwards.
+    // Rule 2 of normalize.ts sorts them out of the DOM diff, so this is
+    // invisible to `initial-dom` and can only be caught by the order channel —
+    // which is the one that used to run under happy-dom alone.
+    reordered = await checkDifferential(page, (_name, code) => reverseBakedAttributes(code))
+    // Every compiled module driven through ONE step instead of all of them. Both
+    // frame loops in the page are bounded by the MINIMUM of the two lengths, so
+    // a compiled run that stopped part-way compared only the prefix and reported
+    // a clean sheet; the counts are what see it.
+    truncated = await checkDifferential(page, (_name, code) => dropLaterSteps(code))
+    // And the anchor argument removed from every `insert`, which makes the
+    // compiled path append exactly the way `createElement` does — so the
+    // fixtures that declare a `win` stop winning. A declared win that stopped
+    // describing reality is worse than no win, because it disarms that frame's
+    // comparison for good.
+    unanchored = await checkDifferential(page, (_name, code) => dropInsertAnchors(code))
   })
-}, 300_000)
+}, 600_000)
 
 describe("real browser: HTML tree construction", () => {
   it("every emitted template parses to exactly one root, with no tag moved", () => {
@@ -68,8 +119,27 @@ describe("real browser: HTML tree construction", () => {
     // to a different node in each. This costs no extra Chrome launch.
     const shown = (rows: ShapeDivergence[]) =>
       rows.map((d) => `${d.fixture}: chrome ${d.chrome} vs happy-dom ${d.fake}`)
-    expect(shown(disagreements.filter((d) => !d.fixture.startsWith("browser-only/")))).toEqual([])
+    // One disagreement is admitted, and only one: the U+000A a conforming
+    // parser ignores after `<pre>`/`<textarea>`/`<listing>`. It moves no node
+    // and reorders nothing, so no walk can be fooled by it — it changes the
+    // CHARACTERS of one text node, which is why `normalize.ts` canonicalises
+    // exactly that run on this engine and nothing else. The three hazard rows
+    // below are the measurement that the rule is real in Chrome.
+    expect(
+      shown(
+        disagreements.filter(
+          (d) => !d.fixture.startsWith("browser-only/") && !d.leadingNewlineOnly,
+        ),
+      ),
+    ).toEqual([])
     expect(templates.length, "and it ran on the whole corpus").toBeGreaterThanOrEqual(40)
+
+    // And the admitted one is really reached, so the clause above is not a
+    // permission nobody uses: `pre-leading-newline` carries the shape.
+    expect(
+      disagreements.filter((d) => d.leadingNewlineOnly).length,
+      "no template disagrees by the leading newline any more",
+    ).toBeGreaterThan(0)
 
     // The other half: `fixtures/browser-only/` exists BECAUSE the fake parser
     // is wrong there, so a run in which none of them disagrees means either the
@@ -115,6 +185,53 @@ describe("real browser: the differential comparison", () => {
     ).toBeGreaterThanOrEqual(1)
     expect(differential.frames, "and every frame was driven").toBeGreaterThanOrEqual(140)
     expect(differential.divergences).toEqual([])
+  })
+
+  it("the attribute-order channel runs in the real parser, and it is live", () => {
+    // Attribute order in the compiled path is decided by the HTML PARSER
+    // reading the template, which is precisely the component happy-dom is not.
+    // The channel therefore has to run here, and it has to be doing work: a
+    // channel that produced no lines would report no divergences and read as a
+    // clean run.
+    expect(differential.attributeLines).toBeGreaterThanOrEqual(120)
+    expect(differential.divergences.filter((d) => d.kind === "attribute-order")).toEqual([])
+
+    // The detector half. Emitting every template's attributes backwards is
+    // invisible to the DOM diff — rule 2 of normalize.ts sorts them — so every
+    // divergence this produces has to come from the order channel.
+    const kinds = new Set(reordered.divergences.map((d) => d.kind))
+    expect([...kinds]).toEqual(["attribute-order"])
+    expect(
+      new Set(reordered.divergences.map((d) => d.fixture)).size,
+      "several fixtures bake two or more attributes into one tag",
+    ).toBeGreaterThanOrEqual(3)
+  })
+
+  it("a compiled run that produces FEWER frames is a divergence, not a short comparison", () => {
+    // Both frame loops are bounded by the minimum of the two lengths, so a
+    // compiled module that stopped driving simply had less compared and came
+    // back clean. This is the count that turns that into a failure.
+    const counts = truncated.divergences.filter((d) => d.kind === "step-count")
+    expect(counts.length, "no fixture reported a step-count divergence").toBeGreaterThanOrEqual(10)
+    expect(
+      new Set(counts.map((d) => d.fixture)).size,
+      "one truncated module, one divergent fixture",
+    ).toBeGreaterThanOrEqual(10)
+    expect(differential.divergences.length, "and the clean run really was clean").toBe(0)
+  })
+
+  it("a declared win that stopped being a win is reported as STALE", () => {
+    // A `win` permanently disarms one frame's comparison, so a note that stopped
+    // describing reality is worse than no note at all. Removing every insert
+    // anchor makes the compiled path append exactly as `createElement` does,
+    // which is precisely what the corpus's wins are declared ABOUT — so every
+    // one of them has to go stale.
+    const stale = unanchored.divergences.filter((d) => d.kind === "stale-win")
+    expect(stale.length, "no win went stale under a mutation that removes the win").toBeGreaterThanOrEqual(1)
+    expect(
+      differential.divergences.filter((d) => d.kind === "stale-win" || d.kind === "unmet-win"),
+      "and no win is stale or unmet on the clean run",
+    ).toEqual([])
   })
 
   it("the comparison is a detector: a corrupted template goes red", () => {

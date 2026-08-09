@@ -1,7 +1,9 @@
 use oxc::ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Expression, ImportDeclarationSpecifier,
-    JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
-    JSXExpression, ModuleExportName, Program, Statement, VariableDeclarator,
+    ArrowFunctionExpression, BindingPattern, Declaration, ExportDefaultDeclarationKind, Expression,
+    FormalParameters, Function, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
+    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
+    JSXMemberExpressionObject, ModuleExportName, Program, Statement, StaticMemberExpression,
+    VariableDeclarator,
 };
 use oxc::ast_visit::Visit;
 use oxc::ast_visit::walk;
@@ -89,10 +91,16 @@ pub fn classify<'a>(program: &Program<'a>, module: &mut Module<'a>, module_sourc
         env: &mut module.env,
         namespaces: Vec::new(),
         decls: Vec::new(),
+        candidates: Vec::new(),
+        tags: Vec::new(),
+        exported: Vec::new(),
     };
     binder.imports(program, module_source);
+    binder.env.namespaces = binder.namespaces.clone();
+    binder.exports(program);
     binder.visit_program(program);
     binder.fixpoint();
+    binder.props_params();
 
     number_reactive_symbols(&mut module.env);
 }
@@ -117,6 +125,12 @@ struct Binder<'p, 'a> {
     /// `import * as core from "@barqjs/core"` — `core.signal(0)` still resolves.
     namespaces: Vec<SymbolId>,
     decls: Vec<Decl<'a>>,
+    /// `(owner, props)` for every function shaped like a component. Applied
+    /// after the walk so a control-flow row attribution always wins.
+    candidates: Vec<(Option<SymbolId>, SymbolId)>,
+    /// Every binding this module writes as a JSX tag.
+    tags: Vec<SymbolId>,
+    exported: Vec<SymbolId>,
 }
 
 impl<'a> Binder<'_, 'a> {
@@ -148,6 +162,102 @@ impl<'a> Binder<'_, 'a> {
                     }
                     ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {}
                 }
+            }
+        }
+    }
+
+    /// Which bindings leave the module. A component used only by its importers
+    /// is still a component, so being exported counts as evidence exactly as
+    /// being written as a tag does.
+    fn exports(&mut self, program: &Program<'a>) {
+        for statement in &program.body {
+            match statement {
+                Statement::ExportDeclaration(export) => match &export.declaration {
+                    Declaration::VariableDeclaration(declaration) => {
+                        for declarator in &declaration.declarations {
+                            if let BindingPattern::BindingIdentifier(identifier) = &declarator.id
+                                && let Some(symbol) = identifier.symbol_id.get()
+                            {
+                                self.exported.push(symbol);
+                            }
+                        }
+                    }
+                    Declaration::FunctionDeclaration(function) => {
+                        if let Some(symbol) = function.id.as_ref().and_then(|id| id.symbol_id.get())
+                        {
+                            self.exported.push(symbol);
+                        }
+                    }
+                    _ => {}
+                },
+                Statement::ExportNamedDeclaration(export) => {
+                    for specifier in &export.specifiers {
+                        let ModuleExportName::IdentifierReference(reference) = &specifier.local
+                        else {
+                            continue;
+                        };
+                        if let Some(symbol) = reference
+                            .reference_id
+                            .get()
+                            .and_then(|id| self.scoping.get_reference(id).symbol_id())
+                        {
+                            self.exported.push(symbol);
+                        }
+                    }
+                }
+                // The default export has no binding of its own to look up, so
+                // the evidence is the export itself.
+                Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+                    ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
+                        if function_returns_jsx(function)
+                            && let Some(props) = props_symbol(&function.params)
+                        {
+                            self.candidates.push((None, props));
+                        }
+                    }
+                    ExportDefaultDeclarationKind::ArrowFunctionExpression(arrow) => {
+                        if arrow_returns_jsx(arrow)
+                            && let Some(props) = props_symbol(&arrow.params)
+                        {
+                            self.candidates.push((None, props));
+                        }
+                    }
+                    ExportDefaultDeclarationKind::Identifier(reference) => {
+                        if let Some(symbol) = reference
+                            .reference_id
+                            .get()
+                            .and_then(|id| self.scoping.get_reference(id).symbol_id())
+                        {
+                            self.exported.push(symbol);
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+
+    /// DESIGN §2.4: the props parameter of a compiled component. Member reads on
+    /// it are ⊤-reactive because our own component emit lowers props to getters,
+    /// so without this the getter is dead weight and `{props.total}` renders once.
+    ///
+    /// A candidate needs BOTH halves of the evidence: the function returns JSX,
+    /// and the module either writes it as a tag or lets it out. A one-parameter
+    /// JSX-returning arrow is otherwise indistinguishable from a `<For>` row
+    /// callback or a `.map` body, where a thunk would be pure loss.
+    ///
+    /// Applied after the walk, and only to a symbol nothing else classified, so
+    /// a row attribution always wins.
+    fn props_params(&mut self) {
+        for index in 0..self.candidates.len() {
+            let (owner, props) = self.candidates[index];
+            let known = match owner {
+                None => true,
+                Some(owner) => self.tags.contains(&owner) || self.exported.contains(&owner),
+            };
+            if known && self.env.kind[props] == SourceKind::Opaque {
+                self.env.kind[props] = SourceKind::PropsParam;
             }
         }
     }
@@ -280,6 +390,22 @@ impl<'a> Binder<'_, 'a> {
 
     fn record(&mut self, declarator: &VariableDeclarator<'a>) {
         let Some(init) = declarator.init.as_ref() else { return };
+        if let BindingPattern::BindingIdentifier(identifier) = &declarator.id
+            && let Some(owner) = identifier.symbol_id.get()
+        {
+            let props = match init {
+                Expression::ArrowFunctionExpression(arrow) if arrow_returns_jsx(arrow) => {
+                    props_symbol(&arrow.params)
+                }
+                Expression::FunctionExpression(function) if function_returns_jsx(function) => {
+                    props_symbol(&function.params)
+                }
+                _ => None,
+            };
+            if let Some(props) = props {
+                self.candidates.push((Some(owner), props));
+            }
+        }
         let init = self.init_of(init);
         match &declarator.id {
             BindingPattern::BindingIdentifier(identifier) => {
@@ -316,6 +442,7 @@ impl<'a> Binder<'_, 'a> {
         else {
             return;
         };
+        self.tags.push(symbol);
         let Some(flow) = self.env.kind_of(symbol).flow() else { return };
 
         // `For keyed={false}` delegates to `Index` at runtime, so it takes
@@ -364,14 +491,127 @@ impl<'a> Binder<'_, 'a> {
     }
 }
 
+/// The single identifier parameter a props object can arrive through. A
+/// destructured or defaulted pattern reads every getter at binding time, so the
+/// names it produces are snapshots and marking them reactive would buy an effect
+/// that can never re-run.
+fn props_symbol(params: &FormalParameters<'_>) -> Option<SymbolId> {
+    if params.items.len() != 1 || params.rest.is_some() {
+        return None;
+    }
+    let BindingPattern::BindingIdentifier(identifier) = &params.items[0].pattern else {
+        return None;
+    };
+    identifier.symbol_id.get()
+}
+
+fn function_returns_jsx(function: &Function<'_>) -> bool {
+    function.body.as_ref().is_some_and(|body| statements_return_jsx(&body.statements))
+}
+
+fn arrow_returns_jsx(arrow: &ArrowFunctionExpression<'_>) -> bool {
+    match &arrow.body {
+        oxc::ast::ast::ArrowFunctionBody::FunctionBody(body) => {
+            statements_return_jsx(&body.statements)
+        }
+        body => body.as_expression().is_some_and(yields_jsx),
+    }
+}
+
+/// Descends through the statements that can HOLD a return, and stops at a nested
+/// function — a component that returns a row callback is not the row callback.
+fn statements_return_jsx(statements: &[Statement<'_>]) -> bool {
+    statements.iter().any(statement_returns_jsx)
+}
+
+fn statement_returns_jsx(statement: &Statement<'_>) -> bool {
+    match statement {
+        Statement::ReturnStatement(it) => it.argument.as_ref().is_some_and(yields_jsx),
+        Statement::BlockStatement(it) => statements_return_jsx(&it.body),
+        Statement::IfStatement(it) => {
+            statement_returns_jsx(&it.consequent)
+                || it.alternate.as_ref().is_some_and(statement_returns_jsx)
+        }
+        Statement::SwitchStatement(it) => {
+            it.cases.iter().any(|case| statements_return_jsx(&case.consequent))
+        }
+        Statement::TryStatement(it) => {
+            statements_return_jsx(&it.block.body)
+                || it.handler.as_ref().is_some_and(|c| statements_return_jsx(&c.body.body))
+                || it.finalizer.as_ref().is_some_and(|b| statements_return_jsx(&b.body))
+        }
+        Statement::ForStatement(it) => statement_returns_jsx(&it.body),
+        Statement::ForInStatement(it) => statement_returns_jsx(&it.body),
+        Statement::ForOfStatement(it) => statement_returns_jsx(&it.body),
+        Statement::WhileStatement(it) => statement_returns_jsx(&it.body),
+        Statement::DoWhileStatement(it) => statement_returns_jsx(&it.body),
+        Statement::LabeledStatement(it) => statement_returns_jsx(&it.body),
+        _ => false,
+    }
+}
+
+fn yields_jsx(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::JSXElement(_) | Expression::JSXFragment(_) => true,
+        Expression::ParenthesizedExpression(it) => yields_jsx(&it.expression),
+        Expression::TSAsExpression(it) => yields_jsx(&it.expression),
+        Expression::TSNonNullExpression(it) => yields_jsx(&it.expression),
+        Expression::TSSatisfiesExpression(it) => yields_jsx(&it.expression),
+        Expression::ConditionalExpression(it) => {
+            yields_jsx(&it.consequent) || yields_jsx(&it.alternate)
+        }
+        Expression::LogicalExpression(it) => yields_jsx(&it.right),
+        Expression::SequenceExpression(it) => it.expressions.last().is_some_and(yields_jsx),
+        _ => false,
+    }
+}
+
 impl<'a> Visit<'a> for Binder<'_, 'a> {
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         self.record(it);
         walk::walk_variable_declarator(self, it);
     }
 
+    fn visit_function(&mut self, it: &Function<'a>, flags: oxc::semantic::ScopeFlags) {
+        if let Some(owner) = it.id.as_ref().and_then(|id| id.symbol_id.get())
+            && function_returns_jsx(it)
+            && let Some(props) = props_symbol(&it.params)
+        {
+            self.candidates.push((Some(owner), props));
+        }
+        walk::walk_function(self, it, flags);
+    }
+
     fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {
         self.row_params(it);
+        if let Some(closing) = it.closing_element.as_ref()
+            && let JSXElementName::IdentifierReference(identifier) = &closing.name
+            && let Some(symbol) = identifier
+                .reference_id
+                .get()
+                .and_then(|id| self.scoping.get_reference(id).symbol_id())
+        {
+            self.env.jsx_closings.push(symbol);
+        }
+        if let JSXElementName::MemberExpression(member) = &it.opening_element.name
+            && let JSXMemberExpressionObject::IdentifierReference(object) = &member.object
+            && let Some(symbol) =
+                object.reference_id.get().and_then(|id| self.scoping.get_reference(id).symbol_id())
+            && let Some(flow) = self.env.namespace_flow(symbol, member.property.name.as_str())
+        {
+            self.env.namespace_flows.push(flow);
+        }
         walk::walk_jsx_element(self, it);
+    }
+
+    /// `core.Portal(props)` written as a call rather than as a tag. Same binding,
+    /// same component, and the SSR fallback has to see both spellings.
+    fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+        if let Some(symbol) = symbol_of(self.scoping, &it.object)
+            && let Some(flow) = self.env.namespace_flow(symbol, it.property.name.as_str())
+        {
+            self.env.namespace_flows.push(flow);
+        }
+        walk::walk_static_member_expression(self, it);
     }
 }

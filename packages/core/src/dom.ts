@@ -565,7 +565,7 @@ function toggleClassTokens(tokens: DOMTokenList, key: string, on: boolean): void
 }
 
 /** Normalize a class value (string, array, or object) to a string or null */
-function classToString(value: unknown): string | null {
+export function classToString(value: unknown): string | null {
   if (isNullish(value) || value === false) return null;
   if (isString(value)) return value;
   if (isArray<string>(value)) return value.filter(Boolean).join(" ");
@@ -579,6 +579,58 @@ function classToString(value: unknown): string | null {
     return className;
   }
   return null;
+}
+
+/**
+ * Serialize a style value the way `diffStyleObjects` writes it into the CSSOM,
+ * for the string backend. A string is returned untouched, matching
+ * `applyResolvedProp`'s deliberate `setAttribute` path.
+ */
+export function styleToString(value: unknown): string | null {
+  if (isString(value)) return value;
+  if (!isObject(value)) return null;
+  let css = "";
+  for (const prop in value) {
+    let raw: unknown = value[prop];
+    if (isSignalGetter(raw)) raw = (raw as () => unknown)();
+    if (raw === null || raw === undefined || raw === false) continue;
+    const cssProp = toKebabCase(prop);
+    const cssValue =
+      typeof raw === "number" && raw !== 0 && !(cssProp in CSS_NUMBER_PROPS)
+        ? `${raw}px`
+        : toString(raw);
+    css += `${css ? " " : ""}${cssProp}: ${cssValue};`;
+  }
+  return css === "" ? null : css;
+}
+
+/**
+ * Brand carried by every value the compiler's SSR string mode produces. A
+ * module that fell back to this DOM backend (DESIGN §5's eight non-inlinable
+ * flow components) can still render a component compiled to strings, and
+ * without this it would insert the markup as escaped text.
+ *
+ * A REGISTERED SYMBOL, and that is the security property: this brand decides
+ * whether a value is written as markup or escaped as text, so a shape
+ * `JSON.parse` can produce would make every deserialised object an injection
+ * point. `Symbol.for` is unreachable from JSON and still identical across two
+ * copies of this module, which the `.` and `./server` entries really are.
+ */
+export const SSR_HTML_BRAND: unique symbol = Symbol.for("barq.ssr.html");
+
+export function isSsrHtml(value: unknown): value is { readonly t: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[SSR_HTML_BRAND] === true &&
+    typeof (value as { t?: unknown }).t === "string"
+  );
+}
+
+function ssrHtmlNodes(value: { readonly t: string }): Node[] {
+  const holder = document.createElement("template");
+  holder.innerHTML = value.t;
+  return Array.from(holder.content.childNodes);
 }
 
 /**
@@ -667,6 +719,12 @@ function appendChild(parent: Node, child: Child): void {
     return;
   }
 
+  if (isSsrHtml(child as unknown)) {
+    for (const node of ssrHtmlNodes(child as unknown as { readonly t: string }))
+      parent.appendChild(node);
+    return;
+  }
+
   // Reactive child: the hole tracks its own nodes, appended at the end
   if (typeof child === "function") {
     insert(parent, child as () => Child, null);
@@ -686,6 +744,30 @@ function appendChild(parent: Node, child: Child): void {
 }
 
 /**
+ * Reading a fragment's children is destructive: whoever reads them inserts
+ * them, which MOVES them out, so a second read of the same eager
+ * `children`/`fallback` finds an empty fragment and the content is gone for
+ * good. Remembering the drained list is what makes a multi-node body survive a
+ * hide/show cycle — and target #8 hands the runtime eager bodies as a matter of
+ * course, so this is the ordinary path rather than an edge of it.
+ */
+const drainedFragments = new WeakMap<DocumentFragment, Node[]>();
+
+export function drainFragment(fragment: DocumentFragment): Node[] {
+  if (fragment.firstChild === null) {
+    const remembered = drainedFragments.get(fragment);
+    return remembered === undefined ? [] : remembered.slice();
+  }
+  const nodes: Node[] = [];
+  while (fragment.firstChild) {
+    nodes.push(fragment.firstChild);
+    fragment.removeChild(fragment.firstChild);
+  }
+  drainedFragments.set(fragment, nodes);
+  return nodes.slice();
+}
+
+/**
  * Flatten a child value to nodes, reusing previous text nodes positionally
  * when their content matches (avoids re-creating text per update).
  */
@@ -697,15 +779,17 @@ function normalizeChildToNodes(value: Child, prev: Node[]): Node[] {
 
     if (child instanceof DocumentFragment) {
       // Fragments dissolve into their children
-      while (child.firstChild) {
-        out.push(child.firstChild);
-        child.removeChild(child.firstChild);
-      }
+      for (const node of drainFragment(child)) out.push(node);
       return;
     }
 
     if (child instanceof Node) {
       out.push(child);
+      return;
+    }
+
+    if (isSsrHtml(child as unknown)) {
+      for (const node of ssrHtmlNodes(child as unknown as { readonly t: string })) out.push(node);
       return;
     }
 
@@ -882,11 +966,24 @@ export function insert(parent: Node, value: Child | (() => Child), marker?: Node
 
   if (value instanceof Node) {
     parent.insertBefore(value, anchor);
+  } else if (isSsrHtml(value as unknown)) {
+    for (const node of ssrHtmlNodes(value as unknown as { readonly t: string })) {
+      parent.insertBefore(node, anchor);
+    }
   } else if (Array.isArray(value)) {
     const nodes = childToNodes(value);
     for (let i = 0; i < nodes.length; i++) parent.insertBefore(nodes[i], anchor);
   } else {
-    parent.insertBefore(document.createTextNode(String(value)), anchor);
+    const text = String(value);
+    // `applyInsert`'s sole-occupant fast path, which the static branch never
+    // had: the element IS the range, so the text needs no node of its own to
+    // track. `textContent = ""` creates NO text node where `appendChild`
+    // creates an empty one, so the empty string keeps the old path.
+    if (anchor === null && text !== "" && parent.firstChild === null) {
+      parent.textContent = text;
+      return;
+    }
+    parent.insertBefore(document.createTextNode(text), anchor);
   }
 }
 
@@ -980,11 +1077,15 @@ function childToNodes(child: Child): Node[] {
   }
 
   if (child instanceof DocumentFragment) {
-    return Array.from(child.childNodes);
+    return drainFragment(child);
   }
 
   if (child instanceof Node) {
     return [child];
+  }
+
+  if (isSsrHtml(child as unknown)) {
+    return ssrHtmlNodes(child as unknown as { readonly t: string });
   }
 
   if (typeof child === "function") {
@@ -1016,6 +1117,10 @@ export function render(element: JSXElement, container: HTMLElement): () => void 
     // null, undefined, boolean - render nothing
   } else if (element instanceof Node) {
     container.appendChild(element);
+  } else if (isSsrHtml(element as unknown)) {
+    for (const node of ssrHtmlNodes(element as unknown as { readonly t: string })) {
+      container.appendChild(node);
+    }
   } else if (Array.isArray(element)) {
     for (const child of element) {
       const nodes = childToNodes(child);

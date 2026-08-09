@@ -5,7 +5,7 @@
 # `bun run typecheck` at the root does propagate a non-zero exit (measured on
 # bun 1.4.0: `bun run typecheck` and `bun run --filter '*' typecheck` both exit
 # 2). So a plain CI step calling it would fail TODAY, on errors that predate
-# this project — @barqjs/core and the dead Babel plugin between them.
+# this project — @barqjs/core and its JSX type declarations between them.
 #
 # That is what this script is for, and the reason is a baseline rather than a
 # broken exit code: it runs each package's typecheck on its own and compares the

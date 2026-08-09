@@ -1,0 +1,78 @@
+import { For, Show, useState, useStore } from "@barqjs/core"
+
+const [tab, setTab] = useState("posts")
+const [state, setState] = useStore({ filters: { search: "" }, user: { name: "John" } })
+const [rows, setRows] = useState(["alpha", "beta"])
+
+/**
+ * The dead plugin's "complete component", rebuilt as one module: a ternary
+ * class over one source, a `Show` over another, a store read in a DOM_PROPS
+ * channel, an event handler that writes the store from the event object, and a
+ * list. Every one of those is covered on its own elsewhere; this is the one
+ * that proves they compose, and it is the closest thing in the corpus to a
+ * page a user would actually write.
+ */
+export default function DashboardComposite() {
+  return (
+    <div class={() => (tab() === "posts" ? "posts" : "other")}>
+      <Show when={() => state.user.name !== ""} fallback={<p class="anon">anonymous</p>}>
+        {() => <h1>Hello, {() => state.user.name}</h1>}
+      </Show>
+
+      <input
+        class="search"
+        value={() => state.filters.search}
+        onInput={(event: InputEvent) =>
+          setState("filters", "search", (event.target as HTMLInputElement).value)
+        }
+      />
+
+      <button type="button" class="tab" onClick={() => setTab("other")}>
+        switch
+      </button>
+
+      <ul class="rows">
+        <For each={() => rows()}>{(row: string) => <li>{row}</li>}</For>
+      </ul>
+    </div>
+  )
+}
+
+export const steps = [
+  () => setState("filters", "search", "q"),
+  () => setState("user", "name", "Ada"),
+  () => setRows(["gamma"]),
+]
+
+export const events = [
+  (root: HTMLElement) => root.querySelector("button")?.click(),
+  (root: HTMLElement) => {
+    const input = root.querySelector("input") as HTMLInputElement
+    input.value = "typed"
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+  },
+]
+
+export const optimality = {
+  target: 7,
+  milestone: 5,
+  // Everything at once, and every one of them still holds in each other's
+  // company: two closure-free handlers hoisted to module scope with ONE
+  // `delegateEvents` for both types, `value` staying in the property channel
+  // (DOM_PROPS) rather than being baked, `each` η-reduced to the accessor, and
+  // four templates for a whole page — the frame, the fallback, the greeting and
+  // the row.
+  templates: 4,
+  emits: [
+    "delegateEvents([",
+    '"click"',
+    '"input"',
+    "$$input = ",
+    "$$click = ",
+    '"value", () => state.filters.search',
+    "each: rows",
+  ],
+  // The handlers are hoisted, so nothing rebuilds them per instance; and the
+  // one prop the runtime diffs at runtime is never folded into the markup.
+  absent: ['value="', "each: () => rows()", "addEventListener"],
+}

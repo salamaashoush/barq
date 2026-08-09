@@ -150,6 +150,12 @@ export {
   spread,
   delegateEvents,
   clearDelegatedEvents,
+  classToString,
+  styleToString,
+  // The SSR string backend's brand. It is read on the CLIENT too: a module that
+  // fell back to this backend renders a string-compiled component's markup
+  // through it (DESIGN §5).
+  isSsrHtml,
   type Child,
   type Props,
   type Component,

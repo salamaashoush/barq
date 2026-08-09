@@ -24,3 +24,15 @@ export const steps = [
   () => items.update((v) => v.slice(1)),
   () => items.set([]),
 ]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  // Three templates: the list, the fallback, the row. The fallback is a JSX
+  // element, so it is built ONCE as a node exactly as `fallbackNodes` expects;
+  // the row body is a callback the runtime invokes per item, so it keeps its
+  // arrow however static it is. `each` η-reduces to the accessor itself.
+  templates: 3,
+  emits: ["For({", "each: items", "children: (item, index) =>"],
+  absent: ["(For, {", "each: () =>"],
+}

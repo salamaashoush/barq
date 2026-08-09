@@ -112,7 +112,20 @@ describe("compile throughput", () => {
     )
     assertReallyCompiled("whole-corpus-one-file", source, compileSource(source, "corpus.tsx"))
     expect(measurement.bytes).toBeGreaterThan(8 * 1024)
-    expect(measurement.msPerCompile).toBeLessThan(CEILING_MS)
+
+    // Bounded by RATE, not by the per-file millisecond budget the other two use.
+    // This input is the whole fixture corpus glued together, so its size is a
+    // fact about how many fixtures exist: it crossed 60 KiB when the M5 shape
+    // catalogue landed, and a flat 1 ms then measured the corpus rather than the
+    // compiler. What does not move with the corpus is MB/s.
+    //
+    // It is also a far tighter gate than the budget it replaces. The per-file
+    // budget sits ~48x above where this path actually runs; the floor below sits
+    // at about a third of it, so it catches a 2.7x regression where the budget
+    // could not see a 40x one.
+    const mbPerSecond = measurement.bytes / 1024 / 1024 / (measurement.msPerCompile / 1000)
+    console.log(`guard-thread path: ${mbPerSecond.toFixed(1)} MB/s`)
+    expect(mbPerSecond).toBeGreaterThan(20)
   }, 120_000)
 
   /**

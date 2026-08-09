@@ -31,3 +31,15 @@ export const events = [
     root.querySelector("button")?.click()
   },
 ]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 3,
+  // Three nested flow components, each an ordinary call whose `children` is
+  // whatever the next one returned — no `createElement` anywhere, so nothing
+  // copies a props object on the way down. `Errored.fallback` takes an error
+  // ACCESSOR, so the read inside it is a call.
+  emits: ["Reveal({", "Loading({", "Errored({", "fallback: (error, reset) =>"],
+  absent: ["(Reveal, {", "(Loading, {", "(Errored, {"],
+}

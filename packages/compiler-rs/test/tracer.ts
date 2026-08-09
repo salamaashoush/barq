@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path"
 
 /**
- * Reactivity tracing.
+ * Reactivity tracing, and template instantiation tracing.
  *
  * The runtime exposes no effect counter of its own — `DEV.diagnostics` only
  * reports error/warning codes, not effect creation. So we instrument at the
@@ -12,6 +12,15 @@ import { dirname, join } from "node:path"
  * Everything downstream — `dom.ts`, `components.ts`, `map.ts`, and compiled
  * output — imports `renderEffect` from that module, so the count is the real
  * total for both the oracle and the compiled path, not an estimate.
+ *
+ * `dom.ts` is replaced the same way, for `template`. The marker bound used to
+ * ask "does this module clone each template exactly once?" and, whenever it
+ * could not prove that, degrade to "a module whose templates bake no anchor
+ * cannot produce one" — which switched the bound off entirely for every module
+ * that calls a component. Recording the node each clone RETURNS makes the
+ * question unnecessary: the anchors a frame is allowed to contain are the
+ * anchors baked into the clones that are still in the tree at that moment,
+ * whether that is one clone or one per row.
  */
 
 export type EffectKind = "render" | "user"
@@ -21,8 +30,15 @@ export interface EffectRecord {
   runs: number
 }
 
+/** One `_tmpl$N()` call: the node it produced and the anchors baked into it. */
+export interface TemplateInstance {
+  node: Node
+  anchors: number
+}
+
 export interface Trace {
   effects: EffectRecord[]
+  templates: TemplateInstance[]
 }
 
 export interface TraceSummary {
@@ -40,13 +56,44 @@ export function beginTrace(): Trace {
   if (current !== null) {
     throw new Error("tracer: a trace is already open — renders must not overlap")
   }
-  const trace: Trace = { effects: [] }
+  const trace: Trace = { effects: [], templates: [] }
   current = trace
   return trace
 }
 
 export function endTrace(): void {
   current = null
+}
+
+/**
+ * The anchors a container is allowed to hold right now: the ones baked into the
+ * template clones that are still attached to it.
+ *
+ * Exact for every module. A clone that was built and thrown away, one parked in
+ * a detached fragment by a control-flow component, and one never inserted at all
+ * all contribute nothing, which is what makes this an equality rather than the
+ * upper bound the old predicate degraded to.
+ */
+export function liveTemplateAnchors(trace: Trace, container: Node): number {
+  let anchors = 0
+  for (const instance of trace.templates) {
+    if (instance.anchors === 0) continue
+    if (container.contains(instance.node)) anchors += instance.anchors
+  }
+  return anchors
+}
+
+const NODE_COMMENT = 8
+
+/** Insert anchors inside one cloned template: empty comments, counted as nodes. */
+function bakedAnchors(root: Node): number {
+  let anchors = 0
+  const visit = (node: Node): void => {
+    if (node.nodeType === NODE_COMMENT && (node as Comment).data === "") anchors++
+    for (const child of Array.from(node.childNodes)) visit(child)
+  }
+  visit(root)
+  return anchors
 }
 
 export function summarize(trace: Trace): TraceSummary {
@@ -82,8 +129,23 @@ function wrap(real: EffectFn, kind: EffectKind): EffectFn {
   }
 }
 
+type TemplateFn = (html: string, isSVG?: boolean) => () => Node
+
+/** Record every clone, with the anchors read off the clone rather than the HTML. */
+function wrapTemplate(real: TemplateFn): TemplateFn {
+  return (html: string, isSVG?: boolean) => {
+    const clone = real(html, isSVG)
+    return () => {
+      const node = clone()
+      if (current) current.templates.push({ node, anchors: bakedAnchors(node) })
+      return node
+    }
+  }
+}
+
 export interface Installed {
   signalsPath: string
+  domPath: string
 }
 
 /**
@@ -92,6 +154,7 @@ export interface Installed {
 export function installTracer(mockModule: (path: string, factory: () => unknown) => void): Installed {
   const coreIndex = Bun.resolveSync("@barqjs/core", import.meta.dir)
   const signalsPath = join(dirname(coreIndex), "signals.ts")
+  const domPath = join(dirname(coreIndex), "dom.ts")
 
   const real = require(signalsPath) as Record<string, unknown>
   // Snapshot eagerly: mock.module overwrites the namespace in place, so the
@@ -114,5 +177,19 @@ export function installTracer(mockModule: (path: string, factory: () => unknown)
 
   mockModule(signalsPath, () => patched)
 
-  return { signalsPath }
+  // AFTER the signals mock, so `dom.ts` binds the counted effects rather than
+  // the originals — the order the effect totals depend on.
+  const realDom = require(domPath) as Record<string, unknown>
+  const domSnapshot: Record<string, unknown> = { ...realDom }
+  const realTemplate = domSnapshot.template as TemplateFn
+
+  if (typeof realTemplate !== "function") {
+    throw new Error(
+      `tracer: ${domPath} does not export template as a function — the runtime moved, fix the tracer`,
+    )
+  }
+
+  mockModule(domPath, () => ({ ...domSnapshot, template: wrapTemplate(realTemplate) }))
+
+  return { signalsPath, domPath }
 }

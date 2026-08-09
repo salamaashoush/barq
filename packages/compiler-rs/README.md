@@ -4,17 +4,14 @@ Native (Rust + oxc) JSX compiler for Barq, exposed to JS through napi-rs.
 
 ## Status
 
-This package **replaces** `@barqjs/compiler`. The Babel plugin is being deleted, not preserved —
-it is not a target, not a baseline, and not a correctness oracle. Its only remaining use is as a
-catalogue of which JSX shapes have to be handled at all.
+This package **is** the compiler. The Babel plugin it replaced was deleted at M6, after every JSX
+shape its 55 test cases pinned was mined into the fixture corpus. `@barqjs/compiler` is now the
+Vite integration alone, and it depends on this package.
 
 The correctness oracle is the runtime's own JSX runtime (`@barqjs/core/jsx-runtime`): a JSX file
 transpiled by Bun/esbuild with `jsxImportSource=@barqjs/core` into `createElement()` calls, run
 against the real runtime, is the semantic specification. Compiled output must produce an identical
 DOM and must never do more reactive work than that path.
-
-At milestone 1 `transform()` is an identity round-trip (parse → codegen); it emits no reactive code
-yet. That is why `native` defaults to `false` in the Vite plugin, and why it flips at milestone 2.
 
 ## Build
 
@@ -47,11 +44,34 @@ import { transform } from "@barqjs/compiler-rs"
 const { code, map, warnings } = transform(source, {
   filename: "App.tsx",
   sourcemap: true,
-  autoComputed: true,
+  moduleSource: "@barqjs/core",
+  dev: false,
   templates: true,
   ssr: false,
 })
 ```
+
+That is the whole surface. `autoComputed` and the three component name lists the Babel plugin
+took are deliberately absent: nothing here resolves by name, and `autoComputed` rewrote statements
+OUTSIDE JSX, which this pipeline does not touch.
+
+### Migrating off the Babel plugin: implicit accessor calls are gone
+
+`autoComputed` inserted the call for you, so `const doubled = count * 2` compiled to
+`() => count() * 2` and `{count * 2}` in JSX became a live binding. **Nothing does that now, and
+nothing warns about it** — `count * 2` over an accessor is `NaN`, at runtime, silently. Write the
+read and the thunk yourself:
+
+```tsx
+const doubled = () => count() * 2   // was: const doubled = count * 2
+<span>{() => count() * 2}</span>    // was: <span>{count * 2}</span>
+<button onClick={() => setCount(count() + 1)} />  // was: setCount(count + 1)
+```
+
+That is the contract `config.ts` documents through `IsCompilerMode`/`StrictAccessor`, and it is
+what makes target #1 possible: a compiler that has to guess whether `count` is a signal is back to
+the name heuristic this one exists to replace. `fixtures/derived-local-thunk.tsx` and
+`fixtures/use-state-tuple.tsx` are the shapes, pinned.
 
 Option keys are camelCase on the JS side and snake_case in Rust; napi-derive converts them.
 `map` is **absent**, not `null`, when no sourcemap was requested — use `result.map ?? null`.
@@ -75,11 +95,12 @@ derived from are recorded in `src/compile.rs`.
 import { barqVitePlugin } from "@barqjs/compiler/vite"
 
 export default defineConfig({
-  plugins: [barqVitePlugin({ native: true })],
+  plugins: [barqVitePlugin()],
 })
 ```
 
-`native: true` throws if the binary is missing. There is no silent fallback to Babel.
+There is one pipeline, so the plugin throws if the binary is missing rather than compiling the
+file some other way.
 
 ## Bundling
 

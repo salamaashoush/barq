@@ -65,6 +65,14 @@ pub fn attribute_channel(name: &str, is_svg: bool) -> bool {
     !(!is_svg && is_dom_prop(name))
 }
 
+/// Names whose write REPLACES everything under the element. `createElement`
+/// applies its props before it appends the children (`dom.ts:328`), so the
+/// children win; a template bakes the children in first and the patch that
+/// follows the clone deletes them.
+pub fn replaces_children(name: &str) -> bool {
+    matches!(normalize(name), "dangerouslySetInnerHTML" | "innerHTML" | "innerText" | "textContent")
+}
+
 /// Whether a SOURCE-literal attribute value may be written into the template
 /// HTML. `class` is the one intercepted name P1 bakes: `classToString` returns
 /// a string unchanged, so the parsed attribute and `element.className = …`

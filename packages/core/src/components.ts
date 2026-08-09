@@ -7,6 +7,7 @@
 import type { Resource } from "./async.ts";
 import type { IsCompilerMode, StrictAccessor, StrictArrayAccessor } from "./config.ts";
 import type { Child, JSXElement } from "./dom.ts";
+import { drainFragment, isSsrHtml } from "./dom.ts";
 import { type RevealHandle, REVEAL_COORD, createRevealCoordinator } from "./boundaries.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
 import { createErrorCollector, createPendingCollector } from "./boundaries.ts";
@@ -34,11 +35,20 @@ export function childToNodes(child: Child): Node[] {
   }
 
   if (child instanceof DocumentFragment) {
-    return Array.from(child.childNodes);
+    return drainFragment(child);
   }
 
   if (child instanceof Node) {
     return [child];
+  }
+
+  // A component compiled to the SSR string backend, rendered by a module that
+  // fell back to this DOM backend (DESIGN §5). Without this the markup would
+  // arrive as escaped text.
+  if (isSsrHtml(child as unknown)) {
+    const holder = document.createElement("template");
+    holder.innerHTML = (child as unknown as { readonly t: string }).t;
+    return Array.from(holder.content.childNodes);
   }
 
   if (typeof child === "function") {
@@ -575,7 +585,7 @@ export function Switch(props: {
 
     if (result) {
       const { index, value, match } = result;
-      const children = match.children as (item?: unknown) => Child;
+      const children = match.children as Child | ((item?: unknown) => Child);
 
       // Use detached scope so it's not auto-disposed when effect re-runs
       // This preserves inner effects for non-keyed matches
@@ -583,7 +593,12 @@ export function Switch(props: {
         disposeContent = dispose;
         // Always pass the value - function can choose to use it or not
         // Don't use untrack here as it prevents inner effects from tracking
-        const content = children(value);
+        // MatchProps declares a bare Child legal in compiler mode, which is what
+        // a compiled static body arrives as; Show reads its children the same way.
+        const content =
+          typeof children === "function"
+            ? (children as (item?: unknown) => Child)(value)
+            : children;
         const nodes = childToNodes(content);
         insertNodes(endMarker, nodes);
         currentNodes = nodes;

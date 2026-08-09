@@ -102,6 +102,17 @@ that `compareToOracle` asserts separately:
   that every baked anchor is a node some `_$insert` call actually names. An anchor nothing
   inserts before is either an elision the compiler missed or a marker it emitted for
   nothing, and no count could tell the difference once anchors became optional.
+
+  Against the DOM the bound is an EQUALITY, for every fixture. It used to degrade
+  to "a module whose templates bake no anchor cannot produce one" whenever the
+  emitted code could not be shown to clone each template once — which switched the
+  per-frame check off for seven fixtures, including `component-boundary-props`, the
+  one the exclusion was written for and one that bakes an anchor. `tracer.ts` now
+  wraps `template` and records the node every clone returns (the Chrome
+  differential does the same through a `@barqjs/core` shim), so the anchors a frame
+  may hold are the anchors of the clones attached to it — exact for a component
+  called twice, for a `For` cloning a row per item, and for a `Show` parking its
+  body in a detached fragment.
 - **attribute order** — every attribute in document order, compared against the ORACLE's
   order (which is source order) partitioned into the attributes the template bakes in and
   the props the patch code applies after the clone. A static that merely trails a dynamic
@@ -115,17 +126,113 @@ done" is a fact about the corpus rather than about whichever fixture got looked 
 
 | target | fixtures | the claim |
 | --- | --- | --- |
-| 1 semantic reactivity | `static-only`, `static-attribute-expression`, `auto-thunked-read` | a provably-static expression gets no effect, no thunk, no closure |
-| 2 static subtree | `static-only` | one clone, zero patch calls, zero effects |
-| 3 constant folding | `literal-class-style` | the concat, the ternary and the style string are baked into the template HTML |
+| 1 semantic reactivity | `static-only`, `static-attribute-expression`, `auto-thunked-read`, `inert-member-reads`, `signal-alias`, `signal-methods-in-handler`, `use-store-member`, `component-getter-props` | a provably-static expression gets no effect, no thunk, no closure — and the same identifier can be reactive as a call and inert as a member |
+| 2 static subtree | `static-only`, `void-elements`, `whitespace-only`, `svg-nested-in-html`, `fragment-root`, `select-option-multiple` | one clone, zero patch calls, zero effects — including one template per root where a fragment cannot be one |
+| 3 constant folding | `literal-class-style`, `escaped-text-and-attribute`, `dom-prop-static-value` | the concat, the ternary, the style string and a constant TEXT child are baked into the template HTML, escaped; and a `DOM_PROPS` name is refused however constant it is |
 | 4 one effect per element | `multi-prop-one-element`, `class-with-live-siblings`, `reactive-attribute` | live props on one element share one effect; a runtime-diffed prop (`class`) never joins it |
 | 5 walk elision | `sibling-walk`, `deep-walk`, `walk-from-the-back` | the cheapest route to each hole: chained from the previous hole, reached from `lastChild`, and minimal where a `firstChild` chain already is |
-| 6 template dedup | `dedup-identical-markup` | two components emitting byte-identical markup share one `template()` |
+| 6 template dedup | `dedup-identical-markup`, `two-components-two-templates` | two components emitting byte-identical markup share one `template()`, and two differing by one byte do not |
 | 7 delegated events | `delegated-event`, `non-delegated-event`, `handler-closure`, `handler-no-closure`, `handler-by-reference`, `delegated-handler-tuple` | `$$click` expando writes, one `delegateEvents` per module, closure-free handlers hoisted, and a handler bound to a *variable* at either scope |
-| 8 thunk elision | `control-flow-show-static-body` | a static control-flow body is passed as a built node (M5) |
-| 9 marker elision | `text-hole-trailing`, `text-hole-followed`, `text-hole-fused`, `text-hole-adjacent`, `marker-literal-text` | no anchor when nothing follows, no anchor when what follows is an element, an anchor only where the text either side would fuse |
-| 10 SSR | `static-only`, `html-entities` | escaped static chunks, one concatenation (M6) |
+| 8 thunk elision | `control-flow-show-static-body`, `control-flow-for-static-body`, `control-flow-nested` | a static `Show` body is passed as a built node; a `For` ROW body keeps its thunk however static it is, because `For` calls it per row; a body with a hole keeps it too |
+| 9 marker elision | `text-hole-trailing`, `text-hole-followed`, `text-hole-fused`, `text-hole-adjacent`, `marker-literal-text`, `hole-then-element-sibling`, `two-nested-holes` | no anchor when nothing follows, no anchor when what follows is an element, an anchor only where the text either side would fuse, and ONE anchor for two adjacent holes |
+| 8 thunk elision (cont.) | `control-flow-reveal`, `control-flow-show-eager-children`, `control-flow-show-fragment-body`, `portal`, `dynamic`, `for-unkeyed-rows`, `switch-match-component-bodies`, `flow-prop-eta-boundary` | an eager body is handed over as built nodes; `Match` stays a real call; and η-reduction fires on the five props the runtime unwraps and on NOTHING else |
+| 9 marker elision (cont.) | `logical-and-child`, `component-child-of-element` | a short-circuit hole and a component hole both take the following ELEMENT as their anchor |
+| 10 SSR | `static-only`, `html-entities`, `escaping-adversarial` | escaped static chunks, one concatenation, and every escaping context compared against the DOM the runtime would have built |
 | 11 throughput | the whole corpus | under 1 ms per file, measured on output that really was compiled |
+
+## The shape catalogue
+
+`packages/compiler` used to hold a Babel plugin. Its expected OUTPUT was never a
+target — but its 55 test cases were a catalogue of the JSX SHAPES a compiler for
+this runtime has to handle, and DESIGN §10 named mining them as M5's deliverable
+and as the evidence for deleting the plugin in M6.
+
+Every one of those shapes is a fixture here, judged by the oracle comparison
+rather than by a string match against what Babel used to print. **This corpus is
+now the only record of them** — the plugin and its tests were deleted at M6, so a
+shape that leaves this directory leaves the project. The rows worth knowing about
+are:
+
+- **the P0 return-shape table** — `use-state-tuple` (`[accessor, setter]`),
+  `use-store-member` (proxy, member reads), `use-memo-derived` (`Computed`),
+  `create-async-value` (behind a call), `create-optimistic-signal` (a `Signal`,
+  not a tuple), `create-projection-store` (the proxy directly). Each primitive
+  returns a different shape and every one of them is a different lifting rule.
+- **resolution by SymbolId, never by name** — `renamed-core-import` imports
+  `signal as sig`, `Show as When` and `For as Each`, so nothing in the module is
+  spelled the way a regex would look for it; `signal-alias` puts a reactive and
+  a non-reactive `const` side by side in one scope.
+- **props, every shape** — `component-boundary-props` (plain),
+  `props-destructured-param`, `props-destructured-body`,
+  `props-renamed-and-defaulted`, `props-rest-spread`, `component-spread`,
+  `component-getter-props`. Flattening a getter is the failure mode, and each
+  shape flattens at a different moment.
+- **all fourteen flow components** — `For`, `Index`, `Repeat`, `Show`, `Switch`,
+  `Match`, `Loading`, `Errored`, `Reveal`, `Suspense`, `Await`, `Portal`,
+  `Dynamic`, `ErrorBoundary`, plus `control-flow-nested`, `for-unkeyed-rows`
+  (which delegates to `Index` and INVERTS the row contract) and
+  `for-each-local-function`.
+- **splice sites and roots** — `arrow-body-component` (a concise arrow body),
+  `fragment-root` (multi-root), `component-child-of-element`.
+- **the two shapes the catalogue was missing** — `component-children-slot`, a
+  user-defined component with JSX CHILDREN between static siblings (every other
+  `children` in the corpus belongs to a FLOW component, whose children the
+  runtime calls itself); and `logical-and-child`, the short-circuit conditional
+  `{cond && <jsx/>}` with its `||` and `??` siblings (`conditional-children` is
+  a ternary, which always yields one of two branches, where a short-circuit
+  yields the falsy OPERAND — `false`, `""`, `0`, `null` — and every one of them
+  has to render as nothing while `0` still renders as itself when it is the
+  value rather than the guard).
+- **the two refusals nothing reached** — `component-forwarded-handler-tuple`
+  makes `getter_shaped`'s refusal branch reachable (a prop that is both
+  `React::Reactive` and function-shaped, which needs two props reads inside one
+  array or one conditional), and `flow-prop-eta-boundary` carries the
+  η-reduction whitelist from both sides in one module. Widening either was a
+  fully green mutation across the whole corpus before they existed.
+
+## `ssrDiffers` — markup the string backend is REQUIRED to lose
+
+DESIGN §5's opcode table drops `Delegate`, `Listen` and `Ref` on the SSR target:
+a handler and a ref resolve to a NODE, and there are no nodes on the wire. A
+fixture whose DOM render differs from its string render only BECAUSE one of them
+ran declares it:
+
+```ts
+export const ssrDiffers = {
+  markup: '<div><div class="boxed">target</div><span>callback</span></div>',
+  why: "a ref callback is a client-only effect; §5 drops the Ref opcode",
+}
+```
+
+Same contract as a `win`: `ssr.test.ts` fails if the SSR markup is not `markup`
+byte for byte, fails as **stale** if the two paths stopped differing, and fails
+if the fixture binds none of the three dropped opcodes — so it cannot become a
+way to sign off on an ordinary bug. `ref-binding` is the only one.
+
+## The SSR conformance suite
+
+`ssr.test.ts` renders every fixture three ways and diffs the markup:
+
+1. `renderToString` over the un-compiled `createElement` tree — the ORACLE.
+2. `renderToString` over the compiled DOM module. Same serialiser, so a
+   divergence is the compiler's template BYTES disagreeing with the runtime's
+   node building. `oracle.test.ts` cannot see this: it compares parsed trees, and
+   `&amp;` and `&` parse the same.
+3. The compiled SSR module's own string.
+
+Whether (3) runs is **detected**, by compiling a probe with `ssr: true` and
+seeing whether the compiler refuses — there is no constant to flip, so the suite
+cannot sit asleep behind a boolean. What is asserted unconditionally is that the
+refusal is a real refusal: a compiler that accepted `ssr: true` and quietly
+emitted DOM code would make every claim in the file pass for the wrong reason.
+
+Beside the corpus runs an escaping matrix, seven contexts by fifteen values, each
+cell asserted as a ROUND TRIP — parse the markup back and the value is still the
+value. Not "the output contains `&lt;`", which is a claim about which escaper was
+chosen; this is a claim about what a browser will do with the bytes, and it is
+the only one an XSS cannot satisfy. The contexts do not agree on what needs
+escaping (`<` is legal inside a quoted attribute value and fatal in text), so
+each is asked the question that is dangerous for it.
 
 ## `browser-only/`
 

@@ -93,26 +93,24 @@ const SCAN_CHUNK: usize = 1024;
 /// the one bracket-free shape that nests once per source byte.
 ///
 /// Counted per chunk rather than tracked byte by byte. Within a chunk the number
-/// of openers bounds how much deeper the nesting can get, and a count is three
-/// independent reductions the autovectorizer can widen, where an exact running
-/// maximum is a serial dependency chain that it cannot. The result is an
+/// of openers bounds how much deeper the nesting can get, where an exact running
+/// maximum is a serial dependency chain over every byte. The result is an
 /// over-estimate by roughly the number of brackets in one chunk, which only ever
 /// costs a compile the guard thread it did not strictly need.
+///
+/// The three counts ride in one u64 through [`NESTING_WEIGHT`], so the byte loop
+/// is a load and an add rather than nine comparisons: 0.60 µs over a 3.3 KB file
+/// against 1.04 for the comparisons, measured.
 fn nesting_estimate(source: &[u8]) -> usize {
     let mut depth = 0i64;
     let mut bound = 0i64;
     let mut carried_unary = 0i64;
 
     for chunk in source.chunks(SCAN_CHUNK) {
-        let mut opens = 0u32;
-        let mut closes = 0u32;
-        let mut unary = 0u32;
-        for &byte in chunk {
-            opens += u32::from((byte == b'(') | (byte == b'[') | (byte == b'{'));
-            closes += u32::from((byte == b')') | (byte == b']') | (byte == b'}'));
-            unary += u32::from((byte == b'!') | (byte == b'~') | (byte == b'+') | (byte == b'-'));
-        }
-        let (opens, closes, unary) = (i64::from(opens), i64::from(closes), i64::from(unary));
+        let packed: u64 = chunk.iter().map(|&byte| NESTING_WEIGHT[byte as usize]).sum();
+        let opens = (packed & 0xffff) as i64;
+        let closes = (packed >> 16 & 0xffff) as i64;
+        let unary = (packed >> 32 & 0xffff) as i64;
         // carried_unary covers an operator run straddling the chunk boundary.
         bound = bound.max(depth + opens + unary + carried_unary);
         depth = (depth + opens - closes).max(0);
@@ -121,6 +119,27 @@ fn nesting_estimate(source: &[u8]) -> usize {
 
     bound as usize
 }
+
+/// One byte's contribution to a chunk's three counts: openers in bits 0..16,
+/// closers in 16..32, prefix unary operators in 32..48.
+const NESTING_WEIGHT: [u64; 256] = {
+    let mut table = [0u64; 256];
+    table[b'(' as usize] = 1;
+    table[b'[' as usize] = 1;
+    table[b'{' as usize] = 1;
+    table[b')' as usize] = 1 << 16;
+    table[b']' as usize] = 1 << 16;
+    table[b'}' as usize] = 1 << 16;
+    table[b'!' as usize] = 1 << 32;
+    table[b'~' as usize] = 1 << 32;
+    table[b'+' as usize] = 1 << 32;
+    table[b'-' as usize] = 1 << 32;
+    table
+};
+
+/// A count would carry out of its field and corrupt the next one if a chunk
+/// could hold more bytes than a field can count.
+const _: () = assert!(SCAN_CHUNK <= u16::MAX as usize);
 
 fn guard_stack_size(source_len: usize, depth: usize) -> usize {
     depth
@@ -154,18 +173,6 @@ fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
 /// signal no JS `catch` can see. Anything that could reach that depth is parsed
 /// on a thread whose stack is sized for it; ordinary files run inline.
 pub fn compile(source: &str, options: &ResolvedOptions) -> Result<CompileOutput, Vec<Diagnostic>> {
-    if options.ssr {
-        // P8b is M6 work. Accepting the flag and emitting the DOM backend's
-        // `template()` clones would surface as a production SSR mismatch, so it
-        // is refused rather than silently ignored.
-        return Err(internal(
-            options.filename.as_deref().unwrap_or(DEFAULT_FILENAME),
-            "ssr: true is not implemented yet (DESIGN §5 / P8b lands in milestone 6). \
-             Compile this module with the Babel pipeline for now."
-                .to_string(),
-        ));
-    }
-
     if source.len() < SCAN_FREE_LIMIT {
         return compile_on_this_stack(source, options);
     }
@@ -243,8 +250,23 @@ fn compile_on_this_stack(
     }
     harvest::run(&allocator, &mut program, &mut module);
     lower::lower(&allocator, source_text, options, &mut module);
-    passes::run(&allocator, &mut module);
-    codegen::emit(&allocator, &mut program, &mut module, options);
+
+    let mut warnings = warnings;
+    // Decided before the pass stage, because the string backend skips three of
+    // its passes outright — and the flag alone does not decide it: a module
+    // using one of the eight non-inlinable flow components falls back.
+    let target = match (options.ssr, uninlinable_flow(&module)) {
+        (false, _) => codegen::Target::Dom,
+        (true, None) => codegen::Target::Ssr,
+        (true, Some(name)) => {
+            warnings.push(fallback_diagnostic(name, filename));
+            codegen::Target::Dom
+        }
+    };
+
+    passes::run(&allocator, &mut module, options, target);
+    warnings.extend(analysis_diagnostics(&module, source_text, filename));
+    codegen::emit(&allocator, &mut program, &mut module, options, target);
 
     let CodegenReturn { code, map, .. } = Codegen::new()
         .with_options(CodegenOptions {
@@ -303,7 +325,7 @@ fn merge_mappings<'a>(
         ours.sort_by_key(position);
     }
 
-    let mut out = Vec::with_capacity(parts.tokens.len() * 5 / 4 + ours.len());
+    let mut out: Vec<Token> = Vec::with_capacity(parts.tokens.len() * 5 / 4 + ours.len());
     let mut line = u32::MAX;
     let mut printed = parts.tokens.iter().copied().peekable();
     let mut mine = ours.into_iter().peekable();
@@ -321,6 +343,30 @@ fn merge_mappings<'a>(
         }
         let token = if next { mine.next() } else { printed.next() }.expect("peeked");
         if token.get_dst_line() != line {
+            // A line that carries no token of its own inherits the one BEFORE
+            // it. Those lines are the tails of a multi-line call — `}));` closing
+            // an object literal, a component call and an `insert` at once — and
+            // every byte on them belongs to the construct the previous token
+            // opened. Without this a stack frame naming one resolves to nothing,
+            // and the fill below cannot reach it: it only ever extends a segment
+            // that is already on the line.
+            if let Some(previous) = out.last().copied() {
+                for gap in line.saturating_add(1)..token.get_dst_line() {
+                    let start = generated.line_start(gap);
+                    if start.is_some_and(|offset| extra.inside_a_literal(offset)) {
+                        continue;
+                    }
+                    let Some(column) = generated.indent(code, gap) else { continue };
+                    out.push(Token::new(
+                        gap,
+                        column,
+                        previous.get_src_line(),
+                        previous.get_src_col(),
+                        previous.get_source_id(),
+                        None,
+                    ));
+                }
+            }
             line = token.get_dst_line();
             // …but only where the line really does start a statement. A line
             // that CONTINUES a multi-line template literal starts in the middle
@@ -346,6 +392,27 @@ fn merge_mappings<'a>(
         out.push(token);
     }
 
+    // The same rule past the last token: a module whose final statement closes
+    // over several lines ends on bytes no segment reaches otherwise.
+    if let Some(previous) = out.last().copied() {
+        let mut gap = previous.get_dst_line() + 1;
+        while let Some(offset) = generated.line_start(gap) {
+            if !extra.inside_a_literal(offset)
+                && let Some(column) = generated.indent(code, gap)
+            {
+                out.push(Token::new(
+                    gap,
+                    column,
+                    previous.get_src_line(),
+                    previous.get_src_col(),
+                    previous.get_source_id(),
+                    None,
+                ));
+            }
+            gap += 1;
+        }
+    }
+
     parts.tokens = out.into_boxed_slice();
     oxc_sourcemap::SourceMap::from_parts(parts)
 }
@@ -357,6 +424,75 @@ fn position(token: &oxc_sourcemap::Token) -> (u32, u32) {
 
 pub fn format_diagnostics(diagnostics: &[Diagnostic]) -> String {
     diagnostics.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n")
+}
+
+/// What the analysis wants the author to know: O3's note where a keyed `For`
+/// cannot be traced back to its rows, O7's warning where `Dynamic` will flatten
+/// the getters P4 built. Both are deliberate divergences, so neither is allowed
+/// to be silent.
+/// DESIGN §5's explicit fallback. `Loading`, `Errored`, `Reveal`, `Suspense`,
+/// `Await`, `Portal`, `Dynamic` and `ErrorBoundary` have real async and boundary
+/// semantics that no string concatenation expresses, so a module that REFERENCES
+/// one of them compiles to the DOM backend instead and is rendered by
+/// `renderToString`'s happy-dom path. `Flow::inlinable_on_server()` is the split,
+/// resolved by `SymbolId` — a local `const Portal = …` is not the runtime's.
+fn uninlinable_flow(module: &Module<'_>) -> Option<&'static str> {
+    for symbol in module.scoping.symbol_ids() {
+        let Some(flow) = module.env.kind_of(symbol).flow() else { continue };
+        if flow.inlinable_on_server() {
+            continue;
+        }
+        if module.scoping.get_resolved_reference_ids(symbol).is_empty() {
+            continue;
+        }
+        return Some(flow.name());
+    }
+    // `import * as core` — `core.Portal` binds no symbol of its own, so the scan
+    // above cannot see it. Missing it compiles the module to a string that calls
+    // the real DOM component, which dies on a server with no `document`: the one
+    // environment target #10 exists to serve.
+    module
+        .env
+        .namespace_flows
+        .iter()
+        .find(|flow| !flow.inlinable_on_server())
+        .map(|flow| flow.name())
+}
+
+fn fallback_diagnostic(name: &str, filename: &str) -> Diagnostic {
+    Diagnostic {
+        severity: Severity::Warning,
+        message: format!(
+            "note: `{name}` has no string-mode implementation, so this module compiles to the DOM \
+             backend on the server and must be rendered through `renderToString` from \
+             `@barqjs/core/server` with a DOM implementation registered (DESIGN §5)."
+        ),
+        filename: filename.to_string(),
+        line: 1,
+        column: 1,
+    }
+}
+
+fn analysis_diagnostics(module: &Module<'_>, source: &str, filename: &str) -> Vec<Diagnostic> {
+    module
+        .env
+        .diagnostics
+        .iter()
+        .map(|diag| {
+            let (line, column) = line_column(source, diag.span.start);
+            let level = match diag.level {
+                crate::ir::DiagLevel::Note => "note",
+                crate::ir::DiagLevel::Warning => "warning",
+            };
+            Diagnostic {
+                severity: Severity::Warning,
+                message: format!("{level}: {}", module.interner.str(diag.message)),
+                filename: filename.to_string(),
+                line,
+                column,
+            }
+        })
+        .collect()
 }
 
 fn split_diagnostics(
@@ -533,13 +669,21 @@ mod tests {
     }
 
     #[test]
-    fn components_fragments_and_spreads_fall_back_to_create_element() {
+    fn a_component_is_called_and_a_fragment_still_is_not() {
         let source = "const V = () => <><Foo.Bar {...rest} x={1} />{cond ? <A /> : null}</>;\n";
         let output = compile_ok(source, "V.tsx");
+        // A fragment has no props object to build, so it stays on the runtime's
+        // own path.
         assert!(output.code.contains("_$createElement(_$Fragment, null"), "{}", output.code);
-        assert!(output.code.contains("_$createElement(Foo.Bar,"), "{}", output.code);
+        // P4 calls a component directly. It has to: `createElement` copies the
+        // props object it is handed, and a copy reads every getter once.
         assert!(output.code.contains("...rest"), "{}", output.code);
-        assert!(output.code.contains("_$createElement(A, null)"), "{}", output.code);
+        assert!(output.code.contains("x: 1"), "{}", output.code);
+        assert!(output.code.contains("A({})"), "{}", output.code);
+        assert!(!output.code.contains("_$createElement(A"), "{}", output.code);
+        // `createElement` calls `tag(finalProps)` with no receiver, so a member
+        // tag must not pick up a `this` the un-compiled path never had.
+        assert!(output.code.contains("(0, Foo.Bar)({"), "{}", output.code);
         // The component identifier is the binding, not a name-matched string.
         assert!(!output.code.contains("\"Foo.Bar\""), "{}", output.code);
     }
@@ -572,6 +716,37 @@ mod tests {
         let output = compile_ok(source, "V.tsx");
         assert!(output.code.contains("_el$$"), "{}", output.code);
         assert!(output.code.contains("_tmpl$$"), "{}", output.code);
+    }
+
+    /// The other half of the same hygiene rule, on the helper prefix rather than
+    /// the uid bases: a source that already spells one imported helper pushes
+    /// EVERY helper's local name to the next sigil, so the import and its
+    /// call sites cannot disagree.
+    #[test]
+    fn an_imported_helper_name_the_source_already_spells_moves_the_whole_sigil() {
+        let source = "const _$template = 1;\nconst V = () => <i>{x}</i>;\n";
+        let output = compile_ok(source, "V.tsx");
+        assert!(output.code.contains("template as _$$template"), "{}", output.code);
+        assert!(output.code.contains("insert as _$$insert"), "{}", output.code);
+        assert!(!output.code.contains("as _$template"), "{}", output.code);
+
+        // A helper the DOM backend never emits still counts: the sigil is one
+        // name shared by both backends' helpers.
+        let source = "const _$spreadAttrs = 1;\nconst V = () => <i>{x}</i>;\n";
+        let output = compile_ok(source, "V.tsx");
+        assert!(output.code.contains("template as _$$template"), "{}", output.code);
+
+        // Substring, not whole word: `_$templates` merely CONTAINS a helper name
+        // and still moves the sigil. Erring towards a rename costs one `$`;
+        // erring the other way shadows a user's binding.
+        let source = "const _$templates = 1;\nconst V = () => <i>{x}</i>;\n";
+        let output = compile_ok(source, "V.tsx");
+        assert!(output.code.contains("template as _$$template"), "{}", output.code);
+
+        // And a source mentioning no helper keeps the plain sigil.
+        let source = "const _$tmpl = 1;\nconst V = () => <i>{x}</i>;\n";
+        let output = compile_ok(source, "V.tsx");
+        assert!(output.code.contains("template as _$template"), "{}", output.code);
     }
 
     #[test]
@@ -747,13 +922,24 @@ mod tests {
         assert!(output.code.contains("_$createElement(\"div\""), "{}", output.code);
     }
 
+    /// The flag was accepted and refused from M1 to M5, because emitting the
+    /// DOM backend for it would have surfaced as a production SSR mismatch.
+    /// M6 is where it decides something: one concatenation, and not one DOM
+    /// call anywhere in the output.
     #[test]
-    fn the_ssr_flag_is_refused_rather_than_ignored() {
+    fn the_ssr_flag_selects_the_string_backend() {
         let options = ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("V.tsx") };
-        let error = compile("const V = () => <div>{x}</div>;\n", &options)
-            .expect_err("ssr has no backend until M6");
-        assert_eq!(error.len(), 1);
-        assert!(error[0].message.contains("ssr: true"), "{}", error[0].message);
+        let output = compile("const V = () => <div class=\"c\">{x}</div>;\n", &options).unwrap();
+        assert!(
+            output.code.contains("_$html(`<div class=\"c\">${_$esc(x)}</div>`)"),
+            "{}",
+            output.code
+        );
+        for dom in ["_$template", "_$insert", "_$setProp", "_$createElement", "_el$"] {
+            assert!(!output.code.contains(dom), "{dom} in:\n{}", output.code);
+        }
+        assert!(output.code.contains("from \"@barqjs/core/server\""), "{}", output.code);
+        assert!(output.warnings.is_empty(), "{:?}", output.warnings);
     }
 
     #[test]
@@ -765,8 +951,11 @@ mod tests {
         let cases = [
             // foster parenting: <img> is moved out of the table
             ("<table><img src=\"a\" /><tbody><tr><td>c</td></tr></tbody></table>", "<table><img"),
-            // "in body" drops a table-section start tag, keeping only its text
-            ("<div><tr><td>a</td></tr></div>", "<tr"),
+            // "in body" drops a table-section start tag, keeping only its text.
+            // The `<tr>` leaves the `<div>`'s template; it becomes a template of
+            // its OWN, because a template root parses in "in template" mode
+            // where a row is legal.
+            ("<div><tr><td>a</td></tr></div>", "<div><tr"),
             // the document-structure tags are merged, never inserted
             ("<div><body>b</body></div>", "<body"),
             // a block child auto-closes the <p>, and leaves a stray empty one
@@ -1036,6 +1225,85 @@ mod tests {
         out
     }
 
+    /// Lines the way `LineIndex` counts them, which is the model BOTH sides of
+    /// the map are built against — and the language's own: U+2028 and U+2029
+    /// end a line for a JS engine, so a template that bakes one really does
+    /// start a new generated line. Splitting on `\n` alone disagrees with the
+    /// map by one line from the first separator onwards.
+    fn code_lines(text: &str) -> Vec<&str> {
+        let bytes = text.as_bytes();
+        let mut lines = Vec::new();
+        let (mut start, mut at) = (0usize, 0usize);
+        while at < bytes.len() {
+            let width = match bytes[at] {
+                b'\n' => 1,
+                b'\r' => usize::from(bytes.get(at + 1) == Some(&b'\n')) + 1,
+                0xE2 if matches!(bytes.get(at + 1..at + 3), Some([0x80, 0xA8 | 0xA9])) => 3,
+                _ => {
+                    at += 1;
+                    continue;
+                }
+            };
+            lines.push(&text[start..at]);
+            at += width;
+            start = at;
+        }
+        lines.push(&text[start..]);
+        lines
+    }
+
+    /// Whether each generated line STARTS inside a template literal. Such a
+    /// line is the continuation of one token, not the start of a statement, so
+    /// §6's leftwards fill deliberately leaves it alone (the M4 amendment) and
+    /// there is nothing for a stack frame to name on it. Comments and strings
+    /// are tracked because the output carries backticks inside all three.
+    fn inside_a_template(code: &str) -> Vec<bool> {
+        #[derive(PartialEq)]
+        enum At {
+            Code,
+            Line,
+            Block,
+            Single,
+            Double,
+            Template,
+        }
+        let mut at = At::Code;
+        let mut out = vec![false];
+        let mut chars = code.chars().peekable();
+        while let Some(ch) = chars.next() {
+            match at {
+                At::Code => match ch {
+                    '/' if chars.peek() == Some(&'/') => at = At::Line,
+                    '/' if chars.peek() == Some(&'*') => at = At::Block,
+                    '\'' => at = At::Single,
+                    '"' => at = At::Double,
+                    '`' => at = At::Template,
+                    _ => {}
+                },
+                At::Line if ch == '\n' => at = At::Code,
+                At::Block if ch == '*' && chars.peek() == Some(&'/') => {
+                    chars.next();
+                    at = At::Code;
+                }
+                At::Single | At::Double | At::Template if ch == '\\' => {
+                    chars.next();
+                }
+                At::Single if ch == '\'' => at = At::Code,
+                At::Double if ch == '"' => at = At::Code,
+                At::Template if ch == '`' => at = At::Code,
+                _ => {}
+            }
+            if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                // CRLF is ONE terminator, exactly as `code_lines` counts it.
+                if ch == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push(at == At::Template);
+            }
+        }
+        out
+    }
+
     const CARD: &str = "export function Card(props) {\n  \
                         return (\n    \
                         <div class=\"card\">\n      \
@@ -1053,15 +1321,15 @@ mod tests {
             let mapped = map_of(&source, &name);
             assert!(!mapped.segments.is_empty(), "{name} produced no segments");
 
-            let generated_lines = mapped.code.split('\n').count() as u32;
-            let source_lines = mapped.source.split('\n').count() as u32;
+            let generated = code_lines(&mapped.code);
+            let source_lines = code_lines(&mapped.source).len() as u32;
             let mut previous = (0u32, 0u32);
             for segment in &mapped.segments {
-                assert!(segment.gen_line < generated_lines, "{name}: {segment:?}");
+                assert!(segment.gen_line < generated.len() as u32, "{name}: {segment:?}");
                 assert!(segment.src_line < source_lines, "{name}: {segment:?}");
                 assert!(
                     segment.gen_col as usize
-                        <= mapped.code.split('\n').nth(segment.gen_line as usize).unwrap().len(),
+                        <= generated[segment.gen_line as usize].encode_utf16().count(),
                     "{name}: {segment:?} is past the end of its generated line"
                 );
                 let at = (segment.gen_line, segment.gen_col);
@@ -1238,7 +1506,7 @@ mod tests {
         for (statement, jsx) in [
             ("const _el$1 = _tmpl$1();", "<div class=\"card\">"),
             ("const _el$2 = _el$1.lastChild;", "<p>{props.body}</p>"),
-            ("_$insert(_el$2, props.body);", "props.body}</p>"),
+            ("_$insert(_el$2, () => props.body);", "props.body}</p>"),
         ] {
             let line = mapped.line_of(statement);
             let indent = mapped.code.split('\n').nth(line as usize).unwrap();
@@ -1265,9 +1533,11 @@ mod tests {
         for name in fixture_names() {
             let source = std::fs::read_to_string(fixture_path(&name)).expect("a fixture");
             let mapped = map_of(&source, &name);
-            for (index, text) in mapped.code.split('\n').enumerate() {
+            let continuation = inside_a_template(&mapped.code);
+            for (index, text) in code_lines(&mapped.code).into_iter().enumerate() {
                 let trimmed = text.trim_start();
-                if trimmed.is_empty()
+                if continuation.get(index).copied().unwrap_or(false)
+                    || trimmed.is_empty()
                     || trimmed.starts_with("//")
                     || trimmed.starts_with('*')
                     || trimmed.starts_with("/*")

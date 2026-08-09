@@ -40,7 +40,7 @@ jobs:
 
       # NOT `bun run typecheck`. That one exits non-zero correctly — which is
       # the problem: it fails today on errors that predate this work, in
-      # @barqjs/core and in the Babel plugin scheduled for deletion at M6.
+      # @barqjs/core and in its JSX type declarations.
       # The script runs each package on its own and diffs the result against
       # .github/typecheck-baseline.txt, so a new error fails the build and a
       # fixed one has to be struck off the list. Nothing is silenced: no

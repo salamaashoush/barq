@@ -4,10 +4,13 @@ mod classify;
 mod fold;
 mod group;
 mod serialize;
+mod shape;
 
 use oxc::allocator::Allocator;
 
+use crate::codegen::Target;
 use crate::ir::Module;
+use crate::options::ResolvedOptions;
 
 /// Stage 4. Every unit of the module already exists, so a pass sees the whole
 /// module and may rewrite anything it owns — which is the precondition for P3
@@ -16,13 +19,29 @@ use crate::ir::Module;
 /// `anchor` is the last pass that may change the skeleton's SHAPE, so it runs
 /// before the bytes are serialised and before anything is addressed against
 /// them.
-pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
+pub fn run<'a>(
+    allocator: &'a Allocator,
+    module: &mut Module<'a>,
+    options: &ResolvedOptions,
+    target: Target,
+) {
     classify::run(allocator, module);
     fold::run(allocator, module);
-    anchor::run(allocator, module);
+    // After P3, because target #8 asks whether a unit still has a patch, and
+    // before P5, because nothing it builds reaches the skeleton.
+    shape::run(allocator, module, options);
+    // The three guarded passes are artefacts of the DOM backend and nothing
+    // else reads them: a `<!---->` is an insert anchor, a `template()` is a
+    // parse, and an address is a sibling walk. P8b concatenates bytes and has
+    // none of the three (DESIGN §5). The DOM order is left exactly as it was.
+    if target == Target::Dom {
+        anchor::run(allocator, module);
+    }
     group::run(allocator, module);
-    serialize::run(module);
-    address::run(allocator, module);
+    if target == Target::Dom {
+        serialize::run(module);
+        address::run(allocator, module);
+    }
 }
 
 #[cfg(test)]
@@ -87,7 +106,7 @@ mod tests {
             let source = std::fs::read_to_string(&path).expect("a readable fixture");
             let allocator = oxc::allocator::Allocator::new();
             let (_program, mut module) = lowered(&allocator, &source);
-            run(&allocator, &mut module);
+            run(&allocator, &mut module, &ResolvedOptions::default(), Target::Dom);
             for (index, unit) in module.units.iter().enumerate() {
                 unit.skeleton
                     .validate()
@@ -111,7 +130,7 @@ mod tests {
         let (_program, mut module) = lowered(&allocator, source);
         assert!(module.units.iter().all(|unit| !unit.is_pure_static()));
 
-        run(&allocator, &mut module);
+        run(&allocator, &mut module, &ResolvedOptions::default(), Target::Dom);
         assert!(module.units[0].is_pure_static(), "the folded unit lost its last patch");
         assert!(!module.units[1].is_pure_static(), "an unresolvable value keeps its patch");
         assert_eq!(module.template_html(0), "<b class=\"n2\">x</b>");
@@ -133,7 +152,7 @@ mod tests {
         assert!(module.templates.is_empty());
         assert!(module.html.is_empty());
 
-        run(&allocator, &mut module);
+        run(&allocator, &mut module, &ResolvedOptions::default(), Target::Dom);
 
         // Target #6: A and B differ only in which expression fills the hole, and
         // `SlotId` is skeleton-local, so they serialise identically and share
@@ -151,6 +170,41 @@ mod tests {
         );
     }
 
+    /// P3's child half. DESIGN's M4 amendment left this open because folding a
+    /// constant child has to merge adjacent text runs and then re-answer the
+    /// anchor and addressing questions; in the pass order as built, P3 runs
+    /// before both, so the only new work is the merge — and the merge has to
+    /// leave the node count alone, because `NodeId` is what everything addresses.
+    #[test]
+    fn a_constant_child_migrates_into_the_template_and_takes_its_patch_with_it() {
+        let allocator = oxc::allocator::Allocator::new();
+        let source = "const A = () => <p>Total: {5} clicks</p>;\n\
+                      const B = () => <p>a{null}b</p>;\n\
+                      const C = () => <p>{\"x\"}{y}{\"z\"}</p>;\n\
+                      const D = () => <p>{1.5}</p>;\n";
+        let (_program, mut module) = lowered(&allocator, source);
+        run(&allocator, &mut module, &ResolvedOptions::default(), Target::Dom);
+
+        // One clone, no hole, no marker: targets #2, #3 and #9 at once, on the
+        // shape the amendment named.
+        assert_eq!(module.template_html(module.units[0].template), "<p>Total: 5 clicks</p>");
+        assert!(module.units[0].is_pure_static());
+        // `null` renders nothing, and the runs either side fuse into one node.
+        assert_eq!(module.template_html(module.units[1].template), "<p>ab</p>");
+        assert!(module.units[1].is_pure_static());
+        // A live hole between two folded runs still needs its marker: the parser
+        // fuses literal text across a hole that materialises nothing.
+        assert_eq!(module.template_html(module.units[2].template), "<p>x<!---->z</p>");
+        assert_eq!(module.units[2].patch.len(), 1);
+        // Refused rather than reimplementing JS number formatting.
+        assert_eq!(module.template_html(module.units[3].template), "<p></p>");
+        assert_eq!(module.units[3].patch.len(), 1);
+
+        for (index, unit) in module.units.iter().enumerate() {
+            unit.skeleton.validate().unwrap_or_else(|error| panic!("unit {index}: {error}"));
+        }
+    }
+
     /// A collision would merge two templates that are not identical, which is a
     /// silent wrong-DOM bug rather than a missed optimisation — so the probe is
     /// followed by a byte comparison, and these two must stay apart.
@@ -161,7 +215,7 @@ mod tests {
                       const B = () => <b class=\"y\">{q}</b>;\n\
                       const C = () => <b class=\"x\">{r}</b>;\n";
         let (_program, mut module) = lowered(&allocator, source);
-        run(&allocator, &mut module);
+        run(&allocator, &mut module, &ResolvedOptions::default(), Target::Dom);
         assert_eq!(module.templates.len(), 2);
         assert_eq!(module.units[0].template, module.units[2].template);
         assert_ne!(module.units[0].template, module.units[1].template);

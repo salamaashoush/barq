@@ -30,3 +30,14 @@ export const events = [
     root.querySelector("button")?.click()
   },
 ]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 3,
+  // `ErrorBoundary.fallback` is `(error, reset) => Child`, so it is a real
+  // two-parameter callback and never a built node; `reset` reaches the button
+  // as a handler value, not through a thunk.
+  emits: ["ErrorBoundary({", "fallback: (error, reset) =>"],
+  absent: ["(ErrorBoundary, {"],
+}

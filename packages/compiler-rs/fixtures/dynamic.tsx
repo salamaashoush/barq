@@ -13,3 +13,13 @@ export default function DynamicFixture() {
 }
 
 export const steps = [() => tag.set("b"), () => tag.set("span")]
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 1,
+  // `component` is one of the five props the runtime unwraps, so the accessor
+  // goes in bare; everything else `Dynamic` is given is an ordinary object
+  // property it spreads onto the element it renders.
+  emits: ["Dynamic({", "component: tag", 'class: "dyn"', 'children: "inner"'],
+  absent: ["(Dynamic, {", "component: () =>"],
+}

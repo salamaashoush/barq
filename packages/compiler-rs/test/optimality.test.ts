@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 
 import {
   auditAnchors,
@@ -11,10 +13,12 @@ import {
   formatDivergences,
   groupTargets,
   listFixtures,
+  loadModule,
   renderEffectBodies,
   stripLiterals,
   templateAnchors,
   templateHtml,
+  type FixtureModule,
   type OptimalityExpectation,
 } from "./harness.ts"
 import { measure, typicalComponentFile } from "./measure.ts"
@@ -71,7 +75,7 @@ function runtimeImports(code: string): string[] {
  * below it is ASSERTED; the ones above it are pending, and raising this number
  * is what turns a milestone's whole claim on at once.
  */
-const MILESTONE = 4
+const MILESTONE = 6
 
 const declarations = await Promise.all(
   listFixtures().map(async (name) => [name, await fixtureOptimality(name)] as const),
@@ -119,51 +123,121 @@ describe("declared optimality", () => {
   /**
    * A fixture without an `optimality` block contributes nothing to the
    * definition-of-done loop — `assertDeclared` skips it silently. That is a
-   * decision for most of the corpus and an omission for none of it, so each one
-   * is named with the reason it carries no code-level claim. A new fixture has
-   * to either declare an optimality or say why it does not.
+   * decision for a few fixtures and an omission for none of them, so each one
+   * names the channel that carries its claim instead — and the channel is
+   * CHECKED.
+   *
+   * It used to be a string, and the staleness test only asked whether the key
+   * still existed. Nine of the reasons said a shape was deferred to M5, which
+   * shipped; a reason cannot rot silently when the suite runs it. Every entry
+   * below is a predicate over the fixture and its emitted module, and an excuse
+   * that stopped being true fails here rather than sitting in a comment.
    */
-  const NO_DECLARATION: Record<string, string> = {
-    "boolean-and-nullish-props": "prop-value semantics, owned by the DOM differential",
-    "class-list-array-object": "runtime classList semantics, not an emitted-code claim",
-    "class-list-prop": "runtime classList semantics, not an emitted-code claim",
-    "component-boundary-props": "components are M5; the claim is the fallback path staying correct",
-    "component-spread": "components are M5",
-    "conditional-children": "carries the corpus's only `win`, which is a behavioural claim",
-    "context-provider": "components are M5",
-    "control-flow-await-suspense": "control flow is M5",
-    "control-flow-error-boundary": "control flow is M5",
-    "control-flow-errored-loading": "control flow is M5",
-    "control-flow-for": "control flow is M5",
-    "control-flow-index": "control flow is M5",
-    "control-flow-repeat": "control flow is M5",
-    "control-flow-show": "control flow is M5",
-    "control-flow-show-static-body": "target 8 (M5); the it.todo block is the pending claim",
-    "control-flow-switch-match": "control flow is M5",
-    "custom-elements": "tag-name handling, checked by the DOM differential",
-    "dangerously-set-inner-html": "raw-html escaping, checked by the parse conformance pass",
-    "delegated-handler-tuple": "asserted by name in the target 7 block instead",
-    dynamic: "the spread path, owned by the DOM differential",
-    "html-entities": "target 10 evidence (M6); escaping is asserted in Rust",
-    "hygiene-shifted-uids": "asserted by name in the target 9 block instead",
-    mathml: "namespace handling, checked by the parse conformance pass",
-    "nested-fragments": "structure, owned by the DOM differential",
-    "nested-template-element": "structure, owned by the DOM differential",
-    portal: "runtime placement, owned by the DOM differential",
-    "pre-whitespace": "whitespace preservation, checked in Rust and by the parse pass",
-    "property-attrs": "the property channel, pinned by tables.test.ts",
-    "ref-binding": "runtime ref semantics, owned by the DOM differential",
-    "spread-static-mix": "spread ordering, owned by the attribute-order channel",
-    "style-object": "the style channel, pinned by tables.test.ts",
-    svg: "namespace handling, checked by the parse conformance pass",
-    "svg-dynamic-class": "O5, owned by the real-browser SVG check",
-    "svg-nested-in-html": "namespace handling, checked by the parse conformance pass",
-    "text-gt-hole": "a parser-divergence hazard; the claim is the escaped byte, asserted in Rust",
-    "text-hole-adjacent": "target 9 evidence carried by the corpus-wide anchor audit",
-    "text-hole-fused": "target 9 evidence carried by the corpus-wide anchor audit",
-    "unicode-long-template": "a sourcemap hazard; the claim is asserted in roundtrip.test.ts",
-    "void-elements": "serialisation, checked by the parse conformance pass",
-    "whitespace-only": "whitespace collapsing, owned by the DOM differential",
+  interface Excuse {
+    why: string
+    holds: (subject: { name: string; source: string; code: string; mod: FixtureModule }) => boolean
+  }
+
+  /**
+   * The fixture's name appears as a literal in a test file that asserts on it —
+   * with THIS table cut out first, so an excuse cannot vouch for itself.
+   */
+  const namedIn = (file: string) => (subject: { name: string }) => {
+    const text = readFileSync(join(import.meta.dir, file), "utf8")
+    const from = text.indexOf("const NO_DECLARATION")
+    const to = from === -1 ? -1 : text.indexOf("\n  }\n", from)
+    const body = from === -1 || to === -1 ? text : text.slice(0, from) + text.slice(to)
+    return body.includes(JSON.stringify(subject.name))
+  }
+
+  const NO_DECLARATION: Record<string, Excuse> = {
+    "conditional-children": {
+      why: "the claim is the two declared `win`s, which are behavioural",
+      holds: ({ mod }) => (mod.wins ?? []).length >= 2,
+    },
+    "array-hole": {
+      why: "an insert() receiving an Array; the claim is the four declared wins",
+      holds: ({ mod }) => (mod.wins ?? []).length >= 4,
+    },
+    "arrow-body-component": {
+      why: "the ArrowBody splice site, pinned by the emitted-code snapshot",
+      holds: ({ name }) =>
+        readFileSync(join(import.meta.dir, "__snapshots__", "roundtrip.test.ts.snap"), "utf8").includes(
+          name,
+        ),
+    },
+    "control-flow-nested": {
+      why: "asserted by name in the target 8 block",
+      holds: namedIn("optimality.test.ts"),
+    },
+    "delegated-handler-tuple": {
+      why: "asserted by name in the target 7 block",
+      holds: namedIn("optimality.test.ts"),
+    },
+    "hygiene-shifted-uids": {
+      why: "asserted by name in the target 9 block",
+      holds: namedIn("optimality.test.ts"),
+    },
+    "unicode-long-template": {
+      why: "a sourcemap hazard; the claim is asserted by name in roundtrip.test.ts",
+      holds: namedIn("roundtrip.test.ts"),
+    },
+    "svg-dynamic-class": {
+      why: "O5; the claim is asserted by name in the real-browser SVG check",
+      holds: namedIn("browser-svg-class-check.ts"),
+    },
+    "property-attrs": {
+      why: "the DOM_PROPS channel, pinned by tables.test.ts against dom.ts",
+      holds: ({ code }) => emittedCalls(code, "setProp") > 0 && templateHtml(code).join("").includes("<input"),
+    },
+    "style-object": {
+      // The DOM target hands the object to the runtime WHOLE, which is what
+      // `tables.test.ts` pins; the px rule only becomes the compiler's decision
+      // on the SSR target, where `ssr.test.ts` folds the same object into a
+      // `style="…"` chunk and compares the unit against dom.ts's own table. So
+      // the excuse names two channels and this predicate holds the DOM half of
+      // it: the object reaches `setProp` unopened, with no `px` anywhere.
+      why: "the style channel: whole-object on DOM (tables.test.ts), folded with the px rule on SSR (ssr.test.ts)",
+      holds: ({ code }) =>
+        emittedCalls(code, "setProp") > 0 &&
+        !stripLiterals(code).includes("px") &&
+        templateHtml(code).join("").includes("style=") === false,
+    },
+    "dangerously-set-inner-html": {
+      // `code.includes("dangerouslySetInnerHTML")` alone is satisfied by
+      // un-compiled source. What the fixture is about is that the markup was
+      // NOT baked into the template and reaches the runtime as a property
+      // write, so the element the parser builds is the one the oracle builds.
+      why: "raw HTML the compiler must refuse to bake; checked by the parse conformance pass",
+      holds: ({ code }) =>
+        templateHtml(code).length > 0 &&
+        emittedCalls(code, "setProp") > 0 &&
+        !templateHtml(code).join("").includes("<b>"),
+    },
+    mathml: {
+      why:
+        "namespace handling: `<math>` is a namespace ROOT and cannot be a template root, so it " +
+        "is built through createElement while its subtree stays a template the parse pass reads",
+      holds: ({ code }) =>
+        code.includes('createElement("math"') && templateHtml(code).join("").includes("<mrow>"),
+    },
+    svg: {
+      why:
+        "namespace handling: DESIGN §8 V13 kebab-cases every SVG attribute EXCEPT class and " +
+        "viewBox, and the folded bytes are what the parse conformance pass reads back",
+      holds: ({ code }) => {
+        const html = templateHtml(code).join("")
+        return html.includes('viewBox="0 0 24 24"') && html.includes("stroke-width=")
+      },
+    },
+    "pre-whitespace": {
+      why: "whitespace preservation; the exact template bytes are asserted in the O9 block",
+      holds: namedIn("optimality.test.ts"),
+    },
+    "text-gt-hole": {
+      why: "a parser-divergence hazard; the claim is the escaped byte, and it is in the template",
+      holds: ({ code }) => templateHtml(code).join("").includes("&gt;"),
+    },
   }
 
   it("every fixture either declares an optimality or says why it does not", () => {
@@ -174,6 +248,23 @@ describe("declared optimality", () => {
       "stale entry: this fixture declares an optimality now, or is gone",
     ).toEqual([])
   })
+
+  it("every excuse for not declaring one is still TRUE", async () => {
+    // The half that was missing. `NO_DECLARATION` used to hold prose, and the
+    // test above only asked whether the key was still there — so nine reasons
+    // could go on saying a shape was deferred to a milestone that had already
+    // shipped, and the suite reported them as explained. Each entry is now a
+    // predicate, and this runs it.
+    const rotted: string[] = []
+    for (const [name, excuse] of Object.entries(NO_DECLARATION)) {
+      const source = fixtureSource(name)
+      const mod = await loadModule(source, `excuse-${name}`)
+      if (!excuse.holds({ name, source, code: compileFixtureBody(name), mod })) {
+        rotted.push(`${name}: ${excuse.why}`)
+      }
+    }
+    expect(rotted, "the channel this fixture's claim was handed to no longer carries it").toEqual([])
+  }, 120_000)
 
   it("the declarations cover every target M3 is supposed to prove", () => {
     const targets = new Set(declarations.flatMap(([, d]) => (d ? [d.target] : [])))
@@ -190,6 +281,48 @@ describe("declared optimality", () => {
     expect(by(6), "template dedup").toContain("dedup-identical-markup")
     expect(by(9), "marker elision").toEqual(
       expect.arrayContaining(["marker-literal-text", "text-hole-followed", "text-hole-trailing"]),
+    )
+  })
+
+  it("the corpus declares a fixture for every target M5 has to prove", () => {
+    // Same contract as the M4 block above: what "M5 is done" means is a fact
+    // about the corpus, not about whichever fixture a target block happened to
+    // name by hand.
+    const by = (target: number) => declarations.filter(([, d]) => d?.target === target).map(([n]) => n)
+    expect(by(8), "thunk elision, and its boundary").toEqual(
+      expect.arrayContaining([
+        "control-flow-show-eager-static-body",
+        "control-flow-show-static-body",
+        "control-flow-for-static-body",
+      ]),
+    )
+    // Every one of the fourteen flow components is emitted as a real call, and
+    // the shape of that call is declared rather than left to a snapshot.
+    expect(by(8), "the flow catalogue").toEqual(
+      expect.arrayContaining([
+        "control-flow-for",
+        "control-flow-index",
+        "control-flow-repeat",
+        "control-flow-show",
+        "control-flow-switch-match",
+        "control-flow-await-suspense",
+        "control-flow-error-boundary",
+        "control-flow-errored-loading",
+      ]),
+    )
+    // Props flow: the raw read, the forward, the shapes that snapshot, and the
+    // shapes that must NOT become getters.
+    expect(by(1), "props across a component boundary").toEqual(
+      expect.arrayContaining([
+        "component-getter-props",
+        "props-raw-forward",
+        "component-boundary-props",
+        "component-function-props",
+        "props-destructured-param",
+        "props-destructured-body",
+        "props-renamed-and-defaulted",
+        "props-rest-spread",
+      ]),
     )
   })
 
@@ -500,15 +633,62 @@ describe("target 7 — delegated events as expando writes", () => {
 })
 
 describe("target 8 — thunk elision for static control-flow bodies", () => {
-  it.todo("control-flow-show-static-body: the Show body is passed as a built node, not a thunk", () => {
-    // Today the compiler emits `_$createElement(Show, { when: () => on() }, () => _tmpl$1())`.
-    // Target 8 is the arrow around the body going away, because the body is a
-    // static subtree: `_$createElement(Show, { when: () => on() }, _tmpl$1())`.
-    // P4 Shape (M5) is what deletes it.
+  it("control-flow-show-eager-static-body: the body is one clone, handed straight in", async () => {
+    // M4 emitted `_$createElement(Show, { when: () => on() }, _tmpl$1())`, which
+    // copies the props object and pays for a variadic call. P4 Shape makes the
+    // call real, and the body — a subtree that produced no patch — reaches
+    // `children` as the clone itself: no arrow, no IIFE, no element binding.
+    const code = compileFixtureBody("control-flow-show-eager-static-body")
+    expect(code).toMatch(/Show\(\{/)
+    expect(code).toMatch(/children:\s*_tmpl\$\d+\(\)/)
+    expect(code, "no thunk manufactured around the body").not.toMatch(/children:\s*\(/)
+    expect(code, "and nothing to bind it to").not.toMatch(/const _el\$/)
+    expect(emittedCalls(code, "insert") + emittedCalls(code, "setProp")).toBe(0)
+
+    const result = await compareToOracle("control-flow-show-eager-static-body")
+    expect(result.ok, formatDivergences("control-flow-show-eager-static-body", result.divergences)).toBe(true)
+  })
+
+  it("control-flow-show-static-body: an AUTHOR-written thunk survives, however static the body", async () => {
+    // The boundary, and it is behavioural, not cosmetic. Unwrapping the arrow
+    // builds the subtree at call time even when the branch is never taken, and
+    // reuses one node across every re-mount where the oracle calls the arrow
+    // again. `node-identity` in normalize.ts is the only channel that sees the
+    // second half — html, markers, attributes and anchors are all identical.
     const code = compileFixtureBody("control-flow-show-static-body")
-    const body = code.slice(code.indexOf("Show"))
-    expect(body).toMatch(/,\s*_tmpl\$\d+\(\)\s*\)/)
-    expect(body).not.toMatch(/\(\)\s*=>\s*_tmpl\$\d+\(\)/)
+    expect(code).toMatch(/Show\(\{/)
+    expect(code).toMatch(/children:\s*\(\)\s*=>\s*_tmpl\$\d+\(\)/)
+    // η-reduction of the prop the runtime unwraps itself, from the same pass.
+    expect(code).toMatch(/when:\s*on\b/)
+
+    const result = await compareToOracle("control-flow-show-static-body")
+    expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(true)
+    // The fixture toggles off and back on, so the oracle really did build a
+    // second `.panel`; matching it means the compiled path did too.
+    const identities = result.compiled.channels.map((frame) => frame.identity.join(","))
+    expect(new Set(identities).size, "the toggle rebuilt the body").toBeGreaterThan(1)
+  })
+
+  it("control-flow-for-static-body: a ROW body keeps its thunk however static it is", () => {
+    // The boundary, and the one that has to hold: `For` calls `children(item,
+    // index)` per row, so handing it a node is a TypeError — and where it is not,
+    // a single node shared by every row would collapse the list to one element.
+    // Elision is a fact about the component's children contract, never about the
+    // body alone.
+    const code = compileFixtureBody("control-flow-for-static-body")
+    expect(code).toMatch(/For\(\{/)
+    expect(code).toMatch(/children:\s*\(\)\s*=>\s*_tmpl\$\d+\(\)/)
+  })
+
+  it("control-flow-show: a body with a hole in it also keeps its thunk", async () => {
+    // control-flow-nested is a Show whose body builds a <ul> and patches a For
+    // into it. That body is not static, so the arrow stays and the DOM is only
+    // built when `when` is first true.
+    const code = compileFixtureBody("control-flow-nested")
+    expect(code).toMatch(/children:\s*\(\)\s*=>\s*\{/)
+
+    const result = await compareToOracle("control-flow-nested")
+    expect(result.ok, formatDivergences("control-flow-nested", result.divergences)).toBe(true)
   })
 })
 
@@ -620,24 +800,16 @@ describe("target 9 — marker elision", () => {
   })
 })
 
-describe("target 10 — SSR emits escaped static chunks, zero DOM ops", () => {
-  it.todo("static-only (ssr): one concatenation, no document/template calls", () => {
-    const code = compileFixtureBody("static-only", { ssr: true })
-    // `not.toContain` alone is satisfied by JSX that was never compiled, which
-    // also contains no `document.` and no `_$template(`.
-    expect(code, "the JSX has to be gone").not.toContain("<section")
-    expect(code).toMatch(/`<section class="card"/)
-    expect(code).not.toContain("document.")
-    expect(emittedCalls(code, "template")).toBe(0)
-  })
-
-  it.todo("html-entities (ssr): text is escaped at compile time", () => {
-    const code = compileFixtureBody("html-entities", { ssr: true })
-    expect(code, "the JSX has to be gone").not.toBe(fixtureSource("html-entities"))
-    expect(code).toContain("&lt;")
-    expect(code).toContain("&amp;")
-  })
-})
+/**
+ * Target 10 is asserted in `ssr.test.ts`, not here.
+ *
+ * It used to carry two `it.todo` bodies in this file. They are gone rather than
+ * enabled: `SSR emit shape` in `ssr.test.ts` runs the same two claims live and
+ * correctly — one of the bodies below asserted `not.toContain("<section")` over
+ * a module whose whole job is to carry `<section` inside a template literal, so
+ * enabling it as written would have failed — and a second, wrong copy of a
+ * claim is worse than none.
+ */
 
 describe("target 11 — compile throughput", () => {
   // Live from milestone 1: the compiler already runs, so this is a real budget,
@@ -682,8 +854,15 @@ describe("open questions the harness must be able to state", () => {
     // The rule is now the one that actually matters: a fixture may hold a bare
     // read, but it must DECLARE what goes live, so the bound is lifted by
     // exactly the holes that earned it and stays a bound for everything else.
+    // `(?<!$)` because `${a()}` inside a template literal is an interpolation,
+    // not a JSX hole — the compiler never auto-thunks it on its own, and counting
+    // it made a fixture whose only holes are author-written thunks demand a
+    // `goesLive` it could never earn. `[=>]{` because the attribute form has to
+    // start at an attribute (`x={`) or at a hole (`>{`), not mid-expression.
     const bare = listFixtures().filter((name) =>
-      /\{\s*[A-Za-z_$][\w.$]*\(\)\s*\}|=\{`[^`]*\$\{[^}]*\(\)[^}]*\}/.test(fixtureSource(name)),
+      /(?<!\$)\{\s*[A-Za-z_$][\w.$]*\(\)\s*\}|[=>]\{`[^`]*\$\{[^}]*\(\)[^}]*\}/.test(
+        fixtureSource(name),
+      ),
     )
     expect(bare, "the fixture that reaches the compiler-built thunk").toContain("auto-thunked-read")
 

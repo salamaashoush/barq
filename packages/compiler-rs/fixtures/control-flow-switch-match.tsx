@@ -18,3 +18,14 @@ export const steps = [
   () => status.set("error"),
   () => status.set("loading"),
 ]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 4,
+  // `Match` is NOT a ternary: it returns its own props object and `Switch`
+  // reads them, so the DOM backend has to emit real `Match({…})` calls inside
+  // the `children` array. Only the SSR backend inlines the construct.
+  emits: ["Switch({", "children: [Match({", "}), Match({"],
+  absent: ["(Switch, {", "(Match, {"],
+}

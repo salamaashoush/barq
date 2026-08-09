@@ -21,3 +21,20 @@ export default function ComponentSpread() {
 }
 
 export const steps = [() => label.set("second")]
+
+// One coalesced effect per `Chip` for `data-tone` + `id`, both read off the
+// props object the compiled call site handed over. The oracle reads them once
+// out of `{ ...props }` and can never see a later write.
+export const goesLive = ["Chip 1 tone/id", "Chip 2 tone/id"]
+
+export const optimality = {
+  target: 4,
+  milestone: 5,
+  templates: 2,
+  // Target #4 across a component boundary: `data-tone` and `id` are two live
+  // reads on ONE element, so they share ONE renderEffect with per-key `!==`
+  // guards. A spread onto a COMPONENT is an ordinary object spread — no
+  // spread helper call, no runtime prop resolution.
+  emits: ["Chip({", "...shared", "renderEffect(", '"data-tone"', '"id"'],
+  absent: ["(Chip, {", "spread("],
+}

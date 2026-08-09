@@ -1,71 +1,22 @@
 import { describe, expect, it } from "bun:test"
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 
 import { compileSource, emittedCalls, stripLiterals, templateHtml } from "./harness.ts"
+import {
+  CSS_NUMBER_PROPS,
+  DELEGATED_EVENTS,
+  DOM_PROPS,
+  NON_BUBBLING_EVENTS,
+  SVG_TAGS,
+} from "./dom-tables.ts"
 
 /**
- * DESIGN §9 calls table generation "the only mechanism that keeps the compiler
- * and the runtime honest". `build.rs` re-derives the tables from `dom.ts` on
- * every build that `cargo:rerun-if-changed` triggers, and `src/tables.rs`'s own
- * test proves the GENERATOR is sensitive to an edit.
+ * DESIGN §9's drift check, from the side that reaches a user: `dom.ts` as it is
+ * on disk RIGHT NOW, against the behaviour of the binding the harness loaded. It
+ * goes red the moment the two disagree, whether the cause is a stale prebuilt
+ * artifact or a table the generator never learned about.
  *
- * Neither of those can see the drift that actually reaches a user: the compiler
- * is shipped as a prebuilt `.node`, and a `dom.ts` that moved after that binary
- * was produced is a compiler emitting `$$` expandos for events the runtime no
- * longer delegates. This is the check from the other side — `dom.ts` as it is on
- * disk RIGHT NOW, against the behaviour of the binding the harness loaded — and
- * it goes red the moment the two disagree, whether the cause is a stale artifact
- * or a table the generator never learned about.
- *
- * `BARQ_DOM_TS` points it at a different `dom.ts`, which is how the check is
- * itself checked: aim it at an edited copy and the rows below fail.
+ * The extraction itself lives in `dom-tables.ts`, shared with `ssr.test.ts`.
  */
-
-const DOM_TS = process.env.BARQ_DOM_TS ?? join(import.meta.dir, "..", "..", "core", "src", "dom.ts")
-const source = readFileSync(DOM_TS, "utf8")
-
-const unquote = (text: string): string => text.trim().replace(/^["']|["']$/g, "").trim()
-
-/** `const NAME: Record<string, 1> = { a: 1, "b-c": 1 };` */
-function record(name: string): string[] {
-  return entries(`const ${name}: Record<string, 1> = {`, "{", "}", name).map((entry) =>
-    unquote(entry.slice(0, entry.lastIndexOf(":"))),
-  )
-}
-
-/** `const NAME = new Set(["a", "b"]);` */
-function set(name: string): string[] {
-  return entries(`const ${name} = new Set([`, "[", "]", name).map(unquote)
-}
-
-function entries(header: string, open: string, close: string, name: string): string[] {
-  const at = source.indexOf(header)
-  if (at === -1) throw new Error(`dom.ts no longer declares \`${header}\` — this check is stale`)
-  let depth = 1
-  let end = at + header.length
-  while (end < source.length && depth > 0) {
-    if (source[end] === open) depth++
-    else if (source[end] === close) depth--
-    if (depth > 0) end++
-  }
-  const out = source
-    .slice(at + header.length, end)
-    .split("\n")
-    .map((line) => (line.includes("//") ? line.slice(0, line.indexOf("//")) : line))
-    .join("\n")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-  if (out.length === 0) throw new Error(`\`${name}\` in dom.ts came out empty — this check is stale`)
-  return out
-}
-
-const DELEGATED_EVENTS = set("DELEGATED_EVENTS")
-const NON_BUBBLING_EVENTS = set("NON_BUBBLING_EVENTS")
-const SVG_TAGS = record("SVG_TAGS")
-const DOM_PROPS = record("DOM_PROPS")
-const CSS_NUMBER_PROPS = record("CSS_NUMBER_PROPS")
 
 /** `onclick` for `click`, `onpointerdown` for `pointerdown`. */
 function jsxEventName(type: string): string {
@@ -153,19 +104,90 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     expect(folded, "dom.ts routes these through the property channel").toEqual([])
   })
 
-  it("a style OBJECT is handed to the runtime whole — CSS_NUMBER_PROPS drift is UNOBSERVABLE today", () => {
-    // CSS_NUMBER_PROPS is the one table whose drift produces wrong PIXELS
-    // rather than a wrong node, and it is the one table the emitted code cannot
-    // yet witness: nothing folds a style object at M3, so the compiler never
-    // has to decide about `px`. That is the correct behaviour to pin TODAY —
-    // and the day P3 starts folding literal style objects (target #3), this row
-    // is where the drift becomes observable and has to become a real loop over
-    // CSS_NUMBER_PROPS.
+  /**
+   * What "the style object is handed over whole" means, as a predicate over one
+   * emitted module rather than as three loose `expect`s.
+   *
+   * Stated this way for one reason: every clause is a NEGATIVE except the last,
+   * and the row it replaces could not be shown to fail. Renaming a
+   * CSS_NUMBER_PROPS entry in `dom.ts` and rerunning it — the exact drift the
+   * file exists to catch — left it green, because the compiler passes ANY key
+   * through unchanged and the assertions only ever looked at the key they had
+   * just written. A predicate can be run against a corrupted module, and the
+   * `it` below does that.
+   */
+  function styleObjectStaysWhole(code: string, prop: string): string[] {
+    const wrong: string[] = []
+    // The POSITIVE clause, and it is load-bearing. Every other clause here is a
+    // negative, and un-compiled JSX satisfies all of them: it folds nothing into
+    // a template it does not have, it contains no `px`, and it contains
+    // `"z-index": 2` because that is what the author wrote. Requiring the object
+    // to have reached the runtime's property channel — one `setProp`, on an
+    // element that came out of a template — is what makes this a claim about a
+    // compiler at all.
+    if (emittedCalls(code, "setProp") !== 1) wrong.push(`${prop}: not applied through setProp`)
+    if (emittedCalls(code, "template") !== 1) wrong.push(`${prop}: the element never reached a template`)
+    if (templateHtml(code).join("").includes("style=")) wrong.push(`${prop}: folded into the template`)
+    if (stripLiterals(code).includes("px")) wrong.push(`${prop}: a px suffix reached the code`)
+    if (!code.includes(`"${prop}": 2`)) wrong.push(`${prop}: the key did not reach the runtime verbatim`)
+    return wrong
+  }
+
+  it("a style OBJECT is handed to the runtime whole — CSS_NUMBER_PROPS drift is UNOBSERVABLE on the DOM target", () => {
+    // CSS_NUMBER_PROPS is the one table whose drift produces wrong PIXELS rather
+    // than a wrong node, and on the DOM target the emitted code cannot witness
+    // it: nothing folds a style object, so the compiler never has to decide
+    // about `px`. That is the correct behaviour to pin here.
+    //
+    // Where the drift DOES become observable is the SSR backend: markup has one
+    // `style=` slot and no CSSOM, so a literal style object is folded into the
+    // chunk at compile time (DESIGN §5's M6 amendment) and the px rule becomes
+    // the COMPILER's decision, which it can get wrong. `ssr.test.ts` holds that
+    // comparison — it asserts the fold really happened and then diffs the unit
+    // against the runtime's own answer — driven by the same table this file
+    // reads out of `dom.ts`. This row is not that check and does not pretend to
+    // be; it pins the other half, which is that the DOM target must NOT fold.
+    //
+    // The claim here is narrower and is asserted exactly: the key reaches the
+    // runtime BYTE FOR BYTE, which is what makes the runtime's own
+    // `cssProp in CSS_NUMBER_PROPS` lookup land in the right class. A compiler
+    // that helpfully kebab-cased `zIndex` would flip `z-index` from the px rule
+    // to the unitless one, and this is the clause that sees it.
     for (const prop of CSS_NUMBER_PROPS) {
-      const code = compile(`<div style={{ "${prop}": 2 }} />`)
-      expect(templateHtml(code).join(""), `${prop} must not be folded`).not.toContain("style=")
-      expect(stripLiterals(code), `${prop} is unitless in dom.ts`).not.toContain("px")
-      expect(code).toContain(`"${prop}": 2`)
+      expect(styleObjectStaysWhole(compile(`<div style={{ "${prop}": 2 }} />`), prop)).toEqual([])
     }
+    // The same for a property that is NOT in the table, so the row is not
+    // quietly measuring one class only.
+    expect(styleObjectStaysWhole(compile(`<div style={{ "width": 2 }} />`), "width")).toEqual([])
+  })
+
+  it("and that claim is a detector, including against a compiler that did nothing at all", () => {
+    // The proof the row above is a measurement. Each mutation is a thing a
+    // future P3 could plausibly do, applied to a real emitted module.
+    const clean = compile(`<div style={{ "z-index": 2 }} />`)
+    expect(styleObjectStaysWhole(clean, "z-index"), "the clean module must pass").toEqual([])
+
+    // 1. the object folded into the template HTML
+    const folded = clean.replace(/_\$template\(`<div/, '_$template(`<div style="z-index:2"')
+    expect(folded, "mutation 1 is stale").not.toBe(clean)
+    expect(styleObjectStaysWhole(folded, "z-index")).not.toEqual([])
+
+    // 2. a px suffix applied at compile time to a UNITLESS property
+    const pixels = clean.replace(`"z-index": 2`, `"z-index": "2px"`)
+    expect(pixels, "mutation 2 is stale").not.toBe(clean)
+    expect(styleObjectStaysWhole(pixels, "z-index")).not.toEqual([])
+
+    // 3. the key rewritten, which is what silently moves a property between the
+    //    unitless class and the px class at runtime
+    const renamed = clean.replace(`"z-index": 2`, `"zIndex": 2`)
+    expect(renamed, "mutation 3 is stale").not.toBe(clean)
+    expect(styleObjectStaysWhole(renamed, "z-index")).not.toEqual([])
+
+    // 4. no compiler at all. The three mutations above are things a future P3
+    //    could do; this one is the thing the M1 identity round-trip does, and it
+    //    used to satisfy every clause — un-compiled JSX folds nothing, contains
+    //    no `px`, and contains `"z-index": 2` because the author wrote it there.
+    const uncompiled = `const Probe = () => <div style={{ "z-index": 2 }} />;\n`
+    expect(styleObjectStaysWhole(uncompiled, "z-index")).not.toEqual([])
   })
 })

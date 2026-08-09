@@ -14,3 +14,14 @@ export default function ControlFlowShow() {
 }
 
 export const steps = [() => visible.set(false), () => visible.set(true)]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 3,
+  // The fallback is JSX, so it is a built node — `fallbackNodes` evaluates it
+  // eagerly and a thunk there would only add a closure. The children were
+  // written as a thunk and stay one.
+  emits: ["Show({", "when: visible", "fallback: "],
+  absent: ["(Show, {", "fallback: () =>", "when: () =>"],
+}

@@ -8,9 +8,12 @@ import {
   compileSource,
   drive,
   fixtureSource,
+  formatDivergences,
   listFixtures,
   renderViaCompiler,
   renderViaRuntime,
+  stripLiterals,
+  templateAnchors,
 } from "./harness.ts"
 import { countAnchors, normalizeDom } from "./normalize.ts"
 
@@ -80,6 +83,11 @@ function reverseAppliedProps(code: string): string {
  * Fixtures that are known-divergent and deliberately parked. Every entry needs
  * a one-line reason; nothing is ever deleted from the corpus to make the suite
  * green. Empty today.
+ *
+ * A park switches nine assertion loops off for its fixture, so a park that
+ * outlives the bug it describes is a silent hole. `the parked list has no stale
+ * entries` below re-runs the comparison for every parked name and fails if it
+ * now passes — the same staleness check `NO_DECLARATION` and `wins` already get.
  */
 const PARKED: Record<string, string> = {}
 
@@ -97,6 +105,72 @@ describe("oracle equivalence", () => {
       await assertMatchesOracle(name)
     })
   }
+
+  it("the marker bound is an equality for every fixture, with nothing excused", async () => {
+    // There used to be a degraded bound here, and a list of seven fixtures on
+    // it: a module that clones a template an unknown number of times could not
+    // be held to "the anchors in the DOM ARE the anchors the templates bake in",
+    // so it dropped to "a module whose templates bake none cannot produce one" —
+    // no check at all for a module that bakes one, which every fixture below
+    // does. The expectation is now taken off the clones themselves, so it is an
+    // equality everywhere and the list is gone rather than merely shorter.
+    const wasDegraded = [
+      "component-boundary-props",
+      "component-spread",
+      "context-provider",
+      "dedup-identical-markup",
+      "props-destructured-param",
+      "props-renamed-and-defaulted",
+      "two-components-two-templates",
+    ]
+    for (const name of wasDegraded) {
+      expect(fixtures, `${name} is no longer a fixture — fix this list`).toContain(name)
+      const result = await renderViaCompiler(name)
+      // Each of them really is a module the old predicate gave up on: it calls a
+      // component AND bakes an anchor. Without both halves this is a list of
+      // fixtures that were never degraded in the first place.
+      expect(templateAnchors(result.code ?? ""), `${name} bakes no anchor`).toBeGreaterThan(0)
+      expect(/\b[A-Z][\w$]*\(\s*\{|\)\s*\(\s*\{/.test(stripLiterals(result.code ?? "")), `${name} calls no component`).toBe(true)
+      // And the bound is now live on it: a real number per frame, compared for
+      // equality by `compareToOracle`.
+      expect(result.expectedAnchors.length).toBe(result.channels.length)
+      expect(
+        result.channels.map((frame) => frame.anchors),
+        `${name} marker layout`,
+      ).toEqual(result.expectedAnchors)
+    }
+  }, 60_000)
+
+  it("the exact marker bound catches a spurious anchor in a template cloned TWICE", async () => {
+    // The mutation the degraded bound could not see, on the fixture the
+    // exclusion was written for. `component-boundary-props` renders `Greeting`
+    // twice, so its template is cloned twice and the old rule said only "this
+    // module bakes an anchor, so it may produce any number of them".
+    const result = await compareToOracle("component-boundary-props", {
+      emitted: (code) => {
+        const out = code.replace('<p class="greeting">', '<p class="greeting"><!---->')
+        if (out === code) throw new Error("self-check corruption is stale")
+        return out
+      },
+    })
+    expect(result.ok).toBe(false)
+    // TWO anchors reached the DOM for one baked — the clone count is exactly
+    // what the old bound could not account for.
+    const marker = result.divergences.filter((d) => d.kind === "marker-count")
+    expect(marker.length).toBeGreaterThan(0)
+    expect(marker.some((d) => d.compiled === "2" || d.oracle === "2")).toBe(true)
+  })
+
+  it("the parked list has no stale entries", async () => {
+    for (const name of Object.keys(PARKED)) {
+      expect(fixtures, `${name} is parked but is not a fixture`).toContain(name)
+      const result = await compareToOracle(name)
+      expect(
+        result.ok,
+        `${name} is parked as divergent but now matches the oracle — delete the park`,
+      ).toBe(false)
+    }
+  }, 60_000)
 })
 
 describe("oracle path integrity", () => {
@@ -124,8 +198,11 @@ describe("oracle path integrity", () => {
       if (!changed) inert.push(name)
     }
 
-    expect(withSteps.length).toBeGreaterThanOrEqual(15)
-    // Two documented exceptions, and both are statements about the ORACLE:
+    // Raised with the shape catalogue: the floor is what says the sweep is
+    // still looking at most of the corpus, so it has to move when the corpus does.
+    expect(withSteps.length).toBeGreaterThanOrEqual(40)
+    // Three documented exceptions, and all three are statements about the
+    // ORACLE:
     //
     //  - spread-static-mix: the un-compiled runtime reads a spread object
     //    exactly once, so its steps are SUPPOSED to be inert. That is the
@@ -135,7 +212,20 @@ describe("oracle path integrity", () => {
     //    `createElement` evaluates once at construction. The compiled path
     //    binds them (O4), so the fixture declares the divergence as a win and
     //    the harness asserts the exact DOM the compiled path must produce.
-    expect(inert).toEqual(["auto-thunked-read", "spread-static-mix"])
+    //  - component-getter-props: `createElement` copies the props object it is
+    //    handed, so the oracle's prop is a snapshot and the cell can never
+    //    change. The compiled call site passes a getter and it does — which is
+    //    the fixture's declared win, and its step is what proves the oracle is
+    //    the one standing still.
+    //  - props-raw-forward: every read in the chain is a raw `props.x`, and
+    //    `createElement` copies the props object at the outermost call, so the
+    //    oracle freezes the whole chain at its first value.
+    expect(inert).toEqual([
+      "auto-thunked-read",
+      "component-getter-props",
+      "props-raw-forward",
+      "spread-static-mix",
+    ])
   }, 60_000)
 
   it("fixtures declaring events actually observe a DOM change", async () => {
@@ -198,6 +288,63 @@ describe("marker channel", () => {
       expect(compiled.channels[0].markers).toMatchSnapshot()
     })
   }
+})
+
+describe("node-identity channel self-check", () => {
+  // Every other channel is a function of the DOM's SHAPE, so a compiled path
+  // that reused a node where the oracle rebuilt one — or rebuilt where the
+  // oracle reused — produced byte-identical html, markers, attributes and
+  // anchor counts. These are the mutations that prove the channel is not inert.
+
+  it("catches a control-flow body handed over as a node instead of as a thunk", async () => {
+    // The M5 miscompile, exactly: unwrapping the author's `() => _tmpl$N()`
+    // evaluates the body once at call time, so `Show` re-inserts the SAME node
+    // on every toggle where the oracle calls the arrow again. The fixture
+    // toggles off and back on, so the oracle really does build two.
+    const unwrapThunk = (code: string): string => {
+      const out = code.replace(/children: \(\) => (_tmpl\$\d+\(\))/g, "children: $1")
+      if (out === code) {
+        throw new Error("self-check corruption is stale: no `children: () => _tmpl$N()` to unwrap")
+      }
+      return out
+    }
+    const result = await compareToOracle("control-flow-show-static-body", { emitted: unwrapThunk })
+    expect(result.ok).toBe(false)
+    const kinds = new Set(result.divergences.map((d) => d.kind))
+    // And by NOTHING else: this is the measurement of how blind the rest of the
+    // harness is to node identity.
+    expect([...kinds]).toEqual(["node-identity"])
+  })
+
+  it("catches a re-render that rebuilds a subtree the oracle kept", async () => {
+    // The opposite direction, driven from the runtime side of the same fixture:
+    // forcing `Show` to build a fresh node every time `when` is read makes the
+    // compiled path churn where the oracle's thunk result is stable.
+    const rebuildEveryFrame = (code: string): string => {
+      const out = code.replace(
+        /children: \(\) => (_tmpl\$\d+)\(\)/g,
+        "children: () => { const _n = $1(); _n.setAttribute(\"data-x\", \"\"); _n.removeAttribute(\"data-x\"); return _n }",
+      )
+      if (out === code) throw new Error("self-check corruption is stale")
+      return out
+    }
+    // Same nodes, same attributes, same everything — the corruption is a no-op
+    // for every channel including this one, which is what says the detector
+    // above is measuring identity and not merely noticing a rewritten module.
+    const result = await compareToOracle("control-flow-show-static-body", {
+      emitted: rebuildEveryFrame,
+    })
+    expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(true)
+  })
+
+  it("the channel is live for the whole corpus, not silently empty", async () => {
+    let elements = 0
+    for (const name of fixtures) {
+      const result = await renderViaCompiler(name)
+      for (const frame of result.channels) elements += frame.identity.length
+    }
+    expect(elements).toBeGreaterThan(400)
+  }, 120_000)
 })
 
 describe("marker channel self-check", () => {

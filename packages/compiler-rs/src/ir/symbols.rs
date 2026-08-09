@@ -196,6 +196,28 @@ impl Flow {
     pub fn returns_a_fragment(self) -> bool {
         !matches!(self, Flow::Match)
     }
+
+    /// The `@barqjs/core` export this resolved from, for a diagnostic that has
+    /// to name the component that sent a module down the fallback path.
+    #[inline]
+    pub fn name(self) -> &'static str {
+        match self {
+            Flow::For => "For",
+            Flow::Index => "Index",
+            Flow::Repeat => "Repeat",
+            Flow::Show => "Show",
+            Flow::Switch => "Switch",
+            Flow::Match => "Match",
+            Flow::Loading => "Loading",
+            Flow::Errored => "Errored",
+            Flow::Reveal => "Reveal",
+            Flow::Suspense => "Suspense",
+            Flow::Await => "Await",
+            Flow::Portal => "Portal",
+            Flow::Dynamic => "Dynamic",
+            Flow::ErrorBoundary => "ErrorBoundary",
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -225,6 +247,19 @@ pub struct ReactiveEnv<'a> {
     pub scope_lo: AVec<'a, u32>,
     pub scope_hi: AVec<'a, u32>,
     pub diagnostics: AVec<'a, Diag>,
+    /// `import * as core from "@barqjs/core"`. A member of one of these resolves
+    /// to no `SymbolId` of its own, so every question asked by `SymbolId` —
+    /// which is every question this compiler asks — is blind to `core.For`
+    /// unless it goes through here first.
+    pub namespaces: Vec<SymbolId>,
+    /// The flow components this module reaches through such a namespace.
+    /// Collected during the bind walk, because that is the last stage that can
+    /// still see the JSX: harvest moves it out of the program.
+    pub namespace_flows: Vec<Flow>,
+    /// Every symbol a JSX CLOSING tag resolves to. oxc records one reference per
+    /// tag, so `<Show>…</Show>` reads as two uses of one binding; anything
+    /// counting real uses has to subtract these.
+    pub jsx_closings: Vec<SymbolId>,
 }
 
 impl<'a> ReactiveEnv<'a> {
@@ -236,6 +271,22 @@ impl<'a> ReactiveEnv<'a> {
             scope_lo: AVec::new_in(&allocator),
             scope_hi: AVec::new_in(&allocator),
             diagnostics: AVec::new_in(&allocator),
+            namespaces: Vec::new(),
+            namespace_flows: Vec::new(),
+            jsx_closings: Vec::new(),
+        }
+    }
+
+    /// The flow component `object.property` names, when `object` is a namespace
+    /// import of the runtime. `Prim::of_export` is the same table the named
+    /// import goes through, so the two spellings cannot disagree.
+    pub fn namespace_flow(&self, object: SymbolId, property: &str) -> Option<Flow> {
+        if !self.namespaces.contains(&object) {
+            return None;
+        }
+        match Prim::of_export(property) {
+            Some(Prim::Flow(flow)) => Some(flow),
+            _ => None,
         }
     }
 

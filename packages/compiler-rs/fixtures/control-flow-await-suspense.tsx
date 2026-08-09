@@ -27,3 +27,13 @@ export default function ControlFlowAwaitSuspense() {
 }
 
 export const steps = [() => settled()?.("ready")]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 5,
+  // `Await` takes the RESOLVED DATA in its children, so that callback keeps its
+  // parameter and its arrow. `loading` and `fallback` are eager nodes.
+  emits: ["Suspense({", "Await({", "resource: value", "children: (data: string) =>"],
+  absent: ["(Await, {", "(Suspense, {"],
+}

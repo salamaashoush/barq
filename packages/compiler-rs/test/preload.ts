@@ -25,12 +25,15 @@ Object.defineProperty(SVGElement.prototype, "className", {
 import { mock } from "bun:test"
 import { installTracer } from "./tracer.ts"
 
-const { signalsPath } = installTracer((path, factory) => {
+const { signalsPath, domPath } = installTracer((path, factory) => {
   mock.module(path, factory)
 })
 
 // Surfaced so a broken resolution fails loudly at startup instead of silently
-// producing zero-effect traces.
+// producing zero-effect traces and an always-zero anchor expectation.
 if (!signalsPath.endsWith("signals.ts")) {
   throw new Error(`tracer resolved an unexpected signals module: ${signalsPath}`)
+}
+if (!domPath.endsWith("dom.ts")) {
+  throw new Error(`tracer resolved an unexpected dom module: ${domPath}`)
 }

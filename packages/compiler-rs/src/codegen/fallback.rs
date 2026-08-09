@@ -71,7 +71,10 @@ impl<'a> Emit<'a, '_> {
         self.member(object, member.property.name.as_str(), member.span)
     }
 
-    fn props(&mut self, attributes: ArenaVec<'a, JSXAttributeItem<'a>>) -> Expression<'a> {
+    pub(super) fn props(
+        &mut self,
+        attributes: ArenaVec<'a, JSXAttributeItem<'a>>,
+    ) -> Expression<'a> {
         if attributes.is_empty() {
             return Expression::new_null_literal(SPAN, &self.ast);
         }

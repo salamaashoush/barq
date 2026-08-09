@@ -1,6 +1,6 @@
 use oxc::allocator::Allocator;
 use oxc::ast::ast::Expression;
-use oxc::semantic::Scoping;
+use oxc::semantic::{Scoping, SymbolId};
 use oxc::span::Span;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -92,6 +92,9 @@ pub enum Root<'a> {
 }
 
 pub struct Module<'a> {
+    /// The text every `Span` in the IR indexes into. P4 reads it for JSX text
+    /// children, which become JS string literals rather than template bytes.
+    pub source: &'a str,
     pub units: AVec<'a, Unit<'a>>,
     /// index == the `N` in the `_jsx$N` placeholder P1 left in the program
     pub roots: AVec<'a, Root<'a>>,
@@ -106,6 +109,14 @@ pub struct Module<'a> {
     /// are emission facts, not content, so nothing here may reach the hash.
     pub template_meta: AVec<'a, TemplateMeta>,
     pub dedup: FxHashMap<u64, TemplateId>,
+    /// Templates whose hash slot was already taken by DIFFERENT bytes. The map
+    /// is single-valued because a 64-bit collision does not happen for short
+    /// strings, but "does not happen" is not "is handled": the loser used to go
+    /// unregistered, so a THIRD template identical to it missed the share and
+    /// the module grew a duplicate row that nothing could ever collapse. This
+    /// vector is empty on every real compile and is scanned only after the probe
+    /// misses.
+    pub dedup_overflow: Vec<TemplateId>,
     /// Names an expression P3 folded into the template HTML used to read. The
     /// value is now bytes in a `_tmpl$` string, so the binding it came from may
     /// have no reader left; codegen drops the ones that do not.
@@ -119,6 +130,12 @@ pub struct Module<'a> {
     /// owned names, never AST references.
     pub scoping: Scoping,
     pub maps: Mappings,
+    /// One entry per reference P8b rewrote from a flow component to its string
+    /// implementation. When the count reaches the binding's resolved reference
+    /// count, the import specifier has no reader left and comes off — otherwise
+    /// a server bundle keeps pulling `@barqjs/core`'s DOM runtime in for a
+    /// component nothing calls.
+    pub flow_rewrites: Vec<SymbolId>,
 }
 
 pub struct TemplateRow {
@@ -154,16 +171,8 @@ pub struct Uids<'a> {
 
 impl<'a> Uids<'a> {
     pub fn new(source: &str, allocator: &'a Allocator) -> Self {
-        Self {
-            element: free_name(source, "_el$", allocator),
-            template: free_name(source, "_tmpl$", allocator),
-            root: free_name(source, "_jsx$", allocator),
-            handler: free_name(source, "_h$", allocator),
-            prev: free_name(source, "_p$", allocator),
-            value: free_name(source, "_v$", allocator),
-            next_element: 0,
-            next_value: 0,
-        }
+        let [element, template, root, handler, prev, value] = free_names(source, allocator);
+        Self { element, template, root, handler, prev, value, next_element: 0, next_value: 0 }
     }
 
     pub fn handler(&self, id: HoistId, allocator: &'a Allocator) -> &'a str {
@@ -231,15 +240,39 @@ fn numbered<'a>(prefix: &str, value: u32, allocator: &'a Allocator) -> &'a str {
     allocator.alloc_str(&name)
 }
 
-/// A name the source never mentions. `generate_uid` against a real scope tree
+const UID_BASES: [&str; 6] = ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$"];
+
+/// Six names the source never mentions. `generate_uid` against a real scope tree
 /// is not on oxc 0.143's `Scoping` — DESIGN §4 assumes an API that only
 /// `oxc_traverse`'s `TraverseScoping` has.
-fn free_name<'a>(source: &str, base: &str, allocator: &'a Allocator) -> &'a str {
-    let mut candidate = base.to_string();
-    while source.contains(&candidate) {
-        candidate.push('$');
+///
+/// Every base opens with `_`, so the underscores are the only positions a
+/// collision can start at and one scan answers all six. A source that spells one
+/// of them is rare enough to be worth no more than the escalating re-scan below.
+fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 6] {
+    let mut taken = [false; 6];
+    for (at, _) in source.match_indices('_') {
+        let rest = &source[at..];
+        for (index, base) in UID_BASES.iter().enumerate() {
+            taken[index] |= rest.starts_with(base);
+        }
     }
-    allocator.alloc_str(&candidate)
+
+    let mut names: [&'a str; 6] = UID_BASES;
+    for index in 0..UID_BASES.len() {
+        if !taken[index] {
+            continue;
+        }
+        let mut candidate = UID_BASES[index].to_string();
+        loop {
+            candidate.push('$');
+            if !source.contains(&candidate) {
+                break;
+            }
+        }
+        names[index] = allocator.alloc_str(&candidate);
+    }
+    names
 }
 
 pub enum Hoisted<'a> {
@@ -426,8 +459,9 @@ impl<'a> Module<'a> {
         Self::for_source(allocator, "")
     }
 
-    pub fn for_source(allocator: &'a Allocator, source: &str) -> Self {
+    pub fn for_source(allocator: &'a Allocator, source: &'a str) -> Self {
         Self {
+            source,
             units: AVec::new_in(&allocator),
             roots: AVec::new_in(&allocator),
             interner: Interner::new(allocator),
@@ -436,12 +470,14 @@ impl<'a> Module<'a> {
             templates: AVec::new_in(&allocator),
             template_meta: AVec::new_in(&allocator),
             dedup: FxHashMap::default(),
+            dedup_overflow: Vec::new(),
             folded_reads: FxHashSet::default(),
             delegated: 0,
             hoisted: AVec::new_in(&allocator),
             env: ReactiveEnv::new_in(allocator),
             scoping: Scoping::default(),
             maps: Mappings::default(),
+            flow_rewrites: Vec::new(),
         }
     }
 

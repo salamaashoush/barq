@@ -15,7 +15,6 @@
     "@tanstack/query-core": "^5.62.16"
   },
   "devDependencies": {
-    "@babel/preset-typescript": "^7.24.0",
     "@barqjs/compiler": "workspace:*",
     "@types/bun": "latest",
     "typescript": "^5.7.2",

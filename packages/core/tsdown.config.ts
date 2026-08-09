@@ -25,4 +25,15 @@ export default defineConfig([
       jsxImportSource: ".",
     },
   },
+  {
+    entry: ["./src/server-entry.ts"],
+    format: ["esm"],
+    dts: true,
+    clean: false,
+    external: ["csstype"],
+    esbuildOptions: {
+      jsx: "automatic",
+      jsxImportSource: ".",
+    },
+  },
 ]);

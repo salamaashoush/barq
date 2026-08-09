@@ -14,7 +14,7 @@
  */
 
 import type { JSXElement } from "./dom.ts";
-import { render } from "./dom.ts";
+import { isSsrHtml, render } from "./dom.ts";
 import {
   clearHydrationData,
   createScope,
@@ -29,21 +29,32 @@ import {
  * their Loading fallbacks; use renderToStringAsync to wait for them.
  */
 export function renderToString(fn: () => JSXElement): string {
-  if (typeof document === "undefined") {
-    throw new Error(
-      "renderToString needs a DOM implementation (e.g. happy-dom's GlobalRegistrator) registered before rendering.",
-    );
-  }
-
-  const container = document.createElement("div");
+  let container: HTMLElement | null = null;
+  let markup: string | null = null;
   let dispose!: () => void;
+
   createScope((d) => {
     dispose = d;
-    render(fn(), container);
+    const value = fn();
+    // A module compiled by the SSR string backend already IS the markup, and
+    // renders with no DOM at all. Anything else — including a module that fell
+    // back to the DOM backend for DESIGN §5's eight non-inlinable flow
+    // components — goes through the ambient DOM as before.
+    if (isSsrHtml(value)) {
+      markup = value.t;
+      return;
+    }
+    if (typeof document === "undefined") {
+      throw new Error(
+        "renderToString needs a DOM implementation (e.g. happy-dom's GlobalRegistrator) registered before rendering.",
+      );
+    }
+    container = document.createElement("div");
+    render(value, container);
   }, true);
   flush();
 
-  const html = container.innerHTML;
+  const html = markup ?? (container as HTMLElement | null)?.innerHTML ?? "";
   dispose();
   return html;
 }
@@ -70,21 +81,29 @@ let lastRenderData: Record<string, unknown> = {};
 export async function renderPage(
   fn: () => JSXElement,
 ): Promise<{ html: string; data: Record<string, unknown>; script: string }> {
-  if (typeof document === "undefined") {
-    throw new Error(
-      "renderToStringAsync needs a DOM implementation (e.g. happy-dom's GlobalRegistrator) registered before rendering.",
-    );
-  }
-
-  const container = document.createElement("div");
   const session = Symbol("render-session");
   let dispose!: () => void;
+  let container: HTMLElement | null = null;
+  let stringMode = false;
+  let markup = "";
 
   const prev = setAsyncSession(session);
   try {
     createScope((d) => {
       dispose = d;
-      render(fn(), container);
+      const value = fn();
+      if (isSsrHtml(value)) {
+        stringMode = true;
+        markup = value.t;
+        return;
+      }
+      if (typeof document === "undefined") {
+        throw new Error(
+          "renderToStringAsync needs a DOM implementation (e.g. happy-dom's GlobalRegistrator) registered before rendering.",
+        );
+      }
+      container = document.createElement("div");
+      render(value, container);
     }, true);
     flush();
   } finally {
@@ -94,7 +113,26 @@ export async function renderPage(
   // Session-scoped: concurrent renders don't wait on each other's fetches
   await settle(session);
 
-  const html = container.innerHTML;
+  if (stringMode) {
+    // The string backend has no Loading boundary to swap in place, so the
+    // settled values are read by rendering a second time. Keyed `createAsync`
+    // results are cached against the session, so nothing is fetched twice.
+    const restore = setAsyncSession(session);
+    try {
+      let second!: () => void;
+      createScope((d) => {
+        second = d;
+        const settled = fn();
+        markup = isSsrHtml(settled) ? settled.t : typeof settled === "string" ? settled : "";
+      }, true);
+      flush();
+      second();
+    } finally {
+      setAsyncSession(restore);
+    }
+  }
+
+  const html = stringMode ? markup : ((container as HTMLElement | null)?.innerHTML ?? "");
   const data = getHydrationData(session);
   clearHydrationData(session);
   lastRenderData = data;

@@ -45,13 +45,127 @@ enum Baked<'a> {
     Absent,
 }
 
+/// The child half of P3, and the half DESIGN's M4 amendment parked: a constant
+/// text child used to keep its hole, its `insert` call and — because the text
+/// either side would fuse — its `<!---->`, where the same markup written
+/// literally costs one clone and nothing else.
+///
+/// What made it look expensive was owning the anchor and addressing invariants
+/// afterwards. In the pass order as built it does not: P3 runs BEFORE P5's
+/// anchor selection and P6's addressing, so both are computed against the
+/// skeleton this leaves behind rather than patched up after the fact. What is
+/// left is fusing the runs, and the walk depends on no two `Text` nodes ever
+/// being adjacent — so the second one becomes a [`SkelNode::Empty`] instead of
+/// being removed, which would renumber every `NodeId` after it.
+fn fold_children<'a>(
+    allocator: &'a Allocator,
+    interner: &Interner<'a>,
+    folded_reads: &mut FxHashSet<&'a str>,
+    unit: &mut Unit<'a>,
+) -> Vec<usize> {
+    let mut folded: Vec<usize> = Vec::new();
+    for index in 0..unit.patch.len() {
+        let Op::Insert { slot, value, .. } = unit.patch[index].op else { continue };
+        let Some(konst) = unit.exprs.rx(value).fold() else { continue };
+        let Some(node) = (0..unit.skeleton.len() as NodeId)
+            .find(|node| matches!(unit.skeleton.node(*node), SkelNode::Slot(id) if *id == slot))
+        else {
+            continue;
+        };
+        let Some(text) = child_text(konst, interner, unit, node, allocator) else { continue };
+        if let Some(expression) = unit.exprs.entry(value).src.expression() {
+            record_reads(expression, folded_reads);
+        }
+        unit.exprs.entry_mut(value).src = ExprSrc::Folded(NONE);
+        unit.skeleton.nodes[node as usize] = match text {
+            Some(text) => SkelNode::Text(text),
+            // `null`, `undefined` and booleans render nothing at all.
+            None => SkelNode::Empty,
+        };
+        folded.push(index);
+    }
+    if !folded.is_empty() {
+        fuse_text_runs(allocator, unit);
+        unit.skeleton.renumber_materialisation();
+    }
+    folded
+}
+
+/// `Some(None)` is a child that renders nothing; `None` is a refusal.
+fn child_text<'a>(
+    konst: Const<'a>,
+    interner: &Interner<'a>,
+    unit: &Unit<'a>,
+    node: NodeId,
+    allocator: &'a Allocator,
+) -> Option<Option<&'a str>> {
+    // `<script>` and `<style>` hold text that resolves no reference, so the
+    // escaping this bakes would reach the DOM as its own characters.
+    let parent = unit.skeleton.parent_of(node);
+    if parent != NONE
+        && let SkelNode::Element(element) = unit.skeleton.node(parent)
+        && interner.tag(element.tag).flags.contains(crate::ir::TagFlags::RAW_TEXT)
+    {
+        return None;
+    }
+    match konst {
+        Const::Null | Const::Undefined | Const::Bool(_) => Some(None),
+        // An empty string is a text NODE to `createElement` and no node at all
+        // to the parser, and the difference is a sibling position.
+        Const::Str("") => None,
+        other => {
+            let text = as_text(other)?;
+            if crate::lower::text::rewritten_by_the_tokenizer(&text) {
+                return None;
+            }
+            let escaped = entity::escape_text(&text);
+            Some(Some(allocator.alloc_str(&escaped)))
+        }
+    }
+}
+
+/// The HTML parser fuses adjacent literal text into ONE node, so two `Text`
+/// nodes with nothing but `Empty` between them are indistinguishable after the
+/// parse and a sibling walk addressing the second would be addressing the first.
+fn fuse_text_runs<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
+    let mut groups: Vec<(NodeId, NodeId)> = vec![unit.skeleton.roots];
+    for id in 0..unit.skeleton.len() {
+        if let SkelNode::Element(element) = unit.skeleton.nodes[id] {
+            groups.push(element.children);
+        }
+    }
+    for (lo, hi) in groups {
+        let mut run: Option<NodeId> = None;
+        for node in lo..hi {
+            match unit.skeleton.nodes[node as usize] {
+                SkelNode::Empty => {}
+                SkelNode::Text(text) => match run {
+                    Some(first) => {
+                        let SkelNode::Text(head) = unit.skeleton.nodes[first as usize] else {
+                            unreachable!("only a Text run is carried")
+                        };
+                        let mut joined = String::with_capacity(head.len() + text.len());
+                        joined.push_str(head);
+                        joined.push_str(text);
+                        unit.skeleton.nodes[first as usize] =
+                            SkelNode::Text(allocator.alloc_str(&joined));
+                        unit.skeleton.nodes[node as usize] = SkelNode::Empty;
+                    }
+                    None => run = Some(node),
+                },
+                _ => run = None,
+            }
+        }
+    }
+}
+
 fn fold_unit<'a>(
     allocator: &'a Allocator,
     interner: &mut Interner<'a>,
     folded_reads: &mut FxHashSet<&'a str>,
     unit: &mut Unit<'a>,
 ) {
-    let mut folded: Vec<usize> = Vec::new();
+    let mut folded = fold_children(allocator, interner, folded_reads, unit);
     for index in 0..unit.patch.len() {
         let Op::SetOnce { name, value, .. } = unit.patch[index].op else { continue };
         let Some(konst) = unit.exprs.rx(value).fold() else { continue };
@@ -77,10 +191,11 @@ fn fold_unit<'a>(
     if folded.is_empty() {
         return;
     }
+    folded.sort_unstable();
     let old = std::mem::replace(&mut unit.patch, ArenaVec::new_in(&allocator));
     unit.patch.reserve(old.len() - folded.len());
     for (index, patch) in old.into_iter().enumerate() {
-        if !folded.contains(&index) {
+        if folded.binary_search(&index).is_err() {
             unit.patch.push(patch);
         }
     }

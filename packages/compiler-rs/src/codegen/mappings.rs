@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 
+use oxc::allocator::Allocator;
 use oxc::span::Span;
 
 use crate::ir::{Module, NONE, TemplateId, UnitId};
@@ -135,9 +136,31 @@ fn locate(code: &str, from: usize, name: &str, escaped: &str) -> Option<usize> {
     None
 }
 
-/// `TemplateElement::new_escape_raw`, reproduced. The template literal in the
-/// output is not the html buffer byte for byte, and a segment placed at the
-/// unescaped offset would drift by one per escape.
+/// The bytes a template literal in the OUTPUT carries for a run of template
+/// html. Borrows when nothing needs escaping, which is almost every template.
+///
+/// This is what both backends emit through, so it is also what §6.2's offset
+/// arithmetic reproduces in `escape_width` — a segment placed at the unescaped
+/// offset would drift by one per escape.
+pub(super) fn template_raw<'a>(raw: &'a str, allocator: &'a Allocator) -> &'a str {
+    // Deliberately looser than `escape_width`: a lone `$` takes the copying path
+    // and `escape_into` then leaves it alone, so the bytes are the same either
+    // way, and a membership test over four bytes is one the autovectoriser can
+    // widen where a per-index call with a lookahead is not.
+    if !raw.as_bytes().iter().any(|byte| matches!(byte, b'\\' | b'`' | b'\r' | b'$')) {
+        return raw;
+    }
+    let mut out = String::with_capacity(raw.len() + 8);
+    escape_into(raw, &mut out);
+    allocator.alloc_str(&out)
+}
+
+/// `TemplateElement::new_escape_raw`, reproduced.
+///
+/// U+2028 and U+2029 are deliberately NOT escaped: a JS engine treats them as
+/// line terminators, so a template that bakes one really does start a new
+/// generated line, and `LineIndex` is what models that on both sides of the
+/// map.
 fn escape_into(raw: &str, out: &mut String) {
     out.reserve(raw.len());
     let bytes = raw.as_bytes();
@@ -176,6 +199,13 @@ mod tests {
         assert_eq!(out, "a$b");
         assert_eq!(escape_width(b"a$b", 1), 0);
         assert_eq!(escape_width(b"a${", 1), 1);
+
+        // A JS line terminator stays raw: `LineIndex` counts it as ending a
+        // generated line, which is what a JS engine does with it.
+        let mut out = String::new();
+        escape_into("a\u{2028}b", &mut out);
+        assert_eq!(out, "a\u{2028}b");
+        assert_eq!(escape_width("\u{2028}".as_bytes(), 0), 0);
     }
 
     #[test]

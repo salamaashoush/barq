@@ -119,11 +119,18 @@ pub fn reshapes(tag: &str, at: Context<'_>) -> bool {
     if NEVER.binary_search(&tag).is_ok() {
         return true;
     }
+    // A template ROOT is not parsed in "in body". `template()` assigns
+    // `innerHTML` on a `<template>`, which parses in "in template" insertion
+    // mode, and that mode pushes "in table" / "in table body" / "in row" / "in
+    // column group" for exactly these start tags — so a table-scoped element
+    // with no ancestor above it is inserted verbatim. `Context::inside` always
+    // sets a parent, so `None` is the template root and nothing else.
+    let root = at.parent.is_none();
     let legal_parent = match tag {
-        "caption" | "colgroup" | "tbody" | "tfoot" | "thead" => at.parent == Some("table"),
-        "tr" => matches!(at.parent, Some("tbody" | "tfoot" | "thead")),
-        "td" | "th" => at.parent == Some("tr"),
-        "col" => at.parent == Some("colgroup"),
+        "caption" | "colgroup" | "tbody" | "tfoot" | "thead" => root || at.parent == Some("table"),
+        "tr" => root || matches!(at.parent, Some("tbody" | "tfoot" | "thead")),
+        "td" | "th" => root || at.parent == Some("tr"),
+        "col" => root || at.parent == Some("colgroup"),
         _ => true,
     };
     if !legal_parent {
@@ -203,10 +210,29 @@ mod tests {
     #[test]
     fn a_table_section_is_refused_everywhere_it_is_not_legal() {
         for tag in ["caption", "col", "colgroup", "tbody", "td", "tfoot", "th", "thead", "tr"] {
-            assert!(root(tag), "{tag} at a template root");
             assert!(under(&["div"], tag), "{tag} inside a div");
             assert!(under(&["span", "em"], tag), "{tag} nested in inline content");
         }
+    }
+
+    /// "in template" insertion mode pushes a table mode for each of these, so a
+    /// row or a cell with nothing above it parses back as itself — which is the
+    /// single commonest list shape there is, and it used to fall all the way
+    /// back to `createElement`. Confirmed in real Chrome and in happy-dom by
+    /// `test/browser-parse-check.ts`, which parses every emitted template.
+    #[test]
+    fn a_table_section_at_a_template_root_is_inlinable() {
+        for tag in ["caption", "col", "colgroup", "tbody", "td", "tfoot", "th", "thead", "tr"] {
+            assert!(!root(tag), "{tag} at a template root");
+        }
+        // and the interior of one still follows the ordinary rules
+        assert!(!under(&["tr"], "td"));
+        assert!(!under(&["tbody"], "tr"));
+        assert!(!under(&["colgroup"], "col"));
+        assert!(!under(&["tr", "td"], "div"));
+        assert!(under(&["tr"], "div"));
+        assert!(under(&["tbody"], "td"));
+        assert!(under(&["td"], "tr"));
     }
 
     #[test]

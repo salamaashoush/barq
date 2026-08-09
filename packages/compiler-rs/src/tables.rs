@@ -46,6 +46,18 @@ pub fn css_number_prop(css_name: &str) -> bool {
     CSS_NUMBER_PROPS.binary_search(&css_name).is_ok()
 }
 
+/// `ssr.ts::attr` answers about this name itself rather than writing
+/// `name="value"` — an alias, an object-valued attribute, the one whose answer
+/// depends on the element, one that reflects under another name, or one that
+/// writes nothing. Every other name is decided entirely by the literal the
+/// compiler wrote, which is what `attrLit` exists for.
+///
+/// The `on…` prefix is a rule rather than a name and is applied by the caller.
+#[inline]
+pub fn attr_intercepts(name: &str) -> bool {
+    ATTR_INTERCEPTED_NAMES.binary_search(&name).is_ok()
+}
+
 /// Index into [`DELEGATED_EVENTS`], which is what [`crate::ir::Module::delegated`]
 /// is a bitset over.
 #[inline]
@@ -59,20 +71,34 @@ mod tests {
     use crate::dom_ts;
     use crate::dom_ts::INTERCEPTED;
 
+    fn read(path: &str) -> String {
+        std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"))
+    }
+
     /// `include_str!` ties this file's compilation to `OUT_DIR`, and
-    /// `cargo:rerun-if-changed` ties `OUT_DIR` to `dom.ts`, so comparing the two
-    /// sides can never fail — it is the build graph asserting itself. What CAN
-    /// be tested is that the generator is SENSITIVE: an edit to `dom.ts` moves
-    /// its output. Drift is then impossible because the output is never stored.
+    /// `cargo:rerun-if-changed` ties `OUT_DIR` to `dom.ts` and `ssr.ts`, so
+    /// comparing the two sides can never fail — it is the build graph asserting
+    /// itself. What CAN be tested is that the generator is SENSITIVE: an edit to
+    /// either source moves its output. Drift is then impossible because the
+    /// output is never stored.
     #[test]
-    fn the_generator_notices_every_edit_to_dom_ts() {
-        let source = std::fs::read_to_string(DOM_TS_PATH)
-            .unwrap_or_else(|error| panic!("{DOM_TS_PATH}: {error}"));
-        let current = dom_ts::render(&source, DOM_TS_PATH).unwrap();
+    fn the_generator_notices_every_edit_to_the_runtime() {
+        let dom = read(DOM_TS_PATH);
+        let ssr = read(SSR_TS_PATH);
+        let sources = |dom: &str, ssr: &str| {
+            dom_ts::render(&dom_ts::Sources {
+                dom,
+                dom_path: DOM_TS_PATH,
+                ssr,
+                ssr_path: SSR_TS_PATH,
+            })
+            .unwrap()
+        };
+        let current = sources(&dom, &ssr);
         assert_eq!(
             current,
             include_str!(concat!(env!("OUT_DIR"), "/dom_tables.rs")),
-            "the build graph is broken: OUT_DIR did not follow {DOM_TS_PATH}"
+            "the build graph is broken: OUT_DIR did not follow the runtime sources"
         );
 
         for (before, after) in [
@@ -83,11 +109,15 @@ mod tests {
             ("if (key === \"classList\")", "if (key === \"zzList\")"),
             ("propKey !== \"viewBox\"", "propKey !== \"zzBox\""),
         ] {
-            assert!(source.contains(before), "dom.ts no longer contains {before:?}");
-            let edited = source.replacen(before, after, 1);
-            let moved = dom_ts::render(&edited, DOM_TS_PATH).unwrap();
+            assert!(dom.contains(before), "dom.ts no longer contains {before:?}");
+            let moved = sources(&dom.replacen(before, after, 1), &ssr);
             assert_ne!(moved, current, "editing {before:?} in dom.ts did not move the tables");
         }
+
+        let before = "const ATTR_INTERCEPTED: Record<string, 1> = {\n";
+        assert!(ssr.contains(before), "ssr.ts no longer contains {before:?}");
+        let moved = sources(&dom, &ssr.replacen(before, &format!("{before}  zz: 1,\n"), 1));
+        assert_ne!(moved, current, "editing ATTR_INTERCEPTED in ssr.ts did not move the tables");
     }
 
     /// The two name sets that used to be transcribed into `intern.rs` by hand.
@@ -144,6 +174,28 @@ mod tests {
 
         assert!(is_non_bubbling_event("mouseenter") && is_non_bubbling_event("focus"));
         assert!(!is_non_bubbling_event("click"));
+
+        // The names `ssr.ts::attr` answers about itself. `attrLit` is emitted
+        // for everything else, so a name that belongs here and is missing is a
+        // wrong attribute on the wire.
+        for name in [
+            "class",
+            "classList",
+            "style",
+            "value",
+            "className",
+            "htmlFor",
+            "defaultValue",
+            "readOnly",
+            "children",
+            "ref",
+            "checked",
+            "innerHTML",
+            "dangerouslySetInnerHTML",
+        ] {
+            assert!(attr_intercepts(name), "{name} is decided by attr itself");
+        }
+        assert!(!attr_intercepts("title") && !attr_intercepts("data-id") && !attr_intercepts("id"));
     }
 
     /// A document listener for a non-bubbling type can never fire from a
@@ -164,6 +216,7 @@ mod tests {
             &CSS_NUMBER_PROPS[..],
             &DELEGATED_EVENTS[..],
             &NON_BUBBLING_EVENTS[..],
+            &ATTR_INTERCEPTED_NAMES[..],
         ] {
             assert!(table.windows(2).all(|pair| pair[0] < pair[1]), "{table:?}");
         }

@@ -5,8 +5,10 @@ Program), with the reactivity analysis grafted from **DepSet** and the addressin
 interning machinery grafted from **Ribbon**. See "Provenance" at the end for what came from
 where and what was rejected.
 
-The Babel plugin in `packages/compiler` is dead code. It is not a target, not a baseline, and
-not an oracle. It is a catalogue of JSX shapes that must be handled, nothing more.
+The Babel plugin that used to live in `packages/compiler` was never a target, a baseline or an
+oracle — only a catalogue of JSX shapes that have to be handled. That catalogue is now the
+fixture corpus (`fixtures/README.md`), and the plugin was deleted at M6. `packages/compiler` is
+the Vite integration and nothing else.
 
 The correctness oracle is `@barqjs/core/jsx-runtime` → `createElement()`. Compiled output must
 produce an identical DOM and must never do more reactive work than the un-compiled path. Doing
@@ -891,6 +893,137 @@ export function renderToString(fn: () => string): string   // just fn()
 `setElementAttr`'s boolean/nullish handling exactly, so the string path and the DOM path emit
 identical markup. This seam is protected only by a dual-render conformance suite (milestone 6).
 
+### Amendment (M6) — what P8b actually emits, and the five things that had to be decided
+
+**The oracle is `renderToString`, so the escaping tables are the SERIALISER's, not the spec's.**
+Text escapes `&`, `<`, `>` and U+00A0; a double-quoted attribute escapes `&` and `"` and leaves
+U+00A0 raw; raw text (`<script>`, `<style>`) escapes nothing. The spec escapes U+00A0 in both
+contexts and the two spellings parse to the same character, so the attribute rule is a
+byte-for-byte agreement with the runtime rather than a semantic choice. The compile-time escapers
+in `lower::entity` and the runtime ones in `ssr.ts` are the same two tables, and
+`packages/core/src/ssr.test.ts` compares every cell against what `createElement` + `innerHTML`
+produce for the same value.
+
+**A compiled root returns `SsrHtml`, not a bare string.** §5 above wrote
+`renderToString(fn: () => string)`. A bare string cannot answer the only question a hole asks —
+"is this markup I produced, or data I have to escape?" — because a component returning
+`props.user.bio` and a component returning markup are both strings, and guessing wrong in one
+direction is an XSS. The brand is one object per root, `{ __barqSsrHtml, t }`, and `esc` passes it
+through, escapes everything else, and serialises a real `Node` (which is how a string module
+embeds a component from a module that fell back). `dom.ts` reads the same brand at every
+value→node funnel, which is how a FALLBACK module embeds a string-compiled component. Both
+directions of DESIGN §5's two-strategy coexistence are therefore closed, and
+`renderToString` accepts both shapes.
+
+**`DOM_PROPS` reach the wire only as the attribute they reflect to.** The DOM path writes a
+PROPERTY, and markup carries only content attributes: `disabled`, `multiple`, `readOnly`→
+`readonly`, `defaultValue`→`value` and `defaultChecked`→`checked` reflect; `checked`, `selected`
+and `indeterminate` are dirty values and write nothing. `value` is the one name whose answer
+depends on the ELEMENT — nothing on `<input>`/`<textarea>`/`<select>`/`<output>`, the content
+attribute everywhere else — so the compiler passes the tag as `attr`'s third argument.
+
+**Three ops have no wire representation, and one construct legitimately differs.** `Delegate`,
+`Listen` and `Ref` are dropped, and no chunk is cut for them. A `ref` CALLBACK is therefore a
+client-only effect: a fixture whose ref mutates the element it is handed produces markup the
+string path structurally cannot, which is declared per fixture rather than papered over. The
+control-flow components splice a `<!--Name:n-->` marker PAIR into the live parent for their own
+reconciliation, and the string backend emits none — the same reason `SkelNode::Marker` is skipped.
+
+**P1's refusals are about PARSING, and no parser runs here.** A fragment, a `<table>` the parser
+would give an implied `<tbody>`, a `<select multiple>` — all of them serialise directly instead of
+falling back to `createElement`. Only a component tag the shape pass could not resolve does, and
+`esc` serialises the node it returns. `anchor`, `serialize` and `address` are skipped outright on
+this target: a `<!---->` is an insert anchor, a `template()` is a parse, and an address is a
+sibling walk.
+
+### Amendment (M6, second pass) — the four positions the escaping tables do not cover
+
+The tables above are complete for a VALUE in a text or attribute position. The review found four
+positions that are not that, and each one is a different kind of answer.
+
+**A raw-text element cannot be escaped, so the close sequence is neutralised instead.** There are
+no entities inside `<script>`/`<style>`/`<xmp>`/`<iframe>`/`<noembed>`/`<noframes>`/`<noscript>`:
+the tokenizer decodes nothing, so `&lt;` would reach the wire as four characters and corrupt the
+content. The only sequence that must not survive is the one that ENDS the element, and it becomes
+`<\/`. The tokenizer reads `</` followed by anything that is not an ASCII letter as raw text, and
+`\/` is an identity escape in a JS string literal and in a CSS string alike, so a value carrying
+`</script>` inside a payload survives verbatim where it matters. `<!--` goes with it in SCRIPT
+data only: it is the sole route into script-data-escaped state, where a following `<script` stops
+`</script>` closing the element, and in CSS it is a legal CDO token. Both halves exist —
+`ssr.rs::neutralize_raw_text` for a literal the compiler can see (JSX text cannot hold a bare `<`,
+but `&lt;/script&gt;` decodes to one) and `ssr.ts::rawText` for the value it cannot, which is why
+the owning tag travels as `rawText`'s second argument. This is a place where the DOM path is NOT a
+specification: `renderToString` serialises a text node inside `<script>` verbatim, so its own
+bytes reparse into a breakout, and happy-dom additionally escapes `<iframe>`/`<noscript>` content
+where a real browser does not. The conformance suite therefore asserts the property (nothing
+escaped the element) rather than equality with the oracle.
+
+**An attribute NAME is refused when it is not one.** Only a spread can carry a name that is
+runtime data; every compiled `attr(…)` call site passes a name the compiler wrote. `setAttribute`
+answers a name outside the XML `Name` production with `InvalidCharacterError` and writes nothing,
+so `{...{"x onload=alert(1) y": "1"}}` must not become three attributes on the wire. `ssr.ts::attr`
+validates and throws, which makes the two paths agree — and where happy-dom is LAXER than a real
+browser (it accepts U+2028 and U+00A0 in a name, and then serialises markup that reparses into
+several attributes) the string path is deliberately the stricter one.
+
+**The brand is a registered symbol.** `Symbol.for("barq.ssr.html")`, tested by identity and paired
+with `typeof t === "string"`. It was a plain `__barqSsrHtml` property tested with `in`, which any
+object `JSON.parse` produced satisfied — and because `dom.ts` reads the same predicate at five
+value→node funnels, a deserialised field reaching `<div>{value}</div>` became live elements on the
+CLIENT as well as on the wire. `Symbol.for` is unreachable from JSON and still identical across
+two copies of the module, which the `.` and `./server` entries really are.
+
+**A literal style object folds, and that is what makes `CSS_NUMBER_PROPS` observable.** Markup has
+one `style=` slot and no CSSOM, so an object whose every key and value is a literal is serialised
+at compile time by `ssr.rs::fold_style` — `dom.ts::styleToString`'s rule, with the px class read
+from `tables::css_number_prop`, which `build.rs` regenerates from `dom.ts`. On the DOM target the
+object is handed to the runtime whole and a drifted table is unobservable in the emit; here it is
+wrong bytes. Anything the compiler cannot evaluate stays `attr("style", …)`.
+
+### Amendment (M6, second pass) — the opcode dispatch, and the two divergences that are real
+
+**`attribute_slot` is the dispatch and it is total.** `attribute_call` was already a total match
+over `Op`, but its only caller filtered through a helper that admitted the three NAMED ops, so the
+`SetClass`, `SetStyle` and `Spread` rows were unreachable — a pass constructing one would have
+produced missing output with no error, which is the precise silence §4's no-drift guarantee is
+supposed to make impossible. The decision now lives in one total match with no wildcard arm, and
+`attribute_call` `unreachable!`s on everything that match sends elsewhere. `SetClass`, `SetStyle`
+and `Spread` are still constructed by no pass today; the guarantee is that adding one forces a
+decision in both places.
+
+**A namespace import resolves to the same `Flow` as a named one.** `import * as core` binds no
+symbol for `core.Portal`, so a split resolved by `SymbolId` walked past BOTH halves: `<core.For>`
+was not rewritten, and `<core.Portal>` did not trigger the fallback — which shipped a string module
+calling a DOM component, dying with `ReferenceError: document is not defined` on exactly the kind of
+server target #10 exists for. The bind walk now records the flows a namespace member names, and
+`shape.rs::member_chain` carries the object's `ReferenceId` into the emitted identifier so the
+backend resolves it by symbol rather than by spelling.
+
+**`<pre>` and the newline, measured rather than assumed.** The parser ignores one U+000A after
+`<pre>`/`<textarea>`/`<listing>`, so the only spelling that yields a text node starting with a
+newline is a DOUBLED newline — which is what both backends emit. The SERIALISER does not put it
+back: Chrome writes `<pre>\na</pre>` for a node whose text is `\na`, so a byte comparison between
+an SSR string and a serialised DOM legitimately differs by one newline, and a tree comparison in a
+real browser does not differ at all. happy-dom implements neither half, so under the test DOM the
+compiled template parses one newline long. Three rows in `test/browser-parse-check.ts` measure all
+of it in real Chrome.
+
+The comparison now models both halves, each where it is actually lossy, and
+`fixtures/pre-leading-newline.tsx` carries the shape. `normalize.ts` (tree against tree) DETECTS
+whether the host parser implements the rule and canonicalises the leading run only where it does
+not — so in real Chrome nothing is normalised and a compiler that stopped doubling is still a
+divergence. `test/ssr.ts::sameTree` (markup string against a serialised DOM) canonicalises
+unconditionally, because there the loss is the SERIALISER's and is present on every engine.
+`browser.test.ts` admits exactly this one disagreement between the two parsers, and requires it to
+still be reached. The exact byte count is pinned by `compile.rs`'s two O9 tests over the emitted
+template, not by the fixture comparison.
+
+**A rewritten flow import comes off.** When P8b rewrote every reference a binding had, the import
+specifier has no reader and would drag `@barqjs/core`'s DOM runtime into a server bundle for a
+component nothing calls. `install.rs` counts the rewrites against the binding's resolved
+references (minus the JSX closing tags, which oxc counts as references of their own) and drops the
+specifier only when they match — one reader left is one reader too many.
+
 ---
 
 ## 6. Sourcemap strategy
@@ -912,9 +1045,14 @@ Four sources of fidelity:
 3. **Every `Patch` and every `RefDef` carries a `Span`,** so `_el$4` maps to the `<p>` it walks
    to, and a production `Cannot read properties of null (reading 'firstChild')` lands on the
    right JSX line.
-4. **SSR emits a `+` chain, not one monolithic literal,** grouped at chunk boundaries by
-   originating source line — which is exactly where the mappings already are. Readability costs
-   nothing in sourcemap fidelity.
+4. **SSR emits ONE template literal per root**, not a `+` chain. This was written the other way
+   round before P8b existed, on the assumption that grouping chunks by originating source line
+   would read better. It does not: the interpolations already sit at their own source positions
+   and a template literal's quasis are addressable the same way a `+` chain's operands are, so the
+   chain bought nothing and cost a segment per operator. `Chunks::literal` builds the single
+   literal and the backend's own test pins it (`code.matches('`').count() == 2`). The measured
+   difference on the §7 example is 18 segments over 9 lines for the DOM target against 8 over 3
+   for SSR — fewer segments because there are fewer emitted nodes, not because fidelity dropped.
 
 Fidelity is a tunable: every skeleton node knows its byte range, so per-attribute mapping inside
 a template is available. Turning it up multiplies segment count and spends the compile budget, so
@@ -1420,6 +1558,12 @@ lowering table, string inlining of the six inlinable flow components, and the **
 conformance suite** that renders every fixture through both `renderToString` (happy-dom, the
 existing path) and the compiled SSR path and diffs the HTML. Deliverable: target #10, with an
 explicit and tested fallback for the eight non-inlinable flow components.
+
+Then **the Babel plugin goes**. `packages/compiler` keeps `barqVitePlugin` and nothing else: the
+transforms, the Babel entry point, `types.ts` and the four Babel test files were deleted once
+every JSX shape their 55 cases pinned had a fixture in `fixtures/`. There is no `native` option
+any more, because there is no alternative pipeline for it to select — a checkout whose native
+binary is unbuilt gets an error naming the build command, not a quieter compile.
 
 ---
 

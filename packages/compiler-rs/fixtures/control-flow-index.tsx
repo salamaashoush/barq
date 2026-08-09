@@ -11,3 +11,14 @@ export default function ControlFlowIndex() {
 }
 
 export const steps = [() => nums.set([9, 2, 3]), () => nums.set([9]), () => nums.set([1, 2, 3, 4])]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 2,
+  // `Index` gives its row an ACCESSOR item and a plain-number index — the
+  // mirror image of keyed `For` — so the index hole passes through as a value
+  // and calling the item is the tracked read.
+  emits: ["Index({", "each: nums", "children: (item, index) =>"],
+  absent: ["(Index, {"],
+}

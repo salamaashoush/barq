@@ -31,10 +31,16 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 7;
+pub const HELPER_COUNT: usize = 23;
 
-/// Runtime entry points the DOM backend is allowed to call. Every one is read
-/// off `packages/core/src/dom.ts`; nothing else is emitted.
+/// The first helper that lives in `<module_source>/server` rather than in the
+/// module source itself. The string backend calls into `ssr.ts`, which the DOM
+/// bundle must never pull in.
+pub const FIRST_SERVER_HELPER: usize = 7;
+
+/// Runtime entry points the two backends are allowed to call. Every one is read
+/// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
+/// emitted.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Helper {
     Template = 0,
@@ -44,6 +50,23 @@ pub enum Helper {
     Fragment = 4,
     RenderEffect = 5,
     DelegateEvents = 6,
+    // ── `<module_source>/server` ──────────────────────────────────────────
+    Esc = 7,
+    EscAttr = 8,
+    Attr = 9,
+    Cls = 10,
+    Content = 11,
+    Html = 12,
+    RawText = 13,
+    SpreadAttrs = 14,
+    SsrFor = 15,
+    SsrIndex = 16,
+    SsrRepeat = 17,
+    SsrShow = 18,
+    SsrSwitch = 19,
+    SsrMatch = 20,
+    ClsList = 21,
+    AttrLit = 22,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -54,7 +77,63 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "Fragment",
     "renderEffect",
     "delegateEvents",
+    "esc",
+    "escAttr",
+    "attr",
+    "cls",
+    "content",
+    "html",
+    "rawText",
+    "spreadAttrs",
+    "ssrFor",
+    "ssrIndex",
+    "ssrRepeat",
+    "ssrShow",
+    "ssrSwitch",
+    "ssrMatch",
+    "clsList",
+    "attrLit",
 ];
+
+const SERVER: &str = "/server";
+
+/// A prefix no `<prefix><helper>` in the source collides with.
+///
+/// One scan, not one per helper: a collision has to begin with the sigil, so
+/// the sigil's own occurrences are the only positions worth testing, and there
+/// are almost never any. Twenty-two `contains` calls over the whole source cost
+/// 2.1 µs of a 27 µs compile once the string backend's helpers joined the list.
+fn free_sigil(source: &str) -> String {
+    let mut sigil = String::from("_$");
+    while source.match_indices(sigil.as_str()).any(|(at, _)| {
+        let rest = &source[at + sigil.len()..];
+        IMPORTED.iter().any(|suffix| rest.starts_with(suffix))
+    }) {
+        sigil.push('$');
+    }
+    sigil
+}
+
+/// Every helper's local name, packed end to end into one arena string and
+/// handed out as slices of it.
+fn helper_names<'a>(sigil: &str, allocator: &'a Allocator) -> [&'a str; HELPER_COUNT] {
+    let width: usize = IMPORTED.iter().map(|suffix| sigil.len() + suffix.len()).sum();
+    let mut packed = String::with_capacity(width);
+    for suffix in IMPORTED {
+        packed.push_str(sigil);
+        packed.push_str(suffix);
+    }
+    let packed = allocator.alloc_str(&packed) as &'a str;
+
+    let mut local = [""; HELPER_COUNT];
+    let mut at = 0;
+    for (index, suffix) in IMPORTED.iter().enumerate() {
+        let end = at + sigil.len() + suffix.len();
+        local[index] = &packed[at..end];
+        at = end;
+    }
+    local
+}
 
 /// Stage 5 (P8a) plus the module preamble. The IR is final — every unit already
 /// carries its `TemplateId`, its `RefPlan` and its patch program — so this stage
@@ -65,8 +144,9 @@ pub fn emit<'a>(
     program: &mut Program<'a>,
     module: &mut Module<'a>,
     options: &ResolvedOptions,
+    target: Target,
 ) {
-    let mut emit = Emit::new(allocator, program.source_text, module, options);
+    let mut emit = Emit::new(allocator, program.source_text, module, options, target);
     emit.visit_program(program);
     prune::run(&mut emit, program);
     install::run(&mut emit, program);
@@ -78,6 +158,9 @@ pub struct Emit<'a, 'm> {
     pub module: &'m mut Module<'a>,
     pub source: &'a str,
     pub module_source: &'a str,
+    /// `<module_source>/server` — where P8b's helpers come from.
+    pub server_source: &'a str,
+    pub target: Target,
     pub used: [bool; HELPER_COUNT],
     pub local: [&'a str; HELPER_COUNT],
 }
@@ -88,21 +171,21 @@ impl<'a, 'm> Emit<'a, 'm> {
         source: &'a str,
         module: &'m mut Module<'a>,
         options: &ResolvedOptions,
+        target: Target,
     ) -> Self {
-        let mut sigil = String::from("_$");
-        while IMPORTED.iter().any(|suffix| source.contains(&format!("{sigil}{suffix}"))) {
-            sigil.push('$');
-        }
-        let mut local = [""; HELPER_COUNT];
-        for (index, suffix) in IMPORTED.iter().enumerate() {
-            local[index] = allocator.alloc_str(&format!("{sigil}{suffix}"));
-        }
+        let sigil = free_sigil(source);
+        let local = helper_names(&sigil, allocator);
+        let mut server_source = String::with_capacity(options.module_source.len() + SERVER.len());
+        server_source.push_str(&options.module_source);
+        server_source.push_str(SERVER);
         Self {
             allocator,
             ast: AstBuilder::new(allocator),
             module,
             source,
             module_source: allocator.alloc_str(&options.module_source),
+            server_source: allocator.alloc_str(&server_source),
+            target,
             used: [false; HELPER_COUNT],
             local,
         }
@@ -149,7 +232,10 @@ impl<'a, 'm> Emit<'a, 'm> {
     fn unit(&mut self, id: UnitId, span: Span) -> Expression<'a> {
         let empty = Unit::new_in(self.allocator, Ns::Html, Site::Nested(span));
         let mut unit = std::mem::replace(&mut self.module.units[id as usize], empty);
-        let expression = dom::emit_unit(self, &mut unit, span);
+        let expression = match self.target {
+            Target::Dom => dom::emit_unit(self, &mut unit, span),
+            Target::Ssr => ssr::emit_unit_root(self, &mut unit, span),
+        };
         self.module.units[id as usize] = unit;
         expression
     }
@@ -165,6 +251,11 @@ impl<'a, 'm> Emit<'a, 'm> {
     /// The placeholder's unit, when its recorded [`Site`] says its statements
     /// may be spliced into the enclosing body instead of wrapped in an IIFE.
     fn spliceable(&self, expression: &Expression<'a>) -> Option<(u32, UnitId)> {
+        // The string backend produces one expression and no statements, so
+        // there is nothing to splice and every root goes through `root`.
+        if self.target == Target::Ssr {
+            return None;
+        }
         let Expression::Identifier(identifier) = expression else { return None };
         let index = self.module.uids.root_index(identifier.name.as_str())?;
         let Root::Unit(id) = self.module.roots[index as usize] else { return None };
@@ -200,6 +291,15 @@ impl<'a, 'm> Emit<'a, 'm> {
     }
 
     fn jsx(&mut self, expression: Expression<'a>) -> Expression<'a> {
+        if self.target == Target::Ssr {
+            return ssr::emit_verbatim_root(self, expression);
+        }
+        self.create_element_path(expression)
+    }
+
+    /// The un-compiled path, for both backends: the string backend falls back
+    /// to it for a component tag it cannot resolve.
+    pub(super) fn create_element_path(&mut self, expression: Expression<'a>) -> Expression<'a> {
         match expression {
             Expression::JSXElement(element) => self.create_element(element),
             Expression::JSXFragment(fragment) => self.fragment_call(fragment),

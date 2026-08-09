@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::hash::{Hash, Hasher};
 
 use oxc::span::Span;
@@ -23,7 +24,8 @@ use crate::ir::{
 /// only when it prints — so collapsing two units onto one id moves no emitted
 /// identifier.
 pub fn run(module: &mut Module<'_>) {
-    let Module { units, interner, html, templates, template_meta, dedup, .. } = module;
+    let Module { units, interner, html, templates, template_meta, dedup, dedup_overflow, .. } =
+        module;
     let mut origin: Vec<(u32, Span)> = Vec::new();
 
     for unit in units.iter_mut() {
@@ -46,13 +48,20 @@ pub fn run(module: &mut Module<'_>) {
 
         // The hash is a probe, not the answer: two templates merged by a
         // collision would be a silent wrong-DOM bug, so the bytes are compared.
-        let hit = dedup.get(&hash).copied().filter(|id| {
+        let same = |id: &TemplateId| {
             let row = &templates[*id as usize];
             row.ns == ns
                 && template_meta[*id as usize].wrapped == wrapped
                 && html[row.range.0 as usize..row.range.1 as usize]
                     == html[start as usize..end as usize]
-        });
+        };
+        let hit = dedup
+            .get(&hash)
+            .copied()
+            .filter(same)
+            // Empty unless a 64-bit collision really happened, so this costs one
+            // branch on the miss path and nothing else.
+            .or_else(|| dedup_overflow.iter().copied().find(same));
         let id = match hit {
             Some(id) => {
                 html.truncate(start as usize);
@@ -62,12 +71,17 @@ pub fn run(module: &mut Module<'_>) {
                 let id = templates.len() as TemplateId;
                 templates.push(TemplateRow { range: (start, end), ns, hash });
                 template_meta.push(TemplateMeta { wrapped, span: unit.site.span() });
-                // Single-valued on purpose: the loser of a 64-bit collision
-                // stays unregistered, so a third template identical to IT misses
-                // the share. That is a lost optimisation on an event that does
-                // not happen for short strings, and the alternative is a Vec per
-                // distinct template on every compile.
-                dedup.entry(hash).or_insert(id);
+                // A collision degrades to a duplicate ROW, never to a silent
+                // merge — and the loser is still registered, so a third template
+                // identical to it shares with it instead of adding a third row.
+                match dedup.entry(hash) {
+                    Entry::Vacant(slot) => {
+                        slot.insert(id);
+                    }
+                    // The first bytes to claim the slot keep it, so the common
+                    // path stays one probe.
+                    Entry::Occupied(_) => dedup_overflow.push(id),
+                }
                 id
             }
         };
@@ -101,7 +115,7 @@ impl Writer<'_, '_> {
         match skeleton.node(node) {
             SkelNode::Text(text) => self.html.push_str(text),
             SkelNode::RawHtml(raw) => self.html.push_str(raw),
-            SkelNode::Slot(_) => {}
+            SkelNode::Slot(_) | SkelNode::Empty => {}
             SkelNode::Marker(_) => self.html.push_str("<!---->"),
             SkelNode::Element(element) => {
                 let tag = self.interner.tag(element.tag);
@@ -143,8 +157,9 @@ impl Writer<'_, '_> {
                 // writes `<!---->` and stops the rule, which is why this became
                 // reachable only once P5 started eliding markers.
                 if tag.flags.contains(TagFlags::PRESERVE_WS)
-                    && let Some(first) =
-                        (lo..hi).find(|node| !matches!(skeleton.node(*node), SkelNode::Slot(_)))
+                    && let Some(first) = (lo..hi).find(|node| {
+                        !matches!(skeleton.node(*node), SkelNode::Slot(_) | SkelNode::Empty)
+                    })
                     && let SkelNode::Text(text) | SkelNode::RawHtml(text) = skeleton.node(first)
                     && text.starts_with('\n')
                 {
@@ -177,5 +192,55 @@ fn needs_svg_wrapper(skeleton: &Skeleton<'_>, interner: &Interner<'_>) -> bool {
     match skeleton.node(lo) {
         SkelNode::Element(element) => interner.tag(element.tag).text != "svg",
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compile::source_type_for;
+    use crate::options::ResolvedOptions;
+    use crate::{analysis, harvest, lower};
+    use oxc::allocator::Allocator;
+    use oxc::parser::Parser;
+
+    /// A 64-bit collision does not happen for short strings, so the only way to
+    /// exercise the path is to manufacture one: point the map's slot for B's
+    /// hash at a row holding A's bytes. The byte comparison then rejects the
+    /// probe, B has to take a row of its own — and C, which really IS B, has to
+    /// find it. Before the overflow list, B went unregistered and C added a
+    /// THIRD row for bytes the module already had.
+    #[test]
+    fn a_hash_collision_costs_one_row_and_still_lets_the_loser_be_shared() {
+        let allocator = Allocator::new();
+        let source = "const A = () => <b class=\"a\">{p}</b>;\n\
+                      const B = () => <b class=\"b\">{q}</b>;\n\
+                      const C = () => <b class=\"b\">{r}</b>;\n";
+        let mut program =
+            Parser::new(&allocator, source, source_type_for(Some("a.tsx"))).parse().program;
+        let mut module = Module::for_source(&allocator, source);
+        analysis::bind(&program, &mut module, "@barqjs/core");
+        harvest::run(&allocator, &mut program, &mut module);
+        lower::lower(&allocator, source, &ResolvedOptions::default(), &mut module);
+
+        let a = "<b class=\"a\"></b>";
+        let b = "<b class=\"b\"></b>";
+        module.html.push_str(a);
+        module.templates.push(TemplateRow {
+            range: (0, a.len() as u32),
+            ns: Ns::Html,
+            hash: identity(a, Ns::Html, false),
+        });
+        module.template_meta.push(TemplateMeta { wrapped: false, span: Span::default() });
+        module.dedup.insert(identity(b, Ns::Html, false), 0);
+
+        run(&mut module);
+
+        assert_eq!(module.template_html(module.units[1].template), b);
+        assert_eq!(
+            module.units[1].template, module.units[2].template,
+            "the collision loser has to stay shareable"
+        );
+        assert_eq!(module.dedup_overflow, vec![module.units[1].template]);
     }
 }

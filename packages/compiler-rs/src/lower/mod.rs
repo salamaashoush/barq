@@ -179,10 +179,20 @@ impl<'a> Lower<'a, '_> {
             // `template(html, true)`.
             return false;
         }
+        let has_children = !element.children.is_empty();
         let bad_attribute = element.opening_element.attributes.iter().any(|item| match item {
             JSXAttributeItem::SpreadAttribute(_) => true,
             JSXAttributeItem::Attribute(attribute) => {
-                attribute_name(&attribute.name, self.allocator) == "children"
+                let name = attribute_name(&attribute.name, self.allocator);
+                name == "children"
+                    || (has_children && names::replaces_children(name))
+                    // `multiple` is a DOM_PROP, so it is written AFTER the clone
+                    // and the template parses as a single-select — which selects
+                    // its first `<option>` on the spot. `createElement` sets the
+                    // property before it appends anything, so nothing is
+                    // selected there, and the two `selectedIndex`es differ. Only
+                    // a real browser has the rule; happy-dom does not.
+                    || (has_children && tag == "select" && names::normalize(name) == "multiple")
             }
         });
         if bad_attribute {

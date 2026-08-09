@@ -1,5 +1,9 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`marker channel array-hole: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>2</li></ul>"`;
+
+exports[`marker channel arrow-body-component: anchor layout 1`] = `"<section><div>1</div></section>"`;
+
 exports[`marker channel auto-thunked-read: anchor layout 1`] = `"<div><p>attr</p><span>n=1</span><b>1</b></div>"`;
 
 exports[`marker channel boolean-and-nullish-props: anchor layout 1`] = `"<div><button>b</button><span></span></div>"`;
@@ -11,6 +15,16 @@ exports[`marker channel class-list-prop: anchor layout 1`] = `"<div><span>keyed<
 exports[`marker channel class-with-live-siblings: anchor layout 1`] = `"<div>x</div>"`;
 
 exports[`marker channel component-boundary-props: anchor layout 1`] = `"<section><p>Hello, world<!---->!</p><!----><p>Hello, static<!---->?</p></section>"`;
+
+exports[`marker channel component-child-of-element: anchor layout 1`] = `"<div><h1>Title</h1><!--Show:#--><p>shown</p><!--/Show:#--><footer>end</footer></div>"`;
+
+exports[`marker channel component-children-slot: anchor layout 1`] = `"<main><p>before</p><section><h2>Inbox</h2><div><span>one</span><b>3</b><span>two</span></div></section><p>after</p></main>"`;
+
+exports[`marker channel component-forwarded-handler-tuple: anchor layout 1`] = `"<div><b>none</b><button>long</button></div>"`;
+
+exports[`marker channel component-function-props: anchor layout 1`] = `"<div><b>0</b><button>legacy</button></div>"`;
+
+exports[`marker channel component-getter-props: anchor layout 1`] = `"<div><b>0</b></div>"`;
 
 exports[`marker channel component-spread: anchor layout 1`] = `"<div><span>first</span><!----><span>static</span></div>"`;
 
@@ -26,19 +40,39 @@ exports[`marker channel control-flow-errored-loading: anchor layout 1`] = `"<!--
 
 exports[`marker channel control-flow-for: anchor layout 1`] = `"<ul><!--For:#--><li>0: alpha</li><li>1: beta</li><!--/For:#--></ul>"`;
 
+exports[`marker channel control-flow-for-static-body: anchor layout 1`] = `"<ul><!--For:#--><li><span>fixed</span></li><li><span>fixed</span></li><!--/For:#--></ul>"`;
+
 exports[`marker channel control-flow-index: anchor layout 1`] = `"<ol><!--Index:#--><li>0=1</li><li>1=2</li><li>2=3</li><!--/Index:#--></ol>"`;
+
+exports[`marker channel control-flow-nested: anchor layout 1`] = `"<div><!--Show:#--><ul><!--For:#--><li>1</li><li>2</li><li>3</li><!--/For:#--></ul><!--/Show:#--></div>"`;
 
 exports[`marker channel control-flow-repeat: anchor layout 1`] = `"<div><!--Repeat:#--><span>0</span><span>1</span><!--/Repeat:#--></div>"`;
 
+exports[`marker channel control-flow-reveal: anchor layout 1`] = `"<div><p>one</p><p>tail</p></div>"`;
+
 exports[`marker channel control-flow-show: anchor layout 1`] = `"<div><!--Show:#--><p>shown</p><!--/Show:#--><footer>tail</footer></div>"`;
+
+exports[`marker channel control-flow-show-eager-children: anchor layout 1`] = `"<div><!--Show:#--><div>Content</div><!--/Show:#--></div>"`;
+
+exports[`marker channel control-flow-show-eager-static-body: anchor layout 1`] = `"<!--Show:#--><!--/Show:#-->"`;
+
+exports[`marker channel control-flow-show-fragment-body: anchor layout 1`] = `"<div><!--Show:#--><a>body-one</a><b>body-two</b><!--/Show:#--></div>"`;
 
 exports[`marker channel control-flow-show-static-body: anchor layout 1`] = `"<!--Show:#--><!--/Show:#-->"`;
 
 exports[`marker channel control-flow-switch-match: anchor layout 1`] = `"<div><!--Switch:#--><p>Loading…</p><!--/Switch:#--></div>"`;
 
+exports[`marker channel create-async-value: anchor layout 1`] = `"<div><span>ada</span></div>"`;
+
+exports[`marker channel create-optimistic-signal: anchor layout 1`] = `"<button>0</button>"`;
+
+exports[`marker channel create-projection-store: anchor layout 1`] = `"<div>no</div>"`;
+
 exports[`marker channel custom-elements: anchor layout 1`] = `"<div><my-widget></my-widget><x-thing></x-thing><my-widget>with children</my-widget></div>"`;
 
 exports[`marker channel dangerously-set-inner-html: anchor layout 1`] = `"<div><div><b>bold</b></div><span>after</span></div>"`;
+
+exports[`marker channel dashboard-composite: anchor layout 1`] = `"<div><!--Show:#--><h1>Hello, John</h1><!--/Show:#--><input><button>switch</button><ul><!--For:#--><li>alpha</li><li>beta</li><!--/For:#--></ul></div>"`;
 
 exports[`marker channel dedup-identical-markup: anchor layout 1`] = `"<div><div><span>x</span></div><!----><div><span>x</span></div></div>"`;
 
@@ -48,7 +82,23 @@ exports[`marker channel delegated-event: anchor layout 1`] = `"<button>clicked 0
 
 exports[`marker channel delegated-handler-tuple: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>none</li></ul>"`;
 
+exports[`marker channel derived-local-thunk: anchor layout 1`] = `"<p><span>2</span><b>4</b></p>"`;
+
+exports[`marker channel dom-prop-static-value: anchor layout 1`] = `"<form><input><input></form>"`;
+
 exports[`marker channel dynamic: anchor layout 1`] = `"<div><!--Dynamic:#--><span>inner</span><!--/Dynamic:#--></div>"`;
+
+exports[`marker channel escaped-text-and-attribute: anchor layout 1`] = `"<div><script>alert(1)</script>1 & 2</div>"`;
+
+exports[`marker channel escaping-adversarial: anchor layout 1`] = `"<div><p><img src=x onerror="alert(1)"></p><p>attr</p><p><b>not markup</b> &   𝕏 \u2028 done</p><pre><img src=x onerror="alert(1)"></pre><textarea><img src=x onerror="alert(1)"></textarea><!----><style>.adv { color: red }</style></div>"`;
+
+exports[`marker channel flow-prop-eta-boundary: anchor layout 1`] = `"<div><!--Show:#--><p>shown</p><!--/Show:#--><!----><!--For:#--><span>a</span><span>b</span><!--/For:#--><!----><!--Errored:#-->recovering<!--/Errored:#--></div>"`;
+
+exports[`marker channel for-each-local-function: anchor layout 1`] = `"<ul><!--For:#--><li>a</li><!--/For:#--></ul>"`;
+
+exports[`marker channel for-unkeyed-rows: anchor layout 1`] = `"<ul><!--Index:#--><li>a</li><li>b</li><!--/Index:#--></ul>"`;
+
+exports[`marker channel fragment-root: anchor layout 1`] = `"<h2>head</h2><p>mid</p><footer>foot</footer>"`;
 
 exports[`marker channel handler-by-reference: anchor layout 1`] = `"<div><button>0</button><button>reset</button></div>"`;
 
@@ -56,11 +106,19 @@ exports[`marker channel handler-closure: anchor layout 1`] = `"<button>0</button
 
 exports[`marker channel handler-no-closure: anchor layout 1`] = `"<button>log</button>"`;
 
+exports[`marker channel hole-then-element-sibling: anchor layout 1`] = `"<div>A<span>tail:B</span></div>"`;
+
 exports[`marker channel html-entities: anchor layout 1`] = `"<div>a < b && c   d © e > f</div>"`;
 
 exports[`marker channel hygiene-shifted-uids: anchor layout 1`] = `"<div>start one<!----> end</div>"`;
 
+exports[`marker channel inert-member-reads: anchor layout 1`] = `"<ul><li>3</li><li>three</li><li>4</li></ul>"`;
+
+exports[`marker channel inner-html-with-children: anchor layout 1`] = `"<section><div><b>bold</b>replaced</div><span>after</span></section>"`;
+
 exports[`marker channel literal-class-style: anchor layout 1`] = `"<div><button>concat</button><span>ternary</span><i>literal style</i></div>"`;
+
+exports[`marker channel logical-and-child: anchor layout 1`] = `"<div><span>head</span><em>on</em><span>hello</span><span>empty</span><span>0</span><span>tail</span></div>"`;
 
 exports[`marker channel marker-literal-text: anchor layout 1`] = `"<div>&lt;!----&gt;<span>end</span></div>"`;
 
@@ -68,23 +126,52 @@ exports[`marker channel mathml: anchor layout 1`] = `"<div><math><mrow><mi>x</mi
 
 exports[`marker channel multi-prop-one-element: anchor layout 1`] = `"<div></div>"`;
 
+exports[`marker channel multi-signal-expression: anchor layout 1`] = `"<div>3</div>"`;
+
 exports[`marker channel nested-fragments: anchor layout 1`] = `"<div><span>one</span><span>mid</span><b>deep</b><span>two</span></div>"`;
 
 exports[`marker channel nested-template-element: anchor layout 1`] = `"<div><template><li><span>cell</span></li></template><ul></ul></div>"`;
 
 exports[`marker channel non-delegated-event: anchor layout 1`] = `"<div>out</div>"`;
 
+exports[`marker channel numeric-and-boolean-attrs: anchor layout 1`] = `"<div><input><span>s</span></div>"`;
+
 exports[`marker channel portal: anchor layout 1`] = `"<div><div><div><p>over here</p></div></div><!--Portal:#--></div>"`;
+
+exports[`marker channel pre-leading-newline: anchor layout 1`] = `
+"<div><pre>line one
+line two</pre><pre>no leading newline</pre><textarea>draft</textarea><p>one</p></div>"
+`;
 
 exports[`marker channel pre-whitespace: anchor layout 1`] = `"<div><pre>  indented lines  kept</pre><textarea>raw   text</textarea></div>"`;
 
 exports[`marker channel property-attrs: anchor layout 1`] = `"<form><input><input><textarea></textarea></form>"`;
 
+exports[`marker channel props-destructured-body: anchor layout 1`] = `"<div><span>first</span></div>"`;
+
+exports[`marker channel props-destructured-param: anchor layout 1`] = `"<div><span>first</span><!----><span>static</span></div>"`;
+
+exports[`marker channel props-raw-forward: anchor layout 1`] = `"<div><span>warm</span></div>"`;
+
+exports[`marker channel props-renamed-and-defaulted: anchor layout 1`] = `"<div><span>first</span><!----><span>static</span></div>"`;
+
+exports[`marker channel props-rest-spread: anchor layout 1`] = `"<div><span>first</span></div>"`;
+
 exports[`marker channel reactive-attribute: anchor layout 1`] = `"<a>go</a>"`;
 
 exports[`marker channel ref-binding: anchor layout 1`] = `"<div><div>target</div><span>callback</span></div>"`;
 
+exports[`marker channel ref-on-component: anchor layout 1`] = `"<div><span>component</span><b>element</b></div>"`;
+
+exports[`marker channel renamed-core-import: anchor layout 1`] = `"<div><!--Show:#--><span>zero</span><!--/Show:#--><ul><!--For:#--><li>a</li><li>b</li><!--/For:#--></ul></div>"`;
+
+exports[`marker channel select-option-multiple: anchor layout 1`] = `"<select><option>one</option><option>two</option></select>"`;
+
 exports[`marker channel sibling-walk: anchor layout 1`] = `"<div><i>0</i><i>1</i><i>1</i><i>3</i><i>2</i></div>"`;
+
+exports[`marker channel signal-alias: anchor layout 1`] = `"<div>2</div>"`;
+
+exports[`marker channel signal-methods-in-handler: anchor layout 1`] = `"<button>0</button>"`;
 
 exports[`marker channel spread-static-mix: anchor layout 1`] = `"<div>spread</div>"`;
 
@@ -100,6 +187,12 @@ exports[`marker channel svg-dynamic-class: anchor layout 1`] = `"<svg:svg><svg:g
 
 exports[`marker channel svg-nested-in-html: anchor layout 1`] = `"<div><svg:svg><svg:rect></svg:rect></svg:svg><span>label</span></div>"`;
 
+exports[`marker channel switch-match-component-bodies: anchor layout 1`] = `"<div><!--Switch:#--><span>…</span><!--/Switch:#--></div>"`;
+
+exports[`marker channel table-root-shapes: anchor layout 1`] = `"<table><caption>totals</caption><colgroup><col></colgroup><thead><tr><th>head</th></tr></thead><tbody><tr><td>7</td></tr></tbody><tfoot><tr><td>total</td></tr></tfoot></table>"`;
+
+exports[`marker channel table-rows: anchor layout 1`] = `"<table><tbody><!--For:#--><tr><td>1</td><td><a>alpha</a></td><td></td></tr><tr><td>2</td><td><a>beta</a></td><td></td></tr><!--/For:#--></tbody></table>"`;
+
 exports[`marker channel text-gt-hole: anchor layout 1`] = `"<div>a & b > c<span>tail</span>x<b>end</b></div>"`;
 
 exports[`marker channel text-hole-adjacent: anchor layout 1`] = `"<div>a<!---->b</div>"`;
@@ -110,10 +203,22 @@ exports[`marker channel text-hole-fused: anchor layout 1`] = `"<p>Total: 0<!----
 
 exports[`marker channel text-hole-trailing: anchor layout 1`] = `"<div>0</div>"`;
 
+exports[`marker channel two-components-two-templates: anchor layout 1`] = `"<div><p><span>a</span></p><!----><p><span>b</span></p></div>"`;
+
+exports[`marker channel two-nested-holes: anchor layout 1`] = `"<div><span>1:A</span><span>2:B</span></div>"`;
+
 exports[`marker channel unicode-long-template: anchor layout 1`] = `"<p>This paragraph is deliberately long so that the accented word sits past the search budget — café naïve, 日本語のテキスト, and an emoji 🎉 for the astral case.<span>un</span></p>"`;
+
+exports[`marker channel use-memo-derived: anchor layout 1`] = `"<p><span>5</span><b>4</b></p>"`;
+
+exports[`marker channel use-state-tuple: anchor layout 1`] = `"<div><span>1</span><button>bump</button></div>"`;
+
+exports[`marker channel use-store-member: anchor layout 1`] = `"<div><span>John</span><em>n</em></div>"`;
 
 exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><input><wbr></div>"`;
 
 exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
 
 exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;
+
+exports[`marker channel class-empty-string: anchor layout 1`] = `"<div><span></span><span></span><span></span><span></span></div>"`;

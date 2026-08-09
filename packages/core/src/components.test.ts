@@ -83,6 +83,43 @@ describe("childToNodes", () => {
     expect(nodes.length).toBe(2);
   });
 
+  test("a drained DocumentFragment still yields its nodes", () => {
+    const frag = document.createDocumentFragment();
+    frag.appendChild(document.createTextNode("a"));
+    frag.appendChild(document.createTextNode("b"));
+
+    // Reading is destructive for every real caller: it inserts what it got,
+    // which moves the nodes out and leaves the fragment empty.
+    const first = childToNodes(frag);
+    const holder = document.createElement("div");
+    for (const node of first) holder.appendChild(node);
+    expect(frag.childNodes.length).toBe(0);
+
+    const second = childToNodes(frag);
+    expect(second.length).toBe(2);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+  });
+
+  test("Show keeps a multi-node eager body across a hide/show cycle", () => {
+    const on = signal(true);
+    const body = document.createDocumentFragment();
+    body.appendChild(document.createElement("i"));
+    body.appendChild(document.createElement("u"));
+
+    container.appendChild(Show({ when: on, children: body }) as Node);
+    flush();
+    expect(container.querySelectorAll("i, u").length).toBe(2);
+
+    on.set(false);
+    flush();
+    expect(container.querySelectorAll("i, u").length).toBe(0);
+
+    on.set(true);
+    flush();
+    expect(container.querySelectorAll("i, u").length).toBe(2);
+  });
+
   test("handles nested arrays", () => {
     const nodes = childToNodes([["a", "b"], ["c"]]);
     expect(nodes.length).toBe(3);

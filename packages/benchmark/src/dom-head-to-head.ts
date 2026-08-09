@@ -1,11 +1,17 @@
 /**
  * DOM rendering head-to-head: barq vs solid-js/web.
  *
- * Both sides are hand-written in the exact shape each compiler emits, so this
- * measures the runtimes (template cloning, insert, prop application, list
- * reconciliation) rather than the compilers.
+ * Both sides are hand-written in the shape each compiler emits, so this measures
+ * the RUNTIMES (template cloning, insert, prop application, list reconciliation)
+ * rather than the compilers. `dom-emitted-shape.ts` is the guard on that: it
+ * runs both real compilers over the same JSX and checks that the calls used here
+ * are the calls they emit.
  *
- * Run: bun run src/dom-head-to-head.ts
+ * Run: bun run bench:dom     (i.e. `bun --conditions=browser run src/dom-head-to-head.ts`)
+ *
+ * The condition is not optional. Bun sets "node", `solid-js/web` lists "node"
+ * before the bare fallback, and its server build throws from `template()` — so
+ * without it this file does not measure a slow Solid, it does not run at all.
  */
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
@@ -14,6 +20,13 @@ GlobalRegistrator.register();
 const barq = await import("@barqjs/core");
 const solid = await import("solid-js/web");
 const solidCore = await import("solid-js");
+
+if (solid.isServer) {
+  throw new Error(
+    "solid-js/web resolved to its SERVER build, where template()/insert() are stubs. " +
+      "Run this file as `bun --conditions=browser run src/dom-head-to-head.ts` (or `bun run bench:dom`).",
+  );
+}
 
 type Row = { id: number; label: string };
 
@@ -357,6 +370,33 @@ function timePair(c: Case): [number, number] {
   if (bspan.textContent !== "42") {
     throw new Error(`barq harness is not reactive (got ${bspan.textContent})`);
   }
+
+  // The insert guard above says nothing about the PROP channel, and barq keeps
+  // `class` out of the compiled effect on purpose (it is a STATEFUL_DIFF prop —
+  // see dom-emitted-shape.ts), so a class write that silently never lands would
+  // hand this file a free win on "prop: class update".
+  const bcls = document.createElement("div");
+  const cs = barq.signal(0);
+  barq.setProp(bcls, "class", () => (cs() % 2 ? "a" : "b"));
+  barq.flush();
+  cs.set(1);
+  barq.flush();
+  if (bcls.getAttribute("class") !== "a") {
+    throw new Error(`barq class channel is not reactive (got ${bcls.getAttribute("class")})`);
+  }
+  const scls = document.createElement("div");
+  let sclsSet!: (v: number) => void;
+  solidCore.createRoot(() => {
+    const [v, setV] = solidCore.createSignal(0);
+    sclsSet = setV as (v: number) => void;
+    solidCore.createRenderEffect(() => {
+      solid.className(scls, v() % 2 ? "a" : "b");
+    });
+  });
+  sclsSet(1);
+  if (scls.getAttribute("class") !== "a") {
+    throw new Error(`solid class channel is not reactive (got ${scls.getAttribute("class")})`);
+  }
 }
 
 console.log(
@@ -371,6 +411,13 @@ for (const c of cases) {
     `${c.name.padEnd(38)}${b.toFixed(0).padStart(11)}${s.toFixed(0).padStart(11)}${tag.padStart(14)}`,
   );
 }
+console.log(
+  `\nThese are min-of-7 within ONE process. Measured over 21 processes, the ratio on\n` +
+    `"template: clone static tree", "list: create 100 rows" and "list: replace all 100 rows"\n` +
+    `straddles 1.0 — those three are parity, and a single run of this file will call them a\n` +
+    `win or a loss at random. Run \`bun run bench:spread\` before believing any ratio here\n` +
+    `inside about 5%, and \`bun run bench:replace-all\` for the decomposed version.`,
+);
 
 // ---------------------------------------------------------------- structure
 

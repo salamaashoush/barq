@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { createElement, render, useRef, template } from "./dom.ts";
+import { createElement, insert, render, useRef, template } from "./dom.ts";
 import { signal, computed, createScope, flush } from "./signals.ts";
 
 // Simple DOM setup for testing
@@ -883,5 +883,81 @@ describe("BUG: textNode stale reference", () => {
     flush();
 
     expect(el.textContent).toContain("final");
+  });
+});
+
+/**
+ * A hole whose value is an eager multi-node body — which is what target #8
+ * makes the compiler emit for `<Show><a/><b/></Show>` rather than a thunk.
+ * `normalizeChildToNodes` dissolves a fragment by moving its children out, so
+ * without a memo the second time the guard goes true the fragment is empty and
+ * the body is gone for good.
+ */
+describe("eager multi-node bodies survive a hide/show cycle", () => {
+  function twoNodeFragment(): DocumentFragment {
+    const fragment = document.createDocumentFragment();
+    const i = document.createElement("i");
+    i.textContent = "i";
+    const u = document.createElement("u");
+    u.textContent = "u";
+    fragment.appendChild(i);
+    fragment.appendChild(u);
+    return fragment;
+  }
+
+  test("a reactive insert re-inserts the same nodes", () => {
+    const on = signal(true);
+    const body = twoNodeFragment();
+    const first = Array.from(body.childNodes);
+
+    insert(container, () => (on() ? body : null));
+    expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
+
+    on.set(false);
+    flush();
+    expect(container.innerHTML).toBe("");
+
+    on.set(true);
+    flush();
+    expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
+    // The same nodes, not rebuilt ones: the fragment was the only copy.
+    expect(container.firstChild).toBe(first[0]);
+    expect(container.lastChild).toBe(first[1]);
+
+    on.set(false);
+    flush();
+    on.set(true);
+    flush();
+    expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
+  });
+
+  test("a static insert of the same fragment twice yields it twice", () => {
+    const body = twoNodeFragment();
+    const a = document.createElement("div");
+    const b = document.createElement("div");
+    container.appendChild(a);
+    container.appendChild(b);
+
+    insert(a, [body]);
+    expect(a.innerHTML).toBe("<i>i</i><u>u</u>");
+
+    insert(b, [body]);
+    // The nodes MOVE — there is one copy of them — but they are not lost.
+    expect(b.innerHTML).toBe("<i>i</i><u>u</u>");
+    expect(a.innerHTML).toBe("");
+  });
+
+  test("render() of a drained fragment still finds its nodes", () => {
+    const body = twoNodeFragment();
+    const host = document.createElement("div");
+    container.appendChild(host);
+
+    render([body], host);
+    expect(host.innerHTML).toBe("<i>i</i><u>u</u>");
+
+    const other = document.createElement("div");
+    container.appendChild(other);
+    render([body], other);
+    expect(other.innerHTML).toBe("<i>i</i><u>u</u>");
   });
 });

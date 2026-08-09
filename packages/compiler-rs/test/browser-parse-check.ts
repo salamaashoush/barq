@@ -63,7 +63,31 @@ export function corpus(): Template[] {
 
 // Runs inside the page. Kept as a string because it is evaluated over CDP.
 const CHECK = `(function (rows) {
-  const tags = (s) => [...s.matchAll(/<([a-zA-Z][^\\s/>]*)/g)].map((m) => m[1].toLowerCase())
+  // Markup positions only. A regex over the whole string cannot tell a tag from
+  // an attribute VALUE that spells one, and the round trip escapes the second
+  // where it leaves the first alone — so \`data-markup="<x>"\` used to report a
+  // moved tag sequence for markup the browser parsed identically both times.
+  const tags = (s) => {
+    const out = []
+    let i = 0
+    while (i < s.length) {
+      if (s[i] !== "<") { i++; continue }
+      if (s.startsWith("<!--", i)) { const e = s.indexOf("-->", i + 4); i = e === -1 ? s.length : e + 3; continue }
+      const name = /^<([a-zA-Z][^\\s/>]*)/.exec(s.slice(i))
+      if (!name) { i++; continue }
+      out.push(name[1].toLowerCase())
+      i += name[0].length
+      let quote = ""
+      while (i < s.length) {
+        const ch = s[i]
+        if (quote !== "") { if (ch === quote) quote = "" }
+        else if (ch === '"' || ch === "'") quote = ch
+        else if (ch === ">") { i++; break }
+        i++
+      }
+    }
+    return out
+  }
   const comments = (node) => {
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_COMMENT)
     let n = 0
@@ -112,13 +136,41 @@ const HAZARDS = [
   // front of a leading newline needs the doubling and a kept one does not.
   { name: "a marker protects the newline behind it", html: `<pre><!---->\na</pre>`, read: "text", is: "10,97" },
   { name: "listing eats a lone newline the same way", html: `<listing>\na</listing>`, read: "text", is: "97" },
+  // The other half of O9, MEASURED rather than assumed, because it is the whole
+  // of the `<pre>` byte divergence between an SSR string and a serialised DOM.
+  //
+  // The spec says a serialiser appends U+000A before a `<pre>` whose first text
+  // child starts with one. Chrome does NOT — the round trip is lossy in the
+  // serialiser's direction. So `<pre>\n\na</pre>` (the only spelling that yields
+  // the text node `\na`, per the row above) and a serialised node tree carrying
+  // that same text node differ by exactly one newline, on every engine.
+  //
+  // The compiler emits the parse-correct spelling on BOTH backends. A byte
+  // comparison against `renderToString` therefore shows one extra newline and is
+  // right to; a TREE comparison in a real browser shows none. DESIGN §5's
+  // amendment states it, and these two rows are the measurement behind it.
+  { name: "pre does NOT serialise the eaten newline back", html: `<pre>\n\na</pre>`, read: "serialize", is: `<pre>\na</pre>` },
+  { name: "a BUILT pre node serialises without doubling either", html: `\na`, read: "build", is: `<pre>\na</pre>` },
 ] as const
 
 const HAZARD_CHECK = `(function (rows) {
   const bad = []
   for (const row of rows) {
     const host = document.createElement("template")
-    host.innerHTML = row.html
+    if (row.read === "build") {
+      const pre = document.createElement("pre")
+      pre.appendChild(document.createTextNode(row.html))
+      host.content.appendChild(pre)
+    } else {
+      host.innerHTML = row.html
+    }
+    if (row.read === "serialize" || row.read === "build") {
+      const back = host.innerHTML
+      if (back !== row.is) {
+        bad.push({ fixture: row.name, html: row.html, back, why: "expected " + JSON.stringify(row.is) })
+      }
+      continue
+    }
     const node = host.content.firstChild
     const value = row.read === "attr" ? node.getAttribute("id") : node.textContent
     const codes = [...value].map((c) => c.codePointAt(0)).join(",")
@@ -166,6 +218,23 @@ const SHAPE = `(function (rows) {
 export interface ShapeDivergence extends Template {
   chrome: string
   fake: string
+  /**
+   * True when the two signatures differ ONLY by the leading newline of a
+   * newline-eating element's first text child — the one tree-construction rule
+   * happy-dom does not implement, measured directly by the three `<pre>` hazard
+   * rows above. Everything else is a real disagreement about the tree.
+   */
+  leadingNewlineOnly: boolean
+}
+
+/**
+ * A signature with that leading run removed. `#t"` directly after `[` is the
+ * first child being a text node, which is exactly the position the parser's
+ * rule is about, and the run is spelled `\n` because the signature is built
+ * with `JSON.stringify`.
+ */
+function withoutTheLeadingNewline(signature: string): string {
+  return signature.replace(/((?:pre|textarea|listing)\[#t")(?:\\n)+/g, "$1")
 }
 
 /**
@@ -189,7 +258,13 @@ export async function checkParserAgreement(
   const out: ShapeDivergence[] = []
   for (const [index, row] of rows.entries()) {
     if (chrome[index] === fake[index]) continue
-    out.push({ ...row, chrome: chrome[index], fake: fake[index] })
+    out.push({
+      ...row,
+      chrome: chrome[index],
+      fake: fake[index],
+      leadingNewlineOnly:
+        withoutTheLeadingNewline(chrome[index]) === withoutTheLeadingNewline(fake[index]),
+    })
   }
   return out
 }

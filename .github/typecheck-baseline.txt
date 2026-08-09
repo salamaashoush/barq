@@ -5,24 +5,36 @@
 # on any error NOT in this list, and equally on any line here that stops
 # reproducing — so the list can only shrink, never quietly grow.
 #
-# The 17 `packages/compiler-rs fixtures/…` rows are gaps in @barqjs/core's JSX
-# TYPE definitions that the fixture corpus surfaced when compiler-rs came under
-# the gate — MathML intrinsics, an index signature for custom elements,
+# Regenerate with .github/scripts/typecheck.sh --write
+#
+# The `packages/compiler-rs fixtures/…` rows are gaps in @barqjs/core's JSX TYPE
+# definitions that the fixture corpus surfaced when compiler-rs came under the
+# gate — MathML intrinsics, an index signature for custom elements,
 # `dangerouslySetInnerHTML`, and numeric values in a style object. All four are
 # supported at RUNTIME and proved so by the differential harness; it is the
 # declarations that are missing. Fixing them belongs to @barqjs/core.
 #
-# Regenerate with .github/scripts/typecheck.sh --write
-packages/compiler src/transforms/template-codegen.ts(372,9): error TS2322
-packages/compiler src/transforms/template-codegen.ts(383,9): error TS2322
-packages/compiler src/transforms/template-codegen.ts(394,9): error TS2322
-packages/compiler src/transforms/template-codegen.ts(415,7): error TS2322
+# The M5 shape catalogue added ONE row — a SECOND occurrence of the
+# `dangerouslySetInnerHTML` gap, from the fixture that pairs it with children.
+# Every other new fixture typechecks clean, and the ones that did not (`tabindex`
+# for `tabIndex`, a `HTMLBElement` that does not exist, a bound-handler tuple
+# whose first element took the wrong parameters, a bare value on `Show.when`)
+# were errors in the fixtures and were fixed there rather than baselined. That
+# row is gone again: the M6 review declared `dangerouslySetInnerHTML` on
+# `JSX.HTMLAttributes`, which is the source fix, and BOTH occurrences came off.
+#
+# The M5 review added NO row. Two entries moved LINE only — a doc comment above
+# `inner-html-with-children`'s JSX and two new tests above `components.test.ts`'s
+# — and no entry was struck off.
+#
+# M6 struck SIX off: the four `packages/compiler src/transforms/template-codegen.ts`
+# rows went with the Babel plugin, and the two `dangerouslySetInnerHTML` rows went
+# when the declaration landed. The list has still only ever shrunk.
 packages/compiler-rs fixtures/class-list-prop.tsx(16,23): error TS2322
 packages/compiler-rs fixtures/custom-elements.tsx(10,31): error TS2339
 packages/compiler-rs fixtures/custom-elements.tsx(10,7): error TS2339
 packages/compiler-rs fixtures/custom-elements.tsx(8,7): error TS2339
 packages/compiler-rs fixtures/custom-elements.tsx(9,7): error TS2339
-packages/compiler-rs fixtures/dangerously-set-inner-html.tsx(8,12): error TS2322
 packages/compiler-rs fixtures/mathml.tsx(10,7): error TS2339
 packages/compiler-rs fixtures/mathml.tsx(4,7): error TS2339
 packages/compiler-rs fixtures/mathml.tsx(5,9): error TS2339
@@ -49,7 +61,7 @@ packages/core src/async.test.ts(378,27): error TS2345
 packages/core src/async.test.ts(459,25): error TS2345
 packages/core src/async.test.ts(531,9): error TS6133
 packages/core src/async.test.ts(638,11): error TS6133
-packages/core src/components.test.ts(164,32): error TS2769
+packages/core src/components.test.ts(201,32): error TS2769
 packages/core src/control-flow-parity.test.ts(53,22): error TS2345
 packages/core src/dom.test.ts(169,24): error TS2769
 packages/core src/rendering.test.ts(305,5): error TS2349

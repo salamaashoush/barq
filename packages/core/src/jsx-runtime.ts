@@ -491,6 +491,7 @@ export namespace JSX {
     popover?: FunctionMaybe<"auto" | "manual" | boolean>;
 
     // Dangerous innerHTML
+    dangerouslySetInnerHTML?: { __html: string };
     innerHTML?: FunctionMaybe<string>;
     innerText?: FunctionMaybe<string>;
     textContent?: FunctionMaybe<string>;

@@ -32,11 +32,12 @@ enum Choice {
 }
 
 fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
-    let slots = unit.patch.iter().filter(|patch| patch.op.slot().is_some()).count();
-    if slots == 0 {
+    // Indexed by `SlotId`, not by how many slots survived: P3 folds a constant
+    // child away and deletes its patch, which leaves the remaining ids sparse.
+    let Some(slots) = unit.patch.iter().filter_map(|patch| patch.op.slot()).max() else {
         return;
-    }
-    let mut choice: Vec<Choice> = vec![Choice::End; slots];
+    };
+    let mut choice: Vec<Choice> = vec![Choice::End; slots as usize + 1];
     let mut markers: Vec<NodeId> = Vec::new();
 
     let mut groups: Vec<(NodeId, NodeId)> = vec![unit.skeleton.roots];
@@ -54,6 +55,9 @@ fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
             let SkelNode::Slot(slot) = unit.skeleton.nodes[node as usize] else {
                 prev = match unit.skeleton.nodes[node as usize] {
                     SkelNode::Text(_) => Prev::Text,
+                    // Writes no bytes, so it neither separates two text runs nor
+                    // stands between a hole and its anchor.
+                    SkelNode::Empty => prev,
                     _ => Prev::Node,
                 };
                 continue;
@@ -85,10 +89,13 @@ fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
 /// about the parse, not a wish: two literal text runs either side of an elided
 /// hole become ONE text node, and then nothing addresses the second run.
 fn decide(unit: &Unit<'_>, slot: NodeId, hi: NodeId, prev: Prev) -> Choice {
-    let next = slot + 1;
-    if next >= hi {
+    // A folded child leaves an `Empty` behind, which materialises nothing, so
+    // the anchor is whatever stands after it.
+    let Some(next) =
+        (slot + 1..hi).find(|node| !matches!(unit.skeleton.nodes[*node as usize], SkelNode::Empty))
+    else {
         return Choice::End;
-    }
+    };
     match unit.skeleton.nodes[next as usize] {
         // Two holes must never share an anchor, or their reconciliations
         // interleave.
@@ -192,7 +199,12 @@ mod tests {
         analysis::bind(&program, &mut module, "@barqjs/core");
         harvest::run(&allocator, &mut program, &mut module);
         lower::lower(&allocator, source, &ResolvedOptions::default(), &mut module);
-        passes::run(&allocator, &mut module);
+        passes::run(
+            &allocator,
+            &mut module,
+            &ResolvedOptions::default(),
+            crate::codegen::Target::Dom,
+        );
         let anchors = module.units[0]
             .patch
             .iter()

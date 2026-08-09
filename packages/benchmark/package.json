@@ -6,6 +6,11 @@
   "scripts": {
     "bench": "bun run src/run.ts",
     "bench:browser": "bun run src/server.ts",
+    "bench:ssr": "bun run src/ssr-head-to-head.ts",
+    "bench:dom": "bun --conditions=browser run src/dom-head-to-head.ts",
+    "bench:replace-all": "bun --conditions=browser run src/dom-replace-all.ts",
+    "bench:shape": "bun --conditions=browser run src/dom-emitted-shape.ts",
+    "bench:spread": "bun run src/protocol-spread.ts",
     "build": "bun build src/browser.ts --outdir dist --target browser --format esm"
   },
   "dependencies": {
@@ -13,10 +18,14 @@
   },
   "devDependencies": {
     "@anthropic-ai/tokenizer": "^0.0.4",
+    "@babel/core": "^7.28.6",
+    "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@happy-dom/global-registrator": "^15.11.7",
     "@solidjs/signals": "^2.0.0-beta.31",
+    "@types/babel__core": "^7.20.5",
     "@types/bun": "latest",
+    "babel-preset-solid": "^1.9.12",
     "typescript": "^5.7.2"
   }
 }

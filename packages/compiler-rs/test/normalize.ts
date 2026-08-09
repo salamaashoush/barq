@@ -79,6 +79,60 @@ const LIVE_PROP_TAGS = new Set(["input", "textarea", "select", "option", "progre
 /** Inside these, a whitespace run containing a newline is rendered content. */
 const WHITESPACE_SIGNIFICANT_TAGS = new Set(["pre", "textarea"])
 
+/**
+ * The tags whose first U+000A a conforming parser IGNORES. `intern.rs` flags
+ * exactly these three `PRESERVE_WS`, which is why the compiler doubles a
+ * leading newline (DESIGN O9).
+ */
+const NEWLINE_EATING_TAGS = new Set(["pre", "textarea", "listing"])
+
+/**
+ * Whether the host parser implements that rule.
+ *
+ * happy-dom implements neither half of it — it does not eat the newline on the
+ * way in and does not write one back on the way out — so a cloned template
+ * carries a leading newline where the oracle's `createTextNode` does not. That
+ * is a difference between two PARSERS, not between the two rendering paths, and
+ * it is why no fixture could carry the shape at all: it went red under
+ * happy-dom for a reason a real browser does not have.
+ *
+ * Where the host conforms — real Chrome, which `browser-parse-check.ts` pins
+ * with three rows — nothing below is normalised, so a compiler that stopped
+ * doubling is still a divergence there. Where it does not, the leading run is
+ * canonicalised away on both sides; that engine could never have seen the
+ * doubling in the first place.
+ *
+ * Lazy, because this module is imported by the bundle the differential page
+ * loads and `document` is not guaranteed at module-evaluation time in either
+ * host.
+ */
+let eatsLeadingNewline: boolean | undefined
+
+function parserEatsALeadingNewline(): boolean {
+  if (eatsLeadingNewline === undefined) {
+    const host = document.createElement("template")
+    host.innerHTML = "<pre>\n\na</pre>"
+    eatsLeadingNewline = host.content.firstChild?.textContent === "\na"
+  }
+  return eatsLeadingNewline
+}
+
+/**
+ * The leading newline run of a newline-eating element's first text child.
+ *
+ * Only the FIRST CHILD, because the rule is about the byte that follows the
+ * open tag: a `<!---->` in front of the newline stops it (the parser's next
+ * token is a comment), and a hole that materialised a node in front of the text
+ * hides where the newline sat. That last shape is not covered here — it has no
+ * fixture, and `compile.rs`'s `a_hole_in_front_of_the_newline_does_not_hide_it`
+ * pins the emitted bytes for it instead.
+ */
+function canonicalLeadingNewlines(data: string): string {
+  let cut = 0
+  while (cut < data.length && data.charCodeAt(cut) === 10) cut++
+  return cut === 0 ? data : data.slice(cut)
+}
+
 const NODE_ELEMENT = 1
 const NODE_TEXT = 3
 const NODE_COMMENT = 8
@@ -91,8 +145,43 @@ interface Sink {
   html: string[]
   markers: string[]
   attributes: string[]
+  identity: number[]
   path: number[]
   anchors: number
+}
+
+/**
+ * Per-render node identity, stamped on FIRST SIGHT in document order.
+ *
+ * Every other channel here is a function of the DOM's shape, and a control-flow
+ * component that tears every node down and rebuilds it produces exactly the same
+ * shape as one that reuses them: html, markers, attributes and anchors are all
+ * invariant under a full rebuild. So a `mapArray` that dropped its keyed
+ * reconciliation, or a `Show` that stopped reusing its body, was a fully green
+ * mutation with nothing in the harness able to see it.
+ *
+ * Ordinals are assigned per render and compared frame by frame between the two
+ * paths, so what the channel actually records is WHICH NODES SURVIVED each
+ * update — the one thing insertion, removal and movement of node ranges is
+ * about. Anything living on a node that survives (focus, selection, scroll
+ * offset, a form field's dirty value, a running transition) survives with it.
+ */
+let identityCounter = 0
+let identity = new WeakMap<Node, number>()
+
+/** Call once per render, before the first frame. Ordinals are render-local. */
+export function resetIdentity(): void {
+  identityCounter = 0
+  identity = new WeakMap<Node, number>()
+}
+
+function identityOf(node: Node): number {
+  let id = identity.get(node)
+  if (id === undefined) {
+    id = identityCounter++
+    identity.set(node, id)
+  }
+  return id
 }
 
 /**
@@ -124,9 +213,16 @@ function serializeElement(el: Element, sink: Sink, keepWhitespace: boolean): voi
 
   if (LIVE_PROP_TAGS.has(el.localName) && (!ns || ns === XHTML_NS)) {
     const record = el as unknown as Record<string, unknown>
+    // The same missing parser rule, surfacing in a second channel: a
+    // `<textarea>`'s value comes from its parsed content, so on a host that
+    // does not eat the leading newline the clone's property carries one the
+    // oracle's `createTextNode` never put there.
+    const eatsNewline = el.localName === "textarea" && !parserEatsALeadingNewline()
     for (const prop of LIVE_PROPS) {
       if (!(prop in record)) continue
-      attrs.push(`.${prop}=${JSON.stringify(record[prop] ?? null)}`)
+      const raw = record[prop] ?? null
+      const value = eatsNewline && typeof raw === "string" ? canonicalLeadingNewlines(raw) : raw
+      attrs.push(`.${prop}=${JSON.stringify(value)}`)
     }
   }
 
@@ -137,6 +233,8 @@ function serializeElement(el: Element, sink: Sink, keepWhitespace: boolean): voi
   }
 
   attrs.sort()
+
+  sink.identity.push(identityOf(el))
 
   sink.html.push(`<${name}${attrs.length ? ` ${attrs.join(" ")}` : ""}>`)
   sink.markers.push(`<${name}>`)
@@ -151,6 +249,7 @@ function serializeElement(el: Element, sink: Sink, keepWhitespace: boolean): voi
     content instanceof DocumentFragment ? content : el,
     sink,
     keepWhitespace || WHITESPACE_SIGNIFICANT_TAGS.has(el.localName),
+    NEWLINE_EATING_TAGS.has(el.localName) && !parserEatsALeadingNewline(),
   )
   sink.html.push(`</${name}>`)
   sink.markers.push(`</${name}>`)
@@ -162,7 +261,12 @@ function nsPrefix(ns: string): string {
   return ns
 }
 
-function serializeChildren(parent: Node, sink: Sink, keepWhitespace = false): void {
+function serializeChildren(
+  parent: Node,
+  sink: Sink,
+  keepWhitespace = false,
+  canonicalizeLeadingNewlines = false,
+): void {
   const children = parent.childNodes
   let elementIndex = 0
 
@@ -189,8 +293,12 @@ function serializeChildren(parent: Node, sink: Sink, keepWhitespace = false): vo
   for (let i = 0; i < children.length; i++) {
     const node = children[i]
     if (node.nodeType === NODE_TEXT) {
-      htmlRun += (node as Text).data
-      markerRun += (node as Text).data.replace(ANCHOR_IN_TEXT, "&lt;!----&gt;")
+      const data =
+        i === 0 && canonicalizeLeadingNewlines
+          ? canonicalLeadingNewlines((node as Text).data)
+          : (node as Text).data
+      htmlRun += data
+      markerRun += data.replace(ANCHOR_IN_TEXT, "&lt;!----&gt;")
       continue
     }
     // An empty comment is a compiled insert anchor: invisible to the main
@@ -217,6 +325,42 @@ function serializeChildren(parent: Node, sink: Sink, keepWhitespace = false): vo
   flushBoth()
 }
 
+/**
+ * Attribute order the compiled path is required to produce, derived from the
+ * ORACLE's order — which is source order, because `createElement` walks the
+ * props object — and from nothing the compiler decides.
+ *
+ * A template bakes its static attributes in at parse time and the patch code
+ * sets the rest after the clone, so the compiled order is source order stably
+ * partitioned into those two groups, and nothing else. Reversing either group's
+ * emission order breaks it; a static that merely trails a dynamic in source
+ * does not.
+ *
+ * It lives HERE, beside the walk that produces the lines it partitions, because
+ * it has two consumers: `compareToOracle` under happy-dom and the differential
+ * page running in Chrome. A second copy in the page source is how a channel
+ * quietly starts measuring two different things in the two engines.
+ *
+ * LIMIT: the partition is computed from the module-wide set of patched names,
+ * so an attribute that is static on one element and dynamic on another is
+ * treated as dynamic everywhere. That can only ever move a name later in the
+ * expectation, so it loosens rather than breaks — and nothing pins the day it
+ * starts mattering. The nearest live check is "the channel is live for most of
+ * the corpus, not silently empty" in oracle.test.ts, which asserts the channel
+ * produces attribute lines at all, NOT that this partition is exact.
+ */
+export function expectedAttributeOrder(
+  oracleLine: string,
+  patched: ReadonlySet<string>,
+): string {
+  const cut = oracleLine.indexOf(": ")
+  const head = oracleLine.slice(0, cut)
+  const names = oracleLine.slice(cut + 2).split(",")
+  const baked = names.filter((n) => !patched.has(n))
+  const applied = names.filter((n) => patched.has(n))
+  return `${head}: ${[...baked, ...applied].join(",")}`
+}
+
 export interface DomChannels {
   /** The main diff: markers dropped, adjacent text fused, attributes sorted. */
   html: string
@@ -239,10 +383,17 @@ export interface DomChannels {
    * is indistinguishable from an anchor once both are characters.
    */
   anchors: number
+  /**
+   * One ordinal per ELEMENT, document order, stamped on first sight within the
+   * render. Text nodes are excluded because the two paths legitimately build a
+   * different NUMBER of them — a cloned template parses one run where
+   * `createElement` appends three — so their identity is not comparable.
+   */
+  identity: number[]
 }
 
 function walk(container: Node): Sink {
-  const sink: Sink = { html: [], markers: [], attributes: [], path: [], anchors: 0 }
+  const sink: Sink = { html: [], markers: [], attributes: [], identity: [], path: [], anchors: 0 }
   serializeChildren(container, sink)
   return sink
 }
@@ -260,6 +411,7 @@ export function normalizeChannels(container: Node): DomChannels {
     markers: sink.markers.join(""),
     attributes: sink.attributes,
     anchors: sink.anchors,
+    identity: sink.identity,
   }
 }
 

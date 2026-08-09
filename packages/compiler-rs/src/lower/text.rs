@@ -24,6 +24,16 @@ pub fn clean<'a>(raw: &'a str, allocator: &'a Allocator) -> Option<&'a str> {
     if !raw.as_bytes().iter().any(|b| matches!(b, b'\n' | b'\r' | b'\t')) {
         return (!raw.is_empty()).then_some(raw);
     }
+    // Indentation between two elements — the commonest text run there is. Every
+    // line trims to nothing, so the split and the buffer below would both be
+    // built only to be dropped. Exactly the four bytes the loop below erases: a
+    // tab run with no break survives as spaces, and U+000B and U+000C are
+    // neither line breaks nor trimmed, so a run holding one is not this case.
+    if raw.as_bytes().iter().any(|b| matches!(b, b'\n' | b'\r'))
+        && !raw.as_bytes().iter().any(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+    {
+        return None;
+    }
 
     let lines = split_lines(raw);
     let last_non_empty =
@@ -122,6 +132,15 @@ mod tests {
             cleaned("\n      a &lt; b &amp;&amp; c\n    ").as_deref(),
             Some("a &lt; b &amp;&amp; c")
         );
+    }
+
+    /// The whitespace-only shortcut has to erase exactly what the join erases.
+    /// U+000B and U+000C are ASCII whitespace to `char::is_whitespace` but are
+    /// neither line breaks here nor trimmed, so they keep the run alive.
+    #[test]
+    fn a_vertical_tab_or_form_feed_survives_a_run_of_line_breaks() {
+        assert_eq!(cleaned("\n \x0b \n").as_deref(), Some("\x0b"));
+        assert_eq!(cleaned("\n \x0c \n").as_deref(), Some("\x0c"));
     }
 
     #[test]

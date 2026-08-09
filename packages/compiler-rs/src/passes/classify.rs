@@ -25,27 +25,55 @@ use crate::tables;
 pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
     let Module { units, env, scoping, interner, delegated, hoisted, .. } = module;
     let root_scope = scoping.root_scope_id();
-    let mut cx = Classify { allocator, env, scoping, interner, delegated, hoisted, root_scope };
+    let lift = Lift { allocator, env, scoping, root_scope };
+    let mut cx = Classify { lift, interner, delegated, hoisted };
     for unit in units.iter_mut() {
         cx.unit(unit);
     }
 }
 
 struct Classify<'a, 'm> {
-    allocator: &'a Allocator,
-    env: &'m ReactiveEnv<'a>,
-    scoping: &'m Scoping,
+    lift: Lift<'a, 'm>,
     interner: &'m mut Interner<'a>,
     delegated: &'m mut u32,
     hoisted: &'m mut oxc::allocator::Vec<'a, Hoisted<'a>>,
+}
+
+/// The lifting rule on its own, with none of the patch rewriting around it. P4
+/// classifies component props, which never enter an `ExprTable`, so the rule has
+/// to be reachable without a `Unit`.
+pub(super) struct Lift<'a, 'm> {
+    allocator: &'a Allocator,
+    env: &'m ReactiveEnv<'a>,
+    scoping: &'m Scoping,
     root_scope: ScopeId,
+}
+
+impl<'a, 'm> Lift<'a, 'm> {
+    pub(super) fn new(
+        allocator: &'a Allocator,
+        env: &'m ReactiveEnv<'a>,
+        scoping: &'m Scoping,
+    ) -> Self {
+        Self { allocator, env, scoping, root_scope: scoping.root_scope_id() }
+    }
+
+    #[inline]
+    pub(super) fn env(&self) -> &'m ReactiveEnv<'a> {
+        self.env
+    }
+
+    #[inline]
+    pub(super) fn scoping(&self) -> &'m Scoping {
+        self.scoping
+    }
 }
 
 impl<'a> Classify<'a, '_> {
     fn unit(&mut self, unit: &mut Unit<'a>) {
         for index in 0..unit.exprs.len() {
             let rx = match unit.exprs.entries[index].src.expression() {
-                Some(expression) => self.rx(expression),
+                Some(expression) => self.lift.rx(expression),
                 None => Rx::OPAQUE,
             };
             unit.exprs.entries[index].rx = rx;
@@ -179,13 +207,19 @@ impl<'a> Classify<'a, '_> {
         let span = entry.span;
         let expression = entry.src.take()?;
         let id = self.hoisted.len() as HoistId;
-        self.hoisted.push(Hoisted::Handler { id, expr: self.allocator.alloc(expression), span });
+        self.hoisted.push(Hoisted::Handler {
+            id,
+            expr: self.lift.allocator.alloc(expression),
+            span,
+        });
         Some(id)
     }
+}
 
+impl<'a> Lift<'a, '_> {
     // ── the lifting rule ──────────────────────────────────────────────────
 
-    fn rx(&mut self, expression: &Expression<'a>) -> Rx<'a> {
+    pub(super) fn rx(&mut self, expression: &Expression<'a>) -> Rx<'a> {
         match expression {
             Expression::ParenthesizedExpression(inner) => self.rx(&inner.expression),
             Expression::TSAsExpression(inner) => self.rx(&inner.expression),

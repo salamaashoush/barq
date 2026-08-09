@@ -50,7 +50,6 @@ flag_set!(TagFlags: u16 {
     PRESERVE_WS = 3;
     /// member of the generated `SVG_TAGS`
     SVG = 4;
-    MATHML = 5;
 });
 
 flag_set!(NameFlags: u16 {

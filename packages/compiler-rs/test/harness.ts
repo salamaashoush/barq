@@ -2,8 +2,20 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path"
 import { createRequire } from "node:module"
 
-import { normalizeChannels, type DomChannels } from "./normalize.ts"
-import { beginTrace, endTrace, summarize, type Trace, type TraceSummary } from "./tracer.ts"
+import {
+  expectedAttributeOrder,
+  normalizeChannels,
+  resetIdentity,
+  type DomChannels,
+} from "./normalize.ts"
+import {
+  beginTrace,
+  endTrace,
+  liveTemplateAnchors,
+  summarize,
+  type Trace,
+  type TraceSummary,
+} from "./tracer.ts"
 
 const require_ = createRequire(import.meta.url)
 
@@ -94,6 +106,23 @@ export interface FixtureModule {
   goesLive?: string[]
   /** What the compiler must eventually make of this fixture. */
   optimality?: OptimalityExpectation
+  /**
+   * A markup difference the SSR backend is REQUIRED to have. DESIGN §5's opcode
+   * table drops `Delegate`, `Listen` and `Ref` — a handler and a ref callback
+   * are client-only, so a fixture whose DOM render only differs BECAUSE one of
+   * them ran cannot match the string on the wire.
+   *
+   * It is not a licence to differ: `ssr.test.ts` fails if the SSR markup is not
+   * `markup` byte for byte, and fails as STALE if the two paths stopped
+   * differing at all — the same contract `wins` has on the DOM side.
+   */
+  ssrDiffers?: SsrDivergence
+}
+
+export interface SsrDivergence {
+  /** The normalised markup the SSR path must produce. */
+  markup: string
+  why: string
 }
 
 export interface RenderResult {
@@ -109,6 +138,13 @@ export interface RenderResult {
    * `frames` and `eventFrames` fields spell out separately.
    */
   channels: DomChannels[]
+  /**
+   * Per frame, the anchors the template clones still attached to the container
+   * baked in — the EXACT number of `<!---->` nodes that frame is allowed to
+   * hold. Zero for every frame on the oracle path, which never calls
+   * `template()` at all.
+   */
+  expectedAnchors: number[]
   trace: TraceSummary
   /** Per-effect run counts, creation-ordered */
   runs: number[]
@@ -211,6 +247,15 @@ export function compileSource(
   return native.transform(source, { filename, ...options }).code
 }
 
+/** The same, with the diagnostics — the SSR fallback is announced through them. */
+export function compileSourceRaw(
+  source: string,
+  filename: string,
+  options: Record<string, unknown> = {},
+): NativeTransformResult {
+  return native.transform(source, { filename, ...options })
+}
+
 // ---------------------------------------------------------------------------
 // module loading
 // ---------------------------------------------------------------------------
@@ -229,8 +274,12 @@ resetTmp()
 /**
  * A fresh module identity per load: fixtures keep their signals at module
  * scope, so the oracle render and the compiled render must not share state.
+ *
+ * Exported because the SSR conformance suite loads the same two modules for a
+ * different kind of render, and a second copy of this would be a second answer
+ * to "did these two renders share a signal".
  */
-async function loadModule(code: string, tag: string): Promise<FixtureModule> {
+export async function loadModule(code: string, tag: string): Promise<FixtureModule> {
   const file = join(TMP_DIR, `${tag}-${seq++}.tsx`)
   writeFileSync(file, PRAGMA + code)
   return (await import(file)) as FixtureModule
@@ -256,13 +305,22 @@ async function renderModule(mod: FixtureModule): Promise<RenderResult> {
   const container = document.createElement("div")
   document.body.appendChild(container)
 
+  // Node identity is stamped on first sight, so the ordinals only line up
+  // between the two paths when both renders start their numbering at zero.
+  resetIdentity()
+
   const trace: Trace = beginTrace()
   let dispose: (() => void) | undefined
 
   const channels: DomChannels[] = []
+  const expectedAnchors: number[] = []
   const snapshot = (): string => {
     const frame = normalizeChannels(container)
     channels.push(frame)
+    // Read at the same instant as the DOM it is the expectation for: a clone
+    // that has since been detached, or one built after this frame, is not part
+    // of what this frame is allowed to contain.
+    expectedAnchors.push(liveTemplateAnchors(trace, container))
     return frame.html
   }
 
@@ -298,6 +356,7 @@ async function renderModule(mod: FixtureModule): Promise<RenderResult> {
       frames,
       eventFrames,
       channels,
+      expectedAnchors,
       trace: summarize(trace),
       runs: trace.effects.map((e) => e.runs),
       wins: mod.wins ?? [],
@@ -550,6 +609,18 @@ export function templateAnchors(code: string): number {
   return templateHtml(code).reduce((n, html) => n + countTemplateAnchors(html), 0)
 }
 
+/**
+ * `clonesEachTemplateOnce` and `DEGRADED_MARKER_LAYOUT` used to live here: a
+ * syntactic guess at whether a module clones each of its templates once, and the
+ * list of seven fixtures the guess had to give up on. A module it gave up on
+ * dropped to "a module whose templates bake no anchor cannot produce one", which
+ * is not a check at all for a module that bakes one — and
+ * `component-boundary-props`, the fixture the exclusion was written for, bakes
+ * one. Both are gone: `tracer.ts` wraps `template` and records the node every
+ * clone produces, so the anchors a frame may hold are the anchors of the clones
+ * attached to it, exactly, for every module. See `RenderResult.expectedAnchors`.
+ */
+
 export interface AnchorAudit {
   /** Anchors baked into the emitted templates. */
   baked: number
@@ -722,8 +793,14 @@ export function groupTargets(code: string): string[][] {
  */
 const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class" }
 
-/** The props the emitted module applies AFTER the clone, by attribute name. */
-function patchedAttributeNames(code: string): Set<string> {
+/**
+ * The props the emitted module applies AFTER the clone, by attribute name.
+ *
+ * Exported because the Chrome differential needs the same partition, and it is
+ * computed from the emitted CODE — so it is read once in node, at page-build
+ * time, and shipped into the browser as a list of names.
+ */
+export function patchedAttributeNames(code: string): Set<string> {
   const names = new Set<string>()
   // `_\$+`, not `_\$`: a fixture whose own source contains `_$` makes the
   // compiler shift every emitted uid to `_$$` (hygiene), and a scanner pinned to
@@ -733,34 +810,6 @@ function patchedAttributeNames(code: string): Set<string> {
     names.add(ATTRIBUTE_ALIASES[name] ?? name)
   }
   return names
-}
-
-/**
- * Attribute order the compiled path is required to produce, derived from the
- * ORACLE's order — which is source order, because `createElement` walks the
- * props object — and from nothing the compiler decides.
- *
- * A template bakes its static attributes in at parse time and the patch code
- * sets the rest after the clone, so the compiled order is source order stably
- * partitioned into those two groups, and nothing else. Reversing either group's
- * emission order breaks it; a static that merely trails a dynamic in source
- * does not.
- *
- * LIMIT: the partition is computed from the module-wide set of patched names,
- * so an attribute that is static on one element and dynamic on another is
- * treated as dynamic everywhere. That can only ever move a name later in the
- * expectation, so it loosens rather than breaks — and nothing pins the day it
- * starts mattering. The nearest live check is "the channel is live for most of
- * the corpus, not silently empty" in oracle.test.ts, which asserts the channel
- * produces attribute lines at all, NOT that this partition is exact.
- */
-function expectedAttributeOrder(oracleLine: string, patched: Set<string>): string {
-  const cut = oracleLine.indexOf(": ")
-  const head = oracleLine.slice(0, cut)
-  const names = oracleLine.slice(cut + 2).split(",")
-  const baked = names.filter((n) => !patched.has(n))
-  const applied = names.filter((n) => patched.has(n))
-  return `${head}: ${[...baked, ...applied].join(",")}`
 }
 
 export interface Divergence {
@@ -774,6 +823,7 @@ export interface Divergence {
     | "effect-runs"
     | "marker-count"
     | "attribute-order"
+    | "node-identity"
   step?: number
   oracle: string
   compiled: string
@@ -1125,30 +1175,27 @@ export async function compareToOracle(
     }
 
     // The count above is code against code. This one is code against the DOM
-    // that actually came out.
+    // that actually came out, and it is an EQUALITY for every module.
     //
-    // A module that instantiates each of its templates ONCE — no component
-    // call, so nothing clones a row per item — must put exactly the anchors its
-    // templates bake in into the DOM, and no others. That equality is what
-    // makes target #9 falsifiable: after elision most templates bake NO anchor,
-    // so `markers > holes` can no longer see a spurious one, and only an
-    // exact-per-frame count can.
-    //
-    // Where a component IS called, a template may be cloned any number of
-    // times, so the equality degrades to the zero case: a module whose
-    // templates carry no anchor cannot produce one however often it clones.
-    const clonesOncePerTemplate = !/_\$+createElement\(/.test(stripLiterals(compiled.code))
+    // It used to be an equality only for modules that could be shown to clone
+    // each template once, and a module that called a component dropped to "a
+    // module whose templates bake no anchor cannot produce one" — which
+    // switched target #9's per-frame check off entirely for seven fixtures,
+    // including the one the exclusion was written for. The expectation now
+    // comes from the clones themselves (tracer.ts wraps `template`), so a
+    // component called twice, a `For` cloning a row per item and a `Show`
+    // parking its body in a detached fragment are each accounted for exactly
+    // and none of them costs any coverage.
     for (const [i, frame] of compiled.channels.entries()) {
-      const wrong = clonesOncePerTemplate ? frame.anchors !== markers : markers === 0 && frame.anchors > 0
-      if (!wrong) continue
+      const allowed = compiled.expectedAnchors[i] ?? 0
+      if (frame.anchors === allowed) continue
       divergences.push({
         kind: "marker-count",
         step: i,
-        oracle: String(markers),
+        oracle: String(allowed),
         compiled: String(frame.anchors),
-        message: clonesOncePerTemplate
-          ? "the anchors in the DOM are not the anchors the templates bake in"
-          : "anchors reached the DOM from a module whose templates carry none",
+        message:
+          "the anchors in the DOM are not the anchors the template clones attached to it bake in",
       })
     }
   }
@@ -1166,6 +1213,34 @@ export async function compareToOracle(
       compiled: "0",
       message: "the oracle produced an insert anchor of its own — the marker bounds no longer hold",
     })
+  }
+
+  // Every channel above is a function of the DOM's SHAPE, and a component that
+  // destroys and rebuilds each node on every update produces exactly the shape
+  // of one that reuses them. This is where the difference is visible: which
+  // nodes survived each update, oracle sequence against compiled sequence.
+  //
+  // Only frames whose DOM already agrees are compared — a declared win has no
+  // shared element set to compare identities across.
+  if (
+    oracle.frames.length === compiled.frames.length &&
+    oracle.eventFrames.length === compiled.eventFrames.length
+  ) {
+    for (let i = 0; i < compiled.channels.length; i++) {
+      if (oracle.channels[i].html !== compiled.channels[i].html) continue
+      const want = oracle.channels[i].identity.join(",")
+      const got = compiled.channels[i].identity.join(",")
+      if (want === got) continue
+      divergences.push({
+        kind: "node-identity",
+        step: i,
+        oracle: want,
+        compiled: got,
+        message:
+          "the nodes that survived this update are not the ones the oracle kept — a rebuilt " +
+          "node loses focus, selection, scroll offset and any dirty form state living on it",
+      })
+    }
   }
 
   // Rule 2 of normalize.ts sorts attributes out of the main diff, so a codegen

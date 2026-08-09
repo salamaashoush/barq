@@ -79,9 +79,7 @@ function sleep(ms: number) {
 
 export default defineConfig({
   plugins: [
-    barqVitePlugin({
-      autoComputed: true,
-    }),
+    barqVitePlugin(),
     mockApiPlugin(),
   ],
   resolve: {

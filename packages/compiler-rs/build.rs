@@ -12,15 +12,26 @@ fn main() {
     napi_build::setup();
 
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let dom_ts = manifest.join("../core/src/dom.ts").canonicalize().unwrap_or_else(|error| {
-        panic!("packages/core/src/dom.ts is the source of the runtime tables: {error}")
-    });
+    let runtime = |name: &str| {
+        manifest.join("../core/src").join(name).canonicalize().unwrap_or_else(|error| {
+            panic!("packages/core/src/{name} is a source of the runtime tables: {error}")
+        })
+    };
+    let dom_ts = runtime("dom.ts");
+    let ssr_ts = runtime("ssr.ts");
     println!("cargo:rerun-if-changed={}", dom_ts.display());
+    println!("cargo:rerun-if-changed={}", ssr_ts.display());
     println!("cargo:rerun-if-changed=src/dom_ts.rs");
 
-    let source = std::fs::read_to_string(&dom_ts).expect("read dom.ts");
-    let generated = dom_ts::render(&source, &dom_ts.to_string_lossy())
-        .unwrap_or_else(|error| panic!("could not derive the runtime tables from dom.ts: {error}"));
+    let dom = std::fs::read_to_string(&dom_ts).expect("read dom.ts");
+    let ssr = std::fs::read_to_string(&ssr_ts).expect("read ssr.ts");
+    let generated = dom_ts::render(&dom_ts::Sources {
+        dom: &dom,
+        dom_path: &dom_ts.to_string_lossy(),
+        ssr: &ssr,
+        ssr_path: &ssr_ts.to_string_lossy(),
+    })
+    .unwrap_or_else(|error| panic!("could not derive the runtime tables: {error}"));
 
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("dom_tables.rs");
     std::fs::write(&out, generated).expect("write dom_tables.rs");

@@ -38,6 +38,11 @@
       "types": "./dist/jsx-runtime.d.ts",
       "bun": "./src/jsx-runtime.ts",
       "import": "./dist/jsx-runtime.js"
+    },
+    "./server": {
+      "types": "./dist/server-entry.d.ts",
+      "bun": "./src/server-entry.ts",
+      "import": "./dist/server-entry.js"
     }
   },
   "types": "./dist/index.d.ts",

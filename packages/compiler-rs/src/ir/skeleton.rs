@@ -3,12 +3,18 @@ use oxc::span::Span;
 
 use super::{AVec, NONE, NameId, NodeId, SlotId, StrId, TagId};
 
+/// There is no MathML member, and that is a fact about the RUNTIME rather than
+/// an omission here: `createElement` reaches `createElementNS` only for
+/// `tag in SVG_TAGS` (`dom.ts:324`), so a MathML-namespace node is not something
+/// the oracle can produce. `<math>` is refused outright by
+/// [`crate::lower::parse`] for the matching parse reason — inside a `<template>`
+/// it switches the tokenizer into foreign content, where the same bytes DO parse
+/// into the MathML namespace and stop matching `document.createElement`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum Ns {
     #[default]
     Html,
     Svg,
-    MathMl,
 }
 
 impl Ns {
@@ -16,7 +22,7 @@ impl Ns {
     /// same bytes leave the element open and swallow its following siblings.
     #[inline]
     pub fn self_closes(self) -> bool {
-        !matches!(self, Ns::Html)
+        matches!(self, Ns::Svg)
     }
 }
 
@@ -64,20 +70,29 @@ pub enum SkelNode<'a> {
     Marker(SlotId),
     /// Raw unescaped bytes from a literal `dangerouslySetInnerHTML`.
     RawHtml(&'a str),
+    /// A node position that writes no bytes and materialises nothing. P3 leaves
+    /// one behind where it folded a constant child into a NEIGHBOURING text run:
+    /// removing the node instead would renumber every `NodeId` after it, and
+    /// `NodeId` is what the patch program, the parent column and the span column
+    /// all address by.
+    Empty,
 }
 
-impl SkelNode<'_> {
+impl<'a> SkelNode<'a> {
     #[inline]
     pub fn materialisation(&self) -> Materialisation {
         match self {
-            SkelNode::Slot(_) => Materialisation::Zero,
+            SkelNode::Slot(_) | SkelNode::Empty => Materialisation::Zero,
             SkelNode::RawHtml(_) => Materialisation::Unknown,
             _ => Materialisation::One,
         }
     }
 
+    /// The element's own arena lifetime, not the borrow's: a caller that copies
+    /// the row out keeps `attrs` for as long as the arena lives, which is what
+    /// lets a serialiser read the attributes and mutate the unit at once.
     #[inline]
-    pub fn as_element(&self) -> Option<&SkelElement<'_>> {
+    pub fn as_element(&self) -> Option<&SkelElement<'a>> {
         match self {
             SkelNode::Element(element) => Some(element),
             _ => None,
@@ -437,7 +452,6 @@ mod tests {
     fn foreign_content_self_closes_and_html_does_not() {
         assert!(!Ns::Html.self_closes());
         assert!(Ns::Svg.self_closes());
-        assert!(Ns::MathMl.self_closes());
     }
 
     #[test]
