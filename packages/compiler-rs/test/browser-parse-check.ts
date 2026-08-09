@@ -139,6 +139,61 @@ const HAZARD_CHECK = `(function (rows) {
 
 export const HAZARD_ROWS = HAZARDS.length
 
+/**
+ * The tree a template parses to, as one string. Kept as SOURCE so the identical
+ * function runs in Chrome and in happy-dom — a signature computed by two
+ * different implementations would compare two implementations, not two parsers.
+ *
+ * Text content is part of it on purpose: the divergence this exists to catch was
+ * happy-dom splitting a text run on a bare `>` where Chrome keeps one node,
+ * which puts a different node under `firstChild.nextSibling` in the two engines
+ * and lets a wrong walk pass the fake-DOM half of the harness.
+ */
+const SHAPE = `(function (rows) {
+  const sig = (node) => {
+    if (node.nodeType === 3) return "#t" + JSON.stringify(node.data)
+    if (node.nodeType === 8) return "#c" + JSON.stringify(node.data)
+    const kids = Array.prototype.map.call(node.childNodes, sig).join(",")
+    return node.nodeName.toLowerCase() + "[" + kids + "]"
+  }
+  return JSON.stringify(rows.map((row) => {
+    const host = document.createElement("template")
+    host.innerHTML = row.html
+    return Array.prototype.map.call(host.content.childNodes, sig).join(",")
+  }))
+})`
+
+export interface ShapeDivergence extends Template {
+  chrome: string
+  fake: string
+}
+
+/**
+ * Every emitted template, parsed in Chrome and in happy-dom, compared node for
+ * node. `oracle.test.ts` — the effect bounds, the marker channel, the attribute
+ * channel and `auditAnchors` — runs entirely on the fake parser, so a template
+ * the two engines disagree about is a template on which those bounds measure a
+ * tree the browser never builds.
+ */
+export async function checkParserAgreement(
+  page: Page,
+  rows: Template[],
+): Promise<ShapeDivergence[]> {
+  if (typeof document === "undefined") throw new Error("this comparison needs happy-dom")
+  const value = await page.evaluate<string>(`${SHAPE}(${JSON.stringify(rows)})`)
+  const chrome = JSON.parse(value ?? "[]") as string[]
+  const fake = JSON.parse(
+    (new Function(`return ${SHAPE}`)() as (rows: Template[]) => string)(rows),
+  ) as string[]
+
+  const out: ShapeDivergence[] = []
+  for (const [index, row] of rows.entries()) {
+    if (chrome[index] === fake[index]) continue
+    out.push({ ...row, chrome: chrome[index], fake: fake[index] })
+  }
+  return out
+}
+
 /** Both passes, against an already-open page. Empty means every row held. */
 export async function checkParseConformance(page: Page, rows: Template[]): Promise<Failure[]> {
   const run = async (fn: string, payload: unknown): Promise<Failure[]> => {

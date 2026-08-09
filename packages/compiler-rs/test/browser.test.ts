@@ -3,9 +3,11 @@ import { beforeAll, describe, expect, it } from "bun:test"
 import { withChrome } from "./chrome.ts"
 import {
   checkParseConformance,
+  checkParserAgreement,
   corpus,
   HAZARD_ROWS,
   type Failure,
+  type ShapeDivergence,
   type Template,
 } from "./browser-parse-check.ts"
 import { checkSvgClass, svgClassClaims, type SvgClassResult } from "./browser-svg-class-check.ts"
@@ -31,6 +33,7 @@ import { listBrowserOnlyFixtures, listFixtures } from "./harness.ts"
 
 let templates: Template[]
 let parseFailures: Failure[]
+let disagreements: ShapeDivergence[]
 let svg: SvgClassResult
 let differential: DifferentialReport
 let corrupted: DifferentialReport
@@ -39,6 +42,7 @@ beforeAll(async () => {
   templates = corpus()
   await withChrome(async (page) => {
     parseFailures = await checkParseConformance(page, templates)
+    disagreements = await checkParserAgreement(page, templates)
     svg = await checkSvgClass(page)
     differential = await checkDifferential(page)
     // The same corpus with one static attribute value rewritten in every
@@ -54,6 +58,27 @@ describe("real browser: HTML tree construction", () => {
   it("every emitted template parses to exactly one root, with no tag moved", () => {
     expect(templates.length, "the corpus has to reach the browser").toBeGreaterThanOrEqual(40)
     expect(parseFailures).toEqual([])
+  })
+
+  it("happy-dom parses every emitted template into the tree Chrome does", () => {
+    // The rest of the suite — the effect bounds, the marker channel, the
+    // attribute channel and `auditAnchors` — runs on happy-dom alone. A
+    // template the two parsers disagree about is one where all of them are
+    // measuring a tree no browser builds, and the walk that crosses it resolves
+    // to a different node in each. This costs no extra Chrome launch.
+    const shown = (rows: ShapeDivergence[]) =>
+      rows.map((d) => `${d.fixture}: chrome ${d.chrome} vs happy-dom ${d.fake}`)
+    expect(shown(disagreements.filter((d) => !d.fixture.startsWith("browser-only/")))).toEqual([])
+    expect(templates.length, "and it ran on the whole corpus").toBeGreaterThanOrEqual(40)
+
+    // The other half: `fixtures/browser-only/` exists BECAUSE the fake parser
+    // is wrong there, so a run in which none of them disagrees means either the
+    // comparison stopped working or the fixture stopped being browser-only and
+    // belongs back in the corpus.
+    expect(
+      disagreements.filter((d) => d.fixture.startsWith("browser-only/")).length,
+      "no browser-only template disagrees any more — this check has gone blind",
+    ).toBeGreaterThan(0)
   })
 
   it("the hazard rows confirm the byte refusals are load-bearing", () => {
