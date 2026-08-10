@@ -25,11 +25,15 @@ export const optimality = {
   target: 9,
   milestone: 5,
   templates: 3,
-  patchCalls: 1,
+  // Zero patch calls, where there was one: the hole is a REGION now, so the
+  // `insert` that used to join the construct to its parent is gone with it —
+  // `branch` takes `(parent, anchor)` and inserts into them itself (K5, K7).
+  patchCalls: 0,
   // Target #9's second rule, at a component boundary: what follows the hole is
   // an ELEMENT, so the `<footer>` is the anchor and no `<!---->` is baked. The
-  // statics either side stay in the caller's template — only the component
-  // becomes a hole.
-  emits: ['<div class="host"><h1>Title</h1><footer>end</footer></div>', "Show("],
-  absent: ["<!---->", "(Show, {"],
+  // statics either side stay in the caller's template — only the construct
+  // becomes a hole, and the anchor the compiler chose is handed straight to
+  // the primitive rather than re-derived from a marker at run time.
+  emits: ['<div class="host"><h1>Title</h1><footer>end</footer></div>', "branch("],
+  absent: ["<!---->", "Show("],
 }

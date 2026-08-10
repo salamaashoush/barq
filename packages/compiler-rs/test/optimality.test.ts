@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test"
+
+import { emittedFlags, FLAG_CENSUS } from "./flag-census.ts"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
@@ -16,6 +18,7 @@ import {
   listFixtures,
   loadModule,
   renderEffectBodies,
+  stripComments,
   stripLiterals,
   templateAnchors,
   templateHtml,
@@ -62,6 +65,33 @@ function countRaw(code: string, pattern: RegExp): number {
   return code.match(new RegExp(pattern, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))?.length ?? 0
 }
 
+/**
+ * How many times `needle` occurs AS ITSELF — never as the tail of a longer
+ * identifier.
+ *
+ * `expect(code).toContain("ErrorBoundary(")` was green on a module that emits no
+ * `ErrorBoundary` call at all, because the fixture's own default export is named
+ * `ControlFlowErrorBoundary` and a substring search cannot tell a call from the
+ * back half of a declaration. Every fixture in the corpus is named after the
+ * construct it exercises, so that hole is not one fixture's accident — it is
+ * available to every control-flow declaration here, on both sides: an `emits`
+ * satisfied by a definition asserts nothing, and an `absent` that a definition
+ * would satisfy could never be written at all.
+ *
+ * `$` is deliberately NOT an identifier character for this purpose. A
+ * declaration may not name a compiler uid (see the test below), so a needle
+ * naming a runtime helper is written `branch(` and has to match `_$branch(` —
+ * the `_$` prefix is the emitter's, not the fixture's.
+ */
+function occurrences(code: string, needle: string): number {
+  const anchored = /^[A-Za-z_]/.test(needle)
+  let found = 0
+  for (let at = code.indexOf(needle); at !== -1; at = code.indexOf(needle, at + 1)) {
+    if (!anchored || at === 0 || !/[A-Za-z0-9_]/.test(code[at - 1]!)) found++
+  }
+  return found
+}
+
 /** The runtime helpers the emitted module imports, by their exported names. */
 function runtimeImports(code: string): string[] {
   const line = code.match(/^import \{([^}]*)\} from "@barqjs\/core";/m)
@@ -88,15 +118,27 @@ describe("declared optimality", () => {
   // is the claim. These run the declaration; the blocks below are the targets
   // whose claim needs more than a declaration can say.
 
-  function assertDeclared(name: string, decl: OptimalityExpectation, code: string): void {
+  function assertDeclared(name: string, decl: OptimalityExpectation, module: string): void {
+    // A declaration is a claim about EMITTED CODE, and a fixture's own prose is
+    // not code — it reaches the module verbatim. `switch-match-component-bodies`
+    // explains in a doc comment what the DOM target used to emit, spelling
+    // `Switch({ children: [...] })` inside it, which is enough to falsify an
+    // `absent: ["Switch("]` that is otherwise true of every line the compiler
+    // wrote. Literals stay: half the declarations here are claims about the
+    // markup inside a `template()` call.
+    const code = stripComments(module)
     if (decl.templates !== undefined) expect(emittedCalls(code, "template"), "templates").toBe(decl.templates)
     if (decl.patchCalls !== undefined) {
       const patches =
         emittedCalls(code, "insert") + emittedCalls(code, "setProp") + emittedCalls(code, "spread")
       expect(patches, "patch calls").toBe(decl.patchCalls)
     }
-    for (const needle of decl.emits ?? []) expect(code, `${name} must emit`).toContain(needle)
-    for (const needle of decl.absent ?? []) expect(code, `${name} must not emit`).not.toContain(needle)
+    for (const needle of decl.emits ?? []) {
+      expect(occurrences(code, needle), `${name} must emit ${JSON.stringify(needle)}`).toBeGreaterThan(0)
+    }
+    for (const needle of decl.absent ?? []) {
+      expect(occurrences(code, needle), `${name} must not emit ${JSON.stringify(needle)}`).toBe(0)
+    }
     for (const [first, second] of decl.ordered ?? []) {
       const at = code.indexOf(first)
       const then = code.indexOf(second)
@@ -105,6 +147,34 @@ describe("declared optimality", () => {
       expect(at, `${name}: ${JSON.stringify(first)} must come first`).toBeLessThan(then)
     }
   }
+
+  /**
+   * The other half of the matcher above, said out loud: a needle that occurs in
+   * the module ONLY as the tail of a longer identifier is a needle whose
+   * declaration is being satisfied by a name the fixture chose for itself.
+   *
+   * `assertDeclared` already refuses to count such an occurrence, so a needle
+   * like that fails there — but it fails with "must emit", which reads as a
+   * compiler regression and sends the next reader into `flow.rs`. This names it
+   * for what it is instead, and it is the check that found the two declarations
+   * M4b left behind: `control-flow-error-boundary` claimed to emit
+   * `ErrorBoundary(` and `control-flow-await-suspense` claimed `Suspense(`,
+   * both green, both satisfied by nothing but the fixture's default export,
+   * while the constructs they name had already been lowered onto `boundary`.
+   */
+  it("no emits needle is satisfied only by a longer identifier", () => {
+    const shadowed: string[] = []
+    for (const [name, decl] of declarations) {
+      if (!decl) continue
+      const code = stripComments(compileFixtureBody(name))
+      for (const needle of decl.emits ?? []) {
+        if (code.includes(needle) && occurrences(code, needle) === 0) {
+          shadowed.push(`${name}: ${JSON.stringify(needle)}`)
+        }
+      }
+    }
+    expect(shadowed).toEqual([])
+  }, 120_000)
 
   it("no declaration names a compiler-generated identifier", () => {
     // A fixture that mentions `_$`, `_el$` or `_p$` — even inside a string in
@@ -155,9 +225,12 @@ describe("declared optimality", () => {
       // §3.0 rule 3: a Block is BRANDED at its definition site, so the slot's
       // value is `_$block((_s$…`. The brand is what lets a consumer test kind
       // instead of guessing it from arity.
-      blocks += [
-        ...code.matchAll(/(children|fallback|loading|error):\s*[\w$]*block\(\(_s\$[,)]/g),
-      ].length
+      //
+      // Since M4b a body is not always a NAMED slot: the flow pass hands
+      // `branch`/`each`/`boundary`/`portal` their bodies positionally, so the
+      // brand is what identifies one and the prop name no longer exists to
+      // anchor on.
+      blocks += [...code.matchAll(/[\w$]*block\(\(_s\$[,)]/g)].length
     }
     expect(
       [...withProps].map(([name, callees]) => `${name}: ${callees.join(", ")}`),
@@ -212,10 +285,6 @@ describe("declared optimality", () => {
         readFileSync(join(import.meta.dir, "__snapshots__", "roundtrip.test.ts.snap"), "utf8").includes(
           name,
         ),
-    },
-    "control-flow-nested": {
-      why: "asserted by name in the target 8 block",
-      holds: namedIn("optimality.test.ts"),
     },
     "delegated-handler-tuple": {
       why: "asserted by name in the target 7 block",
@@ -679,6 +748,154 @@ describe("target 7 — delegated events as expando writes", () => {
   })
 })
 
+/**
+ * K5's lowering half, stated once for the whole corpus. A construct the flow
+ * pass understands CEASES TO EXIST as a component: no props object, no adapter
+ * frame, and `(parent, anchor)` taken from the template walk instead of
+ * re-derived. The list below is therefore not a tolerance — it is the complete
+ * set of REFUSALS, and each one has a reason in `passes/flow.rs`.
+ */
+describe("K5 — the fourteen constructs, and the four they lower onto", () => {
+  const LOWERED = [
+    "Show",
+    "Switch",
+    "Match",
+    "For",
+    "Index",
+    "Repeat",
+    "Loading",
+    "Suspense",
+    "Errored",
+    "ErrorBoundary",
+    "Portal",
+  ]
+
+  it("no construct the pass understands survives as a call", () => {
+    const survivors: string[] = []
+    for (const name of listFixtures()) {
+      const code = stripLiterals(compileFixtureBody(name))
+      for (const construct of LOWERED) {
+        // A CALL, never a declaration: a fixture's default export is named
+        // after its file and can end in one of these words.
+        if (new RegExp(`(?<![\\w$])${construct}\\(_s\\$`).test(code)) {
+          survivors.push(`${name}: ${construct}`)
+        }
+      }
+    }
+    // `control-flow-for-keyed-spread` is the ONE construct in this list that
+    // still reaches its adapter, and the reason is C9: a spread is a runtime
+    // source list, so the props cannot be read statically and the pass refuses
+    // rather than guessing. Refusing is always safe — the adapter reaches the
+    // same `each` one frame later.
+    expect(survivors).toEqual(["control-flow-for-keyed-spread: For"])
+  })
+
+  it("the three constructs the pass refuses keep their adapters, and say why", () => {
+    const refused: string[] = []
+    for (const name of listFixtures()) {
+      const code = stripLiterals(compileFixtureBody(name))
+      for (const construct of ["Await", "Dynamic", "Reveal"]) {
+        if (new RegExp(`(?<![\\w$])${construct}\\(_s\\$`).test(code)) {
+          refused.push(`${name}: ${construct}`)
+        }
+      }
+    }
+    // `Dynamic` needs `createDynamicElement`, which is private to
+    // `components.ts` and not on the ABI §3.0 enumerates. `Await` needs the
+    // resolved resource in its key and in all three of its bodies, and without
+    // a shared local that is four evaluations of one prop. `Reveal` creates a
+    // PROVIDE scope rather than a range, so it is not one of the four
+    // primitives at all.
+    expect(refused.sort()).toEqual([
+      "control-flow-await-suspense: Await",
+      "control-flow-errored-loading: Reveal",
+      "control-flow-reveal: Reveal",
+      "dynamic: Dynamic",
+    ])
+  })
+
+  /**
+   * The flags, from the emission rather than from the pass. A property the
+   * compiler proved is an integer in the call; a property it could not is a
+   * zero it never writes, and the runtime does the work.
+   */
+  it("a proven property is shipped as a flag and an unproven one is not", () => {
+    // The list is `flag-census.ts`, imported rather than repeated, because the
+    // L3 suite asserts the same thing — the flag census is the ABSOLUTE channel
+    // for a claim a differential cannot carry, and two copies of it would drift.
+    expect(emittedFlags()).toEqual([...FLAG_CENSUS])
+  })
+
+  /**
+   * WHAT MAKES A DECLARATION EVIDENCE FOR THIS MILESTONE, machine-checked.
+   *
+   * The file header states the criterion — take a "compiler" that returns its
+   * input unchanged and ask whether the assertion survives — and for K5 there
+   * is a sharper reference available than the identity transform, because the
+   * project already builds one: `-O0`, which shares the front end, the IR, the
+   * ABI and the ownership model, and differs from `-Ox` here in exactly one
+   * decision. A construct compiled at `-O0` reaches its adapter with a props
+   * object and an `insert`; at `-Ox` it IS a primitive call taking the pair the
+   * walk computed.
+   *
+   * So a fixture whose construct lowers has to say BOTH halves, and each half
+   * is checked against the build that would falsify it:
+   *
+   *  - at least one `emits` needle that `-O0` does not satisfy. Without this a
+   *    declaration can be green on a build where nothing was lowered at all.
+   *  - at least one `absent` needle that `-O0` DOES emit. This is the half that
+   *    is easy to fake and worthless when faked: every control-flow fixture in
+   *    the corpus carried `absent: ["(Show, {"]` — the pre-M3 call shape, which
+   *    no build has emitted for two milestones — so all of them were asserting
+   *    the absence of something that could not have been present. Requiring the
+   *    needle to be a fact about `-O0` makes "the adapter frame it no longer
+   *    emits" a difference between two programs instead of a sentence.
+   *
+   * The refusals are deliberately out of scope: `Await`, `Dynamic`, `Reveal`
+   * and `control-flow-for-keyed-spread` emit the same adapter at both levels,
+   * so there is no difference for them to name, and the two tests above pin
+   * them by their own criterion.
+   */
+  it("every lowered region names its primitive and the frame it replaced", () => {
+    const PRIMITIVES = ["branch", "each", "boundary", "portal"]
+    const silent: string[] = []
+    let lowered = 0
+
+    for (const [name, decl] of declarations) {
+      const optimised = stripComments(compileFixtureBody(name))
+      const reference = stripComments(compileFixtureBody(name, { optimize: 0 }))
+      const blanked = stripLiterals(optimised)
+      const referenceBlanked = stripLiterals(reference)
+      const lowers = PRIMITIVES.some(
+        (primitive) =>
+          blanked.includes(`_$${primitive}(`) && !referenceBlanked.includes(`_$${primitive}(`),
+      )
+      if (!lowers) continue
+      lowered++
+
+      if (!decl) {
+        silent.push(`${name}: lowers a construct and declares no optimality at all`)
+        continue
+      }
+      const distinguishing = (decl.emits ?? []).filter((n) => occurrences(reference, n) === 0)
+      const replaced = (decl.absent ?? []).filter((n) => occurrences(reference, n) > 0)
+      if (distinguishing.length === 0) {
+        silent.push(`${name}: every emits needle is satisfied by the -O0 build too`)
+      }
+      if (replaced.length === 0) {
+        silent.push(`${name}: no absent needle names anything -O0 actually emits`)
+      }
+    }
+
+    expect(silent).toEqual([])
+    // The gate is only worth what its population is: a run where the flow pass
+    // lowered nothing would satisfy every clause above by having nothing to
+    // check, which is the same fail-open shape §6 L3's third detection value
+    // exists to prevent.
+    expect(lowered, "no fixture in the corpus lowers a construct at all").toBeGreaterThan(24)
+  }, 180_000)
+})
+
 describe("target 8 — thunk elision for static control-flow bodies", () => {
   it("control-flow-show-eager-static-body: the body is one clone, handed straight in", async () => {
     // M4 emitted `_$createElement(Show, { when: () => on() }, _tmpl$1())`, which
@@ -686,14 +903,20 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // call real, and the body — a subtree that produced no patch — reaches
     // `children` as the clone itself: no arrow, no IIFE, no element binding.
     const code = compileFixtureBody("control-flow-show-eager-static-body")
-    expect(code).toMatch(/Show\(_s\$, \{/)
+    // M4b took the call away as well: K5 lowers the construct onto `branch`,
+    // which receives the `(parent, anchor)` pair the walk computed — here
+    // `(null, null)`, because the construct IS the component's whole body.
+    expect(code).toMatch(/[\w$]*branch\(_s\$, null, null, /)
     // O2/O2.1 SUPERSEDE target #8's eager arm, and this is where that is said.
     // A child may not be an ARGUMENT, because an argument is evaluated at the
     // call site — before the receiving scope exists — so "the clone itself,
     // handed straight in" is a shape M3 makes unrepresentable. What survives of
     // the elision is the IIFE and the element binding, both still absent.
-    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
-    expect(code, "the child is never a built node").not.toMatch(/children:\s*_tmpl\$\d+\(\)/)
+    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
+    // …and the flag the compiler PROVED about it: nothing in the body registers
+    // anything disposable, so `NO_SCOPE` is shipped and the activation
+    // allocates no `Scope`.
+    expect(code, "the proven flags integer").toMatch(/\}\), 2\)/)
     expect(code, "and nothing to bind it to").not.toMatch(/const _el\$/)
     expect(emittedCalls(code, "insert") + emittedCalls(code, "setProp")).toBe(0)
 
@@ -714,11 +937,13 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // again. `node-identity` in normalize.ts is the only channel that sees the
     // second half — html, markers, attributes and anchors are all identical.
     const code = compileFixtureBody("control-flow-show-static-body")
-    expect(code).toMatch(/Show\(_s\$, \{/)
+    expect(code).toMatch(/[\w$]*branch\(_s\$, null, null, /)
     // C6: the child is a Block, so the arrow declares the scope it runs under.
-    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
-    // η-reduction of the prop the runtime unwraps itself, from the same pass.
-    expect(code).toMatch(/when:\s*on\b/)
+    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
+    // The key is the author's own `when` read, emitted as plain JavaScript
+    // (K5): `|| false` collapses every falsy value onto one key, which is what
+    // keeps a fallback in place across `0`, `""` and `null`.
+    expect(code).toMatch(/\(\) => on\(\) \|\| false/)
 
     const result = await compareToOracle("control-flow-show-static-body")
     expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(true)
@@ -735,8 +960,8 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // Elision is a fact about the component's children contract, never about the
     // body alone.
     const code = compileFixtureBody("control-flow-for-static-body")
-    expect(code).toMatch(/For\(_s\$, \{/)
-    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
+    expect(code).toMatch(/[\w$]*each\(_s\$, _el\$1, null, rows, null, /)
+    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
   })
 
   it("control-flow-show: a body with a hole in it also keeps its thunk", async () => {
@@ -744,7 +969,10 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // into it. That body is not static, so the arrow stays and the DOM is only
     // built when `when` is first true.
     const code = compileFixtureBody("control-flow-nested")
-    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*\{/)
+    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*\{/)
+    // …and no flag: the body builds a list, so it registers something
+    // disposable and the activation still gets a `Scope`.
+    expect(code, "an unprovable body ships no flag").not.toMatch(/\}\), \d\)/)
 
     // The oracle leg moved: `control-flow-nested` is registered in
     // `oracle-known-failures.ts` because its reference module binds the scope to

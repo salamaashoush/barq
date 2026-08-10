@@ -19,9 +19,11 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // The fallback is JSX, so it is a built node — `fallbackNodes` evaluates it
-  // eagerly and a thunk there would only add a closure. The children were
-  // written as a thunk and stay one.
-  emits: ["Show(", "when: visible", "fallback: "],
-  absent: ["(Show, {", "fallback: () =>", "when: () =>"],
+  // K5: `Show` ceases to exist. The key is the author's own `when` read —
+  // `visible() || false`, which collapses every falsy value onto one key so a
+  // fallback stays in place across `0`, `""` and `null` — and the body is one
+  // Block that picks the arm from the value it reads at ACTIVATION time. The
+  // `(parent, anchor)` pair is the one the walk above it produced.
+  emits: ["branch(", "() => visible() || false"],
+  absent: ["Show(", "when:", "fallback:"],
 }

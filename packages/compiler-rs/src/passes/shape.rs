@@ -17,7 +17,9 @@ use rustc_hash::FxHashMap;
 use crate::analysis::symbol_of;
 use crate::codegen::{HELPER_COUNT, Helper};
 use crate::diag::Code;
-use crate::ir::{Diag, Flow, HoistId, Hoisted, Keyed, Module, Root, Site, SourceKind, Uids};
+use crate::ir::{
+    Diag, Flow, HoistId, Hoisted, Keyed, Module, Region, Root, Site, SourceKind, Uids,
+};
 use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, is_identifier_name};
 use crate::lower::text;
@@ -37,9 +39,33 @@ use super::classify::Lift;
 ///
 /// Intrinsic markup the HTML parser reshapes, and fragments, are left as JSX for
 /// codegen's `createElement` path: their semantics are the runtime's, not ours.
-pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>, options: &ResolvedOptions) {
-    let Module { units, roots, env, scoping, source, uids, hoisted, helpers, .. } = module;
+pub fn run<'a>(
+    allocator: &'a Allocator,
+    module: &mut Module<'a>,
+    options: &ResolvedOptions,
+    lower_flow: bool,
+) {
+    let Module {
+        units,
+        roots,
+        env,
+        scoping,
+        source,
+        uids,
+        hoisted,
+        helpers,
+        regions,
+        flow_rewrites,
+        ..
+    } = module;
     let helpers = *helpers;
+    let inert_roots: Vec<bool> = roots
+        .iter()
+        .map(|root| match root {
+            Root::Unit(id) => units.get(*id as usize).is_some_and(|unit| unit.is_pure_static()),
+            _ => false,
+        })
+        .collect();
 
     let mut diagnostics: Vec<Diag<'a>> = Vec::new();
     let mut retarget: Vec<(u32, Span)> = Vec::new();
@@ -53,11 +79,15 @@ pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>, options: &Reso
             scope: uids.scope(),
             uids,
             hoisted,
+            regions,
+            flow_rewrites,
             konsts: FxHashMap::default(),
             retarget: &mut retarget,
             diagnostics: &mut diagnostics,
             dev: options.dev,
             hoist: options.opt.hoist,
+            lower_flow,
+            inert_roots,
             helpers,
             used: [false; HELPER_COUNT],
         };
@@ -91,15 +121,22 @@ pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>, options: &Reso
     module.env.diagnostics.extend(diagnostics);
 }
 
-struct Shaper<'a, 'm> {
-    allocator: &'a Allocator,
-    ast: AstBuilder<'a>,
-    lift: Lift<'a, 'm>,
+pub(super) struct Shaper<'a, 'm> {
+    pub(super) allocator: &'a Allocator,
+    pub(super) ast: AstBuilder<'a>,
+    pub(super) lift: Lift<'a, 'm>,
     source: &'a str,
     /// The one name the ownership channel travels under (`scope.rs`).
-    scope: &'a str,
-    uids: &'m Uids<'a>,
+    pub(super) scope: &'a str,
+    pub(super) uids: &'m Uids<'a>,
     hoisted: &'m mut oxc::allocator::Vec<'a, Hoisted<'a>>,
+    /// The flow pass's staging table. A region lands here and is claimed either
+    /// by a unit's patch program or by codegen, which is the same two-sided
+    /// arrangement `roots` and `units` already have.
+    pub(super) regions: &'m mut oxc::allocator::Vec<'a, Option<Region<'a>>>,
+    /// Every reference to a flow binding the lowering consumed, so `install` can
+    /// drop an import specifier that has no reader left.
+    pub(super) flow_rewrites: &'m mut Vec<SymbolId>,
     /// Printed constant → the `_k$N` already minted for it, so a module with a
     /// thousand `tone="w"` props hoists one thunk.
     konsts: FxHashMap<String, HoistId>,
@@ -107,13 +144,22 @@ struct Shaper<'a, 'm> {
     diagnostics: &'m mut Vec<Diag<'a>>,
     dev: bool,
     hoist: bool,
+    /// `Opt::flow`, and off for the string backend: P8b rewrites a flow
+    /// component to its own string implementation, so lowering it onto a DOM
+    /// primitive first would take that rewrite's subject away.
+    lower_flow: bool,
+    /// Per root index: the root became a unit whose patch program is EMPTY.
+    /// That is `NO_SCOPE`'s proof, and it is read off the lowered IR rather
+    /// than off the markup, because P1 has already moved a body's JSX out into
+    /// a unit of its own by the time this pass runs.
+    inert_roots: Vec<bool>,
     helpers: [&'a str; HELPER_COUNT],
     used: [bool; HELPER_COUNT],
 }
 
 /// What a tag resolves to. `Intrinsic` keeps its JSX and goes down the
 /// `createElement` path; everything else is called.
-enum Callee<'a> {
+pub(super) enum Callee<'a> {
     Intrinsic,
     Component(Expression<'a>, Option<SymbolId>),
 }
@@ -130,7 +176,7 @@ enum Source<'a> {
 }
 
 impl<'a> Shaper<'a, '_> {
-    fn callee(&self, name: &JSXElementName<'a>) -> Callee<'a> {
+    pub(super) fn callee(&self, name: &JSXElementName<'a>) -> Callee<'a> {
         match name {
             // oxc gives a lowercase tag the `Identifier` variant and a
             // capitalised one `IdentifierReference`, so the intrinsic/component
@@ -162,7 +208,7 @@ impl<'a> Shaper<'a, '_> {
         }
     }
 
-    fn ident(&self, name: &str, span: Span) -> Expression<'a> {
+    pub(super) fn ident(&self, name: &str, span: Span) -> Expression<'a> {
         Expression::new_identifier(span, self.allocator.alloc_str(name), &self.ast)
     }
 
@@ -199,7 +245,7 @@ impl<'a> Shaper<'a, '_> {
         Expression::new_static_member_expression(member.span, object, property, false, &self.ast)
     }
 
-    fn flow_of(&self, symbol: Option<SymbolId>) -> Option<Flow> {
+    pub(super) fn flow_of(&self, symbol: Option<SymbolId>) -> Option<Flow> {
         symbol.and_then(|symbol| self.lift.env().kind_of(symbol).flow())
     }
 
@@ -214,6 +260,7 @@ impl<'a> Shaper<'a, '_> {
     fn component_call(
         &mut self,
         callee: Expression<'a>,
+        symbol: Option<SymbolId>,
         flow: Option<Flow>,
         element: ArenaBox<'a, JSXElement<'a>>,
     ) -> Expression<'a> {
@@ -260,6 +307,9 @@ impl<'a> Shaper<'a, '_> {
                         attribute_children = Some((last, record.len(), value, at));
                         continue;
                     }
+                    if self.builds_dom(&value) || self.is_block(&value) {
+                        self.block_into_cell_slot(symbol, name, at);
+                    }
                     let cell = self.cell_value(value, at);
                     let property = self.property(name, cell, at);
                     let Source::Record(record) = &mut sources[last] else { unreachable!() };
@@ -280,6 +330,9 @@ impl<'a> Shaper<'a, '_> {
         if let Some((source, index, value, at)) = attribute_children {
             let live = self.lift.rx(&value).konst.is_none();
             let property = if kids.is_empty() {
+                if self.builds_dom(&value) || self.is_block(&value) {
+                    self.block_into_cell_slot(symbol, "children", at);
+                }
                 let cell = self.cell_value(value, at);
                 Some(self.property("children", cell, at))
             } else if live {
@@ -307,6 +360,9 @@ impl<'a> Shaper<'a, '_> {
                 let elements = ArenaVec::from_iter_in(elements, &self.allocator);
                 Expression::new_array_expression(span, elements, &self.ast)
             };
+            if builds {
+                self.block_into_cell_slot(symbol, "children", span);
+            }
             let value = if builds { self.block(value, span) } else { self.cell_value(value, span) };
             let property = self.property("children", value, span);
             let last = sources.len() - 1;
@@ -409,7 +465,7 @@ impl<'a> Shaper<'a, '_> {
     ///    `props.onClick()` returns the same object every time.
     /// 6. **Everything else** is `() => expr`: not memoised (C3.2) and neutral
     ///    (C3.3), so the CONSUMER's effect is what subscribes.
-    fn cell_value(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
+    pub(super) fn cell_value(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
         if self.builds_dom(&value) {
             return self.block(value, span);
         }
@@ -444,9 +500,17 @@ impl<'a> Shaper<'a, '_> {
     /// placeholder, or JSX the lowering refused. Those are exactly the values
     /// that may never be an argument, because an argument is evaluated at the
     /// call site and O2.1 says a child's body runs under the RECEIVING scope.
-    fn builds_dom(&self, value: &Expression<'a>) -> bool {
+    pub(super) fn builds_dom(&self, value: &Expression<'a>) -> bool {
         match value {
             Expression::JSXElement(_) | Expression::JSXFragment(_) => true,
+            // A type assertion is not a value. `<b/> as never` builds exactly
+            // what `<b/>` builds, so a cast that stopped this returning true
+            // erased the Block brand and emitted a nullary thunk in its place —
+            // C5.1 item 2's stated MUST NOT, reachable from source.
+            Expression::ParenthesizedExpression(inner) => self.builds_dom(&inner.expression),
+            Expression::TSAsExpression(inner) => self.builds_dom(&inner.expression),
+            Expression::TSNonNullExpression(inner) => self.builds_dom(&inner.expression),
+            Expression::TSSatisfiesExpression(inner) => self.builds_dom(&inner.expression),
             Expression::Identifier(identifier) => {
                 self.uids.root_index(identifier.name.as_str()).is_some()
             }
@@ -542,7 +606,7 @@ impl<'a> Shaper<'a, '_> {
     /// placeholder its site is retargeted, so codegen splices the walk and the
     /// patch program straight into the arrow: the shape `CODESIGN.md` §7.1
     /// prints, costing neither an IIFE nor a call.
-    fn block(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
+    pub(super) fn block(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
         if let Expression::Identifier(identifier) = &value
             && let Some(index) = self.uids.root_index(identifier.name.as_str())
         {
@@ -558,13 +622,13 @@ impl<'a> Shaper<'a, '_> {
     /// forwarded Block is still branded, a Cell never is, and no consumer has to
     /// guess from arity — which is the guess that put a Scope where a row
     /// callback's item belongs.
-    fn brand(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
+    pub(super) fn brand(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
         let callee = self.helper(Helper::Block, span);
         let arguments = ArenaVec::from_iter_in([Argument::from(value)], &self.allocator);
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
     }
 
-    fn thunk(
+    pub(super) fn thunk(
         &self,
         value: Expression<'a>,
         span: Span,
@@ -597,7 +661,7 @@ impl<'a> Shaper<'a, '_> {
         Expression::new_arrow_function_expression(span, false, None, params, None, body, &self.ast)
     }
 
-    fn helper(&mut self, helper: Helper, span: Span) -> Expression<'a> {
+    pub(super) fn helper(&mut self, helper: Helper, span: Span) -> Expression<'a> {
         self.used[helper as usize] = true;
         self.ident(self.helpers[helper as usize], span)
     }
@@ -606,7 +670,7 @@ impl<'a> Shaper<'a, '_> {
     /// recreate — a store proxy, a props forward, or an origin the analysis could
     /// not follow at all. Syntactic on purpose: it drives a note, and the honest
     /// answer for anything it cannot see through is "not proven".
-    fn unproven_rows(&self, value: &Expression<'a>) -> bool {
+    pub(super) fn unproven_rows(&self, value: &Expression<'a>) -> bool {
         match value {
             Expression::ParenthesizedExpression(it) => self.unproven_rows(&it.expression),
             Expression::TSAsExpression(it) => self.unproven_rows(&it.expression),
@@ -667,7 +731,12 @@ impl<'a> Shaper<'a, '_> {
         ))
     }
 
-    fn property(&self, name: &'a str, value: Expression<'a>, span: Span) -> ObjectPropertyKind<'a> {
+    pub(super) fn property(
+        &self,
+        name: &'a str,
+        value: Expression<'a>,
+        span: Span,
+    ) -> ObjectPropertyKind<'a> {
         let key = self.property_key(name, span);
         ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
             ObjectProperty::new(
@@ -698,7 +767,7 @@ impl<'a> Shaper<'a, '_> {
         }
     }
 
-    fn children(&mut self, children: ArenaVec<'a, JSXChild<'a>>) -> Vec<Expression<'a>> {
+    pub(super) fn children(&mut self, children: ArenaVec<'a, JSXChild<'a>>) -> Vec<Expression<'a>> {
         let mut out = Vec::with_capacity(children.len());
         for child in children {
             match child {
@@ -734,7 +803,40 @@ impl<'a> Shaper<'a, '_> {
         }
     }
 
-    fn diagnose(&mut self, code: Code, span: Span, message: &str) {
+    /// C5.1 item 1. Within a module the compiler knows the kind of the
+    /// forwarded value AND what the callee does with it, so a Block landing in
+    /// a Cell slot is a compile-time fact and not something to discover at run
+    /// time. Item 2 — the `ScopeMissingError` — is what answers across a module
+    /// boundary, where `CODESIGN.md` §3.13 item 1 says nothing else can.
+    ///
+    /// The span is the FORWARDING site, which is where the fix is written; the
+    /// message carries the consuming position, because a `Diag` holds one span.
+    fn block_into_cell_slot(&mut self, callee: Option<SymbolId>, slot: &str, at: Span) {
+        if !self.dev {
+            return;
+        }
+        let Some(callee) = callee else { return };
+        let Some(read) =
+            self.lift.env().cell_slots.iter().find(|e| e.component == callee && e.prop == slot)
+        else {
+            return;
+        };
+        let (name, read) = (self.lift.scoping().symbol_name(callee).to_string(), read.read);
+        self.diagnose(
+            Code::Barq010,
+            at,
+            &format!(
+                "`{slot}` is JSX here, which lowers to a Block, and `{name}` reads `props.{slot}` \
+                 as a Cell at byte {}..{} — an attribute on an intrinsic element. A Block invoked \
+                 with no scope throws ScopeMissingError (C3.8); it does not fall back to the \
+                 ambient owner and it does not stringify. Render it as a child, or hand `{name}` \
+                 a Cell — `{slot}={{() => value}}` — instead of JSX.",
+                read.start, read.end
+            ),
+        );
+    }
+
+    pub(super) fn diagnose(&mut self, code: Code, span: Span, message: &str) {
         let message = self.allocator.alloc_str(message) as &'a str;
         self.diagnostics.push(Diag { code, span, message });
     }
@@ -747,6 +849,58 @@ impl<'a> Shaper<'a, '_> {
     fn shape_jsx(&mut self, mut value: Expression<'a>) -> Expression<'a> {
         self.visit_expression(&mut value);
         value
+    }
+
+    /// The flow pass's one entry point into the shape walk: a construct it can
+    /// lower becomes a `_g$N` placeholder standing for a row in the staging
+    /// table, and everything else keeps the component call it always had.
+    ///
+    /// Returning `None` is the safe direction and the only one that is ever
+    /// taken on doubt — a construct that stays a call reaches the same four
+    /// primitives through its adapter, one frame and one props object later.
+    fn region_placeholder(
+        &mut self,
+        flow: Flow,
+        element: ArenaBox<'a, JSXElement<'a>>,
+    ) -> Result<Expression<'a>, ArenaBox<'a, JSXElement<'a>>> {
+        if !self.lower_flow || !super::flow::admits(self, flow, &element) {
+            return Err(element);
+        }
+        let span = element.span;
+        let region = super::flow::lower(self, flow, element);
+        let id = self.regions.len() as crate::ir::RegionId;
+        self.regions.push(Some(region));
+        Ok(self.ident(self.uids.region(id, self.allocator), span))
+    }
+
+    /// Records that one reference to a flow binding was consumed by the
+    /// lowering. `install` drops the import specifier once every reference it
+    /// had has been counted here, so a module that lowered all of its `<Show>`s
+    /// stops importing `Show`.
+    #[inline]
+    pub(super) fn dev(&self) -> bool {
+        self.dev
+    }
+
+    /// The module's source text, for the one question the flow pass asks about
+    /// raw JSX: is this text child whitespace between two `<Match>` arms?
+    #[inline]
+    pub(super) fn source_text(&self) -> &'a str {
+        self.source
+    }
+
+    /// Whether the root at `index` became a unit with an empty patch program.
+    #[inline]
+    pub(super) fn inert_root(&self, index: u32) -> bool {
+        self.inert_roots.get(index as usize).copied().unwrap_or(false)
+    }
+
+    pub(super) fn consumed(&mut self, name: &JSXElementName<'a>) {
+        let JSXElementName::IdentifierReference(identifier) = name else { return };
+        let Some(reference) = identifier.reference_id.get() else { return };
+        if let Some(symbol) = self.lift.scoping().get_reference(reference).symbol_id() {
+            self.flow_rewrites.push(symbol);
+        }
     }
 }
 
@@ -796,7 +950,13 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
             let Expression::JSXElement(element) = it.take_in(&self.allocator) else {
                 unreachable!("matched above")
             };
-            *it = self.component_call(callee, flow, element);
+            *it = match flow {
+                Some(kind) => match self.region_placeholder(kind, element) {
+                    Ok(placeholder) => placeholder,
+                    Err(element) => self.component_call(callee, symbol, flow, element),
+                },
+                None => self.component_call(callee, symbol, flow, element),
+            };
         }
         walk_expression(self, it);
     }
@@ -1011,9 +1171,14 @@ mod tests {
         assert!(!code.contains("_$props"), "{code}");
     }
 
-    /// Target #8, restated for M3. A static control-flow body is one
+    /// Target #8, restated for M4b. A static control-flow body is one
     /// `template()` clone inside a Block — no IIFE, no element binding — and a
     /// body carrying a patch splices its walk into the same Block.
+    ///
+    /// The construct itself is gone: what stands here is `branch`, taking a key
+    /// that is the author's own `when` read and one body for every key. The
+    /// props object, the `Show` frame and the runtime's re-derivation of
+    /// `(parent, anchor)` went with it (K5).
     #[test]
     fn a_static_control_flow_body_costs_one_clone_and_nothing_else() {
         let source = "import { Show, signal } from \"@barqjs/core\";\n\
@@ -1021,11 +1186,19 @@ mod tests {
                       export const A = () => <Show when={() => on()}><p class=\"s\">x</p></Show>;\n\
                       export const B = () => <Show when={() => on()}><p class=\"s\">{on()}</p></Show>;\n";
         let code = emit(source).code;
-        assert!(code.contains("children: _$block((_s$) => _tmpl$1()"), "{code}");
+        assert!(code.contains("_$branch(_s$, null, null, () => on() || false"), "{code}");
+        assert!(code.contains("_$block((_s$) => _tmpl$1())"), "{code}");
         assert!(code.contains("_$insert(_s$, _el$1, on)"), "{code}");
-        // η-reduction, for the props whose unwrapping contract the runtime
-        // documents. A signal getter IS a Cell, so the reduction is sound (C5.2).
+        assert!(!code.contains("Show("), "{code}");
+        assert!(!code.contains("when:"), "{code}");
+
+        // With the flow pass off the construct keeps its adapter, and the
+        // η-reduction that used to be the only observable here is still what
+        // fills the prop: a signal getter IS a Cell (C5.2).
+        let code = o0(source).code;
+        assert!(code.contains("Show(_s$, {"), "{code}");
         assert!(code.contains("when: on"), "{code}");
+        assert!(!code.contains("_$branch"), "{code}");
     }
 
     /// The boundary of η-reduction, and what M3 changes about it. An arrow the
@@ -1040,9 +1213,11 @@ mod tests {
                       export const A = () => <Show when={() => on()}>{() => <p class=\"s\">x</p>}</Show>;\n\
                       export const B = () => <For each={() => rows()}>{() => <li>x</li>}</For>;\n";
         let code = emit(source).code;
-        assert!(code.contains("children: _$block((_s$) => _tmpl$1()"), "{code}");
-        assert!(code.contains("children: _$block((_s$) => _tmpl$2()"), "{code}");
-        assert!(code.contains("each: rows"), "{code}");
+        assert!(code.contains("_$block((_s$) => _tmpl$1())"), "{code}");
+        assert!(code.contains("_$block((_s$) => _tmpl$2())"), "{code}");
+        // The source `each` is the primitive's fourth argument now, and it is
+        // still the accessor itself rather than a Cell wrapped around one.
+        assert!(code.contains("_$each(_s$, null, null, rows, null,"), "{code}");
     }
 
     /// A body with a hole is not static, so the Block's body is the compiled
@@ -1055,7 +1230,14 @@ mod tests {
              const V = () => <Show when={() => on()}>{() => <p>{value}</p>}</Show>;\n",
         )
         .code;
-        assert!(code.contains("children: _$block((_s$) => {"), "{code}");
+        assert!(code.contains("_$block((_s$) => {"), "{code}");
+        assert!(code.contains("_$insert(_s$, _el$1, value)"), "{code}");
+        // A body that reaches `insert` registers something disposable, so the
+        // activation still gets a `Scope` and no flag is shipped.
+        assert!(code.contains("_v$ ? _$block"), "{code}");
+        // A body that reaches `insert` registers something disposable, so the
+        // activation still gets a `Scope` and no flag is shipped.
+        assert!(!code.contains("}), 2)"), "{code}");
     }
 
     /// A `children=` attribute alongside JSX children. ONE `children` key is the
@@ -1136,11 +1318,13 @@ mod tests {
              export const V = () => <For each={rows}>{(row) => <li>{row()}</li>}</For>;\n",
         )
         .code;
-        assert!(code.contains("each: rows"), "{code}");
-        assert!(!code.contains("each: () => rows"), "{code}");
+        assert!(code.contains("_$each(_s$, null, null, rows, null,"), "{code}");
+        assert!(!code.contains("() => rows"), "{code}");
 
-        // A PARAMETERISED binding is not a Cell and still crosses as one, which
-        // is what keeps `keyed={byId}` distinguishable from a Cell by arity.
+        // A PARAMETERISED binding is not a Cell — it is a key FUNCTION, and the
+        // arity is what tells the two apart (§3.0 rule 1). `each` takes it as
+        // `keyOf` directly, where the adapter had to re-derive that at run time
+        // from `typeof carrier === "function" && carrier.length >= 1`.
         let keyed = emit(
             "import { For, signal } from \"@barqjs/core\";\n\
              const items = signal([1]);\n\
@@ -1148,7 +1332,8 @@ mod tests {
              export const V = () => <For each={items} keyed={byId}>{(row) => <li>x</li>}</For>;\n",
         )
         .code;
-        assert!(keyed.contains("keyed: () => byId"), "{keyed}");
+        assert!(keyed.contains("_$each(_s$, null, null, items, byId,"), "{keyed}");
+        assert!(!keyed.contains("() => byId"), "{keyed}");
     }
 
     /// η-reduction's preconditions, each one negatively. What has to be pinned
@@ -1161,23 +1346,23 @@ mod tests {
             // the callee is a function, not an accessor: calling it is not a read
             (
                 "const f = () => [1];\nexport const V = () => <For each={() => f()}>{r}</For>;",
-                "each: () => f()",
+                "null, null, () => f(), null,",
             ),
             // an argument means the arrow is not the identity of the call
             (
                 "const f = signal([1]);\nexport const V = () => <For each={() => f(1)}>{r}</For>;",
-                "each: () => f(1)",
+                "null, null, () => f(1), null,",
             ),
             // a parameter means the arrow is not zero-arity, so it is a VALUE
             // whose identity the consumer may compare
             (
                 "const f = signal([1]);\nexport const V = () => <For each={(x) => f()}>{r}</For>;",
-                "each: _$cell((x) => f())",
+                "null, null, _$cell((x) => f()), null,",
             ),
             // a member call is not an identifier reference
             (
                 "const o = { f: () => [1] };\nexport const V = () => <For each={() => o.f()}>{r}</For>;",
-                "each: () => o.f()",
+                "null, null, () => o.f(), null,",
             ),
         ];
         for (body, expected) in cases {

@@ -12,6 +12,8 @@ import {
   type KnownFailure,
 } from "./known-failures.ts"
 import { FIXTURE_DIR } from "./harness.ts"
+import { L4_RULES } from "./graded.ts"
+import { L4_DIR } from "./session.ts"
 import { CHANNEL_RULES, OWNERSHIP_DIR } from "./ownership.ts"
 import {
   documentedRules,
@@ -23,8 +25,10 @@ import {
   type FixtureRun,
   type Outcome,
   documentedStatus,
+  indexedStatuses,
+  STATUS_LETTER,
 } from "./semantics.ts"
-import { UNPINNED_RULES } from "./unpinned-rules.ts"
+import { FICTION_PINS, UNPINNED_RULES } from "./unpinned-rules.ts"
 
 /**
  * Layer L1 of the oracle, run against the CURRENT compiler — `CODESIGN.md` §8's
@@ -64,12 +68,15 @@ const OUTCOMES: Outcome[] = RUNS.flatMap((run) => run.outcomes)
 
 /**
  * Every rule something executable can report: an L1 fixture that declares it,
- * or the L2b ownership channel's declared reach. Everything else in the
+ * the L2b ownership channel's declared reach, or the L4 channels' — the
+ * metamorphic node-identity grade, the leak oracle and the single-evaluation
+ * conformance, whose reach is `graded.ts`'s `L4_RULES`. Everything else in the
  * document is prose, and `UNPINNED_RULES` is the checked-in list of it.
  */
 const PINNED = new Set<string>([
   ...RUNS.flatMap((run) => run.rules),
   ...CHANNEL_RULES,
+  ...L4_RULES,
 ])
 
 /**
@@ -309,7 +316,7 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
   })
 
   it("marks a §13 fixture *(new)* if and only if it does not exist", () => {
-    const roots = [FIXTURE_DIR, SEMANTICS_DIR, OWNERSHIP_DIR]
+    const roots = [FIXTURE_DIR, SEMANTICS_DIR, OWNERSHIP_DIR, L4_DIR]
     const wrong: string[] = []
     for (const entry of indexedFixtures()) {
       // A bench or a type-level test is not a fixture and has no .tsx on disk.
@@ -328,6 +335,81 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
       "§13's fixture column is the one column a reader uses to tell a pinned rule from an " +
         "unpinned one, and it drifted: six cells still carried *(new)* for fixtures that had been " +
         "written. A hand-maintained coverage column that drifts reports coverage that does not exist.",
+    ).toBe("")
+  })
+
+  it("§13's Status column says what the rule's own **Status.** line says", () => {
+    const prose = documentedStatus()
+    const index = indexedStatuses()
+    const wrong: string[] = []
+    for (const [rule, cell] of index) {
+      const word = prose.get(rule)
+      if (word === undefined) continue
+      const letter = STATUS_LETTER[word]
+      expect(letter, `SEMANTICS.md writes a status word §13 has no letter for: ${word}`).toBeString()
+      if (!new RegExp(`(?<![A-Za-z])${letter}(?![A-Za-z])`).test(cell)) {
+        wrong.push(`${rule}: index says "${cell}", the rule's own **Status.** line says ${word}`)
+      }
+    }
+    expect(
+      wrong.join("\n"),
+      "§13 is the document's own summary and it is the first thing a reviewer reads. It disagreed " +
+        "with the prose in 18 of 82 rows — O2, C6 and X1 were all listed VIOLATED while their own " +
+        "sections said HOLDS — and nothing checked it, because the bidirectional pinning check " +
+        "covers rule IDs and not statuses.",
+    ).toBe("")
+  })
+
+  it("a rule whose prose claims HOLDS is pinned by a fixture that exists", () => {
+    const prose = documentedStatus()
+    const roots = [FIXTURE_DIR, SEMANTICS_DIR, OWNERSHIP_DIR, L4_DIR]
+    const pins = new Map<string, string[]>()
+    for (const entry of indexedFixtures()) {
+      const list = pins.get(entry.rule) ?? []
+      list.push(entry.name)
+      pins.set(entry.rule, list)
+    }
+    const unbacked: string[] = []
+    const fiction: string[] = []
+    for (const [rule, named] of pins) {
+      const word = prose.get(rule)
+      if (word !== "HOLDS" && word !== "PARTIAL") continue
+      const present = (name: string): boolean => {
+        if (name.endsWith(".bench.ts") || name.endsWith(".d.test.ts")) return true
+        if (name.endsWith(".md")) return existsSync(join(FIXTURE_DIR, "..", name))
+        const base = name.endsWith(".tsx") ? name.slice(0, -4) : name
+        return roots.some((root) => existsSync(join(root, `${base}.tsx`)))
+      }
+      if (!named.some(present)) {
+        unbacked.push(`${rule} (${word}): ${named.join(", ")} — none of them exist`)
+      }
+      // EVERY named pin, not merely one of them. C6 named five and read HOLDS
+      // while `sem-own-slot-arguments` — §13's own pin for the slot-parameter
+      // half, and the half M4b's gate round found broken — did not exist. The
+      // ones still missing are a checked-in list, not a silence.
+      for (const name of named) {
+        if (present(name)) continue
+        const row = `${rule}: ${name.endsWith(".tsx") ? name.slice(0, -4) : name}`
+        if (!FICTION_PINS.includes(row)) fiction.push(`+ ${row} is a named pin that does not exist`)
+      }
+    }
+    for (const row of FICTION_PINS) {
+      const [rule, name] = row.split(": ")
+      const written = roots.some((root) => existsSync(join(root, `${name}.tsx`)))
+      if (written) fiction.push(`- ${row} exists now — strike it off unpinned-rules.ts`)
+      if (!pins.has(rule)) fiction.push(`- ${row} names a rule §13 no longer pins`)
+    }
+    expect(
+      unbacked.join("\n"),
+      "45 of the 96 fixtures §13 names had no file anywhere, and for three rules EVERY named pin " +
+        "was absent while the prose read HOLDS. The *(new)* marker is machine-checked; existence " +
+        "was not, so a rule could claim to hold on the strength of a fixture nobody had written.",
+    ).toBe("")
+    expect(
+      fiction.join("\n"),
+      "`.some(...)` let a rule hold on a SIBLING's evidence while the pin for the half in question " +
+        "was fiction. Every named pin is checked now, and the ones still unwritten are a registry " +
+        "row rather than a silence — bidirectionally, so writing one is a diff either way.",
     ).toBe("")
   })
 

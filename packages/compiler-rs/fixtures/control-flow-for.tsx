@@ -33,6 +33,9 @@ export const optimality = {
   // the row body is a callback the runtime invokes per item, so it keeps its
   // arrow however static it is. `each` η-reduces to the accessor itself.
   templates: 3,
-  emits: ["For(", "each: items", ", item, index) =>"],
-  absent: ["(For, {", "each: () =>"],
+  // K5: the construct is gone and `each` takes the source, the key mode and the
+  // row Block positionally. Absent `keyed` is `null` — identity is the item —
+  // and the fallback rides after the flags integer `each` never reads.
+  emits: ["each(", ", items, null, ", ", item, index) =>", ", 0, "],
+  absent: ["For(", "each: "],
 }

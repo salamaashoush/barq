@@ -39,6 +39,16 @@ export const optimality = {
   // which is what the SSR backend does, and only the SSR backend — produces a
   // `Switch` with nothing to read. The component bodies are ordinary calls with
   // an empty props object, not `createElement`.
-  emits: ["Switch({", "[Match(", "Spinner(", "Content("],
-  absent: ["(Switch, {", "(Match, {", "createElement("],
+  // Since K5 that pair collapses into ONE `branch` on an integer key, and the
+  // arms become rows of a hoisted table — which is the same answer the string
+  // backend reached, arrived at in the compiler instead of at runtime. The
+  // component bodies stay ordinary calls with an empty props object.
+  emits: [
+    "branch(",
+    '() => status() === "loading" ? 1 : status() === "ready" ? 2 : 0',
+    "? 2 : 0, [",
+    "Spinner(",
+    "Content(",
+  ],
+  absent: ["Switch(", "Match(", "when: ", "children: ", "createElement("],
 }

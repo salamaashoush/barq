@@ -62,15 +62,21 @@ export class NoOwnerError extends Error {
 }
 
 /**
- * §3.0 rule 3's brand. The compiler wraps every Block that USES its scope in
- * `_$b`, once per definition site; this marks the function in place and hands
- * it back, so a branded Block costs one property write and no extra closure.
+ * §3.0 rule 3's brand and its enforcement, in one value.
  *
  * The brand is POSITIVE: it means "this value requires a scope". An unbranded
  * function is a Cell, or a Block that ignores its scope (an arity-0
  * `template()`, C6) — which is simultaneously a legal Cell, which is why rule 2
  * lets one call site serve both kinds. Kind travels with the value (rule 4),
  * so a forwarded Block is still branded and an arity guess is never consulted.
+ *
+ * C3.8 is a property of the VALUE, not of a call site. A marked-in-place `fn`
+ * makes the brand readable but leaves "invoked without a scope" enforceable only
+ * where someone remembered to ask, and six of the seven Cell slots on the
+ * primitive surface did not — so a Block reaching one ran with `s === undefined`
+ * and every ambient read inside it resolved against `CURRENT`, which is the
+ * Provider bug at the one place §3.0 says nobody would look. The wrapper is one
+ * closure per DEFINITION site and none per activation.
  *
  * It lives here rather than in `props.ts` for the reason `scope.ts` states at
  * the top of the file: this module may acquire no VALUE import, because Bun
@@ -80,8 +86,23 @@ export class NoOwnerError extends Error {
 export const BLOCK: unique symbol = Symbol.for("barq.block");
 
 export function block<F extends (...args: never[]) => unknown>(fn: F): F {
+  const guarded = function (this: unknown, scope: unknown): unknown {
+    if (scope === undefined) throw new ScopeMissingError(blockOrigin(fn));
+    return (fn as unknown as (...rest: unknown[]) => unknown).apply(this, arguments as never);
+  };
+  return brand(guarded) as unknown as F;
+}
+
+/** The brand without the entry guard, for the one value that legally ignores its scope. */
+function brand<F>(fn: F): F {
   (fn as unknown as Record<symbol, boolean>)[BLOCK] = true;
   return fn;
+}
+
+/** Built only on the throw: naming the Block costs nothing until one is wrong. */
+function blockOrigin(fn: unknown): string {
+  const name = (fn as { name?: string }).name;
+  return name !== undefined && name !== "" ? `Block ${name}` : "a Block";
 }
 
 /** Whether `value` is a Block that declared it needs the scope it is handed. */
@@ -192,6 +213,16 @@ function addDiagnosticListener(listener: (event: DiagnosticEvent) => void): void
 function removeDiagnosticListener(listener: (event: DiagnosticEvent) => void): void {
   diagnosticListeners.delete(listener);
   diagnosticsOn = diagnosticListeners.size !== 0;
+}
+
+/**
+ * The same single load `emitDiagnostic` short-circuits on, for a caller whose
+ * CHECK is the expensive part rather than the message. `flow.ts`'s C7 counter
+ * is the one such caller: building the argument costs a WeakMap probe per
+ * activation and nobody is listening on the hot path.
+ */
+export function diagnosticsEnabled(): boolean {
+  return diagnosticsOn;
 }
 
 export function emitDiagnostic(
@@ -577,6 +608,16 @@ export function scopeAllocations(): number {
   return scopesAllocated;
 }
 
+let effectsAllocated = 0;
+
+/**
+ * The other half of §8's flag gate: `STATIC_KEY` skips an effect and no scope,
+ * so `scopeAllocations` cannot see it and only a wall-clock number was left.
+ */
+export function effectAllocations(): number {
+  return effectsAllocated;
+}
+
 function makeScope(parent: Scope | null): Scope {
   scopesAllocated++;
   return {
@@ -690,7 +731,13 @@ export function requireScope(scope: Scope | null | undefined, origin: string): S
 export function readSlot(value: unknown, origin: string): unknown {
   if (typeof value !== "function") return value;
   if (isBlock(value)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
-  return (value as () => unknown)();
+  const read = (value as () => unknown)();
+  // A Cell that YIELDS a Block is the laundered form: an uncompiled caller
+  // wrapping a forwarded prop in `() => x` produces one, and it walks past the
+  // test above because the wrapper carries no brand. Stringifying it into an
+  // attribute is what the brand exists to prevent, so the same throw answers.
+  if (isBlock(read)) throw new ScopeMissingError(`${origin} (a Cell yielded a Block)`);
+  return read;
 }
 
 /**
@@ -730,21 +777,20 @@ export function exit(scope: Scope): void {
 }
 
 /**
- * Non-zero while a parent is walking its own `kids`, which is the one case
- * where a child must NOT splice itself out: the walk clears the array whole.
+ * O3.2: kids in reverse creation order, depth-first.
+ *
+ * The array is detached from the scope BEFORE the walk, which is what tells a
+ * child disposing inside it not to splice itself out of a list that is being
+ * discarded whole. A module-global depth counter said the same thing for the
+ * wrong scope: any disposal happening anywhere while some unrelated tree was
+ * unwinding skipped its splice too, and a long-lived parent kept every dead
+ * child forever — the leak the guard exists to prevent, at one remove.
  */
-let unwindDepth = 0;
-
-/** O3.2: kids in reverse creation order, depth-first. */
 function unwindKids(scope: Scope): void {
   const kids = scope.kids;
   if (kids === null) return;
-  unwindDepth++;
-  try {
-    unwindKidsInner(kids);
-  } finally {
-    unwindDepth--;
-  }
+  scope.kids = null;
+  unwindKidsInner(kids);
   kids.length = 0;
 }
 
@@ -783,10 +829,11 @@ export function disposeScope(scope: Scope): void {
   if (OWNERSHIP.sink !== null) OWNERSHIP.sink.dispose(scope);
   // O3.7 for the PARENT: a scope disposed on its own leaves its slot behind
   // otherwise, so repeatedly creating and disposing children of a long-lived
-  // scope retains every dead one. Skipped under `unwindKids`, which is
-  // clearing the whole array anyway.
+  // scope retains every dead one. `unwindKids` detaches the array it is
+  // walking, so a child disposed by its own parent's unwind finds `null` here
+  // and a child disposed during someone ELSE's unwind still reclaims its slot.
   const parent = scope.parent;
-  if (unwindDepth === 0 && parent !== null && parent.kids !== null) {
+  if (parent !== null && parent.kids !== null) {
     const at = parent.kids.indexOf(scope);
     if (at !== -1) parent.kids.splice(at, 1);
   }
@@ -824,6 +871,11 @@ export function ownRange(scope: Scope, remove: () => void): void {
  * provider costs one prototype link regardless of how many keys are in scope.
  */
 export function provideOn(scope: Scope, key: string | symbol, value: unknown): void {
+  // X2 makes a provided value a Cell, so a Block here is C5.1's Block-in-a-Cell
+  // slot. It is rejected at the INSTALL rather than at the read: a binding
+  // nobody reads until three components later reports the mistake three
+  // components away from the site that made it.
+  if (isBlock(value)) throw new ScopeMissingError("provide (a Block reached a Cell slot)");
   if (!scope._forked) {
     scope.ctx = Object.create(scope.ctx) as ContextRecord;
     scope._forked = true;
@@ -876,8 +928,11 @@ function lookupNodeContext(node: ComputedNode<unknown>, key: string | symbol): u
  * 14–30% slowdown on the DOM rows — and let an unrelated later `render` adopt
  * and destroy work it had nothing to do with.
  *
- * **This list dies with M3.** A Block-taking `render` builds under the root,
- * `adoptOrphans` has nothing to find, and the three functions below go with it.
+ * **This list dies with M8, not M3.** M3 made the COMPILED path build under the
+ * root, but the un-compiled consumers (`packages/extra`, `packages/kitchen-sink`)
+ * still build ownerless and their `onCleanup` has nowhere else to go. Once §8
+ * puts them on the barq compiler, `adoptOrphans` has nothing to find and the
+ * three functions below go with it. Pinned in extra/src/m8-convention.test.ts.
  */
 const orphans: Kid[] = [];
 
@@ -1928,6 +1983,7 @@ function createEffectNode(
   apply: ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
   kind: number,
 ): () => void {
+  effectsAllocated++;
   const node = createComputedNode(compute, kind);
   node._apply = apply;
 
@@ -2231,26 +2287,31 @@ export function createOwner(kind: ScopeKind = "scope"): Owner {
 }
 
 /**
- * `pin(s, block)` — the one sanctioned way to break dynamic ownership (O2).
+ * `pin(s, body)` — the one sanctioned way to break dynamic ownership (O2).
  * The returned Block ignores the scope it is handed and runs under `s`, and
  * because it is visible in the emitted text the exception is auditable.
+ *
+ * Branded but NOT guarded: the brand is what stops a pinned Block being invoked
+ * as a Cell and stringified into an attribute, while `block`'s entry guard would
+ * contradict the one thing `pin` promises — that the handed scope is ignored,
+ * including when there is none.
  */
 export function pin<A extends unknown[], R>(
   scope: Scope,
-  block: (owner: Scope, ...args: A) => R,
+  body: (owner: Scope, ...args: A) => R,
 ): (ignored?: Scope, ...args: A) => R {
-  return (_ignored?: Scope, ...args: A): R => {
+  return brand((_ignored?: Scope, ...args: A): R => {
     const prevOwner = currentOwner;
     const prevHost = currentHost;
     currentOwner = scope;
     currentHost = null;
     try {
-      return block(scope, ...args);
+      return body(scope, ...args);
     } finally {
       currentOwner = prevOwner;
       currentHost = prevHost;
     }
-  };
+  });
 }
 
 /**

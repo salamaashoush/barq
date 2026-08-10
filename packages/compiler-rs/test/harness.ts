@@ -494,7 +494,7 @@ export function writeSibling(name: string, code: string): void {
 // rendering
 // ---------------------------------------------------------------------------
 
-async function settle(): Promise<void> {
+export async function settle(): Promise<void> {
   const core = await import("@barqjs/core")
   core.flush()
   // Portal and friends defer their work with queueMicrotask; two turns of the
@@ -710,10 +710,20 @@ function closesAJsxTag(code: string, at: number, previous: string): boolean {
   return code[at + 1] === ">" && (previous === "}" || previous === '"' || previous === "'")
 }
 
-export function stripLiterals(code: string): string {
+/**
+ * `all` blanks string, template and regex CONTENTS as well as comments; the
+ * scanner still walks every one of them either way, because knowing where a
+ * literal ends is what keeps the comment detection in sync.
+ */
+export type Strip = "all" | "comments"
+
+export function stripLiterals(code: string, what: Strip = "all"): string {
   const out = code.split("")
   const blank = (from: number, to: number): void => {
     for (let i = from; i < to && i < out.length; i++) if (out[i] !== "\n") out[i] = " "
+  }
+  const blankLiteral = (from: number, to: number): void => {
+    if (what === "all") blank(from, to)
   }
 
   let i = 0
@@ -731,7 +741,7 @@ export function stripLiterals(code: string): string {
 
     if (inTemplate) {
       if (ch === "\\") {
-        blank(i, i + 2)
+        blankLiteral(i, i + 2)
         i += 2
         continue
       }
@@ -748,7 +758,7 @@ export function stripLiterals(code: string): string {
         i += 2
         continue
       }
-      blank(i, i + 1)
+      blankLiteral(i, i + 1)
       i++
       continue
     }
@@ -770,7 +780,7 @@ export function stripLiterals(code: string): string {
     if (ch === '"' || ch === "'") {
       let j = i + 1
       while (j < code.length && code[j] !== ch) j += code[j] === "\\" ? 2 : 1
-      blank(i + 1, j)
+      blankLiteral(i + 1, j)
       i = j + 1
       previous = ch
       continue
@@ -811,7 +821,7 @@ export function stripLiterals(code: string): string {
         else if (code[j] === "/" && !inClass) break
         j++
       }
-      blank(i + 1, j)
+      blankLiteral(i + 1, j)
       i = j + 1
       previous = "/"
       continue
@@ -822,6 +832,18 @@ export function stripLiterals(code: string): string {
   }
 
   return out.join("")
+}
+
+/**
+ * The module with its COMMENTS blanked and every literal left alone.
+ *
+ * A fixture's prose reaches the emitted module verbatim, and an assertion that
+ * searches the module for `Switch({` finds one in a doc comment explaining what
+ * `Switch` used to emit. `stripLiterals` would take the template markup with it,
+ * and half the corpus's declarations are claims ABOUT that markup.
+ */
+export function stripComments(code: string): string {
+  return stripLiterals(code, "comments")
 }
 
 /** Call sites of one emitted helper, counted off the code and nothing else. */
@@ -964,18 +986,30 @@ export function auditAnchors(code: string): AnchorAudit {
 
   const used = new Set<Node>()
   let unresolved = 0
-  for (const call of insertCalls(stripped)) {
-    // `_$insert($s, parent, value, anchor)` — the scope is first (§3.3 C6), so
-    // the anchor is the FOURTH argument.
-    if (call.length < 4) continue
-    const name = call[3].trim()
-    if (!/^_el\$+\d+$/.test(name)) continue
+  const claim = (name: string): void => {
+    if (!/^_el\$+\d+$/.test(name)) return
     const node = bound.get(name)
     if (!node) {
       unresolved++
-      continue
+      return
     }
     used.add(node)
+  }
+  for (const call of callsTo(stripped, "insert")) {
+    // `_$insert($s, parent, value, anchor)` — the scope is first (§3.3 C6), so
+    // the anchor is the FOURTH argument.
+    if (call.length < 4) continue
+    claim(call[3].trim())
+  }
+  // A REGION consumes an anchor too, and takes it as the THIRD argument:
+  // `_$branch($s, parent, anchor, …)`. Since M4b that is where most of the
+  // corpus's anchors are read, so an audit that only knew about `insert` would
+  // report every one of them as baked-and-unused (K5, K7).
+  for (const primitive of ["branch", "each", "boundary"]) {
+    for (const call of callsTo(stripped, primitive)) {
+      if (call.length < 3) continue
+      claim(call[2].trim())
+    }
   }
 
   let baked = 0
@@ -1002,9 +1036,9 @@ function anchorsIn(root: Node): Node[] {
 }
 
 /** The top-level argument text of every `_$insert(...)` call. */
-function insertCalls(stripped: string): string[][] {
+function callsTo(stripped: string, helper: string): string[][] {
   const calls: string[][] = []
-  const opener = /_\$+insert\(/g
+  const opener = new RegExp(`_\\$+${helper}\\(`, "g")
   for (let match = opener.exec(stripped); match !== null; match = opener.exec(stripped)) {
     const args: string[] = []
     let depth = 1
@@ -1103,7 +1137,7 @@ export interface Divergence {
     | "effect-runs"
     | "marker-count"
     | "attribute-order"
-    | "node-identity"
+    | "node-identity-differential"
   step?: number
   oracle: string
   compiled: string
@@ -1512,7 +1546,7 @@ export async function compareToOracle(
       const got = compiled.channels[i].identity.join(",")
       if (want === got) continue
       divergences.push({
-        kind: "node-identity",
+        kind: "node-identity-differential",
         step: i,
         oracle: want,
         compiled: got,
@@ -1572,8 +1606,37 @@ export function formatDivergences(name: string, divergences: Divergence[]): stri
   return lines.join("\n")
 }
 
+/**
+ * The precondition every oracle comparison ASSUMES and none of them stated.
+ *
+ * The reference module is loaded UN-COMPILED, so bun lowers it onto
+ * `@barqjs/core/jsx-runtime`. Under an identity `transform(code) { return
+ * { code } }` the compiled side is lowered by bun onto the same runtime — the
+ * two sides become the same program, and 221 of this file's 298 assertions go
+ * green against a compiler that compiled nothing. `CODESIGN.md` §6 names that
+ * failure in as many words: a reference implementation that shares your defect
+ * is worse than none.
+ *
+ * So each comparison states a fact no build that skipped the work can produce:
+ * the emitted module is not the source, and it carries at least one `_$` helper.
+ * `optimisation.test.ts` has had the same three lines per fixture since M1; this
+ * is the channel that did not.
+ */
+export function assertReallyCompiled(name: string, code: string): void {
+  if (code === fixtureSource(name)) {
+    throw new Error(`${name}: the build handed the source back — nothing compiled it`)
+  }
+  if (!code.includes("_$")) {
+    throw new Error(
+      `${name}: the compiled module carries no runtime helper, so both sides of this ` +
+        `comparison are the un-compiled jsx-runtime path and the comparison is a self-comparison`,
+    )
+  }
+}
+
 export async function assertMatchesOracle(name: string): Promise<Comparison> {
   const result = await compareToOracle(name)
+  assertReallyCompiled(name, result.compiled.code ?? "")
   if (!result.ok) throw new Error(formatDivergences(name, result.divergences))
   return result
 }

@@ -38,6 +38,9 @@ export const optimality = {
   templates: 2,
   // The proof that the by-item arm survives the fix: the read is applied once,
   // with no thunk, because the row it reads is rebuilt whenever the item is.
-  emits: ["For(", "() => true", ", row) =>", ", row.text)"],
-  absent: ["(For, {", "() => row.text"],
+  // `keyed={true}` and `keyed` absent are ONE arm, and the compiler now says so
+  // in the emission rather than forwarding a Cell for the runtime to unpick:
+  // `each`'s `keyOf` is `null`, which is how identity-is-the-item is spelled.
+  emits: ["each(", ", rows, null, ", ", row) =>", ", row.text)"],
+  absent: ["For(", "() => true", "() => row.text"],
 }

@@ -1,6 +1,6 @@
 use oxc::span::Span;
 
-use super::{ExprId, HoistId, NameId, NodeId, PartRange, SlotId, StrId};
+use super::{ExprId, HoistId, NameId, NodeId, PartRange, RegionId, SlotId, StrId};
 
 /// A flat, `Copy`, document-ordered instruction. Holds no AST — only `ExprId`s —
 /// and names no codegen target, which is what lets one IR drive both backends.
@@ -82,6 +82,16 @@ pub enum Op {
         plan: InsertPlan,
     },
 
+    /// A child hole the flow pass proved is a control-flow REGION: one of
+    /// `flow.ts`'s four primitives, handed the `(parent, anchor)` pair the
+    /// template walk already computed instead of re-deriving it. `region` indexes
+    /// the unit's own region table, which carries the primitive's arguments.
+    Region {
+        slot: SlotId,
+        anchor: Anchor,
+        region: RegionId,
+    },
+
     // ── structure ─────────────────────────────────────────────────────────
     /// Prefix marker: the next `len` patches share ONE renderEffect.
     /// Created only by P5. `len == 1` lowers to the cheaper thunk form.
@@ -158,7 +168,7 @@ impl Op {
     #[inline]
     pub fn slot(self) -> Option<SlotId> {
         match self {
-            Op::Insert { slot, .. } => Some(slot),
+            Op::Insert { slot, .. } | Op::Region { slot, .. } => Some(slot),
             _ => None,
         }
     }
@@ -166,7 +176,17 @@ impl Op {
     #[inline]
     pub fn anchor(self) -> Option<Anchor> {
         match self {
-            Op::Insert { anchor, .. } => Some(anchor),
+            Op::Insert { anchor, .. } | Op::Region { anchor, .. } => Some(anchor),
+            _ => None,
+        }
+    }
+
+    /// The region row this op reads, which is the only place an op names
+    /// something outside the `ExprTable`.
+    #[inline]
+    pub fn region(self) -> Option<RegionId> {
+        match self {
+            Op::Region { region, .. } => Some(region),
             _ => None,
         }
     }
@@ -217,6 +237,23 @@ mod tests {
         let Op::Delegate { data, handler, .. } = op else { unreachable!() };
         assert_eq!(data, Some(4));
         assert_eq!(handler, HandlerRef::Hoisted(1));
+    }
+
+    /// A region occupies a child slot exactly as an insert does, which is what
+    /// lets P5 anchor it and P6 address its parent without either pass knowing
+    /// what a control-flow primitive is.
+    #[test]
+    fn a_region_is_a_child_hole_like_any_other() {
+        let op = Op::Region { slot: 2, anchor: Anchor::Node(5), region: 1 };
+        assert_eq!(op.slot(), Some(2));
+        assert_eq!(op.anchor(), Some(Anchor::Node(5)));
+        assert_eq!(op.region(), Some(1));
+        assert_eq!(op.value(), None);
+        assert!(!op.is_group_header());
+        assert_eq!(
+            Op::Insert { slot: 0, anchor: Anchor::End, value: 0, plan: InsertPlan::Once }.region(),
+            None
+        );
     }
 
     #[test]

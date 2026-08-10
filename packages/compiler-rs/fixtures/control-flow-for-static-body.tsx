@@ -31,6 +31,13 @@ export const optimality = {
   // per row, so the row thunk survives however static its body is — one shared
   // template, cloned per row, and one insert joining the list to its parent.
   templates: 2,
-  patchCalls: 1,
-  emits: ['<li class="row"><span>fixed</span></li>'],
+  // Zero patch calls, where there was one: the list is a REGION, so the
+  // `insert` that joined it to its parent is gone — `each` is handed
+  // `(parent, anchor)` and does the joining itself (K5, K7).
+  patchCalls: 0,
+  emits: ['<li class="row"><span>fixed</span></li>', "each(", ", rows, null, "],
+  // The adapter frame -O0 still pays, named so the claim above is a difference
+  // between two builds rather than a sentence: a props object with the two
+  // named slots, and the `insert` that joined its return value to the tree.
+  absent: ["For(", "each: ", "children: ", "insert("],
 }

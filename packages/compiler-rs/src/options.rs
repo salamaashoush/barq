@@ -36,6 +36,17 @@ pub struct Opt {
     /// A unit whose root sits in a return, a declarator or an arrow body emits
     /// its statements flat into the enclosing body. Off: every unit is an IIFE.
     pub splice: bool,
+    /// The flow pass. On: a recognised control-flow construct is lowered onto
+    /// one of `flow.ts`'s four primitives, handed the `(parent, anchor)` pair
+    /// the template walk already computed and a flags integer carrying what the
+    /// compiler proved. Off: it stays `Show($s, {…})` and the runtime adapter
+    /// does the work — a props object, an adapter frame, `(null, null)` and
+    /// `flags = 0`.
+    ///
+    /// This is the axis that makes the L3 differential non-vacuous: the two
+    /// builds reach the same primitives by two genuinely different routes, so
+    /// the `-O0` side is a real reference rather than the same bytes twice.
+    pub flow: bool,
 }
 
 impl Opt {
@@ -49,6 +60,7 @@ impl Opt {
         eta: false,
         hoist: false,
         splice: false,
+        flow: false,
     };
 
     /// `-Ox`, and the default. Byte-for-byte what this compiler has always
@@ -62,12 +74,13 @@ impl Opt {
         eta: true,
         hoist: true,
         splice: true,
+        flow: true,
     };
 
     /// The name every knob answers to, on the napi surface and in the Vite
     /// plugin. One table, so a listing cannot drift from what `set` accepts.
-    pub const NAMES: [&'static str; 8] =
-        ["fold", "dedup", "anchor", "fuse", "walk", "eta", "hoist", "splice"];
+    pub const NAMES: [&'static str; 9] =
+        ["fold", "dedup", "anchor", "fuse", "walk", "eta", "hoist", "splice", "flow"];
 
     pub fn level(level: u32) -> Self {
         if level == 0 { Self::NONE } else { Self::ALL }
@@ -85,6 +98,7 @@ impl Opt {
             "eta" => &mut self.eta,
             "hoist" => &mut self.hoist,
             "splice" => &mut self.splice,
+            "flow" => &mut self.flow,
             _ => return false,
         };
         *field = on;
@@ -135,9 +149,9 @@ pub struct TransformOptions {
     pub optimize: Option<u32>,
     /// Per-pass override on top of `optimize`, `[[name, "on"|"off"]]`. napi has
     /// no map type, so this is pairs. The names are `fold`, `dedup`, `anchor`,
-    /// `fuse`, `walk`, `eta`, `hoist`, `splice` — one flag per optimisation,
-    /// because L3's payoff is that every optimisation is individually
-    /// bisectable.
+    /// `fuse`, `walk`, `eta`, `hoist`, `splice`, `flow` — one flag per
+    /// optimisation, because L3's payoff is that every optimisation is
+    /// individually bisectable.
     pub passes: Option<Vec<Vec<String>>>,
 }
 

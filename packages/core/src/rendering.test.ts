@@ -20,6 +20,7 @@ import {
   mergeProps,
   children,
 } from "./components.ts";
+import type { Scope } from "./scope.ts";
 import { resource } from "./async.ts";
 
 let container: HTMLDivElement;
@@ -674,13 +675,18 @@ describe("Deep nested reactivity", () => {
     const level2 = signal(true);
     const items = signal([1, 2, 3]);
 
+    // O2/C6: a nested region runs under the scope its enclosing Block was
+    // GIVEN, so the inner instance is a kid of the outer one and dies with it.
+    // Dropping the scope on the way down (`() => Show(null, …)`) leaves the
+    // inner region owned by nobody, and the only thing that used to hide that
+    // was the marker pair M4 deletes.
     const element = Show(null, {
       when: level1,
-      children: () =>
-        Show(null, {
+      children: (outer: Scope | null) =>
+        Show(outer, {
           when: level2,
-          children: () =>
-            For(null, {
+          children: (inner: Scope | null) =>
+            For(inner, {
               each: items,
               children: (_s: unknown, item) => createElement("span", null, String(item)),
             }),

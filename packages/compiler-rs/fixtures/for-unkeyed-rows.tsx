@@ -26,11 +26,11 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 2,
-  // `keyed: false` makes `For` delegate to `Index`, which INVERTS the row
-  // contract: the item becomes an accessor and the index becomes a plain
-  // number. The compiler passes the flag through and rewrites neither — turning
-  // the call into `Index(...)` itself would be right about the semantics and
-  // wrong about the props the author wrote.
-  emits: ["For(", "each: words", "() => false", ", word: () => string, index: number)"],
-  absent: ["Index(", "each: () => words()"],
+  // `keyed={false}` INVERTS the row contract: the item becomes an accessor and
+  // the index becomes a plain number. Since M4b the compiler does not pass a
+  // flag through for the runtime to resolve — `For` and `Index` are the same
+  // `each`, and `keyOf: false` IS the non-keyed mode. There is no longer a
+  // "which component did the author write" for the emission to be wrong about.
+  emits: ["each(", ", words, false, ", ", word: () => string, index: number)"],
+  absent: ["each: ", "() => false"],
 }

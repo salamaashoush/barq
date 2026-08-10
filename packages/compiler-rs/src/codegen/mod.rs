@@ -54,17 +54,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 27;
+pub const HELPER_COUNT: usize = 32;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 10;
+pub const FIRST_SERVER_HELPER: usize = 15;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 26;
+pub const FIRST_INTERP_HELPER: usize = 31;
 
 /// Runtime entry points the two backends are allowed to call. Every one is read
 /// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
@@ -92,25 +92,37 @@ pub enum Helper {
     /// landing in a Cell slot throw instead of being invoked with `undefined`
     /// and silently stringified.
     Block = 9,
+    // ── `flow.ts`'s four primitives, plus `each`'s count-mode symbol ──────
+    //
+    // `CODESIGN.md` §3.4. These are what the fourteen control-flow constructs
+    // lower ONTO: the compiler hands each one the `(parent, anchor)` pair its
+    // own template walk computed, and a flags integer carrying the properties it
+    // proved.
+    Branch = 10,
+    Each = 11,
+    Boundary = 12,
+    Portal = 13,
+    /// `COUNT` — `each`'s fourth mode, where `src` is a count rather than a list.
+    Count = 14,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 10,
-    EscAttr = 11,
-    Attr = 12,
-    Cls = 13,
-    Content = 14,
-    Html = 15,
-    RawText = 16,
-    SpreadAttrs = 17,
-    SsrFor = 18,
-    SsrIndex = 19,
-    SsrRepeat = 20,
-    SsrShow = 21,
-    SsrSwitch = 22,
-    SsrMatch = 23,
-    ClsList = 24,
-    AttrLit = 25,
+    Esc = 15,
+    EscAttr = 16,
+    Attr = 17,
+    Cls = 18,
+    Content = 19,
+    Html = 20,
+    RawText = 21,
+    SpreadAttrs = 22,
+    SsrFor = 23,
+    SsrIndex = 24,
+    SsrRepeat = 25,
+    SsrShow = 26,
+    SsrSwitch = 27,
+    SsrMatch = 28,
+    ClsList = 29,
+    AttrLit = 30,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 26,
+    Interp = 31,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -124,6 +136,11 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "props",
     "cell",
     "block",
+    "branch",
+    "each",
+    "boundary",
+    "portal",
+    "COUNT",
     "esc",
     "escAttr",
     "attr",
@@ -315,6 +332,18 @@ impl<'a, 'm> Emit<'a, 'm> {
         expression
     }
 
+    /// A region no patch claimed, expanded where its placeholder stands. The
+    /// primitive is handed `(null, null)` and returns the anchor it created, so
+    /// whoever receives the value inserts it — `flow.ts`'s own `siteFor` path,
+    /// and the one place K7's single empty text node is paid for.
+    fn region(&mut self, id: crate::ir::RegionId, span: Span) -> Expression<'a> {
+        let empty = dom::empty_region(self, span);
+        let Some(region) = self.module.regions[id as usize].replace(empty) else {
+            unreachable!("a claimed region no longer has a placeholder to expand")
+        };
+        dom::region_call(self, region, None, span)
+    }
+
     fn root(&mut self, index: u32, span: Span) -> Expression<'a> {
         match std::mem::replace(&mut self.module.roots[index as usize], Root::Unit(NONE)) {
             Root::Unit(id) => self.unit(id, span),
@@ -447,6 +476,16 @@ impl<'a> VisitMut<'a> for Emit<'a, '_> {
         {
             let span = identifier.span;
             *it = self.root(index, span);
+        }
+        // Sequential, not an `else`: a root the lowering REFUSED can itself be
+        // one lowered construct, and `<Show>` as a whole component body is
+        // exactly that shape.
+        if let Expression::Identifier(identifier) = it
+            && let Some(id) = self.module.uids.region_index(identifier.name.as_str())
+            && self.module.regions.get(id as usize).is_some_and(Option::is_some)
+        {
+            let span = identifier.span;
+            *it = self.region(id, span);
         } else if matches!(it, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
             let taken = it.take_in(&self.allocator);
             *it = self.jsx(taken);

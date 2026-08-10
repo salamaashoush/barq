@@ -19,6 +19,6 @@ export const optimality = {
   // `Index` gives its row an ACCESSOR item and a plain-number index — the
   // mirror image of keyed `For` — so the index hole passes through as a value
   // and calling the item is the tracked read.
-  emits: ["Index(", "each: nums", ", item, index) =>"],
-  absent: ["(Index, {"],
+  emits: ["each(", ", nums, false, ", ", item, index) =>"],
+  absent: ["Index(", "each: "],
 }

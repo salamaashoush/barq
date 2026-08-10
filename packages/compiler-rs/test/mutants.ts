@@ -54,6 +54,7 @@ const BIN = join(ROOT, "bin")
  */
 const DRIVERS: Array<[string, string]> = [
   ["L3 — the -O0/-Ox differential over the corpus", "corpus (DOM)"],
+  ["L3 — the flow pass alone, bisected", "flow bisect"],
   ["L3 — the -O0/-Ox differential through the string backend", "corpus (SSR)"],
   ["-O0 is a build, not a debug mode", "corpus (compiles)"],
   ["L3 — the JSX generator", "generator"],
@@ -259,6 +260,80 @@ const MUTANTS: Mutant[] = [
           "                        react: React::Static,\n" +
           "                        deps: self.dep(symbol),\n" +
           "                        thunk: Thunk::Eta,",
+      },
+    ],
+  },
+  {
+    id: "flow-ships-no-scope-unproven",
+    pass: "flow",
+    what: "P4b ships NO_SCOPE for every branch, so a body that registers a cleanup keeps no scope to hold it",
+    edits: [
+      {
+        file: "src/passes/flow.rs",
+        find: "    region.flags = flags(statik, inert);",
+        replace: "    let _ = inert;\n    region.flags = flags(statik, true);",
+      },
+    ],
+  },
+  {
+    id: "flow-ships-static-key-unproven",
+    pass: "flow",
+    what: "P4b ships STATIC_KEY for every branch, so a key that moves is read once and never again",
+    edits: [
+      {
+        file: "src/passes/flow.rs",
+        find: "    konst || shaper.lift.rx(read).react == React::Static",
+        replace: "    let _ = shaper.lift.rx(read).react;\n    konst || true",
+      },
+    ],
+  },
+  {
+    /**
+     * The SAFE direction, and the row is here to show that the differential
+     * cannot see it. Dropping a flag the compiler proved leaves a correct
+     * program — the runtime does the work the flag would have skipped — so
+     * `-O0` and `-Ox` still agree on every frame and L3 is right to stay green.
+     * What has to catch it is the ABSOLUTE claim: the flags census in
+     * `optimality.test.ts` and the two static-key fixtures' own declarations.
+     */
+    id: "flow-drops-a-proven-flag",
+    pass: "flow",
+    what: "P4b emits zero for every branch, so nothing it proved is ever shipped",
+    edits: [
+      {
+        file: "src/passes/flow.rs",
+        find: "fn flags(statik: bool, inert: bool) -> u8 {",
+        replace: "fn flags(statik: bool, inert: bool) -> u8 {\n    if true {\n        let _ = (statik, inert);\n        return 0;\n    }",
+      },
+    ],
+  },
+  {
+    id: "flow-keys-on-the-wrong-arm",
+    pass: "flow",
+    what: "P4b numbers a Switch's arms from 0, so every arm selects the body of the one before it",
+    edits: [
+      {
+        file: "src/passes/flow.rs",
+        find: "        let taken = number(shaper, (index + 1) as f64, arm_span);",
+        replace: "        let taken = number(shaper, index as f64, arm_span);",
+      },
+    ],
+  },
+  {
+    id: "flow-hands-the-primitive-no-anchor",
+    pass: "flow",
+    what: "a region drops the anchor the walk computed, so its content appends at the end of the parent",
+    edits: [
+      {
+        file: "src/codegen/dom.rs",
+        // `insert` has the identical line four functions above, so the site is
+        // named by the `parent` binding only `region` takes.
+        find:
+          "        let parent = ref_ident(self.ctx, self.unit, at.target(), span);\n" +
+          "        let anchor = anchor.node().map(|node| ref_ident(self.ctx, self.unit, node, span));",
+        replace:
+          "        let parent = ref_ident(self.ctx, self.unit, at.target(), span);\n" +
+          "        let anchor = anchor.node().filter(|_| false).map(|node| ref_ident(self.ctx, self.unit, node, span));",
       },
     ],
   },

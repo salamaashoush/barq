@@ -526,16 +526,18 @@ describe("self-check: the assertion would notice", () => {
   it("catches a body hoisted out of the branch that owns it", async () => {
     // Same reasoning as above: the source-level thunk is no longer the thing
     // that decides, so the hoist is written into the emitted module.
+    //
+    // Since M4b the body is not a `children` PROP either — the construct is
+    // gone and what stands here is `_$boundary(_s$, parent, anchor, kind,
+    // fallback, body)`, whose body argument is the Block. Building it at the
+    // call site instead is the same mutation one syntax later.
     const clean = ownershipSource("own-nested-scopes-dispose")
     let hit = 0
     const corrupt = (code: string): string =>
-      code.replace(
-        /children:\s*(?:[\w$]*block)?\(?\(_s\$\d*\)\s*=>\s*(_tmpl\$\d+\(\))\)?/g,
-        (_m, clone) => {
-          hit++
-          return `children: ${clone}`
-        },
-      )
+      code.replace(/[\w$]*block\(\(_s\$\d*\)\s*=>\s*(_tmpl\$\d+\(\))\)/g, (_m, clone) => {
+        hit++
+        return clone as string
+      })
     const run = await checkOwnership(
       "mutant-branch",
       clean,

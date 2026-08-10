@@ -119,6 +119,10 @@ export interface BarqCompilerOptions {
    * - `eta` — `x={s()}` emitted as `x: s`
    * - `hoist` — a capture-free handler as a module-scope constant
    * - `splice` — a unit's statements flat in the enclosing body, not an IIFE
+   * - `flow` — a control-flow construct lowered onto `branch`/`each`/
+   *   `boundary`/`portal`, handed the `(parent, anchor)` pair the template walk
+   *   computed and a flags integer of proven properties. Off: it stays
+   *   `Show($s, {…})` and the runtime adapter does the work.
    */
   passes?: Partial<Record<BarqOptimisation, boolean>>;
 }
@@ -131,7 +135,8 @@ export type BarqOptimisation =
   | "walk"
   | "eta"
   | "hoist"
-  | "splice";
+  | "splice"
+  | "flow";
 
 interface NativeTransformOptions {
   moduleSource?: string;

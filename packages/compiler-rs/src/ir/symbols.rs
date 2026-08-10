@@ -329,6 +329,26 @@ pub struct ReactiveEnv<'a> {
     /// did this template come from" and not "whose template is it". Populated
     /// only under `dev`, and read only by the dev-mode label pass.
     pub components: Vec<(Span, &'a str)>,
+    /// C5.1 item 1. Every `(component, prop)` pair this module can PROVE is a
+    /// Cell slot: the component reads `props.<prop>` in a position the emission
+    /// makes a Cell — an attribute on an intrinsic element — or forwards it into
+    /// another in-module component's slot that is one.
+    ///
+    /// Item 1 is the compile-time half of "a Block landing in a Cell slot", and
+    /// it is answerable only within a module (`CODESIGN.md` §3.13 item 1). The
+    /// set is the CALLEE's; the diagnostic is raised at the caller, which is
+    /// what "naming both positions" means when a `Diag` carries one span.
+    pub cell_slots: Vec<CellSlot<'a>>,
+}
+
+/// One proven Cell slot. `read` is where the callee consumes it, so the
+/// diagnostic can name the position the value ends up in as well as the one it
+/// was written at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CellSlot<'a> {
+    pub component: SymbolId,
+    pub prop: &'a str,
+    pub read: Span,
 }
 
 impl<'a> ReactiveEnv<'a> {
@@ -344,6 +364,7 @@ impl<'a> ReactiveEnv<'a> {
             namespace_flows: Vec::new(),
             jsx_closings: Vec::new(),
             components: Vec::new(),
+            cell_slots: Vec::new(),
         }
     }
 

@@ -167,6 +167,65 @@ describe("O3 — disposal is total and ordered", () => {
   });
 });
 
+describe("O3.7 — a live scope retains no dead kid", () => {
+  const deadKids = (scope: Scope): number =>
+    (scope.kids ?? []).filter((kid) => (kid as Scope).dead).length;
+
+  test("disposing a child reclaims its slot on the parent", () => {
+    const parent = enterRoot();
+    const kid = enter(parent);
+    exit(kid);
+    exit(parent);
+    expect(parent.kids?.length).toBe(1);
+    dispose(kid);
+    expect(parent.kids?.length ?? 0).toBe(0);
+    dispose(parent);
+  });
+
+  test("it reclaims the slot even when an unrelated tree is unwinding", () => {
+    // The guard used to be a module-global unwind DEPTH, so any disposal
+    // happening anywhere while some other tree was coming apart skipped its
+    // splice — and a long-lived parent kept every dead child forever. This
+    // disposes five children of a live parent from inside a cleanup registered
+    // on a nested scope of a DIFFERENT tree, which is where a portal container,
+    // a pinned scope or a row coordinator does its work.
+    const longLived = enterRoot();
+    const kids: Scope[] = [];
+    for (let i = 0; i < 5; i++) {
+      const kid = enter(longLived);
+      exit(kid);
+      kids.push(kid);
+    }
+    exit(longLived);
+    expect(longLived.kids?.length).toBe(5);
+
+    const other = enterRoot();
+    const nested = enter(other);
+    onCleanup(() => {
+      for (const kid of kids) dispose(kid);
+    });
+    exit(nested);
+    exit(other);
+
+    dispose(other);
+
+    expect(kids.every((kid) => isDisposed(kid))).toBe(true);
+    expect(deadKids(longLived)).toBe(0);
+    expect(longLived.kids?.length ?? 0).toBe(0);
+    dispose(longLived);
+  });
+
+  test("a parent unwinding its own kids still drops the whole array", () => {
+    const parent = enterRoot();
+    const kid = enter(parent);
+    exit(kid);
+    exit(parent);
+    dispose(parent);
+    expect(isDisposed(kid)).toBe(true);
+    expect(parent.kids?.length ?? 0).toBe(0);
+  });
+});
+
 describe("O1 — the scope creation set is closed", () => {
   test("a scope materialised by a computation is counted, though no enter declares it", () => {
     // The ownership trace cannot see this one: `hostScope` allocates through

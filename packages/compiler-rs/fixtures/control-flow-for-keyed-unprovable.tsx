@@ -55,6 +55,10 @@ export const optimality = {
   target: 1,
   milestone: 3,
   templates: 2,
-  emits: ["For(", "keyed: () => byId", ", row) =>", "() => row().text"],
-  absent: ["(For, {", ", row().text)"],
+  // A BINDING resolved to a function that declares a parameter is a key
+  // function, so it reaches `keyOf` by name — no Cell around it, and no runtime
+  // arity test. What stays unprovable is the row's KIND, and that is what the
+  // live read below is about.
+  emits: ["each(", ", rows, byId, ", ", row) =>", "() => row().text"],
+  absent: ["For(", "keyed: ", ", row().text)"],
 }

@@ -524,15 +524,14 @@ describe("the six string-inlinable flow components", () => {
   });
 
   /**
-   * The one difference the dual-render suite has to know about, and it is by
-   * design: every control-flow component splices a `<!--Name:n-->` marker PAIR
-   * into the live parent so its `renderEffect` can find its own range again.
-   * A marker is an insert anchor for a DOM reconciliation that never happens on
-   * the wire, so the string backend emits none (DESIGN §5). Nothing else may
-   * differ, which is what this comparison is for.
+   * K7, in its strongest form: a client-rendered page contains ZERO framework
+   * comment nodes, so the two backends now agree BYTE FOR BYTE and there is no
+   * difference for this suite to know about. Until M4 every control-flow
+   * component spliced a `<!--Name:n-->` marker PAIR into the live parent so its
+   * `renderEffect` could find its own range again; `branch`/`each`/`boundary`
+   * receive `(parent, anchor)` instead and the pair is gone. The assertion that
+   * used to strip the markers now asserts they are absent.
    */
-  const withoutMarkers = (markup: string): string => markup.replace(/<!--\/?[A-Za-z]+:\d+-->/g, "");
-
   test("each string implementation matches the DOM component's markup", () => {
     const rows = [{ n: "a" }, { n: "<b>" }];
     const cases: Array<[string, () => unknown]> = [
@@ -578,8 +577,8 @@ describe("the six string-inlinable flow components", () => {
     ];
     for (const [string, dom] of cases) {
       const rendered = renderToString(dom as never);
-      expect(rendered).toContain("<!--");
-      expect(string).toBe(withoutMarkers(rendered));
+      expect(rendered).not.toContain("<!--");
+      expect(string).toBe(rendered);
     }
   });
 });

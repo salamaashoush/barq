@@ -87,7 +87,7 @@ const ROWS: readonly KnownFailure[] = [
     claim: "the-disposer-disposes-when-an-owner-is-current",
     rule: "O5",
     status: "VIOLATED",
-    greenAt: "M4",
+    greenAt: "M5",
     reason:
       "`render(<Tree/>, host)` evaluates its first argument BEFORE `render` is entered, so with an " +
       "owner current the subtree's effects are that owner's kids from the instant they exist and the " +
@@ -96,8 +96,71 @@ const ROWS: readonly KnownFailure[] = [
       "JSX, but `render(<Tree/>, host)` is a CALL, and nothing lowers a JSX argument into the Block " +
       "the callee wants. `render` still accepts both forms and still emits RENDER_SUBTREE_NOT_OWNED " +
       "rather than returning a disposer that quietly disposes nothing. Green when a JSX argument at a " +
-      "`render` call site lowers to a Block, which is the same machinery M4's flow pass needs for " +
-      "every other primitive that takes one.",
+      "`render` call site lowers to a Block. M4b delivered the flow pass — eleven constructs compile " +
+      "to `_$branch`/`_$each`/`_$boundary`/`_$portal` and `NO_SCOPE` is emitted non-zero — and it did " +
+      "NOT close this row: the pass recognises a construct by the `SymbolId` its TAG resolves to, and " +
+      "`render` is neither a flow construct nor a tag. A JSX argument at an arbitrary call site is a " +
+      "separate lowering, which is why the milestone marker stays at M5. Closing it is not only a " +
+      "compiler change: " +
+      "three CONTROL claims in this fixture — `control-the-ambient-owner-disposes-what-it-was-handed`, " +
+      "`control-the-argument-form-reports-that-it-cannot-dispose` and " +
+      "`control-the-block-form-disposes-when-an-owner-is-current` — are written about the ARGUMENT " +
+      "form's behaviour and stop observing anything the moment the argument form stops existing, so " +
+      "the fixture has to be re-cut in the same change.",
+  },
+
+  // -------------------------------------------------------------------------
+  // sem-own-given-scope-wins. O4.5 was recorded in §13 as pinned by "structural
+  // (§14)" — the SIGNATURE was the evidence, and a signature is not evidence.
+  // `insert` and `setProp` both took a `Scope`, validated it, and then opened
+  // their render effect under whatever was ambient. Both now open it under the
+  // scope they were handed, and the first three claims of this fixture pin that.
+  //
+  // The fourth is the half that did not land, and it did not land because it is
+  // coupled to the row above.
+  // -------------------------------------------------------------------------
+  {
+    fixture: "sem-own-given-scope-wins",
+    claim: "a-children-block-is-invoked-with-the-given-scope",
+    rule: "O4.5",
+    status: "VIOLATED",
+    greenAt: "M5",
+    reason:
+      "`childToNodes` invokes a children Block with `getOwner()` and not with the `s` the call was " +
+      "given, so a Block reached through `insert`'s array path runs under the ambient owner. The " +
+      "one-line change is coupled to O5 and was MEASURED, not assumed: handing `s` down turns " +
+      "`sem-own-render-disposer-disposes`'s `control-the-argument-form-reports-that-it-cannot-dispose` " +
+      "red, because the root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing. The two " +
+      "halves have to land together, in the change that lowers `render`'s JSX argument to a Block " +
+      "and re-cuts that fixture — which is the row above, green at M5.",
+  },
+
+  // -------------------------------------------------------------------------
+  // sem-props-block-in-cell-slot. The fixture drove one shape of Block —
+  // `block()`'s, which carries an entry guard of its own — so it measured the
+  // guard rather than the rule. M4b's gate round drove all three across all six
+  // slots, 12 pairs. The `pin()`ned shape (branded, deliberately UNGUARDED)
+  // survived four of the six and now throws at every one: `flow.ts` grew the
+  // value test its four Cell slots never had. The LAUNDERED shape is what is
+  // left.
+  // -------------------------------------------------------------------------
+  {
+    fixture: "sem-props-block-in-cell-slot",
+    claim: "every-shape-of-block-throws-at-every-cell-slot",
+    rule: "C3.8",
+    status: "VIOLATED",
+    greenAt: "M5",
+    reason:
+      "2 of the 12 (shape, slot) pairs still take a Block without throwing, both of them the " +
+      "LAUNDERED shape — a Cell that yields a Block, which carries no brand, so only a test on the " +
+      "READ can see it. `each`'s source is handed to `mapArray`/`repeat` BY IDENTITY, so there is " +
+      "no read site inside `each` to test at and wrapping it costs a closure per construction on " +
+      "the list path; `provide`'s value is stored and read later at `Ctx.use()`, which is the " +
+      "context read path and not the provider. Both are one change — a read-side `readSlot` at the " +
+      "point each carrier is actually called — and both belong with M5's element and channel work, " +
+      "where `mapArray`'s source read is being touched anyway. `setProp`'s laundered case was the " +
+      "third and it is CLOSED: it stringified the Block's own source text into the attribute, " +
+      "which is the outcome that made this worth a row rather than a note.",
   },
 
 ]

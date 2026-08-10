@@ -99,7 +99,7 @@ export interface BrowserDivergence {
     | "event-dom"
     | "marker-layout"
     | "attribute-order"
-    | "node-identity"
+    | "node-identity-differential"
     | "oracle-anchor"
     | "stale-win"
     | "unmet-win"
@@ -350,7 +350,7 @@ window.__barqDifferential = async function () {
         const want = oracleChannels[i].identity.join(",")
         const got = channels[i].identity.join(",")
         if (want === got) continue
-        divergences.push({ fixture: name, kind: "node-identity", step: i, oracle: want, compiled: got })
+        divergences.push({ fixture: name, kind: "node-identity-differential", step: i, oracle: want, compiled: got })
       }
     }
 

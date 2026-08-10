@@ -85,11 +85,28 @@ console.log(
   `${procs} processes x ${trials} paired trials; per-case iterations in the "iters" column; ` +
     `warmup min(iters,3000) per side; sides interleaved and order-flipped every trial.`,
 );
+/**
+ * The headline, computed rather than narrated.
+ *
+ * The ratio is A/B and both sides are TIMES, so below 1.00 is A faster. A row
+ * counts for A only when the Wilcoxon rejects at 0.05 AND the interquartile band
+ * of the per-trial ratios sits entirely on one side of parity: a point estimate
+ * of 0.97x whose p25–p75 spans 0.85–1.09 is a TIE however small its p, and
+ * reporting one as a win is exactly what `CODESIGN.md` §0 withdrew three
+ * designs' claims for.
+ */
+function verdict(r: (typeof rows)[number]): "A" | "tie" | "B" {
+  if (r.p >= 0.05) return "tie";
+  if (r.ratio.p25 < 1 && r.ratio.p75 < 1) return "A";
+  if (r.ratio.p25 > 1 && r.ratio.p75 > 1) return "B";
+  return "tie";
+}
+
 console.log(
   `${"case".padEnd(46)}${"iters".padStart(7)}${"A min".padStart(10)}${"B min".padStart(10)}` +
-    `${"ratio".padStart(8)}${"p25".padStart(8)}${"p75".padStart(8)}${"proc lo".padStart(9)}${"proc hi".padStart(9)}${"wilcoxon p".padStart(12)}`,
+    `${"ratio".padStart(8)}${"p25".padStart(8)}${"p75".padStart(8)}${"proc lo".padStart(9)}${"proc hi".padStart(9)}${"wilcoxon p".padStart(12)}${"verdict".padStart(9)}`,
 );
-console.log("-".repeat(127));
+console.log("-".repeat(136));
 for (const r of rows) {
   console.log(
     r.name.padEnd(46) +
@@ -101,9 +118,17 @@ for (const r of rows) {
       r.ratio.p75.toFixed(2).padStart(8) +
       r.procRatios.min.toFixed(2).padStart(9) +
       r.procRatios.max.toFixed(2).padStart(9) +
-      r.p.toExponential(1).padStart(12),
+      r.p.toExponential(1).padStart(12) +
+      verdict(r).padStart(9),
   );
 }
+
+const tally = { A: 0, tie: 0, B: 0 };
+for (const r of rows) tally[verdict(r)]++;
+console.log(
+  `\n${pathA}: ${tally.A} win(s) / ${tally.tie} tie(s) / ${tally.B} loss(es) of ${rows.length}. ` +
+    "A tie is a tie; quote this line, not the row count.",
+);
 
 if (jsonOut !== "") {
   await Bun.write(jsonOut, JSON.stringify({ label, pathA, pathB, procs, trials, rows }, null, 2));

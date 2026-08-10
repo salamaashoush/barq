@@ -371,6 +371,7 @@ describe("barqVitePlugin", () => {
         "eta",
         "hoist",
         "splice",
+        "flow",
       ];
       const fromBelow = Object.fromEntries(everythingElse.map((name) => [name, true]));
       expect(build({ passes: { fuse: false } })).toBe(build({ optimize: 0, passes: fromBelow }));

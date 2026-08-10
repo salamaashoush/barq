@@ -61,6 +61,28 @@ export const optimality = {
   // are the same carrier and the reduced one allocates nothing. The boundary
   // this fixture draws therefore moved from WHICH PROP to WHAT SHAPE, and the
   // negatives below are what still says the reduction happened.
-  emits: ["when: on", "each: items", "fallback: note"],
-  absent: ["when: () => on()", "each: () => items()", "fallback: () => note()"],
+  // Since M4b the reduction is visible in the PRIMITIVE's argument list rather
+  // than in a prop: `when` became the branch's key expression, `each` became
+  // the source `each` takes, and the boundary's fallback is the Cell itself.
+  // Three constructs, three different primitives, one module — so a pass that
+  // lowered only the shape it was written against fails here rather than on a
+  // fixture nobody looked at.
+  emits: [
+    "branch(",
+    "() => on() || false",
+    "each(",
+    ", items, null, ",
+    "boundary(",
+    '"error", note, ',
+  ],
+  absent: [
+    "when: ",
+    "each: ",
+    "fallback: ",
+    "() => items()",
+    "() => note()",
+    "Show(",
+    "For(",
+    "Errored(",
+  ],
 }

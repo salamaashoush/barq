@@ -1,6 +1,7 @@
 mod address;
 mod anchor;
 mod classify;
+pub(crate) mod flow;
 mod fold;
 mod group;
 mod serialize;
@@ -9,7 +10,7 @@ mod shape;
 use oxc::allocator::Allocator;
 
 use crate::codegen::Target;
-use crate::ir::Module;
+use crate::ir::{Module, Op, Region, RegionId};
 use crate::options::ResolvedOptions;
 
 /// Stage 4. Every unit of the module already exists, so a pass sees the whole
@@ -37,9 +38,14 @@ pub fn run<'a>(
     if opt.fold {
         fold::run(allocator, module);
     }
-    // After P3, because target #8 asks whether a unit still has a patch, and
-    // before P5, because nothing it builds reaches the skeleton.
-    shape::run(allocator, module, options);
+    // After P3, because target #8 asks whether a unit still has a patch — which
+    // is also `NO_SCOPE`'s proof — and before P5, because nothing it builds
+    // reaches the skeleton.
+    //
+    // The flow lowering is off for the string backend: P8b rewrites a flow
+    // component to its own string implementation, and there is nothing left to
+    // rewrite once the construct has become a DOM primitive.
+    shape::run(allocator, module, options, opt.flow && target.walks_the_dom());
     // The three guarded passes are artefacts of the DOM backend and nothing
     // else reads them: a `<!---->` is an insert anchor, a `template()` is a
     // parse, and an address is a sibling walk. P8b concatenates bytes and has
@@ -53,9 +59,69 @@ pub fn run<'a>(
         group::run(allocator, module);
     }
     if target.walks_the_dom() {
+        // After P5, so the anchor a region receives is the one the anchor pass
+        // chose for its slot, and before P6, so the parent and the anchor are
+        // both addressed. This is the whole point of the opcode: the pair comes
+        // from the template walk, and the runtime stops re-deriving it.
+        claim_regions(module);
         serialize::run(module, opt.dedup);
         address::run(allocator, module, opt.walk);
     }
+}
+
+/// Move every staged region a patch stands on into the unit that owns the
+/// patch, and turn the `insert` into a `Region`.
+///
+/// A region the shape pass staged but no patch claims is a construct standing
+/// free of any template — a whole root, a prop value, or a hole expression that
+/// is more than the construct itself. Those stay on the module and codegen
+/// expands them with `(parent, anchor) = (null, null)`, which is `flow.ts`'s own
+/// "the caller inserts the anchor I return" path.
+fn claim_regions(module: &mut Module<'_>) {
+    if module.regions.is_empty() {
+        return;
+    }
+    let Module { units, regions, uids, .. } = module;
+    for unit in units.iter_mut() {
+        for index in 0..unit.patch.len() {
+            let Op::Insert { slot, anchor, value, .. } = unit.patch[index].op else { continue };
+            let Some(staged) = staged_region(&unit.exprs, uids, value) else { continue };
+            let Some(region) = regions[staged as usize].take() else {
+                unreachable!("a placeholder is written once and claimed once")
+            };
+            let id = unit.regions.len() as RegionId;
+            unit.regions.push(region);
+            unit.patch[index].op = Op::Region { slot, anchor, region: id };
+            // The placeholder has no reader left; the entry survives as
+            // `Folded`, so every `ExprId` after it stays valid.
+            let _: Option<oxc::ast::ast::Expression<'_>> = unit.exprs.entry_mut(value).src.take();
+        }
+    }
+}
+
+/// The staged region a hole's expression IS — not one it merely contains. A
+/// `cond ? <Show/> : null` keeps its `insert`, because the hole's value is the
+/// conditional and only the construct inside it is a region.
+fn staged_region(
+    exprs: &crate::ir::ExprTable<'_>,
+    uids: &crate::ir::Uids<'_>,
+    value: crate::ir::ExprId,
+) -> Option<RegionId> {
+    let oxc::ast::ast::Expression::Identifier(identifier) = exprs.entry(value).src.expression()?
+    else {
+        return None;
+    };
+    uids.region_index(identifier.name.as_str())
+}
+
+/// Every region the module still owns, for a consumer that has to see all of
+/// them at once — `ownership::attach` is the only one.
+pub fn regions_of<'a, 'm>(module: &'m Module<'a>) -> impl Iterator<Item = &'m Region<'a>> {
+    module
+        .units
+        .iter()
+        .flat_map(|unit| unit.regions.iter())
+        .chain(module.regions.iter().filter_map(Option::as_ref))
 }
 
 #[cfg(test)]

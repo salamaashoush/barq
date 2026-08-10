@@ -20,6 +20,10 @@ export const optimality = {
   // `component` is one of the five props the runtime unwraps, so the accessor
   // goes in bare; everything else `Dynamic` is given is an ordinary object
   // property it spreads onto the element it renders.
+  // K5 refuses `Dynamic`: its string arm needs `createDynamicElement`, which is
+  // private to `components.ts` and not on the ABI §3.0 enumerates, so lowering
+  // it would mean a fifth element-creation path out of the compiler — the
+  // thing M4 deleted from the runtime.
   emits: ["Dynamic(", "component: tag", '() => "dyn"', '() => "inner"'],
-  absent: ["(Dynamic, {", "component: () =>"],
+  absent: ["branch(", "component: () =>"],
 }

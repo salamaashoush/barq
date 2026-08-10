@@ -32,8 +32,20 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 5,
-  // `Await` takes the RESOLVED DATA in its children, so that callback keeps its
-  // parameter and its arrow. `loading` and `fallback` are eager nodes.
-  emits: ["Suspense(", "Await(", "resource: () => value", ", data: string) =>"],
-  absent: ["(Await, {", "(Suspense, {"],
+  // K5 from both sides in one module. `Suspense` LOWERS: it becomes `boundary`
+  // under the kind string `"loading"`, taking the insertion pair the walk
+  // computed and its fallback positionally. `Await` REFUSES — it tells a
+  // Resource from a Cell carrying one by a property test on the value, and its
+  // key and all three of its bodies each need the resolved resource, which
+  // without a shared local is four evaluations of one prop — so it keeps the
+  // adapter and reaches the same runtime one frame later. It takes the RESOLVED
+  // DATA in its children, so that callback keeps its parameter and its arrow.
+  emits: [
+    "boundary(",
+    '"loading"',
+    "Await(",
+    "resource: () => value",
+    ", data: string) =>",
+  ],
+  absent: ["Suspense("],
 }

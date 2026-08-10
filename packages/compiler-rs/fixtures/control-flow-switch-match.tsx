@@ -23,9 +23,19 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 4,
-  // `Match` is NOT a ternary: it returns its own props object and `Switch`
-  // reads them, so the DOM backend has to emit real `Match({…})` calls inside
-  // the `children` array. Only the SSR backend inlines the construct.
-  emits: ["Switch(", "[Match(", "}), Match("],
-  absent: ["(Switch, {", "(Match, {"],
+  // K5, and the shape §3.4 asks for: `Switch` and its arms collapse into ONE
+  // `branch` whose key is an INTEGER — the winning arm's index, with 0 for the
+  // fallback — and a hoisted body table indexed by it. `Match` ceases to exist
+  // on this backend as it already had on the string one.
+  emits: [
+    "branch(",
+    '() => status() === "loading" ? 1 : status() === "ready" ? 2 : 0',
+    // The table stands where a single body would, immediately after the key,
+    // and row 0 is the fallback — so "no arm matched" is a key like any other
+    // rather than a second mechanism.
+    "? 2 : 0, [",
+  ],
+  // The frames -O0 still pays: one `Switch` props object, one `Match` props
+  // object PER ARM, and the `when` thunk on each arm that the integer replaced.
+  absent: ["Switch(", "Match(", "when: ", "children: "],
 }

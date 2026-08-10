@@ -62,6 +62,6 @@ export const optimality = {
   templates: 2,
   // The index is a plain number here, so it is baked as a value and never
   // wrapped; the item is an accessor, so its read η-reduces to the accessor.
-  emits: ["For(", "() => false", ", row, index) =>"],
-  absent: ["(For, {", "() => row()"],
+  emits: ["each(", ", rows, false, ", ", row, index) =>"],
+  absent: ["For(", "() => false", "() => row()"],
 }

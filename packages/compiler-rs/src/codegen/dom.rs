@@ -10,7 +10,7 @@ use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
     Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, PartRange, Patch,
-    RefDef, Shape, SlotId, Step, StrId, Thunk, Unit,
+    RefDef, Region, RegionId, RegionKind, Shape, SlotId, Step, StrId, Thunk, Unit,
 };
 
 /// P8a. One unit becomes the hoisted `template()` clone, the walk to every node
@@ -180,6 +180,21 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
+    /// K5 and K7. The construct is gone; what stands here is the primitive
+    /// itself, taking the `(parent, anchor)` pair this unit's own walk produced
+    /// and the flags the compiler proved. `anchor = null` means append.
+    fn region(&mut self, at: At<'_>, _slot: SlotId, anchor: Anchor, region: RegionId) -> Self::Out {
+        let span = at.span();
+        let parent = ref_ident(self.ctx, self.unit, at.target(), span);
+        let anchor = anchor.node().map(|node| ref_ident(self.ctx, self.unit, node, span));
+        let row = std::mem::replace(
+            &mut self.unit.regions[region as usize],
+            empty_region(self.ctx, span),
+        );
+        let call = region_call(self.ctx, row, Some((parent, anchor)), span);
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
     /// Target #7: a direct expando write. `delegatedEventHandler` reads
     /// `$$<type>` and accepts either a function or a `[fn, data]` tuple, so the
     /// tuple needs no second property (V2).
@@ -262,6 +277,136 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     fn set_html(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
         None
     }
+}
+
+/// The stand-in a claimed region leaves behind. A `Unit` is printed once, so
+/// nothing reads this; it exists because the row is MOVED into the emitted call
+/// and a vector cannot hold a hole.
+pub(super) fn empty_region<'a>(ctx: &Emit<'a, '_>, span: Span) -> Region<'a> {
+    Region {
+        flow: crate::ir::Flow::Show,
+        kind: RegionKind::Branch,
+        flags: 0,
+        span,
+        key: None,
+        body: Expression::new_null_literal(span, &ctx.ast),
+        keyed: None,
+        fallback: None,
+        on: None,
+    }
+}
+
+/// One region, as the primitive call `flow.ts` declares.
+///
+/// `site` is `Some` when a patch owns the region: the pair is the one the
+/// template walk computed, and `None` for the anchor means append. It is `None`
+/// when the construct stands free of any template — a whole root, a prop value,
+/// a hole expression that is more than the construct — and then the primitive
+/// gets `(null, null)` and returns the anchor for the caller to insert, which is
+/// the path `siteFor` already had.
+///
+/// The trailing arguments are omitted wherever the runtime's own defaults say
+/// the same thing, so a construct that proved nothing emits no `0`.
+pub fn region_call<'a>(
+    ctx: &mut Emit<'a, '_>,
+    region: Region<'a>,
+    site: Option<(Expression<'a>, Option<Expression<'a>>)>,
+    span: Span,
+) -> Expression<'a> {
+    let Region { kind, flags, key, body, keyed, fallback, on, .. } = region;
+    let flags = RegionKind::shipped(kind, flags);
+    let (parent, anchor) = match site {
+        Some((parent, anchor)) => (Some(parent), anchor),
+        None => (None, None),
+    };
+
+    // `portal` takes no insertion pair at all: it returns a marker standing at
+    // its LEXICAL position, and the surrounding tree is what places it.
+    if kind == RegionKind::Portal {
+        let scope = ctx.scope(span);
+        let callee = ctx.helper(Helper::Portal, span);
+        let mut arguments = vec![
+            Argument::from(scope),
+            Argument::from(key.expect("a portal always carries a target")),
+            Argument::from(body),
+        ];
+        if flags != 0 {
+            arguments.push(Argument::from(number(ctx, flags, span)));
+        }
+        let call = ctx.call(callee, arguments, span);
+        let Some(parent) = parent else { return call };
+        let scope = ctx.scope(span);
+        let callee = ctx.helper(Helper::Insert, span);
+        let mut arguments =
+            vec![Argument::from(scope), Argument::from(parent), Argument::from(call)];
+        arguments.extend(anchor.map(Argument::from));
+        return ctx.call(callee, arguments, span);
+    }
+
+    let scope = ctx.scope(span);
+    let parent = parent.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
+    let anchor = anchor.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
+    let mut arguments = vec![Argument::from(scope), Argument::from(parent), Argument::from(anchor)];
+
+    let helper = match kind {
+        RegionKind::Branch => Helper::Branch,
+        RegionKind::Each => Helper::Each,
+        RegionKind::Error | RegionKind::Loading => Helper::Boundary,
+        RegionKind::Portal => unreachable!("handled above"),
+    };
+    let callee = ctx.helper(helper, span);
+
+    // The tail after `(scope, parent, anchor)` is the primitive's own signature,
+    // written out once per primitive so a wrong order is a wrong line here
+    // rather than a wrong value at run time.
+    let mut trailing: Vec<Option<Expression<'a>>> = Vec::new();
+    match kind {
+        RegionKind::Branch => {
+            arguments.push(Argument::from(key.expect("a branch always carries a key")));
+            arguments.push(Argument::from(body));
+            trailing.push((flags != 0).then(|| number(ctx, flags, span)));
+        }
+        RegionKind::Each => {
+            arguments.push(Argument::from(key.expect("an each always carries a source")));
+            let keyed = keyed.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
+            arguments.push(Argument::from(keyed));
+            arguments.push(Argument::from(body));
+            // `flags` is positional and `fallback` follows it, so a fallback
+            // forces the zero `each` never reads.
+            trailing.push(fallback.is_some().then(|| number(ctx, flags, span)));
+            trailing.push(fallback);
+        }
+        RegionKind::Error | RegionKind::Loading => {
+            let name = if kind == RegionKind::Error { "error" } else { "loading" };
+            arguments.push(Argument::from(ctx.string(name, span)));
+            let fallback = fallback.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
+            arguments.push(Argument::from(fallback));
+            arguments.push(Argument::from(body));
+            trailing.push(on.is_some().then(|| number(ctx, flags, span)));
+            trailing.push(on);
+        }
+        RegionKind::Portal => unreachable!("handled above"),
+    }
+    // A trailing argument only survives if something after it does, which is
+    // what keeps `_$branch(_s$, _el$1, null, k, b)` from growing a `, 0`.
+    while matches!(trailing.last(), Some(None)) {
+        trailing.pop();
+    }
+    for value in trailing {
+        let value = value.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
+        arguments.push(Argument::from(value));
+    }
+    ctx.call(callee, arguments, span)
+}
+
+fn number<'a>(ctx: &Emit<'a, '_>, value: u8, span: Span) -> Expression<'a> {
+    Expression::new_numeric_literal(
+        span,
+        f64::from(value),
+        None,
+        oxc::ast::ast::NumberBase::Decimal,
+        &ctx.ast,
+    )
 }
 
 /// One `renderEffect` with a threaded accumulator and per-key `!==` guards,

@@ -44,7 +44,8 @@
 
 import { insert, setProp } from "./dom.ts";
 import { renderEffect } from "./signals.ts";
-import type { Scope } from "./scope.ts";
+import { boundary, branch, each, portal } from "./flow.ts";
+import type { Block, Cell, Scope } from "./scope.ts";
 
 export type Slot = () => unknown;
 
@@ -65,7 +66,29 @@ export type Op =
   | readonly ["delegate", number, string, number]
   | readonly ["listen", number, string, number]
   | readonly ["insert", number, number, Plan, number | null]
+  | Region
   | readonly ["effectGroup", readonly SetLive[]];
+
+/** A control-flow region: `flow.ts`'s four primitives, as data.
+ *
+ * `[op, parent, anchor, kind, key, body, keyed, fallback, on, flags]`. Every
+ * slot index here holds its expression VERBATIM rather than wrapped in a
+ * reader, because all of them are already functions or arrays and the
+ * primitives take them as they are — a `Cell<K>`, a `Block`, a table of them.
+ */
+type RegionKind = "branch" | "each" | "error" | "loading" | "portal";
+type Region = readonly [
+  "region",
+  number,
+  number | null,
+  RegionKind,
+  number | null,
+  number,
+  number | null,
+  number | null,
+  number | null,
+  number,
+];
 
 /** `[clone, refs, ops]` — one compiled unit of the analysed IR. */
 export type Unit = readonly [() => Node, readonly Ref[], readonly Op[]];
@@ -83,6 +106,7 @@ export const HANDLED: readonly string[] = [
   "delegate",
   "listen",
   "insert",
+  "region",
   "effectGroup",
 ];
 
@@ -171,6 +195,41 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
       const value = op[3] === "live" ? slots[op[2]] : slots[op[2]]();
       insert(s, nodes[op[1]], value as never, anchor);
       return;
+    }
+
+    // K5 and K7. The construct ceased to exist at compile time; what the
+    // descriptor carries is the primitive, and the `(parent, anchor)` pair is
+    // the one the template walk produced — the same pair `dom.rs` prints, read
+    // out of the same ref plan.
+    case "region": {
+      const parent = nodes[op[1]];
+      const anchor = op[2] === null ? null : nodes[op[2]];
+      // `undefined`, not `null`: `boundary` asks `on !== undefined` before it
+      // opens the effect that reads it, and every other absent slot reads the
+      // two the same way.
+      const at = (index: number | null): never =>
+        (index === null ? undefined : slots[index]) as never;
+      const flags = op[9];
+      switch (op[3]) {
+        case "branch":
+          branch(s, parent, anchor, at(op[4]) as Cell<unknown>, at(op[5]), flags);
+          return;
+        case "each":
+          each(s, parent, anchor, at(op[4]), at(op[6]), at(op[5]), flags, at(op[7]));
+          return;
+        case "error":
+        case "loading":
+          boundary(s, parent, anchor, op[3], at(op[7]), at(op[5]), flags, at(op[8]));
+          return;
+        default:
+          insert(
+            s,
+            parent,
+            portal(s, at(op[4]), at(op[5]) as Block<unknown>, flags) as never,
+            anchor ?? undefined,
+          );
+          return;
+      }
     }
 
     case "effectGroup":

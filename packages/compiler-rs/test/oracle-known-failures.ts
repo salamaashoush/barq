@@ -169,7 +169,7 @@ const ROWS: readonly OracleFailure[] = [
     cause: "C1",
     greenAt: "M9",
     reason:
-      "C1: the reference module is loaded UN-COMPILED, so bun's `react-jsx` transform lowers it to `createElement`, which invokes a component as `tag(getOwner(), props)` and a row as `children(scope, item, index)` \u2014 while nothing rewrote the fixture's DECLARATIONS to take a scope first. the row callback receives the scope in its row slot. The compiled side is the correct one in every frame.",
+      "C1: the reference module is loaded UN-COMPILED, so bun's `react-jsx` transform lowers it to `createElement`, which invokes a component as `tag(getOwner(), props)` and a row as `children(scope, item, index)` \u2014 while nothing rewrote the fixture's DECLARATIONS to take a scope first. the row callback receives the scope in its row slot. The compiled side is the correct one in every frame. Since M4b the row also diverges on `marker-count`, and that half is K7 rather than C1: a region the compiler hands `(parent, anchor)` owns no anchor node of its own, while the un-compiled reference reaches `branch`/`each` with `(null, null)` and `siteFor` gives it one empty text node. The compiled side carries one node fewer per construct, which is the whole point of the pair.",
   },
   {
     fixture: "control-flow-for-keyed-fn",
@@ -228,7 +228,7 @@ const ROWS: readonly OracleFailure[] = [
   {
     fixture: "control-flow-show-eager-children",
     ssr: false,
-    kinds: ["node-identity"],
+    kinds: ["node-identity-differential"],
     cause: "C6",
     greenAt: "M9",
     reason:
@@ -237,7 +237,7 @@ const ROWS: readonly OracleFailure[] = [
   {
     fixture: "control-flow-show-eager-static-body",
     ssr: false,
-    kinds: ["node-identity"],
+    kinds: ["node-identity-differential"],
     cause: "C6",
     greenAt: "M9",
     reason:
@@ -246,7 +246,7 @@ const ROWS: readonly OracleFailure[] = [
   {
     fixture: "control-flow-show-fragment-body",
     ssr: false,
-    kinds: ["node-identity"],
+    kinds: ["node-identity-differential"],
     cause: "C6",
     greenAt: "M9",
     reason:
@@ -255,16 +255,16 @@ const ROWS: readonly OracleFailure[] = [
   {
     fixture: "dashboard-composite",
     ssr: true,
-    kinds: ["event-dom", "initial-dom", "step-dom"],
+    kinds: ["effect-runs", "event-dom", "initial-dom", "step-dom"],
     cause: "C1",
     greenAt: "M9",
     reason:
-      "C1: the reference module is loaded UN-COMPILED, so bun's `react-jsx` transform lowers it to `createElement`, which invokes a component as `tag(getOwner(), props)` and a row as `children(scope, item, index)` \u2014 while nothing rewrote the fixture's DECLARATIONS to take a scope first. every component and row callback in the composite receives the scope in its first declared slot. The compiled side is the correct one in every frame.",
+      "C1: the reference module is loaded UN-COMPILED, so bun's `react-jsx` transform lowers it to `createElement`, which invokes a component as `tag(getOwner(), props)` and a row as `children(scope, item, index)` \u2014 while nothing rewrote the fixture's DECLARATIONS to take a scope first. every component and row callback in the composite receives the scope in its first declared slot. The compiled side is the correct one in every frame. Since M4b the row also diverges on `effect-runs`, and that half is K5 rather than C1: the compiled side reaches `branch`/`each` directly, so the `computed` every `Show` adapter opens over its own `when` is not created at all. The compiled side runs one effect fewer per construct, which is what deleting the adapter frame buys.",
   },
   {
     fixture: "flow-prop-eta-boundary",
     ssr: true,
-    kinds: ["initial-dom", "step-dom"],
+    kinds: ["initial-dom", "marker-count", "step-dom"],
     cause: "C1",
     greenAt: "M9",
     reason:

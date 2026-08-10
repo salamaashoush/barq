@@ -35,9 +35,13 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // `ErrorBoundary.fallback` is `(error, reset) => Child`, so it is a real
-  // two-parameter callback and never a built node; `reset` reaches the button
-  // as a handler value, not through a thunk.
-  emits: ["ErrorBoundary(", ", error, reset) =>"],
-  absent: ["(ErrorBoundary, {"],
+  // K5: `ErrorBoundary` ceases to exist and becomes `boundary`, whose kind is
+  // the string `"error"` and whose insertion pair is the one the walk computed.
+  // `fallback` is `(error, reset) => Child`, so it is a real two-parameter
+  // callback and never a built node; `reset` reaches the button as a handler
+  // value, not through a thunk.
+  emits: ["boundary(", '"error"', ", error, reset) =>"],
+  // The adapter frame -O0 still pays: a props object, and the two slots the
+  // boundary now takes positionally.
+  absent: ["ErrorBoundary(", "fallback: ", "children: "],
 }

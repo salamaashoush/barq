@@ -21,7 +21,8 @@ use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
     Anchor, Chan, Diff, ExprId, Flow, HandlerRef, InsertPlan, NONE, NameId, NodeId, Ns, Op,
-    PartRange, Root, Site, SkelAttrValue, SkelNode, SlotId, StrId, TagFlags, Unit, tag_flags,
+    PartRange, RegionId, Root, Site, SkelAttrValue, SkelNode, SlotId, StrId, TagFlags, Unit,
+    tag_flags,
 };
 use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, intrinsic_tag};
@@ -384,7 +385,13 @@ fn attribute_slot(op: Op) -> Slot {
         // Owns the child position (`element_into`), or the slot's own position
         // in the child list (`node_into`), or is a grouping marker with no
         // effects to group.
-        Op::SetHtml { .. } | Op::Insert { .. } | Op::EffectGroup { .. } => Slot::Elsewhere,
+        // `Region` is the same: a child position, and one the flow pass never
+        // creates for this backend at all (`passes::run` gates it on the DOM
+        // targets, because P8b owns the string implementation of every
+        // construct that would reach a primitive).
+        Op::SetHtml { .. } | Op::Insert { .. } | Op::Region { .. } | Op::EffectGroup { .. } => {
+            Slot::Elsewhere
+        }
     }
 }
 
@@ -522,6 +529,22 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
                 unreachable!("a slot owns its own position in the child list")
             }
         }
+    }
+
+    /// Unreachable, and stated rather than assumed: the flow lowering is gated
+    /// on `Target::walks_the_dom()` in `passes::run`, because P8b rewrites a
+    /// flow component to its own string implementation (`_$ssrFor`, `_$ssrShow`)
+    /// and there is nothing left to rewrite once the construct has become a DOM
+    /// primitive. `branch`, `each`, `boundary` and `portal` build NODES; a
+    /// server render concatenates bytes and has no `parent` to insert into.
+    ///
+    /// If this ever fires, the gate moved and the string backend needs a
+    /// string-shaped answer for regions — not this one.
+    fn region(&mut self, _at: At<'_>, _slot: SlotId, _anchor: Anchor, _region: RegionId) {
+        unreachable!(
+            "the flow pass does not run for the string backend: a region builds nodes, and P8b \
+             owns the string implementation of every construct that reaches one"
+        )
     }
 
     // ── nothing reaches the wire ──────────────────────────────────────────

@@ -28,6 +28,10 @@ export const optimality = {
   // the one with a hole is built by an IIFE and the fully static one is a bare
   // clone. Neither is wrapped in a thunk the compiler would have had to
   // manufacture.
+  // K5 refuses `Reveal`, and the refusal is a fact rather than a gap: it
+  // creates a PROVIDE scope, not a range. `ownership.rs` says so and O1 lists
+  // `provide` separately from `branch`, so lowering it onto `branch` would put
+  // a context binding where a conditional belongs.
   emits: ["Reveal(", '() => "sequential"', "children: "],
-  absent: ["(Reveal, {", "children: () =>"],
+  absent: ["branch(", "children: () =>"],
 }

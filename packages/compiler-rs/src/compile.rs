@@ -2276,20 +2276,105 @@ mod tests {
     ///   expression** (C6) — O2's negation, and the Provider bug written into
     ///   the calling convention itself, where no runtime can undo it.
     ///
-    /// `deferred` is the C6 predicate: `_$block(fn)` is §3.0 rule 3's brand
-    /// around a Block and leaves the slot deferred; every OTHER call in that
-    /// position has already produced a node.
+    /// `deferred` is the C6 predicate for the `children` slot: `_$block(fn)` is
+    /// §3.0 rule 3's brand around a Block and leaves the slot deferred; every
+    /// OTHER call in that position has already produced a node.
+    ///
+    /// An arity-0 arrow is C6's THIRD named falsifier — "a nullary thunk" — so
+    /// it counts as deferred only when its body builds no DOM. A cast erasing
+    /// `builds_dom` emitted exactly `children: () => _tmpl$3() as never`, which
+    /// this predicate used to accept because it is an `ArrowFunctionExpression`.
     fn deferred(value: &oxc::ast::ast::Expression<'_>) -> bool {
         use oxc::ast::ast::Expression;
         match value {
-            Expression::ArrowFunctionExpression(_)
-            | Expression::FunctionExpression(_)
+            Expression::ParenthesizedExpression(inner) => deferred(&inner.expression),
+            Expression::TSAsExpression(inner) => deferred(&inner.expression),
+            Expression::TSNonNullExpression(inner) => deferred(&inner.expression),
+            Expression::TSSatisfiesExpression(inner) => deferred(&inner.expression),
+            Expression::ArrowFunctionExpression(arrow) => {
+                arrow.params.items.len() + usize::from(arrow.params.rest.is_some()) > 0
+                    || !builds_dom_eagerly(value)
+            }
+            Expression::FunctionExpression(_)
             | Expression::Identifier(_)
             | Expression::StaticMemberExpression(_) => true,
             Expression::CallExpression(call) => match &call.callee {
                 Expression::Identifier(callee) => {
                     callee.name.as_str().ends_with("block") && call.arguments.len() == 1
                 }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// Whether an expression CONSTRUCTS DOM when the enclosing props object is
+    /// constructed — the thing no slot of any name may hold, because a props
+    /// object is an argument and an argument is evaluated at the call site.
+    ///
+    /// The `children`-only audit could not see this: `deferred` answers the
+    /// question "is this slot still a function", and every other slot legally
+    /// is one. This one answers "does building the record build a node", which
+    /// is the question C6's falsification clause actually asks, and it applies
+    /// to `a={<span/> as never}` exactly as it applies to `children`.
+    ///
+    /// An arity-0 arrow counts: a nullary thunk holding a template clone is a
+    /// Block stripped of its brand, and §3.0 rule 3 has no expression meaning
+    /// "children, already built" precisely so that it cannot be spelled. An
+    /// arrow that TAKES the scope is a Block and is not counted, however deep
+    /// its body builds.
+    fn builds_dom_eagerly(value: &oxc::ast::ast::Expression<'_>) -> bool {
+        use oxc::ast::ast::{ArrowFunctionBody, Expression, Statement};
+        match value {
+            Expression::ParenthesizedExpression(inner) => builds_dom_eagerly(&inner.expression),
+            Expression::TSAsExpression(inner) => builds_dom_eagerly(&inner.expression),
+            Expression::TSNonNullExpression(inner) => builds_dom_eagerly(&inner.expression),
+            Expression::TSSatisfiesExpression(inner) => builds_dom_eagerly(&inner.expression),
+            Expression::SequenceExpression(sequence) => {
+                sequence.expressions.iter().any(builds_dom_eagerly)
+            }
+            Expression::ConditionalExpression(conditional) => {
+                builds_dom_eagerly(&conditional.consequent)
+                    || builds_dom_eagerly(&conditional.alternate)
+            }
+            Expression::ArrayExpression(array) => array
+                .elements
+                .iter()
+                .any(|element| element.as_expression().is_some_and(builds_dom_eagerly)),
+            Expression::ArrowFunctionExpression(arrow) => {
+                if arrow.params.items.len() + usize::from(arrow.params.rest.is_some()) > 0 {
+                    return false;
+                }
+                match &arrow.body {
+                    ArrowFunctionBody::FunctionBody(body) => {
+                        body.statements.iter().any(|statement| match statement {
+                            Statement::ExpressionStatement(it) => {
+                                builds_dom_eagerly(&it.expression)
+                            }
+                            Statement::ReturnStatement(it) => {
+                                it.argument.as_ref().is_some_and(builds_dom_eagerly)
+                            }
+                            _ => false,
+                        })
+                    }
+                    body => body.as_expression().is_some_and(builds_dom_eagerly),
+                }
+            }
+            Expression::CallExpression(call) => match &call.callee {
+                // `_tmpl$N()` is a clone. `_$createElement(...)`, `_$svg(...)`
+                // and the rest of the element ABI are constructions too, and an
+                // IIFE is the fourth spelling C6 enumerates.
+                Expression::Identifier(callee) => {
+                    let name = callee.name.as_str();
+                    name.starts_with("_tmpl$")
+                        || name.ends_with("createElement")
+                        || name.ends_with("createDynamicElement")
+                }
+                Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
+                Expression::ParenthesizedExpression(inner) => matches!(
+                    &inner.expression,
+                    Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                ),
                 _ => false,
             },
             _ => false,
@@ -2305,6 +2390,7 @@ mod tests {
         struct Audit {
             getters: usize,
             eager_children: usize,
+            eager_slots: Vec<String>,
         }
 
         impl<'a> Visit<'a> for Audit {
@@ -2327,6 +2413,19 @@ mod tests {
                     // still a value and still fails this.
                     if named && !deferred(&property.value) {
                         self.eager_children += 1;
+                    }
+                    // C6 again, at EVERY slot. `children` is the slot the
+                    // Provider bug rode in on, so it got the audit; but the
+                    // rule says "a JSX-valued prop lowers to a Block" without
+                    // naming a slot, and `a={<span/> as never}` is the same
+                    // defect one identifier to the left.
+                    if !named && builds_dom_eagerly(&property.value) {
+                        let key = match &property.key {
+                            PropertyKey::StaticIdentifier(key) => key.name.to_string(),
+                            PropertyKey::StringLiteral(key) => key.value.to_string(),
+                            _ => "<computed>".to_string(),
+                        };
+                        self.eager_slots.push(key);
                     }
                 }
                 oxc::ast_visit::walk::walk_object_expression(self, it);
@@ -2354,11 +2453,120 @@ mod tests {
                         "{name} (ssr={ssr}): a children slot holds a built value:\n{}",
                         output.code
                     );
+                    assert!(
+                        audit.eager_slots.is_empty(),
+                        "{name} (ssr={ssr}): {:?} build DOM while the props record is built:\n{}",
+                        audit.eager_slots,
+                        output.code
+                    );
                     checked += 1;
                 }
             }
         }
         assert!(checked >= 200, "only {checked} compiles");
+    }
+
+    /// The audit above is a negative claim over a corpus, so it is green both
+    /// when the compiler is right and when the predicate is blind. This is the
+    /// measurement of which: the four spellings C6's falsification clause
+    /// enumerates, written out, each one asserted to be SEEN.
+    ///
+    /// The third — "a nullary thunk" — is the one that shipped: `deferred`
+    /// accepted every `ArrowFunctionExpression`, so `children: () => _tmpl$3()`
+    /// passed the audit it is named in.
+    #[test]
+    fn the_calling_convention_audit_sees_all_four_of_c6s_falsifiers() {
+        let cases = [
+            ("a built node", "({ children: Child({}) })"),
+            ("a template clone", "({ children: _tmpl$1() })"),
+            ("a nullary thunk", "({ children: () => _tmpl$1() })"),
+            ("a nullary thunk behind a cast", "({ children: () => _tmpl$1() as never })"),
+            ("an IIFE", "({ children: (() => { return _tmpl$1() })() })"),
+            ("an array of nodes", "({ children: [_tmpl$1(), _tmpl$2()] })"),
+            ("createElement", "({ children: _$createElement('div', null) })"),
+        ];
+        for (what, source) in cases {
+            let allocator = Allocator::new();
+            let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+            assert!(!parsed.panicked, "{what}: {source} does not parse");
+            let Some(oxc::ast::ast::Statement::ExpressionStatement(statement)) =
+                parsed.program.body.first()
+            else {
+                panic!("{what}: not an expression statement")
+            };
+            let oxc::ast::ast::Expression::ParenthesizedExpression(outer) = &statement.expression
+            else {
+                panic!("{what}: not parenthesised")
+            };
+            let oxc::ast::ast::Expression::ObjectExpression(object) = &outer.expression else {
+                panic!("{what}: not an object")
+            };
+            let oxc::ast::ast::ObjectPropertyKind::ObjectProperty(property) =
+                object.properties.first().expect("one property")
+            else {
+                panic!("{what}: not a plain property")
+            };
+            assert!(!deferred(&property.value), "{what} passes the `children` audit: {source}");
+        }
+
+        // And the two shapes that MUST pass, so the predicate is not simply
+        // "everything fails": §3.0 rule 3's brand, and a Block that takes the
+        // scope and builds as deeply as it likes.
+        for source in
+            ["({ children: _$block((_s$) => _tmpl$1()) })", "({ children: (_s$) => _tmpl$1() })"]
+        {
+            let allocator = Allocator::new();
+            let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+            let Some(oxc::ast::ast::Statement::ExpressionStatement(statement)) =
+                parsed.program.body.first()
+            else {
+                panic!("not an expression statement")
+            };
+            let oxc::ast::ast::Expression::ParenthesizedExpression(outer) = &statement.expression
+            else {
+                panic!("not parenthesised")
+            };
+            let oxc::ast::ast::Expression::ObjectExpression(object) = &outer.expression else {
+                panic!("not an object")
+            };
+            let oxc::ast::ast::ObjectPropertyKind::ObjectProperty(property) =
+                object.properties.first().expect("one property")
+            else {
+                panic!("not a plain property")
+            };
+            assert!(deferred(&property.value), "a Block fails the audit: {source}");
+            assert!(!builds_dom_eagerly(&property.value), "a Block builds eagerly: {source}");
+        }
+    }
+
+    /// C6 at a slot that is not `children`, and through the wrapper that erased
+    /// it. A TypeScript assertion is not a value: `<b/> as never` builds what
+    /// `<b/>` builds, and a `builds_dom` that stopped at `TSAsExpression`
+    /// emitted an unbranded nullary thunk — which then reached `_$setProp` and
+    /// stringified the subtree into the attribute instead of throwing, C5.1
+    /// item 2's stated MUST NOT.
+    #[test]
+    fn a_type_assertion_does_not_erase_the_block_brand() {
+        let source = "function Sink(props) { return <div title={props.children as never} /> }\n\
+             export function Cast() { return <Sink>{<b>C</b> as never}</Sink> }\n\
+             export function Slot() { return <Sink a={<i/> as never} b={(<i/>)} c={<i/> satisfies never} /> }\n";
+        for opt in [crate::options::Opt::ALL, crate::options::Opt::NONE] {
+            let output = compile(source, &at(opt, false)).expect("compiles");
+            let thunks = output.code.matches("() => _tmpl$").count();
+            assert_eq!(
+                thunks, 0,
+                "a JSX slot crossed as a nullary thunk at {opt:?}:\n{}",
+                output.code
+            );
+            // Four JSX values, four brands: the children cast, and the three
+            // wrapper spellings on a non-children slot.
+            assert_eq!(
+                output.code.matches("_$block(").count(),
+                4,
+                "not every JSX slot is branded at {opt:?}:\n{}",
+                output.code
+            );
+        }
     }
 
     /// L3's payoff, stated as the property rather than as a level: EVERY

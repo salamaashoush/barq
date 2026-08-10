@@ -48,7 +48,7 @@ use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
     Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, PartRange, Patch,
-    SlotId, Step, StrId, Unit, UnitId,
+    RegionId, SlotId, Step, StrId, Unit, UnitId,
 };
 
 /// One unit becomes a module-scope descriptor plus one `_$interp` call.
@@ -171,6 +171,20 @@ impl<'a> Interp<'a, '_, '_, '_, '_> {
         self.push(nullary(self.ctx, expression, span), span)
     }
 
+    /// A slot holding an expression VERBATIM, for the region arguments the
+    /// interpreter passes on rather than reads. `None` becomes a `null` field,
+    /// which is how an absent `fallback`, `keyOf` or `on` is spelled.
+    fn verbatim(&mut self, value: Option<Expression<'a>>, span: Span) -> Expression<'a> {
+        match value {
+            Some(value) => self.push(value, span),
+            None => Expression::new_null_literal(span, &self.ctx.ast),
+        }
+    }
+
+    fn raw(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
+        self.push(value, span)
+    }
+
     fn push(&mut self, slot: Expression<'a>, span: Span) -> Expression<'a> {
         let index = self.slots.len() as u32;
         self.slots.push(slot);
@@ -250,6 +264,37 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
             None => Expression::new_null_literal(span, &self.ctx.ast),
         };
         Some(self.record("insert", vec![parent, slot, plan, anchor], span))
+    }
+
+    /// A control-flow region, as data. Every argument the primitive takes is a
+    /// slot holding the expression VERBATIM — a key Cell, a body Block, a body
+    /// table — because all of them are already functions or arrays and the
+    /// interpreter passes them on rather than reading them. The two backends
+    /// therefore hand the same four primitives the same arguments, built at the
+    /// same point of the same construction.
+    fn region(&mut self, at: At<'_>, _slot: SlotId, anchor: Anchor, region: RegionId) -> Self::Out {
+        let span = at.span();
+        let parent = self.node(at.target(), span);
+        let anchor = match anchor.node() {
+            Some(node) => self.node(node, span),
+            None => Expression::new_null_literal(span, &self.ctx.ast),
+        };
+        let row = std::mem::replace(
+            &mut self.unit.regions[region as usize],
+            crate::codegen::dom::empty_region(self.ctx, span),
+        );
+        let kind = text_of(self.ctx, row.kind.as_str(), span);
+        let flags = number(self.ctx, u32::from(row.emitted_flags()), span);
+        let key = self.verbatim(row.key, span);
+        let body = self.raw(row.body, span);
+        let keyed = self.verbatim(row.keyed, span);
+        let fallback = self.verbatim(row.fallback, span);
+        let on = self.verbatim(row.on, span);
+        Some(self.record(
+            "region",
+            vec![parent, anchor, kind, key, body, keyed, fallback, on, flags],
+            span,
+        ))
     }
 
     /// `el.$$click = h`. The tuple form lives inside the handler expression, so
@@ -357,6 +402,10 @@ fn number<'a>(ctx: &Emit<'a, '_>, value: u32, span: Span) -> Expression<'a> {
 }
 
 fn text<'a>(ctx: &Emit<'a, '_>, value: &'static str, span: Span) -> Expression<'a> {
+    ctx.string(ctx.allocator.alloc_str(value), span)
+}
+
+fn text_of<'a>(ctx: &Emit<'a, '_>, value: &str, span: Span) -> Expression<'a> {
     ctx.string(ctx.allocator.alloc_str(value), span)
 }
 

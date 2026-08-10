@@ -29,3 +29,21 @@ export const steps = [
   () => visible.set(true),
   () => items.set([4, 5, 6]),
 ]
+
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 4,
+  // One patch call, and it is the row's `{item}` hole. Neither construct costs
+  // one: since K5 a region IS a patch, so the `insert` that used to join each
+  // adapter's return value to its parent is gone from both of them.
+  patchCalls: 1,
+  // Control flow inside control flow, both lowered. The `Show` becomes a
+  // `branch`; the `For` inside its body becomes an `each` addressed against the
+  // `<ul>` that body's OWN template walk produced — which is the point of
+  // handing the primitive a pair rather than letting it re-derive one, because
+  // the pair here belongs to a tree that does not exist until the branch
+  // activates.
+  emits: ["branch(", "() => visible() || false", "each(", ", items, null, "],
+  absent: ["Show(", "For(", "when: ", "each: ", "children: ", "fallback: "],
+}

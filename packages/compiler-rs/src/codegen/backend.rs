@@ -31,7 +31,7 @@
 
 use crate::ir::{
     Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, PartRange, Patch,
-    SlotId, StrId,
+    RegionId, SlotId, StrId,
 };
 use oxc::span::Span;
 
@@ -118,6 +118,11 @@ backend! {
     SetHtml { value: ExprId, live: bool } => set_html;
     /// A child hole. `plan` is what the analysis proved about its value.
     Insert { slot: SlotId, anchor: Anchor, value: ExprId, plan: InsertPlan } => insert;
+    /// A child hole the flow pass lowered onto one of `flow.ts`'s four
+    /// primitives. `region` indexes the unit's own region table; the
+    /// `(parent, anchor)` pair comes from `at.target()` and `anchor`, which is
+    /// the whole point — the runtime used to re-derive it.
+    Region { slot: SlotId, anchor: Anchor, region: RegionId } => region;
     /// A prefix marker: `at.members` are the patches that share one effect.
     EffectGroup { len: u16 } => effect_group;
 }
@@ -195,6 +200,9 @@ mod tests {
         ) {
             self.0.push("Insert");
         }
+        fn region(&mut self, _at: At<'_>, _slot: SlotId, _anchor: Anchor, _region: RegionId) {
+            self.0.push("Region");
+        }
         fn effect_group(&mut self, _at: At<'_>, _len: u16) {
             self.0.push("EffectGroup");
         }
@@ -223,6 +231,7 @@ mod tests {
             Op::Spread { value: 0, live: false },
             Op::SetHtml { value: 0, live: false },
             Op::Insert { slot: 0, anchor: Anchor::End, value: 0, plan: InsertPlan::Once },
+            Op::Region { slot: 0, anchor: Anchor::End, region: 0 },
             Op::EffectGroup { len: 0 },
         ];
         // The instruction set is generated from one list; a variant missing from

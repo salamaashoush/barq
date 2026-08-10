@@ -6,13 +6,18 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
     AVec, ExprTable, HoistId, Interner, NONE, NameId, NodeId, Ns, Patch, ReactiveEnv, RefPlan,
-    Skeleton, TemplateId, UnitId,
+    Region, Skeleton, TemplateId, UnitId,
 };
 
 pub struct Unit<'a> {
     pub skeleton: Skeleton<'a>,
     pub patch: AVec<'a, Patch>,
     pub exprs: ExprTable<'a>,
+    /// The region side table `Op::Region` indexes. Populated by the flow pass,
+    /// which moves a row out of [`Module::regions`] the moment a patch claims
+    /// it — so a region is owned by exactly one unit, or by the module when it
+    /// stands free of any template.
+    pub regions: AVec<'a, Region<'a>>,
     /// empty until P6
     pub refs: RefPlan<'a>,
     /// `NodeId` → originating JSX span. §6 point 3: an `_el$4` that throws must
@@ -34,6 +39,7 @@ impl<'a> Unit<'a> {
             skeleton: Skeleton::new_in(allocator, ns),
             patch: AVec::new_in(&allocator),
             exprs: ExprTable::new_in(allocator),
+            regions: AVec::new_in(&allocator),
             refs: RefPlan::new_in(allocator),
             spans: AVec::new_in(&allocator),
             attr_order: AVec::new_in(&allocator),
@@ -124,6 +130,14 @@ pub struct Module<'a> {
     /// bitset over the 22 `DELEGATED_EVENTS`
     pub delegated: u32,
     pub hoisted: AVec<'a, Hoisted<'a>>,
+    /// Every region the flow pass built, in the order it built them, indexed by
+    /// the `_g$N` placeholder the shape pass left in the program. A row is
+    /// `None` once a unit has claimed it into its own table; what survives here
+    /// is the free-standing form — a construct that is a whole root, a prop
+    /// value, or nested inside a hole expression — and codegen expands those
+    /// with `(parent, anchor) = (null, null)`, which is `flow.ts`'s own
+    /// "the caller inserts the anchor I return" path.
+    pub regions: AVec<'a, Option<Region<'a>>>,
     pub env: ReactiveEnv<'a>,
     /// oxc's symbol table, detached from the AST it was built against. P0 reads
     /// it in M3; it stays valid across codegen because it holds `SymbolId`s and
@@ -138,9 +152,14 @@ pub struct Module<'a> {
     pub flow_rewrites: Vec<SymbolId>,
     /// A JSX root was written outside every function, so no component parameter
     /// binds the scope name P4 threads through the calls it emits. `install`
-    /// answers it with one module-scope binding; a Block reached that way gets
-    /// `null` and raises `ScopeMissingError` at the position that wrote it,
-    /// which is C3.8's outcome and not an ambient fallback.
+    /// answers it with one module-scope binding, `const _s$ = null`.
+    ///
+    /// `null` is a scope VALUE and not a missing one (`scope.ts`: it is the
+    /// parent of a root), so a Block reached this way is invoked, runs, and owns
+    /// nothing — it does NOT raise `ScopeMissingError`, which only `undefined`
+    /// does. A module-level root therefore produces an ownerless subtree today.
+    /// Whether that should instead be `enterRoot()` or a diagnostic is an open
+    /// question; what it must not be is described as a throw it is not.
     pub detached_roots: bool,
     /// Every runtime entry point's local name in this module, and which of them
     /// the compiler has already committed to. The names are derived from the
@@ -188,13 +207,16 @@ pub struct Uids<'a> {
     konst: &'a str,
     /// A module-hoisted Block (`_b$N`).
     block: &'a str,
+    /// A lowered control-flow region (`_g$N`), standing where the component call
+    /// used to, until a patch claims it or codegen expands it in place.
+    region: &'a str,
     next_element: u32,
     next_value: u32,
 }
 
 impl<'a> Uids<'a> {
     pub fn new(source: &str, allocator: &'a Allocator) -> Self {
-        let [element, template, root, handler, prev, value, ir, scope, konst, block] =
+        let [element, template, root, handler, prev, value, ir, scope, konst, block, region] =
             free_names(source, allocator);
         Self {
             element,
@@ -207,9 +229,23 @@ impl<'a> Uids<'a> {
             scope,
             konst,
             block,
+            region,
             next_element: 0,
             next_value: 0,
         }
+    }
+
+    pub fn region(&self, id: crate::ir::RegionId, allocator: &'a Allocator) -> &'a str {
+        numbered(self.region, id + 1, allocator)
+    }
+
+    /// The prefix is absent from the source text, so no user identifier can
+    /// begin with it and this cannot mistake one for a placeholder.
+    #[inline]
+    pub fn region_index(&self, name: &str) -> Option<crate::ir::RegionId> {
+        name.strip_prefix(self.region)
+            .and_then(|digits| digits.parse::<u32>().ok())
+            .and_then(|value| value.checked_sub(1))
     }
 
     /// The scope every component takes and every Block declares.
@@ -242,6 +278,16 @@ impl<'a> Uids<'a> {
     pub fn value(&mut self, allocator: &'a Allocator) -> &'a str {
         self.next_value += 1;
         numbered(self.value, self.next_value, allocator)
+    }
+
+    /// The undecorated `_v$`. A fused effect's locals are always `numbered`, so
+    /// this name is minted by nothing else, and one name serves every region:
+    /// the flow pass only ever declares it at the head of a body arrow and reads
+    /// it in the same arrow, so a nested region's declaration shadows the outer
+    /// one at a point where the outer value has already been read.
+    #[inline]
+    pub fn temp(&self) -> &'a str {
+        self.value
     }
 
     pub fn element(&mut self, allocator: &'a Allocator) -> &'a str {
@@ -295,17 +341,17 @@ fn numbered<'a>(prefix: &str, value: u32, allocator: &'a Allocator) -> &'a str {
     allocator.alloc_str(&name)
 }
 
-const UID_BASES: [&str; 10] =
-    ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$", "_ir$", "_s$", "_k$", "_b$"];
+const UID_BASES: [&str; 11] =
+    ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$", "_ir$", "_s$", "_k$", "_b$", "_g$"];
 
-/// Ten names the source never mentions. `generate_uid` against a real scope tree
-/// is not on oxc 0.143's `Scoping` — DESIGN §4 assumes an API that only
+/// Eleven names the source never mentions. `generate_uid` against a real scope
+/// tree is not on oxc 0.143's `Scoping` — DESIGN §4 assumes an API that only
 /// `oxc_traverse`'s `TraverseScoping` has.
 ///
 /// Every base opens with `_`, so the underscores are the only positions a
-/// collision can start at and one scan answers all six. A source that spells one
-/// of them is rare enough to be worth no more than the escalating re-scan below.
-fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 10] {
+/// collision can start at and one scan answers all of them. A source that spells
+/// one is rare enough to be worth no more than the escalating re-scan below.
+fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 11] {
     let mut taken = [false; UID_BASES.len()];
     for (at, _) in source.match_indices('_') {
         let rest = &source[at..];
@@ -540,6 +586,7 @@ impl<'a> Module<'a> {
             folded_reads: FxHashSet::default(),
             delegated: 0,
             hoisted: AVec::new_in(&allocator),
+            regions: AVec::new_in(&allocator),
             env: ReactiveEnv::new_in(allocator),
             scoping: Scoping::default(),
             maps: Mappings::default(),

@@ -55,6 +55,8 @@ export {
   isDisposed,
   isEqual,
   peekNextChildId,
+  scopeAllocations,
+  effectAllocations,
   resetChildIds,
   unclaimedSeeds,
   resolve,
@@ -200,6 +202,12 @@ export {
   type Element,
   type ArrayElement,
 } from "./dom.ts";
+
+// The four control-flow primitives — CODESIGN §3.4, SEMANTICS K and E.
+// Everything under `Components` below is an adapter over these; compiled code
+// reaches them directly.
+export { branch, each, boundary, portal, COUNT, STATIC_KEY, NO_SCOPE } from "./flow.ts";
+export type { BoundaryKind } from "./flow.ts";
 
 // Components
 export {

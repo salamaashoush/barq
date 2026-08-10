@@ -58,6 +58,11 @@ export const optimality = {
   target: 1,
   milestone: 3,
   templates: 2,
+  // C9: a spread makes the props a RUNTIME source list, so there is nothing
+  // static to read the construct's shape off and the flow pass refuses. The
+  // adapter survives and reaches the same `each` one frame later — refusing is
+  // always the safe direction — and the negative below is what says the pass
+  // refused rather than guessed.
   emits: ["For(", "opts,", ", row) =>", "() => row().text"],
-  absent: ["(For, {", ", row().text)"],
+  absent: ["each(", ", row().text)"],
 }

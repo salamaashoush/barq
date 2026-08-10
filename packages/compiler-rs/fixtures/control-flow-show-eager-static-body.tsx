@@ -43,7 +43,12 @@ export const optimality = {
   // subtree produced no patch, so there is nothing left to defer.
   templates: 1,
   patchCalls: 0,
-  emits: ['<div class="panel"><h3>Static heading</h3>', "children: "],
-  // The two shapes a thunk would take. Neither may appear around the body.
-  absent: ["children: () =>", "children: (()"],
+  // The body is one clone and the whole module holds no patch call, so the
+  // compiler can PROVE the activation registers nothing disposable: `NO_SCOPE`
+  // is shipped as the flags integer `2`, and the branch activates without
+  // allocating a `Scope` or an `ownRange` closure.
+  emits: ['<div class="panel"><h3>Static heading</h3>', "branch(", "}), 2)"],
+  // The two shapes a compiler-manufactured thunk would take, plus the prop the
+  // construct used to carry.
+  absent: ["children: () =>", "children: (()", "children:"],
 }

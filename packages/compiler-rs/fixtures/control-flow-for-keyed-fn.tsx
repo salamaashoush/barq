@@ -80,6 +80,9 @@ export const optimality = {
   // takes the thunk the by-item arm wrongly denied it; the index hole IS a bare
   // accessor call, so it η-reduces to the accessor and passes through as a
   // value the runtime subscribes to.
-  emits: ["For(", "((row) => row.id)", ", row, index) =>", "() => row().text"],
-  absent: ["(For, {", "() => index()", ", row().text)"],
+  // The key function reaches `each` as `keyOf` DIRECTLY. What the runtime used
+  // to do — `typeof carrier === "function" && carrier.length >= 1` — the
+  // compiler answers from the arity the author declared (§3.0 rule 1).
+  emits: ["each(", ", rows, (row) => row.id, ", ", row, index) =>", "() => row().text"],
+  absent: ["For(", "() => index()", ", row().text)"],
 }

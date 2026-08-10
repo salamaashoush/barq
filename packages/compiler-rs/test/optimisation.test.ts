@@ -24,6 +24,8 @@
 
 import { describe, expect, it } from "bun:test"
 
+import { emittedFlags, FLAG_CENSUS } from "./flag-census.ts"
+
 import { liveModes, oneSourceOrderExplainsBoth, renderSource, type Mode } from "./differential.ts"
 import {
   compileFixture,
@@ -182,6 +184,81 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
 })
 
 /**
+ * THE SAME DIFFERENTIAL, BISECTED TO ONE PASS — M4b.
+ *
+ * `-O0` turns nine flags off at once, which makes it a good acceptance test and
+ * a poor diagnosis: a divergence there says "one of nine passes", and until M4b
+ * the flow pass was not one of them at all. M4 shipped the runtime half and
+ * reported the compiler half as not delivered, so `-O0` and `-Ox` emitted the
+ * same `Show(_s$, { when, fallback, children })` and the whole corpus
+ * differential above was green ON A PAIR THAT DID NOT CHANGE. Green for the
+ * right reason and green because there is nothing to compare are the same
+ * colour, and the second is the one §6 exists to prevent.
+ *
+ * This describe is the answer in the sharpest available form: `flow` OFF is the
+ * only difference between the two builds, so every fixture below compares an
+ * adapter call against a primitive call and nothing else moves. Two properties
+ * follow that the corpus differential cannot state:
+ *
+ *  - a divergence bisects to `flow` on the spot, with no second run;
+ *  - the POPULATION is asserted. If the pass stops lowering, this suite does not
+ *    go quietly green with nothing to compare — it fails on the count.
+ */
+describe("L3 — the flow pass alone, bisected", () => {
+  const FLOW_OFF = { passes: [["flow", "off"]] }
+  const PRIMITIVES = ["branch", "each", "boundary", "portal"]
+
+  /** The fixtures the pass actually moves, which is the population under test. */
+  const lowered = listFixtures().filter(
+    (name) => compileFixture(name) !== compileFixture(name, FLOW_OFF),
+  )
+
+  it("lowers a construct in a substantial share of the corpus", () => {
+    // The anti-vacuity clause, and the one M4 could not have satisfied: with the
+    // pass unwired this list is EMPTY and every `it` below disappears, so a
+    // suite that stopped comparing anything would have reported success.
+    expect(lowered.length, "the flow pass moves no fixture at all").toBeGreaterThan(24)
+  })
+
+  for (const name of lowered) {
+    it(`${name} renders identically with the flow pass off`, async () => {
+      const optimised = await renderViaCompiler(name)
+      const reference = await renderViaCompiler(name, {}, FLOW_OFF)
+
+      // The precondition, per fixture: the two builds differ in the one way
+      // this axis is about. Without it a build that ignored the override would
+      // compare a module against itself, which is the failure mode the whole
+      // file's `preconditions` helper exists for one level up.
+      const emitted = stripLiterals(optimised.code ?? "")
+      const plain = stripLiterals(reference.code ?? "")
+      const primitives = PRIMITIVES.filter(
+        (primitive) => emitted.includes(`_$${primitive}(`) && !plain.includes(`_$${primitive}(`),
+      )
+      expect(
+        primitives.length,
+        `${name}: -Ox emits no primitive that the flow-off build does not`,
+      ).toBeGreaterThan(0)
+
+      expect(reference.html, `${name}: initial render`).toBe(optimised.html)
+      expect(reference.frames, `${name}: scripted steps`).toEqual(optimised.frames)
+      expect(reference.eventFrames, `${name}: dispatched events`).toEqual(optimised.eventFrames)
+      expect(reference.channels.length, `${name}: frame count`).toBe(optimised.channels.length)
+      for (const [index, frame] of reference.channels.entries()) {
+        // Node identity is the channel that catches a region rebuilding what the
+        // adapter reused, and vice versa — the one divergence that leaves the
+        // markup byte-identical.
+        expect(frame.identity, `${name}: frame ${index} element identity`).toEqual(
+          optimised.channels[index]!.identity,
+        )
+        expect(frame.attributes, `${name}: frame ${index} attributes`).toEqual(
+          optimised.channels[index]!.attributes,
+        )
+      }
+    })
+  }
+})
+
+/**
  * The same differential through the second backend. It is a weaker test than
  * the DOM one — the string backend runs three fewer passes, so `-O0` moves less
  * — and it is worth having anyway: the `Backend` trait is what both backends
@@ -244,8 +321,8 @@ describe("L3 — the -O0/-Ox differential through the string backend", () => {
  * L3's BLIND SPOT, graded absolutely because a differential cannot grade it at
  * all.
  *
- * `passes::run` gates `fold`, `fuse`, `anchor`, `walk`, `dedup`, `eta`, `hoist`
- * and `splice`. It does not gate `analysis::bind`, `harvest`, `lower`, P2
+ * `passes::run` gates `fold`, `fuse`, `anchor`, `walk`, `dedup`, `eta`, `hoist`,
+ * `splice` and `flow`. It does not gate `analysis::bind`, `harvest`, `lower`, P2
  * `classify` or P4 `shape` — roughly 5000 lines of front end that both levels
  * and all three backends share, by design. Everything L3 says is of the form
  * "the two builds agree", so a front end that is wrong is wrong on both sides
@@ -318,6 +395,25 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
 ]
 
 describe("the front end L3 cannot grade, graded absolutely", () => {
+  /**
+   * The flag census, in the suite the mutation runner drives — because a flag
+   * is the one thing in this pass that L3 structurally cannot grade.
+   *
+   * `-O0` emits no region at all, so the differential can only ever see a
+   * flag's SYMPTOM. Dropping a proven flag has none by construction: the
+   * program is correct and merely slower. SHIPPING an unproven one is a
+   * miscompilation, and it had a symptom until M4b's gate round, when `insert`
+   * began owning its render effect by the scope it was handed (O4.5) and the
+   * DOM divergence `flow-ships-no-scope-unproven` was killed by on
+   * `dashboard-composite` went away. The mutation is no less wrong; the
+   * differential simply stopped being able to see it. This is the channel that
+   * can, in both directions, and it is the reason it lives here as well as in
+   * `optimality.test.ts` — one list, two suites, imported.
+   */
+  it("every flag the corpus emits is one the compiler proved", () => {
+    expect(emittedFlags()).toEqual([...FLAG_CENSUS])
+  })
+
   for (const mode of liveModes()) {
     for (const [index, probe] of REACTIVITY_PROBES.entries()) {
       it(`${mode}: ${probe.what}`, async () => {

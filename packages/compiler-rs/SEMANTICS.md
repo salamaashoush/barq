@@ -248,15 +248,33 @@ goes into `kids` and a cleanup into `cleanups`, so `dispose` walks kids in rever
 *then* runs cleanups LIFO, and the two claims are separately observable for the first time. Disposal
 also unlinks the scope from its parent's `kids` when it is disposed on its own, so repeatedly
 creating and disposing children of a long-lived scope no longer retains every dead one — the
-M2 gate measured 1,000 create+dispose pairs leaving 1,000 entries behind.
+M2 gate measured 1,000 create+dispose pairs leaving 1,000 entries behind. The M4 gate found the
+unlink guarded by a module-global unwind DEPTH, which made it skip for any disposal happening
+anywhere while some UNRELATED tree was unwinding — five dead scopes retained on a live parent,
+measured, whenever a cleanup disposed something outside its own subtree, which is what a portal
+container, a pinned scope or a row coordinator does. The guard is now the identity of the array
+being walked: `unwindKids` detaches `kids` from the scope before the walk, so a child disposed by
+its own parent finds `null` and a child disposed during someone else's unwind still reclaims its
+slot. `scope.test.ts` pins both directions, and the second test fails with the old spelling.
 
-O3.4, O3.5 `IMPLEMENTED, UNEXERCISED`. M2 landed `abortSignal(s)` and `ownRange(s, remove)` and
-`dispose` runs both, in that order, after the cleanups, and `scope.test.ts` pins both. Neither has a
-production caller that would let the falsification procedure run: nothing in the runtime calls
-`abortSignal`, `dom.ts` registers every listener with a bare `addEventListener` and no `{ signal }`,
-and `render` is the only construct that installs a range. `HOLDS` is the wrong word for a primitive
-whose only caller is its own test; the listener and fetch halves are B4 and M5, and the ranges for
-`branch`/`each`/`portal` are M4.
+O3.5 `HOLDS` since M4. `branch`, `boundary` and `portal` install their instance's range with
+`ownRange`, so disposal removes the DOM as its last act and no consumer removes nodes it does not
+own. That is what took the range half out of "implemented, unexercised": there are four production
+callers now and `flow.test.ts` drives every one of them through mount → key flip → dispose.
+
+It also has an oracle channel of its own since M4, and the channel is a JOIN rather than a second
+assertion of the same thing. `test/metamorphic.ts`'s MM4 reads which nodes survived a transition off
+the DOM and which scopes came apart off the L2b ownership trace, in ONE render window, and asserts
+both against the same declared class: a step declared `preserves` must dispose nothing, a step
+declared `rebuilds` must dispose something. A runtime that disposed a branch instance and rebuilt a
+byte-identical subtree satisfies the markup — which is what every other channel in the repository is
+a function of — and fails here.
+
+O3.4 `IMPLEMENTED, UNEXERCISED`. M2 landed `abortSignal(s)` and `dispose` aborts it before the range
+comes out, and `scope.test.ts` pins it, but nothing in the runtime calls `abortSignal` yet: `dom.ts`
+still registers every listener with a bare `addEventListener` and no `{ signal }`, and the resource
+that would own a fetch is M7's. `HOLDS` is the wrong word for a primitive whose only caller is its
+own test; the listener half is B4 and M5's, the fetch half is M7's.
 
 O3.6 `PARTIAL`. The half that says a throwing cleanup MUST NOT abort the rest holds: `runUntracked`
 wraps every cleanup in `try/catch`, so a throw in the second of three still leaves all three run.
@@ -265,9 +283,42 @@ The half that says it MUST route to `s.catcher` does not — the throw is swallo
 "propagates out of `disposeNode` and aborts the rest", which is not what happens and is exactly the
 wrong-reason hazard §15 exists to catch.)
 
-O3.7 `VIOLATED` — the render-root half is fixed for the Block form and for an argument-form mount
-with no owner current (see O5) and the `<Await>` branch that registers its disposer with the effect
-node rather than the scope above it is not; `ownership-known-failures.ts` carries it, green at M4.
+O3.7 `PARTIAL` since M4, and the part that is left is B4's rather than this rule's.
+
+What holds: **zero live scopes, zero scheduled effects, zero retained DOM nodes** under any of the
+four control-flow primitives. The `<Await>` branch that registered its disposer with the effect node
+that resolved the promise — so that disposing the render root never reached it — is gone with the
+ten hand-written bodies: `region` in `flow.ts` opens every instance with `enter(given)` and with
+nothing else, so an instance is a child of the scope the construct was HANDED and a re-run of the
+driving effect cannot take it. `ownership-known-failures.ts` carried this as
+`scope-never-disposed@branch` and the row is deleted; that table is now empty. `flow.test.ts` drives
+the falsification procedure directly: dispose the root, then write a signal the subtree depended on —
+no effect runs and no DOM is written.
+
+What does not hold: **zero registered listeners**. `dom.ts` still registers listeners with a bare
+`addEventListener` and nothing removes them, which is B4 and is M5's. A Block that registers its own
+listener with its own `onCleanup` is released correctly today, and that is the half `flow.test.ts`
+can assert; the half the framework owns is not written yet, so this rule does not say `HOLDS`.
+
+**The leak oracle.** Since M4 the invariant is checkable, which the paragraph above this one said it
+was not. `test/leaks.ts` takes five probes from OUTSIDE the runtime, in the same window as the render
+and after `dispose()` has returned, and runs all five over the whole corpus:
+
+| probe      | clause                  | how it is observed                                        |
+|------------|-------------------------|-----------------------------------------------------------|
+| `scope`    | zero live scopes        | the ownership trace: entered inside the window, never disposed |
+| `effect`   | zero scheduled effects  | every signal the fixture exports written a value it does not hold, then flushed twice; any traced effect whose run counter moves |
+| `listener` | zero registered listeners | `addEventListener` matched against its removal, on every prototype a live target actually inherits from |
+| `async`    | zero in-flight continuations | `queueMicrotask`/`setTimeout` scheduled before disposal, counted twice over: one whose callback RAN after it, and one still OUTSTANDING when the window closed. The second is the canonical shape — one timer or fetch in flight at teardown never runs, so a probe that only counts callbacks that fired cannot see it — and `clearTimeout` decrements, so a cancelled timer is not outstanding |
+| `node`     | zero retained DOM nodes | a template clone still inside `document`, and a container that is not empty |
+
+The effect probe is the strongest of the five and is worth stating separately: a COUNT of live
+effects is not observable — the runtime exposes no registry and `scopeAllocations()` is monotonic —
+but an effect that is still subscribed has one behaviour nothing else has, which is that it RUNS.
+Over 137 sessions the corpus produces **three findings, all `listener`, all B4, all in one fixture**;
+the four clauses this rule owns produce none. `test/leak-known-failures.ts` carries the three under
+the same four assertions the other two registries do, and `leaks.test.ts` asserts separately that
+each probe CAN fire, because a probe that cannot reports the same zero a correct runtime does.
 
 **Pinned by.** `sem-own-dispose-order.tsx` *(new)*, `sem-own-dispose-leaves-nothing.tsx` *(new)*,
 `sem-err-cleanup-throw.tsx` *(new)*.
@@ -311,6 +362,22 @@ and `Ctx.use()` can find their owner without being handed a scope. A framework p
 `CURRENT` at a point where a `Scope` argument is in scope is a defect, and it is the defect shape this
 whole redesign exists to remove.
 
+*O4.5's own falsification procedure, added in M4b's gate round, because §13 recorded this rule as
+pinned by "structural (§14)" and a SIGNATURE is not evidence.* `insert` and `setProp` both took a
+`Scope`, validated it with `requireScope`, and then opened their render effect under whatever was
+ambient — so `insert(A, …)` while B was current put the cleanup on B, `dispose(A)` left the effect
+running, and it went on writing into a detached tree. The corpus could not see it: compiled code never
+makes `_s$` and `CURRENT` differ, so the argument and the ambient owner are the same object in all 127
+fixtures. `sem-own-given-scope-wins` makes them differ — enter A, leave it, enter B, hand A to the
+primitive — which is the only arrangement under which the rule is observable at all. Both now run
+their body under the scope they were handed, as `branch`, `each`, `boundary` and `portal` have since
+M4. One reader is left, and it is registered rather than described: `childToNodes` invokes a children
+Block with `getOwner()`, and handing it `s` instead is coupled to O5 — it turns
+`sem-own-render-disposer-disposes`'s `control-the-argument-form-reports-that-it-cannot-dispose` red,
+because the root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing. A `null` scope is left
+alone on purpose: it names no owner, and forcing `CURRENT` to null makes the effect an orphan that
+`enterRoot` then CLAIMS, which relocates ownership rather than deciding it.
+
 **Falsified by.** Throw from a Block under a boundary. After the fallback has rendered: (a)
 `getOwner()` at the boundary's call site MUST be the same object it was before the boundary was
 called; (b) every cleanup registered by the failed subtree MUST have run; (c) no node built by the
@@ -344,7 +411,7 @@ with the root scope; insert the result; flush. The returned disposer MUST `dispo
 **Falsified by.** Render a tree containing an effect. Call the disposer. Write a signal the effect
 depends on. If the effect runs, O5 is false.
 
-**Status.** `HOLDS` (M2) **for the `block` form, unconditionally**; `PLANNED` (M4) for the
+**Status.** `HOLDS` (M2) **for the `block` form, unconditionally**; `PLANNED` (M5) for the
 already-built argument form, which holds **only when no owner is current at the call site**. That precondition is load-bearing
 and it is stated here because the M2 gate found it stated nowhere: `render` opens a root scope,
 establishes it as a catcher, invokes `block` with it when it is given one, inserts, records the
@@ -387,9 +454,9 @@ same scope it would have attached to outside it.
 **Falsified by.** Inside `untrack`, call `onCleanup(f)`; dispose the enclosing scope; `f` MUST run.
 Inside `untrack`, read a signal; the enclosing effect MUST NOT re-run when it is written.
 
-**Status.** `HOLDS`, untested. `untrack` changes only the observer today; nothing asserts it.
+**Status.** `HOLDS`. `untrack` changes only the observer, and both directions are now asserted: a cleanup registered inside `untrack` runs when the lexically enclosing scope is disposed, and a signal read inside `untrack` does not re-run the enclosing effect.
 
-**Pinned by.** `sem-react-untrack-keeps-owner.tsx` *(new)*.
+**Pinned by.** `sem-react-untrack-keeps-owner.tsx`.
 
 ---
 
@@ -542,7 +609,7 @@ still unrunnable: it needs `packages/core` to hand a component a props object at
 **Pinned by.** `sem-props-laziness-conformance.tsx` *(new)* for (a); `sem-props-cell-not-memoised.tsx`
 *(new)* for (b); `component-getter-props.tsx`, `props-rest-spread.tsx`, `component-spread.tsx`,
 `props-destructured-param.tsx`, `props-destructured-body.tsx`, `props-renamed-and-defaulted.tsx`
-(existing) for the shapes; `sem-props-block-in-cell-slot.tsx` *(new)* for (d).
+(existing) for the shapes; `sem-props-block-in-cell-slot.tsx` for (d).
 
 ### C4 — props are read by calling, and the type says so
 
@@ -601,7 +668,6 @@ cannot see.
 cost: thunk spread-forward 6.73 ns vs getter 455.14 ns — a getter cannot satisfy this rule at all,
 because `get x() { return props.x }` allocates a new descriptor at every hop.
 
-**Status.** `PLANNED` (M3).
 **Status.** `HOLDS` (M3). `<B x={props.x} />` emits `B(_s$, { x: props.x })`
 — the same function object, with no closure minted at the hop — for a member read off a props
 parameter, for a binding the analysis proved is an accessor, and for an author-written zero-arity
@@ -609,8 +675,22 @@ arrow. C5.2's η-reduction is now universal rather than a whitelist, and one con
 here because it removes a channel: a reduced prop used to be evidence that the tag resolved to a flow
 component, and it no longer is. The SymbolId discipline it stood for is re-pinned where it is still
 observable — a locally-bound `Show` gets no string implementation.
+
+**C5.1 item 1 landed in M4b's gate round, as `BARQ010`.** It did not exist before: `diag.rs` listed
+eight codes and none of them was about kinds, so both in-module cases — a Block written straight into
+a Cell slot, and a Block forwarded one hop through another in-module component into one — compiled
+with an empty diagnostic list and threw at run time instead. `analysis::bind` now collects, while the
+JSX is still visible, every `(component, prop)` pair the module can PROVE is a Cell slot: `props.x`
+read as an attribute on an INTRINSIC element, which is the one position in JSX that lowers to
+`_$setProp`. A child position is not one, because C3.7 makes both kinds legal there; an attribute on
+a COMPONENT is not one either, because it is a forward, and its verdict is the callee's — which is
+computed by a fixpoint over those forwards, so the rule reaches any depth inside the module. `shape.rs`
+raises the code at the forwarding site, naming the slot, the callee and the byte range of the read.
+The rule is one-sided by construction: it fires only where the compiler has proof, and its silence is
+never a claim that a slot is safe. Item 2 is what answers everywhere else.
  **Pinned by.** `props-raw-forward.tsx` (existing, re-pinned),
-`flow-prop-eta-boundary.tsx` (existing), `sem-props-forward-identity.tsx` *(new)*.
+`flow-prop-eta-boundary.tsx` (existing), `sem-props-forward-identity.tsx` *(new)*,
+`sem-props-block-in-cell-slot.tsx` for item 2 and `docs/BARQ010.md` for item 1.
 
 ### C6 — children are Blocks; slots are Block-valued props
 
@@ -629,17 +709,36 @@ was given. §3.0 rule 3's brand (`_$b`, `Helper::Block`) is what makes the kind 
 so a consumer tests a property instead of guessing from arity — the guess that handed a row callback
 the Scope where its item belongs, and that invoked an arbitrary zero-argument prop once as a probe.
 
-**The emission.** P4 `shape` lowers every JSX child and every
-JSX-valued prop to `(_s$) => …`, and when the body is a compiled unit its `Site` is retargeted to
-`ArrowBody` so codegen splices the walk and the patch program straight into the Block — the shape
-`CODESIGN.md` §7.1 prints, costing neither an IIFE nor a call. A row callback needs no wrapping at
-all: `scope.rs` already gave it the scope parameter, so it IS a Block with a slot parameter and is
-forwarded by name. The corpus-wide audit in `compile.rs` re-parses every emitted module and fails on
-any `children` slot holding a call, a template clone, an array or an IIFE — the four spellings this
-rule's falsification clause enumerates. The rule stays `VIOLATED` because no consumer in
-`packages/core` invokes a `children` Block with a scope yet.
+**The emission**, as it is rather than as it was planned. P4 `shape` lowers every JSX child and every
+JSX-valued prop to `_$block((_s$) => …)`, and when the body is a compiled unit its `Site` is
+retargeted to `ArrowBody` so codegen splices the walk and the patch program straight into the Block —
+the shape `CODESIGN.md` §7.1 prints, costing neither an IIFE nor a call. A row callback needs no
+wrapping at all: `scope.rs` already gave it the scope parameter, so it IS a Block with a slot
+parameter and is forwarded by name.
+
+Two things `CODESIGN.md` §3.0 prints are **not** what is emitted, and both are recorded here rather
+than left for a reader to discover. First, §3.0 prints `header={<h1>t</h1>}` crossing as
+`header: _tmpl$1` — an arity-0 template passed by name, zero allocation. The compiler emits
+`header: _$block((_s$) => _tmpl$1())`, a closure per construction, because the BRAND is what makes
+C3.8's guard and C7's counter possible and an arity-0 `template` carries none. The allocation is the
+price of the brand and it is paid deliberately. Second, the rule's sentence "an arity-0 `template()`
+**is** a legal Block" stays true of the type — C3.7 makes it safe — but nothing the compiler emits
+takes that form.
+
+**What the corpus audit actually checks.** `compile.rs`'s
+`the_whole_corpus_emits_one_calling_convention_at_both_levels` re-parses every emitted module at both
+levels and both backends. It fails on any `children` slot holding a call, a template clone, an array,
+an IIFE **or a nullary thunk**, and on any slot of ANY name whose value builds DOM while the props
+record is being built. Both widenings are M4b's gate round, and both were forced by the same defect:
+`builds_dom` in `shape.rs` was the one kind predicate that did not see through a TypeScript
+assertion, so `<Sink>{<b/> as never}</Sink>` emitted `children: () => _tmpl$3() as never` — C6's third
+named falsifier, in the slot the audit was pointed at, passing it. The old audit could not see it
+twice over: `deferred` accepted every `ArrowFunctionExpression`, and nothing outside `children` was
+audited at all. `the_calling_convention_audit_sees_all_four_of_c6s_falsifiers` now asserts each of
+the four spellings is SEEN, so the negative claim over the corpus cannot go green by blindness.
  **Pinned by.** `component-children-slot.tsx` (existing, re-pinned),
-`sem-own-slot-arguments.tsx` *(new)* for the slot-parameter half.
+`sem-own-slot-arguments.tsx` for the slot-parameter half,
+`sem-props-cast-keeps-the-brand.tsx` for the assertion wrappers.
 
 ### C7 — a Block is called exactly once per activation
 
@@ -663,13 +762,49 @@ one dispose. The counter MUST equal the number of activations, exactly. In parti
 from A to B to A MUST show A's Block invoked twice (two activations) and a *no-op* write MUST show no
 additional invocation (K2).
 
-**Status.** `UNOBSERVABLE` at M0 — there is no channel that counts Block invocations, because there
-are no Blocks. `PLANNED` (M4) for the assertion.
+**Status.** `HOLDS` since M4 for the four consumers that exist — `branch`, `each`, `boundary`,
+`portal` — and the counter exists in two places. In the runtime, `flow.ts`'s `invoke` is the ONE
+syntactic site any of them invokes a Block from, and it emits `BLOCK_EVALUATED_TWICE` when a Block is
+called twice for one activation (behind the diagnostics gate: one boolean load when nothing is
+listening). It was `build`, and `build` was not enough: `errorBoundary` hands `region` two Blocks of
+its own — the installed content and the recovered fallback — and invoked both DIRECTLY, so the one
+bug §4.1 records the old `ErrorBoundary` as having shipped, building its fallback twice, reported
+`0 BLOCK_EVALUATED_TWICE` under a mutant that did exactly that. Both arms now go through the counted
+call and the mutant is killed by it. In the suite, `flow.test.ts` drives every consumer with an instrumented Block through
+mount, a no-op write, a key flip and a dispose, and asserts the count equals the number of
+activations — including the two halves the procedure names: a flip A → B → A shows A's Block invoked
+twice, and a no-op write shows no additional invocation (K2).
+
+The census caught the other end of the same fact: two fixtures dropped a clone —
+`control-flow-error-boundary` 3 → 2 and `control-flow-await-suspense` 4 → 3 — because the old
+`ErrorBoundary` built its fallback twice on a construction throw and the old `Suspense` rendered its
+fallback twice from a microtask pair that subscribed to nothing. Identical DOM in every frame, one
+fewer subtree built and discarded.
+
+M4's oracle work drives the rule's own falsification procedure at the COMPILED level, which is where
+the consumers actually are: `test/single-evaluation.test.ts` compiles eighteen fixtures under
+`fixtures/l4/`, each carrying an instrumented Block that records its own invocations, and compares
+the recorded sequence against the exact sequence the fixture declares. Both directions come free —
+too few invocations and too many are both a different array — and the map from C7's consumer list to
+the fixture that drives it is asserted TOTAL, so a consumer with no fixture fails rather than going
+unmentioned. `provide` and `dyn` are covered there (`c7-provider`, `c7-reveal`), which is what the
+previous paragraph said they were not.
+
+One thing the milestone found and worth writing down: **no sequence of writes against the shipped
+primitives can arm the runtime's counter.** Every call site of `invoke` in `flow.ts` bumps `activation`
+first — `activate` does, `each`'s mapper does per row, `each`'s fallback does, `portal`'s microtask
+does — so `BLOCK_EVALUATED_TWICE` is unreachable from inside the corpus. That is C7 holding, and it
+means the zero the corpus reports is not evidence the counter works. What arms it is a mutant:
+`test/runtime-mutants.ts`'s `evaluate-a-block-twice` makes `build` invoke its Block twice and the
+counter fires, alongside twenty failing conformance rows.
 
 This rule is why Solid needs `children()` — two lazy memos, because `Show` reads `props.children` at
 four syntactic sites — and why this design needs nothing.
 
-**Pinned by.** `sem-own-single-evaluation.tsx` *(new)*.
+**Pinned by.** `mm-branch-flip.tsx`, `mm-branch-key-stable.tsx`, `c7-portal.tsx`, `c7-provider.tsx`,
+`c7-error-boundary.tsx`, `c7-error-boundary-fallback.tsx`, `c7-await-suspense.tsx`,
+`c7-repeat.tsx`, `c7-each-fallback.tsx`, `c7-dynamic.tsx`, `c7-reveal.tsx`,
+`c7-loading-errored.tsx` (all under `fixtures/l4/`).
 
 ### C8 — fragments are a compile-time multi-root unit, never a runtime component
 
@@ -699,7 +834,6 @@ nesting, so merged merges stay linear.
 **Falsified by.** Later sources MUST shadow earlier ones on read; `ownKeys` and `has` MUST union all
 sources; a spread of a spread MUST NOT deepen the read path.
 
-**Status.** `PLANNED` (M3).
 **Status.** `HOLDS` (M3). P4 `shape` splits a component's attributes at
 every spread boundary and emits `_$props([…])` with the records and the spread sources in written
 order, dropping empty records so `<Foo {...a} />` is one source rather than three. A component with no
@@ -874,11 +1008,30 @@ unchanged value MUST do **nothing** — no teardown, no rebuild, no Block invoca
 node in the branch is the same object and the Block's invocation counter did not move. Then reorder a
 keyed list; assert the moved row's nodes are the same objects.
 
-**Status.** `PLANNED` (M4). The identity-gated re-render is hand-rolled in ten lines at
-`router.tsx:1576` today, which is the evidence that the primitive does not provide it.
+**Status.** `HOLDS` since M4. `region` in `flow.ts` compares the key it just read against the
+previous one and returns before anything else happens: no teardown, no rebuild, no Block invocation.
+`flow.test.ts` writes a signal the key reads five times without moving the key and asserts the
+Block's counter did not move. The row half is `mapArray`'s and is unchanged — a row whose key is
+unchanged keeps its scope, its nodes and their identity across a move.
 
-**Pinned by.** `sem-key-noop-preserves-nodes.tsx` *(new)*,
-`control-flow-for-keyed-by-item.tsx` (existing).
+The identity-gated re-render is still hand-rolled in ten lines at `router.tsx:1576`; that deletion is
+M8's, and it is now a deletion rather than a port.
+
+The falsification procedure this rule names is metamorphic, and since M4 it is run as one:
+`test/metamorphic.ts` writes a signal that changes nothing the key depends on and asserts every node
+in the branch is the same OBJECT and the Block's counter did not move, then reorders a keyed list and
+asserts the moved row's nodes are the same objects. `mm-branch-nonkeyed-truthy` is the fixture the
+rule really needs and the one that did not exist before: everywhere else the equality gate on the
+`computed` upstream stops the driving effect before the region is reached, so K2's own comparison is
+never consulted. With `keyed={false}` the region's `renderEffect` genuinely re-runs on every write
+and computes the same key, which makes `region`'s `if (previous !== UNSET && k === previous) return`
+the only thing standing between the write and a full rebuild. Deleting that line produces
+byte-identical markup — the oracle, the SSR backend and the L3 differential all stay green — and it
+is caught, by this channel and by C7's, which is `runtime-mutants.ts`'s
+`rebuild-on-an-unchanged-key` row.
+
+**Pinned by.** `mm-branch-key-stable.tsx`, `mm-branch-nonkeyed-truthy.tsx`, `mm-keyed-move.tsx`,
+`mm-index-row-stable.tsx` (all under `fixtures/l4/`), `control-flow-for-keyed-by-item.tsx` (existing).
 
 ### K3 — a keyless row containing stateful DOM is a compile-time diagnostic
 
@@ -912,11 +1065,62 @@ under shadowing.
 **Falsified by.** A locally-shadowed `Show` MUST be treated as a user component, not lowered. An
 imported-and-renamed `Show` MUST be lowered.
 
-**Status.** `HOLDS` for the resolution discipline (`SymbolId`, not name), `PLANNED` (M4) for the
+**Status.** `HOLDS` since M4b, for the resolution discipline (`SymbolId`, not name) and for the
 lowering.
 
+`Op::Region { slot, anchor, region }` is the opcode and `passes/flow.rs` is the pass. Eleven
+constructs cease to exist as components and become one of the four primitives: `Show` and
+`Switch`/`Match` are `branch`, `For`/`Index`/`Repeat` are `each`, `Loading`/`Suspense` and
+`Errored`/`ErrorBoundary` are `boundary`, `Portal` is `portal`. The key is plain emitted JavaScript
+in every case — `() => visible() || false` for a keyed `Show`, `() => a() ? 1 : b() ? 2 : 0` for a
+`Switch` over two arms, with a hoisted body table indexed by that integer — and the
+`(parent, anchor)` pair is the one the template walk already computed, so the runtime no longer
+re-derives an insertion point the compiler knew statically. `optimality.test.ts`'s
+`K5 — the fourteen constructs, and the four they lower onto` asserts over the whole corpus that no
+lowered construct survives as a call.
+
+**Three constructs are NOT lowered, and each refusal is a fact rather than a gap.** `Dynamic` needs
+the string arm's element construction, which is private to `components.ts` and not on the ABI §3.0
+enumerates — emitting it would mean a fifth element-creation path out of the compiler, which is the
+thing M4 deleted from the runtime. `Await` discriminates a `Resource` from a `Cell` carrying one by
+a property test on the value, and its key and its three bodies each need the resolved resource;
+without a shared local that is four evaluations of one prop, and the compiler cannot prove they
+yield the same object. `Reveal` creates a PROVIDE scope rather than a range (O1 lists `provide`
+separately from `branch`), so it is not one of the four primitives at all. A twelfth case — a
+construct written with a spread — is refused for C9's reason: a source list is a runtime object, so
+the props cannot be read statically. Every refusal keeps the component call, which reaches the same
+primitive one adapter frame later; that direction is always safe and the other never is.
+
+**One evaluation moved, and it is stated rather than hidden.** A keyed `Show`'s body reads the
+`when` Cell a SECOND time, at activation, to tell a truthy value from a falsy one — `branch`
+deliberately has no slot argument, and the key ran first in the same synchronous step. It costs one
+read per REBUILD, never per key evaluation, and C3.2 licenses it: a Cell is explicitly not
+memoised. The adapter wrapped `when` in a `computed`, so a `when` with a side effect or an unstable
+value is the one input on which the two paths can disagree.
+
+**The flags are proofs about the key, and both are now emitted.** `STATIC_KEY` is set when the key
+EXPRESSION reads nothing reactive — the read, never the prop, because `when={on}` is a `Static`
+expression whose read `on()` is not. `NO_SCOPE` is set when every body is a lowered root with an
+empty patch program. A property the compiler cannot prove is a zero it never writes, and the runtime
+does the work; that direction is always safe and the other never is.
+
 **Pinned by.** `renamed-core-import.tsx`, `signal-alias.tsx` (existing) for the resolution half;
-`sem-key-shadowed-flow.tsx` *(new)* for the shadowing half.
+`sem-key-shadowed-flow.tsx` *(new)* for the shadowing half; `control-flow-show.tsx`,
+`control-flow-switch-match.tsx`, `control-flow-for*.tsx`, `control-flow-index.tsx`,
+`control-flow-repeat.tsx`, `control-flow-errored-loading.tsx`, `portal.tsx` for the lowering,
+through their `optimality` declarations; `control-flow-show-static-key.tsx` *(new)* and
+`control-flow-switch-static-key.tsx` *(new)* for the flags, which until M4b no fixture in the corpus
+could emit at all — every key there reads a signal, so `STATIC_KEY` was provable, never proved, and
+measured on a hand-written call. Both new fixtures declare the exact integer (`1`, `3` and `1`), the
+corpus-wide flag census in `optimality.test.ts` names every region that ships one, and `bench:flags`
+compiles these two fixtures and clears ONE BIT in the emitted integer to get its pair.
+
+**How a declaration is kept from being decoration.** Every fixture whose construct lowers must name
+one thing `-Ox` emits that `-O0` does not, and one thing `-O0` emits that `-Ox` does not — asserted
+per fixture by `every lowered region names its primitive and the frame it replaced`. The second half
+is the one that rots quietly: the whole corpus carried `absent: ["(Show, {"]`, a call shape no build
+has emitted since M3, so every one of them was asserting the absence of something that could not
+have been present.
 
 ### K6 — each activation of a branch gets a fresh scope and a fresh build
 
@@ -928,8 +1132,26 @@ fresh child scope, invoke `bodies[k]` under it, insert at the anchor. A hide/sho
 before. Today's emission `Show({ when: on, children: _tmpl$1() })` hands the *same built node* back on
 re-mount, which is K6's negation and a leak of DOM identity across activations.
 
-**Status.** `VIOLATED`. **Pinned by.** `control-flow-show.tsx` (existing, re-pinned for identity),
-`sem-key-remount-is-fresh.tsx` *(new)*.
+**Status.** `HOLDS` at runtime since M4, for every construct that reaches
+`branch`/`each`/`boundary`/`portal`. `region` disposes the old instance scope in full (O3, including
+the range removal that takes its nodes out), `enter`s a fresh child of the scope the construct was
+given, invokes `bodies[k]` under it exactly once and inserts at the anchor. `flow.test.ts` asserts a
+flip A → B → A builds A twice, with the second build a different subtree.
+
+The remaining half is the compiler's and is K5's: while the emission is still
+`Show({ when, children: _$block(…) })` the BLOCK is what defers the build, so the "hands the same
+node back" failure is gone, but a body written as `<div/>` rather than as a thunk is still a Block
+only because M3 made it one.
+
+Since M4 the identity half is asserted directly rather than inferred: `fixtures/l4/mm-branch-flip.tsx`
+and `mm-switch-arm.tsx` declare each of their steps `rebuilds`, and the metamorphic channel checks
+that in both directions and on two independent observations — no element of the previous frame may
+survive into the next one (off the DOM), and at least one scope must have come apart (off the L2b
+ownership trace). A hide/show cycle that handed the same node back would satisfy the markup, which is
+what every other channel here is a function of.
+
+**Pinned by.** `control-flow-show.tsx` (existing, re-pinned for identity), `mm-branch-flip.tsx`,
+`mm-switch-arm.tsx`, `c7-dynamic.tsx` (all under `fixtures/l4/`).
 
 ### K7 — no marker comments in client rendering
 
@@ -939,8 +1161,31 @@ client-rendered page MUST contain **zero** framework comment nodes.
 
 **Falsified by.** `createTreeWalker(root, SHOW_COMMENT)` over a rendered page must count 0.
 
-**Status.** `PLANNED` (M4). The anchor channel already exists in `oracle.test.ts` and is snapshotted
-per fixture; K7 is the eventual expected value of that channel.
+**Status.** `PARTIAL` since M4, and the residue is a claim in this document that cannot be met as
+written.
+
+What holds: **zero framework marker PAIRS**. Every control-flow instance used to splice
+`<!--Name:n-->` and `<!--/Name:n-->` into its live parent so its `renderEffect` could find its own
+range again; the four primitives take `(parent, anchor)` and track the range they own, so the pair is
+gone everywhere. Twenty-nine marker-channel snapshots moved, all in that direction, and the SSR
+parity test now asserts the two backends agree BYTE FOR BYTE where it used to strip the markers
+first. A region the compiler could not hand a parent to carries ONE empty text node as its own
+anchor, which is one byte and not a comment.
+
+M4b removed the last of the region-owned anchors on the compiled path. A construct that occupies a
+child slot of a template is now an `Op::Region`, so it is handed the `(parent, anchor)` pair the
+walk computed and owns no node of its own; the one empty text node `siteFor` mints survives only
+where the compiler cannot name a parent — a construct that is a whole component body, a prop value,
+or nested inside a larger hole expression — and on the un-compiled path, which is what the two
+`marker-count`/`effect-runs` rows in `oracle-known-failures.ts` now record.
+
+What does not hold: a `<!---->` still separates two adjacent dynamic siblings, because
+`passes/anchor.rs` materialises one. §3.4 says these should be "one empty text node baked into the
+template", and an empty text node cannot be baked into template HTML — `innerHTML` does not
+materialise one. Either the anchor becomes a non-empty text node (a byte of content, visible in the
+DOM) or it stays a comment. That is a design question this milestone did not have the standing to
+answer, and until it is answered `createTreeWalker(root, SHOW_COMMENT)` counts more than 0 on a page
+with adjacent dynamic siblings.
 
 **Pinned by.** the existing anchor snapshot channel over the whole corpus; `marker-literal-text.tsx`
 (existing) guards content being mistaken for structure.
@@ -1024,7 +1269,21 @@ build). A boundary MUST NOT have a bespoke teardown path.
 **Falsified by.** After `reset()`, the retried content MUST be freshly built (K6) and its scope MUST
 be a new object.
 
-**Status.** `PLANNED` (M4). **Pinned by.** `control-flow-error-boundary.tsx` (existing, re-pinned).
+**Status.** `HOLDS` since M4. `boundary(s, parent, anchor, "error", fallback, body)` is the same
+`region` driver `branch` uses, keyed on `collector.failed()`, with the content Block invoked inside a
+`try` that hands the key of the arm to build instead. There is no teardown path of its own: the
+instance scope is disposed by the same code that disposes a `Show`'s. `reset()` clears the collector,
+which moves the key back to 0 — a fresh scope and a fresh build, by K6.
+
+One thing the milestone found and the rule did not say: a catcher that only WRITES a signal is at the
+mercy of the flush it was called from. A user effect runs synchronously at creation, so an error
+raised during the very flush that built the region marks a render effect that has already run, and
+nothing consumes the mark. The catcher installed on the instance scope therefore both records and
+ACTS — it re-reads the same key expression the effect reads, so there is one decision procedure with
+two entry points. Without it the boundary recovered on the second flush and not the first, which is
+not a boundary.
+
+**Pinned by.** `control-flow-error-boundary.tsx` (existing, re-pinned).
 
 ### E4 — an error carries the scope chain as a component stack
 
@@ -1139,8 +1398,8 @@ body is not a tracking scope**: reads in a component body MUST NOT subscribe any
 **Falsified by.** Read a signal in a component body; write it; the component MUST NOT re-run and
 nothing may re-render on account of that read.
 
-**Status.** `HOLDS` (component bodies run untracked). **Pinned by.**
-`sem-react-component-body-untracked.tsx` *(new)*.
+**Status.** `HOLDS` (component bodies run untracked); asserted in both halves — the body does not re-run on a write to a signal it read, and the markup that read produced does not move. **Pinned by.**
+`sem-react-component-body-untracked.tsx`.
 
 ### R2 — reactivity is exited in exactly three places
 
@@ -1174,7 +1433,7 @@ nothing may re-run.
 **Rule.** See O6. Stated twice deliberately: it is an ownership rule and a reactivity rule, and
 conflating owner with observer is the bug source both sections exist to prevent.
 
-**Pinned by.** `sem-react-untrack-keeps-owner.tsx` *(new)*.
+**Pinned by.** `sem-react-untrack-keeps-owner.tsx`.
 
 ### R5 — the epoch write-dedupe and `markWave` are load-bearing
 
@@ -1254,8 +1513,30 @@ form.
 **Falsified by.** The leak oracle: registered-listener count after `dispose()` MUST be 0. Today only
 `spread` removes listeners.
 
-**Status.** `VIOLATED`. **Pinned by.** `delegated-event.tsx`, `non-delegated-event.tsx` (existing,
-re-pinned); `sem-own-dispose-leaves-nothing.tsx` *(new)*.
+**Status.** `VIOLATED`, and M4 did not move it — the listener channel is M5's. What M4 did build is
+the half of the falsification procedure that can run without it: `flow.test.ts` registers a listener
+inside a branch body with its own `onCleanup`, flips the key, and asserts the node that was there is
+detached AND deaf. That is the position dying with its listener, demonstrated on a listener the
+BLOCK owns. The framework still registers its own with a bare `addEventListener` in `dom.ts` and
+removes none of them, which is what this rule is about and what keeps it violated.
+
+What M4 also built is the rule's own falsification procedure, in full: "registered-listener count
+after `dispose()` MUST be 0" is now a number this repository takes. `test/leaks.ts` matches every
+`addEventListener` against its removal across the whole corpus and reports three outstanding
+listeners on `non-delegated-event` — `div.mouseenter`, `div.mouseleave`, `div.focus`, one per
+handler `dom.ts:386` binds with no cleanup. They are registered in `test/leak-known-failures.ts`
+against M5, with the four assertions that make a registry mean something: a row that stops occurring
+fails as stale, an unregistered leak fails, a row whose rule is not the rule the probe named fails,
+and every rule is checked against this document.
+
+The distinction the status is careful about: the rule is **not** deregistered on the strength of a
+probe existing. Being observably violated is a different state from being unobserved, and it is the
+state M5 starts from. Delegated handlers are deliberately not counted — one `document` listener per
+event type is module state for the whole process, installed by `delegateEvents` and removed by
+`clearDelegatedEvents`, and B4 is about the listener a POSITION owns.
+
+**Pinned by.** `delegated-event.tsx`, `non-delegated-event.tsx` (existing, re-pinned);
+`sem-own-dispose-leaves-nothing.tsx` *(new)*.
 
 ### B5 — property-vs-attribute is a stated rule with an explicit override
 
@@ -1461,45 +1742,45 @@ green, which is why L1 exists.
 | ------ | ------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 |
  O1 | scope creation set is closed | P (M2/M3) | `sem-own-component-allocates-nothing` *(new)* |
-| O2 | a Block runs under the scope it is given | **V** | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `own-provider-direct`, `own-provider-wrapper` |
+| O2 | a Block runs under the scope it is given | H | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `own-provider-direct`, `own-provider-wrapper` |
 | O2.1 | a component body runs under the receiving scope, after its bindings | **V** | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `sem-testing-wrapper-eager`, `own-provider-wrapper` |
 | O3.1–3 | disposal order: dead, kids reverse DFS, cleanups LIFO | H | `sem-own-dispose-order` *(new)* |
-| O3.4–5 | abort signal, range removal | I/U | `sem-own-dispose-leaves-nothing` *(new)* |
+| O3.4–5 | abort signal, range removal | I/U — O3.5 H | `sem-own-dispose-leaves-nothing` *(new)*, `mm-branch-flip`, `mm-switch-arm` |
 | O3.6 | a throwing cleanup does not abort the rest | H / **V** | `sem-err-cleanup-throw` *(new)* |
-| O3.7 | the leak invariant | **V** | `sem-own-render-disposer-disposes`, `sem-own-dispose-leaves-nothing` *(new)* |
+| O3.7 | the leak invariant | P (M4) | `sem-own-render-disposer-disposes`, `sem-own-dispose-leaves-nothing` *(new)*, the whole corpus through `test/leaks.ts` |
 | O4.1–2 | restoration on both paths; the cost claim | **V** | `sem-err-current-restored-after-throw` *(new)* |
 | O4.3 | a catcher restores to `prev`, captured before its own `enter` | **V** | `sem-err-current-restored-after-throw` *(new)* |
 | O4.4 | no partially-constructed subtree survives a throw | **V** | `sem-err-construction-throw` |
-| O4.5 | `CURRENT` never decides ownership | **V** | structural (§14) |
-| O5 | `render` opens a root; the disposer disposes | H / **V** | `sem-own-render-disposer-disposes` |
-| O6 | owner and observer are separate | H | `sem-react-untrack-keeps-owner` *(new)* |
-| C1 | `Comp(s, props)`, one convention | P (M3) | `component-boundary-props`, `arrow-body-component` |
-| C2 | components are declared, not inferred | P (M3) | `sem-props-direct-call-diagnostic` *(new)* |
+| O4.5 | `CURRENT` never decides ownership | H / P (M5) | `sem-own-given-scope-wins`, structural (§14) |
+| O5 | `render` opens a root; the disposer disposes | H / P (M5) | `sem-own-render-disposer-disposes` |
+| O6 | owner and observer are separate | H | `sem-react-untrack-keeps-owner` |
+| C1 | `Comp(s, props)`, one convention | H | `component-boundary-props`, `arrow-body-component` |
+| C2 | components are declared, not inferred | H | `sem-calling-convention`, `sem-props-direct-call-diagnostic` *(new)* |
 | C3.1–5 | the five props laws | **V** | `sem-props-laziness-conformance` *(new)*, `sem-props-cell-not-memoised` *(new)*, `component-getter-props` |
-| C3.6 | Cells are arity-tolerant | P (M3) | `sem-props-block-in-cell-slot` *(new)* |
-| C3.7 | Cell-in-Block-slot is safe; the converse is not | P (M3) | `sem-props-block-in-cell-slot` *(new)* |
-| C3.8 | a Block with no scope throws, never falls back | P (M3) | `sem-props-block-in-cell-slot` *(new)* |
-| C3.9 | kind travels with the value | P (M3) | `sem-props-forward-identity` *(new)* |
+| C3.6 | Cells are arity-tolerant | H | `sem-props-block-in-cell-slot` |
+| C3.7 | Cell-in-Block-slot is safe; the converse is not | H | `sem-props-block-in-cell-slot` |
+| C3.8 | a Block with no scope throws, never falls back | H | `sem-props-block-in-cell-slot` |
+| C3.9 | kind travels with the value | H | `sem-props-block-in-cell-slot` |
 | C4 | props are called; `Slot<T>` / `Props<P>` | P (M3) | `sem-props-typed-slot.d.test.ts` *(new, type channel)* |
-| C5 | forwarding is identity and depth-independent | P (M3) | `props-raw-forward`, `sem-props-forward-identity` *(new)* |
-| C5.1 | a Block in a Cell slot: diagnostic or throw | P (M3) | `sem-props-block-in-cell-slot` *(new)* |
+| C5 | forwarding is identity and depth-independent | H | `props-raw-forward`, `sem-props-forward-identity` *(new)* |
+| C5.1 | a Block in a Cell slot: diagnostic or throw | H | `sem-props-block-in-cell-slot`, `docs/BARQ010.md` |
 | C5.2 | η-reduction is Cell-only | H | `flow-prop-eta-boundary` |
-| C6 | children are Blocks; slots are Block-valued props | **V** | `component-children-slot`, `sem-ctx-provider-direct-child`, `sem-ctx-provider-nested`, `sem-testing-wrapper-eager`, `sem-own-slot-arguments` *(new)* |
-| C7 | one Block invocation per activation | U → P (M4) | `sem-own-single-evaluation` *(new)* |
+| C6 | children are Blocks; slots are Block-valued props | H | `component-children-slot`, `sem-ctx-provider-direct-child`, `sem-ctx-provider-nested`, `sem-testing-wrapper-eager`, `sem-own-slot-arguments`, `sem-props-cast-keeps-the-brand` |
+| C7 | one Block invocation per activation | H (M4) | `mm-branch-flip`, `mm-branch-key-stable`, `c7-portal`, `c7-provider`, `c7-error-boundary`, `c7-error-boundary-fallback`, `c7-await-suspense`, `c7-repeat`, `c7-each-fallback`, `c7-dynamic`, `c7-reveal`, `c7-loading-errored` |
 | C8 | fragments drop nothing | **V** | `sem-own-fragment-drops-nothing` *(new)* |
-| C9 | props source list, written order, last wins | P (M3) | `component-spread`, `sem-props-source-list-order` *(new)* |
-| X1 | provide: enter, fork, write, then invoke | **V** | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component` |
+| C9 | props source list, written order, last wins | H | `component-spread`, `sem-props-source-list-order` *(new)* |
+| X1 | provide: enter, fork, write, then invoke | H | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component` |
 | X2 | a provided value is a Cell; updates are live | H / **V** | `context-provider`, `sem-ctx-value-is-live` |
 | X3 | context resolves at read time up the scope chain | H / **V** | `sem-ctx-provider-nested`, `sem-ctx-provider-default-silent`, `sem-err-fallback-reads-context`, `sem-ctx-read-after-install` *(new)* |
 | X4 | cross-boundary reads follow the scope chain | U | `sem-ctx-portal-lexical` *(new)* |
 | X5 | a miss throws, carrying the component stack | H / P (M2) | `sem-ctx-miss-throws-with-stack` *(new)* |
 | X6 | the context record forks lazily, flat cost | H | `sem-ctx-fork-is-flat.bench.ts` *(new, bench)* |
 | K1 | index is the default row identity | P (M4) | `sem-key-index-default` *(new)*, `for-unkeyed-rows` |
-| K2 | an unchanged key is a no-op | P (M4) | `sem-key-noop-preserves-nodes` *(new)* |
+| K2 | an unchanged key is a no-op | H (M4) | `mm-branch-key-stable`, `mm-branch-nonkeyed-truthy`, `mm-keyed-move`, `mm-index-row-stable` |
 | K3 | keyless + stateful row = diagnostic | P (M4) | `sem-key-stateful-row-diagnostic` *(new)* |
 | K4 | duplicate keys: DEV error, degrade to index | P (M4) | `sem-key-duplicate` *(new)* |
-| K5 | key expressions are emitted JS; `SymbolId` resolution | H / P (M4) | `renamed-core-import`, `sem-key-shadowed-flow` *(new)* |
-| K6 | each activation is a fresh scope and a fresh build | **V** | `control-flow-show`, `sem-key-remount-is-fresh` *(new)* |
+| K5 | key expressions are emitted JS; `SymbolId` resolution | H | `renamed-core-import`, `sem-key-shadowed-flow` *(new)*, the control-flow corpus |
+| K6 | each activation is a fresh scope and a fresh build | H (M4) | `control-flow-show`, `mm-branch-flip`, `mm-switch-arm`, `c7-dynamic` |
 | K7 | no marker comments in client rendering | P (M4) | anchor snapshot channel (corpus-wide) |
 | K8 | no ambient insertion state | H | structural (§14) |
 | E1 | O(1) catcher; a catcher always exists | P (M2) | `sem-err-root-catcher` *(new)* |
@@ -1507,7 +1788,7 @@ green, which is why L1 exists.
 | E2.1 | construction throws land inside the boundary | **V** | `sem-err-construction-throw` |
 | E2.2 | a handler throw routes to the boundary | **V** | `sem-err-handler-throw` *(new)* |
 | E2.3 | `NotReadyError` is re-thrown, never captured | **V** | `sem-err-notready-passthrough` *(new)* |
-| E3 | a boundary is a branch plus a try | P (M4) | `control-flow-error-boundary` |
+| E3 | a boundary is a branch plus a try | H | `control-flow-error-boundary` |
 | E4 | an error carries the scope chain | P (M2) | `sem-err-component-stack` *(new)* |
 | M1 | construction is depth-first in document order | H | `sem-mount-order` *(new)*, `dashboard-composite` |
 | M2 | first write during construction; no flash | H | `sem-mount-no-flash` *(new)*, `reactive-attribute` |
@@ -1515,22 +1796,22 @@ green, which is why L1 exists.
 | M4 | microtask flush; render effects before user effects | H | `multi-signal-expression` |
 | M5 | a stable re-render preserves every node | H / **V** | `sem-mount-stable-rerender` *(new)*, corpus-wide |
 | M6 | insertion is idempotent under interruption | U | `sem-mount-dispose-during-construction` *(new)* |
-| R1 | reactivity entered in exactly four places | H | `sem-react-component-body-untracked` *(new)* |
+| R1 | reactivity entered in exactly four places | H | `sem-react-component-body-untracked` |
 | R2 | reactivity exited in exactly three places | H / P (M5) | `sem-react-apply-is-untracked` *(new)* |
 | R3 | a Cell is neutral | P (M3) | `sem-react-cell-neutrality` *(new)* |
-| R4 | `untrack` changes only the observer | H | `sem-react-untrack-keeps-owner` *(new)* |
+| R4 | `untrack` changes only the observer | H | `sem-react-untrack-keeps-owner` |
 | R5 | epoch dedupe and `markWave` are load-bearing | H | ablation bench (§14) |
 | R6 | a signal getter is a Cell | H / **V** | `use-state-tuple`, `signal-methods-in-handler` |
 | B1 | every binding on an element is equally live | **V** | `class-with-live-siblings` |
 | B2 | one fused effect per element | P (M5) | `multi-prop-one-element` |
 | B3 | `ref` is not a prop | **V** | `ref-binding` |
-| B4 | a listener dies with its position | **V** | `delegated-event`, `sem-own-dispose-leaves-nothing` *(new)* |
+| B4 | a listener dies with its position | **V**, observably | `delegated-event`, `non-delegated-event`, `sem-own-dispose-leaves-nothing` *(new)* |
 | B5 | property-vs-attribute is a stated rule | P (M5) | `custom-elements`, `property-attrs` |
 | A1 | cancellation is structural | **V** | `sem-async-abort-on-dispose` *(new)* |
 | A2 | staleness by `gen` captured at call time | **V** | `sem-async-stale-response` *(new)* |
 | A3 | `NotReady` is a control signal | **V** | `sem-err-notready-passthrough` *(new)* |
 | A4 | optimistic state is derived, never restored | **V** | `create-optimistic-signal` |
-| A5 | transitions | **NOT SPECIFIED** | — |
+| A5 | transitions | U | — |
 | H1 | hydration is claim-based | **V** | `sem-hydrate-node-reuse` *(new)* |
 | H2 | branches claimed by written key | P (M6) | `sem-hydrate-branch-claim` *(new)* |
 | H3 | logical index is free on the client path | P (M6) | `sem-hydrate-index-is-free` *(new)* |
@@ -1608,8 +1889,8 @@ piece of M0/M1 harness work.
  |
 |---|---|---|
 | O1, O2, O2.1, O3 | **the L2b ownership trace** — `enter`/`exit`/`dispose`/Block-invoke appended to a log, asserted isomorphic to the compiler's static ownership tree | M0 |
-| O3.7, B4 | **the leak oracle** — live scopes, registered listeners, pending fetches, retained nodes after `dispose()`. The live-scopes half is DELIVERED at M0: `checkTrace` reports any scope entered inside the trace window and not disposed before it closes, and the window closes on the render root's own disposal. Listener and fetch counts are M2, because the sink does not record them at all. | M0 (scopes) / M2 (the rest) |
-| C7 | **Block invocation counter**, keyed by position. Until it exists, `test/ownership-census.ts` declares the per-fixture clone count, so a Block invoked twice per activation is a diff rather than nothing at all — that mutation passes every other test in the repository. | M4 |
+| O3.7, B4 | **the leak oracle** — DELIVERED at M4, `test/leaks.ts`: five probes over the whole corpus, taken outside the runtime and after `dispose()` has returned — live scopes (off the ownership trace), scheduled effects (every signal poked, any run counted), registered listeners (`addEventListener` matched to its removal), async continuations (scheduled before disposal, counted both when they ran after it and when they were still outstanding at teardown), retained nodes. Three findings across 137 sessions, all B4, all registered in `test/leak-known-failures.ts` against M5. The in-flight-fetch clause has no subject until M7 gives `abortSignal` a caller. | M4 (delivered) / M7 (fetches) |
+| C7 | **Block invocation counter**, keyed by position — DELIVERED at M4 in two places: `flow.ts`'s `build` emits `BLOCK_EVALUATED_TWICE` behind the diagnostics gate, and `test/single-evaluation.test.ts` drives every consumer in the rule with an instrumented Block against a declared invocation sequence. `test/ownership-census.ts`'s clone count stays as the second, independent observation. | M4 (delivered) |
 | M5 | **corpus-wide node-identity metamorphic channel** (replaces today's skip-on-shape-mismatch identity channel) | M1 |
 | H5 | **address-set diff** — compile all fixtures both ways, diff the `(module, unit, position)` sets | M6 |
 

@@ -228,6 +228,9 @@ describe("the diagnostic engine", () => {
         "// barq-ignore-next-line BARQ001 (nothing reports this here)\n" +
         "export const V = () => <p>ok</p>;\n",
       BARQ009: "// barq-ignore-next-line\nexport const V = () => <p>ok</p>;\n",
+      BARQ010:
+        "function Sink(props) { return <div title={props.children} />; }\n" +
+        "export const V = () => <Sink><b>x</b></Sink>;\n",
     };
 
     const advertised = native.diagnosticCodes().map((entry) => entry.code).sort();

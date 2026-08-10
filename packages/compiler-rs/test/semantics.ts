@@ -296,6 +296,37 @@ export function indexedFixtures(doc = readFileSync(SEMANTICS_DOC, "utf8")): Inde
   return out
 }
 
+const INDEX_STATUS = /^\|\s*([A-Z]\d+(?:\.\d+)?(?:–\d+)?)\s*\|[^|]*\|([^|]*)\|/gm
+
+/** The letter §13's legend gives each prose status word. */
+export const STATUS_LETTER: Readonly<Record<string, string>> = Object.freeze({
+  HOLDS: "H",
+  VIOLATED: "V",
+  PLANNED: "P",
+  PARTIAL: "P",
+  UNOBSERVABLE: "U",
+})
+
+/**
+ * §13's Status column, per rule. Scoped to §13 by hand because §14's channel
+ * table has the same row shape and a different third column.
+ *
+ * The column and the prose `**Status.**` lines are two hand-maintained records
+ * of one fact and they drifted in 18 of 82 rows, including the ownership spine:
+ * a reader consulting the document's own summary was told O2, C6 and X1 were
+ * VIOLATED long after all three held.
+ */
+export function indexedStatuses(doc = readFileSync(SEMANTICS_DOC, "utf8")): Map<string, string> {
+  const from = doc.indexOf("\n## 13.")
+  if (from === -1) return new Map()
+  const rest = doc.slice(from + 1)
+  const to = rest.indexOf("\n## ")
+  const section = to === -1 ? rest : rest.slice(0, to)
+  const out = new Map<string, string>()
+  for (const [, rule, status] of section.matchAll(INDEX_STATUS)) out.set(rule, status.trim())
+  return out
+}
+
 /**
  * A rule ID as a standalone token. `includes("O2")` is satisfied by `O2.1`, and
  * the two are different rules with different statuses — conflating them is

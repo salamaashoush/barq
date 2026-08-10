@@ -22,7 +22,7 @@ labelled otherwise. Scripts are in the scratchpad directory named above.
 | ----------------------------------------------------------- | ------------------- | ----------- |
  |
 |---|---|---|---|
-| reactivity head-to-head, 11 cases vs `@solidjs/signals` 2.0 | — | — | **11/11 ahead**, 1.16x–3.84x |
+| reactivity head-to-head, 11 cases vs `@solidjs/signals` 2.0 | — | — | **10 wins / 1 tie**, up to 6.25x |
 | SSR 100-row page, `renderToString` envelope (51×100) | 4.66 µs | 9.88 µs | **2.10x**, Wilcoxon p=2.6e-7 |
 | SSR same page, barq forced onto the DOM fallback | 202.73 µs | — | **41.88x slower**, p=5.3e-10 |
 | compile throughput | 0.013–0.025 ms/file | budget 1 ms | ~40x headroom |
@@ -245,7 +245,7 @@ they are not equally strong:
 
 That difference is the whole reason this redesign exists. A runtime convention is exactly what failed.
 
-**Optimality.** All three preserve the reactivity core, which is where 11/11 lives, and all three
+**Optimality.** All three preserve the reactivity core, which is where the head-to-head bar lives, and all three
 delete the SSR fallback cliff (41.88x measured), which is the largest available win. Arena is the only
 one that attacks the reactivity numbers themselves — splitting `Scope` off `ComputedNode` takes six
 slots (`cleanups`, `children`, `disposed`, `dispose`, `_parent`, `_context`) off the hottest object in
@@ -642,6 +642,25 @@ nothing reactive → no effect, no branch record), `NO_SCOPE` (body registers no
 Scope; worth 7.3 ns/instance measured), `SINGLE_NODE`, `FAST_CLEAR` (`textContent = ""`),
 `INDEX_UNUSED`, `KEEPALIVE`. **Discipline, enforced in review: a flag that moves neither an allocation
 count nor a wall-clock number on a named benchmark is deleted, not kept.**
+
+*M4 outcome, re-measured at M4b on the flags the COMPILER emits.* Two shipped and two were deleted
+for failing the rule. Until M4b `bench:flags` called `branch(...)` by hand with the integer it wanted
+to measure, which measures the runtime and says nothing about the compiler — and `STATIC_KEY` was in
+exactly that position for a whole milestone, emittable, never emitted, and measured anyway. Each row
+now names a corpus fixture, compiles it, asserts the emitted integer is the one the row claims, and
+takes its pair by clearing ONE BIT in that integer. `STATIC_KEY` eliminates the region's
+`renderEffect` outright (`control-flow-switch-static-key`, flags 1: 2.00 → 1.00 effect allocations
+per mount, exact on every run) and `NO_SCOPE` eliminates the per-activation `Scope`
+(`control-flow-show-static-body`, flags 2: 2.00 → 1.00 scope allocations per mount). Neither moves
+the clock at a significance worth quoting — over four runs of 81 trials × 400 iterations the deltas
+ranged +2.5% to +11.5% (p 1.8e-1 … 4.2e-1) and +3.9% to −1.2% (p 1.3e-1 … 7.0e-1) — so both survive
+on the allocation counter alone, which is the reading M4 took for `NO_SCOPE` and the same one applies
+here. `FAST_CLEAR` and `INDEX_UNUSED` moved
+neither counter at 50 rows (p = 4.4e-1 and 5.8e-1) and are gone from the runtime; the discipline is
+now machine-checked rather than "enforced in review" — `bench:flags` reads the flag declarations out
+of `flow.ts` and throws if one has no row in its table. `SINGLE_NODE` was never written (the range is
+tracked either way, so there was nothing to skip) and `KEEPALIVE` is transitions, which A5 leaves
+unspecified.
 
 **No marker comments in client rendering.** A range owner receives `(parent, anchor)` from the
 compiler's own template walk; `anchor = null` means append. Two adjacent dynamic siblings share one
@@ -1395,7 +1414,7 @@ criterion. Estimated: 300–400 lines shorter, almost entirely by deletion.
 `packages/extra` and `packages/kitchen-sink` are on the pre-M3 convention for five milestones, and the
 consequences are:
 
-- `packages/extra`'s suite is RED — 38 pass / 54 fail, every failure one signature
+- `packages/extra`'s suite is RED — 39 pass / 54 fail, every failure one signature
   (`props.initialPath` off a Scope). Root `bun run test` therefore exits non-zero, and so does the CI
   job that runs it.
 - **`packages/kitchen-sink` renders a BLANK PAGE.** `<div id="app"></div>` stays empty, with
@@ -1438,7 +1457,7 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
 ### 9.1 Must not regress
 
 1. **Reactivity: hold or beat all eleven rows** of `head-to-head.ts` vs `@solidjs/signals` 2.0
-   (today 1.16x–3.84x, 11/11). Rows 2, 3 and 11 should **improve** — components stop allocating owners
+   (today 10 wins and 1 tie, `create: signal` being the tie). Rows 2, 3 and 11 should **improve** — components stop allocating owners
    and `ComputedNode` loses six slots. The epoch dedupe carries forward (ablated at 2.37x) and so does
    `markWave` (ablated at +7%/−2%). **Acceptance: no row regresses.**
 2. **SSR: hold ≥2.10x** on the 100-row page (4.66 µs vs 9.88 µs today).

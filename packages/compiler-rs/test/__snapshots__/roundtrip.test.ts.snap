@@ -400,7 +400,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots component-child-of-element 1`] = `
-"import { Show, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><h1>Title</h1><footer>end</footer></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<em class="off">off</em>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="body">shown</p>\`);
@@ -414,11 +414,10 @@ export const on = signal(true);
 export default function ComponentChildOfElement(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.lastChild;
-  _$insert(_s$, _el$1, Show(_s$, {
-    when: on,
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => _tmpl$3())
-  }), _el$2);
+  _$branch(_s$, _el$1, _el$2, () => on() || false, _$block((_s$) => {
+    const _v$ = on();
+    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
+  }), 2);
   return _el$1;
 }
 export const steps = [() => on.set(false), () => on.set(true)];
@@ -426,13 +425,17 @@ export const optimality = {
   target: 9,
   milestone: 5,
   templates: 3,
-  patchCalls: 1,
+  // Zero patch calls, where there was one: the hole is a REGION now, so the
+  // \`insert\` that used to join the construct to its parent is gone with it —
+  // \`branch\` takes \`(parent, anchor)\` and inserts into them itself (K5, K7).
+  patchCalls: 0,
   // Target #9's second rule, at a component boundary: what follows the hole is
   // an ELEMENT, so the \`<footer>\` is the anchor and no \`<!---->\` is baked. The
-  // statics either side stay in the caller's template — only the component
-  // becomes a hole.
-  emits: ["<div class=\\"host\\"><h1>Title</h1><footer>end</footer></div>", "Show("],
-  absent: ["<!---->", "(Show, {"]
+  // statics either side stay in the caller's template — only the construct
+  // becomes a hole, and the anchor the compiler chose is handed straight to
+  // the primitive rather than re-derived from a marker at run time.
+  emits: ["<div class=\\"host\\"><h1>Title</h1><footer>end</footer></div>", "branch("],
+  absent: ["<!---->", "Show("]
 };
 "
 `;
@@ -891,7 +894,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-await-suspense 1`] = `
-"import { Await, Suspense, signal, useResource, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { Await, signal, useResource, template as _$template, insert as _$insert, block as _$block, boundary as _$boundary } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="pending">waiting</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<span class="loading">loading</span>\`);
@@ -903,23 +906,20 @@ const value = useResource<string>(() => null, () => new Promise<string>((resolve
 }));
 export default function ControlFlowAwaitSuspense(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Suspense(_s$, {
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => Await(_s$, {
-      resource: () => value,
-      loading: _$block((_s$) => _tmpl$3()),
-      error: _$block((_s$, error: Error) => {
-        const _el$2 = _tmpl$4();
-        _$insert(_s$, _el$2, error.message);
-        return _el$2;
-      }),
-      children: _$block((_s$, data: string) => {
-        const _el$3 = _tmpl$5();
-        _$insert(_s$, _el$3, data);
-        return _el$3;
-      })
-    }))
-  }));
+  _$boundary(_s$, _el$1, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => Await(_s$, {
+    resource: () => value,
+    loading: _$block((_s$) => _tmpl$3()),
+    error: _$block((_s$, error: Error) => {
+      const _el$2 = _tmpl$4();
+      _$insert(_s$, _el$2, error.message);
+      return _el$2;
+    }),
+    children: _$block((_s$, data: string) => {
+      const _el$3 = _tmpl$5();
+      _$insert(_s$, _el$3, data);
+      return _el$3;
+    })
+  })));
   return _el$1;
 }
 export const steps = [() => settled()?.("ready")];
@@ -927,21 +927,28 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 5,
-  // \`Await\` takes the RESOLVED DATA in its children, so that callback keeps its
-  // parameter and its arrow. \`loading\` and \`fallback\` are eager nodes.
+  // K5 from both sides in one module. \`Suspense\` LOWERS: it becomes \`boundary\`
+  // under the kind string \`"loading"\`, taking the insertion pair the walk
+  // computed and its fallback positionally. \`Await\` REFUSES — it tells a
+  // Resource from a Cell carrying one by a property test on the value, and its
+  // key and all three of its bodies each need the resolved resource, which
+  // without a shared local is four evaluations of one prop — so it keeps the
+  // adapter and reaches the same runtime one frame later. It takes the RESOLVED
+  // DATA in its children, so that callback keeps its parameter and its arrow.
   emits: [
-    "Suspense(",
+    "boundary(",
+    "\\"loading\\"",
     "Await(",
     "resource: () => value",
     ", data: string) =>"
   ],
-  absent: ["(Await, {", "(Suspense, {"]
+  absent: ["Suspense("]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-error-boundary 1`] = `
-"import { ErrorBoundary, signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block, boundary as _$boundary } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="ok">recovered</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
@@ -952,15 +959,12 @@ function Fragile(_s$) {
 }
 export default function ControlFlowErrorBoundary(_s$) {
   const _el$1 = _tmpl$2();
-  _$insert(_s$, _el$1, ErrorBoundary(_s$, {
-    fallback: _$block((_s$, error, reset) => {
-      const _el$2 = _tmpl$3();
-      _$setProp(_s$, _el$2, "onClick", reset);
-      _$insert(_s$, _el$2, error.message);
-      return _el$2;
-    }),
-    children: _$block((_s$) => Fragile(_s$, {}))
-  }));
+  _$boundary(_s$, _el$1, null, "error", _$block((_s$, _v$, _v$r) => _$block((_s$, error, reset) => {
+    const _el$2 = _tmpl$3();
+    _$setProp(_s$, _el$2, "onClick", reset);
+    _$insert(_s$, _el$2, error.message);
+    return _el$2;
+  })(_s$, _v$(), _v$r)), _$block((_s$) => Fragile(_s$, {})));
   return _el$1;
 }
 // The boundary only retries on reset, so clearing the signal and clicking is one event.
@@ -972,17 +976,29 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // \`ErrorBoundary.fallback\` is \`(error, reset) => Child\`, so it is a real
-  // two-parameter callback and never a built node; \`reset\` reaches the button
-  // as a handler value, not through a thunk.
-  emits: ["ErrorBoundary(", ", error, reset) =>"],
-  absent: ["(ErrorBoundary, {"]
+  // K5: \`ErrorBoundary\` ceases to exist and becomes \`boundary\`, whose kind is
+  // the string \`"error"\` and whose insertion pair is the one the walk computed.
+  // \`fallback\` is \`(error, reset) => Child\`, so it is a real two-parameter
+  // callback and never a built node; \`reset\` reaches the button as a handler
+  // value, not through a thunk.
+  emits: [
+    "boundary(",
+    "\\"error\\"",
+    ", error, reset) =>"
+  ],
+  // The adapter frame -O0 still pays: a props object, and the two slots the
+  // boundary now takes positionally.
+  absent: [
+    "ErrorBoundary(",
+    "fallback: ",
+    "children: "
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-errored-loading 1`] = `
-"import { Errored, Loading, Reveal, signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block } from "@barqjs/core";
+"import { Reveal, signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block, boundary as _$boundary } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="fine">fine</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="busy">busy</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
@@ -995,18 +1011,12 @@ function Flaky(_s$) {
 export default function ControlFlowErroredLoading(_s$) {
   return Reveal(_s$, {
     order: _k$1,
-    children: _$block((_s$) => Loading(_s$, {
-      fallback: _$block((_s$) => _tmpl$2()),
-      children: _$block((_s$) => Errored(_s$, {
-        fallback: _$block((_s$, error, reset) => {
-          const _el$1 = _tmpl$3();
-          _$setProp(_s$, _el$1, "onClick", reset);
-          _$insert(_s$, _el$1, error().message);
-          return _el$1;
-        }),
-        children: _$block((_s$) => Flaky(_s$, {}))
-      }))
-    }))
+    children: _$block((_s$) => _$boundary(_s$, null, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => _$boundary(_s$, null, null, "error", _$block((_s$, error, reset) => {
+      const _el$1 = _tmpl$3();
+      _$setProp(_s$, _el$1, "onClick", reset);
+      _$insert(_s$, _el$1, error().message);
+      return _el$1;
+    }), _$block((_s$) => Flaky(_s$, {}))))))
   });
 }
 export const events = [(root: HTMLElement) => {
@@ -1017,27 +1027,35 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // Three nested flow components, each an ordinary call whose \`children\` is
-  // whatever the next one returned — no \`createElement\` anywhere, so nothing
-  // copies a props object on the way down. \`Errored.fallback\` takes an error
-  // ACCESSOR, so the read inside it is a call.
+  // Two of the three constructs cease to exist (K5): \`Loading\` and \`Errored\`
+  // are the same \`boundary\` primitive under two kind strings, and the arms are
+  // Blocks handed to it positionally. \`Reveal\` is NOT lowered — it creates a
+  // PROVIDE scope, not a range, so it is not one of the four primitives — and
+  // it stays the ordinary call it always was. \`Errored\`'s fallback takes an
+  // error ACCESSOR, so the read inside it is still a call.
   emits: [
     "Reveal(",
-    "Loading(",
-    "Errored(",
+    "boundary(",
+    "\\"loading\\"",
+    "\\"error\\"",
     ", error, reset) =>"
   ],
+  // Both boundaries stand FREE of any template — the construct is the whole of
+  // \`Reveal\`'s children, so there is no walk to take a pair from and the region
+  // expands in place with \`(null, null)\`, which is \`flow.ts\`'s own \`siteFor\`
+  // path. The adapter frames -O0 still pays are the two named props each
+  // boundary took; \`Reveal\`'s own props object survives, because \`Reveal\` does.
   absent: [
-    "(Reveal, {",
-    "(Loading, {",
-    "(Errored, {"
+    "Loading(",
+    "Errored(",
+    "fallback: "
   ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-for 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="list"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li class="empty">none</li>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<li>: </li>\`);
@@ -1050,18 +1068,14 @@ export const items = signal([{
 }]);
 export default function ControlFlowFor(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: items,
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$, item, index) => {
-      const _el$2 = _tmpl$3();
-      const _el$3 = _el$2.firstChild;
-      _$setProp(_s$, _el$2, "data-id", String(item.id));
-      _$insert(_s$, _el$2, () => index(), _el$3);
-      _$insert(_s$, _el$2, item.name);
-      return _el$2;
-    })
-  }));
+  _$each(_s$, _el$1, null, items, null, _$block((_s$, item, index) => {
+    const _el$2 = _tmpl$3();
+    const _el$3 = _el$2.firstChild;
+    _$setProp(_s$, _el$2, "data-id", String(item.id));
+    _$insert(_s$, _el$2, () => index(), _el$3);
+    _$insert(_s$, _el$2, item.name);
+    return _el$2;
+  }), 0, _$block((_s$) => _tmpl$2()));
   return _el$1;
 }
 export const steps = [
@@ -1080,21 +1094,24 @@ export const optimality = {
   // the row body is a callback the runtime invokes per item, so it keeps its
   // arrow however static it is. \`each\` η-reduces to the accessor itself.
   templates: 3,
+  // K5: the construct is gone and \`each\` takes the source, the key mode and the
+  // row Block positionally. Absent \`keyed\` is \`null\` — identity is the item —
+  // and the fallback rides after the flags integer \`each\` never reads.
   emits: [
-    "For(",
-    "each: items",
-    ", item, index) =>"
+    "each(",
+    ", items, null, ",
+    ", item, index) =>",
+    ", 0, "
   ],
-  absent: ["(For, {", "each: () =>"]
+  absent: ["For(", "each: "]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-for-keyed-by-item 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="keyed-item"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li></li>\`);
-const _k$1 = () => true;
 export const rows = signal([{
   id: 1,
   text: "alpha"
@@ -1112,14 +1129,10 @@ export const rows = signal([{
 */
 export default function ControlFlowForKeyedByItem(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: rows,
-    keyed: _k$1,
-    children: _$block((_s$, row) => {
-      const _el$2 = _tmpl$2();
-      _$insert(_s$, _el$2, row.text);
-      return _el$2;
-    })
+  _$each(_s$, _el$1, null, rows, null, _$block((_s$, row) => {
+    const _el$2 = _tmpl$2();
+    _$insert(_s$, _el$2, row.text);
+    return _el$2;
   }));
   return _el$1;
 }
@@ -1136,22 +1149,28 @@ export const optimality = {
   templates: 2,
   // The proof that the by-item arm survives the fix: the read is applied once,
   // with no thunk, because the row it reads is rebuilt whenever the item is.
+  // \`keyed={true}\` and \`keyed\` absent are ONE arm, and the compiler now says so
+  // in the emission rather than forwarding a Cell for the runtime to unpick:
+  // \`each\`'s \`keyOf\` is \`null\`, which is how identity-is-the-item is spelled.
   emits: [
-    "For(",
-    "() => true",
+    "each(",
+    ", rows, null, ",
     ", row) =>",
     ", row.text)"
   ],
-  absent: ["(For, {", "() => row.text"]
+  absent: [
+    "For(",
+    "() => true",
+    "() => row.text"
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-for-keyed-false 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="keyed-false"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li>: </li>\`);
-const _k$1 = () => false;
 export const rows = signal(["alpha", "beta"]);
 /**
 * \`keyed={false}\` — the arm that delegates to \`Index\` (\`components.ts:239\`).
@@ -1162,16 +1181,12 @@ export const rows = signal(["alpha", "beta"]);
 */
 export default function ControlFlowForKeyedFalse(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: rows,
-    keyed: _k$1,
-    children: _$block((_s$, row, index) => {
-      const _el$2 = _tmpl$2();
-      const _el$3 = _el$2.firstChild;
-      _$insert(_s$, _el$2, index, _el$3);
-      _$insert(_s$, _el$2, row);
-      return _el$2;
-    })
+  _$each(_s$, _el$1, null, rows, false, _$block((_s$, row, index) => {
+    const _el$2 = _tmpl$2();
+    const _el$3 = _el$2.firstChild;
+    _$insert(_s$, _el$2, index, _el$3);
+    _$insert(_s$, _el$2, row);
+    return _el$2;
   }));
   return _el$1;
 }
@@ -1216,17 +1231,21 @@ export const optimality = {
   // The index is a plain number here, so it is baked as a value and never
   // wrapped; the item is an accessor, so its read η-reduces to the accessor.
   emits: [
-    "For(",
-    "() => false",
+    "each(",
+    ", rows, false, ",
     ", row, index) =>"
   ],
-  absent: ["(For, {", "() => row()"]
+  absent: [
+    "For(",
+    "() => false",
+    "() => row()"
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-for-keyed-fn 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, cell as _$cell, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="keyed-fn"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li class="empty">none</li>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<li>: </li>\`);
@@ -1250,18 +1269,13 @@ export const rows = signal([{
 */
 export default function ControlFlowForKeyedFn(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: rows,
-    keyed: _$cell((row) => row.id),
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$, row, index) => {
-      const _el$2 = _tmpl$3();
-      const _el$3 = _el$2.firstChild;
-      _$insert(_s$, _el$2, index, _el$3);
-      _$insert(_s$, _el$2, () => row().text);
-      return _el$2;
-    })
-  }));
+  _$each(_s$, _el$1, null, rows, (row) => row.id, _$block((_s$, row, index) => {
+    const _el$2 = _tmpl$3();
+    const _el$3 = _el$2.firstChild;
+    _$insert(_s$, _el$2, index, _el$3);
+    _$insert(_s$, _el$2, () => row().text);
+    return _el$2;
+  }), 0, _$block((_s$) => _tmpl$2()));
   return _el$1;
 }
 export const steps = [
@@ -1309,14 +1323,17 @@ export const optimality = {
   // takes the thunk the by-item arm wrongly denied it; the index hole IS a bare
   // accessor call, so it η-reduces to the accessor and passes through as a
   // value the runtime subscribes to.
+  // The key function reaches \`each\` as \`keyOf\` DIRECTLY. What the runtime used
+  // to do — \`typeof carrier === "function" && carrier.length >= 1\` — the
+  // compiler answers from the arity the author declared (§3.0 rule 1).
   emits: [
-    "For(",
-    "((row) => row.id)",
+    "each(",
+    ", rows, (row) => row.id, ",
     ", row, index) =>",
     "() => row().text"
   ],
   absent: [
-    "(For, {",
+    "For(",
     "() => index()",
     ", row().text)"
   ]
@@ -1387,19 +1404,24 @@ export const optimality = {
   target: 1,
   milestone: 3,
   templates: 2,
+  // C9: a spread makes the props a RUNTIME source list, so there is nothing
+  // static to read the construct's shape off and the flow pass refuses. The
+  // adapter survives and reaches the same \`each\` one frame later — refusing is
+  // always the safe direction — and the negative below is what says the pass
+  // refused rather than guessed.
   emits: [
     "For(",
     "opts,",
     ", row) =>",
     "() => row().text"
   ],
-  absent: ["(For, {", ", row().text)"]
+  absent: ["each(", ", row().text)"]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-for-keyed-unprovable 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="keyed-var"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li></li>\`);
 export const rows = signal([{
@@ -1422,14 +1444,10 @@ const byId = (row: {
 */
 export default function ControlFlowForKeyedUnprovable(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: rows,
-    keyed: () => byId,
-    children: _$block((_s$, row) => {
-      const _el$2 = _tmpl$2();
-      _$insert(_s$, _el$2, () => row().text);
-      return _el$2;
-    })
+  _$each(_s$, _el$1, null, rows, byId, _$block((_s$, row) => {
+    const _el$2 = _tmpl$2();
+    _$insert(_s$, _el$2, () => row().text);
+    return _el$2;
   }));
   return _el$1;
 }
@@ -1459,19 +1477,27 @@ export const optimality = {
   target: 1,
   milestone: 3,
   templates: 2,
+  // A BINDING resolved to a function that declares a parameter is a key
+  // function, so it reaches \`keyOf\` by name — no Cell around it, and no runtime
+  // arity test. What stays unprovable is the row's KIND, and that is what the
+  // live read below is about.
   emits: [
-    "For(",
-    "keyed: () => byId",
+    "each(",
+    ", rows, byId, ",
     ", row) =>",
     "() => row().text"
   ],
-  absent: ["(For, {", ", row().text)"]
+  absent: [
+    "For(",
+    "keyed: ",
+    ", row().text)"
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-for-static-body 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="static-rows"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li class="row"><span>fixed</span></li>\`);
 export const rows = signal([1, 2]);
@@ -1482,10 +1508,7 @@ export const rows = signal([1, 2]);
 */
 export default function ControlFlowForStaticBody(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: rows,
-    children: _$block((_s$) => _tmpl$2())
-  }));
+  _$each(_s$, _el$1, null, rows, null, _$block((_s$) => _tmpl$2()));
   return _el$1;
 }
 export const steps = [
@@ -1505,14 +1528,30 @@ export const optimality = {
   // per row, so the row thunk survives however static its body is — one shared
   // template, cloned per row, and one insert joining the list to its parent.
   templates: 2,
-  patchCalls: 1,
-  emits: ["<li class=\\"row\\"><span>fixed</span></li>"]
+  // Zero patch calls, where there was one: the list is a REGION, so the
+  // \`insert\` that joined it to its parent is gone — \`each\` is handed
+  // \`(parent, anchor)\` and does the joining itself (K5, K7).
+  patchCalls: 0,
+  emits: [
+    "<li class=\\"row\\"><span>fixed</span></li>",
+    "each(",
+    ", rows, null, "
+  ],
+  // The adapter frame -O0 still pays, named so the claim above is a difference
+  // between two builds rather than a sentence: a props object with the two
+  // named slots, and the \`insert\` that joined its return value to the tree.
+  absent: [
+    "For(",
+    "each: ",
+    "children: ",
+    "insert("
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-index 1`] = `
-"import { Index, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ol></ol>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li>=</li>\`);
 export const nums = signal([
@@ -1522,15 +1561,12 @@ export const nums = signal([
 ]);
 export default function ControlFlowIndex(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Index(_s$, {
-    each: nums,
-    children: _$block((_s$, item, index) => {
-      const _el$2 = _tmpl$2();
-      const _el$3 = _el$2.firstChild;
-      _$insert(_s$, _el$2, index, _el$3);
-      _$insert(_s$, _el$2, () => item());
-      return _el$2;
-    })
+  _$each(_s$, _el$1, null, nums, false, _$block((_s$, item, index) => {
+    const _el$2 = _tmpl$2();
+    const _el$3 = _el$2.firstChild;
+    _$insert(_s$, _el$2, index, _el$3);
+    _$insert(_s$, _el$2, () => item());
+    return _el$2;
   }));
   return _el$1;
 }
@@ -1556,17 +1592,17 @@ export const optimality = {
   // mirror image of keyed \`For\` — so the index hole passes through as a value
   // and calling the item is the tracked read.
   emits: [
-    "Index(",
-    "each: nums",
+    "each(",
+    ", nums, false, ",
     ", item, index) =>"
   ],
-  absent: ["(Index, {"]
+  absent: ["Index(", "each: "]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-nested 1`] = `
-"import { For, Show, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, branch as _$branch, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="nest"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="off">off</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<ul class="rows"></ul>\`);
@@ -1585,21 +1621,17 @@ export const items = signal([
 */
 export default function ControlFlowNested(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Show(_s$, {
-    when: visible,
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => {
+  _$branch(_s$, _el$1, null, () => visible() || false, _$block((_s$) => {
+    const _v$ = visible();
+    return _v$ ? _$block((_s$) => {
       const _el$2 = _tmpl$3();
-      _$insert(_s$, _el$2, For(_s$, {
-        each: items,
-        children: _$block((_s$, item: number) => {
-          const _el$3 = _tmpl$4();
-          _$insert(_s$, _el$3, item);
-          return _el$3;
-        })
+      _$each(_s$, _el$2, null, items, null, _$block((_s$, item: number) => {
+        const _el$3 = _tmpl$4();
+        _$insert(_s$, _el$3, item);
+        return _el$3;
       }));
       return _el$2;
-    })
+    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
   }));
   return _el$1;
 }
@@ -1613,23 +1645,49 @@ export const steps = [
     6
   ])
 ];
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 4,
+  // One patch call, and it is the row's \`{item}\` hole. Neither construct costs
+  // one: since K5 a region IS a patch, so the \`insert\` that used to join each
+  // adapter's return value to its parent is gone from both of them.
+  patchCalls: 1,
+  // Control flow inside control flow, both lowered. The \`Show\` becomes a
+  // \`branch\`; the \`For\` inside its body becomes an \`each\` addressed against the
+  // \`<ul>\` that body's OWN template walk produced — which is the point of
+  // handing the primitive a pair rather than letting it re-derive one, because
+  // the pair here belongs to a tree that does not exist until the branch
+  // activates.
+  emits: [
+    "branch(",
+    "() => visible() || false",
+    "each(",
+    ", items, null, "
+  ],
+  absent: [
+    "Show(",
+    "For(",
+    "when: ",
+    "each: ",
+    "children: ",
+    "fallback: "
+  ]
+};
 "
 `;
 
 exports[`emitted code snapshots control-flow-repeat 1`] = `
-"import { Repeat, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, each as _$each, COUNT as _$COUNT } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="cell"></span>\`);
 export const n = signal(2);
 export default function ControlFlowRepeat(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Repeat(_s$, {
-    count: n,
-    children: _$block((_s$, i) => {
-      const _el$2 = _tmpl$2();
-      _$insert(_s$, _el$2, i);
-      return _el$2;
-    })
+  _$each(_s$, _el$1, null, n, _$COUNT, _$block((_s$, i) => {
+    const _el$2 = _tmpl$2();
+    _$insert(_s$, _el$2, i);
+    return _el$2;
   }));
   return _el$1;
 }
@@ -1640,12 +1698,15 @@ export const optimality = {
   templates: 2,
   // \`Repeat.count\` is unwrapped by the runtime, so the accessor goes in bare;
   // the row index is a plain number and needs no thunk at all.
+  // \`Repeat\` is \`each\`'s fourth mode: the source is a COUNT, and the mode is
+  // the \`COUNT\` symbol rather than a \`keyOf\`.
   emits: [
-    "Repeat(",
-    "count: n",
+    "each(",
+    ", n, ",
+    "COUNT",
     ", i) =>"
   ],
-  absent: ["(Repeat, {", "count: () =>"]
+  absent: ["Repeat(", "count: "]
 };
 "
 `;
@@ -1684,18 +1745,22 @@ export const optimality = {
   // the one with a hole is built by an IIFE and the fully static one is a bare
   // clone. Neither is wrapped in a thunk the compiler would have had to
   // manufacture.
+  // K5 refuses \`Reveal\`, and the refusal is a fact rather than a gap: it
+  // creates a PROVIDE scope, not a range. \`ownership.rs\` says so and O1 lists
+  // \`provide\` separately from \`branch\`, so lowering it onto \`branch\` would put
+  // a context binding where a conditional belongs.
   emits: [
     "Reveal(",
     "() => \\"sequential\\"",
     "children: "
   ],
-  absent: ["(Reveal, {", "children: () =>"]
+  absent: ["branch(", "children: () =>"]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-show 1`] = `
-"import { Show, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><footer>tail</footer></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="empty">nothing</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="content">shown</p>\`);
@@ -1703,11 +1768,10 @@ export const visible = signal(true);
 export default function ControlFlowShow(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$insert(_s$, _el$1, Show(_s$, {
-    when: visible,
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => _tmpl$3())
-  }), _el$2);
+  _$branch(_s$, _el$1, _el$2, () => visible() || false, _$block((_s$) => {
+    const _v$ = visible();
+    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
+  }), 2);
   return _el$1;
 }
 export const steps = [() => visible.set(false), () => visible.set(true)];
@@ -1715,25 +1779,97 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // The fallback is JSX, so it is a built node — \`fallbackNodes\` evaluates it
-  // eagerly and a thunk there would only add a closure. The children were
-  // written as a thunk and stay one.
-  emits: [
-    "Show(",
-    "when: visible",
-    "fallback: "
-  ],
+  // K5: \`Show\` ceases to exist. The key is the author's own \`when\` read —
+  // \`visible() || false\`, which collapses every falsy value onto one key so a
+  // fallback stays in place across \`0\`, \`""\` and \`null\` — and the body is one
+  // Block that picks the arm from the value it reads at ACTIVATION time. The
+  // \`(parent, anchor)\` pair is the one the walk above it produced.
+  emits: ["branch(", "() => visible() || false"],
   absent: [
-    "(Show, {",
-    "fallback: () =>",
-    "when: () =>"
+    "Show(",
+    "when:",
+    "fallback:"
+  ]
+};
+"
+`;
+
+exports[`emitted code snapshots control-flow-show-cleanup-body 1`] = `
+"import { onCleanup, signal, template as _$template, insert as _$insert, block as _$block, branch as _$branch } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span class="live"></span></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="panel">open</p>\`);
+export const on = signal(false);
+/** How many activations are alive. The cleanup is the only thing that lowers it. */
+export const live = signal(0);
+/**
+* \`NO_SCOPE\`'s negative case: the corpus had no \`Show\` whose body registered a
+* disposable and whose key also flipped, which is the exact shape the flag's
+* proof is about. Here the body registers an \`onCleanup\` and the key flips three
+* times, so \`inert_bodies\` must refuse and the emitted integer must be zero —
+* which is what the \`absent\` list below claims, in every non-zero spelling.
+*
+* The cleanup is made VISIBLE rather than merely present: the body raises \`live\`
+* on activation and the cleanup lowers it, and the count is rendered by a
+* sibling hole outside the branch, where no rebuild can hide it. The key's three
+* flips take \`live\` 0 → 1 → 0 → 1.
+*
+* **And that is not what catches a mis-shipped flag, which is worth writing down
+* because it was written down wrong first.** Forcing \`NO_SCOPE\` on here renders
+* IDENTICALLY, measured by injecting the integer into the emitted call: the
+* region's key lives in a \`renderEffect\`, the swap runs inside it, so a body's
+* \`onCleanup\` lands on the effect and the effect re-runs on every key change.
+* The activation scope is not what gives the cleanup its granularity here. The
+* DOM channel that used to kill \`flow-ships-no-scope-unproven\` — on
+* \`dashboard-composite\` — stopped killing it when \`insert\` began owning its
+* render effect by the scope it was handed (O4.5), and that symptom is not
+* coming back. The channel that catches it now is the flag census in
+* \`flag-census.ts\`, absolute and two-directional, asserted from the L3 suite as
+* well so the mutation runner names it.
+*/
+export default function ControlFlowShowCleanupBody(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$branch(_s$, _el$1, null, () => on() || false, _$block((_s$) => {
+    const _v$ = on();
+    return _v$ ? _$block((_s$) => {
+      live.set(live.peek() + 1);
+      onCleanup(() => live.set(live.peek() - 1));
+      return _tmpl$2();
+    })(_s$, _v$) : null;
+  }));
+  _$insert(_s$, _el$2, () => live());
+  return _el$1;
+}
+export const steps = [
+  () => on.set(true),
+  () => on.set(false),
+  () => on.set(true)
+];
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 2,
+  patchCalls: 1,
+  // The flag integer is the whole point of the fixture. \`2\` is \`NO_SCOPE\`, \`1\`
+  // is \`STATIC_KEY\`, \`3\` is both — and none of them may appear here: the key
+  // reads \`on()\`, and the body registers a cleanup, so neither proof is
+  // available. Zero flags are emitted as NO trailing argument at all, so the
+  // claim is the absence of every non-zero integer rather than the presence of
+  // a nought.
+  emits: ["branch(", "onCleanup("],
+  absent: [
+    "Show(",
+    "when: ",
+    "), 1)",
+    "), 2)",
+    "), 3)"
   ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-show-eager-children 1`] = `
-"import { Show, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="eager"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="hidden">Hidden</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<div class="content">Content</div>\`);
@@ -1747,11 +1883,10 @@ export const visible = signal(true);
 */
 export default function ControlFlowShowEagerChildren(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Show(_s$, {
-    when: visible,
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => _tmpl$3())
-  }));
+  _$branch(_s$, _el$1, null, () => visible() || false, _$block((_s$) => {
+    const _v$ = visible();
+    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
+  }), 2);
   return _el$1;
 }
 export const steps = [() => visible.set(false), () => visible.set(true)];
@@ -1759,27 +1894,24 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  patchCalls: 1,
+  // Zero patch calls: the construct is a REGION, so its \`insert\` is gone.
+  patchCalls: 0,
   // Target #8 on BOTH branches at once: the author wrote neither the body nor
-  // the fallback as a thunk, so neither gets one — each is a single clone handed
-  // straight in, with no arrow, no IIFE and no element binding.
-  emits: [
-    "Show(",
-    "when: visible",
-    "children: ",
-    "fallback: "
-  ],
+  // the fallback as a thunk, so neither gets one — each is a single clone
+  // inside the Block the branch invokes, with no arrow of the compiler's own,
+  // no IIFE and no element binding.
+  emits: ["branch(", "() => visible() || false"],
   absent: [
-    "children: () =>",
-    "fallback: () =>",
-    "when: () => visible()"
+    "when:",
+    "children:",
+    "fallback:"
   ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-show-eager-static-body 1`] = `
-"import { Show, signal, template as _$template, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>\`);
 export const on = signal(false);
 /**
@@ -1804,10 +1936,10 @@ export const on = signal(false);
 * node back" from "built a new one".
 */
 export default function ControlFlowShowEagerStaticBody(_s$) {
-  return Show(_s$, {
-    when: on,
-    children: _$block((_s$) => _tmpl$1())
-  });
+  return _$branch(_s$, null, null, () => on() || false, _$block((_s$) => {
+    const _v$ = on();
+    return _v$ ? _$block((_s$) => _tmpl$1())(_s$, _v$) : null;
+  }), 2);
 }
 export const steps = [
   () => on.set(true),
@@ -1821,15 +1953,28 @@ export const optimality = {
   // subtree produced no patch, so there is nothing left to defer.
   templates: 1,
   patchCalls: 0,
-  emits: ["<div class=\\"panel\\"><h3>Static heading</h3>", "children: "],
-  // The two shapes a thunk would take. Neither may appear around the body.
-  absent: ["children: () =>", "children: (()"]
+  // The body is one clone and the whole module holds no patch call, so the
+  // compiler can PROVE the activation registers nothing disposable: \`NO_SCOPE\`
+  // is shipped as the flags integer \`2\`, and the branch activates without
+  // allocating a \`Scope\` or an \`ownRange\` closure.
+  emits: [
+    "<div class=\\"panel\\"><h3>Static heading</h3>",
+    "branch(",
+    "}), 2)"
+  ],
+  // The two shapes a compiler-manufactured thunk would take, plus the prop the
+  // construct used to carry.
+  absent: [
+    "children: () =>",
+    "children: (()",
+    "children:"
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-show-fragment-body 1`] = `
-"import { Show, signal, template as _$template, insert as _$insert, createElement as _$createElement, Fragment as _$Fragment, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, createElement as _$createElement, Fragment as _$Fragment, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="frag"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<i>fallback-one</i>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<u>fallback-two</u>\`);
@@ -1854,10 +1999,9 @@ export const on = signal(true);
 */
 export default function ControlFlowShowFragmentBody(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Show(_s$, {
-    when: on,
-    fallback: _$block((_s$) => _$createElement(_$Fragment, null, _tmpl$2(), _tmpl$3())),
-    children: _$block((_s$) => _$createElement(_$Fragment, null, _tmpl$4(), _tmpl$5()))
+  _$branch(_s$, _el$1, null, () => on() || false, _$block((_s$) => {
+    const _v$ = on();
+    return _v$ ? _$block((_s$) => _$createElement(_$Fragment, null, _tmpl$4(), _tmpl$5()))(_s$, _v$) : _$block((_s$) => _$createElement(_$Fragment, null, _tmpl$2(), _tmpl$3()))(_s$);
   }));
   return _el$1;
 }
@@ -1875,22 +2019,21 @@ export const optimality = {
   // makes the drained-fragment bug reachable at all.
   templates: 5,
   emits: [
-    "Show(",
-    "when: on",
-    "fallback: ",
-    "children: "
+    "branch(",
+    "() => on() || false",
+    "Fragment"
   ],
   absent: [
-    "children: () =>",
-    "fallback: () =>",
-    "when: () => on()"
+    "when:",
+    "children:",
+    "fallback:"
   ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-show-static-body 1`] = `
-"import { Show, signal, template as _$template, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>\`);
 export const on = signal(false);
 /**
@@ -1910,10 +2053,10 @@ export const on = signal(false);
 * where there is no author thunk to remove.
 */
 export default function ControlFlowShowStaticBody(_s$) {
-  return Show(_s$, {
-    when: on,
-    children: _$block((_s$) => _tmpl$1())
-  });
+  return _$branch(_s$, null, null, () => on() || false, _$block((_s$) => {
+    const _v$ = on();
+    return _v$ ? _$block((_s$) => _tmpl$1())(_s$, _v$) : null;
+  }), 2);
 }
 export const steps = [
   () => on.set(true),
@@ -1928,13 +2071,95 @@ export const optimality = {
   // still around it, deferring the clone until the branch is taken.
   templates: 1,
   patchCalls: 0,
-  emits: ["<div class=\\"panel\\"><h3>Static heading</h3>", "children: "]
+  emits: [
+    "<div class=\\"panel\\"><h3>Static heading</h3>",
+    "branch(",
+    "}), 2)"
+  ],
+  absent: ["children:"]
+};
+"
+`;
+
+exports[`emitted code snapshots control-flow-show-static-key 1`] = `
+"import { signal, template as _$template, insert as _$insert, block as _$block, branch as _$branch } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="gate"><!----></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="hushed">hushed</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="loud"></p>\`);
+const _tmpl$4 = /* @__PURE__ */ _$template(\`<span class="off">off</span>\`);
+const _tmpl$5 = /* @__PURE__ */ _$template(\`<p class="quiet">on</p>\`);
+/**
+* The \`STATIC_KEY\` half of §3.4's flag catalogue, which had no fixture at all
+* until this one: every \`Show\` in the corpus keys on a signal, so the flag was
+* emittable and never emitted, and a flag with no fixture is a flag with no
+* number.
+*
+* The gate here is a MODULE CONSTANT — a build flag, a capability check hoisted
+* out of a component, the shape every codebase has. The key expression the
+* compiler builds for it reads nothing reactive, so \`branch\` can call it once,
+* keep no previous-key record and open no renderEffect for it. The proof is on
+* the READ and not on the prop: \`when={on}\` is a \`Static\` expression whose read
+* \`on()\` is not, and getting that backwards would elide the effect for a key
+* that moves.
+*
+* Two branches, because the two flags are separately observable and a fixture
+* that shipped them together could not say which one it was pinning:
+*
+*  - \`loud\` has a hole in its body, so the body is not inert and \`NO_SCOPE\` is
+*    NOT proved — it ships \`STATIC_KEY\` alone.
+*  - \`quiet\` is one clone with no patch at all, so both are proved.
+*/
+const VERBOSE: boolean = true;
+export const label = signal("ready");
+export default function ControlFlowShowStaticKey(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$branch(_s$, _el$1, _el$2, () => VERBOSE || false, _$block((_s$) => {
+    const _v$ = VERBOSE;
+    return _v$ ? _$block((_s$) => {
+      const _el$3 = _tmpl$3();
+      _$insert(_s$, _el$3, () => label());
+      return _el$3;
+    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
+  }), 1);
+  _$branch(_s$, _el$1, null, () => VERBOSE || false, _$block((_s$) => {
+    const _v$ = VERBOSE;
+    return _v$ ? _$block((_s$) => _tmpl$5())(_s$, _v$) : _$block((_s$) => _tmpl$4())(_s$);
+  }), 3);
+  return _el$1;
+}
+// The key cannot move, so nothing here may flip a branch — what the step drives
+// is the body's own hole, which is exactly the read the elided effect must not
+// have been subscribing to.
+export const steps = [() => label.set("done")];
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 5,
+  // One patch, the \`loud\` body's hole. Neither branch is inserted into
+  // anything: since K5 a region IS the patch.
+  patchCalls: 1,
+  // The two integers, which are the whole point of the fixture. \`1\` is
+  // \`STATIC_KEY\` alone and \`3\` is \`STATIC_KEY | NO_SCOPE\`, and no other fixture
+  // in the corpus emits either.
+  emits: [
+    "branch(",
+    "() => VERBOSE || false",
+    "}), 1)",
+    "}), 3)"
+  ],
+  absent: [
+    "Show(",
+    "when: ",
+    "children: ",
+    "fallback: "
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots control-flow-switch-match 1`] = `
-"import { Match, Switch, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="status"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span>unknown</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<p>Loading…</p>\`);
@@ -1942,16 +2167,11 @@ const _tmpl$4 = /* @__PURE__ */ _$template(\`<p class="ok">Ready</p>\`);
 export const status = signal<"loading" | "ready" | "error">("loading");
 export default function ControlFlowSwitchMatch(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Switch(_s$, {
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => [Match(_s$, {
-      when: () => status() === "loading",
-      children: _$block((_s$) => _tmpl$3())
-    }), Match(_s$, {
-      when: () => status() === "ready",
-      children: _$block((_s$) => _tmpl$4())
-    })])
-  }));
+  _$branch(_s$, _el$1, null, () => status() === "loading" ? 1 : status() === "ready" ? 2 : 0, [
+    _$block((_s$) => _tmpl$2()),
+    _$block((_s$) => _tmpl$3()),
+    _$block((_s$) => _tmpl$4())
+  ]);
   return _el$1;
 }
 export const steps = [
@@ -1963,15 +2183,84 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 4,
-  // \`Match\` is NOT a ternary: it returns its own props object and \`Switch\`
-  // reads them, so the DOM backend has to emit real \`Match({…})\` calls inside
-  // the \`children\` array. Only the SSR backend inlines the construct.
+  // K5, and the shape §3.4 asks for: \`Switch\` and its arms collapse into ONE
+  // \`branch\` whose key is an INTEGER — the winning arm's index, with 0 for the
+  // fallback — and a hoisted body table indexed by it. \`Match\` ceases to exist
+  // on this backend as it already had on the string one.
   emits: [
-    "Switch(",
-    "[Match(",
-    "}), Match("
+    "branch(",
+    "() => status() === \\"loading\\" ? 1 : status() === \\"ready\\" ? 2 : 0",
+    "? 2 : 0, ["
   ],
-  absent: ["(Switch, {", "(Match, {"]
+  // The frames -O0 still pays: one \`Switch\` props object, one \`Match\` props
+  // object PER ARM, and the \`when\` thunk on each arm that the integer replaced.
+  absent: [
+    "Switch(",
+    "Match(",
+    "when: ",
+    "children: "
+  ]
+};
+"
+`;
+
+exports[`emitted code snapshots control-flow-switch-static-key 1`] = `
+"import { signal, template as _$template, insert as _$insert, block as _$block, branch as _$branch } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="mode"></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="none">none</span>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="compact"></p>\`);
+const _tmpl$4 = /* @__PURE__ */ _$template(\`<p class="full"></p>\`);
+/**
+* \`STATIC_KEY\` on the INTEGER-key path, which is a different proof from the
+* \`Show\` one: \`Switch\` folds every arm's \`when\` into one ternary chain, so the
+* flag is an AND over the arms and one reactive arm has to sink the whole
+* chain. Nothing else in the corpus exercises that conjunction — the two
+* \`Switch\` fixtures both key on a signal, where the AND is never asked to
+* combine anything.
+*
+* \`Switch\` never ships \`NO_SCOPE\` however inert its arms are, so the integer
+* here is \`1\` and not \`3\`: \`flow.rs\` passes \`false\` for the second half, and
+* this is the fixture where that shows.
+*/
+const MODE: "compact" | "full" = "full";
+export const count = signal(0);
+export default function ControlFlowSwitchStaticKey(_s$) {
+  const _el$1 = _tmpl$1();
+  _$branch(_s$, _el$1, null, () => MODE === "compact" ? 1 : MODE === "full" ? 2 : 0, [
+    _$block((_s$) => _tmpl$2()),
+    _$block((_s$) => {
+      const _el$2 = _tmpl$3();
+      _$insert(_s$, _el$2, () => count());
+      return _el$2;
+    }),
+    _$block((_s$) => {
+      const _el$3 = _tmpl$4();
+      _$insert(_s$, _el$3, () => count());
+      return _el$3;
+    })
+  ], 1);
+  return _el$1;
+}
+export const steps = [() => count.set(1), () => count.set(2)];
+export const optimality = {
+  target: 8,
+  milestone: 5,
+  templates: 4,
+  // Two patches, one per arm's hole. The construct itself costs none.
+  patchCalls: 2,
+  emits: [
+    "branch(",
+    "() => MODE === \\"compact\\" ? 1 : MODE === \\"full\\" ? 2 : 0",
+    "? 2 : 0, [",
+    "], 1)"
+  ],
+  absent: [
+    "Switch(",
+    "Match(",
+    "when: ",
+    "children: ",
+    "], 3)"
+  ]
 };
 "
 `;
@@ -2111,7 +2400,7 @@ export default function DangerouslySetInnerHtml(_s$) {
 `;
 
 exports[`emitted code snapshots dashboard-composite 1`] = `
-"import { For, Show, useState, useStore, template as _$template, insert as _$insert, setProp as _$setProp, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
+"import { useState, useStore, template as _$template, insert as _$insert, setProp as _$setProp, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><input class="search"><button type="button" class="tab">switch</button><ul class="rows"></ul></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="anon">anonymous</p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<h1>Hello, </h1>\`);
@@ -2142,22 +2431,18 @@ export default function DashboardComposite(_s$) {
   _$setProp(_s$, _el$2, "value", () => state.filters.search);
   _el$2.$$input = _h$1;
   _el$3.$$click = _h$2;
-  _$insert(_s$, _el$1, Show(_s$, {
-    when: () => state.user.name !== "",
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => {
+  _$branch(_s$, _el$1, _el$2, () => state.user.name !== "" || false, _$block((_s$) => {
+    const _v$ = state.user.name !== "";
+    return _v$ ? _$block((_s$) => {
       const _el$5 = _tmpl$3();
       _$insert(_s$, _el$5, () => state.user.name);
       return _el$5;
-    })
-  }), _el$2);
-  _$insert(_s$, _el$4, For(_s$, {
-    each: rows,
-    children: _$block((_s$, row: string) => {
-      const _el$6 = _tmpl$4();
-      _$insert(_s$, _el$6, row);
-      return _el$6;
-    })
+    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
+  }));
+  _$each(_s$, _el$4, null, rows, null, _$block((_s$, row: string) => {
+    const _el$6 = _tmpl$4();
+    _$insert(_s$, _el$6, row);
+    return _el$6;
   }));
   return _el$1;
 }
@@ -2188,14 +2473,22 @@ export const optimality = {
     "$$input = ",
     "$$click = ",
     "\\"value\\", () => state.filters.search",
-    "each: rows"
+    ", rows, null, ",
+    "branch(",
+    "() => state.user.name !== \\"\\" || false",
+    "each("
   ],
-  // The handlers are hoisted, so nothing rebuilds them per instance; and the
-  // one prop the runtime diffs at runtime is never folded into the markup.
+  // The handlers are hoisted, so nothing rebuilds them per instance; the one
+  // prop the runtime diffs at runtime is never folded into the markup; and the
+  // two adapter frames -O0 pays for the page are both gone.
   absent: [
     "value=\\"",
-    "each: () => rows()",
-    "addEventListener"
+    "each: ",
+    "addEventListener",
+    "Show(",
+    "For(",
+    "when: ",
+    "children: "
   ]
 };
 "
@@ -2460,13 +2753,17 @@ export const optimality = {
   // \`component\` is one of the five props the runtime unwraps, so the accessor
   // goes in bare; everything else \`Dynamic\` is given is an ordinary object
   // property it spreads onto the element it renders.
+  // K5 refuses \`Dynamic\`: its string arm needs \`createDynamicElement\`, which is
+  // private to \`components.ts\` and not on the ABI §3.0 enumerates, so lowering
+  // it would mean a fifth element-creation path out of the compiler — the
+  // thing M4 deleted from the runtime.
   emits: [
     "Dynamic(",
     "component: tag",
     "() => \\"dyn\\"",
     "() => \\"inner\\""
   ],
-  absent: ["(Dynamic, {", "component: () =>"]
+  absent: ["branch(", "component: () =>"]
 };
 "
 `;
@@ -2582,7 +2879,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots flow-prop-eta-boundary 1`] = `
-"import { Errored, For, Show, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, branch as _$branch, each as _$each, boundary as _$boundary } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="ok">ok</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="eta"><!----><!----></div>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="body">shown</p>\`);
@@ -2623,22 +2920,16 @@ export default function FlowPropEtaBoundary(_s$) {
   const _el$1 = _tmpl$2();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$insert(_s$, _el$1, Show(_s$, {
-    when: on,
-    children: _$block((_s$) => _tmpl$3())
-  }), _el$2);
-  _$insert(_s$, _el$1, For(_s$, {
-    each: items,
-    children: _$block((_s$, item: string) => {
-      const _el$4 = _tmpl$4();
-      _$insert(_s$, _el$4, item);
-      return _el$4;
-    })
-  }), _el$3);
-  _$insert(_s$, _el$1, Errored(_s$, {
-    fallback: note,
-    children: _$block((_s$) => Flaky(_s$, {}))
+  _$branch(_s$, _el$1, _el$2, () => on() || false, _$block((_s$) => {
+    const _v$ = on();
+    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : null;
+  }), 2);
+  _$each(_s$, _el$1, _el$3, items, null, _$block((_s$, item: string) => {
+    const _el$4 = _tmpl$4();
+    _$insert(_s$, _el$4, item);
+    return _el$4;
   }));
+  _$boundary(_s$, _el$1, null, "error", note, _$block((_s$) => Flaky(_s$, {})));
   return _el$1;
 }
 export const steps = [
@@ -2657,22 +2948,36 @@ export const optimality = {
   // are the same carrier and the reduced one allocates nothing. The boundary
   // this fixture draws therefore moved from WHICH PROP to WHAT SHAPE, and the
   // negatives below are what still says the reduction happened.
+  // Since M4b the reduction is visible in the PRIMITIVE's argument list rather
+  // than in a prop: \`when\` became the branch's key expression, \`each\` became
+  // the source \`each\` takes, and the boundary's fallback is the Cell itself.
+  // Three constructs, three different primitives, one module — so a pass that
+  // lowered only the shape it was written against fails here rather than on a
+  // fixture nobody looked at.
   emits: [
-    "when: on",
-    "each: items",
-    "fallback: note"
+    "branch(",
+    "() => on() || false",
+    "each(",
+    ", items, null, ",
+    "boundary(",
+    "\\"error\\", note, "
   ],
   absent: [
-    "when: () => on()",
-    "each: () => items()",
-    "fallback: () => note()"
+    "when: ",
+    "each: ",
+    "fallback: ",
+    "() => items()",
+    "() => note()",
+    "Show(",
+    "For(",
+    "Errored("
   ]
 };
 "
 `;
 
 exports[`emitted code snapshots for-each-local-function 1`] = `
-"import { For, useStore, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { useStore, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="filtered"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li></li>\`);
 const [state, setState] = useStore({ items: [{
@@ -2692,15 +2997,12 @@ const [state, setState] = useStore({ items: [{
 export default function ForEachLocalFunction(_s$) {
   const activeItems = () => state.items.filter((item) => item.active);
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: activeItems,
-    children: _$block((_s$, item: {
-      name: string;
-    }) => {
-      const _el$2 = _tmpl$2();
-      _$insert(_s$, _el$2, item.name);
-      return _el$2;
-    })
+  _$each(_s$, _el$1, null, activeItems, null, _$block((_s$, item: {
+    name: string;
+  }) => {
+    const _el$2 = _tmpl$2();
+    _$insert(_s$, _el$2, item.name);
+    return _el$2;
   }));
   return _el$1;
 }
@@ -2717,20 +3019,23 @@ export const optimality = {
   // goes in bare. The row parameter is a plain value, so the row's hole takes
   // \`item.name\` with no thunk (DESIGN O3).
   emits: [
-    "For(",
-    "each: activeItems",
+    "each(",
+    ", activeItems, null, ",
     ", item: {"
   ],
-  absent: ["each: () => activeItems()", "() => item.name"]
+  absent: [
+    "each: ",
+    "() => activeItems()",
+    "() => item.name"
+  ]
 };
 "
 `;
 
 exports[`emitted code snapshots for-unkeyed-rows 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="unkeyed"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li></li>\`);
-const _k$1 = () => false;
 export const words = signal(["a", "b"]);
 /**
 * \`<For keyed={false}>\` DELEGATES to \`Index\` at runtime, which inverts the row
@@ -2741,15 +3046,11 @@ export const words = signal(["a", "b"]);
 */
 export default function ForUnkeyedRows(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, {
-    each: words,
-    keyed: _k$1,
-    children: _$block((_s$, word: () => string, index: number) => {
-      const _el$2 = _tmpl$2();
-      _$setProp(_s$, _el$2, "data-index", String(index));
-      _$insert(_s$, _el$2, () => word());
-      return _el$2;
-    })
+  _$each(_s$, _el$1, null, words, false, _$block((_s$, word: () => string, index: number) => {
+    const _el$2 = _tmpl$2();
+    _$setProp(_s$, _el$2, "data-index", String(index));
+    _$insert(_s$, _el$2, () => word());
+    return _el$2;
   }));
   return _el$1;
 }
@@ -2762,18 +3063,17 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 2,
-  // \`keyed: false\` makes \`For\` delegate to \`Index\`, which INVERTS the row
-  // contract: the item becomes an accessor and the index becomes a plain
-  // number. The compiler passes the flag through and rewrites neither — turning
-  // the call into \`Index(...)\` itself would be right about the semantics and
-  // wrong about the props the author wrote.
+  // \`keyed={false}\` INVERTS the row contract: the item becomes an accessor and
+  // the index becomes a plain number. Since M4b the compiler does not pass a
+  // flag through for the runtime to resolve — \`For\` and \`Index\` are the same
+  // \`each\`, and \`keyOf: false\` IS the non-keyed mode. There is no longer a
+  // "which component did the author write" for the emission to be wrong about.
   emits: [
-    "For(",
-    "each: words",
-    "() => false",
+    "each(",
+    ", words, false, ",
     ", word: () => string, index: number)"
   ],
-  absent: ["Index(", "each: () => words()"]
+  absent: ["each: ", "() => false"]
 };
 "
 `;
@@ -3500,16 +3800,13 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots portal 1`] = `
-"import { Portal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { template as _$template, insert as _$insert, block as _$block, portal as _$portal } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><div id="portal-target"></div></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="teleported">over here</p>\`);
 const _k$1 = () => "#portal-target";
 export default function PortalFixture(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Portal(_s$, {
-    target: _k$1,
-    children: _$block((_s$) => _tmpl$2())
-  }));
+  _$insert(_s$, _el$1, _$portal(_s$, _k$1, _$block((_s$) => _tmpl$2())));
   return _el$1;
 }
 export const optimality = {
@@ -3520,12 +3817,23 @@ export const optimality = {
   // they are nodes and target #8 hands them over as one clone. \`target\` is a
   // literal string the runtime resolves with \`querySelector\`, and it is not one
   // of the five props anything unwraps.
+  // \`portal\` is the one primitive that takes no \`(parent, anchor)\`: it returns
+  // a marker standing at its LEXICAL position, and the patch inserts THAT — so
+  // this is the one region that still costs an \`insert\`.
   emits: [
-    "Portal(",
-    "() => \\"#portal-target\\"",
-    "children: "
+    "portal(",
+    "insert(",
+    "block("
   ],
-  absent: ["(Portal, {", "children: () =>"]
+  // The adapter frame -O0 still pays: a props object carrying the two names the
+  // primitive now takes positionally. \`portal\` never reads a flags integer —
+  // it activates in a microtask where the instance scope is what restores the
+  // ambient owner — so the region ships none however the branch proof went.
+  absent: [
+    "Portal(",
+    "target: ",
+    "children: "
+  ]
 };
 "
 `;
@@ -4111,7 +4419,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots renamed-core-import 1`] = `
-"import { For as Each, Show as When, signal as sig, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal as sig, template as _$template, insert as _$insert, block as _$block, branch as _$branch, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="renamed"><ul></ul></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="zero">zero</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<b class="positive"></b>\`);
@@ -4126,22 +4434,18 @@ export const rows = sig(["a", "b"]);
 export default function RenamedCoreImport(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$insert(_s$, _el$1, When(_s$, {
-    when: () => count() > 0,
-    fallback: _$block((_s$) => _tmpl$2()),
-    children: _$block((_s$) => {
+  _$branch(_s$, _el$1, _el$2, () => count() > 0 || false, _$block((_s$) => {
+    const _v$ = count() > 0;
+    return _v$ ? _$block((_s$) => {
       const _el$3 = _tmpl$3();
       _$insert(_s$, _el$3, () => count());
       return _el$3;
-    })
-  }), _el$2);
-  _$insert(_s$, _el$2, Each(_s$, {
-    each: rows,
-    children: _$block((_s$, row: string) => {
-      const _el$4 = _tmpl$4();
-      _$insert(_s$, _el$4, row);
-      return _el$4;
-    })
+    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
+  }));
+  _$each(_s$, _el$2, null, rows, null, _$block((_s$, row: string) => {
+    const _el$4 = _tmpl$4();
+    _$insert(_s$, _el$4, row);
+    return _el$4;
   }));
   return _el$1;
 }
@@ -4163,14 +4467,19 @@ export const optimality = {
   // \`For\` by SymbolId, and \`each\` — one of the five props the runtime unwraps —
   // is η-reduced on the RENAMED component exactly as it would be on \`For\`.
   emits: [
+    "branch(",
+    "each(",
+    ", rows, null, "
+  ],
+  // The negative half of the same claim, and the reason it is worth a fixture:
+  // -O0 emits \`When(…)\` and \`Each(…)\` — the LOCAL names — so a pass that
+  // matched on text would leave both here. Neither survives.
+  absent: [
     "When(",
     "Each(",
-    "each: rows"
-  ],
-  absent: [
-    "Show(",
-    "For(",
-    "each: () => rows()"
+    "each: ",
+    "when: ",
+    "children: "
   ]
 };
 "
@@ -4543,7 +4852,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots switch-match-component-bodies 1`] = `
-"import { Match, Switch, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="spinner">…</span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="content">done</p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<div class="switch"></div>\`);
@@ -4565,16 +4874,11 @@ function Content(_s$) {
 */
 export default function SwitchMatchComponentBodies(_s$) {
   const _el$1 = _tmpl$3();
-  _$insert(_s$, _el$1, Switch(_s$, {
-    fallback: _$block((_s$) => _tmpl$4()),
-    children: _$block((_s$) => [Match(_s$, {
-      when: () => status() === "loading",
-      children: _$block((_s$) => Spinner(_s$, {}))
-    }), Match(_s$, {
-      when: () => status() === "ready",
-      children: _$block((_s$) => Content(_s$, {}))
-    })])
-  }));
+  _$branch(_s$, _el$1, null, () => status() === "loading" ? 1 : status() === "ready" ? 2 : 0, [
+    _$block((_s$) => _tmpl$4()),
+    _$block((_s$) => Spinner(_s$, {})),
+    _$block((_s$) => Content(_s$, {}))
+  ]);
   return _el$1;
 }
 export const steps = [() => status.set("ready"), () => status.set("loading")];
@@ -4587,15 +4891,22 @@ export const optimality = {
   // which is what the SSR backend does, and only the SSR backend — produces a
   // \`Switch\` with nothing to read. The component bodies are ordinary calls with
   // an empty props object, not \`createElement\`.
+  // Since K5 that pair collapses into ONE \`branch\` on an integer key, and the
+  // arms become rows of a hoisted table — which is the same answer the string
+  // backend reached, arrived at in the compiler instead of at runtime. The
+  // component bodies stay ordinary calls with an empty props object.
   emits: [
-    "Switch({",
-    "[Match(",
+    "branch(",
+    "() => status() === \\"loading\\" ? 1 : status() === \\"ready\\" ? 2 : 0",
+    "? 2 : 0, [",
     "Spinner(",
     "Content("
   ],
   absent: [
-    "(Switch, {",
-    "(Match, {",
+    "Switch(",
+    "Match(",
+    "when: ",
+    "children: ",
     "createElement("
   ]
 };
@@ -4667,7 +4978,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots table-rows 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, setProp as _$setProp, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<table class="grid"><tbody></tbody></table>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<tr><td class="col-id"></td><td class="col-label"><a class="lbl"></a></td><td class="col-pad"></td></tr>\`);
 export const rows = signal([{
@@ -4697,19 +5008,16 @@ export const selected = signal(0);
 export default function TableRows(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$insert(_s$, _el$2, For(_s$, {
-    each: rows,
-    children: _$block((_s$, row) => {
-      const _el$3 = _tmpl$2();
-      const _el$4 = _el$3.firstChild;
-      const _el$5 = _el$4.nextSibling;
-      const _el$6 = _el$5.firstChild;
-      _$setProp(_s$, _el$3, "class", () => selected() === row.id ? "row danger" : "row");
-      _$setProp(_s$, _el$3, "data-id", String(row.id));
-      _$insert(_s$, _el$4, row.id);
-      _$insert(_s$, _el$6, row.label);
-      return _el$3;
-    })
+  _$each(_s$, _el$2, null, rows, null, _$block((_s$, row) => {
+    const _el$3 = _tmpl$2();
+    const _el$4 = _el$3.firstChild;
+    const _el$5 = _el$4.nextSibling;
+    const _el$6 = _el$5.firstChild;
+    _$setProp(_s$, _el$3, "class", () => selected() === row.id ? "row danger" : "row");
+    _$setProp(_s$, _el$3, "data-id", String(row.id));
+    _$insert(_s$, _el$4, row.id);
+    _$insert(_s$, _el$6, row.label);
+    return _el$3;
   }));
   return _el$1;
 }
@@ -4729,11 +5037,21 @@ export const optimality = {
   // mode was modelled the second one did not exist and the whole row body was
   // \`createElement\`.
   templates: 2,
-  emits: ["<tr><td class=\\"col-id\\">", "<td class=\\"col-label\\"><a class=\\"lbl\\">"],
+  emits: [
+    "<tr><td class=\\"col-id\\">",
+    "<td class=\\"col-label\\"><a class=\\"lbl\\">",
+    "each(",
+    ", rows, null, "
+  ],
+  // The adapter frame -O0 still pays, per table: a props object, its two named
+  // slots, and the \`insert\` that joined the return value to the \`<tbody>\`.
   absent: [
     "createElement(\\"tr\\"",
     "createElement(\\"td\\"",
-    "<!---->"
+    "<!---->",
+    "For(",
+    "each: ",
+    "children: "
   ]
 };
 "

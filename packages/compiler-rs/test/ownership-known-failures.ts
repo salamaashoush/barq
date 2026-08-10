@@ -87,93 +87,45 @@ export interface OwnershipKnownFailure {
   readonly slot: string
 }
 
-/** Every row below is the same defect; only the slot differs. */
-function eager(
-  fixture: string,
-  finding: string,
-  slot: string,
-  rule = "O2",
-): OwnershipKnownFailure {
-  return { fixture, finding, rule, status: "VIOLATED", greenAt: "M4", slot }
-}
-
 const ROWS: readonly OwnershipKnownFailure[] = [
   // ---------------------------------------------------------------------
-  // M3 removed 26 rows from this table, which is what a milestone's
-  // completion looks like. Every one of them was the same fact: a slot —
-  // `fallback={<jsx/>}`, an element child, a nested boundary's whole subtree,
-  // a component call inside a `<Match>` — was a syntactic ARGUMENT, so
-  // JavaScript built it before the construct that owns it had entered its
-  // scope, and the runtime cloned the template one or more levels shallower
-  // than the compiler placed it.
+  // M4 removed the last 9 rows, and the table is now EMPTY. That is what a
+  // milestone's completion looks like, and it is the strongest state this
+  // channel has been in: every template clone in the corpus lands at the path
+  // the compiler's static ownership tree places it at, with no exceptions
+  // bought back.
   //
-  // They went green together because they were never separate defects. A slot
-  // is a `Block` now; the construct enters its scope and then calls it, and
-  // the clone lands where the static tree says. The two O2.1 rows that were
-  // this channel's M0 gate — `own-provider-direct` and `own-provider-wrapper`
-  // — went with them, and `ownership.test.ts` now asserts the opposite of
-  // what it asserted at M0.
+  // The three families that were left after M3, and what closed each:
   //
-  // What is left is two remaining facts, plus the leak.
-  // ---------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------
-  // O2 — the DETACHED scope. `Suspense`, `Await` and `Portal` open their
-  // instance scope with `createScope(…, detached: true)`, so it has no parent
-  // and its chain never reaches the render root. The Block now runs under the
-  // scope it was given, which is why these read `branch` rather than `root`
-  // and why the other 26 are gone; what is still wrong is one level up, in
-  // the scope's own parentage.
+  //   - **the detached scope** (`control-flow-await-suspense` ×3, `portal` ×1).
+  //     `Suspense`, `Await` and `Portal` opened their instance scope with
+  //     `createScope(…, detached: true)`, so it had no parent and its chain
+  //     never reached the render root. `branch`/`boundary`/`portal` in
+  //     `packages/core/src/flow.ts` call `enter(given)` and nothing else, so an
+  //     instance is a child of the scope the construct was handed — by
+  //     construction, in one place, for all four primitives.
   //
-  // §4.1 records the inconsistency this comes from — "`Dynamic` and `Portal`
-  // use detached scopes where `Show` uses attached" — and M4 removes it by
-  // replacing all ten hand-rolled bodies with `branch`/`each`/`portal`, each
-  // of which takes the scope it must be a child of.
-  // ---------------------------------------------------------------------
-  eager("control-flow-await-suspense", "misplaced-clone@_tmpl$2@branch", "<Suspense>'s own instance scope is detached, so its fallback's clone sits under a chain that never reaches the root"),
-  eager("control-flow-await-suspense", "misplaced-clone@_tmpl$3@branch/branch", "<Await> inside <Suspense>: both instance scopes are detached, so the loading body is two levels of chain short"),
-  eager("control-flow-await-suspense", "misplaced-clone@_tmpl$5@branch/branch", "<Await>'s resolved body, under the same two detached scopes"),
-  eager("portal", "misplaced-clone@_tmpl$2@portal", "<Portal> renders into a detached scope by design (§3.4 says its parent must be the LEXICAL one); the children now run under it, but it is not a child of the render root"),
-
-  // ---------------------------------------------------------------------
-  // O2 / O2.1 — `Match` is a scope in the static tree and not one at runtime.
-  // The compiler places a `<Match>` body at `root > branch > branch`: the
-  // `<Switch>`'s instance scope, then the arm's own. The runtime's `Match` is
-  // an identity function that returns its props, so `<Switch>` opens ONE
-  // scope for whichever arm won and the clone lands one level short — every
-  // time, in both fixtures that nest an arm.
+  //   - **`Match` is not a scope** (`control-flow-switch-match` ×2,
+  //     `switch-match-component-bodies` ×2). The static tree placed an arm body
+  //     one level deeper than the runtime ever put it. §3.4 collapses
+  //     `Switch`/`Match` into ONE `branch` with one instance scope per
+  //     activation, so the tree stopped claiming the second: `ownership.rs`
+  //     gives `Flow::Match` no node of its own. Note the direction — the
+  //     COMPILER was wrong here and the runtime was right, which is the reading
+  //     the row's own text got backwards.
   //
-  // This is not the argument-evaluation defect the 26 rows above were: the arm
-  // body IS a Block and IS built inside the scope it was handed. What differs
-  // is how many scopes there are. §3.4 collapses `Switch`/`Match` into a
-  // single `branch(s, parent, anchor, key, bodies, flags)` with one instance
-  // scope per activation, which is the shape the static tree already
-  // describes, so this closes when M4 lowers the construct instead of calling
-  // it.
+  //   - **O3.7, the leak** (`control-flow-await-suspense` ×1). A branch
+  //     instance created when a promise resolved registered its disposer with
+  //     the effect node that resolved it, so disposing the render root never
+  //     reached it. `region` in `flow.ts` never registers an instance with the
+  //     driving effect: `enter(given)` files it under the scope above, and the
+  //     effect's own re-run cleanup cannot take it.
+  //
+  // One more thing moved with them, and it is a compiler change rather than a
+  // runtime one: `Flow::Reveal` is `OwnKind::Provide`. `Reveal` installs a
+  // coordinator and owns no range, so what it creates is a provide scope; it
+  // was a branch only because everything that was not a list or a portal was.
   // ---------------------------------------------------------------------
-  eager("control-flow-switch-match", "misplaced-clone@_tmpl$3@root/branch", "<Match when={loading}>'s body — Switch opens one scope, the static tree expects two"),
-  eager("control-flow-switch-match", "misplaced-clone@_tmpl$4@root/branch", "<Match when={ready}>'s body — same"),
-  eager("switch-match-component-bodies", "misplaced-clone@_tmpl$1@root/branch", "<Match>{<Spinner/>}</Match> — a component call as a Match body, one scope short", "O2.1"),
-  eager("switch-match-component-bodies", "misplaced-clone@_tmpl$2@root/branch", "<Match>{<Content/>}</Match> — a component call as a Match body, one scope short", "O2.1"),
-
-  // ---------------------------------------------------------------------
-  // O3.7 — the leak oracle. A scope entered inside the trace window and still
-  // undisposed when it closes, although the window closes on the render root's
-  // own disposal. One occurrence in 120 fixtures, which is what makes the
-  // assertion worth having: it is a floor of one, not a tolerance.
-  // ---------------------------------------------------------------------
-  {
-    fixture: "control-flow-await-suspense",
-    finding: "scope-never-disposed@branch",
-    rule: "O3.7",
-    status: "VIOLATED",
-    greenAt: "M4",
-    slot:
-      "the <Await> branch instance created when the promise resolves registers its disposer with " +
-      "the effect node that resolved it rather than with the scope above it, so disposing the " +
-      "render root never reaches it",
-  },
-
 ]
 
 export const OWNERSHIP_KNOWN_FAILURES: readonly OwnershipKnownFailure[] = Object.freeze(ROWS)

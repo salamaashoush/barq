@@ -96,6 +96,7 @@ codes! {
     Barq007 = "BARQ007", Note, "a control-flow component with no string mode sends this module to the DOM backend";
     Barq008 = "BARQ008", Warning, "a `barq-ignore-next-line` matched no diagnostic";
     Barq009 = "BARQ009", Warning, "a `barq-ignore-next-line` could not be parsed";
+    Barq010 = "BARQ010", Warning, "a Block is forwarded into a slot the callee reads as a Cell, where it throws";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

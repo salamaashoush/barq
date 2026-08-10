@@ -280,11 +280,21 @@ describe("oracle path integrity", () => {
   // A harness whose oracle silently renders nothing would pass every
   // comparison. These assert the oracle is actually doing work.
 
+  /**
+   * Across the whole cycle, not just the first frame. Until M4 every fixture's
+   * first frame was non-empty because every control-flow instance spliced a
+   * marker PAIR into it; K7 deletes the markers, so a root-position `Show` that
+   * starts closed and has no fallback now renders exactly nothing at frame 0 —
+   * correctly. Asserting frame 0 alone would be asserting the comment nodes are
+   * back. What "the oracle is doing work" needs is that SOME frame the fixture
+   * drives has DOM in it.
+   */
   it("the oracle produces non-empty DOM for every fixture", async () => {
     for (const name of fixtures) {
       if (skipped(name)) continue
       const result = await renderViaRuntime(name)
-      expect(result.html.length, `oracle rendered nothing for ${name}`).toBeGreaterThan(0)
+      const widest = Math.max(result.html.length, ...result.frames.map((frame) => frame.length))
+      expect(widest, `oracle rendered nothing for ${name}, in any frame`).toBeGreaterThan(0)
     }
   }, 60_000)
 
@@ -410,7 +420,7 @@ describe("marker channel", () => {
   })
 })
 
-describe("node-identity channel self-check", () => {
+describe("node-identity-differential channel self-check", () => {
   // Every other channel is a function of the DOM's SHAPE, so a compiled path
   // that reused a node where the oracle rebuilt one — or rebuilt where the
   // oracle reused — produced byte-identical html, markers, attributes and
@@ -422,12 +432,17 @@ describe("node-identity channel self-check", () => {
     // on every toggle where the oracle calls the arrow again. The fixture
     // toggles off and back on, so the oracle really does build two.
     // C6 moved the shape: a child is a Block, so the arrow declares the scope.
-    // Unwrapping it is still exactly the miscompile — the body is evaluated at
-    // the call site instead of under the receiving scope.
+    // K5 moved it again: the body is not a `children` prop at all, it is the
+    // Block `_$branch` is handed. Unwrapping it is still exactly the miscompile
+    // — the body is evaluated at the call site instead of under the receiving
+    // scope.
     const unwrapThunk = (code: string): string => {
-      const out = code.replace(/children: [\w$]*block\(\(_s\$\) => (_tmpl\$\d+\(\))\)/g, "children: $1")
+      const out = code.replace(
+        /([\w$]*block)\(\(_s\$\) => (_tmpl\$\d+)\(\)\)/g,
+        "$1((_s$) => ($2.$$n ??= $2()))",
+      )
       if (out === code) {
-        throw new Error("self-check corruption is stale: no `children: _$block((_s$) => _tmpl$N())` to unwrap")
+        throw new Error("self-check corruption is stale: no `_$block((_s$) => _tmpl$N())` to memoise")
       }
       return out
     }
@@ -436,7 +451,7 @@ describe("node-identity channel self-check", () => {
     const kinds = new Set(result.divergences.map((d) => d.kind))
     // And by NOTHING else: this is the measurement of how blind the rest of the
     // harness is to node identity.
-    expect([...kinds]).toEqual(["node-identity"])
+    expect([...kinds]).toEqual(["node-identity-differential"])
   })
 
   it("catches a re-render that rebuilds a subtree the oracle kept", async () => {
@@ -445,8 +460,8 @@ describe("node-identity channel self-check", () => {
     // compiled path churn where the oracle's thunk result is stable.
     const rebuildEveryFrame = (code: string): string => {
       const out = code.replace(
-        /children: ([\w$]*block\()\(_s\$\) => (_tmpl\$\d+)\(\)/g,
-        "children: $1(_s$) => { const _n = $2(); _n.setAttribute(\"data-x\", \"\"); _n.removeAttribute(\"data-x\"); return _n }",
+        /([\w$]*block\()\(_s\$\) => (_tmpl\$\d+)\(\)/g,
+        "$1(_s$) => { const _n = $2(); _n.setAttribute(\"data-x\", \"\"); _n.removeAttribute(\"data-x\"); return _n }",
       )
       if (out === code) throw new Error("self-check corruption is stale")
       return out

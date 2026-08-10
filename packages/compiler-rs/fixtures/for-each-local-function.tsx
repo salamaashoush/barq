@@ -30,6 +30,6 @@ export const optimality = {
   // binding is proved to be an accessor by its initialiser, and `activeItems`
   // goes in bare. The row parameter is a plain value, so the row's hole takes
   // `item.name` with no thunk (DESIGN O3).
-  emits: ["For(", "each: activeItems", ", item: {"],
-  absent: ["each: () => activeItems()", "() => item.name"],
+  emits: ["each(", ", activeItems, null, ", ", item: {"],
+  absent: ["each: ", "() => activeItems()", "() => item.name"],
 }

@@ -67,6 +67,12 @@ impl OwnKind {
         match flow {
             Flow::For | Flow::Index | Flow::Repeat => OwnKind::Each,
             Flow::Portal => OwnKind::Portal,
+            // X1: `Reveal` installs a coordinator and owns no range, so what it
+            // creates is a PROVIDE scope. Calling it a branch was the reading
+            // that fell out of "everything else is a branch", and it made the
+            // one construct in the set whose whole job is a context binding
+            // indistinguishable from a conditional.
+            Flow::Reveal => OwnKind::Provide,
             _ => OwnKind::Branch,
         }
     }
@@ -78,6 +84,15 @@ pub struct OwnNode {
     /// [`NONE`] on the root
     pub parent: u32,
     pub kind: OwnKind,
+    /// Whether this node's construct creates a scope at run time. It starts as
+    /// [`OwnKind::scopes`] and is CLEARED by [`attach`] for a region the flow
+    /// pass proved `NO_SCOPE` on — the runtime then activates without entering
+    /// one, and a tree that still claimed it would put a step in the path the
+    /// trace can never produce.
+    pub scopes: bool,
+    /// `span.start` of the JSX element, which is what joins a node to the
+    /// region the compiler built from it. Not serialised.
+    pub span: u32,
     /// the construct as written: `Theme.Provider`, `Show`, `Badge`
     pub label: String,
     pub line: u32,
@@ -271,6 +286,23 @@ fn holds_jsx(def: Def<'_, '_>) -> bool {
 /// Attach every compiled unit to the node that owns its position, once the
 /// passes have assigned template ids. Read-only over the module.
 pub fn attach(tree: &mut OwnershipTree, module: &Module<'_>) {
+    // The flow pass proved `NO_SCOPE` for some regions, and a proof is a fact
+    // about the RUNTIME: no `Scope` is entered for that activation. The tree is
+    // built before the pass runs and cannot compute it a second time without
+    // becoming a second predicate that could disagree, so the one decision is
+    // carried here, joined by the JSX span both sides hold.
+    for region in crate::passes::regions_of(module) {
+        if region.emitted_flags() & crate::ir::NO_SCOPE == 0 {
+            continue;
+        }
+        for node in tree.nodes.iter_mut() {
+            if node.span == region.span.start
+                && matches!(node.kind, OwnKind::Branch | OwnKind::Portal)
+            {
+                node.scopes = false;
+            }
+        }
+    }
     for unit in &module.units {
         if unit.template == NONE {
             continue;
@@ -304,7 +336,16 @@ impl OwnershipTree {
     ) -> u32 {
         let id = self.nodes.len() as u32;
         let (line, column) = locate(module.source, span.start);
-        self.nodes.push(OwnNode { id, parent, kind, label, line, column });
+        self.nodes.push(OwnNode {
+            id,
+            parent,
+            kind,
+            scopes: kind.scopes(),
+            span: span.start,
+            label,
+            line,
+            column,
+        });
         id
     }
 
@@ -315,7 +356,7 @@ impl OwnershipTree {
         let mut at = node;
         while at != NONE {
             let entry = &self.nodes[at as usize];
-            if entry.kind.scopes() {
+            if entry.scopes {
                 path.push(entry.kind.as_str());
             }
             at = entry.parent;
@@ -363,7 +404,7 @@ impl OwnershipTree {
                 node.id,
                 if node.parent == NONE { -1 } else { node.parent as i64 },
                 node.kind.as_str(),
-                node.kind.scopes(),
+                node.scopes,
             );
             quote(&mut out, &node.label);
             let _ = write!(out, ",\"line\":{},\"column\":{}}}", node.line, node.column);
@@ -552,6 +593,12 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
         let mut children_owner = None;
         let inner = match self.classify(name) {
             Tag::Intrinsic => owner,
+            // C8-adjacent: `Match` builds nothing and owns nothing. It carries a
+            // `when` and a body for the `Switch` above it to read, and §3.4
+            // collapses the pair into ONE `branch` with one instance scope per
+            // activation. A node here made the static tree claim a scope the
+            // runtime has never had and never will.
+            Tag::Flow(Flow::Match, _) => owner,
             Tag::Flow(flow, label) => {
                 self.tree.push(owner, OwnKind::of_flow(flow), label, element.span, self.module)
             }
@@ -1041,6 +1088,8 @@ mod tests {
             id: 0,
             parent: NONE,
             kind: OwnKind::Root,
+            scopes: true,
+            span: 0,
             label: "A\"B\\C\n".to_string(),
             line: 1,
             column: 1,

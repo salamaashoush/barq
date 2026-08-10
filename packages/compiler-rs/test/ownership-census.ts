@@ -44,6 +44,26 @@ export interface CensusRow {
 }
 
 /**
+ * **M4 moved two of these counts, and both are C7 arriving.**
+ *
+ * A consumer that invokes its Block twice for one activation builds two DOM
+ * subtrees and discards one. Nothing else in this repository can see that; this
+ * column can, and it is what these two rows record now that the ten
+ * hand-written control-flow bodies are one `region` driver:
+ *
+ *   control-flow-error-boundary            3 -> 2   the fallback was built twice on the
+ *                                                   construction throw: once inline in the
+ *                                                   `catch`, once again when the effect re-ran
+ *                                                   on the captured error
+ *   control-flow-await-suspense            4 -> 3   `Suspense` rendered its fallback and then
+ *                                                   rendered it again from the microtask pair
+ *                                                   that subscribed to nothing
+ *
+ * Both are strictly fewer clones for identical DOM in every frame, which is the
+ * only direction this column may move without a fixture edit.
+ */
+
+/**
  * **M3 moved eight of these counts, and every move is C6 arriving.**
  *
  * A slot used to be a value: `fallback={<em/>}` was cloned once, at the call
@@ -87,8 +107,8 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "component-spread", clones: 3, unattributed: 0, opaque: [] },
   { fixture: "conditional-children", clones: 4, unattributed: 0, opaque: [] },
   { fixture: "context-provider", clones: 3, unattributed: 0, opaque: [] },
-  { fixture: "control-flow-await-suspense", clones: 4, unattributed: 0, opaque: [] },
-  { fixture: "control-flow-error-boundary", clones: 3, unattributed: 0, opaque: [] },
+  { fixture: "control-flow-await-suspense", clones: 3, unattributed: 0, opaque: [] },
+  { fixture: "control-flow-error-boundary", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "control-flow-errored-loading", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "control-flow-for", clones: 5, unattributed: 0, opaque: [] },
   { fixture: "control-flow-for-keyed-by-item", clones: 5, unattributed: 0, opaque: [] },
@@ -103,10 +123,13 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "control-flow-reveal", clones: 3, unattributed: 0, opaque: [] },
   { fixture: "control-flow-show", clones: 4, unattributed: 0, opaque: [] },
   { fixture: "control-flow-show-eager-children", clones: 4, unattributed: 0, opaque: [] },
+  { fixture: "control-flow-show-cleanup-body", clones: 3, unattributed: 0, opaque: [] },
   { fixture: "control-flow-show-eager-static-body", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "control-flow-show-fragment-body", clones: 9, unattributed: 0, opaque: [] },
   { fixture: "control-flow-show-static-body", clones: 2, unattributed: 0, opaque: [] },
+  { fixture: "control-flow-show-static-key", clones: 3, unattributed: 0, opaque: [] },
   { fixture: "control-flow-switch-match", clones: 5, unattributed: 0, opaque: [] },
+  { fixture: "control-flow-switch-static-key", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "create-async-value", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "create-optimistic-signal", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "create-projection-store", clones: 1, unattributed: 0, opaque: [] },

@@ -4,6 +4,7 @@ mod intern;
 mod module;
 mod patch;
 mod react;
+mod region;
 mod skeleton;
 mod symbols;
 
@@ -15,8 +16,9 @@ pub use module::{
 };
 pub use patch::{Anchor, Chan, Diff, HandlerRef, InsertPlan, Op, Patch};
 pub use react::{BIT_OVERFLOW, Const, Cost, DepSet, FreeVars, React, Rx, Shape, Thunk};
+pub use region::{NO_SCOPE, Region, RegionId, RegionKind, STATIC_KEY};
 pub use skeleton::{Materialisation, Ns, SkelAttr, SkelAttrValue, SkelElement, SkelNode, Skeleton};
-pub use symbols::{Diag, Flow, Keyed, MemberMask, Prim, ReactiveEnv, SourceKind};
+pub use symbols::{CellSlot, Diag, Flow, Keyed, MemberMask, Prim, ReactiveEnv, SourceKind};
 
 /// Index into [`Skeleton::nodes`], document order.
 pub type NodeId = u32;
@@ -59,6 +61,8 @@ mod tests {
     /// mechanical change, and it is not worth the readability now.
     #[test]
     fn patch_records_stay_pod_sized() {
+        // `Op::Region` costs a slot, an `Anchor` and a `RegionId` — 16 payload
+        // bytes against `Insert`'s 20, so the widest variant did not move.
         assert_eq!(size_of::<Op>(), 24);
         assert_eq!(size_of::<Patch>(), 40);
         assert_eq!(align_of::<Patch>(), 8);

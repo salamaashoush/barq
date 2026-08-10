@@ -15,8 +15,10 @@ import {
   getOwner,
   ownRange,
   OWNERSHIP,
+  readSlot,
   renderEffect,
   unclaimedSeeds,
+  underScope,
   type Scope,
 } from "./signals.ts";
 import {
@@ -412,7 +414,11 @@ function applyProp(element: Element, key: string, value: unknown, isSvg: boolean
   if (isSignalGetter(value)) {
     let prev: unknown;
     renderEffect(() => {
-      prev = applyResolvedProp(element, key, value(), isSvg, prev);
+      // C3.8 on the READ, not only on the value. `setProp` tests `isBlock` on
+      // the carrier, which catches a Block written straight into the slot; a
+      // Cell that YIELDS one carries no brand and walked past it, and the
+      // Block's own source text was then stringified into the attribute.
+      prev = applyResolvedProp(element, key, readSlot(value, `setProp ${key}`), isSvg, prev);
     });
     return;
   }
@@ -979,6 +985,29 @@ function applyInsert(parent: Node, value: Child, current: Node[], marker: Node |
 }
 
 /**
+ * Run `build` with `given` as `CURRENT`, so everything it creates is owned by
+ * the scope the call was HANDED rather than by whatever the call site left
+ * current. That is O4.5, and it is what the four flow primitives already do.
+ *
+ * `null` is left alone deliberately. `requireScope` admits it — the compiler
+ * emits `const _s$ = null` for a module-level root — and it names NO owner, so
+ * there is nothing for the argument to win. Forcing `CURRENT` to null there
+ * turns the effect into an ORPHAN, which `enterRoot` then CLAIMS: ownership
+ * would be RELOCATED rather than decided, and relocating it is the M2 bridge
+ * O5's registry row is about. Measured, not assumed — doing it unconditionally
+ * makes `render(<Tree/>, host)` stop emitting RENDER_SUBTREE_NOT_OWNED, because
+ * the root ends up holding the argument's effects after all. That belongs to
+ * O5's milestone, with the fixture re-cut in the same change.
+ */
+function ownedBy(given: Scope | null, origin: string, build: () => void): void {
+  if (given === null) {
+    build();
+    return;
+  }
+  underScope(given, origin, build);
+}
+
+/**
  * Insert a child into `parent` before `marker` (or append when absent), under
  * the scope the enclosing Block was given. CODESIGN §3.3 C6: scope FIRST.
  *
@@ -1000,11 +1029,19 @@ export function insert(
 
   if (typeof value === "function") {
     let current: Node[] = EMPTY_NODES;
-    renderEffect(() => {
-      const owner = getOwner();
-      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
-      current = applyInsert(parent, (value as (s: unknown) => Child)(owner), current, anchor);
-      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
+    // O4.5: the effect belongs to the scope this call was GIVEN, not to
+    // whatever happened to be current at the call site. Without this the
+    // argument is decoration — a hole inserted under scope A while B is ambient
+    // put its cleanup on B, so disposing A left the effect running and writing
+    // into a detached tree. `branch`, `each`, `boundary` and `portal` have all
+    // taken their scope this way since M4; this is the same line in `insert`.
+    ownedBy(given, "insert", () => {
+      renderEffect(() => {
+        const owner = getOwner();
+        if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
+        current = applyInsert(parent, (value as (s: unknown) => Child)(owner), current, anchor);
+        if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
+      });
     });
     return;
   }
@@ -1040,14 +1077,20 @@ export function insert(
  * (function) values via render effects.
  */
 export function setProp(s: Scope | null, element: Element, key: string, value: unknown): void {
-  requireScope(s, "setProp");
+  const given = requireScope(s, "setProp");
   // §3.0 rule 2 / §3.13: an attribute is a CELL slot. A Block forwarded into one
   // is the asymmetry the rule is about, and it throws here rather than being
   // invoked with `undefined` and stringified into the attribute.
   if (isBlock(value)) {
     throw new ScopeMissingError(`setProp ${key} (a Block reached a Cell slot)`);
   }
-  applyProp(element, key, value, element.namespaceURI === SVG_NS);
+  // O4.5, as in `insert`: a reactive prop opens a render effect, and the effect
+  // is owned by the scope the call was handed. `s` used to be read for
+  // `requireScope` and then discarded, so `setProp(A, …)` while B was ambient
+  // survived `dispose(A)` and went on writing the attribute.
+  ownedBy(given, "setProp", () => {
+    applyProp(element, key, value, element.namespaceURI === SVG_NS);
+  });
 }
 
 /**
@@ -1129,7 +1172,7 @@ export function spread(
  * handed. `s` is threaded from `insert`'s parameter, never read back off the
  * ambient owner.
  */
-function childToNodes(child: Child, s: Scope | null): Node[] {
+export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[] {
   if (child === null || child === undefined || child === true || child === false) {
     return [];
   }
@@ -1147,8 +1190,17 @@ function childToNodes(child: Child, s: Scope | null): Node[] {
   }
 
   // §3.0 rules 1-2: a Cell ignores the argument, a Block needs it, and one
-  // call serves both. Nothing here decides ownership from the owner (O4.5) —
-  // it forwards the scope this construction is already running under.
+  // call serves both.
+  //
+  // The scope handed to the Block is the AMBIENT one, not the `s` this call was
+  // given, and that is an O4.5 violation with a reason: `render` opens its root,
+  // makes it current and then reaches here with the caller's `s`, so passing `s`
+  // puts the whole mount under whatever was current at the `render` call site —
+  // which is the O5 defect the registry still carries. Handing `s` down here is
+  // half of that row's fix and belongs in the same change as the other half,
+  // the lowering of `render`'s argument to a Block. Passing `s` on its own
+  // fails five of this fixture's claims, which is how this comment was found to
+  // be describing code that did the opposite.
   if (typeof child === "function") {
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("children", s);
     const built = (child as (s: unknown) => Child)(getOwner());

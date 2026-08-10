@@ -70,9 +70,17 @@ export const optimality = {
     "$$input = ",
     "$$click = ",
     '"value", () => state.filters.search',
-    "each: rows",
+    ", rows, null, ",
+    // K5, in the company of everything else: both constructs are regions. The
+    // `Show` is the corpus's clearest case of the pair coming from the walk —
+    // it stands BETWEEN the search input and the tab button, so its anchor is a
+    // node the template already carries and the runtime re-derives nothing.
+    "branch(",
+    '() => state.user.name !== "" || false',
+    "each(",
   ],
-  // The handlers are hoisted, so nothing rebuilds them per instance; and the
-  // one prop the runtime diffs at runtime is never folded into the markup.
-  absent: ['value="', "each: () => rows()", "addEventListener"],
+  // The handlers are hoisted, so nothing rebuilds them per instance; the one
+  // prop the runtime diffs at runtime is never folded into the markup; and the
+  // two adapter frames -O0 pays for the page are both gone.
+  absent: ['value="', "each: ", "addEventListener", "Show(", "For(", "when: ", "children: "],
 }

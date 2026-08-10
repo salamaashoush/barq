@@ -56,6 +56,24 @@ export const optimality = {
   // mode was modelled the second one did not exist and the whole row body was
   // `createElement`.
   templates: 2,
-  emits: ['<tr><td class="col-id">', '<td class="col-label"><a class="lbl">'],
-  absent: ['createElement("tr"', 'createElement("td"', "<!---->"],
+  emits: [
+    '<tr><td class="col-id">',
+    '<td class="col-label"><a class="lbl">',
+    // K5 on the shape the ecosystem writes most: the list is an `each` taking
+    // the `<tbody>` the walk found, and the row Block is what used to be
+    // `children`. `null` for `keyOf` is identity — `For` with no `keyed` keys
+    // by the item itself.
+    "each(",
+    ", rows, null, ",
+  ],
+  // The adapter frame -O0 still pays, per table: a props object, its two named
+  // slots, and the `insert` that joined the return value to the `<tbody>`.
+  absent: [
+    'createElement("tr"',
+    'createElement("td"',
+    "<!---->",
+    "For(",
+    "each: ",
+    "children: ",
+  ],
 }

@@ -18,6 +18,8 @@ export const optimality = {
   templates: 2,
   // `Repeat.count` is unwrapped by the runtime, so the accessor goes in bare;
   // the row index is a plain number and needs no thunk at all.
-  emits: ["Repeat(", "count: n", ", i) =>"],
-  absent: ["(Repeat, {", "count: () =>"],
+  // `Repeat` is `each`'s fourth mode: the source is a COUNT, and the mode is
+  // the `COUNT` symbol rather than a `keyOf`.
+  emits: ["each(", ", n, ", "COUNT", ", i) =>"],
+  absent: ["Repeat(", "count: "],
 }

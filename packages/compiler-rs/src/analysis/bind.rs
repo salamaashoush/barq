@@ -15,7 +15,8 @@ use oxc::span::Span;
 
 use crate::diag::Code;
 use crate::ir::{
-    BIT_OVERFLOW, Const, Diag, Flow, Keyed, MemberMask, Module, Prim, ReactiveEnv, SourceKind,
+    BIT_OVERFLOW, CellSlot, Const, Diag, Flow, Keyed, MemberMask, Module, Prim, ReactiveEnv,
+    SourceKind,
 };
 use crate::options::ResolvedOptions;
 
@@ -46,6 +47,12 @@ struct Decl<'a> {
     /// `None` for a whole-binding pattern; `Some(i)` for `const [a, b] = …`.
     element: Option<usize>,
     init: InitOf<'a>,
+    /// `const { x } = props` — the binding holds the CARRIER the prop crossed as,
+    /// not a snapshot of its value, because a member read off a props parameter
+    /// yields the Cell or the Block itself (C3.1). Re-wrapping such a binding on
+    /// the way out is what turned a forward into `() => cell`, one carrier too
+    /// many, and destroyed a Block's brand on the way (C3.9).
+    member: bool,
 }
 
 /// What an expression PRODUCES, which is a different question from what reading
@@ -118,16 +125,22 @@ pub fn classify<'a>(
         destructured: Vec::new(),
         components: Vec::new(),
         declarations: Vec::new(),
+        cell_reads: Vec::new(),
+        slot_forwards: Vec::new(),
         tagged: 0,
     };
     binder.imports(program, &options.module_source);
     binder.env.namespaces = binder.namespaces.clone();
     binder.exports(program);
     binder.visit_program(program);
-    binder.fixpoint();
+    // Before the fixpoint, not after: `const { text } = props` asks what `props`
+    // is, and a parameter is never a declarator, so nothing the fixpoint decides
+    // can feed back into this.
     binder.props_params();
+    binder.fixpoint();
     binder.report();
     binder.publish_components();
+    binder.publish_cell_slots();
 
     number_reactive_symbols(&mut module.env);
 }
@@ -188,6 +201,12 @@ struct Binder<'p, 'a> {
     /// return props.text() }` is an ordinary component and binding `props` to
     /// the scope is a silent miscompilation with both halves in view.
     declarations: Vec<(SymbolId, Span, &'a str)>,
+    /// C5.1 item 1, direct: `(props symbol, prop name, the attribute that
+    /// consumes it)` for every `props.x` read as an attribute on an intrinsic.
+    cell_reads: Vec<(SymbolId, &'a str, Span)>,
+    /// C5.1 item 1, transitive: `(props symbol, prop name, callee, callee slot)`
+    /// for every `<Callee slot={props.x} />`.
+    slot_forwards: Vec<(SymbolId, &'a str, SymbolId, &'a str)>,
     /// Inside a tagged template's quasi, where the raw strings are a tag
     /// function's arguments rather than text being built.
     tagged: u32,
@@ -512,13 +531,17 @@ impl<'a> Binder<'_, 'a> {
         for _ in 0..8 {
             let mut changed = false;
             for index in 0..self.decls.len() {
-                let Decl { symbol, element, init } = self.decls[index];
+                let Decl { symbol, element, init, member } = self.decls[index];
                 // A reassigned binding joins every write RHS; none of them are
                 // followed, so it stays Opaque.
                 if self.scoping.symbol_is_mutated(symbol) {
                     continue;
                 }
-                let (kind, konst) = self.produced(init).at(element);
+                let (kind, konst) = if member {
+                    (self.destructured_member(init), None)
+                } else {
+                    self.produced(init).at(element)
+                };
                 if self.env.kind[symbol] != kind {
                     self.env.kind[symbol] = kind;
                     changed = true;
@@ -531,6 +554,17 @@ impl<'a> Binder<'_, 'a> {
             if !changed {
                 return;
             }
+        }
+    }
+
+    /// C3.1/C3.9. `const { text } = props` binds the Cell `props.text` yields,
+    /// so the binding answers what a props member read answers and forwards by
+    /// identity out of the component. Every other object pattern stays Opaque.
+    fn destructured_member(&self, init: InitOf<'a>) -> SourceKind {
+        let InitOf::Alias(source) = init else { return SourceKind::Opaque };
+        match self.env.kind_of(source) {
+            SourceKind::PropsParam => SourceKind::Accessor { nonreactive: MemberMask::EMPTY },
+            _ => SourceKind::Opaque,
         }
     }
 
@@ -674,7 +708,7 @@ impl<'a> Binder<'_, 'a> {
         match &declarator.id {
             BindingPattern::BindingIdentifier(identifier) => {
                 if let Some(symbol) = identifier.symbol_id.get() {
-                    self.decls.push(Decl { symbol, element: None, init });
+                    self.decls.push(Decl { symbol, element: None, init, member: false });
                 }
             }
             BindingPattern::ArrayPattern(pattern) => {
@@ -684,12 +718,30 @@ impl<'a> Binder<'_, 'a> {
                         continue;
                     };
                     if let Some(symbol) = identifier.symbol_id.get() {
-                        self.decls.push(Decl { symbol, element: Some(index), init });
+                        self.decls.push(Decl { symbol, element: Some(index), init, member: false });
                     }
                 }
             }
             // An object pattern off a store proxy would need per-property
             // attribution the analysis cannot prove; every name stays Opaque.
+            // Off a PROPS PARAMETER it is exact: each name binds the carrier its
+            // prop crossed as, and `member` is what carries that to `fixpoint`.
+            // A defaulted or nested property is an `AssignmentPattern` or an
+            // `ObjectPattern`, neither of which matches here, so both stay
+            // Opaque and keep the wrapping they had.
+            BindingPattern::ObjectPattern(pattern) => {
+                for property in &pattern.properties {
+                    if property.computed {
+                        continue;
+                    }
+                    let BindingPattern::BindingIdentifier(identifier) = &property.value else {
+                        continue;
+                    };
+                    if let Some(symbol) = identifier.symbol_id.get() {
+                        self.decls.push(Decl { symbol, element: None, init, member: true });
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -722,6 +774,102 @@ impl<'a> Binder<'_, 'a> {
         for child in &element.children {
             if let JSXChild::ExpressionContainer(container) = child {
                 record(&container.expression);
+            }
+        }
+    }
+
+    /// C5.1 item 1's evidence, collected where the JSX is still visible.
+    ///
+    /// A prop is a CELL slot when the callee reads it in a position the emission
+    /// makes a Cell. There is exactly one such position in JSX — an attribute on
+    /// an INTRINSIC element, which lowers to `_$setProp`/`_$spread` — because a
+    /// child position takes either kind (C3.7) and an attribute on a COMPONENT
+    /// is a forward, whose verdict is the callee's.
+    ///
+    /// Keyed on the PROPS SYMBOL rather than on the enclosing component, so no
+    /// visitor stack is needed: `candidates` already carries props → component,
+    /// and a props parameter belongs to exactly one function.
+    fn cell_slot_evidence(&mut self, element: &JSXElement<'a>) {
+        let component = is_component_tag(&element.opening_element.name);
+        let callee = match &element.opening_element.name {
+            JSXElementName::IdentifierReference(name) => {
+                name.reference_id.get().and_then(|id| self.scoping.get_reference(id).symbol_id())
+            }
+            _ => None,
+        };
+        if component && callee.is_none() {
+            return;
+        }
+        for item in &element.opening_element.attributes {
+            let JSXAttributeItem::Attribute(attribute) = item else { continue };
+            let JSXAttributeName::Identifier(slot) = &attribute.name else { continue };
+            let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
+                continue;
+            };
+            let Some(expression) = container.expression.as_expression() else { continue };
+            let Some((props, prop)) = self.props_member(expression) else { continue };
+            match callee.filter(|_| component) {
+                Some(callee) => self.slot_forwards.push((props, prop, callee, slot.name.as_str())),
+                None => self.cell_reads.push((props, prop, attribute.span)),
+            }
+        }
+    }
+
+    /// `props.name`, through the wrappers that are not values. Answers the props
+    /// symbol and the member name.
+    fn props_member(&self, expression: &Expression<'a>) -> Option<(SymbolId, &'a str)> {
+        match expression {
+            Expression::ParenthesizedExpression(inner) => self.props_member(&inner.expression),
+            Expression::TSAsExpression(inner) => self.props_member(&inner.expression),
+            Expression::TSNonNullExpression(inner) => self.props_member(&inner.expression),
+            Expression::TSSatisfiesExpression(inner) => self.props_member(&inner.expression),
+            Expression::StaticMemberExpression(member) => {
+                let symbol = symbol_of(self.scoping, &member.object)?;
+                Some((symbol, self.allocator.alloc_str(member.property.name.as_str())))
+            }
+            _ => None,
+        }
+    }
+
+    /// The fixpoint over [`Binder::cell_reads`] and [`Binder::slot_forwards`],
+    /// published as `env.cell_slots`. A forward inherits its callee's verdict,
+    /// so `Mid` forwarding `props.thing` into `Sink`'s attribute slot makes
+    /// `Mid.thing` a Cell slot too — the one-hop case C5.1 item 1 names, at any
+    /// depth, within the module.
+    fn publish_cell_slots(&mut self) {
+        let owner_of = |props: SymbolId| -> Option<SymbolId> {
+            self.candidates.iter().find(|(_, p)| *p == props).and_then(|(owner, _)| *owner)
+        };
+        for (props, prop, read) in &self.cell_reads {
+            let Some(component) = owner_of(*props) else { continue };
+            self.env.cell_slots.push(CellSlot { component, prop, read: *read });
+        }
+        loop {
+            let mut grew = false;
+            for (props, prop, callee, slot) in &self.slot_forwards {
+                let Some(component) = owner_of(*props) else { continue };
+                let Some(read) = self
+                    .env
+                    .cell_slots
+                    .iter()
+                    .find(|entry| entry.component == *callee && entry.prop == *slot)
+                    .map(|entry| entry.read)
+                else {
+                    continue;
+                };
+                if self
+                    .env
+                    .cell_slots
+                    .iter()
+                    .any(|entry| entry.component == component && entry.prop == *prop)
+                {
+                    continue;
+                }
+                self.env.cell_slots.push(CellSlot { component, prop, read });
+                grew = true;
+            }
+            if !grew {
+                break;
             }
         }
     }
@@ -1048,6 +1196,7 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
     fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {
         self.row_params(it);
         self.slot_references(it);
+        self.cell_slot_evidence(it);
         if let Some(closing) = it.closing_element.as_ref()
             && let JSXElementName::IdentifierReference(identifier) = &closing.name
             && let Some(symbol) = identifier

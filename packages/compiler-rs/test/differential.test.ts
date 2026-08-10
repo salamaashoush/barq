@@ -342,6 +342,14 @@ describe("L3 — EMI mutation over the corpus", () => {
    * branch was entered, and `RenderResult.seen` counted the clone as reached —
    * so the material was live for the wrong reason. EMI's material GROWING is a
    * strengthening of the driver, which is why this stays an exact set.
+   *
+   * TWO JOINED AT M4b, and they are dead material BY CONSTRUCTION rather than by
+   * circumstance. `control-flow-show-static-key` and
+   * `control-flow-switch-static-key` exist to prove `STATIC_KEY`, which means
+   * their keys are module constants — so the branch each one does not take can
+   * never be taken, at any step, in any session. That is the strongest material
+   * this driver can be handed: for every other subject here the unreached arm is
+   * unreached because no step happened to select it.
    */
   it("mutates whatever unreached material the corpus has, and refuses none of it", () => {
     const detail = report(outcomes)
@@ -353,6 +361,8 @@ describe("L3 — EMI mutation over the corpus", () => {
     ).toEqual([
       "control-flow-await-suspense",
       "control-flow-errored-loading",
+      "control-flow-show-static-key",
+      "control-flow-switch-static-key",
       "dashboard-composite",
       "flow-prop-eta-boundary",
       "switch-match-component-bodies",
