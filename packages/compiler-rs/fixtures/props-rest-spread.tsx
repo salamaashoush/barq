@@ -36,6 +36,6 @@ export const optimality = {
   // can be shadowed by a later attribute and vice versa, so the baked/patched
   // partition a template needs does not exist.
   templates: 1,
-  emits: ["Chip({", "...rest"],
+  emits: ["Chip(", "...rest"],
   absent: ["get text()", "(Chip, {"],
 }

@@ -73,5 +73,5 @@ export const optimality = {
   // Both props are functions the component installs or calls itself, so both
   // stay values. A getter here would be a new object per read.
   absent: ["get cb()", "get legacy()"],
-  emits: ["cb: [bump, 2]"],
+  emits: ["([bump, 2])"],
 }

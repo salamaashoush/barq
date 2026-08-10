@@ -5,10 +5,10 @@
   "keywords": [
     "barq",
     "compiler",
-    "vite-plugin",
     "jsx",
     "reactive",
-    "signals"
+    "signals",
+    "vite-plugin"
   ],
   "homepage": "https://github.com/salamaashoush/barq#readme",
   "bugs": {

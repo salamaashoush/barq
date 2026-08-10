@@ -100,7 +100,7 @@ investigations.push({
       el.textContent = row.label;
       return el;
     });
-    barq.insert(parent, () => view());
+    barq.insert(null, parent, () => view());
     barq.flush();
     return () => {
       data.set(makeRows(N));
@@ -147,7 +147,7 @@ investigations.push({
         el.textContent = row.label;
         return el;
       });
-      barq.insert(parent, () => view());
+      barq.insert(null, parent, () => view());
       barq.flush();
       let i = 0;
       return () => {
@@ -248,7 +248,7 @@ investigations.push({
     barq: () => {
       const parent = container();
       const which = barq.signal(0);
-      barq.insert(parent, () => nodePool[which() % POOL]);
+      barq.insert(null, parent, () => nodePool[which() % POOL]);
       barq.flush();
       let i = 0;
       return () => {

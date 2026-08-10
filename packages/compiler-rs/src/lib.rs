@@ -1,6 +1,7 @@
 pub mod analysis;
 pub mod codegen;
 pub mod compile;
+pub mod diag;
 /// Generated into `OUT_DIR` by `build.rs`; the lib only needs it to prove the
 /// generated tables still match `dom.ts`.
 #[cfg(test)]
@@ -9,7 +10,9 @@ pub mod harvest;
 pub mod ir;
 pub mod lower;
 pub mod options;
+pub mod ownership;
 pub mod passes;
+pub mod scope;
 pub mod tables;
 
 use napi_derive::napi;
@@ -17,12 +20,71 @@ use napi_derive::napi;
 pub use compile::{CompileOutput, Diagnostic, Severity, compile};
 pub use options::{ResolvedOptions, TransformOptions};
 
+/// One diagnostic, as structured data. The span survives the boundary: `pos` is
+/// what Rollup's `this.warn(warning, position)` takes, and that argument is the
+/// only thing that produces `pos`/`loc`/`frame`. Flattening this to a string is
+/// what left the pipeline with no code frame anywhere, in any mode.
+#[napi(object)]
+pub struct JsDiagnostic {
+    /// `BARQ001`; absent for a parser diagnostic, which is oxc's code space.
+    pub code: Option<String>,
+    /// `note` | `warning` | `error`
+    pub severity: String,
+    pub message: String,
+    pub file: String,
+    /// 1-based
+    pub line: u32,
+    /// 1-based, UTF-16 code units — what a source map counts
+    pub column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    /// byte offset into the ORIGINAL source
+    pub pos: u32,
+    pub end: u32,
+    /// path of the docs page for this code, relative to the package root
+    pub docs: Option<String>,
+}
+
+/// A dev-mode label: which JSX, in which component, produced a hoisted template.
+#[napi(object)]
+pub struct JsTemplateLabel {
+    pub template: String,
+    pub component: Option<String>,
+    pub line: u32,
+    pub column: u32,
+}
+
 #[napi(object)]
 pub struct TransformResult {
     pub code: String,
     pub map: Option<String>,
-    /// Non-fatal parser diagnostics, formatted as `file:line:col: message`.
+    /// Every diagnostic, formatted as `file:line:col: CODE level: message`.
+    /// Kept alongside `diagnostics` because a string is what a plain `this.warn`
+    /// and a console sink both want; `diagnostics` is what a code frame needs.
     pub warnings: Vec<String>,
+    pub diagnostics: Vec<JsDiagnostic>,
+    /// Populated under `dev` only.
+    pub labels: Vec<JsTemplateLabel>,
+    /// The static ownership tree as JSON, under `ownership: true` only.
+    /// `CODESIGN.md` §6 L2b — the oracle's expected value, derived from the
+    /// source rather than from a second execution.
+    pub ownership: Option<String>,
+}
+
+fn js_diagnostic(diagnostic: &Diagnostic) -> JsDiagnostic {
+    JsDiagnostic {
+        code: diagnostic.code.map(|code| code.as_str().to_string()),
+        severity: diagnostic.severity.as_str().to_string(),
+        message: diagnostic.message.clone(),
+        file: diagnostic.filename.clone(),
+        line: diagnostic.line,
+        column: diagnostic.column,
+        end_line: diagnostic.end_line,
+        end_column: diagnostic.end_column,
+        pos: diagnostic.pos,
+        end: diagnostic.end,
+        docs: diagnostic.docs(),
+    }
 }
 
 // catch_unwind is opt-in: without it napi-derive emits a bare call and any panic
@@ -35,6 +97,18 @@ pub fn transform(code: String, options: Option<TransformOptions>) -> napi::Resul
             code: output.code,
             map: output.map,
             warnings: output.warnings.iter().map(ToString::to_string).collect(),
+            diagnostics: output.warnings.iter().map(js_diagnostic).collect(),
+            labels: output
+                .labels
+                .iter()
+                .map(|label| JsTemplateLabel {
+                    template: label.template.clone(),
+                    component: label.component.clone(),
+                    line: label.line,
+                    column: label.column,
+                })
+                .collect(),
+            ownership: output.ownership,
         }),
         Err(diagnostics) => Err(napi::Error::from_reason(format!(
             "[barq-compiler] {}\n{}",
@@ -42,4 +116,42 @@ pub fn transform(code: String, options: Option<TransformOptions>) -> napi::Resul
             compile::format_diagnostics(&diagnostics)
         ))),
     }
+}
+
+/// Every diagnostic this build can raise, with its default level and its docs
+/// page. One resolution of the code table, shared by the Vite plugin and any
+/// CLI, so a listing cannot drift from what the compiler actually emits.
+#[napi(object)]
+pub struct JsCode {
+    pub code: String,
+    pub level: String,
+    pub summary: String,
+    pub docs: String,
+}
+
+/// The `Backend` trait's whole instruction set, by `Op` variant name, generated
+/// from the same macro list the trait and its dispatch are generated from
+/// (`codegen::backend::OPS`).
+///
+/// It crosses the boundary so the reference backend's JS half can be checked
+/// against it in BOTH directions. Rust exhaustiveness makes a new `Op` a compile
+/// error in every `impl Backend`; nothing in the language can make it a compile
+/// error in `interp.ts`, so the name sets are asserted equal instead — the same
+/// bidirectional pinning discipline `SEMANTICS.md` §0.3 uses for rule IDs.
+#[napi]
+pub fn opcodes() -> Vec<String> {
+    codegen::backend::OPS.iter().map(|name| (*name).to_string()).collect()
+}
+
+#[napi]
+pub fn diagnostic_codes() -> Vec<JsCode> {
+    diag::Code::ALL
+        .iter()
+        .map(|code| JsCode {
+            code: code.as_str().to_string(),
+            level: code.default_level().as_str().to_string(),
+            summary: code.summary().to_string(),
+            docs: code.docs(),
+        })
+        .collect()
 }

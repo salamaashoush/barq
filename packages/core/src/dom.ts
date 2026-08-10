@@ -3,7 +3,22 @@
  * Fine-grained reactive DOM updates using comment markers
  */
 
-import { flush, renderEffect } from "./signals.ts";
+import {
+  disposeScope,
+  emitDiagnostic,
+  isBlock,
+  requireScope,
+  ScopeMissingError,
+  enterRoot,
+  exit,
+  flush,
+  getOwner,
+  ownRange,
+  OWNERSHIP,
+  renderEffect,
+  unclaimedSeeds,
+  type Scope,
+} from "./signals.ts";
 import {
   isString,
   isBoolean,
@@ -16,10 +31,23 @@ import {
   isSignalGetter,
 } from "./type-utils.ts";
 
-export type Child = Node | string | number | boolean | null | undefined | (() => Child) | Child[];
+/**
+ * §3.0: a function child is a `Cell<Child>` or a `Block<Child>` and the two are
+ * not distinguished here — a Cell ignores the scope a Block needs, so both are
+ * called the same way and both belong in the same position.
+ */
+export type Child =
+  | Node
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ((...args: never[]) => Child)
+  | Child[];
 export type Props = Record<string, unknown> & { children?: Child | Child[] };
 // Component type - generic over props like React's FunctionComponent
-export type Component<P = Props> = (props: P) => JSXElement;
+export type Component<P = Props> = (s: Scope | null, props: P) => JSXElement;
 
 // SVG namespace
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -302,21 +330,25 @@ export function createElement(
   props: Record<string, unknown> | null,
   ...children: Child[]
 ): JSXElement {
-  // Handle function components
+  // C1: there is ONE calling convention, so this path invokes a component the
+  // same way compiled code does. It stays only as the element builder core's
+  // own DOM tests are written against; the compiler has not emitted it since
+  // M1 and §4.1 retires it at M9.
   if (typeof tag === "function") {
-    // Only override children if rest children were provided
-    // This allows passing children as a prop (e.g., for For/Index render functions)
     const finalProps: Record<string, unknown> = { ...props };
     if (children.length > 0) {
       finalProps.children = children.length === 1 ? children[0] : children;
     }
-    return tag(finalProps);
+    return (tag as unknown as (s: unknown, p: Record<string, unknown>) => JSXElement)(
+      getOwner(),
+      finalProps,
+    );
   }
 
   // Handle fragments
   if (tag === "fragment" || tag === "") {
     const fragment = document.createDocumentFragment();
-    appendChildren(fragment, children);
+    appendChildren(getOwner(), fragment, children);
     return fragment;
   }
 
@@ -334,7 +366,7 @@ export function createElement(
   }
 
   // Append children
-  appendChildren(element, children);
+  appendChildren(getOwner(), element, children);
 
   return element;
 }
@@ -698,16 +730,16 @@ function setStylePropDirect(
 /**
  * Append children to a parent node
  */
-function appendChildren(parent: Node, children: Child[]): void {
+function appendChildren(s: Scope | null, parent: Node, children: Child[]): void {
   for (let i = 0; i < children.length; i++) {
-    appendChild(parent, children[i]);
+    appendChild(s, parent, children[i]);
   }
 }
 
 /**
  * Append a single child (handles all child types)
  */
-function appendChild(parent: Node, child: Child): void {
+function appendChild(s: Scope | null, parent: Node, child: Child): void {
   // Skip null, undefined, boolean
   if (child === null || child === undefined || child === true || child === false) {
     return;
@@ -727,14 +759,14 @@ function appendChild(parent: Node, child: Child): void {
 
   // Reactive child: the hole tracks its own nodes, appended at the end
   if (typeof child === "function") {
-    insert(parent, child as () => Child, null);
+    insert(s, parent, child as () => Child, null);
     return;
   }
 
   // Array - flatten and append each
   if (Array.isArray(child)) {
     for (let i = 0; i < child.length; i++) {
-      appendChild(parent, child[i]);
+      appendChild(s, parent, child[i]);
     }
     return;
   }
@@ -794,7 +826,7 @@ function normalizeChildToNodes(value: Child, prev: Node[]): Node[] {
     }
 
     if (typeof child === "function") {
-      visit((child as () => Child)());
+      visit((child as (s: unknown) => Child)(getOwner()));
       return;
     }
 
@@ -947,17 +979,32 @@ function applyInsert(parent: Node, value: Child, current: Node[], marker: Node |
 }
 
 /**
- * Insert a child into `parent` before `marker` (or append when absent).
- * Compiled-template output calls this for dynamic holes; a function value
- * updates fine-grained in place.
+ * Insert a child into `parent` before `marker` (or append when absent), under
+ * the scope the enclosing Block was given. CODESIGN §3.3 C6: scope FIRST.
+ *
+ * Taking it as an argument is what makes §3.0 rule 3 enforceable at no cost. A
+ * compiled Block that builds anything reaches here, so a Block invoked with no
+ * scope throws where it was mistimed rather than silently constructing under
+ * whatever happened to be current — and the ownership trace gets a `given` that
+ * was threaded rather than read back off `CURRENT`, which is the one comparison
+ * that cannot fail.
  */
-export function insert(parent: Node, value: Child | (() => Child), marker?: Node | null): void {
+export function insert(
+  s: Scope | null,
+  parent: Node,
+  value: Child | (() => Child),
+  marker?: Node | null,
+): void {
+  const given = requireScope(s, "insert");
   const anchor = marker ?? null;
 
   if (typeof value === "function") {
     let current: Node[] = EMPTY_NODES;
     renderEffect(() => {
-      current = applyInsert(parent, (value as () => Child)(), current, anchor);
+      const owner = getOwner();
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
+      current = applyInsert(parent, (value as (s: unknown) => Child)(owner), current, anchor);
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
     });
     return;
   }
@@ -971,7 +1018,7 @@ export function insert(parent: Node, value: Child | (() => Child), marker?: Node
       parent.insertBefore(node, anchor);
     }
   } else if (Array.isArray(value)) {
-    const nodes = childToNodes(value);
+    const nodes = childToNodes(value, given);
     for (let i = 0; i < nodes.length; i++) parent.insertBefore(nodes[i], anchor);
   } else {
     const text = String(value);
@@ -992,7 +1039,14 @@ export function insert(parent: Node, value: Child | (() => Child), marker?: Node
  * (delegated where possible), refs, class/style values, and reactive
  * (function) values via render effects.
  */
-export function setProp(element: Element, key: string, value: unknown): void {
+export function setProp(s: Scope | null, element: Element, key: string, value: unknown): void {
+  requireScope(s, "setProp");
+  // §3.0 rule 2 / §3.13: an attribute is a CELL slot. A Block forwarded into one
+  // is the asymmetry the rule is about, and it throws here rather than being
+  // invoked with `undefined` and stringified into the attribute.
+  if (isBlock(value)) {
+    throw new ScopeMissingError(`setProp ${key} (a Block reached a Cell slot)`);
+  }
   applyProp(element, key, value, element.namespaceURI === SVG_NS);
 }
 
@@ -1003,9 +1057,11 @@ export function setProp(element: Element, key: string, value: unknown): void {
  * `ref` once on mount. `children` is not handled here.
  */
 export function spread(
+  s: Scope | null,
   element: Element,
   props: Record<string, unknown> | (() => Record<string, unknown>),
 ): void {
+  requireScope(s, "spread");
   const isSvg = element.namespaceURI === SVG_NS;
   const applied: Record<string, unknown> = {};
   const directListeners: Record<string, EventListener> = {};
@@ -1069,9 +1125,11 @@ export function spread(
 }
 
 /**
- * Convert a Child to an array of Nodes
+ * Convert a Child to an array of Nodes, under the scope this construction was
+ * handed. `s` is threaded from `insert`'s parameter, never read back off the
+ * ambient owner.
  */
-function childToNodes(child: Child): Node[] {
+function childToNodes(child: Child, s: Scope | null): Node[] {
   if (child === null || child === undefined || child === true || child === false) {
     return [];
   }
@@ -1088,14 +1146,20 @@ function childToNodes(child: Child): Node[] {
     return ssrHtmlNodes(child as unknown as { readonly t: string });
   }
 
+  // §3.0 rules 1-2: a Cell ignores the argument, a Block needs it, and one
+  // call serves both. Nothing here decides ownership from the owner (O4.5) —
+  // it forwards the scope this construction is already running under.
   if (typeof child === "function") {
-    return childToNodes((child as () => Child)());
+    if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("children", s);
+    const built = (child as (s: unknown) => Child)(getOwner());
+    if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("children");
+    return childToNodes(built, s);
   }
 
   if (Array.isArray(child)) {
     const nodes: Node[] = [];
     for (let i = 0; i < child.length; i++) {
-      const childNodes = childToNodes(child[i]);
+      const childNodes = childToNodes(child[i], s);
       for (let j = 0; j < childNodes.length; j++) {
         nodes.push(childNodes[j]);
       }
@@ -1107,35 +1171,88 @@ function childToNodes(child: Child): Node[] {
 }
 
 /**
- * Render an element tree to a container element
+ * O5: open a root scope, build under it, insert, flush, and return a disposer
+ * that disposes the scope AND removes its range.
+ *
+ * `block` is the O5 shape: `(s: Scope) => Out`, invoked with the root, and it
+ * is the only form under which O5 holds unconditionally.
+ *
+ * **The already-built form and its precondition.** `render(<Tree/>, host)`
+ * constructs the subtree as an ARGUMENT, before `render` is entered. With no
+ * ambient owner at the call site its effects are created with `CURRENT` null,
+ * and `enterRoot` claims them (`adoptOrphans`), so the disposer disposes. With
+ * an ambient owner they are that owner's kids at the instant they are created,
+ * and no code running after the call can tell them from anything else that
+ * owner holds — the watermark would have to have been taken before the
+ * argument was evaluated. Ownership is not lost, it is RELOCATED: disposing
+ * the ambient owner disposes the subtree. But this disposer cannot, so it says
+ * so rather than pretending. M3's calling convention removes the form.
  */
-export function render(element: JSXElement, container: HTMLElement): () => void {
+export function render(
+  block: JSXElement | ((scope: Scope | null) => JSXElement),
+  container: HTMLElement,
+): () => void {
   container.textContent = ""; // Faster than innerHTML = ""
 
-  // Handle all Element types
+  const eager = typeof block !== "function";
+  const ambient = eager ? getOwner() : null;
+  const root = enterRoot();
+  if (ambient !== null && root.kids === null) {
+    emitDiagnostic(
+      "RENDER_SUBTREE_NOT_OWNED",
+      "warning",
+      "render() was given an already-built subtree while an owner was current, so that owner owns it and this disposer will only remove the range. Pass a function — render((scope) => <App/>, host) — to have the root own what it mounts.",
+    );
+  }
+  let element: JSXElement;
+  try {
+    element =
+      typeof block === "function" ? (block as (s: Scope | null) => JSXElement)(root) : block;
+    insertRendered(root, element, container);
+  } finally {
+    exit(root);
+  }
+
+  ownRange(root, () => {
+    container.textContent = "";
+  });
+  flush();
+
+  return () => {
+    disposeScope(root);
+  };
+}
+
+function insertRendered(scope: Scope | null, element: JSXElement, container: HTMLElement): void {
   if (element === null || element === undefined || typeof element === "boolean") {
-    // null, undefined, boolean - render nothing
-  } else if (element instanceof Node) {
+    return;
+  }
+  if (element instanceof Node) {
     container.appendChild(element);
-  } else if (isSsrHtml(element as unknown)) {
+    return;
+  }
+  // `Out` admits `Cell<Out>` (§3.0). A mount whose block returned one is a live
+  // hole at the root, so it is inserted as one rather than stringified.
+  if (typeof element === "function") {
+    insert(scope, container, element as unknown as () => Child);
+    return;
+  }
+  if (isSsrHtml(element as unknown)) {
     for (const node of ssrHtmlNodes(element as unknown as { readonly t: string })) {
       container.appendChild(node);
     }
-  } else if (Array.isArray(element)) {
+    return;
+  }
+  if (Array.isArray(element)) {
     for (const child of element) {
-      const nodes = childToNodes(child);
+      const nodes = childToNodes(child, scope);
       for (const node of nodes) {
         container.appendChild(node);
       }
     }
-  } else {
-    // string or number
-    container.appendChild(document.createTextNode(String(element)));
+    return;
   }
-
-  return () => {
-    container.textContent = "";
-  };
+  container.appendChild(document.createTextNode(String(element)));
 }
 
 /**
@@ -1203,12 +1320,23 @@ export function hydrate(
     const target = globalThis as { __BARQ_DATA__?: Record<string, unknown> };
     target.__BARQ_DATA__ = { ...target.__BARQ_DATA__, ...options.data };
   }
-  const dispose = render(fn(), container);
+  // fn() runs under a root, mirroring the one renderToString and renderPage
+  // put around theirs. Without it the client's owner tree is a level
+  // shallower than the server's, and createAsync's auto-keys - which are
+  // owner-tree ids - address different values on the two sides. O5: that root
+  // is render's own, and fn is handed to it as a Block, so the root owns what
+  // it mounts. Building fn() at the call site instead left the subtree owned
+  // by the wrapper and the returned disposer with nothing to dispose.
+  const clear = render(fn, container);
   flush();
+  // A seed nobody claimed is the only evidence a positional auto-key can give
+  // that the client tree is not the server's; the read that drifted has
+  // already resolved by now.
+  unclaimedSeeds();
   // Clicks that landed before the bundle loaded replay against the
   // hydrated DOM (captured by generateHydrationScript's inline snippet)
   replayCapturedEvents();
-  return dispose;
+  return clear;
 }
 
 /**
@@ -1250,6 +1378,11 @@ export function template(html: string, isSVG = false): () => Node {
     if (!cached) {
       cached = create();
     }
+    // The compiler-addressed position: this template belongs to exactly one
+    // compiled unit, and the static ownership tree says which constructs must
+    // own it. Recording the owner HERE is what makes "the child ran under the
+    // root rather than under the provider" an assertion rather than a story.
+    if (OWNERSHIP.sink !== null) OWNERSHIP.sink.clone(html, getOwner());
     return cached.cloneNode(true);
   };
 }

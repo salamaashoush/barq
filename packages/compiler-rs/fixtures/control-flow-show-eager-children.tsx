@@ -28,6 +28,6 @@ export const optimality = {
   // Target #8 on BOTH branches at once: the author wrote neither the body nor
   // the fallback as a thunk, so neither gets one — each is a single clone handed
   // straight in, with no arrow, no IIFE and no element binding.
-  emits: ["Show({", "when: visible", "children: ", "fallback: "],
+  emits: ["Show(", "when: visible", "children: ", "fallback: "],
   absent: ["children: () =>", "fallback: () =>", "when: () => visible()"],
 }

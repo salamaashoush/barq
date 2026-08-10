@@ -1,0 +1,63 @@
+import { For, signal } from "@barqjs/core"
+
+export const rows = signal([
+  { id: 1, text: "alpha" },
+  { id: 2, text: "beta" },
+])
+
+const opts = { keyed: (row: { id: number }) => row.id }
+
+/**
+ * `keyed` arriving through a SPREAD. Reading only `JSXAttributeItem::Attribute`
+ * left the spread invisible, so the row took the by-item arm and `{row().text}`
+ * was applied once — the ERGONOMICS §4.3 stale cell, reached by a different
+ * door. A spread cannot be proved not to carry `keyed`, so it resolves to the
+ * key-function arm, which is the one that is safe when wrong.
+ *
+ * Step 0 is the only frame that can tell: the keys do not move and the items
+ * behind them do.
+ */
+export default function ControlFlowForKeyedSpread() {
+  return (
+    <ul class="keyed-spread">
+      <For each={() => rows()} {...opts}>
+        {(row) => <li>{row().text}</li>}
+      </For>
+    </ul>
+  )
+}
+
+export const steps = [
+  () =>
+    rows.set([
+      { id: 1, text: "ALPHA" },
+      { id: 2, text: "BETA" },
+    ]),
+  () => rows.set([{ id: 1, text: "ALPHA" }]),
+]
+
+export const goesLive = ["row 0 {row().text}", "row 1 {row().text}"]
+
+export const wins = [
+  {
+    kind: "step",
+    index: 0,
+    compiled:
+      '<ul class="keyed-spread"><!--For:#--><li>ALPHA</li><li>BETA</li><!--/For:#--></ul>',
+    why: "the un-compiled path reads row().text once, so only the live binding sees the new items",
+  },
+  {
+    kind: "step",
+    index: 1,
+    compiled: '<ul class="keyed-spread"><!--For:#--><li>ALPHA</li><!--/For:#--></ul>',
+    why: "the surviving row keeps the value it was re-pointed at in step 0",
+  },
+]
+
+export const optimality = {
+  target: 1,
+  milestone: 3,
+  templates: 2,
+  emits: ["For(", "opts,", ", row) =>", "() => row().text"],
+  absent: ["(For, {", ", row().text)"],
+}

@@ -38,6 +38,6 @@ export const optimality = {
   // `ErrorBoundary.fallback` is `(error, reset) => Child`, so it is a real
   // two-parameter callback and never a built node; `reset` reaches the button
   // as a handler value, not through a thunk.
-  emits: ["ErrorBoundary({", "fallback: (error, reset) =>"],
+  emits: ["ErrorBoundary(", ", error, reset) =>"],
   absent: ["(ErrorBoundary, {"],
 }

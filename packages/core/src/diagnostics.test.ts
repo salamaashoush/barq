@@ -15,6 +15,7 @@ import {
   runWithOwner,
   signal,
 } from "./signals.ts";
+import { render } from "./dom.ts";
 
 describe("DEV.diagnostics", () => {
   test("REACTIVE_WRITE_IN_OWNED_SCOPE warns on writes inside derived computations", () => {
@@ -71,19 +72,33 @@ describe("DEV.diagnostics", () => {
     expect(events.find((e) => e.code === "RUN_WITH_DISPOSED_OWNER")).toBeDefined();
   });
 
-  test("NO_OWNER_CLEANUP warns when onCleanup has no owner", () => {
-    const capture = DEV.diagnostics.capture();
-    onCleanup(() => {});
-    const events = capture.stop();
-    expect(events.find((e) => e.code === "NO_OWNER_CLEANUP")).toBeDefined();
+  // NO_OWNER_CLEANUP is gone: M2 stopped dropping an ownerless cleanup on the
+  // floor. It is held for the next root scope, which claims it and runs it on
+  // disposal (O5), so a warning saying "the cleanup will never run" would now
+  // be false. The claim it stood for is asserted below on the cleanup itself
+  // rather than on the warning, which is the stronger of the two.
+  test("an ownerless cleanup is claimed by the next root and runs on dispose", () => {
+    const ran: string[] = [];
+    onCleanup(() => ran.push("orphan"));
+    const host = document.createElement("div");
+    const dispose = render(document.createElement("span"), host);
+    expect(ran).toEqual([]);
+    dispose();
+    expect(ran).toEqual(["orphan"]);
   });
 
   test("subscribe receives events and unsubscribes", () => {
+    let disposedOwner: Owner | null = null;
+    createScope((dispose) => {
+      disposedOwner = getOwner();
+      dispose();
+    });
+
     const seen: string[] = [];
     const unsub = DEV.diagnostics.subscribe((e) => seen.push(e.code));
-    onCleanup(() => {});
+    runWithOwner(disposedOwner, () => 1);
     unsub();
-    onCleanup(() => {});
-    expect(seen).toEqual(["NO_OWNER_CLEANUP"]);
+    runWithOwner(disposedOwner, () => 1);
+    expect(seen).toEqual(["RUN_WITH_DISPOSED_OWNER"]);
   });
 });

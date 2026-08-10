@@ -265,6 +265,62 @@ const user = useResource(
 </For>
 ```
 
+#### `keyed` — what identifies a row
+
+`keyed` decides what a row IS, and it changes the signature of `children`. There are
+three settings and the middle one is the one most people are looking for.
+
+| `keyed`          | a row is identified by | `children` receives                    |
+| ---------------- | ---------------------- | -------------------------------------- |
+| omitted / `true` | the item itself        | `(item, index: () => number)`          |
+| `(item) => key`  | `key`                  | `(item: () => T, index: () => number)` |
+| `false`          | its position           | `(item: () => T, index: number)`       |
+
+**Omitted or `true`** is keyed by identity. Replace an item with a new object and it
+is a different row: the old DOM is thrown away and rebuilt. `item` is a plain value,
+so `{item.name}` is read once — which is correct, because a changed item means a new
+row anyway.
+
+```tsx
+// item is a VALUE. Reading item.name once is enough: a new object = a new row.
+<For each={() => items()}>{(item) => <li>{item.name}</li>}</For>
+```
+
+**A key function** keys the row on whatever you return, so a row SURVIVES a change to
+its item. The item then reaches `children` through a signal, so it arrives as an
+accessor and you call it:
+
+```tsx
+// item is an ACCESSOR. The <li> — and the <input>'s focus, and its selection —
+// survive every edit to the row, because the row is identified by id, not by object.
+<For each={() => rows()} keyed={(row) => row.id}>
+  {(row) => (
+    <li>
+      <input value={row().text} onInput={(e) => rename(row().id, e.currentTarget.value)} />
+    </li>
+  )}
+</For>
+```
+
+This is the answer to "my input loses focus on every keystroke". Without a key
+function, editing a row produces a new item object, the row is torn down, and the
+`<input>` that had focus no longer exists. `keyed={fn}` is also what other signal
+frameworks ship as a separate `<Key by={…}>` component; here it is a prop on `For`.
+
+**`keyed={false}`** makes the row positional and delegates to `Index`. Slot 0 stays
+slot 0 and only its contents change, so the item is an accessor and the index is a
+plain number. Use it for lists that are edited in place and never reordered.
+
+```tsx
+<For each={() => values()} keyed={false}>
+  {(value, index) => <li>{index}: {value()}</li>}
+</For>
+```
+
+The compiler reads `keyed` the same way the runtime does, and when it cannot prove
+what `keyed` holds — a variable, a call, anything but a literal — it assumes a key
+function, which is the setting that is safe to be wrong about.
+
 ### Switch/Match - Pattern Matching
 
 Match children **must** be callback functions:

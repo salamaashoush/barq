@@ -19,6 +19,7 @@
  */
 
 import { flush, render as barqRender } from "@barqjs/core";
+import type { JSXElement, Scope } from "@barqjs/core";
 import {
   configure as configureDTL,
   fireEvent as dtlFireEvent,
@@ -59,7 +60,7 @@ const mountedContainers = new Set<MountedRef>();
  * @example With wrapper
  * ```tsx
  * const { getByText } = render(() => <MyComponent />, {
- *   wrapper: ({ children }) => <ThemeProvider>{children}</ThemeProvider>
+ *   wrapper: (props) => <ThemeProvider>{props.children}</ThemeProvider>
  * });
  * ```
  */
@@ -70,11 +71,18 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
   const baseElement = customBaseElement ?? customContainer ?? document.body;
   const container = customContainer ?? baseElement.appendChild(document.createElement("div"));
 
-  // Wrap UI if wrapper provided
-  const wrappedUi: Ui = wrapper ? () => wrapper({ children: ui() }) : ui;
+  // C5/C6: the subject is FORWARDED, not built. `children: ui` is the same
+  // Block, so the wrapper decides when and under which scope it runs — which
+  // is what makes a provider wrapper reach the component it wraps. The old
+  // `() => wrapper({ children: ui() })` evaluated `ui()` as an ARGUMENT, so
+  // the subject was constructed before the wrapper existed and its own JSDoc
+  // example (a ThemeProvider) could not work.
+  const wrappedUi: Ui = wrapper
+    ? (s: Scope | null): JSXElement => wrapper(s, { children: ui })
+    : ui;
 
   // Render the component
-  const dispose = barqRender(wrappedUi(), container);
+  const dispose = barqRender(wrappedUi, container);
 
   // Track for cleanup
   mountedContainers.add({ container, dispose });
@@ -108,8 +116,10 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
       dispose();
       container.innerHTML = "";
       // Render new UI
-      const newWrappedUi: Ui = wrapper ? () => wrapper({ children: newUi() }) : newUi;
-      const newDispose = barqRender(newWrappedUi(), container);
+      const newWrappedUi: Ui = wrapper
+        ? (s: Scope | null): JSXElement => wrapper(s, { children: newUi })
+        : newUi;
+      const newDispose = barqRender(newWrappedUi, container);
       // Update tracked ref
       mountedContainers.delete({ container, dispose });
       mountedContainers.add({ container, dispose: newDispose });
@@ -146,16 +156,16 @@ export function renderHook<TResult, TProps = unknown>(
   let dispose: () => void;
   const container = document.createElement("div");
 
-  const renderHookComponent = (): Node => {
+  const renderHookComponent: Ui = (): Node => {
     result.current = hook(currentProps as TProps);
     return document.createComment("hook");
   };
 
-  const wrappedComponent = wrapper
-    ? () => wrapper({ children: renderHookComponent() })
+  const wrappedComponent: Ui = wrapper
+    ? (s: Scope | null): JSXElement => wrapper(s, { children: renderHookComponent })
     : renderHookComponent;
 
-  dispose = barqRender(wrappedComponent(), container);
+  dispose = barqRender(wrappedComponent, container);
   mountedContainers.add({ container, dispose });
 
   return {
@@ -164,7 +174,7 @@ export function renderHook<TResult, TProps = unknown>(
       currentProps = newProps ?? currentProps;
       dispose();
       container.innerHTML = "";
-      dispose = barqRender(wrappedComponent(), container);
+      dispose = barqRender(wrappedComponent, container);
     },
     unmount: () => {
       dispose();

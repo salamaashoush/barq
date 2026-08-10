@@ -126,10 +126,10 @@ done" is a fact about the corpus rather than about whichever fixture got looked 
 
 | target | fixtures | the claim |
 | --- | --- | --- |
-| 1 semantic reactivity | `static-only`, `static-attribute-expression`, `auto-thunked-read`, `inert-member-reads`, `signal-alias`, `signal-methods-in-handler`, `use-store-member`, `component-getter-props` | a provably-static expression gets no effect, no thunk, no closure — and the same identifier can be reactive as a call and inert as a member |
+| 1 semantic reactivity | `static-only`, `static-attribute-expression`, `auto-thunked-read`, `inert-member-reads`, `signal-alias`, `signal-methods-in-handler`, `use-store-member`, `component-getter-props`, `live-call-hole` | a provably-static expression gets no effect, no thunk, no closure — and the same identifier can be reactive as a call and inert as a member |
 | 2 static subtree | `static-only`, `void-elements`, `whitespace-only`, `svg-nested-in-html`, `fragment-root`, `select-option-multiple` | one clone, zero patch calls, zero effects — including one template per root where a fragment cannot be one |
-| 3 constant folding | `literal-class-style`, `escaped-text-and-attribute`, `dom-prop-static-value` | the concat, the ternary, the style string and a constant TEXT child are baked into the template HTML, escaped; and a `DOM_PROPS` name is refused however constant it is |
-| 4 one effect per element | `multi-prop-one-element`, `class-with-live-siblings`, `reactive-attribute` | live props on one element share one effect; a runtime-diffed prop (`class`) never joins it |
+| 3 constant folding | `literal-class-style`, `escaped-text-and-attribute`, `dom-prop-static-value`, `reassigned-binding` | the concat, the ternary, the style string and a constant TEXT child are baked into the template HTML, escaped; a `DOM_PROPS` name is refused however constant it is; and a binding that is WRITTEN to is not a constant however literal its initialiser looks |
+| 4 one effect per element | `multi-prop-one-element`, `class-with-live-siblings`, `reactive-attribute`, `sibling-live-props` | live props on one element share one effect; a runtime-diffed prop (`class`) never joins it; and the group never crosses to the next element |
 | 5 walk elision | `sibling-walk`, `deep-walk`, `walk-from-the-back` | the cheapest route to each hole: chained from the previous hole, reached from `lastChild`, and minimal where a `firstChild` chain already is |
 | 6 template dedup | `dedup-identical-markup`, `two-components-two-templates` | two components emitting byte-identical markup share one `template()`, and two differing by one byte do not |
 | 7 delegated events | `delegated-event`, `non-delegated-event`, `handler-closure`, `handler-no-closure`, `handler-by-reference`, `delegated-handler-tuple` | `$$click` expando writes, one `delegateEvents` per module, closure-free handlers hoisted, and a handler bound to a *variable* at either scope |
@@ -220,11 +220,16 @@ way to sign off on an ordinary bug. `ref-binding` is the only one.
    `&amp;` and `&` parse the same.
 3. The compiled SSR module's own string.
 
-Whether (3) runs is **detected**, by compiling a probe with `ssr: true` and
-seeing whether the compiler refuses — there is no constant to flip, so the suite
-cannot sit asleep behind a boolean. What is asserted unconditionally is that the
-refusal is a real refusal: a compiler that accepted `ssr: true` and quietly
-emitted DOM code would make every claim in the file pass for the wrong reason.
+Whether (3) runs is **detected**, and the detection is three-valued: `live`,
+`absent`, `broken`. Existence is read off `index.d.ts` (napi generates it from
+the Rust option struct, so there is nothing to forget to flip); whether it WORKS
+is asked separately, by compiling a probe and comparing it against a plain
+compile of the same source. No option is `absent` and the suite says so. An
+option that throws, or that emits the same module with and without it, is
+`broken` — a hard failure, never a skip. Two-valued detection was fail-open in
+both directions: a mutant that panicked the SSR compile on 106 of 117 fixtures
+turned every claim below into a silent pass, and a build that IGNORED `ssr: true`
+compared DOM against DOM and called it a string-backend differential.
 
 Beside the corpus runs an escaping matrix, seven contexts by fifteen values, each
 cell asserted as a ROUND TRIP — parse the markup back and the value is still the
@@ -233,6 +238,41 @@ chosen; this is a claim about what a browser will do with the bytes, and it is
 the only one an XSS cannot satisfy. The contexts do not agree on what needs
 escaping (`<` is legal inside a quoted attribute value and fatal in text), so
 each is asked the question that is dangerous for it.
+
+## `semantics/` — the L1 fixtures, which are expected to FAIL
+
+Everything above this line is judged by comparing two implementations. The corpus
+missed the Provider defect for four years because both of them fail it identically:
+the `createElement` oracle evaluates `children` at the call site exactly the way the
+compiled path does, so `compareToOracle` certified the bug. Worse, the style rule
+this file states — explicit-thunk children, `{() => <Badge />}` — **is** the
+hand-written workaround for that defect, so no fixture written to this README's
+convention can reach it. `context-provider.tsx` is written that way and passes.
+
+`fixtures/semantics/` asks the other question: does the observed behaviour match
+what `SEMANTICS.md` says it MUST be, with no second implementation involved. Those
+fixtures are written in the direct form on purpose, and they export claims rather
+than DOM:
+
+```ts
+export const rules: string[]      // rule IDs from SEMANTICS.md this fixture pins
+export const claims: Claim[]      // one falsification procedure each, carrying its rule
+```
+
+They are out of `listFixtures()`'s reach, for the same reason `browser-only/` is:
+`oracle.test.ts` compares two implementations that are both wrong here, and
+`ssr.test.ts` asks for markup from a fixture whose point is that it throws. Keeping
+them separate is what lets M0 add eight fixtures without moving a single existing
+number.
+
+Most of their claims **fail**, and that is the intended state — a fixture here that
+passes means the oracle cannot see the defect it was written for. Which failures are
+acceptable is decided by `test/known-failures.ts` alone: a registered claim that
+starts passing is reported as stale, an unregistered failure fails the suite, and a
+registered failure whose message does not name its rule fails the suite as the wrong
+reason. Every fixture also carries at least one CONTROL claim in the explicit-thunk
+form, which passes; without it a failure is evidence that something is broken but not
+evidence about what.
 
 ## `browser-only/`
 

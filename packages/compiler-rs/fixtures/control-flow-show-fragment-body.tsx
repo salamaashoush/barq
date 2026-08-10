@@ -49,6 +49,6 @@ export const optimality = {
   // both are eager `Fragment` calls over built clones, which is the shape that
   // makes the drained-fragment bug reachable at all.
   templates: 5,
-  emits: ["Show({", "when: on", "fallback: ", "children: "],
+  emits: ["Show(", "when: on", "fallback: ", "children: "],
   absent: ["children: () =>", "fallback: () =>", "when: () => on()"],
 }

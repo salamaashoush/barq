@@ -5,6 +5,7 @@ import { join } from "node:path"
 import {
   auditAnchors,
   compareToOracle,
+  renderViaCompiler,
   compileFixture,
   compileFixtureBody,
   emittedCalls,
@@ -23,6 +24,7 @@ import {
 } from "./harness.ts"
 import { measure, typicalComponentFile } from "./measure.ts"
 import { countAnchors } from "./normalize.ts"
+import { oracleRegistry } from "./oracle-known-failures.ts"
 
 /**
  * The definition of done for milestones 2-6.
@@ -115,10 +117,55 @@ describe("declared optimality", () => {
     // the test file, where they run against the stripped body.
     const offenders = listFixtures().filter((name) => {
       const declaration = fixtureSource(name).match(/export const optimality = \{[\s\S]*?\n\}/)
-      return declaration !== null && /_\$|_el\$|_p\$|_v\$|_tmpl\$/.test(declaration[0])
+      // `_s$` joined the list at M3: the scope parameter is a compiler uid like
+      // any other, and a fixture that names it in its own declaration block
+      // shifts EVERY emitted uid to `_$$` — while the declaration itself keeps
+      // passing, because it is asserted against the body with the block
+      // stripped. That is the exact silent hole this test exists for, and the
+      // C1 call shape is asserted from here instead (`the call shape is C1's`).
+      return declaration !== null && /_\$|_el\$|_p\$|_v\$|_tmpl\$|_s\$|_k\$/.test(declaration[0])
     })
     expect(offenders).toEqual([])
   })
+
+  /**
+   * C1, stated once for the whole corpus instead of 38 times in fixture
+   * strings. A component is invoked with the scope it must run under FIRST, and
+   * a slot literal declares the same parameter — so a call that lost the
+   * argument, or a Block that lost the parameter, fails here whatever any
+   * individual declaration happens to spell.
+   *
+   * It lives in the test file because a fixture may not name a compiler uid:
+   * see the test above for what happens when one does.
+   */
+  it("the call shape is C1's: scope first at every component call and every Block", () => {
+    let calls = 0
+    let blocks = 0
+    const withProps = new Map<string, string[]>()
+    for (const name of listFixtures()) {
+      const code = stripLiterals(compileFixtureBody(name))
+      // The two shapes the compiler emits for a component call, and the scope
+      // is the first argument of both. Anything capitalised whose first
+      // argument is a props object or a source list is a call that lost it.
+      const lost = [...code.matchAll(/(?<![\w$.])([A-Z][\w$]*)\(\s*(\{|_\$props\()/g)].map(
+        (m) => m[1]!,
+      )
+      if (lost.length > 0) withProps.set(name, [...new Set(lost)])
+      calls += [...code.matchAll(/(?<![\w$.])[A-Z][\w$]*\(_s\$[,)]/g)].length
+      // §3.0 rule 3: a Block is BRANDED at its definition site, so the slot's
+      // value is `_$block((_s$…`. The brand is what lets a consumer test kind
+      // instead of guessing it from arity.
+      blocks += [
+        ...code.matchAll(/(children|fallback|loading|error):\s*[\w$]*block\(\(_s\$[,)]/g),
+      ].length
+    }
+    expect(
+      [...withProps].map(([name, callees]) => `${name}: ${callees.join(", ")}`),
+      "a component whose FIRST argument is its props object is a call that lost its scope",
+    ).toEqual([])
+    expect(calls, "the sweep found no component calls at all").toBeGreaterThan(40)
+    expect(blocks, "the sweep found no Blocks at all").toBeGreaterThan(30)
+  }, 120_000)
 
   /**
    * A fixture without an `optimality` block contributes nothing to the
@@ -441,7 +488,7 @@ describe("target 4 — one effect per element, not one per prop", () => {
     // put there. Two live props still merge; the third is left unwrapped.
     const code = compileFixtureBody("class-with-live-siblings")
     expect(renderEffectBodies(code), "one effect for title+id").toHaveLength(1)
-    expect(code).toContain('_$setProp(_el$1, "class", () => tone())')
+    expect(code).toContain('_$setProp(_s$, _el$1, "class", () => tone())')
     expect(code, "class must not be written from inside the group").not.toMatch(/_p\$\??\.class/)
 
     const result = await compareToOracle("class-with-live-siblings")
@@ -455,8 +502,8 @@ describe("target 4 — one effect per element, not one per prop", () => {
     // Positive: both live props reach `setProp` UNWRAPPED, which is what
     // "passed through" means. "no renderEffect" and "two effects" are both
     // properties of the un-compiled path as well — this was one of the six.
-    expect(code).toContain('_$setProp(_el$1, "href", () => href())')
-    expect(code).toContain('_$setProp(_el$1, "class", () => active()')
+    expect(code).toContain('_$setProp(_s$, _el$1, "href", () => href())')
+    expect(code).toContain('_$setProp(_s$, _el$1, "class", () => active()')
     expect(templateHtml(code), "only the static attribute is baked").toEqual([
       '<a data-static="keep">go</a>',
     ])
@@ -501,7 +548,7 @@ describe("target 4 — one effect per element, not one per prop", () => {
     const code = compileFixtureBody("multi-prop-one-element")
     expect(groupTargets(code)).toEqual([["_el$1"]])
 
-    const overMerged = code.replace('_$setProp(_el$1, "data-width"', '_$setProp(_el$2, "data-width"')
+    const overMerged = code.replace('_$setProp(_s$, _el$1, "data-width"', '_$setProp(_s$, _el$2, "data-width"')
     expect(overMerged, "the mutation is stale").not.toBe(code)
     expect(groupTargets(overMerged)).toEqual([["_el$1", "_el$2"]])
   })
@@ -531,7 +578,7 @@ describe("target 5 — walk elision", () => {
   }
 
   function holes(code: string): string[] {
-    return [...code.matchAll(/_\$+insert\((_el\$+\d+)/g)].map((m) => m[1])
+    return [...code.matchAll(/_\$+insert\([^,]+,\s*(_el\$+\d+)/g)].map((m) => m[1])
   }
 
   it("deep-walk: five nested single-child divs cost exactly five hops and nothing else", () => {
@@ -639,14 +686,25 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // call real, and the body — a subtree that produced no patch — reaches
     // `children` as the clone itself: no arrow, no IIFE, no element binding.
     const code = compileFixtureBody("control-flow-show-eager-static-body")
-    expect(code).toMatch(/Show\(\{/)
-    expect(code).toMatch(/children:\s*_tmpl\$\d+\(\)/)
-    expect(code, "no thunk manufactured around the body").not.toMatch(/children:\s*\(/)
+    expect(code).toMatch(/Show\(_s\$, \{/)
+    // O2/O2.1 SUPERSEDE target #8's eager arm, and this is where that is said.
+    // A child may not be an ARGUMENT, because an argument is evaluated at the
+    // call site — before the receiving scope exists — so "the clone itself,
+    // handed straight in" is a shape M3 makes unrepresentable. What survives of
+    // the elision is the IIFE and the element binding, both still absent.
+    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
+    expect(code, "the child is never a built node").not.toMatch(/children:\s*_tmpl\$\d+\(\)/)
     expect(code, "and nothing to bind it to").not.toMatch(/const _el\$/)
     expect(emittedCalls(code, "insert") + emittedCalls(code, "setProp")).toBe(0)
 
-    const result = await compareToOracle("control-flow-show-eager-static-body")
-    expect(result.ok, formatDivergences("control-flow-show-eager-static-body", result.divergences)).toBe(true)
+    // The observable consequence of the change, measured rather than asserted:
+    // with the Block, each toggle REBUILDS the body. With the eager clone `Show`
+    // handed the same node back every time, which is what the un-compiled
+    // reference still does — that is the whole of this fixture's row in
+    // `oracle-known-failures.ts`, and `oracle.test.ts` owns the comparison.
+    const rendered = await renderViaCompiler("control-flow-show-eager-static-body")
+    const identities = rendered.channels.map((frame) => frame.identity.join(","))
+    expect(new Set(identities).size, "the toggle rebuilt the body").toBeGreaterThan(1)
   })
 
   it("control-flow-show-static-body: an AUTHOR-written thunk survives, however static the body", async () => {
@@ -656,8 +714,9 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // again. `node-identity` in normalize.ts is the only channel that sees the
     // second half — html, markers, attributes and anchors are all identical.
     const code = compileFixtureBody("control-flow-show-static-body")
-    expect(code).toMatch(/Show\(\{/)
-    expect(code).toMatch(/children:\s*\(\)\s*=>\s*_tmpl\$\d+\(\)/)
+    expect(code).toMatch(/Show\(_s\$, \{/)
+    // C6: the child is a Block, so the arrow declares the scope it runs under.
+    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
     // η-reduction of the prop the runtime unwraps itself, from the same pass.
     expect(code).toMatch(/when:\s*on\b/)
 
@@ -676,8 +735,8 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // Elision is a fact about the component's children contract, never about the
     // body alone.
     const code = compileFixtureBody("control-flow-for-static-body")
-    expect(code).toMatch(/For\(\{/)
-    expect(code).toMatch(/children:\s*\(\)\s*=>\s*_tmpl\$\d+\(\)/)
+    expect(code).toMatch(/For\(_s\$, \{/)
+    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
   })
 
   it("control-flow-show: a body with a hole in it also keeps its thunk", async () => {
@@ -685,19 +744,24 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // into it. That body is not static, so the arrow stays and the DOM is only
     // built when `when` is first true.
     const code = compileFixtureBody("control-flow-nested")
-    expect(code).toMatch(/children:\s*\(\)\s*=>\s*\{/)
+    expect(code).toMatch(/children:\s*[\w$]*block\(\(_s\$\)\s*=>\s*\{/)
 
-    const result = await compareToOracle("control-flow-nested")
-    expect(result.ok, formatDivergences("control-flow-nested", result.divergences)).toBe(true)
+    // The oracle leg moved: `control-flow-nested` is registered in
+    // `oracle-known-failures.ts` because its reference module binds the scope to
+    // the row callback's item slot, and `oracle.test.ts` holds it to exactly
+    // that divergence. What is asserted here is the half this test is about —
+    // the body really is built, and only when `when` is first true.
+    const rendered = await renderViaCompiler("control-flow-nested")
+    expect(rendered.html, "the body was built").toContain("<li>")
   })
 })
 
 describe("target 9 — marker elision", () => {
-  it("text-hole-trailing: a hole with nothing after it emits a 2-argument insert", () => {
+  it("text-hole-trailing: a hole with nothing after it emits an anchorless insert", () => {
     const code = compileFixtureBody("text-hole-trailing")
     expect(templateAnchors(code)).toBe(0)
     expect(emittedCalls(code, "insert"), "the hole is still patched").toBe(1)
-    expect(code).toMatch(/_\$insert\([^,]+,[^,)]+\)/)
+    expect(code).toMatch(/_\$insert\([^,]+,[^,]+,[^,)]+\)/)
   })
 
   it("text-hole-followed: a following ELEMENT is the anchor, so no comment is baked", () => {
@@ -707,7 +771,7 @@ describe("target 9 — marker elision", () => {
     const code = compileFixtureBody("text-hole-followed")
     expect(templateAnchors(code)).toBe(0)
     expect(templateHtml(code)).toEqual(['<div><span class="suffix">items</span></div>'])
-    expect(code).toMatch(/_\$insert\(_el\$1, \(\) => count\(\), _el\$2\)/)
+    expect(code).toMatch(/_\$insert\(_s\$, _el\$1, \(\) => count\(\), _el\$2\)/)
     expect(code, "and the anchor it uses is the span itself").toMatch(
       /const _el\$2 = _el\$1\.firstChild;/,
     )
@@ -720,7 +784,7 @@ describe("target 9 — marker elision", () => {
     const code = compileFixtureBody("text-hole-fused")
     expect(templateHtml(code)).toEqual(["<p>Total: <!----> clicks</p>"])
     expect(templateAnchors(code)).toBe(1)
-    expect(code).toMatch(/_\$insert\([^,]+,[^,]+,[^,)]+\)/)
+    expect(code).toMatch(/_\$insert\([^,]+,[^,]+,[^,]+,[^,)]+\)/)
   })
 
   it("the anchor bound counts nodes, not the characters that spell one", async () => {
@@ -866,7 +930,17 @@ describe("open questions the harness must be able to state", () => {
     )
     expect(bare, "the fixture that reaches the compiler-built thunk").toContain("auto-thunked-read")
 
+    const registry = oracleRegistry()
     for (const name of bare) {
+      // A registered fixture keeps the declaration half of this rule — the
+      // bound is still lifted by exactly the holes that earned it — and loses
+      // only the equality, which `oracle-known-failures.ts` explains and
+      // `oracle.test.ts` holds to a stated set of channels.
+      if (registry.has(name)) {
+        const compiled = await renderViaCompiler(name)
+        expect(compiled.goesLive.length, `${name} must declare its live holes`).toBeGreaterThan(0)
+        continue
+      }
       const result = await compareToOracle(name)
       expect(result.compiled.goesLive.length, `${name} must declare its live holes`).toBeGreaterThan(
         0,
@@ -884,10 +958,10 @@ describe("open questions the harness must be able to state", () => {
     // The ref NUMBERS are P6's to choose — it renumbers whenever a cheaper
     // route is found — so the shapes are pinned and the numbering is not.
     const code = compileFixtureBody("auto-thunked-read")
-    expect(code).toMatch(/_\$setProp\(_el\$\d+, "title", \(\) => `count: \$\{count\(\)\}`\)/)
-    expect(code).toMatch(/_\$insert\(_el\$\d+, \(\) => `n=\$\{count\(\)\}`\)/)
+    expect(code).toMatch(/_\$setProp\(_s\$, _el\$\d+, "title", \(\) => `count: \$\{count\(\)\}`\)/)
+    expect(code).toMatch(/_\$insert\(_s\$, _el\$\d+, \(\) => `n=\$\{count\(\)\}`\)/)
     expect(code, "a bare read still η-reduces to the accessor itself").toMatch(
-      /_\$insert\(_el\$\d+, count\)/,
+      /_\$insert\(_s\$, _el\$\d+, count\)/,
     )
     expect(code, "an async arrow would make every hole a Promise").not.toMatch(
       /async\s*\(\s*\)\s*=>/,

@@ -42,6 +42,14 @@ exports[`marker channel control-flow-errored-loading: anchor layout 1`] = `"<!--
 
 exports[`marker channel control-flow-for: anchor layout 1`] = `"<ul><!--For:#--><li>0: alpha</li><li>1: beta</li><!--/For:#--></ul>"`;
 
+exports[`marker channel control-flow-for-keyed-by-item: anchor layout 1`] = `"<ul><!--For:#--><li>alpha</li><li>beta</li><!--/For:#--></ul>"`;
+
+exports[`marker channel control-flow-for-keyed-false: anchor layout 1`] = `"<ul><!--Index:#--><li>0: alpha</li><li>1: beta</li><!--/Index:#--></ul>"`;
+
+exports[`marker channel control-flow-for-keyed-fn: anchor layout 1`] = `"<ul><!--For:#--><li>0: alpha</li><li>1: beta</li><!--/For:#--></ul>"`;
+
+exports[`marker channel control-flow-for-keyed-unprovable: anchor layout 1`] = `"<ul><!--For:#--><li>alpha</li><li>beta</li><!--/For:#--></ul>"`;
+
 exports[`marker channel control-flow-for-static-body: anchor layout 1`] = `"<ul><!--For:#--><li><span>fixed</span></li><li><span>fixed</span></li><!--/For:#--></ul>"`;
 
 exports[`marker channel control-flow-index: anchor layout 1`] = `"<ol><!--Index:#--><li>0=1</li><li>1=2</li><li>2=3</li><!--/Index:#--></ol>"`;
@@ -140,6 +148,11 @@ exports[`marker channel numeric-and-boolean-attrs: anchor layout 1`] = `"<div><i
 
 exports[`marker channel portal: anchor layout 1`] = `"<div><div><div><p>over here</p></div></div><!--Portal:#--></div>"`;
 
+exports[`marker channel pre-dynamic-leading-newline: anchor layout 1`] = `
+"<div><pre>first line
+second line</pre><textarea>draft</textarea></div>"
+`;
+
 exports[`marker channel pre-leading-newline: anchor layout 1`] = `
 "<div><pre>line one
 line two</pre><pre>no leading newline</pre><textarea>draft</textarea><p>one</p></div>"
@@ -222,3 +235,23 @@ exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><
 exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
 
 exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;
+
+exports[`marker channel diagnostic-accessor-coercion: anchor layout 1`] = `
+"<div><p>live attribute</p><b>1</b><span>total: () => {
+    if (slowSignalRead !== 0)
+      return readSignalSlow(node);
+    if (!tracking)
+      return node._value;
+    if (currentObserver && !(currentObserver._flags & 32))
+      link(node, currentObserver);
+    return node._value;
+  }</span></div>"
+`;
+
+exports[`marker channel control-flow-for-keyed-spread: anchor layout 1`] = `"<ul><!--For:#--><li>alpha</li><li>beta</li><!--/For:#--></ul>"`;
+
+exports[`marker channel reassigned-binding: anchor layout 1`] = `"<p>second</p>"`;
+
+exports[`marker channel sibling-live-props: anchor layout 1`] = `"<div><span>a</span><span>b</span></div>"`;
+
+exports[`marker channel live-call-hole: anchor layout 1`] = `"<p>1<b>c</b></p>"`;

@@ -29,6 +29,6 @@ export const optimality = {
   // gave it — that is what the comma expression says. `useContext` returns
   // whatever was provided, so the read inside `Badge` stays Opaque and is
   // emitted exactly as written.
-  emits: ["(0, Theme.Provider)({", "value: () => theme()"],
+  emits: ["(0, Theme.Provider)(", "value: theme"],
   absent: ["Theme.Provider({", "get value()"],
 }

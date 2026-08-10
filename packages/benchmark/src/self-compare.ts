@@ -183,7 +183,8 @@ for (const c of cases) {
     if (nw < bestNew) bestNew = nw;
   }
   const speedup = bestOld / bestNew;
-  const tag = speedup >= 1 ? `${speedup.toFixed(2)}x faster` : `${(1 / speedup).toFixed(2)}x slower`;
+  const tag =
+    speedup >= 1 ? `${speedup.toFixed(2)}x faster` : `${(1 / speedup).toFixed(2)}x slower`;
   console.log(
     `${c.name.padEnd(44)}${bestOld.toFixed(0).padStart(11)}${bestNew.toFixed(0).padStart(10)}${tag.padStart(17)}`,
   );

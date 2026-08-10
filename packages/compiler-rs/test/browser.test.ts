@@ -13,6 +13,7 @@ import {
 import { checkSvgClass, svgClassClaims, type SvgClassResult } from "./browser-svg-class-check.ts"
 import { checkDifferential, type DifferentialReport } from "./browser-differential.ts"
 import { listBrowserOnlyFixtures, listFixtures } from "./harness.ts"
+import { ORACLE_FAILURES } from "./oracle-known-failures.ts"
 
 /**
  * The real-browser half of the suite, inside `bun test` and inside CI.
@@ -40,6 +41,19 @@ let corrupted: DifferentialReport
 let reordered: DifferentialReport
 let truncated: DifferentialReport
 let unanchored: DifferentialReport
+
+/**
+ * The un-compiled reference cannot conform to C1, and Chrome sees exactly what
+ * happy-dom sees: `oracle-known-failures.ts` holds the whole argument and
+ * `oracle.test.ts` holds each fixture to a stated set of channels. Here the
+ * registry does one job — it partitions the report, so "the clean run really
+ * was clean" is a claim about everything else and stays an equality.
+ */
+const EXPLAINED = new Set(ORACLE_FAILURES.map((row) => row.fixture))
+
+function unexplained(report: DifferentialReport): DifferentialReport["divergences"] {
+  return report.divergences.filter((d) => !EXPLAINED.has(d.fixture))
+}
 
 /** Reverse the attribute order every template bakes in, exactly as oracle.test.ts does. */
 function reverseBakedAttributes(code: string): string {
@@ -184,7 +198,14 @@ describe("real browser: the differential comparison", () => {
       "the fixtures only a real parser can judge run here and nowhere else",
     ).toBeGreaterThanOrEqual(1)
     expect(differential.frames, "and every frame was driven").toBeGreaterThanOrEqual(140)
-    expect(differential.divergences).toEqual([])
+    expect(unexplained(differential)).toEqual([])
+    // And the registry is exact in the real browser too: a row that stopped
+    // diverging here is a row nobody deleted, and a row that never diverged
+    // here was registered for something Chrome cannot see.
+    expect(
+      [...new Set(differential.divergences.map((d) => d.fixture))].sort(),
+      "the registered set is what diverges in Chrome, no more and no less",
+    ).toEqual([...EXPLAINED].sort())
   })
 
   it("the attribute-order channel runs in the real parser, and it is live", () => {
@@ -199,10 +220,10 @@ describe("real browser: the differential comparison", () => {
     // The detector half. Emitting every template's attributes backwards is
     // invisible to the DOM diff — rule 2 of normalize.ts sorts them — so every
     // divergence this produces has to come from the order channel.
-    const kinds = new Set(reordered.divergences.map((d) => d.kind))
+    const kinds = new Set(unexplained(reordered).map((d) => d.kind))
     expect([...kinds]).toEqual(["attribute-order"])
     expect(
-      new Set(reordered.divergences.map((d) => d.fixture)).size,
+      new Set(unexplained(reordered).map((d) => d.fixture)).size,
       "several fixtures bake two or more attributes into one tag",
     ).toBeGreaterThanOrEqual(3)
   })
@@ -217,7 +238,7 @@ describe("real browser: the differential comparison", () => {
       new Set(counts.map((d) => d.fixture)).size,
       "one truncated module, one divergent fixture",
     ).toBeGreaterThanOrEqual(10)
-    expect(differential.divergences.length, "and the clean run really was clean").toBe(0)
+    expect(unexplained(differential).length, "and the clean run really was clean").toBe(0)
   })
 
   it("a declared win that stopped being a win is reported as STALE", () => {
@@ -229,7 +250,7 @@ describe("real browser: the differential comparison", () => {
     const stale = unanchored.divergences.filter((d) => d.kind === "stale-win")
     expect(stale.length, "no win went stale under a mutation that removes the win").toBeGreaterThanOrEqual(1)
     expect(
-      differential.divergences.filter((d) => d.kind === "stale-win" || d.kind === "unmet-win"),
+      unexplained(differential).filter((d) => d.kind === "stale-win" || d.kind === "unmet-win"),
       "and no win is stale or unmet on the clean run",
     ).toEqual([])
   })
@@ -237,11 +258,11 @@ describe("real browser: the differential comparison", () => {
   it("the comparison is a detector: a corrupted template goes red", () => {
     // Proof that the green above is a measurement. One extra element in every
     // emitted template, and every fixture that reaches a template has to fail.
-    expect(corrupted.divergences.length).toBeGreaterThanOrEqual(40)
+    expect(unexplained(corrupted).length).toBeGreaterThanOrEqual(40)
     expect(
-      new Set(corrupted.divergences.map((d) => d.fixture)).size,
+      new Set(unexplained(corrupted).map((d) => d.fixture)).size,
       "one corrupted template, one divergent fixture",
     ).toBeGreaterThanOrEqual(40)
-    expect(differential.divergences.length, "and the clean run really was clean").toBe(0)
+    expect(unexplained(differential).length, "and the clean run really was clean").toBe(0)
   })
 })

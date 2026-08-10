@@ -260,7 +260,7 @@ console.log(`NOTES — differences that the helper-set diff above cannot see:
     parse it would not really pay. That is a real bias, small and in Solid's disfavour,
     on "template: clone static tree" only.
 
-  * Thunk shape on \`insert\`. The benchmark writes \`barq.insert(span, () => s())\` and
+  * Thunk shape on \`insert\`. The benchmark writes \`barq.insert(null, span, () => s())\` and
     \`solid.insert(span, s)\`. Both compilers actually emit the bare accessor \`s\`, so the
     barq side is charged one extra closure call per read that the compiled path does not
     make. Same direction on every insert case, against barq.

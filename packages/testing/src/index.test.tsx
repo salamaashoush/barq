@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { type JSXElement, useState } from "@barqjs/core";
+import { type Scope, useState } from "@barqjs/core";
+import type { Ui } from "./types.ts";
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index.ts";
 
-// Simple counter component for testing
-function Counter({ initial = 0 }: { initial?: number }) {
-  const [count, setCount] = useState(initial);
+// C1: scope first. The un-compiled `jsx()` path hands plain values rather than
+// Cells, so a prop is read as written; what the convention changes here is the
+// SIGNATURE, and a component that still destructured its first argument would
+// be destructuring the scope.
+function Counter(_s: Scope | null, props: { initial?: number }) {
+  const [count, setCount] = useState(props.initial ?? 0);
   return (
     <div>
       <span data-testid="count">Count: {count}</span>
@@ -19,12 +23,12 @@ function Counter({ initial = 0 }: { initial?: number }) {
 }
 
 // Wrapper component for testing
-function ThemeWrapper({ children }: { children: JSXElement }) {
-  return <div data-testid="theme-wrapper">{children}</div>;
+function ThemeWrapper(_s: Scope | null, props: { children: Ui }) {
+  return <div data-testid="theme-wrapper">{props.children}</div>;
 }
 
 // Component with async behavior
-function AsyncComponent() {
+function AsyncComponent(_s: Scope | null) {
   const [data, setData] = useState<string | null>(null);
 
   const loadData = () => {
@@ -89,7 +93,7 @@ describe("render", () => {
 
 describe("reactive updates", () => {
   test("updates are synchronous", () => {
-    render(() => <Counter />);
+    render((s) => Counter(s, {}));
 
     expect(screen.getByTestId("count").textContent).toBe("Count: 0");
 
@@ -111,7 +115,7 @@ describe("reactive updates", () => {
   });
 
   test("renders with initial props", () => {
-    render(() => <Counter initial={10} />);
+    render((s) => Counter(s, { initial: 10 }));
     expect(screen.getByTestId("count").textContent).toBe("Count: 10");
   });
 });
@@ -155,7 +159,7 @@ describe("renderHook", () => {
 
 describe("waitFor", () => {
   test("waits for async updates", async () => {
-    render(() => <AsyncComponent />);
+    render((s) => AsyncComponent(s));
 
     expect(screen.getByTestId("status").textContent).toBe("idle");
 

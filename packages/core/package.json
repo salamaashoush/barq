@@ -29,6 +29,11 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./interp": {
+      "types": "./dist/interp.d.ts",
+      "bun": "./src/interp.ts",
+      "import": "./dist/interp.js"
+    },
     "./jsx-dev-runtime": {
       "types": "./dist/jsx-runtime.d.ts",
       "bun": "./src/jsx-runtime.ts",

@@ -6,9 +6,13 @@ use crate::ir::{Anchor, Module, NONE, NodeId, Op, SkelNode, Unit};
 /// already standing in the template can serve as its insert anchor. P1 leaves
 /// every slot provisionally marked; this is where the marker is materialised or
 /// elided, and it is the last pass that may change the skeleton's shape.
-pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
+///
+/// `elide` is the optimisation. With it off every hole materialises its own
+/// `<!---->` and anchors against it, which is always a legal insert position —
+/// the elision is what has to prove something about the parse.
+pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>, elide: bool) {
     for unit in module.units.iter_mut() {
-        choose(allocator, unit);
+        choose(allocator, unit, elide);
     }
 }
 
@@ -31,7 +35,7 @@ enum Choice {
     Marker(NodeId),
 }
 
-fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
+fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>, elide: bool) {
     // Indexed by `SlotId`, not by how many slots survived: P3 folds a constant
     // child away and deletes its patch, which leaves the remaining ids sparse.
     let Some(slots) = unit.patch.iter().filter_map(|patch| patch.op.slot()).max() else {
@@ -62,7 +66,7 @@ fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
                 };
                 continue;
             };
-            let decision = decide(unit, node, hi, prev);
+            let decision = if elide { decide(unit, node, hi, prev) } else { Choice::Marker(node) };
             if matches!(decision, Choice::Marker(_)) {
                 markers.push(node);
                 prev = Prev::Node;
@@ -196,7 +200,7 @@ mod tests {
         let mut program =
             Parser::new(&allocator, source, source_type_for(Some("a.tsx"))).parse().program;
         let mut module = Module::for_source(&allocator, source);
-        analysis::bind(&program, &mut module, "@barqjs/core");
+        analysis::bind(&allocator, &program, &mut module, &ResolvedOptions::default());
         harvest::run(&allocator, &mut program, &mut module);
         lower::lower(&allocator, source, &ResolvedOptions::default(), &mut module);
         passes::run(

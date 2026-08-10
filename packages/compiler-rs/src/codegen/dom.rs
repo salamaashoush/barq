@@ -6,9 +6,11 @@ use oxc::ast::ast::{
 };
 use oxc::span::Span;
 
+use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
-    Diff, ExprId, HandlerRef, InsertPlan, NodeId, Op, Patch, RefDef, Shape, Step, Thunk, Unit,
+    Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, PartRange, Patch,
+    RefDef, Shape, SlotId, Step, StrId, Thunk, Unit,
 };
 
 /// P8a. One unit becomes the hoisted `template()` clone, the walk to every node
@@ -41,22 +43,27 @@ pub fn emit_unit_parts<'a>(
         statements.push(binding(ctx, ctx.module.interner.str(def.name), init, def.span));
     }
 
+    // The driver. It owns traversal — program order, one pass — and the
+    // instruction set belongs to the `Backend` impl below, which is the surface
+    // the string backend and the reference backend answer on too.
     let mut index = 0;
     while index < unit.patch.len() {
         let patch = unit.patch[index];
         index += 1;
-        match patch.op {
+        // A group header's members are the records that follow it, so they are
+        // read off the program here and handed to the op that governs them.
+        let members: Vec<Patch> = match patch.op {
             Op::EffectGroup { len } => {
                 let end = (index + len as usize).min(unit.patch.len());
-                let members: Vec<Patch> = unit.patch[index..end].to_vec();
+                let members = unit.patch[index..end].to_vec();
                 index = end;
-                statements.push(effect_group(ctx, unit, &members, patch));
+                members
             }
-            _ => {
-                if let Some(statement) = single(ctx, unit, patch) {
-                    statements.push(statement);
-                }
-            }
+            _ => Vec::new(),
+        };
+        let mut backend = Dom { ctx, unit };
+        if let Some(statement) = lower(&mut backend, At { patch, members: &members }) {
+            statements.push(statement);
         }
     }
 
@@ -74,99 +81,198 @@ pub fn emit_unit<'a>(ctx: &mut Emit<'a, '_>, unit: &mut Unit<'a>, span: Span) ->
     iife(ctx, statements, span)
 }
 
-fn single<'a>(ctx: &mut Emit<'a, '_>, unit: &mut Unit<'a>, patch: Patch) -> Option<Statement<'a>> {
-    let call = match patch.op {
-        // `SetOnce` and `SetOpaque` emit identically: the value goes into
-        // `setProp` unwrapped, so the runtime makes exactly the decision the
-        // un-compiled oracle makes. The distinction is what P3 folds on.
-        Op::SetOnce { name, value, .. } | Op::SetOpaque { name, value } => {
-            let element = ref_ident(ctx, unit, patch.target, patch.span);
-            let key = ctx.string(ctx.module.interner.name(name).text, patch.span);
-            let value = take(ctx, unit, value, patch.span);
-            let callee = ctx.helper(Helper::SetProp, patch.span);
-            ctx.call(
-                callee,
-                vec![Argument::from(element), Argument::from(key), Argument::from(value)],
-                patch.span,
-            )
-        }
-        // O4: a hole the compiler PROVED reactive becomes a live binding, where
-        // `createElement` reads it once. That is exactly what compiling buys,
-        // and it is the one place the compiled path deliberately does more
-        // reactive work than the oracle. Everything else — `Once` for a proven
-        // static value, `Opaque` for an unresolvable one — is passed through so
-        // `insert` makes the oracle's decision.
-        Op::Insert { anchor, value, plan, .. } => {
-            let parent = ref_ident(ctx, unit, patch.target, patch.span);
-            let value = match plan {
-                InsertPlan::Live => thunk(ctx, unit, value, patch.span),
-                InsertPlan::Once | InsertPlan::Opaque => take(ctx, unit, value, patch.span),
-            };
-            let anchor = anchor.node().map(|node| ref_ident(ctx, unit, node, patch.span));
-            let callee = ctx.helper(Helper::Insert, patch.span);
-            let mut arguments = vec![Argument::from(parent), Argument::from(value)];
-            arguments.extend(anchor.map(Argument::from));
-            ctx.call(callee, arguments, patch.span)
-        }
-        // Target #7: a direct expando write. `delegatedEventHandler` reads
-        // `$$<type>` and accepts either a function or a `[fn, data]` tuple, so
-        // the tuple needs no second property (V2).
-        Op::Delegate { event, handler, .. } => {
-            let element = ref_ident(ctx, unit, patch.target, patch.span);
-            let key = ctx.module.interner.name(event).text;
-            let key = ctx.allocator.alloc_str(&format!("$${key}")) as &'a str;
-            let target = expando_target(ctx, element, key, patch.span);
-            let handler = handler_expression(ctx, unit, handler, patch.span);
-            Expression::new_assignment_expression(
-                patch.span,
-                oxc::ast::ast::AssignmentOperator::Assign,
-                target,
-                handler,
-                &ctx.ast,
-            )
-        }
-        Op::Listen { event, handler } => {
-            let element = ref_ident(ctx, unit, patch.target, patch.span);
-            let key = ctx.string(ctx.module.interner.name(event).text, patch.span);
-            let handler = handler_expression(ctx, unit, handler, patch.span);
-            let callee = ctx.member(element, "addEventListener", patch.span);
-            ctx.call(callee, vec![Argument::from(key), Argument::from(handler)], patch.span)
-        }
-        // A lone `SetLive` cannot occur: P5 gives every one of them a group
-        // header, and `len == 1` is the thunk form below.
-        Op::SetLive { name, value, .. } => {
-            let element = ref_ident(ctx, unit, patch.target, patch.span);
-            let key = ctx.string(ctx.module.interner.name(name).text, patch.span);
-            let value = thunk(ctx, unit, value, patch.span);
-            let callee = ctx.helper(Helper::SetProp, patch.span);
-            ctx.call(
-                callee,
-                vec![Argument::from(element), Argument::from(key), Argument::from(value)],
-                patch.span,
-            )
-        }
-        _ => return None,
-    };
-    Some(Statement::new_expression_statement(patch.span, call, &ctx.ast))
+/// P8a's `Backend`. Every op lowers to at most one statement, spliced into the
+/// unit's construction sequence in program order.
+///
+/// The ops with no row here — `SetClass`, `SetStyle`, `Ref`, `Spread`,
+/// `SetHtml` — reach the DOM through the props object `createElement` builds
+/// (`fallback.rs`), because P1 refuses to put an element carrying one of them on
+/// the template path at all. Returning `None` for them is that decision written
+/// down, not a case that fell through: there is no wildcard arm to fall through.
+pub struct Dom<'a, 'e, 'm, 'u> {
+    pub ctx: &'e mut Emit<'a, 'm>,
+    pub unit: &'u mut Unit<'a>,
 }
 
-/// Target #4. `len == 1` lowers to `setProp(el, k, () => v)` — same effect
-/// count, less code, and the runtime keeps its own `prev`. `len >= 2` is one
-/// `renderEffect` with a threaded accumulator and per-key `!==` guards, which
-/// works because `recompute` stores a compute's return value and hands it back
-/// on the next run (V6). It must never return a function.
-fn effect_group<'a>(
+impl<'a> Dom<'a, '_, '_, '_> {
+    /// `setProp($s, el, key, value)` — the shape three ops share.
+    fn set_prop(&mut self, at: At<'_>, name: NameId, value: Expression<'a>) -> Statement<'a> {
+        let span = at.span();
+        let scope = self.ctx.scope(span);
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let key = self.ctx.module.interner.name(name).text;
+        let key = self.ctx.string(key, span);
+        let callee = self.ctx.helper(Helper::SetProp, span);
+        let call = self.ctx.call(
+            callee,
+            vec![
+                Argument::from(scope),
+                Argument::from(element),
+                Argument::from(key),
+                Argument::from(value),
+            ],
+            span,
+        );
+        Statement::new_expression_statement(span, call, &self.ctx.ast)
+    }
+}
+
+impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
+    type Out = Option<Statement<'a>>;
+
+    // `SetOnce` and `SetOpaque` emit identically: the value goes into `setProp`
+    // unwrapped, so the runtime makes exactly the decision the un-compiled
+    // oracle makes. The distinction is what P3 folds on, and the two rows are
+    // kept apart here so a change to one cannot silently move the other.
+    fn set_once(&mut self, at: At<'_>, name: NameId, value: ExprId, _chan: Chan) -> Self::Out {
+        let value = take(self.ctx, self.unit, value, at.span());
+        Some(self.set_prop(at, name, value))
+    }
+
+    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId) -> Self::Out {
+        let value = take(self.ctx, self.unit, value, at.span());
+        Some(self.set_prop(at, name, value))
+    }
+
+    /// The one-effect-per-prop form: the runtime sees a function and keeps its
+    /// own `prev` across runs. It is what an ungrouped `SetLive` lowers to —
+    /// either because effect fusion is off, or because fusion put this prop in a
+    /// group of one.
+    fn set_live(
+        &mut self,
+        at: At<'_>,
+        name: NameId,
+        value: ExprId,
+        _chan: Chan,
+        _diff: Diff,
+    ) -> Self::Out {
+        let value = thunk(self.ctx, self.unit, value, at.span());
+        Some(self.set_prop(at, name, value))
+    }
+
+    /// O4: a hole the compiler PROVED reactive becomes a live binding, where
+    /// `createElement` reads it once. That is exactly what compiling buys, and
+    /// it is the one place the compiled path deliberately does more reactive
+    /// work than the oracle. Everything else — `Once` for a proven static value,
+    /// `Opaque` for an unresolvable one — is passed through so `insert` makes
+    /// the oracle's decision.
+    fn insert(
+        &mut self,
+        at: At<'_>,
+        _slot: SlotId,
+        anchor: Anchor,
+        value: ExprId,
+        plan: InsertPlan,
+    ) -> Self::Out {
+        let span = at.span();
+        let scope = self.ctx.scope(span);
+        let parent = ref_ident(self.ctx, self.unit, at.target(), span);
+        let value = match plan {
+            InsertPlan::Live => thunk(self.ctx, self.unit, value, span),
+            InsertPlan::Once | InsertPlan::Opaque => take(self.ctx, self.unit, value, span),
+        };
+        let anchor = anchor.node().map(|node| ref_ident(self.ctx, self.unit, node, span));
+        let callee = self.ctx.helper(Helper::Insert, span);
+        let mut arguments =
+            vec![Argument::from(scope), Argument::from(parent), Argument::from(value)];
+        arguments.extend(anchor.map(Argument::from));
+        let call = self.ctx.call(callee, arguments, span);
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
+    /// Target #7: a direct expando write. `delegatedEventHandler` reads
+    /// `$$<type>` and accepts either a function or a `[fn, data]` tuple, so the
+    /// tuple needs no second property (V2).
+    fn delegate(
+        &mut self,
+        at: At<'_>,
+        event: NameId,
+        handler: HandlerRef,
+        _data: Option<ExprId>,
+    ) -> Self::Out {
+        let span = at.span();
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let key = self.ctx.module.interner.name(event).text;
+        let key = self.ctx.allocator.alloc_str(&format!("$${key}")) as &'a str;
+        let target = expando_target(self.ctx, element, key, span);
+        let handler = handler_expression(self.ctx, self.unit, handler, span);
+        let call = Expression::new_assignment_expression(
+            span,
+            oxc::ast::ast::AssignmentOperator::Assign,
+            target,
+            handler,
+            &self.ctx.ast,
+        );
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
+    fn listen(&mut self, at: At<'_>, event: NameId, handler: HandlerRef) -> Self::Out {
+        let span = at.span();
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let key = self.ctx.module.interner.name(event).text;
+        let key = self.ctx.string(key, span);
+        let handler = handler_expression(self.ctx, self.unit, handler, span);
+        let callee = self.ctx.member(element, "addEventListener", span);
+        let call = self.ctx.call(callee, vec![Argument::from(key), Argument::from(handler)], span);
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
+    /// Target #4. A group of one lowers to the cheaper thunk form — same effect
+    /// count, less code. Two or more become one `renderEffect` with a threaded
+    /// accumulator and per-key `!==` guards.
+    fn effect_group(&mut self, at: At<'_>, _len: u16) -> Self::Out {
+        if at.members.len() == 1
+            && let Some(statement) = lower(self, At::one(at.members[0]))
+        {
+            return Some(statement);
+        }
+        Some(fused_effect(self.ctx, self.unit, at.members, at.patch))
+    }
+
+    // ── off the template path entirely ────────────────────────────────────
+    //
+    // P1 refuses to lower an element carrying any of these, so the whole
+    // subtree goes through `createElement` and none of them ever reaches a
+    // patch program the DOM backend prints. They are answered rather than
+    // omitted, because an omission is what a no-drift guarantee has to make
+    // impossible.
+
+    fn set_class(
+        &mut self,
+        _at: At<'_>,
+        _base: Option<StrId>,
+        _parts: PartRange,
+        _live: bool,
+    ) -> Self::Out {
+        None
+    }
+
+    fn set_style(&mut self, _at: At<'_>, _prop: NameId, _value: ExprId, _live: bool) -> Self::Out {
+        None
+    }
+
+    fn set_ref(&mut self, _at: At<'_>, _value: ExprId) -> Self::Out {
+        None
+    }
+
+    fn spread(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
+        None
+    }
+
+    fn set_html(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
+        None
+    }
+}
+
+/// One `renderEffect` with a threaded accumulator and per-key `!==` guards,
+/// which works because `recompute` stores a compute's return value and hands it
+/// back on the next run (V6). It must never return a function.
+fn fused_effect<'a>(
     ctx: &mut Emit<'a, '_>,
     unit: &mut Unit<'a>,
     members: &[Patch],
     header: Patch,
 ) -> Statement<'a> {
-    if members.len() == 1
-        && let Some(statement) = single(ctx, unit, members[0])
-    {
-        return statement;
-    }
-
     let span = header.span;
     let prev = ctx.module.uids.prev();
     // Every read first, then every guarded write: one place to look for what
@@ -200,10 +306,16 @@ fn effect_group<'a>(
             Diff::Always => ctx.ident(local, patch.span),
         };
 
+        let scope = ctx.scope(patch.span);
         let callee = ctx.helper(Helper::SetProp, patch.span);
         let write = ctx.call(
             callee,
-            vec![Argument::from(element), Argument::from(key), Argument::from(written)],
+            vec![
+                Argument::from(scope),
+                Argument::from(element),
+                Argument::from(key),
+                Argument::from(written),
+            ],
             patch.span,
         );
         let write = Statement::new_expression_statement(patch.span, write, &ctx.ast);
@@ -325,7 +437,7 @@ fn assignment_target<'a>(expression: Expression<'a>) -> AssignmentTarget<'a> {
     }
 }
 
-fn handler_expression<'a>(
+pub(super) fn handler_expression<'a>(
     ctx: &mut Emit<'a, '_>,
     unit: &mut Unit<'a>,
     handler: HandlerRef,
@@ -333,6 +445,24 @@ fn handler_expression<'a>(
 ) -> Expression<'a> {
     match handler {
         HandlerRef::Inline(value) => take(ctx, unit, value, span),
+        // With hoisting off the handler is rebuilt at its use site, which costs
+        // one closure per element and reaches the same DOM: P2 only hoists a
+        // handler it proved capture-free, so the two spellings differ in
+        // identity and in nothing else.
+        HandlerRef::Hoisted(id) if !ctx.opt.hoist => {
+            let expression = ctx
+                .module
+                .hoisted
+                .iter()
+                .find(|hoisted| hoisted.id() == id)
+                .map(|hoisted| match hoisted {
+                    crate::ir::Hoisted::Handler { expr, .. }
+                    | crate::ir::Hoisted::Frozen { expr, .. }
+                    | crate::ir::Hoisted::Cell { expr, .. } => *expr,
+                })
+                .expect("P2 records every id it hands out");
+            oxc::allocator::CloneIn::clone_in(expression, ctx.allocator)
+        }
         HandlerRef::Hoisted(id) => {
             let name = ctx.module.uids.handler(id, ctx.allocator);
             ctx.ident(name, span)
@@ -377,7 +507,7 @@ fn is_plain_thunk(arrow: &ArrowFunctionExpression<'_>) -> bool {
 
 /// The `setProp(el, k, thunk)` form: the runtime sees a function and keeps its
 /// own `prev` across runs.
-fn thunk<'a>(
+pub(super) fn thunk<'a>(
     ctx: &mut Emit<'a, '_>,
     unit: &mut Unit<'a>,
     value: ExprId,
@@ -389,7 +519,10 @@ fn thunk<'a>(
         return expression;
     }
     // η-reduction: `count()` is emitted as `count`, saving one closure per hole.
-    if rx.thunk == Thunk::Eta
+    // Sound because a signal getter IS a Cell and a Cell ignores its arguments;
+    // with it off the wrapper stands and the reader sees the same value.
+    if ctx.opt.eta
+        && rx.thunk == Thunk::Eta
         && let Expression::CallExpression(call) = expression
     {
         return call.unbox().callee;
@@ -435,7 +568,12 @@ fn ref_ident<'a>(ctx: &Emit<'a, '_>, unit: &Unit<'a>, node: NodeId, span: Span) 
 
 /// The parsed node moves straight from the `ExprTable` into the emitted call,
 /// so it keeps its original span and the sourcemap segment is byte-exact.
-fn take<'a>(ctx: &Emit<'a, '_>, unit: &mut Unit<'a>, id: u32, span: Span) -> Expression<'a> {
+pub(super) fn take<'a>(
+    ctx: &Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    id: u32,
+    span: Span,
+) -> Expression<'a> {
     unit.exprs.entry_mut(id).src.take().unwrap_or_else(|| Expression::new_void_0(span, &ctx.ast))
 }
 

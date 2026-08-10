@@ -102,7 +102,10 @@ function DashboardLayout() {
 
         <div class={authControlsStyle}>
           <div class={authStatusStyle}>
-            Auth: <span class={() => (authState() ? greenText : redText)}>{() => (authState() ? "Yes" : "No")}</span>
+            Auth:{" "}
+            <span class={() => (authState() ? greenText : redText)}>
+              {() => (authState() ? "Yes" : "No")}
+            </span>
           </div>
           <div class={authStatusStyle}>
             Role: <span class={blueText}>{roleState}</span>
@@ -239,8 +242,12 @@ function UserDetail(props: { data: UserDetailData }) {
       <h3 class={pageTitle}>{user.name}</h3>
 
       <div class={detailCardStyle}>
-        <p><strong>Email:</strong> {user.email}</p>
-        <p><strong>Role:</strong> <span class={tagStyle}>{user.role}</span></p>
+        <p>
+          <strong>Email:</strong> {user.email}
+        </p>
+        <p>
+          <strong>Role:</strong> <span class={tagStyle}>{user.role}</span>
+        </p>
       </div>
 
       <h4 class={subTitleStyle}>Posts by {user.name}</h4>
@@ -340,7 +347,9 @@ function PostDetail(props: { data: PostDetailData }) {
       <h3 class={pageTitle}>{post.title}</h3>
 
       <div class={detailCardStyle}>
-        <p><strong>Category:</strong> <span class={categoryTagStyle}>{post.category}</span></p>
+        <p>
+          <strong>Category:</strong> <span class={categoryTagStyle}>{post.category}</span>
+        </p>
         <p>
           <strong>Author:</strong>{" "}
           <Show when={() => author} fallback={<span>Unknown</span>}>
@@ -444,8 +453,8 @@ export function RoutingDemo() {
     <DemoSection>
       <DemoCard title="Router Features">
         <p class={introStyle}>
-          The main app uses the Router with view transitions, scroll restoration, and navigation guards.
-          Navigate between sections in the sidebar to see these features in action.
+          The main app uses the Router with view transitions, scroll restoration, and navigation
+          guards. Navigate between sections in the sidebar to see these features in action.
         </p>
 
         <div class={featureListStyle}>
@@ -482,8 +491,8 @@ export function RoutingDemo() {
 
       <DemoCard title="Nested Routes Demo (MemoryRouter)">
         <p class={introStyle}>
-          This isolated demo shows nested routes, params, search params, loaders, and guards.
-          Use the auth/role toggles to test guard behavior.
+          This isolated demo shows nested routes, params, search params, loaders, and guards. Use
+          the auth/role toggles to test guard behavior.
         </p>
 
         <div class={routerContainerStyle}>

@@ -133,7 +133,7 @@ describe("context provider disposal", () => {
     const Ctx = createContext<number>(0);
     let cleaned = false;
     const dispose = createScope((d) => {
-      Ctx.Provider({
+      Ctx.Provider(getOwner(), {
         value: 42,
         children: () => {
           onCleanup(() => {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 
 import {
   compileFixture,
@@ -71,6 +73,53 @@ describe("emitted code snapshots", () => {
       expect(compileFixture(name)).toMatchSnapshot()
     })
   }
+
+  /**
+   * The corpus-driven snapshot suites hold exactly one entry per fixture, so a
+   * recorded entry with no fixture behind it is a stale snapshot and a fixture
+   * with no entry is an unrecorded one. Asserting it in-repo makes the invariant
+   * independent of what git happens to have at HEAD, the same way
+   * `known-failures.ts` makes a stale registration a red test.
+   *
+   * The file is read as it stood when the run started — bun rewrites it on
+   * completion — so the run that ADDS a fixture reports the miss and the next
+   * one is green.
+   */
+  /**
+   * The one-line detector for M3's whole miscompilation class, standing beside
+   * the snapshots that would otherwise have absorbed it.
+   *
+   * The `scope` pass gives a function the scope parameter only where something
+   * CALLS it with a scope (C1/C2). `Array.prototype.map` is not that something:
+   * it owns its callback's argument list and calls it `(element, index)`, so a
+   * scope parameter prepended there swallows the row and the author's first
+   * name binds the index. The emitted module renders `0,1,2` where the fixture
+   * says `a,b,c`, and every snapshot in this file would have recorded it as the
+   * expected output.
+   */
+  it("no callback whose caller owns the argument list takes a scope", () => {
+    const offenders: string[] = []
+    for (const name of listFixtures()) {
+      const code = compileFixture(name)
+      const hits = code.match(
+        /\.(map|filter|forEach|reduce|reduceRight|sort|some|every|find|findIndex|flatMap)\(\s*\(?_s\$/g,
+      )
+      if (hits) offenders.push(`${name}: ${hits.join(", ")}`)
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it("records exactly one snapshot per fixture", () => {
+    const recorded = new Set<string>()
+    const text = readFileSync(join(import.meta.dir, "__snapshots__", "roundtrip.test.ts.snap"), "utf8")
+    for (const [, name] of text.matchAll(/^exports\[`emitted code snapshots (.+) 1`\]/gm)) {
+      recorded.add(name)
+    }
+    const fixtures = new Set(listFixtures())
+
+    expect([...recorded].filter((name) => !fixtures.has(name))).toEqual([])
+    expect([...fixtures].filter((name) => !recorded.has(name))).toEqual([])
+  })
 })
 
 describe("compiler contract", () => {

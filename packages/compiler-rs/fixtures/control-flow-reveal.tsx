@@ -28,6 +28,6 @@ export const optimality = {
   // the one with a hole is built by an IIFE and the fully static one is a bare
   // clone. Neither is wrapped in a thunk the compiler would have had to
   // manufacture.
-  emits: ["Reveal({", 'order: "sequential"', "children: ["],
+  emits: ["Reveal(", '() => "sequential"', "children: "],
   absent: ["(Reveal, {", "children: () =>"],
 }

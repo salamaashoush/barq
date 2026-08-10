@@ -100,7 +100,7 @@ function ForDemo() {
       </Show>
 
       <ul class={listStyle}>
-        <For each={items} keyFn={(item) => item.id}>
+        <For each={items}>
           {(item, index) => (
             <li class={listItemStyle}>
               <span>

@@ -4,6 +4,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Loading, Reveal } from "./components.ts";
+import type { Scope } from "./scope.ts";
 import { render } from "./dom.ts";
 import type { JSXElement } from "./dom.ts";
 import { NotReadyError, createAsync, createScope, flush, signal } from "./signals.ts";
@@ -49,7 +50,7 @@ describe("Loading revalidation", () => {
     });
 
     createScope(() => {
-      const el = Loading({
+      const el = Loading(null, {
         fallback: document.createTextNode("loading..."),
         children: asyncChild(() => data(), "v"),
       });
@@ -84,24 +85,26 @@ describe("Reveal", () => {
     const dataA = createAsync(() => a.promise);
     const dataB = createAsync(() => b.promise);
 
-    createScope(() => {
-      // Children as a thunk (the compiler wraps JSX children the same way)
-      // so boundaries register inside the Reveal scope
-      const el = Reveal({
+    createScope((_dispose, scope) => {
+      // Children as a BLOCK: the boundaries are constructed under the scope
+      // `Reveal` hands over, which is the only way they reach the coordinator
+      // it installed. A thunk that ignored the scope would build them under
+      // whatever was ambient, and the coordinator would never be found.
+      const el = Reveal(scope, {
         order,
         collapsed,
-        children: (() => [
-          Loading({
+        children: ((inner: Scope | null) => [
+          Loading(inner, {
             fallback: document.createTextNode("[fa]"),
             children: asyncChild(() => dataA(), "A"),
           }),
-          Loading({
+          Loading(inner, {
             fallback: document.createTextNode("[fb]"),
             children: asyncChild(() => dataB(), "B"),
           }),
         ]) as unknown as JSXElement,
       });
-      render(el, container);
+      render(() => el, container);
     });
     flush();
     return { a, b };

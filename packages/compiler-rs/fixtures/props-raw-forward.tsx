@@ -56,6 +56,6 @@ export const optimality = {
   templates: 2,
   // The forward itself: the middle layer must hand ON a getter, not the value
   // its own read produced.
-  emits: ["Chip({ get tone()", "return props.tone;"],
+  emits: ["tone: props.tone", "Chip("],
   absent: ["(Chip, {"],
 }

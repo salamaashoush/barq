@@ -54,7 +54,15 @@ export function beginTrace(): Trace {
   // `current` is a module global, so two renders in flight at once would
   // cross-attribute their effects and still produce plausible numbers.
   if (current !== null) {
-    throw new Error("tracer: a trace is already open — renders must not overlap")
+    // Clearing as we report keeps an abandoned render from latching every later
+    // render in the process into an instant, meaningless failure.
+    const stale = current
+    current = null
+    throw new Error(
+      `tracer: a trace was left open by an earlier render (${stale.effects.length} effect(s), ` +
+        `${stale.templates.length} clone(s)) — that render was abandoned rather than finished. ` +
+        "This one starts clean; the failure belongs to whatever ran before it.",
+    )
   }
   const trace: Trace = { effects: [], templates: [] }
   current = trace

@@ -51,7 +51,7 @@ export const optimality = {
   // A direct call whose reactive prop is a getter. Both halves matter: the
   // getter is what keeps the read live, and the direct call is what stops
   // `createElement` copying it back into a value.
-  emits: ["Badge({ get count()", "return total();", "() => props.count"],
+  emits: ["count: () => total()", "props.count", "Badge("],
   // The argument shape a `createElement` call would have. Naming the helper
   // itself would be satisfied by the prose above, which explains what it does.
   absent: ["(Badge, {"],

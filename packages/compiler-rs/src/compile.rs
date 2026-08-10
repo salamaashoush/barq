@@ -5,32 +5,69 @@ use oxc::allocator::Allocator;
 use oxc::codegen::{Codegen, CodegenOptions, CodegenReturn, CommentOptions, IndentChar};
 use oxc::diagnostics::{OxcDiagnostic, Severity as OxcSeverity};
 use oxc::parser::{ParseOptions, Parser, ParserReturn};
-use oxc::span::SourceType;
+use oxc::span::{SourceType, Span};
 
-use crate::ir::Module;
+use crate::diag::{Code, Suppressions};
+use crate::ir::{LineIndex, Module};
 use crate::options::ResolvedOptions;
 use crate::{analysis, codegen, harvest, lower, passes};
 
 pub const DEFAULT_FILENAME: &str = "input.tsx";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity {
-    Error,
-    Warning,
-}
+pub use crate::diag::Level as Severity;
 
+/// A diagnostic on its way out of the compiler. Everything a code frame needs
+/// travels as STRUCTURED DATA: `pos` is the byte offset Rollup's `position`
+/// argument wants, and without it `this.warn` produces no `pos`, no `loc` and no
+/// frame in any mode.
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
+    /// `None` for a parser diagnostic, which is oxc's code space, not ours.
+    pub code: Option<Code>,
     pub message: String,
     pub filename: String,
     pub line: u32,
     pub column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub pos: u32,
+    pub end: u32,
+}
+
+impl Diagnostic {
+    fn at(severity: Severity, message: String, filename: &str) -> Self {
+        Self {
+            severity,
+            code: None,
+            message,
+            filename: filename.to_string(),
+            line: 1,
+            column: 1,
+            end_line: 1,
+            end_column: 1,
+            pos: 0,
+            end: 0,
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.severity == Severity::Error
+    }
+
+    /// The docs page for the code, if it has one.
+    pub fn docs(&self) -> Option<String> {
+        self.code.map(Code::docs)
+    }
 }
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}:{}: {}", self.filename, self.line, self.column, self.message)
+        write!(f, "{}:{}:{}: ", self.filename, self.line, self.column)?;
+        if let Some(code) = self.code {
+            write!(f, "{} ", code.as_str())?;
+        }
+        write!(f, "{}: {}", self.severity.as_str(), self.message)
     }
 }
 
@@ -39,6 +76,21 @@ pub struct CompileOutput {
     pub code: String,
     pub map: Option<String>,
     pub warnings: Vec<Diagnostic>,
+    /// Dev-mode labels: `(template name, component name, span)` per hoisted
+    /// template row, from `Skeleton::origin` by way of `mappings::template_span`.
+    pub labels: Vec<TemplateLabel>,
+    /// L2b's expected value, as JSON, under `options.ownership` only. A side
+    /// artefact: it is derived from the program BEFORE harvest and consumed by
+    /// nothing downstream, so `code` is byte-identical with it on or off.
+    pub ownership: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TemplateLabel {
+    pub template: String,
+    pub component: Option<String>,
+    pub line: u32,
+    pub column: u32,
 }
 
 pub fn source_type_for(filename: Option<&str>) -> SourceType {
@@ -149,13 +201,7 @@ fn guard_stack_size(source_len: usize, depth: usize) -> usize {
 }
 
 fn internal(filename: &str, message: String) -> Vec<Diagnostic> {
-    vec![Diagnostic {
-        severity: Severity::Error,
-        message,
-        filename: filename.to_string(),
-        line: 1,
-        column: 1,
-    }]
+    vec![Diagnostic::at(Severity::Error, message, filename)]
 }
 
 fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
@@ -223,13 +269,7 @@ fn compile_on_this_stack(
     let (errors, warnings) = split_diagnostics(&diagnostics, source, filename);
     if panicked || !errors.is_empty() {
         return Err(if errors.is_empty() {
-            vec![Diagnostic {
-                severity: Severity::Error,
-                message: "the parser could not recover from a syntax error".to_string(),
-                filename: filename.to_string(),
-                line: 1,
-                column: 1,
-            }]
+            internal(filename, "the parser could not recover from a syntax error".to_string())
         } else {
             errors
         });
@@ -242,30 +282,65 @@ fn compile_on_this_stack(
     //   passes    run over the whole module, with every unit already in place
     //   codegen   prints the IR back into the program
     let source_text = program.source_text;
+    let mut lines = Lines::new(source_text);
+    // A source with no directive in it costs one substring search rather than a
+    // walk of the comment table.
+    let mut suppressions = if source_text.contains(crate::diag::DIRECTIVE) {
+        Suppressions::scan(&program.comments, source_text)
+    } else {
+        Suppressions::default()
+    };
     let mut module = Module::for_source(&allocator, source_text);
     // A dialect that cannot express JSX compiles to no units at all, so there is
     // nothing for P0 to classify and the symbol table is pure cost.
     if source_type.is_jsx() {
-        analysis::bind(&program, &mut module, &options.module_source);
+        analysis::bind(&allocator, &program, &mut module, options);
+    }
+    // Before harvest: it reads the JSX the harvest is about to move out. After
+    // `bind`: it resolves flow components and local components by `SymbolId`.
+    let mut ownership = options.ownership.then(|| crate::ownership::build(&program, &module));
+
+    // P-new `scope`, the AST half (C1). Before harvest, because that is the
+    // last moment the JSX and the function that encloses it are in one tree.
+    if source_type.is_jsx() {
+        crate::scope::run(&allocator, &mut program, &mut module);
     }
     harvest::run(&allocator, &mut program, &mut module);
     lower::lower(&allocator, source_text, options, &mut module);
 
     let mut warnings = warnings;
+    for name in &options.unknown_passes {
+        warnings.push(Diagnostic::at(
+            Severity::Warning,
+            format!(
+                "unknown optimisation pass `{name}`; this build has {}",
+                crate::options::Opt::NAMES.join(", ")
+            ),
+            filename,
+        ));
+    }
     // Decided before the pass stage, because the string backend skips three of
     // its passes outright — and the flag alone does not decide it: a module
     // using one of the eight non-inlinable flow components falls back.
-    let target = match (options.ssr, uninlinable_flow(&module)) {
-        (false, _) => codegen::Target::Dom,
-        (true, None) => codegen::Target::Ssr,
-        (true, Some(name)) => {
-            warnings.push(fallback_diagnostic(name, filename));
+    let target = match (options.interp, options.ssr, uninlinable_flow(&module)) {
+        (true, _, _) => codegen::Target::Interp,
+        (false, false, _) => codegen::Target::Dom,
+        (false, true, None) => codegen::Target::Ssr,
+        (false, true, Some(name)) => {
+            warnings.push(fallback_diagnostic(name, filename, &mut lines));
             codegen::Target::Dom
         }
     };
 
     passes::run(&allocator, &mut module, options, target);
-    warnings.extend(analysis_diagnostics(&module, source_text, filename));
+    warnings.extend(analysis_diagnostics(&module, filename, &mut lines));
+    let labels = template_labels(&module, &mut lines, options);
+    // Templates are numbered by P7, so the position table is filled here —
+    // still before codegen, which is the last stage that may touch a unit.
+    let ownership = ownership.as_mut().map(|tree| {
+        crate::ownership::attach(tree, &module);
+        tree.to_json()
+    });
     codegen::emit(&allocator, &mut program, &mut module, options, target);
 
     let CodegenReturn { code, map, .. } = Codegen::new()
@@ -288,7 +363,132 @@ fn compile_on_this_stack(
         map.to_json_string()
     });
 
-    Ok(CompileOutput { code, map, warnings })
+    let warnings = resolve_diagnostics(warnings, &mut suppressions, filename, &mut lines, options);
+    Ok(CompileOutput { code, map, warnings, labels, ownership })
+}
+
+/// Suppression, severity resolution and ordering, in one place — the compiler,
+/// the Vite plugin and any CLI therefore agree by construction. Svelte's split
+/// between `onwarn` and `svelte-check` means a code silenced in one channel
+/// stays loud in the other (sveltejs/language-tools#650).
+///
+/// Nothing here can reach codegen: it runs after `codegen::emit` has already
+/// produced the output. A `barq-ignore` that changed what the compiler emitted
+/// is facebook/react#34261, where the mere presence of an `eslint-disable`
+/// deoptimised a perfectly memoizable component.
+fn resolve_diagnostics(
+    raw: Vec<Diagnostic>,
+    suppressions: &mut Suppressions,
+    filename: &str,
+    lines: &mut Lines<'_>,
+    options: &ResolvedOptions,
+) -> Vec<Diagnostic> {
+    // A warning fired inside generated or vendored code is volume nobody can
+    // act on, and volume alone blocked a Svelte upgrade (sveltejs/svelte#17289).
+    if is_vendored(filename) {
+        return raw.into_iter().filter(|diagnostic| diagnostic.code.is_none()).collect();
+    }
+
+    let mut out = Vec::with_capacity(raw.len());
+    for mut diagnostic in raw {
+        let Some(code) = diagnostic.code else {
+            out.push(diagnostic);
+            continue;
+        };
+        let Some(level) = options.severities.resolve(code) else { continue };
+        if suppressions.covers(code, Span::new(diagnostic.pos, diagnostic.end)) {
+            continue;
+        }
+        diagnostic.severity = level;
+        out.push(diagnostic);
+    }
+
+    for entry in &suppressions.entries {
+        if entry.used {
+            continue;
+        }
+        if let Some(level) = options.severities.resolve(Code::Barq008) {
+            out.push(located(
+                level,
+                Code::Barq008,
+                format!(
+                    "this `barq-ignore-next-line` silences {} and nothing on the next line \
+                     reports it — delete it. This is a warning and never an error: an unused \
+                     suppression that fails CI is what pushes teams onto the form that then \
+                     swallows new diagnostics (microsoft/TypeScript#62579).",
+                    entry.codes.iter().map(|code| code.as_str()).collect::<Vec<_>>().join(", ")
+                ),
+                entry.span,
+                filename,
+                lines,
+            ));
+        }
+    }
+    for entry in &suppressions.malformed {
+        if let Some(level) = options.severities.resolve(Code::Barq009) {
+            out.push(located(
+                level,
+                Code::Barq009,
+                entry.message.clone(),
+                entry.span,
+                filename,
+                lines,
+            ));
+        }
+    }
+    for unknown in &options.severities.unknown {
+        out.push(Diagnostic::at(
+            Severity::Warning,
+            format!("the barq severity map does not know `{unknown}`; it was ignored"),
+            filename,
+        ));
+    }
+
+    out.sort_by_key(|diagnostic| (diagnostic.pos, diagnostic.code.map(Code::as_str)));
+    out
+}
+
+/// A path the author does not own. Vite ids carry a query string and may be
+/// virtual, so this is a substring test rather than a path parse.
+fn is_vendored(filename: &str) -> bool {
+    filename.contains("node_modules")
+        || filename.starts_with('\0')
+        || filename.starts_with("virtual:")
+}
+
+/// Dev-mode labels. `Skeleton::origin` answers "which JSX produced these bytes";
+/// the enclosing component is the one identity the IR did not carry, so
+/// `analysis::bind` now records the span of every function it already proved to
+/// be a component and the innermost containing one wins.
+fn template_labels(
+    module: &Module<'_>,
+    lines: &mut Lines<'_>,
+    options: &ResolvedOptions,
+) -> Vec<TemplateLabel> {
+    if !options.dev || module.templates.is_empty() {
+        return Vec::new();
+    }
+    let claimant = codegen::mappings::claimants(module);
+    let prefix = module.uids.template_prefix();
+    let mut labels = Vec::with_capacity(module.templates.len());
+    for id in 0..module.templates.len() as u32 {
+        let Some(span) = codegen::mappings::template_span(module, &claimant, id) else { continue };
+        let (line, column) = lines.locate(span.start);
+        let component = module
+            .env
+            .components
+            .iter()
+            .filter(|(at, _)| at.start <= span.start && span.end <= at.end)
+            .min_by_key(|(at, _)| at.end - at.start)
+            .map(|(_, name)| (*name).to_string());
+        labels.push(TemplateLabel {
+            template: format!("{prefix}{}", id + 1),
+            component,
+            line,
+            column,
+        });
+    }
+    labels
 }
 
 /// Folds §6.2's template-interior segments into the map oxc's codegen built for
@@ -459,38 +659,91 @@ fn uninlinable_flow(module: &Module<'_>) -> Option<&'static str> {
         .map(|flow| flow.name())
 }
 
-fn fallback_diagnostic(name: &str, filename: &str) -> Diagnostic {
-    Diagnostic {
-        severity: Severity::Warning,
-        message: format!(
-            "note: `{name}` has no string-mode implementation, so this module compiles to the DOM \
-             backend on the server and must be rendered through `renderToString` from \
-             `@barqjs/core/server` with a DOM implementation registered (DESIGN §5)."
-        ),
-        filename: filename.to_string(),
-        line: 1,
-        column: 1,
+/// The line table, built at most once and only if something asks for a
+/// position. §4.1's cost trap was `line_column`'s O(source) scan PER diagnostic,
+/// which is quadratic once a rule fires fifty times in a file; building the
+/// index unconditionally instead costs every clean compile a scan it does not
+/// need, and target #11 is measured in tenths of a percent.
+struct Lines<'s> {
+    source: &'s str,
+    index: Option<LineIndex>,
+}
+
+impl<'s> Lines<'s> {
+    fn new(source: &'s str) -> Self {
+        Self { source, index: None }
+    }
+
+    /// 1-based line and column, as an editor counts them. `LineIndex` counts
+    /// from zero, as a source map does.
+    fn locate(&mut self, offset: u32) -> (u32, u32) {
+        let source = self.source;
+        let index = self.index.get_or_insert_with(|| LineIndex::new(source));
+        let (line, column) = index.locate(source, offset);
+        (line + 1, column + 1)
     }
 }
 
-fn analysis_diagnostics(module: &Module<'_>, source: &str, filename: &str) -> Vec<Diagnostic> {
+/// A diagnostic with a real span. `pos` is what Rollup's `position` argument
+/// takes, and it is the whole reason a code frame can exist: without it
+/// `this.warn` produces no `pos`, no `loc` and no `frame`, in any mode.
+fn located(
+    severity: Severity,
+    code: Code,
+    message: String,
+    span: Span,
+    filename: &str,
+    lines: &mut Lines<'_>,
+) -> Diagnostic {
+    let (line, column) = lines.locate(span.start);
+    let (end_line, end_column) = lines.locate(span.end);
+    Diagnostic {
+        severity,
+        code: Some(code),
+        message,
+        filename: filename.to_string(),
+        line,
+        column,
+        end_line,
+        end_column,
+        pos: span.start,
+        end: span.end,
+    }
+}
+
+fn fallback_diagnostic(name: &str, filename: &str, lines: &mut Lines<'_>) -> Diagnostic {
+    located(
+        Code::Barq007.default_level(),
+        Code::Barq007,
+        format!(
+            "`{name}` has no string-mode implementation, so this module compiles to the DOM \
+             backend on the server and must be rendered through `renderToString` from \
+             `@barqjs/core/server` with a DOM implementation registered (DESIGN §5)."
+        ),
+        Span::new(0, 0),
+        filename,
+        lines,
+    )
+}
+
+fn analysis_diagnostics(
+    module: &Module<'_>,
+    filename: &str,
+    lines: &mut Lines<'_>,
+) -> Vec<Diagnostic> {
     module
         .env
         .diagnostics
         .iter()
         .map(|diag| {
-            let (line, column) = line_column(source, diag.span.start);
-            let level = match diag.level {
-                crate::ir::DiagLevel::Note => "note",
-                crate::ir::DiagLevel::Warning => "warning",
-            };
-            Diagnostic {
-                severity: Severity::Warning,
-                message: format!("{level}: {}", module.interner.str(diag.message)),
-                filename: filename.to_string(),
-                line,
-                column,
-            }
+            located(
+                diag.code.default_level(),
+                diag.code,
+                diag.message.to_string(),
+                diag.span,
+                filename,
+                lines,
+            )
         })
         .collect()
 }
@@ -506,7 +759,7 @@ fn split_diagnostics(
         let converted = convert_diagnostic(diagnostic, source, filename);
         match converted.severity {
             Severity::Error => errors.push(converted),
-            Severity::Warning => warnings.push(converted),
+            _ => warnings.push(converted),
         }
     }
     (errors, warnings)
@@ -514,7 +767,11 @@ fn split_diagnostics(
 
 fn convert_diagnostic(diagnostic: &OxcDiagnostic, source: &str, filename: &str) -> Diagnostic {
     let label = diagnostic.labels.as_slice().first();
-    let (line, column) = line_column(source, label.map_or(0, |label| label.offset()));
+    let start = label.map_or(0, |label| label.offset());
+    let end = label.map_or(0, |label| label.offset() + label.len());
+    let mut lines = Lines::new(source);
+    let (line, column) = lines.locate(start);
+    let (end_line, end_column) = lines.locate(end);
 
     let mut message = diagnostic.message.to_string();
     if let Some(text) = label.and_then(|label| label.label()) {
@@ -532,29 +789,16 @@ fn convert_diagnostic(diagnostic: &OxcDiagnostic, source: &str, filename: &str) 
             OxcSeverity::Error => Severity::Error,
             _ => Severity::Warning,
         },
+        code: None,
         message,
         filename: filename.to_string(),
         line,
         column,
+        end_line,
+        end_column,
+        pos: start,
+        end,
     }
-}
-
-fn line_column(source: &str, offset: u32) -> (u32, u32) {
-    let offset = offset as usize;
-    let mut line = 1u32;
-    let mut column = 1u32;
-    for (index, ch) in source.char_indices() {
-        if index >= offset {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            column = 1;
-        } else {
-            column += 1;
-        }
-    }
-    (line, column)
 }
 
 #[cfg(test)]
@@ -564,6 +808,225 @@ mod tests {
     fn compile_ok(source: &str, filename: &str) -> CompileOutput {
         compile(source, &ResolvedOptions::with_filename(filename))
             .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)))
+    }
+
+    // ---------------------------------------------------------------------
+    // M8a — the diagnostic engine
+    // ---------------------------------------------------------------------
+
+    fn diagnosing(filename: &str) -> ResolvedOptions {
+        ResolvedOptions { dev: true, diagnostics: true, ..ResolvedOptions::with_filename(filename) }
+    }
+
+    fn codes(output: &CompileOutput) -> Vec<&str> {
+        output.warnings.iter().filter_map(|d| d.code.map(|c| c.as_str())).collect()
+    }
+
+    const COERCED: &str = "import { signal } from \"@barqjs/core\";\n\
+                           const count = signal(0);\n\
+                           export const V = () => <p>{`total: ${count}`}</p>;\n";
+
+    /// The whole point of the engine: a span that survives as STRUCTURED data.
+    /// `pos` is what Rollup's `position` argument takes, and without that
+    /// argument there is no `pos`, no `loc` and no `frame` in any mode.
+    #[test]
+    fn a_diagnostic_carries_a_code_a_level_and_a_real_span() {
+        let output = compile(COERCED, &diagnosing("App.tsx")).expect("compiles");
+        assert_eq!(codes(&output), vec!["BARQ001"]);
+        let diagnostic = &output.warnings[0];
+        assert_eq!(diagnostic.severity, Severity::Warning);
+        assert_eq!(diagnostic.filename, "App.tsx");
+        assert_eq!(diagnostic.line, 3);
+        assert_eq!(&COERCED[diagnostic.pos as usize..diagnostic.end as usize], "count");
+        assert_eq!(diagnostic.docs(), Some(crate::diag::Code::Barq001.docs()));
+        assert!(diagnostic.docs().is_some_and(|url| url.ends_with("/docs/BARQ001.md")));
+        assert!(diagnostic.message.contains("`count()`"), "{}", diagnostic.message);
+        assert_eq!(
+            diagnostic.to_string(),
+            format!("App.tsx:3:{}: BARQ001 warning: {}", diagnostic.column, diagnostic.message)
+        );
+    }
+
+    /// Every one of the four things the ROADMAP asks a suppression to be:
+    /// the code is mandatory, the reason is required, it is scoped to the code
+    /// AND the span, and an unused one is reported.
+    #[test]
+    fn a_suppression_needs_a_code_and_a_reason_and_is_scoped_to_both() {
+        let silenced = "import { signal } from \"@barqjs/core\";\n\
+                        const count = signal(0);\n\
+                        // barq-ignore-next-line BARQ001 (rendering the source text on purpose)\n\
+                        export const V = () => <p>{`total: ${count}`}</p>;\n";
+        let output = compile(silenced, &diagnosing("App.tsx")).expect("compiles");
+        assert_eq!(codes(&output), Vec::<&str>::new());
+
+        // The code is what stops a directive swallowing an unrelated diagnostic
+        // — microsoft/TypeScript#47551, labelled a Design Limitation.
+        let wrong_code = silenced.replace("BARQ001", "BARQ005");
+        let output = compile(&wrong_code, &diagnosing("App.tsx")).expect("compiles");
+        assert_eq!(codes(&output), vec!["BARQ008", "BARQ001"]);
+
+        // An unused suppression is a WARNING and never an error, even under
+        // `defaultCategory: "error"` (microsoft/TypeScript#62579).
+        let stale = "// barq-ignore-next-line BARQ001 (nothing reports this any more)\n\
+                     export const V = () => <p>ok</p>;\n";
+        let mut options = diagnosing("App.tsx");
+        options.severities = crate::diag::Severities::new(&[], Some("error"));
+        let output = compile(stale, &options).expect("compiles");
+        assert_eq!(codes(&output), vec!["BARQ008"]);
+        assert_eq!(output.warnings[0].severity, Severity::Warning);
+        assert!(output.warnings.iter().all(|d| !d.is_error()));
+    }
+
+    #[test]
+    fn a_malformed_directive_is_reported_and_silences_nothing() {
+        for directive in [
+            "// barq-ignore-next-line (a reason but no code at all)",
+            "// barq-ignore-next-line BARQ001",
+            "// barq-ignore-next-line BARQ001 (short)",
+            "// barq-ignore-next-line BARQ999 (a reason of real substance)",
+        ] {
+            let source = format!(
+                "import {{ signal }} from \"@barqjs/core\";\n\
+                 const count = signal(0);\n\
+                 {directive}\n\
+                 export const V = () => <p>{{`total: ${{count}}`}}</p>;\n"
+            );
+            let output = compile(&source, &diagnosing("App.tsx")).expect("compiles");
+            assert_eq!(codes(&output), vec!["BARQ009", "BARQ001"], "{directive}");
+        }
+    }
+
+    /// One severity resolution, shared. Svelte's split between `onwarn` and
+    /// `svelte-check` means a code silenced in one channel stays loud in the
+    /// other (sveltejs/language-tools#650).
+    #[test]
+    fn the_severity_map_suppresses_demotes_and_escalates_by_code() {
+        let mut options = diagnosing("App.tsx");
+        options.severities =
+            crate::diag::Severities::new(&[("BARQ001".to_string(), "suppress".to_string())], None);
+        assert_eq!(codes(&compile(COERCED, &options).expect("compiles")), Vec::<&str>::new());
+
+        let mut options = diagnosing("App.tsx");
+        options.severities =
+            crate::diag::Severities::new(&[("BARQ001".to_string(), "note".to_string())], None);
+        let output = compile(COERCED, &options).expect("compiles");
+        assert_eq!(output.warnings[0].severity, Severity::Note);
+
+        let mut options = diagnosing("App.tsx");
+        options.severities = crate::diag::Severities::new(&[], Some("error"));
+        let output = compile(COERCED, &options).expect("compiles");
+        assert_eq!(output.warnings[0].severity, Severity::Error);
+    }
+
+    /// sveltejs/svelte#17289: a warning broadened in a patch release started
+    /// firing inside SvelteKit's own generated code, and the volume alone —
+    /// independent of correctness — blocked the upgrade.
+    #[test]
+    fn nothing_coded_is_reported_for_vendored_or_generated_code() {
+        for filename in [
+            "/app/node_modules/@vendor/thing/dist/index.tsx",
+            "\0virtual:barq-generated.tsx",
+            "virtual:barq-generated.tsx",
+        ] {
+            let output = compile(COERCED, &diagnosing(filename)).expect("compiles");
+            assert_eq!(codes(&output), Vec::<&str>::new(), "{filename}");
+        }
+    }
+
+    /// `Skeleton::origin` answers "which JSX produced these bytes"; the
+    /// enclosing component is the identity the IR did not carry, and `bind` now
+    /// records it. Dev only — a production build gets an empty list.
+    #[test]
+    fn dev_labels_name_the_template_its_component_and_its_source_position() {
+        let source = "function Chip(props) { return <b class=\"c\">{props.text}</b>; }\n\
+                      export default function Page() {\n\
+                        return <div class=\"page\"><Chip text=\"a\"/></div>;\n\
+                      }\n";
+        let output = compile(source, &diagnosing("App.tsx")).expect("compiles");
+        assert_eq!(output.labels.len(), 2);
+        let chip = output.labels.iter().find(|l| l.component.as_deref() == Some("Chip")).unwrap();
+        assert_eq!(chip.line, 1);
+        assert!(output.labels.iter().any(|l| l.component.as_deref() == Some("Page")));
+        for label in &output.labels {
+            assert!(label.template.contains("tmpl"), "{}", label.template);
+            assert!(output.code.contains(&label.template), "{}", label.template);
+        }
+
+        let production =
+            compile(source, &ResolvedOptions::with_filename("App.tsx")).expect("compiles");
+        assert!(production.labels.is_empty());
+    }
+
+    /// The diagnostics that predate the engine keep their text and gain a code,
+    /// a level and a span. `BARQ004` is the O3 note; `BARQ007` announces the SSR
+    /// fallback and is a note because the module still compiles.
+    ///
+    /// `BARQ006` (O7) is NOT among them any more, and this is where that is
+    /// pinned: it warned that `Dynamic`'s `{ component: _, ...rest }` reads
+    /// every getter once. Under M3 there are no getters — every prop is a Cell,
+    /// and a copy of a Cell is the same Cell (C3.4) — so the warning's premise
+    /// is gone and warning anyway would be a lie about the emitted module.
+    #[test]
+    fn the_diagnostics_that_predate_the_engine_carry_codes_now() {
+        let o7 = "import { Dynamic, signal } from \"@barqjs/core\";\n\
+                  const n = signal(0);\n\
+                  export const V = () => <Dynamic component=\"div\" total={n()} />;\n";
+        let output = compile(o7, &diagnosing("App.tsx")).expect("compiles");
+        assert!(codes(&output).is_empty(), "{:?}", codes(&output));
+
+        let fallback = "import { Portal } from \"@barqjs/core\";\n\
+                        export const V = () => <Portal><b>x</b></Portal>;\n";
+        let options = ResolvedOptions { ssr: true, ..diagnosing("App.tsx") };
+        let output = compile(fallback, &options).expect("compiles");
+        assert_eq!(codes(&output), vec!["BARQ007"]);
+        assert_eq!(output.warnings[0].severity, Severity::Note);
+    }
+
+    /// A `barq-ignore` must never influence codegen. facebook/react#34261 is the
+    /// counterexample: the React Compiler treated the mere PRESENCE of an
+    /// `eslint-disable` as grounds to bail out of optimising the component.
+    #[test]
+    fn a_suppression_comment_cannot_change_the_emitted_code() {
+        let plain = "export const V = () => <p class=\"a\">x</p>;\n";
+        let ignored = "// barq-ignore-next-line BARQ001 (this must change nothing)\n\
+                       export const V = () => <p class=\"a\">x</p>;\n";
+        let a = compile(plain, &diagnosing("App.tsx")).expect("compiles");
+        let b = compile(ignored, &diagnosing("App.tsx")).expect("compiles");
+        // The comment itself passes through, as every other comment does; what
+        // must not change is a single byte of what the compiler EMITTED.
+        let stripped: String = b
+            .code
+            .lines()
+            .filter(|line| !line.contains("barq-ignore"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(a.code.trim_end(), stripped.trim_end());
+    }
+
+    /// Every code this build can raise has a docs page on disk, the page ships
+    /// with the package, and the URL a consumer is handed points at it. A code
+    /// with no page is a code nobody can look up, and codes are a public API.
+    #[test]
+    fn every_code_has_a_docs_page_and_the_index_lists_it() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let index = std::fs::read_to_string(root.join("docs/README.md")).expect("docs/README.md");
+        let manifest = std::fs::read_to_string(root.join("package.json")).expect("package.json");
+        assert!(
+            manifest.contains("\"docs\""),
+            "the docs directory is not in package.json's `files`, so it ships nowhere"
+        );
+        for code in crate::diag::Code::ALL {
+            let page = root.join(code.docs_path());
+            assert!(
+                code.docs().ends_with(&code.docs_path()),
+                "{} url and path disagree",
+                code.as_str()
+            );
+            let text = std::fs::read_to_string(&page)
+                .unwrap_or_else(|_| panic!("{} has no docs page", code.as_str()));
+            assert!(text.contains(code.as_str()), "{} does not name itself", code.as_str());
+            assert!(index.contains(code.as_str()), "{} is missing from the index", code.as_str());
+        }
     }
 
     #[test]
@@ -675,22 +1138,25 @@ mod tests {
         // A fragment has no props object to build, so it stays on the runtime's
         // own path.
         assert!(output.code.contains("_$createElement(_$Fragment, null"), "{}", output.code);
-        // P4 calls a component directly. It has to: `createElement` copies the
-        // props object it is handed, and a copy reads every getter once.
-        assert!(output.code.contains("...rest"), "{}", output.code);
-        assert!(output.code.contains("x: 1"), "{}", output.code);
-        assert!(output.code.contains("A({})"), "{}", output.code);
+        // C1/C9. A component is called with its scope first, and a spread is a
+        // SOURCE LIST rather than a JavaScript spread — there is no object to
+        // copy, so there is no getter for a copy to read.
+        assert!(output.code.contains("_$props([rest, {"), "{}", output.code);
+        assert!(!output.code.contains("...rest"), "{}", output.code);
+        assert!(output.code.contains("x: _k$1"), "{}", output.code);
+        assert!(output.code.contains("const _k$1 = () => 1"), "{}", output.code);
+        assert!(output.code.contains("A(_s$, {})"), "{}", output.code);
         assert!(!output.code.contains("_$createElement(A"), "{}", output.code);
         // `createElement` calls `tag(finalProps)` with no receiver, so a member
         // tag must not pick up a `this` the un-compiled path never had.
-        assert!(output.code.contains("(0, Foo.Bar)({"), "{}", output.code);
+        assert!(output.code.contains("(0, Foo.Bar)(_s$, "), "{}", output.code);
         // The component identifier is the binding, not a name-matched string.
         assert!(!output.code.contains("\"Foo.Bar\""), "{}", output.code);
     }
 
     #[test]
     fn a_fully_static_subtree_costs_one_clone_and_nothing_else() {
-        let output = compile_ok("const V = () => <p class=\"x\"><b>hi</b></p>;\n", "V.tsx");
+        let output = compile_ok("export const V = () => <p class=\"x\"><b>hi</b></p>;\n", "V.tsx");
         assert!(
             output.code.contains("_$template(`<p class=\"x\"><b>hi</b></p>`)"),
             "{}",
@@ -699,7 +1165,11 @@ mod tests {
         assert!(!output.code.contains("_$insert"), "{}", output.code);
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
         // No walk, no arrow, no statements: the clone IS the component body.
-        assert!(output.code.trim_end().ends_with("const V = () => _tmpl$1();"), "{}", output.code);
+        assert!(
+            output.code.trim_end().ends_with("const V = (_s$) => _tmpl$1();"),
+            "{}",
+            output.code
+        );
     }
 
     #[test]
@@ -753,7 +1223,7 @@ mod tests {
     fn a_property_channel_attribute_never_reaches_the_template_html() {
         let output = compile_ok("const V = () => <input type=\"text\" value=\"v\" />;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<input type=\"text\">`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_el$1, \"value\", \"v\")"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"value\", \"v\")"), "{}", output.code);
     }
 
     #[test]
@@ -784,7 +1254,7 @@ mod tests {
         // The hole is followed by an ELEMENT, so `<b>` is its own anchor and the
         // comment node is elided (target #9).
         assert!(output.code.contains("`<p>Total: <b>x</b> <i>y</i></p>`"), "{}", output.code);
-        assert!(output.code.contains("_$insert(_el$1, n, _el$2)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_s$, _el$1, n, _el$2)"), "{}", output.code);
     }
 
     #[test]
@@ -823,7 +1293,7 @@ mod tests {
         // the only child, so nothing follows it and `insert` takes two arguments.
         let output = compile_ok("const V = () => <pre>{a}</pre>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<pre></pre>`)"), "{}", output.code);
-        assert!(output.code.contains("_$insert(_el$1, a)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_s$, _el$1, a)"), "{}", output.code);
 
         // `<textarea>` is RCDATA: the `<!---->` would be literal TEXT in the field.
         let output = compile_ok("const V = () => <textarea>{a}</textarea>;\n", "V.tsx");
@@ -850,6 +1320,62 @@ mod tests {
         // one the parser keeps.
         let output = compile_ok("const V = () => <pre>x{a}&#10;y</pre>;\n", "V.tsx");
         assert!(output.code.contains("`<pre>x<!---->\ny</pre>`"), "{}", output.code);
+    }
+
+    #[test]
+    fn the_string_backend_guards_a_hole_against_the_same_rule() {
+        // O9's other half, and the one the DOM rule does not cover. A hole in a
+        // template materialises nothing, so the parser's newline lands on the
+        // text BEHIND it; in a string the hole writes the value's own bytes, and
+        // the compiler cannot see their first one. `insert`, `innerHTML` and
+        // `textContent` all keep a leading newline the client is given, so the
+        // markup owes the parser a newline of its own to eat instead — measured
+        // in real Chrome by browser-parse-check.ts's `pre eats a lone newline`
+        // and `pre keeps a DOUBLED newline` rows.
+        let ssr = |source: &str| {
+            compile(
+                source,
+                &ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("V.tsx") },
+            )
+            .expect("compiles")
+            .code
+        };
+
+        let code = ssr("const V = () => <pre>{a}</pre>;\n");
+        assert!(code.contains("`<pre>\n${_$esc(a)}</pre>`"), "{code}");
+
+        // A value that renders EMPTY leaves the literal behind it against the
+        // tag, so the guard is owed here too — and the literal is then NOT
+        // doubled, because the guard is the byte that gets eaten.
+        let code = ssr("const V = () => <pre>{a}&#10;hello</pre>;\n");
+        assert!(code.contains("`<pre>\n${_$esc(a)}\nhello</pre>`"), "{code}");
+
+        // A literal leading newline still doubles, and gets no second guard.
+        let code = ssr("const V = () => <pre>&#10;a</pre>;\n");
+        assert!(code.contains("`<pre>\n\na</pre>`"), "{code}");
+
+        // Nothing to eat: an element writes `<`, and text that does not lead
+        // with a newline writes its own first byte.
+        let code = ssr("const V = () => <pre><b>x</b>{a}</pre>;\n");
+        assert!(code.contains("`<pre><b>x</b>${_$esc(a)}</pre>`"), "{code}");
+        let code = ssr("const V = () => <pre>x{a}</pre>;\n");
+        assert!(code.contains("`<pre>x${_$esc(a)}</pre>`"), "{code}");
+
+        // `<textarea>` with a hole is JSX P1 REFUSES, so it reaches the wire
+        // through the second serialiser in codegen/ssr.rs — which needs the same
+        // rule, and is the shape where the divergence bites hardest: the DOM
+        // path is `createElement("textarea", …, value)`, a text node no parser
+        // ever reads.
+        let code = ssr("const V = () => <textarea>{a}</textarea>;\n");
+        assert!(code.contains("`<textarea>\n${_$esc(a)}</textarea>`"), "{code}");
+
+        // A content prop owns the whole child position and is equally unknown.
+        let code = ssr("const V = () => <pre textContent={a} />;\n");
+        assert!(code.contains("`<pre>\n${_$content(\"textContent\", a)}</pre>`"), "{code}");
+
+        // …and none of this touches a tag the parser does not apply it to.
+        let code = ssr("const V = () => <div>{a}</div>;\n");
+        assert!(code.contains("`<div>${_$esc(a)}</div>`"), "{code}");
     }
 
     #[test]
@@ -1016,7 +1542,7 @@ mod tests {
         let output =
             compile_ok("const V = () => <div class=\"a\" className={x}>t</div>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<div>t</div>`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_el$1, \"class\", x)"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"class\", x)"), "{}", output.code);
     }
 
     #[test]
@@ -1506,7 +2032,7 @@ mod tests {
         for (statement, jsx) in [
             ("const _el$1 = _tmpl$1();", "<div class=\"card\">"),
             ("const _el$2 = _el$1.lastChild;", "<p>{props.body}</p>"),
-            ("_$insert(_el$2, () => props.body);", "props.body}</p>"),
+            ("_$insert(_s$, _el$2, props.body);", "props.body}</p>"),
         ] {
             let line = mapped.line_of(statement);
             let indent = mapped.code.split('\n').nth(line as usize).unwrap();
@@ -1667,6 +2193,265 @@ mod tests {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // M1 — the optimisation-level axis (CODESIGN §5.1, §6 L3)
+    // ---------------------------------------------------------------------
+
+    fn at(opt: crate::options::Opt, ssr: bool) -> ResolvedOptions {
+        ResolvedOptions { opt, ssr, ..ResolvedOptions::with_filename("O.tsx") }
+    }
+
+    fn emitted(source: &str, opt: crate::options::Opt, ssr: bool) -> String {
+        compile(source, &at(opt, ssr))
+            .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)))
+            .code
+    }
+
+    /// The default is `-Ox`, so a caller that never heard of the axis compiles
+    /// exactly what it always compiled. This is the whole of "M1 changes no
+    /// semantics" that a Rust test can state; the 234 emitted-bytes snapshots
+    /// state the rest.
+    #[test]
+    fn the_default_level_is_the_optimising_one() {
+        assert_eq!(ResolvedOptions::default().opt, crate::options::Opt::ALL);
+        for name in fixture_names() {
+            let source = std::fs::read_to_string(fixture_path(&name)).expect("a fixture");
+            let default = compile(&source, &ResolvedOptions::with_filename("O.tsx"));
+            let explicit = compile(&source, &at(crate::options::Opt::ALL, false));
+            match (default, explicit) {
+                (Ok(a), Ok(b)) => assert_eq!(a.code, b.code, "{name}"),
+                (Err(_), Err(_)) => {}
+                _ => panic!("{name}: the default and -Ox disagree about compiling at all"),
+            }
+        }
+    }
+
+    /// `-O0` is about to become the reference the whole oracle rests on, so
+    /// "it compiles" is the floor and the IR invariants are the bar: the same
+    /// checks the optimising path is held to, over the same corpus, in both
+    /// backends.
+    #[test]
+    fn the_whole_corpus_compiles_at_o0_with_the_ir_invariants_intact() {
+        let mut checked = 0;
+        for name in fixture_names() {
+            let source = std::fs::read_to_string(fixture_path(&name)).expect("a fixture");
+            for ssr in [false, true] {
+                let Ok(output) = compile(&source, &at(crate::options::Opt::ALL, ssr)) else {
+                    continue;
+                };
+                let reference = compile(&source, &at(crate::options::Opt::NONE, ssr))
+                    .unwrap_or_else(|diagnostics| {
+                        panic!("{name} (ssr={ssr}) at -O0: {}", format_diagnostics(&diagnostics))
+                    });
+                // A diagnostic is a fact about the SOURCE, so the two levels
+                // have to report the same ones — an optimisation that changes
+                // what the compiler says about a program is changing semantics.
+                assert_eq!(
+                    output.warnings.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                    reference.warnings.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                    "{name} (ssr={ssr})"
+                );
+                assert!(!reference.code.is_empty(), "{name}");
+                checked += 1;
+            }
+        }
+        assert!(checked >= 100, "only {checked} compiles");
+    }
+
+    /// M3's ABI, asserted over the WHOLE corpus rather than on hand-written
+    /// cases, and at both optimisation levels and both backends — because
+    /// `CODESIGN.md` §8 requires `-O0` and `-Ox` to emit the same convention
+    /// from the same IR, and because a calling convention that holds on the
+    /// examples someone thought to write is not a convention.
+    ///
+    /// The emitted module is RE-PARSED rather than searched as text: `get ` is a
+    /// substring of "target" and `children:` is a substring of a doc comment, so
+    /// a textual scan reports the corpus rather than the compiler.
+    ///
+    /// Two claims, each the negation of a shape the M0 fixtures pin as a defect:
+    ///
+    /// - **no props member is a getter** (C3.1) — the emission that made
+    ///   `{...props}` flatten and cost 8.7x to allocate;
+    /// - **no `children` slot holds a built node or an already-invoked
+    ///   expression** (C6) — O2's negation, and the Provider bug written into
+    ///   the calling convention itself, where no runtime can undo it.
+    ///
+    /// `deferred` is the C6 predicate: `_$block(fn)` is §3.0 rule 3's brand
+    /// around a Block and leaves the slot deferred; every OTHER call in that
+    /// position has already produced a node.
+    fn deferred(value: &oxc::ast::ast::Expression<'_>) -> bool {
+        use oxc::ast::ast::Expression;
+        match value {
+            Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+            | Expression::Identifier(_)
+            | Expression::StaticMemberExpression(_) => true,
+            Expression::CallExpression(call) => match &call.callee {
+                Expression::Identifier(callee) => {
+                    callee.name.as_str().ends_with("block") && call.arguments.len() == 1
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn the_whole_corpus_emits_one_calling_convention_at_both_levels() {
+        use oxc::ast::ast::{ObjectPropertyKind, PropertyKey, PropertyKind};
+        use oxc::ast_visit::Visit;
+
+        #[derive(Default)]
+        struct Audit {
+            getters: usize,
+            eager_children: usize,
+        }
+
+        impl<'a> Visit<'a> for Audit {
+            fn visit_object_expression(&mut self, it: &oxc::ast::ast::ObjectExpression<'a>) {
+                for property in &it.properties {
+                    let ObjectPropertyKind::ObjectProperty(property) = property else { continue };
+                    if property.kind == PropertyKind::Get {
+                        self.getters += 1;
+                    }
+                    let named = match &property.key {
+                        PropertyKey::StaticIdentifier(key) => key.name.as_str() == "children",
+                        PropertyKey::StringLiteral(key) => key.value.as_str() == "children",
+                        _ => false,
+                    };
+                    // C6. A Block, a Cell, or a name that carries one. A call, a
+                    // template clone, an array of nodes or an IIFE is a value —
+                    // and a value in this slot has already been constructed.
+                    // `_$block(fn)` is rule 3's brand around a Block, so it is
+                    // the deferred form, not a built one; every OTHER call is
+                    // still a value and still fails this.
+                    if named && !deferred(&property.value) {
+                        self.eager_children += 1;
+                    }
+                }
+                oxc::ast_visit::walk::walk_object_expression(self, it);
+            }
+        }
+
+        let mut checked = 0;
+        for name in fixture_names() {
+            let source = std::fs::read_to_string(fixture_path(&name)).expect("a fixture");
+            for ssr in [false, true] {
+                for opt in [crate::options::Opt::ALL, crate::options::Opt::NONE] {
+                    let Ok(output) = compile(&source, &at(opt, ssr)) else { continue };
+                    let allocator = Allocator::new();
+                    let parsed = Parser::new(&allocator, &output.code, SourceType::tsx()).parse();
+                    assert!(!parsed.panicked, "{name}: emitted module does not parse");
+                    let mut audit = Audit::default();
+                    audit.visit_program(&parsed.program);
+                    assert_eq!(
+                        audit.getters, 0,
+                        "{name} (ssr={ssr}): a props member is still a getter:\n{}",
+                        output.code
+                    );
+                    assert_eq!(
+                        audit.eager_children, 0,
+                        "{name} (ssr={ssr}): a children slot holds a built value:\n{}",
+                        output.code
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked >= 200, "only {checked} compiles");
+    }
+
+    /// L3's payoff, stated as the property rather than as a level: EVERY
+    /// optimisation is individually bisectable. For each flag there is a
+    /// fixture whose emitted bytes move when that flag alone is flipped — so a
+    /// differential failure can be bisected to one pass, and a flag that
+    /// stopped doing anything fails here instead of going quiet.
+    #[test]
+    fn every_optimisation_moves_output_on_its_own() {
+        use crate::options::Opt;
+        let sources: Vec<String> = fixture_names()
+            .iter()
+            .map(|name| std::fs::read_to_string(fixture_path(name)).expect("a fixture"))
+            .collect();
+
+        for flag in Opt::NAMES {
+            let mut alone = Opt::NONE;
+            alone.set(flag, true);
+            let mut without = Opt::ALL;
+            without.set(flag, false);
+
+            let observed = sources.iter().any(|source| {
+                let Ok(none) = compile(source, &at(Opt::NONE, false)) else { return false };
+                let Ok(one) = compile(source, &at(alone, false)) else { return false };
+                none.code != one.code
+            });
+            assert!(observed, "turning `{flag}` on alone changes no fixture in the corpus");
+
+            let bisectable = sources.iter().any(|source| {
+                let Ok(all) = compile(source, &at(Opt::ALL, false)) else { return false };
+                let Ok(missing) = compile(source, &at(without, false)) else { return false };
+                all.code != missing.code
+            });
+            assert!(bisectable, "turning `{flag}` off alone changes no fixture in the corpus");
+        }
+    }
+
+    /// What each knob actually removes, on one source that exercises all of
+    /// them. `-O0` is slower and larger; it is never different.
+    #[test]
+    fn o0_removes_exactly_the_transformations_it_names() {
+        use crate::options::Opt;
+        const SOURCE: &str = "import { signal } from \"@barqjs/core\";\n\
+             const WIDTH = 4;\n\
+             const n = signal(0);\n\
+             export const A = () => <b class=\"c\">x</b>;\n\
+             export const B = () => <b class=\"c\">x</b>;\n\
+             export const C = () => (\n\
+               <div><i/><i/><i/><em cols={WIDTH} id={n()} title={n()} onClick={() => 1}>{n()}<u/></em></div>\n\
+             );\n";
+
+        let ox = emitted(SOURCE, Opt::ALL, false);
+        let o0 = emitted(SOURCE, Opt::NONE, false);
+
+        // fold: the constant leaves the template and becomes a write again.
+        assert!(ox.contains("cols=\"4\""), "{ox}");
+        assert!(!o0.contains("cols=\"4\"") && o0.contains("\"cols\", WIDTH"), "{o0}");
+        // dedup: A and B share one row, then stop sharing it.
+        assert_eq!(ox.matches("_$template(`<b").count(), 1, "{ox}");
+        assert_eq!(o0.matches("_$template(`<b").count(), 2, "{o0}");
+        // anchor: the hole anchors against `<u>` rather than a marker of its own.
+        assert!(!ox.contains("<u></u></em>") || !ox.contains("<!---->"), "{ox}");
+        assert!(o0.contains("<!----><u></u>"), "{o0}");
+        // fuse: two live props on one element share one effect, then do not.
+        assert!(ox.contains("_$renderEffect("), "{ox}");
+        assert!(!o0.contains("_$renderEffect("), "{o0}");
+        // walk: `<em>` is reached from the end of the group, then from the front.
+        assert!(ox.contains(".lastChild"), "{ox}");
+        assert!(!o0.contains(".lastChild") && o0.contains(".firstChild"), "{o0}");
+        // eta: the accessor stands in for the thunk, then does not.
+        assert!(ox.contains("_$insert(_s$, _el$2, n,"), "{ox}");
+        assert!(o0.contains("() => n()"), "{o0}");
+        // hoist: the capture-free handler is a module constant, then is inline.
+        assert!(ox.contains("const _h$1 = () => 1"), "{ox}");
+        assert!(!o0.contains("_h$1"), "{o0}");
+        // splice: the unit's statements are flat in the arrow that hosts them,
+        // then wrapped in an IIFE of their own.
+        assert!(ox.contains("export const C = (_s$) => {"), "{ox}");
+        assert!(o0.contains("export const C = (_s$) => (() => {"), "{o0}");
+    }
+
+    /// A knob nobody can name is a knob that silently does nothing, which is the
+    /// shape of lie this option surface refuses everywhere else.
+    #[test]
+    fn an_unknown_pass_name_is_reported_rather_than_ignored() {
+        let mut options = ResolvedOptions::with_filename("O.tsx");
+        options.unknown_passes = vec!["tempaltes".to_string()];
+        let output = compile("export const V = () => <p>x</p>;\n", &options).expect("compiles");
+        assert_eq!(output.warnings.len(), 1);
+        assert!(output.warnings[0].message.contains("tempaltes"), "{:?}", output.warnings[0]);
+        assert!(output.warnings[0].message.contains("dedup"), "{:?}", output.warnings[0]);
+    }
+
     fn fixture_path(name: &str) -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures").join(name)
     }
@@ -1748,7 +2533,7 @@ mod tests {
         // survives as runtime work.
         assert!(output.code.contains("id=\"dark\""), "{}", output.code);
         assert!(!output.code.contains("\"id\""), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_el$1, \"title\""), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"title\""), "{}", output.code);
         assert_eq!(output.code.matches("_$setProp(").count(), 1, "{}", output.code);
 
         // `count.set` is masked as non-tracking, so it folds nowhere and creates
@@ -1764,14 +2549,14 @@ mod tests {
     /// clone and NOTHING else — no walk, no arrow, no statements.
     #[test]
     fn a_subtree_whose_last_patch_folds_away_becomes_a_bare_clone() {
-        let source = "const SIZE = \"lg\";\nconst V = () => <b class={\"card--\" + SIZE} data-n={2 * 3}>x</b>;\n";
+        let source = "const SIZE = \"lg\";\nexport const V = () => <b class={\"card--\" + SIZE} data-n={2 * 3}>x</b>;\n";
         let output = compile_ok(source, "V.tsx");
         assert!(
             output.code.contains("_$template(`<b class=\"card--lg\" data-n=\"6\">x</b>`)"),
             "{}",
             output.code
         );
-        assert!(output.code.contains("const V = () => _tmpl$1();"), "{}", output.code);
+        assert!(output.code.contains("const V = (_s$) => _tmpl$1();"), "{}", output.code);
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
         assert!(!output.code.contains("_el$"), "{}", output.code);
     }
@@ -1786,7 +2571,7 @@ mod tests {
             "V.tsx",
         );
         assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_el$1, \"value\", \"v\")"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"value\", \"v\")"), "{}", output.code);
         assert!(!output.code.contains("hidden"), "{}", output.code);
         assert!(!output.code.contains("lang"), "{}", output.code);
     }
@@ -1835,9 +2620,13 @@ mod tests {
              const V = () => <p style={{() => s()}} classList={{() => s()}} title={{() => s()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"style\", () => s())"), "{}", output.code);
         assert!(
-            output.code.contains("_$setProp(_el$1, \"classList\", () => s())"),
+            output.code.contains("_$setProp(_s$, _el$1, \"style\", () => s())"),
+            "{}",
+            output.code
+        );
+        assert!(
+            output.code.contains("_$setProp(_s$, _el$1, \"classList\", () => s())"),
             "{}",
             output.code
         );
@@ -1889,7 +2678,7 @@ mod tests {
     #[test]
     fn an_event_value_the_compiler_cannot_see_stays_with_the_runtime() {
         let output = compile_ok("const V = (p) => <b onClick={p.h}>x</b>;\n", "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"onClick\", p.h)"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"onClick\", p.h)"), "{}", output.code);
         assert!(!output.code.contains("$$click"), "{}", output.code);
         assert!(!output.code.contains("_$delegateEvents"), "{}", output.code);
     }
@@ -1914,7 +2703,7 @@ mod tests {
         let source =
             format!("{CORE}const count = signal(0);\nconst V = () => <p title={{count()}} />;\n");
         let output = compile_ok(&source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"title\", count)"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"title\", count)"), "{}", output.code);
         assert!(!output.code.contains("() => count()"), "η-reduced: {}", output.code);
     }
 
@@ -1926,7 +2715,7 @@ mod tests {
         let source = "import { signal } from \"./barrel\";\nconst c = signal(0);\n\
                       const V = () => <p title={c()} />;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"title\", c())"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"title\", c())"), "{}", output.code);
         assert!(!output.code.contains("_$renderEffect"), "{}", output.code);
     }
 
@@ -1945,7 +2734,11 @@ mod tests {
                 assert!(!line.contains(forbidden), "{forbidden}\n{}", output.code);
             }
         }
-        assert!(output.code.contains("_$setProp(_el$1, \"classList\", CLS)"), "{}", output.code);
+        assert!(
+            output.code.contains("_$setProp(_s$, _el$1, \"classList\", CLS)"),
+            "{}",
+            output.code
+        );
         assert!(output.code.contains("\"dangerouslySetInnerHTML\", HTML"), "{}", output.code);
 
         // A literal STRING class or style is the documented exception: both
@@ -1972,7 +2765,7 @@ mod tests {
                 format!("const x = {value};\nconst V = () => <div data-x={{x}}>t</div>;\n");
             let output = compile_ok(&source, "V.tsx");
             assert!(
-                output.code.contains("_$setProp(_el$1, \"data-x\", x)"),
+                output.code.contains("_$setProp(_s$, _el$1, \"data-x\", x)"),
                 "{value}\n{}",
                 output.code
             );
@@ -1999,7 +2792,7 @@ mod tests {
     fn a_lone_surrogate_literal_is_never_folded() {
         let source = "const x = \"\\ud800\";\nconst V = () => <div id={x}>t</div>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"id\", x)"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"id\", x)"), "{}", output.code);
         assert!(output.code.contains("_$template(`<div>t</div>`)"), "{}", output.code);
 
         let source = "const V = () => <div id={`\\ud800`}>t</div>;\n";
@@ -2017,7 +2810,11 @@ mod tests {
              const V = () => <div class={{() => a()}} title={{() => b()}} id={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"class\", () => a())"), "{}", output.code);
+        assert!(
+            output.code.contains("_$setProp(_s$, _el$1, \"class\", () => a())"),
+            "{}",
+            output.code
+        );
         assert!(!output.code.contains("_p$.class"), "{}", output.code);
         // The two that are NOT intercepted still merge — this is the boundary of
         // target #4, not its removal.
@@ -2038,7 +2835,7 @@ mod tests {
         let output = compile_ok(&source, "V.tsx");
         assert!(!output.code.contains("_p$.__proto__"), "{}", output.code);
         assert!(
-            output.code.contains("_$setProp(_el$1, \"__proto__\", () => a())"),
+            output.code.contains("_$setProp(_s$, _el$1, \"__proto__\", () => a())"),
             "{}",
             output.code
         );
@@ -2077,7 +2874,7 @@ mod tests {
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
 
         let output = compile_ok("const V = () => <input value={\"x\"} />;\n", "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"value\", \"x\")"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"value\", \"x\")"), "{}", output.code);
         assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
     }
 
@@ -2120,7 +2917,11 @@ mod tests {
     #[test]
     fn a_literal_attribute_on_the_patch_channel_carries_its_decoded_value() {
         let output = compile_ok("const V = () => <input value=\"a&amp;b\" />;\n", "V.tsx");
-        assert!(output.code.contains("_$setProp(_el$1, \"value\", \"a&b\")"), "{}", output.code);
+        assert!(
+            output.code.contains("_$setProp(_s$, _el$1, \"value\", \"a&b\")"),
+            "{}",
+            output.code
+        );
 
         // The template channel keeps the reference, because the parser resolves
         // it to the same bytes.
@@ -2138,7 +2939,7 @@ mod tests {
     fn a_bare_intercepted_attribute_is_left_to_the_runtime() {
         let output = compile_ok("const V = () => <div class title>t</div>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<div title>t</div>`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_el$1, \"class\", true)"), "{}", output.code);
+        assert!(output.code.contains("_$setProp(_s$, _el$1, \"class\", true)"), "{}", output.code);
     }
 
     /// Target #7's commonest shape: a handler bound to a name. The binding is
@@ -2170,7 +2971,11 @@ mod tests {
             "const h = 1;\nconst V = () => <button onClick={h}>b</button>;\n",
         ] {
             let output = compile_ok(source, "V.tsx");
-            assert!(output.code.contains("_$setProp(_el$1, \"onClick\", h)"), "{}", output.code);
+            assert!(
+                output.code.contains("_$setProp(_s$, _el$1, \"onClick\", h)"),
+                "{}",
+                output.code
+            );
             assert!(!output.code.contains("$$click"), "{}", output.code);
         }
     }

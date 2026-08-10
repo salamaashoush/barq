@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts"
 
 /**
@@ -27,6 +30,13 @@ import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./
  */
 
 export interface SsrStatus {
+  /**
+   * `live` — the backend runs. `absent` — this build has no such backend, which
+   * is a fact about the milestone. `broken` — the option is there and does not
+   * produce a string backend, which is a BUG and must never be reported as
+   * absence.
+   */
+  state: "live" | "absent" | "broken"
   /** Whether `ssr: true` compiles at all. */
   landed: boolean
   /** The compiler's refusal, while it does not. */
@@ -37,14 +47,66 @@ export interface SsrStatus {
 
 const SSR_PROBE = 'const Probe = () => <section class="p">hi</section>;\nexport default Probe;\n'
 
-function detect(): SsrStatus {
+function optionExists(name: string): boolean {
   try {
-    const probe = compileSource(SSR_PROBE, "ssr-probe.tsx", { ssr: true })
-    return { landed: true, refusal: "", probe }
+    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8")
+    return new RegExp(`^\\s*${name}\\?:`, "m").test(types)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Detection with a THIRD answer, on the pattern `differential.ts` states in
+ * full.
+ *
+ * Two-valued detection is fail-open, and the mutation experiment walked into it:
+ * a compiler mutant that offered statement splicing to the non-DOM backends made
+ * the `ssr: true` compile PANIC on 106 of the 117 fixtures, and every consumer of
+ * a two-valued `landed` classified that as "has not landed" and went green. The
+ * worse the compiler got, the quieter the suite became. The other direction is
+ * the same defect: napi ignores an option it does not know, so a build that
+ * dropped `ssr` would emit DOM modules and a probe that merely COMPILED would
+ * call them a string backend.
+ *
+ * So existence is asked separately from whether it works, and existence is read
+ * off `index.d.ts`, which napi generates from the Rust option struct — a fact
+ * about the build rather than a declaration anyone maintains. No option means
+ * `absent`. An option that is there and throws, or that emits a module
+ * indistinguishable from the DOM one, means `broken`.
+ */
+function detect(): SsrStatus {
+  if (!optionExists("ssr")) {
+    return {
+      state: "absent",
+      landed: false,
+      refusal: "this build's option surface has no `ssr` — the string backend is not here yet",
+      probe: "",
+    }
+  }
+  let probe: string
+  try {
+    probe = compileSource(SSR_PROBE, "ssr-probe.tsx", { ssr: true })
   } catch (error) {
     const refusal = error instanceof Error ? error.message : String(error)
-    return { landed: false, refusal, probe: "" }
+    return {
+      state: "broken",
+      landed: false,
+      refusal: `the build has an \`ssr\` option and compiling with it failed: ${refusal}`,
+      probe: "",
+    }
   }
+  if (probe === compileSource(SSR_PROBE, "ssr-probe.tsx")) {
+    return {
+      state: "broken",
+      landed: false,
+      refusal:
+        "the build has an `ssr` option and emits the same module with and without it — a backend " +
+        "that is ignored, not one that is missing",
+      probe,
+    }
+  }
+  return { state: "live", landed: true, refusal: "", probe }
 }
 
 /**
@@ -84,7 +146,11 @@ export async function renderSsr(mod: FixtureModule): Promise<SsrRender> {
   // makes this module untypeable on a clean tree. The condition is exercised
   // anyway, by every compiled SSR module, which imports its helpers from it.
   const core = await import("@barqjs/core")
-  const value: unknown = mod.default()
+  // C1: a compiled module root takes its scope first, and `null` is the value
+  // the compiler itself emits for one. `undefined` is what a MISSING argument
+  // looks like, and `requireScope` throws on it precisely so a mistimed
+  // construction cannot fall back to CURRENT.
+  const value: unknown = (mod.default as unknown as (s: unknown) => unknown)(null)
   // A compiled SSR module returns branded markup, not a bare string — the brand
   // is what keeps user data (escaped) apart from compiler output (not), so
   // `typeof value === "string"` would classify every module as a fallback and
@@ -212,7 +278,30 @@ const NODE_COMMENT = 8
 export function parseFragment(html: string): DocumentFragment {
   const host = document.createElement("template")
   host.innerHTML = html
+  eatTheFirstNewline(host.content)
   return host.content
+}
+
+/**
+ * The one tree-construction rule happy-dom does not implement: "in body"
+ * ignores ONE U+000A character token directly after `<pre>`, `<textarea>` and
+ * `<listing>`. Real Chrome does — `browser-parse-check.ts`'s `pre eats a lone
+ * newline` row measures it — and the string backend emits a newline of its own
+ * in front of a hole for exactly that reason: it is the byte that gets eaten,
+ * so the value behind it reaches the DOM whole. A harness that keeps it reads
+ * every such value back one newline too long, which is a difference between two
+ * PARSERS rather than between the two backends.
+ *
+ * Exactly one, and only off the first child: everything else in the element is
+ * bytes the parser keeps, and reading them back is what this file is for.
+ */
+function eatTheFirstNewline(root: DocumentFragment): void {
+  for (const element of Array.from(root.querySelectorAll("pre, textarea, listing"))) {
+    const first = element.firstChild
+    if (first === null || first.nodeType !== NODE_TEXT) continue
+    const text = first as Text
+    if (text.data.startsWith("\n")) text.data = text.data.slice(1)
+  }
 }
 
 function dropComments(root: Node): void {

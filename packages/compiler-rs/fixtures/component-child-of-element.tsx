@@ -30,6 +30,6 @@ export const optimality = {
   // an ELEMENT, so the `<footer>` is the anchor and no `<!---->` is baked. The
   // statics either side stay in the caller's template — only the component
   // becomes a hole.
-  emits: ['<div class="host"><h1>Title</h1><footer>end</footer></div>', "Show({"],
+  emits: ['<div class="host"><h1>Title</h1><footer>end</footer></div>', "Show("],
   absent: ["<!---->", "(Show, {"],
 }

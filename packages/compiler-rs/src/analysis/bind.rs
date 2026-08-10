@@ -1,17 +1,26 @@
+use oxc::allocator::Allocator;
 use oxc::ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Declaration, ExportDefaultDeclarationKind, Expression,
-    FormalParameters, Function, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
+    ArrowFunctionExpression, BinaryExpression, BindingPattern, ConditionalExpression, Declaration,
+    DoWhileStatement, ExportDefaultDeclarationKind, Expression, ForStatement, FormalParameters,
+    Function, IfStatement, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
     JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
-    JSXMemberExpressionObject, ModuleExportName, Program, Statement, StaticMemberExpression,
-    VariableDeclarator,
+    JSXMemberExpressionObject, LogicalExpression, ModuleExportName, Program, Statement,
+    StaticMemberExpression, SwitchStatement, TaggedTemplateExpression, TemplateLiteral,
+    UnaryExpression, UnaryOperator, VariableDeclarator, WhileStatement,
 };
 use oxc::ast_visit::Visit;
 use oxc::ast_visit::walk;
 use oxc::semantic::{Scoping, SymbolId};
+use oxc::span::Span;
 
-use crate::ir::{BIT_OVERFLOW, Const, Flow, MemberMask, Module, Prim, ReactiveEnv, SourceKind};
+use crate::diag::Code;
+use crate::ir::{
+    BIT_OVERFLOW, Const, Diag, Flow, Keyed, MemberMask, Module, Prim, ReactiveEnv, SourceKind,
+};
+use crate::options::ResolvedOptions;
 
 use super::symbol_of;
+use crate::scope::is_component_tag;
 
 /// A declaration initialiser, reduced to what the fixpoint actually reads. It is
 /// OWNED, so the AST is walked exactly once and the loop below runs over a flat
@@ -25,8 +34,10 @@ enum InitOf<'a> {
     /// Reading the binding tracks nothing and it carries no constant.
     Inert,
     /// A function or arrow expression: reading the binding tracks nothing, AND
-    /// the binding is known to hold a callable.
-    Fn,
+    /// the binding is known to hold a callable. `nullary` is §3.0 rule 1.
+    Fn {
+        nullary: bool,
+    },
     Unknown,
 }
 
@@ -80,27 +91,43 @@ impl<'a> Produced<'a> {
 /// reassigned binding, a pattern with no per-name attribution — the answer is
 /// `Opaque`, which every later stage emits unwrapped and is therefore
 /// oracle-identical.
-pub fn classify<'a>(program: &Program<'a>, module: &mut Module<'a>, module_source: &str) {
+pub fn classify<'a>(
+    allocator: &'a Allocator,
+    program: &Program<'a>,
+    module: &mut Module<'a>,
+    options: &ResolvedOptions,
+) {
     let symbols = module.scoping.symbols_len();
     module.env.kind = vec![SourceKind::Opaque; symbols].into();
     module.env.konst = vec![None; symbols].into();
     module.env.bit = vec![BIT_OVERFLOW; symbols].into();
 
     let mut binder = Binder {
+        allocator,
         scoping: &module.scoping,
         env: &mut module.env,
         namespaces: Vec::new(),
         decls: Vec::new(),
         candidates: Vec::new(),
         tags: Vec::new(),
+        slotted: Vec::new(),
         exported: Vec::new(),
+        rules: options.diagnostics,
+        suspects: Vec::new(),
+        assumed: Vec::new(),
+        destructured: Vec::new(),
+        components: Vec::new(),
+        declarations: Vec::new(),
+        tagged: 0,
     };
-    binder.imports(program, module_source);
+    binder.imports(program, &options.module_source);
     binder.env.namespaces = binder.namespaces.clone();
     binder.exports(program);
     binder.visit_program(program);
     binder.fixpoint();
     binder.props_params();
+    binder.report();
+    binder.publish_components();
 
     number_reactive_symbols(&mut module.env);
 }
@@ -120,6 +147,7 @@ fn number_reactive_symbols(env: &mut ReactiveEnv<'_>) {
 }
 
 struct Binder<'p, 'a> {
+    allocator: &'a Allocator,
     scoping: &'p Scoping,
     env: &'p mut ReactiveEnv<'a>,
     /// `import * as core from "@barqjs/core"` — `core.signal(0)` still resolves.
@@ -130,8 +158,83 @@ struct Binder<'p, 'a> {
     candidates: Vec<(Option<SymbolId>, SymbolId)>,
     /// Every binding this module writes as a JSX tag.
     tags: Vec<SymbolId>,
+    /// Every binding this module writes directly into a COMPONENT tag's slot.
+    /// `<For each={rows}>{row}</For>` hands `row` to a callee that invokes it
+    /// with a scope, which is the same standing being written as a tag gives.
+    slotted: Vec<SymbolId>,
     exported: Vec<SymbolId>,
+    /// D1 and D3. Off for a build that will not deliver them, so a production
+    /// compile pays nothing for advice nobody reads.
+    rules: bool,
+    /// D1's candidates. `env.kind` is not final until [`Binder::fixpoint`], so
+    /// the walk records `(position, span, symbol)` and the verdict is taken
+    /// afterwards — which keeps the rule at zero new traversals.
+    suspects: Vec<Suspect<'a>>,
+    /// Row parameters whose `Accessor` kind is an ASSUMPTION rather than a
+    /// reading: `<For keyed={KEYED}>` and `<For {...opts}>` take the arm that is
+    /// safe when wrong, and telling the author to call a row that may be a plain
+    /// object would be advice that throws. Codegen is unaffected — the two arms
+    /// emit the same bytes for every read that does not call the row.
+    assumed: Vec<SymbolId>,
+    /// D3. `(owner, pattern span)`; the same tag-or-export evidence
+    /// [`Binder::props_params`] needs, applied at the same point.
+    destructured: Vec<(Option<SymbolId>, Span)>,
+    /// Every function this module DECLARES as a component. `(owner, span, name)`.
+    components: Vec<(Option<SymbolId>, Span, &'a str)>,
+    /// C2, the other direction. Every named function-valued declaration in the
+    /// module, whatever its body returns. A call site emits `Comp(_s$, props)`
+    /// for anything written as a tag, so any declaration this module TAGS has to
+    /// take the scope even when it never spells JSX — `function Label(props) {
+    /// return props.text() }` is an ordinary component and binding `props` to
+    /// the scope is a silent miscompilation with both halves in view.
+    declarations: Vec<(SymbolId, Span, &'a str)>,
+    /// Inside a tagged template's quasi, where the raw strings are a tag
+    /// function's arguments rather than text being built.
+    tagged: u32,
 }
+
+/// A D1 candidate: an identifier in a syntactic slot where no correct program
+/// could put an accessor.
+///
+/// The rule is that shape and only that shape. `solid/reactivity`'s "this value
+/// is somewhere that can never re-run" has ~25 open false-positive reports
+/// against `vue/no-ref-as-operand`'s handful, and the difference is the form of
+/// the question, not the amount of testing behind it.
+#[derive(Clone, Copy)]
+struct Suspect<'a> {
+    code: Code,
+    span: Span,
+    symbol: SymbolId,
+    /// The member being read, for the member-position arm.
+    member: Option<&'a str>,
+}
+
+/// Members a barq accessor legitimately has. `Signal<T>` declares
+/// `set`/`update`/`peek` (`signals.ts:1136`) and `Computed<T>` declares `peek`
+/// (`:1143`); an accessor is a FUNCTION, so `Function.prototype`'s own members
+/// are legitimate reads too.
+///
+/// This list is D1's own and is deliberately the UNION over every primitive
+/// rather than `MemberMask`: masking a member a primitive does not have turns a
+/// tracked read into `Static` (`Binder::returns`), so `MemberMask` cannot be
+/// widened to cover `useMemo(…).peek()` — and an unexempted `.peek()` on a
+/// typed public API would be a false positive on correct code.
+const ACCESSOR_MEMBERS: &[&str] = &[
+    "set",
+    "update",
+    "peek",
+    "apply",
+    "arguments",
+    "bind",
+    "call",
+    "caller",
+    "constructor",
+    "length",
+    "name",
+    "prototype",
+    "toString",
+    "valueOf",
+];
 
 impl<'a> Binder<'_, 'a> {
     /// A flat scan over top-level statements, not a walk: `build_module_record`
@@ -209,17 +312,27 @@ impl<'a> Binder<'_, 'a> {
                 // the evidence is the export itself.
                 Statement::ExportDefaultDeclaration(export) => match &export.declaration {
                     ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
-                        if function_returns_jsx(function)
-                            && let Some(props) = props_symbol(&function.params)
-                        {
-                            self.candidates.push((None, props));
+                        if function_returns_jsx(function) {
+                            if let Some(props) = props_symbol(&function.params) {
+                                self.candidates.push((None, props));
+                            }
+                            if let Some(span) = destructured_props(&function.params) {
+                                self.destructured.push((None, span));
+                            }
+                            let name =
+                                function.id.as_ref().map_or("default", |id| id.name.as_str());
+                            self.components.push((None, function.span, name));
                         }
                     }
                     ExportDefaultDeclarationKind::ArrowFunctionExpression(arrow) => {
-                        if arrow_returns_jsx(arrow)
-                            && let Some(props) = props_symbol(&arrow.params)
-                        {
-                            self.candidates.push((None, props));
+                        if arrow_returns_jsx(arrow) {
+                            if let Some(props) = props_symbol(&arrow.params) {
+                                self.candidates.push((None, props));
+                            }
+                            if let Some(span) = destructured_props(&arrow.params) {
+                                self.destructured.push((None, span));
+                            }
+                            self.components.push((None, arrow.span, "default"));
                         }
                     }
                     ExportDefaultDeclarationKind::Identifier(reference) => {
@@ -260,6 +373,135 @@ impl<'a> Binder<'_, 'a> {
                 self.env.kind[props] = SourceKind::PropsParam;
             }
         }
+    }
+
+    /// D1 and D3, taken after [`Binder::fixpoint`] and [`Binder::props_params`]
+    /// because neither `env.kind` nor the tag-or-export evidence is final until
+    /// then. Nothing here walks the AST a second time.
+    fn report(&mut self) {
+        if !self.rules {
+            return;
+        }
+        for index in 0..self.suspects.len() {
+            let Suspect { code, span, symbol, member } = self.suspects[index];
+            // Keyed on the BINDING, never on `React::Reactive`: `props.count * 2`
+            // is correct code — props lower to getters — and a rule keyed on "a
+            // reactive read in a binary expression" fires on the commonest
+            // correct pattern in the codebase.
+            let SourceKind::Accessor { .. } = self.env.kind[symbol] else { continue };
+            // An assumed accessor is not evidence. `<For keyed={KEYED}>` takes
+            // the accessor arm because it is the safe one, not because the row
+            // is one, and `KEYED === true` makes `row()` a TypeError.
+            if self.assumed.contains(&symbol) {
+                continue;
+            }
+            if member.is_some_and(|name| ACCESSOR_MEMBERS.contains(&name)) {
+                continue;
+            }
+            let name = self.scoping.symbol_name(symbol);
+            // Built here, for the handful that survived, and not at the
+            // recording site: a typical component file offers hundreds of
+            // candidates and almost none of them are accessors.
+            let fix = match member {
+                None => format!("{name}()"),
+                Some(member) => format!("{name}().{member}"),
+            };
+            let message = match code {
+                Code::Barq001 => format!(
+                    "`{name}` is an accessor, and this position turns it into a value: a function \
+                     stringifies to its own source text and arithmetic on one is NaN. Call it — \
+                     `{fix}`."
+                ),
+                Code::Barq002 => format!(
+                    "`{name}` is an accessor, and a function is always truthy, so this condition \
+                     can never take its other branch. Call it — `{fix}`."
+                ),
+                _ => format!(
+                    "`{name}` is an accessor, so `.{}` reads a property of the function rather \
+                     than of the value it returns. Call it first — `{fix}`.",
+                    member.unwrap_or_default()
+                ),
+            };
+            self.diagnose(code, span, &message);
+        }
+
+        for index in 0..self.destructured.len() {
+            let (owner, span) = self.destructured[index];
+            if !self.is_component(owner) {
+                continue;
+            }
+            self.diagnose(
+                Code::Barq005,
+                span,
+                "this component destructures its props in the parameter list, so every prop is \
+                 read once when the component is called and the names it binds are snapshots. \
+                 barq cannot make them reactive: lowering takes no Program and codegen only \
+                 splices at recorded sites. Read them where they are used — `props.text` — or \
+                 take them apart with `splitProps(props, [\"text\"])`. A prop whose VALUE is \
+                 itself an accessor is unaffected.",
+            );
+        }
+    }
+
+    /// Only the functions this module proved to be components, so neither the
+    /// dev-label containment search nor C1's scope pass can land on a `.map`
+    /// body. Published on every build: `scope` reads it to decide which
+    /// declarations take a scope, and C2 says that answer may not depend on
+    /// whether labels were asked for.
+    fn publish_components(&mut self) {
+        for index in 0..self.components.len() {
+            let (owner, span, name) = self.components[index];
+            if self.is_component(owner) {
+                self.env.components.push((span, name));
+            }
+        }
+        // C2's second half. `is_component` above wants the body to return JSX,
+        // which is the evidence that tells a component from a `<For>` row
+        // callback when the module only EXPORTS it. A tag site needs no such
+        // guess: this module writes the call, the call passes a scope, and the
+        // declaration has to accept one. Without this the two halves read
+        // different sets and the mismatch is silent.
+        for index in 0..self.declarations.len() {
+            let (owner, span, name) = self.declarations[index];
+            if !self.tags.contains(&owner) {
+                continue;
+            }
+            if self.env.components.iter().any(|(at, _)| *at == span) {
+                continue;
+            }
+            self.env.components.push((span, name));
+        }
+    }
+
+    /// The same evidence [`Binder::props_params`] takes: the function returns
+    /// JSX, and the module either writes it as a tag or lets it out. A
+    /// JSX-returning one-parameter arrow is otherwise indistinguishable from a
+    /// `<For>` row callback.
+    fn is_component(&self, owner: Option<SymbolId>) -> bool {
+        match owner {
+            None => true,
+            Some(owner) => {
+                self.tags.contains(&owner)
+                    || self.exported.contains(&owner)
+                    || self.slotted.contains(&owner)
+            }
+        }
+    }
+
+    fn diagnose(&mut self, code: Code, span: Span, message: &str) {
+        let message = self.allocator.alloc_str(message) as &'a str;
+        self.env.diagnostics.push(Diag { code, span, message });
+    }
+
+    /// D1's recorder. Only the position, the span and the symbol — the verdict
+    /// and the message both wait for the fixpoint.
+    fn suspect(&mut self, code: Code, expression: &Expression<'a>, member: Option<&'a str>) {
+        if !self.rules {
+            return;
+        }
+        let Expression::Identifier(identifier) = expression else { return };
+        let Some(symbol) = symbol_of(self.scoping, expression) else { return };
+        self.suspects.push(Suspect { code, span: identifier.span, symbol, member });
     }
 
     /// Aliasing needs the alias target's answer, so the declaration list runs to
@@ -309,7 +551,7 @@ impl<'a> Binder<'_, 'a> {
             },
             InitOf::NamespaceCall(prim) => self.returns(prim),
             InitOf::Inert => Produced::kind(SourceKind::Inert),
-            InitOf::Fn => Produced::kind(SourceKind::Fn),
+            InitOf::Fn { nullary } => Produced::kind(SourceKind::Fn { nullary }),
             InitOf::Unknown => Produced::OPAQUE,
         }
     }
@@ -369,9 +611,16 @@ impl<'a> Binder<'_, 'a> {
             Expression::Identifier(_) => {
                 symbol_of(self.scoping, expression).map_or(InitOf::Unknown, InitOf::Alias)
             }
-            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
-                InitOf::Fn
-            }
+            Expression::ArrowFunctionExpression(arrow) => InitOf::Fn {
+                nullary: !arrow.r#async
+                    && arrow.params.items.is_empty()
+                    && arrow.params.rest.is_none(),
+            },
+            Expression::FunctionExpression(function) => InitOf::Fn {
+                nullary: !function.r#async
+                    && function.params.items.is_empty()
+                    && function.params.rest.is_none(),
+            },
             Expression::CallExpression(call) => match &call.callee {
                 Expression::Identifier(_) => {
                     symbol_of(self.scoping, &call.callee).map_or(InitOf::Unknown, InitOf::Call)
@@ -393,17 +642,32 @@ impl<'a> Binder<'_, 'a> {
         if let BindingPattern::BindingIdentifier(identifier) = &declarator.id
             && let Some(owner) = identifier.symbol_id.get()
         {
-            let props = match init {
+            match init {
+                Expression::ArrowFunctionExpression(arrow) => {
+                    self.declarations.push((owner, arrow.span, identifier.name.as_str()));
+                }
+                Expression::FunctionExpression(function) => {
+                    self.declarations.push((owner, function.span, identifier.name.as_str()));
+                }
+                _ => {}
+            }
+            let params = match init {
                 Expression::ArrowFunctionExpression(arrow) if arrow_returns_jsx(arrow) => {
-                    props_symbol(&arrow.params)
+                    Some((&arrow.params, arrow.span))
                 }
                 Expression::FunctionExpression(function) if function_returns_jsx(function) => {
-                    props_symbol(&function.params)
+                    Some((&function.params, function.span))
                 }
                 _ => None,
             };
-            if let Some(props) = props {
-                self.candidates.push((Some(owner), props));
+            if let Some((params, span)) = params {
+                if let Some(props) = props_symbol(params) {
+                    self.candidates.push((Some(owner), props));
+                }
+                if let Some(pattern) = destructured_props(params) {
+                    self.destructured.push((Some(owner), pattern));
+                }
+                self.components.push((Some(owner), span, identifier.name.as_str()));
             }
         }
         let init = self.init_of(init);
@@ -430,9 +694,42 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
+    /// A binding written by NAME into a component tag's slot. It is forwarded
+    /// by identity (C5) into a position the callee invokes with a scope, so it
+    /// is a component declaration wherever it was written — the same standing
+    /// [`Binder::is_component`] gives a binding written as a tag.
+    fn slot_references(&mut self, element: &JSXElement<'a>) {
+        if !is_component_tag(&element.opening_element.name) {
+            return;
+        }
+        let mut record = |expression: &JSXExpression<'a>| {
+            if let JSXExpression::Identifier(identifier) = expression
+                && let Some(symbol) = identifier
+                    .reference_id
+                    .get()
+                    .and_then(|id| self.scoping.get_reference(id).symbol_id())
+            {
+                self.slotted.push(symbol);
+            }
+        };
+        for item in &element.opening_element.attributes {
+            if let JSXAttributeItem::Attribute(attribute) = item
+                && let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value
+            {
+                record(&container.expression);
+            }
+        }
+        for child in &element.children {
+            if let JSXChild::ExpressionContainer(container) = child {
+                record(&container.expression);
+            }
+        }
+    }
+
     /// Control-flow row parameters, by arity and position from the real
-    /// signatures (`components.ts`). The keyed `For` row VALUE is a plain value,
-    /// not an accessor — the classic name-heuristic bug (V8).
+    /// signatures (`components.ts`). The by-item `For` row VALUE is a plain
+    /// value, not an accessor — the classic name-heuristic bug (V8) — and a
+    /// key FUNCTION is a third arm, not the by-item one.
     fn row_params(&mut self, element: &JSXElement<'a>) {
         let JSXElementName::IdentifierReference(name) = &element.opening_element.name else {
             return;
@@ -446,39 +743,52 @@ impl<'a> Binder<'_, 'a> {
         let Some(flow) = self.env.kind_of(symbol).flow() else { return };
 
         // `For keyed={false}` delegates to `Index` at runtime, so it takes
-        // Index's attribution.
-        let keyed = !element.opening_element.attributes.iter().any(|item| {
-            let JSXAttributeItem::Attribute(attribute) = item else { return false };
-            let JSXAttributeName::Identifier(name) = &attribute.name else { return false };
-            name.name.as_str() == "keyed"
-                && matches!(
-                    attribute.value.as_ref(),
-                    Some(JSXAttributeValue::ExpressionContainer(container))
-                        if matches!(
-                            &container.expression,
-                            JSXExpression::BooleanLiteral(literal) if !literal.value
-                        )
-                )
-        });
+        // Index's attribution; `For keyed={fn}` boxes the row in a signal, so
+        // BOTH its parameters are accessors (`map.ts:57`). A LATER attribute
+        // wins, exactly as it does at runtime — including a spread, which can
+        // carry `keyed` where nothing can read it.
+        let mut verdict: Option<(Keyed, bool)> = None;
+        for item in &element.opening_element.attributes {
+            match item {
+                JSXAttributeItem::SpreadAttribute(_) => verdict = Some((Keyed::ByFn, false)),
+                JSXAttributeItem::Attribute(attribute) => {
+                    let JSXAttributeName::Identifier(name) = &attribute.name else { continue };
+                    if name.name.as_str() == "keyed" {
+                        verdict = Some(Keyed::verdict_of_attribute_value(attribute.value.as_ref()));
+                    }
+                }
+            }
+        }
+        let (keyed, proved) = verdict.unwrap_or((Keyed::ByItem, true));
 
         let accessor = SourceKind::Accessor { nonreactive: MemberMask::EMPTY };
-        let params: &[SourceKind] = match flow {
-            Flow::For if keyed => &[SourceKind::RowValue, accessor],
-            Flow::For | Flow::Index => &[accessor, SourceKind::Inert],
-            Flow::Repeat => &[SourceKind::Inert],
+        let params: &[SourceKind] = match (flow, keyed) {
+            (Flow::For, Keyed::ByItem) => &[SourceKind::RowValue, accessor],
+            (Flow::For, Keyed::ByFn) => &[accessor, accessor],
+            (Flow::For | Flow::Index, _) => &[accessor, SourceKind::Inert],
+            (Flow::Repeat, _) => &[SourceKind::Inert],
             _ => return,
         };
+        // Only `For`'s signature reads `keyed`; `Index` hard-codes it false and
+        // `Repeat` hands over a plain number, so an unreadable attribute list
+        // leaves those two proved.
+        let proved = proved || flow != Flow::For;
 
         for child in &element.children {
             let JSXChild::ExpressionContainer(container) = child else { continue };
             let JSXExpression::ArrowFunctionExpression(arrow) = &container.expression else {
                 continue;
             };
-            self.attribute(arrow, params);
+            self.attribute(arrow, params, proved);
         }
     }
 
-    fn attribute(&mut self, arrow: &ArrowFunctionExpression<'a>, params: &[SourceKind]) {
+    fn attribute(
+        &mut self,
+        arrow: &ArrowFunctionExpression<'a>,
+        params: &[SourceKind],
+        proved: bool,
+    ) {
         for (index, param) in arrow.params.items.iter().enumerate() {
             let Some(kind) = params.get(index) else { break };
             let BindingPattern::BindingIdentifier(identifier) = &param.pattern else {
@@ -486,6 +796,9 @@ impl<'a> Binder<'_, 'a> {
             };
             if let Some(symbol) = identifier.symbol_id.get() {
                 self.env.kind[symbol] = *kind;
+                if !proved {
+                    self.assumed.push(symbol);
+                }
             }
         }
     }
@@ -503,6 +816,21 @@ fn props_symbol(params: &FormalParameters<'_>) -> Option<SymbolId> {
         return None;
     };
     identifier.symbol_id.get()
+}
+
+/// D3's trigger, and only this shape. `solid/no-destructure` scopes itself to
+/// the parameter list and has ZERO false-positive issues in its tracker; its own
+/// docs say why — "catching it in the params covers the most common cases with
+/// good DX". A rest parameter or an arity other than one is a different shape
+/// and gets no diagnostic.
+fn destructured_props(params: &FormalParameters<'_>) -> Option<Span> {
+    if params.items.len() != 1 || params.rest.is_some() {
+        return None;
+    }
+    match &params.items[0].pattern {
+        BindingPattern::ObjectPattern(pattern) => Some(pattern.span),
+        _ => None,
+    }
 }
 
 fn function_returns_jsx(function: &Function<'_>) -> bool {
@@ -566,6 +894,23 @@ fn yields_jsx(expression: &Expression<'_>) -> bool {
     }
 }
 
+/// D1's POSITION ALLOWLIST, taken from `vue/no-ref-as-operand`, which has a
+/// handful of known issues where `solid/reactivity` has ~25 — because it reports
+/// only where no correct program could put the value. Every narrowing below is a
+/// refusal to guess.
+///
+/// There is deliberately **no JSX arm**. barq's runtime treats a function value
+/// as reactive in both children and attribute positions (`dom.ts:954`), so
+/// `<div>{count}</div>` and `<div id={count}>` are correct barq code and the
+/// fine-grained path; porting eslint-plugin-solid's `badSignal` JSX arm would
+/// make D1 fire on the framework's own idiom in the first fixture anyone writes.
+///
+/// There is also no ASSIGNMENT or UPDATE arm, which `vue/no-ref-as-operand` does
+/// have. It could not fire: `Binder::fixpoint` skips any symbol
+/// `symbol_is_mutated` reports, so a binding that is written to never reaches
+/// `SourceKind::Accessor` and D1 has no evidence to key on. Vue's rule can carry
+/// that arm because its origin tracking survives reassignment; ours is a lattice
+/// that joins to ⊤ on a write, by design.
 impl<'a> Visit<'a> for Binder<'_, 'a> {
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         self.record(it);
@@ -573,17 +918,136 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
     }
 
     fn visit_function(&mut self, it: &Function<'a>, flags: oxc::semantic::ScopeFlags) {
-        if let Some(owner) = it.id.as_ref().and_then(|id| id.symbol_id.get())
-            && function_returns_jsx(it)
-            && let Some(props) = props_symbol(&it.params)
+        let owner = it.id.as_ref().and_then(|id| id.symbol_id.get());
+        if let Some(owner) = owner
+            && let Some(name) = it.id.as_ref().map(|id| id.name.as_str())
         {
-            self.candidates.push((Some(owner), props));
+            self.declarations.push((owner, it.span, name));
+        }
+        if function_returns_jsx(it) {
+            if let Some(props) = props_symbol(&it.params)
+                && let Some(owner) = owner
+            {
+                self.candidates.push((Some(owner), props));
+            }
+            if let Some(span) = destructured_props(&it.params) {
+                self.destructured.push((owner, span));
+            }
+            if let Some(name) = it.id.as_ref().map(|id| id.name.as_str()) {
+                self.components.push((owner, it.span, name));
+            }
         }
         walk::walk_function(self, it, flags);
     }
 
+    /// The one arm the parent-kind visitors cannot express: `` `${count}` ``
+    /// renders the accessor's own source text into the DOM, and it is one of the
+    /// two cases nothing else in the toolchain catches (`tsc --strict` reports
+    /// zero errors on it).
+    fn visit_template_literal(&mut self, it: &TemplateLiteral<'a>) {
+        if self.tagged == 0 {
+            for expression in &it.expressions {
+                self.suspect(Code::Barq001, expression, None);
+            }
+        }
+        walk::walk_template_literal(self, it);
+    }
+
+    /// A tagged template's quasi is an argument list, not text — `sql`SELECT
+    /// ${table}`` hands the tag the raw value and the tag decides. Vue's rule
+    /// excludes tagged templates for the same reason.
+    fn visit_tagged_template_expression(&mut self, it: &TaggedTemplateExpression<'a>) {
+        self.tagged += 1;
+        walk::walk_tagged_template_expression(self, it);
+        self.tagged -= 1;
+    }
+
+    /// Arithmetic, concatenation and the relational operators — the positions
+    /// BARQ001's own text describes. `vue/no-ref-as-operand` is a bare
+    /// `BinaryExpression>Identifier` with no operator narrowing, and taking it
+    /// whole fires on `rows.filter((s) => s !== a)`, where comparing accessors
+    /// by identity is correct and the printed fix would silently turn identity
+    /// into a value comparison.
+    fn visit_binary_expression(&mut self, it: &BinaryExpression<'a>) {
+        use oxc::syntax::operator::BinaryOperator as Operator;
+        if !matches!(
+            it.operator,
+            // a function is a legitimate operand of both
+            Operator::Instanceof
+                | Operator::In
+                // identity, not coercion: `s !== a`, `saved === count`, `count == null`
+                | Operator::Equality
+                | Operator::Inequality
+                | Operator::StrictEquality
+                | Operator::StrictInequality
+        ) {
+            self.suspect(Code::Barq001, &it.left, None);
+            self.suspect(Code::Barq001, &it.right, None);
+        }
+        walk::walk_binary_expression(self, it);
+    }
+
+    fn visit_unary_expression(&mut self, it: &UnaryExpression<'a>) {
+        match it.operator {
+            // `typeof count === "function"` is how a caller checks whether it was
+            // handed an accessor, `void` discards, and `delete` is not a read.
+            UnaryOperator::UnaryNegation | UnaryOperator::UnaryPlus | UnaryOperator::BitwiseNot => {
+                self.suspect(Code::Barq001, &it.argument, None);
+            }
+            UnaryOperator::LogicalNot => self.suspect(Code::Barq002, &it.argument, None),
+            _ => {}
+        }
+        walk::walk_unary_expression(self, it);
+    }
+
+    fn visit_if_statement(&mut self, it: &IfStatement<'a>) {
+        self.suspect(Code::Barq002, &it.test, None);
+        walk::walk_if_statement(self, it);
+    }
+
+    fn visit_switch_statement(&mut self, it: &SwitchStatement<'a>) {
+        self.suspect(Code::Barq002, &it.discriminant, None);
+        walk::walk_switch_statement(self, it);
+    }
+
+    /// A loop test is the same always-truthy position `if` is, and the failure
+    /// is worse: the loop never ends. Vue's rule has no loop arm; this is the
+    /// one place D1 is WIDER than its prior art, and only for positions where
+    /// the operand is read as a boolean and nothing else.
+    fn visit_while_statement(&mut self, it: &WhileStatement<'a>) {
+        self.suspect(Code::Barq002, &it.test, None);
+        walk::walk_while_statement(self, it);
+    }
+
+    fn visit_do_while_statement(&mut self, it: &DoWhileStatement<'a>) {
+        self.suspect(Code::Barq002, &it.test, None);
+        walk::walk_do_while_statement(self, it);
+    }
+
+    fn visit_for_statement(&mut self, it: &ForStatement<'a>) {
+        if let Some(test) = &it.test {
+            self.suspect(Code::Barq002, test, None);
+        }
+        walk::walk_for_statement(self, it);
+    }
+
+    /// Test position only. `flag() ? count : other` passes the accessor along,
+    /// which is the normal way to hand one to a consumer.
+    fn visit_conditional_expression(&mut self, it: &ConditionalExpression<'a>) {
+        self.suspect(Code::Barq002, &it.test, None);
+        walk::walk_conditional_expression(self, it);
+    }
+
+    /// Left operand only. `other || count` is a normal way to pass an accessor
+    /// along; `count || other` can never reach its right side.
+    fn visit_logical_expression(&mut self, it: &LogicalExpression<'a>) {
+        self.suspect(Code::Barq002, &it.left, None);
+        walk::walk_logical_expression(self, it);
+    }
+
     fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {
         self.row_params(it);
+        self.slot_references(it);
         if let Some(closing) = it.closing_element.as_ref()
             && let JSXElementName::IdentifierReference(identifier) = &closing.name
             && let Some(symbol) = identifier
@@ -606,12 +1070,17 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
 
     /// `core.Portal(props)` written as a call rather than as a tag. Same binding,
     /// same component, and the SSR fallback has to see both spellings.
+    ///
+    /// D1's member arm rides here rather than adding a visitor. Only the STATIC
+    /// form: `count[key]` is a computed read whose key the analysis cannot see,
+    /// and Vue's rule excludes computed access for the same reason.
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
         if let Some(symbol) = symbol_of(self.scoping, &it.object)
             && let Some(flow) = self.env.namespace_flow(symbol, it.property.name.as_str())
         {
             self.env.namespace_flows.push(flow);
         }
+        self.suspect(Code::Barq003, &it.object, Some(it.property.name.as_str()));
         walk::walk_static_member_expression(self, it);
     }
 }

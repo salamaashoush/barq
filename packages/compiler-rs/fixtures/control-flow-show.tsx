@@ -22,6 +22,6 @@ export const optimality = {
   // The fallback is JSX, so it is a built node — `fallbackNodes` evaluates it
   // eagerly and a thunk there would only add a closure. The children were
   // written as a thunk and stay one.
-  emits: ["Show({", "when: visible", "fallback: "],
+  emits: ["Show(", "when: visible", "fallback: "],
   absent: ["(Show, {", "fallback: () =>", "when: () =>"],
 }

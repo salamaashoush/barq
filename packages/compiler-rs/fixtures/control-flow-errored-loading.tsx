@@ -40,6 +40,6 @@ export const optimality = {
   // whatever the next one returned — no `createElement` anywhere, so nothing
   // copies a props object on the way down. `Errored.fallback` takes an error
   // ACCESSOR, so the read inside it is a call.
-  emits: ["Reveal({", "Loading({", "Errored({", "fallback: (error, reset) =>"],
+  emits: ["Reveal(", "Loading(", "Errored(", ", error, reset) =>"],
   absent: ["(Reveal, {", "(Loading, {", "(Errored, {"],
 }

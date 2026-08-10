@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { For, Repeat, Show, dynamic } from "./components.ts";
+import { cell } from "./props.ts";
 import { createElement, render } from "./dom.ts";
 import { createScope, flush, signal } from "./signals.ts";
 
@@ -15,15 +16,15 @@ beforeEach(() => {
 });
 
 describe("For keyed unification", () => {
-  test("keyed={false} behaves like Index (item accessor, static index)", () => {
+  test("keyed={false} behaves like Index (null, item accessor, static index)", () => {
     const items = signal(["a", "b"]);
     let renders = 0;
 
     createScope(() => {
-      const el = For({
+      const el = For(null, {
         each: () => items(),
         keyed: false,
-        children: (item: () => string, index: number) => {
+        children: (_s: unknown, item: () => string, index: number) => {
           renders++;
           return createElement("li", null, () => `${index}:${item()}`) as Node;
         },
@@ -50,10 +51,10 @@ describe("For keyed unification", () => {
     let renders = 0;
 
     createScope(() => {
-      const el = For({
+      const el = For(null, {
         each: () => items(),
-        keyed: (item: { id: number; text: string }) => item.id,
-        children: (item: () => { id: number; text: string }) => {
+        keyed: cell((item: { id: number; text: string }) => item.id),
+        children: (_s: unknown, item: () => { id: number; text: string }) => {
           renders++;
           return createElement("li", null, () => item().text) as Node;
         },
@@ -79,9 +80,9 @@ describe("Repeat", () => {
     const count = signal(3);
 
     createScope(() => {
-      const el = Repeat({
+      const el = Repeat(null, {
         count: () => count(),
-        children: (i) => createElement("span", null, String(i)) as Node,
+        children: (_s, i) => createElement("span", null, String(i)) as Node,
       });
       render(el, container);
     });
@@ -101,11 +102,11 @@ describe("Repeat", () => {
     const count = signal(0);
 
     createScope(() => {
-      const el = Repeat({
+      const el = Repeat(null, {
         count: () => count(),
         from: 10,
         fallback: document.createTextNode("empty"),
-        children: (i) => createElement("span", null, String(i)) as Node,
+        children: (_s, i) => createElement("span", null, String(i)) as Node,
       });
       render(el, container);
     });
@@ -124,10 +125,10 @@ describe("Show keyed semantics", () => {
     let renders = 0;
 
     createScope(() => {
-      const el = Show({
+      const el = Show(null, {
         when: () => user(),
         keyed: false,
-        children: (u: () => { name: string }) => {
+        children: (_s: unknown, u: () => { name: string }) => {
           renders++;
           return createElement("div", null, () => u().name) as Node;
         },
@@ -159,9 +160,9 @@ describe("Show keyed semantics", () => {
     let renders = 0;
 
     createScope(() => {
-      const el = Show({
+      const el = Show(null, {
         when: () => user(),
-        children: (u: { name: string }) => {
+        children: (_s: unknown, u: { name: string }) => {
           renders++;
           return createElement("div", null, u.name) as Node;
         },
@@ -184,7 +185,7 @@ describe("dynamic() factory", () => {
     const Dyn = dynamic(() => which());
 
     createScope(() => {
-      const el = Dyn({ class: "x", children: "hi" });
+      const el = Dyn(null, { class: "x", children: "hi" });
       render(el, container);
     });
     flush();

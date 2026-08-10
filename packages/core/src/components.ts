@@ -1,25 +1,32 @@
 /**
- * Built-in utility components
- * Uses comment markers for fine-grained DOM updates (like SolidJS)
- * All dynamic rendering uses createScope for proper effect disposal
+ * The built-in components, on the M3 calling convention: `Comp(s, props)`,
+ * every prop a `Cell`, every renderable slot a `Block`.
+ *
+ * `CODESIGN.md` §3.2 C1/C4/C6, `SEMANTICS.md` C1–C6. Their INTERNALS are still
+ * the marker/`createScope` machinery M4 replaces with `branch`/`each`; what
+ * changed here is only the boundary they present to compiled code.
  */
 
 import type { Resource } from "./async.ts";
-import type { IsCompilerMode, StrictAccessor, StrictArrayAccessor } from "./config.ts";
 import type { Child, JSXElement } from "./dom.ts";
 import { drainFragment, isSsrHtml } from "./dom.ts";
 import { type RevealHandle, REVEAL_COORD, createRevealCoordinator } from "./boundaries.ts";
 import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
 import { createErrorCollector, createPendingCollector } from "./boundaries.ts";
 import { mapArray, repeat } from "./map.ts";
+import { merge, omit } from "./props.ts";
+import type { Block, Cell, Scope, Slot } from "./scope.ts";
 import {
   ERROR_BOUNDARY,
   computed,
   createScope,
   getOwner,
   onCleanup,
+  provideOn,
+  readSlot,
   renderEffect,
   signal,
+  underScope,
   untrack,
 } from "./signals.ts";
 
@@ -27,9 +34,40 @@ import {
 export { createMarker, createMarkerPair, clearRange, insertNodes };
 
 /**
- * Convert a Child to an array of Nodes
+ * C4/C6: read a renderable slot by CALLING it, scope first. A Cell ignores
+ * every argument (§3.0 rule 1) so `c($s)` and `c()` are the same call; a Block
+ * uses it. One call site therefore serves both kinds, and that asymmetry is the
+ * whole rule.
+ *
+ * `s` is the scope the CONSTRUCT was given, threaded down from its parameter.
+ * Reading it back off `CURRENT` instead cannot fail whatever the runtime does:
+ * an ambient read compared against itself is O4.5's defect wearing the shape of
+ * a check, and it is what left `pin` with nothing to override.
  */
-export function childToNodes(child: Child): Node[] {
+function readCell(s: Scope | null, slot: unknown, ...args: unknown[]): unknown {
+  if (typeof slot !== "function") return slot;
+  return (slot as Block<unknown>)(s, ...(args as Cell<unknown>[]));
+}
+
+/**
+ * A CELL-slot read (§3.0 rule 2): the value is called with no scope. A branded
+ * Block reaching here is rule 3's throw, not a silent build under `CURRENT`.
+ */
+function readValue(slot: unknown, origin: string): unknown {
+  return readSlot(slot, origin);
+}
+
+/** The same read, resolved to the nodes a renderable slot stands for. */
+function buildSlot(s: Scope | null, slot: unknown, ...args: unknown[]): Node[] {
+  return childToNodes(readCell(s, slot, ...args) as Child, s);
+}
+
+/**
+ * Convert a Child to an array of Nodes, under the scope a nested Block must run
+ * in. `s` defaults to the ambient owner for the hand-written callers that hold
+ * no scope; a compiled construct always passes its own.
+ */
+export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[] {
   if (child === null || child === undefined || typeof child === "boolean") {
     return [];
   }
@@ -51,14 +89,19 @@ export function childToNodes(child: Child): Node[] {
     return Array.from(holder.content.childNodes);
   }
 
+  // A function reached here is a Cell or a Block, and the two are told apart
+  // by what they IGNORE, not by a test: a Cell drops the argument, a Block
+  // uses it. Passing the scope is therefore correct for both and is the only
+  // way a Block that arrived nested inside a Cell (`children: () => props.children`)
+  // ever reaches one.
   if (typeof child === "function") {
-    return childToNodes((child as () => Child)());
+    return childToNodes((child as Block<Child>)(s), s);
   }
 
   if (Array.isArray(child)) {
     const nodes: Node[] = [];
     for (const c of child) {
-      nodes.push(...childToNodes(c));
+      nodes.push(...childToNodes(c, s));
     }
     return nodes;
   }
@@ -69,21 +112,12 @@ export function childToNodes(child: Child): Node[] {
 /**
  * Fragment component
  */
-export function Fragment(props: { children?: Child | Child[] }): JSXElement {
-  const fragment = document.createDocumentFragment();
-  const children = Array.isArray(props.children) ? props.children : [props.children];
-
-  for (const child of children) {
-    if (child !== null && child !== undefined && typeof child !== "boolean") {
-      if (child instanceof Node) {
-        fragment.appendChild(child);
-      } else if (typeof child === "string" || typeof child === "number") {
-        fragment.appendChild(document.createTextNode(String(child)));
-      }
-    }
-  }
-
-  return fragment;
+export function Fragment(_s: Scope | null, props: { children?: Child | Child[] }): JSXElement {
+  return underScope(_s, "Fragment", (s): JSXElement => {
+    const fragment = document.createDocumentFragment();
+    for (const node of buildSlot(s, props.children)) fragment.appendChild(node);
+    return fragment;
+  });
 }
 
 /**
@@ -112,89 +146,89 @@ export function Fragment(props: { children?: Child | Child[] }): JSXElement {
  */
 export type ShowProps<T> =
   | {
-      when: StrictAccessor<T | undefined | null | false>;
-      fallback?: JSXElement;
-      keyed?: true;
-      children: Child | ((item: NonNullable<T>) => Child);
+      when: Cell<T | undefined | null | false>;
+      fallback?: Slot<Child>;
+      keyed?: Cell<true>;
+      children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
     }
   | {
-      when: StrictAccessor<T | undefined | null | false>;
-      fallback?: JSXElement;
-      keyed: false;
-      children: Child | ((item: () => NonNullable<T>) => Child);
+      when: Cell<T | undefined | null | false>;
+      fallback?: Slot<Child>;
+      keyed: Cell<false>;
+      children: Block<Child, [item: Cell<NonNullable<T>>]> | Cell<Child>;
     };
 
-export function Show<T>(props: ShowProps<T>): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Show");
+export function Show<T>(_s: Scope | null, props: ShowProps<T>): JSXElement {
+  return underScope(_s, "Show", (): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("Show");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  // Normalize accessor - handle both function and raw value for defensive runtime
-  const whenAccessor = typeof props.when === "function" ? props.when : () => props.when;
-  const valueMemo = computed(whenAccessor as () => T | undefined | null | false);
-  // Non-keyed: the rendering effect tracks only truthiness
-  const condition = props.keyed === false ? computed(() => !!valueMemo()) : valueMemo;
+    const valueMemo = computed(
+      () => readValue(props.when, "Show.when") as T | undefined | null | false,
+    );
+    const keyed = readValue(props.keyed, "Show.keyed");
+    // Non-keyed: the rendering effect tracks only truthiness
+    const condition = keyed === false ? computed(() => !!valueMemo()) : valueMemo;
 
-  // Track dispose function for current content
-  let disposeContent: (() => void) | null = null;
+    // Track dispose function for current content
+    let disposeContent: (() => void) | null = null;
 
-  renderEffect(() => {
-    const value = condition();
-    const parent = endMarker.parentNode;
-    if (!parent) return;
+    renderEffect(() => {
+      const value = condition();
+      const parent = endMarker.parentNode;
+      if (!parent) return;
 
-    // Dispose previous content's effects
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-
-    // Register cleanup for when effect is disposed (component unmount)
-    onCleanup(() => {
+      // Dispose previous content's effects
       if (disposeContent) {
         disposeContent();
         disposeContent = null;
       }
+
+      // Register cleanup for when effect is disposed (component unmount)
+      onCleanup(() => {
+        if (disposeContent) {
+          disposeContent();
+          disposeContent = null;
+        }
+      });
+
+      // Clear existing content
+      clearRange(startMarker, endMarker);
+
+      if (value) {
+        // Render children in a scope for proper disposal
+        createScope(
+          (dispose, branch) => {
+            disposeContent = dispose;
+
+            // Keyed (default): pass the raw value. Non-keyed: pass a narrowed
+            // accessor so content reads stay live without re-rendering.
+            const item = keyed === false ? valueMemo : untrack(valueMemo);
+            insertNodes(endMarker, buildSlot(branch, props.children, item));
+          },
+          false,
+          "branch",
+        );
+      } else {
+        // Render fallback if provided (also in a scope)
+        if (props.fallback !== null && props.fallback !== undefined) {
+          createScope(
+            (dispose, branch) => {
+              disposeContent = dispose;
+              insertNodes(endMarker, buildSlot(branch, props.fallback));
+            },
+            false,
+            "branch",
+          );
+        }
+      }
     });
 
-    // Clear existing content
-    clearRange(startMarker, endMarker);
-
-    if (value) {
-      // Render children in a scope for proper disposal
-      createScope((dispose) => {
-        disposeContent = dispose;
-
-        // Keyed (default): pass the raw value. Non-keyed: pass a narrowed
-        // accessor so content reads stay live without re-rendering.
-        const children =
-          typeof props.children === "function"
-            ? props.keyed === false
-              ? (props.children as (item: () => NonNullable<T>) => Child)(
-                  valueMemo as () => NonNullable<T>,
-                )
-              : (props.children as (item: NonNullable<T>) => Child)(
-                  untrack(valueMemo) as NonNullable<T>,
-                )
-            : props.children;
-        const nodes = childToNodes(children);
-        insertNodes(endMarker, nodes);
-      });
-    } else {
-      // Render fallback if provided (also in a scope)
-      if (props.fallback !== null && props.fallback !== undefined) {
-        createScope((dispose) => {
-          disposeContent = dispose;
-          const nodes = childToNodes(props.fallback);
-          insertNodes(endMarker, nodes);
-        });
-      }
-    }
+    return fragment;
   });
-
-  return fragment;
 }
 
 /**
@@ -216,73 +250,86 @@ export function Show<T>(props: ShowProps<T>): JSXElement {
  */
 /**
  * For props - discriminated on `keyed` so children params infer correctly:
- * - omitted / true / key fn: keyed - children get (item, indexAccessor)
+ * - omitted / true: keyed by identity - children get (item, indexAccessor)
+ * - key fn: the row survives an item change, so the item arrives through a row
+ *   SIGNAL - children get (itemAccessor, indexAccessor)
  * - false: non-keyed (old Index) - children get (itemAccessor, index)
  */
 export type ForProps<T, U extends JSXElement> =
   | {
-      each: StrictArrayAccessor<T>;
-      fallback?: JSXElement;
-      keyFn?: (item: T) => unknown;
-      keyed?: true | ((item: T) => unknown);
-      children: (item: T, index: () => number) => U;
+      each: Cell<readonly T[] | undefined | null>;
+      fallback?: Slot<Child>;
+      keyed?: Cell<true>;
+      children: Block<U, [item: T, index: Cell<number>]>;
     }
   | {
-      each: StrictArrayAccessor<T>;
-      fallback?: JSXElement;
-      keyFn?: never;
-      keyed: false;
-      children: (item: () => T, index: number) => U;
+      each: Cell<readonly T[] | undefined | null>;
+      fallback?: Slot<Child>;
+      keyed: Cell<(item: T) => unknown>;
+      children: Block<U, [item: Cell<T>, index: Cell<number>]>;
+    }
+  | {
+      each: Cell<readonly T[] | undefined | null>;
+      fallback?: Slot<Child>;
+      keyed: Cell<false>;
+      children: Block<U, [item: Cell<T>, index: number]>;
     };
 
-export function For<T, U extends JSXElement>(props: ForProps<T, U>): JSXElement {
-  // Non-keyed mode delegates to Index semantics
-  if (props.keyed === false) {
-    return Index({
-      each: props.each,
-      fallback: props.fallback,
-      children: props.children as (item: () => T, index: number) => U,
-    });
-  }
+export function For<T, U extends JSXElement>(_s: Scope | null, props: ForProps<T, U>): JSXElement {
+  return underScope(_s, "For", (s): JSXElement => {
+    // `keyed`'s VALUE is a function, so a bare key function and a Cell carrying
+    // one land in the same slot: the compiler emits `_$cell((r) => r.id)` for a
+    // key it can see, and passes a spread source's `keyed` through verbatim.
+    // They are told apart by the parameter a key function declares and a Cell
+    // never does (§3.0 rule 1).
+    const carrier = props.keyed as unknown;
+    const keyed =
+      typeof carrier === "function" && (carrier as { length: number }).length >= 1
+        ? carrier
+        : readValue(carrier, "For.keyed");
 
-  const each = (): readonly T[] | undefined | null => {
-    const raw = props.each;
-    return (typeof raw === "function" ? raw() : raw) as readonly T[] | undefined | null;
-  };
+    // Non-keyed mode delegates to Index semantics
+    if (keyed === false) {
+      return Index(s, props as unknown as IndexProps<T, U>);
+    }
 
-  // keyed-by-function rows survive an item change: the row keeps its DOM and
-  // the item reaches children through a signal. Everything else keys on the
-  // item itself, so a changed item is a different row.
-  if (typeof props.keyed === "function") {
+    const each = (): readonly T[] | undefined | null =>
+      readValue(props.each, "For.each") as readonly T[] | undefined | null;
+
+    // keyed-by-function rows survive an item change: the row keeps its DOM and
+    // the item reaches children through a signal. Everything else keys on the
+    // item itself, so a changed item is a different row.
+    if (typeof keyed === "function") {
+      return renderRows(
+        "For",
+        mapArray(
+          each,
+          (item: () => T, index: () => number, row: Scope) =>
+            buildSlot(row, props.children, item, index),
+          {
+            keyed: keyed as (item: T) => unknown,
+            fallback: fallbackNodes(props),
+          },
+        ),
+      );
+    }
+
     return renderRows(
       "For",
       mapArray(
         each,
-        (item: () => T, index: () => number) =>
-          childToNodes(
-            (props.children as unknown as (i: () => T, n: () => number) => U)(item, index),
-          ),
-        { keyed: props.keyed, fallback: fallbackNodes(props) },
+        (item: T, index: () => number, row: Scope) => buildSlot(row, props.children, item, index),
+        { fallback: fallbackNodes(props) },
       ),
     );
-  }
-
-  return renderRows(
-    "For",
-    mapArray(
-      each,
-      (item: T, index: () => number) =>
-        childToNodes((props.children as (i: T, n: () => number) => U)(item, index)),
-      { fallback: fallbackNodes(props) },
-    ),
-  );
+  });
 }
 
 /** The fallback rendered as nodes, or undefined when there is none */
-function fallbackNodes(props: { fallback?: JSXElement }): (() => Node[]) | undefined {
+function fallbackNodes(props: { fallback?: Slot<Child> }): ((scope: Scope) => Node[]) | undefined {
   return props.fallback === null || props.fallback === undefined
     ? undefined
-    : () => childToNodes(props.fallback);
+    : (scope: Scope): Node[] => buildSlot(scope, props.fallback);
 }
 
 /**
@@ -442,23 +489,29 @@ function longestIncreasingSubsequence(arr: number[]): number[] {
  * </Index>
  * ```
  */
-export function Index<T, U extends JSXElement>(props: {
-  each: StrictArrayAccessor<T>;
-  fallback?: JSXElement;
-  children: (item: () => T, index: number) => U;
-}): JSXElement {
-  const each = (): readonly T[] | undefined | null => {
-    const raw = props.each;
-    return (typeof raw === "function" ? raw() : raw) as readonly T[] | undefined | null;
-  };
+export interface IndexProps<T, U extends JSXElement> {
+  each: Cell<readonly T[] | undefined | null>;
+  fallback?: Slot<Child>;
+  children: Block<U, [item: Cell<T>, index: number]>;
+}
 
-  return renderRows(
-    "Index",
-    mapArray(each, (item: () => T, index: number) => childToNodes(props.children(item, index)), {
-      keyed: false,
-      fallback: fallbackNodes(props),
-    }),
-  );
+export function Index<T, U extends JSXElement>(
+  _s: Scope | null,
+  props: IndexProps<T, U>,
+): JSXElement {
+  return underScope(_s, "Index", (): JSXElement => {
+    const each = (): readonly T[] | undefined | null =>
+      readValue(props.each, "Index.each") as readonly T[] | undefined | null;
+
+    return renderRows(
+      "Index",
+      mapArray(
+        each,
+        (item: () => T, index: number, row: Scope) => buildSlot(row, props.children, item, index),
+        { keyed: false, fallback: fallbackNodes(props) },
+      ),
+    );
+  });
 }
 
 /**
@@ -468,24 +521,26 @@ export function Index<T, U extends JSXElement>(props: {
  * appends, shrinking disposes from the end. For store-backed lists,
  * skeletons, and windowing.
  */
-export function Repeat(props: {
-  count: StrictAccessor<number> | number;
-  from?: number;
-  fallback?: JSXElement;
-  children: (index: number) => Child;
-}): JSXElement {
-  const count = (): number => {
-    const raw = props.count;
-    return typeof raw === "function" ? raw() : raw;
-  };
+export function Repeat(
+  _s: Scope | null,
+  props: {
+    count: Cell<number>;
+    from?: Cell<number>;
+    fallback?: Slot<Child>;
+    children: Block<Child, [index: number]>;
+  },
+): JSXElement {
+  return underScope(_s, "Repeat", (): JSXElement => {
+    const count = (): number => readValue(props.count, "Repeat.count") as number;
 
-  return renderRows(
-    "Repeat",
-    repeat(count, (index: number) => childToNodes(props.children(index)), {
-      from: () => props.from ?? 0,
-      fallback: fallbackNodes(props),
-    }),
-  );
+    return renderRows(
+      "Repeat",
+      repeat(count, (index: number, row: Scope) => buildSlot(row, props.children, index), {
+        from: () => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0,
+        fallback: fallbackNodes(props),
+      }),
+    );
+  });
 }
 
 /**
@@ -512,123 +567,130 @@ export function Repeat(props: {
  * ```
  */
 export interface MatchProps<T> {
-  when: StrictAccessor<T | undefined | null | false>;
-  keyed?: boolean;
-  children: IsCompilerMode extends true
-    ? Child | (() => Child) | ((item: NonNullable<T>) => Child)
-    : (() => Child) | ((item: NonNullable<T>) => Child);
+  when: Cell<T | undefined | null | false>;
+  keyed?: Cell<boolean>;
+  children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
 }
 
-export function Match<T>(props: MatchProps<T>): JSXElement {
-  return props as unknown as JSXElement;
+/** C8-adjacent: `Match` is an identity function — `Switch` reads its props. */
+export function Match<T>(_s: Scope | null, props: MatchProps<T>): JSXElement {
+  return underScope(_s, "Match", (): JSXElement => {
+    return props as unknown as JSXElement;
+  });
 }
 
 /**
  * Switch component - renders first matching Match child
  * Uses createScope for proper effect disposal when match changes
  */
-export function Switch(props: {
-  fallback?: JSXElement;
-  children: JSXElement | JSXElement[];
-}): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Switch");
+export function Switch(
+  _s: Scope | null,
+  props: { fallback?: Slot<Child>; children: Slot<JSXElement | JSXElement[]> },
+): JSXElement {
+  return underScope(_s, "Switch", (s): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("Switch");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  let currentNodes: Node[] = [];
-  let currentMatchIndex = -1;
-  let currentValue: unknown = undefined;
-  let disposeContent: (() => void) | null = null;
+    let currentNodes: Node[] = [];
+    let currentMatchIndex = -1;
+    let currentValue: unknown = undefined;
+    let disposeContent: (() => void) | null = null;
 
-  const getMatch = computed(() => {
-    const children = Array.isArray(props.children) ? props.children : [props.children];
+    // `children` is a Block that RETURNS the `Match` records; `Match` builds no
+    // DOM, so re-invoking it inside the memo costs an object per arm and keeps
+    // every `when` read tracked by this memo.
+    const getMatch = computed(() => {
+      const resolved = readCell(s, props.children);
+      const children = Array.isArray(resolved) ? resolved : [resolved];
 
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i] as unknown as MatchProps<unknown>;
-      if (!child || typeof child !== "object" || !("when" in child)) continue;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i] as unknown as MatchProps<unknown>;
+        if (!child || typeof child !== "object" || !("when" in child)) continue;
 
-      const when = child.when;
-      const conditionValue = typeof when === "function" ? (when as () => unknown)() : when;
+        const conditionValue = readValue(child.when, "Match.when");
 
-      if (conditionValue) {
-        return { index: i, value: conditionValue, match: child };
+        if (conditionValue) {
+          return { index: i, value: conditionValue, match: child };
+        }
       }
-    }
-    return null;
-  });
+      return null;
+    });
 
-  renderEffect(() => {
-    const result = getMatch();
+    renderEffect(() => {
+      const result = getMatch();
 
-    const needsRender = !result
-      ? currentMatchIndex !== -1
-      : currentMatchIndex !== result.index || (result.match.keyed && currentValue !== result.value);
+      const needsRender = !result
+        ? currentMatchIndex !== -1
+        : currentMatchIndex !== result.index ||
+          (result.match.keyed && currentValue !== result.value);
 
-    if (!needsRender && result && currentMatchIndex === result.index) {
-      currentValue = result.value;
-      return;
-    }
-
-    // Dispose previous content
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-
-    // Clear existing content
-    for (const node of currentNodes) {
-      node.parentNode?.removeChild(node);
-    }
-    currentNodes = [];
-
-    if (result) {
-      const { index, value, match } = result;
-      const children = match.children as Child | ((item?: unknown) => Child);
-
-      // Use detached scope so it's not auto-disposed when effect re-runs
-      // This preserves inner effects for non-keyed matches
-      createScope((dispose) => {
-        disposeContent = dispose;
-        // Always pass the value - function can choose to use it or not
-        // Don't use untrack here as it prevents inner effects from tracking
-        // MatchProps declares a bare Child legal in compiler mode, which is what
-        // a compiled static body arrives as; Show reads its children the same way.
-        const content =
-          typeof children === "function"
-            ? (children as (item?: unknown) => Child)(value)
-            : children;
-        const nodes = childToNodes(content);
-        insertNodes(endMarker, nodes);
-        currentNodes = nodes;
-      }, true); // detached
-
-      currentMatchIndex = index;
-      currentValue = value;
-    } else {
-      if (props.fallback !== null && props.fallback !== undefined) {
-        createScope((dispose) => {
-          disposeContent = dispose;
-          const nodes = childToNodes(props.fallback);
-          insertNodes(endMarker, nodes);
-          currentNodes = nodes;
-        }, true); // detached
+      if (!needsRender && result && currentMatchIndex === result.index) {
+        currentValue = result.value;
+        return;
       }
-      currentMatchIndex = -1;
-      currentValue = undefined;
-    }
-  });
 
-  // Register cleanup at component level for when parent unmounts
-  onCleanup(() => {
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-  });
+      // Dispose previous content
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
+      }
 
-  return fragment;
+      // Clear existing content
+      for (const node of currentNodes) {
+        node.parentNode?.removeChild(node);
+      }
+      currentNodes = [];
+
+      if (result) {
+        const { index, value, match } = result;
+
+        // Use detached scope so it's not auto-disposed when effect re-runs
+        // This preserves inner effects for non-keyed matches
+        createScope(
+          (dispose, branch) => {
+            disposeContent = dispose;
+            // Always pass the value - the Block can choose to use it or not
+            const nodes = buildSlot(branch, match.children, value);
+            insertNodes(endMarker, nodes);
+            currentNodes = nodes;
+          },
+          true,
+          "branch",
+        ); // detached
+
+        currentMatchIndex = index;
+        currentValue = value;
+      } else {
+        if (props.fallback !== null && props.fallback !== undefined) {
+          createScope(
+            (dispose, branch) => {
+              disposeContent = dispose;
+              const nodes = buildSlot(branch, props.fallback);
+              insertNodes(endMarker, nodes);
+              currentNodes = nodes;
+            },
+            true,
+            "branch",
+          ); // detached
+        }
+        currentMatchIndex = -1;
+        currentValue = undefined;
+      }
+    });
+
+    // Register cleanup at component level for when parent unmounts
+    onCleanup(() => {
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
+      }
+    });
+
+    return fragment;
+  });
 }
 
 /**
@@ -640,116 +702,124 @@ export function Switch(props: {
  * registered effect is pending. Revalidation of already-resolved values
  * does not re-show the fallback (content stays until replaced).
  */
-export function Loading(props: {
-  fallback?: JSXElement;
-  /**
-   * When this expression changes while async work is pending, the
-   * boundary re-shows its fallback instead of keeping stale content.
-   */
-  on?: () => unknown;
-  children: Child;
-}): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Loading");
+export function Loading(
+  _s: Scope | null,
+  props: {
+    fallback?: Slot<Child>;
+    /**
+     * When this expression changes while async work is pending, the
+     * boundary re-shows its fallback instead of keeping stale content.
+     */
+    on?: Cell<unknown>;
+    children: Slot<Child>;
+  },
+): JSXElement {
+  return underScope(_s, "Loading", (s): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("Loading");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  // Coordination with an enclosing Reveal, if any
-  const revealHandle = getOwner()?._context[REVEAL_COORD] as RevealHandle | undefined;
+    // Coordination with an enclosing Reveal, if any
+    const revealHandle = s?.ctx?.[REVEAL_COORD] as RevealHandle | undefined;
 
-  const pending = createPendingCollector();
+    const pending = createPendingCollector();
 
-  // Content lives between its own markers so it can be parked off-DOM
-  // while the fallback shows, preserving state across swaps
-  const contentFragment = document.createDocumentFragment();
-  const [contentStart, contentEnd] = createMarkerPair("LoadingContent");
-  contentFragment.appendChild(contentStart);
-  contentFragment.appendChild(contentEnd);
+    // Content lives between its own markers so it can be parked off-DOM
+    // while the fallback shows, preserving state across swaps
+    const contentFragment = document.createDocumentFragment();
+    const [contentStart, contentEnd] = createMarkerPair("LoadingContent");
+    contentFragment.appendChild(contentStart);
+    contentFragment.appendChild(contentEnd);
 
-  let disposeContent: (() => void) | null = null;
+    let disposeContent: (() => void) | null = null;
 
-  // Render children under the boundary context; a function child is
-  // re-rendered reactively (NotReadyError throws register as pending)
-  createScope((dispose) => {
-    disposeContent = dispose;
-    const owner = getOwner();
-    if (owner) pending.install(owner);
-    if (typeof props.children === "function") {
-      renderEffect(() => {
-        const resolved = (props.children as () => Child)();
-        clearRange(contentStart, contentEnd);
-        insertNodes(contentEnd, childToNodes(resolved));
-      });
-    } else {
-      insertNodes(contentEnd, childToNodes(props.children));
-    }
-  });
+    // Render children under the boundary context; a function child is
+    // re-rendered reactively (NotReadyError throws register as pending)
+    createScope(
+      (dispose, branch) => {
+        disposeContent = dispose;
+        pending.install(branch);
+        if (typeof props.children === "function") {
+          renderEffect(() => {
+            const nodes = buildSlot(branch, props.children);
+            clearRange(contentStart, contentEnd);
+            insertNodes(contentEnd, nodes);
+          });
+        } else {
+          insertNodes(contentEnd, childToNodes(props.children as Child, branch));
+        }
+      },
+      false,
+      "branch",
+    );
 
-  onCleanup(() => {
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-  });
-
-  const moveRange = (target: Node, before: Node | null, start: Node, end: Node): void => {
-    let node: Node | null = start;
-    while (node) {
-      const next: Node | null = node === end ? null : node.nextSibling;
-      target.insertBefore(node, before);
-      node = next;
-    }
-  };
-
-  // Fallback shows only until first readiness; revalidation keeps stale
-  // content - unless the `on` expression changes while pending
-  const revealed = signal(false);
-  renderEffect(() => {
-    if (pending.count() === 0) revealed.set(true);
-  });
-  if (props.on) {
-    let first = true;
-    let lastOn: unknown;
-    renderEffect(() => {
-      const value = (props.on as () => unknown)();
-      if (!first && value !== lastOn && untrack(() => pending.count()) > 0) {
-        revealed.set(false);
+    onCleanup(() => {
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
       }
-      lastOn = value;
-      first = false;
     });
-  }
 
-  const slot = revealHandle?.register({ settled: () => revealed() });
-
-  let showing: "content" | "fallback" | "nothing" | null = null;
-  renderEffect(() => {
-    const mode: "content" | "fallback" | "nothing" = slot
-      ? slot.display()
-      : pending.count() > 0 && !revealed()
-        ? "fallback"
-        : "content";
-    if (mode === showing) return;
-    showing = mode;
-
-    if (mode === "content") {
-      clearRange(startMarker, endMarker);
-      const parent = endMarker.parentNode;
-      if (parent) {
-        moveRange(parent, endMarker, contentStart, contentEnd);
+    const moveRange = (target: Node, before: Node | null, start: Node, end: Node): void => {
+      let node: Node | null = start;
+      while (node) {
+        const next: Node | null = node === end ? null : node.nextSibling;
+        target.insertBefore(node, before);
+        node = next;
       }
-    } else {
-      // Park content; show fallback (or nothing for collapsed Reveal)
-      moveRange(contentFragment, null, contentStart, contentEnd);
-      clearRange(startMarker, endMarker);
-      if (mode === "fallback" && props.fallback !== null && props.fallback !== undefined) {
-        insertNodes(endMarker, childToNodes(props.fallback));
-      }
+    };
+
+    // Fallback shows only until first readiness; revalidation keeps stale
+    // content - unless the `on` expression changes while pending
+    const revealed = signal(false);
+    renderEffect(() => {
+      if (pending.count() === 0) revealed.set(true);
+    });
+    if (props.on) {
+      let first = true;
+      let lastOn: unknown;
+      renderEffect(() => {
+        const value = readValue(props.on, "Loading.on");
+        if (!first && value !== lastOn && untrack(() => pending.count()) > 0) {
+          revealed.set(false);
+        }
+        lastOn = value;
+        first = false;
+      });
     }
-  });
 
-  return fragment;
+    const slot = revealHandle?.register({ settled: () => revealed() });
+
+    let showing: "content" | "fallback" | "nothing" | null = null;
+    renderEffect(() => {
+      const mode: "content" | "fallback" | "nothing" = slot
+        ? slot.display()
+        : pending.count() > 0 && !revealed()
+          ? "fallback"
+          : "content";
+      if (mode === showing) return;
+      showing = mode;
+
+      if (mode === "content") {
+        clearRange(startMarker, endMarker);
+        const parent = endMarker.parentNode;
+        if (parent) {
+          moveRange(parent, endMarker, contentStart, contentEnd);
+        }
+      } else {
+        // Park content; show fallback (or nothing for collapsed Reveal)
+        moveRange(contentFragment, null, contentStart, contentEnd);
+        clearRange(startMarker, endMarker);
+        if (mode === "fallback" && props.fallback !== null && props.fallback !== undefined) {
+          insertNodes(endMarker, buildSlot(s, props.fallback));
+        }
+      }
+    });
+
+    return fragment;
+  });
 }
 
 /**
@@ -761,29 +831,39 @@ export function Loading(props: {
  * - order="sequential": boundaries reveal in registration order; with
  *   `collapsed`, boundaries past the frontier render nothing at all
  */
-export function Reveal(props: {
-  order?: "sequential" | "together" | "natural";
-  collapsed?: boolean;
-  children: Child;
-}): JSXElement {
-  const handle = createRevealCoordinator(
-    () => props.order ?? "natural",
-    () => props.collapsed === true,
-  );
+export function Reveal(
+  _s: Scope | null,
+  props: {
+    order?: Cell<"sequential" | "together" | "natural">;
+    collapsed?: Cell<boolean>;
+    children: Slot<Child>;
+  },
+): JSXElement {
+  return underScope(_s, "Reveal", (): JSXElement => {
+    const handle = createRevealCoordinator(
+      () =>
+        (readValue(props.order, "Reveal.order") as
+          | "sequential"
+          | "together"
+          | "natural"
+          | undefined) ?? "natural",
+      () => readValue(props.collapsed, "Reveal.collapsed") === true,
+    );
 
-  const fragment = document.createDocumentFragment();
-  createScope(() => {
-    const owner = getOwner();
-    if (owner) {
-      owner._context = { ...owner._context, [REVEAL_COORD]: handle };
-    }
-    const nodes = childToNodes(props.children);
-    for (const node of nodes) {
-      fragment.appendChild(node);
-    }
+    const fragment = document.createDocumentFragment();
+    createScope(
+      (_dispose, branch) => {
+        provideOn(branch, REVEAL_COORD, handle);
+        for (const node of buildSlot(branch, props.children)) {
+          fragment.appendChild(node);
+        }
+      },
+      false,
+      "branch",
+    );
+
+    return fragment;
   });
-
-  return fragment;
 }
 
 /**
@@ -793,330 +873,376 @@ export function Reveal(props: {
  * it (routed via the reactive graph). The fallback receives an error
  * accessor and a reset action.
  */
-export function Errored(props: {
-  fallback: (error: () => Error, reset: () => void) => JSXElement;
-  children: Child | (() => Child);
-}): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Errored");
+export function Errored(
+  _s: Scope | null,
+  props: {
+    fallback: Block<Child, [error: Cell<Error>, reset: () => void]>;
+    children: Slot<Child>;
+  },
+): JSXElement {
+  return underScope(_s, "Errored", (): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("Errored");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  const collector = createErrorCollector();
-  const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
+    const collector = createErrorCollector();
+    const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
 
-  let disposeContent: (() => void) | null = null;
+    let disposeContent: (() => void) | null = null;
 
-  onCleanup(() => {
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-  });
+    onCleanup(() => {
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
+      }
+    });
 
-  const renderFallback = (err: Error): void => {
-    createScope((dispose) => {
-      disposeContent = dispose;
-      const reset = () => collector.clear();
-      const nodes = childToNodes(props.fallback(() => err, reset));
-      insertNodes(endMarker, nodes);
-    }, true);
-  };
+    const renderFallback = (err: Error): void => {
+      createScope(
+        (dispose, branch) => {
+          disposeContent = dispose;
+          const reset = (): void => collector.clear();
+          insertNodes(
+            endMarker,
+            buildSlot(branch, props.fallback, () => err, reset),
+          );
+        },
+        true,
+        "branch",
+      );
+    };
 
-  renderEffect(() => {
-    const err = collector.failed() ? asError(collector.error()) : null;
+    renderEffect(() => {
+      const err = collector.failed() ? asError(collector.error()) : null;
 
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-    clearRange(startMarker, endMarker);
-
-    if (err) {
-      renderFallback(err);
-      return;
-    }
-
-    try {
-      createScope((dispose) => {
-        disposeContent = dispose;
-        const owner = getOwner();
-        if (owner) collector.install(owner);
-        const children =
-          typeof props.children === "function" ? (props.children as () => Child)() : props.children;
-        insertNodes(endMarker, childToNodes(children));
-      }, true);
-    } catch (e) {
-      // Synchronous render error: record it (a write during our own run
-      // does not re-trigger this effect) and render the fallback inline
-      const error = asError(e);
-      collector.capture(error);
-      // TS can't see the createScope callback assignment
-      const dispose = disposeContent as (() => void) | null;
-      if (dispose) {
-        dispose();
+      if (disposeContent) {
+        disposeContent();
         disposeContent = null;
       }
       clearRange(startMarker, endMarker);
-      renderFallback(error);
-    }
-  });
 
-  return fragment;
+      if (err) {
+        renderFallback(err);
+        return;
+      }
+
+      try {
+        createScope(
+          (dispose, branch) => {
+            disposeContent = dispose;
+            collector.install(branch);
+            insertNodes(endMarker, buildSlot(branch, props.children));
+          },
+          true,
+          "branch",
+        );
+      } catch (e) {
+        // Synchronous render error: record it (a write during our own run
+        // does not re-trigger this effect) and render the fallback inline
+        const error = asError(e);
+        collector.capture(error);
+        // TS can't see the createScope callback assignment
+        const dispose = disposeContent as (() => void) | null;
+        if (dispose) {
+          dispose();
+          disposeContent = null;
+        }
+        clearRange(startMarker, endMarker);
+        renderFallback(error);
+      }
+    });
+
+    return fragment;
+  });
 }
 
 /**
  * Suspense component - async boundary using comment markers
  */
-export function Suspense(props: { fallback: JSXElement; children: Child }): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Suspense");
+export function Suspense(
+  _s: Scope | null,
+  props: { fallback: Slot<Child>; children: Slot<Child> },
+): JSXElement {
+  return underScope(_s, "Suspense", (): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("Suspense");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  let showFallback = true;
-  let disposeContent: (() => void) | null = null;
+    let showFallback = true;
+    let disposeContent: (() => void) | null = null;
 
-  const renderContent = () => {
-    // Dispose previous content
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-
-    clearRange(startMarker, endMarker);
-
-    createScope((dispose) => {
-      disposeContent = dispose;
-
-      if (showFallback) {
-        insertNodes(endMarker, childToNodes(props.fallback));
-      } else {
-        const nodes = childToNodes(props.children);
-        insertNodes(endMarker, nodes);
+    const renderContent = () => {
+      // Dispose previous content
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
       }
-    });
-  };
 
-  queueMicrotask(() => renderContent());
+      clearRange(startMarker, endMarker);
 
-  queueMicrotask(() => {
+      createScope(
+        (dispose, branch) => {
+          disposeContent = dispose;
+
+          insertNodes(endMarker, buildSlot(branch, showFallback ? props.fallback : props.children));
+        },
+        false,
+        "branch",
+      );
+    };
+
+    queueMicrotask(() => renderContent());
+
     queueMicrotask(() => {
-      try {
-        showFallback = false;
-        renderContent();
-      } catch (promise) {
-        if (promise instanceof Promise) {
-          void promise.then(() => {
-            showFallback = false;
-            renderContent();
-            return undefined;
-          });
+      queueMicrotask(() => {
+        try {
+          showFallback = false;
+          renderContent();
+        } catch (promise) {
+          if (promise instanceof Promise) {
+            void promise.then(() => {
+              showFallback = false;
+              renderContent();
+              return undefined;
+            });
+          }
         }
-      }
+      });
     });
-  });
 
-  return fragment;
+    return fragment;
+  });
 }
 
 /**
  * ErrorBoundary component using comment markers
  * Uses createScope for proper effect disposal
  */
-export function ErrorBoundary(props: {
-  fallback: (error: Error, reset: () => void) => JSXElement;
-  children: Child | (() => Child);
-}): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("ErrorBoundary");
+export function ErrorBoundary(
+  _s: Scope | null,
+  props: {
+    fallback: Block<Child, [error: Error, reset: () => void]>;
+    children: Slot<Child>;
+  },
+): JSXElement {
+  return underScope(_s, "ErrorBoundary", (s): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("ErrorBoundary");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  const errorSignal = signal<Error | null>(null);
-  let disposeContent: (() => void) | null = null;
+    const errorSignal = signal<Error | null>(null);
+    let disposeContent: (() => void) | null = null;
 
-  const content = computed(() => {
-    const err = errorSignal();
-    if (err) {
-      return { error: err };
-    }
+    const content = computed(() => {
+      const err = errorSignal();
+      if (err) {
+        return { error: err };
+      }
 
-    try {
-      const children =
-        typeof props.children === "function" ? (props.children as () => Child)() : props.children;
-      return { children };
-    } catch (e) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      return { error };
-    }
-  });
-
-  renderEffect(() => {
-    const result = content();
-
-    // Dispose previous content
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-
-    clearRange(startMarker, endMarker);
-
-    createScope((dispose) => {
-      disposeContent = dispose;
-
-      if ("error" in result && result.error) {
-        if (errorSignal.peek() !== result.error) {
-          queueMicrotask(() => errorSignal.set(result.error));
-        }
-        const reset = () => {
-          errorSignal.set(null);
-        };
-        const fallbackResult = props.fallback(result.error, reset);
-        insertNodes(endMarker, childToNodes(fallbackResult));
-      } else if ("children" in result) {
-        // Route errors thrown by effects under this boundary here too
-        const owner = getOwner();
-        if (owner) {
-          owner._context = {
-            ...owner._context,
-            [ERROR_BOUNDARY]: (err: unknown) => {
-              errorSignal.set(err instanceof Error ? err : new Error(String(err)));
-            },
-          };
-        }
-        const nodes = childToNodes(result.children);
-        insertNodes(endMarker, nodes);
+      try {
+        return { children: readCell(s, props.children) as Child };
+      } catch (e) {
+        const error = e instanceof Error ? e : new Error(String(e));
+        return { error };
       }
     });
-  });
 
-  return fragment;
+    renderEffect(() => {
+      const result = content();
+
+      // Dispose previous content
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
+      }
+
+      clearRange(startMarker, endMarker);
+
+      createScope(
+        (dispose, branch) => {
+          disposeContent = dispose;
+
+          if ("error" in result && result.error) {
+            if (errorSignal.peek() !== result.error) {
+              queueMicrotask(() => errorSignal.set(result.error));
+            }
+            const reset = (): void => {
+              errorSignal.set(null);
+            };
+            insertNodes(endMarker, buildSlot(branch, props.fallback, result.error, reset));
+          } else if ("children" in result) {
+            // Route errors thrown by effects under this boundary here too
+            provideOn(branch, ERROR_BOUNDARY, (err: unknown) => {
+              errorSignal.set(err instanceof Error ? err : new Error(String(err)));
+            });
+            const nodes = childToNodes(result.children, branch);
+            insertNodes(endMarker, nodes);
+          }
+        },
+        false,
+        "branch",
+      );
+    });
+
+    return fragment;
+  });
 }
 
 /**
  * Await component - render based on resource state using comment markers
  * Uses createScope for proper effect disposal
  */
-export function Await<T>(props: {
-  resource: Resource<T>;
-  loading?: JSXElement;
-  error?: (error: Error) => JSXElement;
-  children: (data: T) => JSXElement;
-}): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Await");
+export function Await<T>(
+  _s: Scope | null,
+  props: {
+    resource: Cell<Resource<T>>;
+    loading?: Slot<Child>;
+    error?: Block<Child, [error: Error]>;
+    children: Block<Child, [data: T]>;
+  },
+): JSXElement {
+  return underScope(_s, "Await", (): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("Await");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  let disposeContent: (() => void) | null = null;
+    let disposeContent: (() => void) | null = null;
 
-  renderEffect(() => {
-    const status = props.resource.state();
+    renderEffect(() => {
+      // A `Resource` is itself callable, so forwarding one by name (C5) puts a
+      // value-carrying Cell and the resource in the same slot. The resource is
+      // told from its own value by a property it has and a value does not.
+      const carrier = props.resource as unknown;
+      const resource = (
+        typeof carrier === "function" && "state" in carrier
+          ? carrier
+          : readValue(carrier, "Await.resource")
+      ) as Resource<T>;
+      const status = resource.state();
 
-    // Dispose previous content
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-
-    clearRange(startMarker, endMarker);
-
-    createScope((dispose) => {
-      disposeContent = dispose;
-
-      let nodes: Node[] = [];
-
-      switch (status) {
-        case "unresolved":
-        case "pending":
-          if (props.loading !== null && props.loading !== undefined) {
-            nodes = childToNodes(props.loading);
-          }
-          break;
-        case "errored": {
-          const err = props.resource.error();
-          if (props.error && err) {
-            nodes = childToNodes(props.error(err));
-          } else if (err) {
-            nodes = [document.createTextNode(err.message)];
-          }
-          break;
-        }
-        case "ready":
-        case "refreshing": {
-          const data = props.resource.latest();
-          if (data !== undefined) {
-            nodes = childToNodes(props.children(data));
-          }
-          break;
-        }
+      // Dispose previous content
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
       }
 
-      insertNodes(endMarker, nodes);
-    });
-  });
+      clearRange(startMarker, endMarker);
 
-  return fragment;
+      createScope(
+        (dispose, branch) => {
+          disposeContent = dispose;
+
+          let nodes: Node[] = [];
+
+          switch (status) {
+            case "unresolved":
+            case "pending":
+              if (props.loading !== null && props.loading !== undefined) {
+                nodes = buildSlot(branch, props.loading);
+              }
+              break;
+            case "errored": {
+              const err = resource.error();
+              if (props.error && err) {
+                nodes = buildSlot(branch, props.error, err);
+              } else if (err) {
+                nodes = [document.createTextNode(err.message)];
+              }
+              break;
+            }
+            case "ready":
+            case "refreshing": {
+              const data = resource.latest();
+              if (data !== undefined) {
+                nodes = buildSlot(branch, props.children, data);
+              }
+              break;
+            }
+          }
+
+          insertNodes(endMarker, nodes);
+        },
+        false,
+        "branch",
+      );
+    });
+
+    return fragment;
+  });
 }
 
 /**
  * Portal component - render children outside the component tree
  */
-export function Portal(props: { target?: HTMLElement | string; children: Child }): JSXElement {
-  const marker = createMarker("Portal");
-  let container: HTMLDivElement | null = null;
-  let disposeContent: (() => void) | null = null;
+export function Portal(
+  _s: Scope | null,
+  props: { target?: Cell<HTMLElement | string>; children: Slot<Child> },
+): JSXElement {
+  return underScope(_s, "Portal", (): JSXElement => {
+    const marker = createMarker("Portal");
+    let container: HTMLDivElement | null = null;
+    let disposeContent: (() => void) | null = null;
 
-  const cleanup = () => {
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-    if (container?.parentNode) {
-      container.parentNode.removeChild(container);
-      container = null;
-    }
-  };
-
-  // Register cleanup with owner for automatic disposal
-  onCleanup(cleanup);
-
-  queueMicrotask(() => {
-    if (!marker.isConnected) return;
-
-    let target: HTMLElement | null = null;
-    if (typeof props.target === "string") {
-      const el = document.querySelector(props.target);
-      if (el instanceof HTMLElement) {
-        target = el;
+    const cleanup = () => {
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
       }
-    } else {
-      target = props.target ?? document.body;
-    }
-    if (!target) return;
-
-    container = document.createElement("div");
-    container.style.display = "contents";
-
-    // Render children in a detached scope (cleanup handled by onCleanup above)
-    createScope((dispose) => {
-      disposeContent = dispose;
-      const nodes = childToNodes(props.children);
-      for (const node of nodes) {
-        container!.appendChild(node);
+      if (container?.parentNode) {
+        container.parentNode.removeChild(container);
+        container = null;
       }
-    }, true); // detached
+    };
 
-    target.appendChild(container);
+    // Register cleanup with owner for automatic disposal
+    onCleanup(cleanup);
+
+    queueMicrotask(() => {
+      if (!marker.isConnected) return;
+
+      const requested = readValue(props.target, "Portal.target") as
+        | HTMLElement
+        | string
+        | undefined;
+      let target: HTMLElement | null = null;
+      if (typeof requested === "string") {
+        const el = document.querySelector(requested);
+        if (el instanceof HTMLElement) {
+          target = el;
+        }
+      } else {
+        target = requested ?? document.body;
+      }
+      if (!target) return;
+
+      container = document.createElement("div");
+      container.style.display = "contents";
+
+      // Render children in a detached scope (cleanup handled by onCleanup above)
+      createScope(
+        (dispose, branch) => {
+          disposeContent = dispose;
+          for (const node of buildSlot(branch, props.children)) {
+            container!.appendChild(node);
+          }
+        },
+        true,
+        "portal",
+      ); // detached
+
+      target.appendChild(container);
+    });
+
+    return marker;
   });
-
-  return marker;
 }
 
 /**
@@ -1124,88 +1250,87 @@ export function Portal(props: { target?: HTMLElement | string; children: Child }
  * Similar to SolidJS's Dynamic component
  */
 export function Dynamic<
-  T extends keyof HTMLElementTagNameMap | ((props: Record<string, unknown>) => JSXElement),
->(props: { component: T | (() => T) } & Record<string, unknown>): JSXElement {
-  const [startMarker, endMarker] = createMarkerPair("Dynamic");
+  T extends
+    | keyof HTMLElementTagNameMap
+    | ((s: Scope | null, props: Record<string, unknown>) => JSXElement),
+>(_s: Scope | null, props: { component: Cell<T> } & Record<string, unknown>): JSXElement {
+  return underScope(_s, "Dynamic", (): JSXElement => {
+    const [startMarker, endMarker] = createMarkerPair("Dynamic");
 
-  const fragment = document.createDocumentFragment();
-  fragment.appendChild(startMarker);
-  fragment.appendChild(endMarker);
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(startMarker);
+    fragment.appendChild(endMarker);
 
-  let disposeContent: (() => void) | null = null;
+    let disposeContent: (() => void) | null = null;
 
-  // A zero-arg function is an accessor returning the component; a function
-  // taking props is the component itself
-  const getComponent = computed(() => {
-    const comp = props.component;
-    return typeof comp === "function" && (comp as () => T).length === 0
-      ? (comp as () => T)()
-      : comp;
-  });
+    const getComponent = computed(() => readValue(props.component, "Dynamic.component") as T);
 
-  renderEffect(() => {
-    const component = getComponent();
+    renderEffect(() => {
+      const component = getComponent();
 
-    // Dispose previous content
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-
-    clearRange(startMarker, endMarker);
-
-    if (!component) return;
-
-    createScope((dispose) => {
-      disposeContent = dispose;
-
-      // Extract component prop and pass rest to the component
-      const { component: _, ...rest } = props;
-      let nodes: Node[];
-
-      if (typeof component === "string") {
-        // Intrinsic element
-        const element = document.createElement(component);
-        for (const key in rest) {
-          if (key === "children") continue;
-          const value = rest[key];
-          if (key.startsWith("on") && typeof value === "function") {
-            element.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
-          } else if (value !== undefined && value !== null) {
-            element.setAttribute(
-              key,
-              typeof value === "object"
-                ? JSON.stringify(value)
-                : String(value as string | number | boolean),
-            );
-          }
-        }
-        if (rest.children) {
-          const childNodes = childToNodes(rest.children as Child);
-          for (const node of childNodes) {
-            element.appendChild(node);
-          }
-        }
-        nodes = [element];
-      } else {
-        // Function component
-        const result = (component as (props: Record<string, unknown>) => JSXElement)(rest);
-        nodes = childToNodes(result as Child);
+      // Dispose previous content
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
       }
 
-      insertNodes(endMarker, nodes);
-    }, true);
-  });
+      clearRange(startMarker, endMarker);
 
-  // Cleanup when parent disposes
-  onCleanup(() => {
-    if (disposeContent) {
-      disposeContent();
-      disposeContent = null;
-    }
-  });
+      if (!component) return;
 
-  return fragment;
+      createScope(
+        (dispose, branch) => {
+          disposeContent = dispose;
+
+          // C3/C5: `rest` is a VIEW of the same carriers, not a copy — the
+          // callee's `props.x()` still reaches the caller's Cell.
+          const rest = omit(props as Record<string, unknown>, "component");
+          let nodes: Node[];
+
+          if (typeof component === "string") {
+            // Intrinsic element
+            const element = document.createElement(component);
+            for (const key in rest) {
+              if (key === "children") continue;
+              const value = readValue((rest as Record<string, unknown>)[key], `Dynamic.${key}`);
+              if (key.startsWith("on") && typeof value === "function") {
+                element.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
+              } else if (value !== undefined && value !== null) {
+                element.setAttribute(
+                  key,
+                  typeof value === "object"
+                    ? JSON.stringify(value)
+                    : String(value as string | number | boolean),
+                );
+              }
+            }
+            if ((rest as Record<string, unknown>).children) {
+              for (const node of buildSlot(branch, (rest as Record<string, unknown>).children)) {
+                element.appendChild(node);
+              }
+            }
+            nodes = [element];
+          } else {
+            nodes = buildSlot(branch, component as unknown, rest);
+          }
+
+          insertNodes(endMarker, nodes);
+        },
+        true,
+        "branch",
+      );
+    });
+
+    // Cleanup when parent disposes
+    onCleanup(() => {
+      if (disposeContent) {
+        disposeContent();
+        disposeContent = null;
+      }
+    });
+
+    return fragment;
+  });
 }
 
 /**
@@ -1214,122 +1339,22 @@ export function Dynamic<
  * current component and swaps when the source changes.
  */
 export function dynamic<P extends Record<string, unknown>>(
-  source: () =>
-    | keyof HTMLElementTagNameMap
-    | ((props: Record<string, unknown>) => JSXElement)
-    | undefined,
-): (props: P) => JSXElement {
-  return (props: P) =>
-    Dynamic({
-      ...props,
-      component: source as () => keyof HTMLElementTagNameMap,
-    });
+  source: Cell<
+    keyof HTMLElementTagNameMap | ((s: Scope | null, props: Record<string, unknown>) => JSXElement)
+  >,
+): (s: Scope | null, props: P) => JSXElement {
+  return (s: Scope | null, props: P): JSXElement =>
+    Dynamic(s, merge(props, { component: source }) as { component: Cell<never> });
 }
 
 /**
- * Split props into two objects based on keys
- * @param props The props object to split
- * @param keys Keys to extract into the first object
- * @returns Tuple of [extracted, remaining]
+ * The props helpers live in `props.ts` and are re-exported here for the
+ * import path every consumer already uses. `CODESIGN.md` §4.1 predicted they
+ * become one-liners once the model is right; they are views over the source
+ * list and they copy nothing.
  */
-export function splitProps<T extends Record<string, unknown>, K extends keyof T>(
-  props: T,
-  keys: K[],
-): [Pick<T, K>, Omit<T, K>] {
-  const keySet = new Set(keys);
-  const picked: Partial<Pick<T, K>> = {};
-  const rest: Partial<Omit<T, K>> = {};
+export { mergeProps, merge, omit, splitProps } from "./props.ts";
 
-  for (const key in props) {
-    if (keySet.has(key as unknown as K)) {
-      (picked as Record<string, unknown>)[key] = props[key];
-    } else {
-      (rest as Record<string, unknown>)[key] = props[key];
-    }
-  }
-
-  return [picked as Pick<T, K>, rest as Omit<T, K>];
-}
-
-/**
- * Merge multiple props objects, with later objects overriding earlier ones
- * @param sources Props objects to merge
- * @returns Merged props object
- */
-export function mergeProps<T extends Record<string, unknown>[]>(
-  ...sources: T
-): T extends (infer U)[] ? U : never {
-  const result: Record<string, unknown> = {};
-
-  for (const source of sources) {
-    if (!source) continue;
-    for (const key in source) {
-      const value = source[key];
-      // Special handling for children - concat arrays
-      if (key === "children" && result.children !== undefined) {
-        const existing = result.children;
-        if (Array.isArray(existing) && Array.isArray(value)) {
-          result.children = [...existing, ...value];
-        } else if (Array.isArray(existing)) {
-          result.children = [...existing, value];
-        } else if (Array.isArray(value)) {
-          result.children = [existing, ...value];
-        } else {
-          result.children = [existing, value];
-        }
-      } else if (value !== undefined) {
-        result[key] = value;
-      }
-    }
-  }
-
-  return result as T extends (infer U)[] ? U : never;
-}
-
-/**
- * Merge props objects (Solid 2.0): unlike mergeProps, `undefined` is a
- * value — a later `undefined` overrides an earlier value.
- */
-export function merge<T extends Record<string, unknown>[]>(
-  ...sources: T
-): T extends (infer U)[] ? U : never {
-  const result: Record<string, unknown> = {};
-  for (const source of sources) {
-    if (!source) continue;
-    for (const key in source) {
-      result[key] = source[key];
-    }
-  }
-  return result as T extends (infer U)[] ? U : never;
-}
-
-/**
- * Omit keys from a props object (Solid 2.0 replacement for splitProps):
- * returns the remaining props.
- */
-export function omit<T extends Record<string, unknown>, K extends keyof T>(
-  props: T,
-  ...keys: K[]
-): Omit<T, K> {
-  const keySet = new Set<keyof T>(keys);
-  const rest: Partial<Omit<T, K>> = {};
-  for (const key in props) {
-    if (!keySet.has(key)) {
-      (rest as Record<string, unknown>)[key] = props[key];
-    }
-  }
-  return rest as Omit<T, K>;
-}
-
-/**
- * Resolve children from props, handling functions and arrays
- * @param fn Function that may return children
- * @returns Resolved children
- */
-export function children(fn: () => Child): () => Node[] {
-  const memo = computed(() => {
-    const result = fn();
-    return childToNodes(result);
-  });
-  return memo;
+export function children(fn: Slot<Child>, s: Scope | null = getOwner()): () => Node[] {
+  return computed(() => buildSlot(s, fn));
 }

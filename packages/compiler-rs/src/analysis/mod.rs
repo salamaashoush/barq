@@ -1,9 +1,11 @@
 mod bind;
 
+use oxc::allocator::Allocator;
 use oxc::ast::ast::{Expression, Program};
 use oxc::semantic::{ScopeId, Scoping, SemanticBuilder, SemanticBuilderReturn, SymbolId};
 
 use crate::ir::Module;
+use crate::options::ResolvedOptions;
 
 /// The `SymbolId` behind an identifier reference, or `None` for an unresolved
 /// global. `ReferenceId` lives in a `Cell` on the node itself, so it travels
@@ -23,12 +25,17 @@ pub fn symbol_of(scoping: &Scoping, expression: &Expression<'_>) -> Option<Symbo
 /// from. Everything P0 needs is in `Scoping`, and `Scoping` carries no AST
 /// lifetime — `Semantic::into_scoping` hands back an owned table, which is what
 /// lets the borrow of the program end here.
-pub fn bind<'a>(program: &Program<'a>, module: &mut Module<'a>, module_source: &str) {
+pub fn bind<'a>(
+    allocator: &'a Allocator,
+    program: &Program<'a>,
+    module: &mut Module<'a>,
+    options: &ResolvedOptions,
+) {
     let SemanticBuilderReturn { semantic, .. } = SemanticBuilder::new().build(program);
     let scoping = semantic.into_scoping();
     scope_ranges(&scoping, module);
     module.scoping = scoping;
-    bind::classify(program, module, module_source);
+    bind::classify(allocator, program, module, options);
 }
 
 /// `ReactiveEnv::nested` is two integer comparisons only because oxc creates
@@ -65,7 +72,6 @@ mod tests {
     use super::*;
     use crate::compile::source_type_for;
     use crate::ir::{BIT_OVERFLOW, Const, MemberMask, Prim, SourceKind};
-    use oxc::allocator::Allocator;
     use oxc::parser::Parser;
     use oxc::semantic::SymbolId;
 
@@ -74,11 +80,28 @@ mod tests {
     }
 
     fn module_of<'a>(allocator: &'a Allocator, source: &'a str) -> Module<'a> {
+        module_with(allocator, source, &ResolvedOptions::default())
+    }
+
+    fn module_with<'a>(
+        allocator: &'a Allocator,
+        source: &'a str,
+        options: &ResolvedOptions,
+    ) -> Module<'a> {
         let program =
             Parser::new(allocator, source, source_type_for(Some("a.tsx"))).parse().program;
         let mut module = Module::for_source(allocator, source);
-        bind(&program, &mut module, "@barqjs/core");
+        bind(allocator, &program, &mut module, options);
         module
+    }
+
+    /// D1 and D3 are off unless asked for, so a production compile pays nothing.
+    fn diagnosing() -> ResolvedOptions {
+        ResolvedOptions { dev: true, diagnostics: true, ..ResolvedOptions::default() }
+    }
+
+    fn codes_of(module: &Module<'_>) -> Vec<&'static str> {
+        module.env.diagnostics.iter().map(|diag| diag.code.as_str()).collect()
     }
 
     fn local<'a>(module: &'a Module<'a>, name: &str) -> SourceKind {
@@ -210,6 +233,311 @@ mod tests {
         // `For keyed={false}` delegates to Index at runtime.
         assert_eq!(local(&module, "loose"), ACCESSOR);
         assert_eq!(local(&module, "k"), SourceKind::Inert);
+    }
+
+    /// `keyed` has THREE arms, not two. A key function boxes the row in a
+    /// signal (`map.ts:57`), so both parameters are accessors — reading the
+    /// predicate as "not literal false" classified the row a plain value and
+    /// applied `{item().text}` once, with no effect (ERGONOMICS §4.3).
+    #[test]
+    fn a_key_function_makes_both_row_parameters_accessors() {
+        let allocator = Allocator::new();
+        let source = "import { For } from \"@barqjs/core\";\n\
+                      import { keyOf } from \"./keys\";\n\
+                      const a = <For each={[]} keyed={(r) => r.id}>{(fn, fi) => <li>{fn}</li>}</For>;\n\
+                      const b = <For each={[]} keyed={keyOf}>{(un, ui) => <li>{un}</li>}</For>;\n\
+                      const c = <For each={[]} keyed={true}>{(yes, yi) => <li>{yes}</li>}</For>;\n\
+                      const d = <For each={[]} keyed>{(bare, bi) => <li>{bare}</li>}</For>;\n";
+        let module = module_of(&allocator, source);
+        assert_eq!(local(&module, "fn"), ACCESSOR);
+        assert_eq!(local(&module, "fi"), ACCESSOR);
+        // Unprovable takes the key-function arm: an accessor read that turns
+        // out to be a plain value falls out `Opaque` and is emitted unwrapped,
+        // where a plain value that turns out to be an accessor is applied once.
+        assert_eq!(local(&module, "un"), ACCESSOR);
+        assert_eq!(local(&module, "ui"), ACCESSOR);
+        assert_eq!(local(&module, "yes"), SourceKind::RowValue);
+        assert_eq!(local(&module, "yi"), ACCESSOR);
+        assert_eq!(local(&module, "bare"), SourceKind::RowValue);
+        assert_eq!(local(&module, "bi"), ACCESSOR);
+    }
+
+    /// A spread can carry `keyed` where nothing can read it, so it takes the
+    /// same unprovable verdict a `keyed` behind a binding does. Reading only
+    /// `JSXAttributeItem::Attribute` left `<For {...opts}>` on the by-item arm,
+    /// which applies `{row().text}` once — ERGONOMICS §4.3 through another door.
+    #[test]
+    fn a_spread_attribute_puts_the_row_on_the_arm_that_is_safe_when_wrong() {
+        let allocator = Allocator::new();
+        let source = "import { For, Index } from \"@barqjs/core\";\n\
+                      const opts = { keyed: (r) => r.id };\n\
+                      const a = <For each={[]} {...opts}>{(sp, si) => <li>{sp}</li>}</For>;\n\
+                      const b = <For each={[]} {...{ keyed: false }}>{(ob, oi) => <li>{ob}</li>}</For>;\n\
+                      const c = <For each={[]} {...opts} keyed={true}>{(late, li) => <li>{late}</li>}</For>;\n\
+                      const d = <For each={[]} keyed={true} {...opts}>{(over, oj) => <li>{over}</li>}</For>;\n\
+                      const e = <Index each={[]} {...opts}>{(ix, ii) => <li>{ix}</li>}</Index>;\n";
+        let module = module_of(&allocator, source);
+        assert_eq!(local(&module, "sp"), ACCESSOR);
+        assert_eq!(local(&module, "si"), ACCESSOR);
+        assert_eq!(local(&module, "ob"), ACCESSOR);
+        assert_eq!(local(&module, "oi"), ACCESSOR);
+        // A LATER literal wins, exactly as it does at runtime.
+        assert_eq!(local(&module, "late"), SourceKind::RowValue);
+        assert_eq!(local(&module, "over"), ACCESSOR);
+        // `Index` hard-codes `keyed: false`, so its signature does not depend on
+        // an attribute list the analysis cannot read.
+        assert_eq!(local(&module, "ix"), ACCESSOR);
+        assert_eq!(local(&module, "ii"), SourceKind::Inert);
+    }
+
+    /// D1's POSITION ALLOWLIST, as implemented. Every arm is a slot where no
+    /// correct program could put an accessor; `vue/no-ref-as-operand` is the
+    /// model, and every narrowing below is a refusal to guess.
+    #[test]
+    fn d1_fires_only_in_the_position_allowlist() {
+        let allocator = Allocator::new();
+        let head = "import { signal, computed, useMemo } from \"@barqjs/core\";\n\
+                    const count = signal(0);\n";
+        let fires = [
+            ("`total: ${count}`", "BARQ001"),
+            ("count + \"\"", "BARQ001"),
+            ("\"x\" + count", "BARQ001"),
+            ("-count", "BARQ001"),
+            ("+count", "BARQ001"),
+            ("~count", "BARQ001"),
+            ("count < 5", "BARQ001"),
+            ("count >= 5", "BARQ001"),
+            ("!count", "BARQ002"),
+            ("count ? 1 : 2", "BARQ002"),
+            ("count || 7", "BARQ002"),
+            ("count && 7", "BARQ002"),
+            ("count.value", "BARQ003"),
+            ("count.toFixed(2)", "BARQ003"),
+        ];
+        for (expression, code) in fires {
+            let source = allocator.alloc_str(&format!("{head}const v = {expression};\n"));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), vec![code], "expected {code} for `{expression}`");
+        }
+
+        let silent = [
+            // The framework's own idiom. `dom.ts:954` treats a function value as
+            // reactive in BOTH children and attribute position, so a JSX arm
+            // would fire on correct barq code in the first fixture anyone writes.
+            "<p>{count}</p>",
+            "<p id={count}>x</p>",
+            "<p>{`total: ${count()}`}</p>",
+            // called, so every position above is a value
+            "count() + 1",
+            "-count()",
+            "count() ? 1 : 2",
+            // the accessor's own API, and Function.prototype's
+            "count.set(1)",
+            "count.peek()",
+            "count.update((n) => n + 1)",
+            "count.call(null)",
+            "count.name",
+            // right operand of ||: passing an accessor along is normal
+            "other || count",
+            // conditional CONSEQUENT, not test
+            "flag ? count : other",
+            // a tagged template hands the tag the raw value
+            "tag`total: ${count}`",
+            // computed member access: the key is not visible to the analysis
+            "count[key]",
+            // not an accessor at all
+            "plain + 1",
+            // IDENTITY, not coercion. Comparing accessors by reference is
+            // correct code — `rows.filter((s) => s !== count)` — and BARQ001's
+            // own text (stringification, NaN) describes neither operator.
+            // `vue/no-ref-as-operand` fires here; this is a deliberate
+            // narrowing, and the four equality operators are the whole of it.
+            "count === other",
+            "count !== other",
+            "count == null",
+            "other != count",
+        ];
+        for expression in silent {
+            let source = allocator.alloc_str(&format!(
+                "{head}const plain = 1;\nconst other = 2;\nconst flag = true;\n\
+                 const key = \"a\";\nconst tag = (s) => s;\nconst v = {expression};\n"
+            ));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{expression}` must be silent");
+        }
+
+        // §4.2's cited false positive: `useMemo(…).peek()` is a typed public API
+        // (`Computed<T>` declares `peek`), and `MemberMask` cannot be widened to
+        // exempt it without turning a tracked read into `Static`. D1 carries its
+        // own member list for exactly this.
+        let source = "import { useMemo, computed } from \"@barqjs/core\";\n\
+                      const a = useMemo(() => 1);\nconst b = computed(() => 2);\n\
+                      const v = a.peek() + b.peek();\n";
+        let module = module_with(&allocator, source, &diagnosing());
+        assert_eq!(codes_of(&module), Vec::<&str>::new());
+    }
+
+    /// The condition arms, which take STATEMENTS and so cannot live in the
+    /// expression table above. Every one of them reads its operand as a boolean
+    /// and nothing else, which is the whole argument for firing there.
+    #[test]
+    fn d1_covers_every_always_truthy_statement_test() {
+        let allocator = Allocator::new();
+        let head = "import { signal } from \"@barqjs/core\";\n\
+                    const count = signal(0);\nconst other = 1;\n";
+        let fires = [
+            "if (count) { }",
+            "switch (count) { }",
+            "while (count) { break; }",
+            "do { break; } while (count);",
+            "for (; count; ) { break; }",
+        ];
+        for statement in fires {
+            let source = allocator.alloc_str(&format!("{head}{statement}\n"));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), vec!["BARQ002"], "expected BARQ002 for `{statement}`");
+        }
+
+        let silent = [
+            // called, so the test is a value
+            "if (count()) { }",
+            // a `case` test is an identity comparison against the discriminant,
+            // which is the same refusal the equality operators get
+            "switch (other) { case count: break; }",
+            // not a test position at all
+            "for (const x of [count]) { break; }",
+            "for (const x in { count }) { break; }",
+            // the loop has no test to read
+            "for (;;) { break; }",
+        ];
+        for statement in silent {
+            let source = allocator.alloc_str(&format!("{head}{statement}\n"));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{statement}` must be silent");
+        }
+    }
+
+    /// D1 keys on evidence, and an unprovable `keyed` is not evidence. The row
+    /// takes the accessor arm because that is the arm that is safe when wrong;
+    /// if `KEYED` holds `true` the row is a plain object and `row()` throws, so
+    /// printing "call it" there would be advice that breaks correct code.
+    #[test]
+    fn d1_says_nothing_about_a_row_whose_accessor_kind_is_an_assumption() {
+        let allocator = Allocator::new();
+        let head = "import { For } from \"@barqjs/core\";\n\
+                    import { keyOf } from \"./keys\";\nconst KEYED = true;\n\
+                    const opts = { keyed: keyOf };\n";
+        let silent = [
+            "<For each={[]} keyed={KEYED}>{(r) => <li>{r.text}</li>}</For>",
+            "<For each={[]} keyed={undefined}>{(r) => <li>{r.text}</li>}</For>",
+            "<For each={[]} keyed={0}>{(r) => <li>{`${r}`}</li>}</For>",
+            "<For each={[]} {...opts}>{(r) => <li>{r.text}</li>}</For>",
+            // a `keyed` behind a binding is the same refusal
+            "<For each={[]} keyed={keyOf}>{(r) => <li>{r.text}</li>}</For>",
+        ];
+        for element in silent {
+            let source = allocator.alloc_str(&format!("{head}const v = {element};\n"));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{element}` must be silent");
+        }
+
+        // A key function written out IS proof, so the same read is reported.
+        let source = allocator.alloc_str(&format!(
+            "{head}const v = <For each={{[]}} keyed={{(r) => r.id}}>{{(r) => <li>{{r.text}}</li>}}</For>;\n"
+        ));
+        let module = module_with(&allocator, source, &diagnosing());
+        assert_eq!(codes_of(&module), vec!["BARQ003"]);
+    }
+
+    /// The one thing that separates this from `solid/reactivity`: the rule is
+    /// keyed on the BINDING, never on a name and never on `React::Reactive`.
+    /// `props.count * 2` is correct code — props lower to getters.
+    #[test]
+    fn d1_keys_on_the_binding_and_stays_silent_where_it_cannot_see() {
+        let allocator = Allocator::new();
+        let cases = [
+            // a props member read is ⊤-reactive and correct in every position
+            "export function Card(props) { return <p>{props.total * 2}</p>; }",
+            // cross-module: P0 Bind is module-scoped, so this is invisible. The
+            // documented false negative — NOT covered by a name heuristic, which
+            // is the proximate cause of eslint-plugin-solid #184/#190/#199.
+            "import { count } from \"./barrel\";\nconst v = `${count}`;\n",
+            // a shadowing local is a number
+            "const signal = (v) => v;\nconst count = 5;\nconst v = `${count}`;\n",
+            // a store proxy is not an accessor
+            "import { useStore } from \"@barqjs/core\";\n\
+             const [store] = useStore({ n: 1 });\nconst v = store.n + 1;\n",
+        ];
+        for source in cases {
+            let source = allocator.alloc_str(source);
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
+        }
+    }
+
+    /// D3. Scoped to the parameter list exactly as `solid/no-destructure` is —
+    /// that rule has zero false-positive issues in its tracker.
+    #[test]
+    fn d3_fires_on_a_destructured_parameter_list_and_only_there() {
+        let allocator = Allocator::new();
+        let fires = [
+            "function Chip({ text }) { return <b>{text}</b>; }\nconst v = <Chip/>;\n",
+            "const Chip = ({ text }) => <b>{text}</b>;\nexport { Chip };\n",
+            "export default function Page({ title }) { return <h1>{title}</h1>; }\n",
+        ];
+        for source in fires {
+            let source = allocator.alloc_str(source);
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), vec!["BARQ005"], "{source}");
+        }
+
+        let silent = [
+            // the shape the compiler CAN keep reactive
+            "function Chip(props) { return <b>{props.text}</b>; }\nconst v = <Chip/>;\n",
+            // a `<For>` row callback is one destructured parameter and JSX-returning
+            "import { For } from \"@barqjs/core\";\n\
+             const v = <For each={[]}>{({ text }) => <b>{text}</b>}</For>;\n",
+            // no evidence it is a component: never tagged, never exported
+            "function chip({ text }) { return <b>{text}</b>; }\n",
+            // arity is not one, so it is a different shape
+            "function Chip({ text }, extra) { return <b>{text}</b>; }\nconst v = <Chip/>;\n",
+            // returns no JSX
+            "export function useThing({ text }) { return text; }\n",
+        ];
+        for source in silent {
+            let source = allocator.alloc_str(source);
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
+        }
+    }
+
+    /// The rules are off unless asked for, so a production compile pays for no
+    /// analysis it will not deliver.
+    #[test]
+    fn the_rules_do_not_run_when_diagnostics_are_off() {
+        let allocator = Allocator::new();
+        let source = "import { signal } from \"@barqjs/core\";\n\
+                      const count = signal(0);\nconst v = `${count}`;\n";
+        let off = module_with(&allocator, source, &ResolvedOptions::default());
+        assert_eq!(codes_of(&off), Vec::<&str>::new());
+        let on = module_with(&allocator, source, &diagnosing());
+        assert_eq!(codes_of(&on), vec!["BARQ001"]);
+    }
+
+    /// The only component IDENTITY the IR carries. `Skeleton::origin` answers
+    /// "which JSX produced these bytes" and cannot answer "whose JSX is it".
+    #[test]
+    fn dev_labels_record_the_span_and_name_of_every_component() {
+        let allocator = Allocator::new();
+        let source = "function Chip(props) { return <b>{props.text}</b>; }\n\
+                      export default function Page() { return <div><Chip/></div>; }\n";
+        let module = module_with(&allocator, source, &diagnosing());
+        let names: Vec<&str> = module.env.components.iter().map(|(_, name)| *name).collect();
+        assert!(names.contains(&"Chip"), "{names:?}");
+        assert!(names.contains(&"Page"), "{names:?}");
+        for (span, _) in &module.env.components {
+            assert!(span.end > span.start);
+        }
     }
 
     #[test]

@@ -125,7 +125,11 @@ function NestedStoreDemo() {
           <select
             value={user.preferences.theme}
             onChange={(e: Event) =>
-              setUser("preferences", "theme", (e.target as HTMLSelectElement).value as "light" | "dark")
+              setUser(
+                "preferences",
+                "theme",
+                (e.target as HTMLSelectElement).value as "light" | "dark",
+              )
             }
             class={selectStyle}
           >
@@ -140,9 +144,7 @@ function NestedStoreDemo() {
           <input
             type="checkbox"
             checked={user.preferences.notifications}
-            onChange={() =>
-              setUser("preferences", "notifications", (prev: boolean) => !prev)
-            }
+            onChange={() => setUser("preferences", "notifications", (prev: boolean) => !prev)}
           />
           Enable Notifications
         </label>
@@ -245,7 +247,7 @@ function TodoStoreDemo() {
         fallback={<div class={emptyStyle}>No todos yet!</div>}
       >
         <ul class={todoListStyle}>
-          <For each={filteredTodos} keyFn={(todo) => todo.id}>
+          <For each={filteredTodos}>
             {(todo) => (
               <li class={todoItemStyle}>
                 <label class={todo.completed ? completedStyle : ""}>
@@ -256,11 +258,7 @@ function TodoStoreDemo() {
                   />
                   {todo.text}
                 </label>
-                <button
-                  type="button"
-                  class={deleteButtonStyle}
-                  onClick={() => removeTodo(todo.id)}
-                >
+                <button type="button" class={deleteButtonStyle} onClick={() => removeTodo(todo.id)}>
                   Delete
                 </button>
               </li>
@@ -352,7 +350,7 @@ function ReconcileDemo() {
   return (
     <DemoCard title="reconcile - Efficient Diffing">
       <ul class={userListStyle}>
-        <For each={state.items} keyFn={(item) => item.id}>
+        <For each={state.items}>
           {(item) => (
             <li class={userItemStyle}>
               ID: {item.id}, Value: <strong>{item.value}</strong>

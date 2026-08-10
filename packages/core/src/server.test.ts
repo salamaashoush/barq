@@ -61,7 +61,7 @@ describe("renderToString", () => {
     });
 
     const html = renderToString(() =>
-      Loading({
+      Loading(null, {
         fallback: document.createTextNode("loading..."),
         children: () => {
           try {
@@ -90,7 +90,7 @@ describe("renderToStringAsync", () => {
     );
 
     const html = await renderToStringAsync(() =>
-      Loading({
+      Loading(null, {
         fallback: document.createTextNode("loading..."),
         children: () => document.createTextNode(`Hello ${user().name}`),
       }),
@@ -147,7 +147,7 @@ describe("hydrate", () => {
         { key: "user" },
       );
       return () =>
-        Loading({
+        Loading(null, {
           fallback: document.createTextNode("loading..."),
           children: () => document.createTextNode(`Hello ${user()}`),
         });
@@ -211,7 +211,7 @@ describe("concurrent server renders", () => {
         { key: `data-${label}` },
       );
       return () =>
-        Loading({
+        Loading(null, {
           fallback: document.createTextNode("..."),
           children: () => document.createTextNode(`got:${data()}`),
         });

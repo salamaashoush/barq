@@ -26,6 +26,6 @@ export const optimality = {
   // `Match` is NOT a ternary: it returns its own props object and `Switch`
   // reads them, so the DOM backend has to emit real `Match({…})` calls inside
   // the `children` array. Only the SSR backend inlines the construct.
-  emits: ["Switch({", "children: [Match({", "}), Match({"],
+  emits: ["Switch(", "[Match(", "}), Match("],
   absent: ["(Switch, {", "(Match, {"],
 }

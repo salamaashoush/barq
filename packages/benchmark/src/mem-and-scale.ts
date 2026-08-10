@@ -74,7 +74,9 @@ function time(name: string, barq: () => void, solid: () => void, n: number): voi
 }
 
 console.log("\n== large graph (µs/op) ==");
-console.log(`${"case".padEnd(42)}${"barq µs".padStart(10)}${"solid2 µs".padStart(11)}${"ratio".padStart(9)}`);
+console.log(
+  `${"case".padEnd(42)}${"barq µs".padStart(10)}${"solid2 µs".padStart(11)}${"ratio".padStart(9)}`,
+);
 
 {
   // 1000 signals -> 1000 memos -> 100 effects each reading 10 memos
@@ -138,7 +140,9 @@ console.log(`${"case".padEnd(42)}${"barq µs".padStart(10)}${"solid2 µs".padSta
 }
 
 console.log("\n== store (µs/op) ==");
-console.log(`${"case".padEnd(42)}${"barq µs".padStart(10)}${"solid2 µs".padStart(11)}${"ratio".padStart(9)}`);
+console.log(
+  `${"case".padEnd(42)}${"barq µs".padStart(10)}${"solid2 µs".padStart(11)}${"ratio".padStart(9)}`,
+);
 {
   const [bs, bset] = bStore({ a: { b: { c: 0 } }, list: [] as number[] });
   bEffect(() => bs.a.b.c);

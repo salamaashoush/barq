@@ -12,5 +12,5 @@
  * ```
  */
 
-export { barqVitePlugin, loadNativeCompiler, resetNativeCompilerCache } from "./vite.js"
-export type { BarqCompilerOptions, BarqVitePluginOptions } from "./vite.js"
+export { barqVitePlugin, loadNativeCompiler, resetNativeCompilerCache } from "./vite.js";
+export type { BarqCompilerOptions, BarqOptimisation, BarqVitePluginOptions } from "./vite.js";

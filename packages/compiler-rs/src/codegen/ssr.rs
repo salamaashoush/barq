@@ -6,20 +6,22 @@
 //! P6 addressing is skipped entirely — a string has no siblings to walk to.
 //!
 //! The two backends cannot drift because they read the same IR through two
-//! total matches: `node` over `SkelNode` and `open_tag`/`slot` over `Op`. A new
-//! opcode without a row here does not compile.
+//! total matches: `node` over `SkelNode`, here, and the shared
+//! [`crate::codegen::backend::Backend`] over `Op`, which both implement and
+//! neither may leave a hole in.
 
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, Expression, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement, JSXFragment,
-    TemplateElement, TemplateElementValue, TemplateLiteral,
+    Argument, Expression, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement, JSXExpression,
+    JSXFragment, TemplateElement, TemplateElementValue, TemplateLiteral,
 };
 use oxc::span::{GetSpan, Span};
 
+use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
-    Flow, NONE, NodeId, Ns, Op, Root, Site, SkelAttrValue, SkelNode, SlotId, TagFlags, Unit,
-    tag_flags,
+    Anchor, Chan, Diff, ExprId, Flow, HandlerRef, InsertPlan, NONE, NameId, NodeId, Ns, Op,
+    PartRange, Root, Site, SkelAttrValue, SkelNode, SlotId, StrId, TagFlags, Unit, tag_flags,
 };
 use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, intrinsic_tag};
@@ -199,32 +201,16 @@ fn element_into<'a>(
 
     // O9, and the one place the two serialisers reason differently. The DOM
     // rule looks PAST leading slots because a slot materialises nothing at
-    // parse time; here a slot writes real bytes, so only a literal newline
-    // sitting directly against the open tag can be eaten by the browser that
-    // parses this markup.
-    if flags.contains(TagFlags::PRESERVE_WS)
-        && lo < hi
-        && let SkelNode::Text(text) | SkelNode::RawHtml(text) = *unit.skeleton.node(lo)
-        && text.starts_with('\n')
-    {
+    // parse time; here a slot writes real BYTES whose first one the compiler
+    // cannot see, and the parser reading this markup eats it.
+    if flags.contains(TagFlags::PRESERVE_WS) && leading_newline_is_eaten(ctx, unit, node) {
         chunks.text("\n");
     }
 
     if let Some(index) = content_patch(ctx, unit, node) {
         let patch = unit.patch[index];
-        let (name, value) = match patch.op {
-            Op::SetOnce { name, value, .. }
-            | Op::SetLive { name, value, .. }
-            | Op::SetOpaque { name, value } => (name, value),
-            Op::SetHtml { value, .. } => (NONE, value),
-            _ => unreachable!("`content_patch` matches only these"),
-        };
-        let key = if name == NONE { "innerHTML" } else { ctx.module.interner.name(name).text };
-        let value = take(ctx, unit, value, patch.span);
-        let key = ctx.string(key, patch.span);
-        let callee = ctx.helper(Helper::Content, patch.span);
-        let call = ctx.call(callee, vec![Argument::from(key), Argument::from(value)], patch.span);
-        chunks.hole(call);
+        let mut backend = Ssr { ctx, unit, chunks, place: Place::Content };
+        lower(&mut backend, At::one(patch));
     }
 
     for child in lo..hi {
@@ -233,6 +219,35 @@ fn element_into<'a>(
     chunks.text("</");
     chunks.text(tag);
     chunks.text(">");
+}
+
+/// Whether the parser reading this markup will eat the first byte the element's
+/// content writes, so the compiler owes it a newline of its own to lose instead.
+///
+/// "in body" ignores one U+000A directly after `<pre>`, `<textarea>` and
+/// `<listing>`, and it ignores it whatever the next character turns out to be.
+/// So a hole is always guarded: its value is bytes the compiler cannot see, and
+/// a value that begins with a newline — or one that renders empty, leaving the
+/// literal behind it against the tag — is otherwise a character the client keeps
+/// and the server drops. `browser-parse-check.ts` measures both halves in real
+/// Chrome.
+fn leading_newline_is_eaten(ctx: &Emit<'_, '_>, unit: &Unit<'_>, node: NodeId) -> bool {
+    if content_patch(ctx, unit, node).is_some() {
+        return true;
+    }
+    let (lo, hi) = unit.skeleton.node(node).as_element().expect("checked by the caller").children;
+    (lo..hi)
+        .find_map(|child| match *unit.skeleton.node(child) {
+            // Neither writes a byte here, so the question passes to the next
+            // child — where the DOM serialiser's rule stops at a `Marker`,
+            // because there it really is the token the parser sees first.
+            SkelNode::Marker(_) | SkelNode::Empty => None,
+            SkelNode::Text(text) | SkelNode::RawHtml(text) if text.is_empty() => None,
+            SkelNode::Text(text) | SkelNode::RawHtml(text) => Some(text.starts_with('\n')),
+            SkelNode::Slot(_) => Some(true),
+            SkelNode::Element(_) => Some(false),
+        })
+        .unwrap_or(false)
 }
 
 /// The patch that owns the element's CHILD position instead of an attribute.
@@ -319,7 +334,9 @@ fn open_tag<'a>(
                     emit_class(ctx, unit, chunks, node, &mut emitted_class);
                     continue;
                 }
-                attribute_call(ctx, unit, chunks, index, tag);
+                let patch = unit.patch[index];
+                let mut backend = Ssr { ctx, unit, chunks, place: Place::OpenTag(tag) };
+                lower(&mut backend, At::one(patch));
             }
         }
     }
@@ -378,57 +395,150 @@ fn patch_name(unit: &Unit<'_>, index: usize) -> Option<u32> {
     }
 }
 
-/// The SSR row for every `Op` `attribute_slot` admits. The two matches together
-/// are total over `Op` and neither has a wildcard arm, so a new opcode with no
-/// row is a compile error — which is the whole of DESIGN §4's "the two backends
-/// cannot drift" claim.
-///
-/// The row writes into the chunk stream rather than returning an expression,
-/// because a row is allowed to produce BYTES: a literal style object has one
-/// answer the compiler can compute, and computing it is target #3 in the one
-/// context where a style really can be folded.
-fn attribute_call<'a>(
-    ctx: &mut Emit<'a, '_>,
-    unit: &mut Unit<'a>,
-    chunks: &mut Chunks<'a>,
-    index: usize,
-    tag: &'a str,
-) {
-    let patch = unit.patch[index];
-    match patch.op {
-        // Reactivity is irrelevant on the wire: the value is read once and
-        // interpolated, so `SetOnce`, `SetLive` and `SetOpaque` are one row.
-        Op::SetOnce { name, value, .. }
-        | Op::SetLive { name, value, .. }
-        | Op::SetOpaque { name, value } => {
-            let key = ctx.module.interner.name(name).text;
-            attr_row(ctx, unit, chunks, key, value, tag, patch.span);
-        }
-        Op::SetClass { .. } => {
-            let call = class_call(ctx, unit, patch.target, patch.span);
-            chunks.hole(call);
-        }
-        Op::SetStyle { prop, value, .. } => {
-            let key = ctx.module.interner.name(prop).text;
-            attr_row(ctx, unit, chunks, key, value, tag, patch.span);
-        }
-        Op::Spread { value, .. } => {
-            let value = take(ctx, unit, value, patch.span);
-            let tag = ctx.string(tag, patch.span);
-            let callee = ctx.helper(Helper::SpreadAttrs, patch.span);
-            let call =
-                ctx.call(callee, vec![Argument::from(value), Argument::from(tag)], patch.span);
-            chunks.hole(call);
-        }
-        Op::Delegate { .. }
-        | Op::Listen { .. }
-        | Op::Ref { .. }
-        | Op::SetHtml { .. }
-        | Op::EffectGroup { .. }
-        | Op::Insert { .. } => {
-            unreachable!("`attribute_slot` sends these somewhere that is not the open tag")
+/// Which of the three positions on the wire an op is being lowered for. The
+/// skeleton walk knows this and the op does not, so it travels with the backend
+/// rather than being re-derived per row.
+#[derive(Clone, Copy)]
+enum Place<'a> {
+    /// between `<tag` and `>`
+    OpenTag(&'a str),
+    /// the element's whole child position, which `innerHTML` and `textContent`
+    /// own outright
+    Content,
+    /// a hole in the child list
+    Child,
+}
+
+/// P8b's `Backend`. A row writes into the chunk stream rather than returning an
+/// expression, because a row is allowed to produce BYTES: a literal style object
+/// has one answer the compiler can compute, and computing it is target #3 in the
+/// one context where a style really can be folded.
+struct Ssr<'a, 'e, 'm, 'u, 'c> {
+    ctx: &'e mut Emit<'a, 'm>,
+    unit: &'u mut Unit<'a>,
+    chunks: &'c mut Chunks<'a>,
+    place: Place<'a>,
+}
+
+impl<'a> Ssr<'a, '_, '_, '_, '_> {
+    /// Reactivity is irrelevant on the wire: the value is read once and
+    /// interpolated, so `SetOnce`, `SetLive` and `SetOpaque` are one row.
+    fn named(&mut self, at: At<'_>, name: NameId, value: ExprId) {
+        let span = at.span();
+        let key = self.ctx.module.interner.name(name).text;
+        match self.place {
+            Place::OpenTag(tag) => {
+                attr_row(self.ctx, self.unit, self.chunks, key, value, tag, span);
+            }
+            Place::Content => self.content(key, value, span),
+            Place::Child => unreachable!("a named attribute never owns a child position"),
         }
     }
+
+    /// `content(key, value)` — the helper that decides between `innerHTML` and
+    /// escaped text, which is the same decision `setProp` makes on the client.
+    fn content(&mut self, key: &'a str, value: ExprId, span: Span) {
+        let value = take(self.ctx, self.unit, value, span);
+        let key = self.ctx.string(key, span);
+        let callee = self.ctx.helper(Helper::Content, span);
+        let call = self.ctx.call(callee, vec![Argument::from(key), Argument::from(value)], span);
+        self.chunks.hole(call);
+    }
+
+    fn open_tag(&self) -> &'a str {
+        match self.place {
+            Place::OpenTag(tag) => tag,
+            Place::Content | Place::Child => {
+                unreachable!("`attribute_slot` sends this op to the open tag and nowhere else")
+            }
+        }
+    }
+}
+
+impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
+    /// A row appends to the chunk stream, so there is nothing to hand back.
+    type Out = ();
+
+    fn set_once(&mut self, at: At<'_>, name: NameId, value: ExprId, _chan: Chan) {
+        self.named(at, name, value);
+    }
+
+    fn set_live(&mut self, at: At<'_>, name: NameId, value: ExprId, _chan: Chan, _diff: Diff) {
+        self.named(at, name, value);
+    }
+
+    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId) {
+        self.named(at, name, value);
+    }
+
+    fn set_class(&mut self, at: At<'_>, _base: Option<StrId>, _parts: PartRange, _live: bool) {
+        self.open_tag();
+        let call = class_call(self.ctx, self.unit, at.target(), at.span());
+        self.chunks.hole(call);
+    }
+
+    fn set_style(&mut self, at: At<'_>, prop: NameId, value: ExprId, _live: bool) {
+        let tag = self.open_tag();
+        let key = self.ctx.module.interner.name(prop).text;
+        attr_row(self.ctx, self.unit, self.chunks, key, value, tag, at.span());
+    }
+
+    fn spread(&mut self, at: At<'_>, value: ExprId, _live: bool) {
+        let tag = self.open_tag();
+        let span = at.span();
+        let value = take(self.ctx, self.unit, value, span);
+        let tag = self.ctx.string(tag, span);
+        let callee = self.ctx.helper(Helper::SpreadAttrs, span);
+        let call = self.ctx.call(callee, vec![Argument::from(value), Argument::from(tag)], span);
+        self.chunks.hole(call);
+    }
+
+    /// `dangerouslySetInnerHTML` names no attribute, so it owns the child
+    /// position outright and `content_patch` is what routes it here.
+    fn set_html(&mut self, at: At<'_>, value: ExprId, _live: bool) {
+        match self.place {
+            Place::Content => self.content("innerHTML", value, at.span()),
+            Place::OpenTag(_) | Place::Child => {
+                unreachable!("`content_patch` owns this op's position")
+            }
+        }
+    }
+
+    /// A hole in the child list. The value's own bytes join this concatenation.
+    fn insert(
+        &mut self,
+        at: At<'_>,
+        _slot: SlotId,
+        _anchor: Anchor,
+        value: ExprId,
+        _plan: InsertPlan,
+    ) {
+        match self.place {
+            Place::Child => {
+                let expression = take(self.ctx, self.unit, value, at.span());
+                value_into(self.ctx, self.chunks, expression);
+            }
+            Place::OpenTag(_) | Place::Content => {
+                unreachable!("a slot owns its own position in the child list")
+            }
+        }
+    }
+
+    // ── nothing reaches the wire ──────────────────────────────────────────
+    //
+    // Not "unhandled": these are decisions. A server render has no element to
+    // hang a handler on, no variable to write a ref into, and no effect to
+    // group — the client installs all three when it hydrates. Writing them out
+    // is what keeps the choice reviewable, and what makes a NEW opcode that
+    // needs bytes on the wire impossible to forget.
+
+    fn delegate(&mut self, _at: At<'_>, _event: NameId, _h: HandlerRef, _data: Option<ExprId>) {}
+
+    fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef) {}
+
+    fn set_ref(&mut self, _at: At<'_>, _value: ExprId) {}
+
+    fn effect_group(&mut self, _at: At<'_>, _len: u16) {}
 }
 
 /// `attr(name, value, tag)`, unless the value is a style object every key and
@@ -735,9 +845,8 @@ fn slot_into<'a>(
         return;
     };
     let patch = unit.patch[index];
-    let Op::Insert { value, .. } = patch.op else { unreachable!("matched above") };
-    let expression = take(ctx, unit, value, patch.span);
-    value_into(ctx, chunks, expression);
+    let mut backend = Ssr { ctx, unit, chunks, place: Place::Child };
+    lower(&mut backend, At::one(patch));
 }
 
 /// One hole. The three cases are the whole escaping policy: markup the compiler
@@ -956,6 +1065,16 @@ fn jsx_element_into<'a>(
     }
     chunks.text(">");
 
+    // O9, for the JSX P1 refused. `<textarea>{value}</textarea>` reaches the
+    // wire through here and nowhere else, and it is the shape the rule bites
+    // hardest: `createElement` appends the value as a text node, so a client
+    // keeps a leading newline that the server's parser would eat.
+    if flags.contains(TagFlags::PRESERVE_WS)
+        && (content.is_some() || jsx_first_byte_is_eaten(ctx, &children).unwrap_or(false))
+    {
+        chunks.text("\n");
+    }
+
     if let Some((name, value)) = content {
         let span = value.span();
         let key = ctx.string(name, span);
@@ -968,6 +1087,26 @@ fn jsx_element_into<'a>(
     chunks.text("</");
     chunks.text(tag);
     chunks.text(">");
+}
+
+/// [`leading_newline_is_eaten`] over children that are still JSX. `None` is a
+/// child that writes no byte, which passes the question to its next sibling.
+///
+/// No `PRESERVE_WS` tag is a raw-text one, so the bake asked about here is
+/// always the escaping one.
+fn jsx_first_byte_is_eaten<'a>(ctx: &Emit<'a, '_>, children: &[JSXChild<'a>]) -> Option<bool> {
+    children.iter().find_map(|child| match child {
+        JSXChild::Text(node) => {
+            let cleaned = text::clean(node.span.source_text(ctx.source), ctx.allocator)?;
+            Some(bake_text(ctx, cleaned, None).starts_with('\n'))
+        }
+        JSXChild::Fragment(fragment) => jsx_first_byte_is_eaten(ctx, &fragment.children),
+        JSXChild::ExpressionContainer(container) => {
+            (!matches!(container.expression, JSXExpression::EmptyExpression(_))).then_some(true)
+        }
+        JSXChild::Spread(_) => Some(true),
+        JSXChild::Element(_) => Some(false),
+    })
 }
 
 fn children_into<'a>(
@@ -1107,7 +1246,9 @@ mod tests {
         )
         .code;
         assert!(code.contains("_$rawText("), "{code}");
-        assert!(code.contains("<textarea>${_$esc(t)}</textarea>"), "{code}");
+        // The newline in front of the hole is O9's guard, pinned by
+        // `compile::tests::the_string_backend_guards_a_hole_against_the_same_rule`.
+        assert!(code.contains("<textarea>\n${_$esc(t)}</textarea>"), "{code}");
     }
 
     /// A no-break space is the one byte the DOM path never had to spell: the
@@ -1178,13 +1319,13 @@ mod tests {
         assert!(!code.contains("_$esc(_$ssr"), "{code}");
         // `Match` is an identity function that touches no DOM, so it needs no
         // string implementation of its own — `Switch` reads its props object.
-        assert!(code.contains("Match({"), "{code}");
+        assert!(code.contains("Match(_s$, {"), "{code}");
         assert!(code.contains("from \"@barqjs/core/server\""), "{code}");
 
         // By SymbolId and never by name.
         let local =
             ssr("const Show = (p) => p.when;\nexport const V = () => <Show when={1} />;\n").code;
-        assert!(local.contains("_$esc(Show({"), "{local}");
+        assert!(local.contains("_$esc(Show(_s$, {"), "{local}");
         assert!(!local.contains("_$ssrShow"), "{local}");
     }
 
@@ -1253,7 +1394,12 @@ mod tests {
         let code = ssr("import { Show } from \"@barqjs/core\";\n\
              export const V = () => <div><Show when={on}><p class=\"y\">yes</p></Show></div>;\n")
         .code;
-        assert!(code.contains("children: _$html(`<p class=\"y\">yes</p>`)"), "{code}");
+        // C6: the body is a BLOCK taking a scope, and its unit is spliced into
+        // the arrow rather than built as an argument.
+        assert!(
+            code.contains("children: _$block((_s$) => _$html(`<p class=\"y\">yes</p>`)"),
+            "{code}"
+        );
         assert!(code.contains("_$html(`<div>${_$ssrShow("), "{code}");
     }
 

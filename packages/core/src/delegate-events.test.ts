@@ -213,7 +213,7 @@ describe("delegateEvents", () => {
     container.appendChild(el);
 
     let calls = 0;
-    setProp(el, "onClick", () => {
+    setProp(null, el, "onClick", () => {
       calls++;
     });
 

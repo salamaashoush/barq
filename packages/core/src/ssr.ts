@@ -14,6 +14,8 @@
  */
 
 import { SSR_HTML_BRAND, classToString, isSsrHtml, styleToString } from "./dom.ts";
+import type { Scope } from "./scope.ts";
+import { getOwner } from "./signals.ts";
 import { isArray, isObject, toString } from "./type-utils.ts";
 
 /**
@@ -154,7 +156,9 @@ export function esc(value: unknown): string {
   if (typeof value === "string") return escapeText(value);
   if (value === null || value === undefined || typeof value === "boolean") return "";
   if (typeof value === "number" || typeof value === "bigint") return String(value);
-  if (typeof value === "function") return esc((value as () => unknown)());
+  // §3.0 rules 1-2: a Cell ignores the scope, a Block needs it, one call
+  // serves both. On this backend the scope is only ever handed on.
+  if (typeof value === "function") return esc((value as (s: unknown) => unknown)(getOwner()));
   if (isArray<unknown>(value)) {
     let out = "";
     for (let i = 0; i < value.length; i++) out += esc(value[i]);
@@ -528,81 +532,118 @@ function fallbackHtml(props: { fallback?: unknown }): SsrHtml {
   return html(props.fallback === null || props.fallback === undefined ? "" : esc(props.fallback));
 }
 
-export function ssrFor(props: ListProps): SsrHtml {
-  if (props.keyed === false) return ssrIndex(props);
+export function ssrFor(s: Scope | null, props: ListProps): SsrHtml {
+  // §3.0 rule 1, drawn in the same place `For` draws it (components.ts:266): a
+  // Cell declares no parameter and a key function declares one, and that is
+  // the only thing separating them once both are values in the same slot. A
+  // spread source's `keyed` reaches here verbatim, so `unwrap` would invoke the
+  // key function with no row.
+  const carrier = props.keyed;
+  const keyed =
+    typeof carrier === "function" && (carrier as { length: number }).length >= 1
+      ? carrier
+      : unwrap(carrier);
+  if (keyed === false) return ssrIndex(s, props);
   const items = rows(props.each);
   if (items.length === 0) return fallbackHtml(props);
   // A key FUNCTION makes the row survive an item change, so `children` takes
   // the item as an accessor there and as a plain value everywhere else
   // (`components.ts:259`). Getting this backwards is the classic For bug.
-  const boxed = typeof props.keyed === "function";
-  const children = props.children as unknown as (item: unknown, index: () => number) => unknown;
+  const boxed = typeof keyed === "function";
+  const children = props.children as unknown as (
+    s: Scope | null,
+    item: unknown,
+    index: () => number,
+  ) => unknown;
   let out = "";
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    out += esc(children(boxed ? () => item : item, () => i));
+    out += esc(children(s, boxed ? (): unknown => item : item, () => i));
   }
   return html(out);
 }
 
-export function ssrIndex(props: ListProps): SsrHtml {
+export function ssrIndex(s: Scope | null, props: ListProps): SsrHtml {
   const items = rows(props.each);
   if (items.length === 0) return fallbackHtml(props);
-  const children = props.children as unknown as (item: () => unknown, index: number) => unknown;
+  const children = props.children as unknown as (
+    s: Scope | null,
+    item: () => unknown,
+    index: number,
+  ) => unknown;
   let out = "";
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    out += esc(children(() => item, i));
+    out += esc(children(s, () => item, i));
   }
   return html(out);
 }
 
-export function ssrRepeat(props: {
-  count?: unknown;
-  from?: unknown;
-  fallback?: unknown;
-  children: (index: number) => unknown;
-}): SsrHtml {
+export function ssrRepeat(
+  s: Scope | null,
+  props: {
+    count?: unknown;
+    from?: unknown;
+    fallback?: unknown;
+    children: (s: Scope | null, index: number) => unknown;
+  },
+): SsrHtml {
   const raw = unwrap(props.count);
   const total = typeof raw === "number" && raw > 0 ? Math.floor(raw) : 0;
   if (total === 0) return fallbackHtml(props);
   const from = unwrap(props.from);
   const start = typeof from === "number" ? from : 0;
   let out = "";
-  for (let i = 0; i < total; i++) out += esc(props.children(start + i));
+  for (let i = 0; i < total; i++) out += esc(props.children(s, start + i));
   return html(out);
 }
 
-export function ssrShow(props: {
-  when?: unknown;
-  keyed?: unknown;
-  fallback?: unknown;
-  children?: unknown;
-}): SsrHtml {
+export function ssrShow(
+  s: Scope | null,
+  props: {
+    when?: unknown;
+    keyed?: unknown;
+    fallback?: unknown;
+    children?: unknown;
+  },
+): SsrHtml {
   const value = unwrap(props.when);
   if (!value) return fallbackHtml(props);
   const children = props.children;
   if (typeof children !== "function") return html(esc(children));
   // Non-keyed narrows to an accessor so reads inside stay live on the client;
   // on the wire both spellings are read exactly once.
-  const argument = props.keyed === false ? () => value : value;
-  return html(esc((children as (item: unknown) => unknown)(argument)));
+  const argument = unwrap(props.keyed) === false ? (): unknown => value : value;
+  return html(esc((children as (s: Scope | null, item: unknown) => unknown)(s, argument)));
 }
 
 /** `Match` is an identity function on the client too — `components.ts:525`. */
-export function ssrMatch<T>(props: T): T {
+export function ssrMatch<T>(_s: Scope | null, props: T): T {
   return props;
 }
 
-export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): SsrHtml {
-  const children = isArray<unknown>(props.children) ? props.children : [props.children];
+export function ssrSwitch(
+  s: Scope | null,
+  props: { fallback?: unknown; children?: unknown },
+): SsrHtml {
+  const resolved =
+    typeof props.children === "function"
+      ? (props.children as (s: Scope | null) => unknown)(s)
+      : props.children;
+  const children = isArray<unknown>(resolved) ? resolved : [resolved];
   for (let i = 0; i < children.length; i++) {
     const child = children[i] as { when?: unknown; children?: unknown } | null;
     if (!child || typeof child !== "object" || !("when" in child)) continue;
     const value = unwrap(child.when);
     if (!value) continue;
     const body = child.children;
-    return html(esc(typeof body === "function" ? (body as (v: unknown) => unknown)(value) : body));
+    return html(
+      esc(
+        typeof body === "function"
+          ? (body as (s: Scope | null, v: unknown) => unknown)(s, value)
+          : body,
+      ),
+    );
   }
   return fallbackHtml(props);
 }

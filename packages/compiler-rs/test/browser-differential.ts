@@ -24,6 +24,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import type { Page } from "./chrome.ts"
+import { ORACLE_FAILURES } from "./oracle-known-failures.ts"
 import {
   browserOnlySource,
   compileBrowserOnly,
@@ -32,6 +33,7 @@ import {
   listBrowserOnlyFixtures,
   listFixtures,
   patchedAttributeNames,
+  TMP_DIR,
 } from "./harness.ts"
 
 const PRAGMA = "/** @jsxImportSource @barqjs/core */\n"
@@ -223,7 +225,9 @@ async function drive(mod, delegated) {
   try {
     createScope((d) => {
       dispose = d
-      render(mod.default(), container)
+      // C1: render takes the Block, not a built subtree. The oracle module's
+      // root ignores the argument, so one spelling drives both paths.
+      render(mod.default, container)
     }, true)
     await settle()
     initial = snapshot(null)
@@ -383,7 +387,10 @@ export async function buildDifferentialPage(
   fixtures: string[]
   cleanup: () => void
 }> {
-  const workdir = join(import.meta.dir, ".tmp", "browser")
+  // Under the per-process directory for the same reason the generated modules
+  // are: the recursive delete below otherwise lands between a sibling process's
+  // write and its bundle, and the bundle inputs disappear mid-run.
+  const workdir = join(TMP_DIR, "browser")
   rmSync(workdir, { recursive: true, force: true })
   mkdirSync(workdir, { recursive: true })
 
@@ -481,23 +488,45 @@ export async function checkDifferential(
   }
 }
 
-export function reportDifferential(report: DifferentialReport): void {
+/**
+ * Partition the report the way `browser.test.ts` does. A divergence in a
+ * fixture the oracle registry accounts for is a DECLARED state, not a finding:
+ * printing it as an unexplained failure and exiting 1 makes a documented entry
+ * point red for a reason it does not itself explain, which is how a developer
+ * learns to ignore it.
+ */
+export function reportDifferential(report: DifferentialReport): number {
   console.log(
     `corpus rendered in a real browser: ${report.checked} fixtures, ${report.frames} frames, ` +
       `${report.attributeLines} attribute lines`,
   )
+  const reason = new Map(ORACLE_FAILURES.map((row) => [row.fixture, `${row.cause} — ${row.reason}`]))
+  let unexplained = 0
   for (const d of report.divergences) {
-    console.error(
+    const registered = reason.get(d.fixture)
+    const head =
       `\n[${d.kind}${d.step === undefined ? "" : ` step ${d.step}`}] ${d.fixture}` +
-        `\n  oracle  : ${d.oracle}\n  compiled: ${d.compiled}`,
+      `\n  oracle  : ${d.oracle}\n  compiled: ${d.compiled}`
+    if (registered === undefined) {
+      unexplained++
+      console.error(head)
+    } else {
+      console.log(`${head}\n  REGISTERED: ${registered}`)
+    }
+  }
+  const registered = report.divergences.length - unexplained
+  if (report.divergences.length === 0) {
+    console.log("every frame is identical to the oracle")
+  } else {
+    console.log(
+      `\n${registered} divergence(s) explained by the oracle registry, ${unexplained} not`,
     )
   }
-  if (report.divergences.length === 0) console.log("every frame is identical to the oracle")
+  return unexplained
 }
 
 if (import.meta.main) {
   const { withChrome } = await import("./chrome.ts")
   const report = await withChrome((page) => checkDifferential(page))
-  reportDifferential(report)
-  process.exit(report.divergences.length === 0 ? 0 : 1)
+  process.exit(reportDifferential(report) === 0 ? 0 : 1)
 }

@@ -39,6 +39,6 @@ export const optimality = {
   // which is what the SSR backend does, and only the SSR backend — produces a
   // `Switch` with nothing to read. The component bodies are ordinary calls with
   // an empty props object, not `createElement`.
-  emits: ["Switch({", "children: [Match({", "Spinner({})", "Content({})"],
+  emits: ["Switch({", "[Match(", "Spinner(", "Content("],
   absent: ["(Switch, {", "(Match, {", "createElement("],
 }

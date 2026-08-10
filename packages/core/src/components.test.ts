@@ -17,6 +17,7 @@ import {
   insertNodes,
 } from "./components.ts";
 import { signal, effect, createScope, batch, onCleanup, flush } from "./signals.ts";
+import type { Scope } from "./scope.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;
@@ -32,7 +33,7 @@ afterEach(() => {
 
 describe("Fragment", () => {
   test("renders multiple children", () => {
-    const frag = Fragment({
+    const frag = Fragment(null, {
       children: [
         document.createTextNode("hello"),
         document.createTextNode(" "),
@@ -45,7 +46,7 @@ describe("Fragment", () => {
   });
 
   test("handles null and undefined children", () => {
-    const frag = Fragment({
+    const frag = Fragment(null, {
       children: [null, "text", undefined, 42],
     });
 
@@ -54,7 +55,7 @@ describe("Fragment", () => {
   });
 
   test("handles boolean children (should be ignored)", () => {
-    const frag = Fragment({
+    const frag = Fragment(null, {
       children: [true, "visible", false],
     });
 
@@ -107,7 +108,7 @@ describe("childToNodes", () => {
     body.appendChild(document.createElement("i"));
     body.appendChild(document.createElement("u"));
 
-    container.appendChild(Show({ when: on, children: body }) as Node);
+    container.appendChild(Show(null, { when: on, children: body }) as Node);
     flush();
     expect(container.querySelectorAll("i, u").length).toBe(2);
 
@@ -144,7 +145,7 @@ describe("childToNodes", () => {
 describe("Show component", () => {
   test("renders children when condition is truthy", () => {
     const show = signal(true);
-    const element = Show({
+    const element = Show(null, {
       when: show,
       children: () => document.createTextNode("visible"),
     });
@@ -155,7 +156,7 @@ describe("Show component", () => {
 
   test("renders fallback when condition is falsy", () => {
     const show = signal(false);
-    const element = Show({
+    const element = Show(null, {
       when: show,
       fallback: document.createTextNode("fallback"),
       children: () => document.createTextNode("visible"),
@@ -167,7 +168,7 @@ describe("Show component", () => {
 
   test("toggles between children and fallback", () => {
     const show = signal(true);
-    const element = Show({
+    const element = Show(null, {
       when: show,
       fallback: document.createTextNode("hidden"),
       children: () => document.createTextNode("shown"),
@@ -189,9 +190,9 @@ describe("Show component", () => {
     const value = signal<string | null>("hello");
     let receivedValue: string | null = null;
 
-    const element = Show({
+    const element = Show(null, {
       when: value,
-      children: (v: string) => {
+      children: (_s: unknown, v: string) => {
         receivedValue = v;
         return document.createTextNode(v);
       },
@@ -204,7 +205,7 @@ describe("Show component", () => {
 
   test("handles rapid condition changes", () => {
     const show = signal(true);
-    const element = Show({
+    const element = Show(null, {
       when: show,
       fallback: document.createTextNode("off"),
       children: () => document.createTextNode("on"),
@@ -224,7 +225,7 @@ describe("Show component", () => {
 
   test("handles children as direct value (not function)", () => {
     const show = signal(true);
-    const element = Show({
+    const element = Show(null, {
       when: show,
       children: document.createTextNode("direct"),
     });
@@ -238,7 +239,7 @@ describe("Show component", () => {
     const innerSignal = signal(0);
     let effectRunCount = 0;
 
-    const element = Show({
+    const element = Show(null, {
       when: show,
       children: () => {
         effect(() => {
@@ -268,10 +269,10 @@ describe("Show component", () => {
 
   test("EDGE CASE: handles condition returning 0 (falsy but valid)", () => {
     const count = signal(0);
-    const element = Show({
+    const element = Show(null, {
       when: count,
       fallback: document.createTextNode("empty"),
-      children: (n: number) => document.createTextNode(`count: ${n}`),
+      children: (_s: unknown, n: number) => document.createTextNode(`count: ${n}`),
     });
 
     container.appendChild(element as Node);
@@ -285,10 +286,10 @@ describe("Show component", () => {
 
   test("EDGE CASE: handles condition returning empty string (falsy)", () => {
     const text = signal("");
-    const element = Show({
+    const element = Show(null, {
       when: text,
       fallback: document.createTextNode("empty"),
-      children: (t: string) => document.createTextNode(t),
+      children: (_s: unknown, t: string) => document.createTextNode(t),
     });
 
     container.appendChild(element as Node);
@@ -304,10 +305,10 @@ describe("Show component", () => {
     const show = signal({ name: "test" });
     let receivedValue: unknown = null;
 
-    const element = Show({
+    const element = Show(null, {
       when: show,
       // This function has default param, so .length === 0
-      children: (item = { name: "default" }) => {
+      children: (_s: unknown, item = { name: "default" }) => {
         receivedValue = item;
         return document.createTextNode(item.name);
       },
@@ -327,10 +328,10 @@ describe("Show component", () => {
 
     let disposeParent: (() => void) | undefined;
 
-    createScope((dispose) => {
+    createScope((dispose, scope) => {
       disposeParent = dispose;
 
-      const element = Show({
+      const element = Show(scope, {
         when: show,
         children: () => {
           effect(() => {
@@ -364,9 +365,9 @@ describe("Show component", () => {
 describe("For component", () => {
   test("renders list of items", () => {
     const items = signal(["a", "b", "c"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => document.createTextNode(item),
+      children: (_s: unknown, item: string) => document.createTextNode(item),
     });
 
     container.appendChild(element as Node);
@@ -375,9 +376,9 @@ describe("For component", () => {
 
   test("updates when items change", () => {
     const items = signal(["a", "b"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => document.createTextNode(item),
+      children: (_s: unknown, item: string) => document.createTextNode(item),
     });
 
     container.appendChild(element as Node);
@@ -390,10 +391,10 @@ describe("For component", () => {
 
   test("renders fallback for empty array", () => {
     const items = signal<string[]>([]);
-    const element = For({
+    const element = For(null, {
       each: items,
       fallback: document.createTextNode("empty"),
-      children: (item: string) => document.createTextNode(item),
+      children: (_s: unknown, item: string) => document.createTextNode(item),
     });
 
     container.appendChild(element as Node);
@@ -402,10 +403,10 @@ describe("For component", () => {
 
   test("switches between items and fallback", () => {
     const items = signal<string[]>([]);
-    const element = For({
+    const element = For(null, {
       each: items,
       fallback: document.createTextNode("empty"),
-      children: (item: string) => document.createTextNode(item),
+      children: (_s: unknown, item: string) => document.createTextNode(item),
     });
 
     container.appendChild(element as Node);
@@ -425,9 +426,9 @@ describe("For component", () => {
     const items = signal(["a", "b", "c"]);
     const indices: number[] = [];
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string, index: () => number) => {
+      children: (_s: unknown, item: string, index: () => number) => {
         effect(() => {
           indices.push(index());
         });
@@ -452,10 +453,9 @@ describe("For component", () => {
     ]);
     let renderCount = 0;
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      keyFn: (item) => item.id,
-      children: (item: { id: number; name: string }) => {
+      children: (_s: unknown, item: { id: number; name: string }) => {
         renderCount++;
         return document.createTextNode(item.name);
       },
@@ -478,9 +478,9 @@ describe("For component", () => {
 
   test("handles items added at beginning", () => {
     const items = signal(["b", "c"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => {
+      children: (_s: unknown, item: string) => {
         const span = document.createElement("span");
         span.textContent = item;
         return span;
@@ -497,9 +497,9 @@ describe("For component", () => {
 
   test("handles items added at end", () => {
     const items = signal(["a", "b"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => {
+      children: (_s: unknown, item: string) => {
         const span = document.createElement("span");
         span.textContent = item;
         return span;
@@ -516,9 +516,9 @@ describe("For component", () => {
 
   test("handles items removed from middle", () => {
     const items = signal(["a", "b", "c"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => {
+      children: (_s: unknown, item: string) => {
         const span = document.createElement("span");
         span.textContent = item;
         return span;
@@ -535,9 +535,9 @@ describe("For component", () => {
 
   test("handles complete replacement", () => {
     const items = signal(["a", "b", "c"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => {
+      children: (_s: unknown, item: string) => {
         const span = document.createElement("span");
         span.textContent = item;
         return span;
@@ -557,9 +557,9 @@ describe("For component", () => {
     const effectCounts: Record<string, number> = { a: 0, b: 0 };
     const trigger = signal(0);
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => {
+      children: (_s: unknown, item: string) => {
         effect(() => {
           trigger();
           effectCounts[item]++;
@@ -588,10 +588,10 @@ describe("For component", () => {
 
   test("EDGE CASE: handles null/undefined each", () => {
     const items = signal<string[] | null>(null);
-    const element = For({
+    const element = For(null, {
       each: items,
       fallback: document.createTextNode("empty"),
-      children: (item: string) => document.createTextNode(item),
+      children: (_s: unknown, item: string) => document.createTextNode(item),
     });
 
     container.appendChild(element as Node);
@@ -600,9 +600,9 @@ describe("For component", () => {
 
   test("EDGE CASE: handles getter function for each", () => {
     const items = signal(["a", "b"]);
-    const element = For({
+    const element = For(null, {
       each: () => items(),
-      children: (item: string) => document.createTextNode(item),
+      children: (_s: unknown, item: string) => document.createTextNode(item),
     });
 
     container.appendChild(element as Node);
@@ -617,9 +617,9 @@ describe("For component", () => {
     // With duplicate keys, only unique keys are rendered (Map-based cache)
     // This is a known limitation - use unique keys for correct behavior
     const items = signal(["a", "a", "b"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => document.createTextNode(item),
+      children: (_s: unknown, item: string) => document.createTextNode(item),
     });
 
     container.appendChild(element as Node);
@@ -636,10 +636,9 @@ describe("For component", () => {
     ]);
     let renderCount = 0;
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      keyFn: (item) => item.id,
-      children: (item: { id: number; v: string }) => {
+      children: (_s: unknown, item: { id: number; v: string }) => {
         renderCount++;
         const span = document.createElement("span");
         span.textContent = item.v;
@@ -682,10 +681,9 @@ describe("For component", () => {
     const items = signal([a, b, c, d]);
     let renderCount = 0;
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      keyFn: (item) => item.id,
-      children: (item: { id: number; v: string }) => {
+      children: (_s: unknown, item: { id: number; v: string }) => {
         renderCount++;
         const span = document.createElement("span");
         span.textContent = item.v;
@@ -716,9 +714,9 @@ describe("For component", () => {
 
   test("EDGE CASE: interleaved insert and remove", () => {
     const items = signal(["a", "c", "e"]);
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => {
+      children: (_s: unknown, item: string) => {
         const span = document.createElement("span");
         span.textContent = item;
         return span;
@@ -743,9 +741,9 @@ describe("For component", () => {
     const items = signal(["a"]);
     let effectRuns = 0;
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      children: (item: string) => {
+      children: (_s: unknown, item: string) => {
         effect(() => {
           void item; // track
           effectRuns++;
@@ -773,9 +771,9 @@ describe("Index component", () => {
     const items = signal(["a", "b", "c"]);
     const receivedIndices: number[] = [];
 
-    const element = Index({
+    const element = Index(null, {
       each: items,
-      children: (item: () => string, index: number) => {
+      children: (_s, item: () => string, index: number) => {
         receivedIndices.push(index);
         return document.createTextNode(item());
       },
@@ -790,9 +788,9 @@ describe("Index component", () => {
     const items = signal(["a", "b", "c"]);
     let updateCount = 0;
 
-    const element = Index({
+    const element = Index(null, {
       each: items,
-      children: (item: () => string, _index: number) => {
+      children: (_s, item: () => string, _index: number) => {
         effect(() => {
           item(); // subscribe
           updateCount++;
@@ -819,9 +817,9 @@ describe("Index component", () => {
 
   test("handles array shrinking", () => {
     const items = signal(["a", "b", "c", "d"]);
-    const element = Index({
+    const element = Index(null, {
       each: items,
-      children: (item: () => string) => {
+      children: (_s, item: () => string) => {
         const span = document.createElement("span");
         effect(() => {
           span.textContent = item();
@@ -840,9 +838,9 @@ describe("Index component", () => {
 
   test("handles array growing", () => {
     const items = signal(["a"]);
-    const element = Index({
+    const element = Index(null, {
       each: items,
-      children: (item: () => string) => {
+      children: (_s, item: () => string) => {
         const span = document.createElement("span");
         effect(() => {
           span.textContent = item();
@@ -864,9 +862,9 @@ describe("Index component", () => {
     const trigger = signal(0);
     const effectCounts = [0, 0, 0];
 
-    const element = Index({
+    const element = Index(null, {
       each: items,
-      children: (item: () => string, index: number) => {
+      children: (_s, item: () => string, index: number) => {
         effect(() => {
           item();
           trigger();
@@ -897,10 +895,10 @@ describe("Index component", () => {
 
   test("EDGE CASE: empty to non-empty transition", () => {
     const items = signal<string[]>([]);
-    const element = Index({
+    const element = Index(null, {
       each: items,
       fallback: document.createTextNode("empty"),
-      children: (item: () => string) => document.createTextNode(item()),
+      children: (_s, item: () => string) => document.createTextNode(item()),
     });
 
     container.appendChild(element as Node);
@@ -916,10 +914,10 @@ describe("Index component", () => {
 describe("Switch/Match components", () => {
   test("renders first matching condition", () => {
     const value = signal(1);
-    const element = Switch({
+    const element = Switch(null, {
       children: [
-        Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
-        Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
+        Match(null, { when: () => value() === 1, children: () => document.createTextNode("one") }),
+        Match(null, { when: () => value() === 2, children: () => document.createTextNode("two") }),
       ],
     });
 
@@ -929,11 +927,14 @@ describe("Switch/Match components", () => {
 
   test("updates when condition changes", () => {
     const value = signal(1);
-    const element = Switch({
+    const element = Switch(null, {
       children: [
-        Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
-        Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
-        Match({ when: () => value() === 3, children: () => document.createTextNode("three") }),
+        Match(null, { when: () => value() === 1, children: () => document.createTextNode("one") }),
+        Match(null, { when: () => value() === 2, children: () => document.createTextNode("two") }),
+        Match(null, {
+          when: () => value() === 3,
+          children: () => document.createTextNode("three"),
+        }),
       ],
     });
 
@@ -952,11 +953,11 @@ describe("Switch/Match components", () => {
 
   test("renders fallback when no match", () => {
     const value = signal(99);
-    const element = Switch({
+    const element = Switch(null, {
       fallback: document.createTextNode("default"),
       children: [
-        Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
-        Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
+        Match(null, { when: () => value() === 1, children: () => document.createTextNode("one") }),
+        Match(null, { when: () => value() === 2, children: () => document.createTextNode("two") }),
       ],
     });
 
@@ -968,12 +969,12 @@ describe("Switch/Match components", () => {
     const user = signal({ id: 1, name: "Alice" });
     let renderCount = 0;
 
-    const element = Switch({
+    const element = Switch(null, {
       children: [
-        Match({
+        Match(null, {
           when: user,
           keyed: true,
-          children: (u: { id: number; name: string }) => {
+          children: (_s: unknown, u: { id: number; name: string }) => {
             renderCount++;
             return document.createTextNode(u.name);
           },
@@ -996,9 +997,9 @@ describe("Switch/Match components", () => {
     const user = signal({ id: 1, name: "Alice" });
     let renderCount = 0;
 
-    const element = Switch({
+    const element = Switch(null, {
       children: [
-        Match({
+        Match(null, {
           when: user,
           keyed: false,
           children: () => {
@@ -1030,9 +1031,9 @@ describe("Switch/Match components", () => {
     let effect1Runs = 0;
     let effect2Runs = 0;
 
-    const element = Switch({
+    const element = Switch(null, {
       children: [
-        Match({
+        Match(null, {
           when: () => value() === 1,
           children: () => {
             effect(() => {
@@ -1042,7 +1043,7 @@ describe("Switch/Match components", () => {
             return document.createTextNode("one");
           },
         }),
-        Match({
+        Match(null, {
           when: () => value() === 2,
           children: () => {
             effect(() => {
@@ -1077,10 +1078,10 @@ describe("Switch/Match components", () => {
 
   test("EDGE CASE: multiple matches with same condition", () => {
     const show = signal(true);
-    const element = Switch({
+    const element = Switch(null, {
       children: [
-        Match({ when: show, children: () => document.createTextNode("first") }),
-        Match({ when: show, children: () => document.createTextNode("second") }),
+        Match(null, { when: show, children: () => document.createTextNode("first") }),
+        Match(null, { when: show, children: () => document.createTextNode("second") }),
       ],
     });
 
@@ -1150,25 +1151,27 @@ describe("Memory and cleanup", () => {
     let innerEffectRuns = 0;
     const trigger = signal(0);
 
-    const element = Show({
-      when: outer,
-      children: () => {
-        effect(() => {
-          trigger();
-          outerEffectRuns++;
-        });
-        return Show({
-          when: inner,
-          children: () => {
-            effect(() => {
-              trigger();
-              innerEffectRuns++;
-            });
-            return document.createTextNode("nested");
-          },
-        });
-      },
-    }) as Node;
+    const element = createScope((_dispose, scope) =>
+      Show(scope, {
+        when: outer,
+        children: (inner$: Scope | null) => {
+          effect(() => {
+            trigger();
+            outerEffectRuns++;
+          });
+          return Show(inner$, {
+            when: inner,
+            children: () => {
+              effect(() => {
+                trigger();
+                innerEffectRuns++;
+              });
+              return document.createTextNode("nested");
+            },
+          });
+        },
+      }),
+    ) as Node;
 
     container.appendChild(element);
     expect(outerEffectRuns).toBe(1);
@@ -1195,20 +1198,22 @@ describe("Memory and cleanup", () => {
     const trigger = signal(0);
     let totalEffectRuns = 0;
 
-    const element = Show({
-      when: show,
-      children: () =>
-        For({
-          each: items,
-          children: (item: string) => {
-            effect(() => {
-              trigger();
-              totalEffectRuns++;
-            });
-            return document.createTextNode(item);
-          },
-        }),
-    }) as Node;
+    const element = createScope((_dispose, scope) =>
+      Show(scope, {
+        when: show,
+        children: (row$: Scope | null) =>
+          For(row$, {
+            each: items,
+            children: (_s: unknown, item: string) => {
+              effect(() => {
+                trigger();
+                totalEffectRuns++;
+              });
+              return document.createTextNode(item);
+            },
+          }),
+      }),
+    ) as Node;
 
     container.appendChild(element);
     expect(totalEffectRuns).toBe(2);

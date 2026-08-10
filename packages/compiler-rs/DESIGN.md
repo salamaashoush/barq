@@ -528,6 +528,13 @@ does not. Then a small worklist runs to fixpoint over:
   `Index.children: (item: () => T, index: number)` ⇒ `(Accessor, Inert)`.
   `Repeat.children: (index: number)` ⇒ `(Inert)`.
   `For` with `keyed: false` delegates to `Index` at runtime, so it takes `Index`'s attribution.
+  A key FUNCTION boxes the row in a signal ⇒ `(Accessor, Accessor)`. Anything that cannot be
+  proved — `keyed={KEYED}`, `keyed={props.keyed}`, or a **spread**, which can carry `keyed` where
+  nothing can read it — takes the key-function arm, because that is the arm that is safe when
+  wrong: an accessor read that turns out to be a plain value falls out `Opaque` and is emitted
+  unwrapped, where a plain value that turns out to be an accessor is applied once and never
+  updated. The attribution is then an ASSUMPTION, and D1 is told so: it says nothing about a row
+  it cannot see the `keyed` of, because `row()` on a plain object throws.
 - **Scope ranges.** One linear scan over scopes in creation (pre-order) order fills
   `scope_lo`/`scope_hi`, making the free-variable test for handler hoisting two integer compares
   per reference.
@@ -1017,6 +1024,23 @@ unconditionally, because there the loss is the SERIALISER's and is present on ev
 `browser.test.ts` admits exactly this one disagreement between the two parsers, and requires it to
 still be reached. The exact byte count is pinned by `compile.rs`'s two O9 tests over the emitted
 template, not by the fixture comparison.
+
+**…and the string half of the same rule, which is NOT the DOM half.** A template's hole
+materialises nothing, so the parser's U+000A lands on the text BEHIND it and the doubling looks
+past leading `Slot` nodes. A string's hole writes the value's own bytes against the open tag, and
+the compiler cannot see their first one. So the string backend emits a newline of ITS own in front
+of the hole — one the parser eats instead of the value — and does not double the literal behind it.
+The rule is: for `<pre>`/`<textarea>`/`<listing>`, guard when the first thing the element writes is
+a hole, a content prop (`textContent`/`innerHTML`), or a literal that already begins with a newline.
+A hole that renders empty is why the first case is unconditional: the literal behind it would
+otherwise become the first byte. `<textarea>{value}</textarea>` is the shape it matters most for —
+P1 refuses it, so the DOM path is `createElement`, whose text node no parser ever reads.
+
+`sameTree` cannot see any of this: it canonicalises the leading run on both sides, so a backend
+that dropped the newline would compare equal to the oracle for ever. The bytes are pinned instead
+by `compile.rs::the_string_backend_guards_a_hole_against_the_same_rule` and by `ssr.test.ts`'s O9
+row, over `browser-parse-check.ts`'s measurement that one newline is exactly what Chrome eats.
+`fixtures/pre-dynamic-leading-newline.tsx` carries the shape through the corpus.
 
 **A rewritten flow import comes off.** When P8b rewrote every reference a binding had, the import
 specifier has no reader and would drag `@barqjs/core`'s DOM runtime into a server bundle for a
@@ -1699,6 +1723,12 @@ against `<pre>` and the parser ate it again. The doubling therefore looks past l
 nodes. Neither half is visible to happy-dom, which implements no part of the rule; both are pinned
 in real Chrome, by `test/browser-parse-check.ts`'s hazard rows and by
 `fixtures/browser-only/pre-hole-newline.tsx`.
+
+*And a third correction, from the string backend.* Looking past a `Slot` is right for a template
+and wrong for a string: there the hole writes the value's bytes against the open tag, so the value's
+own first newline is the one eaten. The string backend emits a guard newline in front of a hole
+instead — see §5 — which is the same rule reasoned from what each backend actually puts on the wire,
+not two different answers to one question.
 
 **Text escaping, related.** `>` is escaped as `&gt;` in template text although no conforming
 tokenizer requires it. It is what the HTML serialization spec writes, and it is a byte that moves

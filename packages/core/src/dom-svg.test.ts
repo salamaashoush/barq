@@ -77,20 +77,20 @@ describe("SVG className is read-only in browsers", () => {
 
   test("static class on an SVG element lands on the class attribute", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    setProp(el, "class", "ring");
+    setProp(null, el, "class", "ring");
     expect(el.getAttribute("class")).toBe("ring");
   });
 
   test("className key on an SVG element lands on the class attribute", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    setProp(el, "className", "ring");
+    setProp(null, el, "className", "ring");
     expect(el.getAttribute("class")).toBe("ring");
   });
 
   test("reactive class on an SVG element updates on signal change", () => {
     const el = withReadOnlyClassName(svg("rect"));
     const active = signal(false);
-    setProp(el, "class", () => (active() ? "on" : "off"));
+    setProp(null, el, "class", () => (active() ? "on" : "off"));
 
     expect(el.getAttribute("class")).toBe("off");
     active.set(true);
@@ -100,18 +100,18 @@ describe("SVG className is read-only in browsers", () => {
 
   test("object and array class values normalize on SVG", () => {
     const objEl = withReadOnlyClassName(svg("path"));
-    setProp(objEl, "class", { a: true, b: false, c: true });
+    setProp(null, objEl, "class", { a: true, b: false, c: true });
     expect(objEl.getAttribute("class")).toBe("a c");
 
     const arrEl = withReadOnlyClassName(svg("path"));
-    setProp(arrEl, "class", ["x", "", "y"]);
+    setProp(null, arrEl, "class", ["x", "", "y"]);
     expect(arrEl.getAttribute("class")).toBe("x y");
   });
 
   test("nullish class removes the attribute on SVG", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const cls = signal<string | null>("ring");
-    setProp(el, "class", () => cls());
+    setProp(null, el, "class", () => cls());
     expect(el.getAttribute("class")).toBe("ring");
 
     cls.set(null);
@@ -122,7 +122,7 @@ describe("SVG className is read-only in browsers", () => {
   test("spread applies class to an SVG element", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const props = signal<Record<string, unknown>>({ class: "one", r: "4" });
-    spread(el, () => props());
+    spread(null, el, () => props());
 
     expect(el.getAttribute("class")).toBe("one");
     expect(el.getAttribute("r")).toBe("4");
@@ -155,7 +155,7 @@ describe("SVG className is read-only in browsers", () => {
 
   test("HTML elements keep using the className property path", () => {
     const el = document.createElement("div");
-    setProp(el, "class", "card");
+    setProp(null, el, "class", "card");
     expect(el.className).toBe("card");
     expect(el.getAttribute("class")).toBe("card");
   });
@@ -164,21 +164,21 @@ describe("SVG className is read-only in browsers", () => {
 describe("SVG style", () => {
   test("style object applies to an SVG element", () => {
     const el = svg("circle");
-    setProp(el, "style", { fill: "red", strokeWidth: "2px" });
+    setProp(null, el, "style", { fill: "red", strokeWidth: "2px" });
     expect(el.style.getPropertyValue("fill")).toBe("red");
     expect(el.style.getPropertyValue("stroke-width")).toBe("2px");
   });
 
   test("style string applies to an SVG element", () => {
     const el = svg("rect");
-    setProp(el, "style", "fill: blue");
+    setProp(null, el, "style", "fill: blue");
     expect(el.style.getPropertyValue("fill")).toBe("blue");
   });
 
   test("reactive style object diffs and removes vanished properties on SVG", () => {
     const el = svg("circle");
     const style = signal<Record<string, unknown>>({ fill: "red", opacity: 1 });
-    setProp(el, "style", () => style());
+    setProp(null, el, "style", () => style());
     expect(el.style.getPropertyValue("fill")).toBe("red");
     expect(el.style.getPropertyValue("opacity")).toBe("1");
 
@@ -190,7 +190,7 @@ describe("SVG style", () => {
 
   test("HTML style object still applies", () => {
     const el = document.createElement("div");
-    setProp(el, "style", { color: "red", marginTop: 4 });
+    setProp(null, el, "style", { color: "red", marginTop: 4 });
     expect(el.style.getPropertyValue("color")).toBe("red");
     expect(el.style.getPropertyValue("margin-top")).toBe("4px");
   });
@@ -199,7 +199,7 @@ describe("SVG style", () => {
 describe("SVG dangerouslySetInnerHTML", () => {
   test("writes markup instead of a stringified attribute", () => {
     const el = svg("g");
-    setProp(el, "dangerouslySetInnerHTML", { __html: "<circle r='1'></circle>" });
+    setProp(null, el, "dangerouslySetInnerHTML", { __html: "<circle r='1'></circle>" });
     expect(el.hasAttribute("dangerously-set-inner-html")).toBe(false);
     expect(el.childNodes.length).toBe(1);
   });
@@ -215,7 +215,7 @@ describe("SVG classList", () => {
   test("a static map toggles classes without touching className", () => {
     const el = withReadOnlyClassName(svg("circle"));
     el.setAttribute("class", "dot");
-    setProp(el, "classList", { ring: true, hidden: false });
+    setProp(null, el, "classList", { ring: true, hidden: false });
     expect(el.getAttribute("class")).toBe("dot ring");
     expect(el.hasAttribute("classlist")).toBe(false);
   });
@@ -224,7 +224,7 @@ describe("SVG classList", () => {
     const el = withReadOnlyClassName(svg("circle"));
     el.setAttribute("class", "dot");
     const state = signal<Record<string, unknown>>({ ring: true, busy: true });
-    setProp(el, "classList", () => state());
+    setProp(null, el, "classList", () => state());
     expect(el.getAttribute("class")).toBe("dot ring busy");
 
     state.set({ busy: true, done: true });
@@ -235,7 +235,7 @@ describe("SVG classList", () => {
   test("a per-key accessor toggles on its own", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const on = signal(false);
-    setProp(el, "classList", { ring: () => on() });
+    setProp(null, el, "classList", { ring: () => on() });
     expect(el.getAttribute("class") ?? "").toBe("");
 
     on.set(true);
@@ -255,7 +255,7 @@ describe("SVG classList", () => {
   test("spread applies it to an SVG element", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const props = signal<Record<string, unknown>>({ classList: { ring: true } });
-    spread(el, () => props());
+    spread(null, el, () => props());
     expect(el.getAttribute("class")).toBe("ring");
 
     props.set({ classList: { done: true } });

@@ -79,6 +79,9 @@ function get(port: number, path: string): Promise<string> {
 
 async function connect(port: number): Promise<Connection> {
   let wsUrl: string | undefined
+  // The failure mode here is a cold start under load — the root `bun run test`
+  // has five workspace test processes and cargo competing for the machine — so
+  // the budget backs off to ~30s rather than the 10s a fixed 50ms poll gives.
   for (let attempt = 0; attempt < 200 && !wsUrl; attempt++) {
     try {
       const body = await get(port, "/json/version")
@@ -86,7 +89,9 @@ async function connect(port: number): Promise<Connection> {
     } catch {
       /* not up yet */
     }
-    if (!wsUrl) await new Promise((resolve) => setTimeout(resolve, 50))
+    if (!wsUrl) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(250, 50 + attempt * 10)))
+    }
   }
   if (!wsUrl) throw new Error("Chrome did not expose a debugging endpoint")
 
@@ -97,7 +102,12 @@ async function connect(port: number): Promise<Connection> {
   const Socket =
     (globalThis as { __barqNativeWebSocket?: typeof WebSocket }).__barqNativeWebSocket ?? WebSocket
   const socket = new Socket(wsUrl)
-  await new Promise((resolve) => (socket.onopen = resolve))
+  await Promise.race([
+    new Promise((resolve) => (socket.onopen = resolve)),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Chrome accepted no CDP socket within 15s")), 15_000),
+    ),
+  ])
 
   let id = 0
   const pending = new Map<number, (value: Record<string, unknown>) => void>()
@@ -127,26 +137,42 @@ export async function withChrome<T>(
   options: { binary?: string; profile?: string } = {},
 ): Promise<T> {
   const binary = chromePath(options.binary)
-  const profile = options.profile ?? `/tmp/barq-chrome-${process.pid}-${Date.now()}`
-  const port = 9200 + Math.floor(Math.random() * 500)
+  const base = options.profile ?? `/tmp/barq-chrome-${process.pid}-${Date.now()}`
+  // Deterministic per process rather than random: a random port has no bind
+  // check, so two concurrent runs over this package could pick the same number
+  // and one of them would attach to the other's Chrome. The sweep covers a port
+  // that is genuinely taken by something else.
+  const firstPort = 9200 + (process.pid % 500)
+  const profiles: string[] = []
   let chrome: ChildProcess | undefined
   let connection: Connection | undefined
 
   try {
-    chrome = spawn(
-      binary,
-      [
-        "--headless=new",
-        `--remote-debugging-port=${port}`,
-        "--no-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        `--user-data-dir=${profile}`,
-        "about:blank",
-      ],
-      { stdio: "ignore" },
-    )
-    connection = await connect(port)
+    for (let offset = 0; connection === undefined; offset++) {
+      const port = 9200 + ((firstPort - 9200 + offset) % 500)
+      const profile = offset === 0 ? base : `${base}-${offset}`
+      profiles.push(profile)
+      const candidate = spawn(
+        binary,
+        [
+          "--headless=new",
+          `--remote-debugging-port=${port}`,
+          "--no-sandbox",
+          "--disable-gpu",
+          "--disable-dev-shm-usage",
+          `--user-data-dir=${profile}`,
+          "about:blank",
+        ],
+        { stdio: "ignore" },
+      )
+      try {
+        connection = await connect(port)
+        chrome = candidate
+      } catch (error) {
+        candidate.kill()
+        if (offset === 4) throw error
+      }
+    }
 
     let sessionId: string | undefined
     const page: Page = {
@@ -177,6 +203,6 @@ export async function withChrome<T>(
     connection?.close()
     chrome?.kill()
     const { rmSync } = await import("node:fs")
-    rmSync(profile, { recursive: true, force: true })
+    for (const profile of profiles) rmSync(profile, { recursive: true, force: true })
   }
 }

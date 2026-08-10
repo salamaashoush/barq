@@ -41,6 +41,7 @@ export {
   NoOwnerError,
   ContextNotFoundError,
   NotReadyError,
+  ScopeMissingError,
 } from "./signals.ts";
 export type { LoadingBoundaryHandle, DiagnosticEvent } from "./signals.ts";
 
@@ -54,6 +55,8 @@ export {
   isDisposed,
   isEqual,
   peekNextChildId,
+  resetChildIds,
+  unclaimedSeeds,
   resolve,
   enableExternalSource,
   resetExternalSource,
@@ -73,6 +76,40 @@ export function createRoot<T>(fn: (dispose: () => void) => T): T {
 }
 
 export type { SignalOptions, Owner, ContextRecord } from "./signals.ts";
+
+// Scope — the ownership spine (SEMANTICS.md §2, CODESIGN.md §3.1/§3.3)
+export {
+  enter,
+  exit,
+  pin,
+  dispose,
+  enterRoot,
+  abortSignal,
+  ownRange,
+  provide,
+  install,
+  read,
+  stack,
+  requireScope,
+} from "./scope.ts";
+export type { Block, Boundary, Cell, Scope, Slot } from "./scope.ts";
+
+// The props model — CODESIGN §3.0/§3.3. `props` and `cell` are the two
+// carriers the compiler emits; the four helpers are views over the same
+// source list and copy nothing (§4.1).
+export {
+  props,
+  cell,
+  block,
+  isBlock,
+  BLOCK,
+  mergeProps,
+  merge,
+  omit,
+  splitProps,
+  SOURCES,
+} from "./props.ts";
+export type { Source } from "./props.ts";
 
 // Types
 export type { Signal, Computed, Context } from "./signals.ts";
@@ -182,11 +219,6 @@ export {
   Portal,
   Dynamic,
   dynamic,
-  // Props utilities
-  splitProps,
-  mergeProps,
-  merge,
-  omit,
   children,
   // DOM marker utilities
   createMarkerPair,
@@ -237,6 +269,11 @@ export type {
   RefCallback,
   RefObject,
 } from "./jsx-runtime.ts";
+
+// The L2b ownership trace (CODESIGN.md §6). DEV/test only, off until asked
+// for; every instrumentation site behind it is one branch when it is off.
+export { beginOwnershipTrace, endOwnershipTrace, ownershipIdOf } from "./trace.ts";
+export type { OwnershipEvent, OwnershipEventKind, ScopeKind } from "./trace.ts";
 
 // Version
 export const VERSION = "0.1.0";

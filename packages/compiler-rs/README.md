@@ -75,8 +75,10 @@ the name heuristic this one exists to replace. `fixtures/derived-local-thunk.tsx
 
 Option keys are camelCase on the JS side and snake_case in Rust; napi-derive converts them.
 `map` is **absent**, not `null`, when no sourcemap was requested — use `result.map ?? null`.
-`warnings` holds non-fatal parser diagnostics as `file:line:col: message`; the Vite plugin
-forwards them through `this.warn()`. A syntax error throws instead.
+`warnings` holds non-fatal parser diagnostics as `file:line:col: CODE level: message`; the Vite
+plugin forwards them through `this.warn()`. A syntax error throws instead. `diagnostics` holds the
+same set as structured records — code, severity, span, and a link to the page for the code — and
+every code is documented in [docs/README.md](./docs/README.md).
 
 `ssr` is per-module in Vite (the same file is transformed once for the client and once for the
 server), so the plugin reads it from the transform hook's third argument, not from its own options.

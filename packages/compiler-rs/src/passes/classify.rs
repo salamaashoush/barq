@@ -439,7 +439,9 @@ impl<'a> Lift<'a, '_> {
             // the handler is never RE-hoisted: the reference is emitted where it
             // stands, which is correct whether the declaration sits at module
             // scope or inside the component.
-            SourceKind::Fn => Rx { react: React::Static, shape: Shape::Handler, ..Rx::OPAQUE },
+            SourceKind::Fn { .. } => {
+                Rx { react: React::Static, shape: Shape::Handler, ..Rx::OPAQUE }
+            }
             SourceKind::ConstLit => match self.env.konst_of(symbol) {
                 Some(value) => konst(value, shape_of_const(value)),
                 None => Rx { react: React::Static, ..Rx::OPAQUE },
@@ -465,8 +467,22 @@ impl<'a> Lift<'a, '_> {
                         _ => Rx::OPAQUE,
                     };
                 }
-                SourceKind::ReactiveObject | SourceKind::PropsParam => {
+                SourceKind::ReactiveObject => {
                     return Rx { react: React::Reactive, deps: self.dep(symbol), ..Rx::OPAQUE };
+                }
+                // C3.1/C4: every own property of a props object is a Cell.
+                // Taking the reference reads nothing and CALLING it is the read,
+                // which is the same shape `Resource<T>` already has below. The
+                // pre-M3 verdict — the member read IS the tracked read — was the
+                // getter model, and keeping it made `thunk()` wrap a Cell in a
+                // second Cell at -O0 while fusion unwrapped one level at -Ox.
+                SourceKind::PropsParam => {
+                    return Rx {
+                        react: React::Static,
+                        shape: Shape::Accessor,
+                        inner: self.dep(symbol),
+                        ..Rx::OPAQUE
+                    };
                 }
                 // `Resource<T>`: the member READ is inert, the CALL is the read.
                 SourceKind::AccessorRecord => {
@@ -521,6 +537,27 @@ impl<'a> Lift<'a, '_> {
             return Rx {
                 react: if inert { React::Static } else { React::Reactive },
                 deps: if inert { DepSet::EMPTY } else { self.dep(symbol) },
+                ..Rx::OPAQUE
+            };
+        }
+
+        // C4 and §11 Q1's settled spelling: `props.x()` is how a Cell is READ,
+        // so it is the tracked read the consumer's effect subscribes to. Without
+        // this arm the call is `Opaque`, which `react.rs` emits UNWRAPPED, and
+        // the prop lands in the DOM once at construction and never moves again.
+        if call.arguments.is_empty()
+            && let Some(object) = match &call.callee {
+                Expression::StaticMemberExpression(member) => Some(&member.object),
+                Expression::ComputedMemberExpression(member) => Some(&member.object),
+                _ => None,
+            }
+            && let Some(symbol) = symbol_of(self.scoping, object)
+            && self.env.kind_of(symbol) == SourceKind::PropsParam
+        {
+            return Rx {
+                react: React::Reactive,
+                deps: self.dep(symbol),
+                thunk: Thunk::Eta,
                 ..Rx::OPAQUE
             };
         }

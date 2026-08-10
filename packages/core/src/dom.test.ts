@@ -60,7 +60,7 @@ describe("createElement", () => {
   });
 
   test("handles component functions", () => {
-    const MyComponent = (props: { name: string }) => {
+    const MyComponent = (_s: unknown, props: { name: string }) => {
       return createElement("span", null, `Hello ${props.name}`);
     };
 
@@ -69,7 +69,7 @@ describe("createElement", () => {
   });
 
   test("component receives children prop", () => {
-    const Wrapper = (props: { children: unknown }) => {
+    const Wrapper = (_s: unknown, props: { children: unknown }) => {
       return createElement("div", { class: "wrapper" }, props.children as string);
     };
 
@@ -910,7 +910,7 @@ describe("eager multi-node bodies survive a hide/show cycle", () => {
     const body = twoNodeFragment();
     const first = Array.from(body.childNodes);
 
-    insert(container, () => (on() ? body : null));
+    insert(null, container, () => (on() ? body : null));
     expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
 
     on.set(false);
@@ -938,10 +938,10 @@ describe("eager multi-node bodies survive a hide/show cycle", () => {
     container.appendChild(a);
     container.appendChild(b);
 
-    insert(a, [body]);
+    insert(null, a, [body]);
     expect(a.innerHTML).toBe("<i>i</i><u>u</u>");
 
-    insert(b, [body]);
+    insert(null, b, [body]);
     // The nodes MOVE — there is one copy of them — but they are not lost.
     expect(b.innerHTML).toBe("<i>i</i><u>u</u>");
     expect(a.innerHTML).toBe("");

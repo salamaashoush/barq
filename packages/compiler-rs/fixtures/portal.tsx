@@ -18,6 +18,6 @@ export const optimality = {
   // they are nodes and target #8 hands them over as one clone. `target` is a
   // literal string the runtime resolves with `querySelector`, and it is not one
   // of the five props anything unwraps.
-  emits: ["Portal({", 'target: "#portal-target"', "children: "],
+  emits: ["Portal(", '() => "#portal-target"', "children: "],
   absent: ["(Portal, {", "children: () =>"],
 }

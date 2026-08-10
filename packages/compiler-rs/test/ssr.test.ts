@@ -16,6 +16,7 @@ import {
   templateHtml,
 } from "./harness.ts"
 import { CSS_NUMBER_PROPS } from "./dom-tables.ts"
+import { oracleRegistry } from "./oracle-known-failures.ts"
 import {
   attributeNameProbeSource,
   comments,
@@ -138,6 +139,8 @@ describe("the SSR backend's landing state", () => {
 // the fixture corpus, rendered twice
 // ---------------------------------------------------------------------------
 
+const ORACLE_KNOWN = oracleRegistry()
+
 describe("dual render: the whole corpus, string against DOM", () => {
   // LIVE. The compiled DOM module and the un-compiled oracle, both serialised by
   // the same runtime. This is the compile-time half of the escaping rules —
@@ -147,10 +150,32 @@ describe("dual render: the whole corpus, string against DOM", () => {
   // away.
   for (const name of CORPUS) {
     it(`${name}: the compiled template bytes serialise like the oracle's nodes`, async () => {
-      const oracle = await renderSsrOracle(name)
+      const registered = ORACLE_KNOWN.get(name)
       const compiled = await renderSsrViaDom(name)
-      expect(oracle.string, "the oracle is never a string").toBe(false)
       expect(compiled.string, "the DOM path is never a string").toBe(false)
+
+      if (registered?.ssr) {
+        // The reference is un-compiled, so its DECLARATIONS do not take a scope
+        // and C1 puts the scope where the author's first parameter is —
+        // `oracle-known-failures.ts` states the whole of it. The comparison is
+        // still RUN, and it still has to fail: a row that starts agreeing is a
+        // row nobody deleted.
+        let oracleHtml: string | undefined
+        try {
+          oracleHtml = (await renderSsrOracle(name)).html
+        } catch {
+          return
+        }
+        expect(
+          sameTree(compiled.html),
+          `STALE: ${name} is registered against ${registered.greenAt} and its reference now ` +
+            `agrees — delete the row`,
+        ).not.toBe(sameTree(oracleHtml))
+        return
+      }
+
+      const oracle = await renderSsrOracle(name)
+      expect(oracle.string, "the oracle is never a string").toBe(false)
       expect(sameTree(compiled.html), `${name} (compiled DOM) vs oracle`).toBe(sameTree(oracle.html))
     })
   }
@@ -188,7 +213,14 @@ describe("dual render: the compiled SSR string", () => {
 
   for (const name of CORPUS) {
     run(`${name}: the SSR string is the same document as the DOM the oracle builds`, async () => {
-      const oracle = await renderSsrOracle(name)
+      const registered = ORACLE_KNOWN.get(name)
+      // For a registered fixture the reference cannot conform to C1, so the
+      // third leg moves rather than disappearing: the compiled SSR string is
+      // compared against the compiled DOM module serialised by the same
+      // runtime, which is the claim this describe exists to make. What is lost
+      // until M9 is only the un-compiled leg, and it is lost for the fixtures
+      // named in `oracle-known-failures.ts` and no others.
+      const oracle = registered?.ssr ? await renderSsrViaDom(name) : await renderSsrOracle(name)
       const compiled = await renderSsrCompiled(name)
       const declared = (await loadModule(fixtureSource(name), `ssr-decl-${name}`)).ssrDiffers
       if (!declared) {
@@ -219,7 +251,7 @@ describe("dual render: the compiled SSR string", () => {
       const code = compileFixtureBody(name)
       const clientOnly =
         /\$\$[a-z]+\s*=/.test(stripLiterals(code)) ||
-        /_\$+setProp\([^,]+, "(ref|on[A-Z][\w]*)"/.test(code)
+        /_\$+setProp\([^,]+,[^,]+, "(ref|on[A-Z][\w]*)"/.test(code)
       if (!clientOnly) unexplained.push(name)
     }
     expect(unexplained, "declared an SSR divergence with no dropped opcode to explain it").toEqual([])
@@ -953,6 +985,60 @@ describe("SSR emit shape", () => {
     for (const needle of decl?.absent ?? []) {
       expect(chunks, `the SSR string must not emit ${JSON.stringify(needle)}`).not.toContain(needle)
     }
+  })
+
+  run("O9: a hole in a newline-eating element is given a newline to lose", () => {
+    // The other half of O9, and the half `sameTree` is structurally unable to
+    // see — it canonicalises the leading run on BOTH sides, so a string backend
+    // that dropped this newline compares equal to the oracle for ever.
+    //
+    // A template's hole materialises nothing, so the parser's U+000A lands on
+    // the text behind it and the DOM rule looks past the hole. A string's hole
+    // writes the VALUE's bytes against the open tag, and the compiler cannot
+    // see their first one: `<pre>` + "\nfirst line" is markup real Chrome
+    // parses to "first line" (`browser-parse-check.ts`, `pre eats a lone
+    // newline`), where `insert` builds the text node whole. So the compiler
+    // owes the parser a newline of its own — and `pre keeps a DOUBLED newline`
+    // is the row that says one is exactly enough.
+    const chunk = (source: string) =>
+      ssrChunks(compileSource(source, "probe.tsx", { ssr: true })).join(" ")
+
+    // The value cannot be seen, so the guard is unconditional…
+    expect(chunk("export default () => <pre>{v()}</pre>;\n")).toBe("<pre>\n </pre>")
+    // …including where the value may render EMPTY and leave the literal behind
+    // it against the tag. That literal is then NOT doubled: the guard is the
+    // byte the parser eats, and doubling would put a real blank line in.
+    expect(chunk("export default () => <pre>{v()}&#10;tail</pre>;\n")).toBe(
+      "<pre>\n \ntail</pre>",
+    )
+    // A `<textarea>` holding a hole is JSX P1 refuses, so it reaches the wire
+    // through the other serialiser in codegen/ssr.rs — and it is the shape that
+    // hurts most, because the DOM path is `createElement`, whose text node no
+    // parser ever reads.
+    expect(chunk("export default () => <textarea>{v()}</textarea>;\n")).toBe(
+      "<textarea>\n </textarea>",
+    )
+    // A content prop owns the whole child position and is just as unknown.
+    expect(chunk("export default () => <pre textContent={v()} />;\n")).toBe("<pre>\n </pre>")
+
+    // And nowhere else. A literal that already leads with a newline doubles and
+    // gets no second guard; an element and a non-newline literal write their own
+    // first byte; a tag the parser has no rule for is left alone.
+    expect(chunk("export default () => <pre>&#10;a</pre>;\n")).toBe("<pre>\n\na</pre>")
+    expect(chunk("export default () => <pre><b>x</b>{v()}</pre>;\n")).toBe(
+      "<pre><b>x</b> </pre>",
+    )
+    expect(chunk("export default () => <pre>x{v()}</pre>;\n")).toBe("<pre>x </pre>")
+    expect(chunk("export default () => <div>{v()}</div>;\n")).toBe("<div> </div>")
+
+    // The DOM backend answers the same question differently, and that is the
+    // point: its hole is not in the template at all, so the newline it doubles
+    // is the one on the text BEHIND the hole.
+    expect(templateHtml(compileSource("export default () => <pre>{v()}</pre>;\n", "probe.tsx")))
+      .toEqual(["<pre></pre>"])
+    expect(
+      templateHtml(compileSource("export default () => <pre>{v()}&#10;t</pre>;\n", "probe.tsx")),
+    ).toEqual(["<pre>\n\nt</pre>"])
   })
 
   run("a delegated handler is dropped, and leaves no empty quasi behind", () => {

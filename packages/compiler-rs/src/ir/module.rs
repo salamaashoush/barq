@@ -136,6 +136,19 @@ pub struct Module<'a> {
     /// a server bundle keeps pulling `@barqjs/core`'s DOM runtime in for a
     /// component nothing calls.
     pub flow_rewrites: Vec<SymbolId>,
+    /// A JSX root was written outside every function, so no component parameter
+    /// binds the scope name P4 threads through the calls it emits. `install`
+    /// answers it with one module-scope binding; a Block reached that way gets
+    /// `null` and raises `ScopeMissingError` at the position that wrote it,
+    /// which is C3.8's outcome and not an ambient fallback.
+    pub detached_roots: bool,
+    /// Every runtime entry point's local name in this module, and which of them
+    /// the compiler has already committed to. The names are derived from the
+    /// source once, here, because P4 `shape` emits `_$props` and `_$cell` long
+    /// before codegen exists to name them — and both stages have to agree, or
+    /// the import would not match the call.
+    pub helpers: [&'a str; crate::codegen::HELPER_COUNT],
+    pub used_helpers: [bool; crate::codegen::HELPER_COUNT],
 }
 
 pub struct TemplateRow {
@@ -165,14 +178,56 @@ pub struct Uids<'a> {
     /// per-slot value it compares against.
     prev: &'a str,
     value: &'a str,
+    /// One serialised unit of the analysed IR, for the reference backend.
+    ir: &'a str,
+    /// The ownership channel. ONE name for every position: a Block declares it
+    /// too, so an inner Block shadows an outer one and a component call reaches
+    /// the innermost enclosing scope by writing this and nothing else.
+    scope: &'a str,
+    /// A module-hoisted constant Cell (`_k$N`), deduped module-wide.
+    konst: &'a str,
+    /// A module-hoisted Block (`_b$N`).
+    block: &'a str,
     next_element: u32,
     next_value: u32,
 }
 
 impl<'a> Uids<'a> {
     pub fn new(source: &str, allocator: &'a Allocator) -> Self {
-        let [element, template, root, handler, prev, value] = free_names(source, allocator);
-        Self { element, template, root, handler, prev, value, next_element: 0, next_value: 0 }
+        let [element, template, root, handler, prev, value, ir, scope, konst, block] =
+            free_names(source, allocator);
+        Self {
+            element,
+            template,
+            root,
+            handler,
+            prev,
+            value,
+            ir,
+            scope,
+            konst,
+            block,
+            next_element: 0,
+            next_value: 0,
+        }
+    }
+
+    /// The scope every component takes and every Block declares.
+    #[inline]
+    pub fn scope(&self) -> &'a str {
+        self.scope
+    }
+
+    pub fn konst(&self, id: HoistId, allocator: &'a Allocator) -> &'a str {
+        numbered(self.konst, id + 1, allocator)
+    }
+
+    pub fn block(&self, id: HoistId, allocator: &'a Allocator) -> &'a str {
+        numbered(self.block, id + 1, allocator)
+    }
+
+    pub fn ir(&self, id: UnitId, allocator: &'a Allocator) -> &'a str {
+        numbered(self.ir, id + 1, allocator)
     }
 
     pub fn handler(&self, id: HoistId, allocator: &'a Allocator) -> &'a str {
@@ -240,17 +295,18 @@ fn numbered<'a>(prefix: &str, value: u32, allocator: &'a Allocator) -> &'a str {
     allocator.alloc_str(&name)
 }
 
-const UID_BASES: [&str; 6] = ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$"];
+const UID_BASES: [&str; 10] =
+    ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$", "_ir$", "_s$", "_k$", "_b$"];
 
-/// Six names the source never mentions. `generate_uid` against a real scope tree
+/// Ten names the source never mentions. `generate_uid` against a real scope tree
 /// is not on oxc 0.143's `Scoping` — DESIGN §4 assumes an API that only
 /// `oxc_traverse`'s `TraverseScoping` has.
 ///
 /// Every base opens with `_`, so the underscores are the only positions a
 /// collision can start at and one scan answers all six. A source that spells one
 /// of them is rare enough to be worth no more than the escalating re-scan below.
-fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 6] {
-    let mut taken = [false; 6];
+fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 10] {
+    let mut taken = [false; UID_BASES.len()];
     for (at, _) in source.match_indices('_') {
         let rest = &source[at..];
         for (index, base) in UID_BASES.iter().enumerate() {
@@ -258,7 +314,7 @@ fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 6] {
         }
     }
 
-    let mut names: [&'a str; 6] = UID_BASES;
+    let mut names: [&'a str; UID_BASES.len()] = UID_BASES;
     for index in 0..UID_BASES.len() {
         if !taken[index] {
             continue;
@@ -280,13 +336,23 @@ pub enum Hoisted<'a> {
     Handler { id: HoistId, expr: &'a Expression<'a>, span: Span },
     /// module-scope frozen literal for a fully-`Const` spread / style object
     Frozen { id: HoistId, expr: &'a Expression<'a>, span: Span },
+    /// module-scope `const _k$1 = () => "w"` — a constant prop Cell.
+    ///
+    /// `CODESIGN.md` §2 (grafted from Uniform Deferral): a proven constant
+    /// crosses a component boundary through a module-hoisted deduped thunk, so
+    /// a constant prop costs **zero** per-instance allocation. Deduped by the
+    /// printed text of the expression, module-wide, which is why `id` is
+    /// assigned by the shape pass rather than by position.
+    Cell { id: HoistId, expr: &'a Expression<'a>, span: Span },
 }
 
 impl Hoisted<'_> {
     #[inline]
     pub fn id(&self) -> HoistId {
         match self {
-            Hoisted::Handler { id, .. } | Hoisted::Frozen { id, .. } => *id,
+            Hoisted::Handler { id, .. } | Hoisted::Frozen { id, .. } | Hoisted::Cell { id, .. } => {
+                *id
+            }
         }
     }
 }
@@ -478,6 +544,9 @@ impl<'a> Module<'a> {
             scoping: Scoping::default(),
             maps: Mappings::default(),
             flow_rewrites: Vec::new(),
+            detached_roots: false,
+            helpers: crate::codegen::helper_names(&crate::codegen::free_sigil(source), allocator),
+            used_helpers: [false; crate::codegen::HELPER_COUNT],
         }
     }
 

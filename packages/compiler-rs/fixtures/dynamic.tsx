@@ -20,6 +20,6 @@ export const optimality = {
   // `component` is one of the five props the runtime unwraps, so the accessor
   // goes in bare; everything else `Dynamic` is given is an ordinary object
   // property it spreads onto the element it renders.
-  emits: ["Dynamic({", "component: tag", 'class: "dyn"', 'children: "inner"'],
+  emits: ["Dynamic(", "component: tag", '() => "dyn"', '() => "inner"'],
   absent: ["(Dynamic, {", "component: () =>"],
 }

@@ -34,6 +34,6 @@ export const optimality = {
   templates: 5,
   // `Await` takes the RESOLVED DATA in its children, so that callback keeps its
   // parameter and its arrow. `loading` and `fallback` are eager nodes.
-  emits: ["Suspense({", "Await({", "resource: value", "children: (data: string) =>"],
+  emits: ["Suspense(", "Await(", "resource: () => value", ", data: string) =>"],
   absent: ["(Await, {", "(Suspense, {"],
 }

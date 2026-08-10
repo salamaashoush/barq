@@ -131,7 +131,9 @@ const keep = (html: string): void => {
   sink += html.length;
 };
 
-const barqHtml = chunk(barqRows.default({ rows: DATA }));
+// C1: barq components take the scope first. A module-level mount is the
+// root, which the compiler spells `null`.
+const barqHtml = chunk(barqRows.default(null, { rows: DATA }));
 const solidHtml = chunk(solidRows.default({ rows: DATA }));
 const uncompiledHtml = barqCore.renderToString(() => barqUncompiledPage() as never);
 
@@ -199,7 +201,7 @@ report(
       {
         name: "barq compiled",
         setup: () => () => {
-          keep(barqCore.renderToString(() => barqRows.default({ rows: DATA }) as never));
+          keep(barqCore.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
         },
       },
       {
@@ -227,7 +229,7 @@ report(
       {
         name: "barq compiled",
         setup: () => () => {
-          keep(chunk(barqRows.default({ rows: DATA })));
+          keep(chunk(barqRows.default(null, { rows: DATA })));
         },
       },
       {

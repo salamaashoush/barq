@@ -13,6 +13,7 @@
 
 import type { Computed, Signal } from "./signals.ts";
 import { computed, createScope, onCleanup, signal } from "./signals.ts";
+import type { Scope } from "./scope.ts";
 
 export type Maybe<T> = T | undefined | null | false;
 
@@ -28,25 +29,25 @@ interface Row<Item, MappedItem> {
 
 export function mapArray<Item, MappedItem>(
   list: () => Maybe<readonly Item[]>,
-  map: (value: Item, index: () => number) => MappedItem,
-  options?: { keyed?: true; fallback?: () => unknown; name?: string },
+  map: (value: Item, index: () => number, scope: Scope) => MappedItem,
+  options?: { keyed?: true; fallback?: (scope: Scope) => unknown; name?: string },
 ): Computed<MappedItem[]>;
 export function mapArray<Item, MappedItem>(
   list: () => Maybe<readonly Item[]>,
-  map: (value: () => Item, index: number) => MappedItem,
-  options: { keyed: false; fallback?: () => unknown; name?: string },
+  map: (value: () => Item, index: number, scope: Scope) => MappedItem,
+  options: { keyed: false; fallback?: (scope: Scope) => unknown; name?: string },
 ): Computed<MappedItem[]>;
 export function mapArray<Item, MappedItem>(
   list: () => Maybe<readonly Item[]>,
-  map: (value: () => Item, index: () => number) => MappedItem,
-  options: { keyed: (item: Item) => unknown; fallback?: () => unknown; name?: string },
+  map: (value: () => Item, index: () => number, scope: Scope) => MappedItem,
+  options: { keyed: (item: Item) => unknown; fallback?: (scope: Scope) => unknown; name?: string },
 ): Computed<MappedItem[]>;
 export function mapArray<Item, MappedItem>(
   list: () => Maybe<readonly Item[]>,
-  map: (value: never, index: never) => MappedItem,
+  map: (value: never, index: never, scope: never) => MappedItem,
   options?: {
     keyed?: boolean | ((item: Item) => unknown);
-    fallback?: () => unknown;
+    fallback?: (scope: Scope) => unknown;
     name?: string;
   },
 ): Computed<MappedItem[]> {
@@ -80,15 +81,20 @@ export function mapArray<Item, MappedItem>(
 
   const createRow = (item: Item, index: number): Row<Item, MappedItem> => {
     let row!: Row<Item, MappedItem>;
-    createScope((dispose) => {
-      const itemSignal = itemIsSignal ? signal(item, ROW_SIGNAL) : undefined;
-      const indexSignal = wantsIndex && indexIsSignal ? signal(index, ROW_SIGNAL) : undefined;
-      const value = (map as (a: unknown, b: unknown) => MappedItem)(
-        itemSignal ?? item,
-        indexSignal ?? index,
-      );
-      row = { _dispose: dispose, _value: value, _item: itemSignal, _index: indexSignal };
-    }, true);
+    createScope(
+      (dispose, scope) => {
+        const itemSignal = itemIsSignal ? signal(item, ROW_SIGNAL) : undefined;
+        const indexSignal = wantsIndex && indexIsSignal ? signal(index, ROW_SIGNAL) : undefined;
+        const value = (map as unknown as (a: unknown, b: unknown, c: unknown) => MappedItem)(
+          itemSignal ?? item,
+          indexSignal ?? index,
+          scope,
+        );
+        row = { _dispose: dispose, _value: value, _item: itemSignal, _index: indexSignal };
+      },
+      true,
+      "each",
+    );
     return row;
   };
 
@@ -213,16 +219,22 @@ export function mapArray<Item, MappedItem>(
   return node;
 }
 
-function createFallbackRow<Item, MappedItem>(fallback: () => unknown): Row<Item, MappedItem> {
+function createFallbackRow<Item, MappedItem>(
+  fallback: (scope: Scope) => unknown,
+): Row<Item, MappedItem> {
   let row!: Row<Item, MappedItem>;
-  createScope((dispose) => {
-    row = {
-      _dispose: dispose,
-      _value: fallback() as MappedItem,
-      _item: undefined,
-      _index: undefined,
-    };
-  }, true);
+  createScope(
+    (dispose, scope) => {
+      row = {
+        _dispose: dispose,
+        _value: fallback(scope) as MappedItem,
+        _item: undefined,
+        _index: undefined,
+      };
+    },
+    true,
+    "each",
+  );
   return row;
 }
 
@@ -235,8 +247,8 @@ function createFallbackRow<Item, MappedItem>(fallback: () => unknown): Row<Item,
  */
 export function repeat<MappedItem>(
   count: () => number,
-  map: (index: number) => MappedItem,
-  options?: { from?: () => number; fallback?: () => unknown; name?: string },
+  map: (index: number, scope: Scope) => MappedItem,
+  options?: { from?: () => number; fallback?: (scope: Scope) => unknown; name?: string },
 ): Computed<MappedItem[]> {
   const fallback = options?.fallback;
   const fromFn = options?.from;
@@ -256,14 +268,18 @@ export function repeat<MappedItem>(
 
   const createRow = (index: number): Row<never, MappedItem> => {
     let row!: Row<never, MappedItem>;
-    createScope((dispose) => {
-      row = {
-        _dispose: dispose,
-        _value: map(index),
-        _item: undefined,
-        _index: undefined,
-      };
-    }, true);
+    createScope(
+      (dispose, scope) => {
+        row = {
+          _dispose: dispose,
+          _value: map(index, scope),
+          _item: undefined,
+          _index: undefined,
+        };
+      },
+      true,
+      "each",
+    );
     return row;
   };
 

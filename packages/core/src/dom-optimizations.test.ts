@@ -24,7 +24,7 @@ describe("insert: array reconciliation", () => {
     c.textContent = "c";
 
     const list = signal([a, b, c]);
-    insert(container, () => list());
+    insert(null, container, () => list());
     flush();
     expect(container.textContent).toBe("abc");
 
@@ -44,7 +44,7 @@ describe("insert: array reconciliation", () => {
       return el;
     });
     const list = signal(nodes.slice(0, 2));
-    insert(container, () => list());
+    insert(null, container, () => list());
     flush();
 
     list.set(nodes); // append at end
@@ -60,7 +60,7 @@ describe("insert: array reconciliation", () => {
 
   test("text nodes are reused positionally when content matches", () => {
     const items = signal(["a", "b", "c"]);
-    insert(container, () => items());
+    insert(null, container, () => items());
     flush();
 
     const firstText = container.firstChild?.nextSibling; // after start marker
@@ -84,7 +84,7 @@ describe("prev-value diffing", () => {
     };
 
     const styles = signal<Record<string, string>>({ color: "red", margin: "4px" });
-    setProp(el, "style", () => styles());
+    setProp(null, el, "style", () => styles());
     flush();
     expect(writes).toEqual(["color", "margin"]);
     expect(el.style.color).toBe("red");
@@ -108,7 +108,7 @@ describe("prev-value diffing", () => {
 
     const title = signal("x");
     const tick = signal(0);
-    setProp(el, "title", () => {
+    setProp(null, el, "title", () => {
       tick(); // extra dependency forcing re-runs
       return title();
     });
@@ -127,7 +127,7 @@ describe("prev-value diffing", () => {
   test("class objects diff the final string", () => {
     const el = document.createElement("div");
     const active = signal(true);
-    setProp(el, "class", () => ({ btn: true, active: active() }));
+    setProp(null, el, "class", () => ({ btn: true, active: active() }));
     flush();
     expect(el.className).toBe("btn active");
 
@@ -141,7 +141,7 @@ describe("spread", () => {
   test("applies, updates, and removes props reactively", () => {
     const el = document.createElement("div");
     const props = signal<Record<string, unknown>>({ id: "a", title: "t1" });
-    spread(el, () => props());
+    spread(null, el, () => props());
     flush();
     expect(el.getAttribute("id")).toBe("a");
     expect(el.getAttribute("title")).toBe("t1");
@@ -160,7 +160,7 @@ describe("spread", () => {
     const props = signal<Record<string, unknown>>({
       onClick: () => log.push("first"),
     });
-    spread(el, () => props());
+    spread(null, el, () => props());
     flush();
     el.click();
     expect(log).toEqual(["first"]);
@@ -180,7 +180,7 @@ describe("spread", () => {
     const el = document.createElement("div");
     let refCalls = 0;
     const n = signal(0);
-    spread(el, () => ({ "data-n": n(), ref: () => refCalls++ }));
+    spread(null, el, () => ({ "data-n": n(), ref: () => refCalls++ }));
     flush();
     expect(refCalls).toBe(1);
 

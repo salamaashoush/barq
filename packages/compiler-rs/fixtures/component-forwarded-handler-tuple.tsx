@@ -7,27 +7,27 @@ function pick(label: unknown, _event: MouseEvent): void {
 }
 
 /**
- * `getter_shaped`'s REFUSAL branch, which needs a prop that is both
- * `React::Reactive` and function-shaped — a combination no other fixture
- * produces, so wrapping a handler or an author-written accessor in a getter was
- * a mutation the whole corpus stayed green under.
+ * The two prop shapes whose IDENTITY is observable, which is what C3.4 and C5
+ * cost if a prop is anything but a Cell forwarded by name.
  *
  * Both reachable forms are here:
  *
- *  - `cb={[props.handler, props.label]}` — two props reads make the array
- *    reactive, and a first element that could be callable makes it a
- *    `HandlerTuple`. The runtime installs that array as the `$$click` expando,
- *    so its IDENTITY is the thing being protected: a getter rebuilds it on
- *    every property read.
- *  - `render={props.on ? … : …}` — a reactive choice between two author-written
- *    zero-arg arrows, which is `Shape::Accessor`. A getter here hands the
- *    component a different function every time it looks at the prop.
+ *  - `cb={[props.handler(), props.label()]}` — an array, so `identity_matters`
+ *    evaluates it ONCE into a cell. The runtime installs that array as
+ *    the `$$click` expando, so a carrier that rebuilt it per read would install
+ *    a different listener on every frame.
+ *  - `render={() => …}` — an author-written zero-arity arrow, which §3.0 rule 1
+ *    says already IS a Cell, so it forwards untouched and reads the same object
+ *    twice.
  *
  * `data-same` and `data-render-same` are that identity, rendered: each reads its
- * prop twice and says whether the two reads agreed. Under `createElement` they
- * are plain object properties and both say `true`, so a compiler that turned
- * either into a getter diverges on the FIRST frame, where nothing can declare
- * its way out.
+ * prop twice and says whether the two reads agreed. Both must say `true` on the
+ * FIRST frame, where nothing can declare its way out.
+ *
+ * This fixture was written against the getter model, where the refusal being
+ * measured was "do not wrap a function-shaped reactive prop in a getter". M3
+ * deleted getters outright (C3), so the refusal is gone and what survives is
+ * the property it existed to protect — which is the half worth pinning.
  */
 function Chip(props: {
   cb: [(label: unknown, event: MouseEvent) => void, string]
@@ -38,10 +38,10 @@ function Chip(props: {
     <button
       type="button"
       class="chip"
-      data-tone={props.tone}
+      data-tone={props.tone()}
       data-same={String(props.cb === props.cb)}
       data-render-same={String(props.render === props.render)}
-      onClick={props.cb}
+      onClick={props.cb()}
     >
       {props.render()}
     </button>
@@ -57,8 +57,8 @@ function Row(props: {
 }) {
   return (
     <Chip
-      cb={[props.handler, props.label]}
-      render={props.on ? () => props.long() : () => props.short()}
+      cb={[props.handler(), props.label()]}
+      render={() => (props.on() ? props.long() : props.short())}
       tone={props.label}
     />
   )
@@ -88,10 +88,14 @@ export const optimality = {
   target: 1,
   milestone: 5,
   templates: 2,
-  // The two function-shaped props stay VALUES. `tone`, forwarded from the same
-  // props object in the same call, is the control: it is an ordinary reactive
-  // read with no function shape and it DOES become a getter, so the absences
-  // below are a refusal and not an absence of getters.
-  emits: ["Chip({", "get tone()", "return props.label", "cb: [props.handler, props.label]"],
-  absent: ["get cb()", "get render()"],
+  // Three carriers, three rules, in one call. `cb` is an array, so C3's
+  // identity rule evaluates it ONCE into a cell; `render` is a zero-arity arrow
+  // the author wrote, so §3.0 rule 1 forwards it untouched; `tone` is a Cell
+  // already, so C5 forwards it by NAME and no closure is allocated at all.
+  emits: [
+    "Chip(",
+    "([props.handler(), props.label()])",
+    "tone: props.label",
+  ],
+  absent: ["get cb()", "get render()", "get tone()", "(Chip, {"],
 }

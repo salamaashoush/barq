@@ -31,6 +31,6 @@ export const optimality = {
   // number. The compiler passes the flag through and rewrites neither — turning
   // the call into `Index(...)` itself would be right about the semantics and
   // wrong about the props the author wrote.
-  emits: ["For({", "each: words", "keyed: false", "(word: () => string, index: number)"],
+  emits: ["For(", "each: words", "() => false", ", word: () => string, index: number)"],
   absent: ["Index(", "each: () => words()"],
 }

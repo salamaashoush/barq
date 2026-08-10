@@ -45,19 +45,19 @@ try {
 
 // The runtime's two SVG branches, driven directly.
 const one = document.createElementNS(SVG, "circle")
-setProp(one, "class", "dot dot--on")
+setProp(null, one, "class", "dot dot--on")
 result.probes.setPropClass = one.getAttribute("class")
 
 const two = document.createElementNS(SVG, "circle")
 two.setAttribute("class", "keep")
-setProp(two, "classList", { ring: true, hidden: false })
+setProp(null, two, "classList", { ring: true, hidden: false })
 result.probes.setPropClassList = two.getAttribute("class")
 
 // The compiled fixture, rendered and driven.
 const root = document.createElement("div")
 document.body.appendChild(root)
-createScope(() => {
-  render(Component(), root)
+createScope((_dispose, scope) => {
+  render((s) => Component(s), root)
 }, true)
 flush()
 

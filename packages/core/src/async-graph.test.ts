@@ -169,7 +169,7 @@ describe("Loading boundary", () => {
     });
 
     createScope(() => {
-      const el = Loading({
+      const el = Loading(null, {
         fallback: document.createTextNode("loading..."),
         children: () => {
           // reactive child reading an async value
@@ -200,8 +200,8 @@ describe("Errored boundary", () => {
     const container = document.createElement("div");
 
     createScope(() => {
-      const el = Errored({
-        fallback: (error) => document.createTextNode(`error: ${error().message}`),
+      const el = Errored(null, {
+        fallback: (_s, error) => document.createTextNode(`error: ${error().message}`),
         children: () => {
           throw new Error("render exploded");
         },
@@ -218,8 +218,8 @@ describe("Errored boundary", () => {
     const trigger = signal(false);
 
     createScope(() => {
-      const el = Errored({
-        fallback: (error) => document.createTextNode(`caught: ${error().message}`),
+      const el = Errored(null, {
+        fallback: (_s, error) => document.createTextNode(`caught: ${error().message}`),
         children: () => {
           effect(() => {
             if (trigger()) throw new Error("effect exploded");
@@ -244,8 +244,8 @@ describe("Errored boundary", () => {
     let resetFn: (() => void) | null = null;
 
     createScope(() => {
-      const el = Errored({
-        fallback: (error, reset) => {
+      const el = Errored(null, {
+        fallback: (_s, error, reset) => {
           resetFn = reset;
           return document.createTextNode(`error: ${error().message}`);
         },

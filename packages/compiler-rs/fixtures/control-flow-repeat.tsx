@@ -18,6 +18,6 @@ export const optimality = {
   templates: 2,
   // `Repeat.count` is unwrapped by the runtime, so the accessor goes in bare;
   // the row index is a plain number and needs no thunk at all.
-  emits: ["Repeat({", "count: n", "children: (i) =>"],
+  emits: ["Repeat(", "count: n", ", i) =>"],
   absent: ["(Repeat, {", "count: () =>"],
 }

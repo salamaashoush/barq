@@ -231,7 +231,9 @@ function RefetchDemo() {
           <ul class={compactListStyle}>
             {data()
               ?.slice(0, 3)
-              .map((user) => <li>{user.name}</li>)}
+              .map((user) => (
+                <li>{user.name}</li>
+              ))}
           </ul>
         </Show>
       </div>

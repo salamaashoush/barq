@@ -60,9 +60,9 @@ export const optimality = {
   // order, and the statics either side of the component stay baked into the
   // caller's frame instead of becoming holes.
   emits: [
-    "Panel({",
+    "Panel(",
     '"Inbox"',
-    "children: [",
+    "children: ",
     '<p class="lead">before</p>',
     '<p class="tail">after</p>',
   ],

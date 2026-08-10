@@ -16,7 +16,7 @@ pub use module::{
 pub use patch::{Anchor, Chan, Diff, HandlerRef, InsertPlan, Op, Patch};
 pub use react::{BIT_OVERFLOW, Const, Cost, DepSet, FreeVars, React, Rx, Shape, Thunk};
 pub use skeleton::{Materialisation, Ns, SkelAttr, SkelAttrValue, SkelElement, SkelNode, Skeleton};
-pub use symbols::{Diag, DiagLevel, Flow, MemberMask, Prim, ReactiveEnv, SourceKind};
+pub use symbols::{Diag, Flow, Keyed, MemberMask, Prim, ReactiveEnv, SourceKind};
 
 /// Index into [`Skeleton::nodes`], document order.
 pub type NodeId = u32;

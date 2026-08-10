@@ -14,7 +14,9 @@ const mods: [string, M][] = order.map((k) => all[k]);
 const make = (m: M) => () => {
   m.createScope((dispose) => {
     const s = m.signal(0);
-    m.effect(() => { s(); });
+    m.effect(() => {
+      s();
+    });
     m.flush();
     dispose();
   }, true);

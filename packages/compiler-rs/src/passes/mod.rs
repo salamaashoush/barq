@@ -19,14 +19,24 @@ use crate::options::ResolvedOptions;
 /// `anchor` is the last pass that may change the skeleton's SHAPE, so it runs
 /// before the bytes are serialised and before anything is addressed against
 /// them.
+///
+/// `options.opt` decides which optimisations run. Two of the six are skipped
+/// outright and four are told to make the pessimal choice, because they also
+/// compute something the ABI needs: `anchor` materialises the node an `insert`
+/// is given, `serialize` writes the template bytes, `address` names the nodes a
+/// patch reads. Off means "choose the form that assumes nothing", never "do not
+/// run".
 pub fn run<'a>(
     allocator: &'a Allocator,
     module: &mut Module<'a>,
     options: &ResolvedOptions,
     target: Target,
 ) {
+    let opt = options.opt;
     classify::run(allocator, module);
-    fold::run(allocator, module);
+    if opt.fold {
+        fold::run(allocator, module);
+    }
     // After P3, because target #8 asks whether a unit still has a patch, and
     // before P5, because nothing it builds reaches the skeleton.
     shape::run(allocator, module, options);
@@ -34,13 +44,17 @@ pub fn run<'a>(
     // else reads them: a `<!---->` is an insert anchor, a `template()` is a
     // parse, and an address is a sibling walk. P8b concatenates bytes and has
     // none of the three (DESIGN §5). The DOM order is left exactly as it was.
-    if target == Target::Dom {
-        anchor::run(allocator, module);
+    if target.walks_the_dom() {
+        anchor::run(allocator, module, opt.anchor);
     }
-    group::run(allocator, module);
-    if target == Target::Dom {
-        serialize::run(module);
-        address::run(allocator, module);
+    // Skipped whole: a `SetLive` with no group header is the one-effect-per-prop
+    // form, which codegen emits directly.
+    if opt.fuse {
+        group::run(allocator, module);
+    }
+    if target.walks_the_dom() {
+        serialize::run(module, opt.dedup);
+        address::run(allocator, module, opt.walk);
     }
 }
 
@@ -68,7 +82,7 @@ mod tests {
         let mut program =
             Parser::new(allocator, source, source_type_for(Some("a.tsx"))).parse().program;
         let mut module = Module::for_source(allocator, source);
-        analysis::bind(&program, &mut module, "@barqjs/core");
+        analysis::bind(allocator, &program, &mut module, &ResolvedOptions::default());
         harvest::run(allocator, &mut program, &mut module);
         lower::lower(allocator, source, &ResolvedOptions::default(), &mut module);
         (program, module)

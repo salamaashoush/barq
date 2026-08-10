@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
 import { join } from "node:path"
 import { createRequire } from "node:module"
 
@@ -20,7 +28,25 @@ import {
 const require_ = createRequire(import.meta.url)
 
 export const FIXTURE_DIR = join(import.meta.dir, "..", "fixtures")
-const TMP_DIR = join(import.meta.dir, ".tmp")
+const RUN = process.pid
+/**
+ * One generated-module directory PER PROCESS, and generated names carry the pid
+ * inside it. The root `bun run test` starts several test processes over this
+ * package at once, and a shared directory raced three ways over: a recursive
+ * delete landing between a sibling process's `writeFileSync` and its `import`;
+ * two processes minting `own-context-provider-0.tsx` at the same path, so one
+ * imported the other's fixture and compared a render against the wrong module;
+ * and — the one that survived per-process NAMES — bun's resolver refusing to
+ * see a newly written file at all once another process is churning the same
+ * directory. That last one was measured: the harness raised `Cannot find
+ * module` on a path that `existsSync` reported present, five fresh names in a
+ * row, with 1027 entries in the directory. A fresh name does not fix it; a
+ * directory only this process writes to does.
+ *
+ * `TMP_DIR` stays ONE level under `test/`, because the L1 fixtures reach their
+ * support module by relative path from where the generated file lands.
+ */
+export const TMP_DIR = join(import.meta.dir, `.tmp-${RUN}`)
 
 /**
  * The oracle path never reaches the compiler, so the JSX it contains has to be
@@ -36,10 +62,26 @@ export interface NativeTransformResult {
 }
 
 interface NativeCompiler {
-  transform(code: string, options?: Record<string, unknown>): NativeTransformResult
+  transform(
+    code: string,
+    options?: Record<string, unknown>,
+  ): NativeTransformResult & { ownership?: string | null }
+  opcodes(): string[]
+  diagnosticCodes(): Array<{ code: string; level: string; summary: string; docs: string }>
 }
 
+/**
+ * `BARQ_NATIVE` points the whole harness at a different build of the compiler.
+ * L6 (`CODESIGN.md` §6) asks whether this suite would notice a wrong compiler
+ * change, and the only honest way to answer it is to run the suite against a
+ * compiler that really has been changed. `test/mutants.ts` builds one mutant
+ * per optimisation pass out of a scratch copy of the crate and points this at
+ * each in turn, so the experiment never writes to the source tree or to the
+ * committed binding.
+ */
 function loadNative(): NativeCompiler {
+  const mutant = process.env.BARQ_NATIVE
+  if (mutant !== undefined && mutant !== "") return require_(mutant) as NativeCompiler
   try {
     return require_("../index.js") as NativeCompiler
   } catch (error) {
@@ -53,6 +95,18 @@ function loadNative(): NativeCompiler {
 }
 
 const native = loadNative()
+
+/**
+ * The ONE resolved binding, exported so nothing has to re-require `../index.js`.
+ *
+ * A module that resolves its own binding is invisible to `BARQ_NATIVE`, and a
+ * channel a mutant compiler never reaches cannot judge it: `ownership.ts` and
+ * `diagnostics.test.ts` both did that, so `mutants.ts`'s survivor pass reported
+ * "nothing in the project sees it" for two files that had been pointed at the
+ * PRISTINE compiler all along. Measured: under an identity-transform stub the
+ * L2b ownership banner came out byte-identical to the real build.
+ */
+export const nativeCompiler: NativeCompiler = native
 
 /**
  * A step or event where the compiled path is deliberately MORE correct than the
@@ -148,6 +202,18 @@ export interface RenderResult {
   trace: TraceSummary
   /** Per-effect run counts, creation-ordered */
   runs: number[]
+  /**
+   * Everything this render CONSTRUCTED, not merely everything it left in the
+   * container: the whole document at each frame, plus the markup of every
+   * template clone the tracer recorded, attached or not.
+   *
+   * `emi.ts` decides liveness off this and nothing else. Reading the container
+   * snapshots would have made the classification unsound in the dangerous
+   * direction — a `<Portal>` renders into `document.body` and a subtree built
+   * and torn down inside one step is never in any snapshot, so both would have
+   * been called UNREACHED and then mutated.
+   */
+  seen: string
   /** As declared by the fixture module that produced this render. */
   wins: CompilerWin[]
   goesLive: string[]
@@ -231,6 +297,16 @@ export function compileFixtureBody(name: string, options: Record<string, unknown
   return compileSource(body, `${name}.tsx`, options)
 }
 
+/**
+ * The `Backend` trait's whole instruction set, by `Op` variant name, straight
+ * off `codegen::backend::OPS` — the same macro list the trait, its dispatch and
+ * every implementation are generated from. `interp.test.ts` checks the
+ * reference backend's JS half against it in both directions.
+ */
+export function compilerOpcodes(): string[] {
+  return native.opcodes()
+}
+
 /** The whole native result — code, sourcemap and warnings. */
 export function compileFixtureRaw(
   name: string,
@@ -260,16 +336,94 @@ export function compileSourceRaw(
 // module loading
 // ---------------------------------------------------------------------------
 
-let seq = 0
+/**
+ * Shared across module registries, because bun gives each test FILE its own and
+ * a per-registry counter would mint the same path twice. The reset below is
+ * guarded by the same object: a file that top-level-awaits lets bun start
+ * loading the next one, so a second `resetTmp()` used to run — and delete the
+ * modules the first file was still importing — halfway through the first.
+ */
+const SHARED = Symbol.for("barq.compiler-rs.harness.tmp")
+const shared = ((globalThis as Record<symbol, unknown>)[SHARED] ??= {
+  seq: 0,
+  prepared: false,
+  live: [] as string[],
+}) as { seq: number; prepared: boolean; live: string[] }
+
+/**
+ * How many generated modules stay on disk. Bounded, and the bound is not
+ * cosmetic: past roughly five thousand entries in this directory bun stops
+ * resolving newly written files in it, and the harness fails with
+ * `Cannot find module` on a path it wrote a microsecond earlier. Deep enough
+ * that a stack trace out of a failing fixture still points at a file that
+ * exists.
+ */
+const KEEP = 512
+
+function retire(): void {
+  while (shared.live.length > KEEP) {
+    const stale = shared.live.shift()
+    if (stale === undefined) return
+    try {
+      rmSync(stale, { force: true })
+    } catch {
+      // Untidy, never fatal.
+    }
+  }
+}
+
+/**
+ * Whole directories left by a run that died before its own ring drained.
+ * Ownership is read off the directory name, and one is only removed when the
+ * process that wrote it is gone: a sibling started by the root `bun run test`
+ * is very much alive, and its modules must survive.
+ *
+ * `.tmp` with no pid is the shared directory this harness used before it went
+ * per-process; it is removed once nothing has touched it for ten minutes.
+ */
+function sweepAbandoned(): void {
+  const cutoff = Date.now() - 10 * 60 * 1000
+  const root = import.meta.dir
+  for (const name of readdirSync(root)) {
+    if (!name.startsWith(".tmp")) continue
+    const path = join(root, name)
+    if (path === TMP_DIR) continue
+    try {
+      if (name === ".tmp") {
+        if (statSync(path).mtimeMs < cutoff) rmSync(path, { recursive: true, force: true })
+        continue
+      }
+      const owner = Number.parseInt(name.slice(".tmp-".length), 10)
+      if (!Number.isNaN(owner) && alive(owner)) continue
+      rmSync(path, { recursive: true, force: true })
+    } catch {
+      // Untidy, never fatal.
+    }
+  }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
 
 function resetTmp(): void {
-  if (existsSync(TMP_DIR)) rmSync(TMP_DIR, { recursive: true, force: true })
+  // A directory under this pid can only be a dead run's, since pids are reused.
+  rmSync(TMP_DIR, { recursive: true, force: true })
   mkdirSync(TMP_DIR, { recursive: true })
-  // Rewritten on every run because the reset above deletes it; without this the
-  // generated modules show up as untracked files after any test run.
+  sweepAbandoned()
+  // Without this the generated modules show up as untracked files after any
+  // test run. `*` covers the file itself, so the directory reads as empty.
   writeFileSync(join(TMP_DIR, ".gitignore"), "*\n")
 }
-resetTmp()
+if (!shared.prepared) {
+  shared.prepared = true
+  resetTmp()
+}
 
 /**
  * A fresh module identity per load: fixtures keep their signals at module
@@ -280,9 +434,60 @@ resetTmp()
  * to "did these two renders share a signal".
  */
 export async function loadModule(code: string, tag: string): Promise<FixtureModule> {
-  const file = join(TMP_DIR, `${tag}-${seq++}.tsx`)
-  writeFileSync(file, PRAGMA + code)
-  return (await import(file)) as FixtureModule
+  for (let attempt = 0; ; attempt++) {
+    const id = `${RUN}-${tag}-${shared.seq++}`
+    const file = join(TMP_DIR, `${id}.tsx`)
+    // bun 1.4.0 keys its in-process transpiled-source cache by a hash of the
+    // source and compares by hash ALONE, so two generated modules can be served
+    // each other's code — silently, with a plausible namespace object. The stamp
+    // makes the import verifiable; the padding makes the re-mint hash otherwise.
+    writeFileSync(
+      file,
+      `${PRAGMA}export const __module = ${JSON.stringify(id)};${" ".repeat(attempt)}\n${code}`,
+    )
+    shared.live.push(file)
+    retire()
+
+    let mod: (FixtureModule & { __module?: string }) | undefined
+    try {
+      mod = (await import(file)) as FixtureModule & { __module?: string }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      // bun's resolver can miss a file it has on disk once another process is
+      // churning the same directory. A fresh name resolves; the same one does
+      // not, so this re-mints rather than retrying the import.
+      if (!message.includes("Cannot find module")) throw error
+      if (attempt === 4) {
+        throw new Error(
+          `bun could not resolve ${file} five times over, and the file ` +
+            `${existsSync(file) ? "IS" : "is NOT"} on disk (${readdirSync(TMP_DIR).length} entries ` +
+            `in the directory). Underlying error: ${message}`,
+        )
+      }
+      continue
+    }
+
+    if (mod.__module === id) return mod
+    if (attempt === 4) {
+      throw new Error(
+        `bun evaluated ${file} as ${mod.__module ?? "a module carrying no stamp"} five times over: ` +
+          "its in-process source cache keys transpiled output by a hash of the source and compares " +
+          "by hash alone, so two generated modules are served each other's code.",
+      )
+    }
+  }
+}
+
+/**
+ * A compiled module written beside the generated one under its OWN basename, so
+ * a fixture's `import { Card } from "./own-card.tsx"` resolves. Every fixture in
+ * the corpus is a single file, which is the arrangement in which the ownership
+ * channel's static tree is total; a fixture that imports a component is the
+ * arrangement in which it is not, and the degradation has to be exercised
+ * rather than assumed away.
+ */
+export function writeSibling(name: string, code: string): void {
+  writeFileSync(join(TMP_DIR, name), PRAGMA + code)
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +504,23 @@ async function settle(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0))
 }
 
-async function renderModule(mod: FixtureModule): Promise<RenderResult> {
+/**
+ * Exported because the L3 drivers that are not the corpus — the JSX generator
+ * and the EMI mutator — produce SOURCE rather than a fixture name, and a second
+ * copy of this loop would be a second answer to what a frame is.
+ */
+/**
+ * The markup of one template clone, wherever it ended up. A clone that was
+ * built, attached and torn down again inside a single step never appears in any
+ * frame, and it was still constructed — which is the question EMI is asking.
+ */
+function markupOf(node: Node): string {
+  const element = node as { outerHTML?: string }
+  if (typeof element.outerHTML === "string") return element.outerHTML
+  return [...node.childNodes].map((child) => markupOf(child)).join("")
+}
+
+export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
   const core = await import("@barqjs/core")
 
   const container = document.createElement("div")
@@ -314,6 +535,7 @@ async function renderModule(mod: FixtureModule): Promise<RenderResult> {
 
   const channels: DomChannels[] = []
   const expectedAnchors: number[] = []
+  const seen: string[] = []
   const snapshot = (): string => {
     const frame = normalizeChannels(container)
     channels.push(frame)
@@ -321,13 +543,20 @@ async function renderModule(mod: FixtureModule): Promise<RenderResult> {
     // that has since been detached, or one built after this frame, is not part
     // of what this frame is allowed to contain.
     expectedAnchors.push(liveTemplateAnchors(trace, container))
+    // The whole document, not the container: a `<Portal>` renders somewhere
+    // else entirely and is still very much reached.
+    seen.push(document.body.innerHTML)
     return frame.html
   }
 
   try {
     core.createScope((d: () => void) => {
       dispose = d
-      core.render(mod.default() as never, container)
+      // C1: the default export is a component and takes the scope it runs
+      // under, so `render` is handed the BLOCK and opens that scope itself.
+      // Calling it here would construct the subtree before any scope existed —
+      // the argument form the whole redesign exists to remove.
+      core.render(mod.default as never, container)
     }, true)
 
     await settle()
@@ -359,6 +588,7 @@ async function renderModule(mod: FixtureModule): Promise<RenderResult> {
       expectedAnchors,
       trace: summarize(trace),
       runs: trace.effects.map((e) => e.runs),
+      seen: [...seen, ...trace.templates.map((instance) => markupOf(instance.node))].join("\n"),
       wins: mod.wins ?? [],
       goesLive: mod.goesLive ?? [],
     }
@@ -394,16 +624,40 @@ export async function renderViaRuntime(name: string): Promise<RenderResult> {
   return renderModule(mod)
 }
 
-/** The thing under test: JSX lowered by @barqjs/compiler-rs. */
+/**
+ * The thing under test: JSX lowered by @barqjs/compiler-rs.
+ *
+ * `options` reaches the native transform unchanged, which is how the L3
+ * differential renders the same fixture at `-O0` and at `-Ox`. The tag carries
+ * the options so two levels of one fixture never share a generated module.
+ */
 export async function renderViaCompiler(
   name: string,
   corrupt: Corruptions = {},
+  options: Record<string, unknown> = {},
 ): Promise<RenderResult> {
   const source = corrupt.source ? corrupt.source(fixtureSource(name)) : fixtureSource(name)
-  let code = compileSource(source, `${name}.tsx`)
+  let code = compileSource(source, `${name}.tsx`, options)
   if (corrupt.emitted) code = corrupt.emitted(code)
-  const mod = await loadModule(code, `compiled-${name}`)
+  const tag =
+    Object.keys(options).length === 0
+      ? "compiled"
+      : `${options.interp ? "interp" : "compiled"}-O${options.optimize ?? "x"}`
+  const mod = await loadModule(code, `${tag}-${name}`)
   return { ...(await renderModule(mod)), code }
+}
+
+/**
+ * The reference backend (`CODESIGN.md` §6 L2): the SAME analysed IR the DOM
+ * backend consumes, serialised beside the module and walked by
+ * `@barqjs/core/interp` instead of printed as JavaScript.
+ */
+export async function renderViaInterp(
+  name: string,
+  corrupt: Corruptions = {},
+  options: Record<string, unknown> = {},
+): Promise<RenderResult> {
+  return renderViaCompiler(name, corrupt, { interp: true, ...options })
 }
 
 /**
@@ -438,6 +692,24 @@ function countMatches(text: string, pattern: RegExp): number {
  * earned. Target #9 is the milestone that turns that count into an assertion,
  * so it has to be exact before elision lands.
  */
+/**
+ * Whether the `/` at `at` belongs to a JSX tag rather than opening a regex.
+ *
+ * The regex heuristic below asks what the last significant character was, and
+ * JSX has two shapes it answers wrongly. `</div>` puts the `/` after a `<`,
+ * which is not in the "cannot precede a regex" class, so the scanner blanked
+ * from there to the next closing tag and DESYNCED everything after it — over the
+ * fixture corpus that moved the intrinsic-element count in 86 of 117 files, hid
+ * a real `<span ref={…}>` from `emi.ts`, and invented two candidates inside a
+ * string literal. `<div a={b} />` and `<div a="x" />` are the same bug with `}`
+ * and `"` in front. Neither can be a division, so the discriminator is the `>`
+ * that follows.
+ */
+function closesAJsxTag(code: string, at: number, previous: string): boolean {
+  if (code[at - 1] === "<") return true
+  return code[at + 1] === ">" && (previous === "}" || previous === '"' || previous === "'")
+}
+
 export function stripLiterals(code: string): string {
   const out = code.split("")
   const blank = (from: number, to: number): void => {
@@ -526,7 +798,7 @@ export function stripLiterals(code: string): string {
       i++
       continue
     }
-    if (ch === "/" && previous !== "" && !/[\w$)\]]/.test(previous)) {
+    if (ch === "/" && !closesAJsxTag(code, i, previous) && previous !== "" && !/[\w$)\]]/.test(previous)) {
       let j = i + 1
       let inClass = false
       while (j < code.length) {
@@ -693,8 +965,10 @@ export function auditAnchors(code: string): AnchorAudit {
   const used = new Set<Node>()
   let unresolved = 0
   for (const call of insertCalls(stripped)) {
-    if (call.length < 3) continue
-    const name = call[2].trim()
+    // `_$insert($s, parent, value, anchor)` — the scope is first (§3.3 C6), so
+    // the anchor is the FOURTH argument.
+    if (call.length < 4) continue
+    const name = call[3].trim()
     if (!/^_el\$+\d+$/.test(name)) continue
     const node = bound.get(name)
     if (!node) {
@@ -781,7 +1055,11 @@ export function renderEffectBodies(code: string): string[] {
  */
 export function groupTargets(code: string): string[][] {
   return renderEffectBodies(code).map((body) => [
-    ...new Set([...body.matchAll(/_\$+setProp\((_el\$+\d+)/g)].map((m) => m[1])),
+    // `setProp` takes the SCOPE first (§3.3 C6), so the element it writes is
+    // the second argument.
+    ...new Set(
+      [...body.matchAll(/_\$+setProp\([^,]+,\s*(_el\$+\d+)/g)].map((m) => m[1]),
+    ),
   ])
 }
 
@@ -805,7 +1083,9 @@ export function patchedAttributeNames(code: string): Set<string> {
   // `_\$+`, not `_\$`: a fixture whose own source contains `_$` makes the
   // compiler shift every emitted uid to `_$$` (hygiene), and a scanner pinned to
   // one prefix would silently see no patches at all.
-  for (const match of code.matchAll(/_\$+setProp\([^,]+,\s*"([^"]+)"/g)) {
+  // `setProp($s, el, key, value)` — the scope is first (CODESIGN §3.3 C6), so
+  // the key is the THIRD argument.
+  for (const match of code.matchAll(/_\$+setProp\([^,]+,[^,]+,\s*"([^"]+)"/g)) {
     const name = match[1]
     names.add(ATTRIBUTE_ALIASES[name] ?? name)
   }

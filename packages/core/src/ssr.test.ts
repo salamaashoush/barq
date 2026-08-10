@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { JSXElement } from "./dom.ts";
 import { createElement, render } from "./dom.ts";
 import { For, Index, Match, Repeat, Show, Switch } from "./components.ts";
+import { cell, props } from "./props.ts";
 import { renderToString } from "./server.ts";
 import {
   SsrHtml,
@@ -322,6 +323,53 @@ describe("attributes", () => {
     expect(cls("k", clsList({ hit: true }))).toBe(' class="k hit"');
   });
 
+  test("…and the line between them is the ORACLE's, not this file's", () => {
+    // Every expectation above states what `attr` answers. That is a claim about
+    // this module, and a module can be confidently wrong: the string backend
+    // omitted `class` for `""` and for `null` alike, and a table of `toBe`s
+    // written next to it would have agreed with it.
+    //
+    // `createElement` through the real runtime is the specification. Each value
+    // here is applied as a prop and the resulting element SERIALISED, so the
+    // question asked is the only one that matters — would a browser given the
+    // markup have the element the client builds?
+    const wrong: string[] = [];
+    for (const name of ["class", "className", "classList"]) {
+      for (const value of [
+        "",
+        "a b",
+        [],
+        ["a", "b"],
+        {},
+        { a: false },
+        { a: true, b: false },
+        false,
+        null,
+        undefined,
+        0,
+      ] as unknown[]) {
+        const oracle = renderToString(() => createElement("div", { [name]: value }) as never);
+        const string = `<div${attr(name, value, "div")}></div>`;
+        if (oracle !== string) {
+          wrong.push(`${name}=${JSON.stringify(value)}: DOM ${oracle} vs string ${string}`);
+        }
+      }
+    }
+    expect(wrong, "the string backend disagrees with the DOM about a class").toEqual([]);
+
+    // Both answers are really reached, so neither clause is vacuous — and the
+    // empty one is the one that regressed.
+    expect(renderToString(() => createElement("div", { class: "" }) as never)).toBe(
+      '<div class=""></div>',
+    );
+    expect(renderToString(() => createElement("div", { class: null }) as never)).toBe(
+      "<div></div>",
+    );
+    expect(renderToString(() => createElement("div", { classList: {} }) as never)).toBe(
+      "<div></div>",
+    );
+  });
+
   test("spreadAttrs writes the object in its own key order", () => {
     expect(spreadAttrs({ id: "a", class: "b", onClick: () => {}, children: "no" })).toBe(
       ' id="a" class="b"',
@@ -342,88 +390,137 @@ describe("attributes", () => {
 });
 
 describe("the six string-inlinable flow components", () => {
-  const row = (item: { n: string }, index: () => number) =>
+  const row = (_s: unknown, item: { n: string }, index: () => number) =>
     html(`<li>${index()}: ${esc(item.n)}</li>`);
 
   test("ssrFor reproduces For's rows, keys and fallback", () => {
     const rows = [{ n: "a" }, { n: "<b>" }];
-    expect(ssrFor({ each: rows, children: row }).toString()).toBe(
+    expect(ssrFor(null, { each: rows, children: row }).toString()).toBe(
       "<li>0: a</li><li>1: &lt;b&gt;</li>",
     );
-    expect(ssrFor({ each: () => rows, children: row }).toString()).toBe(
+    expect(ssrFor(null, { each: () => rows, children: row }).toString()).toBe(
       "<li>0: a</li><li>1: &lt;b&gt;</li>",
     );
-    expect(ssrFor({ each: [], fallback: "none", children: row }).toString()).toBe("none");
-    expect(ssrFor({ each: null, children: row }).toString()).toBe("");
+    expect(ssrFor(null, { each: [], fallback: "none", children: row }).toString()).toBe("none");
+    expect(ssrFor(null, { each: null, children: row }).toString()).toBe("");
     // A key FUNCTION hands the row its item as an ACCESSOR.
-    const boxed = ssrFor({
+    const boxed = ssrFor(null, {
       each: rows,
-      keyed: (item: { n: string }) => item.n,
-      children: ((item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`)) as never,
+      keyed: cell((item: { n: string }) => item.n),
+      children: ((_s: unknown, item: () => { n: string }) =>
+        html(`<li>${esc(item().n)}</li>`)) as never,
     });
     expect(boxed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
     // `keyed: false` delegates to Index, whose row item is an accessor.
-    const unkeyed = ssrFor({
+    const unkeyed = ssrFor(null, {
       each: rows,
       keyed: false,
-      children: ((item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`)) as never,
+      children: ((_s: unknown, item: () => { n: string }) =>
+        html(`<li>${esc(item().n)}</li>`)) as never,
     });
     expect(unkeyed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
   });
 
+  test("a BARE key function carried by a spread is told apart from a Cell by its arity", () => {
+    // §3.0 rule 1, on the seam where it is load-bearing. `<For {...opts}>`
+    // splices `opts` into the source list verbatim, so `props.keyed` is the key
+    // function itself and not a Cell carrying one. Reading it the way a Cell is
+    // read calls it with no row, and `row.id` throws on `undefined`. `For`
+    // draws the line at the parameter a key function declares and a Cell never
+    // does; the string backend has to draw it in the same place.
+    const rows = [
+      { id: "x", n: "a" },
+      { id: "y", n: "b" },
+    ];
+    const seen: unknown[] = [];
+    const keyed = (item: { id: string }) => {
+      seen.push(item);
+      return item.id;
+    };
+    const carrier = props([
+      { each: rows },
+      { keyed },
+      {
+        children: ((_s: unknown, item: () => { n: string }) =>
+          html(`<li>${esc(item().n)}</li>`)) as never,
+      },
+    ]) as never;
+
+    // A key function selects the BOXED row shape, where `children` takes its
+    // item as an accessor. Getting that wrong renders `[object Object]` or
+    // throws, so the markup is the observation.
+    expect(ssrFor(null, carrier).toString()).toBe("<li>a</li><li>b</li>");
+    expect(seen, "the key function was never invoked as if it were a Cell").toEqual([]);
+
+    // The detector. Reading the same carrier the way a Cell is read — call it,
+    // take the result — is what `ssrFor` used to do, and it is a TypeError on
+    // the first row rather than a wrong string.
+    expect(() => (carrier as { keyed: () => unknown }).keyed()).toThrow();
+  });
+
   test("ssrIndex hands the item as an accessor and the index as a number", () => {
     const seen: number[] = [];
-    const out = ssrIndex({
+    const out = ssrIndex(null, {
       each: ["a", "b"],
-      children: ((item: () => string, index: number) => {
+      children: ((_s: unknown, item: () => string, index: number) => {
         seen.push(index);
         return html(`<i>${esc(item())}</i>`);
       }) as never,
     });
     expect(out.toString()).toBe("<i>a</i><i>b</i>");
     expect(seen).toEqual([0, 1]);
-    expect(ssrIndex({ each: [], fallback: "empty", children: row }).toString()).toBe("empty");
+    expect(ssrIndex(null, { each: [], fallback: "empty", children: row }).toString()).toBe("empty");
   });
 
   test("ssrRepeat counts from `from` and falls back at zero", () => {
-    expect(ssrRepeat({ count: 3, children: (i) => html(`<i>${i}</i>`) }).toString()).toBe(
+    expect(ssrRepeat(null, { count: 3, children: (_s, i) => html(`<i>${i}</i>`) }).toString()).toBe(
       "<i>0</i><i>1</i><i>2</i>",
     );
     expect(
-      ssrRepeat({ count: () => 2, from: 5, children: (i) => html(`<i>${i}</i>`) }).toString(),
+      ssrRepeat(null, {
+        count: () => 2,
+        from: 5,
+        children: (_s, i) => html(`<i>${i}</i>`),
+      }).toString(),
     ).toBe("<i>5</i><i>6</i>");
-    expect(ssrRepeat({ count: 0, fallback: "none", children: () => "" }).toString()).toBe("none");
-    expect(ssrRepeat({ count: -1, children: () => "x" }).toString()).toBe("");
+    expect(ssrRepeat(null, { count: 0, fallback: "none", children: () => "" }).toString()).toBe(
+      "none",
+    );
+    expect(ssrRepeat(null, { count: -1, children: () => "x" }).toString()).toBe("");
   });
 
   test("ssrShow branches, and passes the value the way Show does", () => {
-    expect(ssrShow({ when: true, children: html("<b>y</b>") }).toString()).toBe("<b>y</b>");
-    expect(ssrShow({ when: 0, fallback: "no", children: "yes" }).toString()).toBe("no");
-    expect(ssrShow({ when: () => "v", children: (v: unknown) => esc(v) }).toString()).toBe("v");
+    expect(ssrShow(null, { when: true, children: html("<b>y</b>") }).toString()).toBe("<b>y</b>");
+    expect(ssrShow(null, { when: 0, fallback: "no", children: "yes" }).toString()).toBe("no");
+    expect(
+      ssrShow(null, { when: () => "v", children: (_s, v: unknown) => esc(v) }).toString(),
+    ).toBe("v");
     // Non-keyed narrows to an accessor.
     expect(
-      ssrShow({
+      ssrShow(null, {
         when: "v",
         keyed: false,
-        children: (v: unknown) => esc((v as () => unknown)()),
+        children: (_s, v: unknown) => esc((v as () => unknown)()),
       }).toString(),
     ).toBe("v");
     // A body that is user data is still escaped.
-    expect(ssrShow({ when: true, children: "<b>" }).toString()).toBe("&lt;b&gt;");
+    expect(ssrShow(null, { when: true, children: "<b>" }).toString()).toBe("&lt;b&gt;");
   });
 
   test("ssrSwitch picks the first truthy Match and falls back", () => {
     const children = [
-      ssrMatch({ when: false, children: "a" }),
-      ssrMatch({ when: () => "hit", children: (v: unknown) => esc(v) }),
-      ssrMatch({ when: true, children: "c" }),
+      ssrMatch(null, { when: false, children: "a" }),
+      ssrMatch(null, { when: () => "hit", children: (_s, v: unknown) => esc(v) }),
+      ssrMatch(null, { when: true, children: "c" }),
     ];
-    expect(ssrSwitch({ children }).toString()).toBe("hit");
-    expect(ssrSwitch({ children: [], fallback: "none" }).toString()).toBe("none");
-    expect(ssrSwitch({ children: [ssrMatch({ when: 0, children: "a" })] }).toString()).toBe("");
+    expect(ssrSwitch(null, { children }).toString()).toBe("hit");
+    expect(ssrSwitch(null, { children: [], fallback: "none" }).toString()).toBe("none");
+    expect(
+      ssrSwitch(null, { children: [ssrMatch(null, { when: 0, children: "a" })] }).toString(),
+    ).toBe("");
     // Identity, exactly as the client component is.
     const props = { when: 1, children: "x" };
-    expect(ssrMatch(props)).toBe(props);
+    expect(ssrMatch(null, props)).toBe(props);
   });
 
   /**
@@ -440,40 +537,42 @@ describe("the six string-inlinable flow components", () => {
     const rows = [{ n: "a" }, { n: "<b>" }];
     const cases: Array<[string, () => unknown]> = [
       [
-        ssrFor({ each: rows, children: row }).toString(),
+        ssrFor(null, { each: rows, children: row }).toString(),
         () =>
-          For<{ n: string }, JSXElement>({
+          For<{ n: string }, JSXElement>(null, {
             each: () => rows,
-            children: (item, index) => createElement("li", null, `${index()}: ${item.n}`),
+            children: (_s, item, index) => createElement("li", null, `${index()}: ${item.n}`),
           }),
       ],
       [
-        ssrIndex({
+        ssrIndex(null, {
           each: rows,
-          children: ((item: () => { n: string }, index: number) =>
+          children: ((_s: unknown, item: () => { n: string }, index: number) =>
             html(`<li>${index}: ${esc(item().n)}</li>`)) as never,
         }).toString(),
         () =>
-          Index<{ n: string }, JSXElement>({
+          Index<{ n: string }, JSXElement>(null, {
             each: () => rows,
-            children: (item, index) => createElement("li", null, `${index}: ${item().n}`),
+            children: (_s, item, index) => createElement("li", null, `${index}: ${item().n}`),
           }),
       ],
       [
-        ssrRepeat({ count: 2, children: (i) => html(`<li>${i}</li>`) }).toString(),
-        () => Repeat({ count: 2, children: (i) => createElement("li", null, String(i)) }),
+        ssrRepeat(null, { count: 2, children: (_s, i) => html(`<li>${i}</li>`) }).toString(),
+        () => Repeat(null, { count: 2, children: (_s, i) => createElement("li", null, String(i)) }),
       ],
       [
-        ssrShow({ when: true, children: html("<i>on</i>") }).toString(),
-        () => Show({ when: () => true, children: createElement("i", null, "on") }),
+        ssrShow(null, { when: true, children: html("<i>on</i>") }).toString(),
+        () => Show(null, { when: () => true, children: createElement("i", null, "on") }),
       ],
       [
-        ssrSwitch({
-          children: [ssrMatch({ when: true, children: html("<i>m</i>") })],
+        ssrSwitch(null, {
+          children: [ssrMatch(null, { when: true, children: html("<i>m</i>") })],
         }).toString(),
         () =>
-          Switch({
-            children: [Match({ when: () => true, children: () => createElement("i", null, "m") })],
+          Switch(null, {
+            children: [
+              Match(null, { when: () => true, children: () => createElement("i", null, "m") }),
+            ],
           }),
       ],
     ];

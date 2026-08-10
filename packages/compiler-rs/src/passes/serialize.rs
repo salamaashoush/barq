@@ -23,7 +23,11 @@ use crate::ir::{
 /// The id is assigned HERE and nowhere else — codegen turns it into `_tmpl$N`
 /// only when it prints — so collapsing two units onto one id moves no emitted
 /// identifier.
-pub fn run(module: &mut Module<'_>) {
+///
+/// `share` is the optimisation, and it is the only half that is one: the bytes
+/// still have to be written and the id still has to be assigned, so with it off
+/// every unit simply takes a row of its own.
+pub fn run(module: &mut Module<'_>, share: bool) {
     let Module { units, interner, html, templates, template_meta, dedup, dedup_overflow, .. } =
         module;
     let mut origin: Vec<(u32, Span)> = Vec::new();
@@ -55,14 +59,16 @@ pub fn run(module: &mut Module<'_>) {
                 && html[row.range.0 as usize..row.range.1 as usize]
                     == html[start as usize..end as usize]
         };
-        let hit = dedup
-            .get(&hash)
-            .copied()
-            .filter(same)
-            // Empty unless a 64-bit collision really happened, so this costs one
-            // branch on the miss path and nothing else.
-            .or_else(|| dedup_overflow.iter().copied().find(same));
-        let id = match hit {
+        let hit = share.then(|| {
+            dedup
+                .get(&hash)
+                .copied()
+                .filter(same)
+                // Empty unless a 64-bit collision really happened, so this costs
+                // one branch on the miss path and nothing else.
+                .or_else(|| dedup_overflow.iter().copied().find(same))
+        });
+        let id = match hit.flatten() {
             Some(id) => {
                 html.truncate(start as usize);
                 id
@@ -74,13 +80,15 @@ pub fn run(module: &mut Module<'_>) {
                 // A collision degrades to a duplicate ROW, never to a silent
                 // merge — and the loser is still registered, so a third template
                 // identical to it shares with it instead of adding a third row.
-                match dedup.entry(hash) {
-                    Entry::Vacant(slot) => {
-                        slot.insert(id);
+                if share {
+                    match dedup.entry(hash) {
+                        Entry::Vacant(slot) => {
+                            slot.insert(id);
+                        }
+                        // The first bytes to claim the slot keep it, so the
+                        // common path stays one probe.
+                        Entry::Occupied(_) => dedup_overflow.push(id),
                     }
-                    // The first bytes to claim the slot keep it, so the common
-                    // path stays one probe.
-                    Entry::Occupied(_) => dedup_overflow.push(id),
                 }
                 id
             }
@@ -219,7 +227,7 @@ mod tests {
         let mut program =
             Parser::new(&allocator, source, source_type_for(Some("a.tsx"))).parse().program;
         let mut module = Module::for_source(&allocator, source);
-        analysis::bind(&program, &mut module, "@barqjs/core");
+        analysis::bind(&allocator, &program, &mut module, &ResolvedOptions::default());
         harvest::run(&allocator, &mut program, &mut module);
         lower::lower(&allocator, source, &ResolvedOptions::default(), &mut module);
 
@@ -234,7 +242,7 @@ mod tests {
         module.template_meta.push(TemplateMeta { wrapped: false, span: Span::default() });
         module.dedup.insert(identity(b, Ns::Html, false), 0);
 
-        run(&mut module);
+        run(&mut module, true);
 
         assert_eq!(module.template_html(module.units[1].template), b);
         assert_eq!(

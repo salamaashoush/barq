@@ -46,10 +46,9 @@ describe("For component item updates", () => {
     let renderCount = 0;
     const renderedNames: string[] = [];
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      keyFn: (item) => item.id,
-      children: (item, _index) => {
+      children: (_s: unknown, item: { id: number; name: string }, _index: () => number) => {
         renderCount++;
         // In SolidJS, `item` is the actual value, not reactive
         // But the component should re-render when the item changes
@@ -79,10 +78,9 @@ describe("For component item updates", () => {
   test("For should handle items with same key but different values", () => {
     const items = signal([{ id: 1, value: "a" }]);
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      keyFn: (item) => item.id,
-      children: (item) => {
+      children: (_s: unknown, item) => {
         const span = document.createElement("span");
         span.textContent = item.value;
         return span;
@@ -109,10 +107,9 @@ describe("LIS algorithm performance", () => {
     const initialItems = Array.from({ length: size }, (_, i) => ({ id: i, value: `item-${i}` }));
     const items = signal(initialItems);
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      keyFn: (item) => item.id,
-      children: (item) => {
+      children: (_s: unknown, item) => {
         const div = document.createElement("div");
         div.textContent = item.value;
         return div;
@@ -141,10 +138,9 @@ describe("LIS algorithm performance", () => {
     const size = 500;
     const items = signal(Array.from({ length: size }, (_, i) => ({ id: i })));
 
-    const element = For({
+    const element = For(null, {
       each: items,
-      keyFn: (item) => item.id,
-      children: (item) => {
+      children: (_s: unknown, item) => {
         const div = document.createElement("div");
         div.dataset.id = String(item.id);
         return div;
@@ -172,9 +168,9 @@ describe("Index component reactivity", () => {
     const items = signal(["a", "b", "c"]);
     const observedValues: string[] = [];
 
-    const element = Index({
+    const element = Index(null, {
       each: items,
-      children: (itemAccessor, idx) => {
+      children: (_s, itemAccessor, idx) => {
         const span = document.createElement("span");
         // itemAccessor is a signal that should update when items[idx] changes
         effect(() => {
@@ -201,9 +197,9 @@ describe("Index component reactivity", () => {
     const items = signal([1, 2, 3, 4, 5]);
     let effectRuns = 0;
 
-    const element = Index({
+    const element = Index(null, {
       each: items,
-      children: (itemAccessor, _idx) => {
+      children: (_s, itemAccessor, _idx) => {
         const span = document.createElement("span");
         effect(() => {
           effectRuns++;
@@ -240,10 +236,10 @@ describe("Suspense component", () => {
       },
     );
 
-    const element = Await({
+    const element = Await(null, {
       resource: r,
       loading: createElement("div", null, "Loading..."),
-      children: (data) => createElement("div", null, data),
+      children: (_s, data) => createElement("div", null, data),
     });
 
     container.appendChild(element as Node);
@@ -268,8 +264,8 @@ describe("ErrorBoundary", () => {
       throw new Error("Test error");
     };
 
-    const element = ErrorBoundary({
-      fallback: (error, _reset) => createElement("div", null, `Error: ${error.message}`),
+    const element = ErrorBoundary(null, {
+      fallback: (_s, error, _reset) => createElement("div", null, `Error: ${error.message}`),
       children: ThrowingComponent,
     });
 
@@ -288,8 +284,8 @@ describe("ErrorBoundary", () => {
       return createElement("div", null, "Success");
     };
 
-    const element = ErrorBoundary({
-      fallback: (error, reset) => {
+    const element = ErrorBoundary(null, {
+      fallback: (_s, error, reset) => {
         resetFn = reset;
         return createElement("div", null, `Error: ${error.message}`);
       },
@@ -320,7 +316,7 @@ describe("Portal component", () => {
     document.body.appendChild(target);
 
     try {
-      const element = Portal({
+      const element = Portal(null, {
         target: "#portal-target",
         children: createElement("span", null, "Portal content"),
       });
@@ -344,10 +340,10 @@ describe("Portal component", () => {
       let disposed = false;
       let disposeScope!: () => void;
 
-      createScope((dispose) => {
+      createScope((dispose, scope) => {
         disposeScope = dispose;
 
-        const element = Portal({
+        const element = Portal(scope, {
           target: "#portal-cleanup-target",
           children: () => {
             onCleanup(() => {
@@ -422,7 +418,7 @@ describe("Show keyed rendering", () => {
     const counter = signal(0);
     let effectRuns = 0;
 
-    const element = Show({
+    const element = Show(null, {
       when: show,
       children: () => {
         effect(() => {
@@ -575,17 +571,17 @@ describe("Switch/Match edge cases", () => {
   test("Switch handles dynamic match order", () => {
     const value = signal<"a" | "b" | "c">("a");
 
-    const element = Switch({
+    const element = Switch(null, {
       children: [
-        Match({
+        Match(null, {
           when: () => value() === "a",
           children: () => createElement("span", null, "A"),
         }),
-        Match({
+        Match(null, {
           when: () => value() === "b",
           children: () => createElement("span", null, "B"),
         }),
-        Match({
+        Match(null, {
           when: () => value() === "c",
           children: () => createElement("span", null, "C"),
         }),
@@ -611,10 +607,10 @@ describe("Switch/Match edge cases", () => {
   test("Switch fallback when no match", () => {
     const value = signal<string | null>(null);
 
-    const element = Switch({
+    const element = Switch(null, {
       fallback: createElement("span", null, "No match"),
       children: [
-        Match({
+        Match(null, {
           when: () => value() === "a",
           children: () => createElement("span", null, "A"),
         }),
@@ -642,7 +638,7 @@ describe("Event handler lifecycle", () => {
     const show = signal(true);
     let clickCount = 0;
 
-    const element = Show({
+    const element = Show(null, {
       when: show,
       children: createElement(
         "button",
@@ -678,16 +674,15 @@ describe("Deep nested reactivity", () => {
     const level2 = signal(true);
     const items = signal([1, 2, 3]);
 
-    const element = Show({
+    const element = Show(null, {
       when: level1,
       children: () =>
-        Show({
+        Show(null, {
           when: level2,
           children: () =>
-            For({
+            For(null, {
               each: items,
-              keyFn: (i) => i,
-              children: (item) => createElement("span", null, String(item)),
+              children: (_s: unknown, item) => createElement("span", null, String(item)),
             }),
         }),
     });
@@ -861,7 +856,7 @@ describe("Dynamic component", () => {
   test("renders intrinsic elements dynamically", () => {
     const tag = signal<"div" | "span">("div");
 
-    const element = Dynamic({
+    const element = Dynamic(null, {
       component: () => tag(),
       class: "test",
       children: "Hello",
@@ -881,15 +876,15 @@ describe("Dynamic component", () => {
   });
 
   test("renders function components dynamically", () => {
-    const ComponentA = (props: { text: string }) =>
+    const ComponentA = (_s: unknown, props: { text: string }) =>
       createElement("div", { class: "a" }, props.text);
-    const ComponentB = (props: { text: string }) =>
+    const ComponentB = (_s: unknown, props: { text: string }) =>
       createElement("span", { class: "b" }, props.text);
 
     // signal(fn) creates a writable derived signal; wrap to store a function value
     const current = signal<typeof ComponentA>(() => ComponentA);
 
-    const element = Dynamic({
+    const element = Dynamic(null, {
       component: () => current(),
       text: "Hello",
     });
@@ -909,7 +904,7 @@ describe("Dynamic component", () => {
   test("handles null component gracefully", () => {
     const comp = signal<"div" | null>("div");
 
-    const element = Dynamic({
+    const element = Dynamic(null, {
       component: () => comp() as "div",
       children: "Content",
     });
@@ -976,12 +971,16 @@ describe("mergeProps", () => {
     expect(result).toEqual({ x: 1, z: 3 });
   });
 
-  test("concatenates children arrays", () => {
+  // `children` stopped being special at M3. It is a Block like any other slot,
+  // and a Block is not an array a merge can concatenate — C6/§4.1. Last source
+  // wins, exactly as for every other key, which is what makes `mergeProps` one
+  // line over the source list instead of a `for…in` body with a special case.
+  test("children is an ordinary key: the last source wins", () => {
     const a = { children: ["a", "b"] };
     const b = { children: ["c"] };
     const result = mergeProps(a, b);
 
-    expect(result.children).toEqual(["a", "b", "c"]);
+    expect(result.children).toEqual(["c"]);
   });
 });
 

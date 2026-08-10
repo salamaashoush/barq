@@ -36,6 +36,6 @@ export const optimality = {
   // locals are snapshots and nothing the compiler does can make them live.
   // What it can do is not pretend otherwise: the props object is built with
   // plain values, and the author-written accessor passes through as one.
-  emits: ["Chip({", 'tone: "warm"', "text: () => label()"],
+  emits: ["Chip(", '() => "warm"', "text: label"],
   absent: ["get text()", "get tone()", "(Chip, {"],
 }

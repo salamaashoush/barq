@@ -33,6 +33,6 @@ export const optimality = {
   // the row body is a callback the runtime invokes per item, so it keeps its
   // arrow however static it is. `each` η-reduces to the accessor itself.
   templates: 3,
-  emits: ["For({", "each: items", "children: (item, index) =>"],
+  emits: ["For(", "each: items", ", item, index) =>"],
   absent: ["(For, {", "each: () =>"],
 }

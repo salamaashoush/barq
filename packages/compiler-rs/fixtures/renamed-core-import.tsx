@@ -30,6 +30,6 @@ export const optimality = {
   // every decision still lands: `When` is resolved to `Show` and `Each` to
   // `For` by SymbolId, and `each` — one of the five props the runtime unwraps —
   // is η-reduced on the RENAMED component exactly as it would be on `For`.
-  emits: ["When({", "Each({", "each: rows"],
+  emits: ["When(", "Each(", "each: rows"],
   absent: ["Show(", "For(", "each: () => rows()"],
 }

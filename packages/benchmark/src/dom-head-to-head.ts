@@ -17,7 +17,10 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-const barq = await import("@barqjs/core");
+// BARQ_A points the barq side at another build of the runtime, so the same
+// instrument can bisect a DOM ratio against an older signals.ts. Unset is the
+// workspace build and is what `bun run bench:dom` measures.
+const barq = (await import(process.env.BARQ_A ?? "@barqjs/core")) as typeof import("@barqjs/core");
 const solid = await import("solid-js/web");
 const solidCore = await import("solid-js");
 
@@ -82,7 +85,7 @@ const cases: Case[] = [];
         const root = tmpl() as HTMLElement;
         const span = root.firstChild as HTMLElement;
         const s = barq.signal(0);
-        barq.insert(span, () => s());
+        barq.insert(null, span, () => s());
         barq.flush();
       };
     },
@@ -112,7 +115,7 @@ const cases: Case[] = [];
       container().appendChild(root);
       const span = root.firstChild as HTMLElement;
       const s = barq.signal(0);
-      barq.insert(span, () => s());
+      barq.insert(null, span, () => s());
       barq.flush();
       let i = 0;
       return () => {
@@ -156,7 +159,7 @@ const cases: Case[] = [];
           const c1 = tr.firstChild as HTMLElement;
           const c2 = c1.nextSibling as HTMLElement;
           c1.textContent = String(row.id);
-          barq.insert(c2, () => row.label);
+          barq.insert(null, c2, () => row.label);
           parent.appendChild(tr);
         }
         barq.flush();
@@ -195,7 +198,7 @@ const cases: Case[] = [];
         el.textContent = row.label;
         return el;
       });
-      barq.insert(parent, () => view());
+      barq.insert(null, parent, () => view());
       barq.flush();
       return () => {
         const list = data.peek().slice();
@@ -247,7 +250,7 @@ const cases: Case[] = [];
         el.textContent = row.label;
         return el;
       });
-      barq.insert(parent, () => view());
+      barq.insert(null, parent, () => view());
       barq.flush();
       return () => {
         data.set(makeRows(100));
@@ -285,7 +288,7 @@ const cases: Case[] = [];
       const el = document.createElement("div");
       container().appendChild(el);
       const s = barq.signal(0);
-      barq.setProp(el, "class", () => (s() % 2 ? "a" : "b"));
+      barq.setProp(null, el, "class", () => (s() % 2 ? "a" : "b"));
       barq.flush();
       let i = 0;
       return () => {
@@ -363,7 +366,7 @@ function timePair(c: Case): [number, number] {
   document.body.appendChild(broot);
   const bspan = broot.firstChild as HTMLElement;
   const bs = barq.signal(0);
-  barq.insert(bspan, () => bs());
+  barq.insert(null, bspan, () => bs());
   barq.flush();
   bs.set(42);
   barq.flush();
@@ -377,7 +380,7 @@ function timePair(c: Case): [number, number] {
   // hand this file a free win on "prop: class update".
   const bcls = document.createElement("div");
   const cs = barq.signal(0);
-  barq.setProp(bcls, "class", () => (cs() % 2 ? "a" : "b"));
+  barq.setProp(null, bcls, "class", () => (cs() % 2 ? "a" : "b"));
   barq.flush();
   cs.set(1);
   barq.flush();
@@ -427,7 +430,7 @@ console.log("\nDOM nodes produced for one dynamic text hole (<span>{x}</span>):"
   const root = tmpl() as HTMLElement;
   const span = root.firstChild as HTMLElement;
   const s = barq.signal("hi");
-  barq.insert(span, () => s());
+  barq.insert(null, span, () => s());
   barq.flush();
   console.log(`  barq : ${span.childNodes.length}  ->  ${span.innerHTML}`);
 }

@@ -19,7 +19,7 @@ function profile(name: string, fn: () => void) {
   const end = performance.now();
 
   const avgMs = (end - start) / ITERATIONS;
-  console.log(`${name}: ${avgMs.toFixed(6)}ms avg (${((end - start)).toFixed(2)}ms total)`);
+  console.log(`${name}: ${avgMs.toFixed(6)}ms avg (${(end - start).toFixed(2)}ms total)`);
   return avgMs;
 }
 
@@ -77,7 +77,10 @@ profile("barq: effect trigger", () => {
   createScope((dispose) => {
     let runs = 0;
     const s = signal(0);
-    effect(() => { s(); runs++; });
+    effect(() => {
+      s();
+      runs++;
+    });
     batch(() => {
       for (let i = 0; i < 10; i++) s.set(i);
     });
@@ -89,7 +92,10 @@ profile("solid: effect trigger", () => {
   createRoot((dispose) => {
     let runs = 0;
     const [s, setS] = createSignal(0);
-    createEffect(() => { s(); runs++; });
+    createEffect(() => {
+      s();
+      runs++;
+    });
     solidBatch(() => {
       for (let i = 0; i < 10; i++) setS(i);
     });
@@ -147,11 +153,15 @@ profile("solid: empty batch", () => {
 console.log("\n--- Scope creation overhead ---");
 
 profile("barq: createScope", () => {
-  createScope((dispose) => { dispose(); }, true);
+  createScope((dispose) => {
+    dispose();
+  }, true);
 });
 
 profile("solid: createRoot", () => {
-  createRoot((dispose) => { dispose(); });
+  createRoot((dispose) => {
+    dispose();
+  });
 });
 
 // Test 7: Pure computed read (already computed)

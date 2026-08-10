@@ -56,10 +56,11 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 4,
-  // The positive half: the two whitelisted props lose their arrow entirely and
-  // the accessor goes in bare.
-  emits: ["when: on", "each: items", "fallback: () => note()"],
-  // The negative half: `fallback` is not one of the five, so its arrow survives
-  // — and neither whitelisted prop kept one.
-  absent: ["when: () => on()", "each: () => items()", "fallback: note"],
+  // η-reduction is UNIVERSAL after M3 rather than a five-name whitelist: a
+  // zero-arity function IS a Cell (§3.0 rule 1), so `() => note()` and `note`
+  // are the same carrier and the reduced one allocates nothing. The boundary
+  // this fixture draws therefore moved from WHICH PROP to WHAT SHAPE, and the
+  // negatives below are what still says the reduction happened.
+  emits: ["when: on", "each: items", "fallback: note"],
+  absent: ["when: () => on()", "each: () => items()", "fallback: () => note()"],
 }

@@ -174,6 +174,12 @@ onCleanup(() => console.log("Cleanup"));
   {(item, index) => <div>{index()}: {item.name}</div>}
 </For>
 
+// Lists whose rows survive an edit: key the row, and the item arrives as an
+// accessor. This is what keeps a focused <input> alive across a keystroke.
+<For each={() => rows()} keyed={(row) => row.id}>
+  {(row) => <input value={row().text} />}
+</For>
+
 // Pattern matching
 <Switch fallback={<NotFound />}>
   <Match when={() => route() === "home"}>{() => <Home />}</Match>
@@ -202,7 +208,9 @@ const theme = useContext(ThemeContext); // "dark"
 
 ## Documentation
 
-See [USAGE.md](./packages/core/USAGE.md) for complete API documentation and patterns.
+See [USAGE.md](./packages/core/USAGE.md) for complete API documentation and patterns, and
+[compiler diagnostics](./packages/compiler-rs/docs/README.md) for every code the compiler can
+report and how to silence one.
 
 ## Development
 

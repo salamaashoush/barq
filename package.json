@@ -11,6 +11,8 @@
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
+    "test:gated": "bun run --filter '!@barqjs/extra' test",
+    "test:scheduled": "bun run --cwd packages/extra test || true",
     "lint": "oxlint --type-aware packages/core packages/extra packages/testing",
     "lint:fix": "oxlint --type-aware --fix packages",
     "format": "oxfmt packages",

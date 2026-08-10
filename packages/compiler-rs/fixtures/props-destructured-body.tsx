@@ -34,6 +34,6 @@ export const optimality = {
   // Destructuring in the BODY is the same read at a different line: `const {
   // text, tone } = props` drains the object once. The claim is that the call
   // site still hands over a real props object and not a copy of one.
-  emits: ["Chip({", 'tone: "warm"', "text: () => label()"],
+  emits: ["Chip(", '() => "warm"', "text: label"],
   absent: ["get text()", "get tone()", "(Chip, {"],
 }

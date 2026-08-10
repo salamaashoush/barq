@@ -14,9 +14,19 @@ use oxc::allocator::CloneIn;
 /// The module preamble: the helper import, then one hoisted
 /// `const _tmpl$N = /*#__PURE__*/ template("…")` per template row.
 pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
-    if emit.module.templates.is_empty() && !emit.used.iter().any(|used| *used) {
+    // A module with no template and no helper can still owe two declarations: a
+    // hoisted constant Cell, and the scope binding a detached root reads. Both
+    // are readers of nothing but themselves, so neither is caught by the two
+    // conditions that used to stand here alone.
+    let cells = emit.module.hoisted.iter().any(|it| matches!(it, Hoisted::Cell { .. }));
+    if emit.module.templates.is_empty()
+        && !emit.used.iter().any(|used| *used)
+        && !cells
+        && !emit.module.detached_roots
+    {
         return;
     }
+    let interp_units = std::mem::take(&mut emit.interp_units);
 
     let claimant = super::mappings::claimants(emit.module);
     let mut templates = Vec::with_capacity(emit.module.templates.len());
@@ -33,19 +43,52 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     // Both are DOM concepts. P8b drops every event patch, so the wire carries no
     // `$$click`, the document listener has nothing to serve, and a hoisted
     // handler would be a module-scope binding with no reader.
-    if emit.target == super::Target::Dom {
+    // A constant prop Cell is an ABI fact, not a DOM one: both backends call the
+    // same component with the same props object, so `_k$N` is declared for every
+    // target. The shape pass only ever mints one when hoisting is on, so there
+    // is no reader-free binding to guard against here.
+    for index in 0..emit.module.hoisted.len() {
+        if matches!(emit.module.hoisted[index], Hoisted::Cell { .. }) {
+            templates.push(hoisted_declaration(emit, index));
+        }
+    }
+    if emit.target.walks_the_dom() {
+        // With hoisting off `handler_expression` rebuilds each one at its use
+        // site, so a declaration here would be a module-scope binding with no
+        // reader.
         for index in 0..emit.module.hoisted.len() {
+            if !emit.opt.hoist {
+                break;
+            }
+            if matches!(emit.module.hoisted[index], Hoisted::Cell { .. }) {
+                continue;
+            }
             templates.push(hoisted_declaration(emit, index));
         }
         templates.extend(super::dom::delegate_call(emit));
     }
+    // The one binding a JSX root written outside every function needs, so that
+    // C3.8's `ScopeMissingError` fires at the position that wrote it instead of
+    // a `ReferenceError` naming a compiler identifier.
+    if emit.module.detached_roots {
+        templates.insert(0, detached_scope(emit));
+    }
+    // Last, because a serialised unit names the `_tmpl$N` it clones and the
+    // `_h$N` it installs, and a `const` cannot be read before its initialiser
+    // has run.
+    templates.extend(interp_units);
 
-    // Two groups, two sources: the DOM helpers come from the module source and
+    // Three groups, three sources: the DOM helpers come from the module source,
     // P8b's from `<module_source>/server`, which the client bundle must never
-    // pull in.
+    // pull in, and the reference backend's single entry point from
+    // `<module_source>/interp`, which no production bundle pulls in at all.
     let groups = [
         (emit.module_source, helper_specifiers(emit, 0..super::FIRST_SERVER_HELPER)),
-        (emit.server_source, helper_specifiers(emit, super::FIRST_SERVER_HELPER..HELPER_COUNT)),
+        (
+            emit.server_source,
+            helper_specifiers(emit, super::FIRST_SERVER_HELPER..super::FIRST_INTERP_HELPER),
+        ),
+        (emit.interp_source, helper_specifiers(emit, super::FIRST_INTERP_HELPER..HELPER_COUNT)),
     ];
     let allocator = emit.allocator;
     let mut body = std::mem::replace(&mut program.body, ArenaVec::new_in(&allocator));
@@ -206,13 +249,41 @@ fn helper_import<'a>(
     )
 }
 
+/// `const _s$ = null` — the scope a module-level JSX root runs under, which is
+/// none.
+fn detached_scope<'a>(emit: &mut Emit<'a, '_>) -> Statement<'a> {
+    let name = emit.module.uids.scope();
+    let init = Expression::new_null_literal(SPAN, &emit.ast);
+    let declarator = VariableDeclarator::new(
+        SPAN,
+        VariableDeclarationKind::Const,
+        BindingPattern::new_binding_identifier(SPAN, name, &emit.ast),
+        None,
+        Some(init),
+        false,
+        &emit.ast,
+    );
+    Statement::new_variable_declaration(
+        SPAN,
+        VariableDeclarationKind::Const,
+        [declarator],
+        false,
+        &emit.ast,
+    )
+}
+
 fn hoisted_declaration<'a>(emit: &mut Emit<'a, '_>, index: usize) -> Statement<'a> {
-    let (id, expr, span) = match &emit.module.hoisted[index] {
+    let (id, expr, span, cell) = match &emit.module.hoisted[index] {
         Hoisted::Handler { id, expr, span } | Hoisted::Frozen { id, expr, span } => {
-            (*id, *expr, *span)
+            (*id, *expr, *span, false)
         }
+        Hoisted::Cell { id, expr, span } => (*id, *expr, *span, true),
     };
-    let name = emit.module.uids.handler(id, emit.allocator);
+    let name = if cell {
+        emit.module.uids.konst(id, emit.allocator)
+    } else {
+        emit.module.uids.handler(id, emit.allocator)
+    };
     let init = expr.clone_in(emit.allocator);
     let declarator = VariableDeclarator::new(
         span,

@@ -1,9 +1,12 @@
 use oxc::allocator::Allocator;
+use oxc::ast::ast::{Expression, JSXAttributeValue};
 use oxc::semantic::{ScopeId, SymbolId};
 use oxc::span::Span;
 use oxc_index::IndexVec;
 
-use super::{AVec, Const, StrId, react::BIT_OVERFLOW};
+use crate::diag::Code;
+
+use super::{AVec, Const, react::BIT_OVERFLOW};
 
 /// Members of an `Accessor` binding that are NOT tracked reads: `.set`, `.peek`,
 /// `.update`. `count.set` and `count()` are the same identifier with two
@@ -78,7 +81,13 @@ pub enum SourceKind {
     /// binding IS the handler: `const h = () => …; <button onClick={h}/>` can
     /// take the `$$click` expando instead of going through `setProp`. Inert in
     /// every other respect — creating a reference to it reads nothing.
-    Fn,
+    ///
+    /// `nullary` is §3.0 rule 1's discriminator, and it is the ONLY thing that
+    /// separates a Cell from a key function once both are values in the same
+    /// slot: `Cell<T> = (...ignored: never[]) => T` declares no parameter, so a
+    /// zero-arity binding forwards by identity (C5) and a parameterised one
+    /// crosses as `() => f`.
+    Fn { nullary: bool },
     /// Unresolvable: cross-module import, reassigned from an unknown RHS, or
     /// bound by a pattern we cannot follow.
     #[default]
@@ -158,6 +167,63 @@ impl Prim {
     }
 }
 
+/// How `<For>` hands a row to `children`, read off `props.keyed`
+/// (`components.ts:238-276`, `map.ts:53-57`). Three arms, not two: a key
+/// FUNCTION boxes the item in a row signal, so the item is an ACCESSOR there
+/// and a plain value only in the by-item arm.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Keyed {
+    /// absent or `true` — `(item: T, index: () => number)`
+    ByItem,
+    /// `keyed={false}` delegates to `Index` — `(item: () => T, index: number)`
+    ByIndex,
+    /// a key function, or anything that cannot be PROVED not to be one —
+    /// `(item: () => T, index: () => number)`
+    ByFn,
+}
+
+impl Keyed {
+    /// Unprovable resolves to [`Keyed::ByFn`], the only arm that is safe when
+    /// wrong: it classifies both parameters as accessors, so a plain-value read
+    /// falls out `Opaque` (emitted unwrapped, the oracle's own decision) instead
+    /// of `Static` (applied once, never updated).
+    pub fn of_expression(value: &Expression<'_>) -> Self {
+        Keyed::verdict(value).0
+    }
+
+    /// The arm, and whether the source PROVED it. The runtime asks `typeof
+    /// options.keyed === "function"` (`map.ts:53`), which no static analysis can
+    /// answer for `keyed={KEYED}` or `keyed={props.keyed}`; those resolve to the
+    /// safe arm with `proved = false`, and a consumer that would tell the author
+    /// something about the row — D1 — must stay out of an unproved row.
+    pub fn verdict(value: &Expression<'_>) -> (Self, bool) {
+        match value {
+            Expression::BooleanLiteral(literal) if !literal.value => (Keyed::ByIndex, true),
+            Expression::BooleanLiteral(_) | Expression::StringLiteral(_) => (Keyed::ByItem, true),
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+                (Keyed::ByFn, true)
+            }
+            _ => (Keyed::ByFn, false),
+        }
+    }
+
+    /// The same question asked of the JSX attribute before lowering. A bare
+    /// `keyed` is `true`.
+    pub fn of_attribute_value(value: Option<&JSXAttributeValue<'_>>) -> Self {
+        Keyed::verdict_of_attribute_value(value).0
+    }
+
+    pub fn verdict_of_attribute_value(value: Option<&JSXAttributeValue<'_>>) -> (Self, bool) {
+        match value {
+            None | Some(JSXAttributeValue::StringLiteral(_)) => (Keyed::ByItem, true),
+            Some(JSXAttributeValue::ExpressionContainer(container)) => {
+                container.expression.as_expression().map_or((Keyed::ByFn, false), Keyed::verdict)
+            }
+            Some(_) => (Keyed::ByFn, false),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Flow {
     // string-inlinable on the server
@@ -220,17 +286,14 @@ impl Flow {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DiagLevel {
-    Note,
-    Warning,
-}
-
+/// A diagnostic a pass produced. The CODE is what a suppression comment and a
+/// severity map both key on, so it is carried from the site that raised it
+/// rather than reconstructed from the message text.
 #[derive(Clone, Copy)]
-pub struct Diag {
-    pub level: DiagLevel,
+pub struct Diag<'a> {
+    pub code: Code,
     pub span: Span,
-    pub message: StrId,
+    pub message: &'a str,
 }
 
 pub struct ReactiveEnv<'a> {
@@ -246,7 +309,7 @@ pub struct ReactiveEnv<'a> {
     /// for handler hoisting is O(1) per reference.
     pub scope_lo: AVec<'a, u32>,
     pub scope_hi: AVec<'a, u32>,
-    pub diagnostics: AVec<'a, Diag>,
+    pub diagnostics: AVec<'a, Diag<'a>>,
     /// `import * as core from "@barqjs/core"`. A member of one of these resolves
     /// to no `SymbolId` of its own, so every question asked by `SymbolId` —
     /// which is every question this compiler asks — is blind to `core.For`
@@ -260,6 +323,12 @@ pub struct ReactiveEnv<'a> {
     /// tag, so `<Show>…</Show>` reads as two uses of one binding; anything
     /// counting real uses has to subtract these.
     pub jsx_closings: Vec<SymbolId>,
+    /// `(body span, name)` for every function this module writes as a tag or
+    /// exports and that returns JSX. The only component IDENTITY the IR carries:
+    /// `Skeleton::origin` is html-byte-offset → JSX span, which answers "where
+    /// did this template come from" and not "whose template is it". Populated
+    /// only under `dev`, and read only by the dev-mode label pass.
+    pub components: Vec<(Span, &'a str)>,
 }
 
 impl<'a> ReactiveEnv<'a> {
@@ -274,6 +343,7 @@ impl<'a> ReactiveEnv<'a> {
             namespaces: Vec::new(),
             namespace_flows: Vec::new(),
             jsx_closings: Vec::new(),
+            components: Vec::new(),
         }
     }
 

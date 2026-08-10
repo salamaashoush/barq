@@ -19,13 +19,19 @@ use crate::ir::{
 /// Minimising the sum is a spanning tree, and it is strictly cheaper — on §7's
 /// own example it finds three property reads where the hand-derived plan there
 /// spends four.
-pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
+///
+/// `nearest` is the optimisation: the spanning tree, and with it `lastChild`,
+/// `previousSibling` and walking from a sibling that already has a binding. Off,
+/// every node descends from its own parent with `firstChild` and a run of
+/// `nextSibling` — the same alphabet, the longest route, and no claim about
+/// anything but the node's own materialised index.
+pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>, nearest: bool) {
     let Module { units, interner, uids, .. } = module;
     for unit in units.iter_mut() {
         if unit.patch.is_empty() {
             continue;
         }
-        plan(allocator, unit, uids, interner);
+        plan(allocator, unit, uids, interner, nearest);
         debug_assert_eq!(unit.refs.validate(), Ok(()));
     }
 }
@@ -35,6 +41,7 @@ fn plan<'a>(
     unit: &mut Unit<'a>,
     uids: &mut Uids<'a>,
     interner: &mut Interner<'a>,
+    nearest: bool,
 ) {
     let count = unit.skeleton.len();
     debug_assert!(!unit.skeleton.is_fragment(), "a multi-root skeleton has no single Step::Root");
@@ -78,6 +85,7 @@ fn plan<'a>(
             uids,
             interner,
             allocator,
+            nearest,
         );
     }
 }
@@ -102,6 +110,7 @@ fn group<'a>(
     uids: &mut Uids<'a>,
     interner: &mut Interner<'a>,
     allocator: &'a Allocator,
+    nearest: bool,
 ) {
     let (lo, hi) = children;
     let wanted: Vec<(u32, NodeId)> = (lo..hi)
@@ -117,6 +126,13 @@ fn group<'a>(
     let base = unit.refs.ref_of(parent).expect("a group's parent is addressed first");
     let last = mat_kids - 1;
     let count = wanted.len();
+
+    if !nearest {
+        for (index, node) in wanted {
+            define(unit, node, Step::FirstChild(base, index), uids, interner, allocator);
+        }
+        return;
+    }
 
     // Node 0 is the parent; node `1 + t` is `wanted[t]`. Descents are offered
     // first so an equal-cost tie resolves toward the shallower expression — a

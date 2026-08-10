@@ -1,9 +1,13 @@
+pub mod backend;
 pub mod dom;
 mod fallback;
 mod install;
+pub mod interp;
 pub mod mappings;
 mod prune;
 pub mod ssr;
+
+pub use backend::{At, Backend};
 
 use oxc::allocator::{Allocator, TakeIn, Vec as ArenaVec};
 use oxc::ast::ast::{
@@ -16,27 +20,51 @@ use oxc::ast_visit::walk_mut::{walk_arrow_function_expression, walk_expression, 
 use oxc::span::{GetSpan, Span};
 
 use crate::ir::{Module, NONE, Ns, Root, Site, TemplateId, Unit, UnitId};
-use crate::options::ResolvedOptions;
+use crate::options::{Opt, ResolvedOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Target {
     #[default]
     Dom,
     Ssr,
+    /// `CODESIGN.md` §6 L2. Serialises the analysed IR beside the module and
+    /// lets `@barqjs/core/interp` walk it, instead of printing the walk and the
+    /// patch program as JavaScript. It runs the DOM backend's passes and reads
+    /// the DOM backend's artefacts — the anchors, the template bytes, the ref
+    /// plan — because "the compiler knows more than the reference" has to be
+    /// structurally impossible, not merely unintended.
+    Interp,
 }
 
 impl Target {
     pub fn of(options: &ResolvedOptions) -> Self {
-        if options.ssr { Self::Ssr } else { Self::Dom }
+        match (options.interp, options.ssr) {
+            (true, _) => Self::Interp,
+            (false, true) => Self::Ssr,
+            (false, false) => Self::Dom,
+        }
+    }
+
+    /// Whether this target consumes the three passes DESIGN §5 calls DOM
+    /// concepts: a `<!---->` is an insert anchor, a `template()` is a parse, and
+    /// an address is a sibling walk.
+    #[inline]
+    pub fn walks_the_dom(self) -> bool {
+        matches!(self, Self::Dom | Self::Interp)
     }
 }
 
-pub const HELPER_COUNT: usize = 23;
+pub const HELPER_COUNT: usize = 27;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 7;
+pub const FIRST_SERVER_HELPER: usize = 10;
+
+/// The first helper that lives in `<module_source>/interp`. The reference
+/// backend is DEV and test only, so its entry point is a third source and never
+/// reaches a production bundle through the other two.
+pub const FIRST_INTERP_HELPER: usize = 26;
 
 /// Runtime entry points the two backends are allowed to call. Every one is read
 /// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
@@ -50,23 +78,39 @@ pub enum Helper {
     Fragment = 4,
     RenderEffect = 5,
     DelegateEvents = 6,
+    /// `_$props([…])` — C9's ordered source list. Returns its single argument
+    /// unchanged when the list is one plain record, which is the overwhelming
+    /// case and pays nothing.
+    Props = 7,
+    /// `_$cell(v)` — a Cell carrying a value evaluated exactly once. The form a
+    /// FUNCTION-valued prop takes, so `props.onClick()` returns the same object
+    /// every time and C5's identity claim survives a handler.
+    Cell = 8,
+    /// `_$b(fn)` — §3.0 rule 3's brand. Marks a Block that USES the scope it is
+    /// handed, once per definition site, so kind travels with the VALUE and a
+    /// consumer never has to guess it from arity. It is what makes a Block
+    /// landing in a Cell slot throw instead of being invoked with `undefined`
+    /// and silently stringified.
+    Block = 9,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 7,
-    EscAttr = 8,
-    Attr = 9,
-    Cls = 10,
-    Content = 11,
-    Html = 12,
-    RawText = 13,
-    SpreadAttrs = 14,
-    SsrFor = 15,
-    SsrIndex = 16,
-    SsrRepeat = 17,
-    SsrShow = 18,
-    SsrSwitch = 19,
-    SsrMatch = 20,
-    ClsList = 21,
-    AttrLit = 22,
+    Esc = 10,
+    EscAttr = 11,
+    Attr = 12,
+    Cls = 13,
+    Content = 14,
+    Html = 15,
+    RawText = 16,
+    SpreadAttrs = 17,
+    SsrFor = 18,
+    SsrIndex = 19,
+    SsrRepeat = 20,
+    SsrShow = 21,
+    SsrSwitch = 22,
+    SsrMatch = 23,
+    ClsList = 24,
+    AttrLit = 25,
+    // ── `<module_source>/interp` ──────────────────────────────────────────
+    Interp = 26,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -77,6 +121,9 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "Fragment",
     "renderEffect",
     "delegateEvents",
+    "props",
+    "cell",
+    "block",
     "esc",
     "escAttr",
     "attr",
@@ -93,9 +140,11 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrMatch",
     "clsList",
     "attrLit",
+    "interp",
 ];
 
 const SERVER: &str = "/server";
+const INTERP: &str = "/interp";
 
 /// A prefix no `<prefix><helper>` in the source collides with.
 ///
@@ -103,7 +152,7 @@ const SERVER: &str = "/server";
 /// the sigil's own occurrences are the only positions worth testing, and there
 /// are almost never any. Twenty-two `contains` calls over the whole source cost
 /// 2.1 µs of a 27 µs compile once the string backend's helpers joined the list.
-fn free_sigil(source: &str) -> String {
+pub(crate) fn free_sigil(source: &str) -> String {
     let mut sigil = String::from("_$");
     while source.match_indices(sigil.as_str()).any(|(at, _)| {
         let rest = &source[at + sigil.len()..];
@@ -116,7 +165,7 @@ fn free_sigil(source: &str) -> String {
 
 /// Every helper's local name, packed end to end into one arena string and
 /// handed out as slices of it.
-fn helper_names<'a>(sigil: &str, allocator: &'a Allocator) -> [&'a str; HELPER_COUNT] {
+pub(crate) fn helper_names<'a>(sigil: &str, allocator: &'a Allocator) -> [&'a str; HELPER_COUNT] {
     let width: usize = IMPORTED.iter().map(|suffix| sigil.len() + suffix.len()).sum();
     let mut packed = String::with_capacity(width);
     for suffix in IMPORTED {
@@ -160,7 +209,16 @@ pub struct Emit<'a, 'm> {
     pub module_source: &'a str,
     /// `<module_source>/server` — where P8b's helpers come from.
     pub server_source: &'a str,
+    /// `<module_source>/interp` — the reference backend's only entry point.
+    pub interp_source: &'a str,
     pub target: Target,
+    /// One `const _ir$N = […]` per unit the reference backend serialised, in
+    /// unit order. Built while the roots are visited and spliced by `install`,
+    /// which is the only stage that may add module-scope statements.
+    pub interp_units: Vec<Statement<'a>>,
+    /// The three optimisations codegen owns: η-reduction, module-scope hoisting
+    /// of a capture-free handler, and statement splicing.
+    pub opt: Opt,
     pub used: [bool; HELPER_COUNT],
     pub local: [&'a str; HELPER_COUNT],
 }
@@ -173,11 +231,14 @@ impl<'a, 'm> Emit<'a, 'm> {
         options: &ResolvedOptions,
         target: Target,
     ) -> Self {
-        let sigil = free_sigil(source);
-        let local = helper_names(&sigil, allocator);
+        let local = module.helpers;
+        let used = module.used_helpers;
         let mut server_source = String::with_capacity(options.module_source.len() + SERVER.len());
         server_source.push_str(&options.module_source);
         server_source.push_str(SERVER);
+        let mut interp_source = String::with_capacity(options.module_source.len() + INTERP.len());
+        interp_source.push_str(&options.module_source);
+        interp_source.push_str(INTERP);
         Self {
             allocator,
             ast: AstBuilder::new(allocator),
@@ -185,8 +246,11 @@ impl<'a, 'm> Emit<'a, 'm> {
             source,
             module_source: allocator.alloc_str(&options.module_source),
             server_source: allocator.alloc_str(&server_source),
+            interp_source: allocator.alloc_str(&interp_source),
             target,
-            used: [false; HELPER_COUNT],
+            interp_units: Vec::new(),
+            opt: options.opt,
+            used,
             local,
         }
     }
@@ -216,6 +280,16 @@ impl<'a, 'm> Emit<'a, 'm> {
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
     }
 
+    /// `_s$` — the scope the enclosing Block was given. CODESIGN §3.3 C6 puts
+    /// it FIRST on every ABI primitive that constructs, so a Block reached with
+    /// no scope throws at the primitive rather than building under whatever was
+    /// ambient. One identifier at every position, so lexical shadowing does the
+    /// threading and a module-level unit reaches `const _s$ = null`.
+    pub fn scope(&mut self, span: Span) -> Expression<'a> {
+        let name = self.module.uids.scope();
+        self.ident(name, span)
+    }
+
     pub fn helper(&mut self, helper: Helper, span: Span) -> Expression<'a> {
         let index = helper as usize;
         self.used[index] = true;
@@ -235,6 +309,7 @@ impl<'a, 'm> Emit<'a, 'm> {
         let expression = match self.target {
             Target::Dom => dom::emit_unit(self, &mut unit, span),
             Target::Ssr => ssr::emit_unit_root(self, &mut unit, span),
+            Target::Interp => interp::emit_unit(self, &mut unit, id, span),
         };
         self.module.units[id as usize] = unit;
         expression
@@ -251,9 +326,9 @@ impl<'a, 'm> Emit<'a, 'm> {
     /// The placeholder's unit, when its recorded [`Site`] says its statements
     /// may be spliced into the enclosing body instead of wrapped in an IIFE.
     fn spliceable(&self, expression: &Expression<'a>) -> Option<(u32, UnitId)> {
-        // The string backend produces one expression and no statements, so
+        // The other two backends produce one expression and no statements, so
         // there is nothing to splice and every root goes through `root`.
-        if self.target == Target::Ssr {
+        if self.target != Target::Dom || !self.opt.splice {
             return None;
         }
         let Expression::Identifier(identifier) = expression else { return None };

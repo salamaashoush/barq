@@ -35,6 +35,6 @@ export const optimality = {
   // Renaming and defaulting are ordinary destructuring, so they snapshot like
   // the other two. The prop the caller OMITS must be omitted from the object
   // as well — emitting `tone: undefined` would defeat the default.
-  emits: ["Chip({ text: () => label() })", 'tone: "cool"'],
+  emits: ["text: label", '() => "cool"'],
   absent: ["tone: undefined", "(Chip, {"],
 }
