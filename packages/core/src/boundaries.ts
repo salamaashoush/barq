@@ -19,6 +19,7 @@ import {
   enforceLoadingBoundary,
   getOwner,
   hasEscapedError,
+  provideOn,
   refresh,
   resetErrorHalt,
   runWithOwner,
@@ -110,9 +111,9 @@ export function createRevealOrder<T>(
 ): T {
   const order = options?.order ?? ((): RevealOrder => "sequential");
   const collapsed = options?.collapsed ?? ((): boolean => false);
-  const owner = createOwner();
+  const owner = createOwner("branch");
   const handle = runWithOwner(owner, () => createRevealCoordinator(order, collapsed));
-  owner._context = { ...owner._context, [REVEAL_COORD]: handle };
+  provideOn(owner, REVEAL_COORD, handle);
   return runWithOwner(owner, fn);
 }
 
@@ -155,7 +156,7 @@ export function createPendingCollector(): PendingCollector {
     handle,
     count: () => count(),
     install(owner) {
-      owner._context = { ...owner._context, [LOADING_BOUNDARY]: handle };
+      provideOn(owner, LOADING_BOUNDARY, handle);
     },
   };
 }
@@ -191,7 +192,7 @@ export function createErrorCollector(): ErrorCollector {
       error.set(undefined);
     },
     install(owner) {
-      owner._context = { ...owner._context, [ERROR_BOUNDARY]: capture };
+      provideOn(owner, ERROR_BOUNDARY, capture);
     },
   };
 }
@@ -210,7 +211,7 @@ export function createLoadingBoundary<T, U>(
   fallback: () => U,
   options?: { on?: () => unknown },
 ): Computed<T | U> {
-  const owner = createOwner();
+  const owner = createOwner("branch");
   const pending = createPendingCollector();
   pending.install(owner);
 
@@ -265,7 +266,7 @@ export function createErrorBoundary<T, U>(
   fn: () => T,
   fallback: (error: () => unknown, reset: () => void) => U,
 ): Computed<T | U> {
-  const owner = createOwner();
+  const owner = createOwner("branch");
   const collector = createErrorCollector();
   collector.install(owner);
 
@@ -375,5 +376,5 @@ export type BoundaryOwner = Owner;
 
 /** Internal: current owner, for components that need to find a coordinator */
 export function currentRevealHandle(): RevealHandle | undefined {
-  return getOwner()?._context[REVEAL_COORD] as RevealHandle | undefined;
+  return getOwner()?.ctx[REVEAL_COORD] as RevealHandle | undefined;
 }

@@ -9,6 +9,22 @@
  *   the graph (NotReadyError) and is caught by Loading/Errored boundaries
  */
 
+import type { OwnershipSink, ScopeKind } from "./trace.ts";
+
+/**
+ * The L2b ownership trace's attachment point (CODESIGN.md §6). `null` until
+ * `beginOwnershipTrace()` installs a sink.
+ *
+ * why: a `const` holder rather than an `export let`, and `import type` above
+ * rather than a value import, because Bun inlines a module-scope numeric
+ * `const` (`REACTIVE_DISPOSED` → `32`) only while a module has neither a value
+ * import nor a reassigned top-level binding — and a signal accessor's
+ * `toString()` is observable, since `diagnostic-accessor-coercion.tsx` renders
+ * it into the DOM and snapshots it. Either of the obvious spellings moves that
+ * snapshot.
+ */
+export const OWNERSHIP: { sink: OwnershipSink | null } = { sink: null };
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -42,6 +58,55 @@ export class NoOwnerError extends Error {
   constructor() {
     super("Context can only be accessed under a reactive root.");
     this.name = "NoOwnerError";
+  }
+}
+
+/**
+ * §3.0 rule 3's brand. The compiler wraps every Block that USES its scope in
+ * `_$b`, once per definition site; this marks the function in place and hands
+ * it back, so a branded Block costs one property write and no extra closure.
+ *
+ * The brand is POSITIVE: it means "this value requires a scope". An unbranded
+ * function is a Cell, or a Block that ignores its scope (an arity-0
+ * `template()`, C6) — which is simultaneously a legal Cell, which is why rule 2
+ * lets one call site serve both kinds. Kind travels with the value (rule 4),
+ * so a forwarded Block is still branded and an arity guess is never consulted.
+ *
+ * It lives here rather than in `props.ts` for the reason `scope.ts` states at
+ * the top of the file: this module may acquire no VALUE import, because Bun
+ * stops inlining a module-scope numeric `const` once it has one, and a signal
+ * accessor's own `toString()` is snapshotted by a fixture.
+ */
+export const BLOCK: unique symbol = Symbol.for("barq.block");
+
+export function block<F extends (...args: never[]) => unknown>(fn: F): F {
+  (fn as unknown as Record<symbol, boolean>)[BLOCK] = true;
+  return fn;
+}
+
+/** Whether `value` is a Block that declared it needs the scope it is handed. */
+export function isBlock(value: unknown): boolean {
+  return (
+    typeof value === "function" && Boolean((value as unknown as Record<symbol, boolean>)[BLOCK])
+  );
+}
+
+/**
+ * §3.0 rule 3. A construct invoked without a scope throws and NEVER falls back
+ * to the ambient owner: that fallback is the Provider bug reintroduced at the
+ * one place nobody would look for it.
+ *
+ * `null` is a scope VALUE, not a missing one — it is what the compiler emits
+ * for a module-level root (`const _s$ = null`). Only `undefined` is missing.
+ */
+export class ScopeMissingError extends Error {
+  constructor(readonly origin: string) {
+    super(
+      `${origin} was invoked without a scope. A Block takes the scope it must run under as its ` +
+        `first argument; calling it with none is a mistimed construction, and falling back to ` +
+        `the ambient owner would put the subtree under whatever happened to be current instead.`,
+    );
+    this.name = "ScopeMissingError";
   }
 }
 
@@ -129,7 +194,7 @@ function removeDiagnosticListener(listener: (event: DiagnosticEvent) => void): v
   diagnosticsOn = diagnosticListeners.size !== 0;
 }
 
-function emitDiagnostic(
+export function emitDiagnostic(
   code: string,
   severity: "error" | "warning",
   message: string,
@@ -154,7 +219,8 @@ function emitDiagnostic(
  * Structured dev diagnostics (Solid 2.0). Zero-cost when nothing is
  * subscribed. Codes: REACTIVE_WRITE_IN_OWNED_SCOPE,
  * ASYNC_OUTSIDE_LOADING_BOUNDARY, RUN_WITH_DISPOSED_OWNER,
- * NO_OWNER_CLEANUP, INFINITE_LOOP.
+ * INFINITE_LOOP, HYDRATION_SEED_DRIFT, PRIMITIVE_IN_FORBIDDEN_SCOPE,
+ * RENDER_SUBTREE_NOT_OWNED.
  */
 export const DEV = {
   diagnostics: {
@@ -211,13 +277,17 @@ interface ComputedNode<T> extends SignalNode<T> {
   _kind: number; // EFFECT_PURE | EFFECT_RENDER | EFFECT_USER
   _depGen: number; // Bumped when a recompute starts re-reading dependencies
   _cleanup: (() => void) | undefined;
-  // Owner implementation (a computation owns what it creates during a run)
-  cleanups: (() => void)[] | null;
-  children: ComputedNode<unknown>[] | null;
-  disposed: boolean;
-  dispose: () => void;
-  _parent: Owner | null;
-  _context: ContextRecord;
+  // --- Q6: the Scope split. CODESIGN.md §4.2 / §10 Q6. Two slots replace the
+  // six this node used to carry (cleanups, children, disposed, dispose,
+  // _parent, _context).
+  //
+  // The revert is these four edits and nothing else: put the six fields back
+  // in the literal below, drop `_owner`/`_scope`, make `hostScope` and
+  // `lookupNodeContext` treat the node as its own scope, and drop
+  // `currentHost` so `getCurrentOwner` is again a plain read of
+  // `currentOwner`. Every other site already goes through those three.
+  _owner: Scope | null; // the scope this node was created under
+  _scope: Scope | null; // what this node owns; allocated on first demand, usually null
   _apply: ((value: unknown, prev: unknown) => void | (() => void)) | undefined; // Split-form effect phase
   _error: unknown; // Stored error when STATUS_ERROR
   _wave: number; // Last propagation epoch that visited this node
@@ -421,33 +491,126 @@ let clock = 0;
 const defaultContext: ContextRecord = {};
 
 // ============================================================================
-// Owner Tracking
+// Scope — the unit of ownership and the unit of death (SEMANTICS.md §2)
 // ============================================================================
 
 /**
- * Owner represents a reactive scope that can own child computations.
- * When an owner is disposed, all its children are automatically disposed.
+ * The nearest ancestor scope that catches, copied onto every scope at `enter`
+ * so E1's lookup is O(1) and never walks. M2 lands the field and the copy; the
+ * routing that reads it is M4's `boundary`.
  */
-export interface Owner {
-  /** Cleanup functions to run when disposed (LIFO order); lazily allocated */
+export interface Boundary {
+  handle(error: unknown, scope: Scope): void;
+}
+
+/** A scope owns child scopes and child computations, in one ordered list. */
+type Kid = Scope | ComputedNode<unknown>;
+
+export interface Scope {
+  parent: Scope | null;
+  /** Prototype-chained; shared by reference until a provide forks it (X6). */
+  ctx: ContextRecord;
+  /** LIFO on disposal (O3.3); lazily allocated. */
   cleanups: (() => void)[] | null;
-  /** Dispose function */
+  /** Reverse creation order on disposal (O3.2); lazily allocated. */
+  kids: Kid[] | null;
+  catcher: Boundary | null;
+  /** Bumped by dispose and by every unwind; async continuations compare it. */
+  gen: number;
+  dead: boolean;
+  origin: string | undefined;
   dispose: () => void;
-  /** Child computeds owned by this scope; lazily allocated */
-  children: ComputedNode<unknown>[] | null;
-  /** Whether disposed */
-  disposed: boolean;
-  /** Parent owner for hierarchy */
-  _parent: Owner | null;
-  /** Context record inherited from parent */
-  _context: ContextRecord;
+  /**
+   * O4.3's restore target. `CURRENT` as it stood on the statement before this
+   * scope's own `enter`, so `exit` puts back what was there rather than
+   * `parent` — which is a different scope whenever `pin` is involved.
+   *
+   * CURRENT is the pair (`currentOwner`, `currentHost`), not `currentOwner`
+   * alone: under Q6 a running computation whose scope is still unmaterialised
+   * has `currentOwner === null` and the owner recorded only by `currentHost`.
+   * Saving half of it made `exit` restore `null` and silently detach
+   * everything the computation created afterwards.
+   */
+  _prev: Scope | null;
+  /** The other half of O4.3's restore target; see `_prev`. */
+  _prevHost: ComputedNode<unknown> | null;
+  /** Whether `_prev`/`_prevHost` hold a live capture, so `exit` is idempotent. */
+  _open: boolean;
+  /** O3.4; allocated on the first `abortSignal()` read. */
+  _abort: AbortController | null;
+  /** O3.5; installed by whichever backend owns nodes under this scope. */
+  _range: (() => void) | null;
+  /** Whether `ctx` is this scope's own record rather than an inherited one. */
+  _forked: boolean;
   /** Root of a snapshot scope (see markSnapshotScope) */
   _snapshotScope?: boolean;
 }
 
-let currentOwner: Owner | null = null;
+/** The pre-split name. `Owner` and `Scope` are the same object now. */
+export type Owner = Scope;
 
-function getCurrentOwner(): Owner | null {
+/**
+ * The ambient owner. O4.5: this is an OBSERVATION channel — user-written
+ * `onCleanup()` and `Ctx.use()` find their owner through it — and never a
+ * decision channel. A primitive with a `Scope` argument in scope that reads
+ * this instead is the defect the redesign exists to remove.
+ */
+let currentOwner: Scope | null = null;
+/**
+ * The computation whose scope `currentOwner` stands for, while that scope is
+ * still unallocated. Q6: a computation that owns nothing never pays for a
+ * Scope, so the owner is materialised on the first thing that needs one.
+ */
+let currentHost: ComputedNode<unknown> | null = null;
+
+let scopesAllocated = 0;
+
+/**
+ * O1's falsification procedure counts `Scope` ALLOCATIONS, and the ownership
+ * trace counts scopes some construct *declared* through `enter`. Q6 makes
+ * those different numbers: `hostScope` materialises a computation's scope
+ * through no `enter`, so a backend that allocated one per component inside a
+ * computation would satisfy the trace and falsify the rule. This is the other
+ * count.
+ */
+export function scopeAllocations(): number {
+  return scopesAllocated;
+}
+
+function makeScope(parent: Scope | null): Scope {
+  scopesAllocated++;
+  return {
+    parent,
+    ctx: parent !== null ? parent.ctx : defaultContext,
+    cleanups: null,
+    kids: null,
+    catcher: parent !== null ? parent.catcher : null,
+    gen: 0,
+    dead: false,
+    origin: undefined,
+    dispose: null as unknown as () => void,
+    _prev: null,
+    _prevHost: null,
+    _open: false,
+    _abort: null,
+    _range: null,
+    _forked: false,
+  };
+}
+
+/** The scope a computation owns its children through, allocated on demand. */
+function hostScope(node: ComputedNode<unknown>): Scope {
+  let scope = node._scope;
+  if (scope === null) {
+    scope = makeScope(node._owner);
+    scope.dispose = () => disposeNode(node);
+    node._scope = scope;
+  }
+  return scope;
+}
+
+function getCurrentOwner(): Scope | null {
+  if (currentOwner === null && currentHost !== null) currentOwner = hostScope(currentHost);
   return currentOwner;
 }
 
@@ -456,7 +619,7 @@ function getCurrentOwner(): Owner | null {
  * Useful for capturing owner to restore later in async callbacks.
  */
 export function getOwner(): Owner | null {
-  return currentOwner;
+  return getCurrentOwner();
 }
 
 /**
@@ -464,7 +627,7 @@ export function getOwner(): Owner | null {
  * Errors propagate to the caller; the previous owner is always restored.
  */
 export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
-  if (owner?.disposed) {
+  if (owner?.dead) {
     emitDiagnostic(
       "RUN_WITH_DISPOSED_OWNER",
       "warning",
@@ -472,12 +635,320 @@ export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
     );
   }
   const prevOwner = currentOwner;
+  const prevHost = currentHost;
   currentOwner = owner;
+  currentHost = null;
   try {
     return fn();
   } finally {
     currentOwner = prevOwner;
+    currentHost = prevHost;
   }
+}
+
+/**
+ * O2/§3.0: open a fresh child of `parent`, make it current, and hand it back.
+ * `exit` is the other half and is required on both paths (O4.1).
+ *
+ * `parent` has no default, deliberately. O4.5: a primitive that reads the
+ * ambient owner where a `Scope` argument is in scope is the defect shape this
+ * redesign removes, and a defaulted parameter is that read with a nicer name.
+ */
+export function enter(parent: Scope | null, kind: ScopeKind = "scope"): Scope {
+  if (parent !== null && parent.dead) {
+    emitDiagnostic(
+      "RUN_WITH_DISPOSED_OWNER",
+      "warning",
+      "enter() was called on a disposed scope; the child and everything created under it will never be cleaned up by it.",
+    );
+  }
+  const scope = makeScope(parent);
+  scope.dispose = () => disposeScope(scope);
+  if (parent !== null) (parent.kids ??= []).push(scope);
+  scope._prev = currentOwner;
+  scope._prevHost = currentHost;
+  scope._open = true;
+  currentOwner = scope;
+  currentHost = null;
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.enter(scope, parent, kind, parent !== null);
+  return scope;
+}
+
+/** The scope a construct was handed, or a throw naming where it was missing. */
+export function requireScope(scope: Scope | null | undefined, origin: string): Scope | null {
+  if (scope === undefined) throw new ScopeMissingError(origin);
+  return scope;
+}
+
+/**
+ * §3.0 rule 2 / §3.13: a CELL-slot read. A Cell is called with no scope and
+ * yields its value; a Block reaching here would be called with `s === undefined`
+ * and rule 3 says that throws rather than silently building under `CURRENT` or
+ * silently yielding `undefined`. The brand makes it a property test, so the
+ * throw names both ends instead of waiting for a downstream `TypeError`.
+ */
+export function readSlot(value: unknown, origin: string): unknown {
+  if (typeof value !== "function") return value;
+  if (isBlock(value)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
+  return (value as () => unknown)();
+}
+
+/**
+ * O2/O4.5: run `fn` with the scope a construct was GIVEN as `CURRENT`, so every
+ * ambient read below it resolves to that argument rather than to whatever
+ * happened to be current at the call site. Handing a construct scope A while B
+ * is ambient must put its subtree under A; without this the argument is
+ * decoration and `pin` has nothing to override.
+ */
+export function underScope<T>(
+  scope: Scope | null | undefined,
+  origin: string,
+  fn: (scope: Scope | null) => T,
+): T {
+  const given = requireScope(scope, origin);
+  const prevOwner = currentOwner;
+  const prevHost = currentHost;
+  currentOwner = given;
+  currentHost = null;
+  try {
+    return fn(given);
+  } finally {
+    currentOwner = prevOwner;
+    currentHost = prevHost;
+  }
+}
+
+/** Restore `CURRENT` to what it was before `scope`'s `enter` (O4.1, O4.3). */
+export function exit(scope: Scope): void {
+  if (!scope._open) return;
+  scope._open = false;
+  currentOwner = scope._prev;
+  currentHost = scope._prevHost;
+  scope._prev = null;
+  scope._prevHost = null;
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.exit(scope);
+}
+
+/**
+ * Non-zero while a parent is walking its own `kids`, which is the one case
+ * where a child must NOT splice itself out: the walk clears the array whole.
+ */
+let unwindDepth = 0;
+
+/** O3.2: kids in reverse creation order, depth-first. */
+function unwindKids(scope: Scope): void {
+  const kids = scope.kids;
+  if (kids === null) return;
+  unwindDepth++;
+  try {
+    unwindKidsInner(kids);
+  } finally {
+    unwindDepth--;
+  }
+  kids.length = 0;
+}
+
+function unwindKidsInner(kids: Kid[]): void {
+  for (let i = kids.length - 1; i >= 0; i--) {
+    const kid = kids[i];
+    // `kids` is `null` on a scope that has none and absent on a computation,
+    // so one load discriminates the two without a tag field on either.
+    if ((kid as Scope).kids !== undefined) {
+      disposeScope(kid as Scope);
+    } else {
+      disposeNode(kid as ComputedNode<unknown>);
+    }
+  }
+}
+
+/** O3.3: cleanups LIFO, after every kid is gone. */
+function unwindCleanups(scope: Scope): void {
+  const cleanups = scope.cleanups;
+  if (cleanups === null) return;
+  for (let i = cleanups.length - 1; i >= 0; i--) {
+    runUntracked(cleanups[i], scope.catcher, scope);
+  }
+  cleanups.length = 0;
+}
+
+/**
+ * O3: total and ordered, and idempotent. Mark dead and bump `gen` first, so a
+ * cleanup that schedules work observes a dead scope; then kids, then cleanups,
+ * then the abort signal, then the range.
+ */
+export function disposeScope(scope: Scope): void {
+  if (scope.dead) return;
+  scope.dead = true;
+  scope.gen++;
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.dispose(scope);
+  // O3.7 for the PARENT: a scope disposed on its own leaves its slot behind
+  // otherwise, so repeatedly creating and disposing children of a long-lived
+  // scope retains every dead one. Skipped under `unwindKids`, which is
+  // clearing the whole array anyway.
+  const parent = scope.parent;
+  if (unwindDepth === 0 && parent !== null && parent.kids !== null) {
+    const at = parent.kids.indexOf(scope);
+    if (at !== -1) parent.kids.splice(at, 1);
+  }
+  unwindKids(scope);
+  unwindCleanups(scope);
+  const abort = scope._abort;
+  if (abort !== null) {
+    scope._abort = null;
+    abort.abort();
+  }
+  const range = scope._range;
+  if (range !== null) {
+    scope._range = null;
+    range();
+  }
+}
+
+/**
+ * O3.4: an `AbortSignal` that fires when the scope dies, so native listeners
+ * and in-flight fetches are killed by the same act that kills the scope.
+ */
+export function abortSignal(scope: Scope): AbortSignal {
+  const controller = (scope._abort ??= new AbortController());
+  return controller.signal;
+}
+
+/** O3.5: the range removal this scope owns; disposal runs it last. */
+export function ownRange(scope: Scope, remove: () => void): void {
+  scope._range = remove;
+}
+
+/**
+ * X6/§3.3: share the parent record by reference until the first provide, then
+ * `Object.create` once. A scope that provides nothing costs nothing, and a
+ * provider costs one prototype link regardless of how many keys are in scope.
+ */
+export function provideOn(scope: Scope, key: string | symbol, value: unknown): void {
+  if (!scope._forked) {
+    scope.ctx = Object.create(scope.ctx) as ContextRecord;
+    scope._forked = true;
+  }
+  scope.ctx[key] = value;
+}
+
+/** Returned by `lookupContext` for a key no scope on the chain binds. */
+export const CONTEXT_MISS: unique symbol = Symbol("context-miss");
+
+/**
+ * X3: resolution is a walk of the scope chain, performed when the read
+ * happens. Only a scope's OWN record counts, so a provider installed above a
+ * consumer that already exists is still found — which is the whole point of
+ * X3 and the reason `ErrorBoundary`'s build-then-install ordering is harmless.
+ * Resolving through `ctx`'s prototype chain instead captures the record at
+ * scope-creation time, which X3 forbids in as many words.
+ */
+export function lookupContext(scope: Scope | null, key: string | symbol): unknown {
+  for (let at = scope; at !== null; at = at.parent) {
+    if (at._forked && Object.hasOwn(at.ctx, key)) return at.ctx[key];
+  }
+  return CONTEXT_MISS;
+}
+
+/** The same walk from a computation, which may not have materialised a scope. */
+function lookupNodeContext(node: ComputedNode<unknown>, key: string | symbol): unknown {
+  return lookupContext(node._scope !== null ? node._scope : node._owner, key);
+}
+
+/**
+ * Effects and cleanups created while `CURRENT` was null, in creation order.
+ *
+ * O5 says `render(block, container)` opens the root scope and invokes the
+ * block under it, and once M3's calling convention lands that is the whole
+ * story. Until it does, the compiler emits `render(Tree({}), host)` — the
+ * subtree is an ARGUMENT, so it is built before `render` is entered and there
+ * is no owner in existence at the moment its effects are created. Dropping
+ * them on the floor is what makes every barq mount leak its reactive graph.
+ *
+ * So they are held here instead, and the next root scope claims them. Pure
+ * computeds are not collected: nothing schedules them, and disposing the
+ * effects that read them unlinks them anyway, so a list would only retain
+ * garbage.
+ *
+ * **The window is one turn.** A mount claims what the same synchronous turn
+ * built, and `flushSync` drops whatever is still unclaimed when the turn's work
+ * settles. Holding them for the lifetime of the process instead made every
+ * ownerless effect immortal — 217 bytes retained per effect, measured, and a
+ * 14–30% slowdown on the DOM rows — and let an unrelated later `render` adopt
+ * and destroy work it had nothing to do with.
+ *
+ * **This list dies with M3.** A Block-taking `render` builds under the root,
+ * `adoptOrphans` has nothing to find, and the three functions below go with it.
+ */
+const orphans: Kid[] = [];
+
+/** Move everything built with no owner onto `scope`, oldest first. */
+function adoptOrphans(scope: Scope): void {
+  if (orphans.length === 0) return;
+  const kids = (scope.kids ??= []);
+  for (let i = 0; i < orphans.length; i++) {
+    const kid = orphans[i];
+    if ((kid as Scope).kids !== undefined) {
+      (kid as Scope).parent = scope;
+    } else {
+      (kid as ComputedNode<unknown>)._owner = scope;
+      const own = (kid as ComputedNode<unknown>)._scope;
+      if (own !== null) own.parent = scope;
+    }
+    kids.push(kid);
+  }
+  release(orphans);
+}
+
+/** Cleanups registered with no owner; adopted by the same root scope. */
+const orphanCleanups: (() => void)[] = [];
+
+function adoptOrphanCleanups(scope: Scope): void {
+  if (orphanCleanups.length === 0) return;
+  const cleanups = (scope.cleanups ??= []);
+  for (let i = 0; i < orphanCleanups.length; i++) cleanups.push(orphanCleanups[i]);
+  release(orphanCleanups);
+}
+
+/**
+ * `list.length = 0` publishes a shorter length and leaves the old values in
+ * the backing vector, where they go on holding everything they reference. On a
+ * module-level list that is a permanent leak — 253 bytes per ownerless effect,
+ * measured, with the list reading as empty the whole time — so the slots are
+ * released before the length is.
+ */
+function release(list: unknown[]): void {
+  for (let i = 0; i < list.length; i++) list[i] = undefined;
+  list.length = 0;
+}
+
+/** Close the claim window: unclaimed at flush time is unclaimed for good. */
+function dropOrphans(): void {
+  if (orphans.length !== 0) release(orphans);
+  if (orphanCleanups.length !== 0) release(orphanCleanups);
+}
+
+/**
+ * O5: open the root scope a mount is owned by. It is a catcher by
+ * construction, so E1's "the nearest catching scope always exists" is true
+ * without a walk, and it claims whatever the mount built before it existed.
+ */
+export function enterRoot(): Scope {
+  const scope = makeScope(null);
+  scope.dispose = () => disposeScope(scope);
+  scope.catcher = { handle: rootCatch };
+  scope._prev = currentOwner;
+  scope._prevHost = currentHost;
+  scope._open = true;
+  currentOwner = scope;
+  currentHost = null;
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.enter(scope, null, "root", false);
+  adoptOrphans(scope);
+  adoptOrphanCleanups(scope);
+  return scope;
+}
+
+function rootCatch(error: unknown): void {
+  throw error;
 }
 
 // ============================================================================
@@ -707,7 +1178,18 @@ function updateIfNecessary(node: ComputedNode<unknown>): void {
 }
 
 /** Run disposal-phase callbacks untracked so reads don't leak into parents */
-function runUntracked(fn: () => void): void {
+/**
+ * O3.6: a cleanup that throws routes to the scope's catcher and MUST NOT abort
+ * the remaining cleanups. `catcher` is copied at `enter`, so reaching it is a
+ * field read rather than a walk — and it is the reader that field was missing:
+ * it was written by `makeScope` and `enterRoot` and consulted by nothing, which
+ * made E1 look covered by a cost with no behaviour attached.
+ *
+ * A catcher that rethrows (the root's) still may not abort the unwind, so the
+ * rethrow is caught here and reported. What routing buys is that a boundary
+ * ABOVE the dying scope sees the error at all.
+ */
+function runUntracked(fn: () => void, catcher: Boundary | null = null, scope?: Scope): void {
   const prevTracking = tracking;
   const prevObserver = currentObserver;
   tracking = false;
@@ -715,6 +1197,15 @@ function runUntracked(fn: () => void): void {
   try {
     fn();
   } catch (err) {
+    if (catcher !== null) {
+      try {
+        catcher.handle(err, scope as Scope);
+        return;
+      } catch {
+        // The root's catcher rethrows. O3.6's second half says the remaining
+        // cleanups still run, so it lands in the report below rather than out.
+      }
+    }
     console.error("Error in cleanup:", err);
   } finally {
     tracking = prevTracking;
@@ -724,13 +1215,10 @@ function runUntracked(fn: () => void): void {
 
 /** Effect cleanup before re-run/dispose: children first, then own cleanups */
 function runEffectCleanups(node: ComputedNode<unknown>): void {
-  // Dispose children first (inner cleanups run before outer)
-  const children = node.children;
-  if (children !== null) {
-    for (let i = children.length - 1; i >= 0; i--) {
-      disposeNode(children[i]);
-    }
-    children.length = 0;
+  const scope = node._scope;
+  if (scope !== null) {
+    scope.gen++;
+    unwindKids(scope);
   }
 
   if (node._cleanup) {
@@ -739,13 +1227,7 @@ function runEffectCleanups(node: ComputedNode<unknown>): void {
     runUntracked(cleanup);
   }
 
-  const cleanups = node.cleanups;
-  if (cleanups !== null) {
-    for (let i = cleanups.length - 1; i >= 0; i--) {
-      runUntracked(cleanups[i]);
-    }
-    cleanups.length = 0;
-  }
+  if (scope !== null) unwindCleanups(scope);
 }
 
 /** When set, a pending read with no Loading boundary above it is an error */
@@ -776,7 +1258,8 @@ export function hasEscapedError(): boolean {
 }
 
 function registerWithBoundary(node: ComputedNode<unknown>): void {
-  const handle = node._context[LOADING_BOUNDARY] as LoadingBoundaryHandle | undefined;
+  const found = lookupNodeContext(node, LOADING_BOUNDARY);
+  const handle = (found === CONTEXT_MISS ? undefined : found) as LoadingBoundaryHandle | undefined;
   if (handle) {
     node._boundary = handle;
     handle.add(node);
@@ -806,7 +1289,10 @@ let flushError: { error: unknown } | null = null;
  * unrelated work in the queue).
  */
 function handleEffectError(node: ComputedNode<unknown>, error: unknown): void {
-  const handler = node._context[ERROR_BOUNDARY] as ((err: unknown) => void) | undefined;
+  const routed = lookupNodeContext(node, ERROR_BOUNDARY);
+  const handler = (routed === CONTEXT_MISS ? undefined : routed) as
+    | ((err: unknown) => void)
+    | undefined;
   if (handler) {
     handler(error);
     return;
@@ -828,10 +1314,12 @@ function recompute(node: ComputedNode<unknown>): void {
   deleteFromHeap(node, isEffect ? heapFor(node) : renderHeap);
 
   // Dispose inner computations / run cleanups from the previous run
+  const owned = node._scope;
   if (
     node._cleanup !== undefined ||
-    (node.cleanups !== null && node.cleanups.length > 0) ||
-    (node.children !== null && node.children.length > 0)
+    (owned !== null &&
+      ((owned.cleanups !== null && owned.cleanups.length > 0) ||
+        (owned.kids !== null && owned.kids.length > 0)))
   ) {
     runEffectCleanups(node);
   }
@@ -852,13 +1340,15 @@ function recompute(node: ComputedNode<unknown>): void {
   const prevObserver = currentObserver;
   const prevTracking = tracking;
   const prevOwner = currentOwner;
+  const prevHost = currentHost;
   currentObserver = node;
   node._flags |= REACTIVE_RECOMPUTING_DEPS;
   tracking = true;
 
-  // The node itself is the owner of computations created during its run
-  node.disposed = false;
-  currentOwner = node;
+  // The node owns what its run creates. Q6: it stands in for a scope it may
+  // never allocate, so the scope is materialised only if something asks.
+  currentOwner = node._scope;
+  currentHost = node;
 
   let newValue: unknown;
   let threw = false;
@@ -878,6 +1368,7 @@ function recompute(node: ComputedNode<unknown>): void {
     currentObserver = prevObserver;
     node._flags &= ~REACTIVE_RECOMPUTING_DEPS;
     currentOwner = prevOwner;
+    currentHost = prevHost;
   }
 
   // Cleanup old unused deps (depsTail may have changed during fn execution)
@@ -1022,7 +1513,6 @@ function clearSelfMarks(node: ComputedNode<unknown>): void {
 function disposeNode(node: ComputedNode<unknown>): void {
   if (node._flags & REACTIVE_DISPOSED) return;
   node._flags |= REACTIVE_DISPOSED;
-  node.disposed = true;
 
   if (node._inFlight) {
     inFlight.delete(node._inFlight);
@@ -1031,13 +1521,11 @@ function disposeNode(node: ComputedNode<unknown>): void {
 
   unregisterFromBoundary(node);
 
-  // Dispose children first (reverse order - LIFO)
-  const children = node.children;
-  if (children !== null) {
-    for (let i = children.length - 1; i >= 0; i--) {
-      disposeNode(children[i]);
-    }
-    children.length = 0;
+  const scope = node._scope;
+  if (scope !== null) {
+    scope.dead = true;
+    scope.gen++;
+    unwindKids(scope);
   }
 
   if (node._cleanup) {
@@ -1046,12 +1534,18 @@ function disposeNode(node: ComputedNode<unknown>): void {
     runUntracked(cleanup);
   }
 
-  const cleanups = node.cleanups;
-  if (cleanups !== null) {
-    for (let i = cleanups.length - 1; i >= 0; i--) {
-      runUntracked(cleanups[i]);
+  if (scope !== null) {
+    unwindCleanups(scope);
+    const abort = scope._abort;
+    if (abort !== null) {
+      scope._abort = null;
+      abort.abort();
     }
-    cleanups.length = 0;
+    const range = scope._range;
+    if (range !== null) {
+      scope._range = null;
+      range();
+    }
   }
 
   // Remove from heap
@@ -1089,6 +1583,7 @@ function schedule(): void {
 function flushSync(): void {
   if (isFlushing || batchDepth > 0) return;
   isFlushing = true;
+  dropOrphans();
 
   flushError = null;
   try {
@@ -1241,17 +1736,19 @@ function createComputedNode<T>(
   kind: number,
   options?: SignalOptions<T>,
 ): ComputedNode<T> {
+  const host = currentHost;
   const owner = getCurrentOwner();
 
   let inheritedFlags = 0;
-  if (owner !== null) {
-    const ownerFlags = (owner as ComputedNode<unknown>)._flags;
-    if (owner._snapshotScope === true || (ownerFlags & REACTIVE_IN_SNAPSHOT_SCOPE) !== 0) {
-      inheritedFlags = REACTIVE_IN_SNAPSHOT_SCOPE;
-    }
+  if (
+    host !== null
+      ? (host._flags & REACTIVE_IN_SNAPSHOT_SCOPE) !== 0
+      : owner?._snapshotScope === true
+  ) {
+    inheritedFlags = REACTIVE_IN_SNAPSHOT_SCOPE;
   }
 
-  if (owner !== null && (owner as ComputedNode<unknown>)._flags & REACTIVE_CHILDREN_FORBIDDEN) {
+  if (host !== null && host._flags & REACTIVE_CHILDREN_FORBIDDEN) {
     emitDiagnostic(
       "PRIMITIVE_IN_FORBIDDEN_SCOPE",
       "error",
@@ -1289,24 +1786,21 @@ function createComputedNode<T>(
     _prevHeap: null as never,
     _kind: kind,
     _depGen: 0,
-    // Owner fields: the node itself owns computations created during its
-    // run (disposed before the next run and on node disposal)
-    cleanups: null,
-    children: null,
-    disposed: false,
-    dispose: null as unknown as () => void,
-    _parent: owner,
-    _context: owner !== null ? owner._context : defaultContext,
+    // Q6: two slots, not six. What this node owns lives on `_scope`, which
+    // most nodes never allocate.
+    _owner: owner,
+    _scope: null,
     _cleanup: undefined,
     _apply: undefined,
     _error: undefined,
     _wave: 0,
   };
   node._prevHeap = node as ComputedNode<unknown>;
-  node.dispose = () => disposeNode(node as ComputedNode<unknown>);
 
-  if (owner) {
-    (owner.children ??= []).push(node as ComputedNode<unknown>);
+  if (owner !== null) {
+    (owner.kids ??= []).push(node as ComputedNode<unknown>);
+  } else if (kind !== EFFECT_PURE) {
+    orphans.push(node as ComputedNode<unknown>);
   }
 
   if (externalSource !== null) {
@@ -1581,15 +2075,15 @@ export function resolve<T>(fn: () => T): Promise<T> {
     };
     // A private boundary pair: pending reads retry silently instead of warning
     // about a missing Loading boundary, and errors reject rather than escape
-    owner._context = {
-      ...owner._context,
-      [LOADING_BOUNDARY]: { add() {}, delete() {} } satisfies LoadingBoundaryHandle,
-      [ERROR_BOUNDARY]: (err: unknown) => {
-        if (settled) return;
-        finish();
-        rej(err);
-      },
-    };
+    provideOn(owner, LOADING_BOUNDARY, {
+      add() {},
+      delete() {},
+    } satisfies LoadingBoundaryHandle);
+    provideOn(owner, ERROR_BOUNDARY, (err: unknown) => {
+      if (settled) return;
+      finish();
+      rej(err);
+    });
     runInOwner(owner, () => {
       createEffectNode(
         fn as (prev?: unknown) => unknown,
@@ -1614,11 +2108,7 @@ export function onCleanup<T extends () => void>(fn: T): T {
   if (owner) {
     (owner.cleanups ??= []).push(fn);
   } else {
-    emitDiagnostic(
-      "NO_OWNER_CLEANUP",
-      "warning",
-      "onCleanup called outside a reactive owner; the cleanup will never run.",
-    );
+    orphanCleanups.push(fn);
   }
   return fn;
 }
@@ -1638,7 +2128,7 @@ export function onMount(fn: () => void | (() => void)): void {
 
   queueMicrotask(() => {
     flushSync();
-    if (owner && !owner.disposed) {
+    if (owner && !owner.dead) {
       const prevOwner = currentOwner;
       currentOwner = owner;
       try {
@@ -1678,65 +2168,49 @@ export function batch(fn: () => void): void {
  * - `createScope(fn)` - Auto-disposed when parent disposes (default)
  * - `createScope(fn, true)` - Detached, requires manual disposal
  */
-export function createScope<T>(fn: (dispose: () => void) => T, detached = false): T {
-  const owner = createOwnerScope(!detached);
+export function createScope<T>(
+  fn: (dispose: () => void, scope: Scope) => T,
+  detached = false,
+  kind: ScopeKind = "scope",
+): T {
+  const owner = createOwnerScope(!detached, kind);
   return runInOwner(owner, fn);
 }
 
-/** Internal: Create an owner scope */
-function createOwnerScope(registerWithParent: boolean): Owner {
-  let disposed = false;
+/**
+ * Internal: create a scope, optionally registered with the scope above it.
+ *
+ * A child scope goes into `kids`, never into `cleanups`. O3 spells out why:
+ * while a scope held its kids and its cleanups in one list, O3.2's ordering
+ * claim and O3.3's had no observation that could tell them apart, so a
+ * FIFO-cleanup bug reported as a kid-ordering violation.
+ */
+function createOwnerScope(registerWithParent: boolean, kind: ScopeKind = "scope"): Scope {
+  const parent = getCurrentOwner();
+  const scope = makeScope(parent);
+  scope.dispose = () => disposeScope(scope);
 
-  const owner: Owner = {
-    cleanups: null,
-    dispose: () => {},
-    children: null,
-    disposed: false,
-    _parent: currentOwner,
-    _context: currentOwner?._context ?? defaultContext,
-  };
+  const holder = registerWithParent ? parent : null;
+  if (holder !== null) (holder.kids ??= []).push(scope);
 
-  const dispose = () => {
-    if (disposed) return;
-    disposed = true;
-    owner.disposed = true;
-
-    // Dispose children in reverse order (LIFO)
-    const children = owner.children;
-    if (children !== null) {
-      for (let i = children.length - 1; i >= 0; i--) {
-        disposeNode(children[i]);
-      }
-      children.length = 0;
-    }
-
-    // Run cleanups in reverse order (LIFO)
-    const cleanups = owner.cleanups;
-    if (cleanups !== null) {
-      for (let i = cleanups.length - 1; i >= 0; i--) {
-        runUntracked(cleanups[i]);
-      }
-      cleanups.length = 0;
-    }
-  };
-
-  owner.dispose = dispose;
-
-  if (registerWithParent && currentOwner) {
-    (currentOwner.cleanups ??= []).push(dispose);
+  if (OWNERSHIP.sink !== null) {
+    OWNERSHIP.sink.enter(scope, parent, kind, holder !== null);
   }
-
-  return owner;
+  return scope;
 }
 
 /** Internal: Run function within an owner context */
-function runInOwner<T>(owner: Owner, fn: (dispose: () => void) => T): T {
+function runInOwner<T>(owner: Scope, fn: (dispose: () => void, scope: Scope) => T): T {
   const prevOwner = currentOwner;
+  const prevHost = currentHost;
   currentOwner = owner;
+  currentHost = null;
   try {
-    return fn(owner.dispose);
+    return fn(owner.dispose, owner);
   } finally {
     currentOwner = prevOwner;
+    currentHost = prevHost;
+    if (OWNERSHIP.sink !== null) OWNERSHIP.sink.exit(owner);
   }
 }
 
@@ -1752,22 +2226,46 @@ export function isTracking(): boolean {
  * Create an owner scope without running anything in it; pair with
  * runWithOwner. Disposed with its parent, or manually via dispose().
  */
-export function createOwner(): Owner {
-  return createOwnerScope(true);
+export function createOwner(kind: ScopeKind = "scope"): Owner {
+  return createOwnerScope(true, kind);
+}
+
+/**
+ * `pin(s, block)` — the one sanctioned way to break dynamic ownership (O2).
+ * The returned Block ignores the scope it is handed and runs under `s`, and
+ * because it is visible in the emitted text the exception is auditable.
+ */
+export function pin<A extends unknown[], R>(
+  scope: Scope,
+  block: (owner: Scope, ...args: A) => R,
+): (ignored?: Scope, ...args: A) => R {
+  return (_ignored?: Scope, ...args: A): R => {
+    const prevOwner = currentOwner;
+    const prevHost = currentHost;
+    currentOwner = scope;
+    currentHost = null;
+    try {
+      return block(scope, ...args);
+    } finally {
+      currentOwner = prevOwner;
+      currentHost = prevHost;
+    }
+  };
 }
 
 /**
  * The computation currently tracking reads, or null outside a tracked scope.
- * Distinct from getOwner(), which is the lifecycle scope and stays set inside
- * untrack() and effect apply phases.
+ * O6: the observer is a different ambient from the owner and a different kind
+ * of thing — a reactive node, never a scope. `untrack` moves this one and
+ * `enter`/`exit` move the other, and neither touches the other's.
  */
-export function getObserver(): Owner | null {
+export function getObserver(): object | null {
   return tracking ? currentObserver : null;
 }
 
-/** Whether an owner (or computation) has been disposed. */
-export function isDisposed(node: Owner): boolean {
-  return node.disposed;
+/** Whether a scope has been disposed. */
+export function isDisposed(scope: Owner): boolean {
+  return scope.dead;
 }
 
 /** The default signal comparator: strict equality, with NaN equal to NaN. */
@@ -1784,7 +2282,7 @@ export const SUPPORTS_PROXY: boolean = typeof Proxy === "function";
 
 const childCounts = new WeakMap<Owner, number>();
 const ownerIds = new WeakMap<Owner, string>();
-let rootIdCounter = 0;
+const rootCounts = new Map<symbol | null, number>();
 
 function formatChildId(prefix: string, index: number): string {
   const num = index.toString(36);
@@ -1792,14 +2290,38 @@ function formatChildId(prefix: string, index: number): string {
   return prefix + (len ? String.fromCharCode(64 + len) : "") + num;
 }
 
+// Root ids are numbered per render epoch, not per process: a server that
+// reuses its module graph across requests would otherwise hand out r1, r2, …
+// while every fresh client page starts again at r0, and the seeded data would
+// land under keys nobody looks up.
+function nextRootId(): string {
+  const epoch = activeAsyncSession;
+  const next = rootCounts.get(epoch) ?? 0;
+  rootCounts.set(epoch, next + 1);
+  return `r${next.toString(36)}`;
+}
+
 function ownerId(owner: Owner): string {
   let id = ownerIds.get(owner);
   if (id === undefined) {
-    const parent = owner._parent;
-    id = parent !== null ? getNextChildId(parent) : `r${(rootIdCounter++).toString(36)}`;
+    const parent = owner.parent;
+    id = parent !== null ? getNextChildId(parent) : nextRootId();
     ownerIds.set(owner, id);
   }
   return id;
+}
+
+/**
+ * Start a fresh id epoch. Server renders get one for free (each carries its
+ * own async session); the client's epoch spans the page, so only reused
+ * processes and tests need to call this.
+ */
+export function resetChildIds(session?: symbol): void {
+  if (session !== undefined) {
+    rootCounts.delete(session);
+  } else {
+    rootCounts.clear();
+  }
 }
 
 /** Allocate the next stable child id for `owner` (consumes the counter). */
@@ -1812,6 +2334,15 @@ export function getNextChildId(owner: Owner): string {
 /** The id getNextChildId would return next, without consuming it. */
 export function peekNextChildId(owner: Owner): string {
   return formatChildId(ownerId(owner), childCounts.get(owner) ?? 0);
+}
+
+/**
+ * The serialization key of an auto-keyed read. The counter is consumed either
+ * way, so naming one read never renumbers its siblings.
+ */
+function autoKey(owner: Owner, name: string | undefined): string {
+  const id = getNextChildId(owner);
+  return name === undefined ? id : `${id}~${name}`;
 }
 
 /**
@@ -1939,6 +2470,7 @@ export function clearHydrationData(session?: symbol): void {
   } else {
     hydrationData.clear();
   }
+  resetChildIds(session);
 }
 
 /** Client: the payload emitted by generateHydrationScript, if present */
@@ -1950,6 +2482,37 @@ function getSeed(key: string): { found: boolean; value?: unknown } {
     return { found: true, value };
   }
   return { found: false };
+}
+
+/**
+ * Seeded values the client never claimed, reported once hydration has settled.
+ *
+ * An auto-key is an owner-tree POSITION, so a client tree that is not the
+ * server's shifts every key after the divergence: a read can then claim a value
+ * recorded for a different call and resolve synchronously with it, which is
+ * wrong data rather than a refetch. Nothing positional can tell those apart at
+ * the moment of the read — the key carries no information about what was
+ * fetched — but the leftovers prove it afterwards, because a shifted tree
+ * always strands the tail of the payload.
+ *
+ * `{ name }` folds an identity into the auto-key, and `{ key }` replaces it
+ * outright; either takes a read out of the positional scheme.
+ */
+export function unclaimedSeeds(): string[] {
+  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+  const unclaimed = store === undefined ? [] : Object.keys(store);
+  if (unclaimed.length !== 0) {
+    emitDiagnostic(
+      "HYDRATION_SEED_DRIFT",
+      "warning",
+      `${unclaimed.length} seeded async value(s) were never claimed (${unclaimed.join(", ")}). ` +
+        "The client's owner tree is not the one the server rendered, so a positional auto-key " +
+        "may have resolved a read with another call's value. Give the reads a `name` or a `key`.",
+      undefined,
+      unclaimed,
+    );
+  }
+  return unclaimed;
 }
 
 /**
@@ -2028,8 +2591,10 @@ export function setSnapshotCapture(active: boolean): void {
  */
 export function markSnapshotScope(owner: Owner): void {
   owner._snapshotScope = true;
-  for (const child of owner.children ?? []) {
-    child._flags |= REACTIVE_IN_SNAPSHOT_SCOPE;
+  for (const kid of owner.kids ?? []) {
+    if ((kid as Scope).kids === undefined) {
+      (kid as ComputedNode<unknown>)._flags |= REACTIVE_IN_SNAPSHOT_SCOPE;
+    }
   }
 }
 
@@ -2043,18 +2608,24 @@ export function releaseSnapshotScope(owner: Owner): void {
   schedule();
 }
 
-function releaseSnapshotSubtree(owner: Owner): void {
-  const children = owner.children;
-  if (children === null) return;
-  for (const child of children) {
-    if ((child as unknown as Owner)._snapshotScope === true) continue; // nested scope owns its release
+function releaseSnapshotSubtree(owner: Scope): void {
+  const kids = owner.kids;
+  if (kids === null) return;
+  for (const kid of kids) {
+    if ((kid as Scope).kids !== undefined) {
+      if ((kid as Scope)._snapshotScope === true) continue; // nested scope owns its release
+      releaseSnapshotSubtree(kid as Scope);
+      continue;
+    }
+    const child = kid as ComputedNode<unknown>;
     child._flags &= ~REACTIVE_IN_SNAPSHOT_SCOPE;
     if (child._flags & REACTIVE_SNAPSHOT_STALE) {
       child._flags = (child._flags & ~REACTIVE_SNAPSHOT_STALE) | REACTIVE_DIRTY;
       if (child._kind !== EFFECT_PURE) insertIntoHeap(child, heapFor(child));
       propagate(child, REACTIVE_DIRTY);
     }
-    releaseSnapshotSubtree(child);
+    const own = child._scope;
+    if (own !== null) releaseSnapshotSubtree(own);
   }
 }
 
@@ -2202,7 +2773,7 @@ export function resetExternalSource(): void {
   externalSource = null;
 }
 
-function wireExternalSource(node: ComputedNode<unknown>, owner: Owner | null): void {
+function wireExternalSource(node: ComputedNode<unknown>, owner: Scope | null): void {
   const bridge = signal<undefined>(undefined, { equals: false, ownedWrite: true });
   const source = externalSource!.factory(node._fn, () => bridge.set(undefined));
   if (owner !== null) {
@@ -2219,17 +2790,32 @@ function wireExternalSource(node: ComputedNode<unknown>, owner: Owner | null): v
  * Reading it before resolution throws NotReadyError (caught by Loading
  * boundaries / isPending / latest).
  *
- * With `key`, the resolved value is recorded on the server (see
- * getHydrationData / generateHydrationScript) and consumed from
- * `__BARQ_DATA__` on the client: the first read resolves synchronously
- * with the server value instead of refetching. Note the seeded first run
- * doesn't track fn's dependencies; use refresh() to refetch.
+ * The resolved value is recorded on the server (see getHydrationData /
+ * generateHydrationScript) and consumed from `__BARQ_DATA__` on the
+ * client: the first read resolves synchronously with the server value
+ * instead of refetching. Note the seeded first run doesn't track fn's
+ * dependencies; use refresh() to refetch.
+ *
+ * The serialization key defaults to the owner-tree id of this call
+ * (getNextChildId), so server and client agree as long as they build the
+ * same owner tree. Called with no owner there is no tree to key off and
+ * nothing is serialized.
+ *
+ * A position is not an identity: if the client tree diverges from the
+ * server's, the ids after the divergence shift, and a read can claim the
+ * value recorded for a DIFFERENT call and resolve synchronously with it.
+ * `name` folds an identity into the auto-key — siblings only have to differ
+ * from each other, and a drifted key then misses and refetches instead of
+ * seeding the wrong value. `key` replaces the auto-key outright and has to be
+ * unique across the page. `unclaimedSeeds()` reports the drift after the
+ * fact; `hydrate()` calls it once the first render has settled.
  */
 export function createAsync<T>(
   fn: (prev?: T) => Promise<T> | T,
   options?: SignalOptions<T> & { key?: string },
 ): Computed<T> {
-  const key = options?.key;
+  const owner = currentOwner;
+  const key = options?.key ?? (owner !== null ? autoKey(owner, options?.name) : undefined);
   if (key === undefined) {
     return computed(fn as (prev?: T) => T, options);
   }
@@ -2267,8 +2853,8 @@ import type { JSXElement } from "./dom.ts";
 export interface Context<T> {
   readonly id: symbol;
   readonly defaultValue: T | undefined;
-  /** Provider component for JSX usage - accepts value or accessor */
-  Provider: (props: { value: MaybeAccessor<T>; children: unknown }) => JSXElement;
+  /** C1/X1: `Comp(s, props)`. `value` is a Cell, `children` a Block. */
+  Provider: (s: Scope, props: { value: MaybeAccessor<T>; children: unknown }) => JSXElement;
 }
 
 /**
@@ -2277,22 +2863,32 @@ export interface Context<T> {
 export function createContext<T>(defaultValue?: T, description?: string): Context<T> {
   const id = Symbol(description ?? "context");
 
-  // Provider creates an owned scope so it is disposed with its parent
-  const Provider = (props: { value: MaybeAccessor<T>; children: unknown }): JSXElement => {
-    return createScope(() => {
-      const owner = getCurrentOwner();
-      if (owner) {
-        owner._context = {
-          ...owner._context,
-          [id]: props.value,
-        };
-      }
-
-      if (typeof props.children === "function") {
-        return (props.children as () => JSXElement)();
-      }
-      return props.children as JSXElement;
-    });
+  /**
+   * X1: enter -> fork -> write -> INVOKE, in that order, under the scope the
+   * caller passed. `children` is a Block, so there is no expression in the
+   * emitted language that means "children, already built": the only party
+   * holding the instance scope is this function, and it writes the binding
+   * before it hands the scope over.
+   */
+  const Provider = (
+    s: Scope,
+    props: { value: MaybeAccessor<T>; children: unknown },
+  ): JSXElement => {
+    const instance = enter(requireScope(s, "Ctx.Provider"), "provide");
+    provideOn(instance, id, cellOf(props.value));
+    let built = false;
+    try {
+      if (typeof props.children !== "function") return props.children as JSXElement;
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("Provider.children", instance);
+      let out = unwrapBlocks((props.children as (scope: Scope) => JSXElement)(instance), instance);
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("Provider.children");
+      built = true;
+      return out;
+    } finally {
+      exit(instance);
+      // O4.4: a subtree that threw half-way is disposed, not abandoned.
+      if (!built) disposeScope(instance);
+    }
   };
 
   return {
@@ -2300,6 +2896,37 @@ export function createContext<T>(defaultValue?: T, description?: string): Contex
     defaultValue,
     Provider,
   };
+}
+
+/**
+ * A Block that arrived wrapped in a Cell — `children: () => props.children` —
+ * is still a Block, and it has to run inside the scope that carries the
+ * binding. Resolving it at the INSERTION site instead runs it after `exit`,
+ * under the caller's scope, which is O2's negation with extra steps.
+ *
+ * Rule 4: kind travels with the value. Only a BRANDED Block is unwrapped, so a
+ * live hole (`() => count()`) survives as the `Cell<Out>` that `Out` admits and
+ * a row callback in a children slot is never handed the scope where its item
+ * belongs. An arity guess would call both wrong, in opposite directions.
+ *
+ * The one speculative call left is an unbranded Cell whose value is a Block,
+ * which only an uncompiled caller can produce: C5 forwards by identity, so a
+ * compiled wrapper emits `children: props.children` and the brand arrives
+ * intact. It is guarded on the RESULT being branded, so a hole is read once and
+ * returned live rather than recursed into.
+ */
+function unwrapBlocks<R>(out: R, instance: Scope): R {
+  let at = out;
+  for (;;) {
+    if (isBlock(at)) {
+      at = (at as unknown as (s: Scope) => R)(instance);
+      continue;
+    }
+    if (typeof at !== "function") return at;
+    const peeked = untrack(() => (at as unknown as (s: Scope) => R)(instance));
+    if (!isBlock(peeked)) return at;
+    at = peeked;
+  }
 }
 
 /**
@@ -2313,9 +2940,8 @@ export function getContext<T>(context: Context<T>, owner: Owner | null = getOwne
     throw new NoOwnerError();
   }
 
-  const value = hasContext(context, owner)
-    ? (owner._context[context.id] as T)
-    : context.defaultValue;
+  const stored = lookupContext(owner, context.id);
+  const value = stored === CONTEXT_MISS ? context.defaultValue : (cellOf(stored) as () => T)();
 
   if (value === undefined && context.defaultValue === undefined) {
     throw new ContextNotFoundError();
@@ -2338,11 +2964,8 @@ export function setContext<T>(
     throw new NoOwnerError();
   }
 
-  // Create new context object to avoid child values being exposed to parent
-  owner._context = {
-    ...owner._context,
-    [context.id]: value === undefined ? context.defaultValue : value,
-  };
+  const resolved = value === undefined ? context.defaultValue : value;
+  provideOn(owner, context.id, () => resolved);
 }
 
 /**
@@ -2350,7 +2973,17 @@ export function setContext<T>(
  */
 export function hasContext<T>(context: Context<T>, owner: Owner | null = getOwner()): boolean {
   if (!owner) return false;
-  return context.id in owner._context;
+  return lookupContext(owner, context.id) !== CONTEXT_MISS;
+}
+
+/**
+ * X2/§3.0: what a scope stores for a context key is a Cell. Every write site
+ * that can take a plain value wraps here, so a stored function is always the
+ * Cell and never a value that happens to be callable — the ambiguity that had
+ * `getContext` hand back the accessor while `read` handed back its result.
+ */
+export function cellOf(value: unknown): () => unknown {
+  return typeof value === "function" ? (value as () => unknown) : (): unknown => value;
 }
 
 /**
@@ -2358,14 +2991,10 @@ export function hasContext<T>(context: Context<T>, owner: Owner | null = getOwne
  * Always returns an accessor function for consistent API.
  */
 export function useContext<T>(context: Context<T>): () => T {
-  const owner = getCurrentOwner();
+  const stored = lookupContext(getCurrentOwner(), context.id);
 
-  if (owner && hasContext(context, owner)) {
-    const stored = owner._context[context.id];
-    if (typeof stored === "function") {
-      return stored as () => T;
-    }
-    return () => stored as T;
+  if (stored !== CONTEXT_MISS) {
+    return cellOf(stored) as () => T;
   }
 
   if (context.defaultValue !== undefined) {
