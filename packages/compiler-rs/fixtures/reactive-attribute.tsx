@@ -29,6 +29,6 @@ export const optimality = {
   milestone: 5,
   effects: 1,
   templates: 1,
-  emits: ['"href"', "setClass(", "renderEffect("],
+  emits: ['"href"', "setClass(", "bindEffect("],
   absent: ["setProp", "bindProp("],
 }

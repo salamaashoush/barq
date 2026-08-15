@@ -138,6 +138,12 @@ pub struct Module<'a> {
     /// with `(parent, anchor) = (null, null)`, which is `flow.ts`'s own
     /// "the caller inserts the anchor I return" path.
     pub regions: AVec<'a, Option<Region<'a>>>,
+    /// §3.11's compile-time addresses, filled by `passes::address::locate` for
+    /// every target. A side table: nothing in lowering, the passes or codegen
+    /// reads it, so the emitted code is byte-identical whether it was built or
+    /// not — which is what makes the both-ways address diff evidence about the
+    /// IR rather than about the artefact.
+    pub positions: Vec<crate::ir::Position>,
     pub env: ReactiveEnv<'a>,
     /// oxc's symbol table, detached from the AST it was built against. P0 reads
     /// it in M3; it stays valid across codegen because it holds `SymbolId`s and
@@ -591,6 +597,7 @@ impl<'a> Module<'a> {
             scoping: Scoping::default(),
             maps: Mappings::default(),
             flow_rewrites: Vec::new(),
+            positions: Vec::new(),
             detached_roots: false,
             helpers: crate::codegen::helper_names(&crate::codegen::free_sigil(source), allocator),
             used_helpers: [false; crate::codegen::HELPER_COUNT],

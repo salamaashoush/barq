@@ -21,6 +21,7 @@ import {
   ownershipKey,
   WRAPPER_GATE_FIXTURE,
 } from "./ownership-known-failures.ts"
+import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
 
 /**
  * Layer L2b of the oracle — `CODESIGN.md` §6, and the half of M0 that has no
@@ -104,9 +105,10 @@ const OBSERVED: Observed[] = RUNS.flatMap((run) =>
       determined: sum.determined + run.determined,
       unattributed: sum.unattributed + run.unattributed,
       scopes: sum.scopes + run.scopes,
+      effects: sum.effects + run.effects,
       cascades: sum.cascades + run.cascades,
     }),
-    { clones: 0, determined: 0, unattributed: 0, scopes: 0, cascades: 0 },
+    { clones: 0, determined: 0, unattributed: 0, scopes: 0, effects: 0, cascades: 0 },
   )
   const byRule = new Map<string, number>()
   for (const { finding } of OBSERVED) {
@@ -114,9 +116,10 @@ const OBSERVED: Observed[] = RUNS.flatMap((run) =>
   }
   const affected = new Set(OBSERVED.map((o) => o.fixture)).size
   console.log(
-    `L2b ownership: ${RUNS.length} fixtures — ${totals.scopes} scopes, ${totals.clones} clones ` +
-      `checked against the static tree (${totals.determined} of them at a single legal path), ` +
-      `${totals.unattributed} unattributed, ${totals.cascades} disposal cascades\n` +
+    `L2b ownership: ${RUNS.length} fixtures — ${totals.scopes} scopes, ${totals.effects} effects, ` +
+      `${totals.clones} clones checked against the static tree (${totals.determined} of them at a ` +
+      `single legal path), ${totals.unattributed} unattributed, ` +
+      `${totals.cascades} disposal cascades\n` +
       `  ${OBSERVED.length} findings in ${affected} fixtures, all registered: ` +
       `${[...byRule].sort().map(([rule, n]) => `${rule}×${n}`).join(" ")}`,
   )
@@ -179,6 +182,15 @@ describe("the known-failure registry", () => {
         "the registry did not predict is not evidence that the oracle saw what it claims to see; " +
         "SEMANTICS.md §15.2 assertion 3 is the one that makes M0 mean anything.",
     ).toBe("")
+  })
+
+  it("no row is past the milestone it promised", () => {
+    const late = OWNERSHIP_KNOWN_FAILURES.filter((row) => overdue(row.greenAt)).map(
+      (row) =>
+        `OVERDUE: ${ownershipKey(row.fixture, row.finding)} promised green at ${row.greenAt} and ` +
+        `is still reported at M${CURRENT_MILESTONE}`,
+    )
+    expect(late.join("\n"), OVERDUE_WHY).toBe("")
   })
 
   it("names rules SEMANTICS.md actually defines", () => {
@@ -676,6 +688,85 @@ describe("self-check: the assertion would notice", () => {
       "a Block that ran under a scope other than the one it was given is O2's negation; the " +
         "channel has to say so, or the clause is decoration",
     ).toContain("block-ran-under-another-scope")
+  })
+
+  it("catches an EFFECT created under a scope other than the one it was given", async () => {
+    // The same arrangement, with the misplaced construction being a reactive
+    // node rather than a template clone — which is the half the trace could
+    // not see at all until it recorded one. The clone stays honest in both
+    // runs, so the only difference between them is where the effect was filed;
+    // a check that reported the cheating run through the clone arm would pass
+    // this test without ever looking at an effect.
+    const core = (await import("@barqjs/core")) as unknown as {
+      createScope: <T>(fn: (d: () => void, s: object) => T, detached?: boolean, kind?: string) => T
+      runWithOwner: <T>(owner: object | null, fn: () => T) => T
+      template: (html: string) => () => Node
+      insert: (s: object | null, parent: Node, value: unknown, marker?: Node | null) => void
+      renderEffect: (compute: () => unknown) => () => void
+      signal: <T>(value: T) => (() => T) & { set(next: T): void }
+      flush: () => void
+      beginOwnershipTrace: () => void
+      endOwnershipTrace: () => OwnershipEvent[]
+    }
+    const { checkTrace } = await import("./ownership.ts")
+
+    const run = (elsewhere: boolean): OwnershipEvent[] => {
+      const host = document.createElement("div")
+      document.body.appendChild(host)
+      const make = core.template("<b>x</b>")
+      const value = core.signal("one")
+      core.beginOwnershipTrace()
+      try {
+        let dispose: (() => void) | undefined
+        core.createScope(
+          (d: () => void, root: object) => {
+            dispose = d
+            core.createScope(
+              (_d: () => void, provide: object) => {
+                core.insert(provide, host, () => {
+                  const node = make()
+                  const bind = (): void => void core.renderEffect(() => value())
+                  if (elsewhere) core.runWithOwner(root, bind)
+                  else bind()
+                  return node
+                })
+              },
+              false,
+              "provide",
+            )
+          },
+          true,
+          "root",
+        )
+        core.flush()
+        dispose?.()
+        return core.endOwnershipTrace()
+      } finally {
+        core.endOwnershipTrace()
+        host.remove()
+      }
+    }
+
+    const honest = run(false)
+    expect(
+      honest.some((e) => e.kind === "own"),
+      "the trace recorded no effect creation at all, so nothing below it can be a finding " +
+        "about effect ownership — this is the state the channel was in before it had an " +
+        "`own` event, and every ownership defect in the effect half was invisible to it",
+    ).toBe(true)
+    expect(
+      checkTrace(honest).findings.map((f) => `${f.rule}: ${f.detail}`).join("\n"),
+      "an effect created under the scope its block was given is the ordinary case",
+    ).toBe("")
+
+    const cheating = checkTrace(run(true)).findings
+    expect(
+      cheating.map((f) => `${f.rule} ${f.detail}`).join("\n"),
+      "an effect filed under a scope neither at nor below the one the block was handed is " +
+        "O4.5's negation, and it is the exact shape the compiled attribute channel had while " +
+        "it emitted a `renderEffect` taking no scope",
+    ).toContain("effect")
+    expect(cheating.map((f) => f.rule)).toContain("O4.5")
   })
 })
 

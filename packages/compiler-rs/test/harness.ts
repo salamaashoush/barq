@@ -59,13 +59,17 @@ export interface NativeTransformResult {
   code: string
   map?: string
   warnings: string[]
+  /** `CODESIGN.md` §6 L2b, under `ownership: true` only. */
+  ownership?: string | null
+  /** `CODESIGN.md` §3.11's compile-time address table, under `addresses: true` only. */
+  addresses?: string | null
 }
 
 interface NativeCompiler {
   transform(
     code: string,
     options?: Record<string, unknown>,
-  ): NativeTransformResult & { ownership?: string | null }
+  ): NativeTransformResult
   opcodes(): string[]
   diagnosticCodes(): Array<{ code: string; level: string; summary: string; docs: string }>
 }
@@ -1061,14 +1065,14 @@ function callsTo(stripped: string, helper: string): string[][] {
 }
 
 /**
- * The body of every `_$renderEffect(...)` in the module, by balanced
+ * The body of every `_$bindEffect(...)` in the module, by balanced
  * parentheses rather than by indentation — an indentation-anchored scan reports
  * ZERO groups on a nested emit and a corpus-wide `groups > 0` cannot tell that
  * apart from a module with no groups at all.
  */
-export function renderEffectBodies(code: string): string[] {
+export function bindEffectBodies(code: string): string[] {
   const bodies: string[] = []
-  const opener = /_\$+renderEffect\(/g
+  const opener = /_\$+bindEffect\(/g
   for (let match = opener.exec(code); match !== null; match = opener.exec(code)) {
     let depth = 0
     let end = match.index + match[0].length - 1
@@ -1088,7 +1092,7 @@ export function renderEffectBodies(code: string): string[] {
  * DOM and FEWER effects, so no bound in the differential harness can see it.
  */
 export function groupTargets(code: string): string[][] {
-  return renderEffectBodies(code).map((body) => [
+  return bindEffectBodies(code).map((body) => [
     // A resolved channel takes the ELEMENT first: the scope is not an argument
     // at all, because a channel write is not an effect and opens nothing.
     ...new Set([...body.matchAll(CHANNEL_CALL)].map((m) => m[2])),
@@ -1186,9 +1190,9 @@ export interface EffectBoundInput {
   merges: number
 }
 
-/** `renderEffect`s covering two or more props, counted off the emitted module. */
+/** `bindEffect`s covering two or more props, counted off the emitted module. */
 export function countMerges(code: string): number {
-  return renderEffectBodies(code).filter(
+  return bindEffectBodies(code).filter(
     (body) => countMatches(body, new RegExp(CHANNEL_CALL)) >= 2,
   ).length
 }
@@ -1295,10 +1299,10 @@ function bound(input: EffectBoundInput, slack: number): Divergence[] {
   //
   //  - a declared live hole (`goesLive`, O4 auto-thunking) — `slack` of them;
   //  - a COALESCED effect. Target #4 puts every dynamic prop of an element in
-  //    one renderEffect, so that effect necessarily runs on the UNION of their
+  //    one bindEffect, so that effect necessarily runs on the UNION of their
   //    triggers where the oracle ran one effect per prop.
   //
-  // The allowance is the number of multi-prop `renderEffect`s the module
+  // The allowance is the number of multi-prop `bindEffect`s the module
   // actually emitted, counted off the code. It used to be the effect-count
   // delta, which is a DIFFERENT number: merging k props removes k-1 effects but
   // yields exactly one that runs on the union, so at k >= 3 the delta excused

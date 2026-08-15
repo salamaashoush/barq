@@ -71,22 +71,21 @@ const fixtures = listFixtures()
 const CORPUS = fixtures
 
 /**
- * The fixtures DESIGN §5's fallback claims, named rather than counted.
+ * The fixtures that do NOT reach the string backend. Empty since M6, and the
+ * empty list is the assertion.
  *
- * Every one uses one of the eight flow components that have no string-mode
- * implementation, and the suite asserts the partition in BOTH directions — a
- * fixture leaving this list and a fixture joining it are equally a change to
- * what target #10 delivers, and both have to be a deliberate edit here.
+ * It held seven names, and every one of them was there for the same reason: a
+ * reference to one of eight flow components dropped the whole module to the DOM
+ * backend, at CODESIGN §0.1's 41.88x. `uninlinable_flow` is deleted, the four
+ * primitives have a string implementation and all fourteen constructs have a
+ * string component, so there is no fixture left with anywhere else to go.
+ *
+ * The list survives rather than being inlined as `[]`, because the partition is
+ * asserted in BOTH directions and a name JOINING it is exactly as much a change
+ * to what target #10 delivers as a name leaving it was. Adding one has to be a
+ * deliberate edit here, with a reason.
  */
-const SSR_FALLBACK = [
-  "control-flow-await-suspense",
-  "control-flow-error-boundary",
-  "control-flow-errored-loading",
-  "control-flow-reveal",
-  "dynamic",
-  "flow-prop-eta-boundary",
-  "portal",
-]
+const SSR_FALLBACK: readonly string[] = []
 
 function report(): void {
   if (ssrStatus.landed) {
@@ -208,6 +207,46 @@ describe("dual render: the whole corpus, string against DOM", () => {
   })
 })
 
+/**
+ * The string backend's own `-O0`/`-Ox` differential, which the L3 mode axis in
+ * `differential.ts` cannot carry: L3's channels are a rendered DOM and a driven
+ * interaction, and the string backend produces bytes and no interaction at all.
+ * On bytes the same question is askable directly, so it is asked here — the
+ * optimised emission and the reference emission of every fixture must produce
+ * the same document.
+ *
+ * `addresses.test.ts` records the one thing that is NOT equal across the two:
+ * `-O0` addresses a superset of `-Ox`, because P3 fold turns a constant
+ * `SetOnce` into template bytes and bytes have no position to claim. The MARKUP
+ * is unaffected by that, which is exactly what this asserts.
+ */
+describe("the string backend at -O0 against -Ox", () => {
+  const run = ssrStatus.landed ? it : it.todo
+
+  run("every fixture's SSR markup is byte-identical at both optimisation levels", async () => {
+    const source = fixtureSource
+    const diverged: string[] = []
+    for (const name of CORPUS) {
+      const ox = await renderCode(
+        compileSource(source(name), `${name}.tsx`, { ssr: true }),
+        `ssr-ox-${name}`,
+      )
+      const o0 = await renderCode(
+        compileSource(source(name), `${name}.tsx`, { ssr: true, optimize: 0 }),
+        `ssr-o0-${name}`,
+      )
+      if (ox.html !== o0.html) diverged.push(`${name}:\n  -Ox ${ox.html}\n  -O0 ${o0.html}`)
+    }
+    expect(
+      diverged.join("\n"),
+      "an optimisation changed what the string backend SHIPS. Every pass on this path is a " +
+        "byte-level transformation of the same lowered IR, so a divergence here is a pass that " +
+        "changed the document rather than how it was computed — the class of defect the DOM " +
+        "backend's L3 differential exists to catch, on the target where L3's channels do not fit.",
+    ).toBe("")
+  })
+})
+
 describe("dual render: the compiled SSR string", () => {
   const run = ssrStatus.landed ? it : it.todo
 
@@ -300,54 +339,62 @@ describe("dual render: the compiled SSR string", () => {
       }
     }
     expect(inlined.length, "the partition moved").toBe(CORPUS.length - SSR_FALLBACK.length)
+    expect(inlined.length, "every fixture is a string-mode module now").toBe(CORPUS.length)
   })
 
-  run("the fallback is a documented set, not a silent majority", async () => {
-    // DESIGN §5 keeps a happy-dom fallback for the eight flow components that
-    // cannot be inlined. That is a stated cost; it is not a licence for the
-    // backend to fall back wherever it finds something awkward — and a bound
-    // ("every fixture that falls back uses one of the eight") is satisfied by a
-    // backend that never falls back AT ALL, which is the other direction of the
-    // same bug and is what a mutation proved this row could not see. So the
-    // partition is pinned exactly, in both directions.
+  run("no fixture falls back, and the constructs that used to are the proof", async () => {
+    // The row that used to pin a seven-name fallback set. It is pinned at ZERO
+    // now, in both directions: a fixture that stopped reaching the string
+    // backend is a whole-module deopt growing back, and this is where it shows.
     const fellBack: string[] = []
     for (const name of CORPUS) {
       const render = await renderSsrCompiled(name)
       if (!render.string) fellBack.push(name)
     }
-    expect(fellBack.toSorted(), "the fallback set moved").toEqual(SSR_FALLBACK.toSorted())
+    expect(fellBack.toSorted(), "the fallback set moved").toEqual([...SSR_FALLBACK].toSorted())
 
+    // And the eight names that used to trigger it are still IN the corpus, so
+    // the zero above is a fact about the backend rather than about a corpus that
+    // stopped exercising them. A fixture set with no `Portal` in it would
+    // satisfy the assertion above by having nothing to test.
     const EIGHT = ["Loading", "Errored", "Reveal", "Suspense", "Await", "Portal", "Dynamic", "ErrorBoundary"]
-    for (const name of fellBack) {
+    const exercised = new Set<string>()
+    for (const name of CORPUS) {
       const source = fixtureSource(name)
-      expect(
-        EIGHT.filter((flow) => new RegExp(`\\b${flow}\\b`).test(source)),
-        `${name} fell back with none of the eight in it`,
-      ).not.toEqual([])
-      // And it SAYS SO. A silent fallback is a page that renders through
-      // happy-dom on a server the author believed needed no DOM.
+      for (const flow of EIGHT) {
+        if (new RegExp(`\\b${flow}\\b`).test(source)) exercised.add(flow)
+      }
+    }
+    expect(EIGHT.filter((flow) => !exercised.has(flow)), "the corpus stopped exercising a construct that used to deopt").toEqual([])
+
+    // Nothing announces a fallback any more, because there is none to announce.
+    // BARQ007 is deleted; a build that started emitting it again would be a
+    // build that got the deopt back.
+    for (const name of CORPUS) {
       const { warnings } = compileFixtureRaw(name, { ssr: true })
       expect(
         warnings.filter((w) => w.includes("no string-mode implementation")),
-        `${name} fell back without a diagnostic`,
-      ).not.toEqual([])
+        `${name} announced a fallback that no longer exists`,
+      ).toEqual([])
     }
   })
 
-  run("a namespace import cannot walk past either half of the split", () => {
-    // `import * as core` binds no symbol for `core.Portal`, so a split resolved
-    // by `SymbolId` is blind to it unless the namespace is resolved first — and
-    // being blind means compiling the module to a string that calls the real DOM
-    // component, which dies with no `document` on the one kind of server target
-    // #10 exists for.
+  run("a namespace import cannot walk past the rewrite", () => {
+    // `import * as core` binds no symbol for `core.Portal`, so a rewrite
+    // resolved by `SymbolId` is blind to it unless the namespace is resolved
+    // first — and being blind means compiling the module to a string that calls
+    // the real DOM component, which dies with no `document` on the one kind of
+    // server target #10 exists for.
     const portal = compileSourceRaw(
       'import * as core from "@barqjs/core";\nexport default () => <div><core.Portal>x</core.Portal></div>;\n',
       "ns.tsx",
       { ssr: true },
     )
-    expect(portal.code, "a non-inlinable flow must send the module back to the DOM backend")
-      .toContain("_$template(")
-    expect(portal.warnings.join("\n")).toContain("Portal")
+    expect(portal.code, "the namespace spelling must reach the string component")
+      .toContain("_$ssrPortal(")
+    expect(portal.code, "and must not send the module to the DOM backend")
+      .not.toContain("_$template(")
+    expect(portal.warnings, "and has nothing to warn about").toEqual([])
 
     const list = compileSource(
       'import * as core from "@barqjs/core";\nexport default () => <div><core.For each={r}>{(i) => <b>{i}</b>}</core.For></div>;\n',

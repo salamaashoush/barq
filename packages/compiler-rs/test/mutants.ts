@@ -207,7 +207,7 @@ const MUTANTS: Mutant[] = [
   {
     id: "fuse-merges-across-elements",
     pass: "fuse",
-    what: "P5 puts live props of DIFFERENT elements in one renderEffect",
+    what: "P5 puts live props of DIFFERENT elements in one bindEffect",
     edits: [
       {
         file: "src/passes/group.rs",

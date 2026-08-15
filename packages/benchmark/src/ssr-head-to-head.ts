@@ -17,7 +17,7 @@
  */
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-import { compileBarq, compileSolid, loadModule } from "./compile.ts";
+import { compileBarq, compileBarqWithWarnings, compileSolid, loadModule } from "./compile.ts";
 import { multi, SUMMARY_HEADER, summarize, summaryLine, wilcoxon } from "./stats.ts";
 
 const solidServer = await import("solid-js/web");
@@ -51,6 +51,23 @@ export default function Page(props) {
   );
 }
 `;
+
+/**
+ * The SAME page, in a module that also mentions a control-flow component.
+ *
+ * `CODESIGN.md` §0.1's 41.88x row: until M6 the compiler scanned every symbol
+ * and dropped the WHOLE module to the DOM backend if any of eight flow
+ * components was referenced, so one import cost the page its string backend.
+ * The markup `Page` produces is byte-identical either way — which is what makes
+ * this a measurement of the deopt and of nothing else.
+ */
+const ROWS_PAGE_WITH_FLOW = `
+import { Portal } from "@barqjs/core";
+
+export function Modal(props) {
+  return <Portal target={props.target}>{props.children}</Portal>;
+}
+${ROWS_PAGE}`;
 
 const STATIC_PAGE = `
 export default function Page() {
@@ -86,6 +103,15 @@ const solidRows = await loadModule<Compiled>(
   await compileSolid(ROWS_PAGE, "rows-page.jsx", "ssr"),
   "solid-ssr-rows",
 );
+const flowCompile = compileBarqWithWarnings(ROWS_PAGE_WITH_FLOW, "rows-page-flow.tsx", true);
+const barqRowsWithFlow = await loadModule<Compiled>(flowCompile.code, "barq-ssr-rows-flow");
+/**
+ * Read off the emitted module, not declared. `_$html(` is the string backend's
+ * root wrapper and `_$template(` is the DOM backend's, so which one this module
+ * contains IS whether the deopt fired — a boolean nobody has to keep in step.
+ */
+const flowStayedOnTheStringPath = flowCompile.code.includes("_$html(");
+
 const barqStatic = await loadModule<Compiled>(
   compileBarq(STATIC_PAGE, "static-page.tsx", true),
   "barq-ssr-static",
@@ -220,6 +246,53 @@ report(
     { trials: TRIALS, iterations: ENVELOPE_ITERATIONS },
   ),
   "barq compiled",
+);
+
+// ------------------------------------------------- CODESIGN §0.1's 41.88x row
+//
+// The same page, rendered from a module that also mentions `Portal`. Before M6
+// that reference sent the whole module to the DOM backend; the row is kept
+// afterwards because a number that is only collected once cannot be defended,
+// and a regression here would be silent.
+console.log(
+  `\nthe module that mentions \`Portal\` compiled to the ${
+    flowStayedOnTheStringPath ? "STRING backend (M6: no whole-module deopt)" : "DOM backend (deopt)"
+  }` + (flowCompile.warnings.length > 0 ? `\n  ${flowCompile.warnings.join("\n  ")}` : ""),
+);
+{
+  const withFlowHtml = barqCore.renderToString(
+    () => barqRowsWithFlow.default(null, { rows: DATA }) as never,
+  );
+  if (withFlowHtml !== barqHtml) {
+    throw new Error(
+      "the page renders differently when its module mentions `Portal` — the two rows below would " +
+        "not be measuring the same work:\n" +
+        `  plain: ${barqHtml.slice(0, 200)}\n  flow : ${withFlowHtml.slice(0, 200)}`,
+    );
+  }
+}
+report(
+  `100-row page whose module also mentions \`Portal\` — CODESIGN §0.1's fallback row (${TRIALS} trials x ${ENVELOPE_ITERATIONS} iters)`,
+  multi(
+    [
+      {
+        name: "barq, plain module",
+        setup: () => () => {
+          keep(barqCore.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
+        },
+      },
+      {
+        name: "barq, module mentions Portal",
+        setup: () => () => {
+          keep(
+            barqCore.renderToString(() => barqRowsWithFlow.default(null, { rows: DATA }) as never),
+          );
+        },
+      },
+    ],
+    { trials: TRIALS, iterations: ENVELOPE_ITERATIONS },
+  ),
+  "barq, plain module",
 );
 
 report(

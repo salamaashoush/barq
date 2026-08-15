@@ -62,6 +62,6 @@ export const optimality = {
   templates: 1,
   // One effect for the element. `ref` is its own channel and `classList` a
   // static object, so neither opens one.
-  emits: ["renderEffect(", "setClass(", "setClassList(", "ref("],
+  emits: ["bindEffect(", "setClass(", "setClassList(", "ref("],
   absent: ["bindProp(", "setProp"],
 }

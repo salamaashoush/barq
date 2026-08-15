@@ -165,7 +165,7 @@ impl<'a> Rx<'a> {
     };
 
     /// QUERY 1 — the only reactivity question codegen ever asks.
-    /// `Static` ⇒ emit the value; NO thunk, NO renderEffect, NO closure.
+    /// `Static` ⇒ emit the value; NO thunk, NO bindEffect, NO closure.
     #[inline]
     pub fn live(self) -> bool {
         match self.shape {

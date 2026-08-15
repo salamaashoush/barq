@@ -18,6 +18,8 @@ exports[`marker channel class-list-array-object: anchor layout 1`] = `"<div><spa
 
 exports[`marker channel class-list-prop: anchor layout 1`] = `"<div><span>keyed</span><span>reactive</span></div>"`;
 
+exports[`marker channel class-owns-only-its-tokens: anchor layout 1`] = `"<b>x</b>"`;
+
 exports[`marker channel class-with-live-siblings: anchor layout 1`] = `"<div>x</div>"`;
 
 exports[`marker channel component-boundary-props: anchor layout 1`] = `"<section><p>Hello, world<!---->!</p><!----><p>Hello, static<!---->?</p></section>"`;
@@ -104,6 +106,8 @@ exports[`marker channel delegated-event: anchor layout 1`] = `"<button>clicked 0
 
 exports[`marker channel delegated-handler-tuple: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>none</li></ul>"`;
 
+exports[`marker channel delegated-two-types: anchor layout 1`] = `"<button>0/0</button>"`;
+
 exports[`marker channel derived-local-thunk: anchor layout 1`] = `"<p><span>2</span><b>4</b></p>"`;
 
 exports[`marker channel diagnostic-accessor-coercion: anchor layout 1`] = `
@@ -121,6 +125,8 @@ exports[`marker channel diagnostic-accessor-coercion: anchor layout 1`] = `
 exports[`marker channel dom-prop-static-value: anchor layout 1`] = `"<form><input><input></form>"`;
 
 exports[`marker channel dynamic: anchor layout 1`] = `"<div><span>inner</span></div>"`;
+
+exports[`marker channel equal-liveness: anchor layout 1`] = `"<b></b>"`;
 
 exports[`marker channel escaped-text-and-attribute: anchor layout 1`] = `"<div><script>alert(1)</script>1 & 2</div>"`;
 
@@ -204,6 +210,8 @@ exports[`marker channel reassigned-binding: anchor layout 1`] = `"<p>second</p>"
 
 exports[`marker channel ref-binding: anchor layout 1`] = `"<div><div>target</div><span>callback</span></div>"`;
 
+exports[`marker channel ref-cleanup: anchor layout 1`] = `"<div><button>ref cleanup</button></div>"`;
+
 exports[`marker channel ref-on-component: anchor layout 1`] = `"<div><span>component</span><b>element</b></div>"`;
 
 exports[`marker channel ref-writable-binding: anchor layout 1`] = `"<p><i>x</i></p>"`;
@@ -267,11 +275,3 @@ exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><
 exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
 
 exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;
-
-exports[`marker channel class-owns-only-its-tokens: anchor layout 1`] = `"<b>x</b>"`;
-
-exports[`marker channel equal-liveness: anchor layout 1`] = `"<b></b>"`;
-
-exports[`marker channel delegated-two-types: anchor layout 1`] = `"<button>0/0</button>"`;
-
-exports[`marker channel ref-cleanup: anchor layout 1`] = `"<div><button>ref cleanup</button></div>"`;

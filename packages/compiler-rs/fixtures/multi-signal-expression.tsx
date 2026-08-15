@@ -23,7 +23,7 @@ export const optimality = {
   // and the effect around it is not the grouping, it is the write: §3.5 leaves
   // no `setProp` for a thunk to be handed to, so a proven-live prop owns its
   // own effect and threads its own prev through the compute's return.
-  emits: ['"data-both"', "a() + b()", "renderEffect("],
+  emits: ['"data-both"', "a() + b()", "bindEffect("],
   // A group of one threads a SCALAR previous value, not the record a real
   // group needs: the accumulator's default object is what a group costs.
   absent: [" = {}"],

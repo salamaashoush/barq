@@ -27,5 +27,5 @@ export const optimality = {
   // three effects here and produces identical DOM, so nothing but this count
   // can see the difference.
   patchCalls: 3,
-  absent: ["=>", "renderEffect"],
+  absent: ["=>", "renderEffect", "bindEffect"],
 }

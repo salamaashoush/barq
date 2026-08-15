@@ -31,6 +31,20 @@ import { compileSource, loadModule, renderModule, type RenderResult } from "./ha
  * `dom-Ox` is what ships. `dom-O0` is the reference: same front end, same IR,
  * same ABI, same props model, same ownership model, every optimisation off.
  * `interp` is §6 L2's reference backend over the same analysed IR.
+ *
+ * **Why the string backend is not a fourth mode.** L3's channels are read off a
+ * rendered DOM and off a driven interaction — nodes, attributes, text, effect
+ * counts across frames. The string backend produces bytes and no interaction at
+ * all, so every one of those channels would have to be replaced rather than
+ * shared, and a mode that compares nothing the others compare is a second
+ * harness wearing this one's name. SSR is covered instead by the channel that
+ * fits its output: the dual-render conformance suite in `ssr.test.ts` compares
+ * all 130 fixtures' string output against `renderToString` EXACTLY, and
+ * `hydration.test.ts` compares the wire against a cold DOM render of the same
+ * fixture — which is the string-against-DOM diff L3 would otherwise be asked
+ * for. `ssr-O0` against `ssr-Ox` is checkable on bytes alone, so it is
+ * asked directly rather than through this axis: `ssr.test.ts`'s "the string
+ * backend at -O0 against -Ox" compares all 130 fixtures' markup byte for byte.
  */
 export type Mode = "dom-Ox" | "dom-O0" | "interp"
 

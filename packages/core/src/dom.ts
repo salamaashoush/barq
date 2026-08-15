@@ -21,6 +21,7 @@ import {
   OWNERSHIP,
   readSlot,
   renderEffect,
+  resetChildIds,
   unclaimedSeeds,
   underScope,
   type Scope,
@@ -36,6 +37,21 @@ import {
   isRefCallback,
   isSignalGetter,
 } from "./type-utils.ts";
+import {
+  HydrationMismatch,
+  beginHydration,
+  built as builtNode,
+  claimNode,
+  claimRange,
+  endHydration,
+  hydrating,
+  report,
+  wireIsMarked,
+  withRange,
+  withoutClaim,
+  type HydrationReport,
+  type Range,
+} from "./hydration.ts";
 
 /**
  * §3.0: a function child is a `Cell<Child>` or a `Block<Child>` and the two are
@@ -247,14 +263,28 @@ function delegatedEventHandler(e: Event): void {
     while (node) {
       const handler = (node as Node & Record<string, unknown>)[key] as DelegatedHandler | undefined;
       if (handler && !(node as Partial<HTMLButtonElement>).disabled) {
+        const owner = scopeOf(node);
         try {
-          if (typeof handler === "function") {
-            handler.call(node, e);
-          } else if (Array.isArray(handler) && typeof handler[0] === "function") {
-            handler[0].call(node, handler[1], e);
-          }
+          // The compiled path writes this expando ITSELF — `_el$1.$$click = h` —
+          // so `delegate`'s guard never sees it and this is the only place a
+          // Block forwarded into a handler slot can be caught. Invoked, it would
+          // take the Event as its scope: rule 3's guard tests `undefined` and an
+          // Event is not undefined.
+          refuseBlock(handler, `on${e.type}`);
+          if (Array.isArray(handler)) refuseBlock(handler[0], `on${e.type}`);
+          // O4.5/C1: the handler's own work is owned by the scope the compiler
+          // stapled to the element, not by `CURRENT` — which at dispatch is
+          // null, so an `effect` or an `onCleanup` created here became an
+          // ORPHAN that the next flush released, owned by nobody, forever.
+          ownedBy(owner, "handler", () => {
+            if (typeof handler === "function") {
+              handler.call(node, e);
+            } else if (Array.isArray(handler) && typeof handler[0] === "function") {
+              handler[0].call(node, handler[1], e);
+            }
+          });
         } catch (error) {
-          routeError(scopeOf(node), error);
+          routeError(owner, error);
         }
         if (e.cancelBubble) return;
       }
@@ -385,31 +415,38 @@ export function createElement(
     );
   }
 
-  // Handle fragments
-  if (tag === "fragment" || tag === "") {
-    const fragment = document.createDocumentFragment();
-    appendChildren(getOwner(), fragment, children);
-    return fragment;
-  }
+  // Everything below BUILDS. This is the element path the compiler cannot put
+  // on a template — a spread, a namespace P1 refuses, a `<template>` whose
+  // children live in a `content` fragment — and a subtree built here has no
+  // counterpart on the wire for a walk to claim, because the string backend
+  // serialised the whole thing inline as one hole's value. Claiming inside it
+  // would take the NEXT position's node and call it this one's, which is
+  // precisely the "handlers attached to the wrong elements" failure. The
+  // enclosing `insert` reconciles the server's nodes away instead: that hole
+  // loses its node identity, and nothing else does.
+  return withoutClaim(() => {
+    if (tag === "fragment" || tag === "") {
+      const fragment = document.createDocumentFragment();
+      appendChildren(getOwner(), fragment, children);
+      return fragment;
+    }
 
-  // Create element (SVG or HTML)
-  const isSvg = tag in SVG_TAGS;
-  const element = isSvg ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
+    const isSvg = tag in SVG_TAGS;
+    const element = isSvg ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
 
-  // Apply props
-  if (props) {
-    const owner = getOwner();
-    for (const key in props) {
-      if (key !== "children") {
-        setProp(owner, element, key, props[key]);
+    if (props) {
+      const owner = getOwner();
+      for (const key in props) {
+        if (key !== "children") {
+          setProp(owner, element, key, props[key]);
+        }
       }
     }
-  }
 
-  // Append children
-  appendChildren(getOwner(), element, children);
+    appendChildren(getOwner(), element, children);
 
-  return element;
+    return element;
+  });
 }
 
 /**
@@ -580,6 +617,12 @@ export function setClassList(
 export function setHtml(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
   if (!isObject(value)) return prev;
   const html = (value as { __html?: string }).__html ?? "";
+  // A hydrating element already HAS these bytes, and `innerHTML =` would throw
+  // away every node the server sent inside it — the same destruction the
+  // sole-occupant `textContent` write does at a hole, in the one channel that
+  // cannot go through `insert`. Comparing the serialisation is exactly what the
+  // write would have produced, so skipping it is a no-op with the nodes kept.
+  if (prev === undefined && hydrating() && element.innerHTML === html) return html;
   if (html !== prev) element.innerHTML = html;
   return html;
 }
@@ -594,12 +637,31 @@ export function setRef(element: Element, _name: string, value: unknown, prev?: u
   return prev;
 }
 
+/**
+ * §3.0 rule 3 at the `ref` slot. `block`'s entry guard fires on
+ * `scope === undefined`, and this is one of the two slots where the value is
+ * invoked with something ELSE — the Element — so the guard is structurally
+ * unreachable and a forwarded Block would run with a DOM node as its scope.
+ * `requireScope` accepts it, everything below it is parented to that node, and
+ * root disposal never reaches any of it. The brand is a property of the VALUE
+ * (C3.8), so the test belongs here, at the read, exactly as `readSlot` puts it.
+ */
+function refuseBlock(target: unknown, origin: string): void {
+  if (isBlock(target)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
+}
+
 /** Every ref shape, returning whatever the callbacks handed back as cleanups. */
 function applyRefs(element: Element, value: unknown): (() => void)[] {
   const undo: (() => void)[] = [];
   const one = (target: unknown): void => {
+    refuseBlock(target, "ref");
     if (isRefCallback(target)) {
       const back = (target as (el: Element) => unknown)(element);
+      // The LAUNDERED shape: an un-compiled caller wrapping a forwarded prop in
+      // `() => x` carries no brand, so the test above walks past it and the
+      // Block arrives here as the "cleanup" the callback returned. Registering
+      // it as a cleanup would run a Block at disposal with no arguments at all.
+      refuseBlock(back, "ref");
       if (typeof back === "function") undo.push(back as () => void);
     } else if (isObject(target) && "current" in target) {
       setProperty(target, "current", element);
@@ -651,6 +713,7 @@ export function listen(
   options?: boolean | AddEventListenerOptions,
 ): void {
   const owner = requireScope(s, "listen");
+  refuseBlock(handler, `on${type}`);
   const routed = routedListener(owner, element, handler);
   element.addEventListener(type, routed, options);
   if (owner === null) return;
@@ -672,7 +735,9 @@ function routedListener(
 ): EventListener {
   return function (this: unknown, e: Event): void {
     try {
-      handler.call(element, e);
+      ownedBy(owner, "handler", () => {
+        handler.call(element, e);
+      });
     } catch (error) {
       routeError(owner, error);
     }
@@ -692,6 +757,8 @@ export function delegate(
   handler: DelegatedHandler | undefined,
 ): void {
   const owner = requireScope(s, "delegate");
+  refuseBlock(handler, `on${type}`);
+  if (Array.isArray(handler)) refuseBlock(handler[0], `on${type}`);
   (element as Element & Record<string, unknown>)[`$$${type}`] = handler;
   (element as Element & Record<string, unknown>)[SCOPE_KEY] = owner;
   if (handler !== undefined) ensureDelegatedListener(type);
@@ -739,6 +806,29 @@ export function bindProp(
         prev = write(element, name, next, prev);
       },
     );
+  });
+}
+
+/**
+ * O4.5 for the element-binding channel: the effect belongs to the scope the
+ * enclosing Block was HANDED, not to whatever the call site left current.
+ *
+ * This is what the compiled attribute/class/style/domprop path emits, and it
+ * used to emit a bare `renderEffect(compute, apply)` taking no scope at all —
+ * so `insert` and `setProp` honoured the argument while the channel beside them
+ * followed `CURRENT`, and one component could split its ownership across two
+ * scopes. The scope-first shape makes a mistiming a missing argument rather
+ * than a silent reparent, and it is why `brand` can see these components: a
+ * body whose only reactive work is an element binding now names `_s$`.
+ */
+export function bindEffect<T>(
+  s: Scope | null,
+  compute: (prev?: T) => T | void | (() => void),
+  apply?: (value: T, prev: T | undefined) => void | (() => void),
+): void {
+  const given = requireScope(s, "bindEffect");
+  ownedBy(given, "bindEffect", () => {
+    renderEffect(compute, apply);
   });
 }
 
@@ -1305,10 +1395,34 @@ export function insert(
   marker?: Node | null,
 ): void {
   const given = requireScope(s, "insert");
-  const anchor = marker ?? null;
+  let anchor = marker ?? null;
+
+  // H1 plus the single-hole blocker, in one line.
+  //
+  // `<span>{x}</span>` compiles to `<span></span>` and an `insert` with no
+  // anchor, and `applyInsert`'s sole-occupant fast path then writes through
+  // `parent.textContent` — which on a hydrating page DESTROYS the text node the
+  // server sent. Seeding `current` with the claimed nodes is what stops it:
+  // that path requires `current.length === 0`, and here it never is. The value
+  // then goes through the ordinary reconciler, which writes `.data` on the
+  // claimed text node and keeps its identity.
+  //
+  // This is the "marker restored" answer to `CODESIGN.md` §10 Q4, and it costs
+  // the payload §11 Q4 agreed to pay. The alternative — a hydration-aware
+  // insert that adopts whatever children it finds — needs no marker but cannot
+  // tell an adjacent static text run from the dynamic one beside it, because
+  // the parser fuses them into a single node before the client ever sees them.
+  const claim: Range | null = hydrating() ? claimRange(parent, anchor) : null;
+  // From here on this position IS the range. Every later update writes before
+  // the close comment, so the boundary stays well formed for the life of the
+  // page rather than only for the first paint — and a hole whose neighbour is
+  // a static text run keeps an addressable edge it otherwise loses the moment
+  // the parser fuses them.
+  if (claim !== null) anchor = claim.close;
 
   if (typeof value === "function") {
-    let current: Node[] = EMPTY_NODES;
+    let current: Node[] = claim === null ? EMPTY_NODES : claim.nodes;
+    let first = claim;
     // O4.5: the effect belongs to the scope this call was GIVEN, not to
     // whatever happened to be current at the call site. Without this the
     // argument is decoration — a hole inserted under scope A while B is ambient
@@ -1319,14 +1433,37 @@ export function insert(
       renderEffect(() => {
         const owner = getOwner();
         if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
-        current = applyInsert(parent, (value as (s: unknown) => Child)(owner), current, anchor);
+        // The FIRST run is the claiming one, and only the first: the nodes it
+        // produces are the server's, and every later run is an ordinary update
+        // against them. `first` is cleared before `applyInsert` so a value that
+        // throws does not leave the cursor open over a range nobody owns.
+        const claiming = first;
+        first = null;
+        const produced =
+          claiming === null
+            ? (value as (s: unknown) => Child)(owner)
+            : withRange(claiming, () => (value as (s: unknown) => Child)(owner));
+        if (claiming !== null) detectTextDrift(current, produced);
+        current = applyInsert(parent, produced, current, anchor);
         if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
       });
     });
     return;
   }
 
-  if (value === null || value === undefined || value === true || value === false) return;
+  if (value === null || value === undefined || value === true || value === false) {
+    // A static hole whose value renders nothing still owns a range on the wire,
+    // and the server wrote it empty. Nothing to claim and nothing to remove.
+    return;
+  }
+
+  // A static hole under a claim: the same reconcile, seeded with the server's
+  // nodes, so a value that matches costs no write at all.
+  if (claim !== null) {
+    detectTextDrift(claim.nodes, value as Child);
+    applyInsert(parent, value as Child, claim.nodes, anchor);
+    return;
+  }
 
   if (value instanceof Node) {
     parent.insertBefore(value, anchor);
@@ -1349,6 +1486,34 @@ export function insert(
     }
     parent.insertBefore(document.createTextNode(text), anchor);
   }
+}
+
+/**
+ * A hole whose server text and client text differ.
+ *
+ * This is the divergence that RECOVERS: `applyInsert` writes the client's value
+ * through the claimed text node, so the node survives and the content is right.
+ * It still gets a row, because the point of the whole scheme is that "no
+ * mismatch was reported" means something — a timestamp rendered on the server
+ * and re-rendered on the client is the textbook case, and a framework that
+ * cannot name it is the framework that cannot name any of them.
+ */
+function detectTextDrift(claimed: readonly Node[], produced: Child): void {
+  if (typeof produced !== "string" && typeof produced !== "number") return;
+  const want = String(produced);
+  const have =
+    claimed.length === 0
+      ? ""
+      : claimed.length === 1 && claimed[0].nodeType === 3
+        ? (claimed[0] as Text).data
+        : null;
+  if (have === want) return;
+  report(
+    "text",
+    have === null
+      ? `the server wrote ${claimed.length} nodes where the client renders the text ${JSON.stringify(want)}`
+      : `the server wrote ${JSON.stringify(have)} where the client renders ${JSON.stringify(want)}`,
+  );
 }
 
 /**
@@ -1647,7 +1812,10 @@ function insertRendered(scope: Scope | null, element: JSXElement, container: HTM
     return;
   }
   if (element instanceof Node) {
-    container.appendChild(element);
+    // A claimed root is already exactly here. `appendChild` would remove it and
+    // put it back, and the DOM's own definition of that is a removal — which
+    // blurs whatever inside it had focus. H6 is one `if`.
+    if (element.parentNode !== container) container.appendChild(element);
     return;
   }
   // `Out` admits `Cell<Out>` (§3.0). A mount whose block returned one is a live
@@ -1688,17 +1856,50 @@ function insertRendered(scope: Scope | null, element: JSXElement, container: HTM
  * keys; this replace-based pass is the runtime-only strategy.
  */
 interface CapturedEvent {
+  /** A DOM event type, or `@state` — a value/caret/focus record, not an event. */
   type: string;
-  x: number;
-  y: number;
-  button: number;
+  /** Child indices from `document.body`. Stable only because nodes are claimed. */
+  path: number[];
+  x?: number;
+  y?: number;
+  button?: number;
   ctrlKey: boolean;
   metaKey: boolean;
   shiftKey: boolean;
   altKey: boolean;
+  key?: string;
+  code?: string;
+  value?: string;
+  checked?: boolean;
+  start?: number;
+  end?: number;
+  focus?: boolean;
 }
 
-/** Replay interactions captured before hydration (coordinate-targeted) */
+/** The node a capture record points at, resolved through the claimed tree. */
+function atPath(path: readonly number[]): Node | null {
+  let node: Node | null = document.body;
+  for (const index of path) {
+    if (node === null) return null;
+    node = node.childNodes[index] ?? null;
+  }
+  return node;
+}
+
+/**
+ * Replay what the user did before the bundle arrived.
+ *
+ * Claiming is what makes this possible at all. The old capture was
+ * COORDINATE-based and pointer-only, and `server.ts` said why: the nodes get
+ * replaced, so there is no node to aim a key event at and no input to put a
+ * value back into. With the nodes preserved, a child-index path resolves to the
+ * SAME element it was recorded against, so the three things a user can be in
+ * the middle of — a value they typed, where the caret is, and which element has
+ * focus — are restorable, and the events replay against real targets.
+ *
+ * Order matters and is the recorded order: state first (so a handler that reads
+ * `event.target.value` sees what the user typed), then the events.
+ */
 function replayCapturedEvents(): void {
   const g = globalThis as {
     __BARQ_EVTS__?: CapturedEvent[];
@@ -1711,51 +1912,225 @@ function replayCapturedEvents(): void {
   if (!queue || queue.length === 0) return;
 
   for (const rec of queue) {
-    const target = document.elementFromPoint(rec.x, rec.y);
-    target?.dispatchEvent(
-      new MouseEvent(rec.type, {
-        bubbles: true,
-        cancelable: true,
-        clientX: rec.x,
-        clientY: rec.y,
-        button: rec.button,
-        ctrlKey: rec.ctrlKey,
-        metaKey: rec.metaKey,
-        shiftKey: rec.shiftKey,
-        altKey: rec.altKey,
-        view: window,
-      }),
-    );
+    if (rec.type !== "@state" || rec.path === undefined) continue;
+    const target = atPath(rec.path) as HTMLInputElement | null;
+    if (target === null) continue;
+    if (rec.value !== undefined) target.value = rec.value;
+    if (rec.checked !== undefined) target.checked = rec.checked;
+    if (rec.focus === true && typeof target.focus === "function") target.focus();
+    if (rec.start !== undefined && typeof target.setSelectionRange === "function") {
+      try {
+        target.setSelectionRange(rec.start, rec.end ?? rec.start);
+      } catch {
+        // A type with no selection (checkbox, number in some engines). The
+        // value and the focus are the part that mattered.
+      }
+    }
+  }
+
+  for (const rec of queue) {
+    if (rec.type === "@state") continue;
+    // A record with no path came from an older snippet — or from a page whose
+    // hydration was RECOVERED, where a path resolves to a node the client built
+    // and the coordinates are the only honest target left.
+    const path = rec.path;
+    const target = (path !== undefined && path.length > 0 ? atPath(path) : null) ?? pointAt(rec);
+    if (target === null) continue;
+    target.dispatchEvent(eventFor(rec));
   }
   flush();
 }
 
+function pointAt(rec: CapturedEvent): Node | null {
+  if (rec.x === undefined || rec.y === undefined) return null;
+  if (typeof document.elementFromPoint !== "function") return null;
+  return document.elementFromPoint(rec.x, rec.y);
+}
+
+const KEYBOARD = new Set(["keydown", "keyup", "keypress"]);
+
+function eventFor(rec: CapturedEvent): Event {
+  if (KEYBOARD.has(rec.type)) {
+    return new KeyboardEvent(rec.type, {
+      bubbles: true,
+      cancelable: true,
+      key: rec.key ?? "",
+      code: rec.code ?? "",
+      ctrlKey: rec.ctrlKey,
+      metaKey: rec.metaKey,
+      shiftKey: rec.shiftKey,
+      altKey: rec.altKey,
+    });
+  }
+  if (rec.type === "input" || rec.type === "change") {
+    return new Event(rec.type, { bubbles: true, cancelable: true });
+  }
+  return new MouseEvent(rec.type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: rec.x ?? 0,
+    clientY: rec.y ?? 0,
+    button: rec.button ?? 0,
+    ctrlKey: rec.ctrlKey,
+    metaKey: rec.metaKey,
+    shiftKey: rec.shiftKey,
+    altKey: rec.altKey,
+    view: typeof window === "undefined" ? undefined : window,
+  });
+}
+
+/**
+ * Claim-based hydration (`SEMANTICS.md` H1–H4, H6).
+ *
+ * The container is NOT cleared. The compiled walk claims the server's nodes as
+ * it goes, and the only two outcomes are the claim succeeding or a
+ * `HydrationMismatch` reaching here — in which case the container is cleared
+ * and the page is rendered cold, which is exactly the behaviour this replaces.
+ * "Detectably incorrect, degrading to today" is the bar M6 was given, and the
+ * `recovered` row on the report is where it is read off.
+ *
+ * `fn` runs under a root, mirroring the one `renderToString` and `renderPage`
+ * put around theirs: without it the client's owner tree is a level shallower
+ * than the server's, and `createAsync`'s auto-keys — which are owner-tree ids —
+ * address different values on the two sides.
+ */
 export function hydrate(
   fn: () => JSXElement,
   container: HTMLElement,
   options?: { data?: Record<string, unknown> },
 ): () => void {
+  hydrate.report = { mismatches: [], claimed: 0, ranges: 0, built: 0, recovered: false };
   if (options?.data) {
     const target = globalThis as { __BARQ_DATA__?: Record<string, unknown> };
     target.__BARQ_DATA__ = { ...target.__BARQ_DATA__, ...options.data };
   }
-  // fn() runs under a root, mirroring the one renderToString and renderPage
-  // put around theirs. Without it the client's owner tree is a level
-  // shallower than the server's, and createAsync's auto-keys - which are
-  // owner-tree ids - address different values on the two sides. O5: that root
-  // is render's own, and fn is handed to it as a Block, so the root owns what
-  // it mounts. Building fn() at the call site instead left the subtree owned
-  // by the wrapper and the returned disposer with nothing to dispose.
-  const clear = render(fn, container);
+
+  let clear: (() => void) | null = null;
+  let failure: HydrationMismatch | null = null;
+  const served = container.firstChild !== null;
+  // The seeds a recovery has to give back. A positional auto-key is CONSUMED by
+  // the read that claims it, so an attempt that is thrown away would otherwise
+  // leave the second render with an empty payload — and a `Loading` whose value
+  // was on the wire would show its fallback, which is a worse failure than the
+  // mismatch that caused it. Recovery means "as if nothing happened", and the
+  // id epoch is the other half of that.
+  const seeds = { ...(globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ };
+  beginHydration(container);
+  const marked = wireIsMarked();
+  try {
+    clear = mount(fn, container, true);
+  } catch (error) {
+    if (!(error instanceof HydrationMismatch)) {
+      endHydration();
+      throw error;
+    }
+    failure = error;
+  }
+  const claimReport = endHydration();
+
+  // Nothing was claimed and there WAS markup to claim. That is a page the
+  // compiler never made hydratable — an un-compiled tree, or a module built
+  // without the flag — and the client has just built a second copy of it beside
+  // the first. It is the one failure that raises no mismatch of its own,
+  // because a walk that never happened cannot disagree with anything, so it is
+  // detected here by what did not happen rather than by what did.
+  if (failure === null && served && claimReport.claimed === 0 && claimReport.ranges === 0) {
+    failure = new HydrationMismatch(
+      "not-hydratable",
+      marked
+        ? "the container held markup with range comments and the render claimed none of it — " +
+            "the CLIENT module was not compiled with `hydratable`"
+        : "the container held server markup with no range comments — " +
+            "the SERVER render was not compiled with `hydratable`",
+    );
+  }
+
+  if (failure !== null) {
+    // Svelte's answer, and barq already owns the fallback: throw the attempt
+    // away and render the page the client's own way. Nothing partial survives —
+    // `render` clears the container — so the failure mode is a slower first
+    // paint, never a tree half-built from two disagreeing sources.
+    clear?.();
+    (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ = seeds;
+    resetChildIds();
+    clear = mount(fn, container, false);
+    hydrate.report = {
+      mismatches: [...claimReport.mismatches, { kind: failure.kind, detail: failure.message }],
+      claimed: claimReport.claimed,
+      ranges: claimReport.ranges,
+      built: claimReport.built,
+      recovered: true,
+    };
+    emitDiagnostic(
+      "HYDRATION_MISMATCH",
+      "warning",
+      `${failure.message} — the server's markup was discarded and the page rendered on the client.`,
+    );
+  } else {
+    hydrate.report = { ...claimReport, recovered: false };
+  }
+
   flush();
   // A seed nobody claimed is the only evidence a positional auto-key can give
   // that the client tree is not the server's; the read that drifted has
   // already resolved by now.
   unclaimedSeeds();
-  // Clicks that landed before the bundle loaded replay against the
-  // hydrated DOM (captured by generateHydrationScript's inline snippet)
   replayCapturedEvents();
-  return clear;
+  return clear ?? ((): void => {});
+}
+
+/**
+ * What the last `hydrate` call claimed, built, and had to recover from.
+ *
+ * On the function rather than returned beside the disposer because `hydrate`'s
+ * return value is the disposer and always has been. A caller that wants the
+ * report reads it; a caller that does not is unaffected.
+ */
+export interface HydrationOutcome extends HydrationReport {
+  /** The claim failed and the page was rendered cold — today's behaviour. */
+  recovered: boolean;
+}
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export declare namespace hydrate {
+  // eslint-disable-next-line no-var
+  export let report: HydrationOutcome;
+}
+hydrate.report = {
+  mismatches: [],
+  claimed: 0,
+  ranges: 0,
+  built: 0,
+  recovered: false,
+} satisfies HydrationOutcome;
+
+/**
+ * `render`, with the one line that makes it hydration or not.
+ *
+ * §3.11: "`container.textContent = ""` … currently throws the entire server
+ * render away". It is still exactly right for a cold render and exactly wrong
+ * for a claim, so it is the parameter rather than a second copy of the mount
+ * sequence — there is one root, one insertion, one disposer, and the claim path
+ * cannot drift from the path everything else is measured on.
+ */
+function mount(
+  block: (scope: Scope | null) => JSXElement,
+  container: HTMLElement,
+  claiming: boolean,
+): () => void {
+  if (!claiming) container.textContent = "";
+  const root = enterRoot();
+  try {
+    insertRendered(root, block(root), container);
+  } finally {
+    exit(root);
+  }
+  ownRange(root, () => {
+    container.textContent = "";
+  });
+  flush();
+  return () => {
+    disposeScope(root);
+  };
 }
 
 /**
@@ -1802,6 +2177,17 @@ export function template(html: string, isSVG = false): () => Node {
     // own it. Recording the owner HERE is what makes "the child ran under the
     // root rather than under the provider" an assertion rather than a story.
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.clone(html, getOwner());
+    // H1. The claim is here and only here: every unit root the compiler emits
+    // reaches the DOM through this call, so claiming one node is claiming the
+    // whole subtree — the walk below it is `child`/`sib` over the node this
+    // returned, which is now the SERVER's node. A clone is what happens when
+    // nothing is being hydrated, and `claimNode` throws rather than returning
+    // one when the server's tree is not the client's.
+    if (hydrating()) {
+      const claimed = claimNode(cached);
+      if (claimed !== null) return claimed;
+    }
+    builtNode();
     return cached.cloneNode(true);
   };
 }

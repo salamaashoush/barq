@@ -18,6 +18,20 @@ import {
   createErrorCollector,
   createPendingCollector,
 } from "./boundaries.ts";
+import {
+  HydrationMismatch,
+  claimAt,
+  claimRows,
+  isScaffolding,
+  probeRange,
+  hydrating,
+  rangeKey,
+  releaseRange,
+  report,
+  withRange,
+  withoutClaim,
+  type Range,
+} from "./hydration.ts";
 import { type Maybe, mapArray, repeat } from "./map.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
 import {
@@ -55,11 +69,26 @@ export const STATIC_KEY = 1 << 0;
 /** No body registers anything disposable: activate without allocating a Scope. */
 export const NO_SCOPE = 1 << 1;
 
+/**
+ * The module was compiled `hydratable`, so this range is written to the wire
+ * between `<!--[k-->` and `<!--]-->` and claimed rather than built. The compiler
+ * sets it from one option for both backends (`CODESIGN.md` §3.11), so the bytes
+ * the string backend writes and the claim this side makes are one decision.
+ */
+export const HYDRATE = 1 << 2;
+
 /** `each`'s fourth mode: `src` is a count, not a list (`Repeat`). */
 export const COUNT: unique symbol = Symbol("barq-count");
 
 /** No key has been computed yet. `undefined` is a legal key, so it cannot say this. */
 const UNSET: unique symbol = Symbol("barq-unset");
+
+/**
+ * What the wire says when the key it chose has no safe spelling in a comment.
+ * The range is still claimed — positionally, which is all `<!--[-->` ever gave
+ * a hole — and only the COMPARISON is skipped. `ssr.ts` writes it.
+ */
+const OPAQUE_KEY = "?";
 
 // ============================================================================
 // The range a region owns
@@ -73,6 +102,20 @@ const EMPTY: readonly Node[] = [];
 interface Site {
   parent: Node | null;
   anchor: Node | null;
+  /**
+   * The server's range for this position, until the FIRST activation consumes
+   * it. It lives on the site rather than being threaded through `region`,
+   * `errorBoundary` and `loadingBoundary` because "the first activation claims
+   * and every later one builds" is a property of the POSITION, and putting it
+   * anywhere else makes each of those three responsible for saying so.
+   */
+  claim?: Range | null;
+  /**
+   * This position is inside a hydration but cannot be claimed, so its body
+   * builds the ordinary way and the enclosing `insert` reconciles the server's
+   * nodes away. H4's blast radius, at its smallest useful size.
+   */
+  cold?: boolean;
 }
 
 /** K7: a region with no parent owns ONE empty text node, not a comment pair. */
@@ -84,6 +127,83 @@ function siteFor(parent: Node | null, anchor: Node | null): { site: Site; out: N
   return { site: { parent: null, anchor: own }, out };
 }
 
+/**
+ * The server's range for this site, or `null` when nothing is being hydrated.
+ *
+ * H2's other half. A range compiled WITHOUT `hydratable` has no boundary
+ * comments on the wire, so a page that mixes the two is a build error rather
+ * than a rendering accident — and it is detected here, at the first such range,
+ * instead of surfacing later as a walk that ran off the end of a parent.
+ *
+ * The claim also becomes the site's anchor. Every later swap at this position
+ * then writes INSIDE the range it claimed, which is what keeps the boundary
+ * comments meaningful for the rest of the page's life rather than only for the
+ * first paint.
+ */
+function claimSite(
+  site: Site,
+  parent: Node | null,
+  anchor: Node | null,
+  flags: number,
+  origin: string,
+): void {
+  if (!hydrating()) return;
+  if ((flags & HYDRATE) === 0) {
+    // A construct the flow pass REFUSED reaches its primitive through an
+    // adapter in `components.ts`, which has no flags to forward. The range the
+    // server wrote is still around this position — the enclosing `insert`
+    // claimed it — so the honest answer is to build cold inside it and let that
+    // reconcile take the server's nodes out. Local, reported, not a page.
+    // Two situations, and they are not the same failure.
+    //
+    // If the pair is SOUND, this is a construct the flow pass REFUSED reaching
+    // its primitive through an adapter with no flags to forward. The position
+    // around it owns the range and will reconcile whatever is built here, so
+    // building cold is a local answer and a correct one.
+    //
+    // If the ANCHOR is a boundary comment, it is something else: the client half
+    // was built without the flag and the server half with it, so the client's
+    // native walk counted the ranges as nodes and everything it addresses from
+    // here is off by an unknown amount. That is a deployment mistake, it is not
+    // recoverable locally, and pretending otherwise showed the branch's arm
+    // TWICE on the page.
+    if (isScaffolding(anchor) || (anchor === null && isScaffolding(parent))) {
+      throw new HydrationMismatch(
+        "not-hydratable",
+        `${origin} was compiled without \`hydratable\` and the server's markup was compiled ` +
+          "with it — the two halves of this deployment are not the same build",
+      );
+    }
+    report("not-hydratable", `${origin} reached its primitive without the hydratable flag`);
+    site.cold = true;
+    const stray = probeRange(parent, anchor);
+    if (stray !== null) {
+      if (stray.nodes.length > 0) {
+        report("structure", `${stray.nodes.length} server node(s) at a range with no flag`);
+      }
+      releaseRange(stray);
+      site.anchor = stray.close;
+      site.parent = stray.close.parentNode;
+    }
+    return;
+  }
+  // The ORIGINAL pair, not `siteFor`'s. A region with no parent was given a
+  // synthesised anchor in a detached fragment, and nothing in that fragment is
+  // the server's; `(null, null)` means "the next range at the cursor", which is
+  // what a unit-root region actually occupies.
+  const range = claimAt(parent, anchor);
+  // `null` is "this position is not in the server's tree" — a region inside
+  // something the client built. It claims nothing and builds cold, which is the
+  // same answer `hole` gives one level up.
+  if (range === null) {
+    site.cold = true;
+    return;
+  }
+  site.claim = range;
+  site.anchor = range.close;
+  site.parent = range.close.parentNode;
+}
+
 function hostOf(site: Site): Node | null {
   return site.anchor !== null ? site.anchor.parentNode : site.parent;
 }
@@ -91,8 +211,25 @@ function hostOf(site: Site): Node | null {
 function insertAt(site: Site, nodes: readonly Node[]): void {
   const host = hostOf(site);
   if (host === null) return;
-  const anchor = site.anchor;
-  for (let i = 0; i < nodes.length; i++) host.insertBefore(nodes[i], anchor);
+  let anchor = site.anchor;
+  for (let i = nodes.length; i--; ) {
+    place(host, nodes[i], anchor);
+    anchor = nodes[i];
+  }
+}
+
+/**
+ * `insertBefore` that does nothing when the node is already there.
+ *
+ * The DOM defines `insertBefore` on a node that is already in position as a
+ * REMOVAL followed by an insertion, and a removal is what blurs the element
+ * inside it. On the claim path every node is already in position, so without
+ * this line hydration would move the whole page one node at a time and H6 would
+ * fail for the one reason claiming exists to remove.
+ */
+function place(parent: Node, node: Node, before: Node | null): void {
+  if (node.parentNode === parent && node.nextSibling === before) return;
+  parent.insertBefore(node, before);
 }
 
 function removeNodes(nodes: readonly Node[]): void {
@@ -123,8 +260,22 @@ function activate(
   flags: number,
   kind: "branch" | "portal",
 ): Instance {
+  // The FIRST activation at a claimed position builds under the server's
+  // nodes; every later one is an ordinary build. Taking it off the site here is
+  // what makes that true without any caller having to remember it.
+  const claim = site.claim ?? null;
+  site.claim = null;
+  // No claim means COLD, always. A region whose first attempt threw has already
+  // spent its claim, and the fallback it builds instead must not go on claiming
+  // from a cursor that is now pointing at the failed attempt's nodes — that is
+  // the shape that turned an error boundary's recovery into "the markup ran
+  // out". `withoutClaim` costs nothing when nothing is hydrating.
+  const under = <T>(work: () => T): T =>
+    claim !== null ? withRange(claim, work) : withoutClaim(work);
+
   if ((flags & NO_SCOPE) !== 0) {
-    const nodes = build(given, body, args);
+    const nodes = under(() => build(given, body, args));
+    evictUnclaimed(claim, nodes);
     insertAt(site, nodes);
     return { scope: null, nodes };
   }
@@ -132,19 +283,53 @@ function activate(
   let nodes: readonly Node[] = EMPTY;
   let built = false;
   try {
-    nodes = build(scope, body, args);
+    nodes = under(() => build(scope, body, args));
     built = true;
   } finally {
     exit(scope);
-    if (!built) disposeScope(scope);
+    if (!built) {
+      disposeScope(scope);
+      // The claim goes with the attempt that failed. Its nodes are the server's
+      // rendering of a body that just threw on the client, so they are wrong by
+      // construction, and leaving them would put them beside whatever the
+      // recovery builds instead.
+      if (claim !== null) releaseRange(claim);
+    }
   }
   const instance: Instance = { scope, nodes };
   ownRange(scope, () => {
     removeNodes(instance.nodes);
     instance.nodes = EMPTY;
   });
+  evictUnclaimed(claim, nodes);
   insertAt(site, nodes);
   return instance;
+}
+
+/**
+ * The server's nodes at a claimed position that the body did NOT take.
+ *
+ * A body that claimed everything produces exactly the nodes it claimed and this
+ * removes nothing. A body that could not — a construct the flow pass refused,
+ * reached through an adapter with no flags to forward, or an arm that built cold
+ * after its first attempt threw — produces its own nodes, and the server's have
+ * to go or the page shows both. That was measurable as a DUPLICATED fallback,
+ * which is the failure a markup comparison catches and a reuse percentage does
+ * not.
+ */
+function evictUnclaimed(claim: Range | null, produced: readonly Node[]): void {
+  if (claim === null || claim.nodes.length === 0) return;
+  const kept = new Set<Node>(produced);
+  let evicted = 0;
+  for (const node of claim.nodes) {
+    if (kept.has(node)) continue;
+    node.parentNode?.removeChild(node);
+    evicted++;
+  }
+  if (evicted > 0) {
+    report("structure", `${evicted} server node(s) at a range the client rebuilt`);
+  }
+  claim.nodes = [];
 }
 
 /** A Cell ignores every argument (§3.0 rule 1), so one spelling serves both. */
@@ -230,11 +415,40 @@ function region<K>(
     }
   };
 
+  /**
+   * H2. The written key decides what may be CLAIMED, never what is built.
+   *
+   * The server wrote the key it chose; the client takes its own read anyway and
+   * compares. Agreement claims the range's nodes untouched. Disagreement is a
+   * MISMATCH, not a vote — the claim is released, the server's nodes go, and
+   * the client's arm is built in their place, with H4's blast radius being this
+   * range and nothing else.
+   *
+   * The client's arm is the one that wins, and that is deliberate: its
+   * condition is what the reactive graph will go on maintaining, so a branch
+   * held on the server's arm against the client's own read has nothing that
+   * would ever repair it. What the wire buys is DETECTION and a bound on the
+   * damage. Keeping the server's arm until the client is seeded needs a
+   * seeding barrier nobody has specified, and H2 does not claim it.
+   */
+  const reconcileKey = (k: K): K => {
+    const claim = site.claim;
+    if (claim === undefined || claim === null) return k;
+    const wire = rangeKey(claim);
+    if (wire === null || wire === OPAQUE_KEY) return k;
+    if (wire === String(k)) return k;
+    report("key", `the server took branch ${JSON.stringify(wire)}, the client takes ${String(k)}`);
+    releaseRange(claim);
+    site.claim = null;
+    return k;
+  };
+
   const swapInner = (k: K): void => {
     if (instance !== NOTHING) {
       teardown(instance);
       instance = NOTHING;
     }
+    k = reconcileKey(k);
     activation++;
     const body = pick(k);
     if (body === null || body === undefined) return;
@@ -347,6 +561,7 @@ export function branch<K>(
   const given = requireScope(s, "branch");
   cellSlot(key, "branch key");
   const { site, out } = siteFor(parent, anchor);
+  claimSite(site, parent, anchor, flags, "branch");
   underScope(given, "branch", () => region(given, site, key, bodies, flags, EMPTY_ARGS, null));
   return out;
 }
@@ -379,10 +594,10 @@ export function each<T>(
   src: Cell<Maybe<readonly T[]>> | Cell<number>,
   keyOf: ((item: T) => unknown) | false | null | typeof COUNT,
   row: Block<unknown, never[]>,
-  // Positional and part of the ABI — `fallback` sits behind it — but nothing
-  // here reads it: `STATIC_KEY` is meaningless for a list, and `NO_SCOPE` would
-  // have to reach the row scopes `mapArray`/`repeat` own rather than this frame.
-  _flags = 0,
+  // Positional and part of the ABI — `fallback` sits behind it. The only bit
+  // this frame reads is `HYDRATE`: `STATIC_KEY` is meaningless for a list, and
+  // `NO_SCOPE` would have to reach the row scopes `mapArray`/`repeat` own.
+  flags = 0,
   fallback?: Block<unknown> | null,
 ): Node | null {
   const given = requireScope(s, "each");
@@ -394,6 +609,13 @@ export function each<T>(
   // `sem-props-block-in-cell-slot`'s `each source` row.
   cellSlot(src, "each source");
   const { site, out } = siteFor(parent, anchor);
+  claimSite(site, parent, anchor, flags, "each");
+  // One `<!--[-->` … `<!--]-->` per row, in order, and a row claims the next.
+  // The count is the server's; a client that renders more rows builds the extra
+  // ones cold, and a client that renders fewer leaves rows nobody adopted —
+  // both are reported and both are released below.
+  const claiming = site.claim !== undefined && site.claim !== null;
+  const pending: Range[] = claiming ? claimRows(site.claim as Range) : [];
   const body = row as Block<unknown>;
 
   return underScope(given, "each", (): Node | null => {
@@ -411,14 +633,14 @@ export function each<T>(
         src as Cell<number>,
         (index: number, scope: Scope): Node[] => {
           activation++;
-          return build(scope, body, [index]);
+          return inRow(pending, claiming, () => build(scope, body, [index]));
         },
         { fallback: fallbackRows },
       );
     } else {
       const mapper = (item: unknown, index: unknown, scope: Scope): Node[] => {
         activation++;
-        return build(scope, body, [item, index]);
+        return inRow(pending, claiming, () => build(scope, body, [item, index]));
       };
       rows = mapArray(src as Cell<Maybe<readonly T[]>>, mapper as never, {
         keyed: (keyOf ?? true) as never,
@@ -427,8 +649,39 @@ export function each<T>(
     }
 
     syncRows(site, rows);
+    // Rows the server wrote that the client did not ask for. Their nodes are in
+    // the document and nothing owns them, so they go — H4's blast radius, at row
+    // granularity.
+    if (site.cold !== true && pending.length > 0) {
+      report("structure", `the server wrote ${pending.length} row(s) the client does not render`);
+      for (const row of pending) {
+        releaseRange(row);
+        row.open.parentNode?.removeChild(row.open);
+        row.close.parentNode?.removeChild(row.close);
+      }
+    }
+    site.claim = null;
     return out;
   });
+}
+
+/**
+ * Build one row, claiming the next range the server wrote for this list.
+ *
+ * A row past the server's count gets no claim and builds cold — deliberately
+ * not an exception: a list whose length changed between the render and the
+ * hydration is the ordinary case, and the rows that DID match still keep their
+ * nodes.
+ */
+function inRow(pending: Range[], claiming: boolean, build: () => Node[]): Node[] {
+  const row = pending.shift();
+  if (row !== undefined) return withRange(row, build);
+  // A row past the server's count. Deliberately not an exception — a list whose
+  // length changed between the render and the hydration is the ordinary case,
+  // and the rows that DID match keep their nodes. It is still reported, because
+  // "nothing was reported" has to mean the list was the list.
+  if (claiming) report("structure", "a row the server did not write");
+  return withoutClaim(build);
 }
 
 /**
@@ -579,10 +832,26 @@ export function boundary(
   const given = requireScope(s, "boundary");
   if (on !== undefined) cellSlot(on, "boundary on");
   const { site, out } = siteFor(parent, anchor);
+  claimSite(site, parent, anchor, flags, "boundary");
   if (kind === "error") {
     errorBoundary(given, site, fallback, body, flags);
   } else {
     loadingBoundary(given, site, fallback, body, on);
+  }
+  // A claim nobody spent. `loadingBoundary` does not go through `activate`: it
+  // PARKS its content in a detached fragment and moves it in when the reveal
+  // coordinator says so, and a claimed node cannot be parked without leaving the
+  // document — which is a removal, and removals are what claiming exists to
+  // avoid. So a loading boundary rebuilds its range, and the server's nodes go
+  // rather than standing beside the rebuilt ones. Reported, and local to this
+  // range: without it the page showed the fallback TWICE.
+  if (site.claim !== undefined && site.claim !== null) {
+    const stranded = site.claim;
+    site.claim = null;
+    if (stranded.nodes.length > 0) {
+      report("structure", `${stranded.nodes.length} server node(s) at a boundary that parks`);
+      releaseRange(stranded);
+    }
   }
   return out;
 }
@@ -771,6 +1040,12 @@ export function portal(
   const given = requireScope(s, "portal");
   cellSlot(target, "portal target");
   const marker = document.createTextNode("");
+
+  // A portal is the one construct whose server bytes are in the WRONG PLACE by
+  // construction: the string backend has no second insertion point, so it wrote
+  // an EMPTY range at the lexical position and the content is the client's to
+  // build on a microtask. Nothing is claimed here — the `insert` that places
+  // this marker claims that range, finds it empty, and puts the marker in it.
 
   underScope(given, "portal", () => {
     let instance = NOTHING;

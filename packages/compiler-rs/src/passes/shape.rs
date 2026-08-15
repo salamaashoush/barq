@@ -821,15 +821,24 @@ impl<'a> Shaper<'a, '_> {
         else {
             return;
         };
+        let channel = read.channel;
         let (name, read) = (self.lift.scoping().symbol_name(callee).to_string(), read.read);
+        // The refusal is a test on the VALUE, not on the scope argument, and the
+        // message has to say so: at `ref` the Block would be invoked with the
+        // ELEMENT and at `on*` with the EVENT, so "invoked with no scope" is
+        // false at exactly the two positions where it is easiest to forward one.
+        let refusal = if channel == "ref" || channel.starts_with("on") {
+            "A Block reaching a Cell slot is REFUSED with ScopeMissingError (C3.8) — here by a              test on the value, because this position would invoke it with the element or the              event rather than with no scope at all"
+        } else {
+            "A Block invoked with no scope throws ScopeMissingError (C3.8); it does not fall back              to the ambient owner and it does not stringify"
+        };
         self.diagnose(
             Code::Barq010,
             at,
             &format!(
                 "`{slot}` is JSX here, which lowers to a Block, and `{name}` reads `props.{slot}` \
-                 as a Cell at byte {}..{} — an attribute on an intrinsic element. A Block invoked \
-                 with no scope throws ScopeMissingError (C3.8); it does not fall back to the \
-                 ambient owner and it does not stringify. Render it as a child, or hand `{name}` \
+                 as a Cell at byte {}..{} — the `{channel}` position on an intrinsic element. \
+                 {refusal}. Render it as a child, or hand `{name}` \
                  a Cell — `{slot}={{() => value}}` — instead of JSX.",
                 read.start, read.end
             ),

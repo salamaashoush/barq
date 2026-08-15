@@ -47,7 +47,7 @@ export const optimality = {
   // it. The RECORD's shape carries uids, so it is asserted from
   // `optimality.test.ts` — a needle naming a compiler uid in this block would
   // shift every emitted uid and quietly blind the harness's module-wide scans.
-  emits: ["renderEffect(", "setClass(", "setAttr("],
+  emits: ["bindEffect(", "setClass(", "setAttr("],
   // Nothing on this element is left for the runtime to classify, and there is
   // no second effect for `class` to live in.
   absent: ["bindProp(", "setProp"],

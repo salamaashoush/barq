@@ -20,6 +20,7 @@ import {
 } from "./harness.ts"
 import { countAnchors, normalizeDom } from "./normalize.ts"
 import { duplicateOracleRows, oracleRegistry, ORACLE_FAILURES } from "./oracle-known-failures.ts"
+import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
 
 /**
  * Corrupt the compiled path by deleting one exact substring of the fixture
@@ -99,7 +100,7 @@ function reverseAppliedProps(code: string): string {
 
   const statements: string[] = []
   for (let i = 0; i < lines.length; i++) {
-    if (!/_\$+renderEffect\(/.test(lines[i])) {
+    if (!/_\$+bindEffect\(/.test(lines[i])) {
       statements.push(lines[i])
       continue
     }
@@ -169,6 +170,15 @@ describe("oracle equivalence", () => {
 
   it("the registry has no duplicate rows", () => {
     expect(duplicateOracleRows().join(", ")).toBe("")
+  })
+
+  it("no registered fixture is past the milestone it promised", () => {
+    const late = ORACLE_FAILURES.filter((row) => overdue(row.greenAt)).map(
+      (row) =>
+        `OVERDUE: ${row.fixture} promised green at ${row.greenAt} and still diverges at ` +
+        `M${CURRENT_MILESTONE}`,
+    )
+    expect(late.join("\n"), OVERDUE_WHY).toBe("")
   })
 
   it("every registered fixture is a fixture", () => {

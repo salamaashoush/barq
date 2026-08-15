@@ -82,8 +82,13 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   "C4", "C5", "C5.2", "C8", "C9",
   // E
   "E1", "E2.3", "E3", "E4",
-  // H
-  "H1", "H2", "H3", "H4", "H5", "H6",
+  // H — EMPTY. M6 struck H5 off by building the channel §14.2 named (the
+  // corpus-wide address-set diff), and the hydration pass struck the other
+  // five: `test/hydration.test.ts` measures node reuse over the whole corpus
+  // and the emission diff `hydratable` on against off, and
+  // `test/hydration-mutations.test.ts` corrupts the wire one way at a time and
+  // records what each corruption degraded to. `hydration.ts`'s
+  // `HYDRATION_CHANNEL_RULES` is that channel's declared reach.
   // K
   "K1", "K3", "K4", "K5", "K7", "K8",
   // M

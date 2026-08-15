@@ -21,6 +21,6 @@ export const optimality = {
   // channel WHOLE: nothing is joined into a string at compile time and nothing
   // is baked into the template, however constant it looks. The reactive one is
   // a field of the fused record and threads the string it applied last time.
-  emits: ['"class", ["a", "b"]', "renderEffect("],
+  emits: ['"class", ["a", "b"]', "bindEffect("],
   absent: ['class="'],
 }

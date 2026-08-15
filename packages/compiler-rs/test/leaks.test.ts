@@ -21,6 +21,7 @@ import {
   LEAK_REGISTRY_RULES,
 } from "./leak-known-failures.ts"
 import { findLeaks, formatLeaks, LEAK_RULES, type LeakFinding } from "./leaks.ts"
+import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
 import { documentedRules } from "./semantics.ts"
 import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts"
 
@@ -107,6 +108,15 @@ describe("L4 — the leak oracle", () => {
       }
     }
     expect(malformed.join("\n")).toBe("")
+  })
+
+  it("no row is past the milestone it promised", () => {
+    const late = LEAK_FAILURES.filter((row) => overdue(row.greenAt)).map(
+      (row) =>
+        `OVERDUE: ${leakKey(row.fixture, row.leak)} promised green at ${row.greenAt} and still ` +
+        `leaks at M${CURRENT_MILESTONE}`,
+    )
+    expect(late.join("\n"), OVERDUE_WHY).toBe("")
   })
 
   /** Assertion 2: an unregistered leak is a suite failure. */

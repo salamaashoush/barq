@@ -29,6 +29,7 @@ export type OwnershipEventKind =
   | "exit"
   | "dispose"
   | "clone"
+  | "own"
   | "block-enter"
   | "block-exit";
 
@@ -39,7 +40,10 @@ export interface OwnershipEvent {
   scope: number;
   /** parent scope; -1 at the root and on a detached scope */
   parent: number;
-  /** for `enter`: what created it. For `clone`: the template's bytes. */
+  /**
+   * for `enter`: what created it. For `clone`: the template's bytes. For `own`:
+   * the reactive node's kind — `render`, `user` or `pure`.
+   */
   label: string;
   /** `enter` only */
   scopeKind: ScopeKind;
@@ -70,6 +74,17 @@ export interface OwnershipSink {
   exit(scope: object): void;
   dispose(scope: object): void;
   clone(html: string, owner: object | null): void;
+  /**
+   * One reactive node created, with the owner it was filed under.
+   *
+   * Without this the trace could see every SCOPE and every template clone and
+   * no EFFECT at all — so an element binding opened under the ambient owner
+   * instead of the scope its Block was handed produced a byte-identical trace,
+   * and the whole effect-ownership half of O2/O4.5 was structurally invisible
+   * to the channel built to see it. Measured: of six mutations injected into a
+   * live trace, five were named and this one produced zero findings.
+   */
+  own(node: object, owner: object | null, kind: "render" | "user" | "pure"): void;
   /**
    * Opens a span over a construction the runtime was handed. `given` is the
    * scope the caller means it to run under; what it actually ran under is not
@@ -179,6 +194,16 @@ const SINK: OwnershipSink = {
    */
   clone(html, owner) {
     push("clone", scopeOf(owner), -1, html, "scope");
+  },
+  /**
+   * The owner recorded is the node's OWN `_owner` slot, not the ambient read
+   * the caller happened to make — the same discipline `enter` follows, and for
+   * the same reason: both sides of the O2 check coming from one read cannot
+   * fail whatever the runtime does.
+   */
+  own(node, owner, kind) {
+    const stored = (node as Owned)._owner;
+    push("own", scopeOf(stored !== undefined ? stored : owner), -1, kind, "scope");
   },
   blockEnter(label, given) {
     push("block-enter", scopeOf(given), -1, label, "scope");

@@ -43,6 +43,19 @@ use super::{Emit, Helper};
 /// EMITTED body, asked once the module is final, so a component whose scope use
 /// was folded away by an optimisation is judged on what actually ships.
 ///
+/// **"Uses its scope" is not the same as "names `_s$`", and the difference was
+/// a hole.** A body can create reactive work through a helper that takes no
+/// scope, and then it needs the brand for both motivations above while
+/// mentioning `_s$` nowhere. Two of those existed. The element-binding channel
+/// emitted a bare `renderEffect(compute, apply)`, which is why 40 of the
+/// corpus's component declarations went unbranded while every one of them
+/// carried a live binding — closed at the source, by giving `bindEffect` the
+/// scope. `createElement` is the other and cannot be closed that way: it is the
+/// un-compiled walk §4.1 retires at M9, it opens its own bindings, and it takes
+/// no scope at all. A body that reaches it is therefore treated as using its
+/// scope, so `block` establishes `CURRENT` for it and its bindings are owned by
+/// the argument rather than by the call site.
+///
 /// It runs after the roots are spliced and before `prune`, which is the last
 /// point at which the program is still the emitted module and `Helper::Block`
 /// can still be marked used.
@@ -66,15 +79,17 @@ struct Brand<'a, 'm, 'e> {
     scope: &'a str,
 }
 
-/// Whether the emitted body reads the scope identifier at all.
-struct ReadsScope<'s> {
+/// Whether the emitted body uses its scope: names the scope identifier, or
+/// reaches a helper that creates reactive work while taking no scope.
+struct UsesScope<'s> {
     scope: &'s str,
+    scopeless: &'s str,
     found: bool,
 }
 
-impl<'a> Visit<'a> for ReadsScope<'_> {
+impl<'a> Visit<'a> for UsesScope<'_> {
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
-        self.found |= it.name == self.scope;
+        self.found |= it.name == self.scope || it.name == self.scopeless;
     }
 }
 
@@ -127,9 +142,17 @@ impl<'a> Brand<'a, '_, '_> {
         self.brands_function(function).then_some(function)
     }
 
+    fn scan(&self) -> UsesScope<'_> {
+        UsesScope {
+            scope: self.scope,
+            scopeless: self.emit.local[Helper::CreateElement as usize],
+            found: false,
+        }
+    }
+
     fn brands_function(&self, function: &Function<'a>) -> bool {
         self.spans.contains(&function.span) && {
-            let mut scan = ReadsScope { scope: self.scope, found: false };
+            let mut scan = self.scan();
             scan.visit_function(function, ScopeFlags::empty());
             scan.found
         }
@@ -137,7 +160,7 @@ impl<'a> Brand<'a, '_, '_> {
 
     fn brands_arrow(&self, arrow: &ArrowFunctionExpression<'a>) -> bool {
         self.spans.contains(&arrow.span) && {
-            let mut scan = ReadsScope { scope: self.scope, found: false };
+            let mut scan = self.scan();
             scan.visit_arrow_function_expression(arrow);
             scan.found
         }

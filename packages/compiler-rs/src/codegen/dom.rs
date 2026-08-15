@@ -210,7 +210,19 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
             InsertPlan::Live => thunk(self.ctx, self.unit, value, span),
             InsertPlan::Once | InsertPlan::Opaque => take(self.ctx, self.unit, value, span),
         };
-        let anchor = anchor.node().map(|node| ref_ident(self.ctx, self.unit, node, span));
+        let anchor_node = anchor.node();
+        let anchor = anchor_node.map(|node| ref_ident(self.ctx, self.unit, node, span));
+        // A LIVE hole is already a thunk, and `insert` runs it inside the claim
+        // it made — nothing to wrap. Everything else is an expression JavaScript
+        // evaluates before `insert` is entered, and a component call there would
+        // claim its root before anything told it which hole it is in.
+        let value = if self.ctx.hydratable && !matches!(plan, InsertPlan::Live) {
+            let parent = ref_ident(self.ctx, self.unit, at.target(), span);
+            let anchor = anchor_node.map(|node| ref_ident(self.ctx, self.unit, node, span));
+            hole_call(self.ctx, parent, anchor, value, span)
+        } else {
+            value
+        };
         let callee = self.ctx.helper(Helper::Insert, span);
         let mut arguments =
             vec![Argument::from(scope), Argument::from(parent), Argument::from(value)];
@@ -440,6 +452,11 @@ pub fn region_call<'a>(
     span: Span,
 ) -> Expression<'a> {
     let Region { kind, flags, key, body, keyed, fallback, on, .. } = region;
+    // The one flag the compiler ADDS rather than proves. It is set on both
+    // backends from the same option, which is what makes the string backend's
+    // `<!--[k-->` and the DOM backend's claim of it one decision rather than
+    // two that have to agree.
+    let flags = flags | if ctx.hydratable { crate::ir::HYDRATE } else { 0 };
     let flags = RegionKind::shipped(kind, flags);
     let (parent, anchor) = match site {
         Some((parent, anchor)) => (Some(parent), anchor),
@@ -498,8 +515,11 @@ pub fn region_call<'a>(
             arguments.push(Argument::from(keyed));
             arguments.push(Argument::from(body));
             // `flags` is positional and `fallback` follows it, so a fallback
-            // forces the zero `each` never reads.
-            trailing.push(fallback.is_some().then(|| number(ctx, flags, span)));
+            // forces the zero `each` never reads — and so does `HYDRATE`, which
+            // `each` DOES read: it is the primitive, not the compiler, that
+            // knows how many rows it wrote.
+            let needed = fallback.is_some() || flags & crate::ir::HYDRATE != 0;
+            trailing.push(needed.then(|| number(ctx, flags, span)));
             trailing.push(fallback);
         }
         RegionKind::Error | RegionKind::Loading => {
@@ -508,7 +528,8 @@ pub fn region_call<'a>(
             let fallback = fallback.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
             arguments.push(Argument::from(fallback));
             arguments.push(Argument::from(body));
-            trailing.push(on.is_some().then(|| number(ctx, flags, span)));
+            let needed = on.is_some() || flags & crate::ir::HYDRATE != 0;
+            trailing.push(needed.then(|| number(ctx, flags, span)));
             trailing.push(on);
         }
         RegionKind::Portal => unreachable!("handled above"),
@@ -523,6 +544,40 @@ pub fn region_call<'a>(
         arguments.push(Argument::from(value));
     }
     ctx.call(callee, arguments, span)
+}
+
+/// `_$hole(parent, anchor, () => value)` — the claim, made where the address is
+/// known, around the expression that fills it.
+fn hole_call<'a>(
+    ctx: &mut Emit<'a, '_>,
+    parent: Expression<'a>,
+    anchor: Option<Expression<'a>>,
+    value: Expression<'a>,
+    span: Span,
+) -> Expression<'a> {
+    let anchor = anchor.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
+    let params = FormalParameters::boxed(
+        span,
+        FormalParameterKind::ArrowFormalParameters,
+        ArenaVec::new_in(&ctx.allocator),
+        None,
+        &ctx.ast,
+    );
+    let build = Expression::new_arrow_function_expression(
+        span,
+        false,
+        None,
+        params,
+        None,
+        ArrowFunctionBody::from(value),
+        &ctx.ast,
+    );
+    let callee = ctx.helper(Helper::Hole, span);
+    ctx.call(
+        callee,
+        vec![Argument::from(parent), Argument::from(anchor), Argument::from(build)],
+        span,
+    )
 }
 
 fn number<'a>(ctx: &Emit<'a, '_>, value: u8, span: Span) -> Expression<'a> {
@@ -550,7 +605,7 @@ fn writable_target(value: Expression<'_>) -> AssignmentTarget<'_> {
 /// B2 — the fused compute/apply record (`CODESIGN.md` §3.5).
 ///
 /// ```js
-/// _$renderEffect(() => ({ a: cls(), b: id() }), (_v$, _p$ = {}) => {
+/// _$bindEffect(_s$, () => ({ a: cls(), b: id() }), (_v$, _p$ = {}) => {
 ///   _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
 ///   if (_v$.b !== _p$.b) _$setAttr(_el$1, "id", _v$.b);
 /// });
@@ -765,8 +820,13 @@ fn effect_call<'a>(
     apply: Expression<'a>,
     span: Span,
 ) -> Statement<'a> {
-    let callee = ctx.helper(Helper::RenderEffect, span);
-    let call = ctx.call(callee, vec![Argument::from(compute), Argument::from(apply)], span);
+    let callee = ctx.helper(Helper::BindEffect, span);
+    let scope = ctx.scope(span);
+    let call = ctx.call(
+        callee,
+        vec![Argument::from(scope), Argument::from(compute), Argument::from(apply)],
+        span,
+    );
     Statement::new_expression_statement(span, call, &ctx.ast)
 }
 
@@ -983,7 +1043,7 @@ fn clone_call<'a>(ctx: &mut Emit<'a, '_>, unit: &Unit<'a>, span: Span) -> Expres
     ctx.call(callee, Vec::new(), span)
 }
 
-fn walk<'a>(ctx: &Emit<'a, '_>, unit: &Unit<'a>, def: &RefDef) -> Expression<'a> {
+fn walk<'a>(ctx: &mut Emit<'a, '_>, unit: &Unit<'a>, def: &RefDef) -> Expression<'a> {
     let (base, descend, property, hops) = match def.step {
         Step::Root => unreachable!("handled by the caller"),
         Step::FirstChild(base, hops) => (base, Some("firstChild"), "nextSibling", hops),
@@ -991,7 +1051,11 @@ fn walk<'a>(ctx: &Emit<'a, '_>, unit: &Unit<'a>, def: &RefDef) -> Expression<'a>
         Step::NextSibling(base, hops) => (base, None, "nextSibling", hops),
         Step::PrevSibling(base, hops) => (base, None, "previousSibling", hops),
     };
-    let mut expression = ctx.ident(ctx.module.interner.str(unit.refs.def(base).name), def.span);
+    let object = ctx.ident(ctx.module.interner.str(unit.refs.def(base).name), def.span);
+    if ctx.hydratable {
+        return logical_walk(ctx, object, def, descend, property, hops);
+    }
+    let mut expression = object;
     if let Some(descend) = descend {
         expression = ctx.member(expression, descend, def.span);
     }
@@ -999,6 +1063,38 @@ fn walk<'a>(ctx: &Emit<'a, '_>, unit: &Unit<'a>, def: &RefDef) -> Expression<'a>
         expression = ctx.member(expression, property, def.span);
     }
     expression
+}
+
+/// H3's `child(n, 3)`, and the reason it cannot be `.firstChild` repeated.
+///
+/// The server's child list is the template's skeleton with a `<!--[-->` …
+/// `<!--]-->` range spliced in at every hole, and a native sibling step counts
+/// every node in that range. A LOGICAL step counts the range as nothing, so the
+/// same index that addresses the template addresses the server's document — the
+/// one property that lets the walk the client already runs claim rather than
+/// build.
+///
+/// One helper per axis, and the direction is a third argument rather than a
+/// sign: `child(el, 2)` is the third logical child, `child(el, 0, 1)` the last,
+/// `sib(el, 1, 1)` one logical sibling BACK. The walk pass already chose the
+/// direction; this only spells it.
+fn logical_walk<'a>(
+    ctx: &mut Emit<'a, '_>,
+    object: Expression<'a>,
+    def: &RefDef,
+    descend: Option<&str>,
+    property: &str,
+    hops: u32,
+) -> Expression<'a> {
+    let backwards = property == "previousSibling";
+    let helper = if descend.is_some() { Helper::Child } else { Helper::Sib };
+    let callee = ctx.helper(helper, def.span);
+    let hops = u8::try_from(hops).expect("a template with 256 siblings to step over is not a walk");
+    let mut arguments = vec![Argument::from(object), Argument::from(number(ctx, hops, def.span))];
+    if backwards {
+        arguments.push(Argument::from(number(ctx, 1, def.span)));
+    }
+    ctx.call(callee, arguments, def.span)
 }
 
 fn ref_ident<'a>(ctx: &Emit<'a, '_>, unit: &Unit<'a>, node: NodeId, span: Span) -> Expression<'a> {

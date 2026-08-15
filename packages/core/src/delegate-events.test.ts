@@ -271,3 +271,88 @@ describe("clearDelegatedEvents", () => {
     clearDelegatedEvents(["barqping11"]);
   });
 });
+
+/**
+ * The dispatcher's OWNER, which is what the `$$s` expando beside every `$$type`
+ * expando was already carrying and only `routeError` was reading.
+ *
+ * A handler used to run with `CURRENT === null`, so an `onCleanup` or an
+ * `effect` created inside one became an ORPHAN: `flushSync`'s `dropOrphans`
+ * clears the claim list without disposing anything, so the work was owned by
+ * nobody and never came apart. C1's "the argument decides" has to hold at the
+ * one entry point the user's own code reaches most.
+ */
+describe("a delegated handler runs under the scope stapled to its element", () => {
+  test("work created in a handler is owned by that scope and dies with it", async () => {
+    const { createScope, delegate, getOwner, onCleanup } = await import("./index.ts");
+    const el = document.createElement("div");
+    container.appendChild(el);
+
+    let sawOwner: unknown = "not run";
+    const cleanups: number[] = [];
+    let disposeRoot!: () => void;
+    const root = createScope((dispose, scope) => {
+      disposeRoot = dispose;
+      return scope;
+    }, true);
+
+    delegate(root as never, el, "click", () => {
+      sawOwner = getOwner();
+      onCleanup(() => cleanups.push(1));
+    });
+    delegateEvents(["click"]);
+    el.dispatchEvent(new Event("click", { bubbles: true }));
+
+    expect(sawOwner, "the handler ran with no owner at all").toBe(root);
+    expect(cleanups.length, "the cleanup ran before anything was disposed").toBe(0);
+    disposeRoot();
+    expect(cleanups.length, "the handler's cleanup was owned by nobody").toBe(1);
+    clearDelegatedEvents(["click"]);
+  });
+
+  test("a Block forwarded into a handler slot is refused rather than invoked with the Event", async () => {
+    const { block, createScope } = await import("./index.ts");
+    const el = document.createElement("div");
+    container.appendChild(el);
+
+    let invokedWith: unknown = "not invoked";
+    const leaf = block((scope: unknown) => {
+      invokedWith = scope;
+      return null;
+    });
+    const root = createScope((_dispose, scope) => scope, true);
+    // Written as the COMPILED path writes it — the expando directly, with no
+    // `delegate` call to guard — because that is the only shape in which this
+    // can reach the dispatcher at all.
+    (el as Element & Record<string, unknown>).$$click = leaf;
+    (el as Element & Record<string, unknown>).$$s = root;
+    delegateEvents(["click"]);
+
+    const errors: unknown[] = [];
+    const onError = (event: Event): void => {
+      errors.push(event);
+      event.preventDefault();
+    };
+    globalThis.addEventListener("error", onError);
+    let thrown: unknown = null;
+    try {
+      el.dispatchEvent(new Event("click", { bubbles: true }));
+    } catch (error) {
+      thrown = error;
+    }
+    globalThis.removeEventListener("error", onError);
+
+    expect(invokedWith, "the Block was invoked with the Event as its scope").toBe("not invoked");
+    // Measured: the refusal is routed through `routeError`, which is the
+    // dispatcher's existing E2 #6 path, and with no catching boundary above the
+    // element it surfaces as an unhandled error rather than out of
+    // `dispatchEvent`. Either is detection; silence is the one outcome C3.8
+    // forbids, and this asserts the disjunction so the channel can move without
+    // the claim going quiet.
+    expect(
+      thrown !== null || errors.length > 0,
+      "a Block at a handler slot was neither invoked nor reported",
+    ).toBe(true);
+    clearDelegatedEvents(["click"]);
+  });
+});

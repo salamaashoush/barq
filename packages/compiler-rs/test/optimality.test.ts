@@ -18,7 +18,7 @@ import {
   listFixtures,
   loadModule,
   propCalls,
-  renderEffectBodies,
+  bindEffectBodies,
   stripComments,
   stripLiterals,
   templateAnchors,
@@ -473,7 +473,7 @@ describe("target 1 — semantic reactivity (never name regexes)", () => {
     expect(code).toMatch(/return _tmpl\$\d+\(\)/)
 
     expect(count(code, /=>/)).toBe(0)
-    expect(count(code, /renderEffect|_\$effect/)).toBe(0)
+    expect(count(code, /renderEffect|bindEffect|_\$effect/)).toBe(0)
   })
 
   it("handler-no-closure: a handler closing over nothing is not re-created per instance", () => {
@@ -575,7 +575,7 @@ describe("target 4 — one effect per element, not one per prop", () => {
     // emits only the tokens it applied — so the exclusion is not needed and the
     // element really does cost ONE effect.
     const code = compileFixtureBody("class-with-live-siblings")
-    expect(renderEffectBodies(code), "one effect for class+title+id").toHaveLength(1)
+    expect(bindEffectBodies(code), "one effect for class+title+id").toHaveLength(1)
     expect(code).toContain('_v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);')
     expect(code, "no name is left for the runtime to classify").not.toContain("_$bindProp(")
     // The wipe, as an ABSENCE: no statement writes the class channel on any
@@ -606,7 +606,7 @@ describe("target 4 — one effect per element, not one per prop", () => {
     expect(templateHtml(code), "only the static attribute is baked").toEqual([
       '<a data-static="keep">go</a>',
     ])
-    expect(renderEffectBodies(code)).toHaveLength(1)
+    expect(bindEffectBodies(code)).toHaveLength(1)
 
     const result = await compareToOracle("reactive-attribute")
     // Was 2 at M4 — one compiled effect for `href`, one the runtime opened for
@@ -662,7 +662,7 @@ describe("target 4 — one effect per element, not one per prop", () => {
   it("equal-liveness: B1 — three names written the same way move together", async () => {
     const code = compileFixtureBody("equal-liveness")
     // Emitted-code half: one record, three fields, `class` among them.
-    expect(renderEffectBodies(code), "one effect for the element").toHaveLength(1)
+    expect(bindEffectBodies(code), "one effect for the element").toHaveLength(1)
     expect(code).toContain('_v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);')
     expect(code).toContain('if (_v$.b !== _p$.b) _$setAttr(_el$1, "id", _v$.b);')
     expect(code).toContain('if (_v$.c !== _p$.c) _$setAttr(_el$1, "title", _v$.c);')
@@ -693,12 +693,12 @@ describe("target 4 — one effect per element, not one per prop", () => {
     let groups = 0
     for (const name of listFixtures()) {
       const code = compileFixtureBody(name)
-      const bodies = renderEffectBodies(code)
+      const bodies = bindEffectBodies(code)
       // The scan used to be anchored on a four-space closing brace, which
       // reports ZERO groups on a nested emit — indistinguishable from a module
       // that has none. Balanced parens cannot miss one, and this says so.
-      expect(bodies, `${name}: every renderEffect must be scanned`).toHaveLength(
-        emittedCalls(code, "renderEffect"),
+      expect(bodies, `${name}: every bindEffect must be scanned`).toHaveLength(
+        emittedCalls(code, "bindEffect"),
       )
       for (const targets of groupTargets(code)) {
         expect(targets, `${name}: one effect must serve one element`).toHaveLength(1)
@@ -1335,7 +1335,7 @@ describe("open questions the harness must be able to state", () => {
     const code = compileFixtureBody("auto-thunked-read")
     // The attribute hole is a fused effect of ONE, so the compiler-built thunk
     // is the compute itself rather than a `const` inside a block body.
-    expect(code).toMatch(/_\$renderEffect\(\(\) => `count: \$\{count\(\)\}`, /)
+    expect(code).toMatch(/_\$bindEffect\(_s\$, \(\) => `count: \$\{count\(\)\}`, /)
     expect(code).toMatch(/_\$insert\(_s\$, _el\$\d+, \(\) => `n=\$\{count\(\)\}`\)/)
     expect(code, "a bare read still η-reduces to the accessor itself").toMatch(
       /_\$insert\(_s\$, _el\$\d+, count\)/,
@@ -1369,7 +1369,7 @@ describe("open questions the harness must be able to state", () => {
     // after construction, and both needles below are live elsewhere in the
     // corpus.
     expect(propCalls(code), "the spread is not re-applied after construction").toBe(0)
-    expect(emittedCalls(code, "renderEffect"), "and no reactive spread was emitted").toBe(0)
+    expect(emittedCalls(code, "bindEffect"), "and no reactive spread was emitted").toBe(0)
 
     const result = await compareToOracle("spread-static-mix")
     expect(result.ok, formatDivergences("spread-static-mix", result.divergences)).toBe(true)

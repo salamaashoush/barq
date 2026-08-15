@@ -62,7 +62,7 @@ export const optimality = {
   // three channel writes, all of them inside one effect
   patchCalls: 3,
   // One effect for the element, with all three names written from inside it.
-  emits: ["renderEffect(", "setClass(", '"id"', '"title"'],
+  emits: ["bindEffect(", "setClass(", '"id"', '"title"'],
   // No name reaches the runtime as a question, and no name is excluded from the
   // record on account of being `class`.
   absent: ["bindProp(", "setProp", 'class="'],

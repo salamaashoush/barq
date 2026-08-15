@@ -14,7 +14,7 @@
  * `createElement`, no child normalisation of its own, no prop dispatch of its
  * own. Where it writes to the DOM it goes through the same ABI primitives
  * (§3.0) the emitted module goes through — `template`, `insert`, the resolved
- * channels, `renderEffect` — because those are the contract both backends are
+ * channels, `bindEffect` — because those are the contract both backends are
  * written against, not the thing under test. The CHANNEL travels in the record:
  * the compiler resolved it, and a reference backend that re-derived it from the
  * name would be answering a question the thing under test no longer asks. A rule of `SEMANTICS.md` that the runtime
@@ -45,6 +45,7 @@
  */
 
 import {
+  bindEffect,
   bindEvent,
   bindProp,
   bindValue,
@@ -61,7 +62,6 @@ import {
   setStyleProp,
   type Channel,
 } from "./dom.ts";
-import { renderEffect } from "./signals.ts";
 import { boundary, branch, each, portal } from "./flow.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
 
@@ -218,7 +218,7 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
     // a group lowers to — either because fusion is off (`-O0`), or because
     // fusion put it in a group of one.
     case "setLive":
-      fuse([op], nodes, slots);
+      fuse(s, [op], nodes, slots);
       return;
 
     case "setEvent":
@@ -298,7 +298,7 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
     }
 
     case "effectGroup":
-      fuse(op[1], nodes, slots);
+      fuse(s, op[1], nodes, slots);
       return;
   }
 }
@@ -316,8 +316,14 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
  * Every read happens before any write, which is not a detail: a write can change
  * what a later prop on the same element would have read.
  */
-function fuse(members: readonly SetLive[], nodes: readonly Node[], slots: readonly Slot[]): void {
-  renderEffect(
+function fuse(
+  s: Scope | null,
+  members: readonly SetLive[],
+  nodes: readonly Node[],
+  slots: readonly Slot[],
+): void {
+  bindEffect(
+    s,
     () => members.map((member) => slots[member[3]]()),
     (values: unknown[], prev: unknown[] | undefined) => {
       for (let i = 0; i < members.length; i++) {

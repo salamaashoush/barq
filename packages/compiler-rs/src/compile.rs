@@ -83,6 +83,10 @@ pub struct CompileOutput {
     /// artefact: it is derived from the program BEFORE harvest and consumed by
     /// nothing downstream, so `code` is byte-identical with it on or off.
     pub ownership: Option<String>,
+    /// §3.11's compile-time address table, as JSON, under `options.addresses`
+    /// only. A side artefact on the same terms: the two backends compile the
+    /// same source to the same address set, and nothing reads it to emit.
+    pub addresses: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -319,18 +323,13 @@ fn compile_on_this_stack(
             filename,
         ));
     }
-    // Decided before the pass stage, because the string backend skips three of
-    // its passes outright — and the flag alone does not decide it: a module
-    // using one of the eight non-inlinable flow components falls back.
-    let target = match (options.interp, options.ssr, uninlinable_flow(&module)) {
-        (true, _, _) => codegen::Target::Interp,
-        (false, false, _) => codegen::Target::Dom,
-        (false, true, None) => codegen::Target::Ssr,
-        (false, true, Some(name)) => {
-            warnings.push(fallback_diagnostic(name, filename, &mut lines));
-            codegen::Target::Dom
-        }
-    };
+    // Decided before the pass stage, because the string backend skips two of
+    // its passes outright. The OPTIONS decide it and nothing else: M6 deleted
+    // `uninlinable_flow`, which scanned every symbol and dropped the whole
+    // module here if any of eight flow components was referenced — 41.88x on the
+    // 100-row page, for one import. Every construct has a string lowering now,
+    // so there is nothing left to fall back from.
+    let target = codegen::Target::of(options);
 
     passes::run(&allocator, &mut module, options, target);
     warnings.extend(analysis_diagnostics(&module, filename, &mut lines));
@@ -341,6 +340,7 @@ fn compile_on_this_stack(
         crate::ownership::attach(tree, &module);
         tree.to_json()
     });
+    let addresses = options.addresses.then(|| passes::address_json(&module, filename));
     codegen::emit(&allocator, &mut program, &mut module, options, target);
 
     let CodegenReturn { code, map, .. } = Codegen::new()
@@ -364,7 +364,7 @@ fn compile_on_this_stack(
     });
 
     let warnings = resolve_diagnostics(warnings, &mut suppressions, filename, &mut lines, options);
-    Ok(CompileOutput { code, map, warnings, labels, ownership })
+    Ok(CompileOutput { code, map, warnings, labels, ownership, addresses })
 }
 
 /// Suppression, severity resolution and ordering, in one place — the compiler,
@@ -626,39 +626,6 @@ pub fn format_diagnostics(diagnostics: &[Diagnostic]) -> String {
     diagnostics.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n")
 }
 
-/// What the analysis wants the author to know: O3's note where a keyed `For`
-/// cannot be traced back to its rows, O7's warning where `Dynamic` will flatten
-/// the getters P4 built. Both are deliberate divergences, so neither is allowed
-/// to be silent.
-/// DESIGN §5's explicit fallback. `Loading`, `Errored`, `Reveal`, `Suspense`,
-/// `Await`, `Portal`, `Dynamic` and `ErrorBoundary` have real async and boundary
-/// semantics that no string concatenation expresses, so a module that REFERENCES
-/// one of them compiles to the DOM backend instead and is rendered by
-/// `renderToString`'s happy-dom path. `Flow::inlinable_on_server()` is the split,
-/// resolved by `SymbolId` — a local `const Portal = …` is not the runtime's.
-fn uninlinable_flow(module: &Module<'_>) -> Option<&'static str> {
-    for symbol in module.scoping.symbol_ids() {
-        let Some(flow) = module.env.kind_of(symbol).flow() else { continue };
-        if flow.inlinable_on_server() {
-            continue;
-        }
-        if module.scoping.get_resolved_reference_ids(symbol).is_empty() {
-            continue;
-        }
-        return Some(flow.name());
-    }
-    // `import * as core` — `core.Portal` binds no symbol of its own, so the scan
-    // above cannot see it. Missing it compiles the module to a string that calls
-    // the real DOM component, which dies on a server with no `document`: the one
-    // environment target #10 exists to serve.
-    module
-        .env
-        .namespace_flows
-        .iter()
-        .find(|flow| !flow.inlinable_on_server())
-        .map(|flow| flow.name())
-}
-
 /// The line table, built at most once and only if something asks for a
 /// position. §4.1's cost trap was `line_column`'s O(source) scan PER diagnostic,
 /// which is quadratic once a rule fires fifty times in a file; building the
@@ -711,21 +678,17 @@ fn located(
     }
 }
 
-fn fallback_diagnostic(name: &str, filename: &str, lines: &mut Lines<'_>) -> Diagnostic {
-    located(
-        Code::Barq007.default_level(),
-        Code::Barq007,
-        format!(
-            "`{name}` has no string-mode implementation, so this module compiles to the DOM \
-             backend on the server and must be rendered through `renderToString` from \
-             `@barqjs/core/server` with a DOM implementation registered (DESIGN §5)."
-        ),
-        Span::new(0, 0),
-        filename,
-        lines,
-    )
-}
-
+/// What the analysis wants the author to know: O3's note where a keyed `For`
+/// cannot be traced back to its rows, O7's warning where `Dynamic` will flatten
+/// the getters P4 built. Both are deliberate divergences, so neither is allowed
+/// to be silent.
+///
+/// What is NOT here any more is `uninlinable_flow`. It scanned every symbol and
+/// dropped the whole module to the DOM backend when any of eight flow components
+/// was referenced — CODESIGN §0.1 measures that at 41.88x on the 100-row page,
+/// for one import. M6 gave the string backend the four primitives and a string
+/// component for all fourteen constructs, so the split it decided no longer
+/// exists to decide.
 fn analysis_diagnostics(
     module: &Module<'_>,
     filename: &str,
@@ -957,29 +920,34 @@ mod tests {
         assert!(production.labels.is_empty());
     }
 
-    /// The diagnostics that predate the engine keep their text and gain a code,
-    /// a level and a span. `BARQ004` is the O3 note; `BARQ007` announces the SSR
-    /// fallback and is a note because the module still compiles.
+    /// Two diagnostics that predate the engine, and neither is here any more.
     ///
-    /// `BARQ006` (O7) is NOT among them any more, and this is where that is
-    /// pinned: it warned that `Dynamic`'s `{ component: _, ...rest }` reads
+    /// `BARQ006` (O7) warned that `Dynamic`'s `{ component: _, ...rest }` reads
     /// every getter once. Under M3 there are no getters — every prop is a Cell,
     /// and a copy of a Cell is the same Cell (C3.4) — so the warning's premise
     /// is gone and warning anyway would be a lie about the emitted module.
+    ///
+    /// `BARQ007` announced the whole-module SSR→DOM downgrade. M6 deleted the
+    /// downgrade: every construct has a string lowering, so there is no module
+    /// left to announce anything about. A compile that mentions `Portal` is
+    /// silent AND stays on the string backend, which is the pair that has to be
+    /// asserted together — a silent compile that quietly emitted `_$template`
+    /// would be the same defect with the evidence removed.
     #[test]
-    fn the_diagnostics_that_predate_the_engine_carry_codes_now() {
+    fn the_two_diagnostics_that_no_longer_have_anything_to_report() {
         let o7 = "import { Dynamic, signal } from \"@barqjs/core\";\n\
                   const n = signal(0);\n\
                   export const V = () => <Dynamic component=\"div\" total={n()} />;\n";
         let output = compile(o7, &diagnosing("App.tsx")).expect("compiles");
         assert!(codes(&output).is_empty(), "{:?}", codes(&output));
 
-        let fallback = "import { Portal } from \"@barqjs/core\";\n\
+        let was_a_fallback = "import { Portal } from \"@barqjs/core\";\n\
                         export const V = () => <Portal><b>x</b></Portal>;\n";
         let options = ResolvedOptions { ssr: true, ..diagnosing("App.tsx") };
-        let output = compile(fallback, &options).expect("compiles");
-        assert_eq!(codes(&output), vec!["BARQ007"]);
-        assert_eq!(output.warnings[0].severity, Severity::Note);
+        let output = compile(was_a_fallback, &options).expect("compiles");
+        assert!(codes(&output).is_empty(), "{:?}", codes(&output));
+        assert!(output.code.contains("@barqjs/core/server"), "{}", output.code);
+        assert!(!output.code.contains("_$template"), "{}", output.code);
     }
 
     /// A `barq-ignore` must never influence codegen. facebook/react#34261 is the
@@ -2583,28 +2551,28 @@ mod tests {
                 "not every JSX slot is branded at {opt:?}:\n{}",
                 output.code
             );
-            // Cast and Slot construct through their scope, so both carry the
-            // definition-site brand; Sink never reads `_s$`, and §3.0 rule 3
-            // says a Block that ignores its scope is simultaneously a legal
-            // Cell and needs no brand. Four slots plus two declarations.
+            // All three components construct through their scope, so all three
+            // carry the definition-site brand. `Sink` reaches it through its
+            // live `title` binding: `bindEffect` takes the scope FIRST (O4.5),
+            // which is what makes a component whose only reactive work is an
+            // element binding visible to `UsesScope` — it emitted a bare
+            // `renderEffect` before, mentioned `_s$` nowhere, and went
+            // unbranded while owning an effect. Four slots plus three
+            // declarations.
             assert_eq!(
                 output.code.matches("_$block(").count(),
-                6,
+                7,
                 "not every scope-using component declaration is branded at {opt:?}:\n{}",
                 output.code
             );
-            for branded in ["Cast = _$block(Cast)", "Slot = _$block(Slot)"] {
+            for branded in ["Cast = _$block(Cast)", "Slot = _$block(Slot)", "Sink = _$block(Sink)"]
+            {
                 assert!(
                     output.code.contains(branded),
                     "{branded} missing at {opt:?}:\n{}",
                     output.code
                 );
             }
-            assert!(
-                !output.code.contains("Sink = _$block(Sink)"),
-                "a component that never reads its scope was branded at {opt:?}:\n{}",
-                output.code
-            );
         }
     }
 
@@ -2673,8 +2641,8 @@ mod tests {
         // each. The effect itself is no longer a knob — with the channel
         // resolved there is no `setProp` left to hand a thunk to, so the
         // compiler owns every live write's effect at both levels.
-        assert_eq!(ox.matches("_$renderEffect(").count(), 1, "{ox}");
-        assert_eq!(o0.matches("_$renderEffect(").count(), 2, "{o0}");
+        assert_eq!(ox.matches("_$bindEffect(").count(), 1, "{ox}");
+        assert_eq!(o0.matches("_$bindEffect(").count(), 2, "{o0}");
         // walk: `<em>` is reached from the end of the group, then from the front.
         assert!(ox.contains(".lastChild"), "{ox}");
         assert!(!o0.contains(".lastChild") && o0.contains(".firstChild"), "{o0}");
@@ -2791,7 +2759,7 @@ mod tests {
         let source =
             format!("{CORE}const count = signal(0);\nconst V = () => <p onx={{count.set}} />;\n");
         let output = compile_ok(&source, "V.tsx");
-        assert!(!output.code.contains("_$renderEffect"), "{}", output.code);
+        assert!(!output.code.contains("_$bindEffect"), "{}", output.code);
     }
 
     /// Target #2, as the type-level fact `patch.is_empty()` rather than an
@@ -2841,7 +2809,7 @@ mod tests {
         );
     }
 
-    /// Target #4. Two tracked props on one element share ONE renderEffect with
+    /// Target #4. Two tracked props on one element share ONE bindEffect with
     /// per-key `!==` guards, and the fused compute returns the accumulator —
     /// never a function, which `signals.ts` would register as a cleanup (V6).
     #[test]
@@ -2851,10 +2819,10 @@ mod tests {
              const V = () => <p title={{() => a()}} lang={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
-        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
+        assert_eq!(output.code.matches("_$bindEffect(").count(), 1, "{}", output.code);
         // B2's shape: one COMPUTE returning the flat record, one APPLY reached
         // with it. The apply is not a tracking scope and cannot become one.
-        assert!(output.code.contains("_$renderEffect(() => ({"), "{}", output.code);
+        assert!(output.code.contains("_$bindEffect(_s$, () => ({"), "{}", output.code);
         assert!(output.code.contains("(_v$, _p$ = {}) =>"), "{}", output.code);
         assert!(output.code.contains("a: a()"), "{}", output.code);
         assert!(output.code.contains("b: b()"), "{}", output.code);
@@ -2882,7 +2850,7 @@ mod tests {
              const V = () => <p style={{() => s()}} classList={{() => s()}} title={{() => s()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
-        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
+        assert_eq!(output.code.matches("_$bindEffect(").count(), 1, "{}", output.code);
         assert!(
             output.code.contains("_v$.a = _$setStyle(_el$1, \"style\", _v$.a, _p$.a);"),
             "{}",
@@ -2973,7 +2941,7 @@ mod tests {
         // no dispatcher left to open one. One live prop needs no record at all —
         // its previous value is a scalar, and it is the compute's own return.
         assert!(
-            output.code.contains("_$renderEffect(() => count(), (_v$, _p$) =>"),
+            output.code.contains("_$bindEffect(_s$, () => count(), (_v$, _p$) =>"),
             "{}",
             output.code
         );
@@ -2998,7 +2966,7 @@ mod tests {
             "{}",
             output.code
         );
-        assert!(!output.code.contains("_$renderEffect"), "{}", output.code);
+        assert!(!output.code.contains("_$bindEffect"), "{}", output.code);
     }
 
     /// P3 Fold may not bake a name the runtime INTERCEPTS: `applyResolvedProp`
@@ -3101,7 +3069,7 @@ mod tests {
              const V = () => <div class={{() => a()}} title={{() => b()}} id={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
-        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
+        assert_eq!(output.code.matches("_$bindEffect(").count(), 1, "{}", output.code);
         assert!(
             output.code.contains("_v$.a = _$setClass(_el$1, \"class\", _v$.a, _p$.a);"),
             "{}",
@@ -3139,7 +3107,7 @@ mod tests {
         assert!(!output.code.contains("_p$.__proto__"), "{}", output.code);
         assert!(!output.code.contains("_v$.__proto__"), "{}", output.code);
         // It is still a live attribute, and it still shares the one effect.
-        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
+        assert_eq!(output.code.matches("_$bindEffect(").count(), 1, "{}", output.code);
         assert!(output.code.contains("_$setAttr(_el$1, \"__proto__\", _v$.a)"), "{}", output.code);
     }
 

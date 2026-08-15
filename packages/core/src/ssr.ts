@@ -11,11 +11,40 @@
  * dynamic attribute, `spreadAttrs` for a spread. The escaping tables below and
  * the compiler's `lower::entity` must agree byte for byte, because the same
  * markup is produced by both.
+ *
+ * Since M6 it also holds the STRING half of `flow.ts`'s four primitives —
+ * `branch`, `each`, `boundary`, `portal` — under the same names, in the same
+ * argument order, reached by the same emitted call. `CODESIGN.md` §3.11: one
+ * ABI, two implementations, and the compiler chooses between them by choosing
+ * the import SOURCE. That is what deleted `uninlinable_flow` and the
+ * whole-module SSR→DOM downgrade behind it.
  */
 
+import type { Resource } from "./async.ts";
+import {
+  REVEAL_COORD,
+  type RevealHandle,
+  createErrorCollector,
+  createPendingCollector,
+  createRevealCoordinator,
+} from "./boundaries.ts";
 import { SSR_HTML_BRAND, classToString, isSsrHtml, styleToString } from "./dom.ts";
-import type { Scope } from "./scope.ts";
-import { getOwner } from "./signals.ts";
+import { COUNT, NO_SCOPE } from "./flow.ts";
+import { omit } from "./props.ts";
+import type { Block, Cell, Scope } from "./scope.ts";
+import {
+  ERROR_BOUNDARY,
+  NotReadyError,
+  ScopeMissingError,
+  disposeScope,
+  enter,
+  exit,
+  getOwner,
+  isBlock,
+  provideOn,
+  requireScope,
+  untrack,
+} from "./signals.ts";
 import { isArray, isObject, toString } from "./type-utils.ts";
 
 /**
@@ -311,12 +340,12 @@ const ATTRIBUTE_NAME = new RegExp(`^[${NAME_START}][${NAME_REST}]*$`);
 const VALID_NAMES = new Set<string>();
 const VALID_NAMES_MAX = 1024;
 
-function checkName(name: string): void {
+function checkName(name: string, kind = "attribute"): void {
   if (VALID_NAMES.has(name)) return;
   if (!ATTRIBUTE_NAME.test(name)) {
     throw new Error(
-      `"${name}" is not a valid attribute name. ` +
-        "A spread whose keys are untrusted data cannot be written to markup.",
+      `"${name}" is not a valid ${kind} name. ` +
+        "Untrusted data cannot be written to markup as a name.",
     );
   }
   if (VALID_NAMES.size < VALID_NAMES_MAX) VALID_NAMES.add(name);
@@ -509,74 +538,475 @@ export function content(name: string, value: unknown): string {
   return resolved === null || resolved === undefined ? "" : escapeText(toString(resolved));
 }
 
-// ── the six string-inlinable flow components (DESIGN §5) ─────────────────
+// ============================================================================
+// The four primitives, string-valued (CODESIGN.md §3.4, §3.11)
+// ============================================================================
 //
-// `Flow::inlinable_on_server()` in the compiler is the same 6/8 split. These
-// reproduce `components.ts`'s semantics with a `+=` where it splices nodes;
-// the other eight have real async and boundary semantics, and a module using
-// one of them compiles to the DOM backend instead.
+// One name, one argument order, two implementations. `flow.ts` splices nodes
+// into `(parent, anchor)`; these concatenate bytes and have no parent to splice
+// into, so the compiler hands them `(null, null)` and the range they own is the
+// markup they return.
+//
+// THE BRANCH INSTRUCTION, and when it is written. §11 Q4 settled the trade —
+// pay the bytes, get the recovery — and M6 landed the format while deliberately
+// leaving the wire bytes to the claim algorithm that spends them. This is that
+// algorithm's half: a range writes `<!--[k-->` … `<!--]-->` when, and only
+// when, the module was compiled `hydratable`, which the compiler ships as the
+// `HYDRATE` bit of the same flags integer both backends already take.
+//
+// With the flag off nothing changes, and the property this backend is CHECKED
+// by survives untouched: the two backends produce byte-identical markup, which
+// is what lets `oracle.test.ts` and the dual-render suite compare them without
+// a normalisation step that could hide a real divergence.
+//
+// The key is in the OPEN comment because it is the one thing the client cannot
+// re-derive: re-evaluating the condition is unsound (`SEMANTICS.md` H2 — it may
+// read data the client has not been seeded with), so the server's choice has to
+// be on the wire or it is lost.
+//
+// One range is written whatever the flag says: a boundary the stream deferred.
+// `<!--[b:N-->` names a continuation that has not been flushed yet, and no walk
+// of the document can discover that either.
 
-interface ListProps {
-  each?: unknown;
-  fallback?: unknown;
-  keyed?: unknown;
-  children: (item: never, index: never) => unknown;
+const OPEN = "<!--[";
+const CLOSE = "<!--]-->";
+
+/**
+ * `flow.ts`'s `HYDRATE`, read from the same flags integer, because the compiler
+ * sets it from one option for both backends. The client's claim and these bytes
+ * are one decision, not two that have to agree.
+ */
+const HYDRATE = 1 << 2;
+
+/** The key spellings that survive a comment. Anything else claims positionally. */
+const SAFE_KEY = /^[\w.:+-]{0,32}$/;
+
+/**
+ * `<!--[k-->` … `<!--]-->` around one range.
+ *
+ * A key that cannot be spelled safely becomes `?`, and the client then claims
+ * the range by POSITION and skips the comparison — which is exactly what a hole
+ * has always had. Writing the key raw is not an option: `-->` inside a comment
+ * ends it, and a key is user data.
+ */
+function range(inner: string, key?: unknown): string {
+  // Only a PRIMITIVE has a spelling. An object key stringifies to
+  // `[object Object]`, which is neither safe nor informative, so it takes the
+  // opaque form with everything else the pattern refuses.
+  const spelled =
+    key === undefined || key === null || typeof key === "object" || typeof key === "function"
+      ? ""
+      : String(key as string | number | boolean | symbol | bigint);
+  return `${OPEN}${SAFE_KEY.test(spelled) ? spelled : "?"}-->${inner}${CLOSE}`;
 }
 
-function rows(each: unknown): readonly unknown[] {
-  const value = unwrap(each);
-  return isArray<unknown>(value) ? value : [];
+/**
+ * §3.11's streaming range: a boundary whose content is still to come, addressed
+ * by the continuation the stream will resume.
+ */
+function deferredRange(id: number, inner: string): string {
+  return `${OPEN}b:${id}-->${inner}${CLOSE}`;
 }
 
-function fallbackHtml(props: { fallback?: unknown }): SsrHtml {
-  return html(props.fallback === null || props.fallback === undefined ? "" : esc(props.fallback));
+/**
+ * Where an unready boundary parks itself. `null` is a non-streaming render, and
+ * then a boundary shows its fallback and that is the whole answer — which is
+ * what `renderPage`'s second render exists to repair.
+ *
+ * §3.11: "the Block is re-invocable with its scope, so there is no second code
+ * path". The record is exactly that pair.
+ */
+export interface StreamSink {
+  defer(body: Block<unknown>, scope: Scope | null): number;
 }
 
-export function ssrFor(s: Scope | null, props: ListProps): SsrHtml {
-  // §3.0 rule 1, drawn in the same place `For` draws it (components.ts:266): a
-  // Cell declares no parameter and a key function declares one, and that is
-  // the only thing separating them once both are values in the same slot. A
-  // spread source's `keyed` reaches here verbatim, so `unwrap` would invoke the
-  // key function with no row.
+let SINK: StreamSink | null = null;
+
+/** Install a sink for the duration of one render. Returns the previous one. */
+export function setStreamSink(sink: StreamSink | null): StreamSink | null {
+  const previous = SINK;
+  SINK = sink;
+  return previous;
+}
+
+/**
+ * Re-invoke a parked continuation. It is the SAME call `boundary` made when it
+ * built the shell — same Block, same scope, same activation — so there is no
+ * second code path for a resumed boundary to diverge along, which is §3.11's
+ * whole claim about streaming.
+ */
+export function resumeDeferred(body: Block<unknown>, scope: Scope | null): string {
+  return activate(scope, body, NO_ARGS, 0, "branch");
+}
+
+const NO_ARGS: readonly unknown[] = [];
+
+/**
+ * C3.8 at the four Cell slots of the primitive surface, exactly as `flow.ts`
+ * spells it. A Block reaching a Cell slot is a compiler or forwarding bug and
+ * must throw rather than be invoked with no scope and stringified.
+ */
+function cellSlot(value: unknown, origin: string): void {
+  if (isBlock(value)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
+}
+
+/** A Cell ignores every argument (§3.0 rule 1), so one spelling serves both. */
+function invokeBlock(scope: Scope | null, body: unknown, args: readonly unknown[]): unknown {
+  if (typeof body !== "function") return body;
+  return (body as (s: Scope | null, ...rest: readonly unknown[]) => unknown)(scope, ...args);
+}
+
+/**
+ * One activation's bytes. `enter(given)` and nothing else — O2/O3.7 hold on the
+ * server for the same reason they hold on the client: an instance is a child of
+ * the scope the construct was HANDED.
+ *
+ * The scope is not disposed on the way out. A server render disposes its root
+ * once, and a range that has already been written to the wire has no later
+ * update to be torn down for.
+ */
+function activate(
+  given: Scope | null,
+  body: unknown,
+  args: readonly unknown[],
+  flags: number,
+  kind: "branch" | "each" | "portal",
+): string {
+  if (body === null || body === undefined) return "";
+  if ((flags & NO_SCOPE) !== 0) return esc(invokeBlock(given, body, args));
+  const scope = enter(given, kind);
+  let built = false;
+  try {
+    const out = esc(invokeBlock(scope, body, args));
+    built = true;
+    return out;
+  } finally {
+    exit(scope);
+    if (!built) disposeScope(scope);
+  }
+}
+
+/**
+ * K2/K5/K6 on the wire. The key is read ONCE — `STATIC_KEY` is the compiler
+ * saying it would have read it once anyway, so there is no effect to open and
+ * no previous-key record to keep, and on this backend that is true of every key.
+ */
+export function branch<K>(
+  s: Scope | null,
+  parent: Node | null,
+  anchor: Node | null,
+  key: Cell<K>,
+  bodies: Block<unknown> | readonly (Block<unknown> | null | undefined)[],
+  flags = 0,
+): SsrHtml {
+  const given = requireScope(s, "branch");
+  refuseASite(parent, anchor, "branch");
+  cellSlot(key, "branch key");
+  const k = untrack(key);
+  const body = typeof bodies === "function" ? bodies : bodies[k as unknown as number];
+  const inner = activate(given, body, NO_ARGS, flags, "branch");
+  return html((flags & HYDRATE) === 0 ? inner : range(inner, k));
+}
+
+/**
+ * The four modes of `each`, byte for byte with `flow.ts`'s table:
+ *
+ * | `keyOf`    | identity        | row Block receives          |
+ * |------------|-----------------|-----------------------------|
+ * | `null`     | the item        | `(item, index: Cell)`       |
+ * | a function | `keyOf(item)`   | `(item: Cell, index: Cell)` |
+ * | `false`    | the index       | `(item: Cell, index)`       |
+ * | `COUNT`    | the index       | `(index)`                   |
+ *
+ * Getting the boxing backwards is the classic `For` bug, so it is one table in
+ * both halves rather than two readings of prose.
+ */
+export function each<T>(
+  s: Scope | null,
+  parent: Node | null,
+  anchor: Node | null,
+  src: Cell<readonly T[] | null | undefined> | Cell<number>,
+  keyOf: ((item: T) => unknown) | false | null | typeof COUNT,
+  row: Block<unknown, never[]>,
+  flags = 0,
+  fallback?: Block<unknown> | null,
+): SsrHtml {
+  const given = requireScope(s, "each");
+  refuseASite(parent, anchor, "each");
+  cellSlot(src, "each source");
+  const value = untrack(src as Cell<unknown>);
+  // Every ROW gets a range of its own, because a row is the unit a client
+  // claims: `mapArray` asks for row `i` and the claim hands it row `i`'s nodes.
+  // The list's own range is what tells the client where the rows stop.
+  const wrap = (flags & HYDRATE) === 0 ? (inner: string): string => inner : range;
+
+  if (keyOf === COUNT) {
+    const total = typeof value === "number" && value > 0 ? Math.floor(value) : 0;
+    if (total === 0) return html(wrap(activate(given, fallback, NO_ARGS, 0, "each")));
+    let out = "";
+    for (let i = 0; i < total; i++) out += wrap(activate(given, row, [i], 0, "each"));
+    return html(wrap(out));
+  }
+
+  const items = isArray<T>(value) ? value : [];
+  if (items.length === 0) return html(wrap(activate(given, fallback, NO_ARGS, 0, "each")));
+  const boxedItem = keyOf === false || typeof keyOf === "function";
+  const boxedIndex = keyOf !== false;
+  let out = "";
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const itemArg = boxedItem ? (): T => item : item;
+    const indexArg = boxedIndex ? (): number => i : i;
+    out += wrap(activate(given, row, [itemArg, indexArg], 0, "each"));
+  }
+  return html(wrap(out));
+}
+
+export type BoundaryKind = "error" | "loading";
+
+/**
+ * E3 on the wire: a `branch` keyed on `{content | fallback}` plus a `try`.
+ *
+ * Both kinds collapse to the same shape here because a server render has one
+ * frame. An error boundary catches a CONSTRUCTION throw (E2.1 — the catcher is
+ * installed before the body runs, so a throw from inside an effect the body
+ * created lands in this `try` too) and a loading boundary catches
+ * `NotReadyError`, which E2.3 says an error boundary must pass through.
+ *
+ * What a server cannot do is the client's swap: there is no later frame to
+ * reveal content in. `renderPage` settles the graph and renders a second time
+ * for exactly that reason, and M6's streaming path is the other answer.
+ */
+export function boundary(
+  s: Scope | null,
+  parent: Node | null,
+  anchor: Node | null,
+  kind: BoundaryKind,
+  fallback: Block<unknown> | null | undefined,
+  body: Block<unknown>,
+  flags = 0,
+  on?: Cell<unknown>,
+): SsrHtml {
+  const given = requireScope(s, "boundary");
+  refuseASite(parent, anchor, "boundary");
+  if (on !== undefined) cellSlot(on, "boundary on");
+  const inner =
+    kind === "error"
+      ? errorBoundary(given, fallback, body, flags)
+      : loadingBoundary(given, fallback, body);
+  // A DEFERRED boundary has already written its own range — `<!--[b:N-->`, the
+  // one the stream will swap — so wrapping it again would nest a range the
+  // client would claim as this boundary's content.
+  if ((flags & HYDRATE) === 0 || inner.t.startsWith(`${OPEN}b:`)) return inner;
+  return html(range(inner.t));
+}
+
+function errorBoundary(
+  given: Scope | null,
+  fallback: Block<unknown> | null | undefined,
+  body: Block<unknown>,
+  flags: number,
+): SsrHtml {
+  const collector = createErrorCollector();
+  const reset = (): void => collector.clear();
+  const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
+
+  // E2.1: the catcher is on the INSTANCE scope and is installed before the
+  // body runs, so a throw routed to `s.catcher` from anywhere below reaches
+  // this collector rather than the scope above the boundary.
+  const content: Block<unknown> = (scope: Scope | null): unknown => {
+    provideOn(scope as Scope, ERROR_BOUNDARY, (err: unknown) => {
+      if (err instanceof NotReadyError) throw err;
+      collector.capture(err);
+    });
+    return invokeBlock(scope, body, NO_ARGS);
+  };
+
+  try {
+    const inner = activate(given, content, NO_ARGS, flags, "branch");
+    if (!collector.failed()) return html(inner);
+  } catch (error) {
+    // E2.3: a `NotReadyError` belongs to the nearest loading boundary and is
+    // never captured here.
+    if (error instanceof NotReadyError) throw error;
+    collector.capture(error);
+  }
+  if (fallback === null || fallback === undefined) return html("");
+  const error = (): Error => asError(collector.error());
+  return html(activate(given, fallback, [error, reset], flags, "branch"));
+}
+
+function loadingBoundary(
+  given: Scope | null,
+  fallback: Block<unknown> | null | undefined,
+  body: Block<unknown>,
+): SsrHtml {
+  const pending = createPendingCollector();
+  const content: Block<unknown> = (scope: Scope | null): unknown => {
+    pending.install(scope as Scope);
+    return invokeBlock(scope, body, NO_ARGS);
+  };
+  try {
+    const inner = activate(given, content, NO_ARGS, 0, "branch");
+    if (pending.count() === 0) return html(inner);
+  } catch (error) {
+    if (!(error instanceof NotReadyError)) throw error;
+  }
+  const shown = activate(given, fallback, NO_ARGS, 0, "branch");
+  // §3.11's streaming form: the fallback goes out now, and the pair
+  // `(content Block, this scope)` goes to the sink so the same Block can be
+  // re-invoked when its promises settle. There is no second rendering path —
+  // the continuation IS the Block the shell already refused to wait for.
+  if (SINK === null) return html(shown);
+  return html(deferredRange(SINK.defer(content, given), shown));
+}
+
+/**
+ * A portal writes NOTHING to the wire, and that is agreement rather than
+ * omission: its target is a node in the client's document, which a server
+ * cannot address, and the DOM path renders nothing into a `renderToString`
+ * container either — the marker is not connected while the tree is detached, so
+ * the deferred activation returns before it builds. The empty range is what the
+ * client claims and fills.
+ */
+export function portal(
+  s: Scope | null,
+  target: Cell<Node | string | null | undefined>,
+  _block: Block<unknown>,
+  _flags = 0,
+): SsrHtml {
+  requireScope(s, "portal");
+  cellSlot(target, "portal target");
+  // An empty range, and it earns its bytes. `portal` on the client returns a
+  // marker at its LEXICAL position and builds elsewhere on a microtask, so the
+  // wire has nothing for the client to claim — but the POSITION still has to be
+  // claimable, or the hole after it walks into the previous one's close comment.
+  return html((_flags & HYDRATE) === 0 ? "" : range(""));
+}
+
+/**
+ * The pair a string primitive can never be given. `flow.ts` resolves the parent
+ * from the anchor on every write; there is no node here to resolve, so a
+ * non-null pair means a DOM-target call reached the string runtime and the
+ * markup it would produce would silently drop the subtree.
+ */
+function refuseASite(parent: Node | null, anchor: Node | null, origin: string): void {
+  if (parent === null && anchor === null) return;
+  throw new Error(
+    `${origin} was given a DOM insertion point on the string backend. The server emits ` +
+      "`(null, null)`; a node here means a module compiled for the DOM is calling " +
+      "`@barqjs/core/server`.",
+  );
+}
+
+// ============================================================================
+// The fourteen constructs, as string components
+// ============================================================================
+//
+// `passes/flow.rs` lowers eleven of these to a primitive directly and never
+// emits the call below for them. What is left is the shapes the pass refuses —
+// a spread source, an unreadable `keyed`, and the three constructs §3.4 names
+// as refusals — and they reach the SAME four primitives one adapter frame
+// later, which is the direction that is always safe.
+//
+// These are `components.ts`'s adapters with the string primitives underneath.
+// They exist so that no construct anywhere sends anything to another backend:
+// the whole-module SSR→DOM downgrade is gone, and with it the eight-component
+// set that triggered it.
+
+/** A CELL-slot read (§3.0 rule 2): called with no scope, never with one. */
+function readValue(slot: unknown, origin: string): unknown {
+  cellSlot(slot, origin);
+  return typeof slot === "function" ? (slot as () => unknown)() : slot;
+}
+
+function slotBlock(slot: unknown): Block<unknown> | null {
+  return slot === null || slot === undefined ? null : (slot as Block<unknown>);
+}
+
+export function ssrShow<T>(
+  s: Scope | null,
+  props: {
+    when?: unknown;
+    keyed?: unknown;
+    fallback?: unknown;
+    children?: unknown;
+  },
+): SsrHtml {
+  const value = (): T => readValue(props.when, "Show.when") as T;
+  const keyed = readValue(props.keyed, "Show.keyed");
+  const key: Cell<unknown> =
+    keyed === false
+      ? (): unknown => value() !== false && !!value()
+      : (): unknown => value() || false;
+  // ONE body for every key (§3.4), exactly as `components.ts:119` writes it: the
+  // value is read at ACTIVATION time, which is why the branch takes no slot
+  // argument of its own. Keyed children get the raw value; non-keyed get a
+  // narrowed accessor.
+  const content: Block<unknown> = (scope: Scope | null): unknown => {
+    const current = untrack(value);
+    return current
+      ? invokeBlock(scope, props.children, [keyed === false ? value : current])
+      : invokeBlock(scope, props.fallback, NO_ARGS);
+  };
+  return branch(s, null, null, key, content);
+}
+
+export function ssrFor<T>(
+  s: Scope | null,
+  props: {
+    each?: unknown;
+    fallback?: unknown;
+    keyed?: unknown;
+    children: (s: Scope | null, item: never, index: never) => unknown;
+  },
+): SsrHtml {
+  // §3.0 rule 1, drawn where `For` draws it (components.ts:158): a Cell declares
+  // no parameter and a key function declares one, and that is the only thing
+  // separating them once both are values in the same slot.
   const carrier = props.keyed;
-  const keyed =
+  const resolved =
     typeof carrier === "function" && (carrier as { length: number }).length >= 1
       ? carrier
-      : unwrap(carrier);
-  if (keyed === false) return ssrIndex(s, props);
-  const items = rows(props.each);
-  if (items.length === 0) return fallbackHtml(props);
-  // A key FUNCTION makes the row survive an item change, so `children` takes
-  // the item as an accessor there and as a plain value everywhere else
-  // (`components.ts:259`). Getting this backwards is the classic For bug.
-  const boxed = typeof keyed === "function";
-  const children = props.children as unknown as (
-    s: Scope | null,
-    item: unknown,
-    index: () => number,
-  ) => unknown;
-  let out = "";
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    out += esc(children(s, boxed ? (): unknown => item : item, () => i));
-  }
-  return html(out);
+      : readValue(carrier, "For.keyed");
+  const keyOf =
+    typeof resolved === "function"
+      ? (resolved as (item: T) => unknown)
+      : resolved === false
+        ? false
+        : null;
+  return eachOf(s, props.each, keyOf, props, "For");
 }
 
-export function ssrIndex(s: Scope | null, props: ListProps): SsrHtml {
-  const items = rows(props.each);
-  if (items.length === 0) return fallbackHtml(props);
-  const children = props.children as unknown as (
-    s: Scope | null,
-    item: () => unknown,
-    index: number,
-  ) => unknown;
-  let out = "";
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    out += esc(children(s, () => item, i));
-  }
-  return html(out);
+export function ssrIndex<T>(
+  s: Scope | null,
+  props: {
+    each?: unknown;
+    fallback?: unknown;
+    children: (s: Scope | null, item: never, index: never) => unknown;
+  },
+): SsrHtml {
+  return eachOf<T>(s, props.each, false, props, "Index");
+}
+
+function eachOf<T>(
+  s: Scope | null,
+  source: unknown,
+  keyOf: ((item: T) => unknown) | false | null,
+  props: { children: unknown; fallback?: unknown },
+  origin: string,
+): SsrHtml {
+  const list = (): readonly T[] => readValue(source, `${origin}.each`) as readonly T[];
+  return each(
+    s,
+    null,
+    null,
+    list,
+    keyOf,
+    props.children as Block<unknown, never[]>,
+    0,
+    slotBlock(props.fallback),
+  );
 }
 
 export function ssrRepeat(
@@ -588,36 +1018,23 @@ export function ssrRepeat(
     children: (s: Scope | null, index: number) => unknown;
   },
 ): SsrHtml {
-  const raw = unwrap(props.count);
-  const total = typeof raw === "number" && raw > 0 ? Math.floor(raw) : 0;
-  if (total === 0) return fallbackHtml(props);
-  const from = unwrap(props.from);
-  const start = typeof from === "number" ? from : 0;
-  let out = "";
-  for (let i = 0; i < total; i++) out += esc(props.children(s, start + i));
-  return html(out);
+  const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
+  const count = (): number => readValue(props.count, "Repeat.count") as number;
+  const shifted: Block<unknown> = (scope: Scope | null, index: unknown): unknown =>
+    invokeBlock(scope, props.children, [(index as number) + from()]);
+  return each(
+    s,
+    null,
+    null,
+    count,
+    COUNT,
+    shifted as Block<unknown, never[]>,
+    0,
+    slotBlock(props.fallback),
+  );
 }
 
-export function ssrShow(
-  s: Scope | null,
-  props: {
-    when?: unknown;
-    keyed?: unknown;
-    fallback?: unknown;
-    children?: unknown;
-  },
-): SsrHtml {
-  const value = unwrap(props.when);
-  if (!value) return fallbackHtml(props);
-  const children = props.children;
-  if (typeof children !== "function") return html(esc(children));
-  // Non-keyed narrows to an accessor so reads inside stay live on the client;
-  // on the wire both spellings are read exactly once.
-  const argument = unwrap(props.keyed) === false ? (): unknown => value : value;
-  return html(esc((children as (s: Scope | null, item: unknown) => unknown)(s, argument)));
-}
-
-/** `Match` is an identity function on the client too — `components.ts:525`. */
+/** `Match` is an identity function on the client too — `components.ts:249`. */
 export function ssrMatch<T>(_s: Scope | null, props: T): T {
   return props;
 }
@@ -626,24 +1043,193 @@ export function ssrSwitch(
   s: Scope | null,
   props: { fallback?: unknown; children?: unknown },
 ): SsrHtml {
-  const resolved =
-    typeof props.children === "function"
-      ? (props.children as (s: Scope | null) => unknown)(s)
-      : props.children;
-  const children = isArray<unknown>(resolved) ? resolved : [resolved];
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i] as { when?: unknown; children?: unknown } | null;
-    if (!child || typeof child !== "object" || !("when" in child)) continue;
-    const value = unwrap(child.when);
-    if (!value) continue;
-    const body = child.children;
-    return html(
-      esc(
-        typeof body === "function"
-          ? (body as (s: Scope | null, v: unknown) => unknown)(s, value)
-          : body,
-      ),
-    );
+  const arms = (): { index: number; value: unknown; match: Record<string, unknown> } | null => {
+    const resolved = invokeBlock(s, props.children, NO_ARGS);
+    const children = isArray<unknown>(resolved) ? resolved : [resolved];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i] as Record<string, unknown> | null;
+      if (!child || typeof child !== "object" || !("when" in child)) continue;
+      const value = readValue(child.when, "Match.when");
+      if (value) return { index: i, value, match: child };
+    }
+    return null;
+  };
+  // Row 0 is the fallback, so "no arm matched" is a key like any other — the
+  // same table `passes/flow.rs` builds when it lowers a `Switch` itself.
+  const found = arms();
+  const key = (): number => (found === null ? 0 : found.index + 1);
+  const body: Block<unknown> = (scope: Scope | null): unknown =>
+    found === null
+      ? invokeBlock(scope, props.fallback, NO_ARGS)
+      : invokeBlock(scope, found.match.children, [found.value]);
+  return branch(s, null, null, key, body);
+}
+
+export function ssrLoading(
+  s: Scope | null,
+  props: { fallback?: unknown; on?: unknown; children: unknown },
+): SsrHtml {
+  return boundary(
+    s,
+    null,
+    null,
+    "loading",
+    slotBlock(props.fallback),
+    props.children as Block<unknown>,
+    0,
+    props.on === undefined ? undefined : (): unknown => readValue(props.on, "Loading.on"),
+  );
+}
+
+export function ssrErrored(
+  s: Scope | null,
+  props: { fallback: unknown; children: unknown },
+): SsrHtml {
+  return boundary(
+    s,
+    null,
+    null,
+    "error",
+    props.fallback as Block<unknown>,
+    props.children as Block<unknown>,
+  );
+}
+
+/** The pre-Solid-2.0 spelling, whose fallback takes the error BY VALUE. */
+export function ssrErrorBoundary(
+  s: Scope | null,
+  props: { fallback: unknown; children: unknown },
+): SsrHtml {
+  const fallback: Block<unknown> = (scope: Scope | null, error: unknown, reset: unknown): unknown =>
+    invokeBlock(scope, props.fallback, [(error as Cell<Error>)(), reset]);
+  return boundary(s, null, null, "error", fallback, props.children as Block<unknown>);
+}
+
+export function ssrPortal(
+  s: Scope | null,
+  props: { target?: unknown; children: unknown },
+): SsrHtml {
+  return portal(
+    s,
+    (): Node | string | null | undefined =>
+      readValue(props.target, "Portal.target") as Node | string | undefined,
+    props.children as Block<unknown>,
+  );
+}
+
+/**
+ * `Await` — four states, three bodies, one `branch` keyed on the state. The
+ * same shape `components.ts` builds, with the error arm's bare-message case
+ * emitting text instead of a text NODE.
+ */
+export function ssrAwait<T>(
+  s: Scope | null,
+  props: { resource?: unknown; loading?: unknown; error?: unknown; children: unknown },
+): SsrHtml {
+  const resolve = (): Resource<T> => {
+    const carrier = props.resource;
+    // A `Resource` is itself callable, so forwarding one by name (C5) puts a
+    // value-carrying Cell and the resource in the same slot. The resource is
+    // told from its own value by a property it has and a value does not.
+    return (
+      typeof carrier === "function" && "state" in carrier
+        ? carrier
+        : readValue(carrier, "Await.resource")
+    ) as Resource<T>;
+  };
+  const key = (): number => {
+    switch (resolve().state()) {
+      case "unresolved":
+      case "pending":
+        return 0;
+      case "errored":
+        return 1;
+      default:
+        return 2;
+    }
+  };
+  const failed: Block<unknown> = (scope: Scope | null): unknown => {
+    const error = untrack(() => resolve().error());
+    if (props.error && error) return invokeBlock(scope, props.error, [error]);
+    return error ? error.message : null;
+  };
+  const ready: Block<unknown> = (scope: Scope | null): unknown => {
+    const data = untrack(() => resolve().latest());
+    return data === undefined ? null : invokeBlock(scope, props.children, [data]);
+  };
+  return branch(s, null, null, key, [slotBlock(props.loading), failed, ready]);
+}
+
+/**
+ * `Dynamic` — a `branch` keyed on the component VALUE, with one body for every
+ * key. The string arm writes the tag itself: `spreadAttrs` is the same
+ * attribute policy every other hole on this backend goes through, so a
+ * runtime-chosen tag cannot escape the escaping.
+ */
+export function ssrDynamic(
+  s: Scope | null,
+  props: { component?: unknown } & Record<string, unknown>,
+): SsrHtml {
+  const component = (): unknown => readValue(props.component, "Dynamic.component");
+  const body: Block<unknown> = (scope: Scope | null): unknown => {
+    const resolved = untrack(component);
+    if (!resolved) return null;
+    // C3/C5: `rest` is a VIEW of the same carriers, not a copy.
+    const rest = omit(props, "component");
+    if (typeof resolved !== "string") return invokeBlock(scope, resolved, [rest]);
+    // The tag is RUNTIME DATA here, which makes it the same injection the
+    // attribute-name check exists for: `component={"div onload=alert(1)"}`
+    // writes two attributes into markup where `document.createElement` throws
+    // `InvalidCharacterError` and writes nothing. Refusing is what makes the two
+    // paths agree.
+    checkName(resolved, "tag");
+    const inner = rest.children === undefined ? "" : esc(rest.children);
+    const open = `<${resolved}${spreadAttrs(omit(rest, "children"), resolved)}`;
+    return raw(VOID_TAGS.has(resolved) ? `${open}>` : `${open}>${inner}</${resolved}>`);
+  };
+  return branch(s, null, null, component, body);
+}
+
+/** The tags a serialiser writes with no end tag. `dom.ts` never needs this — a
+ * void element simply has no children to append — and a string does. */
+const VOID_TAGS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+/**
+ * `Reveal` — a PROVIDE scope, not a range (O1 lists `provide` separately). It
+ * publishes the coordinator descendant loading boundaries register with and
+ * owns nothing else, which is exactly as true on the wire as it is in the DOM.
+ */
+export function ssrReveal(
+  s: Scope | null,
+  props: { order?: unknown; collapsed?: unknown; children: unknown },
+): SsrHtml {
+  const handle: RevealHandle = createRevealCoordinator(
+    () =>
+      (readValue(props.order, "Reveal.order") as "sequential" | "together" | "natural") ??
+      "natural",
+    () => readValue(props.collapsed, "Reveal.collapsed") === true,
+  );
+  // X1: enter, fork, write, invoke — in that order, and on a scope of its own.
+  const scope = enter(s ?? null, "provide");
+  try {
+    provideOn(scope, REVEAL_COORD, handle);
+    return html(esc(invokeBlock(scope, props.children, NO_ARGS)));
+  } finally {
+    exit(scope);
   }
-  return fallbackHtml(props);
 }

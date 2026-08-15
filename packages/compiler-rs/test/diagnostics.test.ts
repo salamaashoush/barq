@@ -221,9 +221,6 @@ describe("the diagnostic engine", () => {
         `const [state] = useStore({ rows: [] });\n` +
         "export const V = () => <For each={state.rows}>{(row) => <li>{row.name}</li>}</For>;\n",
       BARQ005: "export const V = ({ text }) => <p>{text}</p>;\n",
-      BARQ007:
-        `import { Portal } from "@barqjs/core";\n` +
-        "export const V = () => <Portal><b>x</b></Portal>;\n",
       BARQ008:
         "// barq-ignore-next-line BARQ001 (nothing reports this here)\n" +
         "export const V = () => <p>ok</p>;\n",
@@ -245,9 +242,7 @@ describe("the diagnostic engine", () => {
 
     for (const code of advertised) {
       const source = reachable[code]!;
-      const options =
-        code === "BARQ007" ? { ssr: true } : {};
-      expect(codes(diagnose(source, options)), `${code} is unreachable`).toContain(code);
+      expect(codes(diagnose(source)), `${code} is unreachable`).toContain(code);
     }
   });
 

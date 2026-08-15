@@ -14,6 +14,8 @@ import {
 import { FIXTURE_DIR } from "./harness.ts"
 import { L4_RULES } from "./graded.ts"
 import { L4_DIR } from "./session.ts"
+import { ADDRESS_CHANNEL_RULES } from "./addresses.ts"
+import { HYDRATION_CHANNEL_RULES } from "./hydration.ts"
 import { CHANNEL_RULES, OWNERSHIP_DIR } from "./ownership.ts"
 import {
   documentedRules,
@@ -29,6 +31,7 @@ import {
   STATUS_LETTER,
 } from "./semantics.ts"
 import { FICTION_PINS, UNPINNED_RULES } from "./unpinned-rules.ts"
+import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
 
 /**
  * Layer L1 of the oracle, run against the CURRENT compiler — `CODESIGN.md` §8's
@@ -68,14 +71,18 @@ const OUTCOMES: Outcome[] = RUNS.flatMap((run) => run.outcomes)
 
 /**
  * Every rule something executable can report: an L1 fixture that declares it,
- * the L2b ownership channel's declared reach, or the L4 channels' — the
- * metamorphic node-identity grade, the leak oracle and the single-evaluation
- * conformance, whose reach is `graded.ts`'s `L4_RULES`. Everything else in the
- * document is prose, and `UNPINNED_RULES` is the checked-in list of it.
+ * the L2b ownership channel's declared reach, the address channel's, the
+ * hydration channel's, or the L4 channels' — the metamorphic node-identity
+ * grade, the leak oracle and the single-evaluation conformance, whose reach is
+ * `graded.ts`'s `L4_RULES`.
+ * Everything else in the document is prose, and `UNPINNED_RULES` is the
+ * checked-in list of it.
  */
 const PINNED = new Set<string>([
   ...RUNS.flatMap((run) => run.rules),
   ...CHANNEL_RULES,
+  ...ADDRESS_CHANNEL_RULES,
+  ...HYDRATION_CHANNEL_RULES,
   ...L4_RULES,
 ])
 
@@ -293,6 +300,15 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
       }
     }
     expect(malformed).toEqual([])
+  })
+
+  it("no registry row is past the milestone it promised", () => {
+    const late = KNOWN_FAILURES.filter((row) => overdue(row.greenAt)).map(
+      (row) =>
+        `OVERDUE: ${registryKey(row.fixture, row.claim)} promised green at ${row.greenAt} and is ` +
+        `still ${row.status} at M${CURRENT_MILESTONE}`,
+    )
+    expect(late.join("\n"), OVERDUE_WHY).toBe("")
   })
 
   it("no claim has two rows", () => {

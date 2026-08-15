@@ -42,15 +42,23 @@ pub fn run<'a>(
     // is also `NO_SCOPE`'s proof — and before P5, because nothing it builds
     // reaches the skeleton.
     //
-    // The flow lowering is off for the string backend: P8b rewrites a flow
-    // component to its own string implementation, and there is nothing left to
-    // rewrite once the construct has become a DOM primitive.
-    shape::run(allocator, module, options, opt.flow && target.walks_the_dom());
-    // The three guarded passes are artefacts of the DOM backend and nothing
-    // else reads them: a `<!---->` is an insert anchor, a `template()` is a
-    // parse, and an address is a sibling walk. P8b concatenates bytes and has
-    // none of the three (DESIGN §5). The DOM order is left exactly as it was.
-    if target.walks_the_dom() {
+    // Ungated on the target since M6. The gate was there because P8b owned a
+    // hand-written string implementation of every construct, so a construct that
+    // had already become a primitive had nothing left for it to rewrite; the
+    // string backend now implements the four primitives itself, and the SAME
+    // lowered IR serves both.
+    shape::run(allocator, module, options, opt.flow);
+    // A `<!---->` is an insert anchor for a sibling walk, and the string backend
+    // has no walk. It is also the reason a `NodeId` may never reach a
+    // compile-time address: this pass makes the two targets' skeletons differ.
+    //
+    // Under `hydratable` it runs for the string backend TOO, and then the two
+    // skeletons agree again. That is not a convenience: the client's logical
+    // walk indexes the server's child list, a marker is a node in it, and a
+    // marker the wire omitted would shift every index after it by one. The
+    // string backend still has no walk — it serialises the comment and nothing
+    // reads it there. `SEMANTICS.md` H3.
+    if target.walks_the_dom() || options.hydratable {
         anchor::run(allocator, module, opt.anchor);
     }
     // Skipped whole: a `SetLive` with no group header is the one-effect-per-prop
@@ -58,12 +66,28 @@ pub fn run<'a>(
     if opt.fuse {
         group::run(allocator, module);
     }
+    // After P5, so the anchor a region receives is the one the anchor pass
+    // chose for its slot, and before P6, so the parent and the anchor are both
+    // addressed. This is the whole point of the opcode: the pair comes from the
+    // template walk, and the runtime stops re-deriving it.
+    //
+    // Ungated: the claim moves a staged region into the unit whose patch stands
+    // on it, which is a fact about the IR rather than about a backend. The
+    // string backend reaches the same `Op::Region` from the same slot and hands
+    // the primitive `(null, null)` — it has no nodes to name, and the range it
+    // owns is the markup it returns.
+    claim_regions(module);
+    // §3.11's compile-time addresses, for EVERY target and after the claim, so
+    // an `Op::Region` and the `Op::Insert` it replaced address the same JSX
+    // position. Nothing downstream reads the table, which is what makes the
+    // corpus-wide both-ways diff evidence about the IR rather than about a
+    // side effect of building it.
+    address::locate(module);
+    // The two guarded passes are artefacts of the DOM backend and nothing else
+    // reads them: a `template()` is a parse and an address is a sibling walk.
+    // P8b concatenates bytes and has neither (DESIGN §5). The DOM order is left
+    // exactly as it was.
     if target.walks_the_dom() {
-        // After P5, so the anchor a region receives is the one the anchor pass
-        // chose for its slot, and before P6, so the parent and the anchor are
-        // both addressed. This is the whole point of the opcode: the pair comes
-        // from the template walk, and the runtime stops re-deriving it.
-        claim_regions(module);
         serialize::run(module, opt.dedup);
         address::run(allocator, module, opt.walk);
     }
@@ -112,6 +136,11 @@ fn staged_region(
         return None;
     };
     uids.region_index(identifier.name.as_str())
+}
+
+/// §3.11's address table as JSON, for a caller across the napi boundary.
+pub fn address_json(module: &Module<'_>, path: &str) -> String {
+    address::to_json(module, path)
 }
 
 /// Every region the module still owns, for a consumer that has to see all of

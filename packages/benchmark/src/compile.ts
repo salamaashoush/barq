@@ -48,6 +48,22 @@ export function compileBarq(source: string, filename: string, ssr: boolean): str
   return result.code;
 }
 
+/**
+ * The same compile, with the warnings handed back instead of thrown.
+ *
+ * A benchmark row whose whole subject is a compiler REFUSAL — the pre-M6
+ * whole-module SSR→DOM downgrade — cannot use a helper that treats the
+ * refusal's diagnostic as a bug in the benchmark.
+ */
+export function compileBarqWithWarnings(
+  source: string,
+  filename: string,
+  ssr: boolean,
+): { code: string; warnings: string[] } {
+  const result = native.transform(source, { filename, ssr });
+  return { code: result.code, warnings: result.warnings };
+}
+
 export async function compileSolid(
   source: string,
   filename: string,

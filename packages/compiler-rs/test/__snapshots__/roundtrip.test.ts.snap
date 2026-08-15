@@ -106,7 +106,7 @@ export const steps = [() => n.set(2), () => n.set(3)];
 `;
 
 exports[`emitted code snapshots attribute-namespaces 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr, setDomProp as _$setDomProp, setBool as _$setBool, ref as _$ref, listen as _$listen } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr, setDomProp as _$setDomProp, setBool as _$setBool, ref as _$ref, listen as _$listen } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><my-grid label="grid"></my-grid><button type="button">beep</button></div>\`);
 const _h$1 = () => beeps.set(beeps() + 1);
 export const rows = signal(2);
@@ -132,7 +132,7 @@ export default function AttributeNamespaces(_s$) {
   _$ref(_s$, _el$2, (el: Element) => {
     grid = el;
   });
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: rows(),
     b: compact()
   }), (_v$, _p$ = {}) => {
@@ -140,7 +140,7 @@ export default function AttributeNamespaces(_s$) {
     if (_v$.b !== _p$.b) _$setBool(_el$2, "compact", _v$.b);
   });
   _$listen(_s$, _el$3, "my-beep", _h$1);
-  _$renderEffect(() => String(beeps()), (_v$, _p$) => {
+  _$bindEffect(_s$, () => String(beeps()), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$3, "data-beeps", _v$);
   });
   return _el$1;
@@ -190,7 +190,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots auto-thunked-read 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><p>attr</p><span></span><b></b></div>\`);
 export const count = signal(1);
 /**
@@ -216,7 +216,7 @@ export default function AutoThunkedRead(_s$) {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$renderEffect(() => \`count: \${count()}\`, (_v$, _p$) => {
+  _$bindEffect(_s$, () => \`count: \${count()}\`, (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$2, "title", _v$);
   });
   _$insert(_s$, _el$3, () => \`n=\${count()}\`);
@@ -288,21 +288,22 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots boolean-and-nullish-props 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr, setDomProp as _$setDomProp } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr, setDomProp as _$setDomProp } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><button type="button">b</button><span></span></div>\`);
 export const flag = signal<boolean>(false);
 export default function BooleanAndNullishProps(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$renderEffect(() => flag(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => flag(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setDomProp(_el$2, "disabled", _v$);
   });
-  _$renderEffect(() => flag() ? "yes" : null, (_v$, _p$) => {
+  _$bindEffect(_s$, () => flag() ? "yes" : null, (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$3, "data-present", _v$);
   });
   return _el$1;
 }
+BooleanAndNullishProps = _$block(BooleanAndNullishProps);
 export const steps = [() => flag.set(true), () => flag.set(false)];
 export const optimality = {
   target: 3,
@@ -320,7 +321,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-empty-string 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setClass as _$setClass, setClassList as _$setClassList } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setClass as _$setClass, setClassList as _$setClassList } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span data-p="static" class=""></span><span data-p="dynamic"></span><span data-p="merged"></span><span data-p="not-an-object"></span></div>\`);
 export const label = signal("");
 export const extra = signal(false);
@@ -348,16 +349,17 @@ export default function ClassEmptyString(_s$) {
   const _el$2 = _el$1.lastChild;
   const _el$3 = _el$2.previousSibling;
   const _el$4 = _el$3.previousSibling;
-  _$renderEffect(() => ({ a: label() }), (_v$, _p$ = {}) => {
+  _$bindEffect(_s$, () => ({ a: label() }), (_v$, _p$ = {}) => {
     _v$.a = _$setClass(_el$4, "class", _v$.a, _p$.a);
   });
-  _$renderEffect(() => ({ a: extra() ? "on" : "" }), (_v$, _p$ = {}) => {
+  _$bindEffect(_s$, () => ({ a: extra() ? "on" : "" }), (_v$, _p$ = {}) => {
     _v$.a = _$setClass(_el$3, "class", _v$.a, _p$.a);
   });
   _$setClassList(_el$3, "classList", { hit: () => extra() });
   _$setClassList(_el$2, "classList", ("a b" as unknown) as Record<string, boolean>);
   return _el$1;
 }
+ClassEmptyString = _$block(ClassEmptyString);
 export const steps = [() => label.set("b"), () => extra.set(true)];
 export const optimality = {
   target: 4,
@@ -372,7 +374,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-list-array-object 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setClass as _$setClass } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><span>array</span><span>object</span></div>\`);
 export const on = signal(false);
 export default function ClassListArrayObject(_s$) {
@@ -380,7 +382,7 @@ export default function ClassListArrayObject(_s$) {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
   _$setClass(_el$2, "class", ["a", "b"]);
-  _$renderEffect(() => ({ a: {
+  _$bindEffect(_s$, () => ({ a: {
     base: true,
     active: on()
   } }), (_v$, _p$ = {}) => {
@@ -388,6 +390,7 @@ export default function ClassListArrayObject(_s$) {
   });
   return _el$1;
 }
+ClassListArrayObject = _$block(ClassListArrayObject);
 export const steps = [() => on.set(true), () => on.set(false)];
 export const optimality = {
   target: 4,
@@ -398,14 +401,14 @@ export const optimality = {
   // channel WHOLE: nothing is joined into a string at compile time and nothing
   // is baked into the template, however constant it looks. The reactive one is
   // a field of the fused record and threads the string it applied last time.
-  emits: ["\\"class\\", [\\"a\\", \\"b\\"]", "renderEffect("],
+  emits: ["\\"class\\", [\\"a\\", \\"b\\"]", "bindEffect("],
   absent: ["class=\\""]
 };
 "
 `;
 
 exports[`emitted code snapshots class-list-prop 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setClassList as _$setClassList } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setClassList as _$setClassList } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span class="badge">keyed</span><span>reactive</span></div>\`);
 export const on = signal(false);
 /**
@@ -421,7 +424,7 @@ export default function ClassListProp(_s$) {
     active: () => on(),
     muted: false
   });
-  _$renderEffect(() => ({ a: {
+  _$bindEffect(_s$, () => ({ a: {
     "one two": on(),
     three: !on()
   } }), (_v$, _p$ = {}) => {
@@ -429,6 +432,7 @@ export default function ClassListProp(_s$) {
   });
   return _el$1;
 }
+ClassListProp = _$block(ClassListProp);
 export const steps = [() => on.set(true), () => on.set(false)];
 export const optimality = {
   target: 4,
@@ -449,7 +453,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-owns-only-its-tokens 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr, setClass as _$setClass, setClassList as _$setClassList, ref as _$ref } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr, setClass as _$setClass, setClassList as _$setClassList, ref as _$ref } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<b>x</b>\`);
 export const tone = signal("red");
 export const label = signal("first");
@@ -480,7 +484,7 @@ export const label = signal("first");
 export default function ClassOwnsOnlyItsTokens(_s$) {
   const _el$1 = _tmpl$1();
   _$ref(_s$, _el$1, (el: Element) => el.classList.add("ref-added"));
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: tone(),
     b: label()
   }), (_v$, _p$ = {}) => {
@@ -509,7 +513,7 @@ export const optimality = {
   // One effect for the element. \`ref\` is its own channel and \`classList\` a
   // static object, so neither opens one.
   emits: [
-    "renderEffect(",
+    "bindEffect(",
     "setClass(",
     "setClassList(",
     "ref("
@@ -520,7 +524,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-with-live-siblings 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr, setClass as _$setClass, setClassList as _$setClassList } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr, setClass as _$setClass, setClassList as _$setClassList } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div>x</div>\`);
 export const tone = signal("red");
 export const label = signal("first");
@@ -546,7 +550,7 @@ export const label = signal("first");
 */
 export default function ClassWithLiveSiblings(_s$) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: tone(),
     b: label(),
     c: label()
@@ -558,6 +562,7 @@ export default function ClassWithLiveSiblings(_s$) {
   _$setClassList(_el$1, "classList", { extra: true });
   return _el$1;
 }
+ClassWithLiveSiblings = _$block(ClassWithLiveSiblings);
 export const steps = [() => label.set("second"), () => tone.set("blue")];
 export const optimality = {
   target: 4,
@@ -569,7 +574,7 @@ export const optimality = {
   // \`optimality.test.ts\` — a needle naming a compiler uid in this block would
   // shift every emitted uid and quietly blind the harness's module-wide scans.
   emits: [
-    "renderEffect(",
+    "bindEffect(",
     "setClass(",
     "setAttr("
   ],
@@ -764,7 +769,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots component-forwarded-handler-tuple 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, delegateEvents as _$delegateEvents, cell as _$cell, block as _$block, setAttr as _$setAttr, bindEvent as _$bindEvent } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, cell as _$cell, block as _$block, setAttr as _$setAttr, bindEvent as _$bindEvent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="chip"></button>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"><b class="picked"></b></div>\`);
 const _k$1 = () => true;
@@ -803,7 +808,7 @@ function Chip(_s$, props: {
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => props.tone(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => props.tone(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$1, "data-tone", _v$);
   });
   _$setAttr(_el$1, "data-same", String(props.cb === props.cb));
@@ -1006,7 +1011,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots component-spread 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, props as _$props, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, props as _$props, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
 const _k$1 = () => "chip-2";
@@ -1017,7 +1022,7 @@ function Chip(_s$, props: {
   id: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: props.tone(),
     b: props.id()
   }), (_v$, _p$ = {}) => {
@@ -1062,7 +1067,7 @@ export const optimality = {
   emits: [
     "Chip(",
     "[{ label }, shared]",
-    "renderEffect(",
+    "bindEffect(",
     "\\"data-tone\\"",
     "\\"id\\""
   ],
@@ -2606,7 +2611,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots create-projection-store 1`] = `
-"import { createProjection, signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { createProjection, signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="projection"></div>\`);
 export const on = signal(false);
 /**
@@ -2620,7 +2625,7 @@ const selected = createProjection<{
 }, { on: false });
 export default function CreateProjectionStore(_s$) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => selected.on ? "1" : "0", (_v$, _p$) => {
+  _$bindEffect(_s$, () => selected.on ? "1" : "0", (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$1, "data-on", _v$);
   });
   _$insert(_s$, _el$1, () => selected.on ? "yes" : "no");
@@ -2643,17 +2648,18 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots custom-elements 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><my-widget size="lg"></my-widget><x-thing></x-thing><my-widget>with children</my-widget></div>\`);
 export const value = signal("v1");
 export default function CustomElements(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild.nextSibling;
-  _$renderEffect(() => value(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => value(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$2, "data-value", _v$);
   });
   return _el$1;
 }
+CustomElements = _$block(CustomElements);
 export const steps = [() => value.set("v2")];
 export const optimality = {
   target: 2,
@@ -2674,7 +2680,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots dangerously-set-inner-html 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setHtml as _$setHtml } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setHtml as _$setHtml } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="wrap"><div></div><span>after</span></div>\`);
 export const html = signal("<b>bold</b>");
 /**
@@ -2687,17 +2693,18 @@ export const html = signal("<b>bold</b>");
 export default function DangerouslySetInnerHtml(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$renderEffect(() => ({ a: { __html: html() } }), (_v$, _p$ = {}) => {
+  _$bindEffect(_s$, () => ({ a: { __html: html() } }), (_v$, _p$ = {}) => {
     _v$.a = _$setHtml(_el$2, "dangerouslySetInnerHTML", _v$.a, _p$.a);
   });
   return _el$1;
 }
+DangerouslySetInnerHtml = _$block(DangerouslySetInnerHtml);
 export const goesLive = ["dangerouslySetInnerHTML={{ __html: html() }}"];
 "
 `;
 
 exports[`emitted code snapshots dashboard-composite 1`] = `
-"import { useState, useStore, template as _$template, insert as _$insert, renderEffect as _$renderEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setDomProp as _$setDomProp, setClass as _$setClass } from "@barqjs/core";
+"import { useState, useStore, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setDomProp as _$setDomProp, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><input class="search"><button type="button" class="tab">switch</button><ul class="rows"></ul></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="anon">anonymous</p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<h1>Hello, </h1>\`);
@@ -2724,10 +2731,10 @@ export default function DashboardComposite(_s$) {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$renderEffect(() => ({ a: tab() === "posts" ? "posts" : "other" }), (_v$, _p$ = {}) => {
+  _$bindEffect(_s$, () => ({ a: tab() === "posts" ? "posts" : "other" }), (_v$, _p$ = {}) => {
     _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
   });
-  _$renderEffect(() => state.filters.search, (_v$, _p$) => {
+  _$bindEffect(_s$, () => state.filters.search, (_v$, _p$) => {
     if (_v$ !== _p$) _$setDomProp(_el$2, "value", _v$);
   });
   _el$2.$$input = _h$1, _el$2.$$s = _s$;
@@ -2984,7 +2991,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots diagnostic-accessor-coercion 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><p>live attribute</p><b></b><span></span></div>\`);
 export const count = signal("1");
 /**
@@ -3014,7 +3021,7 @@ export default function DiagnosticAccessorCoercion(_s$) {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$renderEffect(() => count(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => count(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$2, "id", _v$);
   });
   _$insert(_s$, _el$3, count);
@@ -3040,8 +3047,13 @@ export const optimality = {
     "count);",
     "\`total: \${count}\`);"
   ],
-  // No hole took a thunk: every patch argument is the expression itself.
-  absent: [", () =>"]
+  // No hole took a thunk: every patch argument is the expression itself, named
+  // per hole rather than as a bare \`, () =>\`. \`bindEffect\` takes the scope
+  // FIRST (O4.5), so its own compute — which has always been an arrow, and is
+  // not a hole — now sits after a comma and matches that shorter needle
+  // positionally. These two are the thunked forms of the two holes and nothing
+  // else can produce them.
+  absent: ["() => count());", "() => \`total: \${count}\`);"]
 };
 "
 `;
@@ -3122,7 +3134,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots equal-liveness 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<b></b>\`);
 export const tone = signal("red");
 /**
@@ -3141,7 +3153,7 @@ export const tone = signal("red");
 */
 export default function EqualLiveness(_s$) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: tone(),
     b: tone(),
     c: tone()
@@ -3152,6 +3164,7 @@ export default function EqualLiveness(_s$) {
   });
   return _el$1;
 }
+EqualLiveness = _$block(EqualLiveness);
 export const steps = [() => tone.set("blue"), () => tone.set("green")];
 /**
 * ONE entry for THREE holes, and that is B2's arithmetic rather than a slip.
@@ -3187,7 +3200,7 @@ export const optimality = {
   patchCalls: 3,
   // One effect for the element, with all three names written from inside it.
   emits: [
-    "renderEffect(",
+    "bindEffect(",
     "setClass(",
     "\\"id\\"",
     "\\"title\\""
@@ -3232,7 +3245,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots escaping-adversarial 1`] = `
-"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="adv"><p class="text"></p><p class="attr">attr</p><p class="static" title="&quot; onload=&quot;x">&lt;b&gt;not markup&lt;/b&gt; &amp;   𝕏 \u2028 done</p><pre class="pre"></pre><!----></div>\`);
 export const markup = signal("<img src=x onerror=\\"alert(1)\\">");
 export const quoted = signal("\\" onmouseover=\\"alert(1)\\" data-x=\\"");
@@ -3275,7 +3288,7 @@ export default function EscapingAdversarial(_s$) {
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
   const _el$5 = _el$4.previousSibling;
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: quoted(),
     b: amp()
   }), (_v$, _p$ = {}) => {
@@ -3771,7 +3784,11 @@ export const optimality = {
   // three effects here and produces identical DOM, so nothing but this count
   // can see the difference.
   patchCalls: 3,
-  absent: ["=>", "renderEffect"]
+  absent: [
+    "=>",
+    "renderEffect",
+    "bindEffect"
+  ]
 };
 "
 `;
@@ -3849,7 +3866,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots live-call-hole 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="call-hole"><b class="control">c</b></p>\`);
 export const count = signal("1");
 export const label = signal("c1");
@@ -3874,14 +3891,14 @@ export const label = signal("c1");
 export default function LiveCallHole(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: count(),
     b: String(count())
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setAttr(_el$1, "title", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$1, "data-text", _v$.b);
   });
-  _$renderEffect(() => label(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => label(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$2, "title", _v$);
   });
   _$insert(_s$, _el$1, () => String(count()), _el$2);
@@ -4061,14 +4078,14 @@ MathMl = _$block(MathMl);
 `;
 
 exports[`emitted code snapshots multi-prop-one-element 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 export const id = signal("a");
 export const title = signal("first");
 export const width = signal(10);
 export default function MultiPropOneElement(_s$) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: id(),
     b: title(),
     c: String(width())
@@ -4079,6 +4096,7 @@ export default function MultiPropOneElement(_s$) {
   });
   return _el$1;
 }
+MultiPropOneElement = _$block(MultiPropOneElement);
 export const steps = [
   () => id.set("b"),
   () => title.set("second"),
@@ -4094,14 +4112,14 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots multi-signal-expression 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="sum"></div>\`);
 export const a = signal(1);
 export const b = signal(2);
 /** Two independent dep sets joined into one hole and one attribute. */
 export default function MultiSignalExpression(_s$) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => \`\${a()}/\${b()}\`, (_v$, _p$) => {
+  _$bindEffect(_s$, () => \`\${a()}/\${b()}\`, (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$1, "data-both", _v$);
   });
   _$insert(_s$, _el$1, () => a() + b());
@@ -4122,7 +4140,7 @@ export const optimality = {
   emits: [
     "\\"data-both\\"",
     "a() + b()",
-    "renderEffect("
+    "bindEffect("
   ],
   // A group of one threads a SCALAR previous value, not the record a real
   // group needs: the accumulator's default object is what a group costs.
@@ -4235,7 +4253,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots numeric-and-boolean-attrs 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="attrs"><input id="x" tabIndex="2" maxLength="10"><span>s</span></div>\`);
 export const active = signal(false);
 /**
@@ -4247,11 +4265,12 @@ export const active = signal(false);
 export default function NumericAndBooleanAttrs(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.lastChild;
-  _$renderEffect(() => active() ? "on" : "off", (_v$, _p$) => {
+  _$bindEffect(_s$, () => active() ? "on" : "off", (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$2, "data-live", _v$);
   });
   return _el$1;
 }
+NumericAndBooleanAttrs = _$block(NumericAndBooleanAttrs);
 export const steps = [() => active.set(true), () => active.set(false)];
 export const optimality = {
   target: 3,
@@ -4425,7 +4444,7 @@ export default function PreWhitespace(_s$) {
 `;
 
 exports[`emitted code snapshots property-attrs 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setDomProp as _$setDomProp } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setDomProp as _$setDomProp } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<form><input type="text"><input type="checkbox"><textarea></textarea></form>\`);
 export const text = signal("typed");
 export const checked = signal(false);
@@ -4434,23 +4453,24 @@ export default function PropertyAttrs(_s$) {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$renderEffect(() => text(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => text(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setDomProp(_el$2, "value", _v$);
   });
   _$setDomProp(_el$2, "readOnly", true);
-  _$renderEffect(() => checked(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => checked(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setDomProp(_el$3, "checked", _v$);
   });
   _$setDomProp(_el$3, "disabled", true);
   _$setDomProp(_el$4, "value", "static");
   return _el$1;
 }
+PropertyAttrs = _$block(PropertyAttrs);
 export const steps = [() => checked.set(true), () => text.set("edited")];
 "
 `;
 
 exports[`emitted code snapshots props-destructured-body 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
 const _k$1 = () => "warm";
@@ -4467,7 +4487,7 @@ function Chip(_s$, props: {
 }) {
   const { text, tone } = props;
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => tone(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => tone(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$1, "data-tone", _v$);
   });
   _$insert(_s$, _el$1, text);
@@ -4567,7 +4587,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots props-raw-forward 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"></div>\`);
 export const tone = signal("warm");
@@ -4590,7 +4610,7 @@ function Chip(_s$, props: {
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => props.tone(), (_v$, _p$) => {
+  _$bindEffect(_s$, () => props.tone(), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$1, "data-tone", _v$);
   });
   _$insert(_s$, _el$1, props.tone);
@@ -4701,6 +4721,7 @@ function Chip(_s$, props: {
     ...rest
   }, text);
 }
+Chip = _$block(Chip);
 export default function PropsRestSpread(_s$) {
   const _el$1 = _tmpl$1();
   _$insert(_s$, _el$1, Chip(_s$, {
@@ -4727,13 +4748,13 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots reactive-attribute 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<a data-static="keep">go</a>\`);
 export const href = signal("/home");
 export const active = signal(false);
 export default function ReactiveAttribute(_s$) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: href(),
     b: active() ? "link active" : "link"
   }), (_v$, _p$ = {}) => {
@@ -4742,6 +4763,7 @@ export default function ReactiveAttribute(_s$) {
   });
   return _el$1;
 }
+ReactiveAttribute = _$block(ReactiveAttribute);
 export const steps = [
   () => active.set(true),
   () => href.set("/about"),
@@ -4766,7 +4788,7 @@ export const optimality = {
   emits: [
     "\\"href\\"",
     "setClass(",
-    "renderEffect("
+    "bindEffect("
   ],
   absent: ["setProp", "bindProp("]
 };
@@ -5068,7 +5090,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots select-option-multiple 1`] = `
-"import { template as _$template, createElement as _$createElement, setDomProp as _$setDomProp } from "@barqjs/core";
+"import { template as _$template, createElement as _$createElement, block as _$block, setDomProp as _$setDomProp } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<option>one</option>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<option>two</option>\`);
 /**
@@ -5096,6 +5118,7 @@ export default function SelectOptionMultiple(_s$) {
     return _el$2;
   })());
 }
+SelectOptionMultiple = _$block(SelectOptionMultiple);
 export const optimality = {
   target: 2,
   milestone: 4,
@@ -5112,7 +5135,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots sibling-live-props 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="pair"><span class="a">a</span><span class="b">b</span></div>\`);
 export const left = signal("l1");
 export const right = signal("r1");
@@ -5134,14 +5157,14 @@ export default function SiblingLiveProps(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: left(),
     b: \`\${left()}!\`
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setAttr(_el$2, "title", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$2, "data-tag", _v$.b);
   });
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: right(),
     b: \`\${right()}!\`
   }), (_v$, _p$ = {}) => {
@@ -5150,6 +5173,7 @@ export default function SiblingLiveProps(_s$) {
   });
   return _el$1;
 }
+SiblingLiveProps = _$block(SiblingLiveProps);
 export const steps = [() => left.set("l2"), () => right.set("r2")];
 export const optimality = {
   target: 4,
@@ -5225,7 +5249,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots signal-methods-in-handler 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, delegateEvents as _$delegateEvents, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="methods"></button>\`);
 const _h$1 = () => {
   count.update((n) => n + 1);
@@ -5242,7 +5266,7 @@ export const seen = signal(0);
 */
 export default function SignalMethodsInHandler(_s$) {
   const _el$1 = _tmpl$1();
-  _$renderEffect(() => String(seen()), (_v$, _p$) => {
+  _$bindEffect(_s$, () => String(seen()), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$1, "data-seen", _v$);
   });
   _el$1.$$click = _h$1, _el$1.$$s = _s$;
@@ -5273,7 +5297,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots spread-static-mix 1`] = `
-"import { signal, createElement as _$createElement } from "@barqjs/core";
+"import { signal, createElement as _$createElement, block as _$block } from "@barqjs/core";
 export const extra = signal<Record<string, unknown>>({
   role: "button",
   "data-n": "1"
@@ -5288,6 +5312,7 @@ export default function SpreadStaticMix(_s$) {
     class: "after-spread"
   }, "spread");
 }
+SpreadStaticMix = _$block(SpreadStaticMix);
 export const steps = [() => extra.set({
   role: "link",
   "data-n": "2"
@@ -5360,7 +5385,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots style-object 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setStyle as _$setStyle } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setStyle as _$setStyle } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><span>sized</span></div>\`);
 export const size = signal(12);
 export default function StyleObject(_s$) {
@@ -5370,7 +5395,7 @@ export default function StyleObject(_s$) {
     color: "blue",
     fontSize: "14px"
   });
-  _$renderEffect(() => ({ a: {
+  _$bindEffect(_s$, () => ({ a: {
     width: size(),
     opacity: 1
   } }), (_v$, _p$ = {}) => {
@@ -5378,29 +5403,31 @@ export default function StyleObject(_s$) {
   });
   return _el$1;
 }
+StyleObject = _$block(StyleObject);
 export const steps = [() => size.set(30)];
 "
 `;
 
 exports[`emitted code snapshots svg 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<svg viewBox="0 0 24 24" width="24" height="24"><g class="group"><circle cx="12" cy="12" fill="currentColor"/><path d="M0 0h24v24H0z" stroke-width="2"/></g></svg>\`);
 export const radius = signal(4);
 export default function Svg(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.firstChild;
-  _$renderEffect(() => String(radius()), (_v$, _p$) => {
+  _$bindEffect(_s$, () => String(radius()), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$3, "r", _v$);
   });
   return _el$1;
 }
+Svg = _$block(Svg);
 export const steps = [() => radius.set(8)];
 "
 `;
 
 exports[`emitted code snapshots svg-dynamic-class 1`] = `
-"import { signal, template as _$template, renderEffect as _$renderEffect, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<svg viewBox="0 0 24 24" width="24" height="24"><g class="group"><circle cx="12" cy="12" r="6"/></g></svg>\`);
 export const active = signal(false);
 /**
@@ -5413,7 +5440,7 @@ export default function SvgDynamicClass(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.firstChild;
-  _$renderEffect(() => ({
+  _$bindEffect(_s$, () => ({
     a: active() ? "dot dot--on" : "dot",
     b: active() ? "3" : "1"
   }), (_v$, _p$ = {}) => {
@@ -5422,6 +5449,7 @@ export default function SvgDynamicClass(_s$) {
   });
   return _el$1;
 }
+SvgDynamicClass = _$block(SvgDynamicClass);
 export const steps = [() => active.set(true), () => active.set(false)];
 "
 `;
@@ -5511,7 +5539,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots table-root-shapes 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<table class="shapes"><colgroup></colgroup><thead></thead><tbody class="cells"><tr></tr></tbody></table>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<caption class="cap">totals</caption>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<tfoot class="foot"><tr><td>total</td></tr></tfoot>\`);
@@ -5542,7 +5570,7 @@ export default function TableRootShapes(_s$) {
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
   const _el$5 = _el$4.firstChild;
-  _$renderEffect(() => String(revision()), (_v$, _p$) => {
+  _$bindEffect(_s$, () => String(revision()), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$1, "data-rev", _v$);
   });
   _$insert(_s$, _el$1, _tmpl$2(), _el$2);
@@ -5578,7 +5606,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots table-rows 1`] = `
-"import { signal, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, each as _$each, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, each as _$each, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<table class="grid"><tbody></tbody></table>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<tr><td class="col-id"></td><td class="col-label"><a class="lbl"></a></td><td class="col-pad"></td></tr>\`);
 export const rows = signal([{
@@ -5613,7 +5641,7 @@ export default function TableRows(_s$) {
     const _el$4 = _el$3.firstChild;
     const _el$5 = _el$4.nextSibling;
     const _el$6 = _el$5.firstChild;
-    _$renderEffect(() => ({ a: selected() === row.id ? "row danger" : "row" }), (_v$, _p$ = {}) => {
+    _$bindEffect(_s$, () => ({ a: selected() === row.id ? "row danger" : "row" }), (_v$, _p$ = {}) => {
       _v$.a = _$setClass(_el$3, "class", _v$.a, _p$.a);
     });
     _$setAttr(_el$3, "data-id", String(row.id));
@@ -5912,7 +5940,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots use-state-tuple 1`] = `
-"import { useState, template as _$template, insert as _$insert, renderEffect as _$renderEffect, delegateEvents as _$delegateEvents, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { useState, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="tuple"><span></span><button type="button">bump</button></div>\`);
 const _h$1 = () => setCount((n) => n + 1);
 _$delegateEvents(["click"]);
@@ -5927,7 +5955,7 @@ export default function UseStateTuple(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$renderEffect(() => String(count() + 1), (_v$, _p$) => {
+  _$bindEffect(_s$, () => String(count() + 1), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$2, "data-plus-one", _v$);
   });
   _el$3.$$click = _h$1, _el$3.$$s = _s$;
@@ -5952,7 +5980,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots use-store-member 1`] = `
-"import { useStore, template as _$template, insert as _$insert, renderEffect as _$renderEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { useStore, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="store"><span class="name"></span><em>n</em></div>\`);
 /**
 * \`useStore\` returns \`[proxy, setter]\` and ANY member read on the proxy is a
@@ -5968,7 +5996,7 @@ export default function UseStoreMember(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$renderEffect(() => String(state.count), (_v$, _p$) => {
+  _$bindEffect(_s$, () => String(state.count), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$3, "data-count", _v$);
   });
   _$insert(_s$, _el$2, () => state.user.name);

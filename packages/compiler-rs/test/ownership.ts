@@ -173,7 +173,7 @@ function ruleFor(tree: StaticTree, positions: readonly StaticPosition[]): string
 
 export interface OwnershipEvent {
   seq: number
-  kind: "enter" | "exit" | "dispose" | "clone" | "block-enter" | "block-exit"
+  kind: "enter" | "exit" | "dispose" | "clone" | "own" | "block-enter" | "block-exit"
   /** on `block-enter`, the scope the block was GIVEN */
   scope: number
   parent: number
@@ -260,6 +260,7 @@ export const CHANNEL_RULES: readonly string[] = Object.freeze([
   "O3.1",
   "O3.2",
   "O3.7",
+  "O4.5",
 ])
 
 export interface Finding {
@@ -288,6 +289,12 @@ export interface OwnershipRun {
   /** clones checked at all */
   clones: number
   scopes: number
+  /**
+   * Reactive nodes the trace saw created. Reported so that "no effect was
+   * misplaced" can never be confused with "no effect was recorded" — the state
+   * this channel was in before it had an `own` event at all.
+   */
+  effects: number
   /**
    * Groups of two or more kids a single scope actually disposed itself — the
    * only shape O3.2's reverse-creation-order claim can be tested on. Reported
@@ -452,11 +459,21 @@ function blockFindings(
       out.push(...closed[0].findings)
       continue
     }
-    // A `clone` is a template instantiation and an `enter` is a scope: both are
-    // CONSTRUCTION inside the handed-over span, and O2 is the same claim about
-    // each. Checking only clones left a Block that opened a scope in the wrong
-    // place invisible, which is the shape every control-flow primitive has.
-    if ((event.kind !== "clone" && event.kind !== "enter") || open.length === 0) continue
+    // A `clone` is a template instantiation, an `enter` is a scope and an `own`
+    // is a reactive node: all three are CONSTRUCTION inside the handed-over
+    // span, and O2/O4.5 are the same claim about each. Checking only clones left
+    // a Block that opened a scope in the wrong place invisible, which is the
+    // shape every control-flow primitive has; checking only clones and scopes
+    // left the whole EFFECT half invisible, which is the shape the compiled
+    // attribute channel had — it emitted a `renderEffect` taking no scope at
+    // all, so 34 of the corpus's fixtures bound their elements to whatever was
+    // ambient and the trace said nothing, because it recorded no effect.
+    if (
+      (event.kind !== "clone" && event.kind !== "enter" && event.kind !== "own") ||
+      open.length === 0
+    ) {
+      continue
+    }
     const span = open[open.length - 1]
     const at = event.kind === "enter" ? (event.parent ?? -1) : event.scope
     if (span.given === -1 || at === -1 || within(runtime, at, span.given)) continue
@@ -465,10 +482,15 @@ function blockFindings(
     reported.add(key)
     const givenKind = runtime.scopes.get(span.given)?.kind ?? "?"
     const actual = runtimePath(runtime, at)
-    const what = event.kind === "enter" ? `a ${event.label} scope` : event.label
+    const what =
+      event.kind === "enter"
+        ? `a ${event.label} scope`
+        : event.kind === "own"
+          ? `a ${event.label} effect`
+          : event.label
     span.findings.push({
       id: `block-ran-under-another-scope@${span.label}`,
-      rule: "O2",
+      rule: event.kind === "own" ? "O4.5" : "O2",
       kind: "block-ran-under-another-scope",
       detail:
         `${span.label} was given scope ${span.given} (${givenKind}) and built ${what} ` +
@@ -799,6 +821,7 @@ export async function checkOwnership(
     determined,
     clones,
     scopes: runtime.scopes.size,
+    effects: events.reduce((n, event) => (event.kind === "own" ? n + 1 : n), 0),
     cascades: internal.cascades,
     crashed: false,
   }
@@ -817,6 +840,7 @@ function crash(fixture: string, phase: string, error: unknown): OwnershipRun {
     determined: 0,
     clones: 0,
     scopes: 0,
+    effects: 0,
     cascades: 0,
     crashed: true,
   }

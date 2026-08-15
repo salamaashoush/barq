@@ -85,10 +85,38 @@ export class NoOwnerError extends Error {
  */
 export const BLOCK: unique symbol = Symbol.for("barq.block");
 
+/**
+ * C1/O4.5: the scope a Block is HANDED is the scope its body builds under.
+ *
+ * The guard alone made the argument decide only for the primitives that take it
+ * explicitly — `insert`, `bindEffect`, the four flow primitives. Everything in
+ * the same body that reads the AMBIENT owner instead — `useContext`,
+ * `onCleanup`, `effect`, a `signal`'s owner — followed `CURRENT`, so one
+ * component handed A while B was ambient split its ownership across both: its
+ * hole under A, its cleanup under B. Nothing in the calling convention
+ * established the ambient, because a component call is a plain call.
+ *
+ * Establishing it here costs one `try`/`finally` per activation and makes the
+ * argument genuinely decide for every ambient-reading API at once. `null` is
+ * left alone for the reason `dom.ts`'s `ownedBy` states: it names no owner, so
+ * there is nothing for the argument to win, and forcing it would RELOCATE
+ * ownership through the orphan list rather than decide it.
+ */
 export function block<F extends (...args: never[]) => unknown>(fn: F): F {
   const guarded = function (this: unknown, scope: unknown): unknown {
     if (scope === undefined) throw new ScopeMissingError(blockOrigin(fn));
-    return (fn as unknown as (...rest: unknown[]) => unknown).apply(this, arguments as never);
+    const body = fn as unknown as (...rest: unknown[]) => unknown;
+    if (scope === null) return body.apply(this, arguments as never);
+    const prevOwner = currentOwner;
+    const prevHost = currentHost;
+    currentOwner = scope as Scope;
+    currentHost = null;
+    try {
+      return body.apply(this, arguments as never);
+    } finally {
+      currentOwner = prevOwner;
+      currentHost = prevHost;
+    }
   };
   return brand(guarded) as unknown as F;
 }
@@ -250,8 +278,8 @@ export function emitDiagnostic(
  * Structured dev diagnostics (Solid 2.0). Zero-cost when nothing is
  * subscribed. Codes: REACTIVE_WRITE_IN_OWNED_SCOPE,
  * ASYNC_OUTSIDE_LOADING_BOUNDARY, RUN_WITH_DISPOSED_OWNER,
- * INFINITE_LOOP, HYDRATION_SEED_DRIFT, PRIMITIVE_IN_FORBIDDEN_SCOPE,
- * RENDER_SUBTREE_NOT_OWNED.
+ * INFINITE_LOOP, HYDRATION_SEED_DRIFT, HYDRATION_MISMATCH,
+ * PRIMITIVE_IN_FORBIDDEN_SCOPE, RENDER_SUBTREE_NOT_OWNED.
  */
 export const DEV = {
   diagnostics: {
@@ -1869,6 +1897,14 @@ function createComputedNode<T>(
 
   if (externalSource !== null) {
     wireExternalSource(node as ComputedNode<unknown>, owner);
+  }
+
+  if (OWNERSHIP.sink !== null) {
+    OWNERSHIP.sink.own(
+      node,
+      owner,
+      kind === EFFECT_RENDER ? "render" : kind === EFFECT_USER ? "user" : "pure",
+    );
   }
 
   return node;

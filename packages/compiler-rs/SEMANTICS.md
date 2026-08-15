@@ -394,6 +394,29 @@ because the root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing. A 
 alone on purpose: it names no owner, and forcing `CURRENT` to null makes the effect an orphan that
 `enterRoot` then CLAIMS, which relocates ownership rather than deciding it.
 
+*The reader the first round of that work did not look at: the COMPILED path.* `insert` and `setProp`
+are runtime entry points, and the compiled element-binding channel emits NEITHER — it emitted a bare
+`renderEffect(compute, apply)` taking no scope at all, so attribute, class, style and DOM-property
+bindings were owned by whatever was ambient at the call site in 34 of the corpus's fixtures, while the
+registry read "closed for `setProp`". `setProp` is the un-compiled dispatcher. Three changes close it,
+and each is separately observable:
+
+- `bindEffect(s, compute, apply)` replaces the bare `renderEffect` at the emission, opening under
+  `ownedBy(given, …)` the way `insert` and `setProp` already do;
+- `block`'s wrapper establishes the handed scope as `CURRENT` for the duration of the call, so the
+  argument decides for `useContext`, `onCleanup`, `effect` and every other ambient-reading API in the
+  same body — without it a single component handed A while B was ambient put its HOLE under A and its
+  CLEANUP under B, because a component call is a plain call and nothing in the calling convention
+  made the argument ambient;
+- the delegated dispatcher runs a handler under the scope the compiler stapled to the element, rather
+  than with `CURRENT === null` — work created in a handler used to be an orphan the next flush
+  released, owned by nobody, forever.
+
+The channel that could not see any of this now can: the L2b trace records an `own` event for every
+reactive node created, so `blockFindings` holds an effect to the same "at or below the scope this
+block was given" test it already applied to a template clone and to a scope. It reported nothing
+about effects before, because it recorded none.
+
 **Falsified by.** Throw from a Block under a boundary. After the fallback has rendered: (a)
 `getOwner()` at the boundary's call site MUST be the same object it was before the boundary was
 called; (b) every cleanup registered by the failed subtree MUST have run; (c) no node built by the
@@ -419,10 +442,12 @@ rule — the rule is about every scope entered after `prev`, and it needs the ca
 
 O4.5 `PARTIAL`. The `**Status.**` line above is O4.1's and O4.2's; O4.5 is a different observation and
 was reading as theirs because it is the last sub-rule marker in the section. `insert` and `setProp`
-both run their body under the scope they were HANDED since M4b's gate round, and
-`sem-own-given-scope-wins`'s first three claims pin that. One reader is left and it is registered
-rather than described: `childToNodes` invokes a children Block with `getOwner()`, which
-`test/known-failures.ts` carries as `a-children-block-is-invoked-with-the-given-scope`, coupled to O5.
+both run their body under the scope they were HANDED since M4b's gate round, and the COMPILED
+element-binding channel does since the M2 gate round; `sem-own-given-scope-wins`'s first four claims
+pin that, and the fourth drives the EMISSION rather than a runtime helper the compiled path never
+calls. One reader is left and it is registered rather than described: `childToNodes` invokes a
+children Block with `getOwner()`, which `test/known-failures.ts` carries as
+`a-children-block-is-invoked-with-the-given-scope`, coupled to O5.
 
 **Pinned by.** `sem-err-current-restored-after-throw.tsx` *(new)*.
 
@@ -512,6 +537,16 @@ the emitted module for every fixture in all four (backend × level) combinations
 `packages/core`: no component there accepts a scope, so the fixtures cannot run and no claim about
 this rule can be OBSERVED yet. Nothing is deregistered on the strength of an emission.
 
+**The argument has to DECIDE, not merely be passed.** Scope-first buys "a mistiming is a missing
+argument" only if the argument governs the body it is handed to, and until the M2 gate round it
+governed only the primitives that take a scope explicitly. Everything else in the same body —
+`useContext`, `onCleanup`, `effect`, and the compiled element-binding channel, which emitted a bare
+`renderEffect` with no scope — read `CURRENT`, and a component call is a plain call that establishes
+nothing. Handed A while B was ambient, ONE component put its hole under A and its context read and
+its cleanup under B. `block`'s wrapper now sets `CURRENT` to the scope it was handed for the duration
+of the call: one closure per definition site, none per activation, and the argument decides for every
+ambient-reading API at once. `null` is left alone, for the reason O4.5 gives — it names no owner, so
+there is nothing for the argument to win.
 
 **Pinned by.** `component-boundary-props.tsx` (existing, re-pinned at M3), `arrow-body-component.tsx`.
 
@@ -631,6 +666,18 @@ brand, so only the slot's own read can catch it, and `each source` and `provide 
 on by identity rather than reading it at a site. §13 carried this as `H` while a registered
 known-failure said otherwise.
 
+**`s === undefined` is not the whole test, and taking it for the whole test left two slots open.**
+The rule's own wording is about the ENTRY of a Block invoked with no scope, which makes the guard the
+obvious place for it — and at two positions the guard is structurally unreachable, because the value
+is invoked with something that is not `undefined`. A `ref` slot invokes it with the **Element** and an
+event handler slot with the **Event**; `requireScope` accepts both, the body runs, and everything it
+builds is parented to a DOM node that root disposal never reaches — a permanent, silent leak, measured
+before the test existed. The brand is a property of the VALUE, so the refusal belongs at the READ, the
+way `readSlot` already puts it: `applyRefs`, `listen`, `delegate` and the delegated dispatcher each
+test the brand on the value they are about to invoke. The dispatcher is not redundant with the other
+three — the compiled path writes `_el$1.$$click = h` itself and never calls `delegate`, so it is the
+only place that expando can be seen at all.
+
 **What carries the laziness, stated because the acceptance test does not distinguish it.** The eight
 named operations read zero because the CARRIER is a thunk, not because the source list is lazy: an
 eager plain-object copy of a props record passes all eight. What the source list buys is liveness and
@@ -695,9 +742,14 @@ new closure. Forwarding depth MUST NOT become closure depth.
 **C5.1 — a Block landing in a Cell slot.** Because forwarding is identity, forwarding cannot change a
 value's kind (C3.9). Therefore this situation arises only two ways, and each has a defined outcome:
 
-1. **Within a module**, the compiler knows the kind of the forwarded value and MUST emit a diagnostic
-   at the forwarding site when a value it knows to be a scope-using Block is forwarded into a slot the
-   callee declares as `Cell` — naming both positions.
+1. **Within a module and through NAMED attribute forwards**, the compiler knows the kind of the
+   forwarded value and MUST emit a diagnostic at the forwarding site when a value it knows to be a
+   scope-using Block is forwarded into a slot the callee declares as `Cell` — naming both positions.
+   A spread on either side ends the chain: `{...rest}` names no key, so the fixpoint has nothing to
+   carry the verdict across, and item 2 is what answers there. The diagnostic is also DEV-only, so a
+   production build gets item 2 and nothing else. Neither is a gap in the guarantee — item 2 is
+   total — but both bound what item 1 promises, and the promise is bounded here rather than
+   discovered.
 2. **Across a module boundary**, the compiler cannot know (`CODESIGN.md` §3.13 item 1). The consumer's
    `props.x()` then hits C3.8 and throws `ScopeMissingError` with the Block's `origin` and the
    consuming scope's origin chain. It MUST NOT silently render under `CURRENT` and it MUST NOT
@@ -731,7 +783,10 @@ JSX is still visible, every `(component, prop)` pair the module can PROVE is a C
 read as an attribute on an INTRINSIC element, which is the one position in JSX that lowers to
 `_$setProp`. A child position is not one, because C3.7 makes both kinds legal there; an attribute on
 a COMPONENT is not one either, because it is a forward, and its verdict is the callee's — which is
-computed by a fixpoint over those forwards, so the rule reaches any depth inside the module. `shape.rs`
+computed by a fixpoint over those forwards, so the rule reaches any depth inside the module through
+NAMED attributes. A `JSXAttributeItem::SpreadAttribute` contributes no pair, on either side: a
+spreading wrapper and a spread at the forwarding site both compile clean, measured, and the runtime
+backstop is what fires there. `shape.rs`
 raises the code at the forwarding site, naming the slot, the callee and the byte range of the read.
 The rule is one-sided by construction: it fires only where the compiler has proof, and its silence is
 never a claim that a slot is safe. Item 2 is what answers everywhere else.
@@ -1800,20 +1855,65 @@ specification rather than discovered in the implementation.
 **Rule.** The client **claims** server-rendered nodes by walking them. It MUST NOT clear the container
 and re-render. `container.textContent = ""` throws the entire server render away and is deleted.
 
-**Falsified by.** Node-reuse percentage on a matching render MUST be 100%. Measured today: 0%.
+**Falsified by.** Node-reuse percentage on a matching render MUST be 100% for every fixture whose
+root the template can express, and every fixture that falls short MUST be registered with its exact
+reuse. Measured before M6: 0%, everywhere.
 
-**Status.** `VIOLATED`. **Pinned by.** `sem-hydrate-node-reuse.tsx` *(new)*.
+**Status.** `HOLDS-with-registry` (M6) — the same status the O family carries, and for the same
+reason: the falsification procedure is run over the whole corpus and the shortfalls are enumerated
+rather than averaged away. **Pinned by.** the node-identity census over the whole corpus —
+`test/hydration.test.ts`, with `test/hydration.ts`'s `HYDRATION_KNOWN` as the registry.
 
-### H2 — a branch is claimed by its written key, not by re-evaluating its condition
+The procedure above is now run for every fixture: the string module's markup is put in a container,
+the DOM module is hydrated over it, and the OBJECT IDENTITIES of the container's nodes are compared
+before and after. **115 of 130 fixtures reuse 100% of them.** `container.textContent = ""` is gone
+from the hydration path — `render` still opens with it, and `mount(block, container, claiming)` is
+the one line that decides, so the claim path cannot drift from the path everything else is measured
+on.
+
+The 15 that do not are registered in `test/hydration.ts`'s `HYDRATION_KNOWN`, each with its `kinds`,
+its `recovered` flag, its EXACT reuse and a reason; a row that starts claiming everything fails the
+suite as stale, and an unregistered fixture that diverges fails it outright. They fall into four
+groups, all of them structural rather than accidental: the `createElement` path (7 — a subtree the
+template cannot express has no walk to claim it with), a construct the flow pass refused reaching its
+primitive through an adapter with no flags (3), a boundary that parks its content in a detached
+fragment before revealing it (3, and parking a claimed node is a removal), and two channels that
+write past the claim (`innerHTML` with a child, and a custom element's property whose server spelling
+is an attribute).
+
+### H2 — the written key decides what a branch may claim
 
 **Rule.** A range owner writes a branch instruction at **block boundaries only** — `<!--[k-->` … `<!--]-->`
-— and the client reads `k`. It MUST NOT re-evaluate the condition, which is unsound: the condition may
-read data the client has not yet been seeded with.
+— and the client compares its own key against the written `k`. **What a client may CLAIM is decided by
+the wire, never by the client's condition**: on agreement the range's nodes are claimed and nothing is
+rebuilt; on disagreement the client MUST report it and MUST NOT claim nodes the server built for a
+different arm. A run that took the client's arm while silently keeping the server's nodes is the
+failure this rule exists to make impossible.
 
-**Falsified by.** Hydrate a branch whose condition depends on data seeded *after* hydration begins;
-the claimed branch MUST be the server's.
+**Falsified by.** Hydrate a branch whose condition resolves differently on the two sides — seed the
+server's data and leave the client's unseeded. The run MUST report a `key` mismatch, release exactly
+that range, and end with a tree equal to a cold client render. And in the other direction: a branch
+whose key AGREES must claim every one of its nodes with no rebuild. A run that reports nothing, or
+that claims the server's nodes under the other arm, falsifies it.
 
-**Status.** `PLANNED` (M6). **Pinned by.** `sem-hydrate-branch-claim.tsx` *(new)*.
+**Status.** `HOLDS` (M6). **Pinned by.** the branch-key comparison, and L6's *"a branch index
+disagrees"* row — `test/hydration-mutations.test.ts`.
+
+`ssr.ts`'s `branch` writes `<!--[k-->` with the key it chose; `flow.ts`'s `reconcileKey` reads it and
+compares. The mutation row rewrites `<!--[true-->` to `<!--[false-->` and the run reports `key`,
+releases that range and rebuilds it — 94% of the page's nodes survive. A key with no safe spelling in
+a comment (anything outside `[\w.:+-]{0,32}`) is written as `?`, and the client then claims the range
+POSITIONALLY and skips the comparison, which is exactly what a hole has always had.
+
+**One thing this rule does NOT say: that the server's arm wins.** An earlier draft required exactly
+that — "it MUST NOT re-evaluate the condition; the claimed branch MUST be the server's" — and the
+implementation has never done it, because it cannot be made sound here. The client's condition is the
+one its reactive graph will go on maintaining; a branch kept on the server's arm against the client's
+own read has no dependency that will ever repair it, so a condition that never changes again leaves
+the wrong arm standing forever. What the wire buys is DETECTION and a bounded blast radius, which is
+what §11 Q4 paid the bytes for. Keeping the server's arm until the client is seeded is a real design
+— it needs a seeding barrier that says when the client's data is complete — and it is not specified,
+so it is not claimed.
 
 ### H3 — elements are claimed by a hydration-only logical index
 
@@ -1823,7 +1923,21 @@ hydration-only logical index (`child(n, 3)`). That index MUST cost nothing on th
 **Falsified by.** Compare emitted client-render code with and without `hydratable`; the non-hydratable
 walk must carry no index argument.
 
-**Status.** `PLANNED` (M6). **Pinned by.** `sem-hydrate-index-is-free.tsx` *(new)*.
+**Status.** `HOLDS` (M6). **Pinned by.** the emission diff, `hydratable` on against off, over the
+whole corpus — `test/hydration.test.ts`.
+
+The procedure is the test, in both directions: no fixture's ordinary emission mentions `child` or
+`sib`, some fixture's `hydratable` emission does, and no fixture's ordinary SSR emission contains a
+range comment. A build that emitted the index unconditionally and a build that emitted it never are
+both red, and the second is the one a green suite hides.
+
+**What the index IS, and why it is not `.nextSibling` repeated.** The server's child list is the
+template's skeleton with a `<!--[-->` … `<!--]-->` range spliced in at every hole. A native sibling
+step counts every node in that range; a LOGICAL step counts the whole range as nothing, so the index
+the compiler computed against the template addresses the server's document unchanged. It is
+`O(children)` rather than `O(hops)` — correctness here is a property of the whole child list, and a
+local step cannot see where the ranges are — and it costs nothing off the hydration path, because
+with no session live `child` and `sib` ARE the native property they replace.
 
 ### H4 — a mismatch has a local blast radius
 
@@ -1833,7 +1947,23 @@ not acceptable. `CODESIGN.md` §11 Q4: take the bytes, get the recovery.
 **Falsified by.** A deliberate mismatch fixture, measuring blast radius in nodes replaced. The count
 MUST equal that branch's node count, not the page's.
 
-**Status.** `PLANNED` (M6). **Pinned by.** `sem-hydrate-mismatch-radius.tsx` *(new)*.
+**Status.** `HOLDS` (M6), with the radius stated per corruption. **Pinned by.**
+`test/hydration-mutations.test.ts` — eleven corruptions of the wire, each with its detection and its
+blast radius recorded, plus the build-level one (compile without `hydratable` and hydrate anyway).
+
+Every corruption is DETECTED and every one degrades to a tree the client would have built — that
+equality is asserted for each row, and it is the property the whole scheme exists for. The radius is
+`local` where the corruption is local to a range (a branch key that disagrees: 94% of nodes survive)
+and `cold` where it is not (a dropped boundary comment, a wrong tag, an element the client does not
+build: the page re-renders, which is exactly today's behaviour). A text drift keeps every node and is
+still reported, because "nothing was reported" has to mean something.
+
+**The row that was not detected until the check existed.** An EXTRA element in the middle of a
+claimed subtree survived into the hydrated page, silently: the walk indexes from both ends, so a node
+inserted between them is invisible to it. `verifySubtree` closes it — a claimed subtree must have the
+skeleton its template has, compared by node NAME with ranges contributing nothing. An empty template
+element is skipped, because there are three reasons it can be empty (a hole, an `innerHTML` write,
+rawtext) and none of them is a skeleton.
 
 ### H5 — the address is the shared artefact and it is process-independent
 
@@ -1845,8 +1975,21 @@ processes. A process-global counter MUST NOT participate in it.
 `<!--Show:0-->` on the server and `<!--Show:1-->` on the client **in one process**. Compile all
 fixtures both ways and diff the address sets: they must be equal.
 
-**Status.** `VIOLATED`. **Pinned by.** the address-set diff over the whole corpus *(new channel,
-M6)*.
+**Status.** `HOLDS` (M6). **Pinned by.** the address-set diff over the whole corpus —
+`test/addresses.test.ts`, the channel §14.2 asked for.
+
+M6 built the table §3.11 specifies and ran the procedure above over all 130 fixtures at both
+optimisation levels: the two backends address the same positions, every time. The address carries no
+`NodeId` and no counter of any kind — it is `(module, unit index, patch position)`, computed from the
+patch program, which is the artefact the two targets share. `markerId` still exists in `markers.ts`
+and no longer participates in anything the compiler emits: the string backend writes no marker
+comments at all, and `packages/extra`'s router is its last reader (M8).
+
+**What this rule does NOT yet claim.** The address is stable for one build's flags, not across them:
+`-O0` addresses a superset of `-Ox`, because P3 fold turns a constant `SetOnce` into template bytes
+and bytes have no position to claim. That is measured rather than assumed — the same test pins the
+direction — and it is sound for every consumer §5.2 lists, because a server and its client are one
+build.
 
 ### H6 — interactive state survives hydration
 
@@ -1855,7 +1998,19 @@ M6)*.
 **Falsified by.** Focus an input and type before hydration completes; after hydration, `document.activeElement`
 and the input's value must be unchanged.
 
-**Status.** `VIOLATED` (H1's consequence). **Pinned by.** `sem-hydrate-preserves-focus.tsx` *(new)*.
+**Status.** `HOLDS` (M6). **Pinned by.** the focus-and-typed-value pair in `test/hydration.test.ts`,
+plus the keystroke replay beside it.
+
+H1's consequence, in the other direction: with the node kept, the state ON it is kept. Three lines do
+the work and each closes a measured failure — `insertRendered` does not `appendChild` a root that is
+already in the container (the DOM defines that as a removal, and a removal blurs), `insertAt` does not
+`insertBefore` a node that is already in position, and `setHtml` skips a write whose bytes are already
+there.
+
+The capture snippet is claim-based now: it records the target as a PATH of child indices rather than
+as coordinates, so `keydown` and the typed value and the caret position are in the queue at all —
+`server.ts` said why they could not be before, and it was H1. A record with no path still replays by
+`elementFromPoint`, which is what a RECOVERED page has left.
 
 ---
 
@@ -1993,12 +2148,12 @@ green, which is why L1 exists.
 | A3 | `NotReady` is a control signal | **V** | `sem-err-notready-passthrough` *(new)* |
 | A4 | optimistic state is derived, never restored | **V** | `create-optimistic-signal` |
 | A5 | transitions | U | — |
-| H1 | hydration is claim-based | **V** | `sem-hydrate-node-reuse` *(new)* |
-| H2 | branches claimed by written key | P (M6) | `sem-hydrate-branch-claim` *(new)* |
-| H3 | logical index is free on the client path | P (M6) | `sem-hydrate-index-is-free` *(new)* |
-| H4 | a mismatch has a local blast radius | P (M6) | `sem-hydrate-mismatch-radius` *(new)* |
-| H5 | the address is process-independent | **V** | address-set diff (corpus-wide) |
-| H6 | interactive state survives hydration | **V** | `sem-hydrate-preserves-focus` *(new)* |
+| H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
+| H2 | branches claimed by written key | **H** | the branch-key comparison + L6's disagreeing-index row |
+| H3 | logical index is free on the client path | **H** | emission diff, flag on against off (corpus-wide) |
+| H4 | a mismatch has a local blast radius | **H** | L6's eleven wire corruptions + the build-level one |
+| H5 | the address is process-independent | **H** | address-set diff (corpus-wide) |
+| H6 | interactive state survives hydration | **H** | focus + typed value + keystroke replay |
 
 **Counts.** 77 rules: 9 `HOLDS`, 28 `VIOLATED`, 27 `PLANNED`, 3 `UNOBSERVABLE`, 9 holding only in
 part (6 `H / V`, 3 `H / P`), 1 `IMPLEMENTED, UNEXERCISED` (`I/U`), 1 `NOT SPECIFIED`.
@@ -2007,6 +2162,13 @@ the compiler emits, and every one of them still fails its own falsification proc
 one of those procedures runs a fixture and no fixture can run until `packages/core` accepts a scope.
 A status is a claim about an OBSERVATION; an emission is not one. M2's agent refused to mark O3.7
 `HOLDS` on the same reasoning and was right to.
+
+**M6b's hydration half moves five: H1, H2, H3, H4 and H6, `VIOLATED`/`PLANNED` → `HOLDS`.** Each moved
+on a CHANNEL rather than on a fixture, and §14.1's five planned hydration fixtures were struck rather
+than written: a percentage over a corpus, a diff between two compiles of everything, and a corrupted
+WIRE are none of them a source file, so §14.2 is the category they belong in. The reach is declared in
+`test/hydration.ts` and read by `semantics.test.ts`, which is what keeps "the oracle covers H" from
+being a sentence in this document. Corpus coverage moves 32 → 37 of 88.
 
 
 **29 violated rules is the finding.** They are not 29 independent bugs; they cluster. O2 and its
@@ -2022,7 +2184,10 @@ individually plausible and none of them was individually wrong *against anything
 
 This is the deliverable §13 is really for. Three classes.
 
-### 14.1 Rules pinned by a fixture that must be written (50 fixtures, 1 bench, 1 type-level test)
+### 14.1 Rules pinned by a fixture that must be written (45 fixtures, 1 bench, 1 type-level test)
+
+M7 removed the five hydration rows: they moved to §14.2, which is where a rule whose input is not a
+source file belongs.
 
 The Provider and boundary fixtures are first and they are the M0 gate: **they must FAIL, and the
 failure must name the rule.**
@@ -2056,10 +2221,14 @@ failure must name the rule.**
 
 **Async (2).** `sem-async-abort-on-dispose`, `sem-async-stale-response`.
 
-**Hydration (5).** `sem-hydrate-node-reuse`, `sem-hydrate-branch-claim`, `sem-hydrate-index-is-free`,
-`sem-hydrate-mismatch-radius`, `sem-hydrate-preserves-focus`.
+**Hydration (0).** The five planned fixtures were not written, and the rules were struck off anyway —
+by CHANNELS, which is §14.2's category and the honest one for this family. A single fixture cannot
+observe "node reuse is 100%" (it is a percentage over a corpus), "the index is free" (it is a diff
+between two compiles of everything) or "a mismatch has a local blast radius" (the input is a corrupted
+WIRE, which is not a source file). `test/hydration.ts`'s `HYDRATION_CHANNEL_RULES` is the declared
+reach, on the same terms as `ownership.ts`'s `CHANNEL_RULES`.
 
-### 14.2 Rules that need a new *channel*, not a new fixture (5)
+### 14.2 Rules that need a new *channel*, not a new fixture (10)
 
 These cannot be pinned by a fixture at all until the harness grows a way to observe them. Each is a
 piece of M0/M1 harness work.
@@ -2073,7 +2242,11 @@ piece of M0/M1 harness work.
 | O3.7, B4 | **the leak oracle** — DELIVERED at M4, B4 GREEN at M5, `test/leaks.ts`: five probes over the whole corpus, taken outside the runtime and after `dispose()` has returned — live scopes (off the ownership trace), scheduled effects (every signal poked, any run counted), registered listeners (`addEventListener` matched to its removal), async continuations (scheduled before disposal, counted both when they ran after it and when they were still outstanding at teardown), retained nodes. Three findings across 137 sessions at M4, all B4; **zero across 141 at M5**, and `test/leak-known-failures.ts` is empty. The in-flight-fetch clause has no subject until M7 gives `abortSignal` a caller. | M4 (delivered) / M7 (fetches) |
 | C7 | **Block invocation counter**, keyed by position — DELIVERED at M4 in two places: `flow.ts`'s `build` emits `BLOCK_EVALUATED_TWICE` behind the diagnostics gate, and `test/single-evaluation.test.ts` drives every consumer in the rule with an instrumented Block against a declared invocation sequence. `test/ownership-census.ts`'s clone count stays as the second, independent observation. | M4 (delivered) |
 | M5 | **corpus-wide node-identity metamorphic channel** (replaces today's skip-on-shape-mismatch identity channel) | M1 |
-| H5 | **address-set diff** — compile all fixtures both ways, diff the `(module, unit, position)` sets | M6 |
+| H1 | **the node-identity census** — hydrate the corpus over its own server render and compare the container's node OBJECTS before and after. A percentage over a corpus is not a fixture. DELIVERED at M6b, `test/hydration.test.ts`. | M6 |
+| H2, H4 | **wire mutation** — corrupt the served markup one way at a time and record, per corruption, whether it was detected and what it degraded to. The input is a corrupted WIRE, which is not a source file. DELIVERED at M6b, `test/hydration-mutations.test.ts`. | M6 |
+| H3 | **the emission diff** — compile the corpus with the hydration flag on and off and compare. The rule is a statement about two compiles, not about one. DELIVERED at M6b, `test/hydration.test.ts`. | M6 |
+| H6 | **pre-hydration interaction** — focus, type and press a key against the served markup, then hydrate and read `document.activeElement`, the value and the caret back. DELIVERED at M6b, `test/hydration.test.ts`. | M6 |
+| H5 | **address-set diff** — compile all fixtures both ways, diff the `(module, unit, position)` sets. DELIVERED at M6, `test/addresses.test.ts`: 130 fixtures × 2 backends × 2 optimisation levels, plus the uniqueness of an address inside its module and the byte-identity of the emitted code with the table on and off. | M6 (delivered) |
 
 ### 14.3 Rules that are structural and are checked by inspection, not by a fixture (4)
 
@@ -2131,7 +2304,7 @@ export const KNOWN_FAILURES = [
 ] as const
 ```
 
-### 15.2 The four assertions the suite makes about it
+### 15.2 The four assertions the suite makes about it (§15.7 adds a fifth)
 
 1. **A fixture in the registry that PASSES is a suite failure**, reported as **stale** — the same
    discipline the corpus already applies to `wins` and `goesLive`. A passing known-failure means either
@@ -2256,6 +2429,35 @@ actually contains a scope-passing call site, so a fixture with no such call site
 registered under this cause. The `kinds` are pinned per row by exact set equality, so a NEW defect
 inside a registered fixture cannot hide behind an old one, and a row that stops diverging fails the
 suite as stale.
+
+### 15.7 The fifth assertion: an overdue `greenAt`
+
+Every registry row carries a `greenAt`, and until M6 nothing compared it to anything. The four
+assertions of §15.2 — and their counterparts in `leaks.test.ts`, `ownership.test.ts` and
+`oracle.test.ts` — all point the same way: they fail a row that **stopped failing**. Nothing failed a
+row that **never started passing**, so `greenAt` was checked for its FORMAT (`/^M[0-9]$/`) and never
+for its content, and three rows sat at `M5` while M5 and M6 both shipped with them still `VIOLATED`.
+
+`test/milestone.ts` exports `CURRENT_MILESTONE`, one checked-in constant, and each of the four
+registry suites now fails any row whose `greenAt` is behind it. The gate is the reason the three
+M5 rows moved in M6, and moving one is a diff that has to say why in `reason`:
+
+- **O5** and **O4.5** → `M9`, together. §8's M9 is "the old path goes", and the eager `createElement`
+  path is the one `render`'s JSX-argument form rides on. The two markers are one marker because the
+  O4.5 one-line change is paid for by a control claim in O5's fixture — measured, not assumed.
+- **C3.8** → `M9`, and this one is **the user's call, taken on a measurement rather than deferred
+  silently**. Driving `provide(root, Theme, () => aBlock, () => null)` with a counter on the carrier
+  reports it called ZERO times: a provider's value Cell is stored, never invoked by `provide`, so the
+  read-side `readSlot` this row's earlier text proposed cannot make that drive throw at all. Closing
+  the laundered/provide pair needs the value probed EAGERLY at install — a semantic change about when
+  a provider's Cell first runs, which nobody has decided. `each`'s source, by the same probe, IS read
+  synchronously and is one wrap, but a wrap costs a closure per construction on the benchmarked list
+  path and moves no row alone, because the claim is about all 12 (shape, slot) pairs. The choice is
+  between probing eagerly and re-cutting the claim to observe the provide slot at its READ.
+
+The gate is live in all four suites and vacuous in two of them today: `leak-known-failures.ts` and
+`ownership-known-failures.ts` carry no data rows, so it observes nothing there until one is added,
+which is when it is needed.
 
 ---
 

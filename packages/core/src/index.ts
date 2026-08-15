@@ -177,6 +177,20 @@ export { useState, useMemo, useEffect } from "./hooks.ts";
 // Async data loading
 export { useResource } from "./hooks.ts";
 
+// Claim-based hydration (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4, H6). The
+// two walk helpers are emitted ONLY by a `hydratable` compile — H3's "the index
+// must cost nothing on the client-render path" is the diff between the two
+// emissions, and with the flag off neither name appears in a module.
+export {
+  child,
+  sib,
+  hole,
+  HydrationMismatch,
+  type HydrationReport,
+  type Mismatch,
+  type MismatchKind,
+} from "./hydration.ts";
+
 // DOM
 export {
   createElement,
@@ -198,6 +212,7 @@ export {
   setHtml,
   setRef,
   bindProp,
+  bindEffect,
   bindValue,
   bindEvent,
   bindChannelOf,

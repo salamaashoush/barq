@@ -16,9 +16,20 @@
  * wrapping a Block — is not, and the laundered value walks past a brand test
  * because the wrapper carries no brand.
  *
+ * Three more slots were added in the M2 gate round, and they are the two
+ * positions where `block`'s entry guard CANNOT fire: `ref` invokes its value
+ * with the ELEMENT and an event handler with the EVENT, so `scope === undefined`
+ * is never true, `requireScope` accepts a DOM node, and everything the Block
+ * builds is parented to something root disposal never reaches. Measured as a
+ * leak that survives the root. The guard is the wrong place for the test; the
+ * brand is a property of the VALUE, so `applyRefs`, `listen`, `delegate` and the
+ * delegated dispatcher each test it where they read. The dispatcher is not
+ * redundant with the other three: the compiled path writes `_el$1.$$click = h`
+ * itself and never calls `delegate`.
+ *
  * SEMANTICS.md §3 C3.6, C3.7, C3.8, C3.9, C5.1.
  */
-import { block, dispose, enterRoot, exit, isBlock, pin, render, setProp } from "@barqjs/core"
+import { block, delegate, dispose, enterRoot, exit, isBlock, listen, pin, ref, render, setProp } from "@barqjs/core"
 import { branch, boundary, each, portal, provide, createContext } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
@@ -115,6 +126,24 @@ function slots(carrier: () => unknown): Array<{ name: string; drive: (s: Scope) 
       name: "provide value",
       drive: (s) => provide(s, Theme, needsScope as never, () => null),
     },
+    // The two slots where `block`'s entry guard is structurally unreachable,
+    // because the value is invoked with something that is NOT `undefined`.
+    // `ref` hands it the Element and a handler hands it the Event, so
+    // `requireScope` accepts, the body runs, and its subtree is parented to a
+    // DOM node that root disposal never reaches. Only a test on the VALUE, at
+    // the read, can answer here — which is what C3.8 says the rule is.
+    {
+      name: "ref value",
+      drive: (s) => ref(s, document.createElement("div"), needsScope as never),
+    },
+    {
+      name: "delegated handler value",
+      drive: (s) => delegate(s, document.createElement("div"), "click", needsScope as never),
+    },
+    {
+      name: "direct listener value",
+      drive: (s) => listen(s, document.createElement("div"), "scroll", needsScope as never),
+    },
   ]
 }
 
@@ -160,7 +189,7 @@ export const claims: Claim[] = [
   {
     id: "every-shape-of-block-throws-at-every-cell-slot",
     rule: "C3.8",
-    says: "C3.8 is a property of the VALUE: a pinned Block and a laundered Cell-yielding-a-Block reach the same six slots and get the same answer as a guarded one",
+    says: "C3.8 is a property of the VALUE: a pinned Block and a laundered Cell-yielding-a-Block reach the same nine slots and get the same answer as a guarded one",
     async check(kit) {
       const home = enterRoot()
       exit(home)
@@ -200,7 +229,7 @@ export const claims: Claim[] = [
       } finally {
         dispose(home)
       }
-      kit.precondition(driven === 12, `only ${driven} of the 12 (shape, slot) pairs were driven`)
+      kit.precondition(driven === 18, `only ${driven} of the 18 (shape, slot) pairs were driven`)
       if (surviving.length > 0) {
         kit.fail(
           `${surviving.length} of ${driven} (shape, slot) pairs took a Block and did not throw: ` +

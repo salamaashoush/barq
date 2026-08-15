@@ -3,10 +3,10 @@ use oxc::ast::ast::{
     ArrowFunctionExpression, BinaryExpression, BindingPattern, ConditionalExpression, Declaration,
     DoWhileStatement, ExportDefaultDeclarationKind, Expression, ForStatement, FormalParameters,
     Function, IfStatement, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
-    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
-    JSXMemberExpressionObject, LogicalExpression, ModuleExportName, Program, Statement,
-    StaticMemberExpression, SwitchStatement, TaggedTemplateExpression, TemplateLiteral,
-    UnaryExpression, UnaryOperator, VariableDeclarator, WhileStatement,
+    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, LogicalExpression,
+    ModuleExportName, Program, Statement, StaticMemberExpression, SwitchStatement,
+    TaggedTemplateExpression, TemplateLiteral, UnaryExpression, UnaryOperator, VariableDeclarator,
+    WhileStatement,
 };
 use oxc::ast_visit::Visit;
 use oxc::ast_visit::walk;
@@ -203,7 +203,7 @@ struct Binder<'p, 'a> {
     declarations: Vec<(SymbolId, Span, &'a str)>,
     /// C5.1 item 1, direct: `(props symbol, prop name, the attribute that
     /// consumes it)` for every `props.x` read as an attribute on an intrinsic.
-    cell_reads: Vec<(SymbolId, &'a str, Span)>,
+    cell_reads: Vec<(SymbolId, &'a str, Span, &'a str)>,
     /// C5.1 item 1, transitive: `(props symbol, prop name, callee, callee slot)`
     /// for every `<Callee slot={props.x} />`.
     slot_forwards: Vec<(SymbolId, &'a str, SymbolId, &'a str)>,
@@ -789,6 +789,12 @@ impl<'a> Binder<'_, 'a> {
     /// Keyed on the PROPS SYMBOL rather than on the enclosing component, so no
     /// visitor stack is needed: `candidates` already carries props → component,
     /// and a props parameter belongs to exactly one function.
+    ///
+    /// **Only NAMED attributes contribute a pair.** A `SpreadAttribute` names no
+    /// key, so a spreading wrapper and a spread at the forwarding site both end
+    /// the fixpoint's chain and compile clean. That is C5.1 item 1's declared
+    /// bound rather than a hole in the guarantee — item 2, the runtime refusal,
+    /// is total and does fire in both cases — and the rule's own text says so.
     fn cell_slot_evidence(&mut self, element: &JSXElement<'a>) {
         let component = is_component_tag(&element.opening_element.name);
         let callee = match &element.opening_element.name {
@@ -810,7 +816,7 @@ impl<'a> Binder<'_, 'a> {
             let Some((props, prop)) = self.props_member(expression) else { continue };
             match callee.filter(|_| component) {
                 Some(callee) => self.slot_forwards.push((props, prop, callee, slot.name.as_str())),
-                None => self.cell_reads.push((props, prop, attribute.span)),
+                None => self.cell_reads.push((props, prop, attribute.span, slot.name.as_str())),
             }
         }
     }
@@ -840,20 +846,20 @@ impl<'a> Binder<'_, 'a> {
         let owner_of = |props: SymbolId| -> Option<SymbolId> {
             self.candidates.iter().find(|(_, p)| *p == props).and_then(|(owner, _)| *owner)
         };
-        for (props, prop, read) in &self.cell_reads {
+        for (props, prop, read, channel) in &self.cell_reads {
             let Some(component) = owner_of(*props) else { continue };
-            self.env.cell_slots.push(CellSlot { component, prop, read: *read });
+            self.env.cell_slots.push(CellSlot { component, prop, read: *read, channel });
         }
         loop {
             let mut grew = false;
             for (props, prop, callee, slot) in &self.slot_forwards {
                 let Some(component) = owner_of(*props) else { continue };
-                let Some(read) = self
+                let Some((read, channel)) = self
                     .env
                     .cell_slots
                     .iter()
                     .find(|entry| entry.component == *callee && entry.prop == *slot)
-                    .map(|entry| entry.read)
+                    .map(|entry| (entry.read, entry.channel))
                 else {
                     continue;
                 };
@@ -865,7 +871,7 @@ impl<'a> Binder<'_, 'a> {
                 {
                     continue;
                 }
-                self.env.cell_slots.push(CellSlot { component, prop, read });
+                self.env.cell_slots.push(CellSlot { component, prop, read, channel });
                 grew = true;
             }
             if !grew {
@@ -1206,29 +1212,19 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
         {
             self.env.jsx_closings.push(symbol);
         }
-        if let JSXElementName::MemberExpression(member) = &it.opening_element.name
-            && let JSXMemberExpressionObject::IdentifierReference(object) = &member.object
-            && let Some(symbol) =
-                object.reference_id.get().and_then(|id| self.scoping.get_reference(id).symbol_id())
-            && let Some(flow) = self.env.namespace_flow(symbol, member.property.name.as_str())
-        {
-            self.env.namespace_flows.push(flow);
-        }
         walk::walk_jsx_element(self, it);
     }
 
-    /// `core.Portal(props)` written as a call rather than as a tag. Same binding,
-    /// same component, and the SSR fallback has to see both spellings.
-    ///
     /// D1's member arm rides here rather than adding a visitor. Only the STATIC
     /// form: `count[key]` is a computed read whose key the analysis cannot see,
     /// and Vue's rule excludes computed access for the same reason.
+    ///
+    /// The `core.Portal` collection that used to sit beside it went with
+    /// `uninlinable_flow`: the deopt was the only reader of the LIST. The
+    /// namespace spelling is still resolved — by `env.namespace_flow`, at the
+    /// callee, where the rewrite needs it — and nothing needs the module-wide
+    /// tally any more.
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
-        if let Some(symbol) = symbol_of(self.scoping, &it.object)
-            && let Some(flow) = self.env.namespace_flow(symbol, it.property.name.as_str())
-        {
-            self.env.namespace_flows.push(flow);
-        }
         self.suspect(Code::Barq003, &it.object, Some(it.property.name.as_str()));
         walk::walk_static_member_expression(self, it);
     }

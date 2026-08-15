@@ -20,12 +20,59 @@ impl<'a> Emit<'a, '_> {
     ) -> Expression<'a> {
         let JSXElement { span, opening_element, children, .. } = element.unbox();
         let opening = opening_element.unbox();
+        // An INTRINSIC tag here is an element the template path refused — a
+        // spread, `<select>`, `<template>`, a foreign namespace — and it is
+        // BUILT rather than cloned. The string backend serialised the whole
+        // subtree inline as one hole's value, so there is no walk for the
+        // client to claim it with: everything under this call has to build
+        // cold, or a `template()` inside it takes the node belonging to the
+        // NEXT position and the handlers land on the wrong elements.
+        //
+        // A COMPONENT tag is left alone. Its children are Blocks and its
+        // subtree is compiled the ordinary way, so the positions under it are
+        // exactly the positions the server wrote.
+        let cold = self.hydratable && matches!(opening.name, JSXElementName::Identifier(_));
         let callee = self.helper(Helper::CreateElement, span);
         let tag = self.element_name(opening.name);
         let mut arguments =
             vec![Argument::from(tag), Argument::from(self.props(opening.attributes))];
         arguments.extend(self.child_arguments(children));
-        self.call(callee, arguments, span)
+        let call = self.call(callee, arguments, span);
+        if cold { self.cold_call(call, span) } else { call }
+    }
+
+    /// `_$hole(null, null, () => …)` — a position the server did not address.
+    ///
+    /// The same helper a hole uses, with no address, because that is exactly
+    /// what this is: `null` means "there is no range here", and the runtime's
+    /// answer to that is to build without claiming anything.
+    fn cold_call(&mut self, value: Expression<'a>, span: oxc::span::Span) -> Expression<'a> {
+        use oxc::allocator::Vec as ArenaVec;
+        use oxc::ast::ast::{ArrowFunctionBody, FormalParameterKind, FormalParameters};
+        let params = FormalParameters::boxed(
+            span,
+            FormalParameterKind::ArrowFormalParameters,
+            ArenaVec::new_in(&self.allocator),
+            None,
+            &self.ast,
+        );
+        let build = Expression::new_arrow_function_expression(
+            span,
+            false,
+            None,
+            params,
+            None,
+            ArrowFunctionBody::from(value),
+            &self.ast,
+        );
+        let callee = self.helper(Helper::Hole, span);
+        let null = Expression::new_null_literal(span, &self.ast);
+        let null2 = Expression::new_null_literal(span, &self.ast);
+        self.call(
+            callee,
+            vec![Argument::from(null), Argument::from(null2), Argument::from(build)],
+            span,
+        )
     }
 
     pub(super) fn fragment_call(

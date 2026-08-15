@@ -37,10 +37,19 @@ before the program runs, in the case where finding it is possible.
 
 ## What actually happens without it
 
-A `Cell` is invoked with no argument. A `Block` invoked with no scope **throws**
+A `Cell` is invoked with no argument. A `Block` reaching a Cell slot is **refused** with
 `ScopeMissingError` naming the Block's origin — it does not fall back to `CURRENT` and it
 does not stringify. So the program that produces this diagnostic is a program that throws
 on the first render of that element.
+
+At an ordinary attribute the refusal is the Block's own entry guard: it is invoked with no
+scope, and `scope === undefined` throws. At **`ref` and `on*` it cannot be**, because those
+two positions invoke the value with the ELEMENT and with the EVENT — neither is
+`undefined`, so the guard is structurally unreachable and a forwarded Block would have run
+with a DOM node or an Event as its scope, parenting everything it built to something root
+disposal never reaches. The refusal there is a test on the VALUE's brand, taken where the
+value is read: in `applyRefs`, in `listen`/`delegate`, and in the delegated dispatcher —
+which is the only place a compiled `_el$1.$$click = h` expando can be seen at all.
 
 Before M4b's fix round it did not even throw in one spelling: `builds_dom` in `shape.rs`
 did not see through a TypeScript assertion, so `<Sink>{<b>C</b> as never}</Sink>` emitted
@@ -72,8 +81,9 @@ export function App() {
 
 ## What is a "Cell slot"
 
-Exactly one position in JSX: an **attribute on an intrinsic element**, which lowers to
-`_$setProp` / `_$spread`. A child position is not one — C3.7 makes a Cell in a Block slot
+Any **attribute on an intrinsic element**, which lowers to `_$setProp` / `_$spread` or to
+a resolved channel — including `ref` and `on*`, which are channels rather than props but
+are still positions that consume a value rather than a Block. A child position is not one — C3.7 makes a Cell in a Block slot
 degrade harmlessly, so both kinds are legal there. An attribute on a **component** is not
 one either; it is a forward, and its verdict is the callee's.
 
@@ -91,6 +101,10 @@ export function App() { return <Mid thing={<b/>} /> }          // BARQ010
   another file has no known slots at all. Item 2's runtime throw is what answers there.
 - **A slot read only in a child position**, or read through a spread, a computed member
   (`props[key]`) or a destructure — none of those is a proven Cell position.
+- **Anything on the far side of a spread.** `analysis::bind` collects a pair only from a
+  NAMED attribute, so a spreading wrapper (`<Sink {...props} />`) and a spread at the
+  forwarding site both end the fixpoint's chain and compile clean. Item 2 fires in both.
+- **A production build.** The code is DEV-only; item 2 is what a release build has.
 - **A flow component.** `<Show when={…}>` is not an in-module declaration; the primitives'
   slots are typed, and a Block reaching one of them throws under C3.8.
 - **A callee this module never declares**, including a member tag (`<ns.Comp/>`) and a

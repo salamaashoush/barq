@@ -22,7 +22,7 @@ pub struct Opt {
     /// P5's anchor half. A hole anchors against a node the template already
     /// carries. Off: every hole gets its own `<!---->`.
     pub anchor: bool,
-    /// P5's grouping half. An element's live props share one `renderEffect`.
+    /// P5's grouping half. An element's live props share one `bindEffect`.
     /// Off: every binding becomes its own live effect.
     pub fuse: bool,
     /// P6. A node is addressed from the nearest already-addressed sibling, in
@@ -142,6 +142,26 @@ pub struct TransformOptions {
     /// passes or codegen, so `code` is byte-identical either way. Off by
     /// default — a production compile does not pay for the extra AST walk.
     pub ownership: Option<bool>,
+    /// Emit the compile-time address table (`CODESIGN.md` §3.11, §5.2 P6)
+    /// alongside the code. A side artefact on the same terms as `ownership`:
+    /// nothing it produces reaches lowering, the passes or codegen, so `code` is
+    /// byte-identical either way. Its point is that the DOM and the string
+    /// backend can be compiled from one source and their address sets diffed —
+    /// the agreement §5.2 says is not assertable today.
+    pub addresses: Option<bool>,
+    /// Emit for CLAIM-BASED HYDRATION (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4).
+    ///
+    /// Unlike `ownership` and `addresses` this one DOES change the emitted
+    /// module, on both backends, and that is the point §11 Q4 settled: the
+    /// string backend writes `<!--[-->` … `<!--]-->` at every hole and
+    /// `<!--[k-->` at every range, and the DOM backend walks through `child`
+    /// and `sib` — a hydration-only logical index that steps over those ranges
+    /// — instead of `.firstChild`/`.nextSibling`.
+    ///
+    /// Off by default, so a page that is never hydrated pays neither the wire
+    /// bytes nor the indirection. H3's falsification procedure is exactly the
+    /// diff between the two settings.
+    pub hydratable: Option<bool>,
     /// The optimisation level. `0` turns every optimisation off and is the
     /// oracle's reference (`CODESIGN.md` §6 L3); anything else is the optimising
     /// path, which is the default. It changes no semantics — `-O0` output is
@@ -166,6 +186,8 @@ pub struct ResolvedOptions {
     pub interp: bool,
     pub diagnostics: bool,
     pub ownership: bool,
+    pub addresses: bool,
+    pub hydratable: bool,
     pub opt: Opt,
     /// Pass names the caller asked for that this build does not have. Carried
     /// rather than dropped so `compile` can warn: a knob that silently does
@@ -186,6 +208,8 @@ impl Default for ResolvedOptions {
             interp: false,
             diagnostics: false,
             ownership: false,
+            addresses: false,
+            hydratable: false,
             opt: Opt::ALL,
             unknown_passes: Vec::new(),
             severities: crate::diag::Severities::default(),
@@ -236,6 +260,8 @@ impl TransformOptions {
             interp: self.interp.unwrap_or(false),
             diagnostics: self.diagnostics.unwrap_or(dev),
             ownership: self.ownership.unwrap_or(false),
+            addresses: self.addresses.unwrap_or(false),
+            hydratable: self.hydratable.unwrap_or(false),
             opt,
             unknown_passes,
             severities: crate::diag::Severities::new(&checks, self.default_category.as_deref()),
@@ -258,6 +284,10 @@ mod tests {
         assert_eq!(resolved.module_source, "@barqjs/core");
         assert!(resolved.filename.is_none());
         assert!(!resolved.ownership);
+        assert!(!resolved.addresses);
+        // A page that is never hydrated pays neither the wire bytes nor the
+        // indirection, so this one has to be asked for.
+        assert!(!resolved.hydratable);
         // The default is the optimising path, so an existing caller that never
         // heard of the axis gets exactly the bytes it always got.
         assert_eq!(resolved.opt, Opt::ALL);

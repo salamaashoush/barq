@@ -48,24 +48,43 @@ impl Target {
 
     /// Whether this target consumes the three passes DESIGN §5 calls DOM
     /// concepts: a `<!---->` is an insert anchor, a `template()` is a parse, and
-    /// an address is a sibling walk.
+    /// a REF PLAN is a sibling walk. §3.11's compile-time addresses are not on
+    /// that list and never were — they are computed for every target, out of the
+    /// patch program, which is the artefact the targets share.
     #[inline]
     pub fn walks_the_dom(self) -> bool {
         matches!(self, Self::Dom | Self::Interp)
     }
 }
 
-pub const HELPER_COUNT: usize = 45;
+pub const HELPER_COUNT: usize = 55;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 28;
+pub const FIRST_SERVER_HELPER: usize = 31;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 44;
+pub const FIRST_INTERP_HELPER: usize = 54;
+
+/// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
+/// and `flow.ts`'s four primitives with `each`'s count symbol.
+///
+/// `CODESIGN.md` §3.11's "one ABI means no fallback cliff", applied to a runtime
+/// entry point rather than to a call: one name, one argument order, two
+/// implementations, and the SOURCE is what the target chooses. A module compiled
+/// for the DOM imports `branch` from `@barqjs/core`; the same module compiled
+/// for the server imports `branch` from `@barqjs/core/server`. Nothing between
+/// the two emissions differs — not the helper, not the arity, not the order —
+/// which is what makes `region_call` one function rather than two.
+///
+/// It is also what makes the string backend's own claim checkable: a module
+/// compiled for the server imports from the server entry and from nowhere else,
+/// so `@barqjs/core`'s DOM runtime cannot reach a server bundle through a helper
+/// that merely happens to be DOM-free today.
+pub const SHARED_ABI: std::ops::Range<usize> = (Helper::Props as usize)..(Helper::SetAttr as usize);
 
 /// Runtime entry points the two backends are allowed to call. Every one is read
 /// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
@@ -77,7 +96,16 @@ pub enum Helper {
     SetProp = 2,
     CreateElement = 3,
     Fragment = 4,
-    RenderEffect = 5,
+    /// `_$bindEffect($s, compute, apply)` — the element-binding effect, O4.5.
+    ///
+    /// Scope FIRST, like every other entry point on this surface. The bare
+    /// `renderEffect(compute, apply)` this replaces took no scope at all, so the
+    /// whole attribute/class/style/domprop channel was owned by whatever was
+    /// ambient at the call site rather than by the scope its Block was handed —
+    /// the exact defect O4.5 names, in the one channel the compiled path uses
+    /// most. It is also what makes `brand`'s `ReadsScope` see these components:
+    /// a body whose only reactive work is an element binding now mentions `_s$`.
+    BindEffect = 5,
     DelegateEvents = 6,
     /// `_$props([…])` — C9's ordered source list. Returns its single argument
     /// unchanged when the list is one plain record, which is the overwhelming
@@ -131,25 +159,58 @@ pub enum Helper {
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
     BindEvent = 27,
+    // ── the hydration-only walk (`SEMANTICS.md` H3) ───────────────────────
+    //
+    // `child(n, 3)` is H3's own spelling. Under `hydratable` the template walk
+    // goes through these two instead of `.firstChild`/`.nextSibling`, because
+    // the server's children are the template's skeleton PLUS a `<!--[-->` …
+    // `<!--]-->` range at every hole, and a native sibling step counts those.
+    // A logical step does not: a whole range contributes nothing.
+    //
+    // They exist ONLY under `hydratable`. H3's "the index must cost nothing on
+    // the client-render path" is the diff between the two emissions, and with
+    // the flag off not one of these appears.
+    /// `_$child(base, k)` — the k-th logical child, from the start when `k >= 0`
+    /// and from the end when `k < 0` (`-1` is the last).
+    Child = 28,
+    /// `_$sib(base, k)` — `k` logical siblings forward, or `-k` backward.
+    Sib = 29,
+    /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
+    /// THEN build the value that goes in it.
+    ///
+    /// It exists for one evaluation-order fact: `_$insert(s, el, Comp(s, {}))`
+    /// evaluates `Comp` before `insert` is entered, so a component in a child
+    /// position would claim from wherever the enclosing walk happened to leave
+    /// the cursor rather than from its own hole. The compiler knows the position
+    /// statically — that is what an address IS — so it says so, instead of the
+    /// runtime guessing from the shape of the tree it is walking.
+    Hole = 30,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 28,
-    EscAttr = 29,
-    Attr = 30,
-    Cls = 31,
-    Content = 32,
-    Html = 33,
-    RawText = 34,
-    SpreadAttrs = 35,
-    SsrFor = 36,
-    SsrIndex = 37,
-    SsrRepeat = 38,
-    SsrShow = 39,
-    SsrSwitch = 40,
-    SsrMatch = 41,
-    ClsList = 42,
-    AttrLit = 43,
+    Esc = 31,
+    EscAttr = 32,
+    Attr = 33,
+    Cls = 34,
+    Content = 35,
+    Html = 36,
+    RawText = 37,
+    SpreadAttrs = 38,
+    SsrFor = 39,
+    SsrIndex = 40,
+    SsrRepeat = 41,
+    SsrShow = 42,
+    SsrSwitch = 43,
+    SsrMatch = 44,
+    ClsList = 45,
+    AttrLit = 46,
+    SsrLoading = 47,
+    SsrErrored = 48,
+    SsrErrorBoundary = 49,
+    SsrPortal = 50,
+    SsrAwait = 51,
+    SsrDynamic = 52,
+    SsrReveal = 53,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 44,
+    Interp = 54,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -158,7 +219,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "setProp",
     "createElement",
     "Fragment",
-    "renderEffect",
+    "bindEffect",
     "delegateEvents",
     "props",
     "cell",
@@ -181,6 +242,9 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ref",
     "listen",
     "bindEvent",
+    "child",
+    "sib",
+    "hole",
     "esc",
     "escAttr",
     "attr",
@@ -197,8 +261,22 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrMatch",
     "clsList",
     "attrLit",
+    "ssrLoading",
+    "ssrErrored",
+    "ssrErrorBoundary",
+    "ssrPortal",
+    "ssrAwait",
+    "ssrDynamic",
+    "ssrReveal",
     "interp",
 ];
+
+/// The name a helper is imported under, for a test that has to check the table
+/// rather than trust it.
+#[cfg(test)]
+pub(crate) fn imported_name(helper: Helper) -> &'static str {
+    IMPORTED[helper as usize]
+}
 
 const SERVER: &str = "/server";
 const INTERP: &str = "/interp";
@@ -277,6 +355,10 @@ pub struct Emit<'a, 'm> {
     /// The three optimisations codegen owns: η-reduction, module-scope hoisting
     /// of a capture-free handler, and statement splicing.
     pub opt: Opt,
+    /// `CODESIGN.md` §3.11. Both backends read it, and it is the only option
+    /// outside `Opt` that changes the bytes: the string backend writes range
+    /// boundaries and the DOM backend walks logically.
+    pub hydratable: bool,
     pub used: [bool; HELPER_COUNT],
     pub local: [&'a str; HELPER_COUNT],
 }
@@ -308,6 +390,7 @@ impl<'a, 'm> Emit<'a, 'm> {
             target,
             interp_units: Vec::new(),
             opt: options.opt,
+            hydratable: options.hydratable,
             used,
             local,
         }

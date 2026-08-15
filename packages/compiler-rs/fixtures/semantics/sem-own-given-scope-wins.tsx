@@ -36,6 +36,19 @@ export const rules = ["O4.5"]
 export const Subject = () => <i class="o45">given-scope-wins</i>
 
 /**
+ * The COMPILED attribute/class/style/domprop channel, which is the one none of
+ * the claims below could see. `insert` and `setProp` are runtime entry points
+ * that take a scope; the compiled path emits neither for this channel — it
+ * emitted a bare `renderEffect(compute, apply)` taking no scope at all, so the
+ * whole channel was ambient-owned in exactly the shape this rule forbids, in
+ * the path the design exists for. Driving the emission rather than the helper
+ * beside it is what makes the claim about the shipped code.
+ */
+export const tone = signal("one")
+
+export const Live = () => <i class={tone()}>compiled</i>
+
+/**
  * A and B, disjoint. A is entered and left, so it is a live scope nobody is
  * standing in; B is entered and stays current, so it is what `CURRENT` answers.
  */
@@ -137,6 +150,46 @@ export const claims: Claim[] = [
           }),
         (next) => value.set(next),
       )
+    },
+  },
+  {
+    id: "the-compiled-element-binding-owns-by-the-scope-it-was-given",
+    rule: "O4.5",
+    says: "the effect the COMPILER emits for a live attribute opens under the scope the Block was handed, so disposing A stops the attribute even while B is current",
+    async check(kit) {
+      tone.set("one")
+      const { a, done } = twoScopes()
+      try {
+        const element = (Live as unknown as (s: Scope | null) => Element)(a)
+        await kit.settle()
+        kit.precondition(
+          element.getAttribute("class") === "one",
+          `the compiled binding never ran: class is ${JSON.stringify(element.getAttribute("class"))}`,
+        )
+        // Non-vacuity, stated behaviourally rather than by searching the
+        // emitted text: the reference backend serialises the same effect into
+        // IR data and emits no call for it at all, so a text probe would be a
+        // claim about the DOM backend's spelling. A binding that is not live
+        // would satisfy the assertion below for the wrong reason.
+        tone.set("two")
+        await kit.settle()
+        kit.precondition(
+          element.getAttribute("class") === "two",
+          "the class binding is not live, so nothing about its ownership is observable here",
+        )
+        dispose(a)
+        tone.set("three")
+        await kit.settle()
+        if (element.getAttribute("class") === "three") {
+          kit.fail(
+            "a compiled component was invoked with scope A while B was current, and disposing A " +
+              "did not stop its class binding — the emitted effect took no scope at all and was " +
+              "owned by CURRENT, which is O4.5's original defect in the compiled channel",
+          )
+        }
+      } finally {
+        done()
+      }
     },
   },
   {

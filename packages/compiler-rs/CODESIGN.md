@@ -26,6 +26,9 @@ labelled otherwise. Scripts are in the scratchpad directory named above.
 | SSR 100-row page, `renderToString` envelope (51×100) | 4.66 µs | 9.88 µs | **2.10x**, Wilcoxon p=2.6e-7 |
 | *the same, re-measured at M5's repair round* | 4.87 µs | 9.10 µs | **1.86x**, p=7.3e-8 |
 | SSR same page, barq forced onto the DOM fallback | 202.73 µs | — | **41.88x slower**, p=5.3e-10 |
+| *the same deopt, re-measured at M6 before the change* | 191.61 µs | 5.25 µs | **36.10x slower**, p=5.3e-10 |
+| *the same page and the same module, M6 after, two runs* | 4.35 / 4.51 µs | 4.69 / 4.90 µs | **1.07x / 1.09x FASTER** |
+| *SSR 100-row envelope vs Solid, M6, two runs* | 4.55 / 4.62 µs | 10.57 / 10.46 µs | **2.35x / 2.30x** |
 | compile throughput | 0.013–0.025 ms/file | budget 1 ms | ~40x headroom |
 
 **The SSR ratio drifted and barq is not what moved.** Five runs at M5's repair round put the envelope
@@ -43,6 +46,14 @@ The 41.88x number is the largest single number available in this system and it i
 import: `compile.rs:609` `uninlinable_flow` scans every symbol and drops the **entire module** to the
 DOM backend if any of eight flow components is referenced. That is the cost of having a per-component
 string implementation.
+
+**M6 collected it and then removed it.** The row is now permanent in
+`packages/benchmark/src/ssr-head-to-head.ts` rather than a one-off: the same 100-row page is rendered
+from a plain module and from a module that also declares a `<Portal>` component, and the emitted
+module is READ to decide which backend it reached (`_$html(` vs `_$template(`) so nobody has to keep a
+boolean in step. Before: 36.10x. After: 1.07x faster, which is two rows measuring identical work.
+The page's markup is asserted byte-identical between the two modules before either is timed, so the
+comparison cannot drift into measuring two different pages.
 
 ### 0.2 Props carriers — the measurement that decides the props model
 
@@ -828,14 +839,25 @@ and every Block is `(s, …) → Out`, so the string backend can drive all of th
 the eight-component non-inlinable set and the per-module downgrade at `compile.rs:302-310` are deleted.
 The 41.88x cliff becomes unreachable rather than fixed.
 
-**Hydration is claim-based.** A range owner writes Svelte's branch instruction at **block boundaries
-only** — `<!--[k-->` … `<!--]-->` — and the client reads `k` rather than re-evaluating the condition
-(which is unsound: it may read data not yet seeded). Elements are claimed by the same walk carrying a
-hydration-only logical index (`child(n, 3)`), which costs nothing on the client-render path. On
-mismatch, only that branch re-renders. `markerId` — a process-global that makes the same tree
-serialise as `<!--Show:0-->` on the server and `<!--Show:1-->` on the client in one process — is
-deleted, and with it `container.textContent = ""`, which currently throws the entire server render
-away.
+**Hydration is claim-based.** *(Delivered. `SEMANTICS.md` H1–H4 and H6 are `HOLDS`.)* A range owner
+writes Svelte's branch instruction at **block boundaries only** — `<!--[k-->` … `<!--]-->` — and the
+client reads `k` rather than re-evaluating the condition (which is unsound: it may read data not yet
+seeded). Elements are claimed by the same walk carrying a hydration-only logical index
+(`child(n, 3)`), which costs nothing on the client-render path. On mismatch, only that branch
+re-renders. `container.textContent = ""` is gone from the hydration path — `mount(block, container,
+claiming)` is the one line that decides — and `markerId` no longer participates in anything the
+compiler emits.
+
+Two things the design did not anticipate, both found by building it:
+
+- **A HOLE needs the boundary comments as much as a branch does.** Not for a key — it has none — but
+  because the parser fuses a dynamic text run with the static one beside it before the client ever
+  sees them, and because the closing comment is the anchor that keeps `insert` off the
+  sole-occupant `parent.textContent` write. That write is §10 Q4's blocker, and the marker is what
+  makes it unreachable rather than what makes it correct.
+- **Skeleton `<!---->` markers have to be on the wire too.** The logical index counts them, so a
+  marker the string backend omitted would shift every index after it by one — which is why the anchor
+  pass now runs for the string target under `hydratable`, and only under it.
 
 Chosen deliberately against Vapor's zero-byte scheme: mismatch detection with a local blast radius is
 worth the bytes. **Stated honestly: today's 2.10x SSR headline is a bytes-out number that prices
@@ -1431,6 +1453,124 @@ first is why it mattered beyond bytes:
 **M6 — server.** The string backend over the same ABI; `uninlinable_flow` deleted; compile-time
 addresses; claim-based hydration; streaming. **This is where the 41.88x number is collected.**
 
+*Landed, minus claim-based hydration, which is the next agent's and which this milestone deliberately
+left the ground clear for.* What shipped:
+
+- **The string backend implements the four primitives.** `passes::run`'s flow lowering is no longer
+  gated on `Target::walks_the_dom()`, `claim_regions` runs for every target, and `Ssr::region` calls
+  the SAME `dom::region_call` the DOM backend calls, with `(parent, anchor) = (null, null)`. One
+  lowered IR, two emissions. `branch`/`each`/`boundary`/`portal`/`COUNT` — and `props`/`cell`/`block`
+  with them — are exported by both runtime halves under one name and one argument order, and the
+  compiler chooses between them by choosing the import SOURCE (`codegen::SHARED_ABI`). A
+  string-compiled module now imports from `@barqjs/core/server` and from nothing else.
+- **`uninlinable_flow` is deleted**, with `Flow::inlinable_on_server`, the eight-component set, the
+  module-level SSR→DOM downgrade and `BARQ007` — the diagnostic that announced it. All fourteen
+  constructs have a string component in `ssr.ts` (eleven of them reached only when the flow pass
+  refuses a shape it cannot read statically), so nothing anywhere sends a module to another backend.
+  `test/ssr.test.ts`'s `SSR_FALLBACK` list is now empty and asserted empty in both directions, and
+  `test/addresses.test.ts` plus the corpus rows pin the rest.
+- **Compile-time addresses.** `passes::address::locate` numbers every position `(module, unit,
+  position)` for every target, off the patch program — never off a `NodeId`, because the anchor pass
+  makes the two targets' skeletons differ. Exposed as the `addresses` option, a side artefact on the
+  same terms as `ownership`. §5.2's acceptance test exists and passes: 130 fixtures × 2 backends ×
+  2 optimisation levels, address sets identical. **H5 moves from `VIOLATED` to `HOLDS`.**
+- **Streaming.** `renderToStream` in `server.ts`. An unready `Loading` flushes
+  `<!--[b:N-->fallback<!--]-->` and parks `(content Block, Scope)`; the loop settles, re-invokes the
+  SAME Block under the SAME scope through `ssr.ts::resumeDeferred`, and flushes a `<template>` plus a
+  swap. The client half is a real function shipped by `toString()`, so the snippet and the thing the
+  tests drive cannot be two implementations.
+
+**The 41.88x row, re-measured (§0.1).** Before: the 100-row page in a module that also mentions
+`Portal` rendered **36.10x slower** than the same page in a plain module (191.61 µs vs 5.25 µs,
+Wilcoxon p=5.3e-10) — one import, and every unrelated page in the module lost its string backend.
+After: **1.07x faster** (4.35 µs vs 4.69 µs, p=1.2e-4), which is the two rows measuring the same work
+and differing by run order. The cliff is not narrowed; it is unreachable.
+
+**What M6 did NOT do, stated.** The branch-instruction comment `<!--[k-->` is written at a DEFERRED
+boundary and nowhere else. §11 Q4 settled that hydration pays those bytes to get mismatch detection
+and §3.11 writes the format down, but the byte cost is only defensible against a claim algorithm that
+spends it, and emitting them now would (a) charge every client-rendered page for bytes nothing reads
+and (b) break the property this backend is checked by — the two backends produce byte-identical
+markup, which is what lets the dual-render suite compare them with no normalisation step that could
+hide a real divergence. The addresses are landed and diffed; wiring them into wire bytes is the
+hydration pass's call, made with its own measurement.
+
+**M6b — claim-based hydration.** The call M6 deferred, made: the bytes are written, and they are
+written behind a compile-time flag so M6's byte-identity property survives untouched with it off.
+
+- **`hydratable`, a compile option that changes BOTH backends.** The string backend writes
+  `<!--[-->` … `<!--]-->` at every hole and `<!--[k-->` at every range, where `k` is the key the
+  primitive CHOSE; the DOM backend's template walk goes through `child`/`sib` — a logical index that
+  steps over those ranges — instead of `.firstChild`/`.nextSibling`, and a hole whose value is an
+  expression rather than a thunk is wrapped in `hole(parent, anchor, …)` so the claim is made before
+  the value is built. Off by default: a page that is never hydrated pays neither the wire bytes nor
+  the indirection, which is H3's falsification procedure and is run over the whole corpus.
+- **`hydrate` no longer clears the container.** `mount(block, container, claiming)` is one function
+  with one line of difference, so the claim path cannot drift from the path everything else is
+  measured on. **115 of 130 fixtures reuse 100% of the server's nodes**; the 15 that do not are
+  registered with their exact reuse and a reason.
+- **Mismatch is detected and the blast radius is stated per corruption.** Eleven wire corruptions plus
+  the build-level one (compile without the flag and hydrate anyway); every one is detected, every one
+  ends at a tree the client would have built, and the worst case is a full client render — exactly
+  today's behaviour. The row that motivated the subtree check: an EXTRA element in the middle of a
+  claimed subtree survived silently, because the walk indexes from both ends.
+- **§10 Q4's repo-specific blocker is SOLVED, by the marker.** `<span>{x}</span>` still compiles to
+  `<span></span>` plus an `insert`, and the sole-occupant `parent.textContent` write still exists —
+  it is simply unreachable on a hydrating page, because `insert` seeds its `current` with the claimed
+  nodes and that path requires `current.length === 0`. The hydrating path therefore diverges from the
+  benchmarked production path in exactly one place, and it is a `null` check. **Declared:** the wire
+  is 55.7% larger raw and 7.3% larger gzipped on the 100-row page.
+- **Rules moved.** H1, H2, H3, H4 and H6, `VIOLATED`/`PLANNED` → `HOLDS`. All five moved on CHANNELS,
+  not on fixtures, and §14.1's five planned hydration fixtures were struck rather than written: a
+  percentage over a corpus, a diff between two compiles and a corrupted WIRE are none of them a source
+  file. Coverage 32 → 37 of 88.
+- **What it is NOT.** Claiming is 1.4–1.6x more *node work* than replacing in happy-dom, measured at
+  four page sizes. That is a lower bound on the claim's advantage rather than an upper one — happy-dom
+  models no layout, no paint and no focus, which is where every cost of replacing actually lands — but
+  it is the honest number this harness can produce, and the frame-budget half of §10 Q4's table needs
+  a real browser and belongs with the Chrome differential.
+
+**The registry gate M6 added, because a milestone that closes rows needs one.** Every known-failure
+row carries a `greenAt` and nothing compared it to a clock: three rows promised green at M5 and were
+still `VIOLATED` after M6 with no assertion able to see it. `test/milestone.ts` exports
+`CURRENT_MILESTONE`, and `semantics.test.ts`, `leaks.test.ts`, `ownership.test.ts` and
+`oracle.test.ts` each fail a row that is behind it. The three M5 rows moved to M9 with their reasons
+rewritten — see `SEMANTICS.md` §15.7, which also records the measurement that rules out the fix C3.8's
+row used to propose, and the one decision left open for the user.
+
+**The M2 gate round, which closed the last two ownership holes the corpus could not see.** Both
+were the same mistake in two places: taking a rule that is about a VALUE and enforcing it at an
+ARGUMENT.
+
+- **C3.8 at `ref` and at an event handler.** `block`'s entry guard fires on `scope === undefined`, and
+  those are the two slots where the value is invoked with something else — the Element, the Event. So
+  a forwarded Block ran, `requireScope` accepted a DOM node as its scope, and everything below it was
+  parented to that node: a permanent leak that survived root disposal, measured. The brand is a
+  property of the value, so the refusal moved to the read — `applyRefs`, `listen`, `delegate`, and the
+  delegated dispatcher, which is the only place the compiled `_el$1.$$click = h` expando is visible at
+  all. Three new slots in `sem-props-block-in-cell-slot`, nine slots and 18 pairs.
+- **O4.5 in the compiled element-binding channel.** `insert` and `setProp` honoured their scope
+  argument; the channel beside them emitted a bare `renderEffect(compute, apply)` taking no scope at
+  all, so attribute, class, style and DOM-property bindings were ambient-owned in 34 of the corpus's
+  fixtures while the registry read "closed for `setProp`" — `setProp` being the un-compiled
+  dispatcher. `bindEffect(s, …)` replaces it, `block`'s wrapper establishes the handed scope as
+  `CURRENT` so the argument decides for `useContext`/`onCleanup`/`effect` too, and the delegated
+  dispatcher runs a handler under the element's scope instead of with `CURRENT === null` — where its
+  work was an orphan the next flush released, owned by nobody, forever.
+- **The channel that could not see any of it, and now can.** The L2b trace recorded scopes, template
+  clones and block spans, and no EFFECT — so an effect opened under the wrong owner produced a
+  byte-identical trace and the whole effect half of O2/O4.5 was structurally invisible. `own` is the
+  new event; `blockFindings` holds an effect to the same "at or below the scope this block was given"
+  test it already applied to a clone and to a scope; the banner reports the effect count so "nothing
+  was misplaced" can never be confused with "nothing was recorded". 239 effects, 0 findings.
+- **Consequences the compiler pays for.** `brand`'s predicate is "uses its scope", and "names `_s$`"
+  was a proxy for it that missed both of the above: with `bindEffect` taking the scope, 40 unbranded
+  component declarations became 24, and widening the predicate to include `createElement` — the
+  un-compiled walk, which opens its own bindings and takes no scope — closed the rest. The 24 that
+  remain are genuinely static. Snapshots moved for exactly two reasons and nothing else: the effect
+  call gained its leading `_s$`, and the components that fact newly brands gained their `_$block(…)`
+  rebind.
+
 **M7 — async and forms.** One resource with structural cancellation and `gen`-guarded staleness;
 `KEEPALIVE` parking; transitions as scope forks; derived optimistic state; the `bind:` family with
 DOM-compare and selection preservation; `linked`.
@@ -1671,6 +1811,24 @@ template and the marginal cost is visible.
 `signals.ts:223-232` documents that the opposite tradeoff was chosen deliberately for the async
 fields, and the shape change may perturb inline caches the current monomorphic discipline was tuned
 around. Ownership clarity is not worth a shape change without a number.
+
+**ANSWERED at the M2 gate round: the split measures POSITIVE, so it stays.** M2 shipped it with "the
+split ships only if it measures" written into the commit message and no measurement recorded anywhere,
+which left it kept on NO result rather than on a neutral one. The number now exists. The probe puts
+six always-present ownership slots back on the base shape — the SLOT half of the question, isolated,
+with `_owner`/`_scope` and every code path left alone — and runs the eleven cases, twice each way:
+
+| case (barq ns, A min) | split | +6 slots on the base shape |
+|---|---|---|
+| dispose: root with 50 memos | 33610 / 34759 | **37457 / 37615** |
+| create: root + signal + effect + flush + dispose | 94.3 / 94.2 | **99.4 / 100.2** |
+| every other row | — | within noise |
+
+The two owner-heavy rows are 8-11% and ~6% slower with the slots back, reproducibly, and `dispose:
+root with 50 memos` moves from 0.65-0.67x of Solid to 0.74-0.75x. Nothing regressed. What the probe
+does NOT measure is the indirection half — the extra allocation a node that DOES own something pays —
+because that needs the full four-edit revert; the rows above are the ones where that cost would show
+up most and they got faster, which bounds it. The revert instructions stay at the field site.
 
 **Q7 — OVERRULED by the user. Transitions get a real design, modelled on Solid 2.0.**
 My answer was "scope forks only, defer the hard case", and the user rejected it: deferring the one

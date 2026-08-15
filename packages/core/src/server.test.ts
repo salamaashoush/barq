@@ -10,9 +10,12 @@ import {
   clearRenderData,
   generateHydrationScript,
   getRenderData,
+  renderToStream,
   renderToString,
   renderToStringAsync,
+  swapDeferredRange,
 } from "./server.ts";
+import { esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
 import {
   NotReadyError,
   computed,
@@ -261,5 +264,111 @@ describe("settle", () => {
     // Session-scoped: unrelated in-flight work elsewhere doesn't block this
     await settle(session);
     expect(seen).toEqual([2]);
+  });
+});
+
+/**
+ * Streaming — `CODESIGN.md` §3.11.
+ *
+ * "an unready boundary flushes `<!--[b:7-->fallback<!--]-->` plus a continuation
+ * record `(Block, Scope)`; when its promises settle the server flushes a
+ * `<template>` and a swap. The Block is re-invocable with its scope, so there is
+ * no second code path."
+ *
+ * The tests below are about those three sentences and nothing else: the shell
+ * really is flushed before the boundary resolves (which is the only reason to
+ * stream at all), the range comment carries the continuation's address, and the
+ * SECOND invocation is the same Block under the same scope.
+ */
+describe("renderToStream", () => {
+  async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    const parts: string[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(decoder.decode(value));
+    }
+    return parts;
+  }
+
+  test("the shell is flushed before the boundary resolves, and the content follows", async () => {
+    const late = createAsync(async () => {
+      await tick();
+      return "Ada";
+    });
+    const page = (): unknown =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>loading</i>"),
+            children: () => ssrHtml(`<b>${esc(late())}</b>`),
+          }),
+        )}</main>`,
+      );
+
+    const parts = await collect(renderToStream(page as never));
+
+    // The shell is its own chunk, and it carries the fallback, not the value.
+    expect(parts[0]).toContain("<i>loading</i>");
+    expect(parts[0]).not.toContain("Ada");
+    // §3.11's range instruction, naming the continuation.
+    expect(parts[0]).toContain("<!--[b:0-->");
+    expect(parts[0]).toContain("<!--]-->");
+    // The content arrives later, in a template plus a swap.
+    const rest = parts.slice(1).join("");
+    expect(rest).toContain('<template data-barq="0">');
+    expect(rest).toContain("<b>Ada</b>");
+    expect(rest).toContain("__BARQ_SWAP__(0)");
+
+    // The snippet is script DATA, which is raw text: nothing decodes inside it,
+    // so there is no entity to escape a `<` with and a `<` is the first byte of
+    // the only sequence that can leave the element early. The shipped function
+    // therefore contains none, and this is where that stays true.
+    const snippet = parts.join("").match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+    expect(snippet).toContain("__BARQ_SWAP__=");
+    expect(snippet, "the swap snippet grew a `<`").not.toContain("<");
+  });
+
+  test("the swap replaces exactly the deferred range", async () => {
+    const late = createAsync(async () => {
+      await tick();
+      return "Ada";
+    });
+    const page = (): unknown =>
+      ssrHtml(
+        `<main><p>before</p>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>loading</i>"),
+            children: () => ssrHtml(`<b>${esc(late())}</b>`),
+          }),
+        )}<p>after</p></main>`,
+      );
+
+    const html = (await collect(renderToStream(page as never))).join("");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    try {
+      host.innerHTML = html;
+      // A script assigned through `innerHTML` does not execute, so the swap is
+      // driven directly — and `swapDeferredRange` is not a paraphrase of the
+      // snippet, it IS the snippet: `SWAP_SNIPPET` is its `toString()`.
+      expect(html, "the page carries the function this test calls").toContain("swapDeferredRange");
+      swapDeferredRange(0);
+      const main = host.querySelector("main")!;
+      expect(main.innerHTML).toContain("<b>Ada</b>");
+      expect(main.innerHTML).not.toContain("loading");
+      // The surrounding markup is untouched: the range is the blast radius.
+      expect(main.firstElementChild?.outerHTML).toBe("<p>before</p>");
+      expect(main.lastElementChild?.outerHTML).toBe("<p>after</p>");
+    } finally {
+      host.remove();
+    }
+  });
+
+  test("a page with nothing to defer streams one chunk and no swap machinery", async () => {
+    const parts = await collect(renderToStream((() => ssrHtml("<p>flat</p>")) as never));
+    expect(parts).toEqual(["<p>flat</p>"]);
   });
 });

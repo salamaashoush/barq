@@ -877,12 +877,21 @@ variable when every reference to `i` is a zero-arg call; otherwise the emitter b
 `const i = () => _i$;` at the top of the row. No per-row closure survives in the common case,
 and no server implementations of the list/branch components are required.
 
-The remaining eight flow components — `Loading`, `Errored`, `Reveal`, `Suspense`, `Await`,
-`Portal`, `Dynamic`, `ErrorBoundary` — have real async and boundary semantics and cannot be
-inlined. Until `packages/core` grows string-mode implementations, **any module using them falls
-back to the existing happy-dom `renderToString` path.** That means two SSR strategies coexisting,
-which is exactly the divergence this design otherwise eliminates. It is stated rather than
-hidden; see open question O2.
+**SUPERSEDED at M6 — the fallback above no longer exists.** This section described the split it
+created: six flow components inlined as plain JS, and the remaining eight — `Loading`, `Errored`,
+`Reveal`, `Suspense`, `Await`, `Portal`, `Dynamic`, `ErrorBoundary` — sending **any module that
+merely referenced one** back to the happy-dom `renderToString` path. `CODESIGN.md` §0.1 measured
+that at 41.88x on the 100-row page, for one import.
+
+What replaced it is `CODESIGN.md` §3.4 and §3.11. The flow pass lowers eleven constructs onto four
+primitives before either backend runs, and `packages/core/src/ssr.ts` implements those four
+primitives as string builders under the same names and the same argument order as `flow.ts`'s. The
+compiler emits the same call for both targets and picks the implementation by picking the import
+source. The refusals the flow pass states — a spread source, an unreadable `keyed`, and `Dynamic`,
+`Await`, `Reveal` — reach a string COMPONENT that is an adapter over those same four primitives, so
+all fourteen constructs have a string lowering and no module has anywhere else to go.
+`uninlinable_flow`, `Flow::inlinable_on_server`, the module-level downgrade and `BARQ007` are
+deleted. Open question O2 is closed.
 
 **Required `packages/core` delta.** A new `packages/core/src/ssr.ts`, exported under a
 `"./server"` condition in `packages/core/package.json` (which today exports only `.`,
@@ -1583,6 +1592,10 @@ conformance suite** that renders every fixture through both `renderToString` (ha
 existing path) and the compiled SSR path and diffs the HTML. Deliverable: target #10, with an
 explicit and tested fallback for the eight non-inlinable flow components.
 
+*The fallback half of that deliverable was undone by the redesign's own M6* (`CODESIGN.md` §8): the
+string backend implements the four primitives, every construct has a string lowering, and the
+dual-render suite compares all 130 fixtures with an EMPTY fallback set.
+
 Then **the Babel plugin goes**. `packages/compiler` keeps `barqVitePlugin` and nothing else: the
 transforms, the Babel entry point, `types.ts` and the four Babel test files were deleted once
 every JSX shape their 55 cases pinned had a fixture in `fixtures/`. There is no `native` option
@@ -1666,11 +1679,14 @@ from `dom.ts` and re-export it from `index.ts`? Without it, every compiler-emitt
 write is a silently dead handler. If the answer is no, the compiler must emit
 `setProp(el, "onClick", h)` instead and target #7 is off the table.
 
-**O2 — SSR scope.** Is a real string-mode `packages/core/src/ssr.ts` (+ a `"./server"` export
-condition) in scope, or should the SSR target be deferred past M6? And if it is in scope: are
-you willing to write string implementations of `Loading`, `Errored`, `Reveal`, `Suspense`,
-`Await`, `Portal`, `Dynamic`, and `ErrorBoundary`, or should modules using those permanently
-fall back to the happy-dom `renderToString` path?
+**O2 — SSR scope. CLOSED at the redesign's M6.** The question was whether to write string
+implementations of `Loading`, `Errored`, `Reveal`, `Suspense`, `Await`, `Portal`, `Dynamic` and
+`ErrorBoundary`, or let modules using them fall back to happy-dom permanently. The answer turned out
+to be neither: `CODESIGN.md` §3.4 collapses fourteen constructs onto FOUR primitives before either
+backend runs, so what needed a string implementation was four functions rather than eight components.
+The eight adapters exist too — they are what a construct whose props the compiler cannot read
+statically still reaches — but each is a dozen lines over those same four primitives. The fallback is
+deleted, not narrowed.
 
 **O3 — the `{item.name}` verdict.** Under the lifting rule, a member read on a keyed `For` row
 item performs no tracked read, so it is applied once with no thunk and no effect. That matches

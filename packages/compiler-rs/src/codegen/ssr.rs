@@ -2,13 +2,21 @@
 //!
 //! Target #10 is one sentence: every static byte is escaped at COMPILE time and
 //! emitted as a literal chunk of one concatenation, and no DOM operation is
-//! performed at all. There is no `template()`, no clone, no walk, no `_el$`, and
-//! P6 addressing is skipped entirely — a string has no siblings to walk to.
+//! performed at all. There is no `template()`, no clone, no walk and no `_el$`;
+//! P6's REF PLAN is skipped entirely, because a string has no siblings to walk
+//! to. P6's other half — §3.11's compile-time addresses — is not skipped, and is
+//! what the two backends are diffed against.
 //!
 //! The two backends cannot drift because they read the same IR through two
 //! total matches: `node` over `SkelNode`, here, and the shared
 //! [`crate::codegen::backend::Backend`] over `Op`, which both implement and
 //! neither may leave a hole in.
+//!
+//! Since M6 they also share the CONTROL FLOW. The flow pass runs for both
+//! targets, `Op::Region` reaches both, and both expand it through one
+//! `dom::region_call` — the string backend passing `(null, null)` where the DOM
+//! backend passes the pair its template walk computed. `uninlinable_flow` and
+//! the whole-module downgrade it drove are gone with that.
 
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
@@ -26,6 +34,16 @@ use crate::ir::{
 use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, intrinsic_tag};
 use crate::lower::{names, text};
+
+/// §3.11's branch instruction, at a hole rather than at a branch: a hole has no
+/// key to write, so the open comment carries none. `ssr.ts` spells the same
+/// three constants — one for the DOM's insert anchor and two for a range — and
+/// `packages/core/src/hydration.ts` reads them back. Three places, one format,
+/// and `test/hydration.test.ts` asserts the compiler's bytes against the
+/// runtime's reader rather than against a copy of this string.
+const OPEN_HOLE: &str = "<!--[-->";
+const CLOSE: &str = "<!--]-->";
+const MARKER: &str = "<!---->";
 
 /// One program-level root. The result is branded `SsrHtml` so a hole can tell
 /// markup the compiler produced from user data it has to escape — the whole
@@ -166,7 +184,13 @@ fn node_into<'a>(
         SkelNode::Text(text) => chunks.escaped(text),
         // Raw html is bytes the author asked for verbatim; nothing re-escapes it.
         SkelNode::RawHtml(text) => chunks.text(text),
-        // A `<!---->` is a DOM insert anchor and means nothing on the wire.
+        // A `<!---->` is a DOM insert anchor and means nothing on the wire —
+        // unless the wire is going to be CLAIMED. The client's walk addresses
+        // the template's skeleton, and this comment is a node in it; leaving it
+        // out would make the server's logical child list one shorter than the
+        // list the emitted `child`/`sib` indices were computed against, at
+        // exactly the positions where two holes sit side by side.
+        SkelNode::Marker(_) if ctx.hydratable => chunks.text(MARKER),
         SkelNode::Marker(_) | SkelNode::Empty => {}
         // A slot produces NOTHING in the template and terminates a chunk here.
         SkelNode::Slot(slot) => slot_into(ctx, unit, chunks, slot),
@@ -385,11 +409,7 @@ fn attribute_slot(op: Op) -> Slot {
         | Op::Bind { .. } => Slot::Elsewhere,
         // Owns the child position (`element_into`), or the slot's own position
         // in the child list (`node_into`), or is a grouping marker with no
-        // effects to group.
-        // `Region` is the same: a child position, and one the flow pass never
-        // creates for this backend at all (`passes::run` gates it on the DOM
-        // targets, because P8b owns the string implementation of every
-        // construct that would reach a primitive).
+        // effects to group. `Region` is a child position like `Insert`.
         Op::Insert { .. } | Op::Region { .. } | Op::EffectGroup { .. } => Slot::Elsewhere,
     }
 }
@@ -501,7 +521,21 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         match self.place {
             Place::Child => {
                 let expression = take(self.ctx, self.unit, value, at.span());
+                // §11 Q4's bytes, at a hole. Two comments, and each of them
+                // earns its place: the OPEN keeps a dynamic text run from
+                // fusing with the static text beside it — `{a}text` parses as
+                // one text node without it, and then no index addresses `a` —
+                // and the CLOSE is the anchor `insert` claims against, which is
+                // what stops the first client write from going through
+                // `parent.textContent` and destroying the server's text node.
+                let hydratable = self.ctx.hydratable;
+                if hydratable {
+                    self.chunks.text(OPEN_HOLE);
+                }
                 value_into(self.ctx, self.chunks, expression);
+                if hydratable {
+                    self.chunks.text(CLOSE);
+                }
             }
             Place::OpenTag(_) | Place::Content => {
                 unreachable!("a slot owns its own position in the child list")
@@ -509,20 +543,24 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         }
     }
 
-    /// Unreachable, and stated rather than assumed: the flow lowering is gated
-    /// on `Target::walks_the_dom()` in `passes::run`, because P8b rewrites a
-    /// flow component to its own string implementation (`_$ssrFor`, `_$ssrShow`)
-    /// and there is nothing left to rewrite once the construct has become a DOM
-    /// primitive. `branch`, `each`, `boundary` and `portal` build NODES; a
-    /// server render concatenates bytes and has no `parent` to insert into.
+    /// A control-flow hole, on the SAME lowered IR the DOM backend reads.
     ///
-    /// If this ever fires, the gate moved and the string backend needs a
-    /// string-shaped answer for regions — not this one.
-    fn region(&mut self, _at: At<'_>, _slot: SlotId, _anchor: Anchor, _region: RegionId) {
-        unreachable!(
-            "the flow pass does not run for the string backend: a region builds nodes, and P8b \
-             owns the string implementation of every construct that reaches one"
-        )
+    /// `region_call` is shared verbatim — one function, one argument order — and
+    /// the only difference is the insertion pair, which is `None` here because a
+    /// string has no parent to insert into. The primitive answers that by
+    /// building its own range, which on this backend is the markup between its
+    /// two boundary comments.
+    ///
+    /// The result is `SsrHtml`, so it is interpolated as MARKUP and never
+    /// escaped: it is bytes this compiler produced.
+    fn region(&mut self, at: At<'_>, _slot: SlotId, _anchor: Anchor, region: RegionId) {
+        let span = at.span();
+        let row = std::mem::replace(
+            &mut self.unit.regions[region as usize],
+            crate::codegen::dom::empty_region(self.ctx, span),
+        );
+        let call = crate::codegen::dom::region_call(self.ctx, row, None, span);
+        self.chunks.markup(call);
     }
 
     // ── nothing reaches the wire ──────────────────────────────────────────
@@ -847,11 +885,13 @@ fn slot_into<'a>(
     chunks: &mut Chunks<'a>,
     slot: SlotId,
 ) {
-    let Some(index) = unit
-        .patch
-        .iter()
-        .position(|patch| matches!(patch.op, Op::Insert { slot: it, .. } if it == slot))
-    else {
+    // Both opcodes own a child position and are told apart by the value that
+    // fills it, never by the position itself — so the search is for the SLOT and
+    // the dispatch below is `lower`'s.
+    let Some(index) = unit.patch.iter().position(|patch| match patch.op {
+        Op::Insert { slot: it, .. } | Op::Region { slot: it, .. } => it == slot,
+        _ => false,
+    }) else {
         return;
     };
     let patch = unit.patch[index];
@@ -905,16 +945,22 @@ fn root_into<'a>(ctx: &mut Emit<'a, '_>, chunks: &mut Chunks<'a>, index: u32, sp
     }
 }
 
-/// `<For>` and its five siblings, rewritten to the string implementation of the
-/// same component. The split is `Flow::inlinable_on_server()` and nothing else:
-/// the other eight have real async and boundary semantics, and a module using
-/// one of them never reaches this backend at all.
+/// A control-flow construct the flow pass REFUSED, rewritten to the string
+/// implementation of the same component.
+///
+/// The pass lowers eleven constructs to a primitive and never emits a call for
+/// them; what reaches here is the shapes it cannot read statically — a spread
+/// source, an unreadable `keyed` — and the three §3.4 names as refusals. All
+/// fourteen have a string component now, each of them an adapter over the same
+/// four primitives, so there is no construct left that could send a module to
+/// another backend. `uninlinable_flow` and its eight-component set went with
+/// that, and so did the whole-module downgrade behind them.
 fn flow_call<'a>(ctx: &mut Emit<'a, '_>, expression: Expression<'a>) -> (Expression<'a>, bool) {
     let Expression::CallExpression(mut call) = expression else { return (expression, false) };
     let flow = callee_flow(ctx, &call.callee)
         // `Match` is an identity function, not a fragment, so its result is a
         // props object a `Switch` reads — never markup, never interpolated.
-        .filter(|flow| flow.inlinable_on_server() && flow.returns_a_fragment());
+        .filter(|flow| flow.returns_a_fragment());
     let Some(flow) = flow else {
         return (Expression::CallExpression(call), false);
     };
@@ -944,7 +990,14 @@ fn callee_flow(ctx: &Emit<'_, '_>, callee: &Expression<'_>) -> Option<Flow> {
     }
 }
 
-fn server_flow(flow: Flow) -> Helper {
+/// The string implementation of every construct, with no hole in it. Total on
+/// `Flow` by construction — a new construct is a compile error here, which is
+/// what stops a fifteenth from quietly acquiring a DOM-only implementation.
+///
+/// `Suspense` is `Loading` and nothing else, exactly as `components.ts` spells
+/// it; `ErrorBoundary` is NOT `Errored`, because its fallback takes the error by
+/// value where `Errored`'s takes an accessor.
+pub(crate) fn server_flow(flow: Flow) -> Helper {
     match flow {
         Flow::For => Helper::SsrFor,
         Flow::Index => Helper::SsrIndex,
@@ -952,7 +1005,13 @@ fn server_flow(flow: Flow) -> Helper {
         Flow::Show => Helper::SsrShow,
         Flow::Switch => Helper::SsrSwitch,
         Flow::Match => Helper::SsrMatch,
-        _ => unreachable!("filtered by `inlinable_on_server`"),
+        Flow::Loading | Flow::Suspense => Helper::SsrLoading,
+        Flow::Errored => Helper::SsrErrored,
+        Flow::ErrorBoundary => Helper::SsrErrorBoundary,
+        Flow::Portal => Helper::SsrPortal,
+        Flow::Await => Helper::SsrAwait,
+        Flow::Dynamic => Helper::SsrDynamic,
+        Flow::Reveal => Helper::SsrReveal,
     }
 }
 
@@ -1307,30 +1366,59 @@ mod tests {
         assert!(!spread.contains("_$attrLit"), "{spread}");
     }
 
-    /// The six string-inlinable flow components, resolved by `SymbolId`. The
-    /// result is markup by construction, so it is interpolated with no escaper
-    /// around it — and a LOCAL binding of the same name is not the runtime's and
-    /// gets neither treatment.
+    /// The eleven constructs the flow pass lowers reach the SAME primitives on
+    /// this backend as on the DOM one — one lowered IR, two emissions — and the
+    /// only difference in the emitted call is where `branch` is imported from.
     #[test]
-    fn the_inlinable_flow_components_become_their_string_implementations() {
-        let code = ssr(
-            "import { For, Index, Repeat, Show, Switch, Match } from \"@barqjs/core\";\n\
+    fn a_lowered_construct_reaches_the_same_primitive_on_both_backends() {
+        let source = "import { For, Show, Errored, Portal } from \"@barqjs/core\";\n\
              export const V = () => (\n  <div>\n    <For each={rows}>{(r) => <li>{r.n}</li>}</For>\n\
-             <Index each={rows}>{(r) => <li>{r()}</li>}</Index>\n\
-             <Repeat count={3}>{(i) => <li>{i}</li>}</Repeat>\n\
              <Show when={on}>yes</Show>\n\
-             <Switch><Match when={on}>a</Match></Switch>\n  </div>\n);\n",
-        )
-        .code;
-        for helper in ["_$ssrFor(", "_$ssrIndex(", "_$ssrRepeat(", "_$ssrShow(", "_$ssrSwitch("] {
-            assert!(code.contains(helper), "{helper} missing from:\n{code}");
+             <Errored fallback={(e) => <b>{e().message}</b>}>x</Errored>\n\
+             <Portal target={t}>p</Portal>\n  </div>\n);\n";
+        let string = ssr(source);
+        let nodes = dom(source).code;
+        for helper in ["_$branch(", "_$each(", "_$boundary(", "_$portal("] {
+            assert!(string.code.contains(helper), "{helper} missing from:\n{}", string.code);
+            assert!(nodes.contains(helper), "{helper} missing from the DOM emission:\n{nodes}");
         }
+        assert!(string.warnings.is_empty(), "{:?}", string.warnings);
+        // Not one `ssr*` component call between them: the pass took the
+        // component away, on both targets.
+        assert!(!string.code.contains("_$ssr"), "{}", string.code);
+        // The one thing that differs is the SOURCE the shared names come from,
+        // and the string module imports from the client entry not at all.
+        assert!(string.code.contains("branch as _$branch"), "{}", string.code);
+        assert!(string.code.contains("from \"@barqjs/core/server\""), "{}", string.code);
+        assert!(core_import(&string.code).is_empty(), "{}", string.code);
+        assert!(nodes.contains("branch as _$branch"), "{nodes}");
+        assert!(!nodes.contains("@barqjs/core/server"), "{nodes}");
+    }
+
+    /// What the flow pass REFUSES still has a string answer, and every one of
+    /// the fourteen has one: a spread source hides the construct's shape, so the
+    /// component call survives and is rewritten to the adapter over the same
+    /// four primitives.
+    #[test]
+    fn a_refused_construct_becomes_its_string_component() {
+        let code = ssr("import { For } from \"@barqjs/core\";\n\
+             export const V = () => <div><For {...p}>{(r) => <li>{r.n}</li>}</For></div>;\n")
+        .code;
+        assert!(code.contains("_$ssrFor("), "{code}");
         // Markup, so no escaper wraps it.
         assert!(!code.contains("_$esc(_$ssr"), "{code}");
-        // `Match` is an identity function that touches no DOM, so it needs no
-        // string implementation of its own — `Switch` reads its props object.
-        assert!(code.contains("Match(_s$, {"), "{code}");
         assert!(code.contains("from \"@barqjs/core/server\""), "{code}");
+
+        // `Match` is an identity function, not a fragment: it returns its own
+        // props record and `Switch` reads it, so it is never interpolated as
+        // markup and never rewritten at a hole — there is no hole. It builds
+        // nothing, touches no DOM and is correct as it stands on either target,
+        // which is why the call survives verbatim.
+        let switched = ssr("import { Switch, Match } from \"@barqjs/core\";\n\
+             export const V = () => <div><Switch {...p}><Match when={o}>a</Match></Switch></div>;\n")
+        .code;
+        assert!(switched.contains("_$ssrSwitch("), "{switched}");
+        assert!(switched.contains("Match(_s$, {"), "{switched}");
 
         // By SymbolId and never by name.
         let local =
@@ -1339,12 +1427,22 @@ mod tests {
         assert!(!local.contains("_$ssrShow"), "{local}");
     }
 
-    /// DESIGN §5's explicit fallback, and the reason it is per MODULE: the eight
-    /// have async and boundary semantics no concatenation expresses, so the
-    /// module compiles to the DOM backend and `renderToString` renders it.
+    /// The 41.88x row, as a property of the compiler rather than of a benchmark.
+    ///
+    /// `uninlinable_flow` dropped the WHOLE module to the DOM backend when any
+    /// of eight flow components was referenced — one import, and every unrelated
+    /// page in the module lost its string backend. It is deleted, and the shape
+    /// that used to trigger it is asserted here for all fourteen constructs at
+    /// once: the string backend, no `_$template`, and nothing to warn about.
     #[test]
-    fn a_non_inlinable_flow_component_sends_the_whole_module_back_to_the_dom_backend() {
+    fn no_construct_sends_the_module_to_another_backend() {
         for name in [
+            "For",
+            "Index",
+            "Repeat",
+            "Show",
+            "Switch",
+            "Match",
             "Loading",
             "Errored",
             "Reveal",
@@ -1354,24 +1452,28 @@ mod tests {
             "Dynamic",
             "ErrorBoundary",
         ] {
+            // A SPREAD, so the flow pass refuses and the construct really does
+            // reach a component call — which is the position the deleted scan
+            // was defending, and the only one where a construct could still
+            // want an implementation this backend does not have.
             let source = format!(
                 "import {{ {name} }} from \"@barqjs/core\";\n\
-                 export const V = () => <div><{name}>x</{name}></div>;\n"
+                 export const V = () => <div><{name} {{...p}}>x</{name}></div>;\n"
             );
             let out = ssr(&source);
-            assert!(out.code.contains("_$template"), "{name}:\n{}", out.code);
-            assert!(!out.code.contains("@barqjs/core/server"), "{name}:\n{}", out.code);
-            assert_eq!(out.warnings.len(), 1, "{name}: {:?}", out.warnings);
-            assert!(out.warnings[0].message.contains(name), "{:?}", out.warnings[0]);
-            assert!(out.warnings[0].message.contains("renderToString"), "{:?}", out.warnings[0]);
+            assert!(out.code.contains("_$html("), "{name}:\n{}", out.code);
+            assert!(!out.code.contains("_$template"), "{name}:\n{}", out.code);
+            assert!(out.code.contains("@barqjs/core/server"), "{name}:\n{}", out.code);
+            assert!(out.warnings.is_empty(), "{name}: {:?}", out.warnings);
         }
 
-        // Imported but never referenced is not "used", and a local binding of
-        // the same name is not the runtime's component at all.
-        let quiet =
+        // A local binding of the same name is not the runtime's component at
+        // all, and is left exactly as written.
+        let local =
             ssr("const Portal = (p) => p.children;\nexport const V = () => <Portal>x</Portal>;\n");
-        assert!(quiet.warnings.is_empty(), "{:?}", quiet.warnings);
-        assert!(quiet.code.contains("_$html("), "{}", quiet.code);
+        assert!(local.warnings.is_empty(), "{:?}", local.warnings);
+        assert!(local.code.contains("_$html("), "{}", local.code);
+        assert!(!local.code.contains("_$ssrPortal"), "{}", local.code);
     }
 
     /// A fragment and the markup the HTML parser reshapes are both refused by
@@ -1406,11 +1508,8 @@ mod tests {
         .code;
         // C6: the body is a BLOCK taking a scope, and its unit is spliced into
         // the arrow rather than built as an argument.
-        assert!(
-            code.contains("children: _$block((_s$) => _$html(`<p class=\"y\">yes</p>`)"),
-            "{code}"
-        );
-        assert!(code.contains("_$html(`<div>${_$ssrShow("), "{code}");
+        assert!(code.contains("_$block((_s$) => _$html(`<p class=\"y\">yes</p>`))"), "{code}");
+        assert!(code.contains("_$html(`<div>${_$branch("), "{code}");
     }
 
     /// `innerHTML` and its siblings replace the element's CONTENT, so they are
@@ -1481,10 +1580,11 @@ mod tests {
         assert!(opaque.contains("_$attr(\"style\", s, \"div\")"), "{opaque}");
     }
 
-    /// `import * as core` binds no symbol for `core.For`, so a split resolved by
-    /// `SymbolId` walks straight past it — and past BOTH halves: the six are not
-    /// rewritten and the eight do not trigger the fallback, which ships a string
-    /// module that calls a DOM component on a server with no `document`.
+    /// `import * as core` binds no symbol for `core.For`, so the flow PASS walks
+    /// straight past it — a member tag is not an identifier reference and cannot
+    /// be resolved to a construct at lowering time. It still reaches a string
+    /// implementation, because the rewrite resolves the namespace binding plus
+    /// the exported name, and that is now true of all fourteen rather than six.
     #[test]
     fn a_namespace_import_resolves_to_the_same_flow_as_a_named_one() {
         let inlined = ssr("import * as core from \"@barqjs/core\";\n\
@@ -1493,11 +1593,11 @@ mod tests {
         assert!(!inlined.code.contains("core.For"), "{}", inlined.code);
         assert!(inlined.warnings.is_empty(), "{:?}", inlined.warnings);
 
-        let fell_back = ssr("import * as core from \"@barqjs/core\";\n\
+        let was_a_fallback = ssr("import * as core from \"@barqjs/core\";\n\
              export const V = () => <div><core.Portal>x</core.Portal></div>;\n");
-        assert!(fell_back.code.contains("_$template"), "{}", fell_back.code);
-        assert_eq!(fell_back.warnings.len(), 1, "{:?}", fell_back.warnings);
-        assert!(fell_back.warnings[0].message.contains("Portal"), "{:?}", fell_back.warnings[0]);
+        assert!(was_a_fallback.code.contains("_$ssrPortal("), "{}", was_a_fallback.code);
+        assert!(!was_a_fallback.code.contains("_$template"), "{}", was_a_fallback.code);
+        assert!(was_a_fallback.warnings.is_empty(), "{:?}", was_a_fallback.warnings);
 
         // A member of something that is NOT the runtime namespace is nobody's
         // flow, however it is spelled.
@@ -1523,7 +1623,7 @@ mod tests {
     #[test]
     fn an_import_whose_every_reference_was_rewritten_comes_off() {
         let gone = ssr("import { Show } from \"@barqjs/core\";\n\
-             export const V = () => <div><Show when={o}>y</Show></div>;\n")
+             export const V = () => <div><Show {...p}>y</Show></div>;\n")
         .code;
         assert!(gone.contains("_$ssrShow("), "{gone}");
         // The SPECIFIER is what has to come off, not the whole import: since
@@ -1535,14 +1635,14 @@ mod tests {
         // One reader left is one reader too many.
         let kept = ssr("import { Show } from \"@barqjs/core\";\n\
              const alias = Show;\n\
-             export const V = () => <div><Show when={o}>y</Show></div>;\n")
+             export const V = () => <div><Show {...p}>y</Show></div>;\n")
         .code;
         assert!(core_import(&kept).contains("Show"), "{kept}");
 
         // And a binding the backend never rewrote is untouched.
         let other = ssr("import { Show, signal } from \"@barqjs/core\";\n\
              export const n = signal(0);\n\
-             export const V = () => <div><Show when={o}>y</Show></div>;\n")
+             export const V = () => <div><Show {...p}>y</Show></div>;\n")
         .code;
         assert!(core_import(&other).contains("signal"), "{other}");
         assert!(!core_import(&other).contains("Show"), "{other}");
@@ -1570,7 +1670,7 @@ mod tests {
                 // carry `_$insert(` as literal text, and marker-literal-text
                 // deliberately does.
                 for helper in
-                    ["template as _$", "insert as _$", "setProp as _$", "renderEffect as _$"]
+                    ["template as _$", "insert as _$", "setProp as _$", "bindEffect as _$"]
                 {
                     assert!(!out.code.contains(helper), "{name}: {helper} in\n{}", out.code);
                 }
@@ -1580,6 +1680,12 @@ mod tests {
             }
         }
         assert!(compiled >= 60, "only {compiled} fixtures reached the string backend");
-        assert!(fell_back > 0, "the fallback path is never exercised by the corpus");
+        // ZERO, and this is the assertion M6 exists to make. It read
+        // `fell_back > 0` until this milestone — the corpus had to keep
+        // exercising the whole-module downgrade, because the downgrade was the
+        // only answer eight constructs had. There is no fallback path left to
+        // exercise, and a fixture that stopped reaching the string backend
+        // would be one that quietly got one back.
+        assert_eq!(fell_back, 0, "a fixture did not reach the string backend");
     }
 }

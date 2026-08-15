@@ -100,7 +100,7 @@ pub enum Op {
     },
 
     // ── structure ─────────────────────────────────────────────────────────
-    /// Prefix marker: the next `len` patches share ONE renderEffect.
+    /// Prefix marker: the next `len` patches share ONE bindEffect.
     /// Created only by P5. `len == 1` lowers to the cheaper thunk form.
     EffectGroup {
         len: u16,

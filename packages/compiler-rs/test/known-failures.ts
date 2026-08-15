@@ -15,7 +15,7 @@
  * the two apart, and "this fixture fails" would stop being evidence about
  * anything in particular.
  *
- * `semantics.test.ts` makes five assertions against this table (§15.2):
+ * `semantics.test.ts` makes six assertions against this table (§15.2, §15.7):
  *
  *   1. a registered claim that PASSES is a suite failure, reported as stale;
  *   2. an unregistered claim that FAILS is a suite failure;
@@ -24,7 +24,12 @@
  *      the right reason. This is the assertion that makes M0 mean anything;
  *   4. every `rule` exists in `SEMANTICS.md` and is declared in the fixture's
  *      own `rules` export, checked in both directions;
- *   5. a row matching no claim is a suite failure, reported as stale.
+ *   5. a row matching no claim is a suite failure, reported as stale;
+ *   6. a row whose `greenAt` is behind `CURRENT_MILESTONE` is a suite failure,
+ *      reported as OVERDUE. Assertions 1 and 5 fail a row that stopped failing;
+ *      this is the other direction, a row that never started passing, and
+ *      without it a marker rots across milestones until someone deregisters the
+ *      row on the strength of the marker rather than a measurement.
  */
 
 export interface KnownFailure {
@@ -40,7 +45,11 @@ export interface KnownFailure {
    * first is an indictment, and conflating them is what §0.2 forbids.
    */
   readonly status: "VIOLATED" | "PLANNED"
-  /** The milestone from `CODESIGN.md` §8 after which this row must be deleted. */
+  /**
+   * The milestone from `CODESIGN.md` §8 after which this row must be deleted.
+   * Enforced against `milestone.ts`'s `CURRENT_MILESTONE`: moving it is a diff
+   * that has to say why in `reason`.
+   */
   readonly greenAt: string
   /** Why it fails, in terms of the defect rather than the symptom. */
   readonly reason: string
@@ -87,7 +96,7 @@ const ROWS: readonly KnownFailure[] = [
     claim: "the-disposer-disposes-when-an-owner-is-current",
     rule: "O5",
     status: "VIOLATED",
-    greenAt: "M5",
+    greenAt: "M9",
     reason:
       "`render(<Tree/>, host)` evaluates its first argument BEFORE `render` is entered, so with an " +
       "owner current the subtree's effects are that owner's kids from the instant they exist and the " +
@@ -106,7 +115,13 @@ const ROWS: readonly KnownFailure[] = [
       "`control-the-argument-form-reports-that-it-cannot-dispose` and " +
       "`control-the-block-form-disposes-when-an-owner-is-current` — are written about the ARGUMENT " +
       "form's behaviour and stop observing anything the moment the argument form stops existing, so " +
-      "the fixture has to be re-cut in the same change.",
+      "the fixture has to be re-cut in the same change. " +
+      "M6 was the string backend, compile-time addresses and claim-based hydration; it did not " +
+      "touch the argument form and `dom.ts` still emits RENDER_SUBTREE_NOT_OWNED from the same " +
+      "line. The marker moves M5 → M9 for a reason and not for room: §8's M9 is 'the old path " +
+      "goes', and the eager `createElement` path this argument form rides on is that path. " +
+      "Re-cutting this fixture's three CONTROL claims belongs in the same change, which is a " +
+      "second reason it cannot be an incidental fix inside another milestone.",
   },
 
   // -------------------------------------------------------------------------
@@ -116,15 +131,26 @@ const ROWS: readonly KnownFailure[] = [
   // their render effect under whatever was ambient. Both now open it under the
   // scope they were handed, and the first three claims of this fixture pin that.
   //
-  // The fourth is the half that did not land, and it did not land because it is
-  // coupled to the row above.
+  // Those three drive RUNTIME entry points, and the M2 gate found that the
+  // COMPILED path emits none of them for the element-binding channel: it emitted
+  // a bare `renderEffect(compute, apply)` taking no scope at all, so the channel
+  // the design exists for was still ambient-owned while the registry read
+  // "closed for setProp". `bindEffect` takes the scope first now, `block`
+  // establishes it as `CURRENT` for the whole body so the argument decides for
+  // `useContext`/`onCleanup`/`effect` too, and the fourth claim below —
+  // `the-compiled-element-binding-owns-by-the-scope-it-was-given` — drives the
+  // EMISSION rather than a helper beside it. It is a control, and it goes red
+  // when either half is reverted; measured, not assumed.
+  //
+  // The last one is the half that did not land, and it did not land because it
+  // is coupled to the row above.
   // -------------------------------------------------------------------------
   {
     fixture: "sem-own-given-scope-wins",
     claim: "a-children-block-is-invoked-with-the-given-scope",
     rule: "O4.5",
     status: "VIOLATED",
-    greenAt: "M5",
+    greenAt: "M9",
     reason:
       "`childToNodes` invokes a children Block with `getOwner()` and not with the `s` the call was " +
       "given, so a Block reached through `insert`'s array path runs under the ambient owner. The " +
@@ -132,7 +158,9 @@ const ROWS: readonly KnownFailure[] = [
       "`sem-own-render-disposer-disposes`'s `control-the-argument-form-reports-that-it-cannot-dispose` " +
       "red, because the root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing. The two " +
       "halves have to land together, in the change that lowers `render`'s JSX argument to a Block " +
-      "and re-cuts that fixture — which is the row above, green at M5.",
+      "and re-cuts that fixture — which is the row above. It moves M5 → M9 WITH that row, by " +
+      "measurement and not by preference: the one-line change is landable today and its cost is " +
+      "paid by a claim in another fixture, so the two markers are one marker.",
   },
 
   // -------------------------------------------------------------------------
@@ -143,24 +171,50 @@ const ROWS: readonly KnownFailure[] = [
   // survived four of the six and now throws at every one: `flow.ts` grew the
   // value test its four Cell slots never had. The LAUNDERED shape is what is
   // left.
+  //
+  // The M2 gate round added the three slots the fixture had no way to see:
+  // `ref`, a delegated handler and a direct listener. They are the two positions
+  // where `block`'s entry guard is STRUCTURALLY UNREACHABLE, because the value
+  // is invoked with the Element or with the Event rather than with `undefined` —
+  // so a forwarded Block ran with a DOM node as its scope and everything it
+  // built outlived root disposal, silently. All three now refuse a branded Block
+  // by testing the VALUE at the read. Nine slots, 18 pairs; the count in this
+  // row went 2/12 → 4/18 because the fixture grew eyes, not because anything
+  // regressed.
   // -------------------------------------------------------------------------
   {
     fixture: "sem-props-block-in-cell-slot",
     claim: "every-shape-of-block-throws-at-every-cell-slot",
     rule: "C3.8",
     status: "VIOLATED",
-    greenAt: "M5",
+    greenAt: "M9",
     reason:
-      "2 of the 12 (shape, slot) pairs still take a Block without throwing, both of them the " +
+      "4 of the 18 (shape, slot) pairs still take a Block without throwing, every one of them the " +
       "LAUNDERED shape — a Cell that yields a Block, which carries no brand, so only a test on the " +
-      "READ can see it. `each`'s source is handed to `mapArray`/`repeat` BY IDENTITY, so there is " +
-      "no read site inside `each` to test at and wrapping it costs a closure per construction on " +
-      "the list path; `provide`'s value is stored and read later at `Ctx.use()`, which is the " +
-      "context read path and not the provider. Both are one change — a read-side `readSlot` at the " +
-      "point each carrier is actually called — and both belong with M5's element and channel work, " +
-      "where `mapArray`'s source read is being touched anyway. `setProp`'s laundered case was the " +
-      "third and it is CLOSED: it stringified the Block's own source text into the attribute, " +
-      "which is the outcome that made this worth a row rather than a note.",
+      "READ can see it. All four share ONE structural property: the carrier is STORED at the " +
+      "drive and read later, so there is no read inside the call to test at. `each`'s source is " +
+      "handed to `mapArray`/`repeat` by identity; `provide`'s value is read at `Ctx.use()`; a " +
+      "delegated handler and a direct listener are read at DISPATCH, and nothing is dispatched by " +
+      "binding one. `setProp`'s laundered case was CLOSED — it stringified the Block's own source " +
+      "text into the attribute, which is the outcome that made this worth a row rather than a " +
+      "note — and `ref`'s was closed in the M2 gate round: `applyRefs` invokes the carrier " +
+      "eagerly, so the Block arrives as the callback's return value and the brand test moved onto " +
+      "it. The three slots that gained a GUARDED and a PINNED pass in that round are `ref`, " +
+      "`delegate` and `listen`, and those are the blocker this row does not cover. " +
+      "M5 shipped without it and M6 was the server, so this row had no owning milestone left in " +
+      "§8, and the marker moves M5 → M9 on a MEASUREMENT that also rules out the obvious fix. " +
+      "Driving `provide(root, Theme, () => aBlock, () => null)` with a counter on the carrier " +
+      "reports the carrier called ZERO times: a provider's value Cell is stored and never invoked " +
+      "by `provide`, so a read-side `readSlot` — the fix this row's earlier text proposed — cannot " +
+      "make this drive throw at all. Closing the laundered/provide pair needs the value probed " +
+      "EAGERLY at install, which is a semantic change about when a provider's Cell first runs and " +
+      "is nobody's decision yet. The same probe shows `each`'s source IS read synchronously " +
+      "(`mapArray` reads it inside `syncRows`, and a Block reaching there fails as " +
+      "`items.slice is not a function`), so that half is one wrap — but a wrap costs a closure per " +
+      "construction on the benchmarked list path and moves no row on its own, because this claim " +
+      "is about all 18 (shape, slot) pairs. THE USER'S CALL, and the two options are: probe a " +
+      "provider's value eagerly at install, or re-cut this claim so the provide slot is observed " +
+      "at its READ rather than at the drive.",
   },
 
 ]

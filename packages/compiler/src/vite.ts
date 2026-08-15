@@ -125,6 +125,22 @@ export interface BarqCompilerOptions {
    *   `Show($s, {…})` and the runtime adapter does the work.
    */
   passes?: Partial<Record<BarqOptimisation, boolean>>;
+
+  /**
+   * Emit for CLAIM-BASED HYDRATION (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4).
+   *
+   * It changes BOTH emissions, and it has to be the same value for both halves
+   * of one deployment: the string backend writes `<!--[-->` … `<!--]-->` at
+   * every hole and `<!--[k-->` at every range, and the DOM backend walks through
+   * `child`/`sib` — a logical index that steps over exactly those ranges.
+   *
+   * Off by default. A page that is never hydrated pays neither the wire bytes
+   * (measured at +55.7% raw, +7.3% gzipped on a 100-row page) nor the
+   * indirection. A client bundle built WITHOUT it, served markup built WITH it,
+   * or either way round, is detected at run time and degrades to a full client
+   * render rather than to a wrong tree.
+   */
+  hydratable?: boolean;
 }
 
 export type BarqOptimisation =
@@ -151,6 +167,7 @@ interface NativeTransformOptions {
   interp?: boolean;
   optimize?: number;
   passes?: string[][];
+  hydratable?: boolean;
 }
 
 interface NativeResult {
@@ -352,6 +369,10 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           defaultCategory: compilerOptions.defaultCategory,
           optimize: compilerOptions.optimize,
           passes: passPairs(compilerOptions.passes),
+          // One value for both halves. It is a per-PLUGIN option and never a
+          // per-module one, because a client that walks logically over markup
+          // that carries no ranges is the mismatch, not a configuration.
+          hydratable: compilerOptions.hydratable,
           interp: (compilerOptions.interp ?? false) && !(transformOptions?.ssr ?? false),
           dev,
           filename: id,

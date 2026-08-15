@@ -7,7 +7,7 @@ use oxc::ast::ast::{
 };
 use oxc::span::{SPAN, Span};
 
-use super::{Emit, HELPER_COUNT, Helper, IMPORTED};
+use super::{Emit, HELPER_COUNT, Helper, IMPORTED, Target};
 use crate::ir::{Hoisted, TemplateId};
 use oxc::allocator::CloneIn;
 
@@ -82,11 +82,28 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     // P8b's from `<module_source>/server`, which the client bundle must never
     // pull in, and the reference backend's single entry point from
     // `<module_source>/interp`, which no production bundle pulls in at all.
+    //
+    // `SHARED_ABI` is the one block whose source the TARGET decides rather than
+    // the index: `props`/`cell`/`block` and the four primitives with `COUNT` are
+    // exported by both halves under one name and one argument order, and the
+    // string backend reaches its own implementations by importing them from the
+    // server entry.
+    let shared_here: fn(&usize) -> bool = match emit.target {
+        Target::Ssr => |index| !super::SHARED_ABI.contains(index),
+        Target::Dom | Target::Interp => |_| true,
+    };
     let groups = [
-        (emit.module_source, helper_specifiers(emit, 0..super::FIRST_SERVER_HELPER)),
+        (
+            emit.module_source,
+            helper_specifiers(emit, (0..super::FIRST_SERVER_HELPER).filter(shared_here)),
+        ),
         (
             emit.server_source,
-            helper_specifiers(emit, super::FIRST_SERVER_HELPER..super::FIRST_INTERP_HELPER),
+            helper_specifiers(
+                emit,
+                (super::FIRST_SERVER_HELPER..super::FIRST_INTERP_HELPER)
+                    .chain(super::SHARED_ABI.filter(|index| !shared_here(index))),
+            ),
         ),
         (emit.interp_source, helper_specifiers(emit, super::FIRST_INTERP_HELPER..HELPER_COUNT)),
     ];
@@ -178,9 +195,9 @@ fn drop_rewritten_flow_imports<'a>(emit: &Emit<'a, '_>, body: &mut ArenaVec<'a, 
 
 fn helper_specifiers<'a>(
     emit: &Emit<'a, '_>,
-    range: std::ops::Range<usize>,
+    indices: impl Iterator<Item = usize>,
 ) -> Vec<(&'a str, &'a str)> {
-    range
+    indices
         .filter(|index| emit.used[*index])
         .map(|index| (IMPORTED[index], emit.local[index]))
         .collect()

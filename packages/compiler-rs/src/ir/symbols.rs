@@ -245,17 +245,6 @@ pub enum Flow {
 }
 
 impl Flow {
-    /// The line target #10 draws: six components P8b can emit as plain JS, and
-    /// eight whose async/boundary semantics send the whole module back to the
-    /// happy-dom `renderToString` path.
-    #[inline]
-    pub fn inlinable_on_server(self) -> bool {
-        matches!(
-            self,
-            Flow::For | Flow::Index | Flow::Repeat | Flow::Show | Flow::Switch | Flow::Match
-        )
-    }
-
     /// `Match` returns its own props object and `Switch` reads them, so the DOM
     /// target must emit a real call. Only SSR inlines the construct.
     #[inline]
@@ -315,10 +304,6 @@ pub struct ReactiveEnv<'a> {
     /// which is every question this compiler asks — is blind to `core.For`
     /// unless it goes through here first.
     pub namespaces: Vec<SymbolId>,
-    /// The flow components this module reaches through such a namespace.
-    /// Collected during the bind walk, because that is the last stage that can
-    /// still see the JSX: harvest moves it out of the program.
-    pub namespace_flows: Vec<Flow>,
     /// Every symbol a JSX CLOSING tag resolves to. oxc records one reference per
     /// tag, so `<Show>…</Show>` reads as two uses of one binding; anything
     /// counting real uses has to subtract these.
@@ -343,12 +328,17 @@ pub struct ReactiveEnv<'a> {
 
 /// One proven Cell slot. `read` is where the callee consumes it, so the
 /// diagnostic can name the position the value ends up in as well as the one it
-/// was written at.
+/// was written at, and `channel` is the attribute it lands on there — which is
+/// not always an ordinary attribute: `ref` and `on*` are Cell slots too, and at
+/// those two the value is invoked with the ELEMENT or the EVENT rather than
+/// with no scope, so a message that says "invoked with no scope" is false
+/// exactly where it matters most.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CellSlot<'a> {
     pub component: SymbolId,
     pub prop: &'a str,
     pub read: Span,
+    pub channel: &'a str,
 }
 
 impl<'a> ReactiveEnv<'a> {
@@ -361,7 +351,6 @@ impl<'a> ReactiveEnv<'a> {
             scope_hi: AVec::new_in(&allocator),
             diagnostics: AVec::new_in(&allocator),
             namespaces: Vec::new(),
-            namespace_flows: Vec::new(),
             jsx_closings: Vec::new(),
             components: Vec::new(),
             cell_slots: Vec::new(),
@@ -460,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn the_server_inlinable_flow_set_is_six_of_fourteen() {
+    fn every_construct_has_a_string_lowering() {
         let all = [
             Flow::For,
             Flow::Index,
@@ -477,7 +466,20 @@ mod tests {
             Flow::Dynamic,
             Flow::ErrorBoundary,
         ];
-        assert_eq!(all.iter().filter(|f| f.inlinable_on_server()).count(), 6);
+        // M6 deleted `inlinable_on_server`, the six/eight split it named, and
+        // the whole-module downgrade it drove. What replaced it is a TOTAL map
+        // from a construct to a string implementation, so the property worth
+        // asserting is that the map has no hole: every one of the fourteen
+        // resolves to a helper, and a helper resolves to a name in `IMPORTED`.
+        assert_eq!(all.len(), 14);
+        for flow in all {
+            let helper = crate::codegen::ssr::server_flow(flow);
+            assert!(
+                crate::codegen::imported_name(helper).starts_with("ssr"),
+                "{} does not lower to a string component",
+                flow.name()
+            );
+        }
         assert!(!Flow::Match.returns_a_fragment());
         assert!(Flow::Switch.returns_a_fragment());
     }

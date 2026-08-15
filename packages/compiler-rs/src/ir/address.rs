@@ -119,6 +119,72 @@ impl<'a> RefPlan<'a> {
     }
 }
 
+// ============================================================================
+// The other sense of "address" — the SHARED one (CODESIGN.md §3.11, §5.2)
+// ============================================================================
+//
+// Everything above is the DOM backend's walk to a node. What follows names a
+// POSITION, which is a fact about the analysed IR and is therefore the same on
+// every target: `(module path, unit index, position index)`.
+//
+// It is Marko's discipline, adopted in §3.11 because it is the only thing that
+// lets the two emitters make checkable claims about each other. It carries no
+// `NodeId` — a node is a DOM concept and the two backends do not agree about the
+// skeleton, because `anchor` inserts markers for one of them and not the other.
+
+/// `(unit, position)`. The module half lives on the artefact rather than in
+/// every row, because a compile is one module and repeating its path 300 times
+/// would be 300 copies of the same string.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct Address {
+    pub unit: u32,
+    pub position: u32,
+}
+
+impl std::fmt::Display for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.unit, self.position)
+    }
+}
+
+/// What kind of thing sits at a position. A consumer claims a hole differently
+/// from an attribute, so the kind travels with the address rather than being
+/// re-derived from a patch program a runtime does not have.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PositionKind {
+    /// a child hole — `Op::Insert` and `Op::Region` alike
+    Slot,
+    Prop,
+    Event,
+    Ref,
+    Bind,
+    Spread,
+}
+
+impl PositionKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PositionKind::Slot => "slot",
+            PositionKind::Prop => "prop",
+            PositionKind::Event => "event",
+            PositionKind::Ref => "ref",
+            PositionKind::Bind => "bind",
+            PositionKind::Spread => "spread",
+        }
+    }
+}
+
+/// One addressed position. `key` names it INSIDE its unit — a `SlotId` for a
+/// hole, a `NameId` for a named channel — so a consumer can tell two positions
+/// apart without holding the patch program they came from.
+#[derive(Clone, Copy)]
+pub struct Position {
+    pub address: Address,
+    pub kind: PositionKind,
+    pub key: u32,
+    pub span: Span,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

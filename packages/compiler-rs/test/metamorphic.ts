@@ -82,7 +82,7 @@
  * `conditional-children` and `logical-and-child` lose an element in a transition
  * that disposes nothing and are perfectly correct. Making it true needs a probe
  * on the hole's own writes, which the tracer does not have — an `insert` sets up
- * a `renderEffect` once and every later write goes through `insertExpression`
+ * a `bindEffect` once and every later write goes through `insertExpression`
  * inside it. It is stated here rather than weakened into something vacuous, and
  * the join it wanted lives in MM4 where the declaration makes it sound.
  */

@@ -18,6 +18,7 @@ import {
   raw,
   rawText,
   spreadAttrs,
+  ssrDynamic,
   ssrFor,
   ssrIndex,
   ssrMatch,
@@ -669,6 +670,34 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
     for (const name of ["x onload=alert(1) y", 'a"b', "a><img src=x>"]) {
       expect(() => document.createElement("div").setAttribute(name, "1")).toThrow();
     }
+  });
+
+  /**
+   * M6 gave `Dynamic` a string implementation, and with it the SECOND position
+   * where a name is runtime data: the TAG. `component={"div onload=alert(1)"}`
+   * writes two attributes into markup where `document.createElement` throws
+   * `InvalidCharacterError` and writes nothing, so the string path refuses it
+   * for exactly the reason `spreadAttrs` refuses a key.
+   */
+  test("a dynamic TAG is a name too, and is refused on the same production", () => {
+    expect(() => ssrDynamic(null, { component: "div onload=alert(1)", children: "x" })).toThrow(
+      /not a valid tag name/,
+    );
+    expect(() => ssrDynamic(null, { component: "a><img src=x>", children: "x" })).toThrow();
+    // The DOM half of this parity is NOT asserted here, and that is deliberate:
+    // `document.createElement` throws `InvalidCharacterError` on a name outside
+    // the `Name` production in every real engine, and happy-dom implements no
+    // such check — it hands back an `HTMLUnknownElement` called
+    // `div onload=alert(1)`. Asserting against the fake DOM would pin the fake
+    // DOM's gap. The attribute half above IS asserted, because happy-dom does
+    // implement `setAttribute`'s check.
+
+    // And a legitimate one still writes, through the same attribute policy every
+    // other hole on this backend goes through.
+    expect(ssrDynamic(null, { component: "section", class: "c", children: "<b>" }).toString()).toBe(
+      '<section class="c">&lt;b&gt;</section>',
+    );
+    expect(ssrDynamic(null, { component: "br" }).toString()).toBe("<br>");
   });
 
   test("the accept cache cannot launder a name, and is bounded", () => {

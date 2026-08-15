@@ -49,6 +49,11 @@ export const optimality = {
   // applied once. Same emit shape, opposite meaning; only BARQ001 tells them
   // apart.
   emits: ['"id"', "count);", "`total: ${count}`);"],
-  // No hole took a thunk: every patch argument is the expression itself.
-  absent: [", () =>"],
+  // No hole took a thunk: every patch argument is the expression itself, named
+  // per hole rather than as a bare `, () =>`. `bindEffect` takes the scope
+  // FIRST (O4.5), so its own compute — which has always been an arrow, and is
+  // not a hole — now sits after a comma and matches that shorter needle
+  // positionally. These two are the thunked forms of the two holes and nothing
+  // else can produce them.
+  absent: ["() => count());", "() => `total: ${count}`);"],
 };

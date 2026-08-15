@@ -69,6 +69,10 @@ pub struct TransformResult {
     /// `CODESIGN.md` §6 L2b — the oracle's expected value, derived from the
     /// source rather than from a second execution.
     pub ownership: Option<String>,
+    /// The compile-time address table as JSON, under `addresses: true` only.
+    /// `CODESIGN.md` §3.11 and §5.2 P6 — `(module, unit, position)` for every
+    /// position in the module, computed identically by every backend.
+    pub addresses: Option<String>,
 }
 
 fn js_diagnostic(diagnostic: &Diagnostic) -> JsDiagnostic {
@@ -109,6 +113,7 @@ pub fn transform(code: String, options: Option<TransformOptions>) -> napi::Resul
                 })
                 .collect(),
             ownership: output.ownership,
+            addresses: output.addresses,
         }),
         Err(diagnostics) => Err(napi::Error::from_reason(format!(
             "[barq-compiler] {}\n{}",

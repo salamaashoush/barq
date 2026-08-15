@@ -9,13 +9,12 @@ Every message the compiler can produce has a stable code, a level, and a page he
 | [BARQ003](BARQ003.md) | warning | a property is read off an accessor binding instead of off its value |
 | [BARQ004](BARQ004.md) | note | `For`: the origin of `each` cannot be proved to be values `mapArray` recreates |
 | [BARQ005](BARQ005.md) | warning | props are destructured in the parameter list, which flattens every getter |
-| [BARQ007](BARQ007.md) | note | a control-flow component with no string mode sends this module to the DOM backend |
 | [BARQ008](BARQ008.md) | warning | a `barq-ignore-next-line` matched no diagnostic |
 | [BARQ009](BARQ009.md) | warning | a `barq-ignore-next-line` could not be parsed |
 | [BARQ010](BARQ010.md) | warning | a Block is forwarded into a slot the callee reads as a Cell, where it throws |
 
 BARQ001, BARQ002, BARQ003 and BARQ005 are the source-level rules. They run when
-`diagnostics` is on, which defaults to `dev`. BARQ004, BARQ007 and BARQ010 are compiler
+`diagnostics` is on, which defaults to `dev`. BARQ004 and BARQ010 are compiler
 notes about what the emitted code will do; they run under `dev`. BARQ008 and
 BARQ009 are the engine reporting on your suppression comments.
 

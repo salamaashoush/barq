@@ -8,7 +8,7 @@ mod region;
 mod skeleton;
 mod symbols;
 
-pub use address::{RefDef, RefPlan, Step};
+pub use address::{Address, Position, PositionKind, RefDef, RefPlan, Step};
 pub use expr::{ExprEntry, ExprSrc, ExprTable};
 pub use intern::{Interner, NameFlags, NameRow, TagFlags, TagRow, event_name_of, tag_flags};
 pub use module::{
@@ -16,7 +16,7 @@ pub use module::{
 };
 pub use patch::{Anchor, Chan, Diff, HandlerRef, InsertPlan, Op, Patch};
 pub use react::{BIT_OVERFLOW, Const, Cost, DepSet, FreeVars, React, Rx, Shape, Thunk};
-pub use region::{NO_SCOPE, Region, RegionId, RegionKind, STATIC_KEY};
+pub use region::{HYDRATE, NO_SCOPE, Region, RegionId, RegionKind, STATIC_KEY};
 pub use skeleton::{Materialisation, Ns, SkelAttr, SkelAttrValue, SkelElement, SkelNode, Skeleton};
 pub use symbols::{CellSlot, Diag, Flow, Keyed, MemberMask, Prim, ReactiveEnv, SourceKind};
 

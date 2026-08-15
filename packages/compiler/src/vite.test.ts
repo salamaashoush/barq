@@ -348,7 +348,7 @@ describe("barqVitePlugin", () => {
     }
 
     test("the default is the optimising path", () => {
-      expect(build()).toContain("renderEffect");
+      expect(build()).toContain("bindEffect");
       expect(build({ optimize: 1 })).toBe(build());
     });
 
@@ -358,8 +358,8 @@ describe("barqVitePlugin", () => {
       // effect around a proven-live write belongs to the compiler at every
       // level. What the level still decides is whether two props SHARE one.
       const reference = build({ optimize: 0 });
-      expect(reference.match(/_\$renderEffect\(/g)).toHaveLength(2);
-      expect(build().match(/_\$renderEffect\(/g)).toHaveLength(1);
+      expect(reference.match(/_\$bindEffect\(/g)).toHaveLength(2);
+      expect(build().match(/_\$bindEffect\(/g)).toHaveLength(1);
       // Each is a fused record of ONE, so its previous value is a scalar and
       // the compute returns it directly. The optimised build merges the two
       // into one record with positional fields.

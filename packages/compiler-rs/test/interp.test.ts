@@ -22,7 +22,7 @@
  * of error routing, of async, of hydration. None of them is a defect of the
  * lowering. `Interp` reaches the DOM through the same four ABI primitives
  * (§3.0) the emitted module reaches it through — `template`, `insert`,
- * `setProp`, `renderEffect` — because those are the contract both backends are
+ * `setProp`, `bindEffect` — because those are the contract both backends are
  * written against, not the thing under test. A rule the runtime violates is
  * therefore violated identically on this path, by construction, with no code
  * here that knows anything about it. That is what "M1 changes no semantics"
@@ -130,7 +130,7 @@ describe("Interp is a build, not a debug mode", () => {
       ]) {
         expect(code, `${name} walks the DOM in emitted code`).not.toContain(property)
       }
-      for (const helper of ["insert", "setProp", "renderEffect"]) {
+      for (const helper of ["insert", "setProp", "renderEffect", "bindEffect"]) {
         expect(emittedCalls(code, helper), `${name} emits _$${helper}`).toBe(0)
       }
     }

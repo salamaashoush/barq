@@ -4,7 +4,7 @@ use crate::ir::{Cost, DepSet, Module, Op, Patch, Unit};
 
 /// P5's grouping half — target #4. Each element's contiguous run of `SetLive`
 /// gets one `EffectGroup` header, so N dynamic props on an element cost ONE
-/// `renderEffect` instead of N.
+/// `bindEffect` instead of N.
 ///
 /// The run is left in place rather than stable-sorted by target: P1 already
 /// emits an element's attributes contiguously and in source order, and reordering
@@ -43,7 +43,7 @@ fn regroup<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
 }
 
 /// Splits one element's live props into the groups that will each become a
-/// `renderEffect`. Everything merges except a prop that is both expensive and
+/// `bindEffect`. Everything merges except a prop that is both expensive and
 /// dep-disjoint from every other prop on the element — merging that one would
 /// let a change to a hot signal recompute an unrelated expensive expression.
 fn emit_runs<'a>(

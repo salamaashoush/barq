@@ -93,7 +93,6 @@ codes! {
     Barq003 = "BARQ003", Warning, "a property is read off an accessor binding instead of off its value";
     Barq004 = "BARQ004", Note, "`For`: the origin of `each` cannot be proved to be values `mapArray` recreates";
     Barq005 = "BARQ005", Warning, "props are destructured in the parameter list, which flattens every getter";
-    Barq007 = "BARQ007", Note, "a control-flow component with no string mode sends this module to the DOM backend";
     Barq008 = "BARQ008", Warning, "a `barq-ignore-next-line` matched no diagnostic";
     Barq009 = "BARQ009", Warning, "a `barq-ignore-next-line` could not be parsed";
     Barq010 = "BARQ010", Warning, "a Block is forwarded into a slot the callee reads as a Cell, where it throws";

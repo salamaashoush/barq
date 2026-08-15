@@ -8,11 +8,21 @@ use super::Flow;
 pub type RegionId = u32;
 
 /// `flow.ts`'s `STATIC_KEY`: the key expression reads nothing reactive, so the
-/// region opens no `renderEffect` and keeps no previous-key record.
+/// region opens no `bindEffect` and keeps no previous-key record.
 pub const STATIC_KEY: u8 = 1 << 0;
 /// `flow.ts`'s `NO_SCOPE`: no body registers anything disposable, so an
 /// activation allocates no `Scope` and no `ownRange` closure.
 pub const NO_SCOPE: u8 = 1 << 1;
+/// `flow.ts`'s and `ssr.ts`'s `HYDRATE`: this module was compiled `hydratable`,
+/// so the string backend writes `<!--[k-->` … `<!--]-->` around the range and
+/// the DOM backend claims what it finds there instead of building.
+///
+/// It is the one flag that is not a PROOF about the source: it is the build
+/// asking for a wire format. That is why [`RegionKind::shipped`] keeps it for
+/// every primitive while it drops the other two for four of the five — the key
+/// a branch chose is knowable only at the instant it chooses it, so no compiler
+/// can write the open comment and the primitive has to.
+pub const HYDRATE: u8 = 1 << 2;
 
 /// Which of `flow.ts`'s four primitives owns this range. Fourteen constructs
 /// collapse onto these; the row that carries a region names both, because the
@@ -109,7 +119,7 @@ impl Region<'_> {
 impl RegionKind {
     #[inline]
     pub fn shipped(kind: Self, flags: u8) -> u8 {
-        if kind.reads_flags() { flags } else { 0 }
+        (if kind.reads_flags() { flags } else { 0 }) | (flags & HYDRATE)
     }
 }
 
@@ -135,5 +145,25 @@ mod tests {
         assert_eq!(RegionKind::shipped(RegionKind::Error, both), 0);
         assert_eq!(RegionKind::shipped(RegionKind::Loading, both), 0);
         assert_eq!(RegionKind::shipped(RegionKind::Each, both), 0);
+    }
+
+    /// The exception, and the reason it is one: `HYDRATE` is not a proof the
+    /// runtime may ignore, it is the wire format the build asked for. A
+    /// primitive that dropped it would emit a range with no boundary comments
+    /// into a document whose every other range has them, and the client's claim
+    /// would run off the end of the one range that did not announce itself.
+    #[test]
+    fn every_primitive_ships_the_wire_format_flag_and_only_that_one() {
+        for kind in [
+            RegionKind::Branch,
+            RegionKind::Each,
+            RegionKind::Error,
+            RegionKind::Loading,
+            RegionKind::Portal,
+        ] {
+            let shipped = RegionKind::shipped(kind, STATIC_KEY | NO_SCOPE | HYDRATE);
+            assert_eq!(shipped & HYDRATE, HYDRATE, "{} dropped HYDRATE", kind.as_str());
+            assert_eq!(RegionKind::shipped(kind, STATIC_KEY | NO_SCOPE) & HYDRATE, 0);
+        }
     }
 }
