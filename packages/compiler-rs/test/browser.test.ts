@@ -12,6 +12,7 @@ import {
 } from "./browser-parse-check.ts"
 import { checkSvgClass, svgClassClaims, type SvgClassResult } from "./browser-svg-class-check.ts"
 import { checkDifferential, type DifferentialReport } from "./browser-differential.ts"
+import { checkCaret, formatCaret, type CaretReport } from "./browser-caret-check.ts"
 import { listBrowserOnlyFixtures, listFixtures } from "./harness.ts"
 import { ORACLE_FAILURES } from "./oracle-known-failures.ts"
 
@@ -41,6 +42,7 @@ let corrupted: DifferentialReport
 let reordered: DifferentialReport
 let truncated: DifferentialReport
 let unanchored: DifferentialReport
+let caret: CaretReport
 
 /**
  * The un-compiled reference cannot conform to C1, and Chrome sees exactly what
@@ -116,6 +118,9 @@ beforeAll(async () => {
     // describing reality is worse than no win, because it disarms that frame's
     // comparison for good.
     unanchored = await checkDifferential(page, (_name, code) => dropInsertAnchors(code))
+    // B7, and the only channel in this repository that can type. See
+    // browser-caret-check.ts for why a `dispatchEvent` cannot.
+    caret = await checkCaret(page)
   })
 }, 600_000)
 
@@ -264,5 +269,27 @@ describe("real browser: the differential comparison", () => {
       "one corrupted template, one divergent fixture",
     ).toBeGreaterThanOrEqual(40)
     expect(unexplained(differential).length, "and the clean run really was clean").toBe(0)
+  })
+})
+
+describe("real browser: the caret (B7)", () => {
+  it("survives a write that arrives while the user is typing", () => {
+    console.log(`caret, typed through CDP:\n${formatCaret(caret)}`)
+    expect(caret.rows.length, "the caret check has to drive something").toBeGreaterThanOrEqual(3)
+    expect(
+      caret.rows.filter((row) => !row.ok).map((row) => `${row.target}: ${row.why}`),
+      "B7: a write that lands on a focused control restores the selection and keeps the focus",
+    ).toEqual([])
+  })
+
+  it("and the check can see the loss — the mutated channel destroys it", () => {
+    // Without this row the one above is satisfied by a browser that never
+    // moved the caret in the first place, which is exactly the shape a
+    // synthetic `dispatchEvent` suite has.
+    expect(
+      caret.control.ok ? "" : caret.control.why,
+      "the control runs a bindValue with neither the compare nor the restore; if THAT keeps the " +
+        "caret then this whole check is measuring nothing",
+    ).toBe("")
   })
 })

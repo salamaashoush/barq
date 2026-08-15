@@ -8,6 +8,8 @@ exports[`marker channel attribute-namespaces: anchor layout 1`] = `"<div><my-gri
 
 exports[`marker channel auto-thunked-read: anchor layout 1`] = `"<div><p>attr</p><span>n=1</span><b>1</b></div>"`;
 
+exports[`marker channel bind-family: anchor layout 1`] = `"<form><input><textarea></textarea><input><input><input><b>ada/2</b></form>"`;
+
 exports[`marker channel bind-value-channel: anchor layout 1`] = `"<label><input><b>hi</b></label>"`;
 
 exports[`marker channel boolean-and-nullish-props: anchor layout 1`] = `"<div><button>b</button><span></span></div>"`;

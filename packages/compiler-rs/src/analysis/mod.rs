@@ -196,6 +196,27 @@ mod tests {
         assert_eq!(local(&module, "projected"), SourceKind::ReactiveObject);
     }
 
+    /// `CODESIGN.md` §3.8 collapsed the async primitives onto one `resource`.
+    /// `useResource` is the hook-shaped alias for the same export, so both
+    /// spellings have to reach the same row of the return-shape table — and a
+    /// LOCAL binding named `resource` must still be whatever it was bound to.
+    #[test]
+    fn the_one_resource_classifies_under_both_of_its_spellings() {
+        let allocator = Allocator::new();
+        let source = "import { resource, useResource } from \"@barqjs/core\";\n\
+                      const direct = resource(() => 1, async () => 2);\n\
+                      const hooked = useResource(() => 1, async () => 2);\n";
+        let module = module_of(&allocator, source);
+        assert_eq!(local(&module, "direct"), SourceKind::AccessorRecord);
+        assert_eq!(local(&module, "hooked"), SourceKind::AccessorRecord);
+
+        let allocator = Allocator::new();
+        let shadowed = "const resource = 4;\n\
+                        const shadow = resource;\n";
+        let module = module_of(&allocator, shadowed);
+        assert_ne!(local(&module, "shadow"), SourceKind::AccessorRecord);
+    }
+
     #[test]
     fn a_namespace_import_resolves_and_a_literal_const_carries_its_value() {
         let allocator = Allocator::new();

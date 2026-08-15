@@ -229,7 +229,9 @@ fn bakeable(
     match chan {
         Chan::Attr => true,
         Chan::Class | Chan::Style => matches!(konst, Const::Str(_)),
-        Chan::Prop | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,
+        Chan::Prop | Chan::Live | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => {
+            false
+        }
     }
 }
 

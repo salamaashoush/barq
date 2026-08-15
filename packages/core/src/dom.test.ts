@@ -5,7 +5,16 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { createElement, insert, render, spread, useRef, template } from "./dom.ts";
 import { boundary } from "./flow.ts";
-import { signal, computed, createScope, flush, type Scope } from "./signals.ts";
+import {
+  ScopeMissingError,
+  block,
+  computed,
+  createScope,
+  enterRoot,
+  flush,
+  signal,
+  type Scope,
+} from "./signals.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;
@@ -1018,6 +1027,33 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     dispose();
     el.dispatchEvent(new Event("mouseenter"));
     expect([a, b], "a replaced listener outlived its scope").toEqual([1, 1]);
+  });
+
+  test("C3.8: the style key is a Cell slot like every other, not a hole", () => {
+    const tint = signal("color: red");
+    const host = document.createElement("div");
+    container.appendChild(host);
+
+    const dispose = render((s) => {
+      const el = document.createElement("i");
+      spread(s, el, () => ({ style: () => tint() }));
+      return el;
+    }, host);
+
+    const el = host.querySelector("i") as HTMLElement;
+    expect(el.getAttribute("style"), "a Cell in the style key applied nothing").toBe("color: red");
+    tint.set("color: blue");
+    flush();
+    expect(el.getAttribute("style")).toBe("color: blue");
+    dispose();
+
+    // And the refusal that goes with it: `style` was the one key on this
+    // surface where a Block neither threw nor rendered.
+    const leaf = block(() => document.createTextNode("built"));
+    expect(() => {
+      const el = document.createElement("i");
+      spread(enterRoot(), el, () => ({ style: leaf }));
+    }).toThrow(ScopeMissingError);
   });
 
   test("E2.2: a throw out of a spread-bound handler reaches the enclosing boundary", () => {

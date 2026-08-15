@@ -272,6 +272,57 @@ describe("the diagnostic engine", () => {
   });
 
   /**
+   * C5.1 item 1 at the slots the compiler knows most precisely. `each`, `when`
+   * and `target` are Cell arguments of the primitive the construct lowers to,
+   * exactly as an attribute on an intrinsic element is, and the runtime answers
+   * a Block in one with the same `ScopeMissingError` — so a compile-time fact
+   * was being discovered at run time. The M7 gate found them silent.
+   *
+   * The bounds are asserted beside them, because C5.1 states them and a bound
+   * nothing measures drifts: a spread ends the chain, a Block slot (`children`)
+   * is not one, and a value aliased through a local is invisible to the pass.
+   */
+  it("names a Block forwarded into a flow construct's Cell slot", () => {
+    const each =
+      'import { For } from "@barqjs/core";\n' +
+      "function Rows(props) { return <For each={props.thing}>{(row) => <li>{row}</li>}</For>; }\n" +
+      "export const V = () => <Rows thing={<b>x</b>} />;\n";
+    const raw = diagnose(each);
+    expect(codes(raw)).toContain("BARQ010");
+    const named = raw.diagnostics.find((entry) => entry.code === "BARQ010")!;
+    expect(named.message).toContain("each source");
+    expect(named.message).not.toContain("intrinsic element");
+
+    const when =
+      'import { Show } from "@barqjs/core";\n' +
+      "function Gate(props) { return <Show when={props.thing}>ok</Show>; }\n" +
+      "export const V = () => <Gate thing={<b>x</b>} />;\n";
+    expect(codes(diagnose(when))).toContain("BARQ010");
+
+    const target =
+      'import { Portal } from "@barqjs/core";\n' +
+      "function Away(props) { return <Portal target={props.thing}>ok</Portal>; }\n" +
+      "export const V = () => <Away thing={<b>x</b>} />;\n";
+    expect(codes(diagnose(target))).toContain("BARQ010");
+
+    // A BLOCK slot on the same construct is not a Cell slot and must stay
+    // silent: `fallback` is built, not read.
+    const fallback =
+      'import { For } from "@barqjs/core";\n' +
+      "function Rows(props) { return <For each={[]} fallback={props.thing}>{(row) => <li>{row}</li>}</For>; }\n" +
+      "export const V = () => <Rows thing={<b>x</b>} />;\n";
+    expect(codes(diagnose(fallback))).not.toContain("BARQ010");
+
+    // C5.1's declared bound, measured rather than assumed: a spread names no
+    // key, so it ends the fixpoint's chain. Item 2 still fires at run time.
+    const spread =
+      'import { For } from "@barqjs/core";\n' +
+      "function Rows(props) { return <For each={props.thing}>{(row) => <li>{row}</li>}</For>; }\n" +
+      "export const V = () => <Rows {...{ thing: <b>x</b> }} />;\n";
+    expect(codes(diagnose(spread))).not.toContain("BARQ010");
+  });
+
+  /**
    * A `barq-ignore` must never influence codegen. The React Compiler treated the
    * mere PRESENCE of an `eslint-disable` as grounds to bail out of optimising a
    * component (facebook/react#34261).

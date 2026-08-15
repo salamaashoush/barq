@@ -2,7 +2,7 @@
  * Core hooks - essential reactive primitives
  */
 
-import { type Resource, resource } from "./async.ts";
+import { type Resource, type ResourceInfo, resource } from "./async.ts";
 import { type Computed, computed, effect, signal } from "./signals.ts";
 
 /**
@@ -41,7 +41,7 @@ export function useEffect(fn: () => void | (() => void)): () => void {
  */
 export function useResource<T, S = unknown>(
   source: () => S,
-  fetcher: (source: S, info: { prev?: T; refetching: boolean }) => Promise<T>,
+  fetcher: (source: S, info: ResourceInfo<T>) => T | Promise<T>,
 ): Resource<T> {
   return resource(source, fetcher);
 }

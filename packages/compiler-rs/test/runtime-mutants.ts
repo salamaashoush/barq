@@ -71,6 +71,7 @@ const CRATE = join(import.meta.dir, "..")
 const CORE_SRC = join(CRATE, "..", "core", "src")
 const FLOW = join(CORE_SRC, "flow.ts")
 const DOM = join(CORE_SRC, "dom.ts")
+const ASYNC = join(CORE_SRC, "async.ts")
 const SCRATCH = process.env.BARQ_RUNTIME_MUTANT_DIR ?? join(tmpdir(), "barq-runtime-mutants")
 
 interface Mutant {
@@ -82,6 +83,14 @@ interface Mutant {
    * repair round found in `spread` had nothing that could have caught them.
    */
   file?: string
+  /**
+   * An export of `file` that the package index also re-exports, used by the
+   * generated preload to assert the scratch copy is the one a fixture would
+   * import. Defaults to `listen` for `dom.ts` and `branch` for `flow.ts`; any
+   * other module has to name its own, or every row against it reports
+   * NOT INSTALLED for the wrong reason.
+   */
+  probe?: string
   /** the primitive or invariant this edit corrupts */
   target: string
   /** what the mutation makes the runtime do wrong, in one line */
@@ -216,6 +225,69 @@ const MUTANTS: Mutant[] = [
     replace: "",
     override: "enter: (parent, kind) => real.enter(parent?.parent ?? parent, kind)",
   },
+  // The three ownership NEGATIVES. Each deletes a refusal rather than a
+  // behaviour, and a refusal is the one thing a differential cannot see: the
+  // mutated runtime does MORE, not something else.
+  {
+    id: "fall-back-to-the-ambient-scope",
+    target: "block / C3.8",
+    what:
+      "a Block invoked with no scope runs under CURRENT instead of throwing — the single most " +
+      "important negative in the calling convention, and the Provider bug's actual shape: the " +
+      "body's cleanup and its context read land on whatever scope happened to be ambient",
+    expect: "semantics (C3.8, sem-props-block-in-cell-slot)",
+    find: "",
+    replace: "",
+    override:
+      "block: (fn) => { const guarded = real.block(fn); " +
+      "const fallback = function (scope) { return scope === undefined " +
+      "? fn.apply(this, arguments) : guarded.apply(this, arguments) }; " +
+      'fallback[Symbol.for("barq.block")] = true; return fallback }',
+  },
+  {
+    id: "establish-no-ambient-under-a-block",
+    target: "block / O4.5",
+    what:
+      "the brand and the entry guard stay, and only the `CURRENT = scope` wrapper goes: the scope " +
+      "argument then decides for the primitives that take it explicitly and for nothing else, so a " +
+      "component handed A while B is ambient files its hole under A and its cleanup under B",
+    expect: "semantics (O4.5, a-compiled-component-body-owns-by-the-scope-it-was-given)",
+    find: "",
+    replace: "",
+    override:
+      "block: (fn) => { const guarded = real.block(fn); " +
+      "const shallow = function (scope) { return scope === undefined " +
+      "? guarded.apply(this, arguments) : fn.apply(this, arguments) }; " +
+      'shallow[Symbol.for("barq.block")] = true; return shallow }',
+  },
+  {
+    id: "let-the-handed-scope-beat-the-pin",
+    target: "pin / O2",
+    what:
+      "`pin` forwards the scope it was handed instead of ignoring it, which is the exact negation " +
+      "of its one promise — and the shape in which a pinned Block silently rejoins the caller's tree",
+    find: "",
+    replace: "",
+    expect: "semantics (O2, a-pinned-block-ignores-the-scope-it-is-handed)",
+    override:
+      "pin: (scope, body) => real.block((given, ...rest) => " +
+      "real.runWithOwner(given ?? scope, () => body(given ?? scope, ...rest)))",
+  },
+  {
+    id: "accept-a-missing-scope",
+    target: "requireScope / C3.8",
+    what:
+      "`undefined` is read as `null` — a legal value naming NO owner — so every primitive handed " +
+      "no scope silently detaches everything it builds instead of naming the call site",
+    expect: "semantics (C3.8, a-primitive-handed-undefined-throws-before-it-does-anything)",
+    find: "",
+    replace: "",
+    // Spelled through `real.requireScope` for the scopes it already admits, so
+    // the install guard can see the shadow: the mutation is the `undefined` arm
+    // alone.
+    override:
+      "requireScope: (scope, origin) => scope === undefined ? null : real.requireScope(scope, origin)",
+  },
   // B2/R2. Not a `flow.ts` edit either: the split that makes the apply phase
   // untracked lives in `recompute`, and the only way to reach it from here is to
   // shadow the primitive the compiler emits.
@@ -285,6 +357,81 @@ const MUTANTS: Mutant[] = [
     find: "  setProperty(element, name, value);",
     replace: "  element.setAttribute(name, String(value));",
   },
+  // M7's three, against §3.10's two halves. Both are shapes the channel HAD
+  // before this milestone, so each row is a real past defect rather than an
+  // invented one. All three edit `dom.ts` — the module whose `mock.module`
+  // entry the tracer owns and hands over through `BARQ_DOM_OVERRIDE` — by
+  // rebinding the name `forms.ts` exports, which is the only way to reach a
+  // module the package index re-exports without a second registry owner.
+  {
+    id: "drop-the-dom-compare",
+    file: DOM,
+    target: "writeLive / B6",
+    what:
+      "every write to a user-mutable property LANDS, with no compare against the element — the " +
+      "pre-M7 channel, where a value written while the user is typing rewrites the field they " +
+      "are inside and the caret goes to the end of it",
+    // The caret restore is KEPT, so the two rows below cannot cover for each
+    // other: this one changes nothing a caret assertion can see, and is killed
+    // only by the claim that COUNTS the writes.
+    expect: "semantics (B6, the counted-writes claim)",
+    find: 'import { writeLive } from "./forms.ts";',
+    replace:
+      'import { coerceLive, captureCaret, restoreCaret } from "./forms.ts";\n' +
+      "const writeLive = (element, name, value) => { const next = coerceLive(name, value); " +
+      "const saved = captureCaret(element); element[name] = next; restoreCaret(element, saved); return true };",
+  },
+  {
+    id: "write-through-an-active-selection",
+    file: DOM,
+    target: "captureCaret / B7",
+    what:
+      "the compare is KEPT and the caret restore is dropped, so a write that genuinely lands " +
+      "while the control is focused collapses the selection to the end of the new text — the " +
+      "failure this project already shipped once, in replace-based hydration",
+    expect: "semantics (B7) and the real-browser caret check's control row",
+    find: 'import { writeLive } from "./forms.ts";',
+    replace:
+      'import { coerceLive, holdsLive } from "./forms.ts";\n' +
+      "const writeLive = (element, name, value) => { const next = coerceLive(name, value); " +
+      "if (holdsLive(element, name, next)) return false; element[name] = next; return true };",
+  },
+  {
+    id: "bind-never-re-asserts",
+    file: DOM,
+    target: "bindValue / B6",
+    what:
+      "a reported edit sets the signal and stops there. The DOM-compare cannot save it: a " +
+      "REJECTED keystroke leaves the signal unchanged, so the effect never re-runs and no " +
+      "comparison of any kind gets the chance to run",
+    expect: "semantics (B6, the rejecting setter)",
+    find: "    write(untrack(() => readSlot(value, `bind:${name}`)));",
+    replace: "",
+  },
+  // A2, the classic async bug, as a row rather than as a belief. It is not
+  // M7's forms half, and it is here because the question "did the suite catch
+  // it" has to be asked of the async half too: a table that only mutates what
+  // its author was working on measures its author's attention.
+  {
+    id: "let-a-stale-response-win",
+    file: ASYNC,
+    probe: "resource",
+    target: "resource / A2",
+    what:
+      "the generation guard is dropped, so whichever request answers LAST wins — which is what " +
+      "the channel did before M7, and which is invisible to any test that resolves its promises " +
+      "in the order it issued them",
+    // This row SURVIVED EVERYTHING when it was first written, and the reason is
+    // worth keeping: every A2 claim read through the memo, whose value is the
+    // newest promise whatever the stale continuation did to `settled`, so the
+    // outcome held while the mechanism was unpinned. The two claims that see
+    // the guard itself were cut in the M7 gate round — a stale continuation may
+    // retire neither a `mutate()` overlay nor the LIVE request's controller.
+    expect: "semantics (A2, the overlay and the live controller)",
+    find:
+      "      gen === issued && (owner === null || owner.gen === scopeGen) && !controller.signal.aborted;",
+    replace: "      true;",
+  },
   {
     id: "forget-the-dom-on-teardown",
     target: "removeNodes / O3.5",
@@ -352,7 +499,7 @@ function prepare(mutant: Mutant): { preload: string; env: Record<string, string>
   // to it as the module to WRAP; `flow.ts` has no such owner and is registered
   // here, after the tracer, so the mutant binds the counted effects.
   const dom = target === DOM
-  const probe = dom ? "listen" : "branch"
+  const probe = mutant.probe ?? (dom ? "listen" : "branch")
   const coreIndex = Bun.resolveSync("@barqjs/core", join(CRATE, "test"))
   writeFileSync(
     preload,

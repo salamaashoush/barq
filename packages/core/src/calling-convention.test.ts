@@ -13,11 +13,13 @@
 import { describe, expect, test } from "bun:test";
 import { Fragment, Show, For, Errored } from "./components.ts";
 import {
+  block,
   createContext,
   createScope,
   getContext,
   getOwner,
   flush,
+  onCleanup,
   pin,
   provideOn,
   ScopeMissingError,
@@ -95,6 +97,34 @@ describe("rule 3: a Block invoked with no scope throws", () => {
     expect(() => setProp(undefined as never, document.createElement("b"), "id", "x")).toThrow(
       ScopeMissingError,
     );
+  });
+
+  test("a Block that builds no DOM at all still throws, and files nothing on the ambient scope", () => {
+    // The two tests above reach `insert`'s and `setProp`'s `requireScope`. This
+    // one reaches `block`'s own entry guard, which is the negative the
+    // convention rests on: a Block whose body only registers a cleanup, reads
+    // context and returns a string is invisible to every claim that observes
+    // what reached the DOM — and a fallback to CURRENT files its cleanup on
+    // whatever scope happened to be ambient, which is the Provider bug.
+    const Theme = createContext<string>("DEFAULT");
+    const filed: string[] = [];
+    let bodyRan = 0;
+    const quiet = block((s?: Scope | null) => {
+      bodyRan++;
+      void s;
+      onCleanup(() => filed.push("quiet"));
+      return getContext(Theme) ?? "none";
+    });
+
+    let ambientCleanups = 0;
+    createScope((dispose) => {
+      expect(() => (quiet as (s?: Scope | null) => unknown)()).toThrow(ScopeMissingError);
+      dispose();
+      ambientCleanups = filed.length;
+    });
+
+    expect(bodyRan, "the body ran under the ambient owner").toBe(0);
+    expect(ambientCleanups, "a cleanup was filed on the ambient scope").toBe(0);
   });
 });
 

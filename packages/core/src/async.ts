@@ -1,234 +1,228 @@
 /**
- * Async data loading primitives
- * Based on SolidJS createResource patterns
+ * One resource — `CODESIGN.md` §3.8, `SEMANTICS.md` A1–A3.
+ *
+ * `resource(source, fetcher)` is an async memo with three things bolted to the
+ * scope that created it rather than to a state machine beside it:
+ *
+ * - **A1, cancellation is structural.** The `AbortController` is a cleanup on
+ *   the creating scope. Dispose aborts it, a re-run aborts the previous one,
+ *   and the signal is handed to the fetcher.
+ * - **A2, staleness by generation captured at call time.** Every run captures
+ *   its own `gen` and the creating scope's `gen`; the continuation compares the
+ *   pair it captured against the current pair. Nothing in the continuation
+ *   reads a mutable outer variable that by then names the newest request.
+ * - **A3, `NotReady` is a control signal.** The read is a Cell: it throws
+ *   `NotReadyError` before settlement, which `Loading` catches, `latest()`
+ *   steps over and `isPending()` reports. There is no second status channel.
+ *
+ * What this replaces: the `ResourceState` union and its `internalState` signal,
+ * `createResource`, `suspend` and `awaitAll`. The union duplicated flags the
+ * graph already carries; `createResource` was `resource` with a null source;
+ * `suspend` threw a promise nothing awaited; `awaitAll` is `resolve()`.
  */
 
-import { computed, renderEffect, signal, untrack } from "./signals.ts";
+import {
+  type Computed,
+  NotReadyError,
+  type Owner,
+  computed,
+  createAsync,
+  getOwner,
+  latest as readLatest,
+  onCleanup,
+  signal,
+  untrack,
+} from "./signals.ts";
 
 /**
- * Resource status - matches SolidJS states
- * - "unresolved": Initial state, no data yet
- * - "pending": First load in progress
- * - "ready": Data loaded successfully
- * - "refreshing": Refetching with existing data
- * - "errored": Error occurred
+ * `unresolved` is not in this union: a status read is itself a read, and a read
+ * starts the fetch, so there is no observable moment between creation and
+ * `pending`.
  */
-export type ResourceStatus = "unresolved" | "pending" | "ready" | "refreshing" | "errored";
+export type ResourceStatus = "pending" | "ready" | "refreshing" | "errored";
 
-/**
- * Resource state - represents async data
- */
-export type ResourceState<T> =
-  | { status: "unresolved" }
-  | { status: "pending" }
-  | { status: "ready"; data: T }
-  | { status: "refreshing"; data: T }
-  | { status: "errored"; error: Error; data?: T };
+/** The third argument a fetcher never used to get (A1). */
+export interface ResourceInfo<T> {
+  readonly prev: T | undefined;
+  readonly refetching: boolean;
+  readonly signal: AbortSignal;
+}
 
-/**
- * Resource - reactive async data container
- */
+export interface ResourceOptions {
+  /**
+   * Serialization key for SSR seeding. Opt-in rather than positional: the
+   * auto-key stream is a shared counter and a resource silently consuming a
+   * slot would shift every `createAsync` after it.
+   */
+  readonly key?: string;
+}
+
+/** §3.0: a `Cell<T>` with the status channel hung off the function object. */
 export interface Resource<T> {
-  (): T | undefined;
+  (): T;
   state: () => ResourceStatus;
   loading: () => boolean;
   error: () => Error | undefined;
-  /** Returns the last successful data, undefined if never loaded */
+  /** The last settled value, never a throw. `undefined` until one exists. */
   latest: () => T | undefined;
   refetch: () => Promise<void>;
-  mutate: (data: T) => void;
+  mutate: (value: T) => void;
 }
 
-/**
- * Create a resource for async data loading
- * Automatically refetches when source signals change
- *
- * Following SolidJS patterns:
- * 1. Memoize the source to prevent unnecessary refetches
- * 2. Abort in-flight requests when source changes
- * 3. Run fetcher in untracked context
- * 4. Track "refreshing" state separately from "pending"
- */
+interface Box<T> {
+  readonly value: T;
+}
+
+interface Probe {
+  readonly pending: boolean;
+  readonly error: Error | undefined;
+}
+
+function asError(thrown: unknown): Error {
+  return thrown instanceof Error ? thrown : new Error(String(thrown));
+}
+
 export function resource<T, S = unknown>(
   source: () => S,
-  fetcher: (source: S, info: { prev?: T; refetching: boolean }) => Promise<T>,
+  fetcher: (source: S, info: ResourceInfo<T>) => T | Promise<T>,
+  options?: ResourceOptions,
 ): Resource<T> {
-  const internalState = signal<ResourceState<T>>({ status: "unresolved" });
-  let abortController: AbortController | null = null;
+  const owner: Owner | null = getOwner();
 
-  // Memoize source to only trigger on actual changes (SolidJS pattern)
-  const memoizedSource = computed(source);
+  const bump = signal(0, { equals: false });
+  const override = signal<Box<T> | null>(null);
 
-  const load = async (refetching = false) => {
-    // Abort any in-flight request (this handles concurrent fetches)
-    if (abortController) {
-      abortController.abort();
-    }
-    abortController = new AbortController();
+  let issued = 0;
+  let manual = false;
+  let inflight: AbortController | null = null;
+  let awaiting: Promise<unknown> | null = null;
+  let settled: Box<T> | null = null;
 
-    // Get previous value without tracking
-    const currentState = untrack(() => internalState());
-    const prev =
-      currentState.status === "ready" || currentState.status === "refreshing"
-        ? currentState.data
-        : currentState.status === "errored"
-          ? currentState.data
-          : undefined;
-
-    // Get current source value without tracking
-    const currentSource = untrack(() => memoizedSource());
-
-    // Set pending or refreshing state based on whether we have existing data
-    if (prev !== undefined) {
-      internalState.set({ status: "refreshing", data: prev });
-    } else {
-      internalState.set({ status: "pending" });
-    }
-
-    try {
-      // Run fetcher - this is async so no tracking issues
-      const data = await fetcher(currentSource, {
-        prev,
-        refetching,
-      });
-
-      // Check if aborted
-      if (abortController.signal.aborted) return;
-
-      internalState.set({ status: "ready", data });
-    } catch (err) {
-      if (abortController.signal.aborted) return;
-      internalState.set({
-        status: "errored",
-        error: err instanceof Error ? err : new Error(String(err)),
-        data: prev, // Keep previous data on error
-      });
-    }
+  const cancel = (reason: string): void => {
+    const controller = inflight;
+    if (controller === null) return;
+    inflight = null;
+    controller.abort(reason);
   };
 
-  // Track memoized source and refetch on change
-  // The memoized source ensures we only refetch when the actual value changes
-  renderEffect(() => {
-    // Reading memoizedSource creates the subscription
-    memoizedSource();
-    // Load data (will be prevented if already scheduled)
-    void load(false);
+  if (owner !== null) onCleanup(() => cancel("the scope that owns this request was disposed"));
+
+  const compute = (prev?: T): T => {
+    bump();
+    const input = source();
+    const refetching = manual;
+    manual = false;
+
+    const gen = ++issued;
+    const scopeGen = owner === null ? 0 : owner.gen;
+    cancel("a newer request was issued");
+    const controller = new AbortController();
+    inflight = controller;
+
+    /** A2: the whole staleness decision, captured here and read nowhere else. */
+    const current = (): boolean =>
+      gen === issued && (owner === null || owner.gen === scopeGen) && !controller.signal.aborted;
+
+    const out = untrack(() => fetcher(input, { prev, refetching, signal: controller.signal }));
+
+    if (!(out instanceof Promise)) {
+      inflight = null;
+      settled = { value: out };
+      return out;
+    }
+
+    const tracked = out.then(
+      (value) => {
+        if (!current()) return value;
+        inflight = null;
+        settled = { value };
+        override.set(null);
+        return value;
+      },
+      (thrown) => {
+        if (current()) inflight = null;
+        throw thrown;
+      },
+    );
+    awaiting = tracked;
+    return tracked as unknown as T;
+  };
+
+  const fetched: Computed<T> =
+    options?.key === undefined
+      ? computed<T>(compute)
+      : createAsync<T>(compute, { key: options.key });
+
+  /**
+   * A4's shape at the level of one value: the read is a derivation over the
+   * settled memo and the pending override, so retiring the override restores
+   * nothing — it stops being part of the sum.
+   */
+  const view = computed<T>(() => {
+    const pending = override();
+    return pending === null ? fetched() : pending.value;
   });
 
-  const accessor = (() => {
-    const s = internalState();
-    if (s.status === "ready" || s.status === "refreshing") {
-      return s.data;
-    }
-    if (s.status === "errored") {
-      return s.data;
-    }
-    return undefined;
-  }) as Resource<T>;
+  const read = (() => view()) as Resource<T>;
 
-  accessor.state = () => internalState().status;
-  accessor.loading = () => {
-    const status = internalState().status;
-    return status === "pending" || status === "refreshing";
+  const probe = (): Probe => {
+    try {
+      view();
+      return { pending: false, error: undefined };
+    } catch (thrown) {
+      if (thrown instanceof NotReadyError) return { pending: true, error: undefined };
+      return { pending: false, error: asError(thrown) };
+    }
   };
-  accessor.error = () => {
-    const s = internalState();
-    return s.status === "errored" ? s.error : undefined;
+
+  read.state = (): ResourceStatus => {
+    const { pending, error } = probe();
+    if (error !== undefined) return "errored";
+    if (!pending) return "ready";
+    return settled === null ? "pending" : "refreshing";
   };
-  accessor.latest = () => {
-    const s = internalState();
-    if (s.status === "ready" || s.status === "refreshing") {
-      return s.data;
+
+  read.loading = (): boolean => probe().pending;
+
+  read.error = (): Error | undefined => probe().error;
+
+  read.latest = (): T | undefined => {
+    try {
+      // The seeded first run commits without passing through `compute`, so this
+      // is also where a hydrated value becomes the remembered one.
+      const value = readLatest(() => view());
+      settled = { value };
+      return value;
+    } catch {
+      return settled === null ? undefined : settled.value;
     }
-    if (s.status === "errored") {
-      return s.data;
-    }
-    return undefined;
   };
-  accessor.refetch = () => load(true);
-  accessor.mutate = (data: T) => internalState.set({ status: "ready", data });
 
-  return accessor;
-}
-
-/**
- * Simple async resource without reactive source
- */
-export function createResource<T>(fetcher: () => Promise<T>): Resource<T> {
-  return resource(
-    () => null,
-    () => fetcher(),
-  );
-}
-
-/**
- * Suspense-like wrapper for resources
- * Returns data or throws for loading/error states
- */
-export function suspend<T>(resource: Resource<T>): T {
-  const status = resource.state();
-
-  if (status === "pending" || status === "unresolved") {
-    throw new Promise<void>((resolve) => {
-      const unsubscribe = renderEffect(() => {
-        const current = resource.state();
-        if (current !== "pending" && current !== "unresolved") {
-          unsubscribe();
-          resolve();
-        }
-      });
+  read.refetch = async (): Promise<void> => {
+    manual = true;
+    bump.set(0);
+    untrack(() => {
+      try {
+        view();
+      } catch {
+        /* pending or errored; both are states this call reports through `read` */
+      }
     });
-  }
-
-  if (status === "errored") {
-    const err = resource.error();
-    if (err) throw err;
-  }
-
-  // Ready or refreshing - return data
-  const data = resource.latest();
-  if (data !== undefined) {
-    return data;
-  }
-
-  throw new Error("Resource not initialized");
-}
-
-/**
- * Await multiple resources
- */
-export async function awaitAll<T extends Resource<unknown>[]>(
-  ...resources: T
-): Promise<{ [K in keyof T]: T[K] extends Resource<infer U> ? U : never }> {
-  await Promise.all(
-    resources.map(
-      (r) =>
-        new Promise<void>((resolve) => {
-          const status = r.state();
-          if (status === "ready" || status === "errored") {
-            resolve();
-            return;
-          }
-
-          const unsub = renderEffect(() => {
-            const s = r.state();
-            if (s === "ready" || s === "errored") {
-              unsub();
-              resolve();
-            }
-          });
-        }),
-    ),
-  );
-
-  return resources.map((r) => {
-    const status = r.state();
-    if (status === "errored") {
-      const err = r.error();
-      if (err) throw err;
+    const pending = awaiting;
+    if (pending !== null) {
+      try {
+        await pending;
+      } catch {
+        /* surfaced by `error()`, not by the refetch call */
+      }
     }
-    const data = r.latest();
-    if (data !== undefined) return data;
-    throw new Error("Resource not loaded");
-  }) as { [K in keyof T]: T[K] extends Resource<infer U> ? U : never };
+    await Promise.resolve();
+  };
+
+  read.mutate = (value: T): void => {
+    settled = { value };
+    override.set({ value });
+  };
+
+  return read;
 }

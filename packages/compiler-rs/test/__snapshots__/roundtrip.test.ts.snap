@@ -245,6 +245,94 @@ export const optimality = {
 "
 `;
 
+exports[`emitted code snapshots bind-family 1`] = `
+"import { linked, signal, template as _$template, insert as _$insert, block as _$block, bindValue as _$bindValue } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<form class="bind-family"><input type="text" class="name"><textarea class="notes"></textarea><input type="checkbox" class="agreed"><input type="number" class="amount"><input type="text" class="draft"><b class="echo"></b></form>\`);
+export const name = signal("ada");
+export const notes = signal("first");
+export const agreed = signal(false);
+export const amount = signal(2);
+/** R7 behind a control: the user's edit is a write, the source is a re-seed. */
+export const server = signal("seeded");
+export const draft = linked(server, (value) => value);
+/**
+* CODESIGN §3.10 — the \`bind:\` family, resolved at compile time from the tag
+* and the \`type\`. Five channels, five reporting events, one shape.
+*
+* The corpus channels are the point of having it here rather than only under
+* \`fixtures/semantics/\`: the oracle differential runs the same source through
+* \`createElement\`, where \`bindChannelOf\` answers from the ELEMENT — so the two
+* resolutions are compared on every element in this file, which is the only
+* check that keeps \`names.rs\`'s table and \`dom.ts\`'s from drifting apart on a
+* case neither one's own tests happen to cover. The leak oracle counts the
+* listeners each \`bind:\` registers, and L2b checks the scope that owns them.
+*
+* \`bind:group\` is NOT here and the reason is a defect this fixture found rather
+* than a gap in the channel: a radio group needs \`value="s"\` on each member, and
+* the string backend drops a \`value\` attribute on every \`<input>\` — \`ssr.ts\`'s
+* \`DIRTY_VALUE\` is keyed by TAG, while the HTML spec puts the \`value\` IDL
+* attribute in "default/on" mode for \`checkbox\` and \`radio\`, where it reflects.
+* So SSR ships a radio with no value and the DOM builds one with a value. It is
+* pre-existing, it needs the input TYPE threaded through the \`attr\` ABI, and it
+* is named in SEMANTICS.md §9 B6 rather than papered over with \`ssrDiffers\`.
+* \`bind:group\` itself is driven, both directions, in
+* \`fixtures/semantics/sem-form-selection-preserved.tsx\`.
+*/
+export default function BindFamily(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$2.nextSibling;
+  const _el$4 = _el$3.nextSibling;
+  const _el$5 = _el$4.nextSibling;
+  const _el$6 = _el$5.nextSibling;
+  const _el$7 = _el$1.lastChild;
+  _$bindValue(_s$, _el$2, "value", "input", name);
+  _$bindValue(_s$, _el$3, "value", "input", notes);
+  _$bindValue(_s$, _el$4, "checked", "change", agreed);
+  _$bindValue(_s$, _el$5, "valueAsNumber", "input", amount);
+  _$bindValue(_s$, _el$6, "value", "input", draft);
+  _$insert(_s$, _el$7, () => \`\${name()}/\${amount()}\`);
+  return _el$1;
+}
+BindFamily = _$block(BindFamily);
+export const steps = [
+  () => name.set("grace"),
+  () => amount.set(9),
+  () => server.set("reseeded")
+];
+export const events = [(root: HTMLElement) => {
+  const field = root.querySelector("input.name") as HTMLInputElement;
+  field.value = "typed";
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}, (root: HTMLElement) => {
+  const box = root.querySelector("input.agreed") as HTMLInputElement;
+  box.checked = true;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+}];
+export const optimality = {
+  target: 1,
+  // M5, not M7: what this fixture DECLARES is the channel, and the channel is
+  // M5's. M7's halves — the compare, the caret, the re-assertion — are
+  // behavioural and are declared where behaviour is observed, in
+  // \`fixtures/semantics/\`. A declaration for a milestone the harness has not
+  // reached is an \`it.todo\`, which is a test that does not run.
+  milestone: 5,
+  templates: 1,
+  // The property and the reporting event are STRINGS in the emitted call: the
+  // runtime is told which channel, never asked to work it out. \`valueAsNumber\`
+  // is the one the resolution is really about: a coercion the compiler took
+  // from the \`type\` attribute and the runtime never re-derives.
+  emits: [
+    "bindValue(",
+    "\\"value\\", \\"input\\"",
+    "\\"checked\\", \\"change\\"",
+    "\\"valueAsNumber\\", \\"input\\""
+  ],
+  absent: ["setProp", "bindChannelOf"]
+};
+"
+`;
+
 exports[`emitted code snapshots bind-value-channel 1`] = `
 "import { signal, template as _$template, insert as _$insert, block as _$block, bindValue as _$bindValue } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<label><input type="text"><b></b></label>\`);
@@ -2704,7 +2792,7 @@ export const goesLive = ["dangerouslySetInnerHTML={{ __html: html() }}"];
 `;
 
 exports[`emitted code snapshots dashboard-composite 1`] = `
-"import { useState, useStore, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setDomProp as _$setDomProp, setClass as _$setClass } from "@barqjs/core";
+"import { useState, useStore, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setLive as _$setLive, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><input class="search"><button type="button" class="tab">switch</button><ul class="rows"></ul></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="anon">anonymous</p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<h1>Hello, </h1>\`);
@@ -2734,8 +2822,8 @@ export default function DashboardComposite(_s$) {
   _$bindEffect(_s$, () => ({ a: tab() === "posts" ? "posts" : "other" }), (_v$, _p$ = {}) => {
     _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
   });
-  _$bindEffect(_s$, () => state.filters.search, (_v$, _p$) => {
-    if (_v$ !== _p$) _$setDomProp(_el$2, "value", _v$);
+  _$bindEffect(_s$, () => state.filters.search, (_v$) => {
+    _$setLive(_el$2, "value", _v$);
   });
   _el$2.$$input = _h$1, _el$2.$$s = _s$;
   _el$3.$$click = _h$2, _el$3.$$s = _s$;
@@ -3059,7 +3147,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots dom-prop-static-value 1`] = `
-"import { template as _$template, setDomProp as _$setDomProp } from "@barqjs/core";
+"import { template as _$template, setDomProp as _$setDomProp, setLive as _$setLive } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<form class="statics"><input type="text"><input type="checkbox"></form>\`);
 /**
 * \`value\`, \`checked\` and friends are in \`DOM_PROPS\`: the runtime writes them as
@@ -3072,9 +3160,9 @@ export default function DomPropStaticValue(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$setDomProp(_el$2, "value", "abc");
+  _$setLive(_el$2, "value", "abc");
   _$setDomProp(_el$2, "readOnly", true);
-  _$setDomProp(_el$3, "checked", true);
+  _$setLive(_el$3, "checked", true);
   return _el$1;
 }
 export const optimality = {
@@ -4444,7 +4532,7 @@ export default function PreWhitespace(_s$) {
 `;
 
 exports[`emitted code snapshots property-attrs 1`] = `
-"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setDomProp as _$setDomProp } from "@barqjs/core";
+"import { signal, template as _$template, bindEffect as _$bindEffect, block as _$block, setDomProp as _$setDomProp, setLive as _$setLive } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<form><input type="text"><input type="checkbox"><textarea></textarea></form>\`);
 export const text = signal("typed");
 export const checked = signal(false);
@@ -4453,15 +4541,15 @@ export default function PropertyAttrs(_s$) {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$bindEffect(_s$, () => text(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setDomProp(_el$2, "value", _v$);
+  _$bindEffect(_s$, () => text(), (_v$) => {
+    _$setLive(_el$2, "value", _v$);
   });
   _$setDomProp(_el$2, "readOnly", true);
-  _$bindEffect(_s$, () => checked(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setDomProp(_el$3, "checked", _v$);
+  _$bindEffect(_s$, () => checked(), (_v$) => {
+    _$setLive(_el$3, "checked", _v$);
   });
   _$setDomProp(_el$3, "disabled", true);
-  _$setDomProp(_el$4, "value", "static");
+  _$setLive(_el$4, "value", "static");
   return _el$1;
 }
 PropertyAttrs = _$block(PropertyAttrs);

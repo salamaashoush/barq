@@ -69,7 +69,7 @@ const reverseBakedAttributes = inTemplates((html) =>
 function reverseAppliedProps(code: string): string {
   // A resolved channel write: `_$setAttr(_el$1, "href", v)`.
   const writes =
-    /_\$+(setAttr|setDomProp|setBool|setClass|setStyle|setStyleProp|setClassList|setHtml|bindProp)\(/
+    /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyle|setStyleProp|setClassList|setHtml|bindProp)\(/
   if (!writes.test(code)) {
     throw new Error("self-check corruption is stale: the emitted module applies no props")
   }

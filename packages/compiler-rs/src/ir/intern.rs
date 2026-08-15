@@ -350,12 +350,12 @@ mod tests {
         use crate::lower::names::channel_of;
         for name in ["class", "className", "style", "classList", "dangerouslySetInnerHTML"] {
             assert!(
-                channel_of(name, false).threads_prev(),
+                channel_of(name, false, "div").threads_prev(),
                 "{name} applies a normalised value, so its record slot holds the channel's return"
             );
         }
         for name in ["title", "id", "href", "data-width"] {
-            assert!(!channel_of(name, false).threads_prev(), "{name}");
+            assert!(!channel_of(name, false, "div").threads_prev(), "{name}");
         }
     }
 

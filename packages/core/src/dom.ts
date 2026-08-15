@@ -24,7 +24,10 @@ import {
   resetChildIds,
   unclaimedSeeds,
   underScope,
+  untrack,
+  signal,
   type Scope,
+  type Signal,
 } from "./signals.ts";
 import {
   isString,
@@ -37,6 +40,7 @@ import {
   isRefCallback,
   isSignalGetter,
 } from "./type-utils.ts";
+import { writeLive } from "./forms.ts";
 import {
   HydrationMismatch,
   beginHydration,
@@ -147,6 +151,44 @@ const CSS_NUMBER_PROPS: Record<string, 1> = {
   orphans: 1,
   widows: 1,
 };
+
+// CODESIGN §3.10.1: the properties the USER also writes. Their channel compares
+// against the element rather than against the last framework write, because for
+// these two writers exist and only one of them is the framework. Contenteditable
+// text is in the set too and is not spelled here: it arrives only through
+// `bind:`, which resolves it from the tag.
+// Keyed `tag:property`, with `*` for a property no tag restricts, because the
+// question is not "can this property be written" but "can the USER write it on
+// THIS element". `<option value="one">` answers no — the user toggles an
+// option's `selected`, never its `value` — and the difference is not academic:
+// `option.value` falls back to the option's TEXT, so a compare against the
+// element reports "already holds it" and the reflected attribute never appears.
+const USER_MUTABLE_PROPS: Record<string, 1> = {
+  "input:value": 1,
+  "textarea:value": 1,
+  "select:value": 1,
+  "input:checked": 1,
+  "input:indeterminate": 1,
+  "option:selected": 1,
+  "details:open": 1,
+  "dialog:open": 1,
+  "audio:currentTime": 1,
+  "video:currentTime": 1,
+  "audio:volume": 1,
+  "video:volume": 1,
+  "*:scrollTop": 1,
+  "*:scrollLeft": 1,
+};
+
+/** The property halves of `USER_MUTABLE_PROPS`, so the tag is only computed for a name that could need it. */
+const USER_MUTABLE_NAMES = new Set(
+  Object.keys(USER_MUTABLE_PROPS).map((k) => k.slice(k.indexOf(":") + 1)),
+);
+
+function isUserMutable(tag: string, name: string): boolean {
+  if (!USER_MUTABLE_NAMES.has(name)) return false;
+  return `*:${name}` in USER_MUTABLE_PROPS || `${tag.toLowerCase()}:${name}` in USER_MUTABLE_PROPS;
+}
 
 // Properties that should be set directly on the element (not as attributes)
 const DOM_PROPS: Record<string, 1> = {
@@ -500,6 +542,23 @@ export function setDomProp(
 }
 
 /**
+ * The user-mutable channel (§3.10.1). It takes NO `prev`, and that is the whole
+ * rule rather than an omission: `prev` is what the FRAMEWORK last wrote, and for
+ * these properties the user writes too. A handler that rejects a keystroke
+ * leaves the element holding text no signal ever contained, `prev` still agrees
+ * with the signal, and a cached compare then never repairs it.
+ *
+ * The compiler emits this channel only for the names that need it (`Diff` is
+ * `Always`, so the record's guard never suppresses the repair) and the cheap
+ * cached compare everywhere else, which is why comparing against the DOM costs
+ * nothing on the 99% of props no user can touch.
+ */
+export function setLive(element: Element, name: string, value: unknown): unknown {
+  writeLive(element, name, value);
+  return value;
+}
+
+/**
  * `bool:` — presence, not text. Distinct from `setAttr`'s boolean branch, which
  * only fires for a value that IS a boolean: here truthiness decides, so
  * `bool:hidden={count()}` is the author saying what the name means rather than
@@ -833,14 +892,48 @@ export function bindEffect<T>(
 }
 
 /**
- * `bind:` — the CHANNEL half (§3.10). The property, the event that reports a
- * user edit and the coercion are all resolved at compile time; what is left is
- * the write and the read-back.
+ * A counter every `bind:` effect reads and every reported edit bumps. See the
+ * paragraph in `bindValue`'s listener for why it has to be shared rather than
+ * per-element. `equals: false` because the VALUE is meaningless — what is being
+ * published is that an edit happened at all.
  *
- * The write compares against the ELEMENT, not against the last framework write:
- * a handler that rejects a keystroke leaves `prev` holding a value the DOM no
- * longer has, and a cached compare would then never repair it — the defining
- * case controlled inputs exist for. Selection and focus preservation are M7.
+ * Keyed by the BOUND SIGNAL, not module-wide. The problem the counter exists
+ * for is a pair the scheduler cannot see — (signal, element) — and every
+ * element that can be in that pair with a given edit is bound to the same
+ * signal: the radio group is N elements behind one signal, and a veto in the
+ * author's own handler vetoes a write to that signal. A module-wide counter
+ * would make one keystroke re-run every two-way binding in the application,
+ * which is O(bound fields) per keystroke for no reachable case. The map is
+ * weak, so a counter dies with the signal it belongs to.
+ */
+const reportedEdits = new WeakMap<object, Signal<number>>();
+
+function editsOf(value: object): Signal<number> {
+  let counter = reportedEdits.get(value);
+  if (counter === undefined) {
+    counter = signal(0, { equals: false, noSnapshot: true, ownedWrite: true });
+    reportedEdits.set(value, counter);
+  }
+  return counter;
+}
+
+/**
+ * `bind:` — §3.10 whole. The property, the event that reports a user edit and
+ * the coercion are all resolved at compile time; what is left is the write, the
+ * read-back, and the two things that make a controlled input actually work.
+ *
+ * **The write compares against the ELEMENT** (`writeLive`), not against the
+ * last framework write, and it preserves the caret and the focus of whatever
+ * the user is inside.
+ *
+ * **The signal is re-asserted after every reported edit**, and that is the half
+ * a DOM-compare alone cannot supply. When a setter REJECTS or NORMALISES a
+ * keystroke the signal does not change, so the effect never re-runs and no
+ * comparison of any kind gets a chance to run: without this line the element
+ * keeps text the signal never held, permanently. With it the repair is
+ * synchronous — inside the same event, before paint, so there is no flash of
+ * the rejected character — and it is a no-op in the ordinary case because the
+ * DOM already holds what the signal holds.
  */
 export function bindValue(
   s: Scope | null,
@@ -859,19 +952,60 @@ export function bindValue(
       `bind:${name} needs a writable signal; it was given ${typeof value}, which can be read but not written.`,
     );
   }
-  if (isSignalGetter(value)) {
+  const write = (next: unknown): void => {
+    if (name === "group") {
+      writeLive(element, "checked", next === target.value);
+      return;
+    }
+    // A `FileList` is the only thing `files` accepts and the only thing an
+    // author can have got hold of; anything else — a signal that starts `null`
+    // — would throw where skipping is what the author meant.
+    if (name === "files" && !(next !== null && typeof next === "object")) return;
+    writeLive(element, name, next);
+  };
+
+  const edits = isSignalGetter(value) ? editsOf(value as unknown as object) : null;
+  if (edits !== null) {
     ownedBy(given, "bind", () => {
       renderEffect(() => {
-        const next = readSlot(value, `bind:${name}`);
-        if (target[name] !== next) target[name] = next;
+        edits();
+        write(readSlot(value, `bind:${name}`));
       });
     });
   } else {
-    target[name] = value;
+    write(value);
   }
   if (typeof set !== "function") return;
   listen(given, element, type, () => {
-    set.call(value, target[name]);
+    // `bind:group` is the one channel whose reported value is not the property
+    // it writes: a radio reports the VALUE of the button that is now checked,
+    // and the one being turned OFF reports nothing — its newly-checked sibling
+    // fires its own `change` and that is the event carrying the answer.
+    if (name === "group") {
+      if (target.checked !== true) return;
+      set.call(value, target.value);
+    } else {
+      set.call(value, target[name]);
+    }
+    if (edits === null) return;
+    // Synchronously, inside the event: see the paragraph above.
+    write(untrack(() => readSlot(value, `bind:${name}`)));
+    // And once more at the next flush, through the counter every two-way
+    // binding subscribes to. The EFFECT cannot be relied on for the rest of the
+    // turn: if anything else — another handler for the same event, a veto in the
+    // author's own `onChange`, the sibling radio the browser just unchecked —
+    // leaves the signal holding the value it held BEFORE the edit, the scheduler
+    // sees no change at all and correctly declines to re-run, while the elements
+    // are holding what the user did. That is B6's two-writer problem one level
+    // down, in the dedupe rather than in the channel, and it cannot be fixed
+    // per-element: a radio group is N elements and one signal, and the edit is
+    // reported on exactly one of them.
+    //
+    // So a reported edit invalidates every two-way binding ON THE SAME SIGNAL.
+    // Each re-run costs one signal read and one DOM-compare that skips, which is
+    // nothing against the keystroke that caused it, and it is the only mechanism
+    // that sees a pair the scheduler cannot: (signal, element).
+    edits.set(edits.peek() + 1);
   });
 }
 
@@ -882,13 +1016,16 @@ export function bindValue(
  * retires at M9 — and as the definition the generated Rust tables are read out
  * of, so the two resolutions cannot drift.
  */
-function channelOf(key: string, isSvg: boolean): Channel {
+function channelOf(key: string, isSvg: boolean, tag: string): Channel {
   if (key === "class") return setClass;
   if (key === "className") return setClass;
   if (key === "style") return setStyle;
   if (key === "classList") return setClassList;
   if (key === "ref") return setRef;
   if (key === "dangerouslySetInnerHTML") return setHtml;
+  // §3.10.1 before the plain property channel: these are properties too, and
+  // what separates them is who else writes them.
+  if (!isSvg && isUserMutable(tag, key)) return setLive as Channel;
   // Form-field exceptions stay properties (value, checked, selected, ...). The
   // runtime takes that branch only outside the SVG namespace.
   if (!isSvg && key in DOM_PROPS) return setDomProp;
@@ -1575,7 +1712,7 @@ export function setProp(s: Scope | null, element: Element, key: string, value: u
     return;
   }
 
-  bindProp(given, element, channelOf(key, isSvg), attrNameOf(key, isSvg), value);
+  bindProp(given, element, channelOf(key, isSvg, element.tagName), attrNameOf(key, isSvg), value);
 }
 
 /**
@@ -1584,12 +1721,22 @@ export function setProp(s: Scope | null, element: Element, key: string, value: u
  * this is the same table for the un-compiled path.
  */
 export function bindChannelOf(element: Element, name: string): [string, string] {
+  if (name === "group") return ["group", "change"];
+  if (name === "files") return ["files", "change"];
   if (name !== "value") return [name, name === "open" ? "toggle" : "change"];
   const tag = element.tagName;
   if (tag === "SELECT") return ["value", "change"];
+  if (tag !== "INPUT" && tag !== "TEXTAREA") {
+    // A contenteditable host has no `value`. Its text IS the channel, and
+    // `input` is the event it reports an edit on exactly as a field does.
+    return element.hasAttribute("contenteditable") ? ["textContent", "input"] : ["value", "input"];
+  }
   const type = (element as Partial<HTMLInputElement>).type;
   if (type === "checkbox" || type === "radio") return ["checked", "change"];
   if (type === "number" || type === "range") return ["valueAsNumber", "input"];
+  if (type === "date" || type === "month" || type === "week" || type === "time") {
+    return ["valueAsDate", "input"];
+  }
   return ["value", "input"];
 }
 
@@ -1671,9 +1818,19 @@ export function spread(
       return;
     }
 
-    // Getter values unwrap inline: the surrounding effect already tracks
-    const resolved = key !== "style" && isSignalGetter(value) ? (value as () => unknown)() : value;
-    applied[key] = channelOf(key, isSvg)(element, attrNameOf(key, isSvg), resolved, applied[key]);
+    // Getter values unwrap inline: the surrounding effect already tracks.
+    // `style` was excluded so a style OBJECT reached `diffStyleObjects` whole —
+    // but an object is not a function, so the exclusion only ever reached a
+    // FUNCTION in the style key, and `setStyle` returns `prev` for one. A Cell
+    // there applied nothing at all and a Block landed in the one Cell slot on
+    // this surface that neither threw nor rendered.
+    const resolved = isSignalGetter(value) ? (value as () => unknown)() : value;
+    applied[key] = channelOf(key, isSvg, element.tagName)(
+      element,
+      attrNameOf(key, isSvg),
+      resolved,
+      applied[key],
+    );
   };
 
   renderEffect(() => {
@@ -1771,6 +1928,11 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
  * argument was evaluated. Ownership is not lost, it is RELOCATED: disposing
  * the ambient owner disposes the subtree. But this disposer cannot, so it says
  * so rather than pretending. M3's calling convention removes the form.
+ *
+ * **The claim is the eager form's alone.** The orphan list is bounded by TIME,
+ * not by provenance, so claiming it from the Block form would let this mount's
+ * disposer stop a library's ownerless effect that merely happened to be created
+ * in the same turn. Pinned by `sem-own-render-disposer-disposes`.
  */
 export function render(
   block: JSXElement | ((scope: Scope | null) => JSXElement),
@@ -1780,7 +1942,11 @@ export function render(
 
   const eager = typeof block !== "function";
   const ambient = eager ? getOwner() : null;
-  const root = enterRoot();
+  // Only the already-built form claims. The orphan list is bounded in time, not
+  // in provenance, so a Block-form mount that claimed it would adopt — and its
+  // disposer would destroy — whatever ownerless work the same synchronous turn
+  // happened to produce elsewhere. The Block builds under `root` anyway.
+  const root = enterRoot(eager);
   if (ambient !== null && root.kids === null) {
     emitDiagnostic(
       "RENDER_SUBTREE_NOT_OWNED",
@@ -2118,7 +2284,9 @@ function mount(
   claiming: boolean,
 ): () => void {
   if (!claiming) container.textContent = "";
-  const root = enterRoot();
+  // The Block form only, so there is nothing built before the root exists and
+  // nothing to claim — see `render`.
+  const root = enterRoot(false);
   try {
     insertRendered(root, block(root), container);
   } finally {

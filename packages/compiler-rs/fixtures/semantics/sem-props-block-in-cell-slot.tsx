@@ -30,12 +30,12 @@
  * SEMANTICS.md §3 C3.6, C3.7, C3.8, C3.9, C5.1.
  */
 import { block, delegate, dispose, enterRoot, exit, isBlock, listen, pin, ref, render, setProp } from "@barqjs/core"
-import { branch, boundary, each, portal, provide, createContext } from "@barqjs/core"
+import { branch, boundary, each, onCleanup, portal, provide, createContext, useContext } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
-export const rules = ["C3.6", "C3.7", "C3.8", "C3.9", "C5.1"]
+export const rules = ["C3.6", "C3.7", "C3.8", "C3.9", "C5.1", "O2"]
 
 /** What a Block that fell back to the ambient owner would leave behind. */
 let ranWithoutScope = 0
@@ -237,6 +237,134 @@ export const claims: Claim[] = [
             `\`pin()\`ned Block is branded and deliberately unguarded, so only the slot's own test ` +
             `can stop it, and a laundered \`() => aBlock\` carries no brand at all and is visible ` +
             `only on the READ`,
+        )
+      }
+    },
+  },
+  {
+    id: "a-pinned-block-ignores-the-scope-it-is-handed",
+    rule: "O2",
+    says: "O2's one sanctioned escape hatch is total: a pinned Block's cleanups and effects belong to the PINNED scope even when it is handed a different live one",
+    async check(kit) {
+      const home = enterRoot()
+      exit(home)
+      const other = enterRoot()
+      exit(other)
+      const filed: string[] = []
+      const pinned = pin(home, (owner: Scope) => {
+        void owner
+        onCleanup(() => filed.push("pinned"))
+        return document.createTextNode("pinned")
+      })
+      ;(pinned as unknown as (s?: Scope | null) => unknown)(other)
+      await kit.settle()
+
+      dispose(other)
+      await kit.settle()
+      const afterOther = filed.length
+      dispose(home)
+      await kit.settle()
+
+      if (afterOther !== 0 || filed.length !== 1) {
+        kit.fail(
+          `a pinned Block was handed a live scope OTHER than the one it was pinned to. Disposing ` +
+            `that scope ran ${afterOther} of its cleanups (expected 0) and disposing the pinned ` +
+            `scope ran ${filed.length - afterOther} (expected 1). \`pin\` promises the handed scope ` +
+            `is ignored — forwarding it is the shape in which a pinned Block silently rejoins the ` +
+            `caller's tree, and the pinned shape driven at every slot below cannot see it`,
+        )
+      }
+    },
+  },
+  {
+    id: "a-block-invoked-with-undefined-never-runs-under-the-ambient-scope",
+    rule: "C3.8",
+    says: "the refusal is `block`'s own entry guard and not a downstream stringification: a Block whose body only registers a cleanup, reads context and returns a plain string throws while a scope is ambient, and files NOTHING on that scope",
+    async check(kit) {
+      // The claim beside this one observes the STRINGIFICATION — a built
+      // subtree's markup in an attribute — which is `toString`'s own brand test
+      // and not the entry guard. A Block that returns a string is invisible to
+      // it, and that Block is the Provider bug's actual shape: the cleanup and
+      // the context read go to whatever scope happened to be current.
+      let bodyRan = 0
+      let sawContext: string | null = null
+      const filed: string[] = []
+      const quiet = block((s: Scope | null) => {
+        bodyRan++
+        void s
+        onCleanup(() => filed.push("quiet"))
+        sawContext = useContext(Theme) ?? null
+        return "a plain string"
+      })
+
+      const ambient = enterRoot()
+      let thrown: unknown = null
+      try {
+        ;(quiet as unknown as (s?: Scope | null) => unknown)(undefined)
+      } catch (error) {
+        thrown = error
+      }
+      await kit.settle()
+      exit(ambient)
+      dispose(ambient)
+      await kit.settle()
+
+      if (thrown === null || (thrown as Error).name !== "ScopeMissingError") {
+        kit.fail(
+          `a branded Block invoked with \`undefined\` while a scope was ambient ` +
+            `${thrown === null ? "did not throw at all" : `threw ${(thrown as Error).name}`}; its body ran ` +
+            `${bodyRan} time(s) and read ${JSON.stringify(sawContext)} from the ambient chain. C3.8's ` +
+            `negative half is that the fallback to CURRENT does not exist — not that a built subtree ` +
+            `is refused where it would have been stringified`,
+        )
+      }
+      if (bodyRan !== 0 || filed.length !== 0) {
+        kit.fail(
+          `the Block's body ran ${bodyRan} time(s) and disposing the AMBIENT scope ran ` +
+            `${filed.length} cleanup(s) it registered (${JSON.stringify(filed)}), expected 0 and 0. ` +
+            `That is the Provider bug exactly: a child's cleanup filed on whatever scope happened to ` +
+            `be current, and it is invisible to any claim that observes what reached the DOM`,
+        )
+      }
+    },
+  },
+  {
+    id: "a-primitive-handed-undefined-throws-before-it-does-anything",
+    rule: "C3.8",
+    says: "`requireScope` is the other half of the same negative: every Cell-slot primitive refuses `undefined` itself, so a missing scope is named at the entry point rather than resolved against CURRENT",
+    async check(kit) {
+      // Every drive here carries a plain CELL, so nothing in the value can
+      // throw: the only thing under test is the primitive's own refusal of a
+      // missing scope. Without it `scope ?? null` reads as "no owner", which is
+      // a legal value (§3.0) and silently detaches everything the call builds.
+      const cases = slots(() => () => "a cell")
+      const surviving: string[] = []
+      const wrong: string[] = []
+      const ambient = enterRoot()
+      try {
+        for (const slot of cases) {
+          let thrown: unknown = null
+          try {
+            slot.drive(undefined as never)
+          } catch (error) {
+            thrown = error
+          }
+          if (thrown === null) surviving.push(slot.name)
+          else if ((thrown as Error).name !== "ScopeMissingError")
+            wrong.push(`${slot.name} -> ${(thrown as Error).name}: ${(thrown as Error).message}`)
+        }
+      } finally {
+        exit(ambient)
+        dispose(ambient)
+      }
+      await kit.settle()
+      kit.precondition(cases.length >= 9, "the slot list is empty, so nothing was driven")
+      if (surviving.length > 0 || wrong.length > 0) {
+        kit.fail(
+          `${surviving.length} of ${cases.length} primitives accepted \`undefined\` as their scope ` +
+            `(${surviving.join(", ") || "none"}); ${wrong.length} refused it with something other than ` +
+            `ScopeMissingError (${wrong.join(", ") || "none"}). A construct invoked with no scope is ` +
+            `named, not resolved against CURRENT and not silently detached`,
         )
       }
     },

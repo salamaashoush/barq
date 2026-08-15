@@ -28,9 +28,10 @@ pub const INTERCEPTED: Shape = Shape::Branches { functions: &["channelOf"], need
 pub const KEBAB_EXEMPT: Shape =
     Shape::Branches { functions: &["attrNameOf"], needle: "propKey !== \"" };
 
-pub const TABLES: [(&str, &str, Shape, From); 8] = [
+pub const TABLES: [(&str, &str, Shape, From); 9] = [
     ("SVG_TAGS", "SVG_TAGS", Shape::Record, From::Dom),
     ("DOM_PROPS", "DOM_PROPS", Shape::Record, From::Dom),
+    ("USER_MUTABLE_PROPS", "USER_MUTABLE_PROPS", Shape::Record, From::Dom),
     ("CSS_NUMBER_PROPS", "CSS_NUMBER_PROPS", Shape::Record, From::Dom),
     ("DELEGATED_EVENTS", "DELEGATED_EVENTS", Shape::Set, From::Dom),
     ("NON_BUBBLING_EVENTS", "NON_BUBBLING_EVENTS", Shape::Set, From::Dom),
@@ -72,6 +73,18 @@ pub fn extract(source: &str, name: &str, shape: Shape) -> Result<Vec<String>, St
     let mut out = Vec::new();
     for entry in split_entries(&source[body_start..end]) {
         let key = match shape {
+            // A QUOTED key runs to its closing quote, which is the only way a
+            // key may contain the separator: `USER_MUTABLE_PROPS` is keyed
+            // `"tag:property"`, and splitting on the first colon read every one
+            // of its rows as the tag alone.
+            Shape::Record if entry.starts_with('"') || entry.starts_with('\'') => {
+                let quote = entry.as_bytes()[0] as char;
+                let rest = &entry[1..];
+                match rest.find(quote) {
+                    Some(close) => rest[..close].to_string(),
+                    None => return Err(format!("`{name}` in dom.ts has an unterminated key")),
+                }
+            }
             Shape::Record => entry.split(':').next().unwrap_or_default().trim().to_string(),
             _ => entry.trim().to_string(),
         };

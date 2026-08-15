@@ -49,6 +49,14 @@ export interface Page {
   evaluate<T>(expression: string): Promise<T>
   /** Open a new target and make it the one `evaluate` runs against. */
   open(url: string): Promise<void>
+  /**
+   * A raw CDP call against the attached target.
+   *
+   * `Input.dispatchKeyEvent` is why this exists: a keystroke synthesised in the
+   * page with `dispatchEvent` never reaches the browser's own editing code, so
+   * it cannot move a caret and cannot falsify B7. Only the browser can type.
+   */
+  send(method: string, params: unknown): Promise<unknown>
 }
 
 interface Connection {
@@ -181,6 +189,10 @@ export async function withChrome<T>(
         const targetId = (target.result as { targetId: string }).targetId
         const attached = await connection!.send("Target.attachToTarget", { targetId, flatten: true })
         sessionId = (attached.result as { sessionId: string }).sessionId
+      },
+      async send(method, params) {
+        const result = await connection!.send(method, params, sessionId)
+        return result.result
       },
       async evaluate<T>(expression: string) {
         const evaluated = await connection!.send(

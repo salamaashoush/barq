@@ -57,17 +57,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 55;
+pub const HELPER_COUNT: usize = 56;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 31;
+pub const FIRST_SERVER_HELPER: usize = 32;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 54;
+pub const FIRST_INTERP_HELPER: usize = 55;
 
 /// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
 /// and `flow.ts`'s four primitives with `each`'s count symbol.
@@ -140,25 +140,29 @@ pub enum Helper {
     // question, only as the argument the channel already knows what to do with.
     SetAttr = 15,
     SetDomProp = 16,
-    SetBool = 17,
-    SetClass = 18,
-    SetStyle = 19,
-    SetStyleProp = 20,
-    SetClassList = 21,
-    SetHtml = 22,
+    /// §3.10.1 — the user-mutable channel. Compares against the ELEMENT rather
+    /// than against what the framework last applied, and preserves the caret of
+    /// whatever the user is inside. Emitted only for the names that need it.
+    SetLive = 17,
+    SetBool = 18,
+    SetClass = 19,
+    SetStyle = 20,
+    SetStyleProp = 21,
+    SetClassList = 22,
+    SetHtml = 23,
     /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question §3.13 keeps
     /// at run time: whether the value that arrived is a live Cell. The channel
     /// is the compiler's and is passed in.
-    BindProp = 23,
+    BindProp = 24,
     /// `bind:` — the two-way channel, property and reporting event resolved.
-    BindValue = 24,
+    BindValue = 25,
     /// A scope-owned `ref` registration (B3, E2 #7).
-    Ref = 25,
+    Ref = 26,
     /// A scope-owned `addEventListener` (B4, E2 #6).
-    Listen = 26,
+    Listen = 27,
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
-    BindEvent = 27,
+    BindEvent = 28,
     // ── the hydration-only walk (`SEMANTICS.md` H3) ───────────────────────
     //
     // `child(n, 3)` is H3's own spelling. Under `hydratable` the template walk
@@ -172,9 +176,9 @@ pub enum Helper {
     // the flag off not one of these appears.
     /// `_$child(base, k)` — the k-th logical child, from the start when `k >= 0`
     /// and from the end when `k < 0` (`-1` is the last).
-    Child = 28,
+    Child = 29,
     /// `_$sib(base, k)` — `k` logical siblings forward, or `-k` backward.
-    Sib = 29,
+    Sib = 30,
     /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
     /// THEN build the value that goes in it.
     ///
@@ -184,33 +188,33 @@ pub enum Helper {
     /// the cursor rather than from its own hole. The compiler knows the position
     /// statically — that is what an address IS — so it says so, instead of the
     /// runtime guessing from the shape of the tree it is walking.
-    Hole = 30,
+    Hole = 31,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 31,
-    EscAttr = 32,
-    Attr = 33,
-    Cls = 34,
-    Content = 35,
-    Html = 36,
-    RawText = 37,
-    SpreadAttrs = 38,
-    SsrFor = 39,
-    SsrIndex = 40,
-    SsrRepeat = 41,
-    SsrShow = 42,
-    SsrSwitch = 43,
-    SsrMatch = 44,
-    ClsList = 45,
-    AttrLit = 46,
-    SsrLoading = 47,
-    SsrErrored = 48,
-    SsrErrorBoundary = 49,
-    SsrPortal = 50,
-    SsrAwait = 51,
-    SsrDynamic = 52,
-    SsrReveal = 53,
+    Esc = 32,
+    EscAttr = 33,
+    Attr = 34,
+    Cls = 35,
+    Content = 36,
+    Html = 37,
+    RawText = 38,
+    SpreadAttrs = 39,
+    SsrFor = 40,
+    SsrIndex = 41,
+    SsrRepeat = 42,
+    SsrShow = 43,
+    SsrSwitch = 44,
+    SsrMatch = 45,
+    ClsList = 46,
+    AttrLit = 47,
+    SsrLoading = 48,
+    SsrErrored = 49,
+    SsrErrorBoundary = 50,
+    SsrPortal = 51,
+    SsrAwait = 52,
+    SsrDynamic = 53,
+    SsrReveal = 54,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 54,
+    Interp = 55,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -231,6 +235,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "COUNT",
     "setAttr",
     "setDomProp",
+    "setLive",
     "setBool",
     "setClass",
     "setStyle",

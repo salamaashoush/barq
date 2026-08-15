@@ -13,6 +13,28 @@ pub fn is_dom_prop(name: &str) -> bool {
     DOM_PROPS.binary_search(&name).is_ok()
 }
 
+/// §3.10.1. A property the USER also writes, so the write must compare against
+/// the ELEMENT rather than against what the framework last applied. The compiler
+/// resolves the channel here and emits the DOM-compare form only for these
+/// names — every other prop keeps the cheap cached compare.
+/// The table is keyed `tag:property`, with `*` for a property no tag restricts:
+/// the question is not whether the property can be written but whether the USER
+/// can write it on THIS element. `<option value>` answers no.
+pub fn is_user_mutable(tag: &str, name: &str) -> bool {
+    let mut key = String::with_capacity(tag.len() + name.len() + 1);
+    key.push('*');
+    key.push(':');
+    key.push_str(name);
+    if USER_MUTABLE_PROPS.binary_search(&key.as_str()).is_ok() {
+        return true;
+    }
+    key.clear();
+    key.push_str(tag);
+    key.push(':');
+    key.push_str(name);
+    USER_MUTABLE_PROPS.binary_search(&key.as_str()).is_ok()
+}
+
 #[inline]
 pub fn is_delegated_event(event: &str) -> bool {
     DELEGATED_EVENTS.binary_search(&event).is_ok()

@@ -315,8 +315,9 @@ impl<'a> Lower<'a, '_> {
         let inside = at.inside(tag, is_svg);
         let tag_id = self.module.interner.intern_tag(tag);
 
-        let ordered = self.ordered_attributes(opening.attributes, inside.in_svg);
+        let ordered = self.ordered_attributes(opening.attributes, inside.in_svg, tag);
         let input_type = self.literal_type_attribute(&ordered);
+        let editable = self.is_contenteditable(&ordered);
         let mut attrs = ArenaVec::with_capacity_in(ordered.len(), &self.allocator);
         let mut dynamic = Vec::new();
         for (order, attr) in ordered.into_iter().enumerate() {
@@ -360,7 +361,7 @@ impl<'a> Lower<'a, '_> {
                 AttrKind::Ref => Op::Ref { value, write: writable },
                 AttrKind::Bind => {
                     let text = self.module.interner.name(name).text;
-                    let (prop, event) = names::bind_channel(text, tag, input_type);
+                    let (prop, event) = names::bind_channel(text, tag, input_type, editable);
                     let prop = self.module.interner.intern_name(prop);
                     let event = self.module.interner.intern_name(event);
                     Op::Bind { prop, event, value }
@@ -382,6 +383,7 @@ impl<'a> Lower<'a, '_> {
         &mut self,
         attributes: ArenaVec<'a, JSXAttributeItem<'a>>,
         in_svg: bool,
+        tag: &str,
     ) -> Vec<TmpAttr<'a>> {
         let mut ordered: Vec<TmpAttr<'a>> = Vec::with_capacity(attributes.len());
         for item in attributes {
@@ -413,7 +415,7 @@ impl<'a> Lower<'a, '_> {
                     self.allocator.alloc_str(&name[2..].to_ascii_lowercase()) as &'a str,
                 ),
                 names::Prefixed::Plain(name) => (
-                    AttrKind::Chan(names::channel_of(names::normalize(name), in_svg)),
+                    AttrKind::Chan(names::channel_of(names::normalize(name), in_svg, tag)),
                     names::attr_name(name, in_svg, self.allocator),
                 ),
             };
@@ -493,8 +495,23 @@ impl<'a> Lower<'a, '_> {
     /// against. A computed `type` leaves it `None` and the text-input answer
     /// stands, which is what the un-compiled path would also produce.
     fn literal_type_attribute(&self, ordered: &[TmpAttr<'a>]) -> Option<&'a str> {
+        self.literal_attribute(ordered, "type")
+    }
+
+    /// §3.10 — a `contenteditable` host has no `value`, so `bind:value` on one
+    /// resolves to its TEXT. The author writes the attribute statically or the
+    /// compiler cannot know, which is the same rule `type` follows.
+    fn is_contenteditable(&self, ordered: &[TmpAttr<'a>]) -> bool {
+        matches!(
+            self.literal_attribute(ordered, "contenteditable")
+                .or_else(|| self.literal_attribute(ordered, "contentEditable")),
+            Some(value) if value != "false"
+        )
+    }
+
+    fn literal_attribute(&self, ordered: &[TmpAttr<'a>], name: &str) -> Option<&'a str> {
         ordered.iter().find_map(|attr| {
-            if self.module.interner.name(attr.key).text != "type" {
+            if self.module.interner.name(attr.key).text != name {
                 return None;
             }
             match attr.value {

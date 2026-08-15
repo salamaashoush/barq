@@ -798,8 +798,10 @@ signal is passable as a prop with zero adaptation and η-reduction (`x={s()}` �
 construction. `useState`'s degraded getter (`hooks.ts:11-22` returns a bare `() => s()`, dropping all
 three) is deleted.
 
-**New: `linked(source, compute, {equal})`** — writable derived state that re-seeds when its source
-changes. One primitive covering three problems the ergonomics work identified separately: the
+**New: `linked(source, compute, {equals})`** *(delivered at M7; `SEMANTICS.md` R7)* — writable derived
+state that re-seeds when its source changes. It is `signal(fn)` with the source split out of the
+closure and nothing else: the writable computed already had exactly these semantics, and what was
+missing was a name for them. One primitive covering three problems the ergonomics work identified separately: the
 read-copy trap (`useState(props.value)` freezing at the first value), controlled inputs, and two-way
 component props. Angular's `linkedSignal` is the shipped precedent.
 
@@ -808,6 +810,12 @@ component props. Angular's `linkedSignal` is the shipped precedent.
 effect and by component bodies running untracked.
 
 ### 3.10 Forms and binding
+
+*(Delivered at M7 except where the paragraphs below say otherwise. `SEMANTICS.md` B6 and B7 are
+`HOLDS`; `linked` is R7. Two clauses are NOT built and are named rather than left to be discovered:
+`<select multiple>` has no option-loop coercion, and `ssr.ts`'s `DIRTY_VALUE` is keyed by TAG, so the
+string backend drops the `value` attribute of a `checkbox`/`radio` where the HTML spec reflects it —
+which is why `bind:group` is driven under `fixtures/semantics/` and not in the SSR corpus.)*
 
 `bind:value`, `bind:checked`, `bind:group`, `bind:files`, `bind:open`, `bind:this` are compiler
 syntax. Three things no runtime-only design can do:
@@ -823,6 +831,18 @@ syntax. Three things no runtime-only design can do:
    text input. Emitted only where a `value` binding on a text input exists; zero cost elsewhere.
 3. **Coerce by input type at compile time**: `number` → `valueAsNumber`, `date` → `valueAsDate`,
    `checkbox` → `checked`, `<select multiple>` → option loop.
+
+Two things building it added to the design, both found by driving it rather than by reading it:
+
+- **The DOM-compare is not enough on its own, and the reason is not in this section.** When a setter
+  REJECTS a keystroke the signal does not change, so the effect never re-runs and no comparison of
+  any kind gets the chance to run. `bind:` therefore re-asserts the signal synchronously inside the
+  reported edit — and again at the next flush, through a counter every two-way binding subscribes to,
+  because the scheduler's (correct, glitch-free) dedupe cannot see that the DOM moved while the
+  signal came back to where it started. That is B6's two-writer problem one level down.
+- **The user-mutable set is keyed by the PAIR `(tag, property)`, not by the property.** `<option
+  value>` is the negative that forced it: an option's `value` falls back to its TEXT, so a compare
+  against the element reports "already holds it" and the reflected attribute never appears.
 
 Component two-way: `bind:x={sig}` passes `{ x: sig, "x$set": sig.set }` — a writable Cell pair,
 nothing magic. **This is the dividend a getter representation structurally cannot pay: a getter can
@@ -1575,6 +1595,19 @@ ARGUMENT.
 `KEEPALIVE` parking; transitions as scope forks; derived optimistic state; the `bind:` family with
 DOM-compare and selection preservation; `linked`.
 
+The ASYNC half landed. `resource(source, fetcher)` is an async memo: the read is a Cell that throws
+`NotReady` before settlement (A3), the `AbortController` is a cleanup on the creating scope and the
+signal is handed to the fetcher (A1), and every run's continuation compares the generation it
+captured at call time (A2). `createResource`, `suspend`, `awaitAll` and the `ResourceState` union
+are gone. `createOptimistic` and `createOptimisticStore` are derivations over a settled value and a
+list of pending layers, so rollback is the removal of a layer rather than the write-back of a
+snapshot (A4). A1–A4 and E2.3 moved from `VIOLATED` to `HOLDS` with three new L1 fixtures.
+
+`KEEPALIVE` parking and transitions did NOT land and were not attempted: §11 Q7 records that the
+"scope forks only" answer was overruled and that the design does not exist yet. A5 stays the one
+`NOT SPECIFIED` rule in `SEMANTICS.md` and the one entry in `unpinned-rules.ts`'s A family. Nothing
+in the resource depends on either: cancellation is disposal, not parking.
+
 **M8 — consumers.** `packages/extra` and `kitchen-sink`. **The router is the acceptance test for the
 whole design.** Its nine enumerated workarounds must all become deletions:
 7 `value={() => state}` sites and the surrounding `{() => …}` wrappers (verified: 90 `() =>` in the
@@ -1892,3 +1925,102 @@ way until the M0 gate passes.
    (being free in JS, which it is not). §9.1 gains item 4: acceptance ≤1.25x on the stub-DOM benchmark
    and ±2% parity through a **real browser**, since §11 Q9 records that happy-dom has hidden four
    distinct bug classes on this project.
+
+---
+
+## 12. DECISIONS REVISED (2026-08-11), after reading Solid 2.0 RC's oxc compiler
+
+`@dom-expressions/compiler` — Rust, oxc 0.118, napi, 22,452 lines, shipped and the DEFAULT in
+`@solidjs/vite-plugin@3.0.0-next.28`. Same author as the Babel plugin this project replaced, same
+parser family. It is the closest prior art that exists and it was read as source, not as docs.
+
+Read it as a REIMPLEMENTATION, not a redesign: its own `AST_REWRITE.md` rule #1 is "Mirror the Babel
+plugin pass/model structure as closely as Oxc allows." Its calling-convention decisions are inherited
+under a parity mandate, not re-derived — which is why several of them are NOT evidence against this
+design's departures.
+
+### Q3 — REVERSED by the user. Lists are IDENTITY-KEYED by default.
+
+The index-keyed default rested on a compile-time diagnostic for stateful row DOM. That diagnostic
+cannot cross a component boundary: `<For each={xs}>{x => <TodoRow todo={x}/>}</For>` where `TodoRow`
+contains an `<input>` produces nothing, because a component compiles to an opaque call. Scroll
+position on a plain div, a running animation, an open `<dialog>` and a third-party widget behind a
+ref are all equally invisible. So the mitigation covered inline stateful tags only — the case a
+reviewer already catches — and an index-keyed default would have shipped a THIRD silent-failure
+class on purpose, in a project whose Q4 rationale is that silent failure is the dominant harm here.
+
+Solid ran both `For` and `Index` for five years and deleted `Index` this cycle, keeping one `For`
+keyed by identity, on the stated ground that having both "encourages bikeshedding and accidental
+misuse". K1's reversal and K3's status both change; an immutable update replacing row objects
+rebuilding rows is a visible performance cost, which is the right kind to trade for.
+
+### Q4 — REVERSED by the user. Detection is a DEV-only axis; only recovery is on the wire.
+
+The measurement arrived after the decision: branch-index comments cost 55.7% raw / 7.3% gzipped on a
+100-row page, and claiming is 1.4–1.6x more node work than replacing. 7.3% gzip on every page
+forever is material, and Q4 itself said to revisit if it was.
+
+Solid separates the two concerns and pays nothing in production: under `dev + hydratable` it threads
+the expected tag into the walk — `getFirstChild(_el$, "span")` where production emits
+`_el$.firstChild` — so a mismatch is caught where it is debugged and the wire carries only what
+recovery needs. barq already has nine separately-flippable optimisation knobs and a `hydratable` flag
+that changes emission on both backends, so the axis exists. The original argument — silent failure is
+the dominant harm — is an argument about DEVELOPMENT and is fully served by a dev-only check.
+
+### Q7 — ANSWERED by the reference implementation. Both horns of the question were wrong.
+
+The question was whether a transition may fork the reactive graph or must be expressible with scope
+forks alone. Solid does NEITHER, and there is no second scope.
+
+`startTransition` and `useTransition` are DELETED; there is no transition API. Only opt-in
+`createOptimistic` nodes are double-buffered — `_value` authoritative, `_overrideValue` pending — and
+the mechanism is stated in their own comment: "No revert target is stashed: while the override is
+active every reader sees it, so authoritative arrivals commit silently into `_value` and reverting is
+just dropping the override — `_value` is already correct." A transition's write lands in the override,
+a live write lands in `_value` underneath it, neither is lost, and settling drops the override onto a
+value that is already right. Union-find lanes group a transaction's writes and an active override is
+a lane barrier, which is what lets several transitions be in flight without blocking each other.
+RFC 06 rejects forking on the record: optimism "should integrate with transitions rather than forking
+the reactive graph".
+
+THERE IS NO PARKING. `<Loading>` keeps live DOM mounted showing stale content. So the two questions
+this project could not answer — what a write to a parked subtree does, and whether parked effects are
+suspended or detached — DISSOLVE. Nothing is parked.
+
+Consequences: §3.8's "transition(fn) creates a pending scope beside the live one" is the approach the
+reference implementation rejected. `KEEPALIVE` parking is not a prerequisite for transitions, it is an
+alternative nobody took. SEMANTICS.md A5 states a dichotomy that is refuted and must be rewritten.
+M7's transition blocker is far smaller than assumed: two slots on opt-in nodes plus a union-find,
+orthogonal to the Scope/Block work. `latest(fn)` and `isPending(fn)` are the read surface.
+
+### Adopted from Solid without further argument
+
+**The parity ratchet, generalised.** Their `parity.test.js`: "An ABSENT expectation file means the
+compilers are at parity and must stay there. A PRESENT expectation file documents the current known
+divergence. Any change — regression OR IMPROVEMENT — fails until the expectation is regenerated."
+Failing on improvement is what this project's registries do not do, and it is why a row can rot.
+
+**The cross-mode fixture union.** Their suite compiles the union of ALL fixture sources through EVERY
+mode. barq has 2 backends x 2 optimisation levels plus the interpreter — five emission modes — and
+fixtures written per feature. The `backend!` macro proves every backend HANDLES every `Op`; it cannot
+prove SSR handles `Op::Region` CORRECTLY for a construct only the DOM fixtures exercise.
+
+**A Tier-2 benchmark lane.** Their `benchmarking-strategy.md`: "Tier 1 is the iteration tool. Tier 2 is
+the source of truth. Tier-1 wins must be validated against the relevant Tier-2 suite before they
+stay." Their 6,725-line experiment log is full of Tier-1 wins REVERTED after Tier-2 disagreed. Every
+number in this document is Tier-1 — Node microbenchmarks, a stub DOM, happy-dom — including §0.3's
+defence of the calling convention ("0% through a DOM"), which is a Tier-2 claim made without a Tier-2
+run. Until that lane exists, the flag-deletion discipline is adjudicating against the wrong oracle.
+`browser.test.ts` already drives real Chrome over CDP, so it is buildable.
+
+### Vindicated, recorded so it is not relitigated
+
+Their SSR/DOM hole-id desync (`documentation/hole-owner-id-matrix.md`) is the failure barq's shared
+address pass structurally prevents — and their FIRST fix attempt failed the same way, keying off the
+transformed expression shape so "every sibling id after such a hole shifted". Their remedy is a
+hand-enforced shared predicate; H5's channel is the typed version. Note the warning attached: their
+bug was caught by an end-to-end streaming example, NOT by fixture parity, because parity compares
+COMPILERS rather than backends against each other.
+
+Their 6,725-line performance log contains NO measurement of children-getter allocation. The getters
+survive on the parity mandate, not because Blocks lost. The 8.7x number stands unrefuted.

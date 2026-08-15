@@ -832,12 +832,22 @@ impl<'a> Shaper<'a, '_> {
         } else {
             "A Block invoked with no scope throws ScopeMissingError (C3.8); it does not fall back              to the ambient owner and it does not stringify"
         };
+        // A flow construct's Cell slot is the same compile-time fact as an
+        // attribute, and it is NOT on an intrinsic element — naming the wrong
+        // position sends the reader to the wrong line.
+        let position = match channel {
+            "each source" | "branch key" | "portal target" | "boundary on" => {
+                "the `{channel}` argument of the primitive that flow construct lowers to"
+            }
+            _ => "the `{channel}` position on an intrinsic element",
+        }
+        .replace("{channel}", channel);
         self.diagnose(
             Code::Barq010,
             at,
             &format!(
                 "`{slot}` is JSX here, which lowers to a Block, and `{name}` reads `props.{slot}` \
-                 as a Cell at byte {}..{} — the `{channel}` position on an intrinsic element. \
+                 as a Cell at byte {}..{} — {position}. \
                  {refusal}. Render it as a child, or hand `{name}` \
                  a Cell — `{slot}={{() => value}}` — instead of JSX.",
                 read.start, read.end

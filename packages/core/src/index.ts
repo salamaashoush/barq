@@ -8,6 +8,7 @@
 // Core reactivity - primitives
 export {
   signal,
+  linked,
   computed,
   effect,
   renderEffect,
@@ -115,7 +116,7 @@ export type { Source } from "./props.ts";
 
 // Types
 export type { Signal, Computed, Context } from "./signals.ts";
-export type { Resource, ResourceState, ResourceStatus } from "./async.ts";
+export type { Resource, ResourceInfo, ResourceOptions, ResourceStatus } from "./async.ts";
 export type { Store } from "./store.ts";
 
 // Type configuration - for compiler mode opt-in
@@ -174,7 +175,9 @@ export type { Maybe } from "./map.ts";
 
 export { useState, useMemo, useEffect } from "./hooks.ts";
 
-// Async data loading
+// Async data loading — CODESIGN §3.8's one resource. `useResource` is the
+// hook-shaped alias and nothing more.
+export { resource } from "./async.ts";
 export { useResource } from "./hooks.ts";
 
 // Claim-based hydration (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4, H6). The
@@ -204,6 +207,7 @@ export {
   // from `NameFlags` plus the namespace, so no name is classified at run time.
   setAttr,
   setDomProp,
+  setLive,
   setBool,
   setClass,
   setStyle,
@@ -236,6 +240,12 @@ export {
   type Element,
   type ArrayElement,
 } from "./dom.ts";
+
+// CODESIGN §3.10's two halves, exported because they are a CHANNEL and not an
+// internal: `setLive` and every author-written directive that touches a
+// user-mutable property need the same compare and the same caret restore, and a
+// second implementation of either is how the two would drift.
+export { writeLive, coerceLive, holdsLive, captureCaret, restoreCaret } from "./forms.ts";
 
 // The four control-flow primitives — CODESIGN §3.4, SEMANTICS K and E.
 // Everything under `Components` below is an adapter over these; compiled code

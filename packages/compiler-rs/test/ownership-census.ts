@@ -95,6 +95,7 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "arrow-body-component", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "auto-thunked-read", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "boolean-and-nullish-props", clones: 1, unattributed: 0, opaque: [] },
+  { fixture: "bind-family", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "bind-value-channel", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "class-empty-string", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "class-list-array-object", clones: 1, unattributed: 0, opaque: [] },

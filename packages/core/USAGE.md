@@ -211,17 +211,27 @@ function UserProfile() {
 
 **Important:** Context Provider requires callback children. See "Callback Wrapper Pattern" section below.
 
-### useResource - Async Data with Dependencies
+### resource - Async Data with Dependencies
+
+`resource(source, fetcher)` is the one async primitive (`useResource` is the same
+function under its hook-shaped name). It is a memo, so it is lazy: the first read
+starts the fetch. Reading it before it settles throws `NotReadyError`, which a
+`Loading` boundary catches and `latest()` steps over — that throw is the status
+channel, so there is no second one to keep in sync.
+
+The fetcher's third argument carries an `AbortSignal`. It is a cleanup on the
+scope the resource was created under: disposing that scope aborts the request,
+and issuing a new one aborts the request it supersedes.
 
 ```tsx
-import { useResource, useState, Await } from "@barqjs/core";
+import { resource, useState, Await } from "@barqjs/core";
 
 const [userId, setUserId] = useState("1");
 
-const user = useResource(
+const user = resource(
   () => userId(),  // Re-fetches when userId changes
-  async (id) => {
-    const res = await fetch(`/api/users/${id}`);
+  async (id, { signal }) => {
+    const res = await fetch(`/api/users/${id}`, { signal });
     return res.json();
   }
 );
@@ -235,6 +245,71 @@ const user = useResource(
   {(data) => <div>{data.name}</div>}
 </Await>
 ```
+
+### linked - Writable State That Re-Seeds
+
+`linked(source, compute, options?)` is derived state you can also write to. The
+write holds until `source` next changes; that change recomputes over it and the
+write is gone.
+
+It is the answer to the read-copy trap — `useState(props.value)` freezes at the
+first value it ever saw — and to controlled inputs, which need both directions:
+the user's edit is a write, and the server's answer is a re-seed.
+
+```tsx
+import { linked, resource } from "@barqjs/core";
+
+const user = resource(() => userId(), fetchUser);
+
+// Seeded from the server, edited by the user, re-seeded when the server answers
+// again. No second signal, and nothing to reconcile.
+const draft = linked(() => user.latest()?.name ?? "", (name) => name);
+
+<input type="text" bind:value={draft} />;
+```
+
+`compute` receives the previous value, so a re-seed can keep a choice:
+
+```tsx
+const chosen = linked(options, (list, previous) =>
+  previous !== undefined && list.includes(previous) ? previous : list[0],
+);
+```
+
+### bind: - Two-Way Form Binding
+
+`bind:value` resolves its property and its reporting event at COMPILE time from
+the tag and the `type` attribute: a text input writes `value` and reports on
+`input`, a checkbox writes `checked` and reports on `change`, a number input
+writes `valueAsNumber`, a `contenteditable` writes its text.
+
+```tsx
+<input type="text" bind:value={name} />
+<textarea bind:value={notes} />
+<input type="checkbox" bind:value={agreed} />
+<input type="number" bind:value={amount} />
+<select bind:value={size}>…</select>
+<input type="radio" name="size" value="s" bind:group={size} />
+<div contenteditable="true" bind:value={rich} />
+<dialog bind:open={showing} />
+<input type="file" bind:files={picked} />
+<input ref={el} bind:this={el} />
+```
+
+Two things it does that a plain `value={x}` cannot, and they are why it is
+compiler syntax rather than a helper:
+
+- **It compares against the ELEMENT before writing.** A setter that rejects or
+  normalises a keystroke leaves the signal unchanged, so nothing re-runs — the
+  binding re-asserts the signal inside the event instead, and the field never
+  keeps text no signal held.
+- **It preserves the caret.** Assigning `value` moves the text cursor to the end
+  of the control, so a write arriving while you are typing would otherwise
+  discard your selection. The selection range, its direction and the focus all
+  survive.
+
+A `bind:` target must be writable — a signal, a `linked` cell, or anything with
+a `.set`. A read-only accessor gets a `BIND_TARGET_NOT_WRITABLE` diagnostic.
 
 ## Components
 

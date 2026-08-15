@@ -113,7 +113,7 @@ pub enum Prim {
     UseState,
     UseMemo,
     UseStore,
-    UseResource,
+    Resource,
     UseContext,
     CreateAsync,
     CreateOptimistic,
@@ -138,7 +138,7 @@ impl Prim {
             "useState" => Prim::UseState,
             "useMemo" => Prim::UseMemo,
             "useStore" => Prim::UseStore,
-            "useResource" => Prim::UseResource,
+            "resource" | "useResource" => Prim::Resource,
             "useContext" => Prim::UseContext,
             "createAsync" => Prim::CreateAsync,
             "createOptimistic" => Prim::CreateOptimistic,
@@ -271,6 +271,29 @@ impl Flow {
             Flow::Portal => "Portal",
             Flow::Dynamic => "Dynamic",
             Flow::ErrorBoundary => "ErrorBoundary",
+        }
+    }
+
+    /// C5.1 item 1 at a flow slot. Every name here is read through `readValue`
+    /// in `components.ts` and lowers to a Cell argument of the primitive the
+    /// construct compiles to, so a Block landing in one is the same
+    /// compile-time fact an attribute on an intrinsic element is — and the
+    /// runtime answers it with the same `ScopeMissingError`.
+    ///
+    /// Answers the primitive position the diagnostic names. A prop absent here
+    /// is a Block slot (`children`, `fallback`) or one nothing resolves.
+    #[inline]
+    pub fn cell_slot(self, prop: &str) -> Option<&'static str> {
+        match (self, prop) {
+            (Flow::For | Flow::Index, "each") => Some("each source"),
+            (Flow::Repeat, "count" | "from") => Some("each source"),
+            (Flow::Show | Flow::Match, "when") => Some("branch key"),
+            (Flow::Portal, "target") => Some("portal target"),
+            (Flow::Loading, "on") => Some("boundary on"),
+            (Flow::Await, "resource") => Some("boundary on"),
+            (Flow::Reveal, "order" | "collapsed") => Some("branch key"),
+            (Flow::Dynamic, "component") => Some("branch key"),
+            _ => None,
         }
     }
 }

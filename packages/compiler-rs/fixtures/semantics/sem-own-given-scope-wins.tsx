@@ -25,7 +25,7 @@
  *
  * SEMANTICS.md §7 O4.5.
  */
-import { branch, dispose, enterRoot, exit, insert, onCleanup, setProp, signal } from "@barqjs/core"
+import { block, branch, dispose, effect, enterRoot, exit, insert, onCleanup, setProp, signal } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -47,6 +47,39 @@ export const Subject = () => <i class="o45">given-scope-wins</i>
 export const tone = signal("one")
 
 export const Live = () => <i class={tone()}>compiled</i>
+
+/**
+ * The AMBIENT-reading half, which the compiled-binding claim above cannot see:
+ * `bindEffect` takes the scope explicitly, so that claim holds even if a Block
+ * establishes nothing. `onCleanup`, `effect`, `useContext` and a signal's owner
+ * all read `CURRENT` instead, and a component call is a plain call — so unless
+ * `block` makes the argument current for the whole body, one component handed A
+ * while B is ambient splits its ownership across both: its hole under A, its
+ * cleanup under B.
+ */
+export const pulse = signal(0)
+export const ambientRuns: string[] = []
+export const ambientCleanups: string[] = []
+
+/** A compiled component whose body reads the ambient owner rather than `_s$`. */
+function AmbientBody() {
+  onCleanup(() => ambientCleanups.push("ambient"))
+  effect(() => {
+    ambientRuns.push(`effect:${pulse()}`)
+  })
+  return <i class="ambient">ambient</i>
+}
+
+/**
+ * The wrapper the compiler emits wherever a component reaches a slot —
+ * `_$block((_s$) => Child(_s$, {}))`, pinned as an EMISSION by
+ * `sem-ctx-provider-direct-child`. A direct call needs no wrapper because the
+ * argument and `CURRENT` are the same object there; a slot is the one position
+ * where they can differ, and no compiled fixture makes them.
+ */
+export const Ambient = block((s: Scope | null) =>
+  (AmbientBody as unknown as (s: Scope | null) => unknown)(s),
+)
 
 /**
  * A and B, disjoint. A is entered and left, so it is a live scope nobody is
@@ -185,6 +218,43 @@ export const claims: Claim[] = [
             "a compiled component was invoked with scope A while B was current, and disposing A " +
               "did not stop its class binding — the emitted effect took no scope at all and was " +
               "owned by CURRENT, which is O4.5's original defect in the compiled channel",
+          )
+        }
+      } finally {
+        done()
+      }
+    },
+  },
+  {
+    id: "a-compiled-component-body-owns-by-the-scope-it-was-given",
+    rule: "O4.5",
+    says: "the scope a Block is HANDED is `CURRENT` for its whole body, so the `onCleanup` and the `effect` inside the component it wraps follow the argument and not the ambient owner",
+    async check(kit) {
+      ambientRuns.length = 0
+      ambientCleanups.length = 0
+      pulse.set(0)
+      const { a, done } = twoScopes()
+      try {
+        ;(Ambient as unknown as (s: Scope | null) => unknown)(a)
+        await kit.settle()
+        kit.precondition(
+          ambientRuns.length === 1,
+          `the component's effect never ran: ${JSON.stringify(ambientRuns)}`,
+        )
+
+        dispose(a)
+        await kit.settle()
+        pulse.set(1)
+        await kit.settle()
+
+        if (ambientRuns.length !== 1 || ambientCleanups.length !== 1) {
+          kit.fail(
+            `the Block wrapper the compiler emits for a slot was invoked with scope A while B was current. Disposing A ran ` +
+              `${ambientCleanups.length} of its cleanups (expected 1) and left its effect running ` +
+              `${ambientRuns.length - 1} more time(s) (expected 0): ${JSON.stringify(ambientRuns)}. ` +
+              `A component call is a plain call, so nothing but the Block itself can establish the ` +
+              `ambient — without that the argument decides for the primitives that take it and for ` +
+              `nothing else, which is O4.5's defect in the half no compiled fixture makes visible`,
           )
         }
       } finally {

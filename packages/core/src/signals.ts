@@ -1013,9 +1013,19 @@ function dropOrphans(): void {
 /**
  * O5: open the root scope a mount is owned by. It is a catcher by
  * construction, so E1's "the nearest catching scope always exists" is true
- * without a walk, and it claims whatever the mount built before it existed.
+ * without a walk.
+ *
+ * `claimOrphans` is the ALREADY-BUILT form's bridge and nothing else. The
+ * orphan list bounds the claim in TIME, not by PROVENANCE: a module that
+ * initialises library state and mounts in the same synchronous turn puts that
+ * library's ownerless effects on the same list, and a root that claims it
+ * adopts — and later destroys — work it had nothing to do with. That trade is
+ * only worth making when the argument was built before `render` was entered
+ * and there is no other owner for it. When `render` is handed a Block the
+ * subtree builds UNDER this scope, so there is nothing to claim and claiming
+ * anyway is pure relocation.
  */
-export function enterRoot(): Scope {
+export function enterRoot(claimOrphans = true): Scope {
   const scope = makeScope(null);
   scope.dispose = () => disposeScope(scope);
   scope.catcher = { handle: rootCatch };
@@ -1025,8 +1035,10 @@ export function enterRoot(): Scope {
   currentOwner = scope;
   currentHost = null;
   if (OWNERSHIP.sink !== null) OWNERSHIP.sink.enter(scope, null, "root", false);
-  adoptOrphans(scope);
-  adoptOrphanCleanups(scope);
+  if (claimOrphans) {
+    adoptOrphans(scope);
+    adoptOrphanCleanups(scope);
+  }
   return scope;
 }
 
@@ -1991,6 +2003,31 @@ export function computed<T>(fn: (prev?: T) => T, options?: SignalOptions<T>): Co
   (accessor as unknown as { _node: ComputedNode<T> })._node = node;
 
   return accessor;
+}
+
+/**
+ * `CODESIGN.md` §3.9 — writable derived state that RE-SEEDS when its source
+ * changes. Written to, it holds the write; the next change of `source` recomputes
+ * over it and the write is gone.
+ *
+ * One primitive covering three problems the ergonomics work had listed
+ * separately: the read-copy trap (`useState(props.value)` frozen at the first
+ * value it ever saw), the controlled input whose signal must accept an edit and
+ * still be re-seeded by the server's answer, and the two-way component prop.
+ * Angular's `linkedSignal` is the shipped precedent.
+ *
+ * It is `signal(fn)` with the source split out, and the split is the point: as
+ * `signal(() => compute(source()))` the re-seed is an emergent property of
+ * whatever the closure happened to read, and nothing names it. `compute`
+ * receives the previous value, so "keep the user's selection if the new list
+ * still contains it" is expressible without a second signal to reconcile.
+ */
+export function linked<S, T>(
+  source: () => S,
+  compute: (value: S, previous: T | undefined) => T,
+  options?: SignalOptions<T>,
+): Signal<T> {
+  return writableComputed<T>((previous) => compute(source(), previous), options);
 }
 
 /** Writable derived signal: signal(fn) */

@@ -5,6 +5,7 @@ import {
   createScope,
   effect,
   flush,
+  linked,
   onCleanup,
   signal,
   untrack,
@@ -664,5 +665,90 @@ describe("memory and reactivity leaks", () => {
     b.set(200);
     flush();
     expect(effectRuns).toBe(3);
+  });
+});
+
+/**
+ * R7. `linked` is `signal(fn)` with the source split out of the closure, and
+ * the split is the point: as `signal(() => f(source()))` the re-seed is an
+ * emergent property of whatever the closure happened to read, and nothing
+ * names it.
+ */
+describe("linked — writable derived state that re-seeds", () => {
+  test("seeds from the source", () => {
+    const source = signal("ada");
+    const cell = linked(source, (name) => name.toUpperCase());
+    expect(cell()).toBe("ADA");
+  });
+
+  test("a write holds while the source is unchanged", () => {
+    const source = signal("ada");
+    const cell = linked(source, (name) => name);
+    cell.set("edited");
+    expect(cell()).toBe("edited");
+    expect(cell.peek()).toBe("edited");
+    // Including a write of the value the source would have produced anyway.
+    source.set("ada");
+    expect(cell()).toBe("edited");
+  });
+
+  test("the source moving discards the write — the read-copy trap, closed", () => {
+    const source = signal("ada");
+    const cell = linked(source, (name) => name);
+    cell.set("edited");
+    source.set("grace");
+    expect(cell()).toBe("grace");
+  });
+
+  test("compute is handed the previous value, so a re-seed can keep a choice", () => {
+    const options = signal(["a", "b", "c"]);
+    const chosen = linked(options, (list, previous) =>
+      previous !== undefined && list.includes(previous) ? previous : list[0],
+    );
+    expect(chosen()).toBe("a");
+    chosen.set("c");
+    options.set(["c", "d"]);
+    expect(chosen()).toBe("c");
+    options.set(["e", "f"]);
+    expect(chosen()).toBe("e");
+  });
+
+  test("`update` reads the current value, written or derived", () => {
+    const source = signal(1);
+    const cell = linked(source, (n) => n * 10);
+    cell.update((n) => n + 1);
+    expect(cell()).toBe(11);
+    source.set(2);
+    expect(cell()).toBe(20);
+  });
+
+  test("an effect over it sees the write and the re-seed alike", () => {
+    const source = signal("ada");
+    const cell = linked(source, (name) => name);
+    const seen: string[] = [];
+    effect(() => {
+      seen.push(cell());
+    });
+    flush();
+    cell.set("edited");
+    flush();
+    source.set("grace");
+    flush();
+    expect(seen).toEqual(["ada", "edited", "grace"]);
+  });
+
+  test("`equals: false` publishes every re-seed, including an equal one", () => {
+    const source = signal(1);
+    let runs = 0;
+    const cell = linked(source, (n) => n, { equals: false });
+    effect(() => {
+      cell();
+      runs++;
+    });
+    flush();
+    expect(runs).toBe(1);
+    source.set(2);
+    flush();
+    expect(runs).toBe(2);
   });
 });

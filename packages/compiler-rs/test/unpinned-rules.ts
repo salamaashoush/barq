@@ -63,7 +63,6 @@ export const FICTION_PINS: readonly string[] = Object.freeze([
   "E2: sem-err-ref-throw",
   "E2: sem-err-async-throw",
   "E2: sem-err-cleanup-throw",
-  "E2: sem-err-notready-passthrough",
   "C5: sem-props-forward-identity",
   "C9: sem-props-source-list-order",
   "K5: sem-key-shadowed-flow",
@@ -73,15 +72,20 @@ export const FICTION_PINS: readonly string[] = Object.freeze([
 ])
 
 export const UNPINNED_RULES: readonly string[] = Object.freeze([
-  // A
-  "A1", "A2", "A3", "A4", "A5",
+  // A — M7 wrote three fixtures and struck A1, A2, A3 and A4 off. A5 stays,
+  // and stays for a reason: `CODESIGN.md` §11 Q7 leaves transitions
+  // deliberately unspecified, so there is nothing for a fixture to pin.
+  "A5",
   // B
+  // B6 and B7 are M7's and are struck: `sem-form-dom-compare` and
+  // `sem-form-selection-preserved` pin them, with the real-browser caret
+  // channel beside the second.
   "B1", "B2", "B3", "B5",
   // C
   "C3.1", "C3.2", "C3.3", "C3.4", "C3.5",
   "C4", "C5", "C5.2", "C8", "C9",
   // E
-  "E1", "E2.3", "E3", "E4",
+  "E1", "E3", "E4",
   // H — EMPTY. M6 struck H5 off by building the channel §14.2 named (the
   // corpus-wide address-set diff), and the hydration pass struck the other
   // five: `test/hydration.test.ts` measures node reuse over the whole corpus

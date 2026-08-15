@@ -338,7 +338,13 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
       // A bench or a type-level test is not a fixture and has no .tsx on disk.
       if (entry.name.endsWith(".bench.ts") || entry.name.endsWith(".d.test.ts")) continue
       const base = entry.name.endsWith(".tsx") ? entry.name.slice(0, -4) : entry.name
-      const onDisk = roots.some((root) => existsSync(join(root, `${base}.tsx`)))
+      // A CHANNEL named in the fixture column — B7's real-browser caret check is
+      // one — lives in this directory as a `.ts` and is checked for existence
+      // exactly as a fixture is. The alternative is to name it in prose, which
+      // is the same as not checking it.
+      const onDisk = entry.name.endsWith(".ts")
+        ? existsSync(join(import.meta.dir, entry.name))
+        : roots.some((root) => existsSync(join(root, `${base}.tsx`)))
       if (onDisk && entry.isNew) {
         wrong.push(`${entry.rule}: ${base} is marked *(new)* and exists`)
       }
@@ -426,6 +432,7 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
       const present = (name: string): boolean => {
         if (name.endsWith(".bench.ts") || name.endsWith(".d.test.ts")) return true
         if (name.endsWith(".md")) return existsSync(join(FIXTURE_DIR, "..", name))
+        if (name.endsWith(".ts")) return existsSync(join(import.meta.dir, name))
         const base = name.endsWith(".tsx") ? name.slice(0, -4) : name
         return roots.some((root) => existsSync(join(root, `${base}.tsx`)))
       }

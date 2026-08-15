@@ -252,6 +252,54 @@ export const claims: Claim[] = [
     },
   },
   {
+    id: "the-block-form-claims-nothing-it-did-not-build",
+    rule: "O5",
+    says: "a Block-form mount adopts no ownerless work it did not build, so its disposer cannot stop a library's effect that merely happened to be created in the same turn",
+    async check(kit) {
+      count.set(0)
+      runs.length = 0
+      cleanups.length = 0
+      escaped = null
+      const pulse = signal(0)
+      const library: number[] = []
+      let libraryCleanups = 0
+      // Ownerless, and in the same synchronous turn as the mount below: the
+      // orphan list bounds the claim in TIME, not by PROVENANCE, so this is the
+      // ordinary module-initialisation shape and not a contrived one.
+      effect(() => {
+        library.push(pulse())
+      })
+      onCleanup(() => {
+        libraryCleanups++
+      })
+
+      const host = kit.container()
+      let dispose: (() => void) | undefined
+      const thrown = await kit.attempt(() => {
+        dispose = render(() => <Tree />, host)
+      })
+      await kit.settle()
+      const before = library.length
+      kit.precondition(before > 0, "the ownerless effect never ran, so nothing here could be adopted")
+      kit.precondition(runs.length > 0, MOUNTED)
+
+      dispose?.()
+      await kit.settle()
+      pulse.set(1)
+      await kit.settle()
+
+      if (library.length === before || libraryCleanups !== 0) {
+        kit.fail(
+          `a Block-form mount's disposer stopped an unrelated ownerless effect (ran ` +
+            `${library.length - before} time(s) after dispose, expected 1) and ran ` +
+            `${libraryCleanups} of its cleanups, expected 0 (${formatThrown(thrown)}). ` +
+            `enterRoot's claim is the ALREADY-BUILT form's bridge: with a Block there is nothing ` +
+            `built before the root exists, so claiming relocates work the mount had nothing to do with`,
+        )
+      }
+    },
+  },
+  {
     id: "control-the-disposer-empties-the-container",
     rule: "O5",
     says: "the disposer removes the root's range, which is the half of O5 that holds today",

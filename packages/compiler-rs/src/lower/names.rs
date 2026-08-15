@@ -49,12 +49,15 @@ pub fn prefixed(name: &str) -> Prefixed<'_> {
 
 /// `dom.ts::channelOf`, in Rust. The one question the compiled path answers here
 /// instead of at run time.
-pub fn channel_of(name: &str, is_svg: bool) -> Chan {
+pub fn channel_of(name: &str, is_svg: bool, tag: &str) -> Chan {
     match name {
         "class" | "className" => Chan::Class,
         "style" => Chan::Style,
         "classList" => Chan::ClassList,
         "dangerouslySetInnerHTML" => Chan::Html,
+        // §3.10.1 before the plain property channel: these are properties too,
+        // and what separates them is who else writes them.
+        _ if !is_svg && crate::tables::is_user_mutable(tag, name) => Chan::Live,
         _ if !is_svg && is_dom_prop(name) => Chan::Prop,
         _ => Chan::Attr,
     }
@@ -62,16 +65,33 @@ pub fn channel_of(name: &str, is_svg: bool) -> Chan {
 
 /// `dom.ts::bindChannelOf`. `<input type="number">` writes `valueAsNumber` and
 /// reports on `input`; a checkbox writes `checked` and reports on `change`.
-pub fn bind_channel<'a>(name: &'a str, tag: &str, input_type: Option<&str>) -> (&'a str, &'a str) {
+pub fn bind_channel<'a>(
+    name: &'a str,
+    tag: &str,
+    input_type: Option<&str>,
+    editable: bool,
+) -> (&'a str, &'a str) {
+    if name == "group" {
+        return ("group", "change");
+    }
+    if name == "files" {
+        return ("files", "change");
+    }
     if name != "value" {
         return (name, if name == "open" { "toggle" } else { "change" });
     }
     if tag == "select" {
         return ("value", "change");
     }
+    if tag != "input" && tag != "textarea" {
+        // A contenteditable host has no `value`. Its TEXT is the channel, and
+        // `input` is the event it reports an edit on exactly as a field does.
+        return if editable { ("textContent", "input") } else { ("value", "input") };
+    }
     match input_type {
         Some("checkbox") | Some("radio") => ("checked", "change"),
         Some("number") | Some("range") => ("valueAsNumber", "input"),
+        Some("date") | Some("month") | Some("week") | Some("time") => ("valueAsDate", "input"),
         _ => ("value", "input"),
     }
 }
@@ -170,6 +190,70 @@ mod tests {
         assert!(!is_svg_tag("div") && !is_svg_tag("math"));
         assert!(is_dom_prop("value") && is_dom_prop("readOnly") && is_dom_prop("innerHTML"));
         assert!(!is_dom_prop("class") && !is_dom_prop("href"));
+    }
+
+    /// §3.10's channel table, which exists TWICE — here and in
+    /// `dom.ts::bindChannelOf` — because the compiled path resolves it at
+    /// compile time and the un-compiled one at run time. The oracle differential
+    /// compares the two on every element of `bind-family.tsx`; this pins the
+    /// cases no fixture reaches.
+    #[test]
+    fn the_bind_channel_is_resolved_from_the_tag_the_type_and_contenteditable() {
+        // The property and its reporting event, per element.
+        assert_eq!(bind_channel("value", "input", None, false), ("value", "input"));
+        assert_eq!(bind_channel("value", "textarea", None, false), ("value", "input"));
+        assert_eq!(bind_channel("value", "select", None, false), ("value", "change"));
+        assert_eq!(bind_channel("value", "input", Some("checkbox"), false), ("checked", "change"));
+        assert_eq!(bind_channel("value", "input", Some("radio"), false), ("checked", "change"));
+        assert_eq!(
+            bind_channel("value", "input", Some("number"), false),
+            ("valueAsNumber", "input")
+        );
+        assert_eq!(
+            bind_channel("value", "input", Some("range"), false),
+            ("valueAsNumber", "input")
+        );
+        assert_eq!(bind_channel("value", "input", Some("date"), false), ("valueAsDate", "input"));
+        assert_eq!(bind_channel("value", "input", Some("week"), false), ("valueAsDate", "input"));
+
+        // A contenteditable host has no `value`; its TEXT is the channel. The
+        // `type` is irrelevant on a non-field, and a plain div is not one.
+        assert_eq!(bind_channel("value", "div", None, true), ("textContent", "input"));
+        assert_eq!(bind_channel("value", "div", None, false), ("value", "input"));
+        // …and `contenteditable` on an INPUT does not redirect it: the attribute
+        // has no effect on a replaced element and `value` is still the channel.
+        assert_eq!(bind_channel("value", "input", None, true), ("value", "input"));
+
+        // The two channels named by their own spelling rather than resolved.
+        assert_eq!(bind_channel("group", "input", Some("radio"), false), ("group", "change"));
+        assert_eq!(bind_channel("files", "input", Some("file"), false), ("files", "change"));
+        assert_eq!(bind_channel("open", "details", None, false), ("open", "toggle"));
+        assert_eq!(
+            bind_channel("checked", "input", Some("checkbox"), false),
+            ("checked", "change")
+        );
+    }
+
+    /// §3.10.1's set is keyed by the PAIR. `<option value>` is the negative the
+    /// key was widened for: an option's `value` falls back to its TEXT, so a
+    /// compare against the element skips the write and the reflected attribute
+    /// never appears.
+    #[test]
+    fn the_user_mutable_channel_needs_the_tag_as_well_as_the_name() {
+        assert_eq!(channel_of("value", false, "input"), Chan::Live);
+        assert_eq!(channel_of("value", false, "textarea"), Chan::Live);
+        assert_eq!(channel_of("value", false, "select"), Chan::Live);
+        assert_eq!(channel_of("value", false, "option"), Chan::Prop);
+        assert_eq!(channel_of("checked", false, "input"), Chan::Live);
+        assert_eq!(channel_of("checked", false, "li"), Chan::Prop);
+        assert_eq!(channel_of("selected", false, "option"), Chan::Live);
+        assert_eq!(channel_of("open", false, "details"), Chan::Live);
+        assert_eq!(channel_of("open", false, "div"), Chan::Attr);
+        // `*` in the table: no tag restricts these.
+        assert_eq!(channel_of("scrollTop", false, "div"), Chan::Live);
+        assert_eq!(channel_of("scrollLeft", false, "span"), Chan::Live);
+        // And the namespace gate is ahead of all of it.
+        assert_eq!(channel_of("value", true, "input"), Chan::Attr);
     }
 
     #[test]

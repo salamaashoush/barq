@@ -57,6 +57,7 @@ import {
   setClass,
   setClassList,
   setDomProp,
+  setLive,
   setHtml,
   setStyle,
   setStyleProp,
@@ -76,11 +77,21 @@ type Diff = "identity" | "always" | "thread";
 type Plan = "once" | "live" | "opaque";
 
 /** §3.5's channel set, spelled the same way the compiler spells it. */
-type Chan = "attr" | "prop" | "bool" | "class" | "style" | "styleProp" | "classList" | "html";
+type Chan =
+  | "attr"
+  | "prop"
+  | "live"
+  | "bool"
+  | "class"
+  | "style"
+  | "styleProp"
+  | "classList"
+  | "html";
 
 const CHANNEL: Record<Chan, Channel> = {
   attr: setAttr,
   prop: setDomProp,
+  live: setLive,
   bool: setBool,
   class: setClass,
   style: setStyle,

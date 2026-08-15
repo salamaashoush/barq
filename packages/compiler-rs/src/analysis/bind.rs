@@ -611,7 +611,7 @@ impl<'a> Binder<'_, 'a> {
                 Produced::tuple(SourceKind::ReactiveObject, SourceKind::Inert)
             }
             Prim::CreateProjection => Produced::kind(SourceKind::ReactiveObject),
-            Prim::UseResource => Produced::kind(SourceKind::AccessorRecord),
+            Prim::Resource => Produced::kind(SourceKind::AccessorRecord),
             // `useContext` hands back whatever was provided; guessing is the one
             // kind of wrong verdict that produces a silently dead UI.
             Prim::UseContext => Produced::OPAQUE,
@@ -781,10 +781,13 @@ impl<'a> Binder<'_, 'a> {
     /// C5.1 item 1's evidence, collected where the JSX is still visible.
     ///
     /// A prop is a CELL slot when the callee reads it in a position the emission
-    /// makes a Cell. There is exactly one such position in JSX — an attribute on
-    /// an INTRINSIC element, which lowers to `_$setProp`/`_$spread` — because a
-    /// child position takes either kind (C3.7) and an attribute on a COMPONENT
-    /// is a forward, whose verdict is the callee's.
+    /// makes a Cell. Two positions in JSX are one: an attribute on an INTRINSIC
+    /// element, which lowers to `_$setProp`/`_$spread`, and a named Cell slot of
+    /// a FLOW construct — `For`'s `each`, `Show`'s `when`, `Portal`'s `target`,
+    /// the rest of [`Flow::cell_slot`] — which lowers to a Cell argument of the
+    /// primitive the construct compiles to. A child position takes either kind
+    /// (C3.7), and an attribute on any OTHER component is a forward whose
+    /// verdict is the callee's.
     ///
     /// Keyed on the PROPS SYMBOL rather than on the enclosing component, so no
     /// visitor stack is needed: `candidates` already carries props → component,
@@ -814,9 +817,20 @@ impl<'a> Binder<'_, 'a> {
             };
             let Some(expression) = container.expression.as_expression() else { continue };
             let Some((props, prop)) = self.props_member(expression) else { continue };
-            match callee.filter(|_| component) {
-                Some(callee) => self.slot_forwards.push((props, prop, callee, slot.name.as_str())),
-                None => self.cell_reads.push((props, prop, attribute.span, slot.name.as_str())),
+            let flow_slot = callee
+                .filter(|_| component)
+                .and_then(|callee| self.env.kind_of(callee).flow())
+                .and_then(|flow| flow.cell_slot(slot.name.as_str()));
+            match (callee.filter(|_| component), flow_slot) {
+                (Some(_), Some(channel)) => {
+                    self.cell_reads.push((props, prop, attribute.span, channel))
+                }
+                (Some(callee), None) => {
+                    self.slot_forwards.push((props, prop, callee, slot.name.as_str()))
+                }
+                (None, _) => {
+                    self.cell_reads.push((props, prop, attribute.span, slot.name.as_str()))
+                }
             }
         }
     }

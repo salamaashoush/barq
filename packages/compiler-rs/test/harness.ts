@@ -1114,7 +1114,7 @@ const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", classNam
  * scanner pinned to one prefix would silently see no writes at all.
  */
 export const CHANNEL_CALL =
-  /_\$+(setAttr|setDomProp|setBool|setClass|setStyleProp|setStyle|setClassList|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g
+  /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyleProp|setStyle|setClassList|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g
 
 /** `_$bindProp($s, el, _$setAttr, "id", v)` — the channel is the third argument. */
 export const BIND_PROP_CALL = /_\$+bindProp\([^,]+,\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g

@@ -92,7 +92,7 @@ export function provide<T, R>(
   value: Cell<T>,
   block: Block<R>,
 ): R {
-  const instance = enter(scope);
+  const instance = enter(requireScope(scope, "provide"));
   provideOn(instance, context.id, value);
   let built = false;
   try {

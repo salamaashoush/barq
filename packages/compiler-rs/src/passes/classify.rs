@@ -116,7 +116,7 @@ impl<'a> Classify<'a, '_> {
                 // and the compiler owns the slot now.
                 let diff = if chan.threads_prev() {
                     Diff::Thread
-                } else if rx.shape == Shape::Obj {
+                } else if chan == crate::ir::Chan::Live || rx.shape == Shape::Obj {
                     Diff::Always
                 } else {
                     Diff::Identity

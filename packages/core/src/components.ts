@@ -442,7 +442,6 @@ export function Await<T>(
 
   const key = (): number => {
     switch (resolve().state()) {
-      case "unresolved":
       case "pending":
         return 0;
       case "errored":

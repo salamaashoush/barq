@@ -107,6 +107,7 @@ pub(super) fn channel_helper(chan: Chan) -> Helper {
     match chan {
         Chan::Attr => Helper::SetAttr,
         Chan::Prop => Helper::SetDomProp,
+        Chan::Live => Helper::SetLive,
         Chan::Bool => Helper::SetBool,
         Chan::Class => Helper::SetClass,
         Chan::Style => Helper::SetStyle,

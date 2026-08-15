@@ -1194,7 +1194,14 @@ mod tests {
     fn a_property_channel_attribute_never_reaches_the_template_html() {
         let output = compile_ok("const V = () => <input type=\"text\" value=\"v\" />;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<input type=\"text\">`)"), "{}", output.code);
-        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"v\")"), "{}", output.code);
+        // `value` is on the USER-MUTABLE channel (§3.10.1); the plain property
+        // channel is asserted beside it, because the claim is about neither
+        // reaching the template HTML.
+        assert!(output.code.contains("_$setLive(_el$1, \"value\", \"v\")"), "{}", output.code);
+
+        let output = compile_ok("const V = () => <input readOnly={true} />;\n", "V.tsx");
+        assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
+        assert!(output.code.contains("_$setDomProp(_el$1, \"readOnly\", true)"), "{}", output.code);
     }
 
     #[test]
@@ -2790,7 +2797,7 @@ mod tests {
             "V.tsx",
         );
         assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
-        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"v\")"), "{}", output.code);
+        assert!(output.code.contains("_$setLive(_el$1, \"value\", \"v\")"), "{}", output.code);
         assert!(!output.code.contains("hidden"), "{}", output.code);
         assert!(!output.code.contains("lang"), "{}", output.code);
     }
@@ -3142,9 +3149,12 @@ mod tests {
         let output = compile_ok("const V = () => <svg value={\"x\"} />;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<svg value=\"x\"/>`)"), "{}", output.code);
         assert!(!output.code.contains("_$setDomProp"), "{}", output.code);
+        // The user-mutable channel is namespace-gated the same way: inside SVG
+        // `value` is an attribute and nothing compares against the element.
+        assert!(!output.code.contains("_$setLive"), "{}", output.code);
 
         let output = compile_ok("const V = () => <input value={\"x\"} />;\n", "V.tsx");
-        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"x\")"), "{}", output.code);
+        assert!(output.code.contains("_$setLive(_el$1, \"value\", \"x\")"), "{}", output.code);
         assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
     }
 
@@ -3187,7 +3197,7 @@ mod tests {
     #[test]
     fn a_literal_attribute_on_the_patch_channel_carries_its_decoded_value() {
         let output = compile_ok("const V = () => <input value=\"a&amp;b\" />;\n", "V.tsx");
-        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"a&b\")"), "{}", output.code);
+        assert!(output.code.contains("_$setLive(_el$1, \"value\", \"a&b\")"), "{}", output.code);
 
         // The template channel keeps the reference, because the parser resolves
         // it to the same bytes.

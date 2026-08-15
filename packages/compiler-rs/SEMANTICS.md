@@ -288,7 +288,14 @@ The half that holds is pinned by `packages/core/src/scope.test.ts`. The half tha
 cleanup MUST NOT abort the rest holds: `runUntracked`
 wraps every cleanup in `try/catch`, so a throw in the second of three still leaves all three run.
 The half that says it MUST route to `s.catcher` does not — the throw is swallowed with
-`console.error` and no catcher is consulted. (An earlier reading of this status said the throw
+`console.error` and no catcher is consulted. Sharper than "unimplemented", and measured in the M7
+gate: `s.catcher` is written in exactly two places — `makeScope` inherits the parent's, and
+`enterRoot` installs the ROOT's rethrowing one — while `errorBoundary` installs its handler as the
+`ERROR_BOUNDARY` *context* value instead, which is what the effect-error path reads. So no user
+boundary can ever BE `s.catcher`, and the rule is unreachable by construction rather than one wiring
+change away: the two channels have to be unified first — either `errorBoundary` writes the instance
+scope's `catcher` alongside the context binding, or O3.6 is restated to route through
+`ERROR_BOUNDARY` like every other entry point and the field goes. (An earlier reading of this status said the throw
 "propagates out of `disposeNode` and aborts the rest", which is not what happens and is exactly the
 wrong-reason hazard §15 exists to catch.)
 
@@ -477,8 +484,13 @@ constructed before `render` is entered.
   what the construction left unowned (`adoptOrphans` in `signals.ts`). The claim window is one
   synchronous turn: `flushSync` drops whatever is still unclaimed, because a list held for the
   lifetime of the process made every ownerless effect immortal (measured: 217 bytes retained per
-  effect, and a 14–30% slowdown on the DOM rows) and let an unrelated later `render` adopt and
-  destroy work it had nothing to do with.
+  effect, and a 14–30% slowdown on the DOM rows).
+  The window bounds the claim in TIME and **not by provenance**: a module that initialises library
+  state and mounts in the same synchronous turn puts that library's ownerless effects on the same
+  list, and this root adopts them. That is the price of the bridge and it is only worth paying where
+  there is no other owner at all, so **only the already-built form claims** — `render` passes
+  `enterRoot(eager)` and `mount` passes `enterRoot(false)`. Pinned by
+  `the-block-form-claims-nothing-it-did-not-build`.
 - With an **owner current**, those effects are that owner's kids from the instant they exist. No code
   running after the call can separate them from anything else that owner holds: the watermark would
   have to have been taken before the argument was evaluated, and nothing runs there. Ownership is
@@ -490,8 +502,11 @@ constructed before `render` is entered.
 `hydrate` was the one shipped caller in this shape and now passes its Block through, so its root owns
 what it mounts.
 
-When M3 hands `render` a Block the orphan list is never non-empty, the precondition has nothing to
-range over, and both go with the rest of the eager path.
+With a Block, `render` does not claim at all: the subtree builds under the root, so there is nothing
+for a claim to find and claiming anyway would only relocate somebody else's work. The list itself
+survives until M8, because the un-compiled consumers still register ownerless cleanups through the
+eager form — pinned in `extra/src/m8-convention.test.ts` — and it goes with the rest of the eager
+path then.
 
 **Pinned by.** `sem-own-render-disposer-disposes.tsx` *(new)*.
 
@@ -745,11 +760,25 @@ value's kind (C3.9). Therefore this situation arises only two ways, and each has
 1. **Within a module and through NAMED attribute forwards**, the compiler knows the kind of the
    forwarded value and MUST emit a diagnostic at the forwarding site when a value it knows to be a
    scope-using Block is forwarded into a slot the callee declares as `Cell` — naming both positions.
-   A spread on either side ends the chain: `{...rest}` names no key, so the fixpoint has nothing to
-   carry the verdict across, and item 2 is what answers there. The diagnostic is also DEV-only, so a
-   production build gets item 2 and nothing else. Neither is a gap in the guarantee — item 2 is
-   total — but both bound what item 1 promises, and the promise is bounded here rather than
-   discovered.
+   Two kinds of position are Cell slots and both are diagnosed: a named attribute on an INTRINSIC
+   element, and a named Cell slot of a FLOW construct — `For`/`Index`'s `each`, `Repeat`'s
+   `count`/`from`, `Show`/`Match`'s `when`, `Portal`'s `target`, `Loading`'s `on`, `Await`'s
+   `resource`, `Reveal`'s `order`/`collapsed`, `Dynamic`'s `component` (`Flow::cell_slot`).
+
+   The bounds, stated in full because a bound nobody wrote down is a bound somebody discovers:
+   - a SPREAD on either side ends the chain — `{...rest}` names no key, so the fixpoint has nothing
+     to carry the verdict across;
+   - only an ATTRIBUTE position contributes evidence: a text child (`{"x" + props.thing}`) does not,
+     though a Block reaching one is legal there anyway (C3.7);
+   - the read must be `props.thing` at the consuming site — aliasing through a local
+     (`const v = props.thing`) is invisible to the pass;
+   - a `Ctx.Provider`'s `value` is a Cell slot the runtime refuses, but its tag is a MEMBER
+     expression and the callee is not resolved, so it is not diagnosed;
+   - and the whole thing is DEV-only, so a production build gets item 2 and nothing else.
+
+   None is a gap in the guarantee — item 2 is total, and the M7 gate measured it firing at the two
+   silent positions it checked (`each source` and `provide value`, both `ScopeMissingError`) — but
+   all of them bound what item 1 promises, and the promise is bounded here rather than discovered.
 2. **Across a module boundary**, the compiler cannot know (`CODESIGN.md` §3.13 item 1). The consumer's
    `props.x()` then hits C3.8 and throws `ScopeMissingError` with the Block's `origin` and the
    consuming scope's origin chain. It MUST NOT silently render under `CURRENT` and it MUST NOT
@@ -1383,12 +1412,15 @@ to `window.onerror` with a boundary standing directly over the element. It now g
 wrapper, and `packages/core/src/dom.test.ts` pins it — the compiler emits no `_$spread(`, so there is
 no compiler-rs channel that could.
 
-E2.3 `VIOLATED`. `errorBoundary` re-throws `NotReadyError` now, but nothing observes the pass-through
-to the nearest `Loading`, and being unobserved is not the same state as being right.
+E2.3 `HOLDS` since M7. `errorBoundary` re-throws `NotReadyError`, and `sem-err-notready-passthrough`
+is what now OBSERVES the pass-through: with an `Errored` standing between a pending read and the
+`Loading` above it, the loading fallback is what answers and the error fallback never renders, while
+the control claim shows the same stack still routes a genuine failure. It read `VIOLATED` for two
+milestones on the strength of being unobserved, which is not the same state as being wrong.
 
 **Pinned by.** `sem-err-construction-throw.tsx`, `sem-err-effect-throw.tsx`,
 `sem-err-handler-throw.tsx`, `sem-err-ref-throw.tsx`, `sem-err-async-throw.tsx`,
-`sem-err-cleanup-throw.tsx`, `sem-err-notready-passthrough.tsx` *(all new)*;
+`sem-err-cleanup-throw.tsx` *(all new)*, `sem-err-notready-passthrough.tsx`;
 `control-flow-error-boundary.tsx`, `control-flow-errored-loading.tsx` (existing) for entries 3–4;
 `packages/core/src/dom.test.ts` for E2.2's `spread` channel.
 
@@ -1609,6 +1641,27 @@ that C5.2 may not η-reduce.
 
 **Pinned by.** `use-state-tuple.tsx`, `signal-methods-in-handler.tsx` (existing, re-pinned).
 
+### R7 — `linked` is writable derived state that re-seeds
+
+**Rule.** `linked(source, compute, options?)` returns a `Cell` that is WRITABLE. A write holds until
+`source` next changes; that change recomputes `compute(source(), previous)` and the write is gone.
+`compute` receives the previous value, so "keep the user's choice if the new list still contains it"
+is expressible without a second signal to reconcile.
+
+**Falsified by.** The read-copy trap: `useState(props.value)` freezes at the first value it ever saw.
+Write, change the source, read — the recomputation MUST win. Write, do NOT change the source, read —
+the write MUST win. A framework that only ever does one of the two passes one half and fails the
+other, which is why both are claims.
+
+**Status.** `HOLDS` since M7, and it is a NAMING rather than a new mechanism, which is the honest
+description: `signal(fn)` was already a writable computed with exactly these semantics, and `linked`
+is it with the source split out of the closure. The split is the point — as
+`signal(() => compute(source()))` the re-seed is an emergent property of whatever the closure happened
+to read and nothing names it, so nobody reached for it and the three problems §3.9 lists (the
+read-copy trap, controlled inputs, two-way component props) each got their own workaround.
+
+**Pinned by.** `sem-state-linked-reseeds.tsx` *(new)*.
+
 ---
 
 ## 9. B — Bindings, events and refs (DOM backend)
@@ -1785,6 +1838,91 @@ lowercasing.
 **Pinned by.** `attribute-namespaces.tsx`, `bind-value-channel.tsx`, `custom-elements.tsx`,
 `property-attrs.tsx`, `dom-prop-static-value.tsx`.
 
+### B6 — a user-mutable property is compared against the ELEMENT
+
+**Rule.** For the user-mutable set — `value` on `input`/`textarea`/`select`, `checked` and
+`indeterminate` on `input`, `selected` on `option`, `open` on `details`/`dialog`, `scrollTop` and
+`scrollLeft` anywhere, `currentTime` and `volume` on the media elements, and a contenteditable's text
+— a write MUST compare against **what the element currently holds** and skip when equal. It MUST NOT
+be guarded by the fused record's `!==`, whose subject is what the FRAMEWORK last wrote. `bind:` MUST
+additionally re-assert the signal **synchronously, inside the reported edit**.
+
+The channel is resolved from the **pair** `(tag, property)`, not from the property. `<option
+value={s()}>` is not on it: an option's `value` falls back to its text, so a compare against the
+element reports "already holds it" and the reflected attribute never appears.
+
+**Falsified by.** Two writers, one property. (1) Bind an input to a signal whose setter REJECTS a
+keystroke — `set(v => v.replace(/\d/g, ""))`. Type `a1`. When the event returns the element MUST read
+`a`. (2) The channel is per-pair: compile `<option value={s()}>` and `<input value={s()}>`; only the
+second reaches it.
+
+**Status.** `HOLDS` since M7, and the two halves are separate mechanisms because they fail
+separately.
+
+- **The compare.** `Chan::Live` is a channel of its own, resolved at P1 from the tag and the name out
+  of `USER_MUTABLE_PROPS` — a table `build.rs` reads out of `dom.ts` like every other, so the compiled
+  and un-compiled paths cannot drift about which names it covers. It is always `Diff::Always`: the
+  record's cached guard is exactly the compare this channel replaces, so leaving it in front would
+  suppress the repair. The emitted shape loses the `if`:
+
+  ```js
+  _$bindEffect(_s$, () => text(), (_v$) => { _$setLive(_el$2, "value", _v$); });
+  ```
+
+- **The re-assertion.** A DOM-compare alone cannot repair a rejected keystroke and it is worth being
+  exact about why: when the setter rejects, the signal does not change, so the effect never re-runs
+  and no comparison of any kind gets the chance to run. `bindValue`'s listener therefore writes the
+  signal's value back after `set` returns — inside the same event, before paint, so there is no flash
+  of the rejected character — and that write is a no-op whenever the DOM already agrees. It repeats
+  once at the next flush through a counter every two-way binding reads, because the scheduler's
+  (correct) dedupe cannot see that the DOM moved while the signal came back to the value it already
+  held. The counter is keyed by the BOUND SIGNAL, not module-wide: every element that can be in the
+  unseen `(signal, element)` pair is bound to that signal — a radio group is N elements behind one —
+  so a module-wide counter would re-run every two-way binding in the application on every keystroke
+  for no reachable case.
+
+`coerceLive` is part of the compare rather than a nicety: `input.value` is
+`[LegacyNullToEmptyString] DOMString`, so `value={null}` must compare against `""`, and an empty
+`<input type="number">` reads `valueAsNumber === NaN`, where `!==` would write on every run and clear
+the field the user is typing into.
+
+What is NOT claimed, found by writing `bind-family.tsx` and left rather than papered over: the
+STRING backend drops the `value` attribute of every `<input>`. `ssr.ts`'s `DIRTY_VALUE` is keyed by
+TAG, while the HTML spec puts the `value` IDL attribute in "default/on" mode for `checkbox` and
+`radio`, where it reflects — so a server-rendered radio group ships with no values and the client
+builds one that has them. It is pre-existing, it needs the input TYPE threaded through the `attr`
+ABI, and `bind:group` is therefore driven under `fixtures/semantics/` rather than in the SSR corpus.
+
+**Pinned by.** `sem-form-dom-compare.tsx` *(new)*, `bind-family.tsx` *(new)*, `property-attrs.tsx`,
+`dom-prop-static-value.tsx` (re-cut onto the channel), and `tables.test.ts`'s per-pair row.
+
+### B7 — a write preserves the selection and the focus
+
+**Rule.** A write that LANDS on a focused text control MUST restore `selectionStart`, `selectionEnd`
+and `selectionDirection`, clamped to the text that is now there, and the element MUST still be the
+document's `activeElement` when the write returns. A contenteditable's caret is preserved by TEXT
+OFFSET, so it survives the replacement of the text node it was in.
+
+**Falsified by.** Focus an input, type, select a range inside it, then set the bound signal **from
+elsewhere**. `selectionStart` and `selectionEnd` MUST both survive. Without it `element.value = x`
+moves the text entry cursor to the end of the control (HTML §4.10.5.5) and the range is gone.
+
+**Status.** `HOLDS` since M7.
+
+This project has shipped this exact failure once already — replace-based hydration lost focus and
+discarded typed input at every page size — and it was found by MEASURING rather than by testing,
+which is why the acceptance evidence here is a real browser typing real keystrokes through CDP
+(`test/browser-caret-check.ts`) and not only a `dispatchEvent` in happy-dom. The two channels ask
+different questions and both are kept: happy-dom pins the arithmetic (which offsets, clamped how),
+Chrome pins that the arithmetic is about the right thing.
+
+What is NOT claimed: `<select multiple>` has no option-loop coercion, so `bind:value` on one binds
+the single-selection `value` property. §3.10.3's fourth clause is unbuilt and is named here rather
+than left to be discovered.
+
+**Pinned by.** `sem-form-selection-preserved.tsx` *(new)*, `test/browser-caret-check.ts` *(new, the
+real-browser channel)*.
+
 ---
 
 ## 10. A — Async
@@ -1798,11 +1936,18 @@ only what is settled, and **names the gap** rather than papering over it.
 **Rule.** The `AbortController` is a cleanup on the scope that created the resource. Dispose aborts.
 A re-run aborts the previous. The signal is **passed to the fetcher**.
 
-**Falsified by.** Dispose during an in-flight fetch; the request must abort. Verified today: the
-controller is created and never handed over.
+**Falsified by.** Dispose during an in-flight fetch; the request must abort.
 
-**Status.** `VIOLATED`. **Pinned by.** `sem-async-abort-on-dispose.tsx` *(new)*,
-`create-async-value.tsx` (existing).
+**Status.** `HOLDS` since M7. The controller is created per RUN and registered as a cleanup on the
+scope `resource()` was called under, so disposal aborts it; a re-run aborts the controller it
+supersedes before issuing the next request; and `info.signal` is the third argument the fetcher
+receives. All four of `sem-async-abort-on-dispose`'s claims hold, including the CONTROL — a request
+that had already answered is *not* aborted by a later disposal, without which `aborted` would carry
+no information at all. Before M7 the controller was created inside `load()` and handed nowhere, so
+"abort" meant "ignore the answer": the request itself ran to completion.
+
+**Pinned by.** `sem-async-abort-on-dispose.tsx`, `create-async-value.tsx` (existing),
+`packages/core/src/async.test.ts` (`A1: cancellation is structural`).
 
 ### A2 — staleness is decided by `s.gen` captured at call time
 
@@ -1811,18 +1956,43 @@ and drops if they differ. It MUST NOT read a mutable outer variable that by then
 controller.
 
 **Falsified by.** Start a slow request, start a fast one, let the fast one settle first, then the slow
-one; the slow response MUST NOT overwrite the fresh one. Today's abort guard reads a mutable outer
-variable, so it does.
+one; the slow response MUST NOT overwrite the fresh one.
 
-**Status.** `VIOLATED`. **Pinned by.** `sem-async-stale-response.tsx` *(new)*.
+**Status.** `HOLDS` since M7. Two guards, both captured at call time and neither of them a variable a
+later request can move: the run's own generation, and the creating scope's `gen`. The old guard read
+`abortController.signal.aborted` — by then the NEWEST controller, which is live — so a slow first
+answer passed the check and overwrote a fresh second one. `sem-async-stale-response` drives the
+out-of-order case deliberately, in both directions (a stale RESOLUTION and a stale REJECTION), and
+its third claim is the control that settles the same two requests IN ORDER; without it the rule would
+also be satisfied by a framework that believes whatever it was told last, which is the bug.
+
+Those three claims hold through the MEMO, though, not through the guards: a superseded promise is
+discarded whatever its continuation writes, so deleting the guard outright left every one of them —
+and all 36 rows of `async.test.ts` — green. Measured, in the M7 gate, as
+`let-a-stale-response-win | survived everything`. Two more claims OBSERVE the guard itself and are
+what make this status a statement about the mechanism: a stale continuation may not retire a
+`mutate()` overlay written after it was already superseded, and it may not clear the in-flight
+controller, which by then names the LIVE request — clearing it leaves that request outliving the
+scope that owns it, which is A1's leak reached through A2's guard. The mutant is now KILLED by
+exactly those two.
+
+**Pinned by.** `sem-async-stale-response.tsx`,
+`packages/core/src/async.test.ts` (`A2: a response arriving after a newer request was issued never
+wins`).
 
 ### A3 — `NotReady` is a control signal, not an error
 
 **Rule.** A memo that has not settled throws `NotReady`. A `Loading` boundary catches it; an error
 boundary re-throws it (E2.3). It never reaches user error handling.
 
-**Status.** `VIOLATED`. **Pinned by.** `sem-err-notready-passthrough.tsx` *(new)*,
-`control-flow-await-suspense.tsx` (existing).
+**Status.** `HOLDS` since M7. The resource's read IS the memo's read, so an unsettled resource throws
+the same `NotReadyError` a `createAsync` does and the boundary machinery needs no second status
+channel to see it. `sem-err-notready-passthrough` drives a resource under `Errored` under `Loading`:
+the loading fallback answers while the read is pending, the content follows when it settles, and the
+CONTROL — a genuine failure through the same two boundaries — still reaches the error fallback.
+
+**Pinned by.** `sem-err-notready-passthrough.tsx`, `control-flow-await-suspense.tsx` (existing),
+`packages/core/src/async.test.ts` (`A3: NotReady is a control signal`).
 
 ### A4 — optimistic state is derived, never restored
 
@@ -1830,10 +2000,17 @@ boundary re-throws it (E2.3). It never reaches user error handling.
 clobber. A real write landing during an action is not rolled back.
 
 **Falsified by.** Start an optimistic action; land a real write to the same target mid-flight; settle;
-the real write MUST survive. Today `registerRevert` captures `revertTo` once per (target, action) and
-rolls back to a value that is by then wrong.
+the real write MUST survive.
 
-**Status.** `VIOLATED`. **Pinned by.** `create-optimistic-signal.tsx` (existing, re-pinned).
+**Status.** `HOLDS` since M7. `createOptimistic` is a settled signal, a list of pending layers and a
+memo that folds one over the other; an action's writes claim one layer, and completing the action
+removes it. Rollback on failure is not a second code path — it is the same removal, which is what
+"follows from the derivation" means. `createOptimisticStore` derives the same way, replaying the
+running action's setter calls over the settled store, so the whole-store `structuredClone` that
+existed only to be written back is gone.
+
+**Pinned by.** `sem-async-optimistic-derived.tsx`, `create-optimistic-signal.tsx` (existing,
+re-pinned), `packages/core/src/actions.test.ts`.
 
 ### A5 — transitions: NOT SPECIFIED
 
@@ -2078,7 +2255,7 @@ green, which is why L1 exists.
 | ------ | ------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 |
  O1 | scope creation set is closed | P (M2/M3) | `sem-own-component-allocates-nothing` *(new)* |
-| O2 | a Block runs under the scope it is given | H | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `own-provider-direct`, `own-provider-wrapper` |
+| O2 | a Block runs under the scope it is given | H | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `sem-props-block-in-cell-slot`, `own-provider-direct`, `own-provider-wrapper` |
 | O2.1 | a component body runs under the receiving scope, after its bindings | H (M3) | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `sem-testing-wrapper-eager`, `own-provider-wrapper` |
 | O3.1–3 | disposal order: dead, kids reverse DFS, cleanups LIFO | H | `sem-own-dispose-order` *(new)* |
 | O3.4–5 | abort signal, range removal | I/U — O3.5 H | `sem-own-dispose-leaves-nothing` *(new)*, `mm-branch-flip`, `mm-switch-arm` |
@@ -2095,7 +2272,7 @@ green, which is why L1 exists.
 | C3.1–5 | the five props laws | **V** | `sem-props-laziness-conformance` *(new)*, `sem-props-cell-not-memoised` *(new)*, `component-getter-props` |
 | C3.6 | Cells are arity-tolerant | H | `sem-props-block-in-cell-slot` |
 | C3.7 | Cell-in-Block-slot is safe; the converse is not | H | `sem-props-block-in-cell-slot` |
-| C3.8 | a Block with no scope throws, never falls back | P — 10 of 12 | `sem-props-block-in-cell-slot` |
+| C3.8 | a Block with no scope throws, never falls back | P — 14 of 18 | `sem-props-block-in-cell-slot` |
 | C3.9 | kind travels with the value | H | `sem-props-block-in-cell-slot` |
 | C4 | props are called; `Slot<T>` / `Props<P>` | P (M3) | `sem-props-typed-slot.d.test.ts` *(new, type channel)* |
 | C5 | forwarding is identity and depth-independent | H | `props-raw-forward`, `sem-props-forward-identity` *(new)* |
@@ -2120,10 +2297,10 @@ green, which is why L1 exists.
 | K7 | no marker comments in client rendering | P (M4) | anchor snapshot channel (corpus-wide) |
 | K8 | no ambient insertion state | H | structural (§14) |
 | E1 | O(1) catcher; a catcher always exists | P (M2) | `sem-err-root-catcher` *(new)* |
-| E2 | the eight routed entry points | P — 4 of 8 | `sem-err-construction-throw`, `sem-err-effect-throw` *(new)*, `sem-err-handler-throw`, `sem-err-ref-throw` *(new)*, `sem-err-async-throw` *(new)*, `sem-err-cleanup-throw` *(new)*, `sem-err-notready-passthrough` *(new)* |
+| E2 | the eight routed entry points | P — 4 of 8 | `sem-err-construction-throw`, `sem-err-effect-throw` *(new)*, `sem-err-handler-throw`, `sem-err-ref-throw` *(new)*, `sem-err-async-throw` *(new)*, `sem-err-cleanup-throw` *(new)*, `sem-err-notready-passthrough` |
 | E2.1 | construction throws land inside the boundary | H (M3) | `sem-err-construction-throw` |
 | E2.2 | a handler throw routes to the boundary | H (M5) | `sem-err-handler-throw` |
-| E2.3 | `NotReadyError` is re-thrown, never captured | **V** | `sem-err-notready-passthrough` *(new)* |
+| E2.3 | `NotReadyError` is re-thrown, never captured | H (M7) | `sem-err-notready-passthrough` |
 | E3 | a boundary is a branch plus a try | H | `control-flow-error-boundary` |
 | E4 | an error carries the scope chain | P (M2) | `sem-err-component-stack` *(new)* |
 | M1 | construction is depth-first in document order | H | `sem-mount-order` *(new)*, `dashboard-composite` |
@@ -2138,15 +2315,18 @@ green, which is why L1 exists.
 | R4 | `untrack` changes only the observer | H | `sem-react-untrack-keeps-owner` |
 | R5 | epoch dedupe and `markWave` are load-bearing | H | ablation bench (§14) |
 | R6 | a signal getter is a Cell | H / **V** | `use-state-tuple`, `signal-methods-in-handler` |
+| R7 | `linked` re-seeds on its source | H (M7) | `sem-state-linked-reseeds` |
 | B1 | every binding on an element is equally live | H | `equal-liveness`, `class-with-live-siblings` |
 | B2 | one fused effect per element | H | `multi-prop-one-element`, `class-owns-only-its-tokens` |
 | B3 | `ref` is not a prop | P (M5) | `ref-writable-binding`, `ref-binding`, `ref-on-component` |
 | B4 | a listener dies with its position | H (M5) | `delegated-event`, `non-delegated-event`, the corpus through `test/leaks.ts` |
 | B5 | property-vs-attribute is a stated rule | P (M5) | `attribute-namespaces`, `bind-value-channel`, `custom-elements`, `property-attrs` |
-| A1 | cancellation is structural | **V** | `sem-async-abort-on-dispose` *(new)* |
-| A2 | staleness by `gen` captured at call time | **V** | `sem-async-stale-response` *(new)* |
-| A3 | `NotReady` is a control signal | **V** | `sem-err-notready-passthrough` *(new)* |
-| A4 | optimistic state is derived, never restored | **V** | `create-optimistic-signal` |
+| B6 | a user-mutable property is compared against the element | H (M7) | `sem-form-dom-compare`, `bind-family`, `property-attrs`, `dom-prop-static-value` |
+| B7 | a write preserves the selection and the focus | H (M7) | `sem-form-selection-preserved`, `browser-caret-check.ts` |
+| A1 | cancellation is structural | H (M7) | `sem-async-abort-on-dispose`, `create-async-value` |
+| A2 | staleness by `gen` captured at call time | H (M7) | `sem-async-stale-response` |
+| A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
+| A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `create-optimistic-signal` |
 | A5 | transitions | U | — |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
 | H2 | branches claimed by written key | **H** | the branch-key comparison + L6's disagreeing-index row |
@@ -2155,7 +2335,9 @@ green, which is why L1 exists.
 | H5 | the address is process-independent | **H** | address-set diff (corpus-wide) |
 | H6 | interactive state survives hydration | **H** | focus + typed value + keystroke replay |
 
-**Counts.** 77 rules: 9 `HOLDS`, 28 `VIOLATED`, 27 `PLANNED`, 3 `UNOBSERVABLE`, 9 holding only in
+**Counts.** M7 added three rows — B6, B7 and R7 — so the table is 91 rules and the tally below is
+the pre-M7 one; it is prose, not a checked number, and the checked number is the coverage line the L1
+banner prints on every run. 77 rules: 9 `HOLDS`, 28 `VIOLATED`, 27 `PLANNED`, 3 `UNOBSERVABLE`, 9 holding only in
 part (6 `H / V`, 3 `H / P`), 1 `IMPLEMENTED, UNEXERCISED` (`I/U`), 1 `NOT SPECIFIED`.
 **M3's compiler half moved NO row of this table, deliberately.** C1, C3, C5, C6 and C9 now record what
 the compiler emits, and every one of them still fails its own falsification procedure, because every

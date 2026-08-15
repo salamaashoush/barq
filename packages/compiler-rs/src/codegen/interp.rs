@@ -467,6 +467,7 @@ fn chan_name(chan: Chan) -> &'static str {
     match chan {
         Chan::Attr => "attr",
         Chan::Prop => "prop",
+        Chan::Live => "live",
         Chan::Bool => "bool",
         Chan::Class => "class",
         Chan::Style => "style",

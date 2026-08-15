@@ -123,6 +123,13 @@ pub enum Chan {
     /// HTML would only set the default attribute, which diverges on a dirty form
     /// field.
     Prop,
+    /// §3.10.1 — a property the USER also writes. The write compares against the
+    /// ELEMENT, never against what the framework last applied, and it preserves
+    /// the caret of whatever the user is inside. Always paired with
+    /// [`Diff::Always`]: the record's cached guard is exactly the compare this
+    /// channel exists to replace, so leaving it in front would suppress the
+    /// repair the channel is for.
+    Live,
     /// `bool:` — presence, decided by truthiness rather than by the value's type.
     Bool,
     /// the whole `class` attribute

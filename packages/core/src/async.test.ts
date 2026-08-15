@@ -1,42 +1,58 @@
 /**
- * Async Tests - Edge cases for resources and async data loading
+ * The one resource — `CODESIGN.md` §3.8, `SEMANTICS.md` A1–A3.
+ *
+ * Three things changed shape when the several async primitives collapsed into
+ * one, and every test below is written against the new contract rather than
+ * around it:
+ *
+ * 1. **The read is a Cell that throws `NotReadyError` before settlement** (A3).
+ *    Where a test used to assert `r()` is `undefined` while pending it now
+ *    asserts the throw, and `r.latest()` is the read that never throws.
+ * 2. **It is a memo, so it is lazy.** The fetch starts at the first READ, not
+ *    at creation; `kick` is that read. A resource nobody renders costs nothing,
+ *    which is the same rule `createAsync` has always followed.
+ * 3. `createResource`, `suspend` and `awaitAll` are gone. `createResource(f)`
+ *    is `resource(() => null, f)`; `suspend` was a promise nobody awaited and
+ *    is the `NotReady` read; `awaitAll` is `resolve()`.
  */
 
 import { describe, expect, test } from "bun:test";
-import { resource, createResource, suspend, awaitAll, type Resource } from "./async.ts";
-import { signal, effect, createScope, batch } from "./signals.ts";
+import { type Resource, resource } from "./async.ts";
+import { NotReadyError, batch, createScope, effect, resolve, signal } from "./signals.ts";
 
-// Helper to create a delayed promise
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-// Helper to create a controllable promise
+/** The read that starts a lazy memo without caring what it currently holds. */
+function kick(r: Resource<unknown>): void {
+  r.loading();
+}
+
 function createControllable<T>() {
-  let resolve!: (value: T) => void;
+  let resolveWith!: (value: T) => void;
   let reject!: (error: Error) => void;
   const promise = new Promise<T>((res, rej) => {
-    resolve = res;
+    resolveWith = res;
     reject = rej;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve: resolveWith, reject };
 }
 
 describe("resource", () => {
-  test("initial state is unresolved then pending", async () => {
+  test("initial state is pending, then ready", async () => {
     const source = signal(1);
-    const { promise, resolve } = createControllable<string>();
+    const { promise, resolve: settle } = createControllable<string>();
 
     const r = resource(
       () => source(),
       () => promise,
     );
 
-    // Immediately transitions to pending
-    await delay(0);
     expect(r.state()).toBe("pending");
     expect(r.loading()).toBe(true);
-    expect(r()).toBeUndefined();
+    expect(r.latest()).toBeUndefined();
+    expect(() => r()).toThrow(NotReadyError);
 
-    resolve("data");
+    settle("data");
     await delay(0);
 
     expect(r.state()).toBe("ready");
@@ -70,11 +86,13 @@ describe("resource", () => {
       },
     );
 
+    kick(r);
     await delay(20);
 
     expect(r.state()).toBe("errored");
     expect(r.error()?.message).toBe("test error");
-    expect(r()).toBeUndefined();
+    expect(r.latest()).toBeUndefined();
+    expect(() => r()).toThrow("test error");
   });
 
   test("refetches when source changes", async () => {
@@ -90,20 +108,21 @@ describe("resource", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(r()).toBe("data-1");
     expect(fetchCount).toBe(1);
 
     source.set(2);
+    kick(r);
     await delay(20);
 
     expect(r()).toBe("data-2");
     expect(fetchCount).toBe(2);
   });
 
-  test("shows refreshing state when refetching with existing data", async () => {
+  test("reports refreshing rather than pending once data exists", async () => {
     const source = signal(1);
-    const states: string[] = [];
 
     const r = resource(
       () => source(),
@@ -113,50 +132,40 @@ describe("resource", () => {
       },
     );
 
-    // Track state changes
-    effect(() => {
-      states.push(r.state());
-    });
-
+    kick(r);
     await delay(20);
     expect(r.state()).toBe("ready");
 
     source.set(2);
-    await delay(0);
+    kick(r);
 
-    // Should be refreshing, not pending
     expect(r.state()).toBe("refreshing");
     expect(r.loading()).toBe(true);
-    expect(r()).toBe("data-1"); // Still has previous data
+    expect(r.latest()).toBe("data-1");
 
     await delay(20);
     expect(r.state()).toBe("ready");
     expect(r()).toBe("data-2");
   });
 
-  test("aborts in-flight request when source changes", async () => {
+  test("a source change while a request is in flight leaves the newer one winning", async () => {
     const source = signal(1);
-    let _aborted = false;
 
     const r = resource(
       () => source(),
-      async (s, _info) => {
-        try {
-          await delay(100);
-          return `data-${s}`;
-        } catch {
-          _aborted = true;
-          throw new Error("aborted");
-        }
+      async (s) => {
+        await delay(100);
+        return `data-${s}`;
       },
     );
 
+    kick(r);
     await delay(10);
-    source.set(2); // Change source while first request is in flight
+    source.set(2);
+    kick(r);
 
     await delay(150);
 
-    // The second request should complete
     expect(r()).toBe("data-2");
   });
 
@@ -169,6 +178,7 @@ describe("resource", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(r()).toBe("original");
 
@@ -189,6 +199,7 @@ describe("resource", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(r()).toBe("fetch-1");
 
@@ -209,15 +220,17 @@ describe("resource", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(r()).toBe("success");
 
     shouldFail.set(true);
+    kick(r);
     await delay(20);
 
     expect(r.state()).toBe("errored");
     expect(r.error()?.message).toBe("failed");
-    expect(r.latest()).toBe("success"); // Previous data preserved
+    expect(r.latest()).toBe("success");
   });
 
   test("latest() returns last successful data", async () => {
@@ -231,64 +244,285 @@ describe("resource", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(r.latest()).toBe("data-1");
 
     source.set(2);
-    // While refreshing, latest still returns previous
+    kick(r);
     expect(r.latest()).toBe("data-1");
 
     await delay(20);
     expect(r.latest()).toBe("data-2");
   });
-});
 
-describe("createResource", () => {
-  test("creates resource without source", async () => {
-    let fetchCount = 0;
+  test("a fetcher that answers synchronously never has a pending frame", () => {
+    const r = resource(
+      () => 3,
+      (n: number) => `data-${n}`,
+    );
 
-    const r = createResource(async () => {
-      fetchCount++;
-      await delay(10);
-      return "data";
-    });
-
-    await delay(20);
-
-    expect(r()).toBe("data");
-    expect(fetchCount).toBe(1);
+    expect(r()).toBe("data-3");
+    expect(r.state()).toBe("ready");
+    expect(r.latest()).toBe("data-3");
   });
 
-  test("refetch works without source", async () => {
+  test("a resource with no reactive source is the same primitive", async () => {
     let fetchCount = 0;
 
-    const r = createResource(async () => {
-      fetchCount++;
-      return `fetch-${fetchCount}`;
-    });
-
-    await delay(10);
-    expect(r()).toBe("fetch-1");
-
-    await r.refetch();
-    expect(r()).toBe("fetch-2");
-  });
-});
-
-describe("suspend", () => {
-  test("throws promise when pending", async () => {
     const r = resource(
       () => null,
       async () => {
-        await delay(50);
+        fetchCount++;
+        await delay(10);
         return "data";
       },
     );
 
-    expect(() => suspend(r)).toThrow();
+    kick(r);
+    await delay(20);
+
+    expect(r()).toBe("data");
+    expect(fetchCount).toBe(1);
+
+    await r.refetch();
+    expect(fetchCount).toBe(2);
+  });
+});
+
+// ============================================================================
+// A1 — cancellation is structural
+// ============================================================================
+
+describe("A1: cancellation is structural", () => {
+  test("the fetcher is handed the signal", () => {
+    let handed: AbortSignal | undefined;
+
+    const r = resource(
+      () => null,
+      (_s, info) => {
+        handed = info.signal;
+        return new Promise<string>(() => {});
+      },
+    );
+
+    kick(r);
+    expect(handed).toBeInstanceOf(AbortSignal);
+    expect(handed?.aborted).toBe(false);
   });
 
-  test("returns data when ready", async () => {
+  test("disposing the scope that created the resource aborts the in-flight request", () => {
+    let handed: AbortSignal | undefined;
+    let dispose: (() => void) | undefined;
+
+    createScope((d) => {
+      dispose = d;
+      const r = resource(
+        () => null,
+        (_s, info) => {
+          handed = info.signal;
+          return new Promise<string>(() => {});
+        },
+      );
+      kick(r);
+    });
+
+    expect(handed?.aborted).toBe(false);
+    dispose?.();
+    expect(handed?.aborted).toBe(true);
+  });
+
+  test("a re-run aborts the previous request", () => {
+    const source = signal(1);
+    const handed: AbortSignal[] = [];
+
+    const r = resource(
+      () => source(),
+      (_s, info) => {
+        handed.push(info.signal);
+        return new Promise<string>(() => {});
+      },
+    );
+
+    kick(r);
+    source.set(2);
+    kick(r);
+
+    expect(handed.length).toBe(2);
+    expect(handed[0].aborted).toBe(true);
+    expect(handed[1].aborted).toBe(false);
+  });
+
+  test("a settled request is not aborted by the scope dying afterwards", async () => {
+    let handed: AbortSignal | undefined;
+    let dispose: (() => void) | undefined;
+
+    createScope((d) => {
+      dispose = d;
+      const r = resource(
+        () => null,
+        (_s, info) => {
+          handed = info.signal;
+          return Promise.resolve("done");
+        },
+      );
+      kick(r);
+    });
+
+    await delay(0);
+    dispose?.();
+    expect(handed?.aborted).toBe(false);
+  });
+});
+
+// ============================================================================
+// A2 — staleness is decided by the generation captured at call time
+// ============================================================================
+
+describe("A2: a response arriving after a newer request was issued never wins", () => {
+  function outOfOrderRig() {
+    const which = signal<"slow" | "fast">("slow");
+    const slow = createControllable<string>();
+    const fast = createControllable<string>();
+    const issued: string[] = [];
+
+    const r = resource(
+      () => which(),
+      (key) => {
+        issued.push(key);
+        return key === "slow" ? slow.promise : fast.promise;
+      },
+    );
+
+    return { which, slow, fast, issued, r };
+  }
+
+  test("the slow FIRST response is dropped when it lands after the fast second", async () => {
+    const { which, slow, fast, issued, r } = outOfOrderRig();
+
+    kick(r);
+    which.set("fast");
+    kick(r);
+    expect(issued).toEqual(["slow", "fast"]);
+
+    fast.resolve("FRESH");
+    await delay(0);
+    expect(r()).toBe("FRESH");
+
+    // The classic bug: request #1 answers last and overwrites request #2.
+    slow.resolve("STALE");
+    await delay(0);
+    await delay(0);
+
+    expect(r()).toBe("FRESH");
+    expect(r.state()).toBe("ready");
+  });
+
+  test("a stale REJECTION does not error a resource that already settled fresh", async () => {
+    const { which, slow, fast, r } = outOfOrderRig();
+
+    kick(r);
+    which.set("fast");
+    kick(r);
+
+    fast.resolve("FRESH");
+    await delay(0);
+    expect(r()).toBe("FRESH");
+
+    slow.reject(new Error("the stale request failed"));
+    await delay(0);
+    await delay(0);
+
+    expect(r.error()).toBeUndefined();
+    expect(r()).toBe("FRESH");
+  });
+
+  test("control: settled IN ORDER, the second response is still the one that wins", async () => {
+    const { which, slow, fast, r } = outOfOrderRig();
+
+    kick(r);
+    which.set("fast");
+    kick(r);
+
+    slow.resolve("STALE");
+    await delay(0);
+    fast.resolve("FRESH");
+    await delay(0);
+    await delay(0);
+
+    expect(r()).toBe("FRESH");
+  });
+
+  // The two below are the claims that OBSERVE the guard rather than its
+  // outcome. Everything above holds through the memo alone: a superseded
+  // promise is discarded, so `r()` reads the newest answer whatever the stale
+  // continuation did to `settled`. Deleting the guard leaves them green — which
+  // makes the guard unpinned, and an unpinned invariant is not an invariant.
+  test("a stale response does not clobber a mutate() overlay", async () => {
+    const { which, slow, fast, r } = outOfOrderRig();
+
+    kick(r);
+    which.set("fast");
+    kick(r);
+
+    fast.resolve("FRESH");
+    await delay(0);
+    expect(r()).toBe("FRESH");
+
+    r.mutate("OPTIMISTIC");
+    expect(r()).toBe("OPTIMISTIC");
+
+    slow.resolve("STALE");
+    await delay(0);
+    await delay(0);
+
+    // The stale continuation retires the override on its way past. It has no
+    // standing to: the overlay was written after the request it belongs to was
+    // already superseded.
+    expect(r()).toBe("OPTIMISTIC");
+  });
+
+  test("a stale response does not release the newer request's cancellation", async () => {
+    const which = signal<"slow" | "fast">("slow");
+    const slow = createControllable<string>();
+    const handed: AbortSignal[] = [];
+    let dispose: (() => void) | undefined;
+
+    createScope((d) => {
+      dispose = d;
+      const r = resource(
+        () => which(),
+        (key, info) => {
+          handed.push(info.signal);
+          return key === "slow" ? slow.promise : new Promise<string>(() => {});
+        },
+      );
+      kick(r);
+      which.set("fast");
+      kick(r);
+    });
+
+    expect(handed.length).toBe(2);
+
+    slow.resolve("STALE");
+    await delay(0);
+    await delay(0);
+
+    // A1's half of the same guard: the stale continuation clears `inflight`,
+    // which by then names the LIVE controller, so disposing the scope aborts
+    // nothing and the second request outlives its owner.
+    expect(handed[1].aborted).toBe(false);
+    dispose?.();
+    expect(handed[1].aborted).toBe(true);
+  });
+});
+
+// ============================================================================
+// A3 — NotReady is a control signal
+// ============================================================================
+
+describe("A3: NotReady is a control signal", () => {
+  test("the pending read throws NotReadyError and resolve() awaits it", async () => {
     const r = resource(
       () => null,
       async () => {
@@ -297,12 +531,11 @@ describe("suspend", () => {
       },
     );
 
-    await delay(20);
-
-    expect(suspend(r)).toBe("data");
+    expect(() => r()).toThrow(NotReadyError);
+    expect(await resolve(() => r())).toBe("data");
   });
 
-  test("throws error when errored", async () => {
+  test("resolve() rejects with the fetcher's error rather than a NotReady", async () => {
     const r = resource(
       () => null,
       async () => {
@@ -311,128 +544,73 @@ describe("suspend", () => {
       },
     );
 
-    await delay(20);
-
-    expect(() => suspend(r)).toThrow("test error");
+    expect(resolve(() => r())).rejects.toThrow("test error");
   });
 
-  test("suspended promise resolves when resource is ready", async () => {
-    const r = resource(
+  test("several resources settle through one resolve()", async () => {
+    const one = resource(
       () => null,
       async () => {
-        await delay(50);
-        return "data";
+        await delay(10);
+        return "one";
+      },
+    );
+    const two = resource(
+      () => null,
+      async () => {
+        await delay(20);
+        return "two";
       },
     );
 
-    let caught: unknown;
-    try {
-      suspend(r);
-    } catch (e) {
-      caught = e;
-    }
-
-    expect(caught).toBeInstanceOf(Promise);
-    await caught;
-
-    expect(r.state()).toBe("ready");
-    expect(suspend(r)).toBe("data");
-  });
-});
-
-describe("awaitAll", () => {
-  test("awaits multiple resources", async () => {
-    const r1 = createResource(async () => {
-      await delay(10);
-      return "one";
-    });
-
-    const r2 = createResource(async () => {
-      await delay(20);
-      return "two";
-    });
-
-    const results = await awaitAll(r1, r2);
-
-    expect(results).toEqual(["one", "two"]);
+    expect(await resolve(() => [one(), two()])).toEqual(["one", "two"]);
   });
 
-  test("handles already ready resources", async () => {
-    const r1 = createResource(async () => "ready");
-    const r2 = createResource(async () => "also ready");
+  test("one erroring resource rejects the whole resolve()", async () => {
+    const ok = resource(
+      () => null,
+      async () => "success",
+    );
+    const bad = resource(
+      () => null,
+      async () => {
+        throw new Error("failed");
+      },
+    );
 
-    await delay(10);
-
-    const results = await awaitAll(r1, r2);
-    expect(results).toEqual(["ready", "also ready"]);
-  });
-
-  test("throws if any resource errors", async () => {
-    const r1 = createResource(async () => "success");
-    const r2 = createResource(async () => {
-      throw new Error("failed");
-    });
-
-    await delay(10);
-
-    await expect(awaitAll(r1, r2)).rejects.toThrow("failed");
+    expect(resolve(() => [ok(), bad()])).rejects.toThrow("failed");
   });
 });
 
 describe("Resource edge cases", () => {
   test("EDGE CASE: rapid source changes", async () => {
     const source = signal(0);
-    let _fetchCount = 0;
     const fetchedValues: number[] = [];
 
     const r = resource(
       () => source(),
       async (s) => {
-        _fetchCount++;
         fetchedValues.push(s);
         await delay(10);
         return `data-${s}`;
       },
     );
 
-    // Rapid changes
+    kick(r);
     source.set(1);
     source.set(2);
     source.set(3);
     source.set(4);
     source.set(5);
+    kick(r);
 
     await delay(50);
 
-    // Should end up with data for the last source value
     expect(r()).toBe("data-5");
   });
 
-  test("EDGE CASE: source changes during fetch", async () => {
-    const source = signal(1);
-    const results: string[] = [];
-
-    const r = resource(
-      () => source(),
-      async (s) => {
-        await delay(20);
-        const result = `data-${s}`;
-        results.push(result);
-        return result;
-      },
-    );
-
-    await delay(5);
-    source.set(2); // Change while first fetch is in progress
-
-    await delay(50);
-
-    // Only the second fetch should complete (first aborted)
-    expect(r()).toBe("data-2");
-  });
-
   test("EDGE CASE: fetcher receives refetching flag", async () => {
-    let refetchingValues: boolean[] = [];
+    const refetchingValues: boolean[] = [];
 
     const r = resource(
       () => null,
@@ -443,17 +621,18 @@ describe("Resource edge cases", () => {
       },
     );
 
+    kick(r);
     await delay(20);
-    expect(refetchingValues[0]).toBe(false); // Initial fetch
+    expect(refetchingValues[0]).toBe(false);
 
     await r.refetch();
-    expect(refetchingValues[1]).toBe(true); // Manual refetch
+    expect(refetchingValues[1]).toBe(true);
   });
 
   test("EDGE CASE: fetcher receives previous value", async () => {
-    let prevValues: (string | undefined)[] = [];
+    const prevValues: (string | undefined)[] = [];
 
-    const r = resource(
+    const r = resource<string>(
       () => null,
       async (_, { prev }) => {
         prevValues.push(prev);
@@ -462,6 +641,7 @@ describe("Resource edge cases", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(prevValues[0]).toBeUndefined();
     expect(r()).toBe("initial");
@@ -485,19 +665,19 @@ describe("Resource edge cases", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(r()).toBe("sum-3");
     expect(fetchCount).toBe(1);
 
-    // Batch changes to a and b
     batch(() => {
       a.set(10);
       b.set(20);
     });
+    kick(r);
 
     await delay(20);
     expect(r()).toBe("sum-30");
-    // Should only fetch once for the batched update
     expect(fetchCount).toBe(2);
   });
 
@@ -513,11 +693,13 @@ describe("Resource edge cases", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(r.state()).toBe("errored");
     expect(r.error()?.message).toBe("failed");
 
     shouldFail.set(false);
+    kick(r);
     await delay(20);
 
     expect(r.state()).toBe("ready");
@@ -525,15 +707,15 @@ describe("Resource edge cases", () => {
     expect(r.error()).toBeUndefined();
   });
 
-  test("EDGE CASE: dispose resource effects in scope", async () => {
+  test("EDGE CASE: a disposed scope stops refetching", async () => {
     const source = signal(1);
     let fetchCount = 0;
-    let _r: Resource<string>;
     let dispose: (() => void) | undefined;
+    let held: Resource<string> | undefined;
 
     createScope((d) => {
       dispose = d;
-      _r = resource(
+      held = resource(
         () => source(),
         async (s) => {
           fetchCount++;
@@ -541,18 +723,19 @@ describe("Resource edge cases", () => {
           return `data-${s}`;
         },
       );
+      kick(held);
     });
 
     await delay(20);
     expect(fetchCount).toBe(1);
 
-    dispose!();
+    dispose?.();
 
-    // After dispose, source changes should not trigger fetches
     source.set(2);
+    kick(held as Resource<string>);
     await delay(20);
 
-    expect(fetchCount).toBe(1); // Should not increase
+    expect(fetchCount).toBe(1);
   });
 
   test("EDGE CASE: non-Error thrown from fetcher", async () => {
@@ -560,10 +743,11 @@ describe("Resource edge cases", () => {
       () => null,
       async () => {
         await delay(10);
-        throw "string error"; // Not an Error object
+        throw "string error";
       },
     );
 
+    kick(r);
     await delay(20);
 
     expect(r.state()).toBe("errored");
@@ -571,10 +755,13 @@ describe("Resource edge cases", () => {
   });
 
   test("EDGE CASE: effect depends on resource state", async () => {
-    const r = createResource(async () => {
-      await delay(20);
-      return "data";
-    });
+    const r = resource(
+      () => null,
+      async () => {
+        await delay(20);
+        return "data";
+      },
+    );
 
     const states: string[] = [];
 
@@ -589,15 +776,18 @@ describe("Resource edge cases", () => {
   });
 
   test("EDGE CASE: effect depends on resource data", async () => {
-    const r = createResource(async () => {
-      await delay(10);
-      return "data";
-    });
+    const r = resource(
+      () => null,
+      async () => {
+        await delay(10);
+        return "data";
+      },
+    );
 
     const values: (string | undefined)[] = [];
 
     effect(() => {
-      values.push(r());
+      values.push(r.latest());
     });
 
     await delay(20);
@@ -607,35 +797,33 @@ describe("Resource edge cases", () => {
   });
 
   test("EDGE CASE: mutate during pending state", async () => {
-    const { promise, resolve } = createControllable<string>();
+    const { promise, resolve: settle } = createControllable<string>();
 
     const r = resource(
       () => null,
       () => promise,
     );
 
-    await delay(0);
+    kick(r);
     expect(r.state()).toBe("pending");
 
-    // Mutate while pending
     r.mutate("mutated");
 
     expect(r.state()).toBe("ready");
     expect(r()).toBe("mutated");
 
-    // Resolve original promise (should be ignored)
-    resolve("from fetcher");
+    // The mutation is an OVERLAY, not a write: the request it was optimistic
+    // about is still in flight and its answer retires the overlay.
+    settle("from fetcher");
     await delay(0);
-
-    // Should still be mutated value since we're now ready
-    // Actually this depends on implementation...
+    expect(r()).toBe("from fetcher");
   });
 
   test("EDGE CASE: same source value doesn't refetch", async () => {
     const source = signal(1);
     let fetchCount = 0;
 
-    const _r = resource(
+    const r = resource(
       () => source(),
       async (s) => {
         fetchCount++;
@@ -644,34 +832,37 @@ describe("Resource edge cases", () => {
       },
     );
 
+    kick(r);
     await delay(20);
     expect(fetchCount).toBe(1);
 
-    // Set to same value
     source.set(1);
+    kick(r);
     await delay(20);
 
-    // Computed memoization should prevent refetch
     expect(fetchCount).toBe(1);
   });
 });
 
 describe("Resource with reactive consumers", () => {
   test("multiple effects can subscribe to same resource", async () => {
-    const r = createResource(async () => {
-      await delay(10);
-      return "data";
-    });
+    const r = resource(
+      () => null,
+      async () => {
+        await delay(10);
+        return "data";
+      },
+    );
 
     const values1: (string | undefined)[] = [];
     const values2: (string | undefined)[] = [];
 
     effect(() => {
-      values1.push(r());
+      values1.push(r.latest());
     });
 
     effect(() => {
-      values2.push(r());
+      values2.push(r.latest());
     });
 
     await delay(20);
@@ -680,17 +871,21 @@ describe("Resource with reactive consumers", () => {
     expect(values1[values1.length - 1]).toBe("data");
   });
 
-  test("resource in computed", async () => {
-    const r = createResource(async () => {
-      await delay(10);
-      return 5;
-    });
+  test("resource in a plain derivation", async () => {
+    const r = resource(
+      () => null,
+      async () => {
+        await delay(10);
+        return 5;
+      },
+    );
 
     const doubled = () => {
-      const val = r();
+      const val = r.latest();
       return val !== undefined ? val * 2 : undefined;
     };
 
+    kick(r);
     await delay(20);
 
     expect(doubled()).toBe(10);

@@ -7,6 +7,7 @@ import {
   DOM_PROPS,
   NON_BUBBLING_EVENTS,
   SVG_TAGS,
+  USER_MUTABLE_PROPS,
 } from "./dom-tables.ts"
 
 /**
@@ -26,8 +27,16 @@ function jsxEventName(type: string): string {
 // `handler` is declared, not free: a free identifier is unresolvable, and the
 // compiler correctly refuses to write an expando for a name it cannot prove is
 // a function. Leaving it free made every row below pass for the wrong reason.
+/** `dom.ts`'s own resolution, from the same table: `*` first, then the tag. */
+function userMutableOn(tag: string, prop: string): boolean {
+  return USER_MUTABLE_PROPS.includes(`*:${prop}`) || USER_MUTABLE_PROPS.includes(`${tag}:${prop}`)
+}
+
 function compile(jsx: string): string {
-  return compileSource(`const handler = () => {};\nconst Probe = () => ${jsx};\n`, "probe.tsx")
+  return compileSource(
+    `import { signal } from "@barqjs/core";\nconst live = signal("x");\nconst handler = () => {};\nconst Probe = () => ${jsx};\n`,
+    "probe.tsx",
+  )
 }
 
 describe("the compiler's tables against dom.ts as it is on disk", () => {
@@ -95,15 +104,58 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     // The property channel writes these, so baking a literal into the HTML sets
     // only the default attribute and diverges the moment the field is dirty.
     // The compiler picks the channel now (§3.5), so the assertion is which
-    // channel it picked — `setDomProp`, by name, and no other.
+    // channel it picked — and there are two of them: §3.10.1 splits the names
+    // the USER also writes onto `setLive`, which compares against the element
+    // instead of against the framework's own last write. The split is asserted
+    // as a PARTITION rather than as two independent lists: a name on both
+    // channels, or on neither, fails here.
     const folded: string[] = []
     for (const prop of DOM_PROPS) {
       const code = compile(`<input ${prop}="x" />`)
+      const live = userMutableOn("input", prop)
+      const wanted = live ? "setLive" : "setDomProp"
+      const other = live ? "setDomProp" : "setLive"
       if (templateHtml(code).join("").includes(`${prop}=`)) folded.push(prop)
-      if (emittedCalls(code, "setDomProp") === 0) folded.push(`${prop} (not applied at all)`)
+      if (emittedCalls(code, wanted) === 0) folded.push(`${prop} (not applied by ${wanted})`)
+      if (emittedCalls(code, other) !== 0) folded.push(`${prop} (also went to ${other})`)
       if (emittedCalls(code, "setAttr") !== 0) folded.push(`${prop} (went to the attribute channel)`)
     }
     expect(folded, "dom.ts routes these through the property channel").toEqual([])
+  })
+
+  /**
+   * §3.10.1's own row. `USER_MUTABLE_PROPS` is keyed `tag:property` because the
+   * question is not whether a property can be written but whether the USER can
+   * write it on THIS element — and the compiler has to answer it the same way
+   * the runtime does or the two paths diverge on the one element that matters.
+   *
+   * `<option value="one">` is the negative that made the key a pair: an
+   * option's `value` falls back to its TEXT, so a compare against the element
+   * reports "already holds it" and the reflected attribute never appears. The
+   * oracle, which writes props before it appends children, writes it.
+   */
+  it("the user-mutable channel is resolved per tag, not per name", () => {
+    const wrong: string[] = []
+    for (const key of USER_MUTABLE_PROPS) {
+      const [tag, prop] = key.split(":")
+      const on = tag === "*" ? "div" : tag!
+      // A LIVE value: the compare exists for a write that repeats, and a
+      // literal the parser can bake never fights a user for the field.
+      const code = compile(`<${on} ${prop}={live()} />`)
+      if (emittedCalls(code, "setLive") === 0) wrong.push(`${key} (not on the live channel)`)
+      if (emittedCalls(code, "setDomProp") !== 0) wrong.push(`${key} (also on setDomProp)`)
+      // The same property on a tag the table does NOT name must not reach it.
+      if (tag !== "*") {
+        const elsewhere = compile(`<span ${prop}={live()} />`)
+        if (emittedCalls(elsewhere, "setLive") !== 0) wrong.push(`${key} (reached span too)`)
+      }
+    }
+    // The negative the table was rewritten for.
+    const option = compile(`<option value={live()}>one</option>`)
+    if (emittedCalls(option, "setLive") !== 0) {
+      wrong.push("option:value (an option's value is not the user's)")
+    }
+    expect(wrong, "dom.ts resolves the user-mutable channel from the tag AND the name").toEqual([])
   })
 
   /**

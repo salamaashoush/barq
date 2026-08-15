@@ -1,14 +1,17 @@
 /**
- * Actions & optimistic updates (Solid 2.0)
+ * Actions and optimistic state — `CODESIGN.md` §3.8, `SEMANTICS.md` A4.
  *
- * Actions run async work inside a transient context. Writes to optimistic
- * primitives made while an action is active are reverted when the action
- * completes (success or failure) - by then the real source of truth has
- * been refreshed, so the optimistic value is no longer needed.
+ * An action is a lifetime: while it runs, the writes made to an optimistic
+ * primitive inside it are PENDING MUTATIONS, and the value everyone reads is
+ * `reduce(settled, pending)`. Retiring the action drops its layer and the
+ * derivation falls back to the settled state on its own.
  *
- * Generator actions get exact resumption semantics: `yield promise` is
- * awaited by the runner and the generator resumes inside the same action
- * context, so optimistic writes after a yield still register.
+ * There is no snapshot. The previous implementation captured `revertTo` once
+ * per (target, action) and wrote it back at completion, so a real write landing
+ * during the action — the refresh the action exists to trigger — was rolled
+ * back to a value that was by then wrong, and `createOptimisticStore` paid a
+ * whole-store `structuredClone` to do it. With nothing captured there is
+ * nothing to clobber (A4).
  *
  * @example
  * ```ts
@@ -20,13 +23,12 @@
  * ```
  */
 
-import { batch, flush } from "./signals.ts";
+import { batch, computed, flush, markInMotion, signal } from "./signals.ts";
 import type { Signal, SignalOptions } from "./signals.ts";
-import { markInMotion, signal } from "./signals.ts";
 import { type Store, unwrap, useStore } from "./store.ts";
 
 interface ActionContext {
-  reverts: (() => void)[];
+  retire: (() => void)[];
   releases: (() => void)[];
   done: boolean;
 }
@@ -40,10 +42,10 @@ function completeAction(ctx: ActionContext): void {
     ctx.releases[i]();
   }
   ctx.releases.length = 0;
-  if (ctx.reverts.length > 0) {
+  if (ctx.retire.length > 0) {
     batch(() => {
-      for (let i = ctx.reverts.length - 1; i >= 0; i--) {
-        ctx.reverts[i]();
+      for (let i = ctx.retire.length - 1; i >= 0; i--) {
+        ctx.retire[i]();
       }
     });
   }
@@ -60,7 +62,7 @@ function isIterator(value: unknown): value is Iterator<unknown> | AsyncIterator<
 
 /**
  * Wrap a function as an action. Returns an async function; optimistic
- * writes made while it runs revert when it settles.
+ * writes made while it runs are retired when it settles.
  *
  * - `function*` generators get full context propagation: each `yield`ed
  *   promise is awaited and the generator resumes in the action context.
@@ -73,7 +75,7 @@ export function action<Args extends unknown[], R>(
   ) => R | Promise<R> | Generator<unknown, R, unknown> | AsyncGenerator<unknown, R, unknown>,
 ): (...args: Args) => Promise<R> {
   return async (...args: Args): Promise<R> => {
-    const ctx: ActionContext = { reverts: [], releases: [], done: false };
+    const ctx: ActionContext = { retire: [], releases: [], done: false };
 
     const runInContext = <T>(step: () => T): T => {
       const prev = activeAction;
@@ -125,54 +127,89 @@ export function affects(target: () => unknown): void {
   ctx.releases.push(markInMotion(target));
 }
 
-/** Register a revert with the active action, once per (target, action) */
-function registerRevert(registered: WeakSet<ActionContext>, makeRevert: () => () => void): void {
+/**
+ * Claim the running action's layer on `layers`, once per (target, action).
+ * Returns the layer to write the pending mutation into, or `null` outside an
+ * action — which is the caller's signal to write the settled state instead.
+ */
+function claimLayer<L extends object>(
+  layers: Signal<L[]>,
+  owned: WeakMap<ActionContext, L>,
+  make: () => L,
+  onRetire?: () => void,
+): L | null {
   const ctx = activeAction;
-  if (!ctx || ctx.done || registered.has(ctx)) return;
-  registered.add(ctx);
-  ctx.reverts.push(makeRevert());
+  if (!ctx || ctx.done) return null;
+  const existing = owned.get(ctx);
+  if (existing !== undefined) return existing;
+
+  const layer = make();
+  owned.set(ctx, layer);
+  layers.update((prev) => [...prev, layer]);
+  ctx.retire.push(() => {
+    owned.delete(ctx);
+    layers.update((prev) => prev.filter((entry) => entry !== layer));
+    onRetire?.();
+  });
+  return layer;
+}
+
+interface ValueLayer<T> {
+  patch: (settled: T) => T;
 }
 
 /**
- * Optimistic signal: writes made while an action is running revert to the
- * pre-action value when the action completes. Writes outside an action
- * update the base value normally.
+ * Optimistic signal. Writes outside an action are the settled state; writes
+ * inside one are a pending mutation layered over it, and the read is
+ * `reduce(settled, pending)`. When the action retires, the layer goes and the
+ * settled state — including anything that landed on it mid-flight — is what
+ * remains.
  */
 export function createOptimistic<T>(initialValue: T, options?: SignalOptions<T>): Signal<T> {
-  const inner = signal(initialValue, options);
-  let base = initialValue;
-  const registered = new WeakSet<ActionContext>();
+  const settled = signal(initialValue, options);
+  const layers = signal<ValueLayer<T>[]>([]);
+  const owned = new WeakMap<ActionContext, ValueLayer<T>>();
 
-  const read = (() => inner()) as Signal<T>;
+  const view = computed<T>(() => {
+    const pending = layers();
+    let value = settled();
+    for (let i = 0; i < pending.length; i++) value = pending[i].patch(value);
+    return value;
+  }, options);
 
-  read.set = (value: T) => {
-    if (activeAction && !activeAction.done) {
-      registerRevert(registered, () => {
-        const revertTo = base;
-        return () => inner.set(revertTo);
-      });
-    } else {
-      base = value;
+  const read = (() => view()) as Signal<T>;
+
+  const write = (patch: (prev: T) => T): void => {
+    const layer = claimLayer(layers, owned, () => ({ patch }) as ValueLayer<T>);
+    if (layer === null) {
+      settled.set(patch(settled.peek()));
+      return;
     }
-    inner.set(value);
+    layer.patch = patch;
+    layers.update((prev) => [...prev]);
   };
-  read.update = (fn: (prev: T) => T) => read.set(fn(inner.peek()));
-  read.peek = () => inner.peek();
+
+  read.set = (value: T) => write(() => value);
+  read.update = (fn: (prev: T) => T) => write(fn);
+  read.peek = () => view.peek();
 
   return read;
 }
 
-function restoreSnapshot(
-  target: Record<PropertyKey, unknown>,
-  snap: Record<PropertyKey, unknown>,
-): void {
+/**
+ * Structural in-place write of `next` into `target`: the same walk that used to
+ * restore a snapshot, now used to DERIVE. Keys absent from `next` are removed,
+ * nested objects are recursed into so the store's per-key subscriptions see
+ * only what actually changed, and arrays are truncated to length.
+ */
+function writeInto(target: Record<PropertyKey, unknown>, next: Record<PropertyKey, unknown>): void {
   for (const key of Object.keys(target)) {
-    if (!(key in snap)) {
+    if (!(key in next)) {
       delete target[key];
     }
   }
-  for (const key of Object.keys(snap)) {
-    const value = snap[key];
+  for (const key of Object.keys(next)) {
+    const value = next[key];
     const current = target[key];
     if (
       value !== null &&
@@ -181,10 +218,7 @@ function restoreSnapshot(
       typeof current === "object" &&
       Array.isArray(value) === Array.isArray(current)
     ) {
-      restoreSnapshot(
-        current as Record<PropertyKey, unknown>,
-        value as Record<PropertyKey, unknown>,
-      );
+      writeInto(current as Record<PropertyKey, unknown>, value as Record<PropertyKey, unknown>);
       if (Array.isArray(current) && Array.isArray(value)) {
         (current as unknown[]).length = (value as unknown[]).length;
       }
@@ -194,30 +228,46 @@ function restoreSnapshot(
   }
 }
 
+interface StoreLayer {
+  calls: unknown[][];
+}
+
 /**
- * Optimistic store: setter writes made while an action is running revert
- * to the pre-action state when the action completes.
+ * Optimistic store. The returned store is a PROJECTION of a private settled
+ * store with the running action's setter calls replayed on top; retiring the
+ * action re-derives without them. No snapshot of the settled store is ever
+ * taken, so a real write landing mid-action survives.
  */
 export function createOptimisticStore<T extends object>(seed: T): Store<T> {
-  const [state, setState] = useStore(seed);
-  const registered = new WeakSet<ActionContext>();
+  const [base, setBase] = useStore(seed);
+  const [view, setView] = useStore(structuredClone(unwrap(seed)));
+  const layers = signal<StoreLayer[]>([]);
+  const owned = new WeakMap<ActionContext, StoreLayer>();
+
+  const derive = (): void => {
+    const next = structuredClone(unwrap(base as unknown as T)) as unknown as Record<
+      PropertyKey,
+      unknown
+    >;
+    setView((draft) => {
+      writeInto(draft as Record<PropertyKey, unknown>, next);
+    });
+    for (const layer of layers.peek()) {
+      for (const call of layer.calls) {
+        (setView as (...a: unknown[]) => void)(...call);
+      }
+    }
+  };
 
   const optimisticSet = ((...args: unknown[]) => {
-    if (activeAction && !activeAction.done) {
-      registerRevert(registered, () => {
-        const snap = structuredClone(unwrap(state as T));
-        return () => {
-          setState((draftState) => {
-            restoreSnapshot(
-              draftState as Record<PropertyKey, unknown>,
-              snap as Record<PropertyKey, unknown>,
-            );
-          });
-        };
-      });
+    const layer = claimLayer(layers, owned, () => ({ calls: [] }) as StoreLayer, derive);
+    if (layer === null) {
+      (setBase as (...a: unknown[]) => void)(...args);
+    } else {
+      layer.calls.push(args);
     }
-    (setState as (...a: unknown[]) => void)(...args);
+    derive();
   }) as Store<T>[1];
 
-  return [state, optimisticSet];
+  return [view, optimisticSet];
 }

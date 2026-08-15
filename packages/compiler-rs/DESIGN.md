@@ -519,7 +519,7 @@ does not. Then a small worklist runs to fixpoint over:
 - **Return-shape table per primitive.** `signal(v)` → a callable `Signal<T>` with
   `.set`/`.update`/`.peek` — *not* a tuple. `useState(v)` → `[Accessor, Inert]`.
   `useStore(o)` → `[ReactiveObject, Inert]`. `createProjection(f)` → `ReactiveObject` directly.
-  `useResource(s, f)` → `AccessorRecord`. `computed`/`useMemo`/`createAsync`/`createOptimistic`
+  `resource(s, f)` / `useResource(s, f)` → `AccessorRecord`. `computed`/`useMemo`/`createAsync`/`createOptimistic`
   → `Accessor`. `createOptimisticStore(s)` → `[ReactiveObject, Inert]`.
 - **Aliasing.** `const c = count` → `Accessor`; `const c = count()` → `Inert`.
 - **Reassigned `let`.** Join every write RHS kind; any unresolvable RHS ⇒ `Opaque`.

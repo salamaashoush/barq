@@ -128,6 +128,59 @@ describe("createOptimistic", () => {
     expect(opt()).toBe(null); // overlay reverted
     expect(display()).toBe(2); // refreshed server data has the real value
   });
+
+  // A4. The optimistic value is `reduce(settled, pending)`, so retiring the
+  // action drops the pending layer and whatever the settled state has become is
+  // what remains. A snapshot taken at the first optimistic write would name the
+  // value the settled state had BEFORE the push, and write it back over it.
+  test("a real write landing mid-action survives the action's retirement", async () => {
+    const opt = createOptimistic("saved");
+
+    const save = action(function* () {
+      opt.set("saving...");
+      yield tick();
+      yield tick();
+    });
+
+    const p = save();
+    flush();
+    expect(opt()).toBe("saving...");
+
+    // Outside the action context - a push, a refresh, another user's edit.
+    setTimeout(() => opt.set("from-server"), 0);
+
+    await p;
+    expect(opt()).toBe("from-server");
+  });
+
+  test("two overlapping actions each retire only their own layer", async () => {
+    const opt = createOptimistic(0);
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((res) => {
+      releaseFirst = res;
+    });
+
+    const slow = action(function* () {
+      opt.update((n) => n + 1);
+      yield firstGate;
+    });
+    const fast = action(function* () {
+      opt.update((n) => n + 10);
+      yield tick();
+    });
+
+    const a = slow();
+    const b = fast();
+    flush();
+    expect(opt()).toBe(11);
+
+    await b;
+    expect(opt()).toBe(1);
+
+    releaseFirst();
+    await a;
+    expect(opt()).toBe(0);
+  });
 });
 
 describe("createOptimisticStore", () => {
@@ -157,5 +210,31 @@ describe("createOptimisticStore", () => {
     const [state, setState] = createOptimisticStore<{ n: number }>({ n: 0 });
     setState("n", 5);
     expect(state.n).toBe(5);
+  });
+
+  // A4, the store half. The old implementation `structuredClone`d the whole
+  // store at the first optimistic write and wrote the clone back at
+  // completion, so this real write disappeared.
+  test("a real store write landing mid-action survives the action's retirement", async () => {
+    const [state, setState] = createOptimisticStore<{ n: number; note: string }>({
+      n: 0,
+      note: "",
+    });
+
+    const save = action(function* () {
+      setState("note", "saving...");
+      yield tick();
+      yield tick();
+    });
+
+    const p = save();
+    flush();
+    expect(state.note).toBe("saving...");
+
+    setTimeout(() => setState("n", 42), 0);
+
+    await p;
+    expect(state.n).toBe(42);
+    expect(state.note).toBe("");
   });
 });

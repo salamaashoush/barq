@@ -447,6 +447,34 @@ describe("O5 — render opens a root and returns a disposer that disposes", () =
     expect(given[0].catcher).not.toBeNull();
     disposer();
   });
+
+  test("the Block form claims nothing it did not build", () => {
+    // The orphan list bounds the claim in TIME, not by PROVENANCE, so a module
+    // that initialises library state and mounts in the same synchronous turn
+    // had its ownerless effect adopted — and destroyed — by an unrelated mount.
+    const pulse = signal(0);
+    const libraryRuns: number[] = [];
+    let libraryCleanups = 0;
+    effect(() => {
+      libraryRuns.push(pulse());
+    });
+    onCleanup(() => {
+      libraryCleanups++;
+    });
+
+    const host = document.createElement("div");
+    const disposer = render((_scope: Scope) => document.createElement("i"), host);
+    flush();
+    const before = libraryRuns.length;
+    expect(before).toBeGreaterThan(0);
+
+    disposer();
+    pulse.set(1);
+    flush();
+
+    expect(libraryRuns.length).toBe(before + 1);
+    expect(libraryCleanups).toBe(0);
+  });
 });
 
 describe("O6 — owner and observer are separate ambients", () => {
