@@ -1,16 +1,17 @@
-use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
+use oxc::allocator::{Allocator, Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, ArrowFunctionExpression, AssignmentTarget,
     BindingPattern, Expression, FormalParameterKind, FormalParameters, IdentifierName,
     MemberExpression, Statement, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc::span::Span;
+use rustc_hash::FxHashSet;
 
 use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
-    Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, PartRange, Patch,
-    RefDef, Region, RegionId, RegionKind, Shape, SlotId, Step, StrId, Thunk, Unit,
+    Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, Patch, RefDef, Region,
+    RegionId, RegionKind, Shape, SlotId, Step, Thunk, Unit,
 };
 
 /// P8a. One unit becomes the hoisted `template()` clone, the walk to every node
@@ -47,6 +48,7 @@ pub fn emit_unit_parts<'a>(
     // instruction set belongs to the `Backend` impl below, which is the surface
     // the string backend and the reference backend answer on too.
     let mut index = 0;
+    let mut owned: FxHashSet<NodeId> = FxHashSet::default();
     while index < unit.patch.len() {
         let patch = unit.patch[index];
         index += 1;
@@ -61,7 +63,7 @@ pub fn emit_unit_parts<'a>(
             }
             _ => Vec::new(),
         };
-        let mut backend = Dom { ctx, unit };
+        let mut backend = Dom { ctx, unit, owned: &mut owned };
         if let Some(statement) = lower(&mut backend, At { patch, members: &members }) {
             statements.push(statement);
         }
@@ -84,33 +86,53 @@ pub fn emit_unit<'a>(ctx: &mut Emit<'a, '_>, unit: &mut Unit<'a>, span: Span) ->
 /// P8a's `Backend`. Every op lowers to at most one statement, spliced into the
 /// unit's construction sequence in program order.
 ///
-/// The ops with no row here — `SetClass`, `SetStyle`, `Ref`, `Spread`,
-/// `SetHtml` — reach the DOM through the props object `createElement` builds
-/// (`fallback.rs`), because P1 refuses to put an element carrying one of them on
-/// the template path at all. Returning `None` for them is that decision written
-/// down, not a case that fell through: there is no wildcard arm to fall through.
+/// The one op with no row here — `Spread` — reaches the DOM through the props
+/// object `createElement` builds (`fallback.rs`), because P1 refuses to put an
+/// element carrying one on the template path at all. Returning `None` for it is
+/// that decision written down, not a case that fell through: there is no
+/// wildcard arm to fall through.
 pub struct Dom<'a, 'e, 'm, 'u> {
     pub ctx: &'e mut Emit<'a, 'm>,
     pub unit: &'u mut Unit<'a>,
+    /// The elements whose `$$s` this unit has already written. The scope
+    /// expando is per ELEMENT, not per delegated type, so a second handler on
+    /// the same element writes only its own `$$<type>`.
+    pub owned: &'u mut FxHashSet<NodeId>,
+}
+
+/// §3.5: the channel is a compile-time fact, so it is a different runtime entry
+/// point rather than a string the runtime classifies. Justified on capability —
+/// §0.4 measured the dispatch removal at 0-8%, and this is not claimed on speed.
+pub(super) fn channel_helper(chan: Chan) -> Helper {
+    match chan {
+        Chan::Attr => Helper::SetAttr,
+        Chan::Prop => Helper::SetDomProp,
+        Chan::Bool => Helper::SetBool,
+        Chan::Class => Helper::SetClass,
+        Chan::Style => Helper::SetStyle,
+        Chan::StyleProp => Helper::SetStyleProp,
+        Chan::ClassList => Helper::SetClassList,
+        Chan::Html => Helper::SetHtml,
+    }
 }
 
 impl<'a> Dom<'a, '_, '_, '_> {
-    /// `setProp($s, el, key, value)` — the shape three ops share.
-    fn set_prop(&mut self, at: At<'_>, name: NameId, value: Expression<'a>) -> Statement<'a> {
+    /// `_$setAttr(el, "id", value)` — the resolved channel, called directly.
+    fn write(
+        &mut self,
+        at: At<'_>,
+        name: NameId,
+        chan: Chan,
+        value: Expression<'a>,
+    ) -> Statement<'a> {
         let span = at.span();
-        let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(name).text;
         let key = self.ctx.string(key, span);
-        let callee = self.ctx.helper(Helper::SetProp, span);
+        let callee = self.ctx.helper(channel_helper(chan), span);
         let call = self.ctx.call(
             callee,
-            vec![
-                Argument::from(scope),
-                Argument::from(element),
-                Argument::from(key),
-                Argument::from(value),
-            ],
+            vec![Argument::from(element), Argument::from(key), Argument::from(value)],
             span,
         );
         Statement::new_expression_statement(span, call, &self.ctx.ast)
@@ -120,34 +142,51 @@ impl<'a> Dom<'a, '_, '_, '_> {
 impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     type Out = Option<Statement<'a>>;
 
-    // `SetOnce` and `SetOpaque` emit identically: the value goes into `setProp`
-    // unwrapped, so the runtime makes exactly the decision the un-compiled
-    // oracle makes. The distinction is what P3 folds on, and the two rows are
-    // kept apart here so a change to one cannot silently move the other.
-    fn set_once(&mut self, at: At<'_>, name: NameId, value: ExprId, _chan: Chan) -> Self::Out {
+    /// A value the analysis PROVED static: one write at construction, straight
+    /// down the resolved channel. No dispatch, no liveness test, no effect.
+    fn set_once(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
         let value = take(self.ctx, self.unit, value, at.span());
-        Some(self.set_prop(at, name, value))
+        Some(self.write(at, name, chan, value))
     }
 
-    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId) -> Self::Out {
-        let value = take(self.ctx, self.unit, value, at.span());
-        Some(self.set_prop(at, name, value))
+    /// The channel is resolved; the LIVENESS is not, and §3.13 says it cannot
+    /// be. `bindProp` is handed the channel and asks the one remaining question.
+    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
+        let span = at.span();
+        let value = take(self.ctx, self.unit, value, span);
+        let scope = self.ctx.scope(span);
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let key = self.ctx.module.interner.name(name).text;
+        let key = self.ctx.string(key, span);
+        let write = self.ctx.helper(channel_helper(chan), span);
+        let callee = self.ctx.helper(Helper::BindProp, span);
+        let call = self.ctx.call(
+            callee,
+            vec![
+                Argument::from(scope),
+                Argument::from(element),
+                Argument::from(write),
+                Argument::from(key),
+                Argument::from(value),
+            ],
+            span,
+        );
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
-    /// The one-effect-per-prop form: the runtime sees a function and keeps its
-    /// own `prev` across runs. It is what an ungrouped `SetLive` lowers to —
-    /// either because effect fusion is off, or because fusion put this prop in a
-    /// group of one.
+    /// One prop the analysis PROVED reactive, standing outside a group — which
+    /// is what `-O0` emits, because the grouping pass is a flag. The effect is
+    /// the compiler's either way: with no `setProp` there is no runtime left to
+    /// own one, so a lone live prop is a fused record of one.
     fn set_live(
         &mut self,
         at: At<'_>,
-        name: NameId,
-        value: ExprId,
+        _name: NameId,
+        _value: ExprId,
         _chan: Chan,
         _diff: Diff,
     ) -> Self::Out {
-        let value = thunk(self.ctx, self.unit, value, at.span());
-        Some(self.set_prop(at, name, value))
+        Some(fused_effect(self.ctx, self.unit, &[at.patch], at.patch))
     }
 
     /// O4: a hole the compiler PROVED reactive becomes a live binding, where
@@ -195,9 +234,15 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
-    /// Target #7: a direct expando write. `delegatedEventHandler` reads
+    /// Target #7: a direct expando write, and the protocol is unchanged —
+    /// `$$<type>` plus one `delegateEvents` call per module, never
+    /// `addEventListener` for the delegated set. `delegatedEventHandler` reads
     /// `$$<type>` and accepts either a function or a `[fn, data]` tuple, so the
     /// tuple needs no second property (V2).
+    ///
+    /// The scope goes beside it in `$$s` — one expando per ELEMENT, not per type
+    /// — so the dispatcher can route a throw to `scope.catcher` (E2 #6) instead
+    /// of letting it escape to `window.onerror`.
     fn delegate(
         &mut self,
         at: At<'_>,
@@ -211,70 +256,151 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let key = self.ctx.allocator.alloc_str(&format!("$${key}")) as &'a str;
         let target = expando_target(self.ctx, element, key, span);
         let handler = handler_expression(self.ctx, self.unit, handler, span);
-        let call = Expression::new_assignment_expression(
+        let write = Expression::new_assignment_expression(
             span,
             oxc::ast::ast::AssignmentOperator::Assign,
             target,
             handler,
             &self.ctx.ast,
         );
-        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+        if !self.owned.insert(at.target()) {
+            return Some(Statement::new_expression_statement(span, write, &self.ctx.ast));
+        }
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let scope = self.ctx.scope(span);
+        let owner = Expression::new_assignment_expression(
+            span,
+            oxc::ast::ast::AssignmentOperator::Assign,
+            expando_target(self.ctx, element, "$$s", span),
+            scope,
+            &self.ctx.ast,
+        );
+        let pair = Expression::new_sequence_expression(
+            span,
+            ArenaVec::from_iter_in([write, owner], &self.ctx.allocator),
+            &self.ctx.ast,
+        );
+        Some(Statement::new_expression_statement(span, pair, &self.ctx.ast))
     }
 
+    /// B4: `addEventListener` paired with a cleanup on the scope that owns the
+    /// element, so the listener dies with its position. E2 #6: a throw routes to
+    /// the enclosing boundary. Both live in `listen`, so neither can be
+    /// forgotten at a call site.
     fn listen(&mut self, at: At<'_>, event: NameId, handler: HandlerRef) -> Self::Out {
         let span = at.span();
+        let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(event).text;
         let key = self.ctx.string(key, span);
         let handler = handler_expression(self.ctx, self.unit, handler, span);
-        let callee = self.ctx.member(element, "addEventListener", span);
-        let call = self.ctx.call(callee, vec![Argument::from(key), Argument::from(handler)], span);
+        let callee = self.ctx.helper(Helper::Listen, span);
+        let call = self.ctx.call(
+            callee,
+            vec![
+                Argument::from(scope),
+                Argument::from(element),
+                Argument::from(key),
+                Argument::from(handler),
+            ],
+            span,
+        );
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
-    /// Target #4. A group of one lowers to the cheaper thunk form — same effect
-    /// count, less code. Two or more become one `renderEffect` with a threaded
-    /// accumulator and per-key `!==` guards.
-    fn effect_group(&mut self, at: At<'_>, _len: u16) -> Self::Out {
-        if at.members.len() == 1
-            && let Some(statement) = lower(self, At::one(at.members[0]))
-        {
-            return Some(statement);
+    /// The type is resolved; the value is not provably a handler, so the
+    /// runtime's own `isEventHandlerValue` test decides whether anything binds
+    /// — exactly as the un-compiled path does. The delegated/direct split is
+    /// still the compiler's, made from the resolved type.
+    fn set_event(&mut self, at: At<'_>, event: NameId, value: ExprId) -> Self::Out {
+        let span = at.span();
+        let scope = self.ctx.scope(span);
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let key = self.ctx.module.interner.name(event).text;
+        let key = self.ctx.string(key, span);
+        let value = take(self.ctx, self.unit, value, span);
+        let callee = self.ctx.helper(Helper::BindEvent, span);
+        let call = self.ctx.call(
+            callee,
+            vec![
+                Argument::from(scope),
+                Argument::from(element),
+                Argument::from(key),
+                Argument::from(value),
+            ],
+            span,
+        );
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
+    /// §3.10's channel: the property a user edit lands on and the event that
+    /// reports it, both decided at compile time from the tag and the `type`.
+    fn bind(&mut self, at: At<'_>, prop: NameId, event: NameId, value: ExprId) -> Self::Out {
+        let span = at.span();
+        let scope = self.ctx.scope(span);
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let prop = self.ctx.module.interner.name(prop).text;
+        let prop = self.ctx.string(prop, span);
+        let event = self.ctx.module.interner.name(event).text;
+        let event = self.ctx.string(event, span);
+        let value = take(self.ctx, self.unit, value, span);
+        let callee = self.ctx.helper(Helper::BindValue, span);
+        let call = self.ctx.call(
+            callee,
+            vec![
+                Argument::from(scope),
+                Argument::from(element),
+                Argument::from(prop),
+                Argument::from(event),
+                Argument::from(value),
+            ],
+            span,
+        );
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
+    /// B3: `ref` is not a prop. A writable binding is an ASSIGNMENT — today's
+    /// `setProp(el, "ref", el)` READS the variable and never writes it — and
+    /// everything else is a scope-owned registration.
+    fn set_ref(&mut self, at: At<'_>, value: ExprId, write: bool) -> Self::Out {
+        let span = at.span();
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let value = take(self.ctx, self.unit, value, span);
+        if write {
+            let assign = Expression::new_assignment_expression(
+                span,
+                oxc::ast::ast::AssignmentOperator::Assign,
+                writable_target(value),
+                element,
+                &self.ctx.ast,
+            );
+            return Some(Statement::new_expression_statement(span, assign, &self.ctx.ast));
         }
+        let scope = self.ctx.scope(span);
+        let callee = self.ctx.helper(Helper::Ref, span);
+        let call = self.ctx.call(
+            callee,
+            vec![Argument::from(scope), Argument::from(element), Argument::from(value)],
+            span,
+        );
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
+    /// Target #4 and B2. Every live prop on one element computes into ONE flat
+    /// record and applies by field comparison; a group of one needs no record at
+    /// all, because its previous value is a scalar.
+    fn effect_group(&mut self, at: At<'_>, _len: u16) -> Self::Out {
         Some(fused_effect(self.ctx, self.unit, at.members, at.patch))
     }
 
     // ── off the template path entirely ────────────────────────────────────
     //
-    // P1 refuses to lower an element carrying any of these, so the whole
-    // subtree goes through `createElement` and none of them ever reaches a
-    // patch program the DOM backend prints. They are answered rather than
-    // omitted, because an omission is what a no-drift guarantee has to make
-    // impossible.
-
-    fn set_class(
-        &mut self,
-        _at: At<'_>,
-        _base: Option<StrId>,
-        _parts: PartRange,
-        _live: bool,
-    ) -> Self::Out {
-        None
-    }
-
-    fn set_style(&mut self, _at: At<'_>, _prop: NameId, _value: ExprId, _live: bool) -> Self::Out {
-        None
-    }
-
-    fn set_ref(&mut self, _at: At<'_>, _value: ExprId) -> Self::Out {
-        None
-    }
+    // P1 refuses to lower an element carrying a spread, so the whole subtree
+    // goes through `createElement` and it never reaches a patch program the DOM
+    // backend prints. Answering it is that decision written down, not a case
+    // that fell through: there is no wildcard arm to fall through.
 
     fn spread(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
-        None
-    }
-
-    fn set_html(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
         None
     }
 }
@@ -409,9 +535,44 @@ fn number<'a>(ctx: &Emit<'a, '_>, value: u8, span: Span) -> Expression<'a> {
     )
 }
 
-/// One `renderEffect` with a threaded accumulator and per-key `!==` guards,
-/// which works because `recompute` stores a compute's return value and hands it
-/// back on the next run (V6). It must never return a function.
+/// The assignment target `ref={binding}` writes into. P1 only sets `write` for
+/// an identifier that resolves to a mutable binding, so nothing else reaches
+/// here.
+fn writable_target(value: Expression<'_>) -> AssignmentTarget<'_> {
+    match value {
+        Expression::Identifier(identifier) => {
+            AssignmentTarget::AssignmentTargetIdentifier(identifier)
+        }
+        _ => unreachable!("P1 proves the binding is writable before setting `write`"),
+    }
+}
+
+/// B2 — the fused compute/apply record (`CODESIGN.md` §3.5).
+///
+/// ```js
+/// _$renderEffect(() => ({ a: cls(), b: id() }), (_v$, _p$ = {}) => {
+///   _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
+///   if (_v$.b !== _p$.b) _$setAttr(_el$1, "id", _v$.b);
+/// });
+/// ```
+///
+/// Three properties, and each of them is why the shape is this one:
+///
+/// - **the apply CANNOT SUBSCRIBE.** `recompute` runs it with `tracking` off, so
+///   a DOM read there — `offsetWidth`, `namespaceURI`, `classList` — can never
+///   become a dependency (R2). That is structural: there is no discipline to
+///   keep, because the second argument is not a tracking scope.
+/// - **the prev store is the compute's own return.** Nothing is allocated by the
+///   runtime and no expando is stamped on the element; the record IS the
+///   accumulator, and a channel whose applied form differs from its input
+///   (`Diff::Thread`) writes that form back into the same slot.
+/// - **the apply is independently schedulable**, because it is a separate
+///   function reached with a value rather than a suffix of the compute.
+///
+/// A fused effect must never return a FUNCTION: a one-argument effect registers
+/// its return as the cleanup. Returning the record is what makes that
+/// unrepresentable — an object literal is not callable, and the write half no
+/// longer sits in the returning position at all.
 fn fused_effect<'a>(
     ctx: &mut Emit<'a, '_>,
     unit: &mut Unit<'a>,
@@ -419,116 +580,267 @@ fn fused_effect<'a>(
     header: Patch,
 ) -> Statement<'a> {
     let span = header.span;
+    let value = ctx.module.uids.temp();
     let prev = ctx.module.uids.prev();
-    // Every read first, then every guarded write: one place to look for what
-    // the effect depends on, and no write can land between two reads.
-    let mut reads: Vec<Statement<'a>> = Vec::with_capacity(members.len());
-    let mut body: Vec<Statement<'a>> = Vec::with_capacity(members.len() + 1);
-    let mut threaded = false;
 
-    for patch in members {
-        let Op::SetLive { name, value, diff, .. } = patch.op else { continue };
-        let element = ref_ident(ctx, unit, patch.target, patch.span);
-        let key_text = ctx.module.interner.name(name).text;
-        let key = ctx.string(key_text, patch.span);
-        let read = value_expression(ctx, unit, value, patch.span);
+    let rows: Vec<(Patch, NameId, ExprId, Chan, Diff)> = members
+        .iter()
+        .filter_map(|patch| match patch.op {
+            Op::SetLive { name, value, chan, diff } => Some((*patch, name, value, chan, diff)),
+            _ => None,
+        })
+        .collect();
 
-        let local = ctx.module.uids.value(ctx.allocator);
-        reads.push(binding(ctx, local, read, patch.span));
-
-        let written = match diff {
+    // One prop whose applied form IS its value needs no record: the previous
+    // value is a scalar and the compute returns it directly.
+    if let [(patch, name, one, chan, diff)] = rows[..]
+        && diff != Diff::Thread
+    {
+        let read = value_expression(ctx, unit, one, patch.span);
+        let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(read), span);
+        let held = ctx.ident(value, patch.span);
+        let write = channel_write(ctx, unit, patch, name, chan, vec![held], patch.span);
+        let (body, params) = match diff {
             Diff::Identity => {
-                threaded = true;
-                let slot = slot_member(ctx, prev, key_text, patch.span);
-                Expression::new_assignment_expression(
-                    patch.span,
-                    oxc::ast::ast::AssignmentOperator::Assign,
-                    assignment_target(slot),
-                    ctx.ident(local, patch.span),
-                    &ctx.ast,
-                )
-            }
-            Diff::Always => ctx.ident(local, patch.span),
-        };
-
-        let scope = ctx.scope(patch.span);
-        let callee = ctx.helper(Helper::SetProp, patch.span);
-        let write = ctx.call(
-            callee,
-            vec![
-                Argument::from(scope),
-                Argument::from(element),
-                Argument::from(key),
-                Argument::from(written),
-            ],
-            patch.span,
-        );
-        let write = Statement::new_expression_statement(patch.span, write, &ctx.ast);
-
-        body.push(match diff {
-            Diff::Identity => {
-                let slot = slot_member(ctx, prev, key_text, patch.span);
+                let mine = ctx.ident(value, patch.span);
+                let theirs = ctx.ident(prev, patch.span);
                 let test = Expression::new_binary_expression(
                     patch.span,
-                    ctx.ident(local, patch.span),
+                    mine,
                     oxc::ast::ast::BinaryOperator::StrictInequality,
-                    slot,
+                    theirs,
                     &ctx.ast,
                 );
-                Statement::new_if_statement(patch.span, test, write, None, &ctx.ast)
+                (
+                    vec![Statement::new_if_statement(patch.span, test, write, None, &ctx.ast)],
+                    apply_params(ctx, value, Some((prev, false)), span),
+                )
             }
-            Diff::Always => write,
-        });
+            _ => (vec![write], apply_params(ctx, value, None, span)),
+        };
+        let apply = arrow(ctx, params, block(ctx, body, span), span);
+        return effect_call(ctx, compute, apply, span);
     }
 
-    reads.append(&mut body);
-    let mut body = reads;
+    let mut properties: Vec<oxc::ast::ast::ObjectPropertyKind<'a>> = Vec::with_capacity(rows.len());
+    let mut body: Vec<Statement<'a>> = Vec::with_capacity(rows.len());
+    let mut reads_prev = false;
 
-    let params = if threaded {
-        body.push(Statement::new_return_statement(span, Some(ctx.ident(prev, span)), &ctx.ast));
-        accumulator_params(ctx, prev, span)
-    } else {
-        FormalParameters::boxed(
+    for (index, (patch, name, one, chan, diff)) in rows.iter().copied().enumerate() {
+        let key = slot_key(index, ctx.allocator);
+        let read = value_expression(ctx, unit, one, patch.span);
+        properties.push(property(ctx, key, read, patch.span));
+
+        let mine = ctx.member(ctx.ident(value, patch.span), key, patch.span);
+        match diff {
+            // `v.a = chan(el, "class", v.a, p.a)`. The guard is INSIDE the
+            // channel because only the channel knows what "unchanged" means for
+            // a class map or a css object, and the applied form it hands back is
+            // what the next run must compare against.
+            Diff::Thread => {
+                reads_prev = true;
+                let theirs = ctx.member(ctx.ident(prev, patch.span), key, patch.span);
+                let call = channel_call(ctx, unit, patch, name, chan, vec![mine, theirs]);
+                let target = ctx.member(ctx.ident(value, patch.span), key, patch.span);
+                let store = Expression::new_assignment_expression(
+                    patch.span,
+                    oxc::ast::ast::AssignmentOperator::Assign,
+                    assignment_target(target),
+                    call,
+                    &ctx.ast,
+                );
+                body.push(Statement::new_expression_statement(patch.span, store, &ctx.ast));
+            }
+            Diff::Identity => {
+                reads_prev = true;
+                let theirs = ctx.member(ctx.ident(prev, patch.span), key, patch.span);
+                let test = Expression::new_binary_expression(
+                    patch.span,
+                    mine,
+                    oxc::ast::ast::BinaryOperator::StrictInequality,
+                    theirs,
+                    &ctx.ast,
+                );
+                let held = ctx.member(ctx.ident(value, patch.span), key, patch.span);
+                let write = channel_write(ctx, unit, patch, name, chan, vec![held], patch.span);
+                body.push(Statement::new_if_statement(patch.span, test, write, None, &ctx.ast));
+            }
+            // An object may be mutated in place, so its identity says nothing:
+            // write every run and compare against nothing.
+            Diff::Always => {
+                let write = channel_write(ctx, unit, patch, name, chan, vec![mine], patch.span);
+                body.push(write);
+            }
+        }
+    }
+
+    let record = Expression::new_object_expression(
+        span,
+        ArenaVec::from_iter_in(properties, &ctx.allocator),
+        &ctx.ast,
+    );
+    let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(record), span);
+    let params = apply_params(ctx, value, reads_prev.then_some((prev, true)), span);
+    let apply = arrow(ctx, params, block(ctx, body, span), span);
+    effect_call(ctx, compute, apply, span)
+}
+
+/// The record's field names are POSITIONAL, not the attribute names. Two props
+/// on one element cannot collide, the emitted bytes do not grow with the name,
+/// and `__proto__` — which as an object-literal key would set the prototype
+/// rather than create a slot — is not a case that has to be excluded.
+fn slot_key(index: usize, allocator: &Allocator) -> &str {
+    let mut out = String::with_capacity(2);
+    let mut index = index;
+    loop {
+        out.insert(0, (b'a' + (index % 26) as u8) as char);
+        if index < 26 {
+            break;
+        }
+        index = index / 26 - 1;
+    }
+    allocator.alloc_str(&out)
+}
+
+fn property<'a>(
+    ctx: &Emit<'a, '_>,
+    key: &'a str,
+    value: Expression<'a>,
+    span: Span,
+) -> oxc::ast::ast::ObjectPropertyKind<'a> {
+    let key = oxc::ast::ast::PropertyKey::StaticIdentifier(ArenaBox::new_in(
+        IdentifierName::new(span, key, &ctx.ast),
+        &ctx.allocator,
+    ));
+    oxc::ast::ast::ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
+        oxc::ast::ast::ObjectProperty::new(
             span,
-            FormalParameterKind::ArrowFormalParameters,
-            ArenaVec::new_in(&ctx.allocator),
-            None,
+            oxc::ast::ast::PropertyKind::Init,
+            key,
+            value,
+            false,
+            false,
+            false,
             &ctx.ast,
-        )
-    };
+        ),
+        &ctx.allocator,
+    ))
+}
 
-    let statements = ArenaVec::from_iter_in(body, &ctx.allocator);
-    let function_body = ArrowFunctionBody::new_function_body(
-        span,
-        ArenaVec::new_in(&ctx.allocator),
-        statements,
-        &ctx.ast,
-    );
-    let arrow = Expression::new_arrow_function_expression(
-        span,
-        false,
-        None,
-        params,
-        None,
-        function_body,
-        &ctx.ast,
-    );
-    let callee = ctx.helper(Helper::RenderEffect, span);
-    let call = ctx.call(callee, vec![Argument::from(arrow)], span);
+/// `_$setAttr(_el$1, "id", …)` — the resolved channel, with the arguments after
+/// the name supplied by the caller.
+fn channel_call<'a>(
+    ctx: &mut Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    patch: Patch,
+    name: NameId,
+    chan: Chan,
+    rest: Vec<Expression<'a>>,
+) -> Expression<'a> {
+    let element = ref_ident(ctx, unit, patch.target, patch.span);
+    let key = ctx.module.interner.name(name).text;
+    let key = ctx.string(key, patch.span);
+    let callee = ctx.helper(channel_helper(chan), patch.span);
+    let mut arguments = vec![Argument::from(element), Argument::from(key)];
+    arguments.extend(rest.into_iter().map(Argument::from));
+    ctx.call(callee, arguments, patch.span)
+}
+
+fn channel_write<'a>(
+    ctx: &mut Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    patch: Patch,
+    name: NameId,
+    chan: Chan,
+    rest: Vec<Expression<'a>>,
+    span: Span,
+) -> Statement<'a> {
+    let call = channel_call(ctx, unit, patch, name, chan, rest);
     Statement::new_expression_statement(span, call, &ctx.ast)
 }
 
-/// `(_p$ = {}) => …`. The default is what makes the first run see an empty
-/// accumulator instead of `undefined`.
-fn accumulator_params<'a>(
+fn effect_call<'a>(
+    ctx: &mut Emit<'a, '_>,
+    compute: Expression<'a>,
+    apply: Expression<'a>,
+    span: Span,
+) -> Statement<'a> {
+    let callee = ctx.helper(Helper::RenderEffect, span);
+    let call = ctx.call(callee, vec![Argument::from(compute), Argument::from(apply)], span);
+    Statement::new_expression_statement(span, call, &ctx.ast)
+}
+
+fn arrow<'a>(
     ctx: &Emit<'a, '_>,
-    name: &'a str,
+    params: ArenaBox<'a, FormalParameters<'a>>,
+    body: ArrowFunctionBody<'a>,
+    span: Span,
+) -> Expression<'a> {
+    Expression::new_arrow_function_expression(span, false, None, params, None, body, &ctx.ast)
+}
+
+fn block<'a>(
+    ctx: &Emit<'a, '_>,
+    statements: Vec<Statement<'a>>,
+    span: Span,
+) -> ArrowFunctionBody<'a> {
+    ArrowFunctionBody::new_function_body(
+        span,
+        ArenaVec::new_in(&ctx.allocator),
+        ArenaVec::from_iter_in(statements, &ctx.allocator),
+        &ctx.ast,
+    )
+}
+
+fn no_params<'a>(ctx: &Emit<'a, '_>, span: Span) -> ArenaBox<'a, FormalParameters<'a>> {
+    FormalParameters::boxed(
+        span,
+        FormalParameterKind::ArrowFormalParameters,
+        ArenaVec::new_in(&ctx.allocator),
+        None,
+        &ctx.ast,
+    )
+}
+
+/// `(_v$)` or `(_v$, _p$)` or `(_v$, _p$ = {})`. The default is what makes the
+/// FIRST apply see an empty record rather than `undefined`; a scalar prev needs
+/// none, because comparing against `undefined` is exactly the first-run write.
+fn apply_params<'a>(
+    ctx: &Emit<'a, '_>,
+    value: &'a str,
+    prev: Option<(&'a str, bool)>,
     span: Span,
 ) -> ArenaBox<'a, FormalParameters<'a>> {
-    let empty = Expression::new_object_expression(span, ArenaVec::new_in(&ctx.allocator), &ctx.ast);
-    let pattern = BindingPattern::new_binding_identifier(span, name, &ctx.ast);
-    let pattern = BindingPattern::new_assignment_pattern(span, pattern, empty, &ctx.ast);
-    let parameter = oxc::ast::ast::FormalParameter::new(
+    let mut parameters = Vec::with_capacity(2);
+    parameters.push(parameter(
+        ctx,
+        BindingPattern::new_binding_identifier(span, value, &ctx.ast),
+        span,
+    ));
+    if let Some((name, empty)) = prev {
+        let mut pattern = BindingPattern::new_binding_identifier(span, name, &ctx.ast);
+        if empty {
+            let record =
+                Expression::new_object_expression(span, ArenaVec::new_in(&ctx.allocator), &ctx.ast);
+            pattern = BindingPattern::new_assignment_pattern(span, pattern, record, &ctx.ast);
+        }
+        parameters.push(parameter(ctx, pattern, span));
+    }
+    FormalParameters::boxed(
+        span,
+        FormalParameterKind::ArrowFormalParameters,
+        ArenaVec::from_iter_in(parameters, &ctx.allocator),
+        None,
+        &ctx.ast,
+    )
+}
+
+fn parameter<'a>(
+    ctx: &Emit<'a, '_>,
+    pattern: BindingPattern<'a>,
+    span: Span,
+) -> oxc::ast::ast::FormalParameter<'a> {
+    oxc::ast::ast::FormalParameter::new(
         span,
         ArenaVec::new_in(&ctx.allocator),
         pattern,
@@ -539,24 +851,7 @@ fn accumulator_params<'a>(
         false,
         false,
         &ctx.ast,
-    );
-    FormalParameters::boxed(
-        span,
-        FormalParameterKind::ArrowFormalParameters,
-        ArenaVec::from_iter_in([parameter], &ctx.allocator),
-        None,
-        &ctx.ast,
     )
-}
-
-fn slot_member<'a>(ctx: &Emit<'a, '_>, prev: &'a str, key: &'a str, span: Span) -> Expression<'a> {
-    let object = ctx.ident(prev, span);
-    if crate::lower::jsx::is_identifier_name(key) {
-        ctx.member(object, key, span)
-    } else {
-        let property = ctx.string(key, span);
-        Expression::new_computed_member_expression(span, object, property, false, &ctx.ast)
-    }
 }
 
 fn expando_target<'a>(

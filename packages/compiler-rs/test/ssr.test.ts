@@ -249,9 +249,11 @@ describe("dual render: the compiled SSR string", () => {
       // question is whether the COMPILER bound one of the three, not whether the
       // author wrote the word somewhere.
       const code = compileFixtureBody(name)
+      // §3.5/§3.6 gave `ref` and the listener their own entry points, so the
+      // dropped opcodes are named by the CALL rather than by a string argument.
       const clientOnly =
         /\$\$[a-z]+\s*=/.test(stripLiterals(code)) ||
-        /_\$+setProp\([^,]+,[^,]+, "(ref|on[A-Z][\w]*)"/.test(code)
+        /_\$+(ref|listen|bindEvent|bindValue)\(/.test(code)
       if (!clientOnly) unexplained.push(name)
     }
     expect(unexplained, "declared an SSR divergence with no dropped opcode to explain it").toEqual([])

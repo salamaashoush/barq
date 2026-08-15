@@ -43,7 +43,7 @@
     "test:harness": "bun test",
     "check:fmt": "cargo fmt --check",
     "check:clippy": "cargo clippy --all-targets -- -D warnings",
-    "check:snapshots": "test $(git diff -U0 HEAD -- test/__snapshots__/*.snap | grep -c '^-[^-]') -eq 0",
+    "check:snapshots": "bun test/check-snapshots.ts",
     "test:browser": "bun test test/browser.test.ts",
     "test:browser:parse": "bun test/browser-parse-check.ts",
     "test:browser:svg": "bun test/browser-svg-class-check.ts",

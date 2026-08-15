@@ -186,11 +186,30 @@ export {
   template,
   insert,
   setProp,
+  // CODESIGN §3.5's resolved channels. The compiler picks one at compile time
+  // from `NameFlags` plus the namespace, so no name is classified at run time.
+  setAttr,
+  setDomProp,
+  setBool,
+  setClass,
+  setStyle,
+  setStyleProp,
+  setClassList,
+  setHtml,
+  setRef,
+  bindProp,
+  bindValue,
+  bindEvent,
+  bindChannelOf,
+  ref,
+  listen,
+  delegate,
   spread,
   delegateEvents,
   clearDelegatedEvents,
   classToString,
   styleToString,
+  type Channel,
   // The SSR string backend's brand. It is read on the CLIENT too: a module that
   // fell back to this backend renders a string-compiled component's markup
   // through it (DESIGN §5).

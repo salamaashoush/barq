@@ -9,7 +9,7 @@ mod skeleton;
 mod symbols;
 
 pub use address::{RefDef, RefPlan, Step};
-pub use expr::{ClassPart, ExprEntry, ExprSrc, ExprTable};
+pub use expr::{ExprEntry, ExprSrc, ExprTable};
 pub use intern::{Interner, NameFlags, NameRow, TagFlags, TagRow, event_name_of, tag_flags};
 pub use module::{
     Hoisted, LineIndex, Mappings, Module, Root, Site, TemplateMeta, TemplateRow, Uids, Unit,
@@ -38,8 +38,6 @@ pub type NameId = u32;
 pub type TemplateId = u32;
 pub type UnitId = u32;
 pub type HoistId = u32;
-/// Half-open range into [`ExprTable::parts`].
-pub type PartRange = (u32, u32);
 
 pub const NONE: u32 = u32::MAX;
 

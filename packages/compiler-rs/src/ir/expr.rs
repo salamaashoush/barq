@@ -2,12 +2,10 @@ use oxc::allocator::Allocator;
 use oxc::ast::ast::Expression;
 use oxc::span::Span;
 
-use super::{AVec, ExprId, PartRange, Rx, StrId};
+use super::{AVec, ExprId, Rx, StrId};
 
 pub struct ExprTable<'a> {
     pub entries: AVec<'a, ExprEntry<'a>>,
-    /// backing store for `Op::SetClass` ranges
-    pub parts: AVec<'a, ClassPart>,
 }
 
 pub struct ExprEntry<'a> {
@@ -67,16 +65,9 @@ impl<'a> ExprSrc<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct ClassPart {
-    pub value: ExprId,
-    pub gate: Option<ExprId>,
-    pub name: Option<StrId>,
-}
-
 impl<'a> ExprTable<'a> {
     pub fn new_in(allocator: &'a Allocator) -> Self {
-        Self { entries: AVec::new_in(&allocator), parts: AVec::new_in(&allocator) }
+        Self { entries: AVec::new_in(&allocator) }
     }
 
     /// P1 stores every expression as an unclassified `Verbatim` borrow. No AST is
@@ -110,19 +101,6 @@ impl<'a> ExprTable<'a> {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
-    }
-
-    /// Appends a run of class parts and returns the range an `Op::SetClass`
-    /// carries. Ranges are half-open and never move, so a patch stays `Copy`.
-    pub fn push_parts(&mut self, parts: impl IntoIterator<Item = ClassPart>) -> PartRange {
-        let start = self.parts.len() as u32;
-        self.parts.extend(parts);
-        (start, self.parts.len() as u32)
-    }
-
-    #[inline]
-    pub fn parts(&self, range: PartRange) -> &[ClassPart] {
-        &self.parts[range.0 as usize..range.1 as usize]
     }
 }
 
@@ -168,22 +146,5 @@ mod tests {
 
         table.entry_mut(id).rx.shape = Shape::Str;
         assert_eq!(table.rx(id).shape, Shape::Str);
-    }
-
-    #[test]
-    fn class_part_ranges_are_stable_across_appends() {
-        let allocator = Allocator::new();
-        let mut table = ExprTable::new_in(&allocator);
-        let first = table.push_parts([ClassPart { value: 0, gate: None, name: Some(1) }]);
-        let second = table.push_parts([
-            ClassPart { value: 2, gate: Some(3), name: None },
-            ClassPart { value: 4, gate: None, name: None },
-        ]);
-        assert_eq!(first, (0, 1));
-        assert_eq!(second, (1, 3));
-        assert_eq!(table.parts(first).len(), 1);
-        assert_eq!(table.parts(second).len(), 2);
-        assert_eq!(table.parts(first)[0].name, Some(1));
-        assert_eq!(table.parts(second)[0].gate, Some(3));
     }
 }

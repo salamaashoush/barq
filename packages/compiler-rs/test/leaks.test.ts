@@ -142,18 +142,30 @@ describe("L4 — the leak oracle", () => {
 
   it("O3.7's four non-listener clauses hold everywhere, with nothing registered", () => {
     // The rule names effects, subscriptions, async continuations and the scopes
-    // that own them. Three registry rows exist and all three are B4; a row under
-    // O3.7 would mean the redesign's central claim is not yet true.
+    // that own them. A row under O3.7 would mean the redesign's central claim is
+    // not yet true.
     const o37 = findings.filter((finding) => finding.rule === "O3.7")
     expect(formatLeaks(o37)).toBe("")
     expect(LEAK_FAILURES.filter((row) => row.rule === "O3.7")).toEqual([])
   })
 
-  it("B4 is violated, is registered, and is not deregistered on the strength of a probe", () => {
-    const b4 = findings.filter((finding) => finding.rule === "B4")
-    expect(b4.length).toBeGreaterThan(0)
-    expect(b4.every((finding) => REGISTRY.has(leakKey(finding.fixture, finding.id)))).toBe(true)
-    expect(LEAK_FAILURES.every((row) => row.greenAt === "M5")).toBe(true)
+  it("B4 holds, and the probe that says so still discriminates", () => {
+    // M5's element channel closed the three rows that were here: `listen`
+    // registers a cleanup on the scope that owns the element, so removal is not
+    // something a call site can forget. The count B4's falsification procedure
+    // asks for — registered listeners after dispose — is 0.
+    expect(formatLeaks(findings.filter((finding) => finding.rule === "B4"))).toBe("")
+    expect(LEAK_FAILURES.filter((row) => row.rule === "B4")).toEqual([])
+
+    // Deregistering a rule on the strength of a green probe is the failure this
+    // registry exists to prevent, so the probe is shown to still SEE a listener
+    // that is not removed. Everything below is one un-cleaned `addEventListener`
+    // on a fixture that has real ones.
+    const registered = [...sessions.values()].flatMap((session) =>
+      session.listeners.filter((record) => !record.delegated),
+    )
+    expect(registered.length, "the corpus has to register listeners at all").toBeGreaterThan(0)
+    expect(registered.filter((record) => record.outstanding)).toEqual([])
   })
 
   it("delegation is not counted as a leak, and is not counted as nothing either", () => {

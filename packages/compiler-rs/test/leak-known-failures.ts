@@ -27,27 +27,25 @@
  *
  * ---
  *
- * **What the three rows are.**
+ * **The three rows M5 removed.**
  *
- * All three are ONE defect, observed three times in one fixture. `dom.ts:386`
- * binds a non-delegated handler with a bare `element.addEventListener` and
- * registers no cleanup, so the listener outlives every scope above it. B4 says
- * a listener registers a cleanup on the owning scope and that removal cannot be
- * forgotten; here there is nothing to forget, because nothing was ever
- * registered.
+ * All three were ONE defect, observed three times in one fixture: `dom.ts` bound
+ * a non-delegated handler with a bare `element.addEventListener` and registered
+ * no cleanup, so the listener outlived every scope above it. M5 gave the
+ * listener channel its own entry point — `listen($s, el, type, handler)` — which
+ * registers the removal on the scope that owns the element, so there is nothing
+ * a call site can forget. The count B4's falsification procedure asks for is 0
+ * across the corpus, and `leaks.test.ts` asserts it together with the probe's
+ * own discrimination.
  *
- * The rule is `VIOLATED` in `SEMANTICS.md` and M4 did not move it — the element
- * channel is M5's. What M4 could do, and what the rows below are, is make the
- * violation OBSERVABLE: before this probe existed, the leak serialized to the
- * empty string in every channel the repository had, and the `createElement`
- * oracle leaked identically, so the differential certified it.
- *
- * Delegated handlers are not here and are not a leak: one `document` listener
- * per event type is module state for the whole process, installed by
+ * Delegated handlers are not here and were never a leak: one `document`
+ * listener per event type is module state for the whole process, installed by
  * `delegateEvents` and removed by `clearDelegatedEvents`. B4 is about the
  * listener a POSITION owns.
  *
- * These rows are the M5 worklist, addressed by defect rather than by symptom.
+ * The table is empty and the four assertions in `leaks.test.ts` still run
+ * against it — an unregistered leak is still a suite failure, which is the half
+ * that matters when a table has no rows.
  */
 
 import { LEAK_RULES } from "./leaks.ts"
@@ -71,39 +69,7 @@ export interface LeakKnownFailure {
   readonly reason: string
 }
 
-const LISTENER_REASON =
-  "`dom.ts` binds a non-delegated handler with a bare `element.addEventListener` and registers " +
-  "no cleanup on the owning scope, so the listener survives the disposal of every scope above " +
-  "it. B4's falsification procedure is 'registered-listener count after dispose() MUST be 0'; " +
-  "this is that count, and it is not 0. The element channel is M5's, so the rule stays VIOLATED " +
-  "and the row stays here rather than being deregistered on the strength of a probe existing."
-
-const ROWS: readonly LeakKnownFailure[] = [
-  {
-    fixture: "non-delegated-event",
-    leak: "listener@div.mouseenter",
-    rule: "B4",
-    status: "VIOLATED",
-    greenAt: "M5",
-    reason: LISTENER_REASON,
-  },
-  {
-    fixture: "non-delegated-event",
-    leak: "listener@div.mouseleave",
-    rule: "B4",
-    status: "VIOLATED",
-    greenAt: "M5",
-    reason: LISTENER_REASON,
-  },
-  {
-    fixture: "non-delegated-event",
-    leak: "listener@div.focus",
-    rule: "B4",
-    status: "VIOLATED",
-    greenAt: "M5",
-    reason: LISTENER_REASON,
-  },
-]
+const ROWS: readonly LeakKnownFailure[] = []
 
 export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
   ROWS.map((row) => Object.freeze(row)),

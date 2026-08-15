@@ -379,7 +379,10 @@ export function each<T>(
   src: Cell<Maybe<readonly T[]>> | Cell<number>,
   keyOf: ((item: T) => unknown) | false | null | typeof COUNT,
   row: Block<unknown, never[]>,
-  flags = 0,
+  // Positional and part of the ABI — `fallback` sits behind it — but nothing
+  // here reads it: `STATIC_KEY` is meaningless for a list, and `NO_SCOPE` would
+  // have to reach the row scopes `mapArray`/`repeat` own rather than this frame.
+  _flags = 0,
   fallback?: Block<unknown> | null,
 ): Node | null {
   const given = requireScope(s, "each");
@@ -579,7 +582,7 @@ export function boundary(
   if (kind === "error") {
     errorBoundary(given, site, fallback, body, flags);
   } else {
-    loadingBoundary(given, site, fallback, body, flags, on);
+    loadingBoundary(given, site, fallback, body, on);
   }
   return out;
 }
@@ -655,7 +658,6 @@ function loadingBoundary(
   site: Site,
   fallback: Block<unknown> | null | undefined,
   body: Block<unknown>,
-  flags: number,
   on?: Cell<unknown>,
 ): void {
   const pending = createPendingCollector();

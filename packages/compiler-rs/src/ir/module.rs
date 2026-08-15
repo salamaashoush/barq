@@ -622,7 +622,7 @@ impl<'a> Module<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{Op, SkelNode, TemplateId};
+    use crate::ir::{Chan, Op, SkelNode, TemplateId};
 
     #[test]
     fn a_unit_with_no_patches_is_the_whole_of_target_two() {
@@ -639,7 +639,7 @@ mod tests {
         unit.patch.push(Patch {
             target: 0,
             span: Span::default(),
-            op: Op::SetOpaque { name: 0, value: 0 },
+            op: Op::SetOpaque { name: 0, value: 0, chan: Chan::Attr },
         });
         assert!(!unit.is_pure_static());
     }

@@ -141,14 +141,30 @@ const MUTANTS: Mutant[] = [
     id: "fold-bakes-a-dom-property",
     pass: "fold",
     what: "P3 folds a name the runtime writes through the PROPERTY channel into the template HTML",
+    // Three sites since M5, because the refusal is stated twice: `attribute_channel`
+    // asks the name question and the `Chan` match asks the channel question. A
+    // mutation that removed only one of them would be killed by the other, which
+    // is the whole point of expressing the rule in both vocabularies — so the
+    // mutant has to defeat both to be the mutation it claims to be.
     edits: [
       {
         file: "src/passes/fold.rs",
         find:
-          "    if !crate::lower::names::attribute_channel(row.text, is_svg) {\n" +
+          "    if !crate::lower::names::attribute_channel(interner.name(name).text, is_svg) {\n" +
           "        return false;\n" +
           "    }",
-        replace: "    let _ = crate::lower::names::attribute_channel(row.text, is_svg);",
+        replace:
+          "    let _ = crate::lower::names::attribute_channel(interner.name(name).text, is_svg);",
+      },
+      {
+        file: "src/passes/fold.rs",
+        find: "        Chan::Attr => true,",
+        replace: "        Chan::Attr | Chan::Prop => true,",
+      },
+      {
+        file: "src/passes/fold.rs",
+        find: "        Chan::Prop | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,",
+        replace: "        Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,",
       },
     ],
   },
@@ -203,6 +219,81 @@ const MUTANTS: Mutant[] = [
         replace:
           "        let _ = target;\n" +
           "        while end < old.len() && matches!(old[end].op, Op::SetLive { .. }) {",
+      },
+    ],
+  },
+  {
+    /**
+     * B2's exact predecessor defect, re-introduced. `class`, `style`,
+     * `classList` and `dangerouslySetInnerHTML` apply a NORMALISED value — the
+     * class string, the css map, the toggled key set — so their record slot has
+     * to hold what the CHANNEL returned, not what the compute produced. Downgrade
+     * `Thread` to `Identity` and the channel is handed `undefined` as its
+     * previous value on every run: it can only ever ADD, and it re-writes the
+     * whole class attribute on any field's account. That is what `STATEFUL_DIFF`
+     * existed to prevent, and the exclusion is what B2 replaces.
+     */
+    id: "fuse-merges-class-without-threading-its-applied-value",
+    pass: "fuse (B2)",
+    what: "P2 gives a normalising channel the plain `!==` guard, so the prev it threads is lost",
+    edits: [
+      {
+        file: "src/passes/classify.rs",
+        find: "                let diff = if chan.threads_prev() {\n                    Diff::Thread\n                } else if",
+        replace: "                let diff = if chan.threads_prev() {\n                    Diff::Identity\n                } else if",
+      },
+    ],
+  },
+  {
+    /**
+     * §3.5's whole claim is that the channel is a compile-time fact. Collapse
+     * every channel onto `setAttr` and the name reaches the DOM as an attribute
+     * whatever it meant: a `DOM_PROPS` name stops writing the property, a
+     * `classList` object is stringified into `class`, `style` is written whole.
+     */
+    id: "channel-drops-its-resolution",
+    pass: "(ungated front end)",
+    what: "P8a sends every resolved channel to `setAttr`, so the compile-time resolution buys nothing",
+    edits: [
+      {
+        file: "src/codegen/dom.rs",
+        find: "        Chan::Prop => Helper::SetDomProp,",
+        replace: "        Chan::Prop => Helper::SetAttr,",
+      },
+      {
+        file: "src/codegen/dom.rs",
+        find: "        Chan::Class => Helper::SetClass,",
+        replace: "        Chan::Class => Helper::SetAttr,",
+      },
+      {
+        file: "src/codegen/dom.rs",
+        find: "        Chan::ClassList => Helper::SetClassList,",
+        replace: "        Chan::ClassList => Helper::SetAttr,",
+      },
+    ],
+  },
+  {
+    /**
+     * The hard constraint on the fused record, written down as a mutation: the
+     * compute returns the RECORD and never a function. A one-argument effect
+     * registers a function return as its cleanup, so a compute that hands back a
+     * closure is a cleanup nobody wrote — and even with an apply present, an
+     * apply reached with a function instead of the record reads `undefined` out
+     * of every field and writes `undefined` down every channel.
+     */
+    id: "fuse-returns-a-function-instead-of-the-record",
+    pass: "fuse (B2)",
+    what: "P8a wraps the record in a closure, so the compute's return value is a function",
+    edits: [
+      {
+        file: "src/codegen/dom.rs",
+        find:
+          "    let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(record), span);\n" +
+          "    let params = apply_params(ctx, value, reads_prev.then_some((prev, true)), span);",
+        replace:
+          "    let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(record), span);\n" +
+          "    let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(compute), span);\n" +
+          "    let params = apply_params(ctx, value, reads_prev.then_some((prev, true)), span);",
       },
     ],
   },

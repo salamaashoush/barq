@@ -338,17 +338,41 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
     ).toBe("")
   })
 
-  it("§13's Status column says what the rule's own **Status.** line says", () => {
+  /**
+   * The four §13 cells that are one row about several rules. Written out rather
+   * than derived, so adding a range row is a diff and not a silent widening of
+   * what the checker is allowed not to read.
+   */
+  const RANGE_ROWS: Readonly<Record<string, readonly string[]>> = {
+    "O3.1\u20133": ["O3.1", "O3.2", "O3.3"],
+    "O3.4\u20135": ["O3.4", "O3.5"],
+    "O4.1\u20132": ["O4.1", "O4.2"],
+    "C3.1\u20135": ["C3.1", "C3.2", "C3.3", "C3.4", "C3.5"],
+  }
+
+  it("\u00a713's Status column says what the rule's own **Status.** line says", () => {
     const prose = documentedStatus()
     const index = indexedStatuses()
     const wrong: string[] = []
+    const unreadable: string[] = []
     for (const [rule, cell] of index) {
-      const word = prose.get(rule)
-      if (word === undefined) continue
-      const letter = STATUS_LETTER[word]
-      expect(letter, `SEMANTICS.md writes a status word §13 has no letter for: ${word}`).toBeString()
-      if (!new RegExp(`(?<![A-Za-z])${letter}(?![A-Za-z])`).test(cell)) {
-        wrong.push(`${rule}: index says "${cell}", the rule's own **Status.** line says ${word}`)
+      // A range row — `O3.1–3` — is one cell about several rules, and the prose
+      // gives each of them its own word. Reading the row as a single ID left
+      // four cells unchecked and, worse, made the SKIP invisible.
+      for (const member of RANGE_ROWS[rule] ?? [rule]) {
+        const word = prose.get(member)
+        if (word === undefined) {
+          unreadable.push(`${member} (§13 row ${rule}, cell "${cell}")`)
+          continue
+        }
+        const letter = STATUS_LETTER[word]
+        expect(
+          letter,
+          `SEMANTICS.md writes a status word §13 has no letter for: ${word}`,
+        ).toBeString()
+        if (!new RegExp(`(?<![A-Za-z])${letter}(?![A-Za-z])`).test(cell)) {
+          wrong.push(`${member}: index says "${cell}", the rule's own **Status.** line says ${word}`)
+        }
       }
     }
     expect(
@@ -357,6 +381,15 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
         "with the prose in 18 of 82 rows — O2, C6 and X1 were all listed VIOLATED while their own " +
         "sections said HOLDS — and nothing checked it, because the bidirectional pinning check " +
         "covers rule IDs and not statuses.",
+    ).toBe("")
+    // A row whose status the checker cannot READ is a row nobody reviews, and
+    // for 21 of 82 rows — the whole ownership spine and the whole error spine —
+    // that is what `if (word === undefined) continue` produced: a green suite
+    // that structurally could not have been otherwise. It is now a reported
+    // list rather than a silence, and the list has to be empty.
+    expect(
+      unreadable.join("\n"),
+      "a §13 row with no prose **Status.** line to compare against is unreviewed, not agreed with",
     ).toBe("")
   })
 

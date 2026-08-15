@@ -30,8 +30,7 @@
 //! the thing that makes them two backends.
 
 use crate::ir::{
-    Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, PartRange, Patch,
-    RegionId, SlotId, StrId,
+    Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, Patch, RegionId, SlotId,
 };
 use oxc::span::Span;
 
@@ -106,16 +105,20 @@ backend! {
     SetLive { name: NameId, value: ExprId, chan: Chan, diff: Diff } => set_live;
     /// `React::Opaque`. The value goes to the runtime unwrapped, so the runtime
     /// makes the decision the compiler could not.
-    SetOpaque { name: NameId, value: ExprId } => set_opaque;
-    SetClass { base: Option<StrId>, parts: PartRange, live: bool } => set_class;
-    SetStyle { prop: NameId, value: ExprId, live: bool } => set_style;
+    SetOpaque { name: NameId, value: ExprId, chan: Chan } => set_opaque;
+    /// An event whose TYPE is resolved but whose value is not provably a
+    /// handler: the delegated/direct choice is still the compiler's.
+    SetEvent { event: NameId, value: ExprId } => set_event;
     /// `el.$$click = h` plus a module-level delegation of the names used.
     Delegate { event: NameId, handler: HandlerRef, data: Option<ExprId> } => delegate;
     /// `addEventListener`, for everything outside the delegated set.
     Listen { event: NameId, handler: HandlerRef } => listen;
-    Ref { value: ExprId } => set_ref;
+    /// §3.5: not a prop. `write` lowers to `binding = _n1`.
+    Ref { value: ExprId, write: bool } => set_ref;
+    /// §3.10's channel half, with the property and the reporting event already
+    /// resolved from the tag and the `type` attribute.
+    Bind { prop: NameId, event: NameId, value: ExprId } => bind;
     Spread { value: ExprId, live: bool } => spread;
-    SetHtml { value: ExprId, live: bool } => set_html;
     /// A child hole. `plan` is what the analysis proved about its value.
     Insert { slot: SlotId, anchor: Anchor, value: ExprId, plan: InsertPlan } => insert;
     /// A child hole the flow pass lowered onto one of `flow.ts`'s four
@@ -160,14 +163,11 @@ mod tests {
         ) {
             self.0.push("SetLive");
         }
-        fn set_opaque(&mut self, _at: At<'_>, _name: NameId, _value: ExprId) {
+        fn set_opaque(&mut self, _at: At<'_>, _name: NameId, _value: ExprId, _chan: Chan) {
             self.0.push("SetOpaque");
         }
-        fn set_class(&mut self, _at: At<'_>, _base: Option<StrId>, _parts: PartRange, _live: bool) {
-            self.0.push("SetClass");
-        }
-        fn set_style(&mut self, _at: At<'_>, _prop: NameId, _value: ExprId, _live: bool) {
-            self.0.push("SetStyle");
+        fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId) {
+            self.0.push("SetEvent");
         }
         fn delegate(
             &mut self,
@@ -181,14 +181,14 @@ mod tests {
         fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef) {
             self.0.push("Listen");
         }
-        fn set_ref(&mut self, _at: At<'_>, _value: ExprId) {
+        fn set_ref(&mut self, _at: At<'_>, _value: ExprId, _write: bool) {
             self.0.push("Ref");
+        }
+        fn bind(&mut self, _at: At<'_>, _prop: NameId, _event: NameId, _value: ExprId) {
+            self.0.push("Bind");
         }
         fn spread(&mut self, _at: At<'_>, _value: ExprId, _live: bool) {
             self.0.push("Spread");
-        }
-        fn set_html(&mut self, _at: At<'_>, _value: ExprId, _live: bool) {
-            self.0.push("SetHtml");
         }
         fn insert(
             &mut self,
@@ -222,14 +222,13 @@ mod tests {
         let ops = [
             Op::SetOnce { name: 0, value: 0, chan: Chan::Attr },
             Op::SetLive { name: 0, value: 0, chan: Chan::Attr, diff: Diff::Identity },
-            Op::SetOpaque { name: 0, value: 0 },
-            Op::SetClass { base: None, parts: (0, 0), live: false },
-            Op::SetStyle { prop: 0, value: 0, live: false },
+            Op::SetOpaque { name: 0, value: 0, chan: Chan::Attr },
+            Op::SetEvent { event: 0, value: 0 },
             Op::Delegate { event: 0, handler: HandlerRef::Inline(0), data: None },
             Op::Listen { event: 0, handler: HandlerRef::Inline(0) },
-            Op::Ref { value: 0 },
+            Op::Ref { value: 0, write: false },
+            Op::Bind { prop: 0, event: 0, value: 0 },
             Op::Spread { value: 0, live: false },
-            Op::SetHtml { value: 0, live: false },
             Op::Insert { slot: 0, anchor: Anchor::End, value: 0, plan: InsertPlan::Once },
             Op::Region { slot: 0, anchor: Anchor::End, region: 0 },
             Op::EffectGroup { len: 0 },

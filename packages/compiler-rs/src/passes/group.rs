@@ -180,7 +180,7 @@ mod tests {
         unit.patch.push(Patch {
             target: 1,
             span: Span::default(),
-            op: Op::SetOpaque { name: 0, value: 0 },
+            op: Op::SetOpaque { name: 0, value: 0, chan: Chan::Attr },
         });
         regroup(&allocator, &mut unit);
         assert_eq!(unit.patch.len(), 1);

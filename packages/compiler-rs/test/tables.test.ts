@@ -92,14 +92,16 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
   })
 
   it("no DOM_PROPS name is folded into the template on an HTML element", () => {
-    // `setElementAttr` writes these through the PROPERTY channel, so baking a
-    // literal into the HTML sets only the default attribute and diverges the
-    // moment the field is dirty.
+    // The property channel writes these, so baking a literal into the HTML sets
+    // only the default attribute and diverges the moment the field is dirty.
+    // The compiler picks the channel now (§3.5), so the assertion is which
+    // channel it picked — `setDomProp`, by name, and no other.
     const folded: string[] = []
     for (const prop of DOM_PROPS) {
       const code = compile(`<input ${prop}="x" />`)
       if (templateHtml(code).join("").includes(`${prop}=`)) folded.push(prop)
-      if (emittedCalls(code, "setProp") === 0) folded.push(`${prop} (not applied at all)`)
+      if (emittedCalls(code, "setDomProp") === 0) folded.push(`${prop} (not applied at all)`)
+      if (emittedCalls(code, "setAttr") !== 0) folded.push(`${prop} (went to the attribute channel)`)
     }
     expect(folded, "dom.ts routes these through the property channel").toEqual([])
   })
@@ -122,10 +124,10 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     // negative, and un-compiled JSX satisfies all of them: it folds nothing into
     // a template it does not have, it contains no `px`, and it contains
     // `"z-index": 2` because that is what the author wrote. Requiring the object
-    // to have reached the runtime's property channel — one `setProp`, on an
+    // to have reached the runtime's style channel — one `setStyle`, on an
     // element that came out of a template — is what makes this a claim about a
     // compiler at all.
-    if (emittedCalls(code, "setProp") !== 1) wrong.push(`${prop}: not applied through setProp`)
+    if (emittedCalls(code, "setStyle") !== 1) wrong.push(`${prop}: not applied through the style channel`)
     if (emittedCalls(code, "template") !== 1) wrong.push(`${prop}: the element never reached a template`)
     if (templateHtml(code).join("").includes("style=")) wrong.push(`${prop}: folded into the template`)
     if (stripLiterals(code).includes("px")) wrong.push(`${prop}: a px suffix reached the code`)

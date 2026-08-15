@@ -69,7 +69,7 @@ export const optimality = {
     '"input"',
     "$$input = ",
     "$$click = ",
-    '"value", () => state.filters.search',
+    '"value"',
     ", rows, null, ",
     // K5, in the company of everything else: both constructs are regions. The
     // `Show` is the corpus's clearest case of the pair coming from the walk —

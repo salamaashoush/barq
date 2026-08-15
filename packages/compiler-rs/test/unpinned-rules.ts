@@ -57,6 +57,13 @@
  */
 export const FICTION_PINS: readonly string[] = Object.freeze([
   "C2: sem-props-direct-call-diagnostic",
+  // §13 names all seven of E2's entry-point fixtures; M5 wrote the handler one
+  // and the other five are still the milestones that own those entry points.
+  "E2: sem-err-effect-throw",
+  "E2: sem-err-ref-throw",
+  "E2: sem-err-async-throw",
+  "E2: sem-err-cleanup-throw",
+  "E2: sem-err-notready-passthrough",
   "C5: sem-props-forward-identity",
   "C9: sem-props-source-list-order",
   "K5: sem-key-shadowed-flow",
@@ -74,7 +81,7 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   "C3.1", "C3.2", "C3.3", "C3.4", "C3.5",
   "C4", "C5", "C5.2", "C8", "C9",
   // E
-  "E1", "E2", "E2.2", "E2.3", "E3", "E4",
+  "E1", "E2.3", "E3", "E4",
   // H
   "H1", "H2", "H3", "H4", "H5", "H6",
   // K
@@ -84,7 +91,7 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   // O
   "O1", "O3", "O3.3", "O3.4", "O3.6", "O4", "O4.1", "O4.2", "O4.3",
   // R
-  "R2", "R3", "R4", "R5", "R6",
+  "R3", "R4", "R5", "R6",
   // X
   "X4", "X5", "X6",
 ])

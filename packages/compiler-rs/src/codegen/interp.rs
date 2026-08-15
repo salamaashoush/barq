@@ -47,8 +47,8 @@ use oxc::span::Span;
 use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
-    Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, PartRange, Patch,
-    RegionId, SlotId, Step, StrId, Unit, UnitId,
+    Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, Patch, RegionId,
+    SlotId, Step, Unit, UnitId,
 };
 
 /// One unit becomes a module-scope descriptor plus one `_$interp` call.
@@ -129,12 +129,11 @@ fn refs_of<'a>(ctx: &Emit<'a, '_>, unit: &Unit<'a>, span: Span) -> Expression<'a
 /// P8c's `Backend`. Every op lowers to at most one record, appended to the
 /// unit's program in the order the patches run.
 ///
-/// The ops with no record — `SetClass`, `SetStyle`, `Ref`, `Spread`, `SetHtml`
-/// — are the ops P1 refuses to put on the template path at all, so the element
-/// carrying one reaches the DOM through `createElement` on this backend for the
-/// same reason and by the same route it does on the DOM backend. Answering
-/// `None` for them is that decision written down once per op, not a case that
-/// fell through: there is no wildcard arm to fall through.
+/// The one op with no record — `Spread` — is the op P1 refuses to put on the
+/// template path at all, so the element carrying one reaches the DOM through
+/// `createElement` on this backend for the same reason and by the same route it
+/// does on the DOM backend. Answering `None` for it is that decision written
+/// down, not a case that fell through: there is no wildcard arm to fall through.
 struct Interp<'a, 'e, 'm, 'u, 's> {
     ctx: &'e mut Emit<'a, 'm>,
     unit: &'u mut Unit<'a>,
@@ -207,18 +206,20 @@ impl<'a> Interp<'a, '_, '_, '_, '_> {
 impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
     type Out = Option<Expression<'a>>;
 
-    fn set_once(&mut self, at: At<'_>, name: NameId, value: ExprId, _chan: Chan) -> Self::Out {
+    fn set_once(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
         let span = at.span();
         let (node, key) = (self.node(at.target(), span), self.key(name, span));
         let slot = self.once(value, span);
-        Some(self.record("setOnce", vec![node, key, slot], span))
+        let chan = text(self.ctx, chan_name(chan), span);
+        Some(self.record("setOnce", vec![node, key, slot, chan], span))
     }
 
-    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId) -> Self::Out {
+    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
         let span = at.span();
         let (node, key) = (self.node(at.target(), span), self.key(name, span));
         let slot = self.once(value, span);
-        Some(self.record("setOpaque", vec![node, key, slot], span))
+        let chan = text(self.ctx, chan_name(chan), span);
+        Some(self.record("setOpaque", vec![node, key, slot, chan], span))
     }
 
     fn set_live(
@@ -226,14 +227,57 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         at: At<'_>,
         name: NameId,
         value: ExprId,
-        _chan: Chan,
+        chan: Chan,
         diff: Diff,
     ) -> Self::Out {
         let span = at.span();
         let (node, key) = (self.node(at.target(), span), self.key(name, span));
         let slot = self.read(value, span);
-        let diff = text(self.ctx, if diff == Diff::Identity { "identity" } else { "always" }, span);
-        Some(self.record("setLive", vec![node, key, slot, diff], span))
+        let diff = text(
+            self.ctx,
+            match diff {
+                Diff::Identity => "identity",
+                Diff::Always => "always",
+                Diff::Thread => "thread",
+            },
+            span,
+        );
+        let chan = text(self.ctx, chan_name(chan), span);
+        Some(self.record("setLive", vec![node, key, slot, diff, chan], span))
+    }
+
+    /// The resolved type with a value the compiler could not prove is a handler.
+    fn set_event(&mut self, at: At<'_>, event: NameId, value: ExprId) -> Self::Out {
+        let span = at.span();
+        let (node, key) = (self.node(at.target(), span), self.key(event, span));
+        let slot = self.once(value, span);
+        Some(self.record("setEvent", vec![node, key, slot], span))
+    }
+
+    /// A writable binding cannot be READ back through a nullary slot, so the
+    /// assignment itself is what the slot holds: the interpreter calls it with
+    /// the element instead of calling `ref` with a value.
+    fn set_ref(&mut self, at: At<'_>, value: ExprId, write: bool) -> Self::Out {
+        let span = at.span();
+        let node = self.node(at.target(), span);
+        let expression = crate::codegen::dom::take(self.ctx, self.unit, value, span);
+        let (slot, kind) = if write {
+            (unary(self.ctx, expression, span), "assign")
+        } else {
+            (nullary(self.ctx, expression, span), "apply")
+        };
+        let slot = self.raw(slot, span);
+        let kind = text(self.ctx, kind, span);
+        Some(self.record("ref", vec![node, slot, kind], span))
+    }
+
+    fn bind(&mut self, at: At<'_>, prop: NameId, event: NameId, value: ExprId) -> Self::Out {
+        let span = at.span();
+        let node = self.node(at.target(), span);
+        let (prop, event) = (self.key(prop, span), self.key(event, span));
+        let expression = crate::codegen::dom::take(self.ctx, self.unit, value, span);
+        let slot = self.raw(expression, span);
+        Some(self.record("bind", vec![node, prop, event, slot], span))
     }
 
     fn insert(
@@ -345,29 +389,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
 
     // ── off the template path entirely ────────────────────────────────────
 
-    fn set_class(
-        &mut self,
-        _at: At<'_>,
-        _base: Option<StrId>,
-        _parts: PartRange,
-        _live: bool,
-    ) -> Self::Out {
-        None
-    }
-
-    fn set_style(&mut self, _at: At<'_>, _prop: NameId, _value: ExprId, _live: bool) -> Self::Out {
-        None
-    }
-
-    fn set_ref(&mut self, _at: At<'_>, _value: ExprId) -> Self::Out {
-        None
-    }
-
     fn spread(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
-        None
-    }
-
-    fn set_html(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
         None
     }
 }
@@ -389,6 +411,69 @@ fn nullary<'a>(ctx: &Emit<'a, '_>, body: Expression<'a>, span: Span) -> Expressi
         ArrowFunctionBody::from(body),
         &ctx.ast,
     )
+}
+
+/// `(_v$) => (binding = _v$)` — the ONE slot shape that is written rather than
+/// read. `ref={binding}` with a writable binding is an assignment (B3), and an
+/// assignment cannot be serialised as a value.
+fn unary<'a>(ctx: &mut Emit<'a, '_>, target: Expression<'a>, span: Span) -> Expression<'a> {
+    let name = ctx.module.uids.value(ctx.allocator);
+    let pattern = BindingPattern::new_binding_identifier(span, name, &ctx.ast);
+    let parameter = oxc::ast::ast::FormalParameter::new(
+        span,
+        ArenaVec::new_in(&ctx.allocator),
+        pattern,
+        None,
+        None,
+        false,
+        None,
+        false,
+        false,
+        &ctx.ast,
+    );
+    let params = FormalParameters::boxed(
+        span,
+        FormalParameterKind::ArrowFormalParameters,
+        ArenaVec::from_iter_in([parameter], &ctx.allocator),
+        None,
+        &ctx.ast,
+    );
+    let assign = Expression::new_assignment_expression(
+        span,
+        oxc::ast::ast::AssignmentOperator::Assign,
+        match target {
+            Expression::Identifier(identifier) => {
+                oxc::ast::ast::AssignmentTarget::AssignmentTargetIdentifier(identifier)
+            }
+            _ => unreachable!("P1 proves the binding is writable before setting `write`"),
+        },
+        ctx.ident(name, span),
+        &ctx.ast,
+    );
+    Expression::new_arrow_function_expression(
+        span,
+        false,
+        None,
+        params,
+        None,
+        ArrowFunctionBody::from(assign),
+        &ctx.ast,
+    )
+}
+
+/// The channel name, spelled the same way on both sides so the reference
+/// backend cannot resolve a name differently from the DOM backend.
+fn chan_name(chan: Chan) -> &'static str {
+    match chan {
+        Chan::Attr => "attr",
+        Chan::Prop => "prop",
+        Chan::Bool => "bool",
+        Chan::Class => "class",
+        Chan::Style => "style",
+        Chan::StyleProp => "styleProp",
+        Chan::ClassList => "classList",
+        Chan::Html => "html",
+    }
 }
 
 fn array<'a>(ctx: &Emit<'a, '_>, items: Vec<Expression<'a>>, span: Span) -> Expression<'a> {

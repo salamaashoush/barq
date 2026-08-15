@@ -1165,11 +1165,14 @@ mod tests {
         assert!(!output.code.contains("_$insert"), "{}", output.code);
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
         // No walk, no arrow, no statements: the clone IS the component body.
+        // No brand either — §3.0 rule 3 brands the Blocks that USE their scope,
+        // and a body that is one clone reads nothing.
         assert!(
             output.code.trim_end().ends_with("const V = (_s$) => _tmpl$1();"),
             "{}",
             output.code
         );
+        assert!(!output.code.contains("_$block"), "{}", output.code);
     }
 
     #[test]
@@ -1223,7 +1226,7 @@ mod tests {
     fn a_property_channel_attribute_never_reaches_the_template_html() {
         let output = compile_ok("const V = () => <input type=\"text\" value=\"v\" />;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<input type=\"text\">`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"value\", \"v\")"), "{}", output.code);
+        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"v\")"), "{}", output.code);
     }
 
     #[test]
@@ -1461,7 +1464,7 @@ mod tests {
             "{}",
             output.code
         );
-        for dom in ["_$template", "_$insert", "_$setProp", "_$createElement", "_el$"] {
+        for dom in ["_$template", "_$insert", "_$setAttr", "_$createElement", "_el$"] {
             assert!(!output.code.contains(dom), "{dom} in:\n{}", output.code);
         }
         assert!(output.code.contains("from \"@barqjs/core/server\""), "{}", output.code);
@@ -1542,14 +1545,25 @@ mod tests {
         let output =
             compile_ok("const V = () => <div class=\"a\" className={x}>t</div>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<div>t</div>`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"class\", x)"), "{}", output.code);
+        // `x` is a free global: reading it tracks nothing, so it is static —
+        // but "the analysis could not type it" is not "it is not a function",
+        // and a direct channel write is unconditional. `bindProp` keeps the
+        // decision where the un-compiled path makes it.
+        assert!(
+            output.code.contains("_$bindProp(_s$, _el$1, _$setClass, \"class\", x)"),
+            "{}",
+            output.code
+        );
     }
 
     #[test]
     fn a_name_the_runtime_intercepts_reaches_set_prop_unmangled() {
         let output =
             compile_ok("const V = () => <circle onClick={h} strokeWidth={w} />;\n", "V.tsx");
-        assert!(output.code.contains("\"onClick\""), "{}", output.code);
+        // The event TYPE is resolved rather than kebab-cased with the SVG
+        // attributes around it: `setProp(el, "on-click", h)` would have bound a
+        // listener called "-click".
+        assert!(output.code.contains("\"click\""), "{}", output.code);
         assert!(!output.code.contains("on-click"), "{}", output.code);
         assert!(output.code.contains("\"stroke-width\""), "{}", output.code);
     }
@@ -2559,11 +2573,36 @@ mod tests {
                 output.code
             );
             // Four JSX values, four brands: the children cast, and the three
-            // wrapper spellings on a non-children slot.
+            // wrapper spellings on a non-children slot. Counted as the SLOT
+            // spelling, because `codegen::brand` brands the three component
+            // declarations here too and a bare `_$block(` count would no
+            // longer separate the two.
             assert_eq!(
-                output.code.matches("_$block(").count(),
+                output.code.matches("_$block((_s$) =>").count(),
                 4,
                 "not every JSX slot is branded at {opt:?}:\n{}",
+                output.code
+            );
+            // Cast and Slot construct through their scope, so both carry the
+            // definition-site brand; Sink never reads `_s$`, and §3.0 rule 3
+            // says a Block that ignores its scope is simultaneously a legal
+            // Cell and needs no brand. Four slots plus two declarations.
+            assert_eq!(
+                output.code.matches("_$block(").count(),
+                6,
+                "not every scope-using component declaration is branded at {opt:?}:\n{}",
+                output.code
+            );
+            for branded in ["Cast = _$block(Cast)", "Slot = _$block(Slot)"] {
+                assert!(
+                    output.code.contains(branded),
+                    "{branded} missing at {opt:?}:\n{}",
+                    output.code
+                );
+            }
+            assert!(
+                !output.code.contains("Sink = _$block(Sink)"),
+                "a component that never reads its scope was branded at {opt:?}:\n{}",
                 output.code
             );
         }
@@ -2630,9 +2669,12 @@ mod tests {
         // anchor: the hole anchors against `<u>` rather than a marker of its own.
         assert!(!ox.contains("<u></u></em>") || !ox.contains("<!---->"), "{ox}");
         assert!(o0.contains("<!----><u></u>"), "{o0}");
-        // fuse: two live props on one element share one effect, then do not.
-        assert!(ox.contains("_$renderEffect("), "{ox}");
-        assert!(!o0.contains("_$renderEffect("), "{o0}");
+        // fuse: two live props on one element share one effect, then get one
+        // each. The effect itself is no longer a knob — with the channel
+        // resolved there is no `setProp` left to hand a thunk to, so the
+        // compiler owns every live write's effect at both levels.
+        assert_eq!(ox.matches("_$renderEffect(").count(), 1, "{ox}");
+        assert_eq!(o0.matches("_$renderEffect(").count(), 2, "{o0}");
         // walk: `<em>` is reached from the end of the group, then from the front.
         assert!(ox.contains(".lastChild"), "{ox}");
         assert!(!o0.contains(".lastChild") && o0.contains(".firstChild"), "{o0}");
@@ -2644,8 +2686,8 @@ mod tests {
         assert!(!o0.contains("_h$1"), "{o0}");
         // splice: the unit's statements are flat in the arrow that hosts them,
         // then wrapped in an IIFE of their own.
-        assert!(ox.contains("export const C = (_s$) => {"), "{ox}");
-        assert!(o0.contains("export const C = (_s$) => (() => {"), "{o0}");
+        assert!(ox.contains("export const C = _$block((_s$) => {"), "{ox}");
+        assert!(o0.contains("export const C = _$block((_s$) => (() => {"), "{o0}");
     }
 
     /// A knob nobody can name is a knob that silently does nothing, which is the
@@ -2741,8 +2783,8 @@ mod tests {
         // survives as runtime work.
         assert!(output.code.contains("id=\"dark\""), "{}", output.code);
         assert!(!output.code.contains("\"id\""), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"title\""), "{}", output.code);
-        assert_eq!(output.code.matches("_$setProp(").count(), 1, "{}", output.code);
+        assert!(output.code.contains("_$setAttr(_el$1, \"title\", _v$)"), "{}", output.code);
+        assert_eq!(output.code.matches("_$setAttr(").count(), 1, "{}", output.code);
 
         // `count.set` is masked as non-tracking, so it folds nowhere and creates
         // no effect: it goes through setProp unwrapped, exactly as the oracle does.
@@ -2767,6 +2809,7 @@ mod tests {
         assert!(output.code.contains("const V = (_s$) => _tmpl$1();"), "{}", output.code);
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
         assert!(!output.code.contains("_el$"), "{}", output.code);
+        assert!(!output.code.contains("_$block"), "{}", output.code);
     }
 
     /// Target #3's refusals. A `DOM_PROPS` name is written as a PROPERTY by the
@@ -2779,7 +2822,7 @@ mod tests {
             "V.tsx",
         );
         assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"value\", \"v\")"), "{}", output.code);
+        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"v\")"), "{}", output.code);
         assert!(!output.code.contains("hidden"), "{}", output.code);
         assert!(!output.code.contains("lang"), "{}", output.code);
     }
@@ -2809,38 +2852,52 @@ mod tests {
         );
         let output = compile_ok(&source, "V.tsx");
         assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
-        assert!(output.code.contains("(_p$ = {}) =>"), "{}", output.code);
-        assert!(output.code.contains("return _p$;"), "{}", output.code);
-        assert!(output.code.contains("if (_v$1 !== _p$.title)"), "{}", output.code);
-        assert!(output.code.contains("if (_v$2 !== _p$.lang)"), "{}", output.code);
+        // B2's shape: one COMPUTE returning the flat record, one APPLY reached
+        // with it. The apply is not a tracking scope and cannot become one.
+        assert!(output.code.contains("_$renderEffect(() => ({"), "{}", output.code);
+        assert!(output.code.contains("(_v$, _p$ = {}) =>"), "{}", output.code);
+        assert!(output.code.contains("a: a()"), "{}", output.code);
+        assert!(output.code.contains("b: b()"), "{}", output.code);
+        assert!(output.code.contains("if (_v$.a !== _p$.a)"), "{}", output.code);
+        assert!(output.code.contains("if (_v$.b !== _p$.b)"), "{}", output.code);
+        // Nothing is returned from either half: the record is the prev store, so
+        // there is no `return` in the position the effect machinery would read a
+        // cleanup out of.
+        assert!(!output.code.contains("return _p$;"), "{}", output.code);
         // The user's per-prop closures are deleted, not called.
         assert!(!output.code.contains("(() => a())"), "{}", output.code);
         assert!(!output.code.contains("(() => b())"), "{}", output.code);
     }
 
-    /// `style` and `classList` keep the value the runtime diffs against, so
-    /// they are never folded into an effect: `applyResolvedProp` REMOVES what
-    /// vanished, and a compiled effect calling setProp afresh could only add.
+    /// B2. `style` and `classList` apply a NORMALISED value — the css map, the
+    /// toggled key set — and the runtime used to hold that between runs, which
+    /// is the whole reason they were kept out of an effect. The record slot holds
+    /// it now: the channel is handed `_p$.a` and its return is written back into
+    /// `_v$.a`, so the REMOVAL half of the diff survives inside a shared effect.
+    /// `STATEFUL_DIFF` was the flag that said otherwise and it no longer exists.
     #[test]
-    fn a_prop_the_runtime_diffs_statefully_never_joins_an_effect() {
+    fn a_prop_whose_applied_value_is_normalised_threads_it_through_the_record() {
         let source = format!(
             "{CORE}const s = signal({{}});\n\
              const V = () => <p style={{() => s()}} classList={{() => s()}} title={{() => s()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
+        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
         assert!(
-            output.code.contains("_$setProp(_s$, _el$1, \"style\", () => s())"),
+            output.code.contains("_v$.a = _$setStyle(_el$1, \"style\", _v$.a, _p$.a);"),
             "{}",
             output.code
         );
         assert!(
-            output.code.contains("_$setProp(_s$, _el$1, \"classList\", () => s())"),
+            output.code.contains("_v$.b = _$setClassList(_el$1, \"classList\", _v$.b, _p$.b);"),
             "{}",
             output.code
         );
-        // Only `title` is left to coalesce, so the group collapses to the thunk
-        // form rather than a renderEffect.
-        assert!(!output.code.contains("_$renderEffect"), "{}", output.code);
+        // The plain attribute beside them keeps the cheaper identity guard: a
+        // channel that applies what it was handed needs no round trip.
+        assert!(output.code.contains("if (_v$.c !== _p$.c)"), "{}", output.code);
+        assert!(!output.code.contains("_$bindProp("), "{}", output.code);
+        assert!(!output.code.contains("_$setProp("), "{}", output.code);
     }
 
     /// Target #7. A delegated name becomes a direct expando write plus ONE
@@ -2851,12 +2908,9 @@ mod tests {
     fn a_delegated_event_is_an_expando_write_and_the_rest_are_listeners() {
         let source = "const V = () => <b onClick={() => log(1)} onChange={() => log(2)}>x</b>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_el$1.$$click = _h$1;"), "{}", output.code);
-        assert!(
-            output.code.contains("_el$1.addEventListener(\"change\", _h$2)"),
-            "{}",
-            output.code
-        );
+        assert!(output.code.contains("_el$1.$$click = _h$1, _el$1.$$s = _s$;"), "{}", output.code);
+        assert!(output.code.contains("_$listen(_s$, _el$1, \"change\", _h$2)"), "{}", output.code);
+        assert!(!output.code.contains("addEventListener"), "{}", output.code);
         assert_eq!(output.code.matches("_$delegateEvents(").count(), 1, "{}", output.code);
         assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
         assert!(!output.code.contains("$$change"), "{}", output.code);
@@ -2886,9 +2940,13 @@ mod tests {
     #[test]
     fn an_event_value_the_compiler_cannot_see_stays_with_the_runtime() {
         let output = compile_ok("const V = (p) => <b onClick={p.h}>x</b>;\n", "V.tsx");
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"onClick\", p.h)"), "{}", output.code);
-        assert!(!output.code.contains("$$click"), "{}", output.code);
-        assert!(!output.code.contains("_$delegateEvents"), "{}", output.code);
+        // The TYPE is still the compiler's — `click`, resolved once — and so is
+        // the delegated/direct choice it implies. What the runtime is left with
+        // is `isEventHandlerValue`, which is the oracle's own test on a value
+        // neither side can see.
+        assert!(output.code.contains("_$bindEvent(_s$, _el$1, \"click\", p.h)"), "{}", output.code);
+        assert!(!output.code.contains("$$click ="), "{}", output.code);
+        assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
     }
 
     /// V2: the bound-handler tuple lives in `$$<type>` itself. Emitting a
@@ -2911,8 +2969,20 @@ mod tests {
         let source =
             format!("{CORE}const count = signal(0);\nconst V = () => <p title={{count()}} />;\n");
         let output = compile_ok(&source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"title\", count)"), "{}", output.code);
-        assert!(!output.code.contains("() => count()"), "η-reduced: {}", output.code);
+        // The effect is the compiler's now: with the channel resolved there is
+        // no dispatcher left to open one. One live prop needs no record at all —
+        // its previous value is a scalar, and it is the compute's own return.
+        assert!(
+            output.code.contains("_$renderEffect(() => count(), (_v$, _p$) =>"),
+            "{}",
+            output.code
+        );
+        assert!(
+            output.code.contains("if (_v$ !== _p$) _$setAttr(_el$1, \"title\", _v$);"),
+            "{}",
+            output.code
+        );
+        assert!(!output.code.contains("_p$ = {}"), "no record for one field: {}", output.code);
     }
 
     /// An unresolvable origin must stay CORRECT, never optimistic: a barrel
@@ -2923,7 +2993,11 @@ mod tests {
         let source = "import { signal } from \"./barrel\";\nconst c = signal(0);\n\
                       const V = () => <p title={c()} />;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"title\", c())"), "{}", output.code);
+        assert!(
+            output.code.contains("_$bindProp(_s$, _el$1, _$setAttr, \"title\", c())"),
+            "{}",
+            output.code
+        );
         assert!(!output.code.contains("_$renderEffect"), "{}", output.code);
     }
 
@@ -2943,11 +3017,13 @@ mod tests {
             }
         }
         assert!(
-            output.code.contains("_$setProp(_s$, _el$1, \"classList\", CLS)"),
+            output.code.contains("_$setClassList(_el$1, \"classList\", CLS)"),
             "{}",
             output.code
         );
         assert!(output.code.contains("\"dangerouslySetInnerHTML\", HTML"), "{}", output.code);
+        // B3: `ref` is a channel of its own, never a prop.
+        assert!(output.code.contains("_$ref(_s$, _el$1, REF)"), "{}", output.code);
 
         // A literal STRING class or style is the documented exception: both
         // reach the DOM identically through the parser and through the runtime.
@@ -2973,7 +3049,7 @@ mod tests {
                 format!("const x = {value};\nconst V = () => <div data-x={{x}}>t</div>;\n");
             let output = compile_ok(&source, "V.tsx");
             assert!(
-                output.code.contains("_$setProp(_s$, _el$1, \"data-x\", x)"),
+                output.code.contains("_$setAttr(_el$1, \"data-x\", x)"),
                 "{value}\n{}",
                 output.code
             );
@@ -2983,7 +3059,7 @@ mod tests {
         // A character reference decodes to the same byte, so the literal
         // attribute channel has to refuse it too.
         let output = compile_ok("const V = () => <div id=\"a&#0;b\">t</div>;\n", "V.tsx");
-        assert!(output.code.contains("_$setProp"), "{}", output.code);
+        assert!(output.code.contains("_$setAttr"), "{}", output.code);
         assert!(output.code.contains("_$template(`<div>t</div>`)"), "{}", output.code);
 
         // In TEXT there is no patch channel to fall back to, so the element
@@ -3000,53 +3076,71 @@ mod tests {
     fn a_lone_surrogate_literal_is_never_folded() {
         let source = "const x = \"\\ud800\";\nconst V = () => <div id={x}>t</div>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"id\", x)"), "{}", output.code);
+        // A lone-surrogate literal is `InitOf::Inert`: no constant, and no
+        // shape either, so the value could still be a Cell as far as the
+        // analysis knows and its liveness stays the runtime's question.
+        assert!(
+            output.code.contains("_$bindProp(_s$, _el$1, _$setAttr, \"id\", x)"),
+            "{}",
+            output.code
+        );
         assert!(output.code.contains("_$template(`<div>t</div>`)"), "{}", output.code);
 
         let source = "const V = () => <div id={`\\ud800`}>t</div>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_$setProp"), "{}", output.code);
+        assert!(output.code.contains("_$setAttr"), "{}", output.code);
     }
 
     /// `class` is diffed statefully by the runtime, so an effect shared with
     /// another prop would rewrite `element.className` on an unrelated change and
     /// wipe what `classList` (or a ref, or a directive) put there.
     #[test]
-    fn class_never_joins_an_effect_with_another_prop() {
+    fn class_joins_the_fused_record_and_the_wipe_becomes_unrepresentable() {
         let source = format!(
             "{CORE}const a = signal(\"x\");\nconst b = signal(\"y\");\n\
              const V = () => <div class={{() => a()}} title={{() => b()}} id={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
+        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
         assert!(
-            output.code.contains("_$setProp(_s$, _el$1, \"class\", () => a())"),
+            output.code.contains("_v$.a = _$setClass(_el$1, \"class\", _v$.a, _p$.a);"),
             "{}",
             output.code
         );
-        assert!(!output.code.contains("_p$.class"), "{}", output.code);
-        // The two that are NOT intercepted still merge — this is the boundary of
-        // target #4, not its removal.
-        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
-        assert!(output.code.contains("_p$.title"), "{}", output.code);
-        assert!(output.code.contains("_p$.id"), "{}", output.code);
+        // B1's defect, written as an ABSENCE: `title` changing cannot reach the
+        // class channel, because every write in the apply is guarded by its own
+        // field and the class write is guarded by the class channel's own
+        // compare against what it applied last time. There is no statement in
+        // the emitted apply that writes `class` on any other field's account.
+        for line in output.code.lines() {
+            if line.contains("_$setAttr(_el$1, \"title\"")
+                || line.contains("_$setAttr(_el$1, \"id\"")
+            {
+                assert!(!line.contains("_$setClass"), "{}", output.code);
+            }
+        }
+        assert!(!output.code.contains("_$bindProp("), "{}", output.code);
     }
 
-    /// `_p$.__proto__ = v` writes through `Object.prototype`'s setter instead of
-    /// creating an own slot, so every OTHER guard in the group compares against
-    /// a value that was never stored.
+    /// The record's fields are POSITIONAL, so a hostile attribute NAME is not a
+    /// hostile record key. `_p$.__proto__ = v` would have written through
+    /// `Object.prototype`'s setter instead of creating an own slot, and every
+    /// OTHER guard in the group would then have compared against a value that
+    /// was never stored — a whole class of miscompile that positional keys make
+    /// unrepresentable rather than excluded.
     #[test]
-    fn an_accumulator_key_that_is_not_an_own_slot_never_joins_a_group() {
+    fn a_record_field_is_positional_so_a_hostile_attribute_name_is_not_a_key() {
         let source = format!(
             "{CORE}const a = signal(\"x\");\nconst b = signal(\"y\");\n\
              const V = () => <div __proto__={{() => a()}} title={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
+        assert!(!output.code.contains("__proto__:"), "{}", output.code);
         assert!(!output.code.contains("_p$.__proto__"), "{}", output.code);
-        assert!(
-            output.code.contains("_$setProp(_s$, _el$1, \"__proto__\", () => a())"),
-            "{}",
-            output.code
-        );
+        assert!(!output.code.contains("_v$.__proto__"), "{}", output.code);
+        // It is still a live attribute, and it still shares the one effect.
+        assert_eq!(output.code.matches("_$renderEffect(").count(), 1, "{}", output.code);
+        assert!(output.code.contains("_$setAttr(_el$1, \"__proto__\", _v$.a)"), "{}", output.code);
     }
 
     /// A hoisted handler is moved to module scope, where the enclosing
@@ -3079,10 +3173,10 @@ mod tests {
     fn the_property_channel_is_decided_per_element_namespace() {
         let output = compile_ok("const V = () => <svg value={\"x\"} />;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<svg value=\"x\"/>`)"), "{}", output.code);
-        assert!(!output.code.contains("_$setProp"), "{}", output.code);
+        assert!(!output.code.contains("_$setDomProp"), "{}", output.code);
 
         let output = compile_ok("const V = () => <input value={\"x\"} />;\n", "V.tsx");
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"value\", \"x\")"), "{}", output.code);
+        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"x\")"), "{}", output.code);
         assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
     }
 
@@ -3125,11 +3219,7 @@ mod tests {
     #[test]
     fn a_literal_attribute_on_the_patch_channel_carries_its_decoded_value() {
         let output = compile_ok("const V = () => <input value=\"a&amp;b\" />;\n", "V.tsx");
-        assert!(
-            output.code.contains("_$setProp(_s$, _el$1, \"value\", \"a&b\")"),
-            "{}",
-            output.code
-        );
+        assert!(output.code.contains("_$setDomProp(_el$1, \"value\", \"a&b\")"), "{}", output.code);
 
         // The template channel keeps the reference, because the parser resolves
         // it to the same bytes.
@@ -3147,7 +3237,7 @@ mod tests {
     fn a_bare_intercepted_attribute_is_left_to_the_runtime() {
         let output = compile_ok("const V = () => <div class title>t</div>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<div title>t</div>`)"), "{}", output.code);
-        assert!(output.code.contains("_$setProp(_s$, _el$1, \"class\", true)"), "{}", output.code);
+        assert!(output.code.contains("_$setClass(_el$1, \"class\", true)"), "{}", output.code);
     }
 
     /// Target #7's commonest shape: a handler bound to a name. The binding is
@@ -3161,7 +3251,7 @@ mod tests {
         let output = compile_ok(source, "V.tsx");
         assert!(output.code.contains("_el$1.$$click = h"), "{}", output.code);
         assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
-        assert!(!output.code.contains("_$setProp"), "{}", output.code);
+        assert!(!output.code.contains("_$bindEvent"), "{}", output.code);
         // Never RE-hoisted: the reference is emitted where it stands, which is
         // what keeps a component-scope declaration working.
         assert!(!output.code.contains("const _h$1"), "{}", output.code);
@@ -3180,11 +3270,11 @@ mod tests {
         ] {
             let output = compile_ok(source, "V.tsx");
             assert!(
-                output.code.contains("_$setProp(_s$, _el$1, \"onClick\", h)"),
+                output.code.contains("_$bindEvent(_s$, _el$1, \"click\", h)"),
                 "{}",
                 output.code
             );
-            assert!(!output.code.contains("$$click"), "{}", output.code);
+            assert!(!output.code.contains("$$click ="), "{}", output.code);
         }
     }
 }

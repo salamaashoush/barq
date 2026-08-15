@@ -66,21 +66,50 @@ const reverseBakedAttributes = inTemplates((html) =>
 
 /** Reverse the order the patch code applies props in, run by consecutive run. */
 function reverseAppliedProps(code: string): string {
-  const out: string[] = []
-  let run: string[] = []
-  for (const line of code.split("\n")) {
-    if (line.includes("_$setProp(")) {
-      run.push(line)
-      continue
-    }
-    out.push(...run.reverse(), line)
-    run = []
-  }
-  out.push(...run.reverse())
-  if (!code.includes("_$setProp(")) {
+  // A resolved channel write: `_$setAttr(_el$1, "href", v)`.
+  const writes =
+    /_\$+(setAttr|setDomProp|setBool|setClass|setStyle|setStyleProp|setClassList|setHtml|bindProp)\(/
+  if (!writes.test(code)) {
     throw new Error("self-check corruption is stale: the emitted module applies no props")
   }
-  return out.join("\n")
+
+  /** Reverse every maximal run of consecutive matching units. */
+  const flip = (units: string[]): string[] => {
+    const out: string[] = []
+    let run: string[] = []
+    for (const unit of units) {
+      if (writes.test(unit)) {
+        run.push(unit)
+        continue
+      }
+      out.push(...run.reverse(), unit)
+      run = []
+    }
+    out.push(...run.reverse())
+    return out
+  }
+
+  // Two passes, because a write can sit at two levels now. Inside a fused
+  // effect the writes are consecutive LINES, and reversing the effect as a
+  // whole would not touch them; between statements a live prop's write is
+  // wrapped in the effect the compiler emitted for it, and reversing lines
+  // would not touch THAT. A one-level corruption went quietly inert on one of
+  // the two shapes, which is the way a self-check stops being one.
+  const lines = flip(code.split("\n"))
+
+  const statements: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (!/_\$+renderEffect\(/.test(lines[i])) {
+      statements.push(lines[i])
+      continue
+    }
+    const indent = lines[i].length - lines[i].trimStart().length
+    let end = i
+    while (end < lines.length && lines[end].trimEnd() !== `${" ".repeat(indent)}});`) end++
+    statements.push(lines.slice(i, Math.min(end + 1, lines.length)).join("\n"))
+    i = Math.min(end, lines.length - 1)
+  }
+  return flip(statements).join("\n")
 }
 
 /**
@@ -325,6 +354,14 @@ describe("oracle path integrity", () => {
     //    `createElement` evaluates once at construction. The compiled path
     //    binds them (O4), so the fixture declares the divergence as a win and
     //    the harness asserts the exact DOM the compiled path must produce.
+    //  - ref-writable-binding: `<i ref={box}>` with a writable binding is an
+    //    ASSIGNMENT the compiler emits (B3). A props object carries the
+    //    binding's VALUE and has nothing to assign to, so the oracle's step
+    //    reads an `undefined` box and touches no DOM. Declared as a win.
+    //  - equal-liveness: B1's own falsification procedure, `class={s()}
+    //    id={s()} title={s()}`. Bare reads again, so the oracle freezes at
+    //    construction for the same reason auto-thunked-read does. Declared as
+    //    two wins, one per step.
     //
     // `component-getter-props` and `props-raw-forward` used to be here for the
     // same kind of reason — `createElement` copies the props object, so the
@@ -332,7 +369,12 @@ describe("oracle path integrity", () => {
     // `oracle-known-failures.ts` and skipped by `skipped()`, because their
     // reference module no longer renders the right thing at all rather than
     // merely failing to update.
-    expect(inert).toEqual(["auto-thunked-read", "spread-static-mix"])
+    expect(inert).toEqual([
+      "auto-thunked-read",
+      "equal-liveness",
+      "ref-writable-binding",
+      "spread-static-mix",
+    ])
   }, 60_000)
 
   it("fixtures declaring events actually observe a DOM change", async () => {

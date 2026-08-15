@@ -19,9 +19,12 @@ export const optimality = {
   templates: 1,
   patchCalls: 2,
   // Two independent dep sets joined into one hole and one attribute. The
-  // element carries exactly ONE live prop, and target #4's grouping is for
-  // coalescing several — so a group here would be a `renderEffect` wrapper
-  // around a single write, which is strictly more work than the write.
-  emits: ['"data-both"', "a() + b()"],
-  absent: ["renderEffect("],
+  // element carries exactly ONE live prop, so there is nothing to coalesce —
+  // and the effect around it is not the grouping, it is the write: §3.5 leaves
+  // no `setProp` for a thunk to be handed to, so a proven-live prop owns its
+  // own effect and threads its own prev through the compute's return.
+  emits: ['"data-both"', "a() + b()", "renderEffect("],
+  // A group of one threads a SCALAR previous value, not the record a real
+  // group needs: the accumulator's default object is what a group costs.
+  absent: [" = {}"],
 }

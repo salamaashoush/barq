@@ -84,8 +84,21 @@ struct Group<'a> {
 /// last write to a name wins the way the props object does.
 struct TmpAttr<'a> {
     key: NameId,
+    kind: AttrKind,
     value: TmpAttrValue<'a>,
     span: Span,
+}
+
+/// The instruction the attribute becomes, decided at P1 — §3.5's "every
+/// attribute resolves at compile time to exactly one channel".
+#[derive(Clone, Copy)]
+enum AttrKind {
+    Chan(crate::ir::Chan),
+    /// a delegated expando or an `addEventListener`; P2 picks which
+    Event,
+    /// `bind:x` — resolved into `(property, event)` by the element
+    Bind,
+    Ref,
 }
 
 impl TmpAttr<'_> {
@@ -303,15 +316,17 @@ impl<'a> Lower<'a, '_> {
         let tag_id = self.module.interner.intern_tag(tag);
 
         let ordered = self.ordered_attributes(opening.attributes, inside.in_svg);
+        let input_type = self.literal_type_attribute(&ordered);
         let mut attrs = ArenaVec::with_capacity_in(ordered.len(), &self.allocator);
         let mut dynamic = Vec::new();
         for (order, attr) in ordered.into_iter().enumerate() {
             let order = order as u32;
+            let kind = attr.kind;
             match attr.baked(order) {
                 Some(baked) => attrs.push(baked),
                 None => {
                     let TmpAttrValue::Dynamic(value) = attr.value else { unreachable!() };
-                    dynamic.push((attr.key, value, attr.span, order));
+                    dynamic.push((attr.key, kind, value, attr.span, order));
                 }
             }
         }
@@ -329,14 +344,29 @@ impl<'a> Lower<'a, '_> {
             span,
         );
 
-        for (name, value, span, order) in dynamic {
+        for (name, kind, value, span, order) in dynamic {
+            if matches!(kind, AttrKind::Event)
+                && let Some(index) =
+                    crate::tables::delegated_index(self.module.interner.name(name).text)
+            {
+                self.module.delegated |= 1 << index;
+            }
+            let writable = matches!(kind, AttrKind::Ref) && self.writable_binding(&value);
             let value = build.unit.exprs.push(ExprSrc::Verbatim(value), span, Rx::OPAQUE);
             build.unit.attr_order.push((node, name, order));
-            build.attribute_patches.push(Patch {
-                target: node,
-                span,
-                op: Op::SetOpaque { name, value },
-            });
+            let op = match kind {
+                AttrKind::Chan(chan) => Op::SetOpaque { name, value, chan },
+                AttrKind::Event => Op::SetEvent { event: name, value },
+                AttrKind::Ref => Op::Ref { value, write: writable },
+                AttrKind::Bind => {
+                    let text = self.module.interner.name(name).text;
+                    let (prop, event) = names::bind_channel(text, tag, input_type);
+                    let prop = self.module.interner.intern_name(prop);
+                    let event = self.module.interner.intern_name(event);
+                    Op::Bind { prop, event, value }
+                }
+            };
+            build.attribute_patches.push(Patch { target: node, span, op });
         }
 
         build.queue.push_back(Group { parent: node, children, at: inside });
@@ -360,9 +390,44 @@ impl<'a> Lower<'a, '_> {
             };
             let attribute = attribute.unbox();
             let raw = attribute_name(&attribute.name, self.allocator);
-            let bakeable = names::bakeable(names::normalize(raw), in_svg);
-            let key =
-                self.module.interner.intern_name(names::attr_name(raw, in_svg, self.allocator));
+            // §3.5/§3.12: the channel is decided HERE, from the name plus the
+            // namespace plus the author's override, and never again.
+            let (kind, key) = match names::prefixed(raw) {
+                names::Prefixed::Ref => (AttrKind::Ref, "ref"),
+                // The type is resolved here and never re-derived: `on:` is
+                // verbatim, `onX` is `key.slice(2).toLowerCase()`.
+                names::Prefixed::Event(event) => (AttrKind::Event, event),
+                names::Prefixed::Bind(name) => (AttrKind::Bind, name),
+                names::Prefixed::Chan(name, chan) => (
+                    AttrKind::Chan(chan),
+                    match chan {
+                        crate::ir::Chan::Attr | crate::ir::Chan::Bool => {
+                            names::attr_name(name, in_svg, self.allocator)
+                        }
+                        crate::ir::Chan::StyleProp => names::to_kebab(name, self.allocator),
+                        _ => name,
+                    },
+                ),
+                names::Prefixed::Plain(name) if name.starts_with("on") => (
+                    AttrKind::Event,
+                    self.allocator.alloc_str(&name[2..].to_ascii_lowercase()) as &'a str,
+                ),
+                names::Prefixed::Plain(name) => (
+                    AttrKind::Chan(names::channel_of(names::normalize(name), in_svg)),
+                    names::attr_name(name, in_svg, self.allocator),
+                ),
+            };
+            // Only a plain name or an explicit `attr:` may become template
+            // bytes: every other channel writes something the HTML parser does
+            // not produce.
+            let bakeable = match (kind, names::prefixed(raw)) {
+                (AttrKind::Chan(crate::ir::Chan::Attr), names::Prefixed::Chan(..)) => true,
+                (AttrKind::Chan(_), names::Prefixed::Plain(_)) => {
+                    names::bakeable(names::normalize(raw), in_svg)
+                }
+                _ => false,
+            };
+            let key = self.module.interner.intern_name(key);
             // `None` once the value is not a literal, once the name may not be
             // baked, and once the parser would not hand these bytes back.
             let baked = match &attribute.value {
@@ -373,32 +438,33 @@ impl<'a> Lower<'a, '_> {
                 _ => None,
             };
             let attr = match attribute.value {
-                // A bare attribute is the value `true`. `setElementAttr` writes
-                // `key=""` for it, but an INTERCEPTED name never gets there —
+                // A bare attribute is the value `true`. `setAttr` writes
+                // `key=""` for it, but a channel of its own never gets there —
                 // `classToString(true)` is null, so `<div class/>` REMOVES the
                 // attribute the parser would have created.
                 None if bakeable && !crate::tables::is_intercepted(names::normalize(raw)) => {
                     TmpAttr {
                         key,
+                        kind,
                         value: TmpAttrValue::Baked(SkelAttrValue::Bare),
                         span: attribute.span,
                     }
                 }
                 None => {
                     let value = Expression::new_boolean_literal(attribute.span, true, &self.ast);
-                    TmpAttr { key, value: TmpAttrValue::Dynamic(value), span: attribute.span }
+                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span: attribute.span }
                 }
                 Some(JSXAttributeValue::StringLiteral(literal)) if baked.is_some() => {
                     let text = baked.expect("checked by the guard");
                     let value = SkelAttrValue::Str(self.module.interner.intern_arena_str(text));
-                    TmpAttr { key, value: TmpAttrValue::Baked(value), span: literal.span }
+                    TmpAttr { key, kind, value: TmpAttrValue::Baked(value), span: literal.span }
                 }
                 // A JSX attribute string is not a JS string: backslashes are
                 // literal and character references ARE resolved, by the
                 // transform rather than by the parser. Down the template
                 // channel the HTML parser resolves them; down the patch channel
                 // nothing would, so the reference is resolved here and the
-                // decoded text is what `setProp` is handed — which is what the
+                // decoded text is what the channel is handed — which is what the
                 // un-compiled path passes.
                 Some(JSXAttributeValue::StringLiteral(literal)) if literal.value.contains('&') => {
                     let span = literal.span;
@@ -407,12 +473,12 @@ impl<'a> Lower<'a, '_> {
                             self.allocator.alloc_str(&decoded)
                         });
                     let value = Expression::new_string_literal(span, text, None, &self.ast);
-                    TmpAttr { key, value: TmpAttrValue::Dynamic(value), span }
+                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span }
                 }
                 Some(value) => {
                     let span = value.span();
                     let value = attribute_expression(value, &self.ast);
-                    TmpAttr { key, value: TmpAttrValue::Dynamic(value), span }
+                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span }
                 }
             };
             if let Some(previous) = ordered.iter().position(|entry| entry.key == key) {
@@ -421,6 +487,35 @@ impl<'a> Lower<'a, '_> {
             ordered.push(attr);
         }
         ordered
+    }
+
+    /// `<input type="number">` — the literal the `bind:` channel is resolved
+    /// against. A computed `type` leaves it `None` and the text-input answer
+    /// stands, which is what the un-compiled path would also produce.
+    fn literal_type_attribute(&self, ordered: &[TmpAttr<'a>]) -> Option<&'a str> {
+        ordered.iter().find_map(|attr| {
+            if self.module.interner.name(attr.key).text != "type" {
+                return None;
+            }
+            match attr.value {
+                TmpAttrValue::Baked(SkelAttrValue::Str(id)) => Some(self.module.interner.str(id)),
+                _ => None,
+            }
+        })
+    }
+
+    /// B3: `<div ref={el}>` with a writable binding is an ASSIGNMENT. A `const`,
+    /// an import, a member expression or a call is not, and takes the
+    /// registration path instead.
+    fn writable_binding(&self, expression: &Expression<'a>) -> bool {
+        use oxc::semantic::SymbolFlags;
+        let Some(symbol) = crate::analysis::symbol_of(&self.module.scoping, expression) else {
+            return false;
+        };
+        let flags = self.module.scoping.symbol_flags(symbol);
+        !flags.contains(SymbolFlags::ConstVariable)
+            && (flags.contains(SymbolFlags::BlockScopedVariable)
+                || flags.contains(SymbolFlags::FunctionScopedVariable))
     }
 
     fn children(&mut self, build: &mut Build<'a>, group: Group<'a>) -> (NodeId, NodeId, u32) {

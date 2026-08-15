@@ -353,10 +353,20 @@ describe("barqVitePlugin", () => {
     });
 
     test("optimize 0 turns every optimisation off", () => {
+      // `fuse` off means one effect per live prop, not none: CODESIGN §3.5
+      // removed the `setProp` dispatcher a thunk used to be handed to, so the
+      // effect around a proven-live write belongs to the compiler at every
+      // level. What the level still decides is whether two props SHARE one.
       const reference = build({ optimize: 0 });
-      expect(reference).not.toContain("renderEffect");
-      expect(reference).toContain(`"id", () => n()`);
-      expect(reference).toContain(`"title", () => n()`);
+      expect(reference.match(/_\$renderEffect\(/g)).toHaveLength(2);
+      expect(build().match(/_\$renderEffect\(/g)).toHaveLength(1);
+      // Each is a fused record of ONE, so its previous value is a scalar and
+      // the compute returns it directly. The optimised build merges the two
+      // into one record with positional fields.
+      expect(reference).toContain(`if (_v$ !== _p$) _$setAttr(_el$1, "id", _v$);`);
+      expect(reference).toContain(`if (_v$ !== _p$) _$setAttr(_el$1, "title", _v$);`);
+      expect(build()).toContain(`if (_v$.a !== _p$.a) _$setAttr(_el$1, "id", _v$.a);`);
+      expect(build()).toContain(`if (_v$.b !== _p$.b) _$setAttr(_el$1, "title", _v$.b);`);
     });
 
     test("one pass can be flipped against an otherwise optimised build", () => {

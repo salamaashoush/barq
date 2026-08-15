@@ -20,12 +20,12 @@ export const optimality = {
   milestone: 5,
   templates: 1,
   patchCalls: 2,
-  // `ref` is a runtime channel, not an attribute: both the object form and the
-  // callback form are handed to `setProp`, which is where `dom.ts` applies them
-  // exactly once. Baking either into the template writes the string
-  // `[object Object]` into the markup and never resolves the ref at all.
-  emits: ['"ref", box', '"ref", (el: HTMLElement) =>'],
-  absent: ['ref="'],
+  // §3.5/B3: `ref` is a CHANNEL of its own, not a prop — the name never reaches
+  // the runtime, and neither form is an attribute write. Baking either into the
+  // template writes the string `[object Object]` into the markup and never
+  // resolves the ref at all.
+  emits: [", box)", ", (el: HTMLElement) =>"],
+  absent: ['ref="', '"ref"'],
 }
 
 /**

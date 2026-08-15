@@ -1403,7 +1403,7 @@ mod tests {
         .code;
         assert!(code.contains("_$insert(_s$, _el$1, item.n)"), "{code}");
         assert!(!code.contains("() => item.n"), "{code}");
-        assert!(code.contains("const row = (_s$, item) =>"), "{code}");
+        assert!(code.contains("const row = _$block((_s$, item) =>"), "{code}");
     }
 
     /// O3 is the one documented divergence M3 leaves standing, so it is not

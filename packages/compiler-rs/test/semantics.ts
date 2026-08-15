@@ -224,21 +224,68 @@ export function documentedStatus(doc = readFileSync(SEMANTICS_DOC, "utf8")): Map
   const out = new Map<string, string>()
   const lines = doc.split("\n")
   let current: string | null = null
+  let section: string | null = null
+
+  /** The first keyword wins; a `VIOLATED`/`PLANNED` anywhere on the line beats it. */
+  const record = (rules: string[], line: string, word: string): void => {
+    const weaker = /`(VIOLATED|PLANNED)`/.exec(line)
+    for (const rule of rules) out.set(rule, weaker ? weaker[1]! : word)
+  }
+
+  /** `O3.1–O3.3` and `O3.1–3` are one cell naming three rules. */
+  const expand = (text: string): string[] | null => {
+    const range = /^([A-Z]\d+)\.(\d+)\s*–\s*(?:[A-Z]\d+\.)?(\d+)$/.exec(text.trim())
+    if (range) {
+      const ids: string[] = []
+      for (let n = Number(range[2]); n <= Number(range[3]); n++) ids.push(`${range[1]}.${n}`)
+      return ids
+    }
+    return /^[A-Z]\d+(\.\d+)?$/.test(text.trim()) ? [text.trim()] : null
+  }
+
   for (const line of lines) {
     const heading = /^###\s+([A-Z]\d+(?:\.\d+)?)\s+—/.exec(line)
     if (heading) {
-      current = heading[1]
+      current = heading[1]!
+      section = heading[1]!
       continue
     }
-    const sub = /^\*\*([A-Z]\d+\.\d+)\.\s/.exec(line)
+    // Both spellings a sub-rule is written in: `**O3.6.** …` and
+    // `**O3.7 — the leak invariant.**`. Only the first was recognised, so O3.7
+    // and E2.2 — the two rules M5 moved — had no prose status at all, and both
+    // consistency tests below `continue`d past the gap in silence.
+    const sub = /^\*\*([A-Z]\d+\.\d+)(?:\.|\s+—)\s/.exec(line)
     if (sub) {
-      current = sub[1]
+      current = sub[1]!
       continue
     }
-    const status = /^\*\*Status\.\*\*\s*`?([A-Z]+)`?/.exec(line)
-    if (status === null || current === null) continue
-    const weaker = /`(VIOLATED|PLANNED)`/.exec(line)
-    out.set(current, weaker ? weaker[1] : status[1])
+    // A sub-rule whose status is its own paragraph inside the section's
+    // `**Status.**` block — `O3.7 \`HOLDS\` since M5.`, `O3.6 \`PARTIAL\`.` —
+    // which is how every multi-sub-rule section in the document writes them.
+    const own =
+      /^\*{0,2}([A-Z]\d+\.\d+(?:\s*–\s*(?:[A-Z]\d+\.)?\d+)?)\*{0,2}\s+`([A-Z][A-Z, ]*)`/.exec(line)
+    if (own) {
+      const rules = expand(own[1]!)
+      if (rules !== null) record(rules, line, own[2]!.split(",")[0]!.trim())
+      continue
+    }
+    const status = /^\*\*Status\.\*\*\s*(.*)$/.exec(line)
+    if (status === null) continue
+    // `**Status.** O3.1–O3.3 \`HOLDS\`` names the rules it is about; anything
+    // else is about whatever heading or sub-rule marker preceded it.
+    const named = /^([A-Z]\d+\.\d+\s*–\s*(?:[A-Z]\d+\.)?\d+|[A-Z]\d+(?:\.\d+)?)\s+`/.exec(
+      status[1]!,
+    )
+    const word = /`?([A-Z]+)/.exec(named ? status[1]!.slice(named[1]!.length).trim() : status[1]!)
+    if (word === null) continue
+    // An unnamed `**Status.**` is the SECTION's, and the document writes it
+    // after the last sub-rule marker — so it is both. Recording only the marker
+    // left `C5` unreadable while `C5.2` carried the section's word.
+    const rules = named
+      ? expand(named[1]!)
+      : [...new Set([current, section].filter((id): id is string => id !== null))]
+    if (rules === null || rules.length === 0) continue
+    record(rules, line, word[1]!)
     current = null
   }
   return out
@@ -304,6 +351,9 @@ export const STATUS_LETTER: Readonly<Record<string, string>> = Object.freeze({
   VIOLATED: "V",
   PLANNED: "P",
   PARTIAL: "P",
+  // O3.4's word. `I/U` is the cell it has carried since M2 — implemented, and
+  // unexercised because nothing in the runtime calls `abortSignal` yet.
+  IMPLEMENTED: "I",
   UNOBSERVABLE: "U",
 })
 

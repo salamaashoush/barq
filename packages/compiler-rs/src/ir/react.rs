@@ -93,6 +93,21 @@ pub enum Shape {
     HandlerTuple,
 }
 
+impl Shape {
+    /// Whether the value this expression evaluates to could be a FUNCTION.
+    ///
+    /// A resolved channel write is unconditional, so it may only be emitted for
+    /// a value that is a value. `React::Static` says the expression does not
+    /// change; it does not say the thing it evaluates to is not a Cell —
+    /// `class={() => (count(), "x")}` reads nothing tracked, so it is static and
+    /// callable at once, and the un-compiled path unwraps it. `Unknown` is here
+    /// because "the analysis could not type it" is not "it is not a function".
+    #[inline]
+    pub fn may_be_callable(self) -> bool {
+        matches!(self, Shape::Accessor | Shape::Handler | Shape::HandlerTuple | Shape::Unknown)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Thunk {
     /// emit as-is

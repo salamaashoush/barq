@@ -1,6 +1,80 @@
 use oxc::allocator::Allocator;
 
+use crate::ir::Chan;
+
 pub use crate::tables::{is_dom_prop, is_svg_tag};
+
+/// What a `namespace:name` attribute means. The prefix is the author overriding
+/// a decision the compiler would otherwise take from the name (§3.12), and it is
+/// the whole custom-element story: a name the compiler cannot classify has no
+/// correct default, so the author gets to say.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Prefixed<'a> {
+    /// no prefix, or one that names nothing this compiler knows
+    Plain(&'a str),
+    /// `prop:` / `attr:` / `bool:` / `style:` — a forced value channel
+    Chan(&'a str, Chan),
+    /// `on:` — a verbatim event name, with NO lowercasing
+    Event(&'a str),
+    /// `bind:x` — the two-way channel; `bind:this` is a ref
+    Bind(&'a str),
+    Ref,
+}
+
+/// `dom.ts::setProp`'s prefix switch, in Rust. Both paths have to accept the
+/// same source or the differential against the un-compiled oracle is measuring
+/// two languages.
+pub fn prefixed(name: &str) -> Prefixed<'_> {
+    if name == "ref" {
+        return Prefixed::Ref;
+    }
+    let Some(colon) = name.find(':') else { return Prefixed::Plain(name) };
+    if colon == 0 {
+        return Prefixed::Plain(name);
+    }
+    let rest = &name[colon + 1..];
+    match &name[..colon] {
+        "prop" => Prefixed::Chan(rest, Chan::Prop),
+        "attr" => Prefixed::Chan(rest, Chan::Attr),
+        "bool" => Prefixed::Chan(rest, Chan::Bool),
+        "style" => Prefixed::Chan(rest, Chan::StyleProp),
+        "on" => Prefixed::Event(rest),
+        "bind" if rest == "this" => Prefixed::Ref,
+        "bind" => Prefixed::Bind(rest),
+        // `xlink:href` and friends: a name with a colon the runtime writes
+        // verbatim, exactly as it does today.
+        _ => Prefixed::Plain(name),
+    }
+}
+
+/// `dom.ts::channelOf`, in Rust. The one question the compiled path answers here
+/// instead of at run time.
+pub fn channel_of(name: &str, is_svg: bool) -> Chan {
+    match name {
+        "class" | "className" => Chan::Class,
+        "style" => Chan::Style,
+        "classList" => Chan::ClassList,
+        "dangerouslySetInnerHTML" => Chan::Html,
+        _ if !is_svg && is_dom_prop(name) => Chan::Prop,
+        _ => Chan::Attr,
+    }
+}
+
+/// `dom.ts::bindChannelOf`. `<input type="number">` writes `valueAsNumber` and
+/// reports on `input`; a checkbox writes `checked` and reports on `change`.
+pub fn bind_channel<'a>(name: &'a str, tag: &str, input_type: Option<&str>) -> (&'a str, &'a str) {
+    if name != "value" {
+        return (name, if name == "open" { "toggle" } else { "change" });
+    }
+    if tag == "select" {
+        return ("value", "change");
+    }
+    match input_type {
+        Some("checkbox") | Some("radio") => ("checked", "change"),
+        Some("number") | Some("range") => ("valueAsNumber", "input"),
+        _ => ("value", "input"),
+    }
+}
 
 /// `setElementAttr`'s first two lines (`dom.ts:474`).
 pub fn normalize(name: &str) -> &str {

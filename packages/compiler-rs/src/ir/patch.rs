@@ -1,6 +1,6 @@
 use oxc::span::Span;
 
-use super::{ExprId, HoistId, NameId, NodeId, PartRange, RegionId, SlotId, StrId};
+use super::{ExprId, HoistId, NameId, NodeId, RegionId, SlotId};
 
 /// A flat, `Copy`, document-ordered instruction. Holds no AST — only `ExprId`s —
 /// and names no codegen target, which is what lets one IR drive both backends.
@@ -29,25 +29,25 @@ pub enum Op {
         chan: Chan,
         diff: Diff,
     },
-    /// `React::Opaque`. Emit the value UNWRAPPED into setProp so the runtime makes
-    /// exactly the decision the un-compiled oracle makes.
+    /// `React::Opaque`. The CHANNEL is resolved, but the value's LIVENESS is not
+    /// — §3.13 keeps that at run time — so the value goes to `bindProp` beside
+    /// the channel the compiler picked.
     SetOpaque {
         name: NameId,
         value: ExprId,
-    },
-
-    SetClass {
-        base: Option<StrId>,
-        parts: PartRange,
-        live: bool,
-    },
-    SetStyle {
-        prop: NameId,
-        value: ExprId,
-        live: bool,
+        chan: Chan,
     },
 
     // ── events ────────────────────────────────────────────────────────────
+    /// An event whose TYPE the compiler resolved — `onClick` → `click`,
+    /// `on:my-event` → `my-event`, verbatim and with no lowercasing (§3.6) —
+    /// but whose value it could not prove is a handler. `bindEvent` makes the
+    /// delegated/direct choice the compiler already made and applies the
+    /// runtime's own `isEventHandlerValue` test to the value.
+    SetEvent {
+        event: NameId,
+        value: ExprId,
+    },
     /// `el.$$click = h`, or `el.$$click = [h, data]` for the bound-tuple form.
     /// THE TUPLE LIVES IN `$$<type>`. There is no `$$<type>Data` in this runtime.
     Delegate {
@@ -62,18 +62,25 @@ pub enum Op {
     },
 
     // ── misc element ──────────────────────────────────────────────────────
+    /// §3.5: `ref` is not a prop. `write` is true when the value is a WRITABLE
+    /// binding, which lowers to `binding = _n1` — today's `setProp(el, "ref", el)`
+    /// reads the variable and never writes it.
     Ref {
+        value: ExprId,
+        write: bool,
+    },
+    /// §3.10's channel half. `prop` is the property a user edit lands on and
+    /// `event` the one that reports it, both resolved from the tag and the
+    /// `type` attribute at compile time. Selection and focus preservation are M7.
+    Bind {
+        prop: NameId,
+        event: NameId,
         value: ExprId,
     },
     Spread {
         value: ExprId,
         live: bool,
     },
-    SetHtml {
-        value: ExprId,
-        live: bool,
-    },
-
     // ── children ──────────────────────────────────────────────────────────
     Insert {
         slot: SlotId,
@@ -100,14 +107,45 @@ pub enum Op {
     },
 }
 
+/// The channel an attribute resolves to, decided ONCE at P1 from `NameFlags`
+/// plus the element's namespace plus the `prop:` / `attr:` / `bool:` overrides.
+///
+/// `CODESIGN.md` §3.5: there is no `setProp` dispatcher on the compiled path.
+/// Justified on CAPABILITY — custom elements, the `bind:` family, class and
+/// style joining the fused record at all — and never on speed: §0.4 measured the
+/// dispatch removal at 0-8% against the 10-25% three designs claimed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Chan {
     /// setAttribute / removeAttribute
     Attr,
-    /// `DOM_PROPS` exception. These may NEVER be folded into skeleton HTML: the
-    /// oracle writes the *property*; template HTML would only set the default
-    /// attribute, which diverges on a dirty form field.
+    /// `DOM_PROPS` exception, and everything `prop:` forces. These may NEVER be
+    /// folded into skeleton HTML: the oracle writes the *property*; template
+    /// HTML would only set the default attribute, which diverges on a dirty form
+    /// field.
     Prop,
+    /// `bool:` — presence, decided by truthiness rather than by the value's type.
+    Bool,
+    /// the whole `class` attribute
+    Class,
+    /// the whole `style` attribute
+    Style,
+    /// one css declaration; the name is the kebab-cased property
+    StyleProp,
+    ClassList,
+    /// `dangerouslySetInnerHTML={{ __html }}`
+    Html,
+}
+
+impl Chan {
+    /// Whether the channel's APPLIED representation differs from the value it
+    /// was handed — the normalised class string, the css map, the toggled key
+    /// set — so the record slot must hold what the channel RETURNED rather than
+    /// what the compute produced. B2: the compiler owns that slot, which is what
+    /// lets these join the fused record instead of being excluded from it.
+    #[inline]
+    pub fn threads_prev(self) -> bool {
+        matches!(self, Chan::Class | Chan::Style | Chan::ClassList | Chan::Html)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -117,6 +155,11 @@ pub enum Diff {
     Identity,
     /// value may be an object mutated in place — always write
     Always,
+    /// The channel is handed the previous APPLIED value and returns the new one,
+    /// which is written back into the record: `v.a = setClass(el, "class", v.a,
+    /// p.a)`. The guard lives inside the channel because only the channel knows
+    /// what "unchanged" means for a class map or a css object.
+    Thread,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -198,11 +241,11 @@ impl Op {
             Op::SetOnce { value, .. }
             | Op::SetLive { value, .. }
             | Op::SetOpaque { value, .. }
-            | Op::SetStyle { value, .. }
-            | Op::Ref { value }
+            | Op::Ref { value, .. }
+            | Op::Bind { value, .. }
             | Op::Spread { value, .. }
-            | Op::SetHtml { value, .. }
             | Op::Insert { value, .. } => Some(value),
+            Op::SetEvent { value, .. } => Some(value),
             Op::Delegate { handler: HandlerRef::Inline(value), .. }
             | Op::Listen { handler: HandlerRef::Inline(value), .. } => Some(value),
             _ => None,
@@ -272,8 +315,11 @@ mod tests {
 
     #[test]
     fn patches_stay_copy_so_a_pass_is_a_linear_scan() {
-        let patch =
-            Patch { target: 0, span: Span::default(), op: Op::SetOpaque { name: 1, value: 2 } };
+        let patch = Patch {
+            target: 0,
+            span: Span::default(),
+            op: Op::SetOpaque { name: 1, value: 2, chan: Chan::Attr },
+        };
         let copied = patch;
         assert_eq!(copied.target, patch.target);
     }

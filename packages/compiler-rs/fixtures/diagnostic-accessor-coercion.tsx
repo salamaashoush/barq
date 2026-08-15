@@ -42,12 +42,13 @@ export const optimality = {
   templates: 1,
   patchCalls: 3,
   // Every hole takes the accessor UNWRAPPED, and no thunk is built anywhere.
-  // The first two are the fine-grained path: the runtime treats a function value
-  // as reactive in both positions. The third is the bug — nothing in the
+  // The first two are the fine-grained path: the ATTRIBUTE is now live by the
+  // compiler's own effect — with the channel resolved there is no `setProp` left
+  // to hand a function to — and the child hole is still the runtime's. The third is the bug — nothing in the
   // template literal is a tracked READ, so the hole is static and the string is
   // applied once. Same emit shape, opposite meaning; only BARQ001 tells them
   // apart.
-  emits: ['"id", count)', "count);", "`total: ${count}`);"],
+  emits: ['"id"', "count);", "`total: ${count}`);"],
   // No hole took a thunk: every patch argument is the expression itself.
   absent: [", () =>"],
 };

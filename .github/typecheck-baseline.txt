@@ -6,69 +6,8 @@
 # reproducing — so the list can only shrink, never quietly grow.
 #
 # Regenerate with .github/scripts/typecheck.sh --write
-#
-# The `packages/compiler-rs fixtures/…` rows are gaps in @barqjs/core's JSX TYPE
-# definitions that the fixture corpus surfaced when compiler-rs came under the
-# gate — MathML intrinsics, an index signature for custom elements,
-# `dangerouslySetInnerHTML`, and numeric values in a style object. All four are
-# supported at RUNTIME and proved so by the differential harness; it is the
-# declarations that are missing. Fixing them belongs to @barqjs/core.
-#
-# The M5 shape catalogue added ONE row — a SECOND occurrence of the
-# `dangerouslySetInnerHTML` gap, from the fixture that pairs it with children.
-# Every other new fixture typechecks clean, and the ones that did not (`tabindex`
-# for `tabIndex`, a `HTMLBElement` that does not exist, a bound-handler tuple
-# whose first element took the wrong parameters, a bare value on `Show.when`)
-# were errors in the fixtures and were fixed there rather than baselined. That
-# row is gone again: the M6 review declared `dangerouslySetInnerHTML` on
-# `JSX.HTMLAttributes`, which is the source fix, and BOTH occurrences came off.
-#
-# The M5 review added NO row. Two entries moved LINE only — a doc comment above
-# `inner-html-with-children`'s JSX and two new tests above `components.test.ts`'s
-# — and no entry was struck off.
-#
-# M6 struck SIX off: the four `packages/compiler src/transforms/template-codegen.ts`
-# rows went with the Babel plugin, and the two `dangerouslySetInnerHTML` rows went
-# when the declaration landed. The list has still only ever shrunk.
-#
-# M0 (the oracle) struck one more off and moved three. `packages/core
-# src/control-flow-parity.test.ts(53,22)` went when `ForProps` gained its third
-# arm: `keyed={fn}` hands the row through a SIGNAL (`map.ts:53-57`), and the
-# type said it handed the item. That was a wrong declaration, not a wrong test,
-# and the four `control-flow-for-keyed-*` fixture errors the M5 keyed work
-# surfaced came off with it once the fixtures annotated their callbacks. The
-# three `rendering.test.ts` rows moved LINE only.
-#
-# ─────────────────────────────────────────────────────────────────────────────
-# M3 — the calling convention. 268 rows added, and they are TYPE DEBT
-# from one deliberate change, not a weakening.
-#
-# By package: compiler-rs 108, core 73, extra 9, kitchen-sink 80.
-# By code:    TS2322 206, TS7006 49, TS2349 6, TS2345 4, TS2769 3, TS2554 2.
-#
-# Two causes and no third:
-#
-#   TS2322 "Type 'Text' is not assignable to 'Slot<Child>'" — `Slot<T>` doing
-#   exactly what CODESIGN §3.2 C4 says it must. A renderable slot takes a Cell
-#   or a Block; an already-BUILT value in one is the Provider bug written at the
-#   type level, so it is an error at the write site. Every row is a call site
-#   still written the pre-M3 way. The runtime tolerates them (the suites are
-#   green); the type does not, and widening `Slot<T>` would delete the check C4
-#   exists for.
-#
-#   TS7006 "Parameter 'item' implicitly has an 'any' type" — a slot callback
-#   whose parameters shifted when the scope became the first argument.
-#
-# Owed at: M9 for packages/core's and packages/compiler-rs's own call sites,
-# with the `createElement`/`jsx` retirement that CODESIGN §4.1 schedules and
-# that these call sites are written against; M8 for packages/extra and
-# packages/kitchen-sink, with the migration §8 schedules. packages/testing was
-# NOT baselined — its six errors were the same class and were fixed at the
-# source (`Scope` widened to `Scope | null`, which is what `Block` declares).
-#
-# The list can still only shrink: the gate fails on a new error AND on a row
-# here that stops reproducing.
-# ─────────────────────────────────────────────────────────────────────────────
+packages/compiler-rs fixtures/attribute-namespaces.tsx(24,7): error TS2339
+packages/compiler-rs fixtures/bind-value-channel.tsx(19,26): error TS2322
 packages/compiler-rs fixtures/class-list-prop.tsx(16,23): error TS2322
 packages/compiler-rs fixtures/component-child-of-element.tsx(15,8): error TS2322
 packages/compiler-rs fixtures/component-forwarded-handler-tuple.tsx(41,24): error TS2349
@@ -117,14 +56,20 @@ packages/compiler-rs fixtures/control-flow-nested.tsx(18,14): error TS2322
 packages/compiler-rs fixtures/control-flow-repeat.tsx(8,35): error TS7006
 packages/compiler-rs fixtures/control-flow-repeat.tsx(8,8): error TS2322
 packages/compiler-rs fixtures/control-flow-reveal.tsx(14,8): error TS2322
+packages/compiler-rs fixtures/control-flow-show-cleanup-body.tsx(37,8): error TS2322
 packages/compiler-rs fixtures/control-flow-show-eager-children.tsx(15,8): error TS2322
 packages/compiler-rs fixtures/control-flow-show-eager-static-body.tsx(28,6): error TS2322
 packages/compiler-rs fixtures/control-flow-show-fragment-body.tsx(24,8): error TS2322
 packages/compiler-rs fixtures/control-flow-show-static-body.tsx(23,6): error TS2322
+packages/compiler-rs fixtures/control-flow-show-static-key.tsx(31,8): error TS2322
+packages/compiler-rs fixtures/control-flow-show-static-key.tsx(34,8): error TS2322
 packages/compiler-rs fixtures/control-flow-show.tsx(8,8): error TS2322
 packages/compiler-rs fixtures/control-flow-switch-match.tsx(10,10): error TS2322
 packages/compiler-rs fixtures/control-flow-switch-match.tsx(8,8): error TS2322
 packages/compiler-rs fixtures/control-flow-switch-match.tsx(9,10): error TS2322
+packages/compiler-rs fixtures/control-flow-switch-static-key.tsx(22,8): error TS2322
+packages/compiler-rs fixtures/control-flow-switch-static-key.tsx(23,10): error TS2322
+packages/compiler-rs fixtures/control-flow-switch-static-key.tsx(24,10): error TS2322
 packages/compiler-rs fixtures/custom-elements.tsx(10,31): error TS2339
 packages/compiler-rs fixtures/custom-elements.tsx(10,7): error TS2339
 packages/compiler-rs fixtures/custom-elements.tsx(8,7): error TS2339
@@ -137,6 +82,41 @@ packages/compiler-rs fixtures/flow-prop-eta-boundary.tsx(41,8): error TS2322
 packages/compiler-rs fixtures/flow-prop-eta-boundary.tsx(42,8): error TS2322
 packages/compiler-rs fixtures/for-each-local-function.tsx(16,8): error TS2322
 packages/compiler-rs fixtures/for-unkeyed-rows.tsx(15,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-await-suspense.tsx(26,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-await-suspense.tsx(27,10): error TS2322
+packages/compiler-rs fixtures/l4/c7-dynamic.tsx(20,6): error TS2322
+packages/compiler-rs fixtures/l4/c7-each-fallback.tsx(30,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-each-fallback.tsx(39,11): error TS7006
+packages/compiler-rs fixtures/l4/c7-error-boundary-fallback.tsx(29,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-error-boundary.tsx(26,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-error-boundary.tsx(27,20): error TS7006
+packages/compiler-rs fixtures/l4/c7-error-boundary.tsx(27,27): error TS7006
+packages/compiler-rs fixtures/l4/c7-loading-errored.tsx(21,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-loading-errored.tsx(22,10): error TS2322
+packages/compiler-rs fixtures/l4/c7-loading-errored.tsx(23,22): error TS7006
+packages/compiler-rs fixtures/l4/c7-loading-errored.tsx(23,29): error TS7006
+packages/compiler-rs fixtures/l4/c7-portal.tsx(19,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-provider.tsx(26,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-repeat.tsx(17,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-repeat.tsx(18,11): error TS7006
+packages/compiler-rs fixtures/l4/c7-reveal.tsx(19,8): error TS2322
+packages/compiler-rs fixtures/l4/c7-reveal.tsx(20,10): error TS2322
+packages/compiler-rs fixtures/l4/mm-branch-flip.tsx(19,6): error TS2322
+packages/compiler-rs fixtures/l4/mm-branch-key-stable.tsx(25,8): error TS2322
+packages/compiler-rs fixtures/l4/mm-branch-nonkeyed-truthy.tsx(26,8): error TS2322
+packages/compiler-rs fixtures/l4/mm-branch-nonkeyed-truthy.tsx(27,11): error TS7006
+packages/compiler-rs fixtures/l4/mm-index-row-stable.tsx(17,8): error TS2322
+packages/compiler-rs fixtures/l4/mm-index-row-stable.tsx(18,11): error TS7006
+packages/compiler-rs fixtures/l4/mm-index-row-stable.tsx(18,17): error TS7006
+packages/compiler-rs fixtures/l4/mm-keyed-grow-shrink.tsx(30,8): error TS2322
+packages/compiler-rs fixtures/l4/mm-keyed-grow-shrink.tsx(31,11): error TS7006
+packages/compiler-rs fixtures/l4/mm-keyed-move.tsx(35,8): error TS2322
+packages/compiler-rs fixtures/l4/mm-keyed-move.tsx(36,11): error TS7006
+packages/compiler-rs fixtures/l4/mm-nested-branch.tsx(24,8): error TS2322
+packages/compiler-rs fixtures/l4/mm-nested-branch.tsx(29,16): error TS2322
+packages/compiler-rs fixtures/l4/mm-switch-arm.tsx(17,6): error TS2322
+packages/compiler-rs fixtures/l4/mm-switch-arm.tsx(24,8): error TS2322
+packages/compiler-rs fixtures/l4/mm-switch-arm.tsx(34,8): error TS2322
 packages/compiler-rs fixtures/mathml.tsx(10,7): error TS2339
 packages/compiler-rs fixtures/mathml.tsx(4,7): error TS2339
 packages/compiler-rs fixtures/mathml.tsx(5,9): error TS2339
@@ -183,6 +163,13 @@ packages/compiler-rs fixtures/semantics/sem-err-fallback-reads-context.tsx(53,6)
 packages/compiler-rs fixtures/semantics/sem-err-fallback-reads-context.tsx(54,8): error TS2322
 packages/compiler-rs fixtures/semantics/sem-err-fallback-reads-context.tsx(61,6): error TS2322
 packages/compiler-rs fixtures/semantics/sem-err-fallback-reads-context.tsx(62,15): error TS2322
+packages/compiler-rs fixtures/semantics/sem-err-handler-throw.tsx(56,11): error TS2322
+packages/compiler-rs fixtures/semantics/sem-err-handler-throw.tsx(60,11): error TS2322
+packages/compiler-rs fixtures/semantics/sem-err-handler-throw.tsx(65,6): error TS2322
+packages/compiler-rs fixtures/semantics/sem-err-handler-throw.tsx(69,12): error TS2322
+packages/compiler-rs fixtures/semantics/sem-props-cast-keeps-the-brand.tsx(50,75): error TS1360
+packages/compiler-rs fixtures/semantics/sem-props-cast-keeps-the-brand.tsx(52,28): error TS2322
+packages/compiler-rs fixtures/semantics/sem-react-apply-is-untracked.tsx(58,34): error TS2322
 packages/compiler-rs fixtures/semantics/sem-testing-wrapper-eager.tsx(50,11): error TS2322
 packages/compiler-rs fixtures/semantics/sem-testing-wrapper-eager.tsx(75,38): error TS2322
 packages/compiler-rs fixtures/style-object.tsx(8,13): error TS2322
@@ -191,6 +178,8 @@ packages/compiler-rs fixtures/switch-match-component-bodies.tsx(25,10): error TS
 packages/compiler-rs fixtures/switch-match-component-bodies.tsx(26,10): error TS2322
 packages/compiler-rs fixtures/table-rows.tsx(29,10): error TS2322
 packages/compiler-rs fixtures/table-rows.tsx(30,13): error TS7006
+packages/compiler-rs test/classbits.bench.ts(187,5): error TS2345
+packages/compiler-rs test/classbits.bench.ts(26,9): error TS2339
 packages/core node_modules/reactive-framework-test-suite/src/behaviorDifferences.ts(54,11): error TS6133
 packages/core node_modules/reactive-framework-test-suite/src/computedEval.ts(344,9): error TS6133
 packages/core node_modules/reactive-framework-test-suite/src/cycleDetection.ts(3,1): error TS6133
@@ -235,34 +224,34 @@ packages/core src/control-flow-parity.test.ts(107,9): error TS2322
 packages/core src/control-flow-parity.test.ts(108,9): error TS2322
 packages/core src/control-flow-parity.test.ts(130,9): error TS2322
 packages/core src/control-flow-parity.test.ts(26,9): error TS2322
-packages/core src/dom.test.ts(169,24): error TS2769
+packages/core src/dom.test.ts(170,24): error TS2769
 packages/core src/reactivity-fixes.test.ts(136,20): error TS2345
-packages/core src/rendering.test.ts(112,31): error TS7006
-packages/core src/rendering.test.ts(143,31): error TS7006
-packages/core src/rendering.test.ts(240,7): error TS2322
+packages/core src/rendering.test.ts(113,31): error TS7006
+packages/core src/rendering.test.ts(144,31): error TS7006
 packages/core src/rendering.test.ts(241,7): error TS2322
-packages/core src/rendering.test.ts(242,31): error TS2769
-packages/core src/rendering.test.ts(301,5): error TS2349
-packages/core src/rendering.test.ts(320,9): error TS2322
+packages/core src/rendering.test.ts(242,7): error TS2322
+packages/core src/rendering.test.ts(243,31): error TS2769
+packages/core src/rendering.test.ts(302,5): error TS2349
 packages/core src/rendering.test.ts(321,9): error TS2322
-packages/core src/rendering.test.ts(347,11): error TS2322
-packages/core src/rendering.test.ts(575,7): error TS2322
-packages/core src/rendering.test.ts(611,7): error TS2322
+packages/core src/rendering.test.ts(322,9): error TS2322
+packages/core src/rendering.test.ts(348,11): error TS2322
+packages/core src/rendering.test.ts(576,7): error TS2322
 packages/core src/rendering.test.ts(612,7): error TS2322
-packages/core src/rendering.test.ts(643,7): error TS2322
-packages/core src/rendering.test.ts(685,39): error TS7006
-packages/core src/rendering.test.ts(83,31): error TS7006
-packages/core src/rendering.test.ts(888,24): error TS2322
-packages/core src/rendering.test.ts(934,28): error TS2769
+packages/core src/rendering.test.ts(613,7): error TS2322
+packages/core src/rendering.test.ts(644,7): error TS2322
+packages/core src/rendering.test.ts(691,39): error TS7006
+packages/core src/rendering.test.ts(84,31): error TS7006
+packages/core src/rendering.test.ts(894,24): error TS2322
+packages/core src/rendering.test.ts(940,28): error TS2769
 packages/core src/reveal.test.ts(102,13): error TS2322
 packages/core src/reveal.test.ts(54,9): error TS2322
 packages/core src/reveal.test.ts(94,9): error TS2322
 packages/core src/reveal.test.ts(95,9): error TS2322
 packages/core src/reveal.test.ts(96,9): error TS2322
 packages/core src/reveal.test.ts(98,13): error TS2322
-packages/core src/scope.test.ts(287,9): error TS2345
-packages/core src/scope.test.ts(383,29): error TS2345
-packages/core src/scope.test.ts(457,7): error TS2345
+packages/core src/scope.test.ts(346,9): error TS2345
+packages/core src/scope.test.ts(442,29): error TS2345
+packages/core src/scope.test.ts(516,7): error TS2345
 packages/core src/server.test.ts(151,11): error TS2322
 packages/core src/server.test.ts(215,11): error TS2322
 packages/core src/server.test.ts(65,9): error TS2322
@@ -275,13 +264,13 @@ packages/core src/ssr.test.ts(474,58): error TS2322
 packages/core src/ssr.test.ts(498,51): error TS7006
 packages/core src/ssr.test.ts(505,20): error TS7006
 packages/core src/ssr.test.ts(515,54): error TS7006
-packages/core src/ssr.test.ts(542,36): error TS2322
-packages/core src/ssr.test.ts(546,24): error TS7006
-packages/core src/ssr.test.ts(546,28): error TS7006
-packages/core src/ssr.test.ts(546,34): error TS7006
-packages/core src/ssr.test.ts(563,30): error TS2322
-packages/core src/ssr.test.ts(567,46): error TS2322
-packages/core src/ssr.test.ts(575,13): error TS2322
+packages/core src/ssr.test.ts(541,36): error TS2322
+packages/core src/ssr.test.ts(545,24): error TS7006
+packages/core src/ssr.test.ts(545,28): error TS7006
+packages/core src/ssr.test.ts(545,34): error TS7006
+packages/core src/ssr.test.ts(562,30): error TS2322
+packages/core src/ssr.test.ts(566,46): error TS2322
+packages/core src/ssr.test.ts(574,13): error TS2322
 packages/core src/store.test.ts(349,36): error TS2769
 packages/core src/store.test.ts(732,9): error TS18046
 packages/core src/store.test.ts(972,7): error TS2578

@@ -51,5 +51,5 @@ export const optimality = {
   target: 1,
   milestone: 3,
   templates: 1,
-  emits: ["() => `count: ${count()}`", "() => `n=${count()}`"],
+  emits: ["`count: ${count()}`", "() => `n=${count()}`"],
 }

@@ -17,9 +17,10 @@ export const optimality = {
   milestone: 5,
   templates: 1,
   patchCalls: 2,
-  // `class` is diffed against its previous value by the runtime, so an array or
-  // an object has to reach it WHOLE: nothing is joined into a string at compile
-  // time and nothing is baked into the template, however constant it looks.
-  emits: ['"class", ["a", "b"]', '"class", () => ({'],
+  // `class` normalises its value, so an array or an object has to reach the
+  // channel WHOLE: nothing is joined into a string at compile time and nothing
+  // is baked into the template, however constant it looks. The reactive one is
+  // a field of the fused record and threads the string it applied last time.
+  emits: ['"class", ["a", "b"]', "renderEffect("],
   absent: ['class="'],
 }

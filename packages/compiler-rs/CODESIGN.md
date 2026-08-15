@@ -24,8 +24,20 @@ labelled otherwise. Scripts are in the scratchpad directory named above.
 |---|---|---|---|
 | reactivity head-to-head, 11 cases vs `@solidjs/signals` 2.0 | — | — | **10 wins / 1 tie**, up to 6.25x |
 | SSR 100-row page, `renderToString` envelope (51×100) | 4.66 µs | 9.88 µs | **2.10x**, Wilcoxon p=2.6e-7 |
+| *the same, re-measured at M5's repair round* | 4.87 µs | 9.10 µs | **1.86x**, p=7.3e-8 |
 | SSR same page, barq forced onto the DOM fallback | 202.73 µs | — | **41.88x slower**, p=5.3e-10 |
 | compile throughput | 0.013–0.025 ms/file | budget 1 ms | ~40x headroom |
+
+**The SSR ratio drifted and barq is not what moved.** Five runs at M5's repair round put the envelope
+at 1.86–1.87x, outside the p25–p75 band of the recorded 2.10x. barq's own absolute time is 4.87 µs
+against 4.66 µs recorded — inside its own run-to-run spread, which spans 4.62–4.99 µs across those
+runs. Solid's is 9.10 µs against 9.88 µs, an 8% improvement, and `packages/benchmark` depends on
+`solid-js@^1.9.3` while resolving 1.9.10. **A ratio against a floating dependency is not a bar anyone
+can hold**, and §9.1's "hold ≥2.10x" cannot be met or missed on the evidence: it is not established
+whether the drift is the patch bump, the machine, or something in the envelope. What IS established is
+that barq's own number has not regressed. The fix is to pin the comparand and state the bar in absolute
+microseconds beside the ratio; that is a decision for the next milestone and is recorded here rather
+than absorbed.
 
 The 41.88x number is the largest single number available in this system and it is triggered by one
 import: `compile.rs:609` `uninlinable_flow` scans every symbol and drops the **entire module** to the
@@ -1389,6 +1401,33 @@ once per activation.
 channel, events with scope-owned cleanup and boundary routing. `STATEFUL_DIFF` deleted; the `class`
 one-shot bug becomes unrepresentable.
 
+*Landed with FIVE semantic changes, not the four the build phases reported.* The fifth is
+`codegen/brand.rs`: §3.0 rule 3's brand applied at the DEFINITION site of an author-written component,
+not only to the arrows `shape` synthesises. Before it, `isBlock(Wrap)` was false for the whole
+author-written surface — a component invoked with no scope resolved `useContext` against `CURRENT`
+instead of throwing, and a component REFERENCE crossing a Cell slot (`<Sink thing={Leaf}/>`, emitted
+`thing: () => Leaf`) walked past `readSlot`'s brand probe and was stringified into an attribute, which
+is the outcome `BARQ010` says cannot happen.
+
+It shipped applying to EVERY component, which rule 3 does not ask for and C3.8 names as the
+alternative it weighed: "the compiler brands the Blocks that *use* their scope … a Block that ignores
+its scope — an arity-0 `template()`, C6 — is simultaneously a legal Cell and needs no brand." The
+repair round narrowed it to the emitted bodies that actually read `_s$`. Three things follow, and the
+first is why it mattered beyond bytes:
+
+- `block()` installs an entry guard, so branding a scope-ignoring component RETIRES the dual
+  Block/Cell use rule 3 grants it. 40 of the corpus's 152 components (26%) are in that class, and
+  `static-only` is one — which is why target 2's "one clone and nothing else" was red.
+- **Emitted bytes.** Over the 123 fixtures shared with HEAD: 198,255 at HEAD → 202,920 at M5's four
+  changes (+2.35%) → 211,247 with the brand on every component (+6.55%) → **209,726 narrowed
+  (+5.79%)**. The whole 130-fixture corpus emits **224,933 bytes**; re-measure with
+  `listFixtures().map(compileFixture)` and diff against that number.
+- **The SSR bar did NOT move with it, and the brand was not the cause.** `block()` costs a call frame
+  and an `arguments`-based `.apply` per component ACTIVATION on both backends, and the 100-row page is
+  component activation, so this was the obvious suspect. It is not: over-broad brand 1.99x / 1.87x,
+  narrowed 1.86x / 1.87x / 1.86x on three back-to-back runs of a quiet machine (a fourth, taken first
+  on a cold machine, read 2.22x and is an outlier — the three agree to two decimal places). See §0.1.
+
 **M6 — server.** The string backend over the same ABI; `uninlinable_flow` deleted; compile-time
 addresses; claim-based hydration; streaming. **This is where the 41.88x number is collected.**
 
@@ -1414,9 +1453,11 @@ criterion. Estimated: 300–400 lines shorter, almost entirely by deletion.
 `packages/extra` and `packages/kitchen-sink` are on the pre-M3 convention for five milestones, and the
 consequences are:
 
-- `packages/extra`'s suite is RED — 39 pass / 54 fail, every failure one signature
-  (`props.initialPath` off a Scope). Root `bun run test` therefore exits non-zero, and so does the CI
-  job that runs it.
+- `packages/extra`'s suite is RED — 46 pass / 54 fail of 100, every failure one signature
+  (`props.initialPath` off a Scope for 53 of them; the 54th is `config.base`, the same cause observed
+  from inside a `createScope`, where `getOwner()` returns a Scope rather than `null` so the throw is
+  displaced one frame into `initMemoryRouter`). Root `bun run test` therefore exits non-zero, and so
+  does the CI job that runs it; `bun run test:gated` is the M2→M8 gate.
 - **`packages/kitchen-sink` renders a BLANK PAGE.** `<div id="app"></div>` stays empty, with
   `TypeError: routes is not iterable` from `packages/extra/src/router.tsx`: `Router` reads
   `props.config` as a value while props are Cells, so `state.config.routes` is `undefined` and
@@ -1424,8 +1465,16 @@ consequences are:
   nothing to do with the Provider defect the redesign exists to remove — that one is fixed — and it
   stays blank until this milestone.
 
-Both are pinned by `packages/extra/src/m8-convention.test.ts`, which asserts the package is *still* on
-the pre-M3 convention and that the runtime ABI has moved, so a migration that leaves the rows behind
+- `packages/benchmark` is a THIRD consumer and was discovered by running a bar rather than declared
+  here. `bench:ssr` exited 1 on `barqStatic.default()` — a compiled component invoked with no scope,
+  which `block`'s entry guard turned into a `ScopeMissingError` the moment M5 branded it. It is one
+  call site, it is fixed (`barqStatic.default(null)`, matching the two sections beside it), and it is
+  written down here so the next agent to run a bar does not find it again. The benches are in no CI
+  job; `bench:ssr`, `bench:eleven` and `test/throughput.test.ts` are the three the measured bars come
+  from and all three are green.
+
+Both `extra` and `kitchen-sink` are pinned by `packages/extra/src/m8-convention.test.ts`, which
+asserts the package is *still* on the pre-M3 convention and that the runtime ABI has moved, so a migration that leaves the rows behind
 fails and "blank page" cannot quietly come to mean something new.
 
 **Why the codemod was not run early.** §8's `barq migrate` rewrites `props.x` to `props.x()` inside
@@ -1460,7 +1509,11 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
    (today 10 wins and 1 tie, `create: signal` being the tie). Rows 2, 3 and 11 should **improve** — components stop allocating owners
    and `ComputedNode` loses six slots. The epoch dedupe carries forward (ablated at 2.37x) and so does
    `markWave` (ablated at +7%/−2%). **Acceptance: no row regresses.**
-2. **SSR: hold ≥2.10x** on the 100-row page (4.66 µs vs 9.88 µs today).
+2. **SSR: hold ≥2.10x** on the 100-row page (4.66 µs vs 9.88 µs today). *Restated at M5's repair
+   round, because the criterion as written cannot be met or missed:* the ratio is against
+   `solid-js@^1.9.3`, which resolves to whatever the lockfile last took, and it drifted to 1.86x on a
+   Solid side that got 8% faster while barq stayed at 4.87 µs. **Hold barq's own absolute time at
+   ≤4.7 µs median**, and re-state the ratio against a PINNED Solid version. §0.1 carries both numbers.
 3. **DOM: hold or beat the three real wins** — text-hole update 1.37x, class update 1.29x, replace-all
    1.13x. **The other four (clone static tree 1.01x, insert single text hole 1.10x, create 100 rows
    1.03x, swap 2 of 200 1.10x) straddle 1.0 across processes and will be reported as parity, not
@@ -1505,6 +1558,17 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
   stub DOM (§0.3). Backlog.
 - **"Thunk props are cheaper than value props once forwarded."** Measured parity, 6.73 vs 6.56 ns.
 - **"`markWave` costs 7%."** Measured: it *earns* ~7% (§0.5).
+- **"Class bitmasks reduce a conditional class list to an integer compare" (§3.5).** Not built at M5,
+  and the numbers are the reason. `test/classbits.bench.ts` compares three arms over 80,000 class
+  writes on 200 rows with the conditional flipping 1 frame in 8. **The channel in isolation: 2.2–2.7x
+  faster than the object-literal form it would replace, 1.75–2.2x faster than the string form.**
+  **End to end — the same write inside the fused record it is actually emitted in, driven by a signal
+  and a flush: 1.10–1.21x**, because the reactive graph, not the class write, is the frame. That is
+  §0.4's shape again, measured before anything was built on it rather than after. Against 10–20% on
+  the most favourable workload it can be given, a bitmask costs a new `Op`, a new lowering for
+  statically-keyed object class values, a hoisted name table, a new channel and its SSR half — and it
+  applies to **1 of 128 corpus fixtures**. Revisit on a list benchmark where the class write is the
+  measured cost, not on the strength of the isolated number.
 
 ---
 

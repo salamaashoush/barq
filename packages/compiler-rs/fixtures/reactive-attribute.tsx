@@ -14,23 +14,21 @@ export default function ReactiveAttribute() {
 export const steps = [() => active.set(true), () => href.set("/about"), () => active.set(false)]
 
 /**
- * TWO effects, not one, and that is the correct answer.
+ * ONE effect, and that is the M5 answer. It was two.
  *
- * `href` gets a compiled effect. `class` does not join it: `applyResolvedProp`
- * threads the class string it applied last time through the RUNTIME's effect
- * and removes what vanished, so a compiled effect calling `setProp` afresh can
- * only ever add — and an unguarded `element.className = …` fired by an
- * unrelated prop wipes classes another channel put there. Unwrapped, the value
- * reaches the runtime exactly as the un-compiled path delivers it.
- *
- * class-with-live-siblings is the fixture that proves the boundary is where it
- * should be: two non-intercepted props on one element still share one effect.
+ * `href` and `class` are both proven reactive on the same element, so both are
+ * fields of the same record. What kept `class` out was that its APPLIED value —
+ * the normalised class string — lived in the runtime, so an effect that wrote
+ * the channel afresh each run could only add and never remove. The record slot
+ * holds that value now (`Diff::Thread`): the channel is handed the previous
+ * applied value out of the record and its return is written back into the same
+ * field, which is the removal half surviving inside a shared effect.
  */
 export const optimality = {
   target: 4,
-  milestone: 3,
-  effects: 2,
+  milestone: 5,
+  effects: 1,
   templates: 1,
-  emits: ['"href", () => href()', '"class", () => active()'],
-  absent: ["renderEffect"],
+  emits: ['"href"', "setClass(", "renderEffect("],
+  absent: ["setProp", "bindProp("],
 }

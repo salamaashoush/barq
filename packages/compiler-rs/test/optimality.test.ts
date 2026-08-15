@@ -17,6 +17,7 @@ import {
   groupTargets,
   listFixtures,
   loadModule,
+  propCalls,
   renderEffectBodies,
   stripComments,
   stripLiterals,
@@ -129,8 +130,15 @@ describe("declared optimality", () => {
     const code = stripComments(module)
     if (decl.templates !== undefined) expect(emittedCalls(code, "template"), "templates").toBe(decl.templates)
     if (decl.patchCalls !== undefined) {
+      // Every call the module makes after the clone: holes, prop channels, and
+      // the element channels §3.5/§3.6 gave their own entry points.
       const patches =
-        emittedCalls(code, "insert") + emittedCalls(code, "setProp") + emittedCalls(code, "spread")
+        emittedCalls(code, "insert") +
+        propCalls(code) +
+        emittedCalls(code, "ref") +
+        emittedCalls(code, "listen") +
+        emittedCalls(code, "bindEvent") +
+        emittedCalls(code, "bindValue")
       expect(patches, "patch calls").toBe(decl.patchCalls)
     }
     for (const needle of decl.emits ?? []) {
@@ -304,7 +312,8 @@ describe("declared optimality", () => {
     },
     "property-attrs": {
       why: "the DOM_PROPS channel, pinned by tables.test.ts against dom.ts",
-      holds: ({ code }) => emittedCalls(code, "setProp") > 0 && templateHtml(code).join("").includes("<input"),
+      holds: ({ code }) =>
+        emittedCalls(code, "setDomProp") > 0 && templateHtml(code).join("").includes("<input"),
     },
     "style-object": {
       // The DOM target hands the object to the runtime WHOLE, which is what
@@ -312,10 +321,10 @@ describe("declared optimality", () => {
       // on the SSR target, where `ssr.test.ts` folds the same object into a
       // `style="…"` chunk and compares the unit against dom.ts's own table. So
       // the excuse names two channels and this predicate holds the DOM half of
-      // it: the object reaches `setProp` unopened, with no `px` anywhere.
+      // it: the object reaches the `style` channel unopened, no `px` anywhere.
       why: "the style channel: whole-object on DOM (tables.test.ts), folded with the px rule on SSR (ssr.test.ts)",
       holds: ({ code }) =>
-        emittedCalls(code, "setProp") > 0 &&
+        propCalls(code) > 0 &&
         !stripLiterals(code).includes("px") &&
         templateHtml(code).join("").includes("style=") === false,
     },
@@ -327,7 +336,7 @@ describe("declared optimality", () => {
       why: "raw HTML the compiler must refuse to bake; checked by the parse conformance pass",
       holds: ({ code }) =>
         templateHtml(code).length > 0 &&
-        emittedCalls(code, "setProp") > 0 &&
+        propCalls(code) > 0 &&
         !templateHtml(code).join("").includes("<b>"),
     },
     mathml: {
@@ -496,8 +505,16 @@ describe("target 2 — fully-static subtree costs one clone and nothing else", (
   it("static-only: exactly one template() and zero patch calls", () => {
     const code = compileFixtureBody("static-only")
     expect(emittedCalls(code, "template")).toBe(1)
+    // The same union the declared path uses, so the two cannot drift apart —
+    // `spread` used to stand here and matched nothing, because the only helper
+    // spelt that way is SSR's `spreadAttrs` and `_$spread(` needs the paren.
     expect(
-      emittedCalls(code, "insert") + emittedCalls(code, "setProp") + emittedCalls(code, "spread"),
+      emittedCalls(code, "insert") +
+        propCalls(code) +
+        emittedCalls(code, "ref") +
+        emittedCalls(code, "listen") +
+        emittedCalls(code, "bindEvent") +
+        emittedCalls(code, "bindValue"),
     ).toBe(0)
   })
 
@@ -516,7 +533,7 @@ describe("target 2 — fully-static subtree costs one clone and nothing else", (
 
   it.todo("dedup-identical-markup: zero patch calls across both components", () => {
     const code = compileFixtureBody("dedup-identical-markup")
-    expect(emittedCalls(code, "insert") + emittedCalls(code, "setProp")).toBe(0)
+    expect(emittedCalls(code, "insert") + propCalls(code)).toBe(0)
   })
 })
 
@@ -527,10 +544,10 @@ describe("target 3 — constant folding into the template string", () => {
     expect(code).not.toContain("`${base}")
   })
 
-  it("literal-class-style: a literal ternary class is baked in, no setProp", () => {
+  it("literal-class-style: a literal ternary class is baked in, no channel write", () => {
     const code = compileFixtureBody("literal-class-style")
     expect(templateHtml(code).join("\n")).toContain('class="on"')
-    expect(emittedCalls(code, "setProp")).toBe(0)
+    expect(propCalls(code)).toBe(0)
   })
 
   it("literal-class-style: a literal style string is baked into the HTML", () => {
@@ -550,40 +567,122 @@ describe("target 4 — one effect per element, not one per prop", () => {
     expect(result.oracle.trace.created).toBe(3)
   })
 
-  it("class-with-live-siblings: title and id share one effect while class stays out of it", async () => {
-    // The boundary of target #4. `class` is diffed statefully by the runtime,
-    // so joining it to a shared effect makes an unrelated prop change rewrite
-    // `element.className` and wipe what `classList` (or a ref, or a directive)
-    // put there. Two live props still merge; the third is left unwrapped.
+  it("class-with-live-siblings: class is a FIELD of the one effect, not an exception to it", async () => {
+    // B1/B2. This test asserted the opposite until M5: `class` had to stay out
+    // of the group, because `setClass` owned the whole attribute and an
+    // unrelated prop firing the shared effect re-wrote it. Both halves of that
+    // are gone — the record guards `class` on its own field, and the channel
+    // emits only the tokens it applied — so the exclusion is not needed and the
+    // element really does cost ONE effect.
     const code = compileFixtureBody("class-with-live-siblings")
-    expect(renderEffectBodies(code), "one effect for title+id").toHaveLength(1)
-    expect(code).toContain('_$setProp(_s$, _el$1, "class", () => tone())')
-    expect(code, "class must not be written from inside the group").not.toMatch(/_p\$\??\.class/)
+    expect(renderEffectBodies(code), "one effect for class+title+id").toHaveLength(1)
+    expect(code).toContain('_v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);')
+    expect(code, "no name is left for the runtime to classify").not.toContain("_$bindProp(")
+    // The wipe, as an ABSENCE: no statement writes the class channel on any
+    // other field's account. A differential cannot see this — both paths share
+    // `setClass` — so it is asserted against the emitted code directly.
+    for (const line of code.split("\n")) {
+      if (line.includes('"title"') || line.includes('"id"')) {
+        expect(line, "an unrelated prop must not reach the class channel").not.toContain(
+          "_$setClass",
+        )
+      }
+    }
 
     const result = await compareToOracle("class-with-live-siblings")
     expect(result.ok, formatDivergences("class-with-live-siblings", result.divergences)).toBe(true)
-    expect(result.compiled.trace.created, "one grouped effect + the runtime's class effect").toBe(2)
+    expect(result.compiled.trace.created, "one fused record for the element").toBe(1)
     expect(result.oracle.trace.created, "the oracle makes one per live prop").toBe(3)
   })
 
-  it("reactive-attribute: a runtime-diffed prop is passed through, not merged", async () => {
+  it("reactive-attribute: href and class are two fields of one record", async () => {
     const code = compileFixtureBody("reactive-attribute")
-    // Positive: both live props reach `setProp` UNWRAPPED, which is what
-    // "passed through" means. "no renderEffect" and "two effects" are both
-    // properties of the un-compiled path as well — this was one of the six.
-    expect(code).toContain('_$setProp(_s$, _el$1, "href", () => href())')
-    expect(code).toContain('_$setProp(_s$, _el$1, "class", () => active()')
+    // Both live props on the element are fields of the same compute. `class`
+    // threads its APPLIED value through its own slot, which is the whole of
+    // what used to keep it in a separate runtime-owned effect.
+    expect(code).toContain('if (_v$.a !== _p$.a) _$setAttr(_el$1, "href", _v$.a);')
+    expect(code).toContain('_v$.b = _$setClass(_el$1, "class", _v$.b, _p$.b);')
+    expect(code).not.toContain("_$bindProp(")
     expect(templateHtml(code), "only the static attribute is baked").toEqual([
       '<a data-static="keep">go</a>',
     ])
-    expect(renderEffectBodies(code)).toEqual([])
+    expect(renderEffectBodies(code)).toHaveLength(1)
 
     const result = await compareToOracle("reactive-attribute")
-    // Was asserted as 1 at M3 by merging `class` into `href`'s effect. That is
-    // unsound (see class-with-live-siblings), so the honest count is 2: one
-    // compiled effect for `href`, one the runtime creates for `class`.
-    expect(result.compiled.trace.created).toBe(2)
+    // Was 2 at M4 — one compiled effect for `href`, one the runtime opened for
+    // `class`. The oracle still makes one per live prop.
+    expect(result.compiled.trace.created).toBe(1)
+    expect(result.oracle.trace.created).toBe(2)
   })
+
+  /**
+   * B1/B2's PROOF, and the reason it is here rather than in `oracle.test.ts`:
+   * the differential is structurally blind to it. Both paths call the same
+   * `setClass`, so when the class channel owned the whole attribute they wiped
+   * `classList` and the ref's token together, agreed perfectly, and the oracle
+   * certified the bug. Nothing but an absolute assertion can see this.
+   */
+  it("class-owns-only-its-tokens: nothing another channel wrote is ever wiped", async () => {
+    const run = await renderViaCompiler("class-owns-only-its-tokens")
+    const classes = (html: string): string[] =>
+      (html.match(/class="([^"]*)"/)?.[1] ?? "").split(/\s+/).filter(Boolean).sort()
+
+    const frames = [run.html, ...run.frames]
+    expect(frames, "the mount plus one frame per step").toHaveLength(3)
+
+    // The precondition: the three channels really did all write. Without it a
+    // fixture that stopped applying `classList` at all would pass every claim
+    // below by producing an absence.
+    expect(classes(run.html).sort(), "mount: every channel's tokens are present").toEqual([
+      "pinned",
+      "red",
+      "ref-added",
+    ])
+
+    // Frame 0 changes `title` only. Before M5 this rewrote `element.className`
+    // whenever `class` shared an effect with it — which is exactly why `class`
+    // was excluded from grouping. It now shares the effect AND leaves the
+    // attribute alone.
+    expect(classes(frames[1]!), "an unrelated prop change must not touch class").toEqual([
+      "pinned",
+      "red",
+      "ref-added",
+    ])
+
+    // Frame 1 changes `class` itself. The old channel assigned the whole
+    // attribute, so this erased `pinned` and `ref-added` even with the
+    // exclusion in place. The channel now emits only the tokens it applied.
+    expect(classes(frames[2]!), "a real class change must remove only its own token").toEqual([
+      "blue",
+      "pinned",
+      "ref-added",
+    ])
+  }, 30_000)
+
+  it("equal-liveness: B1 — three names written the same way move together", async () => {
+    const code = compileFixtureBody("equal-liveness")
+    // Emitted-code half: one record, three fields, `class` among them.
+    expect(renderEffectBodies(code), "one effect for the element").toHaveLength(1)
+    expect(code).toContain('_v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);')
+    expect(code).toContain('if (_v$.b !== _p$.b) _$setAttr(_el$1, "id", _v$.b);')
+    expect(code).toContain('if (_v$.c !== _p$.c) _$setAttr(_el$1, "title", _v$.c);')
+
+    // Behavioural half: the rule's own falsification procedure.
+    const run = await renderViaCompiler("equal-liveness")
+    const attrs = (html: string): string[] =>
+      [...html.matchAll(/(class|id|title)="([^"]*)"/g)].map((m) => `${m[1]}=${m[2]}`).sort()
+    expect(attrs(run.html)).toEqual(["class=red", "id=red", "title=red"])
+    for (const [at, want] of [
+      [0, "blue"],
+      [1, "green"],
+    ] as const) {
+      expect(attrs(run.frames[at]!), `step ${at}: all three or none`).toEqual([
+        `class=${want}`,
+        `id=${want}`,
+        `title=${want}`,
+      ])
+    }
+  }, 30_000)
 
   it("no effect group spans two elements, across the corpus", () => {
     // P5 merges a CONTIGUOUS run of live props on ONE element. Merging across
@@ -617,7 +716,7 @@ describe("target 4 — one effect per element, not one per prop", () => {
     const code = compileFixtureBody("multi-prop-one-element")
     expect(groupTargets(code)).toEqual([["_el$1"]])
 
-    const overMerged = code.replace('_$setProp(_s$, _el$1, "data-width"', '_$setProp(_s$, _el$2, "data-width"')
+    const overMerged = code.replace('_$setAttr(_el$1, "data-width"', '_$setAttr(_el$2, "data-width"')
     expect(overMerged, "the mutation is stale").not.toBe(code)
     expect(groupTargets(overMerged)).toEqual([["_el$1", "_el$2"]])
   })
@@ -717,8 +816,11 @@ describe("target 7 — delegated events as expando writes", () => {
     // A document listener for a non-bubbling type can never fire from a
     // descendant, so the expando would be silently dead. The positive clauses
     // are what make this more than "the compiler emitted nothing".
-    expect(code).toMatch(/addEventListener\("mouseenter"/)
-    expect(code).toMatch(/addEventListener\("focus"/)
+    // B4: the listener is registered THROUGH the scope, so it dies with the
+    // position. `addEventListener` with no cleanup is what leaked.
+    expect(code).toMatch(/_\$listen\(_s\$, _el\$\d+, "mouseenter"/)
+    expect(code).toMatch(/_\$listen\(_s\$, _el\$\d+, "focus"/)
+    expect(code, "never a bare addEventListener").not.toContain("addEventListener")
     expect(code, "no module-wide registration for a type that does not bubble").not.toContain(
       "delegateEvents",
     )
@@ -745,6 +847,47 @@ describe("target 7 — delegated events as expando writes", () => {
   it("delegated-event: the delegated set is registered exactly once per module", () => {
     const code = compileFixtureBody("delegated-event")
     expect(count(code, /delegateEvents\(/)).toBe(1)
+  })
+
+  it("delegated-two-types: the scope expando is written once per ELEMENT, not once per type", () => {
+    const code = compileFixtureBody("delegated-two-types")
+    // Two delegated types on one element. The `$$s` write is idempotent, so a
+    // duplicate is invisible at runtime and only this counts it.
+    expect(count(code, /\$\$click\s*=/), "the click expando").toBe(1)
+    expect(count(code, /\$\$input\s*=/), "the input expando").toBe(1)
+    expect(count(code, /\$\$s\s*=/), "one scope expando for the element").toBe(1)
+  })
+
+  it("every element in the corpus writes its scope expando at most once", () => {
+    // The claim as a property of the whole corpus rather than of one fixture:
+    // for every emitted element, the number of `$$s` writes is 1 when it
+    // carries a delegated handler and 0 when it does not.
+    const offenders: string[] = []
+    let elementsSeen = 0
+    let multiType = 0
+    for (const name of listFixtures()) {
+      const code = stripComments(compileFixtureBody(name))
+      const writes = new Map<string, string[]>()
+      for (const match of code.matchAll(/(_el\$\d+)\.\$\$([A-Za-z]+)\s*=/g)) {
+        const list = writes.get(match[1]!) ?? []
+        list.push(match[2]!)
+        writes.set(match[1]!, list)
+      }
+      for (const [element, types] of writes) {
+        const scopes = types.filter((type) => type === "s").length
+        const delegated = types.length - scopes
+        elementsSeen++
+        if (delegated > 1) multiType++
+        if (scopes !== (delegated > 0 ? 1 : 0)) {
+          offenders.push(`${name}: ${element} has ${delegated} delegated type(s) and ${scopes} $$s write(s)`)
+        }
+      }
+    }
+    // An empty offender list is only evidence if the scanner had subjects, and
+    // the shape this pins — two types on one element — has to be one of them.
+    expect(elementsSeen, "the expando scanner found no delegated element at all").toBeGreaterThan(0)
+    expect(multiType, "no fixture carries two delegated types on one element").toBeGreaterThan(0)
+    expect(offenders, offenders.join("\n")).toEqual([])
   })
 })
 
@@ -918,7 +1061,11 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // allocates no `Scope`.
     expect(code, "the proven flags integer").toMatch(/\}\), 2\)/)
     expect(code, "and nothing to bind it to").not.toMatch(/const _el\$/)
-    expect(emittedCalls(code, "insert") + emittedCalls(code, "setProp")).toBe(0)
+    // `setProp` is a needle that cannot match since M5 split it into eight
+    // named channels — the same inert shape `patchedAttributeNames`,
+    // `reverseAppliedProps` and `countMerges` were in. `propCalls` scans the
+    // channels that exist.
+    expect(emittedCalls(code, "insert") + propCalls(code)).toBe(0)
 
     // The observable consequence of the change, measured rather than asserted:
     // with the Block, each toggle REBUILDS the body. With the eager clone `Show`
@@ -1186,7 +1333,9 @@ describe("open questions the harness must be able to state", () => {
     // The ref NUMBERS are P6's to choose — it renumbers whenever a cheaper
     // route is found — so the shapes are pinned and the numbering is not.
     const code = compileFixtureBody("auto-thunked-read")
-    expect(code).toMatch(/_\$setProp\(_s\$, _el\$\d+, "title", \(\) => `count: \$\{count\(\)\}`\)/)
+    // The attribute hole is a fused effect of ONE, so the compiler-built thunk
+    // is the compute itself rather than a `const` inside a block body.
+    expect(code).toMatch(/_\$renderEffect\(\(\) => `count: \$\{count\(\)\}`, /)
     expect(code).toMatch(/_\$insert\(_s\$, _el\$\d+, \(\) => `n=\$\{count\(\)\}`\)/)
     expect(code, "a bare read still η-reduces to the accessor itself").toMatch(
       /_\$insert\(_s\$, _el\$\d+, count\)/,
@@ -1214,7 +1363,13 @@ describe("open questions the harness must be able to state", () => {
     const code = compileFixtureBody("spread-static-mix")
     expect(code, "the JSX is gone").not.toContain("<div")
     expect(code).toContain('_$createElement("div"')
-    expect(emittedCalls(code, "spread"), "and no reactive spread was emitted").toBe(0)
+    // `_$spread` never existed: `Helper` carries `spreadAttrs`, which is SSR
+    // and does not match `_$spread(`, so this needle could not fail whatever
+    // the compiler did to spreads. What CAN fail is the spread being re-applied
+    // after construction, and both needles below are live elsewhere in the
+    // corpus.
+    expect(propCalls(code), "the spread is not re-applied after construction").toBe(0)
+    expect(emittedCalls(code, "renderEffect"), "and no reactive spread was emitted").toBe(0)
 
     const result = await compareToOracle("spread-static-mix")
     expect(result.ok, formatDivergences("spread-static-mix", result.divergences)).toBe(true)

@@ -12,10 +12,12 @@
  *
  * It carries no legacy decision because it did not exist before: no
  * `createElement`, no child normalisation of its own, no prop dispatch of its
- * own. Where it writes to the DOM it goes through the same four ABI primitives
- * (§3.0) the emitted module goes through — `template`, `insert`, `setProp`,
- * `renderEffect` — because those are the contract both backends are written
- * against, not the thing under test. A rule of `SEMANTICS.md` that the runtime
+ * own. Where it writes to the DOM it goes through the same ABI primitives
+ * (§3.0) the emitted module goes through — `template`, `insert`, the resolved
+ * channels, `renderEffect` — because those are the contract both backends are
+ * written against, not the thing under test. The CHANNEL travels in the record:
+ * the compiler resolved it, and a reference backend that re-derived it from the
+ * name would be answering a question the thing under test no longer asks. A rule of `SEMANTICS.md` that the runtime
  * violates is therefore violated identically on this path, by construction:
  * this file is a reference for the COMPILER, and M1 changes no semantics.
  *
@@ -42,7 +44,23 @@
  * number of times in the same order.
  */
 
-import { insert, setProp } from "./dom.ts";
+import {
+  bindEvent,
+  bindProp,
+  bindValue,
+  insert,
+  listen,
+  ref,
+  setAttr,
+  setBool,
+  setClass,
+  setClassList,
+  setDomProp,
+  setHtml,
+  setStyle,
+  setStyleProp,
+  type Channel,
+} from "./dom.ts";
 import { renderEffect } from "./signals.ts";
 import { boundary, branch, each, portal } from "./flow.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
@@ -54,17 +72,34 @@ type RefKind = "root" | "firstChild" | "lastChild" | "nextSibling" | "prevSiblin
 /** `[step, base, hops]`; `base` is null only for the root. */
 export type Ref = readonly [RefKind, number | null, number];
 
-type Diff = "identity" | "always";
+type Diff = "identity" | "always" | "thread";
 type Plan = "once" | "live" | "opaque";
 
-type SetLive = readonly ["setLive", number, string, number, Diff];
+/** §3.5's channel set, spelled the same way the compiler spells it. */
+type Chan = "attr" | "prop" | "bool" | "class" | "style" | "styleProp" | "classList" | "html";
+
+const CHANNEL: Record<Chan, Channel> = {
+  attr: setAttr,
+  prop: setDomProp,
+  bool: setBool,
+  class: setClass,
+  style: setStyle,
+  styleProp: setStyleProp,
+  classList: setClassList,
+  html: setHtml,
+};
+
+type SetLive = readonly ["setLive", number, string, number, Diff, Chan];
 
 export type Op =
-  | readonly ["setOnce", number, string, number]
-  | readonly ["setOpaque", number, string, number]
+  | readonly ["setOnce", number, string, number, Chan]
+  | readonly ["setOpaque", number, string, number, Chan]
   | SetLive
+  | readonly ["setEvent", number, string, number]
   | readonly ["delegate", number, string, number]
   | readonly ["listen", number, string, number]
+  | readonly ["ref", number, number, "assign" | "apply"]
+  | readonly ["bind", number, string, string, number]
   | readonly ["insert", number, number, Plan, number | null]
   | Region
   | readonly ["effectGroup", readonly SetLive[]];
@@ -103,20 +138,29 @@ export const HANDLED: readonly string[] = [
   "setOnce",
   "setLive",
   "setOpaque",
+  "setEvent",
   "delegate",
   "listen",
+  "ref",
+  "bind",
   "insert",
   "region",
   "effectGroup",
 ];
 
 /**
- * Opcodes that never reach this file, and why: P1 refuses to put an element
- * carrying one of them on the template path, so the whole subtree is emitted
- * through `createElement` — on this backend for the same reason and by the same
- * route as on the DOM backend, which answers `None` for exactly these five.
+ * The one opcode that never reaches this file, and why: P1 refuses to put an
+ * element carrying a spread on the template path, so the whole subtree is
+ * emitted through `createElement` — on this backend for the same reason and by
+ * the same route as on the DOM backend, which answers `None` for exactly it.
+ *
+ * `setClass`, `setStyle` and `setHtml` were here at M4b and are DELETED, not
+ * moved: `class`, `style` and `dangerouslySetInnerHTML` are CHANNELS now
+ * (§3.5), reached through `setOnce` / `setLive` / `setOpaque` like every other
+ * name, and the three `Op` variants that used to carry them were never
+ * constructed by any pass.
  */
-export const OFF_TEMPLATE: readonly string[] = ["setClass", "setStyle", "ref", "spread", "setHtml"];
+export const OFF_TEMPLATE: readonly string[] = ["spread"];
 
 /**
  * Build one unit and return its root node.
@@ -159,31 +203,52 @@ function walk(nodes: readonly Node[], ref: Ref): Node {
 
 function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
   switch (op[0]) {
-    // Two rows rather than one, mirroring the DOM backend: the value goes to
-    // `setProp` unwrapped in both cases, and keeping them apart is what stops a
-    // change to one silently moving the other. `SetOnce` is what P3 folds on.
+    // Two rows rather than one, mirroring the DOM backend. `SetOnce` is what P3
+    // folds on, and keeping them apart is what stops a change to one silently
+    // moving the other: a proven-static value is written once, and an opaque one
+    // still has its liveness decided at run time.
     case "setOnce":
-      setProp(s, nodes[op[1]] as Element, op[2], slots[op[3]]());
+      CHANNEL[op[4]](nodes[op[1]] as Element, op[2], slots[op[3]](), undefined);
       return;
     case "setOpaque":
-      setProp(s, nodes[op[1]] as Element, op[2], slots[op[3]]());
+      bindProp(s, nodes[op[1]] as Element, CHANNEL[op[4]], op[2], slots[op[3]]());
       return;
 
-    // Ungrouped: the runtime sees a function, owns the effect and keeps its own
-    // `prev` across runs. This is what a `SetLive` outside a group lowers to —
-    // either because fusion is off (`-O0`), or because fusion put it in a group
-    // of one.
+    // Ungrouped: one effect for one live prop, which is what a `SetLive` outside
+    // a group lowers to — either because fusion is off (`-O0`), or because
+    // fusion put it in a group of one.
     case "setLive":
-      setProp(s, nodes[op[1]] as Element, op[2], slots[op[3]]);
+      fuse([op], nodes, slots);
       return;
 
-    // The expando the delegated dispatcher reads. The bound-tuple form lives
-    // inside the handler value, so there is no second property to write.
+    case "setEvent":
+      bindEvent(s, nodes[op[1]] as Element, op[2], slots[op[3]]());
+      return;
+
+    // The expando the delegated dispatcher reads, plus the scope beside it that
+    // routes a throw to the boundary. The bound-tuple form lives inside the
+    // handler value, so there is no second property to write.
     case "delegate":
       (nodes[op[1]] as unknown as Record<string, unknown>)[op[2]] = slots[op[3]]();
+      (nodes[op[1]] as unknown as Record<string, unknown>).$$s = s;
       return;
     case "listen":
-      nodes[op[1]].addEventListener(op[2], slots[op[3]]() as EventListener);
+      listen(s, nodes[op[1]], op[2], slots[op[3]]() as EventListener);
+      return;
+
+    // B3. A writable binding is an ASSIGNMENT, and an assignment cannot be
+    // serialised as a value — so the slot IS the assignment and is called with
+    // the element.
+    case "ref":
+      if (op[3] === "assign") {
+        (slots[op[2]] as (el: Node) => void)(nodes[op[1]]);
+      } else {
+        ref(s, nodes[op[1]] as Element, slots[op[2]]());
+      }
+      return;
+
+    case "bind":
+      bindValue(s, nodes[op[1]] as Element, op[2], op[3], slots[op[4]]);
       return;
 
     case "insert": {
@@ -233,53 +298,42 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
     }
 
     case "effectGroup":
-      fuse(s, op[1], nodes, slots);
+      fuse(op[1], nodes, slots);
       return;
   }
 }
 
 /**
- * One `renderEffect` for an element's live props, with a threaded accumulator
- * and per-key `!==` guards — `recompute` stores a compute's return value and
- * hands it back on the next run (V6), which is what the accumulator rides on.
+ * B2's fused compute/apply record, as the reference backend spells it. The DOM
+ * backend emits the same two functions with the record's fields flattened into
+ * an object literal; here the record is an array, because the members are data.
  *
- * Every read first, then every guarded write: no write may land between two
- * reads, or a prop that writes to the DOM could change what a later prop on the
- * same element reads.
+ * The COMPUTE is the only tracked half. `recompute` runs the apply with tracking
+ * off and hands it the array the previous run returned, so a channel that reads
+ * the DOM cannot acquire a dependency (R2) and the previous-value store is the
+ * compute's own return — no runtime-allocated accumulator, no element expando.
  *
- * The accumulator is threaded only when some member actually compares against
- * it. That is not a saving; it is the DOM backend's emitted shape, and the two
- * have to agree about what the effect returns.
+ * Every read happens before any write, which is not a detail: a write can change
+ * what a later prop on the same element would have read.
  */
-function fuse(
-  s: Scope | null,
-  members: readonly SetLive[],
-  nodes: readonly Node[],
-  slots: readonly Slot[],
-): void {
-  const write = (values: readonly unknown[], prev: Record<string, unknown> | null): void => {
-    for (let i = 0; i < members.length; i++) {
-      const [, node, key, , diff] = members[i];
-      if (diff === "always" || prev === null) {
-        setProp(s, nodes[node] as Element, key, values[i]);
-        continue;
+function fuse(members: readonly SetLive[], nodes: readonly Node[], slots: readonly Slot[]): void {
+  renderEffect(
+    () => members.map((member) => slots[member[3]]()),
+    (values: unknown[], prev: unknown[] | undefined) => {
+      for (let i = 0; i < members.length; i++) {
+        const [, node, key, , diff, chan] = members[i];
+        const element = nodes[node] as Element;
+        if (diff === "thread") {
+          values[i] = CHANNEL[chan](element, key, values[i], prev?.[i]);
+          continue;
+        }
+        // `prev?.[i]` and not a `prev === undefined` branch: the DOM backend's
+        // apply defaults its record to `{}`, so a first run whose value is
+        // itself `undefined` writes nothing there and must write nothing here.
+        if (diff === "always" || values[i] !== prev?.[i]) {
+          CHANNEL[chan](element, key, values[i], undefined);
+        }
       }
-      if (values[i] !== prev[key]) {
-        prev[key] = values[i];
-        setProp(s, nodes[node] as Element, key, values[i]);
-      }
-    }
-  };
-  const read = (): unknown[] => members.map((member) => slots[member[3]]());
-
-  if (!members.some((member) => member[4] === "identity")) {
-    renderEffect(() => {
-      write(read(), null);
-    });
-    return;
-  }
-  renderEffect((prev: Record<string, unknown> = {}) => {
-    write(read(), prev);
-    return prev;
-  });
+    },
+  );
 }

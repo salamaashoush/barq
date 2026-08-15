@@ -255,7 +255,7 @@ report(
       {
         name: "barq compiled",
         setup: () => () => {
-          keep(chunk(barqStatic.default()));
+          keep(chunk(barqStatic.default(null)));
         },
       },
       {

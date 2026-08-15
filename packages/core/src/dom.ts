@@ -4,9 +4,13 @@
  */
 
 import {
+  CONTEXT_MISS,
   disposeScope,
   emitDiagnostic,
+  ERROR_BOUNDARY,
   isBlock,
+  lookupContext,
+  onCleanup,
   requireScope,
   ScopeMissingError,
   enterRoot,
@@ -197,6 +201,36 @@ const warnedNonBubbling = new Set<string>();
  * form lets compiled list rows share one function without per-row closures) */
 type DelegatedHandler = EventListener | [(data: unknown, e: Event) => void, unknown];
 
+/**
+ * The expando the compiler writes beside `$$<type>`: the scope that owned the
+ * element when the handler was bound. One per element rather than one per event
+ * type, so `$$<type>` keeps its shape exactly (a function or a `[fn, data]`
+ * tuple, and no `$$<type>Data` in this runtime).
+ */
+const SCOPE_KEY = "$$s";
+
+/**
+ * E2 entry point #6. A handler is code the framework invoked, so the framework
+ * owns its failure: the throw routes to the nearest `ERROR_BOUNDARY` on the
+ * owning scope's chain instead of escaping to `window.onerror`. With no boundary
+ * above it the error is rethrown, which is what it did before.
+ *
+ * `NotReadyError` is re-thrown by the boundary's own handler (E2.3), so it
+ * passes through here without a second test.
+ */
+function routeError(scope: Scope | null, error: unknown): void {
+  const routed = scope === null ? CONTEXT_MISS : lookupContext(scope, ERROR_BOUNDARY);
+  if (routed !== CONTEXT_MISS && typeof routed === "function") {
+    (routed as (err: unknown) => void)(error);
+    return;
+  }
+  throw error;
+}
+
+function scopeOf(node: Node): Scope | null {
+  return ((node as Node & Record<string, unknown>)[SCOPE_KEY] as Scope | undefined) ?? null;
+}
+
 function delegatedEventHandler(e: Event): void {
   const key = `$$${e.type}`;
   let node: Node | null = ((e.composedPath?.()[0] as Node | undefined) ?? e.target) as Node | null;
@@ -213,10 +247,14 @@ function delegatedEventHandler(e: Event): void {
     while (node) {
       const handler = (node as Node & Record<string, unknown>)[key] as DelegatedHandler | undefined;
       if (handler && !(node as Partial<HTMLButtonElement>).disabled) {
-        if (typeof handler === "function") {
-          handler.call(node, e);
-        } else if (Array.isArray(handler) && typeof handler[0] === "function") {
-          handler[0].call(node, handler[1], e);
+        try {
+          if (typeof handler === "function") {
+            handler.call(node, e);
+          } else if (Array.isArray(handler) && typeof handler[0] === "function") {
+            handler[0].call(node, handler[1], e);
+          }
+        } catch (error) {
+          routeError(scopeOf(node), error);
         }
         if (e.cancelBubble) return;
       }
@@ -360,9 +398,10 @@ export function createElement(
 
   // Apply props
   if (props) {
+    const owner = getOwner();
     for (const key in props) {
       if (key !== "children") {
-        applyProp(element, key, props[key], isSvg);
+        setProp(owner, element, key, props[key]);
       }
     }
   }
@@ -374,121 +413,408 @@ export function createElement(
 }
 
 /**
- * Apply a prop to an element
+ * A resolved CHANNEL — `CODESIGN.md` §3.5.
+ *
+ * The compiler picks one of these at compile time from `NameFlags` plus the
+ * element's namespace, so nothing here re-derives attribute-vs-property,
+ * boolean-ness or namespace-sensitivity from the name. `name` is already
+ * normalised and kebab-cased where the namespace calls for it; a channel that
+ * writes a fixed name ignores the argument.
+ *
+ * `prev` is what this channel returned last time — the APPLIED representation,
+ * which for `class` is the normalised string and for a style object is the css
+ * map — and the return value is what the caller threads back in.
  */
-function applyProp(element: Element, key: string, value: unknown, isSvg: boolean): void {
-  // Event handlers (onClick -> click); accepts fn or [fn, data] tuple
-  if (key[0] === "o" && key[1] === "n") {
-    const eventName = key.slice(2).toLowerCase();
-    if (isEventHandlerValue(value)) {
-      if (DELEGATED_EVENTS.has(eventName)) {
-        (element as Element & Record<string, unknown>)[`$$${eventName}`] = value;
-        ensureDelegatedListener(eventName);
-      } else {
-        element.addEventListener(eventName, toListener(value as DelegatedHandler));
-      }
+export type Channel = (element: Element, name: string, value: unknown, prev?: unknown) => unknown;
+
+/** `setAttribute` / `removeAttribute`. A boolean value toggles the attribute. */
+export function setAttr(element: Element, name: string, value: unknown, prev?: unknown): unknown {
+  if (value === prev) return prev;
+  if (isBoolean(value)) {
+    if (value) {
+      element.setAttribute(name, "");
+    } else {
+      element.removeAttribute(name);
     }
-    return;
+    return value;
   }
-
-  // Ref callback, object, or array of refs (composable directives)
-  if (key === "ref") {
-    if (isArray(value)) {
-      for (const ref of value) {
-        if (isRefCallback(ref)) {
-          ref(element);
-        } else if (isObject(ref) && "current" in ref) {
-          setProperty(ref, "current", element);
-        }
-      }
-    } else if (isRefCallback(value)) {
-      value(element);
-    } else if (isObject(value) && "current" in value) {
-      setProperty(value, "current", element);
-    }
-    return;
+  if (isNullish(value)) {
+    element.removeAttribute(name);
+    return value;
   }
-
-  // Reactive props (signals): diff against the previous applied value so
-  // unchanged values touch no DOM
-  if (isSignalGetter(value)) {
-    let prev: unknown;
-    renderEffect(() => {
-      // C3.8 on the READ, not only on the value. `setProp` tests `isBlock` on
-      // the carrier, which catches a Block written straight into the slot; a
-      // Cell that YIELDS one carries no brand and walked past it, and the
-      // Block's own source text was then stringified into the attribute.
-      prev = applyResolvedProp(element, key, readSlot(value, `setProp ${key}`), isSvg, prev);
-    });
-    return;
-  }
-
-  applyResolvedProp(element, key, value, isSvg, undefined);
+  element.setAttribute(name, toString(value));
+  return value;
 }
 
 /**
- * Apply a resolved (non-reactive) prop value.
- * Returns the "applied" representation for diffing on the next run.
+ * `element[name] = value`. The `DOM_PROPS` channel, and the one a template may
+ * never bake: HTML would set the default attribute, which diverges on a dirty
+ * form field.
  */
-function applyResolvedProp(
+export function setDomProp(
   element: Element,
-  key: string,
+  name: string,
   value: unknown,
-  isSvg: boolean,
-  prev: unknown,
+  prev?: unknown,
 ): unknown {
-  // Style object: diff key-by-key against the previously applied map
-  if (key === "style") {
-    const style = (element as Partial<ElementCSSInlineStyle>).style;
-    if (!style) return prev;
-    if (isObject(value)) {
-      return diffStyleObjects(style, value, isStyleMap(prev) ? prev : null);
-    }
-    if (isString(value)) {
-      // setAttribute, not style.cssText: cssText round-trips through the CSSOM
-      // serializer, so the style attribute comes back re-written (a trailing
-      // ";" at minimum). That makes a compile-time-folded `style="…"` in a
-      // template unable to match this path byte for byte, which blocks folding
-      // a literal style into the template at all. setAttribute replaces the
-      // same declaration block and keeps the author's text.
-      if (value !== prev) element.setAttribute("style", value);
-      return value;
-    }
-    return prev;
-  }
+  if (value === prev) return prev;
+  setProperty(element, name, value);
+  return value;
+}
 
-  // Class handling: normalize string|array|object to one string, diff it
-  if (key === "class" || key === "className") {
-    const className = classToString(value);
-    if (className !== prev) {
-      if (className === null) {
-        element.removeAttribute("class");
-      } else if (isSvg) {
-        // SVGElement.className is a read-only SVGAnimatedString
-        element.setAttribute("class", className);
-      } else {
-        element.className = className;
-      }
+/**
+ * `bool:` — presence, not text. Distinct from `setAttr`'s boolean branch, which
+ * only fires for a value that IS a boolean: here truthiness decides, so
+ * `bool:hidden={count()}` is the author saying what the name means rather than
+ * the runtime guessing from the value that arrived.
+ */
+export function setBool(element: Element, name: string, value: unknown, prev?: unknown): unknown {
+  const on = Boolean(value);
+  if (on === prev) return on;
+  if (on) {
+    element.setAttribute(name, "");
+  } else {
+    element.removeAttribute(name);
+  }
+  return on;
+}
+
+/**
+ * The `class` channel, normalised from a string, array or object — and it emits
+ * only the tokens it OWNS.
+ *
+ * `element.className = …` owns the whole attribute, so every class another
+ * channel put there — `classList`, a `ref`, a directive — is erased the moment
+ * this value changes. B1/B2 remove that in two places, and they cover different
+ * cases: the fused record guards `class` on its own field, so an UNRELATED prop
+ * can no longer reach this channel at all, and the branch below keeps a real
+ * class change from taking anything it did not write.
+ *
+ * The test is one string compare: if the attribute still reads exactly what this
+ * channel last applied, nothing else is holding a token and the value is written
+ * WHOLE — byte for byte, which is what keeps a class string round-tripping
+ * through the DOM unchanged (duplicate tokens, runs of spaces, and separators
+ * `DOMTokenList` does not treat as whitespace all survive). Only when the
+ * attribute has been changed by someone else does the write become a token diff,
+ * and only that case pays for one.
+ */
+export function setClass(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
+  const className = classToString(value);
+  if (className === prev) return prev;
+  const current = element.getAttribute("class");
+  if (prev === undefined ? current === null : current === prev) {
+    if (className === null) {
+      element.removeAttribute("class");
+    } else if (element.namespaceURI === SVG_NS) {
+      // SVGElement.className is a read-only SVGAnimatedString
+      element.setAttribute("class", className);
+    } else {
+      (element as Element & { className: string }).className = className;
     }
     return className;
   }
-
-  // classList: additive per-key toggling, diffed against the previous map
-  if (key === "classList") {
-    return diffClassList(element, isObject(value) ? value : null, isClassMap(prev) ? prev : null);
+  const tokens = element.classList;
+  const next = splitClass(className);
+  for (const token of splitClass(prev === undefined ? null : (prev as string | null))) {
+    if (!next.has(token)) tokens.remove(token);
   }
-
-  // Dangerous innerHTML
-  if (key === "dangerouslySetInnerHTML" && isObject(value)) {
-    const html = (value as { __html?: string }).__html ?? "";
-    if (html !== prev) element.innerHTML = html;
-    return html;
+  for (const token of next) {
+    tokens.add(token);
   }
+  if (className === null && tokens.length === 0) element.removeAttribute("class");
+  return className;
+}
 
-  // Everything else: identical value means no DOM write
+function splitClass(value: string | null): Set<string> {
+  const out = new Set<string>();
+  if (value === null) return out;
+  for (const token of value.split(/[ \t\n\f\r]+/)) {
+    if (token !== "") out.add(token);
+  }
+  return out;
+}
+
+/** The whole `style` attribute: a css string, or an object diffed per property. */
+export function setStyle(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
+  const style = (element as Partial<ElementCSSInlineStyle>).style;
+  if (!style) return prev;
+  if (isObject(value)) {
+    return diffStyleObjects(style, value, isStyleMap(prev) ? prev : null);
+  }
+  if (isString(value)) {
+    // setAttribute, not style.cssText: cssText round-trips through the CSSOM
+    // serializer, so the style attribute comes back re-written (a trailing ";"
+    // at minimum). That makes a compile-time-folded `style="…"` in a template
+    // unable to match this path byte for byte, which blocks folding a literal
+    // style into the template at all.
+    if (value !== prev) element.setAttribute("style", value);
+    return value;
+  }
+  return prev;
+}
+
+/** One css declaration, with the property name resolved at compile time. */
+export function setStyleProp(
+  element: Element,
+  name: string,
+  value: unknown,
+  prev?: unknown,
+): unknown {
   if (value === prev) return prev;
-  setElementAttr(element, key, value, isSvg);
+  const style = (element as Partial<ElementCSSInlineStyle>).style;
+  if (style) setStylePropDirect(style, name, value);
   return value;
+}
+
+/** Additive per-key toggling, diffed against the previously applied map. */
+export function setClassList(
+  element: Element,
+  _name: string,
+  value: unknown,
+  prev?: unknown,
+): unknown {
+  return diffClassList(element, isObject(value) ? value : null, isClassMap(prev) ? prev : null);
+}
+
+/** `dangerouslySetInnerHTML={{ __html }}`. */
+export function setHtml(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
+  if (!isObject(value)) return prev;
+  const html = (value as { __html?: string }).__html ?? "";
+  if (html !== prev) element.innerHTML = html;
+  return html;
+}
+
+/**
+ * `ref` as a channel rather than a prop. The compiled path calls `ref()` below,
+ * which owns the cleanup a callback returns; this is the shape the un-compiled
+ * `createElement` walk applies, and it registers nothing, exactly as before.
+ */
+export function setRef(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
+  applyRefs(element, value);
+  return prev;
+}
+
+/** Every ref shape, returning whatever the callbacks handed back as cleanups. */
+function applyRefs(element: Element, value: unknown): (() => void)[] {
+  const undo: (() => void)[] = [];
+  const one = (target: unknown): void => {
+    if (isRefCallback(target)) {
+      const back = (target as (el: Element) => unknown)(element);
+      if (typeof back === "function") undo.push(back as () => void);
+    } else if (isObject(target) && "current" in target) {
+      setProperty(target, "current", element);
+    }
+  };
+  if (isArray(value)) {
+    for (const target of value) one(target);
+  } else {
+    one(value);
+  }
+  return undo;
+}
+
+/**
+ * M3/E2 entry point #7. A ref registration owned by the scope the element
+ * belongs to: a callback that returns a function has it run at disposal, and a
+ * callback that throws routes to the enclosing boundary instead of aborting
+ * construction.
+ */
+export function ref(s: Scope | null, element: Element, value: unknown): void {
+  const owner = requireScope(s, "ref");
+  let undo: (() => void)[] = [];
+  try {
+    undo = applyRefs(element, value);
+  } catch (error) {
+    routeError(owner, error);
+  }
+  if (undo.length === 0 || owner === null) return;
+  underScope(owner, "ref", () => {
+    onCleanup(() => {
+      for (const fn of undo) fn();
+    });
+  });
+}
+
+/**
+ * B4 — a listener dies with its position. `addEventListener` paired with a
+ * cleanup on the scope the element belongs to, so removal costs no bookkeeping
+ * and cannot be forgotten. A handler that throws routes to the boundary (E2 #6).
+ *
+ * The delegated set never reaches here: those are `$$<type>` expandos plus one
+ * `delegateEvents` call per module, and that protocol is unchanged.
+ */
+export function listen(
+  s: Scope | null,
+  element: EventTarget,
+  type: string,
+  handler: EventListener,
+  options?: boolean | AddEventListenerOptions,
+): void {
+  const owner = requireScope(s, "listen");
+  const routed = routedListener(owner, element, handler);
+  element.addEventListener(type, routed, options);
+  if (owner === null) return;
+  underScope(owner, "listen", () => {
+    onCleanup(() => element.removeEventListener(type, routed, options));
+  });
+}
+
+/**
+ * E2.2's half of `listen`, shared so the two non-delegated channels cannot
+ * drift: `spread` binds its own listeners and used to bind them RAW, so a throw
+ * out of one escaped `dispatchEvent` to `window.onerror` instead of reaching
+ * the enclosing boundary.
+ */
+function routedListener(
+  owner: Scope | null,
+  element: EventTarget,
+  handler: EventListener,
+): EventListener {
+  return function (this: unknown, e: Event): void {
+    try {
+      handler.call(element, e);
+    } catch (error) {
+      routeError(owner, error);
+    }
+  };
+}
+
+/**
+ * The delegated half of the same registration. Compiled code writes the expando
+ * itself — `_n1.$$click = h` — and this exists for the un-compiled walk and for
+ * `spread`, so both record the owning scope the dispatcher routes a throw
+ * through.
+ */
+export function delegate(
+  s: Scope | null,
+  element: Element,
+  type: string,
+  handler: DelegatedHandler | undefined,
+): void {
+  const owner = requireScope(s, "delegate");
+  (element as Element & Record<string, unknown>)[`$$${type}`] = handler;
+  (element as Element & Record<string, unknown>)[SCOPE_KEY] = owner;
+  if (handler !== undefined) ensureDelegatedListener(type);
+}
+
+/**
+ * The one question channel resolution CANNOT answer at compile time (§3.13):
+ * whether the value that arrived is a live Cell. The CHANNEL is the compiler's,
+ * passed in; only liveness is decided here.
+ */
+export function bindProp(
+  s: Scope | null,
+  element: Element,
+  write: Channel,
+  name: string,
+  value: unknown,
+): void {
+  const given = requireScope(s, "setProp");
+  // §3.0 rule 2 / §3.13: an attribute is a CELL slot. A Block forwarded into one
+  // is the asymmetry the rule is about, and it throws here rather than being
+  // invoked with `undefined` and stringified into the attribute.
+  if (isBlock(value)) {
+    throw new ScopeMissingError(`setProp ${name} (a Block reached a Cell slot)`);
+  }
+  if (!isSignalGetter(value)) {
+    write(element, name, value, undefined);
+    return;
+  }
+  // O4.5: the effect belongs to the scope this call was GIVEN, not to whatever
+  // happened to be current at the call site.
+  //
+  // The split form is the same one the compiled path emits (B2/R2): the READ is
+  // the tracked half and the WRITE is not, so a channel that touches the DOM —
+  // `namespaceURI`, `classList`, `style` — cannot acquire a dependency here
+  // either. A single tracked function would make the two paths disagree about
+  // what an element effect depends on, which is a divergence no DOM comparison
+  // would show until something in a channel started reading.
+  ownedBy(given, "setProp", () => {
+    let prev: unknown;
+    renderEffect(
+      // C3.8 on the READ, not only on the value: a Cell that YIELDS a Block
+      // carries no brand, so only a test at the read site can see it.
+      () => readSlot(value, `setProp ${name}`),
+      (next) => {
+        prev = write(element, name, next, prev);
+      },
+    );
+  });
+}
+
+/**
+ * `bind:` — the CHANNEL half (§3.10). The property, the event that reports a
+ * user edit and the coercion are all resolved at compile time; what is left is
+ * the write and the read-back.
+ *
+ * The write compares against the ELEMENT, not against the last framework write:
+ * a handler that rejects a keystroke leaves `prev` holding a value the DOM no
+ * longer has, and a cached compare would then never repair it — the defining
+ * case controlled inputs exist for. Selection and focus preservation are M7.
+ */
+export function bindValue(
+  s: Scope | null,
+  element: Element,
+  name: string,
+  type: string,
+  value: unknown,
+): void {
+  const given = requireScope(s, "bind");
+  const target = element as Element & Record<string, unknown>;
+  const set = (value as { set?: (next: unknown) => void } | null)?.set;
+  if (typeof set !== "function") {
+    emitDiagnostic(
+      "BIND_TARGET_NOT_WRITABLE",
+      "error",
+      `bind:${name} needs a writable signal; it was given ${typeof value}, which can be read but not written.`,
+    );
+  }
+  if (isSignalGetter(value)) {
+    ownedBy(given, "bind", () => {
+      renderEffect(() => {
+        const next = readSlot(value, `bind:${name}`);
+        if (target[name] !== next) target[name] = next;
+      });
+    });
+  } else {
+    target[name] = value;
+  }
+  if (typeof set !== "function") return;
+  listen(given, element, type, () => {
+    set.call(value, target[name]);
+  });
+}
+
+/**
+ * Name → channel, for the UN-COMPILED path only. The compiled path never calls
+ * this: `CODESIGN.md` §3.5 says there is no `setProp` dispatcher on it, and this
+ * is the dispatcher, kept alive for `createElement` and `spread` — which §4.1
+ * retires at M9 — and as the definition the generated Rust tables are read out
+ * of, so the two resolutions cannot drift.
+ */
+function channelOf(key: string, isSvg: boolean): Channel {
+  if (key === "class") return setClass;
+  if (key === "className") return setClass;
+  if (key === "style") return setStyle;
+  if (key === "classList") return setClassList;
+  if (key === "ref") return setRef;
+  if (key === "dangerouslySetInnerHTML") return setHtml;
+  // Form-field exceptions stay properties (value, checked, selected, ...). The
+  // runtime takes that branch only outside the SVG namespace.
+  if (!isSvg && key in DOM_PROPS) return setDomProp;
+  return setAttr;
+}
+
+/**
+ * The attribute name the channel is handed: `className`/`htmlFor` normalised,
+ * and kebab-cased inside the SVG namespace with the two documented exemptions.
+ */
+function attrNameOf(name: string, isSvg: boolean): string {
+  let propKey = name === "className" ? "class" : name === "htmlFor" ? "for" : name;
+  if (isSvg && propKey !== "class" && propKey !== "viewBox") {
+    propKey = toKebabCase(propKey);
+  }
+  return propKey;
 }
 
 const STYLE_MAP = Symbol("barq-style-map");
@@ -517,7 +843,7 @@ function diffStyleObjects(
     // Per-property reactive values keep their own effect (static object case)
     if (isSignalGetter(raw)) {
       renderEffect(() => {
-        setStylePropDirect(style, cssProp, prop, (raw as () => unknown)());
+        setStylePropDirect(style, cssProp, (raw as () => unknown)());
       });
       continue;
     }
@@ -672,55 +998,9 @@ function ssrHtmlNodes(value: { readonly t: string }): Node[] {
 }
 
 /**
- * Set a single prop value.
- *
- * Attributes-over-properties (Solid 2.0): everything is written as an
- * attribute except the form-field property exceptions in DOM_PROPS.
- * Boolean values add/remove the attribute.
- */
-function setElementAttr(element: Element, key: string, value: unknown, isSvg: boolean): void {
-  // Normalize key
-  let propKey = key === "className" ? "class" : key === "htmlFor" ? "for" : key;
-
-  // SVG attributes use kebab-case
-  if (isSvg && propKey !== "class" && propKey !== "viewBox") {
-    propKey = toKebabCase(propKey);
-  }
-
-  // Form-field exceptions stay properties (value, checked, selected, ...)
-  if (!isSvg && propKey in DOM_PROPS) {
-    setProperty(element, propKey, value);
-    return;
-  }
-
-  // Boolean values add/remove the attribute
-  if (isBoolean(value)) {
-    if (value) {
-      element.setAttribute(propKey, "");
-    } else {
-      element.removeAttribute(propKey);
-    }
-    return;
-  }
-
-  // Null/undefined removes attribute
-  if (isNullish(value)) {
-    element.removeAttribute(propKey);
-    return;
-  }
-
-  element.setAttribute(propKey, toString(value));
-}
-
-/**
  * Set a single style property with pre-computed CSS property name
  */
-function setStylePropDirect(
-  style: CSSStyleDeclaration,
-  cssProperty: string,
-  _prop: string,
-  value: unknown,
-): void {
+function setStylePropDirect(style: CSSStyleDeclaration, cssProperty: string, value: unknown): void {
   if (value === null || value === undefined || value === false) {
     style.removeProperty(cssProperty);
     return;
@@ -1072,25 +1352,95 @@ export function insert(
 }
 
 /**
- * Apply a prop to an element (compiled-template output). Handles events
- * (delegated where possible), refs, class/style values, and reactive
- * (function) values via render effects.
+ * The UN-COMPILED path's prop entry: resolve the name to a channel, then bind.
+ *
+ * `CODESIGN.md` §3.5 removes this from the compiled path — every attribute
+ * resolves to exactly one channel at compile time — and what is left here is
+ * what `createElement` and `spread` need, plus the namespace syntax so the two
+ * paths accept the same source. §4.1 retires it with `createElement` at M9.
  */
 export function setProp(s: Scope | null, element: Element, key: string, value: unknown): void {
   const given = requireScope(s, "setProp");
-  // §3.0 rule 2 / §3.13: an attribute is a CELL slot. A Block forwarded into one
-  // is the asymmetry the rule is about, and it throws here rather than being
-  // invoked with `undefined` and stringified into the attribute.
-  if (isBlock(value)) {
-    throw new ScopeMissingError(`setProp ${key} (a Block reached a Cell slot)`);
+  const isSvg = element.namespaceURI === SVG_NS;
+
+  const colon = key.indexOf(":");
+  if (colon > 0) {
+    const rest = key.slice(colon + 1);
+    switch (key.slice(0, colon)) {
+      case "on":
+        // Verbatim: no lowercasing, which is the other half of the
+        // custom-element story.
+        bindEvent(given, element, rest, value);
+        return;
+      case "prop":
+        bindProp(given, element, setDomProp, rest, value);
+        return;
+      case "attr":
+        bindProp(given, element, setAttr, attrNameOf(rest, isSvg), value);
+        return;
+      case "bool":
+        bindProp(given, element, setBool, attrNameOf(rest, isSvg), value);
+        return;
+      case "style":
+        bindProp(given, element, setStyleProp, toKebabCase(rest), value);
+        return;
+      case "bind": {
+        if (rest === "this") {
+          ref(given, element, value);
+          return;
+        }
+        const [name, type] = bindChannelOf(element, rest);
+        bindValue(given, element, name, type, value);
+        return;
+      }
+      default:
+        break;
+    }
   }
-  // O4.5, as in `insert`: a reactive prop opens a render effect, and the effect
-  // is owned by the scope the call was handed. `s` used to be read for
-  // `requireScope` and then discarded, so `setProp(A, …)` while B was ambient
-  // survived `dispose(A)` and went on writing the attribute.
-  ownedBy(given, "setProp", () => {
-    applyProp(element, key, value, element.namespaceURI === SVG_NS);
-  });
+
+  // `applyProp`'s original test: `key[0] === "o" && key[1] === "n"`, so
+  // `onceUpon` really does bind a `ceupon` listener and the compiler agrees.
+  if (key[0] === "o" && key[1] === "n") {
+    bindEvent(given, element, key.slice(2).toLowerCase(), value);
+    return;
+  }
+
+  if (key === "ref") {
+    ref(given, element, value);
+    return;
+  }
+
+  bindProp(given, element, channelOf(key, isSvg), attrNameOf(key, isSvg), value);
+}
+
+/**
+ * `bind:x` → the property to write and the event that reports a user edit. The
+ * compiler answers this at compile time from the tag and the `type` attribute;
+ * this is the same table for the un-compiled path.
+ */
+export function bindChannelOf(element: Element, name: string): [string, string] {
+  if (name !== "value") return [name, name === "open" ? "toggle" : "change"];
+  const tag = element.tagName;
+  if (tag === "SELECT") return ["value", "change"];
+  const type = (element as Partial<HTMLInputElement>).type;
+  if (type === "checkbox" || type === "radio") return ["checked", "change"];
+  if (type === "number" || type === "range") return ["valueAsNumber", "input"];
+  return ["value", "input"];
+}
+
+/**
+ * The delegated/direct split, applied to a value the compiler could not prove
+ * is a handler. The runtime's own `isEventHandlerValue` is what decides whether
+ * anything binds at all — which is the oracle's test, on a value neither side
+ * can see.
+ */
+export function bindEvent(s: Scope | null, element: Element, type: string, value: unknown): void {
+  if (!isEventHandlerValue(value)) return;
+  if (DELEGATED_EVENTS.has(type)) {
+    delegate(s, element, type, value as DelegatedHandler);
+    return;
+  }
+  listen(s, element, type, toListener(value as DelegatedHandler));
 }
 
 /**
@@ -1098,16 +1448,26 @@ export function setProp(s: Scope | null, element: Element, key: string, value: u
  * `<div {...props} />`). Diffs every prop against the previously applied
  * value, clears props that vanished, replaces event listeners, and applies
  * `ref` once on mount. `children` is not handled here.
+ *
+ * Its non-delegated listeners are owned exactly as `listen`'s are — removed
+ * when `s` is disposed (B4) and routed to the enclosing boundary on a throw
+ * (E2.2). They were neither until M5's repair: `directListeners` was consulted
+ * when a prop CHANGED or VANISHED and never at teardown, and the handler was
+ * bound raw.
  */
 export function spread(
   s: Scope | null,
   element: Element,
   props: Record<string, unknown> | (() => Record<string, unknown>),
 ): void {
-  requireScope(s, "spread");
+  const given = requireScope(s, "spread");
   const isSvg = element.namespaceURI === SVG_NS;
   const applied: Record<string, unknown> = {};
   const directListeners: Record<string, EventListener> = {};
+  // B4: one cleanup per (element, event name), installed the first time that
+  // name binds. `listen` registers one per call, which would accumulate here
+  // because a spread re-applies its props on every run of the effect below.
+  const owned = new Set<string>();
   let first = true;
 
   const applyOne = (key: string, value: unknown): void => {
@@ -1115,12 +1475,12 @@ export function spread(
     if (key[0] === "o" && key[1] === "n") {
       const eventName = key.slice(2).toLowerCase();
       if (DELEGATED_EVENTS.has(eventName)) {
-        (element as Element & Record<string, unknown>)[`$$${eventName}`] = isEventHandlerValue(
-          value,
-        )
-          ? value
-          : undefined;
-        if (value) ensureDelegatedListener(eventName);
+        delegate(
+          given,
+          element,
+          eventName,
+          isEventHandlerValue(value) ? (value as DelegatedHandler) : undefined,
+        );
       } else {
         const prevListener = directListeners[eventName];
         if (prevListener) {
@@ -1128,9 +1488,18 @@ export function spread(
           delete directListeners[eventName];
         }
         if (isEventHandlerValue(value)) {
-          const listener = toListener(value as DelegatedHandler);
+          const listener = routedListener(given, element, toListener(value as DelegatedHandler));
           directListeners[eventName] = listener;
           element.addEventListener(eventName, listener);
+          if (given !== null && !owned.has(eventName)) {
+            owned.add(eventName);
+            underScope(given, "spread", () => {
+              onCleanup(() => {
+                const last = directListeners[eventName];
+                if (last !== undefined) element.removeEventListener(eventName, last);
+              });
+            });
+          }
         }
       }
       applied[key] = value;
@@ -1139,7 +1508,7 @@ export function spread(
 
     // Getter values unwrap inline: the surrounding effect already tracks
     const resolved = key !== "style" && isSignalGetter(value) ? (value as () => unknown)() : value;
-    applied[key] = applyResolvedProp(element, key, resolved, isSvg, applied[key]);
+    applied[key] = channelOf(key, isSvg)(element, attrNameOf(key, isSvg), resolved, applied[key]);
   };
 
   renderEffect(() => {
@@ -1156,9 +1525,7 @@ export function spread(
     for (const key in next) {
       if (key === "children") continue;
       if (key === "ref") {
-        if (first) {
-          applyProp(element, "ref", next[key], isSvg);
-        }
+        if (first) setRef(element, "ref", next[key]);
         continue;
       }
       applyOne(key, next[key]);

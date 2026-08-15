@@ -185,6 +185,11 @@ _$block((_s$) => Child(_s$, {})) })`. `children` is a Block, so `Child` is const
 inside the instance scope, after the binding is written. Verified runtime:
 `<div><span class="child">provided</span></div>`.
 
+O2.1 `HOLDS` since M3, and it is the clause the emission above is about: `children` is a Block, so a
+component's body runs while the current scope is the receiving construct's instance scope and after
+that scope's bindings are written. All three of its L1 claims hold. §13 carried it as **V** for two
+milestones after it moved, which is the drift the registry-consistency check exists to report.
+
 *Before M3* the emission was `(0, Ctx.Provider)({ value: 1, children: Child({}) })` — `Child({})` an
 ARGUMENT, evaluated at the call site under the caller's owner, before the provider's scope existed —
 and the runtime was `<span>THREW:ContextNotFoundError</span>`, or a blank page where the context had
@@ -271,19 +276,24 @@ byte-identical subtree satisfies the markup — which is what every other channe
 a function of — and fails here.
 
 O3.4 `IMPLEMENTED, UNEXERCISED`. M2 landed `abortSignal(s)` and `dispose` aborts it before the range
-comes out, and `scope.test.ts` pins it, but nothing in the runtime calls `abortSignal` yet: `dom.ts`
-still registers every listener with a bare `addEventListener` and no `{ signal }`, and the resource
-that would own a fetch is M7's. `HOLDS` is the wrong word for a primitive whose only caller is its
-own test; the listener half is B4 and M5's, the fetch half is M7's.
+comes out, and `scope.test.ts` pins it, but nothing in the runtime calls `abortSignal` yet. M5 gave
+the listener a scope-owned cleanup rather than an `{ signal }` — `listen` registers the removal
+through `onCleanup`, which is the same lifetime by a different mechanism — so the abort controller
+still has no production caller and the fetch half is M7's. `HOLDS` is the wrong word for a primitive
+whose only caller is its own test.
 
-O3.6 `PARTIAL`. The half that says a throwing cleanup MUST NOT abort the rest holds: `runUntracked`
+O3.6 `PARTIAL`, and it has no compiler-rs channel: nothing about a cleanup throw is observable from
+emitted code, so `sem-err-cleanup-throw.tsx` was named here while it did not exist and is struck off.
+The half that holds is pinned by `packages/core/src/scope.test.ts`. The half that says a throwing
+cleanup MUST NOT abort the rest holds: `runUntracked`
 wraps every cleanup in `try/catch`, so a throw in the second of three still leaves all three run.
 The half that says it MUST route to `s.catcher` does not — the throw is swallowed with
 `console.error` and no catcher is consulted. (An earlier reading of this status said the throw
 "propagates out of `disposeNode` and aborts the rest", which is not what happens and is exactly the
 wrong-reason hazard §15 exists to catch.)
 
-O3.7 `PARTIAL` since M4, and the part that is left is B4's rather than this rule's.
+O3.7 `HOLDS` since M5. It was `PARTIAL` from M4, and the part that was left was B4's rather than this
+rule's; M5 closed it.
 
 What holds: **zero live scopes, zero scheduled effects, zero retained DOM nodes** under any of the
 four control-flow primitives. The `<Await>` branch that registered its disposer with the effect node
@@ -295,10 +305,10 @@ driving effect cannot take it. `ownership-known-failures.ts` carried this as
 the falsification procedure directly: dispose the root, then write a signal the subtree depended on —
 no effect runs and no DOM is written.
 
-What does not hold: **zero registered listeners**. `dom.ts` still registers listeners with a bare
-`addEventListener` and nothing removes them, which is B4 and is M5's. A Block that registers its own
-listener with its own `onCleanup` is released correctly today, and that is the half `flow.test.ts`
-can assert; the half the framework owns is not written yet, so this rule does not say `HOLDS`.
+What held at M4 and did not: **zero registered listeners**. `dom.ts` registered listeners with a bare
+`addEventListener` and nothing removed them. M5's `listen($s, el, type, handler)` pairs the
+registration with an `onCleanup` on the scope that owns the element, and the corpus-wide count is now
+0 — see B4, which owns that clause and its evidence.
 
 **The leak oracle.** Since M4 the invariant is checkable, which the paragraph above this one said it
 was not. `test/leaks.ts` takes five probes from OUTSIDE the runtime, in the same window as the render
@@ -315,13 +325,19 @@ and after `dispose()` has returned, and runs all five over the whole corpus:
 The effect probe is the strongest of the five and is worth stating separately: a COUNT of live
 effects is not observable — the runtime exposes no registry and `scopeAllocations()` is monotonic —
 but an effect that is still subscribed has one behaviour nothing else has, which is that it RUNS.
-Over 137 sessions the corpus produces **three findings, all `listener`, all B4, all in one fixture**;
-the four clauses this rule owns produce none. `test/leak-known-failures.ts` carries the three under
-the same four assertions the other two registries do, and `leaks.test.ts` asserts separately that
-each probe CAN fire, because a probe that cannot reports the same zero a correct runtime does.
+At M4 the corpus produced **three findings, all `listener`, all B4, all in one fixture**; the four
+clauses this rule owns produced none. At M5 it produces **none at all, over 141 sessions**, and
+`test/leak-known-failures.ts` is empty — which is what a milestone's completion looks like on a
+registry. Its four assertions still run, and `leaks.test.ts` asserts separately that each probe CAN
+fire, because a probe that cannot reports the same zero a correct runtime does.
 
-**Pinned by.** `sem-own-dispose-order.tsx` *(new)*, `sem-own-dispose-leaves-nothing.tsx` *(new)*,
-`sem-err-cleanup-throw.tsx` *(new)*.
+**Pinned by.** `sem-own-render-disposer-disposes.tsx`, and the whole corpus through `test/leaks.ts`.
+The ordering half (a) and the cleanup-throw half (c) of the falsification procedure have no
+compiler-rs channel — neither is observable from emitted code — and are pinned in the runtime by
+`packages/core/src/scope.test.ts`. The three names that stood here before — `sem-own-dispose-order`,
+`sem-own-dispose-leaves-nothing`, `sem-err-cleanup-throw`, all marked *(new)* — were never written,
+and a rule that `HOLDS` may not cite a fixture nobody wrote; B4's row was struck for the same reason
+and this one was missed.
 
 ### O4 — ambient hygiene *(revised; the original was self-contradictory — see `CODESIGN.md` §11)*
 
@@ -384,10 +400,10 @@ called; (b) every cleanup registered by the failed subtree MUST have run; (c) no
 failed subtree may remain in the document; (d) a second, sibling boundary must still catch its own
 throw afterwards, which it cannot if `CURRENT` was left dangling.
 
-**Status.** `VIOLATED`. There is no `CURRENT` restoration on the exceptional path anywhere;
+**Status.** O4.1–O4.2 `VIOLATED`. There is no `CURRENT` restoration on the exceptional path anywhere;
 `ErrorBoundary` catches inside a `computed` and never touches the ambient owner.
 
-**And `s.catcher` is written but read by nothing**, which is worth saying because it makes O4.3
+O4.3 `VIOLATED`. **And `s.catcher` is written but read by nothing**, which is worth saying because it makes O4.3
 untestable rather than merely unimplemented. `makeScope` inherits it, `enterRoot` installs the root
 catcher, and no site reads it. `scope.test.ts`'s "O4.3: exit restores to the captured prev, not to
 the parent" exercises `exit`, not a catcher, so it separates `_prev` from `s.parent` — the half that
@@ -395,9 +411,18 @@ the parent" exercises `exit`, not a catcher, so it separates `_prev` from `s.par
 catching construct exists to do the restoring. The field stays because M4's `boundary` is what reads
 it; until then O4.3 has no executable channel and §14 lists it.
 
-O4.4 is now honoured by the one M2 primitive that enters a scope: `provide` disposes its instance
+O4.4 `PARTIAL`. Its one L1 claim holds — `sem-err-construction-throw`'s
+`the-failed-subtree-is-disposed-not-abandoned`, which is clause (b) of the falsification procedure —
+and the rest of the rule is not observed. It is now honoured by the one M2 primitive that enters a scope: `provide` disposes its instance
 scope on the exceptional path rather than exiting and abandoning it. That is one construct, not the
 rule — the rule is about every scope entered after `prev`, and it needs the catcher.
+
+O4.5 `PARTIAL`. The `**Status.**` line above is O4.1's and O4.2's; O4.5 is a different observation and
+was reading as theirs because it is the last sub-rule marker in the section. `insert` and `setProp`
+both run their body under the scope they were HANDED since M4b's gate round, and
+`sem-own-given-scope-wins`'s first three claims pin that. One reader is left and it is registered
+rather than described: `childToNodes` invokes a children Block with `getOwner()`, which
+`test/known-failures.ts` carries as `a-children-block-is-invoked-with-the-given-scope`, coupled to O5.
 
 **Pinned by.** `sem-err-current-restored-after-throw.tsx` *(new)*.
 
@@ -587,6 +612,25 @@ ZERO times during construction and once on the first call. *Before M3*, `{...p}`
 getter reported `reads-at-copy: 1, still a getter: false`, and all six props helpers flattened
 getters.
 
+C3.1–C3.5 `VIOLATED`, which is the last observation taken and not a fresh one. The emission side
+moved at M3 — the compiler emits no getter anywhere, which is C3.4's precondition — but the five laws
+are stated about a props object CROSSING a component boundary, and the acceptance procedure below is
+still unrunnable: it needs `packages/core` to hand a component a props object at all. §0.2 makes a
+status a claim about an observation, so it stays where the pre-M3 run left it until the procedure can
+be run. `sem-props-laziness-conformance` and `sem-props-cell-not-memoised` are the two fixtures that
+would run it and neither is written.
+
+C3.6 `HOLDS`: a Cell called with a scope yields what it yields with none.
+C3.7 `HOLDS`: a Cell degrades in a Block slot, and the converse is C3.8.
+C3.9 `HOLDS`: a forwarded Block is still a Block.
+`sem-props-block-in-cell-slot` drives all three.
+
+C3.8 `PARTIAL`. Ten of twelve (shape, slot) pairs take a Block and throw. The two that do not are
+registered in `test/known-failures.ts` and are the same shape: a laundered `() => aBlock` carries no
+brand, so only the slot's own read can catch it, and `each source` and `provide value` hand the Cell
+on by identity rather than reading it at a site. §13 carried this as `H` while a registered
+known-failure said otherwise.
+
 **What carries the laziness, stated because the acceptance test does not distinguish it.** The eight
 named operations read zero because the CARRIER is a thunk, not because the source list is lazy: an
 eager plain-object copy of a props record passes all eight. What the source list buys is liveness and
@@ -675,6 +719,9 @@ arrow. C5.2's η-reduction is now universal rather than a whitelist, and one con
 here because it removes a channel: a reduced prop used to be evidence that the tag resolved to a flow
 component, and it no longer is. The SymbolId discipline it stood for is re-pinned where it is still
 observable — a locally-bound `Show` gets no string implementation.
+
+C5.1 `HOLDS`. Both halves: item 1 is `BARQ010` below, item 2 is C3.8's throw, and
+`sem-props-block-in-cell-slot`'s two C5.1 claims hold.
 
 **C5.1 item 1 landed in M4b's gate round, as `BARQ010`.** It did not exist before: `diag.rs` listed
 eight codes and none of them was about kinds, so both in-module cases — a Block written straight into
@@ -1228,12 +1275,12 @@ observable in the trace; a throw with no user boundary must reach the root, not 
 | --- | ----------------------------------- | --------------------------------------------------------------------------- |
  |
 |---|---|---|---|
-| 1 | **Block invocation** (construction) | the boundary the Block is invoked *inside* | `VIOLATED` *(new)* |
+| 1 | **Block invocation** (construction) | the boundary the Block is invoked *inside* | `HOLDS` *(M3)* |
 | 2 | **component body** | the boundary enclosing its position | `VIOLATED` *(new)* |
 | 3 | **computed evaluation** | the boundary of the scope that created the computed | `HOLDS` *(new)* |
 | 4 | **effect body** | the boundary of the scope that created the effect | `HOLDS` *(new)* |
 | 5 | **cleanup** | the disposing scope's catcher; does not abort the rest (O3.6) | `VIOLATED` *(new)* |
-| 6 | **event handler** | the boundary owning the *element*, via the scope stored beside the handler | `VIOLATED` *(new)* |
+| 6 | **event handler** | the boundary owning the *element*, via the scope stored beside the handler | `HOLDS` *(M5)* |
 | 7 | **ref callback** | the boundary owning the element | `VIOLATED` *(new)* |
 | 8 | **async continuation** | the boundary of the scope that created the resource, if `gen` still matches | `VIOLATED` *(new)* |
 
@@ -1242,23 +1289,53 @@ catcher, and **then** invokes the content Block inside a `try`. The child theref
 the boundary, not at its call site.
 
 **Falsified by.** `<Errored fallback={…}><Boom/></Errored>` where `Boom` throws during construction:
-the fallback MUST render. Verified today: `Errored({ fallback: (e) => _tmpl$2(), children: Boom({}) })`
-— `Boom({})` is an argument and throws *before the boundary exists*, so the throw escapes to the
-caller and the page dies.
+the fallback MUST render. *Before M3*: `Errored({ fallback: (e) => _tmpl$2(), children: Boom({}) })`
+— `Boom({})` was an argument and threw *before the boundary existed*, so the throw escaped to the
+caller and the page died. Since M3 the emission is `_$boundary(_s$, …, _$block((_s$) => Boom(_s$, {})))`
+and the fallback renders.
 
 **E2.2 — a handler throw is the framework's problem.** A handler is code the framework invoked, so the
-framework owns its failure. The delegated dispatcher stores the owning scope alongside the handler and
-routes a throw to `scope.catcher`. Verified today: `dom.ts:169-200` has no `try` and a handler
-exception escapes to `window.onerror` with no framework involvement.
+framework owns its failure. The delegated dispatcher stores the owning scope alongside the handler —
+one `$$s` expando per ELEMENT, beside the `$$<type>` the protocol already had — and routes a throw to
+the nearest `ERROR_BOUNDARY` on that scope's chain. A listener the element owns routes the same way,
+inside `listen`, so neither registration can be given one behaviour and the other another.
+
+Entry 6 reads `HOLDS` from M5. Before it, `dom.ts`'s dispatcher had no `try` at all and a
+non-delegated handler was a bare `addEventListener`, so an exception escaped to `window.onerror` with
+no framework involvement and a boundary standing directly over the button caught nothing. Entry 7,
+the ref callback, is routed by the same `routeError` inside `ref` — and stays `VIOLATED` in the table
+above, because no channel observes it and being unobserved is not the same state as being right.
 
 **E2.3 — `NotReadyError` is re-thrown, never captured as an error.** An error boundary MUST pass it
 through to the nearest `Loading` boundary. `ErrorBoundary` lacks this check today, so a suspended
 subtree under an error boundary renders the error fallback instead of the loading fallback.
 
+**Status.** `PARTIAL`, for the table above rather than for a summary of it: four of the eight entries
+are routed — 1 since M3, 3 and 4 since M2, 6 since M5 — and four are not. The three sub-rules carry
+their own status, because they moved independently and a single word for the section cannot say which.
+
+E2.1 `HOLDS` since M3. `children` is a Block, so a boundary enters its scope and installs its catcher
+before it invokes the content — the throw lands INSIDE the `try`. All five of
+`sem-err-construction-throw`'s E2.1 claims hold, across `ErrorBoundary`, `Errored`, `Loading` and the
+`Reveal > Loading > Errored` stack, in the DIRECT form with no `{() => …}` wrapper. §13 carried this
+as **V** for two milestones after it moved.
+
+E2.2 `HOLDS` since M5. Entry 6 is the one this milestone moved. The delegated dispatcher stores the
+owning scope in `$$s` — one expando per ELEMENT — and routes through it; `listen` wraps its handler
+in the same `try` and calls `routeError`. M5's repair round found the third registration on this
+channel: `spread` bound its non-delegated handlers RAW, so a throw out of one escaped `dispatchEvent`
+to `window.onerror` with a boundary standing directly over the element. It now goes through the same
+wrapper, and `packages/core/src/dom.test.ts` pins it — the compiler emits no `_$spread(`, so there is
+no compiler-rs channel that could.
+
+E2.3 `VIOLATED`. `errorBoundary` re-throws `NotReadyError` now, but nothing observes the pass-through
+to the nearest `Loading`, and being unobserved is not the same state as being right.
+
 **Pinned by.** `sem-err-construction-throw.tsx`, `sem-err-effect-throw.tsx`,
 `sem-err-handler-throw.tsx`, `sem-err-ref-throw.tsx`, `sem-err-async-throw.tsx`,
 `sem-err-cleanup-throw.tsx`, `sem-err-notready-passthrough.tsx` *(all new)*;
-`control-flow-error-boundary.tsx`, `control-flow-errored-loading.tsx` (existing) for entries 3–4.
+`control-flow-error-boundary.tsx`, `control-flow-errored-loading.tsx` (existing) for entries 3–4;
+`packages/core/src/dom.test.ts` for E2.2's `spread` channel.
 
 ### E3 — a boundary is a branch plus a try
 
@@ -1409,10 +1486,23 @@ element effect. The apply phase runs untracked, so a DOM read there can never be
 **Falsified by.** Read `el.offsetWidth` in an apply phase; the effect MUST NOT acquire a dependency,
 and no layout-read feedback loop may form.
 
-**Status.** `HOLDS` for `untrack`/`peek`; `PLANNED` (M5) for the structural guarantee, because the
-fused compute/apply split does not exist yet.
+**Status.** `HOLDS` since M5. `untrack`/`peek` were already exits; the structural one is the fused
+compute/apply split (B2). `recompute` runs the apply with `tracking = false` and `currentObserver =
+null`, and the compiler emits the two halves as two separate functions, so there is no discipline to
+keep: the second argument is not a tracking scope and cannot be made into one at a call site.
 
-**Pinned by.** `sem-react-apply-is-untracked.tsx` *(new)*.
+The falsification the rule states — read `el.offsetWidth` in an apply and check for a dependency —
+cannot discriminate, because no DOM property is reactive and a tracked apply looks exactly like an
+untracked one through one. The fixture reaches a SIGNAL from inside the apply instead, the only way a
+channel can: `setAttr` coerces with `String(value)`, and the value is an object whose `toString` reads
+it. Writing that signal must not re-run the effect, and a third claim asserts the COMPUTE still
+subscribes, so "no dependency" cannot be satisfied by a dead effect.
+
+`bindProp` — the un-compiled path's element effect — was split the same way in the same change. Two
+element effects that disagreed about what an element effect depends on would be a divergence no DOM
+comparison could show until something inside a channel started reading.
+
+**Pinned by.** `sem-react-apply-is-untracked.tsx`.
 
 ### R3 — a Cell is neutral
 
@@ -1432,6 +1522,9 @@ nothing may re-run.
 
 **Rule.** See O6. Stated twice deliberately: it is an ownership rule and a reactivity rule, and
 conflating owner with observer is the bug source both sections exist to prevent.
+
+**Status.** `HOLDS`. R4 is O6 restated and takes O6's observation: both directions are asserted by
+`sem-react-untrack-keeps-owner`.
 
 **Pinned by.** `sem-react-untrack-keeps-owner.tsx`.
 
@@ -1475,13 +1568,22 @@ on the same element where `id={s()}` is live is a shipped defect with five hand-
 no attribute name for which a reactive expression silently becomes a one-shot write.
 
 **Falsified by.** `<b class={s()} id={s()} title={s()} />`; write `s`; **all three** must change.
-Verified today: `class` is emitted as a dead one-shot `_$setProp(_el$1, "class", s())` while `id` and
-`title` land in a live `_$renderEffect`. The cause is the `STATEFUL_DIFF` early return at
-`classify.rs:118`.
 
-**Status.** `VIOLATED`. **Pinned by.** `class-with-live-siblings.tsx` (existing — this fixture already
-carries the shape; it passes today only because the oracle shares the defect, which is finding #1 of
-`CODESIGN.md` §6).
+**Status.** `HOLDS` since M5. `NameFlags::STATEFUL_DIFF` — the flag whose early return in `classify`
+refused to make an intercepted name live at all — **is deleted**, and the four names it covered now
+resolve to a channel that threads its APPLIED value through the fused record (`Diff::Thread`, B2). A
+name no longer decides liveness; the analysis does, for every name alike.
+
+Two mutation rows stand behind it rather than a green run. `fuse-merges-class-without-threading-its-
+applied-value` downgrades those channels to the plain `!==` guard, which is the M4 defect exactly: it
+**survives L3**, because P2 `classify` is shared by both levels and all three backends, and is killed
+by the absolute front-end probe in `optimisation.test.ts`. `channel-drops-its-resolution` collapses
+every channel onto `setAttr` and is killed by the generator.
+
+**Pinned by.** `equal-liveness.tsx` (the rule's own spelling, three BARE reads — the shape where the
+compiler's auto-thunking, not the author's closure, has to treat the names alike),
+`class-with-live-siblings.tsx` (the explicit-thunk shape, re-cut: it asserted the exclusion and now
+asserts its absence), `class-owns-only-its-tokens.tsx`.
 
 ### B2 — one fused effect per element, with a compiler-allocated prev record
 
@@ -1491,18 +1593,65 @@ no per-element expando. `class`, `style` and `classList` are members of that rec
 
 **Falsified by.** Count effects per element with N reactive bindings: it MUST be 1, not N.
 
-**Status.** `PLANNED` (M5). **Pinned by.** `multi-prop-one-element.tsx` (existing, whose `optimality`
-already carries the claim).
+**Status.** `HOLDS` since M5. The emitted shape is
+
+```js
+_$renderEffect(() => ({ a: tone(), b: label(), c: label() }), (_v$, _p$ = {}) => {
+  _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
+  if (_v$.b !== _p$.b) _$setAttr(_el$1, "title", _v$.b);
+  if (_v$.c !== _p$.c) _$setAttr(_el$1, "id", _v$.c);
+});
+```
+
+and four things follow from it, each of which is why the shape is that one.
+
+- **The apply cannot subscribe.** It is the second argument, and `recompute` runs it with `tracking`
+  off. R2, and the property that removes a bug class rather than a bug.
+- **The prev store is the compute's own return.** Nothing is allocated by the runtime and no expando
+  is stamped on the element. A channel whose applied form differs from its input writes that form back
+  into the same slot, which is how `class`, `style`, `classList` and `dangerouslySetInnerHTML` keep
+  the REMOVAL half of their diff inside a shared effect — the thing `STATEFUL_DIFF` existed to protect
+  and the reason B1 was violated.
+- **The fields are POSITIONAL.** `__proto__` as a record key would write through `Object.prototype`'s
+  setter instead of creating an own slot, and every other guard in the group would then compare
+  against a value that was never stored. That was a special case in `classify`; it is now not a case.
+- **A fused effect never returns a function.** A one-argument effect registers its return as the
+  cleanup. The compute returns an object literal, which cannot be one, and the apply's block body
+  returns nothing. `fuse-returns-a-function-instead-of-the-record` is the mutation, killed by the
+  generator and by the corpus differential.
+
+One live prop needs no record at all: its previous value is a scalar and the compute returns it
+directly (`_$renderEffect(() => count(), (_v$, _p$) => { if (_v$ !== _p$) … })`).
+
+**Measured.** Over the 123 fixtures shared with M4b the emitted module total went **204,469 → 203,387
+bytes (−0.53%)** — the positional keys and the deleted accumulator plumbing more than pay for the
+second arrow. Compile stayed at **0.0342–0.0350 ms/typical file** against a 1 ms budget.
+
+**Pinned by.** `multi-prop-one-element.tsx`, `reactive-attribute.tsx`, `class-with-live-siblings.tsx`,
+`equal-liveness.tsx` (all re-cut), `sem-react-apply-is-untracked.tsx`.
 
 ### B3 — `ref` is not a prop
 
 **Rule.** `<div ref={el}>` with a writable binding MUST emit an assignment `el = _n1`. `ref={fn}` MUST
 emit a ref registration drained per M3. `useRef()` and the `{current}` shape are deleted.
 
-**Falsified by.** After render, the `let` binding MUST hold the element. Verified today:
+**Falsified by.** After render, the `let` binding MUST hold the element. Before M5:
 `_$setProp(_el$1, "ref", el)` **reads** the variable and never writes it.
 
-**Status.** `VIOLATED`. **Pinned by.** `ref-binding.tsx` (existing, re-pinned).
+**Status.** `PARTIAL`, and the clauses are named rather than averaged.
+
+- **The channel holds.** `ref` is `Op::Ref`, not a prop: a writable binding lowers to `box = _el$1`
+  and every other shape to `_$ref($s, _el$1, value)`, which owns the cleanup a callback returns and
+  routes a callback throw to the boundary. The name never reaches the runtime as a question.
+- **The draining does not.** M3 wants refs drained after insertion, children before parents; they
+  still run inline, at the position, during construction. That is M3's row and it is untouched here.
+- **`useRef()` and `{current}` are not deleted.** `CODESIGN.md` §4.1 schedules that with
+  `createElement` at M9, and `_$ref` accepts the object and the array forms so nothing that works
+  today stops working. Deleting them now would delete a fixture, which this project does not do.
+
+**Pinned by.** `ref-writable-binding.tsx` (the assignment half, declared as a compiler win because a
+props object has nothing to assign to), `ref-binding.tsx`, `ref-on-component.tsx` (existing,
+re-pinned).
 
 ### B4 — a listener dies with its position
 
@@ -1513,30 +1662,47 @@ form.
 **Falsified by.** The leak oracle: registered-listener count after `dispose()` MUST be 0. Today only
 `spread` removes listeners.
 
-**Status.** `VIOLATED`, and M4 did not move it — the listener channel is M5's. What M4 did build is
-the half of the falsification procedure that can run without it: `flow.test.ts` registers a listener
-inside a branch body with its own `onCleanup`, flips the key, and asserts the node that was there is
-detached AND deaf. That is the position dying with its listener, demonstrated on a listener the
-BLOCK owns. The framework still registers its own with a bare `addEventListener` in `dom.ts` and
-removes none of them, which is what this rule is about and what keeps it violated.
+**Status.** `HOLDS` since M5, and the word was premature until M5's repair round: the paragraph below
+used to say "there is no call site that could" forget removal, and there was one.
 
-What M4 also built is the rule's own falsification procedure, in full: "registered-listener count
-after `dispose()` MUST be 0" is now a number this repository takes. `test/leaks.ts` matches every
-`addEventListener` against its removal across the whole corpus and reports three outstanding
-listeners on `non-delegated-event` — `div.mouseenter`, `div.mouseleave`, `div.focus`, one per
-handler `dom.ts:386` binds with no cleanup. They are registered in `test/leak-known-failures.ts`
-against M5, with the four assertions that make a registry mean something: a row that stops occurring
-fails as stale, an unregistered leak fails, a row whose rule is not the rule the probe named fails,
-and every rule is checked against this document.
+`listen($s, el, type, handler)` is the only way the COMPILED path binds a non-delegated handler, and
+it pairs `addEventListener` with an `onCleanup` on the scope that owns the element. `test/leaks.ts`
+takes the count the rule asks for across the whole corpus: **0 outstanding listeners over 141
+sessions**, against 3 at M4. `test/leak-known-failures.ts` is now empty, and its four assertions still
+run — an unregistered leak is still a suite failure, which is the half that matters when a table has
+no rows.
 
-The distinction the status is careful about: the rule is **not** deregistered on the strength of a
-probe existing. Being observably violated is a different state from being unobserved, and it is the
-state M5 starts from. Delegated handlers are deliberately not counted — one `document` listener per
-event type is module state for the whole process, installed by `delegateEvents` and removed by
+**The corpus is not the whole runtime, and this rule is unqualified.** `spread` in `dom.ts` bound its
+non-delegated listeners with a bare `addEventListener` and recorded them in a local map consulted only
+when a prop CHANGED or VANISHED — never at disposal — so a listener registered through a spread was
+still registered after `dispose()` returned and its handler still fired. The corpus could not see it:
+`codegen/dom.rs` refuses to lower an element carrying a spread onto the template path, so the compiler
+emits no `_$spread(` and the leak oracle's listener probe had no subject on the one path that leaked.
+Fixed by owning the removal — one `onCleanup` per (element, event name) on the scope `spread` was
+given, registered the first time that name binds so a prop that changes ten times does not accumulate
+ten cleanups — and pinned in `packages/core/src/dom.test.ts`, which is the honest place for it while
+the compiler refuses spreads. `test/runtime-mutants.ts` now carries `listen-registers-no-cleanup`, so
+the shape has a mutation as well as an observation.
+
+The rule was NOT deregistered on the strength of a green probe. `leaks.test.ts` asserts, in the same
+row, that every non-delegated listener the corpus registers was matched to its removal *and* that the
+corpus registers listeners at all — a probe that stopped discriminating would report the same zero.
+
+Delegated handlers are deliberately not counted and are not a leak: one `document` listener per event
+type is module state for the whole process, installed by `delegateEvents` and removed by
 `clearDelegatedEvents`, and B4 is about the listener a POSITION owns.
 
-**Pinned by.** `delegated-event.tsx`, `non-delegated-event.tsx` (existing, re-pinned);
-`sem-own-dispose-leaves-nothing.tsx` *(new)*.
+What is NOT claimed: the second sentence of the rule. Handler identity is bound once by default, which
+holds; `on:click={cell}` as the explicit live form is not implemented, and `on:` today takes a
+verbatim event name and a handler like any other.
+
+**Pinned by.** `delegated-event.tsx`, `non-delegated-event.tsx` (existing, re-pinned),
+`ref-cleanup.tsx` *(new — a ref callback returning an undo that removes a listener, the shape no
+fixture had and the one `ref-drops-its-cleanup` walked through)*, `packages/core/src/dom.test.ts` for
+the `spread` channel, and the whole corpus through `test/leaks.ts` — which is the pin that matters, because the rule is a count over every
+fixture rather than a claim about one. `sem-own-dispose-leaves-nothing.tsx` was named here while the
+rule was violated and is struck off: it was never written, and a rule that HOLDS may not cite a
+fixture nobody wrote.
 
 ### B5 — property-vs-attribute is a stated rule with an explicit override
 
@@ -1546,8 +1712,23 @@ lowercasing.
 
 **Falsified by.** `<my-grid rows={arr}>` MUST NOT become `setAttribute("rows", "[object Object]")`.
 
-**Status.** `PLANNED` (M5). **Pinned by.** `custom-elements.tsx`, `property-attrs.tsx`,
-`dom-prop-static-value.tsx` (existing).
+**Status.** `PARTIAL` since M5, and the two halves are different kinds of claim.
+
+- **The override holds.** `prop:` / `attr:` / `bool:` / `style:` force the channel, `on:` takes a
+  verbatim event name with no lowercasing, and `bind:` resolves its property and its reporting event
+  from the tag and the `type` attribute. Every one of them is decided at P1 and emitted as a distinct
+  runtime entry point, so `<my-grid prop:rows={n}>` writes the property and nothing classifies a name
+  at run time. `attribute-namespaces.tsx` reads the property back into an attribute, because a
+  property write is otherwise invisible to a DOM comparison — which is exactly why nothing could see
+  this before.
+- **The DEFAULT is still the eleven-name table.** "Known HTML attribute → attribute; else if the
+  property exists on the prototype chain → property; else attribute" is a prototype probe, and the
+  compiler still answers it from `DOM_PROPS`. So `<my-grid rows={arr}>` without a prefix is still an
+  attribute write. What M5 delivers is the thing that makes the hole CLOSEABLE by the author; making
+  the default right needs the per-element attribute tables §3.12 asks for, and those are not here.
+
+**Pinned by.** `attribute-namespaces.tsx`, `bind-value-channel.tsx`, `custom-elements.tsx`,
+`property-attrs.tsx`, `dom-prop-static-value.tsx`.
 
 ---
 
@@ -1743,14 +1924,14 @@ green, which is why L1 exists.
 |
  O1 | scope creation set is closed | P (M2/M3) | `sem-own-component-allocates-nothing` *(new)* |
 | O2 | a Block runs under the scope it is given | H | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `own-provider-direct`, `own-provider-wrapper` |
-| O2.1 | a component body runs under the receiving scope, after its bindings | **V** | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `sem-testing-wrapper-eager`, `own-provider-wrapper` |
+| O2.1 | a component body runs under the receiving scope, after its bindings | H (M3) | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `sem-testing-wrapper-eager`, `own-provider-wrapper` |
 | O3.1–3 | disposal order: dead, kids reverse DFS, cleanups LIFO | H | `sem-own-dispose-order` *(new)* |
 | O3.4–5 | abort signal, range removal | I/U — O3.5 H | `sem-own-dispose-leaves-nothing` *(new)*, `mm-branch-flip`, `mm-switch-arm` |
-| O3.6 | a throwing cleanup does not abort the rest | H / **V** | `sem-err-cleanup-throw` *(new)* |
-| O3.7 | the leak invariant | P (M4) | `sem-own-render-disposer-disposes`, `sem-own-dispose-leaves-nothing` *(new)*, the whole corpus through `test/leaks.ts` |
+| O3.6 | a throwing cleanup does not abort the rest | P — H / **V** | no compiler-rs channel; the half that holds is pinned in packages/core/src/scope.test.ts (§14) |
+| O3.7 | the leak invariant | H (M5) | `sem-own-render-disposer-disposes`, the whole corpus through `test/leaks.ts` |
 | O4.1–2 | restoration on both paths; the cost claim | **V** | `sem-err-current-restored-after-throw` *(new)* |
 | O4.3 | a catcher restores to `prev`, captured before its own `enter` | **V** | `sem-err-current-restored-after-throw` *(new)* |
-| O4.4 | no partially-constructed subtree survives a throw | **V** | `sem-err-construction-throw` |
+| O4.4 | no partially-constructed subtree survives a throw | P — one construct | `sem-err-construction-throw` |
 | O4.5 | `CURRENT` never decides ownership | H / P (M5) | `sem-own-given-scope-wins`, structural (§14) |
 | O5 | `render` opens a root; the disposer disposes | H / P (M5) | `sem-own-render-disposer-disposes` |
 | O6 | owner and observer are separate | H | `sem-react-untrack-keeps-owner` |
@@ -1759,7 +1940,7 @@ green, which is why L1 exists.
 | C3.1–5 | the five props laws | **V** | `sem-props-laziness-conformance` *(new)*, `sem-props-cell-not-memoised` *(new)*, `component-getter-props` |
 | C3.6 | Cells are arity-tolerant | H | `sem-props-block-in-cell-slot` |
 | C3.7 | Cell-in-Block-slot is safe; the converse is not | H | `sem-props-block-in-cell-slot` |
-| C3.8 | a Block with no scope throws, never falls back | H | `sem-props-block-in-cell-slot` |
+| C3.8 | a Block with no scope throws, never falls back | P — 10 of 12 | `sem-props-block-in-cell-slot` |
 | C3.9 | kind travels with the value | H | `sem-props-block-in-cell-slot` |
 | C4 | props are called; `Slot<T>` / `Props<P>` | P (M3) | `sem-props-typed-slot.d.test.ts` *(new, type channel)* |
 | C5 | forwarding is identity and depth-independent | H | `props-raw-forward`, `sem-props-forward-identity` *(new)* |
@@ -1784,9 +1965,9 @@ green, which is why L1 exists.
 | K7 | no marker comments in client rendering | P (M4) | anchor snapshot channel (corpus-wide) |
 | K8 | no ambient insertion state | H | structural (§14) |
 | E1 | O(1) catcher; a catcher always exists | P (M2) | `sem-err-root-catcher` *(new)* |
-| E2 | the eight routed entry points | **V** (5 of 8) | `sem-err-construction-throw`, `sem-err-effect-throw` *(new)*, `sem-err-handler-throw` *(new)*, `sem-err-ref-throw` *(new)*, `sem-err-async-throw` *(new)*, `sem-err-cleanup-throw` *(new)*, `sem-err-notready-passthrough` *(new)* |
-| E2.1 | construction throws land inside the boundary | **V** | `sem-err-construction-throw` |
-| E2.2 | a handler throw routes to the boundary | **V** | `sem-err-handler-throw` *(new)* |
+| E2 | the eight routed entry points | P — 4 of 8 | `sem-err-construction-throw`, `sem-err-effect-throw` *(new)*, `sem-err-handler-throw`, `sem-err-ref-throw` *(new)*, `sem-err-async-throw` *(new)*, `sem-err-cleanup-throw` *(new)*, `sem-err-notready-passthrough` *(new)* |
+| E2.1 | construction throws land inside the boundary | H (M3) | `sem-err-construction-throw` |
+| E2.2 | a handler throw routes to the boundary | H (M5) | `sem-err-handler-throw` |
 | E2.3 | `NotReadyError` is re-thrown, never captured | **V** | `sem-err-notready-passthrough` *(new)* |
 | E3 | a boundary is a branch plus a try | H | `control-flow-error-boundary` |
 | E4 | an error carries the scope chain | P (M2) | `sem-err-component-stack` *(new)* |
@@ -1797,16 +1978,16 @@ green, which is why L1 exists.
 | M5 | a stable re-render preserves every node | H / **V** | `sem-mount-stable-rerender` *(new)*, corpus-wide |
 | M6 | insertion is idempotent under interruption | U | `sem-mount-dispose-during-construction` *(new)* |
 | R1 | reactivity entered in exactly four places | H | `sem-react-component-body-untracked` |
-| R2 | reactivity exited in exactly three places | H / P (M5) | `sem-react-apply-is-untracked` *(new)* |
+| R2 | reactivity exited in exactly three places | H | `sem-react-apply-is-untracked` |
 | R3 | a Cell is neutral | P (M3) | `sem-react-cell-neutrality` *(new)* |
 | R4 | `untrack` changes only the observer | H | `sem-react-untrack-keeps-owner` |
 | R5 | epoch dedupe and `markWave` are load-bearing | H | ablation bench (§14) |
 | R6 | a signal getter is a Cell | H / **V** | `use-state-tuple`, `signal-methods-in-handler` |
-| B1 | every binding on an element is equally live | **V** | `class-with-live-siblings` |
-| B2 | one fused effect per element | P (M5) | `multi-prop-one-element` |
-| B3 | `ref` is not a prop | **V** | `ref-binding` |
-| B4 | a listener dies with its position | **V**, observably | `delegated-event`, `non-delegated-event`, `sem-own-dispose-leaves-nothing` *(new)* |
-| B5 | property-vs-attribute is a stated rule | P (M5) | `custom-elements`, `property-attrs` |
+| B1 | every binding on an element is equally live | H | `equal-liveness`, `class-with-live-siblings` |
+| B2 | one fused effect per element | H | `multi-prop-one-element`, `class-owns-only-its-tokens` |
+| B3 | `ref` is not a prop | P (M5) | `ref-writable-binding`, `ref-binding`, `ref-on-component` |
+| B4 | a listener dies with its position | H (M5) | `delegated-event`, `non-delegated-event`, the corpus through `test/leaks.ts` |
+| B5 | property-vs-attribute is a stated rule | P (M5) | `attribute-namespaces`, `bind-value-channel`, `custom-elements`, `property-attrs` |
 | A1 | cancellation is structural | **V** | `sem-async-abort-on-dispose` *(new)* |
 | A2 | staleness by `gen` captured at call time | **V** | `sem-async-stale-response` *(new)* |
 | A3 | `NotReady` is a control signal | **V** | `sem-err-notready-passthrough` *(new)* |
@@ -1889,7 +2070,7 @@ piece of M0/M1 harness work.
  |
 |---|---|---|
 | O1, O2, O2.1, O3 | **the L2b ownership trace** — `enter`/`exit`/`dispose`/Block-invoke appended to a log, asserted isomorphic to the compiler's static ownership tree | M0 |
-| O3.7, B4 | **the leak oracle** — DELIVERED at M4, `test/leaks.ts`: five probes over the whole corpus, taken outside the runtime and after `dispose()` has returned — live scopes (off the ownership trace), scheduled effects (every signal poked, any run counted), registered listeners (`addEventListener` matched to its removal), async continuations (scheduled before disposal, counted both when they ran after it and when they were still outstanding at teardown), retained nodes. Three findings across 137 sessions, all B4, all registered in `test/leak-known-failures.ts` against M5. The in-flight-fetch clause has no subject until M7 gives `abortSignal` a caller. | M4 (delivered) / M7 (fetches) |
+| O3.7, B4 | **the leak oracle** — DELIVERED at M4, B4 GREEN at M5, `test/leaks.ts`: five probes over the whole corpus, taken outside the runtime and after `dispose()` has returned — live scopes (off the ownership trace), scheduled effects (every signal poked, any run counted), registered listeners (`addEventListener` matched to its removal), async continuations (scheduled before disposal, counted both when they ran after it and when they were still outstanding at teardown), retained nodes. Three findings across 137 sessions at M4, all B4; **zero across 141 at M5**, and `test/leak-known-failures.ts` is empty. The in-flight-fetch clause has no subject until M7 gives `abortSignal` a caller. | M4 (delivered) / M7 (fetches) |
 | C7 | **Block invocation counter**, keyed by position — DELIVERED at M4 in two places: `flow.ts`'s `build` emits `BLOCK_EVALUATED_TWICE` behind the diagnostics gate, and `test/single-evaluation.test.ts` drives every consumer in the rule with an instrumented Block against a declared invocation sequence. `test/ownership-census.ts`'s clone count stays as the second, independent observation. | M4 (delivered) |
 | M5 | **corpus-wide node-identity metamorphic channel** (replaces today's skip-on-shape-mismatch identity channel) | M1 |
 | H5 | **address-set diff** — compile all fixtures both ways, diff the `(module, unit, position)` sets | M6 |

@@ -47,7 +47,8 @@
  * ## Why the codemod was NOT run here
  *
  * Not because the scope is unreachable here. `createElement`
- * (`packages/core/src/dom.ts:339`) invokes ANY function tag as
+ * (`packages/core/src/dom.ts`, the `typeof tag === "function"` branch of
+ * `createElement`) invokes ANY function tag as
  * `tag(getOwner(), finalProps)`, so the eager path Bun's transform emits
  * already passes a scope first, and a consumer-side `(props)` → `(_s$, props)`
  * would receive props today. The last two assertions below prove both halves.
@@ -290,6 +291,69 @@ describe(`the M2/M3 calling convention: this package is scheduled for ${MILESTON
     expect(distinct).toEqual([
       "TypeError: null is not an object (evaluating 'props.initialPath')",
       "TypeError: undefined is not an object (evaluating 'config.base')",
+    ]);
+
+    // The count and the shape set are both insensitive to MEMBERSHIP: a later
+    // milestone that fixes one of the 54 and breaks a different router test
+    // keeps them green. These are the names.
+    const failed = [...text.matchAll(/^\(fail\) (.+?)(?: \[[\d.]+ms\])?$/gm)]
+      .map((m) => m[1])
+      .toSorted();
+    expect(failed).toEqual([
+      "Edge Cases > handles base path configuration",
+      "Edge Cases > handles deeply nested routes",
+      "Edge Cases > handles empty routes array",
+      "Edge Cases > handles hash-only navigation",
+      "Edge Cases > handles rapid navigation",
+      "Edge Cases > handles route with trailing slash",
+      "Edge Cases > handles special characters in params",
+      "Edge Cases > handles unicode paths",
+      "Edge Cases > multiple MemoryRouters work independently",
+      "Hooks > useIsLoading > returns loading state signal",
+      "Hooks > useLocation > returns current location",
+      "Hooks > useLocation > updates on navigation",
+      "Hooks > useMatchedRoutes > returns matched route chain",
+      "Hooks > useNavigate > returns navigate function",
+      "Hooks > useNavigate > supports replace option",
+      "Hooks > useParams > returns route params",
+      "Hooks > useParams > updates on param change",
+      "Hooks > useSearchParams > returns search params",
+      "Hooks > useSearchParams > setSearchParams filters empty values",
+      "Hooks > useSearchParams > setSearchParams updates URL",
+      "Loaders > executes loader on route match",
+      "Loaders > executes loaders in parallel for nested routes",
+      "Loaders > handles loader errors",
+      "Loaders > passes params to loader",
+      "Loaders > passes searchParams to loader",
+      "Loaders > provides abort signal to loader",
+      "Loaders > route errorElement catches loader errors",
+      "Memory & Cleanup > cleans up router on unmount",
+      "Memory & Cleanup > clears cache entries on TTL expiration",
+      "New Features > Cache Configuration > custom TTL is respected",
+      "New Features > Debug Mode > setRouterDebugMode enables debug logging",
+      "New Features > Loading States > useIsLoading returns true during loader execution",
+      "New Features > Relative Navigation > Link resolves relative href",
+      "New Features > Relative Navigation > navigate supports relative paths",
+      "New Features > Route Guards > afterEach hook is called after navigation",
+      "New Features > Route Guards > beforeEach guard can block navigation",
+      "New Features > Route Guards > beforeEach guard can redirect",
+      "New Features > Route Guards > route-level beforeEnter guard",
+      "Router Components > Link > navigates on click",
+      "Router Components > Link > renders anchor element",
+      "Router Components > Link > skips navigation with modifier keys",
+      "Router Components > Link > supports replace option",
+      "Router Components > MemoryRouter > navigates between routes",
+      "Router Components > MemoryRouter > renders with initial path",
+      "Router Components > MemoryRouter > shows default 404 without fallback",
+      "Router Components > MemoryRouter > shows fallback for 404",
+      "Router Components > MemoryRouter > supports custom initial path",
+      "Router Components > NavLink > adds active class when route matches",
+      "Router Components > NavLink > deprecated exact prop works same as end",
+      "Router Components > NavLink > supports end prop for exact matching",
+      "Router Components > NavLink > uses prefix matching by default",
+      "Router Components > Outlet > renders child routes",
+      "Router Components > Outlet > renders nested outlets",
+      "Router Components > Redirect > redirects on render",
     ]);
   });
 

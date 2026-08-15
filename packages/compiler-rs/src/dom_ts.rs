@@ -17,17 +17,16 @@ pub enum Shape {
     /// `const NAME = new Set(["a", "b"]);`
     Set,
     /// Not a table at all: the string literals a named function BRANCHES on.
-    /// `applyProp` and `applyResolvedProp` decide by `key === "…"` which props
-    /// never reach `setElementAttr`, and that decision is as much a runtime
-    /// fact as `DELEGATED_EVENTS` is.
+    /// `channelOf` decides by `key === "…"` which names resolve to a channel of
+    /// their own rather than to the plain attribute/property pair, and that
+    /// decision is as much a runtime fact as `DELEGATED_EVENTS` is.
     Branches { functions: &'static [&'static str], needle: &'static str },
 }
 
-pub const INTERCEPTED: Shape =
-    Shape::Branches { functions: &["applyProp", "applyResolvedProp"], needle: "key === \"" };
+pub const INTERCEPTED: Shape = Shape::Branches { functions: &["channelOf"], needle: "key === \"" };
 
 pub const KEBAB_EXEMPT: Shape =
-    Shape::Branches { functions: &["setElementAttr"], needle: "propKey !== \"" };
+    Shape::Branches { functions: &["attrNameOf"], needle: "propKey !== \"" };
 
 pub const TABLES: [(&str, &str, Shape, From); 8] = [
     ("SVG_TAGS", "SVG_TAGS", Shape::Record, From::Dom),
@@ -35,8 +34,8 @@ pub const TABLES: [(&str, &str, Shape, From); 8] = [
     ("CSS_NUMBER_PROPS", "CSS_NUMBER_PROPS", Shape::Record, From::Dom),
     ("DELEGATED_EVENTS", "DELEGATED_EVENTS", Shape::Set, From::Dom),
     ("NON_BUBBLING_EVENTS", "NON_BUBBLING_EVENTS", Shape::Set, From::Dom),
-    ("applyProp/applyResolvedProp key branches", "INTERCEPTED_NAMES", INTERCEPTED, From::Dom),
-    ("setElementAttr propKey exemptions", "SVG_KEBAB_EXEMPT_NAMES", KEBAB_EXEMPT, From::Dom),
+    ("channelOf key branches", "INTERCEPTED_NAMES", INTERCEPTED, From::Dom),
+    ("attrNameOf propKey exemptions", "SVG_KEBAB_EXEMPT_NAMES", KEBAB_EXEMPT, From::Dom),
     ("ATTR_INTERCEPTED", "ATTR_INTERCEPTED_NAMES", Shape::Record, From::Ssr),
 ];
 

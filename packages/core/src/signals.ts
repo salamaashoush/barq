@@ -1528,14 +1528,23 @@ function recompute(node: ComputedNode<unknown>): void {
       const apply = node._apply;
       const prevT = tracking;
       const prevO = currentObserver;
+      const applyOwner = currentOwner;
+      const applyHost = currentHost;
       tracking = false;
       currentObserver = null;
+      // O3.7: the apply is part of this effect's run, so what it creates is this
+      // effect's and dies with it — a class or style object carrying per-key
+      // getters opens those effects here.
+      currentOwner = node._scope;
+      currentHost = node;
       try {
         const cleanup = apply(newValue, prev);
         if (typeof cleanup === "function") node._cleanup = cleanup;
       } finally {
         tracking = prevT;
         currentObserver = prevO;
+        currentOwner = applyOwner;
+        currentHost = applyHost;
       }
     } else if (typeof newValue === "function") {
       node._cleanup = newValue as () => void;

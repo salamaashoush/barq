@@ -16,13 +16,25 @@
  * rows nothing in the repository could tell a correct ownership tree from a
  * uniformly wrong one.
  *
+ * Four rows go against `packages/core/src/dom.ts`, which M5 rewrote and this
+ * table could not reach at all: every row was a string edit against `flow.ts`,
+ * so the two defects M5's repair round found in `spread` — a listener with no
+ * cleanup and a handler bound without its `try` — had nothing here that could
+ * have caught them. Extending it needed two fixes rather than four new rows:
+ * `test/preload.ts` already owns `dom.ts`'s `mock.module` entry and a second
+ * registration on the same path silently loses, so the tracer now WRAPS a
+ * module named by `BARQ_DOM_OVERRIDE` instead of `dom.ts` itself; and every
+ * scratch copy carries an installed-ness guard, asserted through the same
+ * resolution a fixture uses, so a mutation that never loaded reports
+ * `NOT INSTALLED` rather than `survived`.
+ *
  * The point is the same and it is worth restating: **a property no mutation can
  * violate is not a property.** A green L4 run means the oracle found no defect;
  * it does not mean the oracle could have. This runner is the difference.
  *
  * ## How it runs
  *
- * `flow.ts` is copied to a scratch file with one string edit applied, its
+ * The target module is copied to a scratch file with one string edit applied, its
  * relative imports rewritten to absolute paths back into `packages/core/src`,
  * and a generated preload installs it over the real module with `mock.module`
  * — the same mechanism `tracer.ts` uses for `signals.ts`. Nothing is written to
@@ -53,15 +65,23 @@
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 
 const CRATE = join(import.meta.dir, "..")
 const CORE_SRC = join(CRATE, "..", "core", "src")
 const FLOW = join(CORE_SRC, "flow.ts")
+const DOM = join(CORE_SRC, "dom.ts")
 const SCRATCH = process.env.BARQ_RUNTIME_MUTANT_DIR ?? join(tmpdir(), "barq-runtime-mutants")
 
 interface Mutant {
   id: string
+  /**
+   * The core module the edit is against. `flow.ts` by default, because that is
+   * where M4 put the four primitives — but M5 REWROTE `dom.ts` and this table
+   * could not express a mutation of it, which is why the two defects M5's
+   * repair round found in `spread` had nothing that could have caught them.
+   */
+  file?: string
   /** the primitive or invariant this edit corrupts */
   target: string
   /** what the mutation makes the runtime do wrong, in one line */
@@ -196,6 +216,75 @@ const MUTANTS: Mutant[] = [
     replace: "",
     override: "enter: (parent, kind) => real.enter(parent?.parent ?? parent, kind)",
   },
+  // B2/R2. Not a `flow.ts` edit either: the split that makes the apply phase
+  // untracked lives in `recompute`, and the only way to reach it from here is to
+  // shadow the primitive the compiler emits.
+  {
+    id: "let-the-apply-subscribe",
+    target: "renderEffect / R2",
+    what:
+      "the fused record's apply is folded back INTO the compute, so every DOM read a channel " +
+      "performs is a read of the effect — the bug class B2's split removes, and the shape every " +
+      "element binding had before M5",
+    expect: "semantics (R2, sem-react-apply-is-untracked)",
+    find: "",
+    replace: "",
+    override:
+      "renderEffect: (compute, apply) => real.renderEffect(" +
+      "apply === undefined ? compute : (p) => { const v = compute(p); apply(v, p); return v })",
+  },
+  // The dom.ts rows. M5 rewrote this file — the resolved channels, `listen`,
+  // `ref` — and the table pointed only at flow.ts, so nothing here could have
+  // caught either of the two defects the repair round found in `spread`.
+  {
+    id: "listen-registers-no-cleanup",
+    file: DOM,
+    target: "listen / B4",
+    what:
+      "a non-delegated listener is registered and never removed, which is exactly the state B4 " +
+      "was VIOLATED in until M5 — `addEventListener` with nothing that owns the removal",
+    expect: "leaks (listener)",
+    find:
+      '  if (owner === null) return;\n' +
+      '  underScope(owner, "listen", () => {\n' +
+      "    onCleanup(() => element.removeEventListener(type, routed, options));\n" +
+      "  });",
+    replace: "  return;",
+  },
+  {
+    id: "listen-binds-the-raw-handler",
+    file: DOM,
+    target: "listen / E2.2",
+    what:
+      "the handler is bound without `routedListener`'s try/catch, so a throw escapes " +
+      "`dispatchEvent` to `window.onerror` and the enclosing boundary never fires",
+    expect: "semantics (E2.2, sem-err-handler-throw)",
+    find: "  const routed = routedListener(owner, element, handler);",
+    replace: "  const routed = handler;",
+  },
+  {
+    id: "ref-drops-its-cleanup",
+    file: DOM,
+    target: "ref / B3",
+    what:
+      "a ref callback that returned an undo function never has it run, so the position is torn " +
+      "down with the registration it handed out still live",
+    expect: "leaks / oracle (a ref fixture's teardown)",
+    find: "  if (undo.length === 0 || owner === null) return;",
+    replace: "  return;",
+  },
+  {
+    id: "a-property-channel-writes-an-attribute",
+    file: DOM,
+    target: "setDomProp / §3.5",
+    what:
+      "the resolved PROPERTY channel writes an attribute instead, which is the whole thing §3.5's " +
+      "compile-time channel decision exists to get right — and it is invisible in the HTML for " +
+      "every name whose attribute and property agree",
+    expect: "oracle (node identity / DOM against the createElement reference)",
+    find: "  setProperty(element, name, value);",
+    replace: "  element.setAttribute(name, String(value));",
+  },
   {
     id: "forget-the-dom-on-teardown",
     target: "removeNodes / O3.5",
@@ -211,16 +300,37 @@ const L4 = [
   "test/metamorphic.test.ts",
   "test/leaks.test.ts",
   "test/single-evaluation.test.ts",
+  // L1. Added with M5's row: `let-the-apply-subscribe` corrupts a property no
+  // differential can see — a tracked apply and an untracked one produce the same
+  // DOM until something inside a channel reads a signal — so the only channel
+  // that can kill it is the absolute one.
+  "test/semantics.test.ts",
 ]
 
-function prepare(mutant: Mutant): string {
-  if (mutant.override !== undefined) return prepareOverride(mutant)
-  const original = readFileSync(FLOW, "utf8")
+/**
+ * The marker every scratch copy carries, asserted by the generated preload.
+ *
+ * A stale `find` is already a throw. This is the OTHER failure: a mutation that
+ * applies to the text and is then never installed, because something else owns
+ * that module's `mock.module` entry. Four dom.ts mutants — two of them real
+ * defects planted on purpose — reported "433 pass / 0 fail SURVIVED", identical
+ * to the null mutant, with the edit sitting in a file nothing loaded. A runner
+ * that reports SURVIVED when its mutation was never installed is worse than no
+ * runner.
+ */
+const MARKER = "__barqMutantId"
+
+function prepare(mutant: Mutant): { preload: string; env: Record<string, string> } {
+  if (mutant.override !== undefined) {
+    return prepareOverride(mutant as Mutant & { override: string })
+  }
+  const target = mutant.file ?? FLOW
+  const original = readFileSync(target, "utf8")
   let source = original
   if (mutant.find !== "") {
     if (!source.includes(mutant.find)) {
       throw new Error(
-        `mutant ${mutant.id} is STALE: flow.ts no longer contains\n${mutant.find}\n` +
+        `mutant ${mutant.id} is STALE: ${target} no longer contains\n${mutant.find}\n` +
           "A mutation that cannot be applied is a mutation that is not being run, and a table " +
           "of unapplied mutations reports a coverage that does not exist.",
       )
@@ -228,29 +338,53 @@ function prepare(mutant: Mutant): string {
     source = source.replace(mutant.find, mutant.replace)
     if (source === original) throw new Error(`mutant ${mutant.id} changed nothing`)
   }
+  source += `\nexport const ${MARKER} = ${JSON.stringify(mutant.id)};\n`
   // Relative imports have to keep resolving to the REAL sibling modules, and to
   // the same file paths the tracer's `mock.module` keys on.
   source = source.replace(/from "\.\/([\w.-]+)"/g, (_m, file: string) => `from "${join(CORE_SRC, file)}"`)
 
   mkdirSync(SCRATCH, { recursive: true })
-  const file = join(SCRATCH, `flow-${mutant.id}.ts`)
+  const file = join(SCRATCH, `${basename(target, ".ts")}-${mutant.id}.ts`)
   writeFileSync(file, source)
 
   const preload = join(SCRATCH, `preload-${mutant.id}.ts`)
+  // `dom.ts`'s registry entry belongs to the tracer, so a dom mutant is handed
+  // to it as the module to WRAP; `flow.ts` has no such owner and is registered
+  // here, after the tracer, so the mutant binds the counted effects.
+  const dom = target === DOM
+  const probe = dom ? "listen" : "branch"
+  const coreIndex = Bun.resolveSync("@barqjs/core", join(CRATE, "test"))
   writeFileSync(
     preload,
     [
+      ...(dom ? [] : [`import { mock } from "bun:test"`]),
       `import "${join(CRATE, "test", "preload.ts")}"`,
-      `import { mock } from "bun:test"`,
       ``,
-      `// AFTER the tracer, so the mutant's own \`import { renderEffect } from "signals.ts"\``,
-      `// binds the counted effects rather than the originals.`,
-      `const mutant = require(${JSON.stringify(file)})`,
-      `mock.module(${JSON.stringify(FLOW)}, () => mutant)`,
+      ...(dom
+        ? []
+        : [
+            `const mutant = require(${JSON.stringify(file)})`,
+            `mock.module(${JSON.stringify(target)}, () => mutant)`,
+          ]),
+      // Installed-ness, asked through the SAME resolution the test files use.
+      // The tracer re-exports every name it does not wrap BY REFERENCE, so this
+      // is identity between the scratch copy's export and the one a fixture
+      // would import — and it is false exactly when someone else owns the
+      // module's registry entry, which is the state four dom.ts mutants sat in
+      // while reporting "433 pass / 0 fail SURVIVED".
+      `const scratch = require(${JSON.stringify(file)})`,
+      `const core = require(${JSON.stringify(coreIndex)})`,
+      `if (core.${probe} !== scratch.${probe} || scratch.${MARKER} !== ${JSON.stringify(mutant.id)}) {`,
+      `  throw new Error(`,
+      `    "mutant ${mutant.id} was NOT INSTALLED: @barqjs/core's ${probe} is not the scratch " +`,
+      `    "copy's. The mutation applied to the text and nothing loaded it, so every channel " +`,
+      `    "below would have reported survived.",`,
+      `  )`,
+      `}`,
       ``,
     ].join("\n"),
   )
-  return preload
+  return { preload, env: dom ? { BARQ_DOM_OVERRIDE: file } : {} }
 }
 
 /**
@@ -258,7 +392,9 @@ function prepare(mutant: Mutant): string {
  * effect counters and the ownership sink stay installed and only the one export
  * named by the mutant changes.
  */
-function prepareOverride(mutant: Mutant): string {
+function prepareOverride(
+  mutant: Mutant & { override: string },
+): { preload: string; env: Record<string, string> } {
   const coreIndex = Bun.resolveSync("@barqjs/core", join(CRATE, "test"))
   const signals = join(dirname(coreIndex), "signals.ts")
   mkdirSync(SCRATCH, { recursive: true })
@@ -272,25 +408,36 @@ function prepareOverride(mutant: Mutant): string {
       `const real = require(${JSON.stringify(signals)})`,
       `const patched = { ...real, ${mutant.override} }`,
       `mock.module(${JSON.stringify(signals)}, () => patched)`,
+      `const shadowed = ${JSON.stringify(mutant.override.split(":")[0].trim())}`,
+      `if (!String(require(${JSON.stringify(signals)})[shadowed]).includes("real.")) {`,
+      `  throw new Error(`,
+      `    "mutant ${mutant.id} was NOT INSTALLED: signals." + shadowed + " is still the original.",`,
+      `  )`,
+      `}`,
       ``,
     ].join("\n"),
   )
-  return preload
+  return { preload, env: {} }
 }
 
 interface Outcome {
   pass: number
   fail: number
   crashed: boolean
+  /** the install guard fired: the mutation applied to the text and nothing loaded it */
+  uninstalled: boolean
   detail: string
 }
 
-async function run(preload: string, files: string[]): Promise<Outcome> {
-  const proc = Bun.spawn(["bun", "test", "--preload", preload, ...files], {
+async function run(
+  prepared: { preload: string; env: Record<string, string> },
+  files: string[],
+): Promise<Outcome> {
+  const proc = Bun.spawn(["bun", "test", "--preload", prepared.preload, ...files], {
     cwd: CRATE,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, BARQ_RUNTIME_MUTANT: "1" },
+    env: { ...process.env, ...prepared.env, BARQ_RUNTIME_MUTANT: "1" },
   })
   const [out, err] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -301,11 +448,13 @@ async function run(preload: string, files: string[]): Promise<Outcome> {
   const pass = Number(/^\s*(\d+) pass$/m.exec(text)?.[1] ?? "0")
   const fail = Number(/^\s*(\d+) fail$/m.exec(text)?.[1] ?? "0")
   const crashed = pass === 0 && fail === 0
+  const uninstalled = text.includes("was NOT INSTALLED")
   const names = [...text.matchAll(/^\(fail\) (.+?)( \[[\d.]+m?s\])?$/gm)].map((m) => m[1])
   return {
     pass,
     fail,
     crashed,
+    uninstalled,
     detail: crashed
       ? text.split("\n").filter((line) => line.trim() !== "").slice(-4).join(" / ").slice(0, 240)
       : [...new Set(names)].slice(0, 4).join(" · "),
@@ -313,6 +462,9 @@ async function run(preload: string, files: string[]): Promise<Outcome> {
 }
 
 function verdict(outcome: Outcome): string {
+  // Reported apart from KILLED on purpose: a red row here says nothing about
+  // the mutation, only that it never reached the runtime.
+  if (outcome.uninstalled) return "NOT INSTALLED"
   if (outcome.crashed) return "CRASHED"
   return outcome.fail > 0 ? `KILLED (${outcome.fail})` : "survived"
 }
@@ -330,9 +482,9 @@ console.log(
 
 const rows: string[] = []
 for (const mutant of selected) {
-  const preload = prepare(mutant)
-  const before = await run(preload, PRE_EXISTING)
-  const after = await run(preload, L4)
+  const prepared = prepare(mutant)
+  const before = await run(prepared, PRE_EXISTING)
+  const after = await run(prepared, L4)
   const caught = before.fail + after.fail > 0 || before.crashed || after.crashed
   console.log(
     `── ${mutant.id}\n` +

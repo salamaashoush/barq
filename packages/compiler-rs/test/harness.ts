@@ -135,7 +135,7 @@ export interface OptimalityExpectation {
   effects?: number
   /** `_$template()` calls in the emitted module. */
   templates?: number
-  /** `_$insert` + `_$setProp` + `_$spread` calls in the emitted module. */
+  /** `_$insert` + every resolved-channel write + `_$spread`, in the module. */
   patchCalls?: number
   /** Substrings the emitted module must contain. */
   emits?: string[]
@@ -1089,21 +1089,31 @@ export function renderEffectBodies(code: string): string[] {
  */
 export function groupTargets(code: string): string[][] {
   return renderEffectBodies(code).map((body) => [
-    // `setProp` takes the SCOPE first (§3.3 C6), so the element it writes is
-    // the second argument.
-    ...new Set(
-      [...body.matchAll(/_\$+setProp\([^,]+,\s*(_el\$+\d+)/g)].map((m) => m[1]),
-    ),
+    // A resolved channel takes the ELEMENT first: the scope is not an argument
+    // at all, because a channel write is not an effect and opens nothing.
+    ...new Set([...body.matchAll(CHANNEL_CALL)].map((m) => m[2])),
   ])
 }
 
 /**
- * `setProp` keys that write an attribute under a different name. Everything
- * else in the set is either an attribute of the same name or a property, and a
+ * Channel keys that write an attribute under a different name. Everything else
+ * in the set is either an attribute of the same name or a property, and a
  * property name can never collide with an attribute name in the channel below
  * because the channel only ever looks at names the DOM actually reported.
  */
-const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class" }
+const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", className: "class" }
+
+/**
+ * `CODESIGN.md` §3.5's channel set, as it appears in emitted code:
+ * `_$setAttr(el, "id", v)`. `_\$+`, not `_\$`: a fixture whose own source
+ * contains `_$` makes the compiler shift every emitted uid to `_$$`, and a
+ * scanner pinned to one prefix would silently see no writes at all.
+ */
+export const CHANNEL_CALL =
+  /_\$+(setAttr|setDomProp|setBool|setClass|setStyleProp|setStyle|setClassList|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g
+
+/** `_$bindProp($s, el, _$setAttr, "id", v)` — the channel is the third argument. */
+export const BIND_PROP_CALL = /_\$+bindProp\([^,]+,\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g
 
 /**
  * The props the emitted module applies AFTER the clone, by attribute name.
@@ -1114,14 +1124,11 @@ const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class" }
  */
 export function patchedAttributeNames(code: string): Set<string> {
   const names = new Set<string>()
-  // `_\$+`, not `_\$`: a fixture whose own source contains `_$` makes the
-  // compiler shift every emitted uid to `_$$` (hygiene), and a scanner pinned to
-  // one prefix would silently see no patches at all.
-  // `setProp($s, el, key, value)` — the scope is first (CODESIGN §3.3 C6), so
-  // the key is the THIRD argument.
-  for (const match of code.matchAll(/_\$+setProp\([^,]+,[^,]+,\s*"([^"]+)"/g)) {
-    const name = match[1]
-    names.add(ATTRIBUTE_ALIASES[name] ?? name)
+  for (const match of code.matchAll(new RegExp(CHANNEL_CALL))) {
+    names.add(ATTRIBUTE_ALIASES[match[3]] ?? match[3])
+  }
+  for (const match of code.matchAll(new RegExp(BIND_PROP_CALL))) {
+    names.add(ATTRIBUTE_ALIASES[match[2]] ?? match[2])
   }
   return names
 }
@@ -1182,8 +1189,20 @@ export interface EffectBoundInput {
 /** `renderEffect`s covering two or more props, counted off the emitted module. */
 export function countMerges(code: string): number {
   return renderEffectBodies(code).filter(
-    (body) => countMatches(body, /_\$+setProp\(/g) >= 2,
+    (body) => countMatches(body, new RegExp(CHANNEL_CALL)) >= 2,
   ).length
+}
+
+/**
+ * Every write the emitted module makes after the clone: the resolved channels
+ * plus `bindProp`, which is a channel too — the compiler picked it and passed
+ * it in, and only the liveness question is left at run time.
+ */
+export function propCalls(code: string): number {
+  return (
+    countMatches(code, new RegExp(CHANNEL_CALL)) +
+    countMatches(code, new RegExp(BIND_PROP_CALL))
+  )
 }
 
 /**

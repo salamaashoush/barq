@@ -1,4 +1,5 @@
 pub mod backend;
+mod brand;
 pub mod dom;
 mod fallback;
 mod install;
@@ -54,17 +55,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 32;
+pub const HELPER_COUNT: usize = 45;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 15;
+pub const FIRST_SERVER_HELPER: usize = 28;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 31;
+pub const FIRST_INTERP_HELPER: usize = 44;
 
 /// Runtime entry points the two backends are allowed to call. Every one is read
 /// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
@@ -104,25 +105,51 @@ pub enum Helper {
     Portal = 13,
     /// `COUNT` — `each`'s fourth mode, where `src` is a count rather than a list.
     Count = 14,
+    // ── §3.5's resolved channels ──────────────────────────────────────────
+    //
+    // One entry point per channel, chosen at compile time. There is no
+    // `setProp` on the compiled path: the name never reaches the runtime as a
+    // question, only as the argument the channel already knows what to do with.
+    SetAttr = 15,
+    SetDomProp = 16,
+    SetBool = 17,
+    SetClass = 18,
+    SetStyle = 19,
+    SetStyleProp = 20,
+    SetClassList = 21,
+    SetHtml = 22,
+    /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question §3.13 keeps
+    /// at run time: whether the value that arrived is a live Cell. The channel
+    /// is the compiler's and is passed in.
+    BindProp = 23,
+    /// `bind:` — the two-way channel, property and reporting event resolved.
+    BindValue = 24,
+    /// A scope-owned `ref` registration (B3, E2 #7).
+    Ref = 25,
+    /// A scope-owned `addEventListener` (B4, E2 #6).
+    Listen = 26,
+    /// The delegated/direct choice made at compile time, applied to a value the
+    /// compiler could not prove is a handler.
+    BindEvent = 27,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 15,
-    EscAttr = 16,
-    Attr = 17,
-    Cls = 18,
-    Content = 19,
-    Html = 20,
-    RawText = 21,
-    SpreadAttrs = 22,
-    SsrFor = 23,
-    SsrIndex = 24,
-    SsrRepeat = 25,
-    SsrShow = 26,
-    SsrSwitch = 27,
-    SsrMatch = 28,
-    ClsList = 29,
-    AttrLit = 30,
+    Esc = 28,
+    EscAttr = 29,
+    Attr = 30,
+    Cls = 31,
+    Content = 32,
+    Html = 33,
+    RawText = 34,
+    SpreadAttrs = 35,
+    SsrFor = 36,
+    SsrIndex = 37,
+    SsrRepeat = 38,
+    SsrShow = 39,
+    SsrSwitch = 40,
+    SsrMatch = 41,
+    ClsList = 42,
+    AttrLit = 43,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 31,
+    Interp = 44,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -141,6 +168,19 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "boundary",
     "portal",
     "COUNT",
+    "setAttr",
+    "setDomProp",
+    "setBool",
+    "setClass",
+    "setStyle",
+    "setStyleProp",
+    "setClassList",
+    "setHtml",
+    "bindProp",
+    "bindValue",
+    "ref",
+    "listen",
+    "bindEvent",
     "esc",
     "escAttr",
     "attr",
@@ -214,6 +254,7 @@ pub fn emit<'a>(
 ) {
     let mut emit = Emit::new(allocator, program.source_text, module, options, target);
     emit.visit_program(program);
+    brand::run(&mut emit, program);
     prune::run(&mut emit, program);
     install::run(&mut emit, program);
 }

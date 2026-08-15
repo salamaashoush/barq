@@ -63,10 +63,6 @@ flag_set!(NameFlags: u16 {
     IS_STYLE = 4;
     /// `setElementAttr` kebab-cases every SVG attribute except these
     SVG_KEBAB_EXEMPT = 5;
-    /// The runtime threads a `prev` through this name's write, so a compiled
-    /// effect calling `setProp` afresh each run would lose the REMOVAL half of
-    /// its diff. Never grouped, never thunked — passed through unwrapped.
-    STATEFUL_DIFF = 6;
 });
 
 pub struct TagRow<'a> {
@@ -153,9 +149,6 @@ fn name_flags(text: &str) -> NameFlags {
     }
     if crate::tables::is_dom_prop(text) {
         flags = flags | NameFlags::IS_DOM_PROP;
-    }
-    if crate::tables::is_intercepted(text) {
-        flags = flags | NameFlags::STATEFUL_DIFF;
     }
     if text == "class" || text == "className" {
         flags = flags | NameFlags::IS_CLASS;
@@ -347,26 +340,22 @@ mod tests {
         assert_eq!(event_name_of("class"), None);
     }
 
+    /// The successor to `STATEFUL_DIFF`, which was a NAME flag saying "never
+    /// group this one". The same four names now resolve to a channel that
+    /// threads its applied value, which is a statement about how the record slot
+    /// is written rather than a veto on the record — B2 is exactly that
+    /// difference. `ref` is off the list because it is no longer a name at all.
     #[test]
-    fn the_names_whose_diff_state_lives_in_the_runtime_are_flagged() {
-        let allocator = Allocator::new();
-        let mut interner = Interner::new(&allocator);
-        // `class` and `className` belong here: `applyResolvedProp` diffs the
-        // NORMALISED class string against the one it applied last time, so an
-        // unguarded `element.className = …` inside a shared effect — fired by
-        // some other prop on the same element — wipes every class `classList`,
-        // a `ref` or a directive put there. The oracle never does that, because
-        // its class effect only re-runs when the class value itself changes.
-        for name in ["class", "className", "style", "classList", "ref", "dangerouslySetInnerHTML"] {
-            let id = interner.intern_name(name);
+    fn the_names_whose_applied_value_differs_from_their_input_thread_it() {
+        use crate::lower::names::channel_of;
+        for name in ["class", "className", "style", "classList", "dangerouslySetInnerHTML"] {
             assert!(
-                interner.name(id).flags.contains(NameFlags::STATEFUL_DIFF),
-                "{name} must never be grouped into a compiled effect"
+                channel_of(name, false).threads_prev(),
+                "{name} applies a normalised value, so its record slot holds the channel's return"
             );
         }
         for name in ["title", "id", "href", "data-width"] {
-            let id = interner.intern_name(name);
-            assert!(!interner.name(id).flags.contains(NameFlags::STATEFUL_DIFF), "{name}");
+            assert!(!channel_of(name, false).threads_prev(), "{name}");
         }
     }
 

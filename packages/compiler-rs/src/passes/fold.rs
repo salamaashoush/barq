@@ -4,8 +4,8 @@ use oxc::ast_visit::Visit;
 use rustc_hash::FxHashSet;
 
 use crate::ir::{
-    Const, ExprSrc, Interner, Module, NONE, NameFlags, NameId, NodeId, Ns, Op, SkelAttr,
-    SkelAttrValue, SkelNode, Unit,
+    Chan, Const, ExprSrc, Interner, Module, NONE, NameId, NodeId, Ns, Op, SkelAttr, SkelAttrValue,
+    SkelNode, Unit,
 };
 use crate::lower::entity;
 
@@ -167,7 +167,7 @@ fn fold_unit<'a>(
 ) {
     let mut folded = fold_children(allocator, interner, folded_reads, unit);
     for index in 0..unit.patch.len() {
-        let Op::SetOnce { name, value, .. } = unit.patch[index].op else { continue };
+        let Op::SetOnce { name, value, chan } = unit.patch[index].op else { continue };
         let Some(konst) = unit.exprs.rx(value).fold() else { continue };
         // Per ELEMENT, not per unit: `setElementAttr` takes the property channel
         // only under `!isSvg`, so `<svg value="x">` folds where `<input>` does
@@ -175,7 +175,7 @@ fn fold_unit<'a>(
         let SkelNode::Element(element) = unit.skeleton.node(unit.patch[index].target) else {
             continue;
         };
-        if !bakeable(interner, name, element.ns != Ns::Html, konst) {
+        if !bakeable(interner, name, element.ns != Ns::Html, chan, konst) {
             continue;
         }
         let Some(baked) = bake(konst, allocator) else { continue };
@@ -206,24 +206,31 @@ fn fold_unit<'a>(
 /// proved constant, so it asks the same predicate rather than a second one that
 /// can disagree.
 ///
-/// `class` and `style` are intercepted by `applyResolvedProp`, and a literal
-/// STRING is the one shape that reaches the DOM identically either way:
-/// `classToString` returns a string unchanged, and a string style is written
-/// with `setAttribute` verbatim. Anything else the runtime normalises — an
-/// array class, a style object, `classList`, `dangerouslySetInnerHTML` — is
-/// refused, because the attribute the parser would produce is not what the
-/// runtime writes.
-fn bakeable(interner: &Interner<'_>, name: NameId, is_svg: bool, konst: Const<'_>) -> bool {
-    let row = interner.name(name);
-    if !crate::lower::names::attribute_channel(row.text, is_svg) {
+/// The question is the CHANNEL's, and P1 already resolved it: the parser writes
+/// an attribute, so only a channel that would itself have written that attribute
+/// with those bytes may be folded away.
+///
+/// `class` and `style` normalise their value, and a literal STRING is the one
+/// shape that survives the round trip: `classToString` returns a string
+/// unchanged, and a string style is written with `setAttribute` verbatim.
+/// Anything else those two normalise — an array class, a style object — and
+/// every value on `classList` or `dangerouslySetInnerHTML` is refused, because
+/// the attribute the parser would produce is not what the channel writes.
+fn bakeable(
+    interner: &Interner<'_>,
+    name: NameId,
+    is_svg: bool,
+    chan: Chan,
+    konst: Const<'_>,
+) -> bool {
+    if !crate::lower::names::attribute_channel(interner.name(name).text, is_svg) {
         return false;
     }
-    if row.flags.contains(NameFlags::STATEFUL_DIFF) {
-        let string_shaped =
-            row.flags.contains(NameFlags::IS_CLASS) || row.flags.contains(NameFlags::IS_STYLE);
-        return string_shaped && matches!(konst, Const::Str(_));
+    match chan {
+        Chan::Attr => true,
+        Chan::Class | Chan::Style => matches!(konst, Const::Str(_)),
+        Chan::Prop | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,
     }
-    true
 }
 
 fn bake<'a>(konst: Const<'a>, allocator: &'a Allocator) -> Option<Baked<'a>> {

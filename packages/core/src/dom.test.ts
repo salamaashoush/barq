@@ -3,8 +3,9 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { createElement, insert, render, useRef, template } from "./dom.ts";
-import { signal, computed, createScope, flush } from "./signals.ts";
+import { createElement, insert, render, spread, useRef, template } from "./dom.ts";
+import { boundary } from "./flow.ts";
+import { signal, computed, createScope, flush, type Scope } from "./signals.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;
@@ -959,5 +960,100 @@ describe("eager multi-node bodies survive a hide/show cycle", () => {
     container.appendChild(other);
     render([body], other);
     expect(other.innerHTML).toBe("<i>i</i><u>u</u>");
+  });
+});
+
+/**
+ * `spread` is the one non-delegated listener registration M5 did not migrate to
+ * `listen`, and the compiler emits no `_$spread(` — `codegen/dom.rs` refuses to
+ * lower an element carrying a spread onto the template path — so the corpus
+ * leak oracle has no subject on this path. These are the pins.
+ */
+describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", () => {
+  test("B4: a listener registered by spread is removed when its scope is disposed", () => {
+    let fired = 0;
+    const host = document.createElement("div");
+    container.appendChild(host);
+
+    const dispose = render((s) => {
+      const el = document.createElement("button");
+      spread(s, el, () => ({ onmouseenter: () => void fired++, class: "x" }));
+      return el;
+    }, host);
+
+    const el = host.querySelector("button") as HTMLElement;
+    el.dispatchEvent(new Event("mouseenter"));
+    expect(fired).toBe(1);
+
+    dispose();
+    el.dispatchEvent(new Event("mouseenter"));
+    expect(fired, "the handler ran after its scope was disposed").toBe(1);
+  });
+
+  test("B4: re-applying the same event name does not accumulate cleanups or listeners", () => {
+    const which = signal(1);
+    let a = 0;
+    let b = 0;
+    const host = document.createElement("div");
+    container.appendChild(host);
+
+    const dispose = render((s) => {
+      const el = document.createElement("button");
+      spread(s, el, () => ({
+        onmouseenter: which() === 1 ? () => void a++ : () => void b++,
+      }));
+      return el;
+    }, host);
+
+    const el = host.querySelector("button") as HTMLElement;
+    el.dispatchEvent(new Event("mouseenter"));
+    expect([a, b]).toEqual([1, 0]);
+
+    which.set(2);
+    flush();
+    el.dispatchEvent(new Event("mouseenter"));
+    // The first handler was replaced, not stacked on top of.
+    expect([a, b]).toEqual([1, 1]);
+
+    dispose();
+    el.dispatchEvent(new Event("mouseenter"));
+    expect([a, b], "a replaced listener outlived its scope").toEqual([1, 1]);
+  });
+
+  test("E2.2: a throw out of a spread-bound handler reaches the enclosing boundary", () => {
+    const host = document.createElement("div");
+    container.appendChild(host);
+    let caught = "";
+
+    const dispose = render(
+      (s) =>
+        boundary(
+          s,
+          host,
+          null,
+          "error",
+          ((_scope: Scope | null, error: () => Error) => {
+            caught = error().message;
+            return null;
+          }) as never,
+          (scope: Scope | null) => {
+            const el = document.createElement("button");
+            spread(scope, el, () => ({
+              onmouseenter: () => {
+                throw new Error("boom");
+              },
+            }));
+            host.appendChild(el);
+            return el;
+          },
+        ),
+      host,
+    );
+
+    const el = host.querySelector("button") as HTMLElement;
+    el.dispatchEvent(new Event("mouseenter"));
+    flush();
+    expect(caught, "the throw escaped the framework").toBe("boom" as string);
+    dispose();
   });
 });

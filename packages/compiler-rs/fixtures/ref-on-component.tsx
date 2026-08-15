@@ -47,6 +47,6 @@ export const optimality = {
   // component it is an ordinary prop the callee decides about, and it crosses
   // as a VALUE — a getter would hand the callee a fresh object per read and the
   // ref would resolve into something nobody holds.
-  emits: ["Boxed(", "ref: () => viaComponent", '"ref", viaElement'],
+  emits: ["Boxed(", "ref: () => viaComponent", ", viaElement)"],
   absent: ["get ref()", "(Boxed, {"],
 }

@@ -382,6 +382,37 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
     after: '<p class="probe">2</p>',
   },
   {
+    // B2. The REMOVAL half of a normalising channel's diff, which exists only
+    // because the record slot holds what the channel returned. Downgrade
+    // `Diff::Thread` to the plain `!==` guard and the channel is handed
+    // `undefined` every run: it can still add `b`, and it can no longer take
+    // `a` away. L3 is structurally blind to this — P2 `classify` is shared by
+    // both levels and all three backends, so `-O0`, `-Ox` and `Interp` are
+    // wrong in exactly the same way — which is why the probe is here.
+    what: "a normalising channel still REMOVES what vanished",
+    source:
+      'import { signal } from "@barqjs/core"\n' +
+      "export const on = signal(true)\n" +
+      "export default function P() {\n" +
+      "  return <p data-probe=\"yes\" classList={() => ({ a: on(), b: !on() })} />\n" +
+      "}\n" +
+      "export const steps = [() => on.set(false)]\n",
+    before: '<p class="a" data-probe="yes"></p>',
+    after: '<p class="b" data-probe="yes"></p>',
+  },
+  {
+    what: "a normalising channel replaces its own class and keeps nothing stale",
+    source:
+      'import { signal } from "@barqjs/core"\n' +
+      "export const on = signal(true)\n" +
+      "export default function P() {\n" +
+      '  return <p data-probe="yes" class={() => (on() ? "x" : "y")} />\n' +
+      "}\n" +
+      "export const steps = [() => on.set(false)]\n",
+    before: '<p class="x" data-probe="yes"></p>',
+    after: '<p class="y" data-probe="yes"></p>',
+  },
+  {
     what: "a snapshot of a read is NOT live, however reactive its source was",
     source:
       'import { signal } from "@barqjs/core"\n' +

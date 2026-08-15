@@ -21,8 +21,7 @@ use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
     Anchor, Chan, Diff, ExprId, Flow, HandlerRef, InsertPlan, NONE, NameId, NodeId, Ns, Op,
-    PartRange, RegionId, Root, Site, SkelAttrValue, SkelNode, SlotId, StrId, TagFlags, Unit,
-    tag_flags,
+    RegionId, Root, Site, SkelAttrValue, SkelNode, SlotId, TagFlags, Unit, tag_flags,
 };
 use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, intrinsic_tag};
@@ -260,7 +259,6 @@ fn content_patch(ctx: &Emit<'_, '_>, unit: &Unit<'_>, node: NodeId) -> Option<us
             return false;
         }
         match patch.op {
-            Op::SetHtml { .. } => true,
             Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => {
                 names::replaces_children(ctx.module.interner.name(name).text)
             }
@@ -377,11 +375,14 @@ fn attribute_slot(op: Op) -> Slot {
         Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => {
             Slot::Named(name)
         }
-        Op::SetStyle { prop, .. } => Slot::Named(prop),
-        Op::SetClass { .. } | Op::Spread { .. } => Slot::Unnamed,
+        Op::Spread { .. } => Slot::Unnamed,
         // Dropped, and no cut is made: `<button class="btn">Bump` stays one
         // contiguous quasi with no empty `""` slot in it.
-        Op::Delegate { .. } | Op::Listen { .. } | Op::Ref { .. } => Slot::Elsewhere,
+        Op::Delegate { .. }
+        | Op::Listen { .. }
+        | Op::SetEvent { .. }
+        | Op::Ref { .. }
+        | Op::Bind { .. } => Slot::Elsewhere,
         // Owns the child position (`element_into`), or the slot's own position
         // in the child list (`node_into`), or is a grouping marker with no
         // effects to group.
@@ -389,9 +390,7 @@ fn attribute_slot(op: Op) -> Slot {
         // creates for this backend at all (`passes::run` gates it on the DOM
         // targets, because P8b owns the string implementation of every
         // construct that would reach a primitive).
-        Op::SetHtml { .. } | Op::Insert { .. } | Op::Region { .. } | Op::EffectGroup { .. } => {
-            Slot::Elsewhere
-        }
+        Op::Insert { .. } | Op::Region { .. } | Op::EffectGroup { .. } => Slot::Elsewhere,
     }
 }
 
@@ -474,20 +473,8 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         self.named(at, name, value);
     }
 
-    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId) {
+    fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId, _chan: Chan) {
         self.named(at, name, value);
-    }
-
-    fn set_class(&mut self, at: At<'_>, _base: Option<StrId>, _parts: PartRange, _live: bool) {
-        self.open_tag();
-        let call = class_call(self.ctx, self.unit, at.target(), at.span());
-        self.chunks.hole(call);
-    }
-
-    fn set_style(&mut self, at: At<'_>, prop: NameId, value: ExprId, _live: bool) {
-        let tag = self.open_tag();
-        let key = self.ctx.module.interner.name(prop).text;
-        attr_row(self.ctx, self.unit, self.chunks, key, value, tag, at.span());
     }
 
     fn spread(&mut self, at: At<'_>, value: ExprId, _live: bool) {
@@ -502,15 +489,6 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
 
     /// `dangerouslySetInnerHTML` names no attribute, so it owns the child
     /// position outright and `content_patch` is what routes it here.
-    fn set_html(&mut self, at: At<'_>, value: ExprId, _live: bool) {
-        match self.place {
-            Place::Content => self.content("innerHTML", value, at.span()),
-            Place::OpenTag(_) | Place::Child => {
-                unreachable!("`content_patch` owns this op's position")
-            }
-        }
-    }
-
     /// A hole in the child list. The value's own bytes join this concatenation.
     fn insert(
         &mut self,
@@ -559,7 +537,16 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
 
     fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef) {}
 
-    fn set_ref(&mut self, _at: At<'_>, _value: ExprId) {}
+    fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId) {}
+
+    fn set_ref(&mut self, _at: At<'_>, _value: ExprId, _write: bool) {}
+
+    /// The `bind:` channel is a listener plus a property write, and a server
+    /// render has neither. The INITIAL value does reach the wire — as the
+    /// property's own attribute — and that is M6's hydration work, not this
+    /// milestone's; emitting half of it now would put a value on the wire the
+    /// client has no claim rule for yet.
+    fn bind(&mut self, _at: At<'_>, _prop: NameId, _event: NameId, _value: ExprId) {}
 
     fn effect_group(&mut self, _at: At<'_>, _len: u16) {}
 }
@@ -1520,6 +1507,16 @@ mod tests {
         assert!(local.warnings.is_empty(), "{:?}", local.warnings);
     }
 
+    /// The import statement the module source contributes, as one line, so an
+    /// assertion about a SPECIFIER is not confounded by a helper name that
+    /// happens to contain it (`ssrShow as _$ssrShow` contains `Show`).
+    fn core_import(code: &str) -> String {
+        code.lines()
+            .find(|line| line.ends_with("from \"@barqjs/core\";"))
+            .unwrap_or_default()
+            .to_string()
+    }
+
     /// A rewritten callee leaves its import specifier with no reader, and that
     /// name drags `@barqjs/core`'s whole DOM runtime into a server bundle. It
     /// comes off only when EVERY reference was rewritten.
@@ -1529,21 +1526,26 @@ mod tests {
              export const V = () => <div><Show when={o}>y</Show></div>;\n")
         .code;
         assert!(gone.contains("_$ssrShow("), "{gone}");
-        assert!(!gone.contains("from \"@barqjs/core\""), "{gone}");
+        // The SPECIFIER is what has to come off, not the whole import: since
+        // `codegen::brand`, every component declaration carries `_$block`,
+        // which is a shared-ABI helper and lives in the module source, so the
+        // import itself survives with one specifier that is not `Show`.
+        assert!(!core_import(&gone).contains("Show"), "{gone}");
 
         // One reader left is one reader too many.
         let kept = ssr("import { Show } from \"@barqjs/core\";\n\
              const alias = Show;\n\
              export const V = () => <div><Show when={o}>y</Show></div>;\n")
         .code;
-        assert!(kept.contains("import { Show } from \"@barqjs/core\""), "{kept}");
+        assert!(core_import(&kept).contains("Show"), "{kept}");
 
         // And a binding the backend never rewrote is untouched.
         let other = ssr("import { Show, signal } from \"@barqjs/core\";\n\
              export const n = signal(0);\n\
              export const V = () => <div><Show when={o}>y</Show></div>;\n")
         .code;
-        assert!(other.contains("import { signal } from \"@barqjs/core\""), "{other}");
+        assert!(core_import(&other).contains("signal"), "{other}");
+        assert!(!core_import(&other).contains("Show"), "{other}");
     }
 
     /// Every fixture in the corpus compiles through the string backend, and

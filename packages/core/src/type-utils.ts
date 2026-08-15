@@ -2,6 +2,7 @@
  * Type-safe assertion and guard utilities
  * Use these instead of raw `as` assertions throughout the codebase
  */
+import { isBlock, ScopeMissingError } from "./signals.ts";
 
 // ============================================================================
 // Type Guards
@@ -81,6 +82,12 @@ export function toString(value: unknown): string {
   if (isString(value)) return value;
   if (isNumber(value)) return String(value);
   if (isBoolean(value)) return value ? "true" : "false";
+  if (isBlock(value)) {
+    throw new ScopeMissingError(
+      "a Block reached a text or attribute position, where its own source text would be " +
+        "written into the document (C5.1). Render it as a child, or hand the position a Cell",
+    );
+  }
   return String(value);
 }
 

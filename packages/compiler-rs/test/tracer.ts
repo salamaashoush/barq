@@ -187,7 +187,15 @@ export function installTracer(mockModule: (path: string, factory: () => unknown)
 
   // AFTER the signals mock, so `dom.ts` binds the counted effects rather than
   // the originals — the order the effect totals depend on.
-  const realDom = require(domPath) as Record<string, unknown>
+  //
+  // `BARQ_DOM_OVERRIDE` names a module to wrap INSTEAD of `dom.ts` itself, and
+  // it exists because a second `mock.module` on this path does not take: this
+  // registration is the single owner of `dom.ts`'s registry entry, so a
+  // runtime-mutant that registered its own copy after the tracer silently lost
+  // and reported SURVIVED with its mutation never installed. Composing here
+  // puts the tracer's wrapper on top of the mutant rather than racing it.
+  const domSource = process.env.BARQ_DOM_OVERRIDE ?? domPath
+  const realDom = require(domSource) as Record<string, unknown>
   const domSnapshot: Record<string, unknown> = { ...realDom }
   const realTemplate = domSnapshot.template as TemplateFn
 

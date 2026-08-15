@@ -9,8 +9,7 @@ use oxc::semantic::{ScopeFlags, ScopeId, Scoping};
 use crate::analysis::symbol_of;
 use crate::ir::{
     Const, Cost, DepSet, Diff, ExprId, FreeVars, HandlerRef, HoistId, Hoisted, InsertPlan,
-    Interner, Module, NameFlags, Op, Patch, Prim, React, ReactiveEnv, Rx, Shape, SourceKind, Thunk,
-    Unit, event_name_of,
+    Interner, Module, Op, Patch, Prim, React, ReactiveEnv, Rx, Shape, SourceKind, Thunk, Unit,
 };
 use crate::tables;
 
@@ -23,10 +22,10 @@ use crate::tables;
 /// oracle-identical, zero-cost answer, which is why nothing here ever has to
 /// guess from a name.
 pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
-    let Module { units, env, scoping, interner, delegated, hoisted, .. } = module;
+    let Module { units, env, scoping, interner, hoisted, .. } = module;
     let root_scope = scoping.root_scope_id();
     let lift = Lift { allocator, env, scoping, root_scope };
-    let mut cx = Classify { lift, interner, delegated, hoisted };
+    let mut cx = Classify { lift, interner, hoisted };
     for unit in units.iter_mut() {
         cx.unit(unit);
     }
@@ -35,7 +34,6 @@ pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
 struct Classify<'a, 'm> {
     lift: Lift<'a, 'm>,
     interner: &'m mut Interner<'a>,
-    delegated: &'m mut u32,
     hoisted: &'m mut oxc::allocator::Vec<'a, Hoisted<'a>>,
 }
 
@@ -92,40 +90,38 @@ impl<'a> Classify<'a, '_> {
     /// emitted and what the oracle does.
     fn resolve(&mut self, unit: &mut Unit<'a>, patch: Patch) -> Option<Op> {
         match patch.op {
-            Op::SetOpaque { name, value } => {
-                let flags = self.interner.name(name).flags;
-                if flags.contains(NameFlags::IS_EVENT) {
-                    return self.event(unit, name, value);
-                }
+            Op::SetEvent { event, value } => self.event(unit, event, value),
+            Op::SetOpaque { name, value, chan } => {
                 let rx = unit.exprs.rx(value);
                 if !self.live_prop(rx) {
-                    return (rx.react == React::Static).then_some(Op::SetOnce {
+                    // A direct channel write is unconditional, so the value has
+                    // to be a VALUE — see `Shape::may_be_callable`. Everything
+                    // else goes to `bindProp`, which asks the liveness question
+                    // the un-compiled path asks. A `Const` settles it whatever
+                    // the shape says: it is the value, and it is what P3 folds
+                    // on, so a template literal over module constants keeps both
+                    // the direct write and the fold that removes it.
+                    let a_value = !rx.shape.may_be_callable() || rx.konst.is_some();
+                    return (rx.react == React::Static && a_value).then_some(Op::SetOnce {
                         name,
                         value,
-                        chan: self.channel(name),
+                        chan,
                     });
                 }
-                // `class` / `style` / `classList` / `ref` /
-                // `dangerouslySetInnerHTML`: the runtime threads the previously
-                // applied value through its OWN effect and REMOVES what
-                // vanished. A compiled effect calling `setProp` afresh each run
-                // would only ever add — and for `class` it would do worse than
-                // that, because `element.className = …` on an effect run
-                // triggered by an UNRELATED prop wipes every class another
-                // channel (`classList`, a `ref`, a directive) put there.
-                // Unwrapped, the runtime keeps the thread and the oracle's
-                // behaviour is reproduced exactly.
-                if flags.contains(NameFlags::STATEFUL_DIFF) {
-                    return None;
-                }
-                // `_p$.__proto__ = v` writes through `Object.prototype`'s setter
-                // instead of creating an own slot, so the guard would compare
-                // against the wrong thing for every OTHER key in the group.
-                if self.interner.name(name).text == "__proto__" {
-                    return None;
-                }
-                let diff = if rx.shape == Shape::Obj { Diff::Always } else { Diff::Identity };
-                Some(Op::SetLive { name, value, chan: self.channel(name), diff })
+                // B2. `class` / `style` / `classList` / `dangerouslySetInnerHTML`
+                // thread the previously APPLIED representation — the normalised
+                // class string, the css map, the toggled key set — so their
+                // record slot holds the channel's RETURN and not the compute's.
+                // That is the whole of what kept them out of a compiled effect,
+                // and the compiler owns the slot now.
+                let diff = if chan.threads_prev() {
+                    Diff::Thread
+                } else if rx.shape == Shape::Obj {
+                    Diff::Always
+                } else {
+                    Diff::Identity
+                };
+                Some(Op::SetLive { name, value, chan, diff })
             }
             Op::Insert { slot, anchor, value, .. } => {
                 let rx = unit.exprs.rx(value);
@@ -137,14 +133,6 @@ impl<'a> Classify<'a, '_> {
                 Some(Op::Insert { slot, anchor, value, plan })
             }
             _ => None,
-        }
-    }
-
-    fn channel(&self, name: crate::ir::NameId) -> crate::ir::Chan {
-        if self.interner.name(name).flags.contains(NameFlags::IS_DOM_PROP) {
-            crate::ir::Chan::Prop
-        } else {
-            crate::ir::Chan::Attr
         }
     }
 
@@ -162,10 +150,17 @@ impl<'a> Classify<'a, '_> {
 
     // ── events (target #7) ────────────────────────────────────────────────
 
-    fn event(&mut self, unit: &mut Unit<'a>, name: crate::ir::NameId, value: ExprId) -> Option<Op> {
-        let row = self.interner.name(name);
-        let event_text = event_name_of(row.text)?;
-        let delegated = row.flags.contains(NameFlags::IS_DELEGATED);
+    /// The TYPE was resolved at P1 — `onClick` → `click`, `on:my-event`
+    /// verbatim — so what is left here is the one question that needs the
+    /// analysis: whether the value is a function the compiler may take over
+    /// from the runtime, and whether it is capture-free enough to hoist.
+    fn event(
+        &mut self,
+        unit: &mut Unit<'a>,
+        event: crate::ir::NameId,
+        value: ExprId,
+    ) -> Option<Op> {
+        let delegated = tables::is_delegated_event(self.interner.name(event).text);
         let rx = unit.exprs.rx(value);
 
         // `applyProp` binds nothing unless `isEventHandlerValue` holds, so the
@@ -180,16 +175,12 @@ impl<'a> Classify<'a, '_> {
             return None;
         }
 
-        let event = self.interner.intern_name(&event_text);
         let handler = match self.hoist(unit, value, rx) {
             Some(id) => HandlerRef::Hoisted(id),
             None => HandlerRef::Inline(value),
         };
 
         if delegated {
-            if let Some(index) = tables::delegated_index(&event_text) {
-                *self.delegated |= 1 << index;
-            }
             Some(Op::Delegate { event, handler, data: None })
         } else {
             Some(Op::Listen { event, handler })
