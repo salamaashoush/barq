@@ -103,6 +103,29 @@ export type RefObject<T> = { current: T | null };
 export namespace JSX {
   export type Element = JSXElement;
 
+  /**
+   * §3.2: a component takes its SCOPE first — `Comp($scope, props)` — and
+   * TypeScript's JSX rule reads a function component's FIRST parameter as its
+   * props. Without this hook every construct checked its attributes against
+   * `Scope` and reported all of them missing: `<Show when={x}>` read as "`when`
+   * does not exist on `IntrinsicAttributes & Scope`".
+   *
+   * The props are the SECOND parameter. A component the author wrote with no
+   * parameters at all — which is most of them, since the compiler is what adds
+   * the scope — infers `unknown` there and falls back, because a fallback that
+   * accepts no attributes is right for a component that declares none.
+   */
+  export type LibraryManagedAttributes<C, P> = C extends (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    scope: any,
+    props: infer Q,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) => any
+    ? unknown extends Q
+      ? P
+      : Q
+    : P;
+
   // Core utility types (following SolidJS patterns)
 
   /**
