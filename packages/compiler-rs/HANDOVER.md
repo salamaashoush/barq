@@ -237,9 +237,11 @@ concrete openers. In the order they unblock each other:
 The `flow.ts` bug M7 found is still open and still not async-specific; it will bite anything built on
 `Loading`.
 
-**The one number M9 owes and the next session should not have to re-derive:** the mutation kill rate
-per pass is in `M9.md` §5. `bun run test/mutants.ts` takes ~25 minutes and rebuilds a scratch crate
-per row; run it in the background and keep working.
+**The one number M9 owed is now in `M9.md` §5: 23 rows, 23 killed, none survived** — no equivalent
+row, against 23 / 22 / 1 on the run before the runtime deletion. `bun run test/mutants.ts` rebuilds a
+scratch crate per row. It COPIES `src/`, so editing `src/` while it runs turns every row after the
+edit into `did not build`; run it from a `git worktree` at the commit you mean to measure if you
+intend to keep working.
 
 ---
 
