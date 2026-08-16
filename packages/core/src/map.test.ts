@@ -66,6 +66,69 @@ describe("mapArray - keyed by identity (default)", () => {
     dispose();
   });
 
+  /**
+   * The index signal is created on the row's FIRST read, so the read that
+   * happens after a reorder has to see the CURRENT position rather than the one
+   * the row was built at, and a row that then keeps reading has to stay live.
+   */
+  test("an index first read after a reorder reads the current position", () => {
+    const dispose = createScope((d) => {
+      const a = { id: 1 };
+      const b = { id: 2 };
+      const c = { id: 3 };
+      const list = signal([a, b, c]);
+      const indexes = new Map<number, () => number>();
+      const view = mapArray(list, (item, index) => {
+        indexes.set(item.id, index);
+        return item.id;
+      });
+      view();
+
+      list.set([c, b, a]);
+      view();
+      // First read of any of the three, and it is after the move.
+      expect(indexes.get(a.id)!()).toBe(2);
+      expect(indexes.get(c.id)!()).toBe(0);
+
+      list.set([b, a, c]);
+      view();
+      expect(indexes.get(a.id)!()).toBe(1);
+      expect(indexes.get(c.id)!()).toBe(2);
+      // A row whose index was never read at all still reports correctly.
+      expect(indexes.get(b.id)!()).toBe(0);
+      return d;
+    }, true);
+    dispose();
+  });
+
+  test("a late index read stays reactive for an effect that opened it", () => {
+    const dispose = createScope((d) => {
+      const a = { id: 1 };
+      const b = { id: 2 };
+      const list = signal([a, b]);
+      const indexes = new Map<number, () => number>();
+      const view = mapArray(list, (item, index) => {
+        indexes.set(item.id, index);
+        return item.id;
+      });
+      view();
+
+      const seen: number[] = [];
+      effect(() => {
+        seen.push(indexes.get(a.id)!());
+      });
+      flush();
+      expect(seen).toEqual([0]);
+
+      list.set([b, a]);
+      view();
+      flush();
+      expect(seen).toEqual([0, 1]);
+      return d;
+    }, true);
+    dispose();
+  });
+
   test("removed rows are disposed", () => {
     const disposed: number[] = [];
     const dispose = createScope((d) => {

@@ -95,6 +95,13 @@ export {
   stack,
   requireScope,
 } from "./scope.ts";
+
+/**
+ * §3.0 rule 2's Cell-slot read, exported because a runtime library written on
+ * this ABI — `packages/extra`'s router is the first — has the same slots the
+ * compiled path has and must refuse a Block in one the same way.
+ */
+export { readSlot } from "./signals.ts";
 export type { Block, Boundary, Cell, Scope, Slot } from "./scope.ts";
 
 // The props model — CODESIGN §3.0/§3.3. `props` and `cell` are the two

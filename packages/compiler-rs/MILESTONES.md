@@ -406,6 +406,23 @@ Numbers in §4.
 
 ## 3. Measured output quality
 
+**Everything in this section is Tier 1** — Node, Bun, happy-dom, a stub DOM. `CODESIGN.md` §0.7 is
+the standing rule that governs it: Tier 1 iterates, **Tier 2 adjudicates**, and a Tier-1 win is
+provisional until a real browser confirms it. M7c ran this project's headline claims through the
+Tier-2 lane (`packages/benchmark/src/tier2/`, `bun run bench:tier2`) and three of them died, one was
+inverted, and one real algorithmic defect turned up that no Tier-1 suite could see. The two summaries
+worth carrying here before reading any ratio below:
+
+- **js-framework-benchmark, real Chrome, trace-derived durations, 10 iterations a row.** Seven of
+  nine rows within 5% on total, because paint dominates them; the **`js` half is 1.2–2.3x Solid's on
+  every one of the nine**; `clear rows` 1.292x (p=4.1e-2) and `select row` 1.513x (p=2.6e-1, and
+  0.452x on a second run) are where it shows through; **run memory at 1,000 rows 2.73–2.75 MB against
+  1.76 MB**.
+- **js-reactivity-benchmark, real Chrome.** 7 of 9 kairo rows and 3 of 3 sBench rows to barq, and
+  **cellx1000 55.7x / cellx2500 186.6x against** it — propagation is superlinear in graph depth
+  (`CODESIGN.md` §9.1, F1). The eleven-case head-to-head this project wrote cannot see it: its
+  deepest chain is five.
+
 ### DOM head to head against Solid
 
 `packages/benchmark/src/dom-head-to-head.ts`, run as `bun run bench:dom` (which is
@@ -769,6 +786,15 @@ and inside run-to-run noise", sign-changing across two runs. Re-measured on the 
 kebab-casing and `DOM_PROPS` routing all have to be re-derived in the compiler — for a page-level
 win indistinguishable from zero. The bundle-size argument for it remains true and is a separate
 change with a separate justification.
+
+*M7c note, because this row and `CODESIGN.md` §0.4 (C6) look like they disagree and do not.* The
+Tier-2 channel bench prices the dispatcher at **+36%** on `setProp(el,'id',v)` against a like-for-like
+`setAttribute` — 294 vs 216 ns a write over 20,000 writes in a tight loop. This row prices the same
+removal at **0.0 ns a write** on a real 1,000-row page. Both are correct: a page does ONE static
+write per row against a row that costs ~1,900 ns to mount, so a 78 ns dispatcher is 4% of one write
+and 0.04% of the frame. The tight loop measures the dispatcher; the page measures what the dispatcher
+is worth. **Quote the second when deciding whether to build something, and the first only when
+explaining why the second is small.**
 
 **`<math>` at a template root: unmeasured.** A hypothesis with a confirmed mechanism and no data,
 and no MathML in any real code in this repo. Listed so the next person knows it was considered.

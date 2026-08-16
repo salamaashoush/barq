@@ -44,6 +44,17 @@ documented design decision and needs a new serialisation mode." Two of those thr
    variant will need the fixture corpus regenerated, which is easier once the HMR-on variant has
    already forced that machinery to exist.
 
+**What M7c's Tier-2 lane adds to this ordering.** Nothing above is a performance item, and M7c found
+two that outrank most of it. **F1 — propagation is superlinear in graph depth** (`CODESIGN.md` §9.1:
+per-layer cost rises 8.3x over a 16x depth increase while Solid's falls; cellx1000 55.7x and
+cellx2500 186.6x against barq in real Chrome) is an algorithmic defect in `packages/core`, invisible
+to every Tier-1 reactivity case because their deepest chain is five, and it is the highest-priority
+open item in this repository. **C9 — the `js` half of every js-framework-benchmark row is 1.2–2.3x
+Solid's and run memory at 1,000 rows is 1.55x** is the second. Both are runtime work rather than
+compiler work, so neither displaces M8a–M10 in this file's sequence, and both come before any of them
+in whatever order the runtime is worked on. Recording them here so the next planner does not read
+this file's silence as "performance is fine".
+
 **The honest counter-ranking.** If you order by *user-visible wrongness in code that ships today*,
 M10 outranks everything except the `createAsync` fix, because replace-based hydration destroys focus
 and discards typed input on every page load (M10, risk section). That is a correctness bug, not a
@@ -865,7 +876,10 @@ Compile-time render of fully-static components (SSG), dead-branch elimination fo
 `<Show when={false}>`, unrolling `<For>` over a literal array, extracting static template text to an
 i18n catalogue or atomic CSS, and non-DOM backends. All plausible from the IR; none scoped, none
 measured, none justified by a number yet. They belong here only once one of them has a benchmark
-attached — the standard cross-module dedup just failed.
+attached — the standard cross-module dedup just failed. **Since M7c that means a TIER-2 benchmark**
+(`CODESIGN.md` §0.7): a stub-DOM or happy-dom win is what promotes a proposal to "worth measuring in
+a browser", not what promotes it into this file. Three claims in `CODESIGN.md` were admitted on
+Tier-1 evidence and did not survive the browser.
 
 ---
 

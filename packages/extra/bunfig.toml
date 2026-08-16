@@ -9,7 +9,7 @@ root = "./src"
 preload = ["./src/test-setup.ts"]
 
 # Coverage settings
-coverage = true
+coverage = false
 coverageDir = "./coverage"
 
 # Timeout per test (ms)

@@ -1,10 +1,21 @@
 /**
- * The eleven reactivity cases of CODESIGN §0.1, as a library.
+ * The reactivity cases of CODESIGN §0.1, as a library.
  *
  * `head-to-head.ts` hard-wires one barq module and reports a bare min-of-9
- * ratio. These are the same eleven graphs, but the barq side is a parameter so
- * two builds of `signals.ts` can be timed against each other in one process,
- * and the timing is left to `stats.paired` so every row carries a spread.
+ * ratio. These are the same graphs, but the barq side is a parameter so two
+ * builds of `signals.ts` can be timed against each other in one process, and
+ * the timing is left to `stats.paired` so every row carries a spread.
+ *
+ * ## Why there is a twelfth, and why it is 500 deep
+ *
+ * The original eleven were all shallow — the deepest chain was 5 — and that is
+ * the whole reason M7b's F1 escaped: propagation was quadratic in graph depth
+ * and every case here was too shallow to show it. Eleven green rows sat beside
+ * a 187x loss on `cellx2500`. `chain(500)` is the row that cannot be green
+ * while F1 is true, so a per-write cost that grows with depth fails HERE, in
+ * the suite that is run every milestone, rather than in a browser benchmark
+ * nobody ran until M7b. Its per-iteration cost divided by 500 is the same
+ * ms-per-layer that `tier2/jrb.ts` sweeps.
  */
 import {
   createEffect as sEffect,
@@ -41,10 +52,11 @@ export const NAMES: readonly string[] = [
   "steady: wide(10) write all + flush",
   "read: settled memo (x100)",
   "dispose: root with 50 memos",
+  "steady: chain(500) write + flush",
 ];
 
 const ITERS: readonly number[] = [
-  20000, 20000, 20000, 5000, 20000, 5000, 20000, 20000, 20000, 5000, 2000,
+  20000, 20000, 20000, 5000, 20000, 5000, 20000, 20000, 20000, 5000, 2000, 200,
 ];
 
 export function barqCases(B: BarqApi): Case[] {
@@ -166,6 +178,22 @@ export function barqCases(B: BarqApi): Case[] {
         for (let k = 0; k < 50; k++) computed(() => s() + k);
         dispose();
       }, true);
+    },
+
+    () => {
+      const s = signal(0);
+      let c: () => number = () => s();
+      for (let d = 0; d < 500; d++) {
+        const prev = c;
+        c = computed(() => prev() + 1);
+      }
+      effect(() => c());
+      flush();
+      let i = 0;
+      return () => {
+        s.set(++i);
+        flush();
+      };
     },
   ];
   return makes.map((make, i) => ({ name: NAMES[i], iters: ITERS[i], make }));
@@ -320,6 +348,28 @@ export function solidCases(): Case[] {
         for (let k = 0; k < 50; k++) sMemo(() => s() + k);
         dispose();
       });
+    },
+
+    () => {
+      const [, set] = sRoot(() => {
+        const sig = sSignal(0);
+        let m: () => number = () => sig[0]();
+        for (let d = 0; d < 500; d++) {
+          const prev = m;
+          m = sMemo(() => prev() + 1);
+        }
+        sEffect(
+          () => m(),
+          () => {},
+        );
+        return sig;
+      });
+      sFlush();
+      let j = 0;
+      return () => {
+        set(++j);
+        sFlush();
+      };
     },
   ];
   return makes.map((make, i) => ({ name: NAMES[i], iters: ITERS[i], make }));

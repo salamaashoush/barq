@@ -23,7 +23,9 @@ import {
   useToggle,
   useWindowSize,
 } from "@barqjs/extra";
-import { css } from "@barqjs/extra";
+import {
+  css,
+} from "../styles";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function HooksDemo() {
@@ -344,7 +346,7 @@ function KeyboardDemo() {
         </li>
       </ul>
 
-      <Log logs={logs} />
+      <Log logs={logs()} />
     </DemoCard>
   );
 }

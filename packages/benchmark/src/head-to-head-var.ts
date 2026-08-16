@@ -336,6 +336,52 @@ add(
   );
 }
 
+{
+  // chain(500). The other cases bottom out at depth 5, which is why M7b's F1 —
+  // propagation quadratic in graph depth — was invisible to every one of them
+  // while cellx2500 lost 186.6x. This row cannot be green while that is true.
+  const s = bSignal(0);
+  let c: () => number = () => s();
+  for (let d = 0; d < 500; d++) {
+    const prev = c;
+    c = bComputed(() => prev() + 1);
+  }
+  bEffect(() => {
+    c();
+  });
+  bFlush();
+  let i = 0;
+
+  const [, sset] = sRoot(() => {
+    const sig = sSignal(0);
+    let m: () => number = () => sig[0]();
+    for (let d = 0; d < 500; d++) {
+      const prev = m;
+      m = sMemo(() => prev() + 1);
+    }
+    sEffect(
+      () => m(),
+      () => {},
+    );
+    return sig;
+  });
+  sFlush();
+  let j = 0;
+
+  add(
+    "steady: chain(500) write + flush",
+    () => {
+      s.set(++i);
+      bFlush();
+    },
+    () => {
+      sset(++j);
+      sFlush();
+    },
+    200,
+  );
+}
+
 // ---------------------------------------------------------------- harness
 
 /**

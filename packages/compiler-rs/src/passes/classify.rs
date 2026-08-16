@@ -598,6 +598,7 @@ impl<'a> Lift<'a, '_> {
         let scope = arrow.scope_id.get();
         let free = self.free_vars(scope, |visitor| visitor.visit_arrow_function_expression(arrow));
         let zero_arg = arrow.params.items.is_empty() && arrow.params.rest.is_none();
+        let accessor = zero_arg && yields_a_value(&arrow.body);
         // A user-written `() => …` is an accessor whose BODY carries the deps;
         // creating a closure itself reads nothing.
         let (inner, cost) = if !zero_arg {
@@ -617,7 +618,7 @@ impl<'a> Lift<'a, '_> {
         };
         Rx {
             react: React::Static,
-            shape: if zero_arg { Shape::Accessor } else { Shape::Handler },
+            shape: if accessor { Shape::Accessor } else { Shape::Handler },
             inner,
             free,
             cost,
@@ -879,4 +880,69 @@ pub(super) fn number_to_js_string(number: f64) -> Option<String> {
         return Some(integer.to_string());
     }
     None
+}
+
+/// §3.0 rule 1's other half: whether a zero-arity function is a **Cell** or a
+/// **handler**.
+///
+/// Arity alone cannot answer it, and answering it by arity is a silent
+/// miscompilation. `const save = () => { post() }` is a handler; classified as
+/// an accessor it is forwarded BY IDENTITY into a component's Cell slot, and
+/// the consumer's `props.onClick()` — the read every prop now takes — INVOKES
+/// it at construction time. A Cell that can only ever yield `undefined` is not
+/// a Cell anyone wrote on purpose, so a body that cannot produce a value settles
+/// it the other way.
+///
+/// It is NOT what settles the question at a prop slot, and it cannot be: an
+/// expression-bodied `() => setStep(10)` yields whatever `setStep` returns, so
+/// this answers "Cell" for the commonest handler there is. The slot decides —
+/// `shape::is_handler_channel`. This survives as the answer for the slots that
+/// have no channel to read, where a body that cannot produce a value is still
+/// better evidence than arity alone.
+///
+/// Conservative in the direction that keeps an accessor an accessor: a nested
+/// function's `return` belongs to that function, so the walk does not descend
+/// into one, and anything it cannot read is treated as yielding.
+pub(crate) fn yields_a_value(body: &ArrowFunctionBody<'_>) -> bool {
+    let ArrowFunctionBody::FunctionBody(body) = body else { return true };
+    use oxc::ast::ast::Statement;
+    use oxc::ast_visit::{Visit, walk};
+
+    struct Seek {
+        found: bool,
+    }
+    impl<'a> Visit<'a> for Seek {
+        fn visit_return_statement(&mut self, it: &oxc::ast::ast::ReturnStatement<'a>) {
+            if it.argument.is_some() {
+                self.found = true;
+            }
+        }
+        fn visit_function(
+            &mut self,
+            _: &oxc::ast::ast::Function<'a>,
+            _: oxc::semantic::ScopeFlags,
+        ) {
+        }
+        fn visit_arrow_function_expression(
+            &mut self,
+            _: &oxc::ast::ast::ArrowFunctionExpression<'a>,
+        ) {
+        }
+    }
+
+    let mut seek = Seek { found: false };
+    for statement in &body.statements {
+        if seek.found {
+            break;
+        }
+        match statement {
+            Statement::ReturnStatement(it) => {
+                if it.argument.is_some() {
+                    seek.found = true;
+                }
+            }
+            other => walk::walk_statement(&mut seek, other),
+        }
+    }
+    seek.found
 }

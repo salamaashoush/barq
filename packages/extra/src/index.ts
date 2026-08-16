@@ -1,32 +1,13 @@
 /**
- * barq-extra
+ * barq-extra — the router, the query adapter, and utility hooks.
  *
- * Extra utilities for Barq: CSS-in-JS, clsx, variants, and utility hooks
+ * CSS-in-JS is GONE from this package. `CODESIGN.md` §4.1 indicts the goober
+ * wrapper for re-implementing element creation a fifth time in its JSX pragma,
+ * and CSS scoping is ecosystem rather than framework: an application that wants
+ * goober depends on goober. `packages/kitchen-sink/src/styles.ts` is where this
+ * package's copy went, unchanged apart from the three exports that needed the
+ * pragma.
  */
-
-// CSS-in-JS (goober wrapper)
-export {
-  css,
-  styled,
-  keyframe,
-  globalCss,
-  createGlobalStyle,
-  getStyleTag,
-  setupCss,
-  // Class utilities
-  clsx,
-  type ClassValue,
-  // Tokens & Theming
-  createTheme,
-  token,
-  type DesignTokens,
-  // Variants (like CVA)
-  variants,
-  type VariantConfig,
-  // CSS variable utilities
-  cssVar,
-  defineVars,
-} from "./css.ts";
 
 // Extra hooks
 export {
@@ -49,7 +30,6 @@ export {
 
 // Router
 export type {
-  // Core types
   Location,
   Params,
   SearchParams,
@@ -60,34 +40,33 @@ export type {
   RouteComponent,
   RouterConfig,
   NavigateOptions,
-  // Type-safe path params
   ExtractRouteParams,
   PathParams,
-  // Guards
   NavigationGuard,
   NavigationGuardContext,
-  // Config types
   CacheConfig,
   ScrollRestorationConfig,
   ViewTransitionConfig,
   PrefetchConfig,
-  // Error handling
   ErrorBoundaryProps,
-} from "./router.tsx";
+  ErrorComponent,
+  LinkProps,
+  NavLinkProps,
+  RouterProps,
+  MemoryRouterProps,
+  RedirectProps,
+  MatchedRoute,
+} from "./router.ts";
 export {
   // Components
   Router,
   MemoryRouter,
-  Outlet,
   Link,
   NavLink,
   Redirect,
-  Loading,
-  // Navigation
-  navigate,
-  prefetch,
-  resolvePath,
-  // Hooks
+  // Hooks — the only way to reach a router. There is no module-global
+  // `navigate()` and no `prefetch()` beside it: a router is reached through the
+  // scope chain that provided it, which is what makes two on one page possible.
   useLocation,
   useParams,
   useSearchParams,
@@ -98,16 +77,16 @@ export {
   route,
   defineRoute,
   defineRoutes,
-  // Utilities
+  // Path utilities
+  resolvePath,
   compilePath,
   matchPath,
   matchRoutes,
   clearPathCache,
   setRouterDebugMode,
-} from "./router.tsx";
+} from "./router.ts";
 
 // TanStack Query adapter
-// Re-export QueryClient from @tanstack/query-core for convenience
 export { QueryClient } from "@tanstack/query-core";
 export type {
   QueryKey,
@@ -121,8 +100,6 @@ export type {
   UseInfiniteQueryResult,
 } from "./query.ts";
 export {
-  setQueryClient,
-  getQueryClient,
   QueryClientProvider,
   useQuery,
   useMutation,
@@ -130,7 +107,4 @@ export {
   useQueryClient,
   useIsFetching,
   useIsMutating,
-  useSuspenseQuery,
-  prefetchQuery,
-  prefetchInfiniteQuery,
 } from "./query.ts";

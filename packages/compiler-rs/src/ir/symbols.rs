@@ -344,6 +344,19 @@ pub struct ReactiveEnv<'a> {
     /// set is the CALLEE's; the diagnostic is raised at the caller, which is
     /// what "naming both positions" means when a `Diag` carries one span.
     pub cell_slots: Vec<CellSlot<'a>>,
+    /// O5. The spans of function literals written as the FIRST argument of the
+    /// framework's `render`/`hydrate`, resolved by module specifier and
+    /// imported name rather than by spelling.
+    ///
+    /// `render(block, container)` opens the ROOT scope and calls the block with
+    /// it — that is the whole of O5 — so the block is a Block position in
+    /// exactly the sense C6 means, and its scope parameter is the only route by
+    /// which the root reaches the application. Without this a mount emits
+    /// `App(_s$, …)` against the module-level `const _s$ = null` and every
+    /// scope-creating primitive below it (`provide`, `branch`, `boundary`,
+    /// `portal`) opens a DETACHED root, so `render`'s disposer disposes
+    /// nothing it mounted.
+    pub root_blocks: Vec<Span>,
 }
 
 /// One proven Cell slot. `read` is where the callee consumes it, so the
@@ -374,6 +387,7 @@ impl<'a> ReactiveEnv<'a> {
             jsx_closings: Vec::new(),
             components: Vec::new(),
             cell_slots: Vec::new(),
+            root_blocks: Vec::new(),
         }
     }
 

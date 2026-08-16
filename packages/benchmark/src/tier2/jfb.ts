@@ -122,6 +122,13 @@ export async function driveJfb(
   solid: Bundle,
   iterations: number,
   labels: { a: string; b: string } = { a: "barq", b: "solid" },
+  /**
+   * A subset of `JFB_ROWS`. A whole run is nine rows deep, and a change aimed
+   * at ONE of them needs that row at an iteration count the whole suite cannot
+   * afford — a difference of a few percent is inside a nine-row run's noise.
+   * Omitted means all nine, which is what `run.ts` asks for.
+   */
+  only: readonly string[] = JFB_ROWS,
 ): Promise<JfbResult> {
   const barqServer = serve(barq.files)
   const solidServer = serve(solid.files)
@@ -130,7 +137,7 @@ export async function driveJfb(
   try {
     return await withBenchChrome(async (page) => {
       const rows: JfbRow[] = []
-      for (const name of JFB_ROWS) {
+      for (const name of only) {
         const throttle = THROTTLE[name] ?? 1
         await page.throttle(throttle)
         const barqSamples: Sample[] = []

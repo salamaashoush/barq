@@ -7,7 +7,9 @@
  */
 
 import { Await, Show, useResource, useState } from "@barqjs/core";
-import { css } from "@barqjs/extra";
+import {
+  css,
+} from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {
@@ -183,7 +185,7 @@ function ErrorResourceDemo() {
           </div>
         </Show>
 
-        <Show when={!shouldFetch && !errorData.loading() && !errorData.error()}>
+        <Show when={() => !shouldFetch() && !errorData.loading() && !errorData.error()}>
           <p>Click button to trigger an error</p>
         </Show>
       </div>

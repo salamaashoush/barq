@@ -5,7 +5,19 @@
  * Uses @tanstack/query-core for the framework-agnostic query logic.
  */
 
-import { useEffect, useState } from "@barqjs/core";
+import {
+  type Cell,
+  type JSXElement,
+  type Scope,
+  block,
+  cell,
+  createContext,
+  provide,
+  read,
+  readSlot,
+  useEffect,
+  useState,
+} from "@barqjs/core";
 import {
   type DefaultError,
   type InfiniteData,
@@ -87,28 +99,46 @@ export type UseInfiniteQueryResult<
 > = InfiniteQueryObserverResult<TData, TError>;
 
 // ============================================================================
-// Query Client Context (simple singleton for Barq)
+// The client, reached through the scope chain
 // ============================================================================
 
-let globalQueryClient: QueryClient | null = null;
+const QueryClientContext = createContext<QueryClient>(undefined, "barq-query-client");
 
-/** Set the global query client */
-export function setQueryClient(client: QueryClient): void {
-  globalQueryClient = client;
-}
-
-/** Get the global query client */
-export function getQueryClient(): QueryClient {
-  if (!globalQueryClient) {
-    throw new Error("QueryClient not set. Call setQueryClient() or use QueryClientProvider first.");
+/**
+ * The provider is the only mechanism. An "application default" held in a module
+ * `let` and reached through a `catch` arm is `contextState() || getMainBrowserRouter()`
+ * with exception control flow instead of `||` \u2014 the same workaround, one module
+ * over, and it kept the reference application off the path it was meant to prove.
+ */
+function resolveClient(): QueryClient {
+  try {
+    return read(QueryClientContext)();
+  } catch (cause) {
+    throw new Error("No QueryClient in scope. Wrap the tree in <QueryClientProvider client={…}>.", {
+      cause,
+    });
   }
-  return globalQueryClient;
 }
 
-/** QueryClientProvider component */
-export function QueryClientProvider(props: { client: QueryClient; children: Node }): Node {
-  setQueryClient(props.client);
-  return props.children;
+/**
+ * A real provider: it forks the context on its own instance scope and builds
+ * `children` INSIDE it, so a consumer constructed below sees this client.
+ */
+export const QueryClientProvider = block(
+  (scope: Scope | null, props: { client: Cell<QueryClient>; children?: unknown }): unknown => {
+    const client = readSlot(props.client, "QueryClientProvider.client") as QueryClient;
+    return provide(scope as Scope, QueryClientContext, cell(client), (inner: Scope | null) => {
+      const children = props.children;
+      return typeof children === "function"
+        ? (children as (s: Scope | null) => unknown)(inner)
+        : children;
+    });
+  },
+) as unknown as (props: QueryClientProviderProps) => JSXElement;
+
+export interface QueryClientProviderProps {
+  client: QueryClient;
+  children?: unknown;
 }
 
 // ============================================================================
@@ -139,7 +169,7 @@ export function useQuery<
 >(
   options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
 ): () => UseQueryResult<TData, TError> {
-  const client = getQueryClient();
+  const client = resolveClient();
   const opts = options();
 
   const observer = new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>(
@@ -201,7 +231,7 @@ export function useMutation<
 >(
   options: () => UseMutationOptions<TData, TError, TVariables, TContext>,
 ): () => UseMutationResult<TData, TError, TVariables, TContext> {
-  const client = getQueryClient();
+  const client = resolveClient();
   const opts = options();
 
   const observer = new MutationObserver<TData, TError, TVariables, TContext>(client, opts);
@@ -282,7 +312,7 @@ export function useInfiniteQuery<
 >(
   options: () => UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>,
 ): () => UseInfiniteQueryResult<TData, TError> {
-  const client = getQueryClient();
+  const client = resolveClient();
   const opts = options();
 
   // Cast to unknown first to work around strict generic constraints in v5
@@ -326,7 +356,7 @@ export function useInfiniteQuery<
  * ```
  */
 export function useQueryClient(): QueryClient {
-  return getQueryClient();
+  return resolveClient();
 }
 
 // ============================================================================
@@ -345,7 +375,7 @@ export function useQueryClient(): QueryClient {
  * ```
  */
 export function useIsFetching(filters?: { queryKey?: QueryKey }): () => number {
-  const client = getQueryClient();
+  const client = resolveClient();
   const [count, setCount] = useState(client.isFetching(filters));
 
   useEffect(() => {
@@ -375,7 +405,7 @@ export function useIsFetching(filters?: { queryKey?: QueryKey }): () => number {
  * ```
  */
 export function useIsMutating(filters?: { mutationKey?: QueryKey }): () => number {
-  const client = getQueryClient();
+  const client = resolveClient();
   const [count, setCount] = useState(client.isMutating(filters));
 
   useEffect(() => {
@@ -387,115 +417,4 @@ export function useIsMutating(filters?: { mutationKey?: QueryKey }): () => numbe
   });
 
   return count;
-}
-
-// ============================================================================
-// Suspense Integration (optional)
-// ============================================================================
-
-/**
- * Query hook that throws promises for Suspense integration
- *
- * @example
- * ```tsx
- * <Suspense fallback={<Loading />}>
- *   <UserProfile />
- * </Suspense>
- *
- * function UserProfile() {
- *   const data = useSuspenseQuery(() => ({
- *     queryKey: ['user'],
- *     queryFn: fetchUser,
- *   }));
- *   return <div>{data().name}</div>;
- * }
- * ```
- */
-export function useSuspenseQuery<
-  TQueryFnData = unknown,
-  TError = DefaultError,
-  TData = TQueryFnData,
-  TQueryKey extends QueryKey = QueryKey,
->(options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>): () => TData {
-  const query = useQuery(() => ({
-    ...options(),
-    throwOnError: true,
-  }));
-
-  return () => {
-    const result = query();
-
-    if (result.isPending && result.fetchStatus !== "idle") {
-      // Throw the promise for Suspense to catch
-      throw new Promise<void>((resolve) => {
-        const unsubscribe = getQueryClient()
-          .getQueryCache()
-          .subscribe(() => {
-            const current = query();
-            if (!current.isPending || current.fetchStatus === "idle") {
-              unsubscribe();
-              resolve();
-            }
-          });
-      });
-    }
-
-    if (result.isError) {
-      throw result.error;
-    }
-
-    return result.data as TData;
-  };
-}
-
-// ============================================================================
-// Prefetching utilities
-// ============================================================================
-
-/**
- * Prefetch a query for faster subsequent loads
- *
- * @example
- * ```tsx
- * // Prefetch on hover
- * <Link
- *   href="/user/123"
- *   onMouseEnter={() => prefetchQuery({
- *     queryKey: ['user', '123'],
- *     queryFn: () => fetchUser('123'),
- *   })}
- * >
- *   View User
- * </Link>
- * ```
- */
-export async function prefetchQuery<
-  TQueryFnData = unknown,
-  TError = DefaultError,
-  TData = TQueryFnData,
-  TQueryKey extends QueryKey = QueryKey,
->(options: UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>): Promise<void> {
-  const client = getQueryClient();
-  await client.prefetchQuery(options);
-}
-
-/**
- * Prefetch an infinite query
- */
-export async function prefetchInfiniteQuery<
-  TQueryFnData = unknown,
-  TError = DefaultError,
-  TQueryKey extends QueryKey = QueryKey,
-  TPageParam = unknown,
->(
-  options: UseInfiniteQueryOptions<
-    TQueryFnData,
-    TError,
-    InfiniteData<TQueryFnData>,
-    TQueryKey,
-    TPageParam
-  >,
-): Promise<void> {
-  const client = getQueryClient();
-  await client.prefetchInfiniteQuery(options);
 }

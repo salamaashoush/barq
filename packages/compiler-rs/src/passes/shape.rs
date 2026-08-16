@@ -310,7 +310,7 @@ impl<'a> Shaper<'a, '_> {
                     if self.builds_dom(&value) || self.is_block(&value) {
                         self.block_into_cell_slot(symbol, name, at);
                     }
-                    let cell = self.cell_value(value, at);
+                    let cell = self.cell_at(value, at, Some(name));
                     let property = self.property(name, cell, at);
                     let Source::Record(record) = &mut sources[last] else { unreachable!() };
                     record.push(property);
@@ -465,7 +465,19 @@ impl<'a> Shaper<'a, '_> {
     ///    `props.onClick()` returns the same object every time.
     /// 6. **Everything else** is `() => expr`: not memoised (C3.2) and neutral
     ///    (C3.3), so the CONSUMER's effect is what subscribes.
+    ///
+    /// `channel` is the prop NAME when there is one. At a handler channel case 2
+    /// is refused for function-valued expressions: see `is_cell`.
     pub(super) fn cell_value(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
+        self.cell_at(value, span, None)
+    }
+
+    pub(super) fn cell_at(
+        &mut self,
+        value: Expression<'a>,
+        span: Span,
+        channel: Option<&str>,
+    ) -> Expression<'a> {
         if self.builds_dom(&value) {
             return self.block(value, span);
         }
@@ -480,7 +492,7 @@ impl<'a> Shaper<'a, '_> {
         if let Some(reduced) = self.eta(&value) {
             return reduced;
         }
-        if self.is_cell(&value) {
+        if self.is_cell(&value, channel.is_some_and(is_handler_channel)) {
             return value;
         }
         if let Some(hoisted) = self.konst(&value, span) {
@@ -550,26 +562,43 @@ impl<'a> Shaper<'a, '_> {
     /// bound to a name, because §3.0 rule 1 is about arity and a binding does
     /// not change it. Refusing the named one is what made `each={activeItems}`
     /// cross as `() => activeItems`, one Cell too many for `For` to unwrap.
-    fn is_cell(&self, value: &Expression<'a>) -> bool {
+    ///
+    /// `handler` is the third case's exception and the only thing that settles
+    /// it. A zero-arity function literal is `() => T` and a Cell is `() => T`;
+    /// no property of the expression tells them apart, so nothing read off the
+    /// expression can decide it — arity cannot, and neither can whether the body
+    /// happens to produce a value, which is why `onClick={() => setStep(10)}`
+    /// survived the arity fix. What decides it is the SLOT: `on*` is the handler
+    /// channel, the same channel an intrinsic element already routes to
+    /// `delegate`/`listen`, and a function arriving there is the VALUE the
+    /// consumer's `props.onClick()` must yield — never the Cell itself. A
+    /// forwarded `props.onClick` and a proven signal getter still cross by
+    /// identity, because C3.10 rule 4 makes kind travel with the value.
+    fn is_cell(&self, value: &Expression<'a>, handler: bool) -> bool {
         match value {
-            Expression::ParenthesizedExpression(inner) => self.is_cell(&inner.expression),
+            Expression::ParenthesizedExpression(inner) => self.is_cell(&inner.expression, handler),
             // A type assertion is not a value: `props.children as never` carries
             // the same carrier `props.children` does. Re-wrapping it produced a
             // Cell holding a Block, which is the one shape that then needs a
             // speculative call to take apart again.
-            Expression::TSAsExpression(inner) => self.is_cell(&inner.expression),
-            Expression::TSNonNullExpression(inner) => self.is_cell(&inner.expression),
-            Expression::TSSatisfiesExpression(inner) => self.is_cell(&inner.expression),
+            Expression::TSAsExpression(inner) => self.is_cell(&inner.expression, handler),
+            Expression::TSNonNullExpression(inner) => self.is_cell(&inner.expression, handler),
+            Expression::TSSatisfiesExpression(inner) => self.is_cell(&inner.expression, handler),
             Expression::ArrowFunctionExpression(arrow) => {
-                !arrow.r#async && arrow.params.items.is_empty() && arrow.params.rest.is_none()
+                !handler
+                    && !arrow.r#async
+                    && arrow.params.items.is_empty()
+                    && arrow.params.rest.is_none()
+                    && super::classify::yields_a_value(&arrow.body)
             }
             Expression::StaticMemberExpression(member) => self.reads_props(&member.object),
             Expression::ComputedMemberExpression(member) => self.reads_props(&member.object),
             Expression::Identifier(_) => symbol_of(self.lift.scoping(), value).is_some_and(|s| {
-                matches!(
-                    self.lift.env().kind_of(s),
-                    SourceKind::Accessor { .. } | SourceKind::Fn { nullary: true }
-                )
+                match self.lift.env().kind_of(s) {
+                    SourceKind::Accessor { .. } => true,
+                    SourceKind::Fn { nullary: true } => !handler,
+                    _ => false,
+                }
             }),
             _ => false,
         }
@@ -930,6 +959,17 @@ fn shapeable(element: &JSXElement<'_>) -> bool {
     !element.children.iter().any(|child| matches!(child, JSXChild::Spread(_)))
 }
 
+/// The handler channel, on a component tag as on an intrinsic one.
+///
+/// `on[A-Z]` rather than the runtime's `on`-prefix test, which exists to catch
+/// `onclick` written lowercase on an element. A component prop is read by name
+/// in TypeScript, so `once` and `only` are ordinary props and must not be
+/// mistaken for events.
+pub(crate) fn is_handler_channel(name: &str) -> bool {
+    let rest = name.strip_prefix("on");
+    rest.and_then(|rest| rest.chars().next()).is_some_and(char::is_uppercase)
+}
+
 /// Whether a value's IDENTITY is observable to the consumer, so the Cell has to
 /// carry a value evaluated once rather than an expression evaluated per read.
 /// A handler compared across two reads is the case that matters, and the one
@@ -937,6 +977,9 @@ fn shapeable(element: &JSXElement<'_>) -> bool {
 fn identity_matters(value: &Expression<'_>) -> bool {
     match value {
         Expression::ParenthesizedExpression(inner) => identity_matters(&inner.expression),
+        Expression::TSAsExpression(inner) => identity_matters(&inner.expression),
+        Expression::TSNonNullExpression(inner) => identity_matters(&inner.expression),
+        Expression::TSSatisfiesExpression(inner) => identity_matters(&inner.expression),
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
         Expression::ArrayExpression(_) | Expression::ObjectExpression(_) => true,
         _ => false,
@@ -1015,6 +1058,7 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
 
 #[cfg(test)]
 mod tests {
+    use super::is_handler_channel;
     use crate::compile::compile;
     use crate::options::ResolvedOptions;
 
@@ -1353,6 +1397,62 @@ mod tests {
         .code;
         assert!(keyed.contains("_$each(_s$, null, null, items, byId,"), "{keyed}");
         assert!(!keyed.contains("() => byId"), "{keyed}");
+    }
+
+    /// No function ever crosses a handler channel as the Cell ITSELF.
+    ///
+    /// The consumer reads `props.onClick()` under C3.1's totality, so a function
+    /// forwarded by identity there is INVOKED at construction and its return
+    /// value — usually `undefined` — is what gets bound as the handler. That
+    /// silently ran every `onClick` in the reference application once at mount
+    /// and left the button dead, and no suite saw it, because the emitted code
+    /// is well-formed and the damage is written before the first paint.
+    ///
+    /// Arity could not settle it, and neither could the body: the form that
+    /// broke the app is `onClick={() => setStep(10)}`, an expression body that
+    /// does yield a value. The SLOT settles it, so every row here is a value
+    /// that is a Cell at `value=` and a handler at `onClick=`.
+    #[test]
+    fn a_function_never_crosses_a_handler_channel_as_the_cell() {
+        let prelude = "import { Button } from \"./b\";\n\
+                       const block = () => { save() };\n\
+                       const expr = () => save();\n";
+        // (attribute value, at `onClick=`, at `value=`)
+        let cases = [
+            // the form that broke the app: an expression body DOES yield a
+            // value, so nothing about the function distinguishes it
+            ("{() => save()}", "onClick: _$cell(() => save())", "value: () => save()"),
+            ("{() => { save() }}", "onClick: _$cell(() => {", "value: _$cell(() => {"),
+            ("{expr}", "onClick: () => expr", "value: expr"),
+            ("{block}", "onClick: () => block", "value: () => block"),
+        ];
+        for (value, handler, cell) in cases {
+            let at_handler =
+                emit(&format!("{prelude}export const V = () => <Button onClick={value}/>;\n")).code;
+            assert!(at_handler.contains(handler), "{handler} not in:\n{at_handler}");
+            let at_cell =
+                emit(&format!("{prelude}export const V = () => <Button value={value}/>;\n")).code;
+            assert!(at_cell.contains(cell), "{cell} not in:\n{at_cell}");
+        }
+
+        // C3.10 rule 4 — kind travels with the VALUE. A prop read is already a
+        // Cell, so the handler channel must not re-wrap it; doing so would make
+        // the child's `props.onClick()` yield the parent's Cell instead of the
+        // function, which is the same defect one level down.
+        let forwarded = emit(&format!(
+            "{prelude}export const V = (props) => <Button onClick={{props.onClick}}/>;\n"
+        ))
+        .code;
+        assert!(forwarded.contains("onClick: props.onClick"), "{forwarded}");
+
+        // The channel is `on` + an UPPERCASE letter. `once` is an ordinary prop
+        // and a nullary binding still crosses it by identity (C5).
+        let once =
+            emit(&format!("{prelude}export const V = () => <Button once={{expr}}/>;\n")).code;
+        assert!(once.contains("once: expr"), "{once}");
+        assert!(is_handler_channel("onClick") && is_handler_channel("onPointerDown"));
+        assert!(!is_handler_channel("once") && !is_handler_channel("only"));
+        assert!(!is_handler_channel("on") && !is_handler_channel("onclick"));
     }
 
     /// η-reduction's preconditions, each one negatively. What has to be pinned

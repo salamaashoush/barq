@@ -472,3 +472,118 @@ describe("O2 — a nested region is a child of the scope its Block was given", (
     expect(container.innerHTML).toBe("");
   });
 });
+
+/**
+ * Emptying a list that owns its parent is one `textContent = ""` rather than a
+ * `removeChild` per row. The bulk write is the whole point and it is also the
+ * whole risk: it takes every child the parent has, so what has to be pinned is
+ * that it fires when the list IS the parent's children and never when it is not.
+ */
+describe("emptying a list removes only what the list owns", () => {
+  const li = (): Node => document.createElement("li");
+
+  test("a list that owns its parent is emptied", () => {
+    const items = signal([1, 2, 3]);
+    const root = enterRoot();
+    each(root, container, null, items, false, li);
+    exit(root);
+    flush();
+    expect(container.childNodes.length).toBe(3);
+
+    items.set([]);
+    flush();
+    expect(container.childNodes.length).toBe(0);
+
+    // And the position still works afterwards.
+    items.set([1, 2]);
+    flush();
+    expect(container.childNodes.length).toBe(2);
+
+    disposeScope(root);
+  });
+
+  test("a static sibling BEFORE the list survives the list emptying", () => {
+    const keep = document.createElement("header");
+    container.appendChild(keep);
+    const items = signal([1, 2, 3]);
+
+    const root = enterRoot();
+    each(root, container, null, items, false, li);
+    exit(root);
+    flush();
+    expect(container.childNodes.length).toBe(4);
+
+    items.set([]);
+    flush();
+    expect(container.childNodes.length).toBe(1);
+    expect(container.firstChild).toBe(keep);
+
+    disposeScope(root);
+  });
+
+  test("a static sibling AFTER the list survives the list emptying", () => {
+    const keep = document.createElement("footer");
+    container.appendChild(keep);
+    const items = signal([1, 2, 3]);
+
+    const root = enterRoot();
+    each(root, container, keep, items, false, li);
+    exit(root);
+    flush();
+    expect(container.childNodes.length).toBe(4);
+    expect(container.lastChild).toBe(keep);
+
+    items.set([]);
+    flush();
+    expect(container.childNodes.length).toBe(1);
+    expect(container.firstChild).toBe(keep);
+
+    disposeScope(root);
+  });
+
+  test("a second list in the same parent keeps its rows when the first empties", () => {
+    const a = signal([1, 2]);
+    const b = signal([1, 2, 3]);
+    const root = enterRoot();
+    const anchor = document.createElement("hr");
+    container.appendChild(anchor);
+    each(root, container, anchor, a, false, li);
+    each(root, container, null, b, false, li);
+    exit(root);
+    flush();
+    expect(container.childNodes.length).toBe(6);
+
+    a.set([]);
+    flush();
+    expect(container.childNodes.length).toBe(4);
+    expect(container.querySelectorAll("li").length).toBe(3);
+
+    disposeScope(root);
+  });
+
+  test("disposing the owner of a list that owns its parent empties it", () => {
+    const items = signal([1, 2, 3]);
+    const root = enterRoot();
+    each(root, container, null, items, false, li);
+    exit(root);
+    flush();
+    expect(container.childNodes.length).toBe(3);
+
+    disposeScope(root);
+    expect(container.childNodes.length).toBe(0);
+  });
+
+  test("disposing a list beside a static sibling leaves the sibling", () => {
+    const keep = document.createElement("header");
+    container.appendChild(keep);
+    const items = signal([1, 2, 3]);
+    const root = enterRoot();
+    each(root, container, null, items, false, li);
+    exit(root);
+    flush();
+
+    disposeScope(root);
+    expect(container.childNodes.length).toBe(1);
+    expect(container.firstChild).toBe(keep);
+  });
+});

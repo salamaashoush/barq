@@ -1174,6 +1174,7 @@ function cleanupDeps(sub: ComputedNode<unknown>): void {
  */
 let markEpoch = 1;
 let markWave = 0;
+let waveEpoch = 0;
 
 /**
  * Mark a node CHECK or DIRTY. Effects are inserted into their heap;
@@ -1222,14 +1223,83 @@ function markNode(node: ComputedNode<unknown>, newState: number): void {
 }
 
 /**
+ * Open a propagation wave. A wave is a traversal id, not a call id: while the
+ * epoch is unchanged no mark has been consumed anywhere, so every node the
+ * current wave already visited still carries the mark it was given and still
+ * has its own subscribers marked. Re-opening the wave under those conditions
+ * would only re-walk ground that is still standing, which is what made a
+ * four-write batch cost four full traversals instead of one.
+ */
+function openWave(): void {
+  if (waveEpoch !== markEpoch) {
+    markWave++;
+    waveEpoch = markEpoch;
+  }
+}
+
+/**
  * Notify subscribers of a changed node.
  * `state` is DIRTY for unconditional recompute (equals: false sources,
  * errors, async transitions), CHECK otherwise (value comparison gates).
  */
 function propagate(node: SignalNode<unknown>, state: number): void {
-  markWave++;
+  openWave();
   for (let l = node._subs; l !== null; l = l._nextSub) {
     markNode(l._sub, state);
+  }
+}
+
+/**
+ * Re-mark subscribers of a pure computed that just recomputed, WITHOUT
+ * re-walking the closure below them.
+ *
+ * The invariant that makes this sound: `markNode` never marks a pure node
+ * without also marking that node's subscribers, so a pure node that is
+ * currently marked has its whole descendant closure marked at CHECK or above.
+ * A recompute is always reached through such a mark, so by the time a value
+ * changes here, everything downstream was already told to revalidate by the
+ * write that started the pull. Walking it again is pure re-traversal - and it
+ * is what made propagation quadratic in graph depth (F1): with 800 layers the
+ * sweep spent 54M `markNode` calls to place marks that were already there.
+ *
+ * What the direct level still needs is the CHECK -> DIRTY upgrade, because
+ * DIRTY is the only mark that survives an `equals` comparison against an
+ * unchanged snapshot. One level below that, CHECK is sufficient: any change
+ * must pass through a direct subscriber to reach them.
+ *
+ * A subscriber that is CLEAN is the one case the invariant says nothing about,
+ * so it gets the full walk. It is reachable when a link outlived the mark that
+ * created it - and being unreachable in the common case is exactly why it must
+ * not be assumed away.
+ */
+function repropagate(node: ComputedNode<unknown>, state: number): void {
+  for (let l = node._subs; l !== null; l = l._nextSub) {
+    const sub = l._sub;
+    const flags = sub._flags;
+    if (flags & REACTIVE_DISPOSED) continue;
+
+    const current = flags & (REACTIVE_CHECK | REACTIVE_DIRTY);
+
+    if (sub._kind !== EFFECT_PURE) {
+      if (current < state) {
+        sub._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | state;
+      } else if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS)) {
+        continue;
+      }
+      insertIntoHeap(sub, heapFor(sub));
+      schedule();
+      continue;
+    }
+
+    if (current === 0) {
+      openWave();
+      markNode(sub, state);
+      continue;
+    }
+
+    if (current < state) {
+      sub._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | state;
+    }
   }
 }
 
@@ -1570,7 +1640,7 @@ function recompute(node: ComputedNode<unknown>): void {
   if (valueChanged) {
     node._value = newValue;
     if (!isEffect) {
-      propagate(node, node._equals === false || wasPending ? REACTIVE_DIRTY : REACTIVE_CHECK);
+      repropagate(node, node._equals === false || wasPending ? REACTIVE_DIRTY : REACTIVE_CHECK);
     }
   }
 

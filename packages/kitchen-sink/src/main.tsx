@@ -4,7 +4,10 @@
 
 import { QueryClient } from "@tanstack/query-core";
 import { render } from "@barqjs/core";
-import { globalCss, setQueryClient } from "@barqjs/extra";
+import { QueryClientProvider } from "@barqjs/extra";
+import {
+  globalCss,
+} from "./styles";
 
 import { App } from "./App";
 
@@ -65,12 +68,32 @@ const queryClient = new QueryClient({
     },
   },
 });
-setQueryClient(queryClient);
 
-// Mount app (App component contains its own Router)
+// Mount app (App component contains its own Router).
+//
+// O5's Block form. `render(<App/>, host)` builds the tree BEFORE render is
+// entered, so the root never owns it and the disposer has nothing to dispose;
+// the Block form is handed the root and threads it into the tree.
 const container = document.getElementById("app");
-if (container) {
-  render(<App />, container);
+if (!container) {
+  throw new Error("[barq] #app is missing, so there is nowhere to mount");
 }
 
-console.log("Barq Kitchen Sink mounted");
+// A mount that fails must SAY so. The previous entry point had no `try`, so a
+// throw during construction left `#app` empty with nothing in the console —
+// which is the failure a green test suite did not catch.
+try {
+  render(
+    () => (
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    ),
+    container,
+  );
+  console.log("Barq Kitchen Sink mounted");
+} catch (error) {
+  console.error("[barq] mount failed:", error);
+  container.textContent = `Mount failed: ${String(error)}`;
+  throw error;
+}

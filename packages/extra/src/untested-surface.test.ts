@@ -1,46 +1,65 @@
 /**
- * THE ACCEPTANCE SURFACE, registered.
+ * THE ACCEPTANCE SURFACE, re-cut.
  *
- * `CODESIGN.md` §8 makes the router the acceptance test for the whole redesign,
- * and it is a good one — but it is not the whole package. `packages/extra` ships
- * six source modules and tests ONE of them. `css.ts`, `query.ts` and `hooks.ts`
- * have no test file, which is the direct reason the three C1 holes named in
- * `m8-convention.test.ts` — goober's `Styled`, `QueryClientProvider`,
- * `GlobalStyleComponent` — are silent rather than red.
+ * This file used to register a gap: six source modules, one of them tested,
+ * and `css.ts` / `query.ts` / `hooks.ts` with no test file at all — which was
+ * the direct reason three C1 holes were silent instead of red. It said writing
+ * those tests was M8's job.
  *
- * The consequence for the record kept next door: the 87/0 probe proves the
- * router's five migratable declarations are sufficient for the ROUTER's own
- * fixtures. It does not prove this package is one codemod away from working,
- * and it was being read as if it did.
+ * M8 did three things to that list, and this row states which:
  *
- * Writing real tests for css/query/hooks is M8 work, not M4b work: they would
- * be born red for the same C1 reason and would need registering, which is a
- * decision for the milestone that owns the migration. This file registers the
- * gap instead, and goes red the moment a module is added or a test file
- * appears — which forces the M8 pass to state which of the three it covered.
+ *  - `css.ts` was DELETED. `CODESIGN.md` §4.1 indicts its JSX pragma for
+ *    re-implementing element creation a fifth time, and CSS scoping is
+ *    ecosystem rather than framework. Its content moved to
+ *    `packages/kitchen-sink/src/styles.ts`, where the application that wants
+ *    goober depends on goober; the three exports that needed the pragma
+ *    (`setupCss`, `styled`, `createGlobalStyle`) went with the indictment.
+ *  - `query.ts` and `hooks.ts` were TESTED — `query.test.tsx`, `hooks.test.ts`.
+ *  - `router.tsx` became `router.ts`. The router is a runtime library on the
+ *    primitive ABI, not an authored module, so it contains no JSX and there is
+ *    one implementation of it rather than one per toolchain.
+ *
+ * The row keeps its original property: it goes red the moment a module is added
+ * or a test file appears, which forces the next pass to say what it covered.
  */
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
 
 describe("M8 acceptance surface", () => {
-  test("every source module that exports a component is either tested or registered", () => {
-    const src = join(import.meta.dir);
+  test("every source module is tested, and the list is checked in", () => {
+    const src = join();
     const modules = readdirSync(src).filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"));
-    const tested = modules.filter((f) => f.includes(".test."));
-    expect(tested.toSorted()).toEqual([
+
+    expect(modules.filter((f) => f.includes(".test.")).toSorted()).toEqual([
+      "hooks.test.ts",
       "m8-convention.test.ts",
+      "query.test.tsx",
       "router.test.tsx",
       "untested-surface.test.ts",
     ]);
+
     expect(modules.filter((f) => !f.includes(".test.")).toSorted()).toEqual([
-      "css.ts",
       "hooks.ts",
       "index.ts",
       "query.ts",
-      "router.tsx",
+      "router.ts",
       "test-setup.ts",
     ]);
   });
+
+  test("every public export resolves", async () => {
+    const surface = (await import("./index.ts")) as Record<string, unknown>;
+    const missing = Object.entries(surface)
+      .filter(([, value]) => value === undefined)
+      .map(([name]) => name);
+    expect(missing).toEqual([]);
+    // The barrel is the package. A row that only counted modules could not see
+    // an export that survived a deletion by name only.
+    expect(Object.keys(surface).length).toBeGreaterThan(25);
+  });
 });
+
+function join(): string {
+  return import.meta.dir;
+}

@@ -1,66 +1,28 @@
 /**
- * CSS-in-JS powered by goober
+ * The application's CSS layer.
  *
- * Provides styled components and css utilities with automatic setup
+ * It used to be `packages/extra/src/css.ts`. `CODESIGN.md` §4.1 indicts that
+ * module's JSX pragma for re-implementing element creation a fifth time — 24
+ * lines of `document.createElement` plus className, `on*` and style-object
+ * handling — and CSS scoping is ecosystem rather than framework, so the
+ * framework stopped shipping it and the application that wants goober depends
+ * on goober.
+ *
+ * Three exports went with the indictment rather than moving: `setupCss` (the
+ * pragma itself), `styled` (the only thing that needed the pragma, and nothing
+ * here used it), and `createGlobalStyle` (a component declaration that took
+ * props in the scope's position and was reachable by nobody). `getStyleTag`
+ * went with them — it had no reader either.
+ *
+ * What survives is `css`/`keyframe`/`globalCss` over goober, and six pure
+ * string functions — `clsx`, `createTheme`, `variants`, `cssVar`, `defineVars`,
+ * `token` — that never touched goober or the DOM in the first place.
  */
 
-import { extractCss, css as gooberCss, styled as gooberStyled, keyframes, setup } from "goober";
-import { onCleanup } from "@barqjs/core";
+import { css as gooberCss, keyframes } from "goober";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isEventListener(value: unknown): value is EventListener {
-  return typeof value === "function";
-}
-
-// Track if setup has been called
-let isSetup = false;
-
-/**
- * Initialize goober with our JSX pragma
- * Called automatically on first use, but can be called manually for SSR
- */
-export function setupCss(pragma?: (type: unknown, props: unknown) => unknown): void {
-  if (isSetup) return;
-  isSetup = true;
-
-  // Use provided pragma or default to basic element creation
-  const h =
-    pragma ||
-    ((type: unknown, props: unknown) => {
-      if (typeof type === "string") {
-        const el = document.createElement(type);
-        if (isRecord(props)) {
-          for (const [key, value] of Object.entries(props)) {
-            if (key === "children") continue;
-            if (key === "className") {
-              el.className = String(value);
-            } else if (key.startsWith("on") && isEventListener(value)) {
-              el.addEventListener(key.slice(2).toLowerCase(), value);
-            } else if (key === "style" && isRecord(value)) {
-              Object.assign(el.style, value);
-            } else {
-              el.setAttribute(key, String(value));
-            }
-          }
-        }
-        return el;
-      }
-      return null;
-    });
-
-  setup(h);
-}
-
-/**
- * Ensure setup is called before using css utilities
- */
-function ensureSetup(): void {
-  if (!isSetup) {
-    setupCss();
-  }
 }
 
 /**
@@ -86,35 +48,8 @@ function ensureSetup(): void {
 const boundCss = gooberCss.bind({});
 
 export function css(strings: TemplateStringsArray, ...values: (string | number)[]): string {
-  ensureSetup();
   return boundCss(strings, ...values);
 }
-
-/**
- * Create a styled component
- *
- * @example
- * ```tsx
- * const Button = styled("button")`
- *   background: ${props => props.primary ? "blue" : "gray"};
- *   color: white;
- *   padding: 8px 16px;
- * `;
- *
- * <Button primary>Primary</Button>
- * <Button>Secondary</Button>
- * ```
- */
-export const styled: typeof gooberStyled = new Proxy(gooberStyled, {
-  apply(target, thisArg, args) {
-    ensureSetup();
-    return Reflect.apply(target, thisArg, args);
-  },
-  get(target, prop) {
-    ensureSetup();
-    return Reflect.get(target, prop);
-  },
-});
 
 /**
  * Create CSS keyframes animation
@@ -132,7 +67,6 @@ export const styled: typeof gooberStyled = new Proxy(gooberStyled, {
  * ```
  */
 export function keyframe(strings: TemplateStringsArray, ...values: (string | number)[]): string {
-  ensureSetup();
   return keyframes(strings, ...values);
 }
 
@@ -157,8 +91,6 @@ export function keyframe(strings: TemplateStringsArray, ...values: (string | num
 const injectedGlobalCss = new Set<string>();
 
 export function globalCss(strings: TemplateStringsArray, ...values: (string | number)[]): void {
-  ensureSetup();
-
   // Build the CSS string from template literal
   let cssText = strings[0];
   for (let i = 0; i < values.length; i++) {
@@ -187,76 +119,6 @@ export function globalCss(strings: TemplateStringsArray, ...values: (string | nu
     // Append our global CSS to the existing content
     styleEl.textContent = (styleEl.textContent || "") + cssText;
   }
-}
-
-/**
- * Create a global style component (like styled-components' createGlobalStyle)
- *
- * Styles are injected when the component mounts and removed when it unmounts.
- * This is useful for styles that should only be active while a component is rendered,
- * or for theme-dependent global styles.
- *
- * @example
- * ```tsx
- * const GlobalStyle = createGlobalStyle`
- *   body {
- *     background: ${props => props.dark ? '#000' : '#fff'};
- *   }
- *
- *   ::view-transition-old(root) {
- *     animation: fade-out 0.3s ease-out;
- *   }
- * `;
- *
- * function App() {
- *   return (
- *     <>
- *       <GlobalStyle dark={isDarkMode()} />
- *       <MyContent />
- *     </>
- *   );
- * }
- * ```
- */
-export function createGlobalStyle<P extends Record<string, unknown> = Record<string, never>>(
-  strings: TemplateStringsArray,
-  ...interpolations: Array<string | number | ((props: P) => string | number)>
-): (props?: P) => null {
-  return function GlobalStyleComponent(props?: P): null {
-    // We need to import onCleanup dynamically to avoid circular deps
-    // For now, use a simple approach with a style element per instance
-    if (typeof document === "undefined") return null;
-
-    const resolvedProps = props || ({} as P);
-
-    // Build the CSS string, resolving any interpolations
-    let cssText = strings[0];
-    for (let i = 0; i < interpolations.length; i++) {
-      const interp = interpolations[i];
-      const value = typeof interp === "function" ? interp(resolvedProps) : interp;
-      cssText += String(value) + strings[i + 1];
-    }
-
-    // Create a unique style element for this component instance
-    const styleEl = document.createElement("style");
-    styleEl.setAttribute("data-global-style", "");
-    styleEl.textContent = cssText;
-    document.head.appendChild(styleEl);
-
-    // Register cleanup to remove styles when component unmounts
-    onCleanup(() => {
-      styleEl.remove();
-    });
-
-    return null;
-  };
-}
-
-/**
- * Extract all generated CSS (useful for SSR)
- */
-export function getStyleTag(): string {
-  return extractCss();
 }
 
 /**
@@ -458,5 +320,3 @@ export function token(tokens: DesignTokens, path: string): string {
   return String(value);
 }
 
-// Re-export types
-export type { CSSAttribute } from "goober";

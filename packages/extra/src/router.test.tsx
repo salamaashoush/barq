@@ -12,7 +12,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { render, createScope } from "@barqjs/core";
+import { type Cell, type Child, type Scope, getOwner, isDisposed, render } from "@barqjs/core";
 import {
   compilePath,
   matchPath,
@@ -24,7 +24,6 @@ import {
   defineRoutes,
   setRouterDebugMode,
   MemoryRouter,
-  Outlet,
   Link,
   NavLink,
   Redirect,
@@ -38,10 +37,160 @@ import {
   type ExtractRouteParams,
   type PathParams,
   type NavigationGuard,
-} from "./router.tsx";
+} from "./router.ts";
 
 // Helper to wait for async operations
 const wait = (ms: number = 0) => new Promise((r) => setTimeout(r, ms));
+
+// ============================================================================
+// Route components, declared at module scope
+// ============================================================================
+//
+// C2: a component is DECLARED, never inferred. A function handed to the router
+// through a route table is called with a scope by a callee in another module,
+// and nothing module-local proves that — so it is exported, which is the
+// evidence C2 accepts. An arrow written inline in the table has no such
+// evidence and keeps an un-scoped signature; a zero-arity one is still a legal
+// Cell (C6) and every one below that takes props is here for this reason.
+//
+// `<Outlet />` is gone. A layout renders the next route through `props.children`,
+// which is a Block taking a scope, so the child is constructed INSIDE the
+// layout — the same rule that makes a provider work.
+
+export function LayoutShell(props: { children: Child }) {
+  return (
+    <div class="layout">
+      Layout Header
+      {props.children}
+    </div>
+  );
+}
+
+export function LayerA(props: { children: Child }) {
+  return <div>A{props.children}</div>;
+}
+
+export function LayerB(props: { children: Child }) {
+  return <div>B{props.children}</div>;
+}
+
+export function LayerC(props: { children: Child }) {
+  return <div>C{props.children}</div>;
+}
+
+export function UsersNavLayout(props: { children: Child }) {
+  return (
+    <div>
+      <NavLink href="/users" activeClass="active">
+        Users
+      </NavLink>
+      {props.children}
+    </div>
+  );
+}
+
+export function UsersNavEndLayout(props: { children: Child }) {
+  return (
+    <div>
+      <NavLink href="/users" activeClass="active" end>
+        Users List
+      </NavLink>
+      {props.children}
+    </div>
+  );
+}
+
+export function ParentWithChild(props: { children: Child }) {
+  return (
+    <div>
+      Parent
+      {props.children}
+    </div>
+  );
+}
+
+export function RelativeLinkLayout(props: { children: Child }) {
+  return (
+    <div>
+      <Link href="./profile">Profile</Link>
+      {props.children}
+    </div>
+  );
+}
+
+// Props are Cells and are CALLED at the use site. `props.data` is not in the
+// branch key, so a loader that lands updates this component rather than
+// remounting it.
+export function MessageView(props: { data: Cell<{ message?: string } | undefined> }) {
+  return <div>{() => props.data()?.message}</div>;
+}
+
+export function UserIdView(props: { data: Cell<{ id?: string } | undefined> }) {
+  return <div>User {() => props.data()?.id}</div>;
+}
+
+export function GreetingView(props: { params: Cell<{ name: string }> }) {
+  return <div>Hello {() => props.params().name}</div>;
+}
+
+export function SlowView(props: { data: Cell<{ data?: string } | undefined> }) {
+  const isLoading = useIsLoading();
+  loadingStatesSeen.push(isLoading());
+  return <div>{() => props.data()?.data}</div>;
+}
+
+export function LoaderErrorView(props: { error: Cell<Error> }) {
+  return <div>Error: {() => props.error().message}</div>;
+}
+
+export function RetryableErrorView(props: { error: Cell<Error>; reset: () => void }) {
+  return (
+    <div>
+      <span>Error: {() => props.error().message}</span>
+      <button type="button" onClick={() => props.reset()}>
+        Retry
+      </button>
+    </div>
+  );
+}
+
+export function SurvivingLinkLayout(props: { params: Cell<{ id: string }>; children: Child }) {
+  navProbe.push(useNavigate());
+  return (
+    <div>
+      <Link href="./edit">Edit</Link>
+      <span>{() => props.params().id}</span>
+      {props.children}
+    </div>
+  );
+}
+
+export function BoundaryNavLayout() {
+  return (
+    <div>
+      <NavLink href="/user" activeClass="active">
+        User
+      </NavLink>
+      <NavLink href="/user-settings" activeClass="active">
+        Settings
+      </NavLink>
+    </div>
+  );
+}
+
+const loadingStatesSeen: boolean[] = [];
+const chainProbe: ReturnType<typeof useMatchedRoutes>[] = [];
+const navProbe: ReturnType<typeof useNavigate>[] = [];
+
+export function ChainProbeLayout(props: { children: Child }) {
+  chainProbe.push(useMatchedRoutes());
+  return (
+    <div>
+      Parent
+      {props.children}
+    </div>
+  );
+}
 
 // Helper to clean up DOM after each test
 function cleanup() {
@@ -269,6 +418,18 @@ describe("Path Matching", () => {
     test("resolves simple relative paths", () => {
       expect(resolvePath("child", "/parent")).toBe("/parent/child");
     });
+
+    // Anything not starting with "/" used to be treated as relative, so an
+    // absolute URL was split on "/" and reassembled as a path this router would
+    // then try to match: `/a/https:/example.com/x`. The document-level
+    // interceptor already refused these; `Link` resolved them.
+    test("an href that leaves the app is not resolved against anything", () => {
+      expect(resolvePath("https://example.com/x", "/a")).toBe("https://example.com/x");
+      expect(resolvePath("mailto:a@b.c", "/a")).toBe("mailto:a@b.c");
+      expect(resolvePath("tel:+123", "/a")).toBe("tel:+123");
+      expect(resolvePath("//cdn.example.com/x", "/a")).toBe("//cdn.example.com/x");
+      expect(resolvePath("#section", "/a")).toBe("#section");
+    });
   });
 });
 
@@ -288,7 +449,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Home");
@@ -309,7 +470,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Home");
@@ -326,7 +487,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/start" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/start" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Start");
@@ -337,10 +498,12 @@ describe("Router Components", () => {
 
       const container = document.createElement("div");
       render(
-        <MemoryRouter
-          initialPath="/nonexistent"
-          config={{ routes, fallback: () => <div>Not Found</div> }}
-        />,
+        () => (
+          <MemoryRouter
+            initialPath="/nonexistent"
+            config={{ routes, fallback: () => <div>Not Found</div> }}
+          />
+        ),
         container,
       );
 
@@ -352,7 +515,7 @@ describe("Router Components", () => {
       const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/nonexistent" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/nonexistent" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("404");
@@ -374,12 +537,40 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
       expect(link).not.toBeNull();
       expect(link?.getAttribute("href")).toBe("/about");
+    });
+
+    test("an external href is left alone and the click is not intercepted", async () => {
+      const routes: RouteDefinition[] = [
+        route({
+          path: "/",
+          component: () => (
+            <div>
+              Home
+              <Link href="https://example.com/x">Out</Link>
+            </div>
+          ),
+        }),
+      ];
+
+      const container = document.createElement("div");
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
+
+      await wait(10);
+      const link = container.querySelector("a");
+      expect(link?.getAttribute("href")).toBe("https://example.com/x");
+
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      link?.dispatchEvent(event);
+      await wait(20);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(container.textContent).toContain("Home");
     });
 
     test("navigates on click", async () => {
@@ -397,7 +588,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Home");
@@ -424,7 +615,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -455,7 +646,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -483,7 +674,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const links = container.querySelectorAll("a");
@@ -495,20 +686,13 @@ describe("Router Components", () => {
       const routes: RouteDefinition[] = [
         route({
           path: "/users",
-          component: () => (
-            <div>
-              <NavLink href="/users" activeClass="active">
-                Users
-              </NavLink>
-              <Outlet />
-            </div>
-          ),
+          component: UsersNavLayout,
           children: [route({ path: "/:id", component: () => <div>User Detail</div> })],
         }),
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -520,14 +704,7 @@ describe("Router Components", () => {
       const routes: RouteDefinition[] = [
         route({
           path: "/users",
-          component: () => (
-            <div>
-              <NavLink href="/users" activeClass="active" end>
-                Users List
-              </NavLink>
-              <Outlet />
-            </div>
-          ),
+          component: UsersNavEndLayout,
           children: [
             route({ path: "/", component: () => <div>Users List Content</div> }),
             route({ path: "/:id", component: () => <div>User Detail</div> }),
@@ -536,7 +713,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -557,7 +734,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
@@ -565,46 +742,33 @@ describe("Router Components", () => {
     });
   });
 
-  describe("Outlet", () => {
+  describe("Nested layouts", () => {
     test("renders child routes", async () => {
       const routes: RouteDefinition[] = [
         route({
           path: "/layout",
-          component: () => (
-            <div class="layout">
-              Layout Header
-              <Outlet />
-            </div>
-          ),
+          component: LayoutShell,
           children: [route({ path: "/child", component: () => <div>Child Content</div> })],
         }),
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/layout/child" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/layout/child" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("Layout Header");
       expect(container.textContent).toContain("Child Content");
     });
 
-    test("renders nested outlets", async () => {
+    test("renders nested layouts", async () => {
       const routes: RouteDefinition[] = [
         route({
           path: "/a",
-          component: () => (
-            <div>
-              A<Outlet />
-            </div>
-          ),
+          component: LayerA,
           children: [
             route({
               path: "/b",
-              component: () => (
-                <div>
-                  B<Outlet />
-                </div>
-              ),
+              component: LayerB,
               children: [route({ path: "/c", component: () => <div>C</div> })],
             }),
           ],
@@ -612,12 +776,56 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/a/b/c" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/a/b/c" config={{ routes }} />, container);
 
       await wait(10);
       expect(container.textContent).toContain("A");
       expect(container.textContent).toContain("B");
       expect(container.textContent).toContain("C");
+    });
+
+    // The shape `packages/kitchen-sink` actually ships: the layout owns "/" and
+    // so does its index child, so the parent prefix contributes nothing to the
+    // siblings' paths. The other rows here nest under a non-root prefix, which
+    // is the case that cannot see a join producing "//signals".
+    const rootLayoutRoutes: RouteDefinition[] = [
+      route({
+        path: "/",
+        component: LayoutShell,
+        children: [
+          route({ path: "/", component: () => <div>INDEX</div> }),
+          route({ path: "/signals", component: () => <div>SIGNALS</div> }),
+          route({ path: "/components", component: () => <div>COMPONENTS</div> }),
+        ],
+      }),
+    ];
+
+    test("matches an index and its siblings under a root layout", () => {
+      expect(matchRoutes("/", rootLayoutRoutes)?.route.path).toBe("/");
+      expect(matchRoutes("/signals", rootLayoutRoutes)?.route.path).toBe("/signals");
+      expect(matchRoutes("/components", rootLayoutRoutes)?.route.path).toBe("/components");
+      expect(matchRoutes("/signals", rootLayoutRoutes)?.parents.length).toBe(1);
+    });
+
+    test("renders a root layout around its index and its siblings", async () => {
+      const container = document.createElement("div");
+      render(
+        () => <MemoryRouter initialPath="/signals" config={{ routes: rootLayoutRoutes }} />,
+        container,
+      );
+
+      await wait(20);
+      expect(container.querySelector(".layout")).not.toBeNull();
+      expect(container.textContent).toContain("Layout Header");
+      expect(container.textContent).toContain("SIGNALS");
+      expect(container.textContent).not.toContain("COMPONENTS");
+
+      const atIndex = document.createElement("div");
+      render(() => <MemoryRouter initialPath="/" config={{ routes: rootLayoutRoutes }} />, atIndex);
+
+      await wait(20);
+      expect(atIndex.textContent).toContain("Layout Header");
+      expect(atIndex.textContent).toContain("INDEX");
     });
   });
 
@@ -629,7 +837,7 @@ describe("Router Components", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/old" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/old" config={{ routes }} />, container);
 
       await wait(100);
       expect(container.textContent).toContain("New Page");
@@ -660,7 +868,10 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/test?foo=bar#hash" config={{ routes }} />, container);
+      render(
+        () => <MemoryRouter initialPath="/test?foo=bar#hash" config={{ routes }} />,
+        container,
+      );
 
       await wait(10);
       expect(location!().pathname).toBe("/test");
@@ -689,7 +900,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/a" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/a" config={{ routes }} />, container);
 
       await wait(10);
       expect(location!().pathname).toBe("/a");
@@ -715,7 +926,10 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/users/123/posts/456" config={{ routes }} />, container);
+      render(
+        () => <MemoryRouter initialPath="/users/123/posts/456" config={{ routes }} />,
+        container,
+      );
 
       await wait(10);
       expect(params!()).toEqual({ userId: "123", postId: "456" });
@@ -737,7 +951,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/users/1" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/users/1" config={{ routes }} />, container);
 
       await wait(10);
       expect(params!().id).toBe("1");
@@ -763,7 +977,10 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/search?q=hello&page=1" config={{ routes }} />, container);
+      render(
+        () => <MemoryRouter initialPath="/search?q=hello&page=1" config={{ routes }} />,
+        container,
+      );
 
       await wait(10);
       const [getParams] = searchParams!;
@@ -785,7 +1002,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/search?q=hello" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/search?q=hello" config={{ routes }} />, container);
 
       await wait(10);
       const [getParams, setParams] = searchParams!;
@@ -812,7 +1029,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/search?q=hello" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/search?q=hello" config={{ routes }} />, container);
 
       await wait(10);
       const [getParams, setParams] = searchParams!;
@@ -842,7 +1059,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       expect(typeof nav!).toBe("function");
@@ -867,7 +1084,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/a" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/a" config={{ routes }} />, container);
 
       await wait(10);
       await nav!("/b", { replace: true });
@@ -897,7 +1114,7 @@ describe("Hooks", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       // isLoading should be true while loader is pending
@@ -911,29 +1128,21 @@ describe("Hooks", () => {
 
   describe("useMatchedRoutes", () => {
     test("returns matched route chain", async () => {
-      let matchedRoutes: ReturnType<typeof useMatchedRoutes>;
+      chainProbe.length = 0;
 
       const routes: RouteDefinition[] = [
         route({
           path: "/parent",
-          component: () => {
-            matchedRoutes = useMatchedRoutes();
-            return (
-              <div>
-                Parent
-                <Outlet />
-              </div>
-            );
-          },
+          component: ChainProbeLayout,
           children: [route({ path: "/child", component: () => <div>Child</div> })],
         }),
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/parent/child" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/parent/child" config={{ routes }} />, container);
 
       await wait(10);
-      const routes_ = matchedRoutes!();
+      const routes_ = chainProbe[0]();
       expect(routes_.length).toBe(2);
       expect(routes_[0].path).toBe("/parent");
       expect(routes_[1].path).toBe("/child");
@@ -959,12 +1168,12 @@ describe("Loaders", () => {
           loaderCalled = true;
           return { message: "loaded" };
         },
-        component: ({ data }) => <div>{data?.message}</div>,
+        component: MessageView,
       }),
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     expect(loaderCalled).toBe(true);
@@ -981,12 +1190,12 @@ describe("Loaders", () => {
           receivedParams = params;
           return { id: params.id };
         },
-        component: ({ data }) => <div>User {data?.id}</div>,
+        component: UserIdView,
       }),
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/users/123" config={{ routes }} />, container);
 
     await wait(100);
     expect(receivedParams).toEqual({ id: "123" });
@@ -1007,7 +1216,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/search?q=test" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/search?q=test" config={{ routes }} />, container);
 
     await wait(100);
     expect(receivedSearch?.get("q")).toBe("test");
@@ -1028,7 +1237,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     expect(signalReceived).toBe(true);
@@ -1048,7 +1257,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     // Should still render the component even on loader error
@@ -1067,16 +1276,59 @@ describe("Loaders", () => {
           throw new Error("Loader failed");
         },
         component: () => <div>Content</div>,
-        errorElement: ({ error }) => <div>Error: {error.message}</div>,
+        errorElement: LoaderErrorView,
       }),
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(100);
     expect(container.textContent).toContain("Error: Loader failed");
 
+    consoleSpy.mockRestore();
+  });
+
+  // `reset` used to be invoked, reset nothing, and re-throw the same error: the
+  // failure lived in `loads`, which nothing cleared and no reset re-populated,
+  // so a route that failed its loader could never recover in place.
+  test("errorElement's reset re-runs the loader and recovers in place", async () => {
+    const consoleSpy = spyOn(console, "error").mockImplementation(() => {});
+    let attempts = 0;
+
+    const routes: RouteDefinition[] = [
+      route({
+        path: "/",
+        loader: async () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("boom");
+          return { ok: true };
+        },
+        component: () => <div>HOME</div>,
+        errorElement: RetryableErrorView,
+      }),
+    ];
+
+    const container = document.createElement("div");
+    // The retry button is DELEGATED, so the click has to reach the document.
+    document.body.append(container);
+    render(
+      () => <MemoryRouter initialPath="/" config={{ routes, cache: { ttl: 0 } }} />,
+      container,
+    );
+
+    await wait(100);
+    expect(attempts).toBe(1);
+    expect(container.textContent).toContain("Error: boom");
+
+    container.querySelector("button")?.click();
+    await wait(100);
+
+    expect(attempts).toBe(2);
+    expect(container.textContent).toContain("HOME");
+    expect(container.textContent).not.toContain("Error: boom");
+
+    container.remove();
     consoleSpy.mockRestore();
   });
 
@@ -1101,12 +1353,7 @@ describe("Loaders", () => {
           callOrder.push("parent-end");
           return {};
         },
-        component: () => (
-          <div>
-            Parent
-            <Outlet />
-          </div>
-        ),
+        component: ParentWithChild,
         children: [
           route({
             path: "/child",
@@ -1123,7 +1370,7 @@ describe("Loaders", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/parent/child" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/parent/child" config={{ routes }} />, container);
 
     await wait(20);
     // Both loaders should start immediately (parallel)
@@ -1163,7 +1410,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/a" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/a" config={{ routes }} />, container);
 
     await wait(10);
 
@@ -1182,12 +1429,12 @@ describe("Edge Cases", () => {
     const routes: RouteDefinition[] = [
       route({
         path: "/日本語/:name",
-        component: ({ params }) => <div>Hello {params.name}</div>,
+        component: GreetingView,
       }),
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/日本語/世界" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/日本語/世界" config={{ routes }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("世界");
@@ -1198,7 +1445,9 @@ describe("Edge Cases", () => {
 
     const container = document.createElement("div");
     render(
-      <MemoryRouter initialPath="/" config={{ routes, fallback: () => <div>No routes</div> }} />,
+      () => (
+        <MemoryRouter initialPath="/" config={{ routes, fallback: () => <div>No routes</div> }} />
+      ),
       container,
     );
 
@@ -1210,27 +1459,15 @@ describe("Edge Cases", () => {
     const routes: RouteDefinition[] = [
       route({
         path: "/a",
-        component: () => (
-          <div>
-            A<Outlet />
-          </div>
-        ),
+        component: LayerA,
         children: [
           route({
             path: "/b",
-            component: () => (
-              <div>
-                B<Outlet />
-              </div>
-            ),
+            component: LayerB,
             children: [
               route({
                 path: "/c",
-                component: () => (
-                  <div>
-                    C<Outlet />
-                  </div>
-                ),
+                component: LayerC,
                 children: [
                   route({
                     path: "/d",
@@ -1245,7 +1482,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/a/b/c/d" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/a/b/c/d" config={{ routes }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("A");
@@ -1260,7 +1497,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/users/" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/users/" config={{ routes }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("Users");
@@ -1280,7 +1517,7 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/page#section" config={{ routes }} />, container);
+    render(() => <MemoryRouter initialPath="/page#section" config={{ routes }} />, container);
 
     await wait(10);
     expect(location!().hash).toBe("#section");
@@ -1300,7 +1537,10 @@ describe("Edge Cases", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/search/hello%20world" config={{ routes }} />, container);
+    render(
+      () => <MemoryRouter initialPath="/search/hello%20world" config={{ routes }} />,
+      container,
+    );
 
     await wait(10);
     expect(params!().query).toBe("hello%20world");
@@ -1310,7 +1550,7 @@ describe("Edge Cases", () => {
     const routes: RouteDefinition[] = [route({ path: "/page", component: () => <div>Page</div> })];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/page" config={{ routes, base: "/app" }} />, container);
+    render(() => <MemoryRouter initialPath="/page" config={{ routes, base: "/app" }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("Page");
@@ -1329,10 +1569,12 @@ describe("Edge Cases", () => {
 
     const container = document.createElement("div");
     render(
-      <div>
-        <MemoryRouter initialPath="/" config={{ routes: routes1 }} />
-        <MemoryRouter initialPath="/b" config={{ routes: routes2 }} />
-      </div>,
+      () => (
+        <div>
+          <MemoryRouter initialPath="/" config={{ routes: routes1 }} />
+          <MemoryRouter initialPath="/b" config={{ routes: routes2 }} />
+        </div>
+      ),
       container,
     );
 
@@ -1351,24 +1593,34 @@ describe("Memory & Cleanup", () => {
   afterEach(cleanup);
 
   test("cleans up router on unmount", async () => {
-    const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
+    // Re-cut. It used to assert that `unregisterRouter` removed an entry from a
+    // module-level registry. The registry is gone with the module-global
+    // fallback, so what a router's death now IS is scope disposal — asserted
+    // here, from inside a route component, plus the DOM actually going.
+    let inner: Scope | null = null;
+
+    const routes: RouteDefinition[] = [
+      route({
+        path: "/",
+        component: () => {
+          inner = getOwner();
+          return <div>Home</div>;
+        },
+      }),
+    ];
 
     const container = document.createElement("div");
-    let dispose: (() => void) | undefined;
-
-    createScope((d) => {
-      dispose = d;
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
-    });
+    const dispose = render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
     await wait(10);
     expect(container.textContent).toContain("Home");
+    expect(inner).not.toBeNull();
+    expect(isDisposed(inner!)).toBe(false);
 
-    // Unmount
-    dispose?.();
+    dispose();
 
-    // Router should be cleaned up (no errors thrown on next operations)
-    expect(true).toBe(true);
+    expect(isDisposed(inner!)).toBe(true);
+    expect(container.textContent).toBe("");
   });
 
   test("clears cache entries on TTL expiration", async () => {
@@ -1391,7 +1643,10 @@ describe("Memory & Cleanup", () => {
     ];
 
     const container = document.createElement("div");
-    render(<MemoryRouter initialPath="/" config={{ routes, cache: { ttl: 50 } }} />, container);
+    render(
+      () => <MemoryRouter initialPath="/" config={{ routes, cache: { ttl: 50 } }} />,
+      container,
+    );
 
     await wait(100);
     expect(callCount).toBe(1);
@@ -1421,6 +1676,95 @@ describe("New Features", () => {
   afterEach(cleanup);
 
   describe("Route Guards", () => {
+    // The entry URL is a NAVIGATION. It used to run the guard pipeline only
+    // when some route in the matched chain happened to declare a loader, so
+    // whether a guard ran at all was decided by an unrelated data concern and a
+    // deep link walked straight into a guarded route.
+    test("the entry URL runs beforeEach, and a redirect from it lands", async () => {
+      const seen: string[] = [];
+      const routes: RouteDefinition[] = [
+        route({ path: "/login", component: () => <div>LOGIN</div> }),
+        route({ path: "/secret", component: () => <div>SECRET</div> }),
+      ];
+      const guard: NavigationGuard = ({ to }) => {
+        seen.push(to.pathname);
+        return to.pathname === "/secret" ? "/login" : true;
+      };
+
+      const container = document.createElement("div");
+      render(
+        () => <MemoryRouter initialPath="/secret" config={{ routes, beforeEach: [guard] }} />,
+        container,
+      );
+      await wait(50);
+
+      expect(seen).toEqual(["/secret", "/login"]);
+      expect(container.textContent).toContain("LOGIN");
+      expect(container.textContent).not.toContain("SECRET");
+    });
+
+    test("the entry URL runs a route's own beforeEnter, with no loader anywhere", async () => {
+      let ran = false;
+      const routes: RouteDefinition[] = [
+        route({ path: "/login", component: () => <div>LOGIN</div> }),
+        route({
+          path: "/secret",
+          component: () => <div>SECRET</div>,
+          beforeEnter: () => {
+            ran = true;
+            return "/login";
+          },
+        }),
+      ];
+
+      const container = document.createElement("div");
+      render(() => <MemoryRouter initialPath="/secret" config={{ routes }} />, container);
+      await wait(50);
+
+      expect(ran).toBe(true);
+      expect(container.textContent).toContain("LOGIN");
+    });
+
+    test("the entry URL runs afterEach", async () => {
+      const seen: string[] = [];
+      const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
+
+      const container = document.createElement("div");
+      render(
+        () => (
+          <MemoryRouter
+            initialPath="/"
+            config={{ routes, afterEach: [(ctx) => seen.push(ctx.to.pathname)] }}
+          />
+        ),
+        container,
+      );
+      await wait(50);
+
+      expect(seen).toEqual(["/"]);
+    });
+
+    // A guard redirecting to a path its own predicate also rejects used to
+    // recurse without bound and hang the process.
+    test("a redirect loop is bounded rather than hanging", async () => {
+      const errors = spyOn(console, "error").mockImplementation(() => {});
+      const routes: RouteDefinition[] = [
+        route({ path: "/", component: () => <div>Home</div> }),
+        route({ path: "/loop", component: () => <div>Loop</div> }),
+      ];
+      const guard: NavigationGuard = () => "/loop";
+
+      const container = document.createElement("div");
+      render(
+        () => <MemoryRouter initialPath="/" config={{ routes, beforeEach: [guard] }} />,
+        container,
+      );
+      await wait(100);
+
+      expect(errors.mock.calls.some((call) => String(call[0]).includes("redirects"))).toBe(true);
+      errors.mockRestore();
+    });
+
     test("beforeEach guard can block navigation", async () => {
       let blocked = false;
       let nav: ReturnType<typeof useNavigate>;
@@ -1445,7 +1789,10 @@ describe("New Features", () => {
       };
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes, beforeEach: [guard] }} />, container);
+      render(
+        () => <MemoryRouter initialPath="/" config={{ routes, beforeEach: [guard] }} />,
+        container,
+      );
 
       await wait(10);
       await nav!("/admin");
@@ -1479,7 +1826,10 @@ describe("New Features", () => {
       };
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes, beforeEach: [guard] }} />, container);
+      render(
+        () => <MemoryRouter initialPath="/" config={{ routes, beforeEach: [guard] }} />,
+        container,
+      );
 
       await wait(10);
       await nav!("/admin");
@@ -1512,7 +1862,7 @@ describe("New Features", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
       await nav!("/protected");
@@ -1539,17 +1889,19 @@ describe("New Features", () => {
 
       const container = document.createElement("div");
       render(
-        <MemoryRouter
-          initialPath="/"
-          config={{
-            routes,
-            afterEach: [
-              () => {
-                afterCalled = true;
-              },
-            ],
-          }}
-        />,
+        () => (
+          <MemoryRouter
+            initialPath="/"
+            config={{
+              routes,
+              afterEach: [
+                () => {
+                  afterCalled = true;
+                },
+              ],
+            }}
+          />
+        ),
         container,
       );
 
@@ -1566,12 +1918,7 @@ describe("New Features", () => {
       const routes: RouteDefinition[] = [
         route({
           path: "/users",
-          component: () => (
-            <div>
-              <Link href="./profile">Profile</Link>
-              <Outlet />
-            </div>
-          ),
+          component: RelativeLinkLayout,
           children: [
             route({ path: "/", component: () => <div>Users Index</div> }),
             route({ path: "/profile", component: () => <div>User Profile</div> }),
@@ -1580,12 +1927,100 @@ describe("New Features", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/users" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/users" config={{ routes }} />, container);
 
       await wait(10);
       const link = container.querySelector("a");
       // Relative ./profile from /users should resolve to /users/profile
       expect(link?.getAttribute("href")).toBe("/users/profile");
+    });
+
+    // The bug this pins: `Link` used to read `state.location()` at CONSTRUCTION
+    // and close over the snapshot, so a relative href never re-resolved. It was
+    // invisible to the test above because that test never navigates, and it was
+    // invisible to a naive two-route repro because the Link is rebuilt when the
+    // route changes. It is only observable where the Link SURVIVES a location
+    // change — a parameter change under one route — which is the case the old
+    // branch key (route + data, no params) rendered as nothing at all.
+    test("a surviving Link re-resolves its relative href when the location moves", async () => {
+      navProbe.length = 0;
+
+      const routes: RouteDefinition[] = [
+        route({
+          path: "/u/:id",
+          component: SurvivingLinkLayout,
+          children: [route({ path: "/", component: () => <div>index</div> })],
+        }),
+      ];
+
+      const container = document.createElement("div");
+      render(() => <MemoryRouter initialPath="/u/1" config={{ routes }} />, container);
+
+      await wait(10);
+      const before = container.querySelector("a");
+      expect(before?.getAttribute("href")).toBe("/u/1/edit");
+      const identity = before;
+
+      await navProbe[0]("/u/550e8400-e29b-41d4");
+      await wait(50);
+
+      const after = container.querySelector("a");
+      // The SAME element: a parameter change keeps the layout and the link.
+      expect(after).toBe(identity);
+      expect(after?.getAttribute("href")).toBe("/u/550e8400-e29b-41d4/edit");
+      // …and the parameter it renders moved with it, which the old key could
+      // not do because it folded `data` in and left `params` out.
+      expect(container.textContent).toContain("550e8400-e29b-41d4");
+    });
+
+    // Bug #10, which no test could see: the child pathname used to be sliced by
+    // the PATTERN's length rather than by the length of the text that matched,
+    // so a nested route under a parameterised parent matched only when the
+    // parameter's value happened to be two or three characters long.
+    test("a nested route matches under a parameterised parent at any param length", async () => {
+      const routes: RouteDefinition[] = [
+        route({
+          path: "/u/:id",
+          component: LayerA,
+          children: [route({ path: "/edit", component: () => <div>EDIT</div> })],
+        }),
+      ];
+
+      for (const id of ["7", "42", "123", "1234", "abcdef", "550e8400-e29b-41d4-a716"]) {
+        const container = document.createElement("div");
+        render(() => <MemoryRouter initialPath={`/u/${id}/edit`} config={{ routes }} />, container);
+        await wait(10);
+        expect(container.textContent).toContain("EDIT");
+      }
+    });
+
+    // Bug #11: the layout prefix pattern used to publish its own catch-all as
+    // `params["*"]` at every nesting level.
+    test("a layout match does not leak a wildcard parameter", () => {
+      const routes: RouteDefinition[] = [
+        route({
+          path: "/u/:id",
+          component: LayerA,
+          children: [route({ path: "/edit", component: () => <div>EDIT</div> })],
+        }),
+      ];
+      expect(matchRoutes("/u/42/edit", routes)?.params).toEqual({ id: "42" });
+    });
+
+    // Bug #13: `startsWith` with no segment boundary made `/user-settings`
+    // activate a NavLink pointing at `/user`.
+    test("NavLink prefix matching respects segment boundaries", async () => {
+      const routes: RouteDefinition[] = [
+        route({ path: "/user-settings", component: BoundaryNavLayout }),
+      ];
+
+      const container = document.createElement("div");
+      render(() => <MemoryRouter initialPath="/user-settings" config={{ routes }} />, container);
+
+      await wait(10);
+      const links = container.querySelectorAll("a");
+      expect(links[0]?.className || "").not.toContain("active");
+      expect(links[1]?.className || "").toContain("active");
     });
 
     test("navigate supports relative paths", async () => {
@@ -1603,7 +2038,7 @@ describe("New Features", () => {
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/a/b" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/a/b" config={{ routes }} />, container);
 
       await wait(10);
       await nav!("../c"); // Relative navigation from /a/b to /a/c
@@ -1615,7 +2050,7 @@ describe("New Features", () => {
 
   describe("Loading States", () => {
     test("useIsLoading returns true during loader execution", async () => {
-      let loadingStates: boolean[] = [];
+      loadingStatesSeen.length = 0;
       let resolveLoader: () => void;
       let nav: ReturnType<typeof useNavigate>;
 
@@ -1637,17 +2072,12 @@ describe("New Features", () => {
             // Track loading state at the start of loader
             return loaderPromise;
           },
-          component: ({ data }) => {
-            const isLoading = useIsLoading();
-            // Capture current loading state
-            loadingStates.push(isLoading());
-            return <div>{data?.data}</div>;
-          },
+          component: SlowView,
         }),
       ];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(10);
 
@@ -1664,7 +2094,7 @@ describe("New Features", () => {
       // After loader resolves and component re-renders, it should have captured
       // at least one loading state (could be true or false depending on timing)
       // The important thing is that useIsLoading works and returns a boolean
-      expect(loadingStates.length).toBeGreaterThan(0);
+      expect(loadingStatesSeen.length).toBeGreaterThan(0);
     });
   });
 
@@ -1678,7 +2108,7 @@ describe("New Features", () => {
       const routes: RouteDefinition[] = [route({ path: "/", component: () => <div>Home</div> })];
 
       const container = document.createElement("div");
-      render(<MemoryRouter initialPath="/" config={{ routes }} />, container);
+      render(() => <MemoryRouter initialPath="/" config={{ routes }} />, container);
 
       await wait(50);
 
@@ -1717,10 +2147,12 @@ describe("New Features", () => {
 
       const container = document.createElement("div");
       render(
-        <MemoryRouter
-          initialPath="/"
-          config={{ routes, cache: { ttl: 30 } }} // Very short TTL
-        />,
+        () => (
+          <MemoryRouter
+            initialPath="/"
+            config={{ routes, cache: { ttl: 30 } }} // Very short TTL
+          />
+        ),
         container,
       );
 
@@ -1790,11 +2222,11 @@ describe("Type Safety", () => {
         // params.id should be typed as string
         return { userId: params.id };
       },
-      component: ({ params, data }) => {
-        // Both should be typed
+      component: (props) => {
+        // Both are Cells and both are typed
         return (
           <div>
-            User {params.id}: {data?.userId}
+            User {() => props.params().id}: {() => props.data()?.userId}
           </div>
         );
       },

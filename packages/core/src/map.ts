@@ -24,7 +24,21 @@ interface Row<Item, MappedItem> {
   _dispose: () => void;
   _value: MappedItem;
   _item: Signal<Item> | undefined;
+  /**
+   * Created on the row's FIRST index read, not on construction. `wantsIndex` is
+   * `map.length > 1`, and `flow.ts`'s `each` hands `mapArray` a three-parameter
+   * mapper whatever the row Block's own arity is — the brand `block()` installs
+   * is a one-parameter wrapper, so the row's real arity is not readable from
+   * here. Every row therefore reported that it wanted an index, and a row that
+   * never reads one still paid for a whole signal: a node, four closures and
+   * the property backing store an accessor with `set`/`update`/`peek`/`_node`
+   * on it needs. That was 226 bytes of the 1,760 barq allocated per
+   * js-framework-benchmark row against Solid's 1,030, for a row whose markup
+   * mentions no index.
+   */
   _index: Signal<number> | undefined;
+  /** The row's index, whether or not anything asked for it reactively. */
+  _at: number;
 }
 
 export function mapArray<Item, MappedItem>(
@@ -84,13 +98,35 @@ export function mapArray<Item, MappedItem>(
     createScope(
       (dispose, scope) => {
         const itemSignal = itemIsSignal ? signal(item, ROW_SIGNAL) : undefined;
-        const indexSignal = wantsIndex && indexIsSignal ? signal(index, ROW_SIGNAL) : undefined;
-        const value = (map as unknown as (a: unknown, b: unknown, c: unknown) => MappedItem)(
+        // Built BEFORE the mapper runs: the index accessor below reads through
+        // it, and a row Block's own effects run during that call.
+        row = {
+          _dispose: dispose,
+          _value: undefined as MappedItem,
+          _item: itemSignal,
+          _index: undefined,
+          _at: index,
+        };
+        const self = row;
+        // The reactive index materialises on the first read. A row that never
+        // reads one — every row of a list whose markup does not mention the
+        // index — costs this accessor and nothing else.
+        const at =
+          wantsIndex && indexIsSignal
+            ? (): number => {
+                let live = self._index;
+                if (live === undefined) {
+                  live = signal(self._at, ROW_SIGNAL);
+                  self._index = live;
+                }
+                return live();
+              }
+            : index;
+        self._value = (map as unknown as (a: unknown, b: unknown, c: unknown) => MappedItem)(
           itemSignal ?? item,
-          indexSignal ?? index,
+          at,
           scope,
         );
-        row = { _dispose: dispose, _value: value, _item: itemSignal, _index: indexSignal };
       },
       true,
       "each",
@@ -199,8 +235,9 @@ export function mapArray<Item, MappedItem>(
             changed = true;
           }
         }
-        if (row._index !== undefined && row._index.peek() !== j) {
-          row._index.set(j);
+        if (row._at !== j) {
+          row._at = j;
+          row._index?.set(j);
         }
       }
 
@@ -230,6 +267,7 @@ function createFallbackRow<Item, MappedItem>(
         _value: fallback(scope) as MappedItem,
         _item: undefined,
         _index: undefined,
+        _at: 0,
       };
     },
     true,
@@ -275,6 +313,7 @@ export function repeat<MappedItem>(
           _value: map(index, scope),
           _item: undefined,
           _index: undefined,
+          _at: index,
         };
       },
       true,

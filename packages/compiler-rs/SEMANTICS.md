@@ -267,6 +267,14 @@ O3.5 `HOLDS` since M4. `branch`, `boundary` and `portal` install their instance'
 own. That is what took the range half out of "implemented, unexercised": there are four production
 callers now and `flow.test.ts` drives every one of them through mount → key flip → dispose.
 
+Since M7c a range whose nodes are EVERY child of their parent is removed with one
+`parent.textContent = ""` rather than a `removeChild` per node (`CODESIGN.md` §0.9 — it is 17% of the
+JavaScript a 1,000-row `clear` costs). "No consumer removes nodes it does not own" is unchanged and
+is what makes the fast path admissible: the count must equal `childNodes.length` AND every node must
+be under that parent, so a list beside a static sibling, a list beside another list, and a range whose
+nodes a `portal` moved all take the per-node path. `flow.test.ts` pins the fast path once and the
+refusal five times, through an emptying update and through disposal.
+
 It also has an oracle channel of its own since M4, and the channel is a JOIN rather than a second
 assertion of the same thing. `test/metamorphic.ts`'s MM4 reads which nodes survived a transition off
 the DOM and which scopes came apart off the L2b ownership trace, in ONE render window, and asserts
@@ -1684,6 +1692,11 @@ re-litigated: ablated at **2.37x** on "100 writes + 1 flush", the case barq curr
 without it that win becomes ~1.35x. `markWave` is ablated at +7% on two of four cases, −2% on one:
 **keep**, contrary to all three submitted designs, and re-measure after the Scope split.
 
+**Extended at M7c.** The same epoch decides when a wave OPENS, not only when a write skips: while
+`markEpoch` is unchanged no mark has been consumed anywhere, so every node the current wave visited
+still carries what it was given and a later write in the same batch stops at it. Four writes in one
+batch cost one traversal, not four. See R8 for the marking invariant this rests on.
+
 **Falsified by.** The ablation harness in `packages/core`, with correctness assertions on every
 variant.
 
@@ -1723,6 +1736,35 @@ to read and nothing names it, so nobody reached for it and the three problems §
 read-copy trap, controlled inputs, two-way component props) each got their own workaround.
 
 **Pinned by.** `sem-state-linked-reseeds.tsx` *(new)*.
+
+### R8 — a mark on a pure node implies its whole closure is marked, and propagation is linear in depth
+
+**Rule.** `markNode` MUST NOT mark a pure computed without also marking that node's subscribers.
+Therefore a pure computed that is currently CHECK or DIRTY has its entire descendant closure marked
+at CHECK or above, and re-marking after a recompute MUST touch the DIRECT subscribers only. The
+direct level takes the CHECK→DIRTY upgrade, since DIRTY is the only mark that survives an `equals`
+comparison against an unchanged snapshot; below it CHECK is already correct, because any change must
+pass through a direct subscriber to reach anything further down. A subscriber found CLEAN is outside
+what this rule asserts and MUST get the full walk.
+
+The consequence is the rule's observable form, and it is the one to test: **the cost of propagating
+one write MUST be linear in graph depth. Milliseconds per layer MUST NOT rise as layers are added.**
+
+**Falsified by.** A recompute that re-walks its transitive closure. That is what `signals.ts` did
+until M7c and it made propagation quadratic in depth (F1): 54,439,208 `markNode` calls at 800 layers
+against 214,958 at 50 — 253x for a 16x depth increase — while recomputes, validations and heap scans
+all stayed linear. **None of it changed a flag.** The marks were already standing, so no correctness
+test, no pull-count assertion and no ownership check could see the defect; only counting could. It
+cost 55.7x on `cellx1000` and 186.6x on `cellx2500` and was invisible to eleven Tier-1 cases whose
+deepest chain was five.
+
+**Status.** `HOLDS` since M7c. Audited by re-walking the skipped closure and asserting every node in
+it was already marked: 1,514,926,568 edges over kairo + cellx + sBench, 0 violations. The
+clean-subscriber fallback fired 3,018,616 times in the same run, so it is reachable and load-bearing.
+
+**Pinned by.** `signals.test.ts` "propagation cost in graph depth" — which fails on the pre-fix build
+— the twelfth case of `eleven-cases.ts` (`chain(500)`), and the `__jrbDepth` sweep in
+`packages/benchmark/src/tier2/jrb.ts`. Benchmark, not fixture (§14).
 
 ---
 
@@ -2617,6 +2659,7 @@ green, which is why L1 exists.
 | R5 | epoch dedupe and `markWave` are load-bearing | H | ablation bench (§14) |
 | R6 | a signal getter is a Cell | H / **V** | `use-state-tuple`, `signal-methods-in-handler` |
 | R7 | `linked` re-seeds on its source | H (M7) | `sem-state-linked-reseeds` |
+| R8 | a mark implies its closure; propagation is linear in depth | H (M7c) | depth test + bench (§14) |
 | B1 | every binding on an element is equally live | H | `equal-liveness`, `class-with-live-siblings` |
 | B2 | one fused effect per element | H | `multi-prop-one-element`, `class-owns-only-its-tokens` |
 | B3 | `ref` is not a prop | P (M5) | `ref-writable-binding`, `ref-binding`, `ref-on-component` |
@@ -2736,7 +2779,7 @@ piece of M0/M1 harness work.
 | H6 | **pre-hydration interaction** — focus, type and press a key against the served markup, then hydrate and read `document.activeElement`, the value and the caret back. DELIVERED at M6b, `test/hydration.test.ts`. | M6 |
 | H5 | **address-set diff** — compile all fixtures both ways, diff the `(module, unit, position)` sets. DELIVERED at M6, `test/addresses.test.ts`: 130 fixtures × 2 backends × 2 optimisation levels, plus the uniqueness of an address inside its module and the byte-identity of the emitted code with the table on and off. | M6 (delivered) |
 
-### 14.3 Rules that are structural and are checked by inspection, not by a fixture (4)
+### 14.3 Rules that are structural and are checked by inspection, not by a fixture (6)
 
 Recorded so that "unpinned" does not silently mean "unenforced".
 
@@ -2752,6 +2795,7 @@ Recorded so that "unpinned" does not silently mean "unenforced".
 | O3.1 | the L2b channel reports a scope whose disposer runs its body twice — that is, it observes the ABSENCE OF THE IDEMPOTENCE GUARD, not repeated calls to `dispose()`. Calling an idempotent disposer three times records one event and is correctly silent. |
 | K8 | a lint rule: no module-level mutable insertion state in `packages/core` |
 | R5 | the ablation benchmark in `packages/core`, with correctness assertions per variant |
+| R8 | `packages/core/src/signals.test.ts` "propagation cost in graph depth" — ms per layer at 800 layers against ms per layer at 100, which FAILS on the pre-fix build — with `eleven-cases.ts`'s twelfth case (`chain(500)`) and the `__jrbDepth` sweep in `packages/benchmark/src/tier2/jrb.ts` as the Tier-1 and Tier-2 channels. The rule's observable form is a COST, so a compiler fixture cannot reach it: emission is byte-identical either side of the fix, which is exactly why the defect survived 110 fixtures and eleven reactivity cases. |
 | A5 | `packages/core/src/actions.test.ts`, which runs all nine of A5's falsification procedures. A5 is entirely runtime behaviour — there is no transition API for the compiler to emit — so this is the discriminating channel, not a stopgap. What §14.1's `sem-async-optimistic-lane` adds is that the same nine run through compiled JSX. |
 
 ---

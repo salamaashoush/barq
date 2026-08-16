@@ -123,24 +123,19 @@ jobs:
         run: bun test test/throughput.test.ts
         working-directory: packages/compiler-rs
 
-      # `test:gated` is every package whose suite is expected to pass, and it is
-      # the step that fails the job. `packages/extra` is EXCLUDED because
-      # CODESIGN §8 schedules its migration for M8 and its 54 failures are a
-      # registered, machine-checked state (packages/extra/src/m8-convention.test.ts)
-      # — not because they are tolerable, but because a job that stays red for
-      # five milestones teaches everyone to stop reading it, which costs more
-      # than the thing it is reporting.
+      # Every package, no exclusions. `packages/extra` was excluded from M2 to
+      # M8 while its migration was scheduled; M8 landed it, so the exclusion and
+      # the informational second run that stood in for it are gone with it.
       - name: Run tests
-        run: bun run test:gated
+        run: bun run test
 
-      # Visible, never green-by-omission: the scheduled package runs on its own
-      # and prints its own registry row, so the count is in the log every build
-      # and a CHANGE in it is noticeable.
-      - name: Scheduled consumer (packages/extra, M8) — informational
-        run: |
-          bun run test:scheduled
-          echo "--- the row that schedules this ---"
-          bun test --cwd packages/extra src/m8-convention.test.ts
+      # The reference application is the acceptance test, and twice now a green
+      # suite has not been able to see it. Its typecheck is not yet clean (the
+      # JSX type layer has not moved to C1), so it reports rather than gates —
+      # but it reports on every build instead of nowhere.
+      - name: Reference application — typecheck (informational)
+        continue-on-error: true
+        run: bun run --cwd packages/kitchen-sink typecheck
 
   build:
     name: Build

@@ -11,6 +11,12 @@ not evolved, and `signals.ts` is opened.
 Everything below that carries a number was measured on this machine in this session unless it is
 labelled otherwise. Scripts are in the scratchpad directory named above.
 
+**Read §0.7 before quoting any number in this document.** Every original measurement here is Tier 1 —
+Node, Bun, a stub DOM, happy-dom — and M7c ran the ones a browser can rule on through the Tier-2
+lane. Three did not survive, one survived inverted, and one turned out to have been quoted from a
+file that no longer existed. Each is corrected in place, beside the reading it replaces, with the
+suite, the trial count and the p-value that decided it.
+
 ---
 
 ## 0. What was measured before anything was decided
@@ -22,7 +28,7 @@ labelled otherwise. Scripts are in the scratchpad directory named above.
 | ----------------------------------------------------------- | ------------------- | ----------- |
  |
 |---|---|---|---|
-| reactivity head-to-head, 11 cases vs `@solidjs/signals` 2.0 | — | — | **10 wins / 1 tie**, up to 6.25x |
+| reactivity head-to-head, 12 cases vs `@solidjs/signals` 2.0 | — | — | **11 wins / 1 tie**, up to 6.25x — Tier 1. **The twelfth case is `chain(500)`, added at M7c because the other eleven bottom out at depth 5 and that is why F1 hid for seven milestones. §0.8 has F1's fix; Chrome now reads cellx1000 0.639x and cellx2500 0.550x** |
 | SSR 100-row page, `renderToString` envelope (51×100) | 4.66 µs | 9.88 µs | **2.10x**, Wilcoxon p=2.6e-7 |
 | *the same, re-measured at M5's repair round* | 4.87 µs | 9.10 µs | **1.86x**, p=7.3e-8 |
 | SSR same page, barq forced onto the DOM fallback | 202.73 µs | — | **41.88x slower**, p=5.3e-10 |
@@ -84,6 +90,40 @@ three submitted designs rejected getters on the copy-flattening argument alone; 
 is stronger and it is the one to quote. Copy-flattening is separately confirmed: `{...p}` over a
 counting getter reports `reads-at-copy: 1, still a getter: false`.
 
+**THE 8.7x IS REFUTED AS A MAGNITUDE — C5, M7c.** Read the paragraph above as the Tier-1 record it is:
+the sentence "it is 8.7x more expensive" is withdrawn, and the sentence "the allocation number is
+stronger and it is the one to quote" is withdrawn with it. Method for what replaces it:
+`bun run bench:tier2:shapes`, real Chrome over CDP, 41 interleaved trials per shape, paired Wilcoxon,
+minimum detectable effect printed beside every ratio; raw numbers in
+`packages/benchmark/tier2-results.json`, shapes in `packages/benchmark/src/tier2/apps/shapes.ts`.
+Four runs of the lane:
+
+| instrument | GETTER against VALUE | p |
+|---|---|---|
+| V8, **stub arm** (the one that reports in 8.7x's own unit), 1,000 rows | **2.73x** — 205 vs 75 ns a row; 2.93x (220 vs 75) on the previous run | 2.5e-8, 2.5e-8 |
+| Chrome, mount **`js`**, 1,000 rows, four runs | **1.153–1.161x**, i.e. **+15.3% to +16.1%** | 1.3e-4 … 1.4e-6 |
+| Chrome, mount **`js`**, 200 rows, four runs | 1.073–1.198x — wider because the mde there is 3.6–11.5% | 3.7e-5 … 5.3e-7 |
+| Chrome, mount **`total`**, 1,000 rows, four runs | 1.023–1.043x, i.e. **+2.3% to +4.3%**; two of the four are not significant against their own mde | 1.8e-2 … 1.7e-1 |
+
+**Why the microbenchmark was right while the ratio was wrong.** The per-getter ABSOLUTE reproduces.
+127.64 ns to construct and read one getter is ~255 ns for this row's two getters, and V8's stub arm
+prices the whole GETTER row at 205–220 ns a row. What did not reproduce is the RATIO, because 8.7x
+was taken in Bun over happy-dom's stubs, where the VALUE baseline is nearly free — 9.328 µs for 200
+rows is 46.6 ns a row — so the ratio is mostly a statement about its denominator. Put the same shapes
+in V8 and VALUE costs 75 ns a row and the ratio falls to 2.7x. Put them through a real DOM, where a
+mounted row costs ~1,900 ns, and the same absolute is 15–16% of the js half and 2–4% of the frame.
+One number, three denominators, three different-looking answers; only the first was ever a statement
+about getters.
+
+**The Block decision is NOT reopened, and it never rested on this number.** It rests on
+copy-flattening, which is a correctness argument and which no benchmark decides: `{...p}` over a
+counting getter reports `reads-at-copy: 1, still a getter: false` — the getter is READ by the copy and
+the copy is dead, so every spread-forwarding component silently loses reactivity. That was the
+argument all three submitted designs made on their own, before any allocation number existed, and it
+is the argument that stands. A getter also still costs 2.7x to allocate in V8 and 15% of a real
+mount's js half, which is a supporting number and not a load-bearing one. **Nobody may reopen Blocks
+on the strength of 8.7x being dead, because 8.7x was never the reason.**
+
 ### 0.3 The calling convention is NOT a performance decision
 
 Stub DOM (isolates JS overhead from DOM cost), 200 rows, min-of-11. **The baseline row is included.**
@@ -103,16 +143,75 @@ Same six, through happy-dom (what `packages/benchmark` uses), 200 rows, min-of-9
 A current 535.64 us · B 527.92 · C 530.73 · D 516.21 · E 526.92
 ```
 
+**WHERE THIS TABLE LIVES — F4, closed at M7c.** Until M7b it lived nowhere. The six shapes were
+written in a scratch file that no longer exists, so the measurement the entire calling convention
+rests on could not be re-run from anything checked in; the numbers above were a quotation from a
+deleted file, which is a finding about this project's evidence independent of what a re-run says.
+The permanent home is **`packages/benchmark/src/tier2/apps/shapes.ts`**, re-run with
+`bun run bench:tier2:shapes` from `packages/benchmark`, raw output checked in at
+`packages/benchmark/tier2-results.json`. It is a **RECONSTRUCTION from this section's own
+descriptions of the six shapes** and its header says so — it was written from the document because
+the original was gone, so a reader can disagree with the reconstruction rather than with a number.
+It carries both instruments: browser arms (`js` = the mount loop, `total` = the mount loop plus a
+forced layout) and a **stub arm** running the same six shapes over a plain object inside V8, which is
+this section's own instrument moved into the engine that matters. Every shape asserts BYTE-IDENTICAL
+DOM before anything is timed. From M7c on, a change to the convention re-runs that file; it does not
+re-quote the table above.
+
+**The reconstruction's own numbers**, so this section has a table someone can reproduce. 1,000 rows,
+41 interleaved trials a shape, medians; `packages/benchmark/tier2-results.json` is the raw form:
+
+| shape | V8 stub arm, ns/row | Chrome `js`, ns/row | Chrome `total`, ns/row |
+|---|---|---|---|
+| A current: eager children, value props | 75 | 1,895 | 10,420 |
+| B thunk props + block children, return-DOM | — (a stub node has nothing to return) | 1,920 | 10,570 |
+| C thunk props + block children, `(parent, anchor)` | 85 | 1,935 | 10,495 |
+| D + explicit scope argument ← the chosen convention | 95 | 1,920 | 10,490 |
+| D2 + explicit scope arg, one Scope PER ROW | 100 | 1,945 | 10,460 |
+| E compiler-inlined, no component frame | 70 | 1,885 | 10,300 |
+| VALUE props | 75 | 1,895 | 10,490 |
+| GETTER props (Solid's emitted shape) | 205 | 2,200 | 10,790 |
+| THUNK props | 80 | 1,905 | 10,495 |
+
+Two things are visible in that table that no stub DOM can show. **A mounted row costs ~1,900 ns and
+the whole JS-overhead spread the original table argues over is 70–100 ns** — 4–5% of the row, which
+is why every browser `js` contrast below reads within a few percent and why `total`, at ~10,400 ns a
+row, reads parity. And **the ordering the stub arm reports is stable while the browser's is not**:
+E < A < C < D < D2 on the stub, shuffled inside noise in Chrome.
+
 Four conclusions, two of which contradict submitted claims and one of which is against this document's
 own chosen design:
 
 1. **Return-DOM, append-to-anchor and scope-passing are within noise of each other.** Pick the
    convention on structural grounds. Nobody may claim a speed win for any of them.
+
+   *C2, M7c: SURVIVES in the browser* — B/C 0.992x and C/D 1.008x at 1,000 rows, neither significant
+   (p=8.8e-1 both, mde 1.6–2.4%). On the V8 stub arm C/D reads 0.895x, i.e. C is ~10% cheaper than D
+   in the JS-only unit, which is C1's 20 ns a row seen from the other side and does not reach the
+   browser.
 2. **A Scope per position costs 7.3 ns.** (12.989 − 11.537, over 200.) Real but small; worth a
    `NO_SCOPE` flag, not worth a design.
+
+   **C3, CORRECTED at M7c: there is NO wall-clock justification for this at Tier 2, and `NO_SCOPE`
+   keeps its allocation-count justification only.** D2 against D, four runs of
+   `bun run bench:tier2:shapes`, 41 interleaved trials, paired Wilcoxon. Browser, 1,000 rows: `js`
+   1.020x (p=3.2e-1), 1.015x (p=1.4e-1), 1.008x (p=1.3e-1), 1.013x (p=2.0e-3) — **significance flips
+   between runs**; `total` 1.009x, 1.008x, 0.997x, 0.997x (p from 4.2e-1 to 8.3e-1) — **the sign
+   flips between runs too**, and no run of it is significant. The stub arm, which is the only
+   instrument reporting in the unit "7.3 ns a row" is stated in, will not hold a magnitude either:
+   1.053x, 1.158x, 1.158x at 1,000 rows — 5 to 15 ns a row against a 5 ns clock quantum. So the
+   honest statement is that a Scope per position is somewhere between free and ~15 ns a row and the
+   lane cannot separate it from noise. **`NO_SCOPE` keeps the allocation-count half of §9.2's
+   criterion and loses the wall-clock half**, which that row demanded as an AND — see §9.2, where the
+   row is restated rather than quietly satisfied. The flag's case is weaker than it was written, and
+   this is the record of that.
 3. **Component inlining is not worth 30–40% of mount.** It is 15% of *JS overhead* on a stub DOM and
    **0% on happy-dom** (526.92 vs 530.73 — noise). Anvil's headline optimisation does not survive
    contact with a DOM implementation. It goes to the backlog.
+
+   *C4, M7c: SURVIVES, both halves, at 17.6% rather than 15%* — E/C 0.824x on the V8 stub arm at
+   1,000 rows (p=1.8e-5) and 0.974x on the browser `js` half (p=5.9e-2, mde 2.4%). The backlog
+   decision stands, now on a browser rather than on happy-dom.
 4. **The chosen convention costs 23.7% of JS overhead against what ships today** (11.537 vs 9.328 µs
    on the stub DOM). Independently reproduced at 1.16–1.24x. The B/C/D/E comparison above is a
    comparison *among candidates* and calling it noise is correct only within that set — it says
@@ -126,7 +225,24 @@ own chosen design:
    happy-dom has hidden four distinct bug classes on this project (§11 Q9) and a 0% happy-dom result
    is not sufficient evidence on its own.
 
-### 0.4 `setProp` dispatch — the claim that did not reproduce
+   **C1, ADJUDICATED at M7c — BOTH HALVES SURVIVE, and the gap between them is the argument for the
+   Tier-2 lane.** Four runs of `bun run bench:tier2:shapes`, 41 interleaved trials, paired Wilcoxon.
+   *The "0% through a real DOM" half:* D/A `total` at 1,000 rows reads 0.994x, 1.007x, 1.010x, 0.999x
+   — **1.000x ± 1%, never significant** (p from 1.6e-1 to 7.9e-1, mde 2.6–10.3%). That is the claim
+   this convention is defended on and it holds on the instrument §9.1 demanded, not on happy-dom.
+   *The 23.7% half:* it reproduces **in its own unit and nowhere else** — the V8 stub arm reads
+   1.267x at 1,000 rows (95 against 75 ns a row, p=2.4e-7) and 1.250–1.357x across runs. In a browser
+   that same ~20 ns a row lands on a 1,900 ns mounted row, so it PREDICTS about 1%, and the browser
+   `js` column duly reads **1.008–1.050x across four runs and two row counts against an mde of
+   1.8–12%** — a few percent, indistinguishable from the 1% prediction and indistinguishable from
+   zero. Call the browser figure ~1–4% and do not claim precision the column does not have.
+   **Nothing moved except the denominator**: 23.7% of JS-only overhead and ~1% of a real mounted row
+   are the same absolute cost, and only one of the two is a number an application feels. **Record
+   both**, because a stub-DOM percentage more than 5x its browser value is exactly the failure §0.7's
+   standing rule exists to catch — and note that this claim is the only one in §0.3 that stated a
+   stub number and a browser number TOGETHER, which is the only reason both could be checked.
+
+### 0.4 `setProp` dispatch — the claim that did not reproduce at Tier 1, and inverted at Tier 2
 
 happy-dom, min-of-9 over 200k:
 
@@ -141,6 +257,80 @@ All three designs claim removing the dispatcher is worth 10–25% per write. **O
 but justified on *capability* (custom elements, `bind:`, class bitmasks, and getting `class`/`style`
 into the fused effect), never on speed. This is exactly the kind of unmeasured claim the directive
 forbids.
+
+**C6, CORRECTED at M7c: 0–8% IS WRONG, AND IT IS WRONG IN THE OPPOSITE DIRECTION.** The three designs
+were closer to right than this section was. Method: `bun run bench:tier2:shapes`, real Chrome over
+CDP, 20,000 writes a case, min of 41 interleaved trials, `channels` block of
+`packages/benchmark/tier2-results.json`; the case bodies are in
+`packages/benchmark/src/tier2/apps/shapes.ts`. The run of record, with the spread across four runs
+beside it:
+
+| pair | ns per write | ratio | across four runs |
+|---|---|---|---|
+| **id** — `setProp` vs `el.setAttribute` *(like-for-like: this is the dispatcher and nothing else)* | 294.00 vs 216.50 | **1.358x — +36%** | 1.358–1.537x |
+| **value** — `setProp` vs bare `input.value =` | 813.75 vs 501.25 | **1.623x — +62%** | 1.623–1.664x |
+| **value** — `setProp` vs `value =` + caret capture and restore *(equivalent work)* | 813.75 vs 720.25 | 1.130x — +13% | 1.130–1.136x |
+| **class** — `setProp` vs bare `el.className =` | 180.25 vs 96.25 | **1.873x — +87%** | 1.873–1.880x |
+| **class** — `setProp` vs `className =` + the ownership check *(equivalent work)* | 180.25 vs 115.50 | 1.561x — +56% | 1.290–1.561x |
+| **class** — `setProp` vs a hand-written `classList` token diff *(the path it falls to when it does not own the attribute)* | 180.25 vs 271.00 | 0.665x — `setProp` is FASTER | 0.572–0.665x |
+
+**Read the pairs, not the bare ratios.** `setProp value` coerces, reads the live value, captures the
+caret and restores it — four DOM crossings and a user-visible feature that `input.value =` does not
+buy; `setProp class` verifies it still owns the attribute before writing it. The bare comparands
+therefore price *the dispatcher plus a feature*, and only the `id` row and the two equivalent-work
+rows price the dispatcher alone: **+36% on `id`, +13% on `value`, +56% on `class`.** Against this
+section's own 0–8%, and against the three designs' 10–25%.
+
+**The class row is the least trustworthy of the three, for two reasons, and its number is not
+settled.** First, it compares different semantics on the one-shot path: `setProp class` diffs the
+tokens it owns while `el.className =` takes the whole attribute, so even the ownership-check comparand
+is an approximation of the same work rather than the same work. Second — and this is the one that
+also condemns the Tier-1 row above — the one-shot path is exactly where **F3** lives. As found at
+M7c, `bindProp` passes `prev: undefined` on every write, so `setClass` cannot recognise its own
+previous write,
+took the token-diff path and ADDED without ever removing. Writing `c0, c1, c2, …` through it leaves
+20,000 classes on the element after 20,000 writes, and `classList.add` walks all of them; the first
+version of the Tier-2 case did precisely that and hung the run. **§0.4's own 153.21 ns for
+`setProp(el,'class',v)` was taken the same way on happy-dom, so it is a measurement of that
+accumulation and not of a class write — it is struck as a price for a class write.** The Tier-2 case
+alternates between two tokens to bound the accumulation, which is why 180.25 ns is a usable number
+and still not the number a compiled one-shot write costs. A +216% figure for the class row circulated
+in M7c's finding list; no pair in any recorded run reproduces it — the widest recorded is +87%
+against a bare `className =` — so it is not adopted, and this note exists so nobody has to wonder
+which of the two was checked.
+
+**F3 IS FIXED, AND THE MARKER THIS PARAGRAPH CARRIED IS DISCHARGED HERE.** `setClass` remembers its
+own last write on the element (`$$class`, beside `$$s`), which is what "what this channel last
+applied" means when the caller cannot thread `prev`. It still removes only the tokens it OWNS, so a
+class another channel put there survives — both halves are pinned by `dom.test.ts`, "repeated
+one-shot writes replace rather than accumulate" and "a one-shot write keeps tokens this channel never
+wrote". The measurement the marker asked for, `bun run bench:tier2:shapes`, 20,000 writes a case,
+min of 41 interleaved trials:
+
+| pair | ns per write | ratio |
+|---|---|---|
+| `setProp class` vs bare `el.className =` — two alternating tokens | 170.75 vs 97.50 | 1.751x |
+| `setProp class` vs `className =` + the ownership check *(equivalent work)* | 170.75 vs 120.25 | **1.420x** |
+| **`setProp class` vs bare `el.className =` — a FRESH token every write** | 563.50 vs 367.25 | **1.534x** |
+
+**The third row is the one F3's fix bought, and it could not be run at all before.** Every write is a
+token the element has never carried, which is what a `class={…}` over a changing value actually does;
+under the accumulation it left 20,000 classes standing and stopped the run. It now completes in
+11.3 ms for 20,000 writes — linear, and it is checked in as `setProp class fresh` beside
+`el.className = fresh` for exactly that reason: a return of the accumulation shows up as this row
+going quadratic while the two-token row beside it does not move. Read the pair, not the ns: 367.25 of
+the 563.50 is what CHROME charges for a class name it has not interned before, so the dispatcher's
+share on a fresh token is **1.534x**, which agrees with the 1.420x equivalent-work reading and not
+with the 1.751x bare one. The class channel is therefore +42% to +53% on equivalent work — inside the
++13% to +56% band the other two channels give, and no longer the outlier the accumulation made it.
+
+**THE DECISION DOES NOT MOVE, and the reason it does not is the point.** Compile-time channel
+resolution stays justified on *capability* — custom elements, `bind:`, class bitmasks, getting
+`class`/`style` into the fused effect. §0.4 reached that decision from "the dispatcher is nearly
+free, so do not sell it on speed"; the decision was right and the reasoning was backwards. Sell it on
+capability precisely BECAUSE the speed number has now moved by a factor of five between two
+instruments and will move again when F3's fix lands: a justification that survives its own number
+changing is the only kind worth writing down.
 
 ### 0.5 Reactivity-core ablations (scratch copy of `signals.ts`, repo untouched)
 
@@ -164,6 +354,10 @@ min-of-15 over 4000 iterations, with correctness assertions on every variant:
 - **`markWave` earns its keep, marginally**, contrary to all three submissions, which proposed
   deleting it pending re-justification. This is that justification: +7% on two of four cases, −2% on
   one. Keep, and re-measure after the Scope split.
+- **M7c generalised the first bullet onto the second.** `markEpoch` now also decides when a WAVE
+  opens, so N writes between two flushes cost one traversal rather than N. `write: no subscribers` and
+  `wide(10)` moved 0.92x and 0.87x against the pre-fix build on that change alone. §0.8 and `SEMANTICS.md`
+  R5/R8.
 
 ### 0.6 Everything else the designs assert about this codebase, verified
 
@@ -222,6 +416,221 @@ names the exact DOM it must produce) and **16 declare `goesLive`** (O4 slack). `
 is 1958 lines with 90 `() =>` wrappers and the author's own comment at :1766 — *"Must use function
 children so inner JSX is evaluated AFTER context is set"* — which is a hand-written statement of the
 bug being fixed.
+
+### 0.7 THE STANDING RULE — Tier 1 iterates, Tier 2 adjudicates
+
+**Tier 1** is Node, Bun, a stub DOM and happy-dom. It is the iteration tool: fast, deterministic,
+runnable from any test file, and it is where a change is developed. **Tier 2** is a real browser —
+js-framework-benchmark and js-reactivity-benchmark driven through CDP, durations read from Chrome's
+own trace rather than from a wall clock in the page. It is the source of truth. **A Tier-1 win is
+PROVISIONAL until Tier 2 confirms it, and a Tier-1 number may not be quoted as a fact about an
+application until it has been.** Adopted from Solid's `benchmarking-strategy.md` (§12), whose own
+experiment log is full of Tier-1 wins reverted after Tier 2 disagreed.
+
+The rule carries its own evidence. M7b built the lane; M7c ran this document through it, over the
+nine claims in `packages/benchmark/src/tier2/claims.ts` — a list written BEFORE the run, so that
+"which survive" is answered against a fixed table rather than assembled from whatever the run showed:
+
+- **Three claims died.** §0.2's "a getter is 8.7x" (2.7x in V8, +15% of a real mount's js half).
+  §0.4's "the dispatcher is 0–8%" — see the next bullet. §0.3 conclusion 2's "a Scope per position
+  costs 7.3 ns, worth a `NO_SCOPE` flag" (sign and significance both flip between runs; the flag
+  keeps an allocation-count justification and loses its wall-clock one).
+- **One was INVERTED — not merely wrong in magnitude, wrong in direction.** §0.4 struck the three
+  designs' "removing `setProp` dispatch is worth 10–25%" as unmeasured, on a happy-dom reading of
+  0–8%. In Chrome it is +36% on the one like-for-like pair and +13% to +56% on equivalent work. The
+  section had withdrawn a claim that was true.
+- **One real algorithmic defect surfaced that no Tier-1 suite could see.** Propagation was superlinear
+  in graph depth (F1): barq's per-layer cost ROSE 8.3x over a 16x depth increase while Solid's
+  fell, so barq's total was roughly quadratic in depth where Solid's is linear — 27.6x a layer at
+  depth 800, and 55.7x/186.6x on cellx1000/cellx2500. All eleven of §0.1's reactivity cases were blind
+  to it because their deepest chain is five, and at UI depths (<20) barq wins, which is exactly why
+  it survived seven milestones. **FIXED at M7c — §0.8 has the mechanism and the numbers, and §0.1
+  now carries a twelfth case, `chain(500)`, that cannot be green while F1 is true.**
+- **And one measurement turned out not to exist at all.** §0.3's A/B/C/D/D2/E table — the evidence
+  the calling convention rests on — was quoted from a scratch file that had been deleted. F4 above.
+- **Plus two quantities Tier 1 never measured at all.** The `js` half of every js-framework-benchmark
+  row is 1.2–2.3x Solid's, hidden on seven of nine rows because paint dominates the total; and run
+  memory at 1,000 rows is 2.73–2.75 MB against 1.76 MB, with nothing to hide behind (C9, §9.1).
+- **What survived, survived properly.** §0.3's "0% through a DOM" reads 1.000x ± 1% on a real one and
+  is never significant; §0.2's per-getter absolute reproduces; §0.5's epoch dedupe and `markWave`
+  ablations are Tier-1-only by nature and are labelled as such.
+
+Two obligations follow, and they are cheap:
+
+1. **State the instrument beside every number**: which suite, how many trials, what p, what the
+   comparand was. Most of the corrections above are corrections to a DENOMINATOR rather than to a
+   measurement — one absolute cost, read against a stub row, against a V8 row and against a mounted
+   row, gives 8.7x, 2.7x and +15%. A number without its method is what put those claims in this
+   document in the first place.
+2. **Say what the instrument CANNOT decide, in the same breath.** `claims.ts` carries a `cannot`
+   field per claim for this reason: the browser `js` column is ~96% DOM, so it cannot resolve an
+   allocation ratio no matter how many trials it gets, and reading its silence as a null result is
+   how M7b's own first pass mis-called C1 and C3. A lane that only records what it can measure reads
+   every silence as evidence.
+
+**F2 — the obvious instrument was unusable, and anyone re-running this needs to know.** The full
+record, including the eight-click table it was read off, is the header of
+`packages/benchmark/src/tier2/trace.ts`. In short: js-framework-benchmark's own `afterframe` wall
+clock — start a timer at the click, stop it in the frame callback — converges on the **16.5 ms vsync
+interval for both frameworks** by the third click (barq 1.1, 6.0, 15.8, 16.4, 16.6, 16.4, 16.6, 16.5;
+Solid 0.4, 7.9, 16.4, 16.5, 16.5, 16.5, 16.5, 16.5), because what it measures is when the compositor
+next got round to the page. Worse under load: at 4x CPU throttling it
+reported **barq 5.7 ms against Solid 84.1 ms**, a 15x "win" that was entirely vsync phase — both
+script halves were 0.5 ms in the same trace. The lane therefore does not use it. Durations come from
+Chrome's trace, `commit.end − click.ts`, which is js-framework-benchmark's own definition, with the
+script and paint halves separated so a row can say WHICH half moved — which is the only reason C9's
+"the js half is 1.2–2.3x Solid's on every row" is visible at all behind seven totals that read
+parity. Every jfb row in this document publishes both halves for that reason.
+
+### 0.8 F1 — the quadratic was a re-walk, and it was invisible because it did no work
+
+The measurement first, because the mechanism was found by counting rather than by reading. `markNode`
+calls for the `__jrbDepth` graph, 10 iterations, per depth:
+
+| layers | `markNode` | `recompute` | `updateIfNecessary` | heap heights scanned |
+|---|---|---|---|---|
+| 50 | 214,958 | 3,941 | 6,313 | 500 |
+| 100 | 854,917 | 7,900 | 12,666 | 1,000 |
+| 200 | 3,409,808 | 15,791 | 25,363 | 2,000 |
+| 400 | 13,619,617 | 31,600 | 50,766 | 4,000 |
+| 800 | 54,439,208 | 63,191 | 101,563 | 8,000 |
+
+**Every column is linear in depth except one, and that one is 253x over a 16x depth increase** — 16²
+is 256. So the graph was not being recomputed too often, validated too often, or scanned too often.
+It was being MARKED too often, and the extra marks changed nothing: they were re-placed on nodes that
+already carried them. That is why no correctness test and no pull-count assertion could see it, and
+why the defect is pure waste rather than a trade.
+
+**The mechanism.** `recompute` ended with `propagate(node, CHECK)` whenever a pure computed's value
+changed, and `propagate` walked the node's entire transitive subscriber closure. During a pull down a
+chain of depth *d*, every one of the *d* nodes recomputes and each re-walks everything below it:
+Σ(d−i) marks, quadratic. The marks were already there. A pure node only becomes CHECK or DIRTY
+through `markNode`, and `markNode` never marks a pure node without also walking its subscribers — so
+by the time a value changes inside a pull, the write that started the pull has already told the whole
+closure to revalidate. **Solid's per-layer cost FALLING with depth was the clue**: a framework doing
+Θ(1) marking per changed node gets cheaper per layer as the fixed costs amortise. Only a framework
+re-deriving something already derived gets more expensive per layer.
+
+**The fix, in `signals.ts`.** `repropagate` marks the DIRECT subscribers only. The direct level still
+needs the CHECK→DIRTY upgrade (DIRTY is the only mark that survives an `equals` comparison against an
+unchanged snapshot); one level below, CHECK is already correct, because any change must pass through
+a direct subscriber to reach them. A subscriber found CLEAN is the one case the invariant says
+nothing about, so it gets the old full walk. Second, `openWave` makes a propagation wave an id rather
+than a call count: while `markEpoch` is unchanged nothing has consumed a mark anywhere, so the marks
+this wave already placed are still standing and a second write in the same batch stops at them. Four
+writes in a batch cost one traversal instead of four.
+
+**How the invariant was checked rather than argued.** An audit build re-walked the closure `repropagate`
+skips and asserted every node in it was already marked, over kairo + cellx + sBench: **1,514,926,568
+edges checked, 0 violations**, with the benchmarks' own pull-count assertions passing. The clean-subscriber
+fallback fired 3,018,616 times, so it is load-bearing and not a hedge. Separately, computed-run counts,
+effect-run counts, final values and the interleaved execution ORDER of the first three bands are
+byte-identical between the two builds at depths 5, 25 and 200 — the fix moves no evaluation.
+
+**What it bought, at Tier 2 in Chrome** (`bun run bench:tier2:jrb`, numbers in §9.1): cellx1000 85.6x
+faster, cellx2500 339x faster, `deepPropagation` 3.6x, per-layer cost at depth 800 down from 0.2960 to
+0.0068 ms. **At Tier 1, on the shallow graphs that were already winning, nothing regressed** — 7
+processes × 41 paired trials against the pre-fix build: 5 wins, 7 ties, 0 losses, the wins being
+`chain(5)` 0.86x, `wide(10)` 0.87x, `write: no subscribers` 0.92x, `diamond` 0.96x and `chain(500)`
+0.02x. The batch-wave change is why the shallow rows moved at all.
+
+### 0.9 C9 — the three DOM rows barq lost, and what each of them turned out to be
+
+Three rows, three unrelated causes, and only two of them were the list runtime's. Every number below
+is real Chrome; the before/after ones are the two runtimes INTERLEAVED in one browser session
+(`src/tier2/ab.ts`, a `git worktree` at the previous commit against the working tree), because a jfb
+row moves several percent between whole runs and that is larger than any of these effects.
+
+**`clear rows` — 1,000 `removeChild` calls against Solid's one `textContent = ""`.** Counted rather
+than guessed: `Node.prototype` instrumented across one timed clear reports barq at 1,000 `removeChild`
+and 0 `textContent` writes, Solid at 0 and 1. Solid's `cleanChildren` takes the bulk write whenever
+the insert owns its parent; `syncRows` had no such case and walked the groups. The fix is in
+`removeNodes` in both `dom.ts` and `flow.ts`: when the run being removed IS every child of its
+parent, one `textContent = ""`. The guard is exact rather than a heuristic — the count must equal
+`childNodes.length` AND every node must actually be under that parent, because a run whose nodes a
+`portal` moved out could match the count while naming different nodes, and being wrong here deletes
+markup the list does not own. Pinned by six cases in `flow.test.ts`, four of which are the guard
+REFUSING: a static sibling before the list, one after it, a second list in the same parent, and the
+same four again through disposal rather than through an empty update.
+
+| instrument | before | after | |
+|---|---|---|---|
+| in-page wall clock, click + microtask, 31 paired reps, unthrottled | 2.645 ms | **2.195 ms** | **0.830x, p=5.1e-3** |
+| in-page wall clock, click → frame, same reps | 3.375 ms | 3.165 ms | 0.938x, p=5.2e-1 |
+| CPU sampler, 21 paired reps, self time in the timed window | 3.788 ms | 3.285 ms | 0.867x |
+| the jfb row itself, 4x CPU, 41 paired iterations | — | — | 0.982x, p=7.3e-1 |
+
+**Read the four rows together, because the last one is the honest part.** The JavaScript the framework
+runs to empty the table is 17% cheaper and that reproduces on two independent instruments at
+p=5.1e-3. The jfb row does not move, and the second line says why: once Blink's own detach and
+layout for 1,000 `<tr>` are inside the window, the saving is 6% and indistinguishable from noise.
+Against Solid the row went from 1.135x (js 10.80 vs 9.07 ms) to **0.991x (js 9.9 vs 8.9)** — but that
+is two whole runs compared, which is exactly the comparison this section says not to trust; the
+paired A/B is the evidence and it says 0.830x on the JS half and nothing on the frame.
+
+**This corrects a reading in §3.4, and the correction is about SCALE.** `FAST_CLEAR` was deleted at
+M4b for moving neither counter — measured **at 50 rows**. That reading stands at 50 rows and is wrong
+at 1,000. It also did not need to be a compiler flag: the compiler would have had to PROVE sole
+ownership of the parent, while the runtime can test it exactly, locally, in two comparisons.
+
+**`select row` — barq has no `createSelector`, and this is the row's whole story.**
+`apps/jfb-barq.tsx` said so before the row was ever measured: `class={() => selected() === row.id …}`
+puts every row on the `selected` signal's subscriber list, so a selection change wakes 1,000 effects
+where Solid's selector wakes 2. It is not the DOM path — instrumented, both frameworks issue exactly
+ONE `className` write per selection. Measured as scaling, which is the form the claim is actually
+in (selection change, click + microtask, median of 21, unthrottled, interleaved):
+
+| rows | barq | Solid | barq − Solid |
+|---|---|---|---|
+| 1,000 | 0.790 ms | 0.295 ms | 0.495 ms |
+| 10,000 | 2.810 ms | 0.810 ms | 2.000 ms |
+
+barq's excess over Solid rises 4.0x for a 10x row count; Solid's own rise is the browser's, and both
+sides pay it. **Nothing in `dom.ts`, `flow.ts` or `map.ts` can close this** — `setClass` early-returns
+on an unchanged value in two comparisons, and the cost is 1,000 effect wakeups reaching it. Two things
+would, and both are elsewhere: a `selector` primitive in `signals.ts` (one node per key, O(1) fan-out),
+and the fused-props codegen's `() => ({ a: … })`, which allocates an object per row per notification
+and is why the sampler shows a garbage-collection line on this row at all. Recorded as a
+capability gap rather than a defect: the row is reported and, as `apps/jfb-barq.tsx` already says,
+never used to adjudicate a barq-internal claim.
+
+**Run memory at 1,000 rows — barq allocated 1,760 bytes a row against Solid's 1,030.** Heap-sampled
+during one `run`, per allocation site, the top of each side. barq: `signal` 452 B, `createComputedNode`
+291, the compiled row body 249, `createOwnerScope` + `hostScope` 226, `link` 105, `buildData` 70,
+`insert` + `applyInsert` + `childToNodes` 138. Solid: the compiled row body 231, `buildData` 171,
+`readSignal` 125, `Set` 102, `createComputation` 87, `createRoot` 74.
+
+Two of those lines were the list's and both are gone. **An index signal per row that no row read** —
+`mapArray` decides `wantsIndex` from `map.length`, and `each` hands it a three-parameter mapper
+whatever the row Block's own arity is, because `block()`'s brand is a one-parameter wrapper and erases
+it. Every row therefore reported that it wanted an index and paid for a whole signal: a node, four
+closures and the property backing store an accessor carrying `set`/`update`/`peek`/`_node` needs. It
+is now created on the row's FIRST index read, so a row whose markup mentions no index costs one
+accessor. **And a closure per row that existed only for the hydrating cursor to wrap** — nothing is
+hydrating in the ordinary case, so the row builds without it.
+
+| | before | after |
+|---|---|---|
+| allocated during one `run` of 1,000 rows | 1.76 MB | **1.47 MB** |
+| `signal`, per 1,000 rows | 452 KB | **226 KB** — exactly halved, which is the index signal |
+| run memory, paired A/B in one session | 2.71–2.77 MB | **2.48 MB, −10.5%** |
+| run memory against Solid | 2.73–2.75 vs 1.76 MB (1.55x) | **2.55–2.59 vs 1.76–1.82 MB (1.40–1.47x)** |
+
+**The rest is `signals.ts`'s and is stated so it is not re-derived.** What remains per row is 312 B of
+`createComputedNode` against Solid's 73 for the same two effects, and 251 B of Scope against Solid's
+46 for `createRoot` — 4.3x and 5.5x on the two allocations a row makes most. `signal()` is the third:
+one node object plus four closures plus a backing store, against Solid's object plus a bound read and
+a setter. **This is the same M4b reading corrected the same way as `FAST_CLEAR` above.**
+`INDEX_UNUSED` was deleted for moving no counter at 50 rows; at 1,000 it is 226 KB, and like
+`FAST_CLEAR` it needed no flag, because a lazily created signal decides it per row with no proof from
+the compiler at all.
+
+**One thing this section found and did not fix, recorded rather than left in a profile.** Building
+1,000 rows, barq issues 2 `textContent` writes and 6 `firstChild` reads per row where Solid issues 1
+and 4 — `applyInsert`'s sole-occupant path tests `parent.firstChild` and then reads it again to
+recover the node it just wrote. It is worth two DOM crossings a hole, `create rows` is at 0.992x
+against Solid on total already, and it is named here so the next pass at the insert path starts from a
+count instead of a guess.
 
 ---
 
@@ -354,7 +763,7 @@ core, which the directive explicitly puts in scope.
  |
 |---|---|
 | **Anvil's component inlining as a first-class optimisation** | Measured 0% on happy-dom, 15% of JS overhead on a stub DOM. Anvil's own weakness list calls it the riskiest transform in the design. Backlog, behind its own mutation operators. |
-| **All three designs' "setProp dispatch is worth 10–25%"** | Measured 0–8%. The pass stays; the justification changes to capability. |
+| **All three designs' "setProp dispatch is worth 10–25%"** | ~~Measured 0–8%.~~ **They were right and this row was wrong** — Chrome says +36% like-for-like and +13% to +56% on equivalent work (§0.4, C6, M7c). The pass stays; the justification is capability anyway, and stays there for the reason §0.4 now gives. |
 | **Deferral's return-View-only convention** | Arena's split is better: constructs whose content can change own a range and take `(parent, anchor)`; constructs built once return `Out`. Gets the SSR unification without a fragment allocation per multi-root level. |
 | **All three designs' proposal to delete `markWave`** | Measured: it earns ~7% on two of four cases. Keep. |
 | **Arena's unconditional move of `_affected`/`_snapshot` off the node shape** | `signals.ts:223-232` documents that the opposite tradeoff was made deliberately for the async fields. Gate it on measurement. |
@@ -662,7 +1071,8 @@ came to be miscompiled while SSR modelled it correctly):
 
 **Flags — the compiler ships proofs, the runtime has gated fast paths.** `STATIC_KEY` (key reads
 nothing reactive → no effect, no branch record), `NO_SCOPE` (body registers nothing disposable → no
-Scope; worth 7.3 ns/instance measured), `SINGLE_NODE`, `FAST_CLEAR` (`textContent = ""`),
+Scope; ~~worth 7.3 ns/instance measured~~ — worth an allocation per instance and a wall-clock cost
+Tier 2 cannot separate from noise, §0.3 conclusion 2 as corrected at M7c), `SINGLE_NODE`, `FAST_CLEAR` (`textContent = ""`),
 `INDEX_UNUSED`. **Discipline, enforced in review: a flag that moves neither an allocation
 count nor a wall-clock number on a named benchmark is deleted, not kept.**
 
@@ -686,6 +1096,19 @@ tracked either way, so there was nothing to skip). `KEEPALIVE` is **deleted from
 was the parking flag, parking is not something this design does (§3.8, `SEMANTICS.md` A5), and a flag
 kept against a feature nobody is going to build is the same rot the discipline above exists to
 prevent. It was never emitted and never read, so the deletion is to this list only.
+
+**BOTH DELETED FLAGS NAMED SOMETHING REAL, AND M7c FOUND IT AT A SCALE OF 1,000 (§0.9).** The M4b
+reading is not withdrawn — at 50 rows neither moved a counter and that is what it says. At 1,000 rows
+the bulk clear is 17.0% of the JS a `clear rows` costs (p=5.1e-3, paired) and a lazily created row
+index is 226 KB of the memory row. **What is withdrawn is the assumption that either had to be a
+flag.** `FAST_CLEAR` would have needed the compiler to PROVE a list owns its parent's child list;
+`removeNodes` tests it exactly at the moment of removal, in two comparisons, and gets the cases a
+proof would have had to give up on. `INDEX_UNUSED` would have needed the compiler to prove a row
+Block never reads its index, which `block()`'s one-parameter brand makes unreadable anyway; creating
+the signal on the first read decides it per row and needs nothing from the compiler. **The rule the
+discipline should carry forward: a flag that moves no counter has not earned emission — but measure it
+at the size the benchmark it is named for actually runs at, and ask first whether the runtime can
+decide it without being told.**
 
 **No marker comments in client rendering.** A range owner receives `(parent, anchor)` from the
 compiler's own template walk; `anchor = null` means append. Two adjacent dynamic siblings share one
@@ -1409,8 +1832,10 @@ export const V = ($s) => {
 **Runtime.** `branch` opens one effect on the key Cell. Key unchanged → **nothing happens** (no
 teardown, no rebuild). Key changed → dispose the instance scope (which disposes its effects, runs its
 cleanups LIFO, aborts its `AbortSignal`, removes its nodes), `enter` a fresh child scope, call
-`_K1[k]` under it, insert at the anchor. With `NO_SCOPE` proved, no Scope is allocated at all — worth
-the 7.3 ns/instance I measured.
+`_K1[k]` under it, insert at the anchor. With `NO_SCOPE` proved, no Scope is allocated at all — one
+allocation per instance saved, and a wall-clock saving Tier 2 cannot resolve (§0.3 conclusion 2, C3,
+corrected at M7c; the 7.3 ns/instance figure was a stub-DOM reading and does not survive as a
+magnitude).
 
 What this deletes: ten copy-pasted `dispose → clearRange → createScope → insertNodes` bodies with
 their divergent bugs; two comment nodes per control-flow instance; the props object and the call per
@@ -1779,10 +2204,30 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
 
 ### 9.1 Must not regress
 
-1. **Reactivity: hold or beat all eleven rows** of `head-to-head.ts` vs `@solidjs/signals` 2.0
-   (today 10 wins and 1 tie, `create: signal` being the tie). Rows 2, 3 and 11 should **improve** — components stop allocating owners
+1. **Reactivity: hold or beat all twelve rows** of `eleven-cases.ts` vs `@solidjs/signals` 2.0
+   (today 11 wins and 1 tie, `create: signal` being the tie). Rows 2, 3 and 11 should **improve** — components stop allocating owners
    and `ComputedNode` loses six slots. The epoch dedupe carries forward (ablated at 2.37x) and so does
    `markWave` (ablated at +7%/−2%). **Acceptance: no row regresses.**
+
+   **INSUFFICIENT AS ELEVEN, and M7c proved it (C7, F1).** Eleven cases this project wrote, whose
+   deepest chain was **five**, cannot see a defect that only appears with depth. `bun run
+   bench:tier2:jrb` runs js-reactivity-benchmark — a suite this project did not write — against the
+   same comparand in Chrome: at M7b barq took 7 of 9 kairo rows and 3 of 3 sBench rows, and lost
+   **cellx1000 55.7x** and **cellx2500 186.6x**. The depth sweep beside it (`__jrbDepth`, checked into
+   the same lane) said why: per-layer cost, barq against Solid, at depths 50 / 100 / 200 / 400 / 800 —
+   **0.0358, 0.0441, 0.0736, 0.1354, 0.2960 ms against 0.0344, 0.0234, 0.0184, 0.0157, 0.0107**.
+   barq's rose 8.3x over a 16x depth increase; Solid's fell. Roughly quadratic in depth against linear.
+   **Added to this list: the depth sweep and the two cellx rows are acceptance criteria from M7c on**,
+   and a TWELFTH case, `chain(500)`, joins the Tier-1 suite so a depth regression fails there first.
+
+   **F1 IS FIXED — §0.8 has the mechanism; these are the acceptance numbers, same Chrome, same lane.**
+   Per-layer cost now FALLS with depth, which is the shape linear propagation has: **0.0191, 0.0128,
+   0.0101, 0.0080, 0.0068 ms against Solid's 0.0353, 0.0256, 0.0217, 0.0149, 0.0110** — barq ahead at
+   every depth, 27.6x behind a layer at depth 800 before and 0.62x now. cellx1000 **453.77 → 5.30 ms**
+   (0.639x Solid), cellx2500 **3488.85 → 10.29 ms** (0.550x). kairo goes from 7 of 9 to **9 of 9**:
+   `deepPropagation` 135.67 → 37.92 ms (1.956x → 0.532x) and `mux` 1.084x → 1.016x. **The acceptance
+   criterion from here is the SHAPE, not the ratio: ms-per-layer at 800 may not exceed ms-per-layer at
+   100.** A ratio can be met by a faster machine; only the shape says the algorithm is linear.
 2. **SSR: hold ≥2.10x** on the 100-row page (4.66 µs vs 9.88 µs today). *Restated at M5's repair
    round, because the criterion as written cannot be met or missed:* the ratio is against
    `solid-js@^1.9.3`, which resolves to whatever the lockfile last took, and it drifted to 1.86x on a
@@ -1794,6 +2239,39 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
    defended as wins** — the benchmark file says so itself. The `class update` row must be **re-measured
    through emitted code**: today's 1.29x is measured through `setProp(el,'class',()=>…)`, which the
    compiler never emits, so that number is not currently attributable to anything.
+
+   **Superseded as the DOM criterion at M7c (C9).** Component-level DOM rows cannot say whether an
+   application is competitive, so the criterion is now js-framework-benchmark in Chrome,
+   `bun run bench:tier2:jfb`, 10 iterations a row, trace-derived `commit.end − click.ts`. What it
+   says: **seven of nine rows are within 5% on total**, because paint dominates them — and the **`js`
+   half is 1.2–2.3x Solid's on every one of the nine**. The rows where that shows through are
+   `clear rows` (barq 16.9 ms / js 15.6 against Solid 13.1 / 11.4, 1.292x, p=4.1e-2) and `select row`
+   (barq 6.5 / js 3.9 against 4.3 / 1.3, 1.513x, p=2.6e-1 — and 0.452x on a later run, which is what
+   that p means). **Run memory at 1,000 rows is a straight loss: 2.73–2.75 MB against 1.76 MB, 1.55x**,
+   with no paint to hide behind. Acceptance from M7c: the nine rows and the memory figure are
+   published on every milestone that touches the DOM path, whichever way they move.
+
+   **The run of record after M7c's list-runtime work** (`bun run bench:tier2:jfb`, 10 iterations,
+   `packages/benchmark/tier2-results.json`), with §0.9 for the mechanisms:
+
+   | row | barq | Solid | ratio | p |
+   |---|---|---|---|---|
+   | create rows | 38.7 ms (js 3.4) | 39.0 (js 2.9) | 0.992 | 9.2e-1 |
+   | replace all rows | 31.6 (js 5.9) | 31.0 (js 5.2) | 1.021 | 1.3e-1 |
+   | partial update | 36.7 (js 0.9) | 34.5 (js 1.0) | 1.065 | 1.9e-1 |
+   | select row | 6.6 (js 3.4) | 11.7 (js 1.2) | 0.560 | 6.1e-1 |
+   | swap rows | 14.3 (js 1.2) | 14.4 (js 0.7) | 0.987 | 8.4e-1 |
+   | remove row | 14.5 (js 0.5) | 14.5 (js 0.3) | 0.998 | 4.8e-1 |
+   | create many rows | 329.6 (js 44.4) | 314.1 (js 34.4) | 1.049 | 2.2e-1 |
+   | append rows to large table | 35.0 (js 4.0) | 39.4 (js 3.1) | 0.886 | 2.2e-1 |
+   | clear rows | 12.4 (js 9.9) | 12.5 (js 8.9) | **0.991** | 9.2e-1 |
+   | **run memory, 1,000 rows** | **2.59 MB** | 1.76 MB | 1.47x | — |
+
+   **Not one of these ratios is significant, and that is the reading.** `clear rows` moved from
+   1.135x to 0.991x and memory from 1.55x to 1.47x between two whole runs, which this document has
+   already been burned by once — §0.9 carries the PAIRED measurements those two rows are actually
+   evidenced by, and the paired numbers are smaller than the unpaired ones. The `js` half is still
+   1.1–1.3x Solid's on every row; what is no longer true is the 1.2–2.3x band above.
 4. **The calling convention's JS overhead is an accepted, bounded regression, not a neutral change.**
    §0.3: 11.537 vs 9.328 µs on a stub DOM — **1.24x**, independently reproduced at 1.16–1.24x. It is
    0% through happy-dom (D 516.21 vs A 535.64, D marginally ahead), which is the ground the convention
@@ -1821,7 +2299,7 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
 |---|---|---|
 | SSR fallback cliff deleted | `ssr-head-to-head.ts` with a `Loading` in the module | 202.73 µs → the 4–5 µs class |
 | Zero Scope allocations per component | heap-snapshot object count for `Scope` after a 1,000-component 3-deep mount | 0 attributable to components (today: 1 per boundary/flow component plus 1 per Provider) |
-| `NO_SCOPE` earns its flag | 1,000-row list of static cells, flag forced off vs on | must move an allocation count AND a wall-clock number, or the flag is deleted |
+| `NO_SCOPE` earns its flag | 1,000-row list of static cells, flag forced off vs on | ~~must move an allocation count AND a wall-clock number, or the flag is deleted~~ → **RESTATED at M7c: the allocation count alone.** Tier 2 ran the wall-clock half four times (D2/D, §0.3 conclusion 2) and got a ratio whose sign and significance both flip between runs, so the AND was a criterion no instrument can satisfy for a per-instance object allocation. The flag keeps the allocation-count justification, the wall-clock justification is withdrawn rather than assumed, and the flag's case is weaker than it was written |
 | Partial update is O(changed) | 10 of 1,000 rows, `MutationObserver` write count + JS comparison count | exactly 10 text writes |
 | No-op class toggle is free | 1,000 elements with a conditional class, toggle something irrelevant | `MutationObserver` count 0; an integer compare |
 | Control flow as emitted JS | 1,000 `{#if}`-equivalent cells, mount + update, vs the `<Show>` component form | fewer allocations and lower wall time |
@@ -1834,8 +2312,29 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
 
 ### 9.3 Claims explicitly withdrawn
 
-- **"Removing `setProp` dispatch is worth 10–25% per write."** Measured 0–8% (§0.4). The pass is
-  justified on capability.
+**The entries below are themselves Tier-1 readings, and M7c re-adjudicated the four a browser can
+rule on. A withdrawal is a claim like any other: it can be wrong, and one of these was — the first.**
+Each carries its correction inline; §0.7 is the rule that produced them.
+
+- **"Removing `setProp` dispatch is worth 10–25% per write."** ~~Measured 0–8% (§0.4).~~ **THE
+  WITHDRAWAL IS ITSELF WITHDRAWN (C6, M7c).** In real Chrome the dispatcher is **+36%** against the
+  like-for-like comparand and **+13% to +56%** on equivalent work, so the claim this document struck
+  was true and understated. The pass is still justified on capability — §0.4 says why that
+  justification is the right one even now the number favours the speed argument.
+- **"A getter is 8.7x more expensive to allocate" (§0.2).** **Withdrawn as a magnitude at M7c (C5).**
+  2.73x in V8 on the same shapes (205 vs 75 ns a row, p=2.5e-8), +15.3% to +16.1% of a real mount's
+  js half, +2.3% to +4.3% of the frame. The direction reproduces on every instrument; the per-getter
+  absolute reproduces; the ratio was against a stub DOM's near-zero baseline. Blocks stand on
+  copy-flattening, which is where they always stood.
+- **"A Scope per position costs 7.3 ns" (§0.3 conclusion 2).** **Withdrawn as a wall-clock claim at
+  M7c (C3).** Sign and significance both flip between runs in the browser; the stub arm spans
+  5–15 ns a row against a 5 ns clock quantum. `NO_SCOPE` keeps the allocation-count justification
+  only — §9.2's row is restated to match.
+- **"The chosen convention costs 23.7% of JS overhead, and 0% through a DOM" (§0.3 conclusion 4).**
+  **NOT withdrawn — both halves survive (C1, M7c),** and it is the one place a stub-DOM percentage
+  and a browser percentage were both stated, so both could be checked. 1.267x on the V8 stub arm
+  (p=2.4e-7); 1.000x ± 1% on `total` in Chrome, never significant; 1–4% of the browser's `js` column,
+  which is what ~20 ns a row is against a 1,900 ns mounted row.
 - **"Component inlining is worth 30–40% of mount."** Measured 0% on happy-dom, 15% of JS overhead on a
   stub DOM (§0.3). Backlog.
 - **"Thunk props are cheaper than value props once forwarded."** Measured parity, 6.73 vs 6.56 ns.
@@ -2217,7 +2716,7 @@ prove SSR handles `Op::Region` CORRECTLY for a construct only the DOM fixtures e
 
 **A Tier-2 benchmark lane.** Their `benchmarking-strategy.md`: "Tier 1 is the iteration tool. Tier 2 is
 the source of truth. Tier-1 wins must be validated against the relevant Tier-2 suite before they
-stay." Their 6,725-line experiment log is full of Tier-1 wins REVERTED after Tier-2 disagreed. Every
+stay." *(This is now this project's own standing rule, written out with its evidence at **§0.7**.)* Their 6,725-line experiment log is full of Tier-1 wins REVERTED after Tier-2 disagreed. Every
 number in this document is Tier-1 — Node microbenchmarks, a stub DOM, happy-dom — including §0.3's
 defence of the calling convention ("0% through a DOM"), which is a Tier-2 claim made without a Tier-2
 run. Until that lane exists, the flag-deletion discipline is adjudicating against the wrong oracle.
@@ -2240,10 +2739,12 @@ cannot decide, so a silence is not read as a null result again.
 |---|---|---|---|---|
 | C1 | D costs 23.7% of JS against A; 0% through a DOM | D/A **1.267x** (95 vs 75 ns/row, p=2.4e-7) | js 1.013x (p=0.13, mde 1.8%), total 1.007x | **BOTH HALVES SURVIVE.** 23.7% reproduces as 26.7% in its own unit; "0% through a DOM" reproduces on a real one |
 | C2 | B/C/D within noise | C/D 0.895x | B/C 0.992x, C/D 1.008x, neither significant | **SURVIVES** in the browser; on the stub, C is 10% cheaper than D, which is C1's number seen from the other side |
-| C3 | a Scope per position costs 7.3 ns/row | D2/D **1.053x** — 5 ns/row (p=2.5e-5) | js 1.013x (p=2.0e-3, mde 1.35%) | **SURVIVES**, at 5 ns/row rather than 7.3. Below the browser's resolution, which is why `NO_SCOPE` is justified on the allocation count and not on a wall clock |
+| C3 | a Scope per position costs 7.3 ns/row | D2/D **1.053x** — 5 ns/row (p=2.5e-5); 1.158x, 1.158x on the two runs before it | js 1.013x (p=2.0e-3, mde 1.35%); 1.020x / 1.015x / 1.008x at p=0.32 / 0.14 / 0.13 across the other three runs, and `total` 1.009x, 1.008x, 0.997x, 0.997x | **DOES NOT SURVIVE as a wall-clock number (M7c).** Read one run and it looks like a small significant cost; read four and the sign flips on `total` and significance flips on `js`, while the stub arm spans 5–15 ns/row against a 5 ns clock quantum. `NO_SCOPE` keeps the ALLOCATION-COUNT justification and loses the wall-clock one — §9.2's row is restated |
 | C4 | inlining is 15% of stub JS, 0% through a DOM | E/C **0.824x** — 17.6% (p=1.8e-5) | js 0.974x (p=0.059) | **SURVIVES**, both halves, at 17.6% rather than 15% |
-| C5 | a getter is 8.7x | GETTER/VALUE **2.733x** (205 vs 75 ns/row, p=2.5e-8) | js 1.161x (p=1.4e-6), total 1.029x | **MAGNITUDE DOES NOT SURVIVE, sign does.** 8.7x was Bun over happy-dom's stubs; V8 says 2.7x on the same shape. The line below — "the 8.7x number stands unrefuted" — is now refuted as a magnitude and stands as a direction |
-| C6 | the dispatcher is 0–8% per write | — | id **1.358x**; value **1.130x** against a caret-preserving comparand (1.623x against a bare `value =`); class **1.561x** against an ownership-checking comparand (1.873x bare) | **DOES NOT SURVIVE**, in the opposite direction: the dispatcher is 13–56% on equivalent work. §0.4's DECISION — justify channel resolution on capability, not on speed — is understated rather than wrong |
+| C5 | a getter is 8.7x | GETTER/VALUE **2.733x** (205 vs 75 ns/row, p=2.5e-8); 2.933x (220 vs 75) the run before | js **1.153–1.161x** across four runs (p 1.3e-4 … 1.4e-6), total 1.023–1.043x | **MAGNITUDE DOES NOT SURVIVE, sign and absolute do.** 8.7x was Bun over happy-dom's stubs, where VALUE is 46.6 ns/row; V8 says 2.7x on the same shapes with VALUE at 75 ns/row, and a real mount says +15% of its js half. §0.2 carries the correction and the reason the Block decision is untouched by it |
+| C6 | the dispatcher is 0–8% per write | — | id **1.358x** (+36%, like-for-like, 1.358–1.537x over four runs); value **1.130x** against a caret-preserving comparand (1.623x against a bare `value =`); class **1.561x** against an ownership-checking comparand (1.873x bare) | **DOES NOT SURVIVE**, in the opposite direction: the dispatcher is +13% to +56% on equivalent work and +36% on the one pair that is like-for-like. §0.4's DECISION — justify channel resolution on capability, not on speed — is understated rather than wrong, and §0.4 now says why capability is still the right ground. The class row is the least trustworthy: different semantics on the one-shot path. **F3 is fixed and the class row is SETTLED at M7c: 1.420x on equivalent work with two alternating tokens, 1.534x on a fresh token every write — the case the accumulation made unrunnable. It is now inside the band the other two channels give rather than the outlier the defect made it (§0.4)** |
+| C7 | 10 wins / 1 tie vs `@solidjs/signals` 2.0, up to 6.25x | — | kairo 7 of 9 to barq (0.27x–1.96x); sBench 3 of 3 (0.25x–0.51x); **cellx1000 55.7x and cellx2500 186.6x AGAINST barq** | **SURVIVED on the suite's shallow graphs and FAILED on its deep ones.** The depth sweep said what the cellx ratio was a ratio of: barq's per-layer cost ROSE from 0.036 to 0.296 ms over depths 50→800 while Solid's FELL from 0.034 to 0.011 — quadratic against linear (**F1**). Invisible to §0.1's cases, whose deepest chain was five. **F1 is FIXED (§0.8): cellx1000 0.639x and cellx2500 0.550x, barq now takes 9 of 9 kairo rows and per-layer cost FALLS with depth. The twelfth case, `chain(500)`, is why the suite can see it now** |
+| C9 | (no Tier-1 claim of this shape existed) | — | seven of nine jfb rows within 5% on total; **the `js` half is 1.2–2.3x Solid's on every row**; run memory at 1,000 rows **2.73–2.75 MB vs 1.76 MB** | **NEW GROUND.** Paint dominates seven rows, so the js gap only shows through where the js half is large: `clear rows` 1.29x (js 15.6 vs 11.4 ms, p=4.1e-2) and `select row` 1.51x (js 3.9 vs 1.3 ms, p=2.6e-1) on the first run — and `select row` inverted to 0.45x on a later one, which is what a p of 2.6e-1 means. Memory is a straight 1.55x loss with no paint to hide behind. **DIAGNOSED AND TWO THIRDS ADDRESSED at M7c — §0.9. `clear rows` was 1,000 `removeChild` against Solid's one `textContent = ""`; the bulk removal takes 17.0% off the JS half (p=5.1e-3, paired) and nothing off the frame, and the row now reads 0.991x. Memory is 1.55x → 1.40–1.47x on two list allocations per row that nothing read. `select row` is NOT a defect: barq has no `createSelector`, so 1,000 effects wake where Solid's 2 do — a capability gap, measured as scaling, and not the list runtime's to close** |
 
 The two rows that moved most between M7b's first reading and this one moved for the same reason: the
 first reading compared quantities the instrument could not separate. C1 and C3 were called
@@ -2253,6 +2754,18 @@ dispatcher off comparands that do strictly less work.
 **What the lane still cannot do.** C8 (the SSR envelope) needs a server, not a browser. And the
 `total` column is ~80% forced layout by construction, so its minimum detectable effect — now printed
 beside every ratio — is what says whether a 1.00x there means anything.
+
+**M7c: the same lane run four times, and what a second run is for.** The table above is the run of
+record (`packages/benchmark/tier2-results.json`); three further runs of `bench:tier2:shapes` and a
+second `bench:tier2:jfb` are what turned two of these verdicts. C3 looked like a small significant
+cost on one run and flipped sign on the next; jfb's `select row` read 1.51x against Solid on one run
+and 0.45x on the next, at p=2.6e-1 both times. **A single Tier-2 run adjudicates nothing that its own
+p-value does not support, and the p-value is in the table for exactly this reason.** The three
+findings the repeat runs produced — F1 (superlinear propagation), F3 (`setClass` accumulating tokens
+under repeated one-shot writes, which hung a run and which §0.4's Tier-1 `class` number was itself a
+measurement of), F4 (§0.3's table not existing in the repository) — are the milestone's own output;
+the rule that produced them is now written out as **§0.7**, at the front of the document where the
+numbers it governs live.
 
 ### Vindicated, recorded so it is not relitigated
 
@@ -2266,10 +2779,18 @@ COMPILERS rather than backends against each other.
 Their 6,725-line performance log contains NO measurement of children-getter allocation. The getters
 survive on the parity mandate, not because Blocks lost.
 
-The 8.7x number no longer stands as a magnitude. The Tier-2 lane above measured the same shape on
-the same instrument class inside V8 and got **2.7x** (205 against 75 ns a row at 1,000 rows,
-p=2.5e-8), and 1.16x on the `js` half of a real mount. 8.7x was Bun over happy-dom's stubs, where a
-value-props baseline is nearly free and the ratio is therefore mostly a statement about the
-denominator. The DIRECTION reproduces on every instrument and at every scale, and it is the direction
-the decision rests on — that, and copy-flattening, which was always the correctness argument and
-which no benchmark decides.
+**The 8.7x number is REFUTED and the line that said it "stands unrefuted" is struck.** The Tier-2 lane
+above measured the same shapes on the same instrument class inside V8 and got **2.7x** (205 against
+75 ns a row at 1,000 rows, p=2.5e-8; 2.9x on the run before), and **+15.3% to +16.1%** on the `js`
+half of a real mount across four runs (p 1.3e-4 … 1.4e-6), **+2.3% to +4.3%** of the frame. 8.7x was
+Bun over happy-dom's stubs, where a value-props baseline is nearly free — 46.6 ns a row — so the
+ratio is mostly a statement about its denominator; V8 puts that denominator at 75 ns a row and a
+mounted row at ~1,900. The per-getter ABSOLUTE reproduces (127.64 ns a getter is ~255 ns for a
+two-getter row; V8 prices the whole GETTER row at 205–220), and so does the DIRECTION, on every
+instrument and at every scale.
+
+**Blocks are not reopened by this, because Blocks never rested on it.** The decision rests on
+copy-flattening — `{...p}` READS a getter and hands on a dead value, so every spread-forwarding
+component silently loses reactivity — which is a correctness argument that no benchmark decides, and
+which all three submitted designs made independently before any allocation number existed. §0.2 says
+this in its own place too, so that the dead number cannot be used to reopen the live decision.

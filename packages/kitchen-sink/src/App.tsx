@@ -3,11 +3,13 @@
  */
 
 import { For, Show } from "@barqjs/core";
-import { css, globalCss } from "@barqjs/extra";
+import {
+  css,
+  globalCss,
+} from "./styles";
 import {
   NavLink,
   type NavigationGuard,
-  Outlet,
   type RouteDefinition,
   Router,
   route,
@@ -120,7 +122,7 @@ function GlobalLoadingIndicator() {
   const isLoading = useIsLoading();
 
   return (
-    <Show when={isLoading}>
+    <Show when={isLoading()}>
       <div class={globalLoadingStyle}>
         <div class={loadingBarStyle} />
       </div>
@@ -128,8 +130,16 @@ function GlobalLoadingIndicator() {
   );
 }
 
-// Layout with sidebar navigation
-function Layout() {
+/**
+ * C2: a component handed to the router through a route table is called with a
+ * scope by another module, and nothing module-local proves that — so it is
+ * exported, which is the evidence C2 accepts. Every route component below is
+ * either exported here or imported from its own demo module.
+ *
+ * `props.children` is the next matched route, as a Block taking a scope, so it
+ * is constructed inside this layout. That is what replaced `<Outlet />`.
+ */
+export function Layout(props: { children: unknown }) {
   const location = useLocation();
 
   const currentSection = () => {
@@ -160,7 +170,7 @@ function Layout() {
           <h1 class={titleStyle}>{() => currentSection()?.label}</h1>
         </header>
 
-        <Outlet />
+        {props.children}
       </main>
     </div>
   );

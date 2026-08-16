@@ -3,7 +3,10 @@
  */
 
 import { type Child, For } from "@barqjs/core";
-import { clsx, css } from "@barqjs/extra";
+import {
+  clsx,
+  css,
+} from "../styles";
 
 // Demo section container
 export function DemoSection(props: { children: Child }) {
@@ -24,24 +27,15 @@ export function DemoCard(props: { title: string; children: Child }) {
 export function Button(props: {
   children: Child;
   onClick?: (e: MouseEvent) => void;
-  disabled?: boolean | (() => boolean);
-  variant?: "primary" | "secondary" | "danger" | (() => "primary" | "secondary" | "danger");
+  disabled?: boolean;
+  variant?: "primary" | "secondary" | "danger";
 }) {
-  // Handle both static and accessor for variant prop
-  const getVariant = () => {
-    if (typeof props.variant === "function") {
-      return props.variant();
-    }
-    return props.variant ?? "primary";
-  };
-
-  // Handle both boolean and accessor for disabled prop
-  const isDisabled = () => {
-    if (typeof props.disabled === "function") {
-      return props.disabled();
-    }
-    return props.disabled ?? false;
-  };
+  // Every prop that is PRESENT is a Cell and is CALLED at the use site (C3.1).
+  // An optional prop the caller omitted is not an own property at all, so the
+  // read is optional and the default lives beside it. The value-or-accessor
+  // dance this replaced was a workaround for props that could be either.
+  const getVariant = () => props.variant?.() ?? "primary";
+  const isDisabled = () => props.disabled?.() ?? false;
 
   return (
     <button
@@ -55,8 +49,8 @@ export function Button(props: {
           [buttonDisabledStyle]: isDisabled(),
         });
       }}
-      onClick={props.onClick}
-      disabled={isDisabled}
+      onClick={props.onClick?.()}
+      disabled={isDisabled()}
     >
       {props.children}
     </button>
@@ -64,27 +58,27 @@ export function Button(props: {
 }
 
 // Log display
-export function Log(props: { logs: () => string[] }) {
+export function Log(props: { logs: string[] }) {
   return (
     <div class={logContainerStyle}>
-      <For each={props.logs}>{(log) => <div class={logLineStyle}>{log}</div>}</For>
+      <For each={props.logs()}>{(log) => <div class={logLineStyle}>{log}</div>}</For>
     </div>
   );
 }
 
 // Input component
 export function Input(props: {
-  value: () => string;
+  value: string;
   onInput: (value: string) => void;
   placeholder?: string;
   type?: string;
 }) {
   return (
     <input
-      type={props.type || "text"}
+      type={props.type?.() || "text"}
       value={props.value()}
-      onInput={(e: Event) => props.onInput((e.target as HTMLInputElement).value)}
-      placeholder={props.placeholder}
+      onInput={(e: Event) => props.onInput()((e.target as HTMLInputElement).value)}
+      placeholder={props.placeholder?.()}
       class={inputStyle}
     />
   );

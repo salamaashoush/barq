@@ -12,7 +12,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@barqjs/extra";
-import { css } from "@barqjs/extra";
+import {
+  css,
+} from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {
@@ -184,7 +186,7 @@ function MutationDemo() {
         </span>
       </div>
 
-      <Button onClick={handleCreate} disabled={() => mutation().isPending}>
+      <Button onClick={handleCreate} disabled={mutation().isPending}>
         {() => (mutation().isPending ? "Creating..." : "Create Random User")}
       </Button>
 
@@ -247,7 +249,7 @@ function InfiniteQueryDemo() {
 
       <Button
         onClick={() => query().fetchNextPage()}
-        disabled={() => !query().hasNextPage || query().isFetchingNextPage}
+        disabled={!query().hasNextPage || query().isFetchingNextPage}
       >
         {() =>
           query().isFetchingNextPage

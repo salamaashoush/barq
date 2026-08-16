@@ -29,7 +29,10 @@ use crate::ir::Module;
 ///      AND this module either writes it as a tag or lets it out — which is the
 ///      set every `Comp(_s$, props)` call site is generated from;
 ///   2. a function literal written directly in a JSX slot of a COMPONENT tag,
-///      which P4 `shape` forwards by identity into a Block position.
+///      which P4 `shape` forwards by identity into a Block position;
+///   3. a function literal in the first argument of the framework's
+///      `render`/`hydrate` — O5's root Block, and the only route by which the
+///      root scope a mount opens reaches the application it mounts.
 ///
 /// Containing JSX is not evidence and never was. `rows.map((row) => <li/>)`
 /// hands its callback to `Array.prototype.map`, which owns the argument list
@@ -50,12 +53,14 @@ use crate::ir::Module;
 pub fn run<'a>(allocator: &'a Allocator, program: &mut Program<'a>, module: &mut Module<'a>) {
     let name = module.uids.scope();
     let declared = module.env.components.iter().map(|(span, _)| *span).collect();
+    // O5's third position: the Block `render`/`hydrate` supplies the ROOT to.
+    let slots: FxHashSet<Span> = module.env.root_blocks.iter().copied().collect();
     let mut pass = Scope {
         allocator,
         ast: AstBuilder::new(allocator),
         name,
         declared,
-        slots: FxHashSet::default(),
+        slots,
         jsx: 0,
         unbound: false,
     };

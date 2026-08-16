@@ -7,14 +7,17 @@
  */
 
 import { For, Show, useState } from "@barqjs/core";
-import { clsx, css } from "@barqjs/extra";
+import {
+  clsx,
+  css,
+} from "../styles";
+import type { Cell } from "@barqjs/core";
 import {
   Link,
   type LoaderContext,
   MemoryRouter,
   NavLink,
   type NavigationGuard,
-  Outlet,
   type RouteDefinition,
   route,
   useLocation,
@@ -67,9 +70,18 @@ const adminGuard: NavigationGuard = async () => {
 // ============================================================================
 // Route Components
 // ============================================================================
+//
+// Every one is EXPORTED. C2: a component is declared, never inferred, and a
+// function handed to the router through a route table is called with a scope by
+// another module — nothing module-local proves that, so exporting it is the
+// evidence C2 accepts.
+//
+// Props are Cells and are CALLED at the use site, and `props.children` is the
+// next matched route as a Block taking a scope. `<Outlet />` is gone: a layout
+// renders its child by placing `props.children`.
 
 // Dashboard Layout - wraps all dashboard routes
-function DashboardLayout() {
+export function DashboardLayout(props: { children: unknown }) {
   const [authState, setAuthState] = useState(true);
   const [roleState, setRoleState] = useState("admin");
 
@@ -118,15 +130,13 @@ function DashboardLayout() {
           </button>
         </div>
       </nav>
-      <div class={dashboardContentStyle}>
-        <Outlet />
-      </div>
+      <div class={dashboardContentStyle}>{props.children}</div>
     </div>
   );
 }
 
 // Login page (shown when auth guard fails)
-function LoginPage() {
+export function LoginPage() {
   const nav = useNavigate();
 
   const handleLogin = () => {
@@ -144,7 +154,7 @@ function LoginPage() {
 }
 
 // Dashboard Overview
-function DashboardOverview() {
+export function DashboardOverview() {
   return (
     <div>
       <h3 class={pageTitle}>Dashboard Overview</h3>
@@ -171,15 +181,16 @@ interface UsersData {
   total: number;
 }
 
-function UsersList(props: { data: UsersData }) {
+export function UsersList(props: { data: Cell<UsersData | undefined> }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentFilter = () => searchParams().get("role") || "all";
 
   const filteredUsers = () => {
     const filter = currentFilter();
-    if (filter === "all") return props.data.users;
-    return props.data.users.filter((u) => u.role === filter);
+    const all = props.data()?.users ?? [];
+    if (filter === "all") return all;
+    return all.filter((u) => u.role === filter);
   };
 
   return (
@@ -224,45 +235,49 @@ interface UserDetailData {
   posts: typeof posts;
 }
 
-function UserDetail(props: { data: UserDetailData }) {
-  const { user, posts: userPosts } = props.data;
-
-  if (!user) {
-    return <div class={errorStyle}>User not found</div>;
-  }
+export function UserDetail(props: { data: Cell<UserDetailData | undefined> }) {
+  // Destructuring at the top would snapshot the loader's answer; the reads stay
+  // where they are used, which is what keeps the route alive across a parameter
+  // change instead of remounting it.
+  const user = () => props.data()?.user;
+  const userPosts = () => props.data()?.posts ?? [];
 
   return (
-    <div>
-      <div class={breadcrumbStyle}>
-        <Link href="/demo/dashboard/users">Users</Link>
-        <span>/</span>
-        <span>{user.name}</span>
-      </div>
+    <Show when={user} fallback={<div class={errorStyle}>User not found</div>}>
+      {(found) => (
+        <div>
+          <div class={breadcrumbStyle}>
+            <Link href="/demo/dashboard/users">Users</Link>
+            <span>/</span>
+            <span>{found.name}</span>
+          </div>
 
-      <h3 class={pageTitle}>{user.name}</h3>
+          <h3 class={pageTitle}>{found.name}</h3>
 
-      <div class={detailCardStyle}>
-        <p>
-          <strong>Email:</strong> {user.email}
-        </p>
-        <p>
-          <strong>Role:</strong> <span class={tagStyle}>{user.role}</span>
-        </p>
-      </div>
+          <div class={detailCardStyle}>
+            <p>
+              <strong>Email:</strong> {found.email}
+            </p>
+            <p>
+              <strong>Role:</strong> <span class={tagStyle}>{found.role}</span>
+            </p>
+          </div>
 
-      <h4 class={subTitleStyle}>Posts by {user.name}</h4>
-      <Show when={() => userPosts.length > 0} fallback={<p class={emptyStyle}>No posts yet</p>}>
-        <ul class={listStyle}>
-          <For each={() => userPosts}>
-            {(post) => (
-              <li class={listItemStyle}>
-                <Link href={`/demo/dashboard/posts/${post.id}`}>{post.title}</Link>
-              </li>
-            )}
-          </For>
-        </ul>
-      </Show>
-    </div>
+          <h4 class={subTitleStyle}>Posts by {found.name}</h4>
+          <Show when={() => userPosts().length > 0} fallback={<p class={emptyStyle}>No posts yet</p>}>
+            <ul class={listStyle}>
+              <For each={userPosts}>
+                {(post) => (
+                  <li class={listItemStyle}>
+                    <Link href={`/demo/dashboard/posts/${post.id}`}>{post.title}</Link>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        </div>
+      )}
+    </Show>
   );
 }
 
@@ -271,14 +286,15 @@ interface PostsData {
   posts: typeof posts;
 }
 
-function PostsList(props: { data: PostsData }) {
+export function PostsList(props: { data: Cell<PostsData | undefined> }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentCategory = () => searchParams().get("category") || "all";
 
   const filteredPosts = () => {
     const cat = currentCategory();
-    if (cat === "all") return props.data.posts;
-    return props.data.posts.filter((p) => p.category === cat);
+    const all = props.data()?.posts ?? [];
+    if (cat === "all") return all;
+    return all.filter((p) => p.category === cat);
   };
 
   return (
@@ -328,43 +344,44 @@ interface PostDetailData {
   author: (typeof users)[0] | undefined;
 }
 
-function PostDetail(props: { data: PostDetailData }) {
-  const { post, author } = props.data;
+export function PostDetail(props: { data: Cell<PostDetailData | undefined> }) {
   const nav = useNavigate();
-
-  if (!post) {
-    return <div class={errorStyle}>Post not found</div>;
-  }
+  const post = () => props.data()?.post;
+  const author = () => props.data()?.author;
 
   return (
-    <div>
-      <div class={breadcrumbStyle}>
-        <Link href="/demo/dashboard/posts">Posts</Link>
-        <span>/</span>
-        <span>{post.title}</span>
-      </div>
+    <Show when={post} fallback={<div class={errorStyle}>Post not found</div>}>
+      {(found) => (
+        <div>
+          <div class={breadcrumbStyle}>
+            <Link href="/demo/dashboard/posts">Posts</Link>
+            <span>/</span>
+            <span>{found.title}</span>
+          </div>
 
-      <h3 class={pageTitle}>{post.title}</h3>
+          <h3 class={pageTitle}>{found.title}</h3>
 
-      <div class={detailCardStyle}>
-        <p>
-          <strong>Category:</strong> <span class={categoryTagStyle}>{post.category}</span>
-        </p>
-        <p>
-          <strong>Author:</strong>{" "}
-          <Show when={() => author} fallback={<span>Unknown</span>}>
-            {(auth) => <Link href={`/demo/dashboard/users/${auth.id}`}>{auth.name}</Link>}
-          </Show>
-        </p>
-      </div>
+          <div class={detailCardStyle}>
+            <p>
+              <strong>Category:</strong> <span class={categoryTagStyle}>{found.category}</span>
+            </p>
+            <p>
+              <strong>Author:</strong>{" "}
+              <Show when={author} fallback={<span>Unknown</span>}>
+                {(auth) => <Link href={`/demo/dashboard/users/${auth.id}`}>{auth.name}</Link>}
+              </Show>
+            </p>
+          </div>
 
-      <Button onClick={() => nav("/demo/dashboard/posts")}>Back to Posts</Button>
-    </div>
+          <Button onClick={() => nav("/demo/dashboard/posts")}>Back to Posts</Button>
+        </div>
+      )}
+    </Show>
   );
 }
 
 // Admin Only Page (protected by admin guard)
-function AdminPage() {
+export function AdminPage() {
   return (
     <div>
       <h3 class={pageTitle}>Admin Panel</h3>
@@ -380,7 +397,7 @@ function AdminPage() {
 }
 
 // 404 Fallback
-function NotFound() {
+export function NotFound() {
   const location = useLocation();
 
   return (

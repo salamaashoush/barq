@@ -247,8 +247,36 @@ function place(parent: Node, node: Node, before: Node | null): void {
   parent.insertBefore(node, before);
 }
 
+/**
+ * Removal, in ONE DOM call when the run being removed is every child its parent
+ * has — `dom.ts`'s `removeNodes` states the measurement and the guard.
+ *
+ * This is the copy the LIST path reaches, and the list is where it matters:
+ * `clear rows` empties a `<tbody>` of 1,000 rows through `syncRows`, and the
+ * per-node loop was 2.85 ms of that operation's 3.95 ms of JS.
+ */
 function removeNodes(nodes: readonly Node[]): void {
-  for (let i = 0; i < nodes.length; i++) nodes[i].parentNode?.removeChild(nodes[i]);
+  const count = nodes.length;
+  if (count === 0) return;
+  const host = nodes[0].parentNode;
+  if (host !== null && count === host.childNodes.length && allUnder(host, nodes)) {
+    host.textContent = "";
+    return;
+  }
+  for (let i = 0; i < count; i++) nodes[i].parentNode?.removeChild(nodes[i]);
+}
+
+function allUnder(host: Node, nodes: readonly Node[]): boolean {
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].parentNode !== host) return false;
+  }
+  return true;
+}
+
+function flatten(groups: readonly Node[][]): Node[] {
+  const out: Node[] = [];
+  for (const group of groups) for (const node of group) out.push(node);
+  return out;
 }
 
 // ============================================================================
@@ -693,6 +721,9 @@ export function each<T>(
         src as Cell<number>,
         (index: number, scope: Scope): Node[] => {
           activation++;
+          // The closure exists only for the hydrating cursor to wrap, and it is
+          // one allocation PER ROW. Nothing is hydrating in the ordinary case.
+          if (rowCursor === null) return build(scope, body, [index]);
           return inRow(rowCursor, () => build(scope, body, [index]));
         },
         { fallback: fallbackRows },
@@ -700,6 +731,7 @@ export function each<T>(
     } else {
       const mapper = (item: unknown, index: unknown, scope: Scope): Node[] => {
         activation++;
+        if (rowCursor === null) return build(scope, body, [item, index]);
         return inRow(rowCursor, () => build(scope, body, [item, index]));
       };
       rows = mapArray(src as Cell<Maybe<readonly T[]>>, mapper as never, {
@@ -757,10 +789,17 @@ function syncRows(site: Site, rows: () => Node[][]): void {
     if (host === null) return;
 
     if (current.length > 0) {
-      const kept = new Set(next);
-      for (const group of current) {
-        if (kept.has(group)) continue;
-        for (const node of group) node.parentNode?.removeChild(node);
+      // Emptying the list is its own case, and not only to skip a `Set` of
+      // every group: it is the one removal that can go through `removeNodes`'s
+      // single-call path, which is what `clear rows` is.
+      if (next.length === 0) {
+        removeNodes(flatten(current));
+      } else {
+        const kept = new Set(next);
+        for (const group of current) {
+          if (kept.has(group)) continue;
+          for (const node of group) node.parentNode?.removeChild(node);
+        }
       }
     }
 
@@ -769,9 +808,7 @@ function syncRows(site: Site, rows: () => Node[][]): void {
   });
 
   onCleanup(() => {
-    const flat: Node[] = [];
-    for (const group of current) for (const node of group) flat.push(node);
-    removeNodes(flat);
+    removeNodes(flatten(current));
     current = [];
   });
 }

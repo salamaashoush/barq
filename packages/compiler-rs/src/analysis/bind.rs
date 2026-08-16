@@ -118,6 +118,7 @@ pub fn classify<'a>(
         candidates: Vec::new(),
         tags: Vec::new(),
         slotted: Vec::new(),
+        root_mounts: Vec::new(),
         exported: Vec::new(),
         rules: options.diagnostics,
         suspects: Vec::new(),
@@ -171,6 +172,9 @@ struct Binder<'p, 'a> {
     candidates: Vec<(Option<SymbolId>, SymbolId)>,
     /// Every binding this module writes as a JSX tag.
     tags: Vec<SymbolId>,
+    /// O5. Every binding imported from the framework whose FIRST argument is a
+    /// Block the call itself supplies a root scope to — `render` and `hydrate`.
+    root_mounts: Vec<SymbolId>,
     /// Every binding this module writes directly into a COMPONENT tag's slot.
     /// `<For each={rows}>{row}</For>` hands `row` to a callee that invokes it
     /// with a scope, which is the same standing being written as a tag gives.
@@ -272,6 +276,11 @@ impl<'a> Binder<'_, 'a> {
                         let ModuleExportName::IdentifierName(name) = &imported.imported else {
                             continue;
                         };
+                        if matches!(name.name.as_str(), "render" | "hydrate")
+                            && let Some(symbol) = imported.local.symbol_id.get()
+                        {
+                            self.root_mounts.push(symbol);
+                        }
                         let Some(prim) = Prim::of_export(name.name.as_str()) else { continue };
                         if let Some(symbol) = imported.local.symbol_id.get() {
                             self.env.kind[symbol] = SourceKind::Primitive(prim);
@@ -646,9 +655,14 @@ impl<'a> Binder<'_, 'a> {
                 symbol_of(self.scoping, expression).map_or(InitOf::Unknown, InitOf::Alias)
             }
             Expression::ArrowFunctionExpression(arrow) => InitOf::Fn {
+                // `nullary` is §3.0 rule 1, and rule 1 is about a value that
+                // YIELDS when it is called. A zero-arity arrow whose body cannot
+                // produce one is a handler; treating it as a Cell makes
+                // `props.onClick()` run it. See `classify::yields_a_value`.
                 nullary: !arrow.r#async
                     && arrow.params.items.is_empty()
-                    && arrow.params.rest.is_none(),
+                    && arrow.params.rest.is_none()
+                    && crate::passes::classify::yields_a_value(&arrow.body),
             },
             Expression::FunctionExpression(function) => InitOf::Fn {
                 nullary: !function.r#async
@@ -1121,6 +1135,29 @@ fn yields_jsx(expression: &Expression<'_>) -> bool {
 /// that arm because its origin tracking survives reassignment; ours is a lattice
 /// that joins to ⊤ on a write, by design.
 impl<'a> Visit<'a> for Binder<'_, 'a> {
+    /// O5's Block position. `render((scope) => <App/>, host)` is the only
+    /// spelling in which the root reaches the tree, so the literal in that
+    /// argument takes a scope exactly as a Block written in a component tag's
+    /// slot does.
+    fn visit_call_expression(&mut self, it: &oxc::ast::ast::CallExpression<'a>) {
+        if symbol_of(self.scoping, &it.callee)
+            .is_some_and(|symbol| self.root_mounts.contains(&symbol))
+            && let Some(first) = it.arguments.first()
+            && let Some(expression) = first.as_expression()
+        {
+            match expression {
+                Expression::ArrowFunctionExpression(arrow) => {
+                    self.env.root_blocks.push(arrow.span);
+                }
+                Expression::FunctionExpression(function) => {
+                    self.env.root_blocks.push(function.span);
+                }
+                _ => {}
+            }
+        }
+        walk::walk_call_expression(self, it);
+    }
+
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         self.record(it);
         walk::walk_variable_declarator(self, it);

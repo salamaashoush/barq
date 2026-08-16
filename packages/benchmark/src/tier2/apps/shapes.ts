@@ -1,6 +1,17 @@
 /**
  * `CODESIGN.md` §0.2 and §0.3, re-run against a real DOM.
  *
+ * ## This file IS §0.3's measurement, as of M7c
+ *
+ * §0.3 cites this path, and carries a table of this file's own numbers beside
+ * the original one it quoted from a scratch file that no longer exists. A
+ * change to the calling convention re-runs
+ *
+ *     cd packages/benchmark && bun run bench:tier2:shapes
+ *
+ * and edits the section from the output, rather than re-quoting a number nobody
+ * can reproduce. Raw results land in `packages/benchmark/tier2-results.json`.
+ *
  * ## Why this file had to be written from the document rather than moved
  *
  * The A/B/C/D/D2/E table in §0.3 is the measurement the chosen calling
@@ -510,6 +521,21 @@ function channelCases(n: number): Record<string, () => void> {
           owned = next
         }
       }
+    },
+    // THE ONE-SHOT WRITE F3 MADE MEASURABLE. Every write is a token this
+    // element has never carried, which is what a real `class={…}` binding over
+    // a changing value does and what the two-token case above deliberately is
+    // not. Before F3's fix this case could not be run at all: the channel added
+    // each new token without removing the last, so the element accumulated
+    // 20,000 classes and the run stopped dead. It is here as the honest price of
+    // a one-shot class write AND as the regression guard — a return of the
+    // accumulation shows up as this row going quadratic while the two-token row
+    // beside it does not move.
+    "setProp class fresh": () => {
+      for (let i = 0; i < n; i++) setProp(null, el, "class", `c${tick++}`)
+    },
+    "el.className = fresh": () => {
+      for (let i = 0; i < n; i++) el.className = `c${tick++}`
     },
     "classList diff": () => {
       for (let i = 0; i < n; i++) {

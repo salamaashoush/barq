@@ -19,7 +19,10 @@ import {
   useRef,
   useState,
 } from "@barqjs/core";
-import { clsx, css } from "@barqjs/extra";
+import {
+  clsx,
+  css,
+} from "../styles";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 // ============================================================================
@@ -34,8 +37,8 @@ interface CardProps {
 
 function Card(props: PropsWithChildren<CardProps>) {
   return (
-    <div class={clsx(cardStyle, props.variant === "highlight" && highlightStyle)}>
-      <h4>{props.title}</h4>
+    <div class={() => clsx(cardStyle, props.variant?.() === "highlight" && highlightStyle)}>
+      <h4>{props.title()}</h4>
       <div>{props.children}</div>
     </div>
   );
@@ -49,7 +52,7 @@ interface PanelProps {
 function Panel(props: ParentProps<PanelProps>) {
   return (
     <div class={panelStyle}>
-      <div class={panelHeaderStyle}>{props.header}</div>
+      <div class={panelHeaderStyle}>{props.header()}</div>
       {props.children}
     </div>
   );
@@ -62,10 +65,10 @@ interface IconProps {
 }
 
 function Icon(props: VoidProps<IconProps>) {
-  const size = props.size ?? 16;
+  const size = () => props.size?.() ?? 16;
   return (
-    <span class={iconStyle} style={{ fontSize: `${size}px` }}>
-      [{props.name}]
+    <span class={iconStyle} style={{ fontSize: `${size()}px` }}>
+      [{props.name()}]
     </span>
   );
 }
@@ -76,7 +79,7 @@ interface WrapperProps {
 }
 
 function Wrapper(props: FlowProps<WrapperProps>) {
-  return <div style={{ padding: `${props.padding ?? 10}px` }}>{props.children}</div>;
+  return <div style={{ padding: `${props.padding?.() ?? 10}px` }}>{props.children}</div>;
 }
 
 // Test Accessor and FunctionMaybe types
@@ -88,13 +91,12 @@ interface ReactiveDisplayProps {
 }
 
 function ReactiveDisplay(props: ReactiveDisplayProps) {
-  // Resolve FunctionMaybe - could be value or function
-  const resolvedValue = typeof props.value === "function" ? props.value : () => props.value;
-
+  // No `FunctionMaybe` resolution: every prop is a Cell, so there is one shape
+  // to read and nothing to discriminate.
   return (
     <div class={displayStyle}>
-      <span>Value: {resolvedValue}</span>
-      <span>Count: {props.count}</span>
+      <span>Value: {props.value()}</span>
+      <span>Count: {props.count()}</span>
     </div>
   );
 }
@@ -105,7 +107,7 @@ interface RefDemoProps {
 }
 
 function RefInput(props: RefDemoProps) {
-  return <input type="text" ref={props.inputRef} class={inputStyle} placeholder="Type here..." />;
+  return <input type="text" ref={props.inputRef?.()} class={inputStyle} placeholder="Type here..." />;
 }
 
 // ============================================================================
@@ -160,7 +162,7 @@ function ReactiveAttributesDemo() {
         {/* Reactive disabled attribute - tests FunctionMaybe<boolean> */}
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled()}
           onClick={() => addLog("Button clicked!")}
           class={buttonStyle}
         >
@@ -206,7 +208,7 @@ function ReactiveAttributesDemo() {
         </div>
       </div>
 
-      <Log logs={logs} />
+      <Log logs={logs()} />
 
       <p class={noteStyle}>All attributes support reactive accessors via FunctionMaybe&lt;T&gt;.</p>
     </DemoCard>
@@ -284,7 +286,7 @@ function EventHandlersDemo() {
         </p>
       </div>
 
-      <Log logs={logs} />
+      <Log logs={logs()} />
 
       <p class={noteStyle}>
         Event handlers use EventHandlerUnion&lt;T, E&gt; for proper currentTarget typing.
@@ -354,7 +356,7 @@ function RefTypesDemo() {
         <RefInput inputRef={refObject} />
       </div>
 
-      <Log logs={logs} />
+      <Log logs={logs()} />
 
       <p class={noteStyle}>
         Refs support object, callback, and variable patterns via Ref&lt;T&gt; type.

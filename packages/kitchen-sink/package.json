@@ -12,7 +12,8 @@
   "dependencies": {
     "@barqjs/core": "workspace:*",
     "@barqjs/extra": "workspace:*",
-    "@tanstack/query-core": "^5.62.16"
+    "@tanstack/query-core": "^5.62.16",
+    "goober": "^2.1.18"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",

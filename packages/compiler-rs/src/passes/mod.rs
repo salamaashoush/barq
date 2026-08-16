@@ -1,6 +1,6 @@
 mod address;
 mod anchor;
-mod classify;
+pub(crate) mod classify;
 pub(crate) mod flow;
 mod fold;
 mod group;

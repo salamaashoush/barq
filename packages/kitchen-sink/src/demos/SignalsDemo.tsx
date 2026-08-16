@@ -22,7 +22,9 @@ import {
   useRef,
   useState,
 } from "@barqjs/core";
-import { css } from "@barqjs/extra";
+import {
+  css,
+} from "../styles";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function SignalsDemo() {
@@ -74,8 +76,9 @@ function MemoDemo() {
   const [firstName, setFirstName] = useState("John");
   const [lastName, setLastName] = useState("Doe");
 
-  // Auto-computed: compiler transforms `firstName + " " + lastName` to useMemo(() => firstName() + " " + lastName())
-  const fullName = `${firstName} ${lastName}`;
+  // §11 rejected implicit reads: an accessor in a template literal stringifies
+  // to its own source text, and BARQ001 says so at the exact position.
+  const fullName = () => `${firstName()} ${lastName()}`;
 
   // Expensive computation (simulated)
   const [items, setItems] = useState([1, 2, 3, 4, 5]);
@@ -159,7 +162,7 @@ function EffectDemo() {
           {intervalActive() ? "Stop" : "Start"} Interval
         </Button>
       </div>
-      <Log logs={logs} />
+      <Log logs={logs()} />
     </DemoCard>
   );
 }
@@ -309,14 +312,14 @@ function ScopeDemo() {
         Scope active: <strong>{scopeActive() ? "Yes" : "No"}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={startScope} disabled={scopeActive}>
+        <Button onClick={startScope} disabled={scopeActive()}>
           Create Scope
         </Button>
-        <Button onClick={stopScope} disabled={!scopeActive}>
+        <Button onClick={stopScope} disabled={!scopeActive()}>
           Dispose Scope
         </Button>
       </div>
-      <Log logs={logs} />
+      <Log logs={logs()} />
       <p class={noteStyle}>Scopes isolate effects and clean them up together.</p>
     </DemoCard>
   );
@@ -381,7 +384,7 @@ function OnCleanupDemo() {
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
         <Button onClick={() => setCount(0)}>Reset</Button>
       </div>
-      <Log logs={logs} />
+      <Log logs={logs()} />
       <p class={noteStyle}>onCleanup runs before effect re-runs and when disposed.</p>
     </DemoCard>
   );
@@ -420,7 +423,7 @@ function OnMountDemo() {
       <Show when={showChild}>
         <ChildComponent />
       </Show>
-      <Log logs={logs} />
+      <Log logs={logs()} />
     </DemoCard>
   );
 }

@@ -113,8 +113,13 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   "M1", "M2", "M3", "M4", "M5", "M6",
   // O
   "O1", "O3", "O3.3", "O3.4", "O3.6", "O4", "O4.1", "O4.2", "O4.3",
-  // R
-  "R3", "R4", "R5", "R6",
+  // R — R8 joins R5 on the same terms and for the same reason: it is a
+  // statement about the COST of propagation, so its channel is a benchmark and
+  // a runtime test (`packages/core/src/signals.test.ts` "propagation cost in
+  // graph depth", `eleven-cases.ts`'s twelfth case, the `__jrbDepth` sweep) and
+  // there is nothing for a compiler fixture to observe — emission is identical
+  // either side of the fix. §14.3 records both.
+  "R3", "R4", "R5", "R6", "R8",
   // X
   "X4", "X5", "X6",
 ])

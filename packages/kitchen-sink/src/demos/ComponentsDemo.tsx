@@ -17,7 +17,9 @@ import {
   Switch,
   useState,
 } from "@barqjs/core";
-import { css } from "@barqjs/extra";
+import {
+  css,
+} from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 export function ComponentsDemo() {

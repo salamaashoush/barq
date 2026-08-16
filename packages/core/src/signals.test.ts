@@ -752,3 +752,128 @@ describe("linked — writable derived state that re-seeds", () => {
     expect(runs).toBe(2);
   });
 });
+
+describe("propagation cost in graph depth", () => {
+  interface Stack {
+    heads: Array<() => number>;
+    sources: Array<{ (): number; set(v: number): void }>;
+    computedRuns: () => number;
+    effectRuns: () => number;
+    dispose: () => void;
+  }
+
+  /**
+   * cellx's stacked-diamond shape, the one `tier2/jrb.ts` sweeps: four sources,
+   * then `layers` bands of four computeds that read across the band below, each
+   * with an effect on it.
+   */
+  const stack = (layers: number): Stack => {
+    let computedRuns = 0;
+    let effectRuns = 0;
+    let sources: Array<{ (): number; set(v: number): void }> = [];
+    let heads: Array<() => number> = [];
+    let dispose = () => {};
+    createScope((d) => {
+      dispose = d;
+      sources = [signal(1), signal(2), signal(3), signal(4)];
+      let band: Array<() => number> = sources;
+      for (let i = 0; i < layers; i++) {
+        const m = band;
+        band = [
+          computed(() => (computedRuns++, m[1]())),
+          computed(() => (computedRuns++, m[0]() - m[2]())),
+          computed(() => (computedRuns++, m[1]() + m[3]())),
+          computed(() => (computedRuns++, m[2]())),
+        ];
+        for (const c of band) {
+          effect(() => {
+            effectRuns++;
+            c();
+          });
+        }
+      }
+      heads = band;
+    }, true);
+    flush();
+    return {
+      heads,
+      sources,
+      computedRuns: () => computedRuns,
+      effectRuns: () => effectRuns,
+      dispose,
+    };
+  };
+
+  const drive = (s: Stack, iterations: number): void => {
+    for (let k = 0; k < iterations; k++) {
+      batch(() => {
+        s.sources[0].set(4 + k);
+        s.sources[1].set(3 + k);
+        s.sources[2].set(2 + k);
+        s.sources[3].set(1 + k);
+      });
+      flush();
+      s.heads[0]();
+    }
+  };
+
+  test("a deep stack settles on the values an eager evaluation gives", () => {
+    const layers = 40;
+    const s = stack(layers);
+    drive(s, 4);
+
+    let band = [7, 6, 5, 4];
+    for (let i = 0; i < layers; i++) {
+      band = [band[1], band[0] - band[2], band[1] + band[3], band[2]];
+    }
+    expect(s.heads.map((c) => c())).toEqual(band);
+    s.dispose();
+  });
+
+  test("a write wave runs each layer a bounded number of times", () => {
+    const layers = 40;
+    const iterations = 5;
+    const s = stack(layers);
+    const builtComputeds = s.computedRuns();
+    const builtEffects = s.effectRuns();
+    drive(s, iterations);
+
+    // Four computeds and four effects a layer. Nothing may run more than once
+    // per wave, so the whole drive is bounded by one pass a layer a iteration —
+    // a re-walk that scales with depth cannot hide under this.
+    const budget = 4 * layers * iterations;
+    expect(s.computedRuns() - builtComputeds).toBeLessThanOrEqual(budget);
+    expect(s.effectRuns() - builtEffects).toBeLessThanOrEqual(budget);
+    s.dispose();
+  });
+
+  /**
+   * M7c F1. Propagation was quadratic in depth: every recompute re-walked its
+   * whole descendant closure to re-place marks that were already standing, so
+   * the cost of ONE layer grew with how many layers sat below it. It was
+   * invisible at the depths the rest of this file exercises — the next-deepest
+   * chain here is five — and cost 94x on cellx1000 and 294x on cellx2500.
+   *
+   * The assertion is on ms PER LAYER, which is flat when propagation is linear
+   * in depth and rises when it is not. Measured: 10.8x before the fix, 0.8x
+   * after, against a gate of 4x.
+   */
+  test("per-layer propagation cost does not grow with depth", () => {
+    const perLayer = (layers: number): number => {
+      let best = Number.POSITIVE_INFINITY;
+      for (let trial = 0; trial < 3; trial++) {
+        const s = stack(layers);
+        drive(s, 2);
+        const start = performance.now();
+        drive(s, 10);
+        best = Math.min(best, (performance.now() - start) / layers);
+        s.dispose();
+      }
+      return best;
+    };
+
+    const shallow = perLayer(100);
+    const deep = perLayer(800);
+    expect(deep / shallow).toBeLessThan(4);
+  });
+});

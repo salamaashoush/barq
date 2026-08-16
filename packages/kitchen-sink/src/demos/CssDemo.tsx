@@ -12,10 +12,9 @@ import {
   cssVar,
   defineVars,
   keyframe,
-  styled,
   token,
   variants,
-} from "@barqjs/extra";
+} from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 export function CssDemo() {
@@ -83,12 +82,13 @@ function StyledDemo() {
   // For now we'll show the css`` approach which works reliably
 
   const Card = (props: { variant: "primary" | "secondary"; children: string }) => {
-    const cardStyle = css`
+    const cardStyle = () =>
+      css`
       padding: 20px;
       border-radius: 12px;
       font-weight: 500;
       ${
-        props.variant === "primary"
+        props.variant() === "primary"
           ? `
           background: #3b82f6;
           color: white;
@@ -100,7 +100,7 @@ function StyledDemo() {
       }
     `;
 
-    return <div class={cardStyle}>{props.children}</div>;
+    return <div class={cardStyle()}>{props.children}</div>;
   };
 
   return (

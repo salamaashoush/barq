@@ -308,7 +308,8 @@ export async function runShapes(
           `           setProp / bare value=         ${pair("setProp value", "input.value =")}  (setProp also preserves the caret)\n` +
           `    class  setProp / className= +own     ${pair("setProp class", "className= +own")}\n` +
           `           setProp / bare className=     ${pair("setProp class", "el.className =")}  (setProp also checks it still owns the attribute)\n` +
-          `           setProp / classList diff      ${pair("setProp class", "classList diff")}  (the path setProp falls to when it does NOT)`,
+          `           setProp / classList diff      ${pair("setProp class", "classList diff")}  (the path setProp falls to when it does NOT)\n` +
+          `           setProp / bare className=     ${pair("setProp class fresh", "el.className = fresh")}  on a FRESH token every write — the case F3's fix made runnable`,
       )
 
       const keying: KeyingResult[] = []
