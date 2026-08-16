@@ -29,14 +29,15 @@ a spread, and that single gap is what keeps twenty-six runtime adapters alive ac
 
 ```
 cargo test                    303 pass, 0 fail
-compiler-rs bun test         3420 pass, 0 fail, 8 todo
-packages/core                 951 pass, 0 fail
+compiler-rs bun test         3440 pass, 0 fail
+packages/core                 955 pass, 0 fail
 packages/extra                153 pass, 0 fail
 packages/testing               16 pass, 0 fail   (now COMPILED — see below)
 packages/compiler              22 pass, 0 fail
 root bun run ci               EXIT=0
-fixtures                      135
+fixtures                      136
 kitchen-sink                  builds; all 9 routes drive in real Chrome, reactive, routed
+kitchen-sink typecheck        49 errors, all pre-existing and NOT ci-gated (see M10)
 ```
 
 Registries: `known-failures.ts` 5 · `ownership-known-failures.ts` 2 · `leak-known-failures.ts` 3.
@@ -48,7 +49,7 @@ facts about an un-compiled path that no longer runs. Each surviving row names th
 and the milestone that fixes it, and the registry **fails the suite if a registered fixture starts
 passing** — that is the signal a milestone worked, not a problem to route around.
 
-`git status` is clean at `3af14f0`.
+`git status` is clean at `aef0427`.
 
 ---
 
@@ -236,6 +237,94 @@ moving into the boundary contract — are untouched. So are the `flow.ts` `Loadi
 
 ---
 
+## M10, continued — the Solid 2.0 alignment and three defects
+
+Commits `03184f6` · `8e152c4` · `aa4c607` · `af228c6` · `6da2ef3` · `aef0427`.
+
+### `<form action={fn}>` — §3.8's compiler surface (`03184f6`, `8e152c4`)
+
+`action` on a `<form>` went down the attribute channel, so `bindProp` applied
+§3.0 rule 1 to it — an `action()` is `(...args) => Promise<R>`, arity 0 — CALLED
+it at mount, and wrote the promise into the form's target as
+`action="[object Promise]"`. Both halves silent. It is `Op::FormAction` now,
+which is an op rather than a channel because the listener it installs is owned
+by the position (B4) and a channel call has no scope to give it. `SEMANTICS.md`
+B8 is the rule; `sem-form-action-slot` and `form-action` pin it.
+
+That is also the first time §3.8 is exercised through the compiler at all.
+Driven in Chrome and sampled per microtask across one submit, it observes A5
+clauses (d) and (e) and procedure 7 as a sequence: the guess live in the
+override, `commit` writing the answer underneath it, the lane retiring onto a
+value that is already right.
+
+### The control-flow surface is Solid 2.0's ten (`6da2ef3`)
+
+`Suspense`, `Await` and `ErrorBoundary` are deleted. **Read out of
+`solid-js@2.0.0-rc.0` and `@solidjs/web@2.0.0-rc.0`, unpacked, not out of the
+docs** — the shipped surface is `For`, `Repeat`, `Show`, `Switch`, `Match`,
+`Errored`, `Loading`, `Reveal`, plus `Portal` and `Dynamic`.
+
+Not a rename. `Loading` already existed with Solid's exact signature, so there
+was nothing for `Await` to be renamed into; it was a fourth construct whose
+meaning is `<Loading><Errored>…</Errored></Loading>`, which is what the compiler
+already lowered it to.
+
+**Three divergences from Solid 2.0 remain, all measured and none decided:**
+
+| construct | barq | Solid 2.0 RC |
+|---|---|---|
+| `Show` | default is KEYED — children get the raw value | default `keyed: false` — children get an ACCESSOR |
+| `Match` | same as `Show` | same inversion |
+| `Portal` | `target?: Cell<HTMLElement \| string>` | `mount?: Element` |
+
+Everything else matches prop for prop, including all three of `For`'s keying
+arms and `Reveal`'s three orders. Flipping `Show`'s default is breaking and the
+first frame is identical either way, so it only shows on update — which is
+exactly how the `keyed={fn}` miscompile hid from 110 fixtures.
+
+### Three defects fixed, each found by driving rather than by a suite
+
+1. **A suspending read behind a region wedged the boundary forever.** `region`
+   builds a body inside `untrack`, which is right for a body that builds and
+   wrong for one that SUSPENDS: nothing was built and the untracked read
+   registered no dependency, so the position could never wake.
+   `Loading > Errored > read` and `Loading > Show > read` sat on the fallback
+   for good. A suspended attempt is retried TRACKED, and the key effect's "the
+   key did not move" test learns that a suspended attempt left nothing
+   standing — neither half is sufficient alone.
+   `packages/core/src/suspend-behind-a-region.test.ts` is the pin, with
+   `Loading > read` as the control. **`Await` had hidden this**, which is why
+   removing it is what exposed it.
+2. **`loadingBoundary`'s `move` relocated a SNAPSHOT.** Leaving the park takes
+   every child of the fragment now, because a nested region that swapped while
+   parked is not in the list the last build returned. This is the orphan half
+   of M7's report.
+3. **JSX read a component's props from the wrong parameter.** §3.2 puts the
+   scope first and TypeScript reads parameter 0 as the props, so every construct
+   in an app checked its attributes against `Scope`.
+   `JSX.LibraryManagedAttributes` takes the second parameter instead, with
+   `unknown extends Q ? P : Q` for the components that declare none — without
+   that fallback it goes to 248, worse than the 106 it started at. kitchen-sink
+   106 → 49.
+
+### The one number that did not move
+
+`-Ox` keeps **0 of 131** flow imports; `-O0` keeps **37**, across all ten
+constructs. §4.1's rows stay struck for the reason in `## M10, so far`.
+
+### Still open, and now measured
+
+- kitchen-sink typecheck is **49**, none of them ci-gated: 22 implicit-any row
+  callbacks and 16 not-callable reads. Generic inference does not survive
+  `LibraryManagedAttributes`, so `<For each={xs}>{(item) => …}` loses `item`'s
+  type. A different gap from the one that was fixed.
+- The `Show`/`Match`/`Portal` divergences above.
+- M10 items 2 and 3 of the original instruction — transitions beyond the form
+  surface, and reveal ordering moving into the boundary contract.
+- `computed`'s `AsyncIterable`, O4.5's remaining half, `extra/src/css.ts`.
+
+---
+
 ## The documents, in reading order
 
 | file | what it is |
@@ -394,6 +483,13 @@ intend to keep working.
   `git add -A`. Splice on LINE indices with asserted anchors, and check `grep -c "^## "` after.
 - **ferridriver needs an explicit session key** (`ks:main`, `m8:verify`). The default session goes
   stale and reports a CDP error that looks like the tool is broken. It is not.
+- **Drive kitchen-sink with `bun run dev`, never `vite preview`.** The mock API
+  is a `configureServer` plugin, so it exists ONLY under the dev server. Under
+  `preview` every `/api/*` call falls through to the SPA fallback, gets
+  `index.html`, and `res.json()` throws `Unexpected token '<'`. Three route
+  sweeps this session reported "no console errors" while every async demo on the
+  page was failing, because a caught fetch error is not a `pageerror` and the
+  sweep only measured text length.
 - **`packages/core/dist` is what a browser bundle resolves, and it is stale by default.** The bun
   suites reach `src/index.ts` through the workspace's `bun` export condition, but
   `bun build --target browser` takes the `import` condition and gets `dist/`. Three M10 browser runs
