@@ -49,8 +49,6 @@ corpus/control-flow-show-static-body  189b21ccab85 b269fbe01520 ad7c46501a2e 740
 corpus/control-flow-show-static-key  bf4688ed5360 a0884d149be6 4bfe1c14eb1a 275dda9b00cb e5d71a4ffdb8 c13085c5b9d7 df597421e2a4
 corpus/control-flow-switch-match  3ad1d486500b 867929b199f3 f41278e5edcc 9daeae1d49d9 9f44aed309be db8f350043b5 ddb8a41d9dfa
 corpus/control-flow-switch-static-key  03e23dc9e6dc cff886544cb0 63a36428ced4 a63c8df77975 41403230008f 78a36a6968ef c90eaa8bc759
-corpus/create-optimistic-signal  121eec66801f cc8bed0ea5e6 ba1930c5d711 ba1930c5d711 04ff79058586 0210c9afb536 ba1930c5d711
-corpus/create-projection-store  012776c394d0 e05f34ea7277 c89c1ecd73f9 c89c1ecd73f9 48c5860ed8c7 1888f153f8b5 c89c1ecd73f9
 corpus/custom-elements  d250fff4ff46 e85f9e5c91b8 63d8076340b0 63d8076340b0 d52039221eda 42487c7e07b5 63d8076340b0
 corpus/dangerously-set-inner-html  6a2f7f121f93 ee40d95bb663 ce6c1b125306 ce6c1b125306 b213f878c577 5d532e22e865 ce6c1b125306
 corpus/dashboard-composite  cd777c53e4b4 5cdc5367a1b8 0933655bb4c9 b3644a672130 f72bf0a5c9ec 1b06434ae6e1 28a055d8a594
@@ -89,10 +87,12 @@ corpus/nested-fragments  6a8c9b839950 5430765d5f9a 9c1082304412 9c1082304412 d82
 corpus/nested-template-element  d81a5db701a9 d81a5db701a9 045ffd7a9735 045ffd7a9735 6acd5fb0f5a9 d81a5db701a9 045ffd7a9735
 corpus/non-delegated-event  d8640c366485 64a337f2816c 0bbca47f3d9c 0bbca47f3d9c 1e13f16b673b 8bc4aa32691b 0bbca47f3d9c
 corpus/numeric-and-boolean-attrs  e278c6febe81 fbeeb26603e8 fd2d2cb5a64b ee8f3321208e 1e664f42dd99 c9919b3a8c3f fd2d2cb5a64b
+corpus/optimistic-signal  121eec66801f cc8bed0ea5e6 ba1930c5d711 ba1930c5d711 04ff79058586 0210c9afb536 ba1930c5d711
 corpus/portal  91301032d1ac abb0c0150b26 bbf11d7e89f4 eca0e00d6269 69fc2b8bf0d6 946aaaf926ec 87bb87266f5c
 corpus/pre-dynamic-leading-newline  d2ca2703c4ac a58069b67e35 25d709e047db 25d709e047db 0ec4f9ab793a 36b55d523bc4 0ddecd568b01
 corpus/pre-leading-newline  78e18b2c78bf a4d5b48c9903 91c22fb2134e 91c22fb2134e 5b580bb0e1f4 6152a2a59bb1 91c22fb2134e
 corpus/pre-whitespace  3f5ba2a68827 3f5ba2a68827 822ac287c759 822ac287c759 533cdd44bc6d 3f5ba2a68827 822ac287c759
+corpus/projection-store  012776c394d0 e05f34ea7277 c89c1ecd73f9 c89c1ecd73f9 48c5860ed8c7 1888f153f8b5 c89c1ecd73f9
 corpus/property-attrs  6df71c51090d cf20e2fdd7cb 883447ed81fc 883447ed81fc e818377f9b88 69f4d148b281 883447ed81fc
 corpus/props-destructured-body  7664a269af1b 34e9d2802a5b 7d555ea21458 6b543b567211 cbdb30fbc396 024e790035f2 7d555ea21458
 corpus/props-destructured-param  b08c51833f6b af7ff75348c6 979ead3d01d3 6a700d5dd733 17c8db44b931 a20211affe30 ac19640a87fe

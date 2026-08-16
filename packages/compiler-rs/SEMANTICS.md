@@ -2114,7 +2114,7 @@ removes it. Rollback on failure is not a second code path — it is the same rem
 running action's setter calls over the settled store, so the whole-store `structuredClone` that
 existed only to be written back is gone.
 
-**Pinned by.** `sem-async-optimistic-derived.tsx`, `create-optimistic-signal.tsx` (existing,
+**Pinned by.** `sem-async-optimistic-derived.tsx`, `optimistic-signal.tsx` (existing,
 re-pinned), `packages/core/src/actions.test.ts`.
 
 ### A5 — a transition is a lane on an opt-in value, not a fork of the graph
@@ -2670,7 +2670,7 @@ green, which is why L1 exists.
 | A1 | cancellation is structural | H (M7) | `sem-async-abort-on-dispose`, `async-value` |
 | A2 | staleness by `gen` captured at call time | H (M7) | `sem-async-stale-response` |
 | A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
-| A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `create-optimistic-signal` |
+| A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `optimistic-signal` |
 | A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | no compiler-rs channel — there is no transition API to emit; all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
 | H2 | the wire carries what recovery needs; the key is a dev-only axis | **H** (M7b) | the branch-key comparison in both builds + L6's two tables + the three-wire byte measurement |

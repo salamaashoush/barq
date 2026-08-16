@@ -2302,6 +2302,19 @@ preserves all nine.
 
 **M9 — deletion.** The old path goes. Mutation kill rate reported per optimisation pass.
 
+*Landed.* Three commits: the compiler's old emit path plus the oracle's retirement, the runtime
+deletion, then §13's naming. What the milestone actually returned is recorded where it belongs
+rather than here — §6's "Executed at M9" table for the oracle's replacement graders, §4.1's M9 note
+for the three deletion rows that were REVERSED on evidence, §13's own note for `merge`. The one
+number this entry owes is below.
+
+Three of §4.1's rows did not go, and all three reversed on a measurement rather than on effort:
+`spread` and `element` (already noted above), the fourteen flow components with `ssr.ts`'s twelve
+string adapters (one deletion, blocked on `passes::flow` not lowering a spread source), and the
+Block brand (ablated on SSR; the effect is inside the harness's noise floor). Deleting the adapters
+is M10's, and it is a compiler feature rather than a deletion.
+
+
 **Codemod.** `barq migrate` ships with the compiler and does three mechanical rewrites: `props.x` →
 `props.x()` inside component bodies (the compiler already assigns `SourceKind::PropsParam` at bind, so
 this is a sound oxc rewrite), `useRef()` → a plain binding, `class={() => c()}` → `class={c()}`.

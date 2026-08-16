@@ -589,14 +589,14 @@ attrs 2: 0 div: class
 attrs 2: 0/0 p: class"
 `;
 
-exports[`rendered DOM golden create-optimistic-signal: rendered DOM 1`] = `
+exports[`rendered DOM golden optimistic-signal: rendered DOM 1`] = `
 "initial: <button class="optimistic" type="button">0</button>
 event 0: <button class="optimistic" type="button">1</button>
 attrs 0: 0 button: type,class
 attrs 1: 0 button: type,class"
 `;
 
-exports[`rendered DOM golden create-projection-store: rendered DOM 1`] = `
+exports[`rendered DOM golden projection-store: rendered DOM 1`] = `
 "initial: <div class="projection" data-on="0">no</div>
 step 0: <div class="projection" data-on="1">yes</div>
 step 1: <div class="projection" data-on="0">no</div>
@@ -1696,9 +1696,9 @@ exports[`marker channel control-flow-switch-match: anchor layout 1`] = `"<div><p
 
 exports[`marker channel control-flow-switch-static-key: anchor layout 1`] = `"<div><p>0</p></div>"`;
 
-exports[`marker channel create-optimistic-signal: anchor layout 1`] = `"<button>0</button>"`;
+exports[`marker channel optimistic-signal: anchor layout 1`] = `"<button>0</button>"`;
 
-exports[`marker channel create-projection-store: anchor layout 1`] = `"<div>no</div>"`;
+exports[`marker channel projection-store: anchor layout 1`] = `"<div>no</div>"`;
 
 exports[`marker channel custom-elements: anchor layout 1`] = `"<div><my-widget></my-widget><x-thing></x-thing><my-widget>with children</my-widget></div>"`;
 

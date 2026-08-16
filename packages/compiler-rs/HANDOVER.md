@@ -3,40 +3,122 @@
 Written 2026-08-16. Everything below was measured on this machine, on a forced native rebuild, not
 carried over from a report.
 
-## The two things the user asked for next, in order
+## Where this is, in one paragraph
 
-**1. M9 FIRST — delete the old path.** The user's words: "do M9 first delete all old shitty things."
-This is not cleanup at the end, it is the next milestone. `CODESIGN.md` §4.1 is the deletion list and
-§8's M9 entry adds the mutation kill rate per optimisation pass. Several items were deliberately
-deferred *to* M9 by earlier milestones and are named in `## What is waiting for M9` below.
+**M9 is done** — the old path is deleted, the `createElement` oracle is retired, and §13's naming is
+finished. Three commits, `c84b8a7` → `b0af252` → `93a44c6`, each its own step. What M9 found on the
+way is under `## M9, done` below, including three rows of `CODESIGN.md` that were REVERSED on
+evidence; read those before re-attempting any of them.
 
-**2. Then async and transitions, on Solid 2.0's model.** `CODESIGN.md` §12 records the mechanism in
-full, read out of their shipped `@solidjs/signals@2.0.0-rc.0` rather than from documentation. M7b
-landed a first cut; the user wants it finished properly. Read §12 before touching it — the design
-this project originally guessed (a pending scope beside the live one, `KEEPALIVE` parking) is the one
-the reference implementation **rejected on the record**, and both horns of the question this project
-deferred were wrong.
+**Next is M10: async and transitions, on Solid 2.0's model.** `CODESIGN.md` §12 records the mechanism
+in full, read out of their shipped `@solidjs/signals` rather than from documentation. M7b landed a
+first cut; the user wants it finished properly. Read §12 before touching it — the design this project
+originally guessed (a pending scope beside the live one, `KEEPALIVE` parking) is the one the
+reference implementation **rejected on the record**, and both horns of the question this project
+deferred were wrong. `## Open, not yet scoped` below carries the rest of M10's inbox, and the biggest
+NEW item is the one M9 turned up: `passes::flow` cannot lower a construct whose props arrive through
+a spread, and that single gap is what keeps twenty-six runtime adapters alive across both backends.
 
 ---
 
 ## State, verified
 
 ```
-cargo test                    301 pass, 0 fail
-compiler-rs bun test         3112 tests, 0 fail, 1 todo, 263 snapshots
-packages/core                 962 pass, 0 fail
-packages/extra                153 pass, 0 fail     (was 54 FAILING before M8)
+cargo test                    303 pass, 0 fail
+compiler-rs bun test         3356 pass, 0 fail, 8 todo, 394 snapshots
+packages/core                 951 pass, 0 fail
+packages/extra                153 pass, 0 fail
+packages/testing               16 pass, 0 fail   (now COMPILED — see below)
+packages/compiler              22 pass, 0 fail
 root bun run ci               EXIT=0
 fixtures                      131
-kitchen-sink                  builds, renders 9 routes, navigates, reactive
+kitchen-sink                  builds; all 9 routes drive in real Chrome, reactive, routed
 ```
 
-Registries: `known-failures.ts` 5 · `ownership-known-failures.ts` 2 · `leak-known-failures.ts` 3 ·
-`oracle-known-failures.ts` 34. Each row names the rule it violates and the milestone that fixes it.
-The registry **fails the suite if a registered fixture starts passing** — that is the signal a
-milestone worked, not a problem to route around.
+Registries: `known-failures.ts` 5 · `ownership-known-failures.ts` 2 · `leak-known-failures.ts` 3.
+`oracle-known-failures.ts` is DELETED — all 34 rows were `cause: "C1"` or `"C6"`, both of which are
+facts about an un-compiled path that no longer runs. Each surviving row names the rule it violates
+and the milestone that fixes it, and the registry **fails the suite if a registered fixture starts
+passing** — that is the signal a milestone worked, not a problem to route around.
 
-`git status` is clean at `35be05c`.
+`git status` is clean at `93a44c6`.
+
+---
+
+## M9, done
+
+Three commits, each its own step, per the instruction not to mix a rename with a deletion:
+
+| commit | what |
+|---|---|
+| `c84b8a7` | the compiler emits no old path; the `createElement` oracle is retired |
+| `b0af252` | the old runtime path is deleted, and four defects it hid are fixed |
+| `93a44c6` | §13's `create*` half |
+
+### The oracle is gone, and every channel it carried has a grader
+
+`CODESIGN.md` §6 has the table. The one that matters: the effect channel was an upper BOUND against
+the oracle's count and is now an EQUALITY against 131 hand-written rows in `test/effect-counts.ts`.
+A bound is one-sided, so a binding that silently went missing used to read as a win.
+
+`wins` (12) and `goesLive` (18) are deleted from the corpus. Both were exemptions from a comparison
+that no longer runs, and `graded.ts`'s exemption count went 3 → 1.
+
+### Four defects the retirement exposed
+
+Each was invisible because the thing that would have caught it was the reference:
+
+1. `attribute_expression` handed a JSX attribute's string literal to the runtime **un-decoded**, so
+   `title="a &quot; b"` reached `setAttribute` as six characters and serialised as `&amp;quot;`. It
+   hit `element()` and every component prop. Re-pointing `ssr.test.ts` at the DOM backend failed on
+   the first run.
+2. `element()`'s children were emitted EAGERLY: `<table>{a()}-{b()}</table>` rendered `A-B` and never
+   updated.
+3. `insert` handed an ARRAY straight to `childToNodes`, which calls each function element once — the
+   same values frozen at run time, and mis-owned. Fixed as Solid does it: ONE effect for the whole
+   array, not one per element, because N anchorless holes in one parent interleave on update.
+4. `semantics.test.ts` validated `greenAt` against `^M[0-9]$`, single digit, which would have
+   rejected every M10 row.
+
+(3) closed half of `sem-own-given-scope-wins`'s O4.5 row — the ratchet caught the improvement and
+failed, which is what it is for.
+
+### Three §4.1/§13 rows REVERSED on evidence
+
+Do not re-attempt these without doing the measurement again.
+
+- **The fourteen flow components stay** (`components.ts`), and so do **`ssr.ts`'s twelve string
+  adapters**. They are ONE deletion blocked on ONE compiler gap. `passes::flow::admits_element`
+  refuses any `SpreadAttribute`, so `<For {...opts}>` stays a component call — the only surviving
+  flow import in all 131 fixtures. Every FORM lowers; a spread is what does not. The header of
+  `components.ts` has the corpus numbers and the reason the element answer does not transfer: on an
+  element every unknown name has the same kind of destination, and on a flow construct each prop
+  decides a different part of the lowering — including the body Block's own parameter list.
+- **The Block brand does NOT go behind `dev`.** Its closure is not a DEV facility; it establishes the
+  ambient owner (C1/O4.5). Ablated: 100-row `renderToString`, 51x100 iters, medians 4.62/4.88
+  shipping vs 4.53/4.74 with the brand alone — the two shipping runs differ by more than shipping
+  differs from ablated. §4.1 carries the table.
+- **`merge` is kept.** §13's row says "two names for one operation"; they differ on `undefined` and
+  `props.test.ts` pins it, and `@solidjs/signals` 2.0.0-beta.31 exports `merge` with no `mergeProps`
+  at all, so the rename moved away from Solid 2.0 rather than toward it.
+
+### `packages/testing` compiles its own suite now
+
+It ran on bun's `react-jsx` transform, which lowers onto `jsx`/`jsxs` — deleted at M9. A `Bun.plugin`
+`onLoad` in its preload hands every `.tsx` to the native transform, so it stops measuring a path
+§11 Q2 says does not exist. This is also why `jsx`/`jsxs`/`jsxDEV` could go: the only other consumers
+were declaration reads, which now compile first.
+
+### What M9 did NOT close, and why
+
+- **`packages/extra/src/css.ts`** — a goober wrapper whose pragma shim re-implements element creation
+  a fifth time. §4.1 marks it and the CSS decision (ecosystem, not framework) settles it, but it was
+  not in M9's instruction list and kitchen-sink's CSS demo still consumes it.
+- **The fourteen flow adapters and the twelve SSR adapters** — reversed above; deleting them needs
+  `passes::flow` to lower a spread source, which is a compiler feature.
+- **The other half of `sem-own-given-scope-wins`'s O4.5 row.** `childToNodes` still invokes a Block
+  with `getOwner()` rather than the `s` it was given. The row is rewritten with what remains and
+  moved to M10; it is coupled to O5 by measurement, not preference.
 
 ### One history defect, no work lost
 
@@ -54,9 +136,10 @@ does not describe half of what that commit contains.
 |---|---|
 | `CODESIGN.md` | the accepted redesign. §0 measurements, §3 the contract, §4.1 **the deletion list**, §8 milestones, §11 and §12 **the settled decisions** |
 | `SEMANTICS.md` | 91 numbered rules, each with a falsification procedure and a pinning fixture |
-| `ERGONOMICS.md` | the ergonomics research; its finding is that every silent failure here is a *copy* out of a live container |
+| `ERGONOMICS.md` | the ergonomics research; its finding is that every silent failure here is a *copy* out of a live container. **Predates M9** — where it cites `goesLive`/`wins` it is citing fixture exports that no longer exist |
 | `ROADMAP.md` | diagnostics, HMR, hydration — evidence-backed, two proposals already killed on measurement |
 | `MILESTONES.md` | the completion report for the original six milestones |
+| `M9.md` | the completion report for M9 — the gates, the three reversals, the mutation table |
 | `DESIGN.md` | the original compiler spec; still accurate for the IR and passes |
 
 ---
@@ -136,34 +219,40 @@ test. A failure here is a regression, never an expectation to update.
 
 ---
 
-## What is waiting for M9
+## Starting M10 — read this first
 
-Named by earlier milestones as explicitly deferred:
+M10 is **async and transitions on Solid 2.0's model** (`CODESIGN.md` §12), and M9 left it three
+concrete openers. In the order they unblock each other:
 
-- The fourteen flow-component adapters in `components.ts`. They hold no machinery — the four
-  primitives do the work — and survived only because `packages/extra` was on the old convention and
-  CI type-checked it. **`extra` is now redesigned, so the reason is gone.**
-- `Suspense`, `Await`, `ErrorBoundary` — kept in M4 because deleting them would have deleted two
-  fixtures, which the hard rules forbid. Their replacements exist now.
-- `markers.ts` — anchor identity is a compile-time address. Its process-global counter makes two
-  renders of one tree differ byte-for-byte, which is what makes hydration impossible.
-- `createElement` / `jsx` / `jsxs` / `jsxDEV` / `spread` — `CODESIGN.md` §4.1 counts roughly 1,950
-  implementation lines of 9,319 for deletion, plus ~350 already dead. Of 132 value exports, **62 have
-  no consumer outside `packages/core`**.
-- `packages/extra/src/css.ts` — a goober wrapper whose pragma shim re-implements element creation a
-  fifth time. §4.1 marks it; the CSS decision (ecosystem, not framework) settles it.
-- The Block brand allocates a closure per construction to serve two DEV facilities. §12 flags this as
-  the wrong trade — put the brand behind `dev` and measure SSR, where Solid measured this class at
-  8–11%.
-- `oracle-known-failures.ts` has 34 rows. Several are M9's by their own `greenAt`.
+1. **Transitions have no compiler surface.** `action()` and `commit()` exist in the runtime and the
+   compiler emits nothing for them. Until it does, §3.8's transition story is exercised only from
+   hand-written calls.
+2. **Reveal ordering belongs in the boundary contract** (§12). `reveal` is a separate primitive
+   standing in for it — it creates a *provide* scope rather than a range, which is why it never fit
+   among the four. If the async model follows Solid's, this is where it goes.
+3. **`passes::flow` lowering a spread source** — M9's finding, detailed under "Open" below. It is the
+   single gap keeping twenty-six runtime adapters alive across both backends, and it is the one item
+   with a measured payoff attached (§4.1's whole flow-component row).
 
-M9 also owes the **mutation kill rate per optimisation pass**. §8: "no optimisation pass ships until
-a mutation operator exists for it and no mutant survives."
+The `flow.ts` bug M7 found is still open and still not async-specific; it will bite anything built on
+`Loading`.
+
+**The one number M9 owes and the next session should not have to re-derive:** the mutation kill rate
+per pass is in `M9.md` §5. `bun run test/mutants.ts` takes ~25 minutes and rebuilds a scratch crate
+per row; run it in the background and keep working.
 
 ---
 
 ## Open, not yet scoped
 
+- **`passes::flow` cannot lower a construct whose props arrive through a SPREAD** — M9's finding, and
+  the one with the largest surface behind it. `admits_element` refuses any `SpreadAttribute` before
+  any per-prop reasoning runs, so `<For {...opts}>` stays a component call and `codegen::ssr` routes
+  the same shape to `ssrFor`. That keeps fourteen DOM adapters and twelve string adapters alive that
+  §4.1 lists for deletion. The hard part is not the refusal, it is that a flow construct's props each
+  decide a different part of the LOWERING — `keyed` selects one of three key expressions and the body
+  Block's own PARAMETER LIST changes with it — so an unknown prop cannot be resolved at run time the
+  way `_$spread` resolves an unknown attribute. `components.ts`'s header states the whole argument.
 - **`Reveal` has no home in the four primitives.** It creates a *provide* scope, not a range, and
   `boundary()` has no ordering channel. Reveal ordering is first-class in Solid 2.0's boundary story,
   so if the async model follows theirs, this belongs in the boundary contract.
@@ -195,6 +284,15 @@ a mutation operator exists for it and no mutant survives."
   0.02s and leaves `bun test` measuring a stale `.node`.
 - **Run `bun test` from inside the package.** The root picks up every package and the numbers are not
   comparable.
+- **A blanket identifier rename will hit string literals and other languages.** M9's `dyn` →
+  `dynamic` renamed `class="dyn"` in two fixtures and, worse, Rust's `dyn` KEYWORD — `&dyn Any`
+  became `&dynamic Any`, which does not compile. Rename, then `cargo build`, then read the diff for
+  `"` and `class=`.
+- **Four of §13's new names shadow their own initialiser.** `const context = context(1)` is a TDZ
+  error, not a warning. The LOCAL is what moves.
+- **Do not rewrite a large Markdown file with `s.index(...)` splices in a heredoc.** It ate most of
+  `HANDOVER.md` twice; the second time the broken version had already been committed by a
+  `git add -A`. Splice on LINE indices with asserted anchors, and check `grep -c "^## "` after.
 - **ferridriver needs an explicit session key** (`ks:main`, `m8:verify`). The default session goes
   stale and reports a CDP error that looks like the tool is broken. It is not.
 - **When driving the app, let the microtask flush.** Reading the DOM synchronously after a click shows

@@ -157,8 +157,8 @@ are:
 
 - **the P0 return-shape table** — `signal-object` (a callable `Signal` with `.set` / `.update`),
   `store-member` (proxy, member reads), `computed-derived` (`Computed`),
-  `async-value` (behind a call), `create-optimistic-signal` (a `Signal`,
-  not a tuple), `create-projection-store` (the proxy directly). Each primitive
+  `async-value` (behind a call), `optimistic-signal` (a `Signal`,
+  not a tuple), `projection-store` (the proxy directly). Each primitive
   returns a different shape and every one of them is a different lifting rule.
 - **resolution by SymbolId, never by name** — `renamed-core-import` imports
   `signal as sig`, `Show as When` and `For as Each`, so nothing in the module is

@@ -2535,7 +2535,7 @@ export const optimality = {
 "
 `;
 
-exports[`emitted code snapshots create-optimistic-signal 1`] = `
+exports[`emitted code snapshots optimistic-signal 1`] = `
 "import { optimistic, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="optimistic"></button>\`);
 const _h$1 = () => pending.set(pending() + 1);
@@ -2564,7 +2564,7 @@ export const optimality = {
 "
 `;
 
-exports[`emitted code snapshots create-projection-store 1`] = `
+exports[`emitted code snapshots projection-store 1`] = `
 "import { projection, signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="projection"></div>\`);
 export const on = signal(false);
