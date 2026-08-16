@@ -268,7 +268,8 @@ impl<'a> Lower<'a, '_> {
             && element.children.iter().all(|child| match child {
                 JSXChild::Text(_) => true,
                 JSXChild::Element(child) => {
-                    intrinsic_tag(&child.opening_element.name).is_some() && self.wholly_static(child)
+                    intrinsic_tag(&child.opening_element.name).is_some()
+                        && self.wholly_static(child)
                 }
                 _ => false,
             })
@@ -620,8 +621,7 @@ impl<'a> Lower<'a, '_> {
                 Op::SetOpaque { name, .. } => name,
                 _ => return false,
             };
-            patch.target == node
-                && names::replaces_children(self.module.interner.name(name).text)
+            patch.target == node && names::replaces_children(self.module.interner.name(name).text)
         })
     }
 
@@ -752,12 +752,7 @@ impl<'a> Lower<'a, '_> {
                     let raw = text.span.source_text(self.source);
                     let Some(cleaned) = text::clean(raw, self.allocator) else { continue };
                     let value = self.decoded(cleaned);
-                    parts.push(Expression::new_string_literal(
-                        text.span,
-                        value,
-                        None,
-                        &self.ast,
-                    ));
+                    parts.push(Expression::new_string_literal(text.span, value, None, &self.ast));
                 }
                 JSXChild::ExpressionContainer(container) => {
                     if let Some(value) = expression_of(container.unbox().expression) {

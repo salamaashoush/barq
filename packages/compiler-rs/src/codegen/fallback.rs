@@ -2,8 +2,8 @@ use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, Expression, FormalParameterKind,
     FormalParameters, IdentifierName, JSXAttributeItem, JSXChild, JSXElement, JSXElementName,
-    JSXFragment, JSXMemberExpression, JSXMemberExpressionObject, ObjectProperty, ObjectPropertyKind,
-    PropertyKey, PropertyKind, SpreadElement, StringLiteral,
+    JSXFragment, JSXMemberExpression, JSXMemberExpressionObject, ObjectProperty,
+    ObjectPropertyKind, PropertyKey, PropertyKind, SpreadElement, StringLiteral,
 };
 use oxc::span::{GetSpan, SPAN};
 
@@ -135,10 +135,11 @@ impl<'a> Emit<'a, '_> {
         fragment: ArenaBox<'a, JSXFragment<'a>>,
     ) -> Expression<'a> {
         let JSXFragment { span, children, .. } = fragment.unbox();
-        let elements = self.child_arguments(children, false).into_iter().map(|argument| match argument {
-            Argument::SpreadElement(spread) => ArrayExpressionElement::SpreadElement(spread),
-            other => ArrayExpressionElement::from(other.into_expression()),
-        });
+        let elements =
+            self.child_arguments(children, false).into_iter().map(|argument| match argument {
+                Argument::SpreadElement(spread) => ArrayExpressionElement::SpreadElement(spread),
+                other => ArrayExpressionElement::from(other.into_expression()),
+            });
         let elements = ArenaVec::from_iter_in(elements, &self.allocator);
         Expression::new_array_expression(span, elements, &self.ast)
     }
@@ -226,7 +227,16 @@ impl<'a> Emit<'a, '_> {
     ) -> ObjectPropertyKind<'a> {
         let key = self.property_key(name, span);
         ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
-            ObjectProperty::new(span, PropertyKind::Init, key, value, false, false, false, &self.ast),
+            ObjectProperty::new(
+                span,
+                PropertyKind::Init,
+                key,
+                value,
+                false,
+                false,
+                false,
+                &self.ast,
+            ),
             &self.allocator,
         ))
     }

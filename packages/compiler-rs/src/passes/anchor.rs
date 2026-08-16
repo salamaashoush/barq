@@ -36,12 +36,7 @@ enum Choice {
     Marker(NodeId),
 }
 
-fn choose<'a>(
-    allocator: &'a Allocator,
-    interner: &Interner<'a>,
-    unit: &mut Unit<'a>,
-    elide: bool,
-) {
+fn choose<'a>(allocator: &'a Allocator, interner: &Interner<'a>, unit: &mut Unit<'a>, elide: bool) {
     // Indexed by `SlotId`, not by how many slots survived: P3 folds a constant
     // child away and deletes its patch, which leaves the remaining ids sparse.
     let Some(slots) = unit.patch.iter().filter_map(|patch| patch.op.slot()).max() else {
@@ -56,7 +51,8 @@ fn choose<'a>(
     // that anchors against it runs. P1 gives both of them exactly one child
     // position, at the end, so `End` is the only anchor either can need — and
     // that has to hold at `-O0` too, where elision is off.
-    let mut groups: Vec<(NodeId, NodeId, bool)> = vec![(unit.skeleton.roots.0, unit.skeleton.roots.1, true)];
+    let mut groups: Vec<(NodeId, NodeId, bool)> =
+        vec![(unit.skeleton.roots.0, unit.skeleton.roots.1, true)];
     for id in 0..unit.skeleton.len() {
         if let SkelNode::Element(element) = unit.skeleton.nodes[id]
             && element.children.0 < element.children.1
@@ -122,7 +118,9 @@ fn markable<'a>(interner: &Interner<'a>, unit: &Unit<'a>, node: NodeId) -> bool 
     }
     !unit.patch.iter().any(|patch| {
         let name = match patch.op {
-            Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => name,
+            Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => {
+                name
+            }
             _ => return false,
         };
         patch.target == node && crate::lower::names::replaces_children(interner.name(name).text)

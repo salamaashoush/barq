@@ -1223,7 +1223,11 @@ mod tests {
         // exactly what a clone reproduces, as long as nothing addresses a node
         // inside them.
         let output = compile_ok("const V = () => <template><li>a</li></template>;\n", "V.tsx");
-        assert!(output.code.contains("_$template(`<template><li>a</li></template>`)"), "{}", output.code);
+        assert!(
+            output.code.contains("_$template(`<template><li>a</li></template>`)"),
+            "{}",
+            output.code
+        );
 
         let output = compile_ok("const V = () => <div><math><mi>x</mi></math></div>;\n", "V.tsx");
         assert!(output.code.contains("<div><math><mi>x</mi></math></div>"), "{}", output.code);
@@ -1507,7 +1511,11 @@ mod tests {
         // child list is one insert, with no anchor to place a marker at and no
         // literal for the parser to read as a close tag.
         let output = compile_ok("const V = () => <div><style>{css}</style></div>;\n", "V.tsx");
-        assert!(output.code.contains("_$template(`<div><style></style></div>`)"), "{}", output.code);
+        assert!(
+            output.code.contains("_$template(`<div><style></style></div>`)"),
+            "{}",
+            output.code
+        );
         assert!(output.code.contains("_$insert(_s$, _el$2, css)"), "{}", output.code);
         assert!(!output.code.contains("<!---->"), "{}", output.code);
 
@@ -1517,8 +1525,11 @@ mod tests {
         assert!(!output.code.contains("<style>.</style>"), "{}", output.code);
         // The string backend is where those bytes are dangerous, and `rawText`
         // is what neutralises them there.
-        let ssr = compile(source, &ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("V.tsx") })
-            .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
+        let ssr = compile(
+            source,
+            &ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("V.tsx") },
+        )
+        .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
         assert!(ssr.code.contains("_$rawText([\"a\", \"</style>\"], \"style\")"), "{}", ssr.code);
 
         let output = compile_ok("const V = () => <script>{\"var a = 1;\"}</script>;\n", "V.tsx");
@@ -1528,7 +1539,11 @@ mod tests {
         // tokenizer will not resolve them inside raw text.
         let output =
             compile_ok("const V = () => <style>{}.a &#123; color: red &#125;</style>;\n", "V.tsx");
-        assert!(output.code.contains("_$template(`<style>.a { color: red }</style>`)"), "{}", output.code);
+        assert!(
+            output.code.contains("_$template(`<style>.a { color: red }</style>`)"),
+            "{}",
+            output.code
+        );
         let output = compile_ok("const V = () => <style>.a - b</style>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<style>.a - b</style>`)"), "{}", output.code);
     }

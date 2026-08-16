@@ -607,8 +607,13 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
             // the static tree has to carry both or the trace comes out one step
             // deeper than the compiler says it will.
             Tag::Flow(Flow::Await, label) => {
-                let loading =
-                    self.tree.push(owner, OwnKind::Branch, label.clone(), element.span, self.module);
+                let loading = self.tree.push(
+                    owner,
+                    OwnKind::Branch,
+                    label.clone(),
+                    element.span,
+                    self.module,
+                );
                 outer = Some(loading);
                 self.tree.push(loading, OwnKind::Branch, label, element.span, self.module)
             }

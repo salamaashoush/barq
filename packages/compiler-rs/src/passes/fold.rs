@@ -99,7 +99,9 @@ fn content_is_replaced(interner: &Interner<'_>, unit: &Unit<'_>, node: NodeId) -
             return false;
         }
         let name = match patch.op {
-            Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => name,
+            Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => {
+                name
+            }
             _ => return false,
         };
         crate::lower::names::replaces_children(interner.name(name).text)
@@ -204,9 +206,11 @@ fn fold_unit<'a>(
         // ordering reason (`ordered_attributes`), and folding a constant back
         // into it would undo exactly that.
         let target = unit.patch[index].target;
-        if unit.patch.iter().any(|patch| {
-            patch.target == target && matches!(patch.op, Op::Spread { .. })
-        }) {
+        if unit
+            .patch
+            .iter()
+            .any(|patch| patch.target == target && matches!(patch.op, Op::Spread { .. }))
+        {
             continue;
         }
         let Some(baked) = bake(konst, allocator) else { continue };
