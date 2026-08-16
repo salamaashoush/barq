@@ -17,11 +17,13 @@ import { censusIndex, OWNERSHIP_CENSUS } from "./ownership-census.ts"
 import {
   GATE_FIXTURE,
   OWNERSHIP_KNOWN_FAILURES,
+  OWNERSHIP_REACH,
   ownershipIndex,
   ownershipKey,
   WRAPPER_GATE_FIXTURE,
 } from "./ownership-known-failures.ts"
 import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
+import { ratchet, reachRatchet } from "./ratchet.ts"
 
 /**
  * Layer L2b of the oracle — `CODESIGN.md` §6, and the half of M0 that has no
@@ -98,18 +100,21 @@ const OBSERVED: Observed[] = RUNS.flatMap((run) =>
  * passes. The ratio is what the channel's strength actually is, and it is
  * asserted below rather than assumed.
  */
+const TOTALS = RUNS.reduce(
+  (sum, run) => ({
+    fixtures: sum.fixtures + 1,
+    clones: sum.clones + run.clones,
+    determined: sum.determined + run.determined,
+    unattributed: sum.unattributed + run.unattributed,
+    scopes: sum.scopes + run.scopes,
+    effects: sum.effects + run.effects,
+    cascades: sum.cascades + run.cascades,
+  }),
+  { fixtures: 0, clones: 0, determined: 0, unattributed: 0, scopes: 0, effects: 0, cascades: 0 },
+)
+
 {
-  const totals = RUNS.reduce(
-    (sum, run) => ({
-      clones: sum.clones + run.clones,
-      determined: sum.determined + run.determined,
-      unattributed: sum.unattributed + run.unattributed,
-      scopes: sum.scopes + run.scopes,
-      effects: sum.effects + run.effects,
-      cascades: sum.cascades + run.cascades,
-    }),
-    { clones: 0, determined: 0, unattributed: 0, scopes: 0, effects: 0, cascades: 0 },
-  )
+  const totals = TOTALS
   const byRule = new Map<string, number>()
   for (const { finding } of OBSERVED) {
     byRule.set(finding.rule, (byRule.get(finding.rule) ?? 0) + 1)
@@ -213,6 +218,37 @@ describe("the known-failure registry", () => {
     const fixtures = new Set([...corpusFixtures(), ...listOwnershipFixtures()])
     const missing = OWNERSHIP_KNOWN_FAILURES.filter((row) => !fixtures.has(row.fixture))
     expect(missing.map((row) => row.fixture).join(", "), "registry rows naming no fixture").toBe("")
+  })
+
+  // The ratchet — `CODESIGN.md` §12, `ratchet.ts`. A finding that goes on
+  // occurring while its DETAIL changes leaves every assertion above green and
+  // the row's `slot` describing something that no longer happens.
+  it("ratchets: a registered finding that changed shape is a failure either way", () => {
+    const complaints: string[] = []
+    for (const o of OBSERVED) {
+      const row = REGISTRY.get(ownershipKey(o.fixture, o.finding.id))
+      if (row === undefined) continue
+      const complaint = ratchet({
+        key: ownershipKey(o.fixture, o.finding.id),
+        expected: row.observed,
+        observed: o.finding.detail,
+        file: "test/ownership-known-failures.ts",
+      })
+      if (complaint) complaints.push(complaint)
+    }
+    expect(complaints.join("\n")).toBe("")
+  })
+
+  // The reach ratchet. With the table empty this is the only thing standing
+  // between "no ownership defects" and "the channel stopped looking".
+  it("ratchets the channel's reach, in both directions", () => {
+    const complaint = reachRatchet({
+      channel: "L2b ownership",
+      expected: OWNERSHIP_REACH,
+      observed: TOTALS,
+      file: "test/ownership-known-failures.ts",
+    })
+    expect(complaint ?? "").toBe("")
   })
 })
 

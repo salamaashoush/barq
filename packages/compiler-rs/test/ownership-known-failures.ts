@@ -85,6 +85,16 @@ export interface OwnershipKnownFailure {
   readonly greenAt: string
   /** the slot that was built eagerly, in the source's own words */
   readonly slot: string
+  /**
+   * The digest of the finding's `detail` this row was written against
+   * (`ratchet.ts`). A finding that goes on occurring while its detail changes —
+   * a different observed path, a different count — is a row whose text has
+   * quietly stopped describing what happens, and it fails here whether the
+   * change is a regression or an improvement.
+   *
+   * `BARQ_RATCHET=print bun test` prints the value to put here.
+   */
+  readonly observed: string
 }
 
 const ROWS: readonly OwnershipKnownFailure[] = [
@@ -143,6 +153,34 @@ export const GATE_FIXTURE = "own-provider-direct"
  * deleting the row cannot quietly delete the gate with it.
  */
 export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
+
+/**
+ * The channel's REACH, pinned — the other half of the ratchet, and the half an
+ * EMPTY table needs.
+ *
+ * With no rows, this file asserts exactly one thing: the channel found nothing.
+ * That assertion is worth something only while the channel still looks at as
+ * much as it did, and a probe that stopped discriminating reports zero findings
+ * in a voice indistinguishable from a correct compiler. It is assertion 1's
+ * failure mode — "the check stopped discriminating, which is the dangerous
+ * reading" — seen from outside any individual row, and with the table empty
+ * there is no row left to see it from.
+ *
+ * So the census `ownership.test.ts` already prints is pinned here, and it fails
+ * in BOTH directions. Fewer clones checked is a blinded oracle. More is
+ * coverage nobody has reviewed — a fixture arrived and nobody asked what the
+ * channel now claims about it. Regenerating is a diff, in the change that
+ * caused it.
+ */
+export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
+  fixtures: 136,
+  scopes: 377,
+  effects: 245,
+  clones: 296,
+  determined: 294,
+  unattributed: 1,
+  cascades: 1,
+})
 
 export function ownershipKey(fixture: string, finding: string): string {
   return `${fixture} :: ${finding}`

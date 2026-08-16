@@ -197,6 +197,36 @@ impl<'a> Skeleton<'a> {
         }
     }
 
+    /// Whether `slot` is the only thing in `parent`'s child list — `SEMANTICS.md`
+    /// H2's sole-occupancy test, and the reason a hole can cost zero wire bytes.
+    ///
+    /// The extent of a hole is data — the client cannot know how many nodes the
+    /// server put there — so a delimited position needs its `<!--[-->` …
+    /// `<!--]-->`. A position that OWNS its parent's child list needs none: its
+    /// extent is "every child of the parent", which the client can read off the
+    /// document, and no index in that parent is disturbed because there is no
+    /// other index in it.
+    ///
+    /// `Empty` siblings are P3's fold residue: they write no bytes and
+    /// materialise no node, so a child list of one slot and any number of them
+    /// is still a child list of one slot. `parent` must be an ELEMENT — a slot
+    /// among a unit's ROOTS has no parent to read the extent off.
+    pub fn slot_owns_child_list(&self, parent: NodeId, slot: SlotId) -> bool {
+        if parent == NONE || !matches!(self.node(parent), SkelNode::Element(_)) {
+            return false;
+        }
+        let (lo, hi) = self.children_of(parent);
+        let mut found = false;
+        for id in lo..hi {
+            match *self.node(id) {
+                SkelNode::Slot(it) if it == slot => found = true,
+                SkelNode::Empty => {}
+                _ => return false,
+            }
+        }
+        found
+    }
+
     /// Recomputes every `mat_ix` and every `mat_kids` from the node kinds. P5
     /// materialises and elides marker nodes, which shifts the position of every
     /// later sibling; recomputing is one linear pass and cannot drift the way a

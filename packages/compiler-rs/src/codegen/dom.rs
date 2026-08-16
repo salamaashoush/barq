@@ -11,7 +11,7 @@ use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
 use crate::ir::{
     Anchor, Chan, Diff, ExprId, HandlerRef, InsertPlan, NameId, NodeId, Op, Patch, RefDef, Region,
-    RegionId, RegionKind, Shape, SlotId, Step, Thunk, Unit,
+    RegionId, RegionKind, Shape, SlotId, Step, Thunk, Unit, WHOLE,
 };
 
 /// P8a. One unit becomes the hoisted `template()` clone, the walk to every node
@@ -199,7 +199,7 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     fn insert(
         &mut self,
         at: At<'_>,
-        _slot: SlotId,
+        slot: SlotId,
         anchor: Anchor,
         value: ExprId,
         plan: InsertPlan,
@@ -213,6 +213,12 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         };
         let anchor_node = anchor.node();
         let anchor = anchor_node.map(|node| ref_ident(self.ctx, self.unit, node, span));
+        // The string backend wrote this hole no boundary comments, so the claim
+        // is the parent's whole child list rather than a delimited range. The
+        // two backends make this decision from ONE predicate over ONE skeleton,
+        // which is what keeps them from disagreeing about a wire format neither
+        // of them can see the other half of.
+        let whole = self.ctx.hole_owns_child_list(self.unit, at.target(), slot);
         // A LIVE hole is already a thunk, and `insert` runs it inside the claim
         // it made — nothing to wrap. Everything else is an expression JavaScript
         // evaluates before `insert` is entered, and a component call there would
@@ -220,14 +226,23 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let value = if self.ctx.hydratable && !matches!(plan, InsertPlan::Live) {
             let parent = ref_ident(self.ctx, self.unit, at.target(), span);
             let anchor = anchor_node.map(|node| ref_ident(self.ctx, self.unit, node, span));
-            hole_call(self.ctx, parent, anchor, value, span)
+            hole_call(self.ctx, parent, anchor, value, whole, span)
         } else {
             value
         };
         let callee = self.ctx.helper(Helper::Insert, span);
         let mut arguments =
             vec![Argument::from(scope), Argument::from(parent), Argument::from(value)];
-        arguments.extend(anchor.map(Argument::from));
+        if whole {
+            // Positional, and `whole` implies `Anchor::End` — a slot that owns
+            // the child list has nothing after it to anchor against — so the
+            // marker slot is spelled `null` rather than left off.
+            let null = Expression::new_null_literal(span, &self.ctx.ast);
+            arguments.push(Argument::from(anchor.unwrap_or(null)));
+            arguments.push(Argument::from(number(self.ctx, WHOLE, span)));
+        } else {
+            arguments.extend(anchor.map(Argument::from));
+        }
         let call = self.ctx.call(callee, arguments, span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
@@ -235,14 +250,15 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// K5 and K7. The construct is gone; what stands here is the primitive
     /// itself, taking the `(parent, anchor)` pair this unit's own walk produced
     /// and the flags the compiler proved. `anchor = null` means append.
-    fn region(&mut self, at: At<'_>, _slot: SlotId, anchor: Anchor, region: RegionId) -> Self::Out {
+    fn region(&mut self, at: At<'_>, slot: SlotId, anchor: Anchor, region: RegionId) -> Self::Out {
         let span = at.span();
         let parent = ref_ident(self.ctx, self.unit, at.target(), span);
         let anchor = anchor.node().map(|node| ref_ident(self.ctx, self.unit, node, span));
-        let row = std::mem::replace(
+        let mut row = std::mem::replace(
             &mut self.unit.regions[region as usize],
             empty_region(self.ctx, span),
         );
+        row.flags |= self.ctx.region_owns_child_list(self.unit, at.target(), slot);
         let call = region_call(self.ctx, row, Some((parent, anchor)), span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
@@ -453,11 +469,27 @@ pub fn region_call<'a>(
     span: Span,
 ) -> Expression<'a> {
     let Region { kind, flags, key, body, keyed, fallback, on, .. } = region;
-    // The one flag the compiler ADDS rather than proves. It is set on both
-    // backends from the same option, which is what makes the string backend's
-    // `<!--[k-->` and the DOM backend's claim of it one decision rather than
-    // two that have to agree.
-    let flags = flags | if ctx.hydratable { crate::ir::HYDRATE } else { 0 };
+    // The flags the compiler ADDS rather than proves.
+    //
+    // `HYDRATE` goes to BOTH backends from one option, which is what makes the
+    // string backend's `<!--[-->` and the DOM backend's claim of it one decision
+    // rather than two that have to agree. `WHOLE` rides the same integer for the
+    // same reason: the two halves have to agree that a range wrote no comments.
+    //
+    // `DETECT` goes to the STRING backend alone, and that is not an asymmetry in
+    // the ABI — it is where the asymmetry already is. The key is a byte on the
+    // wire, so only the writer needs to be told; the reader finds it or does
+    // not, and finding no key has always meant "claim positionally". The DOM
+    // half's detection is threaded through `template()` instead, at the one call
+    // that holds both trees. Sending the bit to a runtime with no reader for it
+    // would be a flag with no row, which §8 deletes.
+    let flags = flags
+        | if ctx.hydratable { crate::ir::HYDRATE } else { 0 }
+        | if ctx.detect && ctx.target == crate::codegen::Target::Ssr {
+            crate::ir::DETECT
+        } else {
+            0
+        };
     let flags = RegionKind::shipped(kind, flags);
     let (parent, anchor) = match site {
         Some((parent, anchor)) => (Some(parent), anchor),
@@ -554,6 +586,7 @@ fn hole_call<'a>(
     parent: Expression<'a>,
     anchor: Option<Expression<'a>>,
     value: Expression<'a>,
+    whole: bool,
     span: Span,
 ) -> Expression<'a> {
     let anchor = anchor.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
@@ -574,11 +607,11 @@ fn hole_call<'a>(
         &ctx.ast,
     );
     let callee = ctx.helper(Helper::Hole, span);
-    ctx.call(
-        callee,
-        vec![Argument::from(parent), Argument::from(anchor), Argument::from(build)],
-        span,
-    )
+    let mut arguments = vec![Argument::from(parent), Argument::from(anchor), Argument::from(build)];
+    if whole {
+        arguments.push(Argument::from(number(ctx, WHOLE, span)));
+    }
+    ctx.call(callee, arguments, span)
 }
 
 fn number<'a>(ctx: &Emit<'a, '_>, value: u8, span: Span) -> Expression<'a> {

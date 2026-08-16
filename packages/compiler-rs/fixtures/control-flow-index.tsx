@@ -1,11 +1,24 @@
-import { Index, signal } from "@barqjs/core"
+import { For, signal } from "@barqjs/core"
 
 export const nums = signal([1, 2, 3])
 
+/**
+ * The positional mode, which since M7b has ONE spelling: `keyed={false}`.
+ * `Index` is deleted — Solid ran `For` and `Index` side by side for five years
+ * and removed the second because having both "encourages bikeshedding and
+ * accidental misuse" (`CODESIGN.md` §12). The emission is unchanged: the
+ * construct was already `each(src, false, row)` under either name.
+ */
 export default function ControlFlowIndex() {
   return (
     <ol>
-      <Index each={() => nums()}>{(item, index) => <li>{index}={() => item()}</li>}</Index>
+      <For each={() => nums()} keyed={false}>
+        {(item, index) => (
+          <li>
+            {index}={() => item()}
+          </li>
+        )}
+      </For>
     </ol>
   )
 }
@@ -16,9 +29,9 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 2,
-  // `Index` gives its row an ACCESSOR item and a plain-number index — the
-  // mirror image of keyed `For` — so the index hole passes through as a value
-  // and calling the item is the tracked read.
+  // The positional mode gives its row an ACCESSOR item and a plain-number index
+  // — the mirror image of the identity-keyed default — so the index hole passes
+  // through as a value and calling the item is the tracked read.
   emits: ["each(", ", nums, false, ", ", item, index) =>"],
-  absent: ["Index(", "each: "],
+  absent: ["For(", "each: "],
 }

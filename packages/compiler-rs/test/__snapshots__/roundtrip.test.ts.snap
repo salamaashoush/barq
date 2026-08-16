@@ -8,8 +8,8 @@ export const rows = signal(["a", "b"]);
 /**
 * A hole whose value is an ARRAY of nodes, built by \`.map\` rather than by a
 * flow component — the shape the dead plugin's ref-ordering case is really
-* about, and the only way \`insert\` receives an Array without \`For\`/\`Index\`
-* mediating it.
+* about, and the only way \`insert\` receives an Array without \`For\` mediating
+* it.
 *
 * The list grows and shrinks beside a LATER sibling hole, so \`insert\`'s array
 * reconciliation has to keep both holes' ranges apart: sharing an anchor
@@ -965,7 +965,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots component-function-props 1`] = `
-"import { signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, cell as _$cell, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, cell as _$cell, block as _$block, setAttr as _$setAttr, bindEvent as _$bindEvent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="chip"></button>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"><b class="count"></b></div>\`);
 _$delegateEvents(["click"]);
@@ -993,7 +993,7 @@ function Chip(_s$, props: {
 }) {
   const _el$1 = _tmpl$1();
   _$setAttr(_el$1, "data-same", String(props.cb === props.cb));
-  _el$1.$$click = props.cb, _el$1.$$s = _s$;
+  _$bindEvent(_s$, _el$1, "click", props.cb());
   _$insert(_s$, _el$1, props.legacy);
   return _el$1;
 }
@@ -1528,7 +1528,7 @@ const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="keyed-false"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li>: </li>\`);
 export const rows = signal(["alpha", "beta"]);
 /**
-* \`keyed={false}\` — the arm that delegates to \`Index\` (\`components.ts:239\`).
+* \`keyed={false}\` — the positional mode, and since M7b its ONLY spelling.
 * The row is positional: the item arrives as an ACCESSOR and the index as a
 * plain number, the mirror image of the by-item arm. A literal \`false\` is the
 * one value the compiler can prove, so this is the only arm where the index is
@@ -1564,19 +1564,19 @@ export const wins = [
   {
     kind: "step",
     index: 0,
-    compiled: "<ul class=\\"keyed-false\\"><!--Index:#--><li>0: ALPHA</li><li>1: BETA</li><!--/Index:#--></ul>",
+    compiled: "<ul class=\\"keyed-false\\"><li>0: ALPHA</li><li>1: BETA</li></ul>",
     why: "positional rows are reused, so the item accessor is the only thing that moved"
   },
   {
     kind: "step",
     index: 1,
-    compiled: "<ul class=\\"keyed-false\\"><!--Index:#--><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li><!--/Index:#--></ul>",
+    compiled: "<ul class=\\"keyed-false\\"><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li></ul>",
     why: "the two reused slots keep the values the oracle read once at creation"
   },
   {
     kind: "step",
     index: 2,
-    compiled: "<ul class=\\"keyed-false\\"><!--Index:#--><li>0: only</li><!--/Index:#--></ul>",
+    compiled: "<ul class=\\"keyed-false\\"><li>0: only</li></ul>",
     why: "slot 0 survives the shrink and its accessor is bound to the new value"
   }
 ];
@@ -1663,12 +1663,12 @@ export const goesLive = [
 export const wins = [{
   kind: "step",
   index: 0,
-  compiled: "<ul class=\\"keyed-fn\\"><!--For:#--><li>0: ALPHA</li><li>1: BETA</li><!--/For:#--></ul>",
+  compiled: "<ul class=\\"keyed-fn\\"><li>0: ALPHA</li><li>1: BETA</li></ul>",
   why: "same keys, new items: the row signal was re-set and the compiled path is bound to it"
 }, {
   kind: "step",
   index: 1,
-  compiled: "<ul class=\\"keyed-fn\\"><!--For:#--><li>0: BETA</li><li>1: ALPHA</li><!--/For:#--></ul>",
+  compiled: "<ul class=\\"keyed-fn\\"><li>0: BETA</li><li>1: ALPHA</li></ul>",
   why: "the reused rows swapped slots, so the index accessor moved under both of them"
 }];
 export const optimality = {
@@ -1750,12 +1750,12 @@ export const goesLive = ["row 0 {row().text}", "row 1 {row().text}"];
 export const wins = [{
   kind: "step",
   index: 0,
-  compiled: "<ul class=\\"keyed-spread\\"><!--For:#--><li>ALPHA</li><li>BETA</li><!--/For:#--></ul>",
+  compiled: "<ul class=\\"keyed-spread\\"><li>ALPHA</li><li>BETA</li></ul>",
   why: "the un-compiled path reads row().text once, so only the live binding sees the new items"
 }, {
   kind: "step",
   index: 1,
-  compiled: "<ul class=\\"keyed-spread\\"><!--For:#--><li>ALPHA</li><!--/For:#--></ul>",
+  compiled: "<ul class=\\"keyed-spread\\"><li>ALPHA</li></ul>",
   why: "the surviving row keeps the value it was re-pointed at in step 0"
 }];
 export const optimality = {
@@ -1824,12 +1824,12 @@ export const goesLive = ["row 0 {row().text}", "row 1 {row().text}"];
 export const wins = [{
   kind: "step",
   index: 0,
-  compiled: "<ul class=\\"keyed-var\\"><!--For:#--><li>ALPHA</li><li>BETA</li><!--/For:#--></ul>",
+  compiled: "<ul class=\\"keyed-var\\"><li>ALPHA</li><li>BETA</li></ul>",
   why: "the keys did not move, so only a live binding sees the new item behind them"
 }, {
   kind: "step",
   index: 1,
-  compiled: "<ul class=\\"keyed-var\\"><!--For:#--><li>BETA</li><!--/For:#--></ul>",
+  compiled: "<ul class=\\"keyed-var\\"><li>BETA</li></ul>",
   why: "the surviving row carries the value it was re-pointed at in step 0"
 }];
 export const optimality = {
@@ -1919,6 +1919,13 @@ export const nums = signal([
   2,
   3
 ]);
+/**
+* The positional mode, which since M7b has ONE spelling: \`keyed={false}\`.
+* \`Index\` is deleted — Solid ran \`For\` and \`Index\` side by side for five years
+* and removed the second because having both "encourages bikeshedding and
+* accidental misuse" (\`CODESIGN.md\` §12). The emission is unchanged: the
+* construct was already \`each(src, false, row)\` under either name.
+*/
 export default function ControlFlowIndex(_s$) {
   const _el$1 = _tmpl$1();
   _$each(_s$, _el$1, null, nums, false, _$block((_s$, item, index) => {
@@ -1949,15 +1956,15 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 2,
-  // \`Index\` gives its row an ACCESSOR item and a plain-number index — the
-  // mirror image of keyed \`For\` — so the index hole passes through as a value
-  // and calling the item is the tracked read.
+  // The positional mode gives its row an ACCESSOR item and a plain-number index
+  // — the mirror image of the identity-keyed default — so the index hole passes
+  // through as a value and calling the item is the tracked read.
   emits: [
     "each(",
     ", nums, false, ",
     ", item, index) =>"
   ],
-  absent: ["Index(", "each: "]
+  absent: ["For(", "each: "]
 };
 "
 `;
@@ -3577,11 +3584,14 @@ const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="unkeyed"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li></li>\`);
 export const words = signal(["a", "b"]);
 /**
-* \`<For keyed={false}>\` DELEGATES to \`Index\` at runtime, which inverts the row
-* callback's contract: the item becomes an accessor and the index becomes a
-* plain number. Attributing the parameters from the component's name alone
-* gets both of them backwards — \`item()\` would throw and \`index()\` would not
-* update.
+* \`<For keyed={false}>\` INVERTS the row callback's contract against the identity
+* default: the item becomes an accessor and the index becomes a plain number.
+* Attributing the parameters from the component's name alone gets both of them
+* backwards — \`item()\` would throw and \`index()\` would not update.
+*
+* The file name is historical. Since K1 reversed, "unkeyed" is no longer the
+* default: \`keyed\` absent keys by ITEM IDENTITY, and this is the mode an author
+* has to ask for.
 */
 export default function ForUnkeyedRows(_s$) {
   const _el$1 = _tmpl$1();
@@ -3605,9 +3615,10 @@ export const optimality = {
   templates: 2,
   // \`keyed={false}\` INVERTS the row contract: the item becomes an accessor and
   // the index becomes a plain number. Since M4b the compiler does not pass a
-  // flag through for the runtime to resolve — \`For\` and \`Index\` are the same
-  // \`each\`, and \`keyOf: false\` IS the non-keyed mode. There is no longer a
-  // "which component did the author write" for the emission to be wrong about.
+  // flag through for the runtime to resolve — \`keyOf: false\` IS the positional
+  // mode. There is no longer a "which component did the author write" for the
+  // emission to be wrong about, and since M7b there is no second component to
+  // have written.
   emits: [
     "each(",
     ", words, false, ",

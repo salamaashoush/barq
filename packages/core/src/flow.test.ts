@@ -122,7 +122,7 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
     expect(row.calls).toBe(2);
     rows.set([1, 2, 3]);
     flush();
-    // Index-keyed: the first two rows are the same slots and are not rebuilt.
+    // Positional: the first two rows are the same slots and are not rebuilt.
     expect(row.calls).toBe(3);
 
     disposeScope(root);

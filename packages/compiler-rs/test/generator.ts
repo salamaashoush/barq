@@ -23,7 +23,7 @@
  *  - Adjacent holes, a hole followed by text, a hole followed by an element, a
  *    trailing hole — the four shapes anchor elision decides between.
  *  - `Show` (thunked body and eager body, with and without a fallback), `For`
- *    and `Index` over an array signal, `Switch`/`Match` with a fallback.
+ *    and `For keyed={false}` over an array signal, `Switch`/`Match` with a fallback.
  *  - User-defined components: a props boundary, a `children` slot, and a
  *    component nested inside an element so the caller's statics stay in the
  *    caller's template.
@@ -129,14 +129,14 @@ class Gen {
   private events = 0
   private components = 0
   /**
-   * The row contract of the enclosing list, if any. `For` hands the row VALUE to
-   * its body and `Index` hands an accessor, so `item.id` is correct under one and
-   * `undefined` under the other — which is not a divergence (both builds agree)
-   * but silently kills a seed's whole numeric channel: seed 111 wrote
-   * `n1.set(item.id + 1)` inside an `Index` and every later `n1.update` stayed
-   * NaN.
+   * The row contract of the enclosing list, if any. The identity default hands
+   * the row VALUE to its body and `keyed={false}` hands an accessor, so
+   * `item.id` is correct under one and `undefined` under the other — which is
+   * not a divergence (both builds agree) but silently kills a seed's whole
+   * numeric channel: seed 111 wrote `n1.set(item.id + 1)` inside a positional
+   * row and every later `n1.update` stayed NaN.
    */
-  private row: "none" | "For" | "Index" = "none"
+  private row: "none" | "For" | "positional" = "none"
   /**
    * Components whose declaration is FINISHED, and the only ones a call site may
    * name. A component whose own body could call itself generates a term with no
@@ -262,7 +262,7 @@ class Gen {
     if (inRow && this.chance(6)) {
       this.features.add("capturing handler")
       const name = this.number()
-      const id = this.row === "Index" ? "item().id" : "item.id"
+      const id = this.row === "positional" ? "item().id" : "item.id"
       return `${target} onClick={() => ${name}.set(${id} + ${this.int(5)})}`
     }
     const name = this.number()
@@ -357,17 +357,19 @@ class Gen {
 
   private list(depth: number): string {
     const each = this.rows()
-    const flow = this.chance(5) ? "For" : "Index"
-    this.features.add(flow)
+    // One primitive, three modes (K1). The draw stays exactly where it was so
+    // that every existing seed keeps the program it had.
+    const keyed = this.chance(5)
+    this.features.add(keyed ? "For" : "For keyed={false}")
     const outer = this.row
-    this.row = flow
+    this.row = keyed ? "For" : "positional"
     const body = this.children("phrasing", depth - 1, true)
     this.row = outer
-    const row =
-      flow === "For"
-        ? `{(item, index) => <li data-id={String(item.id)}>{() => index()}:{item.name}${body}</li>}`
-        : `{(item, index) => <li data-ix={String(index)}>{() => item().name}${body}</li>}`
-    return `<ul class="list-${this.next()}"><${flow} each={() => ${each}()} fallback={<li class="empty">empty</li>}>${row}</${flow}></ul>`
+    const row = keyed
+      ? `{(item, index) => <li data-id={String(item.id)}>{() => index()}:{item.name}${body}</li>}`
+      : `{(item, index) => <li data-ix={String(index)}>{() => item().name}${body}</li>}`
+    const mode = keyed ? "" : " keyed={false}"
+    return `<ul class="list-${this.next()}"><For each={() => ${each}()}${mode} fallback={<li class="empty">empty</li>}>${row}</For></ul>`
   }
 
   private switchMatch(context: Context, depth: number, inRow: boolean): string {
@@ -480,8 +482,7 @@ class Gen {
 
     const imports = ["signal"]
     if (this.features.has("Show")) imports.push("Show")
-    if (this.features.has("For")) imports.push("For")
-    if (this.features.has("Index")) imports.push("Index")
+    if (this.features.has("For") || this.features.has("For keyed={false}")) imports.push("For")
     if (this.features.has("Switch/Match")) imports.push("Switch", "Match")
 
     // Unconditional, and deliberately consuming no randomness so that every

@@ -16,7 +16,7 @@ pub use module::{
 };
 pub use patch::{Anchor, Chan, Diff, HandlerRef, InsertPlan, Op, Patch};
 pub use react::{BIT_OVERFLOW, Const, Cost, DepSet, FreeVars, React, Rx, Shape, Thunk};
-pub use region::{HYDRATE, NO_SCOPE, Region, RegionId, RegionKind, STATIC_KEY};
+pub use region::{DETECT, HYDRATE, NO_SCOPE, Region, RegionId, RegionKind, STATIC_KEY, WHOLE};
 pub use skeleton::{Materialisation, Ns, SkelAttr, SkelAttrValue, SkelElement, SkelNode, Skeleton};
 pub use symbols::{CellSlot, Diag, Flow, Keyed, MemberMask, Prim, ReactiveEnv, SourceKind};
 

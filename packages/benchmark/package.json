@@ -14,6 +14,10 @@
     "bench:spread": "bun run src/protocol-spread.ts",
     "bench:eleven": "bun run src/eleven-h2h.ts",
     "bench:eleven-paired": "bun run src/eleven-report.ts",
+    "bench:tier2": "bun run src/tier2/run.ts",
+    "bench:tier2:shapes": "bun run src/tier2/run.ts shapes",
+    "bench:tier2:jfb": "bun run src/tier2/run.ts jfb",
+    "bench:tier2:jrb": "bun run src/tier2/run.ts jrb",
     "build": "bun build src/browser.ts --outdir dist --target browser --format esm"
   },
   "dependencies": {

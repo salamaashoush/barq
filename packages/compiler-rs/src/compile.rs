@@ -687,7 +687,7 @@ fn located(
 /// dropped the whole module to the DOM backend when any of eight flow components
 /// was referenced — CODESIGN §0.1 measures that at 41.88x on the 100-row page,
 /// for one import. M6 gave the string backend the four primitives and a string
-/// component for all fourteen constructs, so the split it decided no longer
+/// component for all thirteen constructs, so the split it decided no longer
 /// exists to decide.
 fn analysis_diagnostics(
     module: &Module<'_>,

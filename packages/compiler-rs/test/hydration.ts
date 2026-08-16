@@ -28,23 +28,39 @@ export interface Compiled {
   ssrCode: string
 }
 
-export function compileBoth(source: string, tag: string, hydratable = true): [string, string] {
+/**
+ * `dev` is `CODESIGN.md` §12's DETECTION axis, and it is a parameter here for
+ * the reason the axis exists: a production build and a development build of the
+ * same source are two different emissions of both backends, and every claim
+ * this file measures has to be measured on each of them.
+ */
+export function compileBoth(
+  source: string,
+  tag: string,
+  hydratable = true,
+  dev = false,
+): [string, string] {
   return [
-    compileSource(source, `${tag}.tsx`, { hydratable }),
-    compileSource(source, `${tag}.tsx`, { ssr: true, hydratable }),
+    compileSource(source, `${tag}.tsx`, { hydratable, dev }),
+    compileSource(source, `${tag}.tsx`, { ssr: true, hydratable, dev }),
   ]
 }
 
-export async function compileFixture(name: string, hydratable = true): Promise<Compiled> {
-  return compileText(fixtureSource(name), name, hydratable)
+export async function compileFixture(
+  name: string,
+  hydratable = true,
+  dev = false,
+): Promise<Compiled> {
+  return compileText(fixtureSource(name), name, hydratable, dev)
 }
 
 export async function compileText(
   source: string,
   tag: string,
   hydratable = true,
+  dev = false,
 ): Promise<Compiled> {
-  const [domCode, ssrCode] = compileBoth(source, tag, hydratable)
+  const [domCode, ssrCode] = compileBoth(source, tag, hydratable, dev)
   return {
     domCode,
     ssrCode,
@@ -235,6 +251,27 @@ export interface KnownDivergence {
   why: string
 }
 
+/**
+ * EVERY `reuse` below was re-measured at M7b and most of them MOVED, without a
+ * single fixture changing what it claims.
+ *
+ * `CODESIGN.md` §12 took the boundary comments off the wire wherever the client
+ * can read a position's extent off its parent, and the census counts NODES — so
+ * a comment that used to sit in the server's markup and trivially survive was in
+ * the denominator, and is not any more. A row that loses the same subtree over a
+ * smaller total reports a smaller percentage. The numbers went DOWN because the
+ * wire got smaller, not because the claim got worse, and the check that says so
+ * is the one every row already passes: `hydratedShape === coldShape`.
+ *
+ * One row moved the other way and that is the interesting one.
+ * `control-flow-for-keyed-spread` now reuses 100%: it reaches `each` through an
+ * adapter with no flags, and the recovery that path takes — release whatever the
+ * server wrote at this position and build cold — has nothing to release when the
+ * position was written with no comments, so the enclosing `insert` reconciles
+ * onto the server's own nodes instead. It is still a registered divergence
+ * because it still REPORTS `not-hydratable`; what it stopped doing is throwing
+ * nodes away.
+ */
 export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   // ── the fallback element path: built, never claimed ────────────────────
   //
@@ -246,7 +283,7 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   mathml: {
     kinds: [],
     recovered: false,
-    reuse: 27,
+    reuse: 11,
     shape: null,
     why: "<math> is built by createElement — P1 refuses a foreign-namespace root — so its subtree has no template walk to claim with",
   },
@@ -260,7 +297,7 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   "props-rest-spread": {
     kinds: [],
     recovered: false,
-    reuse: 60,
+    reuse: 33,
     shape: null,
     why: "a rest pattern spread onto an intrinsic element is the createElement path by design (the fixture says so); the <span> it builds replaces the server's",
   },
@@ -281,7 +318,7 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   "escaping-adversarial": {
     kinds: [],
     recovered: false,
-    reuse: 83,
+    reuse: 81,
     shape: null,
     why: "a <textarea> with a dynamic value is RAWTEXT — the tokenizer decodes nothing inside it, so `<!--[-->` there would be literal text and the element is built instead",
   },
@@ -301,19 +338,19 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   // primitive is told nothing about `hydratable` and builds cold inside the
   // range the enclosing `insert` claimed. Detected, reported, and confined to
   // that range. Closing it means giving the adapters the flag, which is a
-  // change to the fourteen constructs' own surface (M8's consumers touch the
+  // change to the thirteen constructs' own surface (M8's consumers touch the
   // same seam) rather than to the claim algorithm.
   dynamic: {
     kinds: ["not-hydratable"],
     recovered: false,
-    reuse: 60,
+    reuse: 33,
     shape: null,
     why: "Dynamic is one of §3.4's three refusals: it reaches `branch` through the adapter, with no flags",
   },
   "control-flow-for-keyed-spread": {
     kinds: ["not-hydratable"],
     recovered: false,
-    reuse: 27,
+    reuse: 100,
     shape: null,
     why: "a spread source is a shape the flow pass cannot read statically, so `For` reaches `each` through the adapter, with no flags",
   },
@@ -329,14 +366,14 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   "flow-prop-eta-boundary": {
     kinds: [],
     recovered: false,
-    reuse: 96,
+    reuse: 94,
     shape: null,
     why: "a Loading boundary parks its content in a detached fragment before revealing it, and a claimed node cannot be parked without leaving the document; its one range rebuilds",
   },
   "control-flow-error-boundary": {
     kinds: [],
     recovered: false,
-    reuse: 43,
+    reuse: 33,
     shape: null,
     why: "the body throws on the client exactly as it did on the server, so the claim is spent by the attempt that failed and the fallback is built cold — E3's `try` and the claim are the same activation",
   },

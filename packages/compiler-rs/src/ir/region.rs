@@ -23,6 +23,28 @@ pub const NO_SCOPE: u8 = 1 << 1;
 /// a branch chose is knowable only at the instant it chooses it, so no compiler
 /// can write the open comment and the primitive has to.
 pub const HYDRATE: u8 = 1 << 2;
+/// `flow.ts`'s and `ssr.ts`'s `DETECT`: this module was compiled `hydratable`
+/// AND `dev`, so a range spells the key its primitive CHOSE into its open
+/// comment — `<!--[b-->` rather than `<!--[-->` — and the client compares.
+///
+/// `CODESIGN.md` §12 reversed Q4: the wire carries what RECOVERY needs and
+/// detection is an emission axis. The key is the one fact about a range that
+/// detection cannot re-derive and recovery does not need, so it is the one byte
+/// that moved onto this flag. A production build writes `<!--[-->` and the
+/// client's comparison is unreachable, exactly as `getFirstChild(el, "span")`
+/// becomes `el.firstChild`.
+///
+/// Kept for every primitive for the same reason as [`HYDRATE`]: it is the build
+/// asking for a wire format, not a proof about the source.
+pub const DETECT: u8 = 1 << 3;
+/// `flow.ts`'s and `ssr.ts`'s `WHOLE`: this range is the only thing in its
+/// parent element's child list, so the string backend wrote it no boundary
+/// comments and the client's claim is every child of the parent.
+///
+/// The same predicate a hole is measured by, and the same saving. It is set only
+/// in a build that is not detecting, because a range's open comment is where the
+/// key goes — see [`DETECT`].
+pub const WHOLE: u8 = 1 << 4;
 
 /// Which of `flow.ts`'s four primitives owns this range. Fourteen constructs
 /// collapse onto these; the row that carries a region names both, because the
@@ -73,6 +95,19 @@ impl RegionKind {
     pub fn reads_flags(self) -> bool {
         matches!(self, RegionKind::Branch)
     }
+
+    /// Whether this primitive's STRING half can write a range the compiler did
+    /// not ask for.
+    ///
+    /// A loading boundary can: with a stream sink installed it flushes
+    /// `<!--[b:N-->` … `<!--]-->` around its fallback and parks the continuation,
+    /// and no compile-time predicate can see that coming — whether a promise is
+    /// ready is exactly §3.13 item 6. So [`WHOLE`] is refused for it: the client
+    /// would read "no comments here" and claim a child list that has two.
+    #[inline]
+    pub fn may_write_its_own_range(self) -> bool {
+        matches!(self, RegionKind::Loading)
+    }
 }
 
 /// One control-flow instance, lowered. Holds the arguments its primitive takes,
@@ -119,7 +154,8 @@ impl Region<'_> {
 impl RegionKind {
     #[inline]
     pub fn shipped(kind: Self, flags: u8) -> u8 {
-        (if kind.reads_flags() { flags } else { 0 }) | (flags & HYDRATE)
+        let whole = if kind.may_write_its_own_range() { 0 } else { flags & WHOLE };
+        (if kind.reads_flags() { flags } else { 0 }) | (flags & (HYDRATE | DETECT)) | whole
     }
 }
 
@@ -153,7 +189,8 @@ mod tests {
     /// into a document whose every other range has them, and the client's claim
     /// would run off the end of the one range that did not announce itself.
     #[test]
-    fn every_primitive_ships_the_wire_format_flag_and_only_that_one() {
+    fn every_primitive_ships_the_wire_format_flags_and_only_those() {
+        let wire = HYDRATE | DETECT | WHOLE;
         for kind in [
             RegionKind::Branch,
             RegionKind::Each,
@@ -161,9 +198,38 @@ mod tests {
             RegionKind::Loading,
             RegionKind::Portal,
         ] {
-            let shipped = RegionKind::shipped(kind, STATIC_KEY | NO_SCOPE | HYDRATE);
-            assert_eq!(shipped & HYDRATE, HYDRATE, "{} dropped HYDRATE", kind.as_str());
-            assert_eq!(RegionKind::shipped(kind, STATIC_KEY | NO_SCOPE) & HYDRATE, 0);
+            let want = if kind.may_write_its_own_range() { HYDRATE | DETECT } else { wire };
+            let shipped = RegionKind::shipped(kind, STATIC_KEY | NO_SCOPE | wire);
+            assert_eq!(shipped & wire, want, "{} shipped the wrong wire flags", kind.as_str());
+            assert_eq!(RegionKind::shipped(kind, STATIC_KEY | NO_SCOPE) & wire, 0);
         }
+    }
+
+    /// A loading boundary can flush `<!--[b:N-->` at run time when a stream sink
+    /// is installed, and no compile-time predicate can see that coming. So it
+    /// never takes `WHOLE`: the client would read "no comments here" and claim a
+    /// child list that has two.
+    #[test]
+    fn a_streaming_boundary_never_takes_the_undelimited_form() {
+        assert!(RegionKind::Loading.may_write_its_own_range());
+        assert_eq!(RegionKind::shipped(RegionKind::Loading, HYDRATE | WHOLE) & WHOLE, 0);
+        for kind in [RegionKind::Branch, RegionKind::Each, RegionKind::Error, RegionKind::Portal] {
+            assert!(!kind.may_write_its_own_range());
+            assert_eq!(RegionKind::shipped(kind, HYDRATE | WHOLE) & WHOLE, WHOLE);
+        }
+    }
+
+    /// §12's split, at the one place both halves are visible at once. A
+    /// production hydratable build ships `HYDRATE` and NOT `DETECT`: the range
+    /// is written, claimed and recoverable, and no key is spelled into it.
+    /// Detection is the extra bit and never the other way round.
+    #[test]
+    fn detection_is_a_bit_of_its_own_beside_the_recovery_format() {
+        assert_eq!(HYDRATE & DETECT, 0);
+        let production = RegionKind::shipped(RegionKind::Branch, HYDRATE);
+        assert_eq!(production & HYDRATE, HYDRATE);
+        assert_eq!(production & DETECT, 0);
+        let development = RegionKind::shipped(RegionKind::Branch, HYDRATE | DETECT);
+        assert_eq!(development & DETECT, DETECT);
     }
 }

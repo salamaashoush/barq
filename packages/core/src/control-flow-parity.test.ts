@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 describe("For keyed unification", () => {
-  test("keyed={false} behaves like Index (null, item accessor, static index)", () => {
+  test("keyed={false} is positional (null keyOf, item accessor, static index)", () => {
     const items = signal(["a", "b"]);
     let renders = 0;
 

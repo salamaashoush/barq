@@ -1459,7 +1459,7 @@ mod tests {
         .warnings;
         assert!(quiet.is_empty(), "{quiet:?}");
 
-        // `For keyed={false}` delegates to `Index`, whose row item is an
+        // `For keyed={false}` is positional, and its row item is an
         // accessor, so O3 does not apply and there is nothing to say.
         let quiet = dev(
             "import { For } from \"@barqjs/core\";\n\

@@ -25,7 +25,7 @@ function Chip(props: {
   legacy: () => string
 }) {
   return (
-    <button type="button" class="chip" data-same={String(props.cb === props.cb)} onClick={props.cb}>
+    <button type="button" class="chip" data-same={String(props.cb === props.cb)} onClick={props.cb()}>
       {props.legacy()}
     </button>
   )

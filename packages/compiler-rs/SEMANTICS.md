@@ -761,7 +761,7 @@ value's kind (C3.9). Therefore this situation arises only two ways, and each has
    forwarded value and MUST emit a diagnostic at the forwarding site when a value it knows to be a
    scope-using Block is forwarded into a slot the callee declares as `Cell` — naming both positions.
    Two kinds of position are Cell slots and both are diagnosed: a named attribute on an INTRINSIC
-   element, and a named Cell slot of a FLOW construct — `For`/`Index`'s `each`, `Repeat`'s
+   element, and a named Cell slot of a FLOW construct — `For`'s `each`, `Repeat`'s
    `count`/`from`, `Show`/`Match`'s `when`, `Portal`'s `target`, `Loading`'s `on`, `Await`'s
    `resource`, `Reveal`'s `order`/`collapsed`, `Dynamic`'s `component` (`Flow::cell_slot`).
 
@@ -1110,24 +1110,73 @@ Unpinned: the benchmark that would falsify the flat-cost half is still owed.
 
 ## 5. K — Control flow and the keying contract
 
-### K1 — the default row identity is the index
+### K1 — the default row identity is the item
 
-**Rule.** An `each` with no `key` is **index-keyed**. Opt in to item identity with `key={r => r.id}`.
+**Rule.** One list primitive, three modes, and the default is **identity**:
 
-**Why this and not the reverse.** Item-identity-by-default means any immutable update recreates every
-row, silently destroying focus, `<video>` position, scroll offset and animation state. That failure is
-invisible and catastrophic. The index default's failure — a reorder re-renders more than needed — is
-visible and cheap. `CODESIGN.md` §11 Q3, accepted.
+| `keyed` | row identity | the row Block receives |
+|---|---|---|
+| absent, or `true` | the item itself | `(item, index: Cell)` |
+| a function | `keyed(item)` | `(item: Cell, index: Cell)` |
+| `false` | the position | `(item: Cell, index)` |
 
-**Falsified by.** `<For each={rows}>` with no `key`; replace `rows` with a structurally-equal array of
-fresh objects; every row's nodes MUST be the same objects and focus MUST survive.
+There is no fourth spelling. `Index` was a second component naming the third mode and it is **deleted**
+(M7b) — Solid ran `For` and `Index` side by side for five years and removed the second this cycle on
+the stated ground that having both "encourages bikeshedding and accidental misuse".
 
-**Status.** `PLANNED` (M4), and it is a **deliberate reversal**: today `For` with `keyed` absent keys
-by the item itself, which `control-flow-for-keyed-by-item.tsx` documents as the same arm. Those
-fixtures encode today's default and MUST keep passing at M0.
+**Why this and not the reverse.** An index default's failure is that a row's DOM state — a caret, a
+selection, a scroll offset, `<video>` position, a running animation, an open `<dialog>`, a widget
+behind a `ref` — belongs to slot N rather than to the item in it, so a reorder leaves it behind
+**silently**. That default was accepted at `CODESIGN.md` §11 Q3 on the strength of a compile-time
+diagnostic for stateful row markup, and **the diagnostic cannot carry it**: a component compiles to an
+opaque call, so `<For each={xs}>{x => <TodoRow todo={x}/>}</For>` with an `<input>` inside `TodoRow`
+produces nothing, and neither do the five non-tag cases above. The mitigation covered inline stateful
+tags only — the case a reviewer already catches — so an index default would have shipped a third
+silent-failure class on purpose, in a project whose whole argument is that silent failure is the
+dominant harm here. Reversed by the user; `CODESIGN.md` §12 Q3 is the record.
 
-**Pinned by.** `for-unkeyed-rows.tsx`, `control-flow-for.tsx` (existing, today's default);
-`sem-key-index-default.tsx` *(new)*, which fails until M4.
+**What it costs, with the number.** An immutable update that replaces the row objects rebuilds
+**every** row, structurally-equal or not. Measured in Chrome by the Tier-2 lane
+(`bench:tier2 shapes`, the K1 arm — `mapArray` with a stub mapper, so this is the diffing half alone
+and none of the row's DOM):
+
+| `keyed` | rows rebuilt on an immutable replacement | on a reorder |
+|---|---|---|
+| absent (the default) | **1000 of 1000** — 0.065 ms | 0 — 0.050 ms |
+| `r => r.id` | 0 — 0.015 ms | 0 — 0.045 ms |
+| `false` | 0 — 0.015 ms | 0 — 0.015 ms |
+
+4.3x on the mapping half at 1,000 rows, and that is the cheap half: with each row's DOM attached, the
+default turns "replace all rows" into a full re-mount, which the same lane's js-framework-benchmark
+row prices at **31.6 ms per 1,000 rows** against ~0 for the other two modes. The reorder column is
+where the default earns it: all three modes rebuild nothing, and only the default moves the row's DOM
+state with its item.
+
+That cost is **visible** — the rows flicker, the profile shows the work — and `keyed={r => r.id}` is
+the opt-out that keeps the row across a replacement. A visible cost traded for a silent one is the
+whole of this decision, and the trade is only legible with both numbers written down.
+
+**Falsified by.** Three procedures, each of which must observe an UPDATE, because the first frame is
+identical under all three modes — which is exactly how 110 fixtures missed the `keyed={fn}` miscompile:
+
+ 1. `<For each={rows}>` with no `keyed`; type into an `<input>` in each row, then reorder the SAME row
+    objects. Every row's nodes MUST be the same objects, in their items' new positions, and the typed
+    text MUST have travelled with the item.
+ 2. The same list, with `rows` replaced by a structurally-equal array of FRESH objects. No row's nodes
+    may survive. A survivor means the runtime is comparing something other than the item, and
+    `{row.text}` — applied once, with no thunk (O3) — would be stale.
+ 3. The same list under `keyed={false}`, reordered. The nodes MUST stay put and the values MUST move
+    through them; the typed text stays at its slot. (This is K3's half.)
+
+**Status.** `HOLDS` since M7b. The default was already identity in the emission — `keyed` absent lowers
+to `each(src, null, row)` and `mapArray` reads `null` as by-item — so what M7b changed is that the
+document no longer promises a reversal away from it, `Index` is gone, and the behaviour is pinned by a
+procedure that writes to the DOM and then reorders instead of by an initial render.
+
+**Pinned by.** `sem-key-identity-default.tsx` for all three procedures; `control-flow-for.tsx` and
+`control-flow-for-keyed-by-item.tsx` for the default's emission (`keyOf` is `null`);
+`control-flow-for-keyed-false.tsx`, `control-flow-index.tsx` and `for-unkeyed-rows.tsx` for the
+positional mode's; `control-flow-for-keyed-fn.tsx` for the key-function mode's.
 
 ### K2 — an unchanged key is a no-op
 
@@ -1164,17 +1213,30 @@ is caught, by this channel and by C7's, which is `runtime-mutants.ts`'s
 **Pinned by.** `mm-branch-key-stable.tsx`, `mm-branch-nonkeyed-truthy.tsx`, `mm-keyed-move.tsx`,
 `mm-index-row-stable.tsx` (all under `fixtures/l4/`), `control-flow-for-keyed-by-item.tsx` (existing).
 
-### K3 — a keyless row containing stateful DOM is a compile-time diagnostic
+### K3 — a positional row containing stateful DOM is a compile-time hint
 
-**Rule.** The compiler MUST emit a diagnostic when a keyless `each`'s row Block contains stateful DOM:
-`input`, `textarea`, `select`, `video`, `audio`, `details`, `canvas`, or a custom element. Only a
-compiler can see the row's markup. This covers the **correctness** half of the index-keying trade; the
-performance half (O(n) writes on a reorder) is documented, not covered.
+**Rule.** Under `keyed={false}` a row's identity is its POSITION, so DOM state inside the row belongs
+to slot N rather than to the item in it and a reorder leaves it behind. When the row Block's **inline**
+markup contains `input`, `textarea`, `select`, `video`, `audio`, `details`, `canvas`, `dialog` or a
+custom element, the compiler SHOULD say so: `BARQ011`, at note level, under `dev`.
 
-**Falsified by.** A keyless `<For>` whose row contains an `<input>` and produces no diagnostic.
+**How weak this claim is, and why it is written that way.** This rule used to be the safety net that
+made an index-keyed DEFAULT acceptable. It could never carry that, and K1 is reversed because it could
+not. It sees **inline markup only**: a component boundary is opaque, and a scroll offset on a plain
+`<div>`, a running animation, an open `<dialog>` reached through a `ref` and a third-party widget are
+all invisible to it whatever the tag says. So it is a HINT about a spelling the author asked for by
+hand — not a proof, not a gate, and nothing else in this document may rest on it. The rule it is
+attached to is K1's third falsification procedure, which observes the state loss itself.
 
-**Status.** `PLANNED` (M4). **Pinned by.** `sem-key-stateful-row-diagnostic.tsx` *(new)*, asserted
-through `diagnostics.test.ts`.
+**Falsified by.** Two halves, and they are checked in two places because they are two different
+claims. The BEHAVIOUR: a `keyed={false}` list, typed into and then reordered, whose typed text moved
+with the item rather than staying at the slot. The HINT: a `<For keyed={false}>` whose row contains an
+`<input>` and produces no `BARQ011`, or any `<For>` in the corpus that produces one without asking for
+the positional mode.
+
+**Status.** `HOLDS` since M7b. **Pinned by.** `sem-key-identity-default.tsx` for the behaviour;
+`diagnostics.test.ts` for the code — its reachability table, and its corpus-wide precision assertion,
+which names every fixture in `fixtures/` that emits any diagnostic at all.
 
 ### K4 — duplicate keys are a DEV error and degrade to index
 
@@ -1189,7 +1251,7 @@ treated as index-keyed. Rendering MUST NOT be abandoned and rows MUST NOT be sil
 
 **Rule.** The runtime never evaluates a condition. `branch` receives a `Cell<K>` computing an integer
 key; `Show`, `Switch`/`Match`, ternaries, `&&`, `Dynamic` and a router `Outlet` all lower onto it.
-`Show`, `Switch`, `Match`, `Index`, `Repeat`, `Dynamic` and `Portal` **cease to exist as components**
+`Show`, `Switch`, `Match`, `Repeat`, `Dynamic` and `Portal` **cease to exist as components**
 and are recognised by `SymbolId` resolved to the framework module — never by name, which is unsound
 under shadowing.
 
@@ -1199,15 +1261,15 @@ imported-and-renamed `Show` MUST be lowered.
 **Status.** `HOLDS` since M4b, for the resolution discipline (`SymbolId`, not name) and for the
 lowering.
 
-`Op::Region { slot, anchor, region }` is the opcode and `passes/flow.rs` is the pass. Eleven
+`Op::Region { slot, anchor, region }` is the opcode and `passes/flow.rs` is the pass. Ten
 constructs cease to exist as components and become one of the four primitives: `Show` and
-`Switch`/`Match` are `branch`, `For`/`Index`/`Repeat` are `each`, `Loading`/`Suspense` and
+`Switch`/`Match` are `branch`, `For`/`Repeat` are `each`, `Loading`/`Suspense` and
 `Errored`/`ErrorBoundary` are `boundary`, `Portal` is `portal`. The key is plain emitted JavaScript
 in every case — `() => visible() || false` for a keyed `Show`, `() => a() ? 1 : b() ? 2 : 0` for a
 `Switch` over two arms, with a hoisted body table indexed by that integer — and the
 `(parent, anchor)` pair is the one the template walk already computed, so the runtime no longer
 re-derives an insertion point the compiler knew statically. `optimality.test.ts`'s
-`K5 — the fourteen constructs, and the four they lower onto` asserts over the whole corpus that no
+`K5 — the thirteen constructs, and the four they lower onto` asserts over the whole corpus that no
 lowered construct survives as a call.
 
 **Three constructs are NOT lowered, and each refusal is a fact rather than a gap.** `Dynamic` needs
@@ -1217,7 +1279,7 @@ thing M4 deleted from the runtime. `Await` discriminates a `Resource` from a `Ce
 a property test on the value, and its key and its three bodies each need the resolved resource;
 without a shared local that is four evaluations of one prop, and the compiler cannot prove they
 yield the same object. `Reveal` creates a PROVIDE scope rather than a range (O1 lists `provide`
-separately from `branch`), so it is not one of the four primitives at all. A twelfth case — a
+separately from `branch`), so it is not one of the four primitives at all. An eleventh case — a
 construct written with a spread — is refused for C9's reason: a source list is a runtime object, so
 the props cannot be read statically. Every refusal keeps the component call, which reaches the same
 primitive one adapter frame later; that direction is always safe and the other never is.
@@ -1927,9 +1989,10 @@ real-browser channel)*.
 
 ## 10. A — Async
 
-`CODESIGN.md` §11 Q7 leaves transitions deliberately underspecified: *"nothing may be built on
-`KEEPALIVE` parking until the three unspecified cases are answered."* This section therefore specifies
-only what is settled, and **names the gap** rather than papering over it.
+`CODESIGN.md` §11 Q7 left transitions deliberately underspecified, on the ground that nothing could be
+built until three questions about parked subtrees were answered. §12 closed it the other way: the
+reference implementation parks nothing, so the questions dissolved rather than being answered, and A5
+below is a specification instead of a named gap. This section has no unspecified rules.
 
 ### A1 — cancellation is structural
 
@@ -2012,16 +2075,146 @@ existed only to be written back is gone.
 **Pinned by.** `sem-async-optimistic-derived.tsx`, `create-optimistic-signal.tsx` (existing,
 re-pinned), `packages/core/src/actions.test.ts`.
 
-### A5 — transitions: NOT SPECIFIED
+### A5 — a transition is a lane on an opt-in value, not a fork of the graph
 
-**Rule.** *(deliberately absent)*. Three questions are unanswered and nothing may be built on them:
-what a write to a parked subtree does; whether parked effects are suspended or merely detached; what
-happens when the live scope and the pending transition scope both write the same signal. Q7 constrains
-the answer — a transition must be expressible with scope forks alone; a copy-on-write reactive graph
-is a separate design — but the answer does not exist yet.
+**Rule.** Seven clauses.
 
-**Status.** `UNOBSERVABLE`, by design. This entry exists so that the gap is visible in the
-specification rather than discovered in the implementation.
+**(a) There is no transition API and no second scope.** `startTransition` and `useTransition` do
+not exist and are not planned. Nothing forks the reactive graph.
+
+**(b) Nothing is parked.** A `Loading` boundary keeps live DOM mounted showing stale content.
+There is no detached-fragment state and no suspended-effect state. The three questions the previous
+entry could not answer — what a write to a parked subtree does, whether parked effects are suspended
+or merely detached, and what happens when the live scope and a pending transition scope both write
+one signal — do not arise, because neither a parked subtree nor a pending scope exists.
+
+**(c) Double buffering is opt-in, per value.** `createOptimistic` and `createOptimisticStore`
+allocate a second buffer. `signal` does not. A plain signal written inside an action writes straight
+through: it does not revert when the action settles and it never reports pending. The restraint is
+the design, not an omission from it — making every signal transition-aware would put a second slot
+and a mode switch on the hottest object in the runtime to serve the few values that need one.
+
+**(d) Two buffers on one node.** The authoritative buffer is the node's value. The override buffer
+holds at most one patch per lane, and a read folds those patches over the authoritative value in
+claim order. The buffers live on the NODE rather than in a derivation over two signals; clause (f) says why
+they must.
+
+A lane's second write to the same value **composes** over its first rather than replacing it, so
+`update(n => n + 1)` twice inside one action is `+2`. The store form has always accumulated this way
+— its lane layer is a list of setter calls replayed over the authoritative store — and the value
+form agrees with it. A `set` still wins outright: a constant patch ignores the value handed to it.
+The two arities disagreeing here is what this clause is written against; before M7b the value form
+kept only the last write and the obvious optimistic-increment pattern silently lost one.
+
+**(e) No revert target is stashed, and a lane write is not an authoritative one.** A write from
+outside the action lands in the authoritative buffer *underneath* a live override, so nothing is lost
+and nothing is overwritten. Retiring the lane drops the override onto a value that is already
+correct. Rollback on failure is that same drop rather than a second code path — which is A4's
+"derived, never restored" restated at the level of the slot.
+
+The constraint this puts on the action itself is stated rather than hidden: a generator **resumes
+in-context**, so a write made after a `yield` is still a LANE write and retires with the lane. Writing
+the server's answer as `value.set(answer)` after the await therefore reverts to the pre-action value.
+`commit(fn)` is the way an action writes authoritatively: it runs `fn` with the lane suspended, so
+writes inside it go to the authoritative buffer exactly as they would outside the action. It is the
+write-side counterpart of `latest`, which reads that same buffer. A plain `signal` needs none of this
+— by clause (c) it was never double-buffered and its post-yield write was always authoritative.
+
+**(f) The read surface is a mode, and a mode is not a dependency.** A normal read sees the
+override; `latest(fn)` reads through it to the authoritative value; `isPending(fn)` reports that an
+answer is coming. The switch applies **at the node the override lives on** and does not reach through
+a derivation: a memo would cache the answer it computed in one mode and serve it in another, and
+keying a memo on the read mode would mean a value slot per mode on every computed. This is also why
+the buffers cannot be a derivation over a settled signal and a pending-layer signal — that shape has
+exactly one mode. `affects()` remains the primitive that deliberately *does* propagate pendingness
+through a derivation, and it is unchanged.
+
+The consequence, which is stronger than "the switch does not reach through a derivation" and is
+stated because it is observable: **a memo answers in whichever mode first computed it.** Two identical
+programs read in opposite orders give opposite answers in both modes — `normal=18, latest=18` against
+`latest=2, normal=2` for the same `computed(() => v() * 2)` over an overridden `v`. Neither answer is
+a bug in the memo; the memo has one value slot and a read mode is not an input to it. Code that needs
+the authoritative value of a derivation reads the node it derives from under `latest`, not the
+derivation. `isPending(() => memo())` is correct either way — it reports on the nodes the probe
+actually reaches — but the probe itself computes the memo, so it fixes the mode for every later read.
+
+**(g) A lane is an action's lifetime, and lanes never merge.** Two lanes overriding one value stack
+in claim order; retiring one leaves the other folding over the current authoritative value; neither
+blocks the other. Solid's union-find — which merges lanes when their dependency graphs overlap and
+makes an active override a merge barrier so that the merge stops there — answers a question this
+design answers by construction. Their transactions are implicit and must be recovered from
+reachability; `action()` is explicit and delimits itself, so the lane is known exactly and there is
+nothing to infer, merge, or barrier.
+
+**Falsified by.** Nine procedures, one per failure mode.
+
+1. Write an optimistic value inside an action. Before it settles, a normal read MUST give the
+   optimistic value and `latest()` MUST give the pre-action value. *(Fails if the override is not a
+   distinct buffer.)*
+2. While that override is live, land a write from **outside** the action. `latest()` MUST show it
+   immediately, and the value remaining after the lane retires MUST be it — not the pre-action value.
+   *(Fails if any revert target is stashed; this is the procedure that distinguishes clause (e) from a
+   snapshot, and it is the bug A4 was written against, reached one layer lower.)*
+3. Run two actions writing two different optimistic values that one memo derives from, and settle
+   them out of order. Retiring the first MUST leave `isPending` false on its value and true on the
+   other's, and the memo MUST show the first's authoritative value folded with the second's override.
+   *(Fails if lanes merge on graph overlap: the first could not then retire alone.)*
+4. Write a plain `signal` inside an action. It MUST NOT revert and MUST NOT report pending.
+   *(Fails if every signal is transition-aware.)*
+5. Read a memo derived from an overridden value. It MUST NOT throw `NotReady`, and a `Loading`
+   boundary above it MUST NOT show a fallback. *(Fails if a lane is propagated as a status. A lane
+   that set `STATUS_PENDING` downstream would suspend exactly the content the override exists to
+   show, which is clause (b) reaching down into the status channel.)*
+6. After the action settles, the override slot MUST be released, not merely emptied. *(Fails if the
+   rare-read-mode counter is left incremented, which silently moves every signal in the program onto
+   the slow read path for the rest of its life.)*
+7. Inside an action, after a `yield`, write the server's answer through `commit()`. It MUST survive
+   the lane's retirement. Written WITHOUT `commit()`, the same write MUST NOT survive — it is a lane
+   write and the value returns to its pre-action state. *(Fails if there is no way to write
+   authoritatively from inside an action, which is the canonical pattern the API exists for: the
+   value reverts to the pre-action value and the server's answer is written nowhere. Procedure 2
+   lands its write from OUTSIDE the action and cannot see this.)*
+8. Call `update()` twice on one optimistic value inside one action. The second MUST compose over the
+   first, and the store form at the same arity MUST agree. *(Fails if a lane's second write replaces
+   its first: the obvious optimistic-increment pattern then silently loses one, and the two arities
+   disagree.)*
+9. Read a memo over an overridden value under `latest()` FIRST, then normally. Both reads MUST give
+   the authoritative answer; run the same program reading normally first and both MUST give the
+   override. *(Fails as a documentation claim, not as an implementation one: clause (f) would be
+   understated if only one order were pinned, and one order alone reads like the mode reaching
+   through the memo.)*
+
+**Status.** `HOLDS` since M7b. What changed, and what did not:
+
+M7 already had the mechanism at two arities without naming it as one. `createOptimistic` was a
+settled signal, a `layers` signal and a memo folding one over the other; `resource` was a memo with a
+single `override` signal beside it. The pending-layer list **is** the override buffer, and the
+resource's one slot is the degenerate case — so the answer to "does the override slot subsume the
+layer list or sit beside it" is neither: they are one mechanism, and M7b unified the storage rather
+than adding a second. What M7 could not express is the read mode, and that is what moved the buffer
+onto the node (clause (f)).
+
+The resource keeps its slot as a signal beside the memo, and that is correct rather than a leftover:
+`mutate()` writes **both** buffers, so all three read modes agree there and no switch is needed. An
+authoritative arrival then commits into `settled` and drops the override — the same "already correct"
+invariant as clause (e), which is why the resource never needed a revert target either.
+
+Cost, both halves of it. `createOptimistic` went from three reactive nodes to one. A program with **no
+lane in flight** pays the same two branches it paid at M7 — the override sits behind the
+`slowSignalRead` global that already gated snapshot capture and `affects()`, and `_override` is `null`
+on every node `signal()` creates. While **any lane is in flight**, that global is non-zero, so every
+signal read in the program takes the out-of-line slow path, including signals no lane has ever
+touched: measured at **1.70x** (2,000,000 reads over 128 unrelated plain signals, 0.74 → 1.25 ns a
+read, best of 9 in Bun; it returns to 0.74 ns once the lane retires). The gate is global rather than
+per-node because the ordinary read must stay small enough to inline, which is the same trade snapshot
+capture already made. An action whose promise never settles pins the program on that path for good:
+`completeAction` is the only caller of `retireLane`.
+
+**Pinned by.** `packages/core/src/actions.test.ts` (`A5: overrides, lanes and the read surface`,
+fourteen claims, plus the three store-form claims in `createOptimisticStore`). §14.1 names
+`sem-async-optimistic-lane` as the compiler-side fixture still to be written: every claim above is
+runtime behaviour, so the core channel discriminates all nine procedures, but no fixture yet drives
+them through compiled JSX.
 
 ---
 
@@ -2036,17 +2229,19 @@ and re-render. `container.textContent = ""` throws the entire server render away
 root the template can express, and every fixture that falls short MUST be registered with its exact
 reuse. Measured before M6: 0%, everywhere.
 
-**Status.** `HOLDS-with-registry` (M6) — the same status the O family carries, and for the same
-reason: the falsification procedure is run over the whole corpus and the shortfalls are enumerated
-rather than averaged away. **Pinned by.** the node-identity census over the whole corpus —
-`test/hydration.test.ts`, with `test/hydration.ts`'s `HYDRATION_KNOWN` as the registry.
+**Status.** `HOLDS-with-registry` (M6, re-measured at M7b) — the same status the O family carries,
+and for the same reason: the falsification procedure is run over the whole corpus and the shortfalls
+are enumerated rather than averaged away. **Pinned by.** the node-identity census over the whole
+corpus, run against BOTH settings of §12's detection axis — `test/hydration.test.ts`, with
+`test/hydration.ts`'s `HYDRATION_KNOWN` as the registry.
 
 The procedure above is now run for every fixture: the string module's markup is put in a container,
 the DOM module is hydrated over it, and the OBJECT IDENTITIES of the container's nodes are compared
-before and after. **115 of 130 fixtures reuse 100% of them.** `container.textContent = ""` is gone
+before and after. **116 of 131 fixtures reuse 100% of them.** `container.textContent = ""` is gone
 from the hydration path — `render` still opens with it, and `mount(block, container, claiming)` is
 the one line that decides, so the claim path cannot drift from the path everything else is measured
-on.
+on. A second pass compiles every fixture `dev` as well and requires the same tree and the same report:
+turning detection on may make the client SEE a divergence, never make one.
 
 The 15 that do not are registered in `test/hydration.ts`'s `HYDRATION_KNOWN`, each with its `kinds`,
 its `recovered` flag, its EXACT reuse and a reason; a row that starts claiming everything fails the
@@ -2058,39 +2253,110 @@ fragment before revealing it (3, and parking a claimed node is a removal), and t
 write past the claim (`innerHTML` with a child, and a custom element's property whose server spelling
 is an attribute).
 
-### H2 — the written key decides what a branch may claim
+**Every `reuse` in that registry MOVED at M7b, and not one fixture changed what it claims.** §12 took
+the boundary comments off the wire wherever the client can read a position's extent off its parent,
+and the census counts NODES — so a comment that used to sit in the markup and trivially survive was
+in the denominator and is not any more. The same subtree lost over a smaller total is a smaller
+percentage. One row moved the other way: `control-flow-for-keyed-spread` reaches `each` through an
+adapter with no flags, and the recovery that path takes — release what the server wrote here, build
+cold — has nothing to release when the position was written with no comments, so the enclosing
+`insert` reconciles onto the server's own nodes instead and it now reuses 100%. It stays registered
+because it still REPORTS `not-hydratable`; what it stopped doing is throwing nodes away.
 
-**Rule.** A range owner writes a branch instruction at **block boundaries only** — `<!--[k-->` … `<!--]-->`
-— and the client compares its own key against the written `k`. **What a client may CLAIM is decided by
-the wire, never by the client's condition**: on agreement the range's nodes are claimed and nothing is
+### H2 — the wire decides what a range may claim, and it carries only what recovery needs
+
+**Rule.** A range owner writes boundary comments — `<!--[-->` … `<!--]-->` — at **block boundaries
+only**, and **only where the client cannot determine the range's extent for itself**. A position that
+owns its parent element's entire child list writes none, and a row of an `each` writes none. **What a
+client may CLAIM is decided by the wire, never by the client's condition.**
+
+Under `dev` the open comment additionally carries the key the primitive CHOSE — `<!--[k-->` — and the
+client compares its own key against it: on agreement the range's nodes are claimed and nothing is
 rebuilt; on disagreement the client MUST report it and MUST NOT claim nodes the server built for a
 different arm. A run that took the client's arm while silently keeping the server's nodes is the
-failure this rule exists to make impossible.
+failure that clause exists to make impossible **in a development build**.
 
-**Falsified by.** Hydrate a branch whose condition resolves differently on the two sides — seed the
-server's data and leave the client's unseeded. The run MUST report a `key` mismatch, release exactly
-that range, and end with a tree equal to a cold client render. And in the other direction: a branch
-whose key AGREES must claim every one of its nodes with no rebuild. A run that reports nothing, or
-that claims the server's nodes under the other arm, falsifies it.
+**Falsified by.** Three procedures, because the rule now has three claims.
 
-**Status.** `HOLDS` (M6). **Pinned by.** the branch-key comparison, and L6's *"a branch index
-disagrees"* row — `test/hydration-mutations.test.ts`.
+1. Hydrate a **development** build of a branch whose condition resolves differently on the two sides.
+   The run MUST report a `key` mismatch, release exactly that range, and end with a tree equal to a
+   cold client render. In the other direction: a branch whose key AGREES must claim every one of its
+   nodes with no rebuild.
+2. Compile the same source for **production**. The key MUST NOT be on the wire, and the corruption
+   above MUST therefore be inexpressible — a mutation aimed at `<!--[true-->` must leave the bytes
+   unchanged. The same divergence expressed in bytes production DOES carry (the server's markup is the
+   other arm's) MUST still be reported and MUST still rebuild that range and no more.
+3. Render the 100-row page three ways — no `hydratable`, `hydratable`, `hydratable + dev`. The
+   production wire MUST be byte-identical to the un-hydratable one, raw and gzipped, and the
+   development wire MUST be larger. Then render a SECOND 100-row page of the same length whose holes
+   have static siblings and whose rows carry a `<Show>`: production MUST be LARGER than the
+   un-hydratable one there, raw and gzipped. *(Fails as a claim about the split rather than about the
+   page if only the first is measured. Zero is a property of a shape — every hole the sole occupant
+   of its element — and a page consisting only of that shape is js-framework-benchmark's table, not
+   an ordinary page.)*
 
-`ssr.ts`'s `branch` writes `<!--[k-->` with the key it chose; `flow.ts`'s `reconcileKey` reads it and
-compares. The mutation row rewrites `<!--[true-->` to `<!--[false-->` and the run reports `key`,
-releases that range and rebuilds it — 94% of the page's nodes survive. A key with no safe spelling in
-a comment (anything outside `[\w.:+-]{0,32}`) is written as `?`, and the client then claims the range
-POSITIONALLY and skips the comparison, which is exactly what a hole has always had.
+**Status.** `HOLDS` (M7b). **Pinned by.** the branch-key comparison and L6's *"a branch index
+disagrees"* row, both run against BOTH settings of the axis — `test/hydration-mutations.test.ts`,
+whose table is now two tables — plus *"the three wires"* and the payload measurement in
+`test/hydration.test.ts`.
+
+`ssr.ts`'s `range` writes `<!--[-->` when the module was compiled `hydratable` and `<!--[k-->` when it
+was compiled `dev` as well, from the `HYDRATE` and `DETECT` bits of the same flags integer both
+backends take; `flow.ts`'s `reconcileKey` reads whatever is there, and `null` — the production answer
+— means claim positionally, which is exactly what a hole has always had. A key with no safe spelling
+in a comment (anything outside `[\w.:+-]{0,32}`) is written as `?` and takes the same path.
+
+**Why the key is the ONLY thing that moved onto the detection axis, and what pays for the rest.**
+§12 reversed §11 Q4 on a measurement: 55.7% raw and 7.3% gzipped on the 100-row page. The bytes that
+went are the ones a client can re-derive, and each of them had an argument that dissolved:
+
+| what | why it needed comments | why it does not |
+|---|---|---|
+| a hole that owns its parent element | its extent is data | its extent is every child of the parent, and no other index in that parent exists to be disturbed |
+| a row of an `each` | the client must hand row `i` its own nodes | the rows are built in ORDER, so a row's extent is what its build consumed from one shared cursor |
+| a range that owns its parent element | as the hole above | as the hole above — in production; a `dev` build writes them anyway, because the open comment is the only place a key can live |
+| the key `k` | H2's own argument: re-evaluating the condition is unsound | it still is, and the key still buys DETECTION and a bounded blast radius — but that is an argument about development, so it is emitted there |
+
+What survives is load-bearing and each byte is: a hole whose parent holds anything else needs its
+OPEN so a dynamic text run does not fuse with the static one beside it and its CLOSE as the anchor
+every later write uses; a range whose parent holds anything else needs both for the same two reasons;
+a `<!---->` skeleton marker is counted by the logical index on both sides; and `<!--[b:N-->` names a
+streamed continuation no walk of the document can discover. A `<pre>`, `<textarea>` or rawtext parent
+keeps its hole's comments whatever else is true, because the tokenizer eats a leading newline there
+and the OPEN is what stands between it and the server's text.
+
+**Measured, on two 100-row pages, because one of them was not enough.**
+
+| page | build | raw | gzipped |
+|---|---|---|---|
+| every hole the SOLE OCCUPANT of its element | M6b | `11513 → 17929` (+55.7%) | `997 → 1070` (+7.3%) |
+| | production | `11513 → 11513` (+0.0%) | `997 → 997` (+0.0%) |
+| | development | `11513 → 11529` (+0.1%) | `997 → 1015` (+1.8%) |
+| holes with STATIC SIBLINGS, a `<Show>` per row | production | `13539 → 20439` (**+51.0%**) | `1027 → 1083` (**+5.5%**) |
+| | development | `13539 → 20913` (+54.5%) | `1027 → 1119` (+9.0%) |
+
+The zero is **not** a property of the split. It is a property of the first page's shape: every
+dynamic value is the only thing in its `<td>`, which is exactly the case the table above says needs
+no comments. That page is js-framework-benchmark's table. On an ordinary page — one static character
+beside a hole is enough — production pays, and it pays most of what M6b paid: +51.0% raw against
++55.7%, +5.5% gzipped against +7.3%. The corpus says the same thing and always did, in the same test:
+`11422 → 12846` bytes, +12.5%.
+
+So the claim that survives the evidence is **"production costs zero where a hole owns its parent's
+child list, and carries only the delimiters a parent with other children genuinely needs elsewhere"**
+— not "production is byte-identical". What the split bought on a mixed page is the gzipped column
+falling by about a quarter and, more to the point, the O(subtree) verification walk leaving the
+production client entirely; what it bought on a jfb-shaped page is everything.
 
 **One thing this rule does NOT say: that the server's arm wins.** An earlier draft required exactly
 that — "it MUST NOT re-evaluate the condition; the claimed branch MUST be the server's" — and the
 implementation has never done it, because it cannot be made sound here. The client's condition is the
 one its reactive graph will go on maintaining; a branch kept on the server's arm against the client's
 own read has no dependency that will ever repair it, so a condition that never changes again leaves
-the wrong arm standing forever. What the wire buys is DETECTION and a bounded blast radius, which is
-what §11 Q4 paid the bytes for. Keeping the server's arm until the client is seeded is a real design
-— it needs a seeding barrier that says when the client's data is complete — and it is not specified,
-so it is not claimed.
+the wrong arm standing forever. What the key buys is DETECTION and a bounded blast radius, which is
+what §11 Q4 paid the bytes for and what §12 moved to the build where they are worth paying. Keeping
+the server's arm until the client is seeded is a real design — it needs a seeding barrier that says
+when the client's data is complete — and it is not specified, so it is not claimed.
 
 ### H3 — elements are claimed by a hydration-only logical index
 
@@ -2102,6 +2368,13 @@ walk must carry no index argument.
 
 **Status.** `HOLDS` (M6). **Pinned by.** the emission diff, `hydratable` on against off, over the
 whole corpus — `test/hydration.test.ts`.
+
+Since M7b the index has a companion on the same terms. A hole that owns its parent element's child
+list is emitted as `insert(s, el, v, null, WHOLE)`, and the trailing argument is what tells the
+runtime the server wrote no comments there rather than letting it guess from what it finds — a
+"no `<!--]-->` at the end, so it must be the whole list" reading would turn a corrupted wire into a
+silently accepted one, which is the failure the whole file refuses. It costs nothing off the
+hydration path for the same reason `child` does: with the flag off, it is not emitted.
 
 The procedure is the test, in both directions: no fixture's ordinary emission mentions `child` or
 `sib`, some fixture's `hydratable` emission does, and no fixture's ordinary SSR emission contains a
@@ -2116,31 +2389,59 @@ the compiler computed against the template addresses the server's document uncha
 local step cannot see where the ranges are — and it costs nothing off the hydration path, because
 with no session live `child` and `sib` ARE the native property they replace.
 
-### H4 — a mismatch has a local blast radius
+### H4 — detection is a build axis; a detected mismatch has a local blast radius
 
-**Rule.** On mismatch, **only that branch** re-renders. Detection is mandatory; silent divergence is
-not acceptable. `CODESIGN.md` §11 Q4: take the bytes, get the recovery.
+**Rule.** On mismatch, **only that range** re-renders. In a **development** build detection is
+mandatory and silent divergence is not acceptable. In a **production** build the checks that survive
+are the ones the claim was making anyway, and the ones that are not — the O(subtree) comparison
+between a claimed subtree and the template that would have been built — are NOT present.
+`CODESIGN.md` §12: the wire carries what recovery needs, detection is an emission axis, and silent
+failure is an argument about development.
 
-**Falsified by.** A deliberate mismatch fixture, measuring blast radius in nodes replaced. The count
-MUST equal that branch's node count, not the page's.
+**Falsified by.** Corrupt the wire one way at a time, against BOTH settings of the axis, and for each
+corruption record whether it was detected and what the page degraded to. In development, every
+corruption that changes a byte MUST be detected. In production, the corruptions that survive MUST be
+exactly the ones listed, with the exact tree each produces — a new silent one, or a listed one that
+starts being caught, fails.
 
-**Status.** `HOLDS` (M6), with the radius stated per corruption. **Pinned by.**
-`test/hydration-mutations.test.ts` — eleven corruptions of the wire, each with its detection and its
-blast radius recorded, plus the build-level one (compile without `hydratable` and hydrate anyway).
+**Status.** `HOLDS` (M7b) for development, `HOLDS-with-registry` for production. **Pinned by.**
+`test/hydration-mutations.test.ts` — twelve corruptions of the wire run through two builds, each with
+its detection and its blast radius recorded, plus the two build-level ones (compile without
+`hydratable` and hydrate anyway; pair a hydratable server with a non-hydratable client).
 
-Every corruption is DETECTED and every one degrades to a tree the client would have built — that
-equality is asserted for each row, and it is the property the whole scheme exists for. The radius is
-`local` where the corruption is local to a range (a branch key that disagrees: 94% of nodes survive)
-and `cold` where it is not (a dropped boundary comment, a wrong tag, an element the client does not
-build: the page re-renders, which is exactly today's behaviour). A text drift keeps every node and is
-still reported, because "nothing was reported" has to mean something.
+**Development: nothing is silent.** All twelve are DETECTED and all twelve degrade to a tree the
+client would have built. The radius is `local` where the corruption is local to a range — a branch key
+that disagrees, or a server arm that is not the client's: 89% of the page's nodes survive — and `cold`
+where it is not (a dropped boundary comment, the container empty, the scaffolding stripped).
 
-**The row that was not detected until the check existed.** An EXTRA element in the middle of a
-claimed subtree survived into the hydrated page, silently: the walk indexes from both ends, so a node
-inserted between them is invisible to it. `verifySubtree` closes it — a claimed subtree must have the
-skeleton its template has, compared by node NAME with ranges contributing nothing. An empty template
-element is skipped, because there are three reasons it can be empty (a hole, an `innerHTML` write,
-rawtext) and none of them is a skeleton.
+**Production: three survive, and they are the same three.** A wrong tag, a missing element and an
+extra element, each in the middle of a claimed subtree, are invisible to a production claim, because
+the only thing that could see them is the subtree comparison and that is what moved onto the axis.
+Each is registered with the exact tree it produces. Everything else on the table is still detected,
+including the divergence the branch key used to be the only evidence for: a server arm that is not
+the client's fails on the tag the claim lands on, and the region rebuilds its own range.
+
+**Local recovery, generalised — the mechanism that makes the production column tolerable.** Until
+M7b exactly one mismatch reached a region's own catcher (a branch key that disagreed) and every other
+kind travelled to `hydrate` and cost the page. `flow.ts`'s `activate` now catches `HydrationMismatch`
+from the claiming attempt, reports it, releases the server's nodes and rebuilds cold at that
+position. It is what turns "production detects the arm structurally" into H4's radius rather than
+into a full re-render.
+
+**The check that moved, and what it gained on the way.** An EXTRA element in the middle of a claimed
+subtree once survived into the hydrated page silently, because the walk indexes from both ends and a
+node inserted between them is invisible to it. `verifySubtree` closes it — a claimed subtree must have
+the skeleton its template has — and it now compares static TEXT as well as node names, which is the
+compensation §12 owes: an undelimited hole leaves no `<!--]-->` for `claimRange` to assert against,
+and two branch arms that differ only in the words they print are structurally identical. An empty
+template element is still skipped, because there are three reasons it can be empty (a hole, an
+`innerHTML` write, rawtext) and none of them is a skeleton. The whole corpus hydrates identically
+with the check on and off, which is the test that a stronger checker did not start inventing
+divergences.
+
+**What it bought.** Claiming was 1.4–1.6x more node work than replacing at M6b. With the comment
+nodes off the wire and the subtree walk off the production path it is now **1.12–1.31x FASTER** than
+replacing at the same four page sizes — measured in the same harness, `test/hydration.test.ts`.
 
 ### H5 — the address is the shared artefact and it is process-independent
 
@@ -2288,9 +2589,9 @@ green, which is why L1 exists.
 | X4 | cross-boundary reads follow the scope chain | U | `sem-ctx-portal-lexical` *(new)* |
 | X5 | a miss throws, carrying the component stack | H / P (M2) | `sem-ctx-miss-throws-with-stack` *(new)* |
 | X6 | the context record forks lazily, flat cost | H | `sem-ctx-fork-is-flat.bench.ts` *(new, bench)* |
-| K1 | index is the default row identity | P (M4) | `sem-key-index-default` *(new)*, `for-unkeyed-rows` |
+| K1 | the item is the default row identity | H (M7b) | `sem-key-identity-default`, `control-flow-for`, `control-flow-for-keyed-by-item`, `control-flow-for-keyed-false`, `control-flow-for-keyed-fn`, `control-flow-index`, `for-unkeyed-rows` |
 | K2 | an unchanged key is a no-op | H (M4) | `mm-branch-key-stable`, `mm-branch-nonkeyed-truthy`, `mm-keyed-move`, `mm-index-row-stable` |
-| K3 | keyless + stateful row = diagnostic | P (M4) | `sem-key-stateful-row-diagnostic` *(new)* |
+| K3 | positional + stateful row = a hint | H (M7b) | `sem-key-identity-default`, `diagnostics.test.ts` |
 | K4 | duplicate keys: DEV error, degrade to index | P (M4) | `sem-key-duplicate` *(new)* |
 | K5 | key expressions are emitted JS; `SymbolId` resolution | H | `renamed-core-import`, `sem-key-shadowed-flow` *(new)*, the control-flow corpus |
 | K6 | each activation is a fresh scope and a fresh build | H (M4) | `control-flow-show`, `mm-branch-flip`, `mm-switch-arm`, `c7-dynamic` |
@@ -2327,11 +2628,11 @@ green, which is why L1 exists.
 | A2 | staleness by `gen` captured at call time | H (M7) | `sem-async-stale-response` |
 | A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
 | A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `create-optimistic-signal` |
-| A5 | transitions | U | — |
+| A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | no compiler-rs channel — there is no transition API to emit; all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
-| H2 | branches claimed by written key | **H** | the branch-key comparison + L6's disagreeing-index row |
+| H2 | the wire carries what recovery needs; the key is a dev-only axis | **H** (M7b) | the branch-key comparison in both builds + L6's two tables + the three-wire byte measurement |
 | H3 | logical index is free on the client path | **H** | emission diff, flag on against off (corpus-wide) |
-| H4 | a mismatch has a local blast radius | **H** | L6's eleven wire corruptions + the build-level one |
+| H4 | detection is a build axis; a detected mismatch is local | **H** dev / **H** with registry prod (M7b) | L6's twelve corruptions × two builds + the two build-level ones |
 | H5 | the address is process-independent | **H** | address-set diff (corpus-wide) |
 | H6 | interactive state survives hydration | **H** | focus + typed value + keystroke replay |
 
@@ -2366,7 +2667,7 @@ individually plausible and none of them was individually wrong *against anything
 
 This is the deliverable §13 is really for. Three classes.
 
-### 14.1 Rules pinned by a fixture that must be written (45 fixtures, 1 bench, 1 type-level test)
+### 14.1 Rules pinned by a fixture that must be written (46 fixtures, 1 bench, 1 type-level test)
 
 M7 removed the five hydration rows: they moved to §14.2, which is where a rule whose input is not a
 source file belongs.
@@ -2391,9 +2692,12 @@ failure must name the rule.**
 `sem-props-forward-identity`, `sem-props-block-in-cell-slot`, `sem-props-source-list-order`,
 `sem-props-direct-call-diagnostic`. Plus one type-channel test: `sem-props-typed-slot.d.test.ts`.
 
-**Keying (6).** `sem-key-index-default`, `sem-key-noop-preserves-nodes`,
-`sem-key-stateful-row-diagnostic`, `sem-key-duplicate`, `sem-key-shadowed-flow`,
-`sem-key-remount-is-fresh`.
+**Keying (4).** `sem-key-noop-preserves-nodes`, `sem-key-duplicate`, `sem-key-shadowed-flow`,
+`sem-key-remount-is-fresh`. M7b struck two off this list by reversing the rule they were for:
+`sem-key-index-default` named a default that no longer exists, and `sem-key-stateful-row-diagnostic`
+named a safety net that turned out not to be one. `sem-key-identity-default` replaces both, and it
+covers K3 as well — the state loss `keyed={false}` costs is observable in the DOM, where the hint's
+absence is not.
 
 **Mount (5).** `sem-mount-order`, `sem-mount-no-flash`, `sem-mount-ref-order`,
 `sem-mount-stable-rerender`, `sem-mount-dispose-during-construction`.
@@ -2401,7 +2705,9 @@ failure must name the rule.**
 **Reactivity (4).** `sem-react-untrack-keeps-owner`, `sem-react-component-body-untracked`,
 `sem-react-apply-is-untracked`, `sem-react-cell-neutrality`.
 
-**Async (2).** `sem-async-abort-on-dispose`, `sem-async-stale-response`.
+**Async (3).** `sem-async-abort-on-dispose`, `sem-async-stale-response`, `sem-async-optimistic-lane`
+(A5, added at M7b: an action overriding a value a template reads, driving A5's nine procedures through
+compiled JSX rather than through `createOptimistic` called by hand).
 
 **Hydration (0).** The five planned fixtures were not written, and the rules were struck off anyway —
 by CHANNELS, which is §14.2's category and the honest one for this family. A single fixture cannot
@@ -2446,7 +2752,7 @@ Recorded so that "unpinned" does not silently mean "unenforced".
 | O3.1 | the L2b channel reports a scope whose disposer runs its body twice — that is, it observes the ABSENCE OF THE IDEMPOTENCE GUARD, not repeated calls to `dispose()`. Calling an idempotent disposer three times records one event and is correctly silent. |
 | K8 | a lint rule: no module-level mutable insertion state in `packages/core` |
 | R5 | the ablation benchmark in `packages/core`, with correctness assertions per variant |
-| A5 | none — the rule does not exist yet, and §10 says so |
+| A5 | `packages/core/src/actions.test.ts`, which runs all nine of A5's falsification procedures. A5 is entirely runtime behaviour — there is no transition API for the compiler to emit — so this is the discriminating channel, not a stopgap. What §14.1's `sem-async-optimistic-lane` adds is that the same nine run through compiled JSX. |
 
 ---
 
@@ -2480,8 +2786,8 @@ The registry is a data file, `test/known-failures.ts`, exporting a frozen table:
 export const KNOWN_FAILURES = [
   { fixture: "sem-ctx-provider-direct-child", rule: "O2",   status: "VIOLATED", green_at: "M3",
     reason: "children evaluated at the call site; verified <span>THREW:ContextNotFoundError</span>" },
-  { fixture: "sem-key-index-default",         rule: "K1",   status: "PLANNED",  green_at: "M4",
-    reason: "today's For keys by item; CODESIGN §11 Q3 reverses this deliberately" },
+  { fixture: "sem-own-render-disposer-disposes", rule: "O5", status: "PLANNED",  green_at: "M5",
+    reason: "the disposer is a stub; the scope survives the call" },
   // …
 ] as const
 ```

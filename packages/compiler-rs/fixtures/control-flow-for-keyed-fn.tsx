@@ -60,13 +60,13 @@ export const wins = [
   {
     kind: "step",
     index: 0,
-    compiled: '<ul class="keyed-fn"><!--For:#--><li>0: ALPHA</li><li>1: BETA</li><!--/For:#--></ul>',
+    compiled: '<ul class="keyed-fn"><li>0: ALPHA</li><li>1: BETA</li></ul>',
     why: "same keys, new items: the row signal was re-set and the compiled path is bound to it",
   },
   {
     kind: "step",
     index: 1,
-    compiled: '<ul class="keyed-fn"><!--For:#--><li>0: BETA</li><li>1: ALPHA</li><!--/For:#--></ul>',
+    compiled: '<ul class="keyed-fn"><li>0: BETA</li><li>1: ALPHA</li></ul>',
     why: "the reused rows swapped slots, so the index accessor moved under both of them",
   },
 ]

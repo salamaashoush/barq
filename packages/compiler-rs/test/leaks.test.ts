@@ -16,12 +16,14 @@ import { fixtureSource, listFixtures } from "./harness.ts"
 import {
   duplicateLeakRows,
   LEAK_FAILURES,
+  LEAK_REACH,
   leakIndex,
   leakKey,
   LEAK_REGISTRY_RULES,
 } from "./leak-known-failures.ts"
 import { findLeaks, formatLeaks, LEAK_RULES, type LeakFinding } from "./leaks.ts"
 import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
+import { ratchet, reachRatchet } from "./ratchet.ts"
 import { documentedRules } from "./semantics.ts"
 import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts"
 
@@ -106,6 +108,12 @@ describe("L4 — the leak oracle", () => {
       if (row.reason.length < 80) {
         malformed.push(`${leakKey(row.fixture, row.leak)}: reason is too short to be one`)
       }
+      if (!/^[0-9a-f]{12}$/.test(row.observed ?? "")) {
+        malformed.push(
+          `${leakKey(row.fixture, row.leak)}: observed ${row.observed ?? "(absent)"} is not a ` +
+            "ratchet digest — run BARQ_RATCHET=print bun test",
+        )
+      }
     }
     expect(malformed.join("\n")).toBe("")
   })
@@ -148,6 +156,46 @@ describe("L4 — the leak oracle", () => {
       wrong.push(`${leakKey(finding.fixture, finding.id)}: row says ${row.rule}, probe said ${finding.rule}`)
     }
     expect(wrong.join("\n")).toBe("")
+  })
+
+  /**
+   * The ratchet — `CODESIGN.md` §12, `ratchet.ts`. A registered leak that goes
+   * on leaking while its message changes leaves every assertion above green.
+   */
+  it("ratchets: a registered leak that changed shape is a failure either way", () => {
+    const complaints: string[] = []
+    for (const finding of findings) {
+      const row = REGISTRY.get(leakKey(finding.fixture, finding.id))
+      if (row === undefined) continue
+      const complaint = ratchet({
+        key: leakKey(finding.fixture, finding.id),
+        expected: row.observed,
+        observed: finding.message,
+        file: "test/leak-known-failures.ts",
+      })
+      if (complaint) complaints.push(complaint)
+    }
+    expect(complaints.join("\n")).toBe("")
+  })
+
+  /**
+   * The reach ratchet. With the table empty this is the only thing standing
+   * between "nothing leaked" and "the probes stopped looking".
+   */
+  it("ratchets the probes' reach, in both directions", () => {
+    const all = [...sessions.values()]
+    const complaint = reachRatchet({
+      channel: "L4 leak",
+      expected: LEAK_REACH,
+      observed: {
+        sessions: sessions.size,
+        scopesEntered: all.reduce((n, s) => n + s.scopesEntered, 0),
+        effectsCreated: all.reduce((n, s) => n + s.effectsCreated, 0),
+        listeners: all.reduce((n, s) => n + s.listeners.length, 0),
+      },
+      file: "test/leak-known-failures.ts",
+    })
+    expect(complaint ?? "").toBe("")
   })
 
   it("O3.7's four non-listener clauses hold everywhere, with nothing registered", () => {

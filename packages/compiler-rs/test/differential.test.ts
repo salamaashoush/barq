@@ -114,7 +114,7 @@ const BASE_SEED = 1
 const REQUIRED_FEATURES = [
   "Show",
   "For",
-  "Index",
+  "For keyed={false}",
   "Switch/Match",
   "component boundary",
   "capture-free delegated handler",

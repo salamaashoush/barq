@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { createElement, insert, render, spread, useRef, template } from "./dom.ts";
+import { createElement, insert, render, setProp, spread, useRef, template } from "./dom.ts";
 import { boundary } from "./flow.ts";
 import {
   ScopeMissingError,
@@ -318,6 +318,26 @@ describe("Class handling", () => {
   test("removes class when value is false", () => {
     const el = createElement("div", { class: false }) as HTMLDivElement;
     expect(el.hasAttribute("class")).toBe(false);
+  });
+
+  // A caller that does not thread `prev` used to leave every token it had ever
+  // written on the element, because the diff was against `null` and removed
+  // nothing. The channel remembers its own last write instead.
+  test("repeated one-shot writes replace rather than accumulate", () => {
+    const el = document.createElement("div");
+    for (let i = 0; i < 5; i++) setProp(null, el, "class", `c${i}`);
+    expect(el.getAttribute("class")).toBe("c4");
+    expect(el.classList.length).toBe(1);
+  });
+
+  // And it still removes only what it OWNS: a token another channel put there
+  // survives, which is the invariant the diff path exists for.
+  test("a one-shot write keeps tokens this channel never wrote", () => {
+    const el = document.createElement("div");
+    el.setAttribute("class", "from-markup");
+    setProp(null, el, "class", "a");
+    setProp(null, el, "class", "b");
+    expect([...el.classList].toSorted()).toEqual(["b", "from-markup"]);
   });
 });
 

@@ -455,7 +455,7 @@ export function UserList() {
 1. SSR utilities (context.ts, escape.ts)
 2. Signal SSR mode (skip effects on server)
 3. renderToString basic implementation
-4. Component SSR branches (Show, For, Index)
+4. Component SSR branches (Show, For)
 5. Hydration markers in output
 6. Resource tracking for async
 7. renderToStringAsync

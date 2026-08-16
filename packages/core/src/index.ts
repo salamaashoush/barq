@@ -146,7 +146,7 @@ export {
 export type { Part, StorePathRange } from "./store.ts";
 
 // Actions & optimistic updates
-export { action, affects, createOptimistic, createOptimisticStore } from "./actions.ts";
+export { action, affects, commit, createOptimistic, createOptimisticStore } from "./actions.ts";
 
 // Server-side rendering
 export {
@@ -258,7 +258,6 @@ export {
   Fragment,
   Show,
   For,
-  Index,
   Repeat,
   Switch,
   Match,

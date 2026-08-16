@@ -15,7 +15,7 @@
  * the two apart, and "this fixture fails" would stop being evidence about
  * anything in particular.
  *
- * `semantics.test.ts` makes six assertions against this table (§15.2, §15.7):
+ * `semantics.test.ts` makes seven assertions against this table (§15.2, §15.7):
  *
  *   1. a registered claim that PASSES is a suite failure, reported as stale;
  *   2. an unregistered claim that FAILS is a suite failure;
@@ -30,6 +30,13 @@
  *      this is the other direction, a row that never started passing, and
  *      without it a marker rots across milestones until someone deregisters the
  *      row on the strength of the marker rather than a measurement.
+ *   7. THE RATCHET (`ratchet.ts`, `CODESIGN.md` §12). A row whose claim still
+ *      fails but fails DIFFERENTLY is a suite failure, whether the difference
+ *      is a regression or an improvement. Assertions 1 and 6 only see a row
+ *      that flipped; this one sees a row that moved. C3.8 below is the live
+ *      example: fix two of its four surviving (shape, slot) pairs and every
+ *      other assertion here stays green while the row goes on saying "4 of 18"
+ *      and proposing a fix for slots that are no longer broken.
  */
 
 export interface KnownFailure {
@@ -53,6 +60,15 @@ export interface KnownFailure {
   readonly greenAt: string
   /** Why it fails, in terms of the defect rather than the symptom. */
   readonly reason: string
+  /**
+   * The digest of the failure message this row was written against
+   * (`ratchet.ts`). Any change to what the claim reports — a partial fix, a
+   * different count, a reworded diagnosis — fails until this is regenerated,
+   * because that is the change in which `reason` has to be re-read.
+   *
+   * `BARQ_RATCHET=print bun test` prints the value to put here.
+   */
+  readonly observed: string
 }
 
 const ROWS: readonly KnownFailure[] = [
@@ -95,6 +111,7 @@ const ROWS: readonly KnownFailure[] = [
     fixture: "sem-own-render-disposer-disposes",
     claim: "the-disposer-disposes-when-an-owner-is-current",
     rule: "O5",
+    observed: "0422c93550e1",
     status: "VIOLATED",
     greenAt: "M9",
     reason:
@@ -105,7 +122,7 @@ const ROWS: readonly KnownFailure[] = [
       "JSX, but `render(<Tree/>, host)` is a CALL, and nothing lowers a JSX argument into the Block " +
       "the callee wants. `render` still accepts both forms and still emits RENDER_SUBTREE_NOT_OWNED " +
       "rather than returning a disposer that quietly disposes nothing. Green when a JSX argument at a " +
-      "`render` call site lowers to a Block. M4b delivered the flow pass — eleven constructs compile " +
+      "`render` call site lowers to a Block. M4b delivered the flow pass — the constructs it recognises compile " +
       "to `_$branch`/`_$each`/`_$boundary`/`_$portal` and `NO_SCOPE` is emitted non-zero — and it did " +
       "NOT close this row: the pass recognises a construct by the `SymbolId` its TAG resolves to, and " +
       "`render` is neither a flow construct nor a tag. A JSX argument at an arbitrary call site is a " +
@@ -149,6 +166,7 @@ const ROWS: readonly KnownFailure[] = [
     fixture: "sem-own-given-scope-wins",
     claim: "a-children-block-is-invoked-with-the-given-scope",
     rule: "O4.5",
+    observed: "10ec557cc555",
     status: "VIOLATED",
     greenAt: "M9",
     reason:
@@ -186,6 +204,7 @@ const ROWS: readonly KnownFailure[] = [
     fixture: "sem-props-block-in-cell-slot",
     claim: "every-shape-of-block-throws-at-every-cell-slot",
     rule: "C3.8",
+    observed: "9a6ced41e168",
     status: "VIOLATED",
     greenAt: "M9",
     reason:

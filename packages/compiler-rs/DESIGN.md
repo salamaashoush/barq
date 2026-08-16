@@ -366,7 +366,7 @@ pub enum Prim {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Flow {
     // string-inlinable on the server
-    For, Index, Repeat, Show, Switch, Match,
+    For, Repeat, Show, Switch, Match,
     // NOT string-inlinable — need real server implementations
     Loading, Errored, Reveal, Suspense, Await, Portal, Dynamic, ErrorBoundary,
 }
@@ -525,9 +525,10 @@ does not. Then a small worklist runs to fixpoint over:
 - **Reassigned `let`.** Join every write RHS kind; any unresolvable RHS ⇒ `Opaque`.
 - **Control-flow parameter attribution, by arity and position, from the real signatures.**
   Keyed `For.children: (item: T, index: () => number)` ⇒ `(RowValue, Accessor)`.
-  `Index.children: (item: () => T, index: number)` ⇒ `(Accessor, Inert)`.
+  `For keyed={false}`'s children: `(item: () => T, index: number)` ⇒ `(Accessor, Inert)`.
   `Repeat.children: (index: number)` ⇒ `(Inert)`.
-  `For` with `keyed: false` delegates to `Index` at runtime, so it takes `Index`'s attribution.
+  `keyed: false` is the positional mode; `keyed={fn}` boxes the row in a signal, so BOTH
+  parameters are accessors there.
   A key FUNCTION boxes the row in a signal ⇒ `(Accessor, Accessor)`. Anything that cannot be
   proved — `keyed={KEYED}`, `keyed={props.keyed}`, or a **spread**, which can carry `keyed` where
   nothing can read it — takes the key-function arm, because that is the arm that is safe when
@@ -627,7 +628,7 @@ JSX becomes its own `Unit` and recurses through P1..P8.
 
 Per-component prop contracts, verified against `components.ts`:
 
-- `For.each`, `Index.each` accept `T[] | (() => T[])` — the body is
+- `For.each` accepts `T[] | (() => T[])` — the body is
   `typeof raw === "function" ? raw() : raw`. So passing the bare accessor is legal.
   `Repeat.count`, `Show.when`, `Match.when`, `Dynamic.component`, `Loading.on` are the same.
 - `fallback` is a `JSXElement`, evaluated eagerly by `fallbackNodes(props)`. Pass a
@@ -864,7 +865,7 @@ Boolean-shaped attributes specialise to a ternary (`${cond ? " disabled" : ""}`)
 helper call, matching `setElementAttr`'s add/remove semantics.
 
 **Control flow without a server runtime.** The compiler already knows the semantics of `For`,
-`Index`, `Repeat`, `Show`, `Switch`/`Match` — they are `SourceKind::Primitive(Prim::Flow(..))`,
+`Repeat`, `Show`, `Switch`/`Match` — they are `SourceKind::Primitive(Prim::Flow(..))`,
 resolved by `SymbolId`, never by name — so P8b **inlines** them as plain JS:
 
 - `<For each={e}>{fn}</For>` → `(e ?? []).map(fn').join("")`
@@ -883,13 +884,13 @@ created: six flow components inlined as plain JS, and the remaining eight — `L
 merely referenced one** back to the happy-dom `renderToString` path. `CODESIGN.md` §0.1 measured
 that at 41.88x on the 100-row page, for one import.
 
-What replaced it is `CODESIGN.md` §3.4 and §3.11. The flow pass lowers eleven constructs onto four
+What replaced it is `CODESIGN.md` §3.4 and §3.11. The flow pass lowers ten constructs onto four
 primitives before either backend runs, and `packages/core/src/ssr.ts` implements those four
 primitives as string builders under the same names and the same argument order as `flow.ts`'s. The
 compiler emits the same call for both targets and picks the implementation by picking the import
 source. The refusals the flow pass states — a spread source, an unreadable `keyed`, and `Dynamic`,
 `Await`, `Reveal` — reach a string COMPONENT that is an adapter over those same four primitives, so
-all fourteen constructs have a string lowering and no module has anywhere else to go.
+all thirteen constructs have a string lowering and no module has anywhere else to go.
 `uninlinable_flow`, `Flow::inlinable_on_server`, the module-level downgrade and `BARQ007` are
 deleted. Open question O2 is closed.
 
@@ -1529,7 +1530,7 @@ designs invented API that does not exist:
 | V5 | `template(html, isSVG?)` | Confirmed 2-arg, returns `() => Node`, caches on first call and clones (`dom.ts:986`). But it returns `content.firstChild` **only**, so multi-root fragments need one template per root. And `isSVG = true` wraps in `<svg xmlns>` and returns `svgEl.firstChild`, so it is for templates rooted at an SVG *child*, not at `<svg>` itself. |
 | V6 | `renderEffect((_p$ = {}) => { …; return _p$ })` | **Works.** `recompute` calls `node._fn(uninit ? undefined : node._value)` (`signals.ts:868`) and stores the return (`signals.ts:972`). Hard rule: the compute must **never return a function** — `signals.ts:994` would register it as the cleanup. |
 | V7 | reactive detection at runtime | `isSignalGetter` is literally `typeof value === "function"` (`type-utils.ts:30`). There is no signal brand. So `React::Opaque` passed unwrapped is *exactly* oracle-identical — the cheap, sound answer. Corollary: a static function-valued attribute can never be emitted unwrapped expecting a one-shot write. |
-| V8 | `For` row params | Confirmed `(item: T, index: () => number)` for keyed (`components.ts:264`); `Index` is `(item: () => T, index: number)`; `For` with `keyed: false` delegates to `Index`. `each` accepts `T[] \| (() => T[])`, so η-reduction is legal. |
+| V8 | `For` row params | Confirmed `(item: T, index: () => number)` for the identity default (`components.ts`); `keyed={false}` is `(item: () => T, index: number)`; `keyed={fn}` is `(item: () => T, index: () => number)`. `each` accepts `T[] \| (() => T[])`, so η-reduction is legal. |
 | V9 | "Match/Switch become ternaries" | **DOM-target-false.** `Match` returns its own props object (`components.ts:512`) and `Switch` reads them. The DOM target must emit real `Match({…})` calls. Only SSR inlines. |
 | V10 | control flow returns a fragment | Confirmed. `For`/`Show`/`Switch`/`Dynamic` build a `DocumentFragment` with an internal marker pair and register their own `renderEffect` at construction (`components.ts:286`). `insert(parent, fragment)` takes the non-function path and creates zero extra effects. But the markers *are* spliced into the live parent — only the *template* is marker-free. |
 | V11 | `DOM_PROPS` | Larger than any design listed: `value, checked, selected, disabled, readOnly, multiple, indeterminate, defaultChecked, defaultValue, innerHTML, innerText, textContent` (`dom.ts:103`), and the guard is `!isSvg && propKey in DOM_PROPS`. Must be generated, not transcribed. |
@@ -1682,7 +1683,7 @@ write is a silently dead handler. If the answer is no, the compiler must emit
 **O2 — SSR scope. CLOSED at the redesign's M6.** The question was whether to write string
 implementations of `Loading`, `Errored`, `Reveal`, `Suspense`, `Await`, `Portal`, `Dynamic` and
 `ErrorBoundary`, or let modules using them fall back to happy-dom permanently. The answer turned out
-to be neither: `CODESIGN.md` §3.4 collapses fourteen constructs onto FOUR primitives before either
+to be neither: `CODESIGN.md` §3.4 collapses thirteen constructs onto FOUR primitives before either
 backend runs, so what needed a string implementation was four functions rather than eight components.
 The eight adapters exist too — they are what a construct whose props the compiler cannot read
 statically still reaches — but each is a dozen lines over those same four primitives. The fallback is

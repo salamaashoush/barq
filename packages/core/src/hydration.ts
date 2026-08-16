@@ -1,5 +1,5 @@
 /**
- * Claim-based hydration. `CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4, H6.
+ * Claim-based hydration. `CODESIGN.md` §3.11 and §12, `SEMANTICS.md` H1–H4, H6.
  *
  * The client CLAIMS the server's nodes by walking them. Nothing is cleared,
  * nothing is replaced, and the walk that claims is the walk that would have
@@ -8,18 +8,32 @@
  *
  * THE WIRE FORMAT, which the compiler writes and this file reads:
  *
- *   <!--[-->  …  <!--]-->     a hole  (`Ssr::insert`, compile time)
- *   <!--[k--> …  <!--]-->     a range, `k` the branch key the server CHOSE
- *   <!--[--> … <!--]-->       one row of an `each`
+ *   <!--[-->  …  <!--]-->     a hole the client cannot bound on its own
+ *   <!--[--> … <!--]-->       a control-flow range
+ *   <!--[k--> …  <!--]-->     the same range in a DEV build, `k` the key the
+ *                             primitive CHOSE
+ *   <!--[b:N--> … <!--]-->    a boundary the stream has not flushed yet
  *   <!---->                   a skeleton marker, present on both sides
  *
- * §11 Q4 settled the trade: pay those bytes, get the recovery. The recovery is
- * the whole point — a mismatch must be DETECTED and degrade, because silent
- * success is the failure mode this class of framework is known for
- * (solid-start#1807 is titled "hydration fails silently without an error").
+ * and, as important, what it does NOT carry:
  *
- * So every claim below either succeeds or throws [`HydrationMismatch`], and
- * every catcher is one of exactly two:
+ *   a hole that owns its parent element's whole child list — no comments; the
+ *     extent is every child of the parent and the client reads it off the
+ *     document
+ *   a row of an `each` — no comments; the rows are built in order and each one
+ *     claims from the list's cursor, so its extent is what it consumed
+ *
+ * §12 REVERSED §11 Q4 on a measurement: the boundary comments cost 55.7% raw
+ * and 7.3% gzipped on a 100-row page, and 7.3% on every page forever is
+ * material. The split that replaces it is this: THE WIRE CARRIES WHAT RECOVERY
+ * NEEDS AND NOTHING ELSE, and DETECTION is an emission axis that a dev build
+ * turns on and a production build does not have. What is left above is
+ * load-bearing for the claim itself — a delimited hole's extent is data the
+ * client cannot compute, and a range's identity is a decision only the server
+ * made.
+ *
+ * Every claim below either succeeds or throws [`HydrationMismatch`], and every
+ * catcher is one of exactly two:
  *
  *  - a REGION catches it and rebuilds its own range — H4's local blast radius;
  *  - `hydrate` catches it and does a full client render — today's behaviour,
@@ -61,20 +75,37 @@ export class HydrationMismatch extends Error {
 }
 
 /**
+ * The compiler's `WHOLE` (`ir/region.rs`): this position owns its parent
+ * element's entire child list, so the server wrote it no boundary comments and
+ * the claim is every child of the parent.
+ *
+ * ONE number for the two places it is spelled — a region carries it as a bit of
+ * the flags integer both backends already take, and a hole carries it as
+ * `insert`'s trailing argument. A hole has no flags integer and a region has no
+ * spare argument, so the two spellings are unavoidable; the two VALUES are not.
+ */
+export const WHOLE = 1 << 4;
+
+/**
  * A claimed range and the nodes inside it.
  *
- * `open` and `close` stay in the document: `close` is the anchor every later
- * write to this position uses, so removing it would cost the position its
- * identity the first time the value changed.
+ * `open` and `close` stay in the document when they exist: `close` is the anchor
+ * every later write to this position uses, so removing it would cost the
+ * position its identity the first time the value changed. They are `null` for a
+ * position that OWNS its parent's child list — there is nothing to remove and
+ * nothing to anchor against, because appending to `parent` is already the right
+ * answer for every later write.
  */
 export interface Range {
-  open: Comment;
-  close: Comment;
+  open: Comment | null;
+  close: Comment | null;
+  /** Where the range lives. The one field both shapes always have. */
+  parent: Node;
   nodes: Node[];
 }
 
 /** One cursor over a claimed sequence. `template()` pops from the innermost. */
-interface Cursor {
+export interface Cursor {
   parent: Node;
   next: Node | null;
   /** Exclusive; `null` means "to the end of `parent`". */
@@ -138,7 +169,7 @@ export function beginHydration(container: Node): void {
 }
 
 /**
- * Was this markup written by a `hydratable` build?
+ * Does this markup carry range comments?
  *
  * One scan, at the start, and it is what lets a construct with no flag tell its
  * two situations apart. A module built without the flag over markup built
@@ -148,6 +179,11 @@ export function beginHydration(container: Node): void {
  * onto a boundary comment and everything it addresses after that is off by an
  * unknown amount. That is not recoverable locally and must not be treated as if
  * it were.
+ *
+ * `true` proves the markup is hydratable; `false` proves nothing. §12 took the
+ * comments off every position whose extent the client can read off its parent,
+ * so a hydratable page can now carry none at all. The caller uses it to choose
+ * the wording of a diagnostic, which is all a one-way signal can carry.
  */
 export function wireIsMarked(): boolean {
   return SESSION !== null && SESSION.marked;
@@ -209,19 +245,54 @@ export function withoutClaim<T>(body: () => T): T {
   }
 }
 
-/** Run `body` claiming from `range`'s interior. */
-export function withRange<T>(range: Range, body: () => T): T {
-  if (SESSION === null) return body();
-  SESSION.stack.push({
-    parent: range.open.parentNode ?? range.open,
-    next: range.open.nextSibling,
+/**
+ * A cursor over `range`'s interior that OUTLIVES one entry into it.
+ *
+ * The rows of an `each` are why it exists. A row used to be delimited on the
+ * wire so the client could hand row `i` its own nodes; it does not need to be,
+ * because the rows are built in ORDER and a row's extent is exactly what its
+ * build consumed. One cursor, shared by every row, is the whole mechanism —
+ * which is what let 1,600 bytes of the 100-row page's 6,416 go.
+ */
+export function openCursor(range: Range): Cursor {
+  const parent = range.open?.parentNode ?? range.parent;
+  return {
+    parent,
+    next: range.open === null ? parent.firstChild : range.open.nextSibling,
     end: range.close,
-  });
+  };
+}
+
+/** Run `body` claiming from `cursor`, which keeps whatever it consumed. */
+export function atCursor<T>(cursor: Cursor, body: () => T): T {
+  if (SESSION === null) return body();
+  SESSION.stack.push(cursor);
   try {
     return body();
   } finally {
     SESSION.stack.pop();
   }
+}
+
+/** Whether `cursor` has anything left to claim. */
+export function cursorAtEnd(cursor: Cursor): boolean {
+  return cursor.next === null || cursor.next === cursor.end;
+}
+
+/** Everything `cursor` still holds, consumed. */
+export function cursorRest(cursor: Cursor): Node[] {
+  const rest: Node[] = [];
+  for (let node = cursor.next; node !== null && node !== cursor.end; node = node.nextSibling) {
+    rest.push(node);
+  }
+  cursor.next = cursor.end;
+  return rest;
+}
+
+/** Run `body` claiming from `range`'s interior, once. */
+export function withRange<T>(range: Range, body: () => T): T {
+  if (SESSION === null) return body();
+  return atCursor(openCursor(range), body);
 }
 
 /**
@@ -234,7 +305,7 @@ export function withRange<T>(range: Range, body: () => T): T {
  * documented consequence of NOT catching it is event handlers attached to the
  * wrong elements.
  */
-export function claimNode(template: Node): Node | null {
+export function claimNode(template: Node, detect?: boolean): Node | null {
   if (SESSION === null) return null;
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) return null;
@@ -246,20 +317,24 @@ export function claimNode(template: Node): Node | null {
       `the server's markup ran out where the client expected <${expect.toLowerCase()}>`,
     );
   }
+  // The ROOT name is compared in every build, and that is not a hedge on §12's
+  // split: the template node is already the argument, so the comparison is one
+  // string test at a claim that was happening anyway. What §12 moved off the
+  // production path is the O(subtree) walk below it.
   if (node.nodeName !== expect) {
     throw new HydrationMismatch(
       "structure",
       `the server wrote ${describe(node)} where the client builds <${expect.toLowerCase()}>`,
     );
   }
-  verifySubtree(template, node, expect.toLowerCase());
+  if (detect === true) verifySubtree(template, node, expect.toLowerCase());
   cursor.next = node.nextSibling;
   SESSION.claimed++;
   return node;
 }
 
 /**
- * The claimed subtree has the SKELETON the template has.
+ * THE DETECTION, and it runs only in a build that asked for it.
  *
  * Claiming one node claims everything under it — the walk below is `child`/`sib`
  * over the server's own nodes — so if the server's subtree is not the template's
@@ -270,11 +345,20 @@ export function claimNode(template: Node): Node | null {
  * the middle is invisible to it and survives into the hydrated page.
  *
  * Ranges contribute nothing, which is what makes this comparable at all: the
- * template has no node at a hole and the server has a `<!--[-->` … `<!--]-->`
- * there. Only the node NAMES are compared — the data inside a hole's neighbour
- * is the value's business, and `insert` reports a text drift on its own.
+ * template has no node at a delimited hole and the server has a `<!--[-->` …
+ * `<!--]-->` there.
  *
- * O(subtree) per claim, and it exists only on the hydration path.
+ * STATIC TEXT is compared as well as node names, and that is the compensation
+ * §12 owes: an undelimited hole no longer leaves a `<!--]-->` for `claimRange`
+ * to assert against, and two branch arms that differ only in the words they
+ * print are structurally identical. Text that came out of a HOLE is inside a
+ * range and is skipped; text that is here is template bytes on both sides, from
+ * one compiler and one escaper, so a difference is a real divergence and not a
+ * normalisation artefact.
+ *
+ * O(subtree) per claim — which is exactly why the production build does not
+ * call it. §12: silent failure is the dominant harm IN DEVELOPMENT, and this is
+ * where it is answered.
  */
 function verifySubtree(want: Node, have: Node, path: string): void {
   const wanted = want.childNodes;
@@ -320,6 +404,13 @@ function verifySubtree(want: Node, have: Node, path: string): void {
           a.nodeName.toLowerCase(),
       );
     }
+    if (node.nodeType === TEXT && (a as Text).data !== (node as Text).data) {
+      throw new HydrationMismatch(
+        "text",
+        `at ${path} child ${i}: the server wrote ${JSON.stringify((node as Text).data)} where ` +
+          `the client's template has ${JSON.stringify((a as Text).data)}`,
+      );
+    }
     verifySubtree(a, node, `${path} > ${a.nodeName.toLowerCase()}`);
     i++;
   }
@@ -348,13 +439,18 @@ function verifySubtree(want: Node, have: Node, path: string): void {
  * `(parent, anchor)`. That is a lookup and not a mutation, so the two agree by
  * construction rather than by a handshake.
  */
-export function hole<T>(parent: Node | null, anchor: Node | null, build: () => T): T {
+export function hole<T>(
+  parent: Node | null,
+  anchor: Node | null,
+  build: () => T,
+  mode?: number,
+): T {
   if (!hydrating()) return build();
   // `null` is the compiler saying "this position has no address" — the fallback
   // element path, where the string backend serialised a whole subtree inline as
   // one value and there is no walk to claim it with.
   if (parent === null && anchor === null) return withoutClaim(build);
-  const range = claimRange(parent, anchor);
+  const range = claimRange(parent, anchor, mode);
   // A hole in a tree the client built has nothing to claim, and its contents
   // must not claim either — otherwise the next `template()` inside it would
   // take a node belonging to a position further along the server's document.
@@ -500,8 +596,11 @@ export function sib(node: Node, k: number, back?: number): Node | null {
  * the last thing in its parent and the parent's last child is. Nothing searches:
  * if the comment is not exactly there, the client is not looking at the tree the
  * server serialised and says so.
+ *
+ * `mode` is the compiler's `WHOLE`, and it is the §12 half: a hole that owns its
+ * parent's child list was written with no comments at all.
  */
-export function claimRange(parent: Node | null, anchor: Node | null): Range | null {
+export function claimRange(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
   const host = anchor !== null ? anchor.parentNode : parent;
   if (host === null) {
     throw new HydrationMismatch("range", "a claim at a position with no parent");
@@ -513,6 +612,20 @@ export function claimRange(parent: Node | null, anchor: Node | null): Range | nu
   // answer to "what did the server put here", which is "this is not the
   // server's tree at all".
   if (SESSION === null || !SESSION.container.contains(host)) return null;
+  // `WHOLE` is the compiler saying the string backend wrote this hole no
+  // comments because it owns the element outright. The extent is then every
+  // child of the parent, read off the document rather than off the wire.
+  //
+  // It is TOLD rather than sniffed, and the difference matters: "no `<!--]-->`
+  // at the end, so it must be the whole list" would turn a corrupted wire into
+  // a silently-accepted one, which is the exact shape of failure this file
+  // exists to refuse.
+  if (mode === WHOLE) {
+    const nodes: Node[] = [];
+    for (let node = host.firstChild; node !== null; node = node.nextSibling) nodes.push(node);
+    SESSION.ranges++;
+    return { open: null, close: null, parent: host, nodes };
+  }
   const close = anchor !== null ? anchor.previousSibling : host.lastChild;
   if (close === null || close.nodeType !== COMMENT || (close as Comment).data !== CLOSE) {
     throw new HydrationMismatch(
@@ -531,7 +644,7 @@ export function claimRange(parent: Node | null, anchor: Node | null): Range | nu
         if (depth === 0) {
           nodes.reverse();
           SESSION.ranges++;
-          return { open: node as Comment, close: close as Comment, nodes };
+          return { open: node as Comment, close: close as Comment, parent: host, nodes };
         }
         depth--;
       }
@@ -547,8 +660,8 @@ export function claimRange(parent: Node | null, anchor: Node | null): Range | nu
  * — there is no template around them to walk — so the range is the next thing at
  * the cursor, exactly as a `template()` call there would claim the next node.
  */
-export function claimAt(parent: Node | null, anchor: Node | null): Range | null {
-  if (parent !== null || anchor !== null) return claimRange(parent, anchor);
+export function claimAt(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
+  if (parent !== null || anchor !== null) return claimRange(parent, anchor, mode);
   if (SESSION === null) throw new HydrationMismatch("range", "a claim outside a hydration");
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) throw new HydrationMismatch("range", "a claim with no cursor");
@@ -574,7 +687,12 @@ export function claimAt(parent: Node | null, anchor: Node | null): Range | null 
         if (depth === 0) {
           cursor.next = node.nextSibling;
           SESSION.ranges++;
-          return { open: open as Comment, close: node as Comment, nodes };
+          return {
+            open: open as Comment,
+            close: node as Comment,
+            parent: cursor.parent,
+            nodes,
+          };
         }
         depth--;
       }
@@ -604,47 +722,17 @@ export function probeRange(parent: Node | null, anchor: Node | null): Range | nu
   }
 }
 
-/** The key the server wrote in `<!--[k-->`, or `null` for an un-keyed range. */
-export function rangeKey(range: Range): string | null {
-  const data = range.open.data;
-  return data.length > 1 ? data.slice(1) : null;
-}
-
 /**
- * The rows of a claimed `each`: the `<!--[-->` … `<!--]-->` ranges immediately
- * inside it, in order.
+ * The key the server wrote in `<!--[k-->`, or `null` when it wrote none.
+ *
+ * `null` is the ordinary answer in a PRODUCTION build: §12 moved the key onto
+ * the detection axis, so a production range is `<!--[-->` and the client claims
+ * it positionally — which is exactly what a hole has always had, and what a key
+ * with no safe comment spelling has always fallen back to.
  */
-export function claimRows(range: Range): Range[] {
-  const rows: Range[] = [];
-  let open: Comment | null = null;
-  let nodes: Node[] = [];
-  let depth = 0;
-  let node: Node | null = range.open.nextSibling;
-  while (node !== null && node !== range.close) {
-    const next: Node | null = node.nextSibling;
-    let counted = false;
-    if (node.nodeType === COMMENT) {
-      const data = (node as Comment).data;
-      if (data.charAt(0) === OPEN) {
-        if (depth === 0) {
-          open = node as Comment;
-          nodes = [];
-        } else nodes.push(node);
-        depth++;
-        counted = true;
-      } else if (data === CLOSE) {
-        depth--;
-        if (depth === 0 && open !== null) {
-          rows.push({ open, close: node as Comment, nodes });
-          open = null;
-        }
-        counted = true;
-      }
-    }
-    if (!counted && depth > 0) nodes.push(node);
-    node = next;
-  }
-  return rows;
+export function rangeKey(range: Range): string | null {
+  const data = range.open?.data;
+  return data !== undefined && data.length > 1 ? data.slice(1) : null;
 }
 
 /**
@@ -653,7 +741,9 @@ export function claimRows(range: Range): Range[] {
  * This is H4's recovery. The comments stay because the CLOSE is the anchor the
  * rebuilt content inserts before — throwing it away would make the position
  * unaddressable for every later update, which is the difference between "that
- * branch re-rendered" and "the page is now built on a different skeleton".
+ * branch re-rendered" and "the page is now built on a different skeleton". An
+ * undelimited range has no comments to keep and needs none: its anchor is the
+ * end of its parent, which nothing can take away.
  */
 export function releaseRange(range: Range): void {
   for (const node of range.nodes) node.parentNode?.removeChild(node);
@@ -661,7 +751,7 @@ export function releaseRange(range: Range): void {
 }
 
 /** The anchor a rebuilt or claimed range writes against. */
-export function rangeAnchor(range: Range): Node {
+export function rangeAnchor(range: Range): Node | null {
   return range.close;
 }
 

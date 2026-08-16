@@ -1,11 +1,12 @@
 /**
- * MM3 `preserves` on `Index` — the unkeyed list's whole reason to exist.
+ * MM3 `preserves` on `keyed={false}` — the positional list's whole reason to
+ * exist, and since M7b its only spelling.
  *
- * `Index` keys on the POSITION, so changing the value at a position must update
- * that row in place rather than rebuild it. Every node survives both writes, and
- * the row Block is invoked once per position and never again.
+ * `keyed={false}` keys on the POSITION, so changing the value at a position must
+ * update that row in place rather than rebuild it. Every node survives both
+ * writes, and the row Block is invoked once per position and never again.
  */
-import { Index, signal } from "@barqjs/core"
+import { For, signal } from "@barqjs/core"
 
 export const log: string[] = []
 
@@ -14,7 +15,7 @@ export const nums = signal([1, 2, 3])
 export default function IndexRowStable() {
   return (
     <ol class="nums">
-      <Index each={() => nums()}>
+      <For each={() => nums()} keyed={false}>
         {(item, index) => {
           log.push(`cell-${index}`)
           return (
@@ -23,7 +24,7 @@ export default function IndexRowStable() {
             </li>
           )
         }}
-      </Index>
+      </For>
     </ol>
   )
 }

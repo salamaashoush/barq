@@ -1,4 +1,4 @@
-//! P4b Flow — the fourteen control-flow constructs, lowered onto `flow.ts`'s
+//! P4b Flow — the thirteen control-flow constructs, lowered onto `flow.ts`'s
 //! four primitives.
 //!
 //! `CODESIGN.md` §3.4 and `SEMANTICS.md` K5. A construct that reaches here stops
@@ -14,7 +14,7 @@
 //! |---|---|---|
 //! | `Show` | `branch` | the value, or truthiness under `keyed={false}` |
 //! | `Switch` / `Match` | `branch` | the winning arm's INDEX, an integer |
-//! | `For` / `Index` | `each` | `keyOf` |
+//! | `For` | `each` | `keyOf`, whose default is IDENTITY |
 //! | `Repeat` | `each` (`COUNT`) | the index |
 //! | `Loading` / `Suspense` | `boundary("loading")` | the collector's |
 //! | `Errored` / `ErrorBoundary` | `boundary("error")` | the collector's |
@@ -67,7 +67,6 @@ fn recognised(flow: Flow) -> &'static [&'static str] {
     match flow {
         Flow::Show => &["when", "fallback", "keyed"],
         Flow::For => &["each", "fallback", "keyed"],
-        Flow::Index => &["each", "fallback"],
         Flow::Repeat => &["count", "from", "fallback"],
         Flow::Loading => &["fallback", "on"],
         Flow::Suspense | Flow::Errored | Flow::ErrorBoundary | Flow::Switch => &["fallback"],
@@ -81,7 +80,7 @@ fn recognised(flow: Flow) -> &'static [&'static str] {
 fn required(flow: Flow) -> &'static [&'static str] {
     match flow {
         Flow::Show | Flow::Match => &["when"],
-        Flow::For | Flow::Index => &["each"],
+        Flow::For => &["each"],
         Flow::Repeat => &["count"],
         Flow::Errored | Flow::ErrorBoundary => &["fallback"],
         _ => &[],
@@ -91,7 +90,7 @@ fn required(flow: Flow) -> &'static [&'static str] {
 fn kind_of(flow: Flow) -> Option<RegionKind> {
     Some(match flow {
         Flow::Show | Flow::Switch => RegionKind::Branch,
-        Flow::For | Flow::Index | Flow::Repeat => RegionKind::Each,
+        Flow::For | Flow::Repeat => RegionKind::Each,
         Flow::Loading | Flow::Suspense => RegionKind::Loading,
         Flow::Errored | Flow::ErrorBoundary => RegionKind::Error,
         Flow::Portal => RegionKind::Portal,
@@ -285,7 +284,7 @@ pub(super) fn lower<'a>(
     let mut region = match flow {
         Flow::Show => show(shaper, &mut attrs, kids, span),
         Flow::Switch => switch(shaper, &mut attrs, kids, span),
-        Flow::For | Flow::Index => list(shaper, flow, &mut attrs, kids, span),
+        Flow::For => list(shaper, &mut attrs, kids, span),
         Flow::Repeat => repeat(shaper, &mut attrs, kids, span),
         Flow::Loading | Flow::Suspense | Flow::Errored | Flow::ErrorBoundary => {
             boundary(shaper, flow, &mut attrs, kids, span)
@@ -428,10 +427,11 @@ fn switch<'a>(
     region
 }
 
-/// `For` / `Index` — `each`, whose `keyOf` is the whole of the keying contract.
+/// `For` — `each`, whose `keyOf` is the whole of the keying contract. One
+/// primitive, three modes: absent or `true` is IDENTITY, `false` is positional,
+/// a function is a custom key (K1).
 fn list<'a>(
     shaper: &mut Shaper<'a, '_>,
-    flow: Flow,
     attrs: &mut Vec<Attr<'a>>,
     kids: Vec<Expression<'a>>,
     span: Span,
@@ -439,28 +439,23 @@ fn list<'a>(
     let source = take(attrs, "each").expect("checked by `admits`");
     let fallback =
         take(attrs, "fallback").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
-    let keyed = match flow {
-        // `Index` IS `keyed={false}`, which is why it has no `keyed` prop of its
-        // own to disagree with.
-        Flow::Index => Some(Expression::new_boolean_literal(span, false, &shaper.ast)),
-        _ => match take(attrs, "keyed") {
-            None => None,
-            Some(attr) => match &attr.value {
-                // absent and `true` are the same arm — identity is the item —
-                // and `null` is how `each` spells it.
-                Expression::BooleanLiteral(literal) if literal.value => None,
-                Expression::BooleanLiteral(_) => {
-                    Some(Expression::new_boolean_literal(attr.span, false, &shaper.ast))
-                }
-                _ => Some(attr.value),
-            },
+    let keyed = match take(attrs, "keyed") {
+        None => None,
+        Some(attr) => match &attr.value {
+            // absent and `true` are the same arm — identity is the item — and
+            // `null` is how `each` spells it.
+            Expression::BooleanLiteral(literal) if literal.value => None,
+            Expression::BooleanLiteral(_) => {
+                Some(Expression::new_boolean_literal(attr.span, false, &shaper.ast))
+            }
+            _ => Some(attr.value),
         },
     };
     // O3, which the flow pass has to keep raising because it is the pass that
     // took the component call away. A by-item row is a plain value, so
     // `{item.name}` is applied once with no thunk — right whenever the rows are
     // what `mapArray` recreated, and silently stale when they are store proxies.
-    if shaper.dev() && flow == Flow::For && keyed.is_none() && shaper.unproven_rows(&source.value) {
+    if shaper.dev() && keyed.is_none() && shaper.unproven_rows(&source.value) {
         shaper.diagnose(
             crate::diag::Code::Barq004,
             source.span,

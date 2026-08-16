@@ -32,6 +32,7 @@ import {
 } from "./semantics.ts"
 import { FICTION_PINS, UNPINNED_RULES } from "./unpinned-rules.ts"
 import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
+import { digest, ratchet, regenerationReport } from "./ratchet.ts"
 
 /**
  * Layer L1 of the oracle, run against the CURRENT compiler — `CODESIGN.md` §8's
@@ -51,7 +52,11 @@ import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
  *   stops the registry absorbing anything by accident;
  * - a registered claim that fails for the wrong reason is a suite failure. The
  *   message must name its rule as a standalone token. "Expected <span>1</span>,
- *   got <span></span>" is not evidence that the oracle saw anything.
+ *   got <span></span>" is not evidence that the oracle saw anything;
+ * - a registered claim that fails DIFFERENTLY is a suite failure, and it is one
+ *   whether the difference is a regression or an improvement. That is the
+ *   ratchet, `ratchet.ts` says why, and it is the assertion that keeps a row's
+ *   prose attached to an observation.
  *
  * The fixtures are run ONCE, here, and every assertion below reads that result.
  * They keep signals and counters at module scope and reset them per claim, so
@@ -139,7 +144,7 @@ function report(outcome: Outcome, row: KnownFailure | undefined): string {
  * addresses it. Returns `null` when the pair is acceptable and the message the
  * suite prints when it is not.
  *
- * It is pure so that the four verdicts can be driven from synthetic pairs
+ * It is pure so that every verdict can be driven from synthetic pairs
  * below. A gate whose own conditions are only ever exercised by the state the
  * repository happens to be in is a gate that has never been shown to close —
  * the same argument `oracle.test.ts` makes with its self-check corruptions.
@@ -190,7 +195,19 @@ export function verdict(outcome: Outcome, row: KnownFailure | undefined): string
       `mean anything.\n`
     )
   }
-  return null
+
+  // Assertion 7, the ratchet. Failing for the right rule is still not enough:
+  // it has to fail the SAME WAY the row was written against. A partial fix
+  // leaves the rule, the status and the milestone all correct and quietly
+  // detaches the row's prose from what happens — which is what `CODESIGN.md`
+  // §12 adopted from Solid's parity.test.js, and the one half none of this
+  // project's three registries had.
+  return ratchet({
+    key: registryKey(outcome.fixture, outcome.claim),
+    expected: row.observed,
+    observed: outcome.failure,
+    file: "test/known-failures.ts",
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +314,12 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
       }
       if (row.reason.trim().length < 40) {
         malformed.push(`${registryKey(row.fixture, row.claim)}: reason is too short to be one`)
+      }
+      if (!/^[0-9a-f]{12}$/.test(row.observed ?? "")) {
+        malformed.push(
+          `${registryKey(row.fixture, row.claim)}: observed ${row.observed ?? "(absent)"} is not a ` +
+            "ratchet digest — run BARQ_RATCHET=print bun test",
+        )
       }
     }
     expect(malformed).toEqual([])
@@ -519,6 +542,7 @@ describe("the gate closes", () => {
       status: "VIOLATED",
       greenAt: "M3",
       reason: "synthetic row, used only by the self-check below",
+      observed: digest(o.failure ?? ""),
     }
 
   it("accepts a registered failure that names its rule", () => {
@@ -549,6 +573,30 @@ describe("the gate closes", () => {
   it("rejects a registered failure that names a DIFFERENT rule", () => {
     const other = rowFor(failing).rule === "O2" ? "O5" : "O2"
     expect(verdict(failing, { ...rowFor(failing), rule: other })).toContain("does not name")
+  })
+
+  // The ratchet's own three conditions, driven the same way. An IMPROVEMENT is
+  // asserted separately from a regression because failing on improvement is the
+  // half `CODESIGN.md` §12 says this project did not have, and "it fails on any
+  // change" is not the same statement as "it fails when the news is good".
+  it("rejects a registered failure that now fails DIFFERENTLY", () => {
+    const worse = { ...failing, failure: `${failing.failure} and one more thing besides` }
+    expect(verdict(worse, rowFor(failing))).toContain("RATCHET")
+  })
+
+  it("rejects a registered failure that got BETTER without being deregistered", () => {
+    // The C3.8 shape: still failing, still naming its rule, fewer pairs. Every
+    // other assertion in this file is satisfied by this observation.
+    const better = {
+      ...failing,
+      failure: `${failing.rule} violated: 2 of 18 (shape, slot) pairs took a Block and did not throw`,
+    }
+    expect(verdict(better, rowFor(failing))).toContain("RATCHET")
+  })
+
+  it("rejects a registered failure whose row carries no digest at all", () => {
+    const unratcheted = { ...rowFor(failing), observed: undefined as unknown as string }
+    expect(verdict(failing, unratcheted)).toContain("NO RATCHET")
   })
 
   it("does not accept O2.1 as evidence for O2", () => {
@@ -644,4 +692,12 @@ describe("the M3 gate", () => {
       }
     }
   })
+})
+
+// `BARQ_RATCHET=print` collects the digests the stale rows should carry and
+// prints them once, at exit, rather than one line per failing claim — a
+// regeneration is a single edit to a single table and should read like one.
+process.on("exit", () => {
+  const report = regenerationReport()
+  if (report) console.log(report)
 })

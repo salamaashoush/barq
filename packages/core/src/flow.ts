@@ -20,16 +20,21 @@ import {
 } from "./boundaries.ts";
 import {
   HydrationMismatch,
+  atCursor,
   claimAt,
-  claimRows,
+  cursorAtEnd,
+  cursorRest,
   isScaffolding,
+  openCursor,
   probeRange,
   hydrating,
   rangeKey,
   releaseRange,
   report,
+  WHOLE,
   withRange,
   withoutClaim,
+  type Cursor,
   type Range,
 } from "./hydration.ts";
 import { type Maybe, mapArray, repeat } from "./map.ts";
@@ -71,11 +76,17 @@ export const NO_SCOPE = 1 << 1;
 
 /**
  * The module was compiled `hydratable`, so this range is written to the wire
- * between `<!--[k-->` and `<!--]-->` and claimed rather than built. The compiler
+ * between `<!--[-->` and `<!--]-->` and claimed rather than built. The compiler
  * sets it from one option for both backends (`CODESIGN.md` §3.11), so the bytes
  * the string backend writes and the claim this side makes are one decision.
  */
 export const HYDRATE = 1 << 2;
+
+// `DETECT`, `ir/region.rs`'s `1 << 3`, is deliberately NOT here. It asks the
+// string backend to spell a range's key into its open comment and the compiler
+// sends it to that backend alone: this side reads whatever key is on the wire
+// and `null` — the production answer — has always meant "claim positionally".
+// A constant no code path reads is a flag with no row.
 
 /** `each`'s fourth mode: `src` is a count, not a list (`Repeat`). */
 export const COUNT: unique symbol = Symbol("barq-count");
@@ -183,7 +194,7 @@ function claimSite(
       }
       releaseRange(stray);
       site.anchor = stray.close;
-      site.parent = stray.close.parentNode;
+      site.parent = stray.close?.parentNode ?? stray.parent;
     }
     return;
   }
@@ -191,7 +202,11 @@ function claimSite(
   // synthesised anchor in a detached fragment, and nothing in that fragment is
   // the server's; `(null, null)` means "the next range at the cursor", which is
   // what a unit-root region actually occupies.
-  const range = claimAt(parent, anchor);
+  // `WHOLE` is `hydration.ts`'s and `ir/region.rs`'s, riding the same integer
+  // as `HYDRATE`: this range owns its parent element, so the string backend
+  // wrote it no comments and the claim is every child of that parent. It is
+  // never set under `DETECT`, because the open comment is where the key goes.
+  const range = claimAt(parent, anchor, flags & WHOLE);
   // `null` is "this position is not in the server's tree" — a region inside
   // something the client built. It claims nothing and builds cold, which is the
   // same answer `hole` gives one level up.
@@ -201,7 +216,7 @@ function claimSite(
   }
   site.claim = range;
   site.anchor = range.close;
-  site.parent = range.close.parentNode;
+  site.parent = range.close?.parentNode ?? range.parent;
 }
 
 function hostOf(site: Site): Node | null {
@@ -265,6 +280,43 @@ function activate(
   // what makes that true without any caller having to remember it.
   const claim = site.claim ?? null;
   site.claim = null;
+  if (claim === null) return attempt(given, site, body, args, flags, kind, null);
+  // H4'S BLAST RADIUS, GENERALISED.
+  //
+  // `hydration.ts` says a mismatch has exactly two catchers: a region rebuilds
+  // its own range, or `hydrate` re-renders the page. Until §12 only ONE
+  // mismatch reached the first catcher — a branch key that disagreed — and
+  // every other kind travelled all the way up, so a divergent arm cost the page
+  // rather than the range.
+  //
+  // §12 took the key off the production wire, which makes this the catcher that
+  // has to work: a production build detects a divergent arm STRUCTURALLY, from
+  // inside the claim, and this is what turns that into a local rebuild. The
+  // attempt's own `finally` has already released the server's nodes and
+  // disposed the scope, so the retry is an ordinary cold build at a position
+  // that is now empty — the same state a released key mismatch leaves.
+  //
+  // It reports. A region that swallowed one would be the third catcher the
+  // design says does not exist.
+  try {
+    return attempt(given, site, body, args, flags, kind, claim);
+  } catch (error) {
+    if (!(error instanceof HydrationMismatch)) throw error;
+    report(error.kind, `${kind}: ${error.message} — the range was rebuilt`);
+    releaseRange(claim);
+    return attempt(given, site, body, args, flags, kind, null);
+  }
+}
+
+function attempt(
+  given: Scope | null,
+  site: Site,
+  body: Block<unknown>,
+  args: readonly unknown[],
+  flags: number,
+  kind: "branch" | "portal",
+  claim: Range | null,
+): Instance {
   // No claim means COLD, always. A region whose first attempt threw has already
   // spent its claim, and the fallback it builds instead must not go on claiming
   // from a cursor that is now pointing at the failed attempt's nodes — that is
@@ -569,7 +621,7 @@ export function branch<K>(
 const EMPTY_ARGS: readonly unknown[] = [];
 
 // ============================================================================
-// each — For, Index, Repeat
+// each — For (three keying modes), Repeat
 // ============================================================================
 
 /**
@@ -610,12 +662,20 @@ export function each<T>(
   cellSlot(src, "each source");
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "each");
-  // One `<!--[-->` … `<!--]-->` per row, in order, and a row claims the next.
-  // The count is the server's; a client that renders more rows builds the extra
-  // ones cold, and a client that renders fewer leaves rows nobody adopted —
-  // both are reported and both are released below.
-  const claiming = site.claim !== undefined && site.claim !== null;
-  const pending: Range[] = claiming ? claimRows(site.claim as Range) : [];
+  // ONE cursor over the list's range, shared by every row.
+  //
+  // A row used to be delimited on the wire so the client could hand row `i` its
+  // own nodes. It does not need to be: the rows are built in ORDER, so a row's
+  // extent is exactly what its build consumed, and a cursor that survives
+  // between rows records that with no bytes at all. §12's reversal is what this
+  // is — 1,600 of the 100-row page's 6,416 hydration bytes, and the only two
+  // comments per row anyone was ever paying for.
+  //
+  // A client that renders more rows than the server wrote builds the extra ones
+  // cold; a client that renders fewer leaves nodes nobody adopted. Both are
+  // reported and both are cleaned up below.
+  const claim = site.claim ?? null;
+  const rowCursor: Cursor | null = claim === null ? null : openCursor(claim);
   const body = row as Block<unknown>;
 
   return underScope(given, "each", (): Node | null => {
@@ -633,14 +693,14 @@ export function each<T>(
         src as Cell<number>,
         (index: number, scope: Scope): Node[] => {
           activation++;
-          return inRow(pending, claiming, () => build(scope, body, [index]));
+          return inRow(rowCursor, () => build(scope, body, [index]));
         },
         { fallback: fallbackRows },
       );
     } else {
       const mapper = (item: unknown, index: unknown, scope: Scope): Node[] => {
         activation++;
-        return inRow(pending, claiming, () => build(scope, body, [item, index]));
+        return inRow(rowCursor, () => build(scope, body, [item, index]));
       };
       rows = mapArray(src as Cell<Maybe<readonly T[]>>, mapper as never, {
         keyed: (keyOf ?? true) as never,
@@ -649,16 +709,16 @@ export function each<T>(
     }
 
     syncRows(site, rows);
-    // Rows the server wrote that the client did not ask for. Their nodes are in
-    // the document and nothing owns them, so they go — H4's blast radius, at row
-    // granularity.
-    if (site.cold !== true && pending.length > 0) {
-      report("structure", `the server wrote ${pending.length} row(s) the client does not render`);
-      for (const row of pending) {
-        releaseRange(row);
-        row.open.parentNode?.removeChild(row.open);
-        row.close.parentNode?.removeChild(row.close);
-      }
+    // Nodes the server wrote that no row adopted. They are in the document and
+    // nothing owns them, so they go — H4's blast radius, at row granularity.
+    // With no per-row comments the leftover is simply whatever the shared cursor
+    // still holds, which is a stronger statement than the old row count: it
+    // catches a row that consumed FEWER nodes than the server wrote for it as
+    // well as a list that was shorter on the client.
+    if (site.cold !== true && rowCursor !== null && !cursorAtEnd(rowCursor)) {
+      const stranded = cursorRest(rowCursor);
+      report("structure", `the server wrote ${stranded.length} node(s) no row claimed`);
+      for (const node of stranded) node.parentNode?.removeChild(node);
     }
     site.claim = null;
     return out;
@@ -666,22 +726,21 @@ export function each<T>(
 }
 
 /**
- * Build one row, claiming the next range the server wrote for this list.
+ * Build one row, claiming from the list's shared cursor.
  *
- * A row past the server's count gets no claim and builds cold — deliberately
- * not an exception: a list whose length changed between the render and the
- * hydration is the ordinary case, and the rows that DID match still keep their
- * nodes.
+ * A row past the server's count finds the cursor spent and builds cold —
+ * deliberately not an exception: a list whose length changed between the render
+ * and the hydration is the ordinary case, and the rows that DID match still keep
+ * their nodes. It is still reported, because "nothing was reported" has to mean
+ * the list was the list.
  */
-function inRow(pending: Range[], claiming: boolean, build: () => Node[]): Node[] {
-  const row = pending.shift();
-  if (row !== undefined) return withRange(row, build);
-  // A row past the server's count. Deliberately not an exception — a list whose
-  // length changed between the render and the hydration is the ordinary case,
-  // and the rows that DID match keep their nodes. It is still reported, because
-  // "nothing was reported" has to mean the list was the list.
-  if (claiming) report("structure", "a row the server did not write");
-  return withoutClaim(build);
+function inRow(cursor: Cursor | null, build: () => Node[]): Node[] {
+  if (cursor === null) return build();
+  if (cursorAtEnd(cursor)) {
+    report("structure", "a row the server did not write");
+    return withoutClaim(build);
+  }
+  return atCursor(cursor, build);
 }
 
 /**

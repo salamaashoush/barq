@@ -129,9 +129,10 @@ our own idiom.
   `_$setProp(_el$1, "data-tone", tone)` and `_$insert(_el$1, text)` — both one-shot, no warning
   **(verified)**. `fixtures/props-destructured-param.tsx:5-11` calls it "the commonest way real code
   loses reactivity by accident".
-- **`For`/`Index` invert `(item, index)`.** `ForProps` is a discriminated union
-  (`components.ts:222-246`) so TypeScript catches the arity mismatch when parameters are annotated,
-  but `keyed: false` *delegates to `Index`*, so flipping one boolean inverts both parameters.
+- **`For`'s two keying modes invert `(item, index)`.** `ForProps` is a discriminated union so
+  TypeScript catches the arity mismatch when parameters are annotated, but flipping `keyed` between
+  its default and `false` inverts both parameters. (`Index` was a second component naming the second
+  mode; M7b deleted it, so there is one primitive and three modes — `CODESIGN.md` §12 Q3.)
 - **Eager `<Show>` children crash on null.** `<Show when={() => u()}><span>{u().name}</span></Show>`
   compiles to an IIFE that constructs the child immediately **(verified)**; `shape.rs:305-318` states
   the refusal to manufacture a thunk is deliberate and

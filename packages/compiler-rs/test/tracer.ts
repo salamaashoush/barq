@@ -137,12 +137,20 @@ function wrap(real: EffectFn, kind: EffectKind): EffectFn {
   }
 }
 
-type TemplateFn = (html: string, isSVG?: boolean) => () => Node
+type TemplateFn = (html: string, isSVG?: boolean, detect?: boolean) => () => Node
 
-/** Record every clone, with the anchors read off the clone rather than the HTML. */
+/**
+ * Record every clone, with the anchors read off the clone rather than the HTML.
+ *
+ * Every parameter is forwarded, and `detect` is why that is written down: it is
+ * `CODESIGN.md` §12's detection axis, and a wrapper that dropped it would leave
+ * the whole dev-only subtree check unreachable under this harness while the
+ * emitted module asked for it — a green suite over a detector that was never
+ * called.
+ */
 function wrapTemplate(real: TemplateFn): TemplateFn {
-  return (html: string, isSVG?: boolean) => {
-    const clone = real(html, isSVG)
+  return (html: string, isSVG?: boolean, detect?: boolean) => {
+    const clone = real(html, isSVG, detect)
     return () => {
       const node = clone()
       if (current) current.templates.push({ node, anchors: bakedAnchors(node) })

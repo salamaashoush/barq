@@ -627,7 +627,7 @@ total.
 
 1. **`hydratable` flag** on `TransformOptions`, default false. `DESIGN.md` §5 stays the default path.
 2. **Boundary emission** in the SSR backend, driven by a predicate reusing `anchor.rs`'s existing
-   `Prev` analysis: emit a boundary only for (a) variable-length regions — `For`/`Index`/`Repeat`/
+   `Prev` analysis: emit a boundary only for (a) variable-length regions — `For`/`Repeat`/
    `Show`/`Switch`/`Dynamic` and the async flow components — and (b) adjacent-text ambiguity, where
    `a{b}c` serialises to one parsed text node but is three nodes on a client render. A hole that is
    the sole child of an element needs nothing.

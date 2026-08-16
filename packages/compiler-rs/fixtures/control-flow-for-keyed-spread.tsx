@@ -43,13 +43,13 @@ export const wins = [
     kind: "step",
     index: 0,
     compiled:
-      '<ul class="keyed-spread"><!--For:#--><li>ALPHA</li><li>BETA</li><!--/For:#--></ul>',
+      '<ul class="keyed-spread"><li>ALPHA</li><li>BETA</li></ul>',
     why: "the un-compiled path reads row().text once, so only the live binding sees the new items",
   },
   {
     kind: "step",
     index: 1,
-    compiled: '<ul class="keyed-spread"><!--For:#--><li>ALPHA</li><!--/For:#--></ul>',
+    compiled: '<ul class="keyed-spread"><li>ALPHA</li></ul>',
     why: "the surviving row keeps the value it was re-pointed at in step 0",
   },
 ]

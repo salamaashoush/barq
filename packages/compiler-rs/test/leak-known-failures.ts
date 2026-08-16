@@ -67,6 +67,16 @@ export interface LeakKnownFailure {
   readonly greenAt: string
   /** the defect, not the symptom */
   readonly reason: string
+  /**
+   * The digest of the leak's `detail` this row was written against
+   * (`ratchet.ts`). A leak that goes on occurring while what it reports changes
+   * — three listeners instead of four, a different owner named — is a row whose
+   * text has stopped describing what happens. It fails here whether the change
+   * is a regression or an improvement.
+   *
+   * `BARQ_RATCHET=print bun test` prints the value to put here.
+   */
+  readonly observed: string
 }
 
 const ROWS: readonly LeakKnownFailure[] = []
@@ -74,6 +84,34 @@ const ROWS: readonly LeakKnownFailure[] = []
 export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
   ROWS.map((row) => Object.freeze(row)),
 )
+
+/**
+ * The probe's REACH, pinned — the half of the ratchet an EMPTY table needs.
+ *
+ * This file's four assertions all reduce, with no rows, to "nothing leaked".
+ * That is worth something only while the probes still see as much as they did.
+ * The listener probe has already been in the failure state this pin exists for:
+ * it patched `globalThis.EventTarget.prototype`, intercepted nothing, and
+ * reported zero listeners for a fixture that registers four — exactly as
+ * confidently as a correct runtime would. `leaks.test.ts` asserts each probe is
+ * individually live; this asserts the TOTAL has not quietly moved, in either
+ * direction, because a corpus that grew without anyone re-reading what the
+ * probes now cover is the same problem wearing the other sign.
+ *
+ * The pin below is the first thing this ratchet did, and it is worth recording:
+ * it fired on its first run. The corpus had gained `fixtures/l4/
+ * mm-identity-default-move.tsx` — 149 sessions became 150, 454 scope entries
+ * became 462, 252 effects became 253 — and every existing assertion in this
+ * file stayed green through it, because a probe that covers one more fixture
+ * and finds nothing reports exactly what a probe that covers 149 and finds
+ * nothing reports.
+ */
+export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
+  sessions: 150,
+  scopesEntered: 462,
+  effectsCreated: 253,
+  listeners: 30,
+})
 
 export function leakKey(fixture: string, leak: string): string {
   return `${fixture} :: ${leak}`

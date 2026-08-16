@@ -1,0 +1,79 @@
+name: Tier 2
+
+# Tier 2 is a SOURCE OF TRUTH, not a gate.
+#
+# `CODESIGN.md` §12, adopted from Solid's benchmarking-strategy.md: "Tier 1 is
+# the iteration tool. Tier 2 is the source of truth. Tier-1 wins must be
+# validated against the relevant Tier-2 suite before they stay."
+#
+# It deliberately does not fail the build on a ratio. A benchmark job that goes
+# red on a number gets its threshold widened after the third false alarm, and
+# then it reports nothing at all while looking exactly like a job that reports
+# something. What this does instead is RUN and PUBLISH: the numbers land as an
+# artefact, attached to a commit, so a claim can be checked against the machine
+# that produced it. It fails only when the lane itself is broken — no Chrome, a
+# page that never became ready, a benchmark whose own DOM assertions did not
+# hold, a reactivity graph that computed the wrong sum.
+#
+# It is not on `push` because it takes about half an hour and because a shared
+# runner is a noisy machine: the absolute milliseconds here are worth less than
+# the ratios and the scaling, and both need the run to be deliberate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      suites:
+        description: "which halves to run (shapes jfb jrb), space separated; empty means all"
+        required: false
+        default: ""
+  schedule:
+    # Weekly, so drift in a floating comparand is visible as a trend rather
+    # than as a surprise at the next milestone. §0.1's own note: "A ratio
+    # against a floating dependency is not a bar anyone can hold."
+    - cron: "0 4 * * 1"
+
+jobs:
+  tier2:
+    name: js-framework-benchmark, js-reactivity-benchmark, §0.2/§0.3 in Chrome
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # The native binding is a build artefact and both halves compile through
+      # it: the js-framework-benchmark app is barq JSX put through the REAL
+      # compiler, never a hand-written approximation of what it emits.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/compiler-rs
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the native compiler
+        run: bun run --cwd packages/compiler-rs build
+
+      # FAIL rather than skip, the same discipline test/chrome.ts states. A
+      # benchmark lane that quietly does nothing when the browser is missing
+      # reports "no regressions" in a voice indistinguishable from a lane that
+      # ran.
+      - name: Locate Chrome
+        run: |
+          CHROME=$(which google-chrome-stable || which google-chrome || which chromium)
+          echo "using $CHROME"
+          echo "CHROME_PATH=$CHROME" >> "$GITHUB_ENV"
+
+      - name: Run the Tier-2 lane
+        run: bun run --cwd packages/benchmark bench:tier2 ${{ github.event.inputs.suites }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tier2-results
+          path: packages/benchmark/tier2-results.json
+          if-no-files-found: error

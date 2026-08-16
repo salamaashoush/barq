@@ -337,6 +337,40 @@ describe("oracle path integrity", () => {
     }
   }, 60_000)
 
+  /**
+   * `compareToOracle` checks a `wins` declaration against the frame the
+   * compiled path produced — but only after the oracle has produced a frame to
+   * compare against. A fixture whose reference THROWS (`kinds: ["THREW"]`, C1)
+   * never reaches that check, so its `wins` are read by nothing and can rot
+   * silently. Four of them had: the `control-flow-for-keyed-*` rows carried
+   * `<!--Index:#-->` marker comments the compiled path stopped emitting at M4b
+   * and went on passing for three milestones.
+   *
+   * This assertion needs no oracle. It renders the compiled path alone and
+   * requires every declared win to name the frame that path actually produces,
+   * which is the half of the contract a throwing reference does not disturb.
+   */
+  it("every declared win names the frame the compiled path actually produces", async () => {
+    const checked: string[] = []
+    for (const name of fixtures) {
+      // NOT `skipped`, which excludes exactly the C1 rows this exists for.
+      if (PARKED[name] !== undefined) continue
+      if (!/^export const wins\b/m.test(fixtureSource(name))) continue
+      const compiled = await renderViaCompiler(name)
+      for (const win of compiled.wins) {
+        const frames = win.kind === "step" ? compiled.frames : compiled.eventFrames
+        expect(
+          frames[win.index],
+          `${name}: declared win on ${win.kind} ${win.index} does not name the compiled frame (${win.why})`,
+        ).toBe(win.compiled)
+        checked.push(`${name}:${win.kind}:${win.index}`)
+      }
+    }
+    // A floor, so a corpus that stopped declaring wins reports it rather than
+    // passing an empty loop. `optimisation.test.ts` counts twelve.
+    expect(checked.length).toBeGreaterThanOrEqual(12)
+  }, 60_000)
+
   it("fixtures declaring steps actually observe a DOM change", async () => {
     const withSteps: string[] = []
     const inert: string[] = []

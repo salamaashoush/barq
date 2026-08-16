@@ -910,11 +910,11 @@ impl<'a> Binder<'_, 'a> {
         self.tags.push(symbol);
         let Some(flow) = self.env.kind_of(symbol).flow() else { return };
 
-        // `For keyed={false}` delegates to `Index` at runtime, so it takes
-        // Index's attribution; `For keyed={fn}` boxes the row in a signal, so
-        // BOTH its parameters are accessors (`map.ts:57`). A LATER attribute
-        // wins, exactly as it does at runtime — including a spread, which can
-        // carry `keyed` where nothing can read it.
+        // `For keyed={false}` is the positional mode — the item arrives as an
+        // accessor and the index as a plain number; `For keyed={fn}` boxes the
+        // row in a signal, so BOTH its parameters are accessors (`map.ts:57`).
+        // A LATER attribute wins, exactly as it does at runtime — including a
+        // spread, which can carry `keyed` where nothing can read it.
         let mut verdict: Option<(Keyed, bool)> = None;
         for item in &element.opening_element.attributes {
             match item {
@@ -933,14 +933,17 @@ impl<'a> Binder<'_, 'a> {
         let params: &[SourceKind] = match (flow, keyed) {
             (Flow::For, Keyed::ByItem) => &[SourceKind::RowValue, accessor],
             (Flow::For, Keyed::ByFn) => &[accessor, accessor],
-            (Flow::For | Flow::Index, _) => &[accessor, SourceKind::Inert],
+            (Flow::For, _) => &[accessor, SourceKind::Inert],
             (Flow::Repeat, _) => &[SourceKind::Inert],
             _ => return,
         };
-        // Only `For`'s signature reads `keyed`; `Index` hard-codes it false and
-        // `Repeat` hands over a plain number, so an unreadable attribute list
-        // leaves those two proved.
+        // Only `For`'s signature reads `keyed`; `Repeat` hands over a plain
+        // number, so an unreadable attribute list leaves it proved.
         let proved = proved || flow != Flow::For;
+
+        if keyed == Keyed::ByIndex && proved {
+            self.positional_state_hint(element);
+        }
 
         for child in &element.children {
             let JSXChild::ExpressionContainer(container) = child else { continue };
@@ -949,6 +952,44 @@ impl<'a> Binder<'_, 'a> {
             };
             self.attribute(arrow, params, proved);
         }
+    }
+
+    /// K3, and it is a HINT rather than a safety net.
+    ///
+    /// The rule it replaces made this diagnostic load-bearing: it was what made
+    /// an index-keyed DEFAULT acceptable. It could never carry that, which is
+    /// why K1 reversed. It cannot cross a component boundary —
+    /// `{x => <TodoRow todo={x}/>}` with an `<input>` inside `TodoRow` is a call
+    /// and nothing else here — and a scroll offset, a running animation, an open
+    /// `<dialog>` and a third-party widget behind a `ref` are equally invisible
+    /// whatever the tag says. Under the identity default nothing rests on it:
+    /// `keyed={false}` is written by hand, and this only says what that spelling
+    /// means for the markup the compiler happens to be able to see.
+    ///
+    /// It is raised HERE rather than in the shape pass because this is the last
+    /// point at which the row's markup is still markup: P1 has lowered it to a
+    /// template root by then, and a scan there finds no tags at all.
+    fn positional_state_hint(&mut self, element: &JSXElement<'a>) {
+        if !self.rules {
+            return;
+        }
+        let mut scan = StatefulScan { found: None };
+        for child in &element.children {
+            scan.visit_jsx_child(child);
+        }
+        let Some((span, tag)) = scan.found else { return };
+        self.diagnose(
+            Code::Barq011,
+            span,
+            &format!(
+                "`keyed={{false}}` makes a row's identity its POSITION, so `<{tag}>`'s state — a \
+                 caret, a selection, playback, an open/closed toggle — belongs to slot N rather \
+                 than to the item that happens to be in it, and a reorder leaves it behind \
+                 (SEMANTICS K3). Drop `keyed={{false}}` for the identity default, or key on the \
+                 item with `keyed={{r => r.id}}`. This sees inline markup only: state inside a \
+                 component, behind a `ref`, or on a scrolled element is invisible to it."
+            ),
+        );
     }
 
     fn attribute(
@@ -1241,5 +1282,36 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
         self.suspect(Code::Barq003, &it.object, Some(it.property.name.as_str()));
         walk::walk_static_member_expression(self, it);
+    }
+}
+
+/// The intrinsic tags whose state lives in the ELEMENT rather than in any
+/// attribute the compiler writes, so a positional reuse leaves it behind and no
+/// binding puts it back. A custom element is in the set for the same reason and
+/// by the same test the HTML spec uses: a hyphen in the name.
+fn stateful_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "input" | "textarea" | "select" | "video" | "audio" | "details" | "canvas" | "dialog"
+    ) || tag.contains('-')
+}
+
+/// The first stateful tag in a row's markup, with its span. Deliberately not a
+/// proof: it descends through the raw JSX, which is the only subtree it can see
+/// at all — a component call hides everything under it, which is K3's whole
+/// limitation stated in code.
+struct StatefulScan<'a> {
+    found: Option<(Span, &'a str)>,
+}
+
+impl<'a> Visit<'a> for StatefulScan<'a> {
+    fn visit_jsx_opening_element(&mut self, it: &oxc::ast::ast::JSXOpeningElement<'a>) {
+        if self.found.is_none()
+            && let JSXElementName::Identifier(name) = &it.name
+            && stateful_tag(name.name.as_str())
+        {
+            self.found = Some((it.span, name.name.as_str()));
+        }
+        walk::walk_jsx_opening_element(self, it);
     }
 }

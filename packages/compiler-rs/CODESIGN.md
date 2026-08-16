@@ -627,7 +627,7 @@ design needs nothing.
 
 ### 3.4 Control flow — emitted JavaScript over three primitives
 
-`Show`, `Switch`, `Match`, `Index`, `Repeat`, `Dynamic`, `Portal` **cease to exist as components**.
+`Show`, `Switch`, `Match`, `Repeat`, `Dynamic`, `Portal` **cease to exist as components**.
 They are recognised by `SymbolId` resolved to the framework module — never by name, which is unsound
 under shadowing — and lowered.
 
@@ -663,7 +663,7 @@ came to be miscompiled while SSR modelled it correctly):
 **Flags — the compiler ships proofs, the runtime has gated fast paths.** `STATIC_KEY` (key reads
 nothing reactive → no effect, no branch record), `NO_SCOPE` (body registers nothing disposable → no
 Scope; worth 7.3 ns/instance measured), `SINGLE_NODE`, `FAST_CLEAR` (`textContent = ""`),
-`INDEX_UNUSED`, `KEEPALIVE`. **Discipline, enforced in review: a flag that moves neither an allocation
+`INDEX_UNUSED`. **Discipline, enforced in review: a flag that moves neither an allocation
 count nor a wall-clock number on a named benchmark is deleted, not kept.**
 
 *M4 outcome, re-measured at M4b on the flags the COMPILER emits.* Two shipped and two were deleted
@@ -682,8 +682,10 @@ here. `FAST_CLEAR` and `INDEX_UNUSED` moved
 neither counter at 50 rows (p = 4.4e-1 and 5.8e-1) and are gone from the runtime; the discipline is
 now machine-checked rather than "enforced in review" — `bench:flags` reads the flag declarations out
 of `flow.ts` and throws if one has no row in its table. `SINGLE_NODE` was never written (the range is
-tracked either way, so there was nothing to skip) and `KEEPALIVE` is transitions, which A5 leaves
-unspecified.
+tracked either way, so there was nothing to skip). `KEEPALIVE` is **deleted from the list at M7b**: it
+was the parking flag, parking is not something this design does (§3.8, `SEMANTICS.md` A5), and a flag
+kept against a feature nobody is going to build is the same rot the discipline above exists to
+prevent. It was never emitted and never read, so the deletion is to this list only.
 
 **No marker comments in client rendering.** A range owner receives `(parent, anchor)` from the
 compiler's own template walk; `anchor = null` means append. Two adjacent dynamic siblings share one
@@ -776,13 +778,27 @@ One system. `resource(sourceCell, fetcher)` returns a `Cell<T>` backed by a memo
 - **Staleness by `s.gen` captured at call time.** Today the abort guard reads a mutable outer
   variable that by then points at the newest controller, so a slow first response overwrites a fresh
   second one.
-- `Loading` is a boundary with `KEEPALIVE`: the content instance is **parked**, not disposed — its
-  scope stays alive, its DOM moves to a detached fragment, its effects suspend. Focus, scroll and
-  playback survive a suspense flip.
-- `transition(fn)` creates a pending scope beside the live one. A branch that would swap instead
-  builds under the pending scope, holds it detached until every resource registered there settles,
-  then commits. Only expressible because an instance *is* a scope with a settle set. Measurable: a
-  `MutationObserver` sees zero mutations before commit.
+- **Nothing is parked, and there is no transition API.** *(Corrected at M7b; `SEMANTICS.md` A5 is the
+  specification.)* This bullet previously read "`Loading` is a boundary with `KEEPALIVE`: the content
+  instance is **parked**, not disposed — its scope stays alive, its DOM moves to a detached fragment,
+  its effects suspend", and "`transition(fn)` creates a pending scope beside the live one … holds it
+  detached until every resource registered there settles, then commits."
+
+  Both are **dropped**, not deferred. §12 records why: the reference implementation deleted
+  `startTransition` and `useTransition` outright, keeps live DOM mounted showing stale content, and
+  parks nothing. Parking was never a prerequisite for transitions — it is an alternative nobody took —
+  so the three questions Q7 could not answer dissolved instead of being answered, and `KEEPALIVE` is
+  deleted from the flag list rather than left unbuilt.
+
+  What replaces them is smaller and lives entirely in `packages/core`: **two buffers on the opt-in
+  node**, authoritative and override, with one patch per lane in the override and a lane per running
+  `action`. A live write lands in the authoritative buffer underneath the override, so settling is
+  just dropping the override onto a value that is already correct. `latest(fn)` reads through the
+  override, a normal read sees it, `isPending(fn)` reports it. No second scope, no fork, no
+  reconciliation step, and no `MutationObserver` claim to make because nothing is held back.
+
+  Solid's union-find lanes are **not** adopted: they merge transactions inferred from graph
+  reachability, and `action()` already delimits the transaction exactly. See A5, clause (g).
 - **Optimistic state is derived, never restored:** `() => reduce(base(), pending())`. Today
   `registerRevert` captures `revertTo` once per (target, action), so a real write landing during the
   action is rolled back to a value that is now wrong, and `createOptimisticStore` `structuredClone`s
@@ -859,30 +875,52 @@ and every Block is `(s, …) → Out`, so the string backend can drive all of th
 the eight-component non-inlinable set and the per-module downgrade at `compile.rs:302-310` are deleted.
 The 41.88x cliff becomes unreachable rather than fixed.
 
-**Hydration is claim-based.** *(Delivered. `SEMANTICS.md` H1–H4 and H6 are `HOLDS`.)* A range owner
-writes Svelte's branch instruction at **block boundaries only** — `<!--[k-->` … `<!--]-->` — and the
-client reads `k` rather than re-evaluating the condition (which is unsound: it may read data not yet
-seeded). Elements are claimed by the same walk carrying a hydration-only logical index
-(`child(n, 3)`), which costs nothing on the client-render path. On mismatch, only that branch
+**Hydration is claim-based, and the wire carries what RECOVERY needs.** *(Delivered.
+`SEMANTICS.md` H1–H4 and H6 are `HOLDS`.)* A range owner writes boundary comments at **block
+boundaries only** — `<!--[-->` … `<!--]-->` — and **only where the client cannot determine the
+range's extent for itself**. Elements are claimed by the same walk carrying a hydration-only logical
+index (`child(n, 3)`), which costs nothing on the client-render path. On mismatch, only that range
 re-renders. `container.textContent = ""` is gone from the hydration path — `mount(block, container,
 claiming)` is the one line that decides — and `markerId` no longer participates in anything the
 compiler emits.
 
-Two things the design did not anticipate, both found by building it:
+**DETECTION is a separate axis, and it is `dev`.** §12 reversed §11 Q4 on the measurement §11 Q4
+asked for. Under `dev + hydratable` the string backend spells the key the primitive CHOSE into the
+open comment — `<!--[k-->` — and the DOM backend asks `template()` to compare the subtree it claimed
+against the one it would have built. A production build emits neither. The two halves ride the same
+flags integer both backends already take, as `HYDRATE` and `DETECT`.
 
-- **A HOLE needs the boundary comments as much as a branch does.** Not for a key — it has none — but
-  because the parser fuses a dynamic text run with the static one beside it before the client ever
-  sees them, and because the closing comment is the anchor that keeps `insert` off the
-  sole-occupant `parent.textContent` write. That write is §10 Q4's blocker, and the marker is what
-  makes it unreachable rather than what makes it correct.
-- **Skeleton `<!---->` markers have to be on the wire too.** The logical index counts them, so a
-  marker the string backend omitted would shift every index after it by one — which is why the anchor
-  pass now runs for the string target under `hydratable`, and only under it.
+Three things the design did not anticipate, all found by building it:
 
-Chosen deliberately against Vapor's zero-byte scheme: mismatch detection with a local blast radius is
-worth the bytes. **Stated honestly: today's 2.10x SSR headline is a bytes-out number that prices
-hydration at exactly zero, so the comparison is not like-for-like in either direction, and this design
-may make the headline worse before it makes time-to-interactive better.**
+- **A HOLE needs the boundary comments as much as a branch does — unless it owns its parent.** The
+  parser fuses a dynamic text run with the static one beside it before the client ever sees them, and
+  the closing comment is the anchor that keeps `insert` off the sole-occupant `parent.textContent`
+  write. Both arguments dissolve when the hole is the only thing in its element: nothing is beside it
+  to fuse with, and its extent is every child of the parent. That predicate is where 4,800 of the
+  100-row page's 6,416 hydration bytes were. It is refused inside `<pre>`, `<textarea>` and the
+  rawtext family, where §3.13 item 8's newline-eating makes the OPEN comment load-bearing.
+- **A ROW of an `each` needs nothing at all.** Rows are produced in order, so a row's extent is what
+  its build consumed from one shared cursor — 1,600 more bytes, and no compile-time proof required.
+- **Skeleton `<!---->` markers have to be on the wire.** The logical index counts them, so a marker
+  the string backend omitted would shift every index after it by one — which is why the anchor pass
+  runs for the string target under `hydratable`, and only under it.
+
+**Measured, on the 100-row page: production `11513 → 11513` bytes raw and `997 → 997` gzipped.**
+Zero, exactly, against M6b's +55.7% raw and +7.3% gzipped. Development pays +0.1% raw and +1.8%
+gzipped, which is the key and one range. On this page a production hydratable render and a
+non-hydratable one emit the same bytes, so the 2.10x SSR headline is like-for-like on it.
+
+**And zero is a property of that page's SHAPE, not of the split — stated because one page was not
+enough to say it.** Every dynamic value on it is the sole occupant of its `<td>`, which is precisely
+the case that needs no comments. A second 100-row page of the same length whose holes have static
+siblings and whose rows carry a `<Show>` costs **+51.0% raw and +5.5% gzipped** in production
+(`13539 → 20439`, `1027 → 1083`) against M6b's +55.7% / +7.3%. The corpus line in the same test always
+said so: `11422 → 12846` bytes, +12.5%. Both pages are measured in `test/hydration.test.ts`, and the
+mixed one is asserted to be LARGER so no later reading can quote the zero alone. `SEMANTICS.md` H2
+carries the table.
+
+With the comment nodes off the wire and the subtree walk off the production path, claiming went from
+1.4–1.6x more node work than replacing to **1.12–1.31x faster** than it.
 
 Streaming falls out of Blocks: an unready boundary flushes `<!--[b:7-->fallback<!--]-->` plus a
 continuation record `(Block, Scope)`; when its promises settle the server flushes a `<template>` and a
@@ -953,7 +991,7 @@ the flags set stays small.
 | `appendChildren`/`appendChild`/`childToNodes` ×2/`drainFragment` | ~146 | Artefacts of the eager-children convention. |
 | `markers.ts` entire | 51 | Anchor identity is a compile-time address. A process-global `markerId` makes two renders of one tree differ byte-for-byte, which is precisely what makes hydration impossible. |
 | `Fragment` component | 19 | A fragment is a compile-time multi-root unit. Today it silently drops function children and nested arrays (verified). |
-| `Show`/`Switch`/`Match`/`Index`/`Repeat`/`Dynamic`/`Portal`/`Reveal` as **components** | ~450 | Ten copy-pasted `dispose → clearRange → createScope → insertNodes` bodies, each with its own bugs: `Show` re-registers `onCleanup` **inside** its renderEffect (`components.ts:154`); `Dynamic` and `Portal` use detached scopes where `Show` uses attached; `Dynamic`'s string branch is a fifth element-creation path that JSON-stringifies objects into attributes and never removes its listeners. |
+| `Show`/`Switch`/`Match`/`Repeat`/`Dynamic`/`Portal`/`Reveal` as **components** | ~450 | Ten copy-pasted `dispose → clearRange → createScope → insertNodes` bodies, each with its own bugs: `Show` re-registers `onCleanup` **inside** its renderEffect (`components.ts:154`); `Dynamic` and `Portal` use detached scopes where `Show` uses attached; `Dynamic`'s string branch is a fifth element-creation path that JSON-stringifies objects into attributes and never removes its listeners. |
 | `Suspense`, `Await`, `ErrorBoundary` | ~196 | Legacy duplicates of `Loading`/`resource`/`Errored`. `ErrorBoundary` reads its children **outside** its own boundary and lacks the `NotReady` guard. |
 | `createResource`/`suspend`/`awaitAll` (`async.ts:154-234`) | 81 | Not exported from `index.ts`; referenced only by their own tests. |
 | `setProp`/`applyProp`/`applyResolvedProp`/`diffClassList`/`diffStyleObjects` dispatch | ~180 | The compiler holds every fact these re-derive as a `NameFlags` bit. Tables move to Rust and to the generated `.d.ts` — one source of truth. |
@@ -1484,8 +1522,8 @@ left the ground clear for.* What shipped:
   compiler chooses between them by choosing the import SOURCE (`codegen::SHARED_ABI`). A
   string-compiled module now imports from `@barqjs/core/server` and from nothing else.
 - **`uninlinable_flow` is deleted**, with `Flow::inlinable_on_server`, the eight-component set, the
-  module-level SSR→DOM downgrade and `BARQ007` — the diagnostic that announced it. All fourteen
-  constructs have a string component in `ssr.ts` (eleven of them reached only when the flow pass
+  module-level SSR→DOM downgrade and `BARQ007` — the diagnostic that announced it. All thirteen
+  constructs have a string component in `ssr.ts` (ten of them reached only when the flow pass
   refuses a shape it cannot read statically), so nothing anywhere sends a module to another backend.
   `test/ssr.test.ts`'s `SSR_FALLBACK` list is now empty and asserted empty in both directions, and
   `test/addresses.test.ts` plus the corpus rows pin the rest.
@@ -1550,6 +1588,41 @@ written behind a compile-time flag so M6's byte-identity property survives untou
   it is the honest number this harness can produce, and the frame-budget half of §10 Q4's table needs
   a real browser and belongs with the Chrome differential.
 
+**M7b — the split M6b's two declared numbers forced.** §12 reversed §11 Q4 on the measurement above.
+The wire carries what RECOVERY needs; DETECTION is an emission axis a dev build turns on.
+
+- **The wire, minimised by asking per position what the client can re-derive.** A hole that is the
+  only thing in its parent element writes no comments — its extent is every child of the parent, and
+  no other index in that parent exists to be disturbed. A row of an `each` writes none — the rows are
+  built in order, so a row's extent is what its build consumed from one shared cursor. A range that
+  owns its parent element writes none in production. Refused inside `<pre>`, `<textarea>` and the
+  rawtext family, where §3.13 item 8's newline-eating makes the OPEN comment load-bearing; refused for
+  a loading boundary, which can flush `<!--[b:N-->` at run time and no predicate can see that coming.
+- **Detection, as `dev + hydratable` on both backends.** The string backend spells the key its
+  primitive CHOSE into the open comment; the DOM backend passes `template()` a third argument and it
+  compares the subtree it claimed against the one it would have built, now by static TEXT as well as
+  by node name. The bit reaches the string backend alone — the key is a byte on the wire and only the
+  writer needs telling.
+- **The number, re-measured — and the shape it depends on.** 100-row page, production:
+  `11513 → 11513` raw and `997 → 997` gzipped. ZERO, exactly, against M6b's +55.7% and +7.3%.
+  Development: +0.1% raw, +1.8% gzipped. But every hole on that page is the SOLE OCCUPANT of its
+  `<td>`, which is the one case that needs no comments; it is jfb's table, not an ordinary page. A
+  second 100-row page whose holes have static siblings and whose rows carry a `<Show>` costs +51.0%
+  raw / +5.5% gzipped in production. The claim that survives is "zero where a hole owns its parent's
+  child list", not "byte-identical"; both pages are now measured and the mixed one is asserted
+  non-zero.
+- **And the number nobody asked for.** Claiming went from 1.4–1.6x SLOWER than replacing to
+  **1.12–1.31x faster**, at the same four page sizes in the same harness: the comment nodes left the
+  wire and the O(subtree) comparison left the production path.
+- **What production gives up, registered rather than averaged.** Three corruptions survive a
+  production hydration — a wrong tag, a missing element, an extra element, each in the middle of a
+  claimed subtree. Each carries the exact tree it produces, and each is DETECTED in the development
+  column of the same table. `hydration-mutations.test.ts` runs its whole table through both builds.
+- **What production gained.** `activate` catches `HydrationMismatch` from the claiming attempt and
+  rebuilds that range. Until M7b only a disagreeing branch key reached a region's own catcher and
+  every other kind cost the page; the divergence the key was the only evidence for is now caught
+  structurally AND confined.
+
 **The registry gate M6 added, because a milestone that closes rows needs one.** Every known-failure
 row carries a `greenAt` and nothing compared it to a clock: three rows promised green at M5 and were
 still `VIOLATED` after M6 with no assertion able to see it. `test/milestone.ts` exports
@@ -1592,8 +1665,9 @@ ARGUMENT.
   rebind.
 
 **M7 — async and forms.** One resource with structural cancellation and `gen`-guarded staleness;
-`KEEPALIVE` parking; transitions as scope forks; derived optimistic state; the `bind:` family with
-DOM-compare and selection preservation; `linked`.
+derived optimistic state; the `bind:` family with DOM-compare and selection preservation; `linked`.
+*(This line originally also promised `KEEPALIVE` parking and transitions as scope forks. Neither is a
+deliverable any more — see M7b.)*
 
 The ASYNC half landed. `resource(source, fetcher)` is an async memo: the read is a Cell that throws
 `NotReady` before settlement (A3), the `AbortController` is a cleanup on the creating scope and the
@@ -1604,9 +1678,36 @@ list of pending layers, so rollback is the removal of a layer rather than the wr
 snapshot (A4). A1–A4 and E2.3 moved from `VIOLATED` to `HOLDS` with three new L1 fixtures.
 
 `KEEPALIVE` parking and transitions did NOT land and were not attempted: §11 Q7 records that the
-"scope forks only" answer was overruled and that the design does not exist yet. A5 stays the one
-`NOT SPECIFIED` rule in `SEMANTICS.md` and the one entry in `unpinned-rules.ts`'s A family. Nothing
-in the resource depends on either: cancellation is disposal, not parking.
+"scope forks only" answer was overruled and that the design does not exist yet. Nothing in the
+resource depends on either: cancellation is disposal, not parking.
+
+**M7b — transitions, and the reading that unblocked them.** §12's Q7 entry closed the question by
+reading the reference implementation rather than by resolving the dichotomy: both horns were wrong,
+nothing is parked, and there is no second scope. A5 is now a seven-clause specification with nine
+falsification procedures and is no longer the one `NOT SPECIFIED` rule.
+
+What landed is in `packages/core` only — the compiler emits nothing for transitions because there is
+no transition API to call. `createOptimistic` moved from three reactive nodes (a settled signal, a
+`layers` signal and a memo folding one over the other) to **one node with two buffers**, and
+`createOptimisticStore`'s two stores were already those two buffers and gained the same mode-routed
+read. The M7 pending-layer list was not replaced by a second mechanism: it *is* the override buffer,
+and the resource's single `override` slot is the same thing at arity one. What forced the buffers onto
+the node was the read surface — `latest` and `isPending` are read MODES, a mode is not a dependency,
+and a memo would cache one mode's answer and serve it in another (A5, clause (f)).
+
+Three things the first cut of A5 got wrong and this milestone fixed, each now a falsification
+procedure of its own. A generator resumes IN-CONTEXT, so the server's answer written after the
+`yield` — the canonical shape the whole API exists for — went to the override buffer and was thrown
+away on retire, reverting to the pre-action value; `commit(fn)` runs its body with the lane suspended
+and is the write-side counterpart of `latest`. A lane's second write to one value REPLACED its first,
+so `update(n => n + 1)` twice collapsed to `+1` while the store form at the same arity accumulated;
+lane patches now compose and the two arities agree. And clause (f) understated itself: a memo over an
+overridden value answers in whichever mode first computed it, so the same program read in the other
+order gives the other answer in BOTH modes — pinned now in both directions rather than one.
+
+Deleted rather than carried: `KEEPALIVE` from the flag list, and both parking bullets from §3.8.
+Solid's union-find lanes were considered and not adopted, on the record, because `action()` already
+delimits the transaction that their union-find has to infer.
 
 **M8 — consumers.** `packages/extra` and `kitchen-sink`. **The router is the acceptance test for the
 whole design.** Its nine enumerated workarounds must all become deletions:
@@ -1703,6 +1804,14 @@ single-run ratio. The methodology is the one `packages/benchmark` already uses.
    reopened — §1 Correctness decides that — but the number is published beside the SSR and reactivity
    headlines rather than omitted, which is the failure mode §0.3 was corrected for.
 
+   **MEASURED at M7b, on both instruments this criterion names** (§12's Tier-2 lane, 1,000 rows,
+   `bench:tier2 shapes`). Real browser: D/A total **1.007x**, js 1.013x, neither significant against a
+   minimum detectable effect of 1.8–2.6% — **parity within ±2%, met**. Stub DOM, now run inside V8
+   rather than Bun: D/A **1.267x** (95 against 75 ns a row, p=2.4e-7), which is §0.3's 1.24x
+   reproduced and **just over the ≤1.25x bar this item set**. Recorded rather than rounded: the
+   overshoot is 1.7 points on a bar set from a measurement taken on a different engine, the
+   convention is not reopened (§1 decides that), and the number is published here.
+
 ### 9.2 New numbers the design is claiming
 
 | Claim | Method | Target
@@ -1789,6 +1898,11 @@ happens when the live scope and the pending transition scope both write the same
 that last one without a copy-on-write reactive graph. **Is a transition allowed to fork the graph, or
 must it be expressible with scope forks alone?**
 
+> **CLOSED at M7b — the question was malformed.** Neither horn. There is no second scope to fork
+> against and nothing is parked, so "a write to a parked subtree" and "the live scope and the pending
+> scope both write one signal" describe states that do not exist. Two buffers on an opt-in node
+> answer it instead. §12's Q7 entry has the account; `SEMANTICS.md` A5 is the specification.
+
 **Q8 — M0 discipline.** The oracle work (SEMANTICS.md, the ownership trace, the `Backend` trait, `-O0`,
 `Interp`) must land before any semantic change and has no user-visible payoff. If it is truncated under
 pressure, the design ships with strictly less verification than the system it replaces. **Is M0 a hard
@@ -1816,10 +1930,10 @@ component that does not know the ABI. A second implementation of component invoc
 cause of the Provider bug, and the generated `Interp` backend covers the testing and REPL needs that
 the un-compiled path was serving.
 
-**Q3 — index-keyed by default, plus the compile-time diagnostic. ACCEPTED.** Cheapest-correct, never
-silently destroys focus or media state. The diagnostic fires when a keyless row block contains
-stateful DOM, which only a compiler can see. The performance half stays uncovered by default and is
-opt-in via `keyed`.
+**Q3 — index-keyed by default, plus the compile-time diagnostic. ACCEPTED — and REVERSED at §12.**
+Read §12 Q3 first: the diagnostic this answer rests on cannot cross a component boundary, so it never
+could have covered the correctness half, and the default is IDENTITY. Kept here unedited because the
+reversal is only legible against what it reversed.
 
 **Q8 — M0 is a HARD GATE. ACCEPTED.** No semantic change lands until `SEMANTICS.md`, the `Backend`
 trait, the `Interp` reference and the ownership trace exist and every fixture passes against `Interp`.
@@ -1877,6 +1991,12 @@ until the work already in flight lands. Until that design exists:
 The three questions the design must answer: what a write to a parked subtree does, whether parked
 effects are suspended or merely detached, and what happens when the live scope and the pending
 transition scope write the same signal. Solid 2.0's `@solidjs/signals` is the reference to read.
+
+> **SUPERSEDED at M7b.** The reference was read (§12) and reversed the premise rather than answering
+> the questions: `@solidjs/signals@2.0.0-rc.0` deletes the transition API, parks nothing, and
+> double-buffers only opt-in nodes. All three constraints above are lifted — `KEEPALIVE` is deleted
+> rather than built on, and M7 did not in fact depend on any of it, which the third bullet had
+> asserted and the milestone disproved. `SEMANTICS.md` A5 is the specification that replaces this.
 
 **Q9 — re-measure inlining in real Chrome before writing it off.** happy-dom has hidden four distinct
 bug classes on this project (HTML tree construction, NULL rewriting, SVG `className`, a text run split
@@ -1954,6 +2074,22 @@ keyed by identity, on the stated ground that having both "encourages bikesheddin
 misuse". K1's reversal and K3's status both change; an immutable update replacing row objects
 rebuilding rows is a visible performance cost, which is the right kind to trade for.
 
+**Landed in M7b.** The emission was already identity by default — `keyed` absent lowers to
+`each(src, null, row)` and `mapArray` reads `null` as by-item — so what changed is that the document
+stopped promising a reversal away from it. `Index` is DELETED as a component, an SSR entry point, a
+`Flow` variant and a `Helper`: one primitive, three modes, no fourth spelling. K3's diagnostic became
+`BARQ011` at note level, gated on `keyed={false}` rather than on a keyless row, and its rule text says
+plainly that it sees inline markup only. `sem-key-identity-default` is the pin, and every one of its
+three claims observes an UPDATE — a reorder, a replacement, and the positional mirror image — because
+the first frame is identical under all three modes, which is exactly how the `keyed={fn}` miscompile
+hid from 110 fixtures.
+
+**And the cost has a number now**, because "a visible performance cost" is a trade nobody can weigh
+without one. §12's Tier-2 lane grew a K1 arm: at 1,000 rows an immutable replacement rebuilds
+**1,000 of 1,000** rows under the default and **0** under either other mode, 4.3x on the mapping half
+alone, and 31.6 ms per 1,000 rows once the row's DOM is attached (the lane's own
+`replace all rows`). `SEMANTICS.md` K1 carries the table.
+
 ### Q4 — REVERSED by the user. Detection is a DEV-only axis; only recovery is on the wire.
 
 The measurement arrived after the decision: branch-index comments cost 55.7% raw / 7.3% gzipped on a
@@ -1966,6 +2102,49 @@ the expected tag into the walk — `getFirstChild(_el$, "span")` where productio
 recovery needs. barq already has nine separately-flippable optimisation knobs and a `hydratable` flag
 that changes emission on both backends, so the axis exists. The original argument — silent failure is
 the dominant harm — is an argument about DEVELOPMENT and is fully served by a dev-only check.
+
+**DELIVERED at M7b.** The split is built and measured, and the shape it took is not quite the shape
+the reversal described, because the reversal named the wrong culprit.
+
+Solid's `getFirstChild(el, "span")` is a CLIENT-BUNDLE difference, not a wire one; Solid pays its
+insert markers in production exactly as this design did. So "make detection dev-only" on its own
+would have moved a handful of key bytes and left the 55.7% where it was. The 55.7% was never
+detection — it was 300 hole delimiters (4,800 bytes) and 100 row delimiters (1,600) on a page with
+one branch and no keys worth writing. What made the number go to zero was asking, per position,
+**what the client can re-derive**:
+
+- a hole that is the only thing in its parent element: its extent is every child of the parent;
+- a row of an `each`: the rows are built in order, so a row's extent is what its build consumed;
+- a range that is the only thing in its parent element: the same as the hole, in production. A `dev`
+  build writes its comments anyway, because the open comment is the only place a key can live.
+
+Both halves shipped. The wire minimisation is the byte number; the detection axis is the CPU number
+and the dev guarantee. Production: `11513 → 11513` raw, `997 → 997` gzipped — zero. Development:
++0.1% raw, +1.8% gzipped. Claiming: 1.4–1.6x SLOWER than replacing before, **1.12–1.31x faster
+after**, because the O(subtree) comparison left the production path with the comment nodes.
+
+**The zero is measured on ONE shape, and that shape is jfb's table.** Every hole on the 100-row page
+is the sole occupant of its `<td>` — the very case the three bullets above say needs nothing. Put one
+static character beside a hole and the page is back in the paying case: a second 100-row page with
+static siblings and a per-row `<Show>` costs +51.0% raw / +5.5% gzipped in production, against M6b's
++55.7% / +7.3%. The corpus number in the same test agrees and always did (+12.5%). So the delivered
+claim is **"production costs zero where a hole owns its parent's child list"**, and the general win is
+smaller than the headline: about a quarter off the gzipped column on a mixed page, plus the whole
+O(subtree) walk off the production client. Both pages are measured and asserted in
+`test/hydration.test.ts`; `SEMANTICS.md` H2 has the table.
+
+**What production gives up, listed rather than averaged.** Three corruptions survive a production
+hydration silently — a wrong tag, a missing element and an extra element, each in the middle of a
+claimed subtree — because the only thing that could see them is the subtree comparison. Each is
+registered in `test/hydration-mutations.test.ts` with the exact tree it produces, and each is
+DETECTED in the development column. That is Solid's trade taken deliberately, and it is the trade
+§12 argued for: silent failure is the dominant harm IN DEVELOPMENT.
+
+**What production gained.** `flow.ts`'s `activate` now catches `HydrationMismatch` from the claiming
+attempt, reports it, releases the server's nodes and rebuilds cold at that position. Until M7b
+exactly one mismatch reached a region's own catcher — a branch key that disagreed — and every other
+kind cost the page. So the divergence the key used to be the only evidence for is now caught
+structurally in production AND confined to its own range.
 
 ### Q7 — ANSWERED by the reference implementation. Both horns of the question were wrong.
 
@@ -1993,6 +2172,37 @@ alternative nobody took. SEMANTICS.md A5 states a dichotomy that is refuted and 
 M7's transition blocker is far smaller than assumed: two slots on opt-in nodes plus a union-find,
 orthogonal to the Scope/Block work. `latest(fn)` and `isPending(fn)` are the read surface.
 
+**Built at M7b. Three notes on what the estimate above got wrong**, recorded because each is a place
+the reference implementation's shape did not transfer:
+
+*The union-find is not needed and was not built.* Lanes exist to recover a transaction from a set of
+writes. Solid must infer one — their writes are grouped by dependency-graph reachability, merged when
+graphs overlap, with an active override acting as the barrier that stops the merge. barq has
+`action()`, which delimits the transaction explicitly, so the lane is the `ActionContext` itself and
+there is nothing to infer, merge or barrier. Two lanes on one node stack in claim order and retire
+independently. This is the one place their design is answering a question this one does not have.
+
+*"Two slots" is one slot holding M7's list.* The pending-layer list `createOptimistic` already had IS
+the override buffer — the answer to "does the override subsume the layer list or sit beside it" is
+that they were always one mechanism at two arities, and the resource's single `override` signal is the
+degenerate case. M7b unified the storage; it did not add a second. Net effect on allocation:
+`createOptimistic` went from three reactive nodes to one.
+
+*What actually forced the move onto the node was the read surface, not the double buffering.* A
+derivation over a settled signal and a pending-layer signal has exactly one mode, and `latest`,
+`isPending` and a normal read are three. A read mode is not a dependency, so a memo caches the answer
+it computed in one mode and serves it in another; keying a memo on the mode would mean a value slot
+per mode on every computed. Hence the slot sits below memoization, which is where Solid put theirs —
+but their comment explains the *revert*, and this is the reason the shape is forced.
+
+*And the model has a hole their shape does not, because their transaction is implicit.* A generator
+action resumes IN its lane, so `value.set(serverAnswer)` after the `yield` is a lane write and retires
+with the lane — the value reverts to what it held before the action, which is the one thing "no revert
+target is stashed" promises cannot happen. Solid never meets this because they have no explicit
+action to be inside. `commit(fn)` closes it: it runs its body with the lane suspended, so a write
+inside reaches the authoritative buffer exactly as one made outside the action would. It is the
+write-side counterpart of `latest`, and A5 (e) now states both the constraint and the escape.
+
 ### Adopted from Solid without further argument
 
 **The parity ratchet, generalised.** Their `parity.test.js`: "An ABSENT expectation file means the
@@ -2013,6 +2223,37 @@ defence of the calling convention ("0% through a DOM"), which is a Tier-2 claim 
 run. Until that lane exists, the flag-deletion discipline is adjudicating against the wrong oracle.
 `browser.test.ts` already drives real Chrome over CDP, so it is buildable.
 
+**BUILT at M7b** — `packages/benchmark/src/tier2/`, `bun run bench:tier2`, raw numbers checked in at
+`packages/benchmark/tier2-results.json`. What it says, and the correction M7b's own first reading
+needed:
+
+The lane's first cut timed `mount` in a real browser and read the `js` column as §0.3's quantity. It
+is not. That column is mount INCLUDING the DOM mutation — 1,900 ns a row at 1,000 rows against the
+75 ns a row a stub reports — so a 23.7% difference in the JS half is 1% of it, and the browser arms
+can bound the TOTAL cost and cannot resolve the ratio. Reading "js +1.3% to +4.3%" as "23.7% is a
+stub-DOM artefact" compared two different quantities. The lane now carries **both** instruments: the
+browser arms, and a STUB arm running the same shapes over a plain object inside V8, which is §0.3's
+own instrument moved into the engine that matters. `claims.ts` states per claim what its procedure
+cannot decide, so a silence is not read as a null result again.
+
+| # | Tier-1 claim | stub arm, in V8, 1,000 rows | browser, 1,000 rows | verdict |
+|---|---|---|---|---|
+| C1 | D costs 23.7% of JS against A; 0% through a DOM | D/A **1.267x** (95 vs 75 ns/row, p=2.4e-7) | js 1.013x (p=0.13, mde 1.8%), total 1.007x | **BOTH HALVES SURVIVE.** 23.7% reproduces as 26.7% in its own unit; "0% through a DOM" reproduces on a real one |
+| C2 | B/C/D within noise | C/D 0.895x | B/C 0.992x, C/D 1.008x, neither significant | **SURVIVES** in the browser; on the stub, C is 10% cheaper than D, which is C1's number seen from the other side |
+| C3 | a Scope per position costs 7.3 ns/row | D2/D **1.053x** — 5 ns/row (p=2.5e-5) | js 1.013x (p=2.0e-3, mde 1.35%) | **SURVIVES**, at 5 ns/row rather than 7.3. Below the browser's resolution, which is why `NO_SCOPE` is justified on the allocation count and not on a wall clock |
+| C4 | inlining is 15% of stub JS, 0% through a DOM | E/C **0.824x** — 17.6% (p=1.8e-5) | js 0.974x (p=0.059) | **SURVIVES**, both halves, at 17.6% rather than 15% |
+| C5 | a getter is 8.7x | GETTER/VALUE **2.733x** (205 vs 75 ns/row, p=2.5e-8) | js 1.161x (p=1.4e-6), total 1.029x | **MAGNITUDE DOES NOT SURVIVE, sign does.** 8.7x was Bun over happy-dom's stubs; V8 says 2.7x on the same shape. The line below — "the 8.7x number stands unrefuted" — is now refuted as a magnitude and stands as a direction |
+| C6 | the dispatcher is 0–8% per write | — | id **1.358x**; value **1.130x** against a caret-preserving comparand (1.623x against a bare `value =`); class **1.561x** against an ownership-checking comparand (1.873x bare) | **DOES NOT SURVIVE**, in the opposite direction: the dispatcher is 13–56% on equivalent work. §0.4's DECISION — justify channel resolution on capability, not on speed — is understated rather than wrong |
+
+The two rows that moved most between M7b's first reading and this one moved for the same reason: the
+first reading compared quantities the instrument could not separate. C1 and C3 were called
+"magnitude does not survive" off a column that is 98% DOM; C6's `value` and `class` rows were called
+dispatcher off comparands that do strictly less work.
+
+**What the lane still cannot do.** C8 (the SSR envelope) needs a server, not a browser. And the
+`total` column is ~80% forced layout by construction, so its minimum detectable effect — now printed
+beside every ratio — is what says whether a 1.00x there means anything.
+
 ### Vindicated, recorded so it is not relitigated
 
 Their SSR/DOM hole-id desync (`documentation/hole-owner-id-matrix.md`) is the failure barq's shared
@@ -2023,4 +2264,12 @@ bug was caught by an end-to-end streaming example, NOT by fixture parity, becaus
 COMPILERS rather than backends against each other.
 
 Their 6,725-line performance log contains NO measurement of children-getter allocation. The getters
-survive on the parity mandate, not because Blocks lost. The 8.7x number stands unrefuted.
+survive on the parity mandate, not because Blocks lost.
+
+The 8.7x number no longer stands as a magnitude. The Tier-2 lane above measured the same shape on
+the same instrument class inside V8 and got **2.7x** (205 against 75 ns a row at 1,000 rows,
+p=2.5e-8), and 1.16x on the `js` half of a real mount. 8.7x was Bun over happy-dom's stubs, where a
+value-props baseline is nearly free and the ratio is therefore mostly a statement about the
+denominator. The DIRECTION reproduces on every instrument and at every scale, and it is the direction
+the decision rests on — that, and copy-flattening, which was always the correctness argument and
+which no benchmark decides.

@@ -382,9 +382,13 @@ function, editing a row produces a new item object, the row is torn down, and th
 `<input>` that had focus no longer exists. `keyed={fn}` is also what other signal
 frameworks ship as a separate `<Key by={…}>` component; here it is a prop on `For`.
 
-**`keyed={false}`** makes the row positional and delegates to `Index`. Slot 0 stays
-slot 0 and only its contents change, so the item is an accessor and the index is a
-plain number. Use it for lists that are edited in place and never reordered.
+**`keyed={false}`** makes the row positional. Slot 0 stays slot 0 and only its
+contents change, so the item is an accessor and the index is a plain number. Use it
+for lists that are edited in place and never reordered — and note what that means for
+DOM state: a caret, a selection, a scroll offset or an open `<details>` belongs to the
+SLOT, so a reorder leaves it behind. The compiler emits `BARQ011` when it can see such
+markup inline in the row. There is one list primitive and three modes; a separate
+`Index` component used to spell this one and was deleted.
 
 ```tsx
 <For each={() => values()} keyed={false}>
@@ -632,10 +636,10 @@ These components already require callback/function children:
   {(item, index) => <div>{index()}: {item.name}</div>}
 </For>
 
-// Index - render prop with reactive item
-<Index each={values}>
+// For keyed={false} - render prop with a reactive item and a plain index
+<For each={values} keyed={false}>
   {(value, index) => <input value={value()} />}
-</Index>
+</For>
 
 // Await - render prop for loaded data
 <Await resource={userResource} loading={<Spinner />}>

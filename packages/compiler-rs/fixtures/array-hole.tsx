@@ -5,8 +5,8 @@ export const rows = signal(["a", "b"])
 /**
  * A hole whose value is an ARRAY of nodes, built by `.map` rather than by a
  * flow component — the shape the dead plugin's ref-ordering case is really
- * about, and the only way `insert` receives an Array without `For`/`Index`
- * mediating it.
+ * about, and the only way `insert` receives an Array without `For` mediating
+ * it.
  *
  * The list grows and shrinks beside a LATER sibling hole, so `insert`'s array
  * reconciliation has to keep both holes' ranges apart: sharing an anchor

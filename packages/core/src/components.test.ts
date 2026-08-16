@@ -1,5 +1,5 @@
 /**
- * Component Tests - Edge cases for Show, For, Index, Switch components
+ * Component Tests - Edge cases for Show, For, Switch components
  * Tests for rendering, reactivity, and memory leak scenarios
  */
 
@@ -7,7 +7,6 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import {
   Show,
   For,
-  Index,
   Switch,
   Match,
   Fragment,
@@ -766,14 +765,15 @@ describe("For component", () => {
   });
 });
 
-describe("Index component", () => {
+describe("For keyed={false} — the positional mode", () => {
   test("renders list with static indices", () => {
     const items = signal(["a", "b", "c"]);
     const receivedIndices: number[] = [];
 
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
-      children: (_s, item: () => string, index: number) => {
+      keyed: false,
+      children: (_s: Scope | null, item: () => string, index: number) => {
         receivedIndices.push(index);
         return document.createTextNode(item());
       },
@@ -788,9 +788,10 @@ describe("Index component", () => {
     const items = signal(["a", "b", "c"]);
     let updateCount = 0;
 
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
-      children: (_s, item: () => string, _index: number) => {
+      keyed: false,
+      children: (_s: Scope | null, item: () => string, _index: number) => {
         effect(() => {
           item(); // subscribe
           updateCount++;
@@ -817,9 +818,10 @@ describe("Index component", () => {
 
   test("handles array shrinking", () => {
     const items = signal(["a", "b", "c", "d"]);
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
-      children: (_s, item: () => string) => {
+      keyed: () => false,
+      children: (_s: Scope | null, item: () => string) => {
         const span = document.createElement("span");
         effect(() => {
           span.textContent = item();
@@ -838,9 +840,10 @@ describe("Index component", () => {
 
   test("handles array growing", () => {
     const items = signal(["a"]);
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
-      children: (_s, item: () => string) => {
+      keyed: () => false,
+      children: (_s: Scope | null, item: () => string) => {
         const span = document.createElement("span");
         effect(() => {
           span.textContent = item();
@@ -862,9 +865,10 @@ describe("Index component", () => {
     const trigger = signal(0);
     const effectCounts = [0, 0, 0];
 
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
-      children: (_s, item: () => string, index: number) => {
+      keyed: false,
+      children: (_s: Scope | null, item: () => string, index: number) => {
         effect(() => {
           item();
           trigger();
@@ -895,10 +899,11 @@ describe("Index component", () => {
 
   test("EDGE CASE: empty to non-empty transition", () => {
     const items = signal<string[]>([]);
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
+      keyed: () => false,
       fallback: document.createTextNode("empty"),
-      children: (_s, item: () => string) => document.createTextNode(item()),
+      children: (_s: Scope | null, item: () => string) => document.createTextNode(item()),
     });
 
     container.appendChild(element as Node);
@@ -1001,7 +1006,7 @@ describe("Switch/Match components", () => {
       children: [
         Match(null, {
           when: user,
-          keyed: false,
+          keyed: () => false,
           children: () => {
             renderCount++;
             const span = document.createElement("span");

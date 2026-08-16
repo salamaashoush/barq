@@ -3,11 +3,14 @@ import { For, signal } from "@barqjs/core"
 export const words = signal(["a", "b"])
 
 /**
- * `<For keyed={false}>` DELEGATES to `Index` at runtime, which inverts the row
- * callback's contract: the item becomes an accessor and the index becomes a
- * plain number. Attributing the parameters from the component's name alone
- * gets both of them backwards — `item()` would throw and `index()` would not
- * update.
+ * `<For keyed={false}>` INVERTS the row callback's contract against the identity
+ * default: the item becomes an accessor and the index becomes a plain number.
+ * Attributing the parameters from the component's name alone gets both of them
+ * backwards — `item()` would throw and `index()` would not update.
+ *
+ * The file name is historical. Since K1 reversed, "unkeyed" is no longer the
+ * default: `keyed` absent keys by ITEM IDENTITY, and this is the mode an author
+ * has to ask for.
  */
 export default function ForUnkeyedRows() {
   return (
@@ -28,9 +31,10 @@ export const optimality = {
   templates: 2,
   // `keyed={false}` INVERTS the row contract: the item becomes an accessor and
   // the index becomes a plain number. Since M4b the compiler does not pass a
-  // flag through for the runtime to resolve — `For` and `Index` are the same
-  // `each`, and `keyOf: false` IS the non-keyed mode. There is no longer a
-  // "which component did the author write" for the emission to be wrong about.
+  // flag through for the runtime to resolve — `keyOf: false` IS the positional
+  // mode. There is no longer a "which component did the author write" for the
+  // emission to be wrong about, and since M7b there is no second component to
+  // have written.
   emits: ["each(", ", words, false, ", ", word: () => string, index: number)"],
   absent: ["each: ", "() => false"],
 }

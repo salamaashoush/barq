@@ -126,29 +126,36 @@ export function Show<T>(_s: Scope | null, props: ShowProps<T>): JSXElement {
 }
 
 /**
- * For props — discriminated on `keyed` so children params infer correctly:
+ * One list primitive, three modes, discriminated on `keyed` so children params
+ * infer correctly:
  * - omitted / true: keyed by identity — children get (item, indexAccessor)
  * - a key fn: the row survives an item change, so the item arrives through a row
  *   SIGNAL — children get (itemAccessor, indexAccessor)
- * - false: non-keyed (old Index) — children get (itemAccessor, index)
+ * - false: positional — children get (itemAccessor, index)
+ *
+ * Each mode admits the LITERAL as well as a Cell carrying it. `For` reads the
+ * slot through `readSlot`, and the compiler special-cases the literal spelling
+ * — `<For keyed={false}>` resolves at compile time and never allocates a Cell —
+ * so a type that demanded a Cell would make the direct-call form of the very
+ * spelling the compiler prefers unwritable.
  */
 export type ForProps<T, U extends JSXElement> =
   | {
       each: Cell<readonly T[] | undefined | null>;
       fallback?: Slot<Child>;
-      keyed?: Cell<true>;
+      keyed?: Cell<true> | true;
       children: Block<U, [item: T, index: Cell<number>]>;
     }
   | {
       each: Cell<readonly T[] | undefined | null>;
       fallback?: Slot<Child>;
-      keyed: Cell<(item: T) => unknown>;
+      keyed: Cell<(item: T) => unknown> | ((item: T) => unknown);
       children: Block<U, [item: Cell<T>, index: Cell<number>]>;
     }
   | {
       each: Cell<readonly T[] | undefined | null>;
       fallback?: Slot<Child>;
-      keyed: Cell<false>;
+      keyed: Cell<false> | false;
       children: Block<U, [item: Cell<T>, index: number]>;
     };
 
@@ -168,19 +175,6 @@ export function For<T, U extends JSXElement>(_s: Scope | null, props: ForProps<T
         ? false
         : null;
   return eachOf(_s, props.each as Cell<readonly T[]>, keyOf, props, "For");
-}
-
-export interface IndexProps<T, U extends JSXElement> {
-  each: Cell<readonly T[] | undefined | null>;
-  fallback?: Slot<Child>;
-  children: Block<U, [item: Cell<T>, index: number]>;
-}
-
-export function Index<T, U extends JSXElement>(
-  _s: Scope | null,
-  props: IndexProps<T, U>,
-): JSXElement {
-  return eachOf(_s, props.each as Cell<readonly T[]>, false, props, "Index");
 }
 
 /**

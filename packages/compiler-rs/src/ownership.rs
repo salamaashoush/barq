@@ -39,7 +39,7 @@ pub enum OwnKind {
     Provide,
     /// `Show` / `Switch` / `Match` / `Dynamic` and the boundaries — `branch`
     Branch,
-    /// `For` / `Index` / `Repeat` — an `each` row
+    /// `For` / `Repeat` — an `each` row
     Each,
     /// `Portal`
     Portal,
@@ -65,7 +65,7 @@ impl OwnKind {
 
     fn of_flow(flow: Flow) -> Self {
         match flow {
-            Flow::For | Flow::Index | Flow::Repeat => OwnKind::Each,
+            Flow::For | Flow::Repeat => OwnKind::Each,
             Flow::Portal => OwnKind::Portal,
             // X1: `Reveal` installs a coordinator and owns no range, so what it
             // creates is a PROVIDE scope. Calling it a branch was the reading

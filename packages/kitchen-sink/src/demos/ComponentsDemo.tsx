@@ -1,6 +1,6 @@
 /**
  * Components Demo
- * Tests: Show, For, Index, Switch, Match, Portal, Fragment, ErrorBoundary
+ * Tests: Show, For (both keying modes), Switch, Match, Portal, Fragment, ErrorBoundary
  *
  * NOTE: This file uses clean syntax that the compiler transforms:
  * - Control flow: `when={visible}` instead of `when={() => visible()}`
@@ -11,7 +11,6 @@ import {
   ErrorBoundary,
   For,
   Fragment,
-  Index,
   Match,
   Portal,
   Show,
@@ -121,7 +120,7 @@ function ForDemo() {
   );
 }
 
-// Index component - position-keyed list
+// For keyed={false} - the positional mode
 function IndexDemo() {
   const [values, setValues] = useState(["A", "B", "C", "D"]);
 
@@ -142,14 +141,14 @@ function IndexDemo() {
   };
 
   return (
-    <DemoCard title="Index - Position-Keyed List">
+    <DemoCard title="For keyed={false} - Position-Keyed List">
       <div class={buttonRowStyle}>
         <Button onClick={addValue}>Add</Button>
         <Button onClick={removeValue}>Remove Last</Button>
       </div>
 
       <div class={gridStyle}>
-        <Index each={values}>
+        <For each={values} keyed={false}>
           {(value, index) => (
             <input
               class={indexInputStyle}
@@ -159,10 +158,13 @@ function IndexDemo() {
               placeholder={`Index ${index}`}
             />
           )}
-        </Index>
+        </For>
       </div>
 
-      <p class={noteStyle}>Index keeps nodes stable - only values update when items change.</p>
+      <p class={noteStyle}>
+        The positional mode keeps nodes stable - only values update when items change, and the
+        text you type stays with the SLOT rather than with the item (BARQ011).
+      </p>
     </DemoCard>
   );
 }

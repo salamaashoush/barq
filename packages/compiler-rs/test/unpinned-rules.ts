@@ -35,6 +35,16 @@
  * pin for the rule two blockers falsified, and it did not exist.
  */
 /**
+ * M7b struck two more off, and one of them is the reason the milestone exists.
+ * K1's default REVERSED to identity keying (`CODESIGN.md` §12 Q3), so the rule
+ * stopped promising something no fixture could observe and acquired
+ * `sem-key-identity-default`, whose three claims each write to the DOM and then
+ * reorder — the first frame is identical under all three keying modes, which is
+ * how the `keyed={fn}` miscompile hid from 110 fixtures. K3 came with it: the
+ * rule it names is now the state loss `keyed={false}` costs, observed in that
+ * same fixture, with `BARQ011` demoted from safety net to hint.
+ */
+/**
  * The other half of the same honesty, found by M4b's gate round.
  *
  * `semantics.test.ts`'s "a rule whose prose claims HOLDS is pinned by a fixture
@@ -73,8 +83,12 @@ export const FICTION_PINS: readonly string[] = Object.freeze([
 
 export const UNPINNED_RULES: readonly string[] = Object.freeze([
   // A — M7 wrote three fixtures and struck A1, A2, A3 and A4 off. A5 stays,
-  // and stays for a reason: `CODESIGN.md` §11 Q7 leaves transitions
-  // deliberately unspecified, so there is nothing for a fixture to pin.
+  // but for a different reason since M7b: the rule now EXISTS and holds, pinned
+  // by `packages/core/src/actions.test.ts`, which runs all six of its
+  // falsification procedures. What is missing is a COMPILER fixture — A5 is
+  // entirely runtime behaviour, since there is no transition API to emit — so
+  // `sem-async-optimistic-lane` (SEMANTICS.md §14.1) drives the same six
+  // through compiled JSX and strikes this row.
   "A5",
   // B
   // B6 and B7 are M7's and are struck: `sem-form-dom-compare` and
@@ -94,7 +108,7 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   // records what each corruption degraded to. `hydration.ts`'s
   // `HYDRATION_CHANNEL_RULES` is that channel's declared reach.
   // K
-  "K1", "K3", "K4", "K5", "K7", "K8",
+  "K4", "K5", "K7", "K8",
   // M
   "M1", "M2", "M3", "M4", "M5", "M6",
   // O

@@ -31,8 +31,8 @@ interface Result extends Outcome {
   name: string
 }
 
-async function hydrateFixture(name: string): Promise<Result> {
-  const compiled = await compileText(fixtureSource(name), name)
+async function hydrateFixture(name: string, dev = false): Promise<Result> {
+  const compiled = await compileText(fixtureSource(name), dev ? `${name}-dev` : name, true, dev)
   const core = await import("@barqjs/core")
   const markup = wire(compiled.ssr)
 
@@ -90,6 +90,24 @@ async function hydrateFixture(name: string): Promise<Result> {
 const ALL: Promise<Map<string, Result>> = (async () => {
   const out = new Map<string, Result>()
   for (const name of FIXTURES) out.set(name, await hydrateFixture(name))
+  return out
+})()
+
+/**
+ * The same pass over a DEVELOPMENT build — `dev` on top of `hydratable`.
+ *
+ * §12 made detection an emission axis, and an axis has two settings. Everything
+ * above measures the PRODUCTION one; this measures the other, and the property
+ * it exists for is the one a stronger checker fails first: turning detection ON
+ * must not report a divergence that is not there. The subtree walk compares
+ * static TEXT as well as node names now, and the whole corpus is where a
+ * normalisation artefact — a `<pre>` newline the tokenizer ate, an entity one
+ * side spelled differently — would surface as a mismatch nobody caused.
+ */
+const ALL_DEV: Promise<Map<string, Result>> = (async () => {
+  await ALL
+  const out = new Map<string, Result>()
+  for (const name of FIXTURES) out.set(name, await hydrateFixture(name, true))
   return out
 })()
 
@@ -229,52 +247,138 @@ describe("H3 the hydration index is free when nothing hydrates", () => {
 })
 
 // ---------------------------------------------------------------------------
+// the other setting of the axis
+// ---------------------------------------------------------------------------
+
+describe("L5 hydration conformance, with detection on", () => {
+  for (const name of FIXTURES) {
+    test(`${name} hydrates the same way under \`dev\``, async () => {
+      const production = (await ALL).get(name) as Result
+      const development = (await ALL_DEV).get(name) as Result
+      // Same tree, same report. Detection may only make the client SEE a
+      // divergence, never make one — and the corpus has none, so a dev build
+      // that reports anything production does not has found a false positive in
+      // the detector rather than a bug in the corpus.
+      expect({
+        name,
+        cold: development.coldShape,
+        shape: development.hydratedShape,
+        kinds: [...new Set(development.mismatches)].toSorted(),
+        recovered: development.recovered,
+      }).toEqual({
+        name,
+        cold: production.coldShape,
+        shape: production.hydratedShape,
+        kinds: [...new Set(production.mismatches)].toSorted(),
+        recovered: production.recovered,
+      })
+    })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // the payload §11 Q4 agreed to pay, measured
 // ---------------------------------------------------------------------------
 
-describe("the branch-index payload", () => {
+/** One wire, measured raw and gzipped. */
+interface Bytes {
+  raw: number
+  gz: number
+}
+
+function bytes(markup: string): Bytes {
+  return { raw: markup.length, gz: Bun.gzipSync(new TextEncoder().encode(markup)).length }
+}
+
+function delta(before: Bytes, after: Bytes): string {
+  const pct = (a: number, b: number): string =>
+    b === a ? "+0.0" : `+${(((b - a) / a) * 100).toFixed(1)}`
+  return (
+    `${String(before.raw).padStart(6)} → ${String(after.raw).padStart(6)} raw ` +
+    `(${pct(before.raw, after.raw)}%), ` +
+    `${String(before.gz).padStart(5)} → ${String(after.gz).padStart(5)} gzipped ` +
+    `(${pct(before.gz, after.gz)}%)`
+  )
+}
+
+describe("the claim payload", () => {
   /**
    * §11 Q4: "Revisit if the measured byte cost is material on a real page."
-   * So it is measured, on the corpus and on the 100-row page the SSR headline
-   * is quoted from, and the number is printed rather than asserted at a
-   * threshold nobody agreed to — with one assertion that IS agreed: the bytes
-   * are comments, so the two markups differ by comments alone.
+   * §12: it was — 55.7% raw and 7.3% gzipped on the 100-row page — and the
+   * decision reversed. THE WIRE CARRIES WHAT RECOVERY NEEDS, AND DETECTION IS
+   * AN EMISSION AXIS.
+   *
+   * So the payload is measured on four wires rather than two: the corpus and
+   * the 100-row page, each compiled for production and for development. The
+   * numbers are printed rather than asserted at a threshold nobody agreed to,
+   * with three assertions that ARE agreed — the bytes are comments, so the two
+   * markups differ by comments alone; the production page costs ZERO, which is
+   * §12's own acceptance criterion; and development costs MORE than production,
+   * because a detection axis nobody can measure is not an axis.
    */
-  test("costs what it costs, on the corpus and on a real page", async () => {
+  test("costs what it costs, on the corpus and on a real page, in both builds", async () => {
     let plain = 0
-    let hydratable = 0
+    let production = 0
+    let development = 0
     for (const name of FIXTURES) {
-      const a = await loadModule(
-        compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true }),
-        `pay-plain-${name}`,
+      const before = wire(
+        await loadModule(
+          compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true }),
+          `pay-plain-${name}`,
+        ),
       )
-      const b = await loadModule(
-        compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true, hydratable: true }),
-        `pay-hy-${name}`,
-      )
-      const before = wire(a)
-      const after = wire(b)
       plain += before.length
-      hydratable += after.length
-      // The ONLY difference is the claim scaffolding. Anything else in this
-      // delta would be markup the two backends disagree about, which is a
-      // different bug and belongs to a different suite. Both sides are stripped
-      // because a fixture may legitimately CONTAIN a `<!---->` in its prose —
-      // `marker-literal-text` does — and removing it from one side only would
-      // read that as a byte the flag added.
-      expect(strip(after)).toBe(strip(before))
+      for (const dev of [false, true]) {
+        const after = wire(
+          await loadModule(
+            compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true, hydratable: true, dev }),
+            `pay-hy-${dev ? "dev" : "prod"}-${name}`,
+          ),
+        )
+        if (dev) development += after.length
+        else production += after.length
+        // The ONLY difference is the claim scaffolding. Anything else in this
+        // delta would be markup the two backends disagree about, which is a
+        // different bug and belongs to a different suite. Both sides are
+        // stripped because a fixture may legitimately CONTAIN a `<!---->` in its
+        // prose — `marker-literal-text` does — and removing it from one side
+        // only would read that as a byte the flag added.
+        expect(strip(after)).toBe(strip(before))
+      }
     }
 
-    const page = await realPage()
+    const page = await realPage(PAGE, "sole")
+    const mixed = await realPage(MIXED_PAGE, "mixed")
     console.log(
-      `branch-index payload — corpus: ${plain} → ${hydratable} bytes ` +
-        `(+${(((hydratable - plain) / plain) * 100).toFixed(1)}%); ` +
-        `100-row page: ${page.plain} → ${page.hydratable} bytes ` +
-        `(+${(((page.hydratable - page.plain) / page.plain) * 100).toFixed(1)}%, ` +
-        `${page.gzipPlain} → ${page.gzipHydratable} gzipped, ` +
-        `+${(((page.gzipHydratable - page.gzipPlain) / page.gzipPlain) * 100).toFixed(1)}%)`,
+      "the claim payload, after §12's split:\n" +
+        `  corpus       production  ${plain} → ${production} bytes\n` +
+        `  corpus       development ${plain} → ${development} bytes\n` +
+        `  100-row page, every hole the SOLE OCCUPANT of its element:\n` +
+        `    production  ${delta(page.plain, page.production)}\n` +
+        `    development ${delta(page.plain, page.development)}\n` +
+        `  100-row page, holes with STATIC SIBLINGS and a per-row <Show>:\n` +
+        `    production  ${delta(mixed.plain, mixed.production)}\n` +
+        `    development ${delta(mixed.plain, mixed.development)}`,
     )
-    expect(hydratable).toBeGreaterThan(plain)
+
+    // §12's acceptance criterion, verbatim: "the production number should go to
+    // roughly zero; if it does not, the split did not land". On THIS page it is
+    // zero EXACTLY — every hole owns the element it sits in, every row is
+    // claimed from one cursor, and the list owns the `<tbody>` — so this is an
+    // equality rather than a tolerance, and one byte creeping back fails it.
+    expect(page.production).toEqual(page.plain)
+    // And zero is a property of that SHAPE, not of the split. The moment a hole
+    // shares its parent with anything static, the OPEN stops the parser fusing
+    // the two text runs and the CLOSE is the anchor every later write uses, so
+    // production pays — which is asserted here rather than left as a headline
+    // the sole-occupant page alone would support. H2 carries the number.
+    expect(mixed.production.raw).toBeGreaterThan(mixed.plain.raw)
+    expect(mixed.production.gz).toBeGreaterThan(mixed.plain.gz)
+    // Development pays, and it is supposed to: that is where the detection is.
+    // An axis that costs the same in both builds is not an axis.
+    expect(development).toBeGreaterThan(production)
+    expect(page.development.raw).toBeGreaterThan(page.production.raw)
+    expect(mixed.development.raw).toBeGreaterThan(mixed.production.raw)
   })
 })
 
@@ -310,26 +414,51 @@ export default function Page() {
 }
 `
 
-async function realPage(): Promise<{
-  plain: number
-  hydratable: number
-  gzipPlain: number
-  gzipHydratable: number
-}> {
-  const a = wire(
-    await loadModule(compileSource(PAGE, "page.tsx", { ssr: true }), "payload-page-plain"),
-  )
-  const b = wire(
-    await loadModule(
-      compileSource(PAGE, "page.tsx", { ssr: true, hydratable: true }),
-      "payload-page-hy",
-    ),
-  )
+/**
+ * The same 100 rows, but shaped like an ordinary page instead of like
+ * js-framework-benchmark's table: every dynamic value has a static neighbour,
+ * and each row carries a `<Show>` whose range does too. `PAGE` is the shape the
+ * production number is zero on, and it is zero BECAUSE of the shape — this is
+ * the page that says what the split costs everywhere else.
+ */
+const MIXED_PAGE = `
+import { For, Show, signal } from "@barqjs/core";
+const rows = signal(
+  Array.from({ length: 100 }, (_, i) => ({ id: i, label: "row " + i, tag: i % 7 })),
+);
+export default function Page() {
+  return (
+    <table class="rows">
+      <tbody>
+        <For each={rows()}>
+          {(row) => (
+            <tr class={"r" + row.tag}>
+              <td class="id">#{row.id}.</td>
+              <td class="label">name: <a href={"/row/" + row.id}>{row.label}</a> ({row.tag})</td>
+              <td class="tag">tag <Show when={row.tag > 3}>hot</Show> end</td>
+            </tr>
+          )}
+        </For>
+      </tbody>
+    </table>
+  );
+}
+`
+
+async function realPage(
+  source: string,
+  slug: string,
+): Promise<{ plain: Bytes; production: Bytes; development: Bytes }> {
+  const one = async (tag: string, options: Record<string, unknown>): Promise<Bytes> =>
+    bytes(wire(await loadModule(compileSource(source, "page.tsx", options), tag)))
   return {
-    plain: a.length,
-    hydratable: b.length,
-    gzipPlain: Bun.gzipSync(new TextEncoder().encode(a)).length,
-    gzipHydratable: Bun.gzipSync(new TextEncoder().encode(b)).length,
+    plain: await one(`payload-page-${slug}-plain`, { ssr: true }),
+    production: await one(`payload-page-${slug}-prod`, { ssr: true, hydratable: true }),
+    development: await one(`payload-page-${slug}-dev`, {
+      ssr: true,
+      hydratable: true,
+      dev: true,
+    }),
   }
 }
 

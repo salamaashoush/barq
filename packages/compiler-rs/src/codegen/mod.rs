@@ -57,7 +57,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 56;
+pub const HELPER_COUNT: usize = 55;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -67,7 +67,7 @@ pub const FIRST_SERVER_HELPER: usize = 32;
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 55;
+pub const FIRST_INTERP_HELPER: usize = 54;
 
 /// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
 /// and `flow.ts`'s four primitives with `each`'s count symbol.
@@ -123,7 +123,7 @@ pub enum Helper {
     Block = 9,
     // ── `flow.ts`'s four primitives, plus `each`'s count-mode symbol ──────
     //
-    // `CODESIGN.md` §3.4. These are what the fourteen control-flow constructs
+    // `CODESIGN.md` §3.4. These are what the thirteen control-flow constructs
     // lower ONTO: the compiler hands each one the `(parent, anchor)` pair its
     // own template walk computed, and a flags integer carrying the properties it
     // proved.
@@ -199,22 +199,21 @@ pub enum Helper {
     RawText = 38,
     SpreadAttrs = 39,
     SsrFor = 40,
-    SsrIndex = 41,
-    SsrRepeat = 42,
-    SsrShow = 43,
-    SsrSwitch = 44,
-    SsrMatch = 45,
-    ClsList = 46,
-    AttrLit = 47,
-    SsrLoading = 48,
-    SsrErrored = 49,
-    SsrErrorBoundary = 50,
-    SsrPortal = 51,
-    SsrAwait = 52,
-    SsrDynamic = 53,
-    SsrReveal = 54,
+    SsrRepeat = 41,
+    SsrShow = 42,
+    SsrSwitch = 43,
+    SsrMatch = 44,
+    ClsList = 45,
+    AttrLit = 46,
+    SsrLoading = 47,
+    SsrErrored = 48,
+    SsrErrorBoundary = 49,
+    SsrPortal = 50,
+    SsrAwait = 51,
+    SsrDynamic = 52,
+    SsrReveal = 53,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 55,
+    Interp = 54,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -259,7 +258,6 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "rawText",
     "spreadAttrs",
     "ssrFor",
-    "ssrIndex",
     "ssrRepeat",
     "ssrShow",
     "ssrSwitch",
@@ -364,6 +362,13 @@ pub struct Emit<'a, 'm> {
     /// outside `Opt` that changes the bytes: the string backend writes range
     /// boundaries and the DOM backend walks logically.
     pub hydratable: bool,
+    /// `CODESIGN.md` §12's Q4 reversal — RECOVERY is on the wire, DETECTION is
+    /// an emission axis, and this is the axis. `dev && hydratable`: the string
+    /// backend spells a branch's chosen key into its open comment and the DOM
+    /// backend asks `template()` to verify the subtree it claimed against the
+    /// one it would have built. A production build emits neither and the whole
+    /// check disappears from both halves.
+    pub detect: bool,
     pub used: [bool; HELPER_COUNT],
     pub local: [&'a str; HELPER_COUNT],
 }
@@ -396,9 +401,61 @@ impl<'a, 'm> Emit<'a, 'm> {
             interp_units: Vec::new(),
             opt: options.opt,
             hydratable: options.hydratable,
+            detect: options.hydratable && options.dev,
             used,
             local,
         }
+    }
+
+    /// Whether a hole may go on the wire with no boundary comments at all.
+    ///
+    /// Two conditions, and both are about what the CLIENT can re-derive. The
+    /// slot must own its parent's child list, so its extent is readable off the
+    /// document ([`crate::ir::Skeleton::slot_owns_child_list`]). And the parent
+    /// must not be one of the three tags §3.13 item 8 keeps at run time: inside
+    /// `<pre>`, `<textarea>`, `<listing>` and the rawtext family the tokenizer
+    /// eats a leading newline that the OPEN comment is currently what protects,
+    /// so removing the comment there would change the text the server sent.
+    pub fn hole_owns_child_list(
+        &self,
+        unit: &crate::ir::Unit<'a>,
+        parent: crate::ir::NodeId,
+        slot: crate::ir::SlotId,
+    ) -> bool {
+        if !self.hydratable || !unit.skeleton.slot_owns_child_list(parent, slot) {
+            return false;
+        }
+        let Some(element) = unit.skeleton.node(parent).as_element() else { return false };
+        let flags = self.module.interner.tag(element.tag).flags;
+        !flags.contains(crate::ir::TagFlags::RAW_TEXT)
+            && !flags.contains(crate::ir::TagFlags::ESCAPABLE_RAW_TEXT)
+            && !flags.contains(crate::ir::TagFlags::PRESERVE_WS)
+    }
+
+    /// The same question for a REGION, and one extra condition: not under
+    /// `detect`.
+    ///
+    /// A region's open comment is where the key goes, and the key is the whole
+    /// of what §12 left on the detection axis — H2's "the client cannot
+    /// re-evaluate the condition, so the server's choice has to be on the wire
+    /// or it is lost". A dev build therefore keeps the comments at every range,
+    /// sole-occupant or not, and pays for them; a production build drops them
+    /// wherever the client can read the extent off the parent, exactly as it
+    /// does at a hole.
+    ///
+    /// Returns the flag bit rather than a bool because that is what the caller
+    /// ORs into the region's flags, and a predicate that returned `true` into a
+    /// `|=` would be a silent 1.
+    pub fn region_owns_child_list(
+        &self,
+        unit: &crate::ir::Unit<'a>,
+        parent: crate::ir::NodeId,
+        slot: crate::ir::SlotId,
+    ) -> u8 {
+        if self.detect || !self.hole_owns_child_list(unit, parent, slot) {
+            return 0;
+        }
+        crate::ir::WHOLE
     }
 
     // ── AST construction ──────────────────────────────────────────────────

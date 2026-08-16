@@ -149,7 +149,6 @@ impl Prim {
             "untrack" => Prim::Untrack,
             "batch" => Prim::Batch,
             "For" => Prim::Flow(Flow::For),
-            "Index" => Prim::Flow(Flow::Index),
             "Repeat" => Prim::Flow(Flow::Repeat),
             "Show" => Prim::Flow(Flow::Show),
             "Switch" => Prim::Flow(Flow::Switch),
@@ -175,7 +174,7 @@ impl Prim {
 pub enum Keyed {
     /// absent or `true` — `(item: T, index: () => number)`
     ByItem,
-    /// `keyed={false}` delegates to `Index` — `(item: () => T, index: number)`
+    /// `keyed={false}` — positional rows: `(item: () => T, index: number)`
     ByIndex,
     /// a key function, or anything that cannot be PROVED not to be one —
     /// `(item: () => T, index: () => number)`
@@ -228,7 +227,6 @@ impl Keyed {
 pub enum Flow {
     // string-inlinable on the server
     For,
-    Index,
     Repeat,
     Show,
     Switch,
@@ -258,7 +256,6 @@ impl Flow {
     pub fn name(self) -> &'static str {
         match self {
             Flow::For => "For",
-            Flow::Index => "Index",
             Flow::Repeat => "Repeat",
             Flow::Show => "Show",
             Flow::Switch => "Switch",
@@ -285,7 +282,7 @@ impl Flow {
     #[inline]
     pub fn cell_slot(self, prop: &str) -> Option<&'static str> {
         match (self, prop) {
-            (Flow::For | Flow::Index, "each") => Some("each source"),
+            (Flow::For, "each") => Some("each source"),
             (Flow::Repeat, "count" | "from") => Some("each source"),
             (Flow::Show | Flow::Match, "when") => Some("branch key"),
             (Flow::Portal, "target") => Some("portal target"),
@@ -475,7 +472,6 @@ mod tests {
     fn every_construct_has_a_string_lowering() {
         let all = [
             Flow::For,
-            Flow::Index,
             Flow::Repeat,
             Flow::Show,
             Flow::Switch,
@@ -492,9 +488,9 @@ mod tests {
         // M6 deleted `inlinable_on_server`, the six/eight split it named, and
         // the whole-module downgrade it drove. What replaced it is a TOTAL map
         // from a construct to a string implementation, so the property worth
-        // asserting is that the map has no hole: every one of the fourteen
+        // asserting is that the map has no hole: every one of the thirteen
         // resolves to a helper, and a helper resolves to a name in `IMPORTED`.
-        assert_eq!(all.len(), 14);
+        assert_eq!(all.len(), 13);
         for flow in all {
             let helper = crate::codegen::ssr::server_flow(flow);
             assert!(

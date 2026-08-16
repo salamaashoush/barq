@@ -547,24 +547,34 @@ export function content(name: string, value: unknown): string {
 // into, so the compiler hands them `(null, null)` and the range they own is the
 // markup they return.
 //
-// THE BRANCH INSTRUCTION, and when it is written. §11 Q4 settled the trade —
-// pay the bytes, get the recovery — and M6 landed the format while deliberately
-// leaving the wire bytes to the claim algorithm that spends them. This is that
-// algorithm's half: a range writes `<!--[k-->` … `<!--]-->` when, and only
-// when, the module was compiled `hydratable`, which the compiler ships as the
-// `HYDRATE` bit of the same flags integer both backends already take.
+// THE RANGE INSTRUCTION, and when it is written. §11 Q4 settled "pay the bytes,
+// get the recovery"; §12 REVERSED it on a measurement — the comments cost 55.7%
+// raw and 7.3% gzipped on a 100-row page — and split the decision in two.
 //
-// With the flag off nothing changes, and the property this backend is CHECKED
+// RECOVERY. A range writes `<!--[-->` … `<!--]-->` when, and only when, the
+// module was compiled `hydratable`, which the compiler ships as the `HYDRATE`
+// bit of the same flags integer both backends already take. This is what the
+// client claims against: a region's extent is data, and its position in a
+// parent's child list is what every index after it is computed from.
+//
+// DETECTION. The KEY inside that open comment — `<!--[b-->` — is written only
+// when the module was compiled `dev` as well, which the compiler ships as
+// `DETECT`. It is the one thing the client cannot re-derive (re-evaluating the
+// condition is unsound: `SEMANTICS.md` H2, it may read data the client has not
+// been seeded with) and the one thing recovery does not need, because a client
+// that claims the wrong arm still writes its own values through the nodes it
+// took. A production page therefore pays for the range and not for the key.
+//
+// A ROW OF AN `each` writes NOTHING, in either build. Rows are produced in
+// order and the client claims them from one cursor, so a row's extent is what
+// its build consumed — which was two comments per row and 25% of the payload.
+//
+// With `HYDRATE` off nothing changes, and the property this backend is CHECKED
 // by survives untouched: the two backends produce byte-identical markup, which
 // is what lets `oracle.test.ts` and the dual-render suite compare them without
 // a normalisation step that could hide a real divergence.
 //
-// The key is in the OPEN comment because it is the one thing the client cannot
-// re-derive: re-evaluating the condition is unsound (`SEMANTICS.md` H2 — it may
-// read data the client has not been seeded with), so the server's choice has to
-// be on the wire or it is lost.
-//
-// One range is written whatever the flag says: a boundary the stream deferred.
+// One range is written whatever the flags say: a boundary the stream deferred.
 // `<!--[b:N-->` names a continuation that has not been flushed yet, and no walk
 // of the document can discover that either.
 
@@ -572,24 +582,35 @@ const OPEN = "<!--[";
 const CLOSE = "<!--]-->";
 
 /**
- * `flow.ts`'s `HYDRATE`, read from the same flags integer, because the compiler
- * sets it from one option for both backends. The client's claim and these bytes
- * are one decision, not two that have to agree.
+ * `flow.ts`'s `HYDRATE` and `DETECT`, read from the same flags integer, because
+ * the compiler sets them from its options for both backends. The client's claim
+ * and these bytes are one decision, not two that have to agree.
  */
 const HYDRATE = 1 << 2;
+const DETECT = 1 << 3;
+/**
+ * The range is the only thing in its parent element, so the client reads its
+ * extent off the parent and the comments are not written at all. Never set with
+ * `DETECT`: the open comment is where the key goes.
+ */
+const WHOLE = 1 << 4;
 
 /** The key spellings that survive a comment. Anything else claims positionally. */
 const SAFE_KEY = /^[\w.:+-]{0,32}$/;
 
 /**
- * `<!--[k-->` … `<!--]-->` around one range.
+ * `<!--[-->` … `<!--]-->` around one range, and `<!--[k-->` where the build
+ * asked for detection.
  *
  * A key that cannot be spelled safely becomes `?`, and the client then claims
  * the range by POSITION and skips the comparison — which is exactly what a hole
- * has always had. Writing the key raw is not an option: `-->` inside a comment
- * ends it, and a key is user data.
+ * has always had, and what EVERY range has in a production build. Writing the
+ * key raw is not an option: `-->` inside a comment ends it, and a key is user
+ * data.
  */
-function range(inner: string, key?: unknown): string {
+function range(inner: string, flags: number, key?: unknown): string {
+  if ((flags & WHOLE) !== 0) return inner;
+  if ((flags & DETECT) === 0) return `${OPEN}-->${inner}${CLOSE}`;
   // Only a PRIMITIVE has a spelling. An object key stringifies to
   // `[object Object]`, which is neither safe nor informative, so it takes the
   // opaque form with everything else the pattern refuses.
@@ -705,7 +726,7 @@ export function branch<K>(
   const k = untrack(key);
   const body = typeof bodies === "function" ? bodies : bodies[k as unknown as number];
   const inner = activate(given, body, NO_ARGS, flags, "branch");
-  return html((flags & HYDRATE) === 0 ? inner : range(inner, k));
+  return html((flags & HYDRATE) === 0 ? inner : range(inner, flags, k));
 }
 
 /**
@@ -735,21 +756,26 @@ export function each<T>(
   refuseASite(parent, anchor, "each");
   cellSlot(src, "each source");
   const value = untrack(src as Cell<unknown>);
-  // Every ROW gets a range of its own, because a row is the unit a client
-  // claims: `mapArray` asks for row `i` and the claim hands it row `i`'s nodes.
-  // The list's own range is what tells the client where the rows stop.
-  const wrap = (flags & HYDRATE) === 0 ? (inner: string): string => inner : range;
+  // The LIST gets a range; a ROW gets nothing. §12: a row's extent is what its
+  // build consumed, because the rows are produced in order and the client walks
+  // them from one cursor — so the two comments per row were the client telling
+  // itself something it already knew. The list's own range is what tells it
+  // where the rows stop, and that it cannot know.
+  const list =
+    (flags & HYDRATE) === 0
+      ? (inner: string): string => inner
+      : (inner: string): string => range(inner, flags);
 
   if (keyOf === COUNT) {
     const total = typeof value === "number" && value > 0 ? Math.floor(value) : 0;
-    if (total === 0) return html(wrap(activate(given, fallback, NO_ARGS, 0, "each")));
+    if (total === 0) return html(list(activate(given, fallback, NO_ARGS, 0, "each")));
     let out = "";
-    for (let i = 0; i < total; i++) out += wrap(activate(given, row, [i], 0, "each"));
-    return html(wrap(out));
+    for (let i = 0; i < total; i++) out += activate(given, row, [i], 0, "each");
+    return html(list(out));
   }
 
   const items = isArray<T>(value) ? value : [];
-  if (items.length === 0) return html(wrap(activate(given, fallback, NO_ARGS, 0, "each")));
+  if (items.length === 0) return html(list(activate(given, fallback, NO_ARGS, 0, "each")));
   const boxedItem = keyOf === false || typeof keyOf === "function";
   const boxedIndex = keyOf !== false;
   let out = "";
@@ -757,9 +783,9 @@ export function each<T>(
     const item = items[i];
     const itemArg = boxedItem ? (): T => item : item;
     const indexArg = boxedIndex ? (): number => i : i;
-    out += wrap(activate(given, row, [itemArg, indexArg], 0, "each"));
+    out += activate(given, row, [itemArg, indexArg], 0, "each");
   }
-  return html(wrap(out));
+  return html(list(out));
 }
 
 export type BoundaryKind = "error" | "loading";
@@ -798,7 +824,7 @@ export function boundary(
   // one the stream will swap — so wrapping it again would nest a range the
   // client would claim as this boundary's content.
   if ((flags & HYDRATE) === 0 || inner.t.startsWith(`${OPEN}b:`)) return inner;
-  return html(range(inner.t));
+  return html(range(inner.t, flags));
 }
 
 function errorBoundary(
@@ -881,7 +907,7 @@ export function portal(
   // marker at its LEXICAL position and builds elsewhere on a microtask, so the
   // wire has nothing for the client to claim — but the POSITION still has to be
   // claimable, or the hole after it walks into the previous one's close comment.
-  return html((_flags & HYDRATE) === 0 ? "" : range(""));
+  return html((_flags & HYDRATE) === 0 ? "" : range("", _flags));
 }
 
 /**
@@ -900,10 +926,10 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
 }
 
 // ============================================================================
-// The fourteen constructs, as string components
+// The thirteen constructs, as string components
 // ============================================================================
 //
-// `passes/flow.rs` lowers eleven of these to a primitive directly and never
+// `passes/flow.rs` lowers ten of these to a primitive directly and never
 // emits the call below for them. What is left is the shapes the pass refuses —
 // a spread source, an unreadable `keyed`, and the three constructs §3.4 names
 // as refusals — and they reach the SAME four primitives one adapter frame
@@ -976,17 +1002,6 @@ export function ssrFor<T>(
         ? false
         : null;
   return eachOf(s, props.each, keyOf, props, "For");
-}
-
-export function ssrIndex<T>(
-  s: Scope | null,
-  props: {
-    each?: unknown;
-    fallback?: unknown;
-    children: (s: Scope | null, item: never, index: never) => unknown;
-  },
-): SsrHtml {
-  return eachOf<T>(s, props.each, false, props, "Index");
 }
 
 function eachOf<T>(

@@ -593,12 +593,24 @@ export function setBool(element: Element, name: string, value: unknown, prev?: u
  * `DOMTokenList` does not treat as whitespace all survive). Only when the
  * attribute has been changed by someone else does the write become a token diff,
  * and only that case pays for one.
+ *
+ * A ONE-SHOT caller — `setProp`, the un-compiled walk, anything that does not
+ * thread `prev` — has no `prev` to compare against, and reading `null` for it
+ * made every write after the first an additive diff that removed nothing:
+ * twenty thousand `setProp(el, "class", …)` calls left twenty thousand tokens on
+ * the element. The channel therefore remembers its own last write on the element
+ * (`$$class`, beside `$$s`), which is what "what this channel last applied"
+ * means when the caller cannot say. It still removes only what it OWNS, so a
+ * token another channel put there survives.
  */
 export function setClass(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
   const className = classToString(value);
   if (className === prev) return prev;
+  const held = element as Element & { $$class?: string | null };
+  const owned = prev === undefined ? (held.$$class ?? null) : (prev as string | null);
   const current = element.getAttribute("class");
-  if (prev === undefined ? current === null : current === prev) {
+  held.$$class = className;
+  if (current === owned) {
     if (className === null) {
       element.removeAttribute("class");
     } else if (element.namespaceURI === SVG_NS) {
@@ -611,7 +623,7 @@ export function setClass(element: Element, _name: string, value: unknown, prev?:
   }
   const tokens = element.classList;
   const next = splitClass(className);
-  for (const token of splitClass(prev === undefined ? null : (prev as string | null))) {
+  for (const token of splitClass(owned)) {
     if (!next.has(token)) tokens.remove(token);
   }
   for (const token of next) {
@@ -1530,6 +1542,12 @@ export function insert(
   parent: Node,
   value: Child | (() => Child),
   marker?: Node | null,
+  /**
+   * `hydration.ts`'s `WHOLE`, emitted only by a `hydratable` build and only at a
+   * hole that owns its parent's child list. §12: the string backend wrote no
+   * boundary comments there, so the claim is every child of `parent`.
+   */
+  mode?: number,
 ): void {
   const given = requireScope(s, "insert");
   let anchor = marker ?? null;
@@ -1549,13 +1567,16 @@ export function insert(
   // insert that adopts whatever children it finds — needs no marker but cannot
   // tell an adjacent static text run from the dynamic one beside it, because
   // the parser fuses them into a single node before the client ever sees them.
-  const claim: Range | null = hydrating() ? claimRange(parent, anchor) : null;
+  const claim: Range | null = hydrating() ? claimRange(parent, anchor, mode) : null;
   // From here on this position IS the range. Every later update writes before
   // the close comment, so the boundary stays well formed for the life of the
   // page rather than only for the first paint — and a hole whose neighbour is
   // a static text run keeps an addressable edge it otherwise loses the moment
   // the parser fuses them.
-  if (claim !== null) anchor = claim.close;
+  //
+  // A `WHOLE` claim has no close comment and needs none: it owns the element,
+  // so appending is already writing at the end of the position.
+  if (claim !== null && claim.close !== null) anchor = claim.close;
 
   if (typeof value === "function") {
     let current: Node[] = claim === null ? EMPTY_NODES : claim.nodes;
@@ -2206,8 +2227,10 @@ export function hydrate(
       marked
         ? "the container held markup with range comments and the render claimed none of it — " +
             "the CLIENT module was not compiled with `hydratable`"
-        : "the container held server markup with no range comments — " +
-            "the SERVER render was not compiled with `hydratable`",
+        : "the container held server markup the render claimed none of it, and there are no " +
+            "range comments to say which half is at fault — since `CODESIGN.md` §12 a page " +
+            "whose every position owns its element writes none, so this is either half " +
+            "compiled without `hydratable`",
     );
   }
 
@@ -2312,7 +2335,7 @@ export function useRef<T extends Element = HTMLElement>(): { current: T | null }
  * Create a template function for fast DOM cloning (like SolidJS)
  * The template is parsed once and cloned for each use
  */
-export function template(html: string, isSVG = false): () => Node {
+export function template(html: string, isSVG = false, detect = false): () => Node {
   let cached: Node | null = null;
 
   const create = (): Node => {
@@ -2352,7 +2375,10 @@ export function template(html: string, isSVG = false): () => Node {
     // nothing is being hydrated, and `claimNode` throws rather than returning
     // one when the server's tree is not the client's.
     if (hydrating()) {
-      const claimed = claimNode(cached);
+      // `detect` is §12's axis, threaded from the compiler to the one call that
+      // holds both trees at once. A production build passes nothing and the
+      // subtree comparison never runs.
+      const claimed = claimNode(cached, detect);
       if (claimed !== null) return claimed;
     }
     builtNode();

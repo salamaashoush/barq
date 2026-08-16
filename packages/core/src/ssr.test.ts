@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { JSXElement } from "./dom.ts";
+import type { Cell, Scope } from "./scope.ts";
 import { createElement, render } from "./dom.ts";
-import { For, Index, Match, Repeat, Show, Switch } from "./components.ts";
+import { For, Match, Repeat, Show, Switch } from "./components.ts";
 import { cell, props } from "./props.ts";
 import { renderToString } from "./server.ts";
 import {
@@ -20,7 +21,6 @@ import {
   spreadAttrs,
   ssrDynamic,
   ssrFor,
-  ssrIndex,
   ssrMatch,
   ssrRepeat,
   ssrShow,
@@ -412,7 +412,7 @@ describe("the six string-inlinable flow components", () => {
         html(`<li>${esc(item().n)}</li>`)) as never,
     });
     expect(boxed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
-    // `keyed: false` delegates to Index, whose row item is an accessor.
+    // `keyed: false` is the positional mode, whose row item is an accessor.
     const unkeyed = ssrFor(null, {
       each: rows,
       keyed: false,
@@ -459,10 +459,11 @@ describe("the six string-inlinable flow components", () => {
     expect(() => (carrier as { keyed: () => unknown }).keyed()).toThrow();
   });
 
-  test("ssrIndex hands the item as an accessor and the index as a number", () => {
+  test("ssrFor keyed={false} hands the item as an accessor and the index as a number", () => {
     const seen: number[] = [];
-    const out = ssrIndex(null, {
+    const out = ssrFor(null, {
       each: ["a", "b"],
+      keyed: false,
       children: ((_s: unknown, item: () => string, index: number) => {
         seen.push(index);
         return html(`<i>${esc(item())}</i>`);
@@ -470,7 +471,9 @@ describe("the six string-inlinable flow components", () => {
     });
     expect(out.toString()).toBe("<i>a</i><i>b</i>");
     expect(seen).toEqual([0, 1]);
-    expect(ssrIndex(null, { each: [], fallback: "empty", children: row }).toString()).toBe("empty");
+    expect(
+      ssrFor(null, { each: [], keyed: false, fallback: "empty", children: row }).toString(),
+    ).toBe("empty");
   });
 
   test("ssrRepeat counts from `from` and falls back at zero", () => {
@@ -541,19 +544,23 @@ describe("the six string-inlinable flow components", () => {
         () =>
           For<{ n: string }, JSXElement>(null, {
             each: () => rows,
-            children: (_s, item, index) => createElement("li", null, `${index()}: ${item.n}`),
+            children: (_s: Scope | null, item: { n: string }, index: Cell<number>) =>
+              createElement("li", null, `${index()}: ${item.n}`),
           }),
       ],
       [
-        ssrIndex(null, {
+        ssrFor(null, {
           each: rows,
+          keyed: false,
           children: ((_s: unknown, item: () => { n: string }, index: number) =>
             html(`<li>${index}: ${esc(item().n)}</li>`)) as never,
         }).toString(),
         () =>
-          Index<{ n: string }, JSXElement>(null, {
+          For<{ n: string }, JSXElement>(null, {
             each: () => rows,
-            children: (_s, item, index) => createElement("li", null, `${index}: ${item().n}`),
+            keyed: false,
+            children: (_s: Scope | null, item: Cell<{ n: string }>, index: number) =>
+              createElement("li", null, `${index}: ${item().n}`),
           }),
       ],
       [

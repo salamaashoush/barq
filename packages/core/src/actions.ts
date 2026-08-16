@@ -1,17 +1,15 @@
 /**
- * Actions and optimistic state — `CODESIGN.md` §3.8, `SEMANTICS.md` A4.
+ * Actions and optimistic state — `CODESIGN.md` §3.8, `SEMANTICS.md` A4 and A5.
  *
- * An action is a lifetime: while it runs, the writes made to an optimistic
- * primitive inside it are PENDING MUTATIONS, and the value everyone reads is
- * `reduce(settled, pending)`. Retiring the action drops its layer and the
- * derivation falls back to the settled state on its own.
+ * An action is a LANE: an explicit transaction lifetime. While it runs, the
+ * writes it makes to an opt-in primitive land in that primitive's OVERRIDE
+ * buffer, leaving the authoritative buffer free for the live write the action
+ * exists to trigger. Retiring the lane drops the override onto a value that is
+ * already correct, so no revert target is ever stashed and there is nothing to
+ * clobber (A4).
  *
- * There is no snapshot. The previous implementation captured `revertTo` once
- * per (target, action) and wrote it back at completion, so a real write landing
- * during the action — the refresh the action exists to trigger — was rolled
- * back to a value that was by then wrong, and `createOptimisticStore` paid a
- * whole-store `structuredClone` to do it. With nothing captured there is
- * nothing to clobber (A4).
+ * There is no transition API and nothing is parked: a lane is opt-in per value,
+ * not a second copy of the graph (A5).
  *
  * @example
  * ```ts
@@ -23,7 +21,18 @@
  * ```
  */
 
-import { batch, computed, flush, markInMotion, signal } from "./signals.ts";
+import {
+  authoritative,
+  batch,
+  flush,
+  markInMotion,
+  notePendingLane,
+  overrideWrite,
+  probingPending,
+  readingLatest,
+  retireLane,
+  signal,
+} from "./signals.ts";
 import type { Signal, SignalOptions } from "./signals.ts";
 import { type Store, unwrap, useStore } from "./store.ts";
 
@@ -42,13 +51,12 @@ function completeAction(ctx: ActionContext): void {
     ctx.releases[i]();
   }
   ctx.releases.length = 0;
-  if (ctx.retire.length > 0) {
-    batch(() => {
-      for (let i = ctx.retire.length - 1; i >= 0; i--) {
-        ctx.retire[i]();
-      }
-    });
-  }
+  batch(() => {
+    retireLane(ctx);
+    for (let i = ctx.retire.length - 1; i >= 0; i--) {
+      ctx.retire[i]();
+    }
+  });
   flush();
 }
 
@@ -115,6 +123,35 @@ export function action<Args extends unknown[], R>(
 }
 
 /**
+ * Run `write` outside the running lane: writes it makes to optimistic values go
+ * to the AUTHORITATIVE buffer, exactly as they would have outside the action.
+ *
+ * A generator resumes in-context, so the server's answer written after a `yield`
+ * is a lane write and is discarded when the lane retires — the value reverts to
+ * what it held before the action. `commit` is how an action writes the truth it
+ * went to fetch; it is the write-side counterpart of `latest`, which reads the
+ * same buffer.
+ *
+ * @example
+ * ```ts
+ * const rename = action(function* (id: string, name: string) {
+ *   title.set(name);              // the guess, in the override buffer
+ *   const saved = yield api.rename(id, name);
+ *   commit(() => title.set(saved.name)); // the answer, underneath it
+ * });
+ * ```
+ */
+export function commit<T>(write: () => T): T {
+  const prev = activeAction;
+  activeAction = null;
+  try {
+    return write();
+  } finally {
+    activeAction = prev;
+  }
+}
+
+/**
  * Declare that a derived value is in motion for the rest of the running
  * action: it reads as pending (Loading boundaries show fallbacks, `latest()`
  * keeps the last settled value) until the action settles.
@@ -154,44 +191,31 @@ function claimLayer<L extends object>(
   return layer;
 }
 
-interface ValueLayer<T> {
-  patch: (settled: T) => T;
-}
-
 /**
- * Optimistic signal. Writes outside an action are the settled state; writes
- * inside one are a pending mutation layered over it, and the read is
- * `reduce(settled, pending)`. When the action retires, the layer goes and the
- * settled state — including anything that landed on it mid-flight — is what
- * remains.
+ * Optimistic signal — one node with two buffers. Writes outside an action are
+ * authoritative; writes inside one go to the override buffer under that
+ * action's lane. A normal read sees the override, `latest()` reads through it
+ * to the authoritative value, and `isPending()` reports that an answer is
+ * coming. Retiring the lane drops the override, exposing whatever the
+ * authoritative buffer has become in the meantime.
  */
 export function createOptimistic<T>(initialValue: T, options?: SignalOptions<T>): Signal<T> {
-  const settled = signal(initialValue, options);
-  const layers = signal<ValueLayer<T>[]>([]);
-  const owned = new WeakMap<ActionContext, ValueLayer<T>>();
-
-  const view = computed<T>(() => {
-    const pending = layers();
-    let value = settled();
-    for (let i = 0; i < pending.length; i++) value = pending[i].patch(value);
-    return value;
-  }, options);
-
-  const read = (() => view()) as Signal<T>;
+  const target = signal(initialValue, options);
+  const read = (() => target()) as Signal<T>;
 
   const write = (patch: (prev: T) => T): void => {
-    const layer = claimLayer(layers, owned, () => ({ patch }) as ValueLayer<T>);
-    if (layer === null) {
-      settled.set(patch(settled.peek()));
+    const ctx = activeAction;
+    if (!ctx || ctx.done) {
+      target.set(patch(authoritative(target)));
       return;
     }
-    layer.patch = patch;
-    layers.update((prev) => [...prev]);
+    overrideWrite(target, ctx, patch);
   };
 
   read.set = (value: T) => write(() => value);
   read.update = (fn: (prev: T) => T) => write(fn);
-  read.peek = () => view.peek();
+  read.peek = () => target.peek();
+  (read as unknown as { _node: unknown })._node = (target as unknown as { _node: unknown })._node;
 
   return read;
 }
@@ -233,16 +257,35 @@ interface StoreLayer {
 }
 
 /**
- * Optimistic store. The returned store is a PROJECTION of a private settled
- * store with the running action's setter calls replayed on top; retiring the
- * action re-derives without them. No snapshot of the settled store is ever
- * taken, so a real write landing mid-action survives.
+ * Optimistic store — the same two buffers at whole-store arity. `base` is
+ * authoritative, `view` is the override, and the lane's setter calls are how
+ * the override is RECOMPUTED rather than a second place values are kept.
+ * Reads are routed by mode exactly as a value's are: normal reads see the
+ * override, `latest()` reads through to `base`, `isPending()` reports.
  */
 export function createOptimisticStore<T extends object>(seed: T): Store<T> {
   const [base, setBase] = useStore(seed);
   const [view, setView] = useStore(structuredClone(unwrap(seed)));
   const layers = signal<StoreLayer[]>([]);
   const owned = new WeakMap<ActionContext, StoreLayer>();
+
+  const buffer = (): Record<PropertyKey, unknown> =>
+    (readingLatest() ? base : view) as Record<PropertyKey, unknown>;
+
+  const routed = new Proxy({} as object, {
+    get(_ignored, key) {
+      if (probingPending() && layers().length > 0) notePendingLane();
+      return buffer()[key];
+    },
+    has: (_ignored, key) => key in buffer(),
+    ownKeys: () => Reflect.ownKeys(unwrap(buffer() as object)),
+    getOwnPropertyDescriptor: (_ignored, key) => {
+      if (!Object.hasOwn(unwrap(buffer() as object), key)) return undefined;
+      return { configurable: true, enumerable: true, writable: false, value: buffer()[key] };
+    },
+    set: () => false,
+    deleteProperty: () => false,
+  }) as Store<T>[0];
 
   const derive = (): void => {
     const next = structuredClone(unwrap(base as unknown as T)) as unknown as Record<
@@ -269,5 +312,5 @@ export function createOptimisticStore<T extends object>(seed: T): Store<T> {
     derive();
   }) as Store<T>[1];
 
-  return [view, optimisticSet];
+  return [routed, optimisticSet];
 }

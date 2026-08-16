@@ -236,22 +236,19 @@ mod tests {
         assert_eq!(module.env.bit_of(size), BIT_OVERFLOW);
     }
 
-    /// V8: the keyed `For` row VALUE is a plain value and its INDEX is an
-    /// accessor. `Index` is the other way round. Getting this from the component
-    /// identity rather than the parameter's name is the whole point.
+    /// V8: the DEFAULT `For` row VALUE is a plain value and its INDEX is an
+    /// accessor (K1 — identity keying is the default). `keyed={false}` is the
+    /// other way round. Getting this from the resolved `keyed` rather than from
+    /// the parameter's name is the whole point.
     #[test]
     fn control_flow_row_parameters_come_from_the_resolved_component() {
         let allocator = Allocator::new();
-        let source = "import { For, Index } from \"@barqjs/core\";\n\
+        let source = "import { For } from \"@barqjs/core\";\n\
                       const a = <For each={[]}>{(item, i) => <li>{item}</li>}</For>;\n\
-                      const b = <Index each={[]}>{(cell, n) => <li>{cell}</li>}</Index>;\n\
                       const c = <For each={[]} keyed={false}>{(loose, k) => <li>{loose}</li>}</For>;\n";
         let module = module_of(&allocator, source);
         assert_eq!(local(&module, "item"), SourceKind::RowValue);
         assert_eq!(local(&module, "i"), ACCESSOR);
-        assert_eq!(local(&module, "cell"), ACCESSOR);
-        assert_eq!(local(&module, "n"), SourceKind::Inert);
-        // `For keyed={false}` delegates to Index at runtime.
         assert_eq!(local(&module, "loose"), ACCESSOR);
         assert_eq!(local(&module, "k"), SourceKind::Inert);
     }
@@ -290,13 +287,12 @@ mod tests {
     #[test]
     fn a_spread_attribute_puts_the_row_on_the_arm_that_is_safe_when_wrong() {
         let allocator = Allocator::new();
-        let source = "import { For, Index } from \"@barqjs/core\";\n\
+        let source = "import { For } from \"@barqjs/core\";\n\
                       const opts = { keyed: (r) => r.id };\n\
                       const a = <For each={[]} {...opts}>{(sp, si) => <li>{sp}</li>}</For>;\n\
                       const b = <For each={[]} {...{ keyed: false }}>{(ob, oi) => <li>{ob}</li>}</For>;\n\
                       const c = <For each={[]} {...opts} keyed={true}>{(late, li) => <li>{late}</li>}</For>;\n\
-                      const d = <For each={[]} keyed={true} {...opts}>{(over, oj) => <li>{over}</li>}</For>;\n\
-                      const e = <Index each={[]} {...opts}>{(ix, ii) => <li>{ix}</li>}</Index>;\n";
+                      const d = <For each={[]} keyed={true} {...opts}>{(over, oj) => <li>{over}</li>}</For>;\n";
         let module = module_of(&allocator, source);
         assert_eq!(local(&module, "sp"), ACCESSOR);
         assert_eq!(local(&module, "si"), ACCESSOR);
@@ -305,10 +301,6 @@ mod tests {
         // A LATER literal wins, exactly as it does at runtime.
         assert_eq!(local(&module, "late"), SourceKind::RowValue);
         assert_eq!(local(&module, "over"), ACCESSOR);
-        // `Index` hard-codes `keyed: false`, so its signature does not depend on
-        // an attribute list the analysis cannot read.
-        assert_eq!(local(&module, "ix"), ACCESSOR);
-        assert_eq!(local(&module, "ii"), SourceKind::Inert);
     }
 
     /// D1's POSITION ALLOWLIST, as implemented. Every arm is a slot where no

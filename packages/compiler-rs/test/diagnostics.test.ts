@@ -228,6 +228,11 @@ describe("the diagnostic engine", () => {
       BARQ010:
         "function Sink(props) { return <div title={props.children} />; }\n" +
         "export const V = () => <Sink><b>x</b></Sink>;\n",
+      BARQ011:
+        `import { For, signal } from "@barqjs/core";\n` +
+        "const rows = signal([]);\n" +
+        "export const V = () =>\n" +
+        "  <For each={rows} keyed={false}>{(row) => <li><input value={row()} /></li>}</For>;\n",
     };
 
     const advertised = native.diagnosticCodes().map((entry) => entry.code).sort();

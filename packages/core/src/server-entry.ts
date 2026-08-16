@@ -42,7 +42,6 @@ export {
   ssrErrorBoundary,
   ssrErrored,
   ssrFor,
-  ssrIndex,
   ssrLoading,
   ssrMatch,
   ssrPortal,

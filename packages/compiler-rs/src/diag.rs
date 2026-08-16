@@ -96,6 +96,7 @@ codes! {
     Barq008 = "BARQ008", Warning, "a `barq-ignore-next-line` matched no diagnostic";
     Barq009 = "BARQ009", Warning, "a `barq-ignore-next-line` could not be parsed";
     Barq010 = "BARQ010", Warning, "a Block is forwarded into a slot the callee reads as a Cell, where it throws";
+    Barq011 = "BARQ011", Note, "`keyed={false}` binds the row's DOM state to the position, and this row holds some";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

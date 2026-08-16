@@ -94,7 +94,7 @@ export type StrictAccessor<T> = IsCompilerMode extends true ? T | Accessor<T> : 
  * - In strict mode (default): requires `() => T[]` (accessor returning array)
  * - In compiler mode: allows `T[] | (() => T[])` (array or accessor)
  *
- * Use this for props like `For.each` or `Index.each`.
+ * Use this for props like `For.each` or `Repeat.count`.
  *
  * @example
  * ```typescript

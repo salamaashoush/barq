@@ -40,13 +40,13 @@ export const wins = [
   {
     kind: "step",
     index: 0,
-    compiled: '<ul class="keyed-var"><!--For:#--><li>ALPHA</li><li>BETA</li><!--/For:#--></ul>',
+    compiled: '<ul class="keyed-var"><li>ALPHA</li><li>BETA</li></ul>',
     why: "the keys did not move, so only a live binding sees the new item behind them",
   },
   {
     kind: "step",
     index: 1,
-    compiled: '<ul class="keyed-var"><!--For:#--><li>BETA</li><!--/For:#--></ul>',
+    compiled: '<ul class="keyed-var"><li>BETA</li></ul>',
     why: "the surviving row carries the value it was re-pointed at in step 0",
   },
 ]

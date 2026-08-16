@@ -3,7 +3,7 @@ import { For, signal } from "@barqjs/core"
 export const rows = signal(["alpha", "beta"])
 
 /**
- * `keyed={false}` — the arm that delegates to `Index` (`components.ts:239`).
+ * `keyed={false}` — the positional mode, and since M7b its ONLY spelling.
  * The row is positional: the item arrives as an ACCESSOR and the index as a
  * plain number, the mirror image of the by-item arm. A literal `false` is the
  * one value the compiler can prove, so this is the only arm where the index is
@@ -38,20 +38,20 @@ export const wins = [
     kind: "step",
     index: 0,
     compiled:
-      '<ul class="keyed-false"><!--Index:#--><li>0: ALPHA</li><li>1: BETA</li><!--/Index:#--></ul>',
+      '<ul class="keyed-false"><li>0: ALPHA</li><li>1: BETA</li></ul>',
     why: "positional rows are reused, so the item accessor is the only thing that moved",
   },
   {
     kind: "step",
     index: 1,
     compiled:
-      '<ul class="keyed-false"><!--Index:#--><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li><!--/Index:#--></ul>',
+      '<ul class="keyed-false"><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li></ul>',
     why: "the two reused slots keep the values the oracle read once at creation",
   },
   {
     kind: "step",
     index: 2,
-    compiled: '<ul class="keyed-false"><!--Index:#--><li>0: only</li><!--/Index:#--></ul>',
+    compiled: '<ul class="keyed-false"><li>0: only</li></ul>',
     why: "slot 0 survives the shrink and its accessor is bound to the new value",
   },
 ]

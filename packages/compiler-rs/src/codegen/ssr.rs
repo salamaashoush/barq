@@ -513,7 +513,7 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
     fn insert(
         &mut self,
         at: At<'_>,
-        _slot: SlotId,
+        slot: SlotId,
         _anchor: Anchor,
         value: ExprId,
         _plan: InsertPlan,
@@ -521,19 +521,29 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         match self.place {
             Place::Child => {
                 let expression = take(self.ctx, self.unit, value, at.span());
-                // §11 Q4's bytes, at a hole. Two comments, and each of them
-                // earns its place: the OPEN keeps a dynamic text run from
-                // fusing with the static text beside it — `{a}text` parses as
-                // one text node without it, and then no index addresses `a` —
-                // and the CLOSE is the anchor `insert` claims against, which is
-                // what stops the first client write from going through
-                // `parent.textContent` and destroying the server's text node.
-                let hydratable = self.ctx.hydratable;
-                if hydratable {
+                // The bytes recovery needs, at a hole, and NOT ONE MORE.
+                //
+                // A DELIMITED hole pays two comments and each earns its place:
+                // the OPEN keeps a dynamic text run from fusing with the static
+                // text beside it — `{a}text` parses as one text node without it,
+                // and then no index addresses `a` — and the CLOSE is the anchor
+                // `insert` claims against, which is what stops the first client
+                // write from going through `parent.textContent` and destroying
+                // the server's text node.
+                //
+                // A hole that OWNS its parent's child list pays neither, because
+                // both arguments dissolve: nothing is beside it to fuse with,
+                // and its extent is every child of the parent, which the client
+                // reads off the document. §12's Q4 reversal is what this
+                // predicate is for — it is where 4,800 of the 100-row page's
+                // 6,416 hydration bytes were.
+                let delimited = self.ctx.hydratable
+                    && !self.ctx.hole_owns_child_list(self.unit, at.target(), slot);
+                if delimited {
                     self.chunks.text(OPEN_HOLE);
                 }
                 value_into(self.ctx, self.chunks, expression);
-                if hydratable {
+                if delimited {
                     self.chunks.text(CLOSE);
                 }
             }
@@ -553,12 +563,13 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
     ///
     /// The result is `SsrHtml`, so it is interpolated as MARKUP and never
     /// escaped: it is bytes this compiler produced.
-    fn region(&mut self, at: At<'_>, _slot: SlotId, _anchor: Anchor, region: RegionId) {
+    fn region(&mut self, at: At<'_>, slot: SlotId, _anchor: Anchor, region: RegionId) {
         let span = at.span();
-        let row = std::mem::replace(
+        let mut row = std::mem::replace(
             &mut self.unit.regions[region as usize],
             crate::codegen::dom::empty_region(self.ctx, span),
         );
+        row.flags |= self.ctx.region_owns_child_list(self.unit, at.target(), slot);
         let call = crate::codegen::dom::region_call(self.ctx, row, None, span);
         self.chunks.markup(call);
     }
@@ -948,10 +959,10 @@ fn root_into<'a>(ctx: &mut Emit<'a, '_>, chunks: &mut Chunks<'a>, index: u32, sp
 /// A control-flow construct the flow pass REFUSED, rewritten to the string
 /// implementation of the same component.
 ///
-/// The pass lowers eleven constructs to a primitive and never emits a call for
+/// The pass lowers ten constructs to a primitive and never emits a call for
 /// them; what reaches here is the shapes it cannot read statically — a spread
 /// source, an unreadable `keyed` — and the three §3.4 names as refusals. All
-/// fourteen have a string component now, each of them an adapter over the same
+/// thirteen have a string component now, each of them an adapter over the same
 /// four primitives, so there is no construct left that could send a module to
 /// another backend. `uninlinable_flow` and its eight-component set went with
 /// that, and so did the whole-module downgrade behind them.
@@ -992,7 +1003,7 @@ fn callee_flow(ctx: &Emit<'_, '_>, callee: &Expression<'_>) -> Option<Flow> {
 
 /// The string implementation of every construct, with no hole in it. Total on
 /// `Flow` by construction — a new construct is a compile error here, which is
-/// what stops a fifteenth from quietly acquiring a DOM-only implementation.
+/// what stops a fourteenth from quietly acquiring a DOM-only implementation.
 ///
 /// `Suspense` is `Loading` and nothing else, exactly as `components.ts` spells
 /// it; `ErrorBoundary` is NOT `Errored`, because its fallback takes the error by
@@ -1000,7 +1011,6 @@ fn callee_flow(ctx: &Emit<'_, '_>, callee: &Expression<'_>) -> Option<Flow> {
 pub(crate) fn server_flow(flow: Flow) -> Helper {
     match flow {
         Flow::For => Helper::SsrFor,
-        Flow::Index => Helper::SsrIndex,
         Flow::Repeat => Helper::SsrRepeat,
         Flow::Show => Helper::SsrShow,
         Flow::Switch => Helper::SsrSwitch,
@@ -1366,7 +1376,7 @@ mod tests {
         assert!(!spread.contains("_$attrLit"), "{spread}");
     }
 
-    /// The eleven constructs the flow pass lowers reach the SAME primitives on
+    /// The ten constructs the flow pass lowers reach the SAME primitives on
     /// this backend as on the DOM one — one lowered IR, two emissions — and the
     /// only difference in the emitted call is where `branch` is imported from.
     #[test]
@@ -1396,7 +1406,7 @@ mod tests {
     }
 
     /// What the flow pass REFUSES still has a string answer, and every one of
-    /// the fourteen has one: a spread source hides the construct's shape, so the
+    /// the thirteen has one: a spread source hides the construct's shape, so the
     /// component call survives and is rewritten to the adapter over the same
     /// four primitives.
     #[test]
@@ -1432,13 +1442,12 @@ mod tests {
     /// `uninlinable_flow` dropped the WHOLE module to the DOM backend when any
     /// of eight flow components was referenced — one import, and every unrelated
     /// page in the module lost its string backend. It is deleted, and the shape
-    /// that used to trigger it is asserted here for all fourteen constructs at
+    /// that used to trigger it is asserted here for all thirteen constructs at
     /// once: the string backend, no `_$template`, and nothing to warn about.
     #[test]
     fn no_construct_sends_the_module_to_another_backend() {
         for name in [
             "For",
-            "Index",
             "Repeat",
             "Show",
             "Switch",
@@ -1584,7 +1593,7 @@ mod tests {
     /// straight past it — a member tag is not an identifier reference and cannot
     /// be resolved to a construct at lowering time. It still reaches a string
     /// implementation, because the rewrite resolves the namespace binding plus
-    /// the exported name, and that is now true of all fourteen rather than six.
+    /// the exported name, and that is now true of all thirteen rather than six.
     #[test]
     fn a_namespace_import_resolves_to_the_same_flow_as_a_named_one() {
         let inlined = ssr("import * as core from \"@barqjs/core\";\n\

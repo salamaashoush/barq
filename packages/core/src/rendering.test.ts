@@ -9,7 +9,6 @@ import { signal, effect, computed, createScope, batch, onCleanup, flush } from "
 import {
   Show,
   For,
-  Index,
   Switch,
   Match,
   Portal,
@@ -162,16 +161,17 @@ describe("LIS algorithm performance", () => {
 });
 
 // ============================================================================
-// Issue 3: Index component - item signal should track value changes
+// Issue 3: positional rows - the item signal should track value changes
 // ============================================================================
-describe("Index component reactivity", () => {
-  test("Index item signal should update when array value at index changes", () => {
+describe("For keyed={false} reactivity", () => {
+  test("the row item signal updates when the array value at that index changes", () => {
     const items = signal(["a", "b", "c"]);
     const observedValues: string[] = [];
 
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
-      children: (_s, itemAccessor, idx) => {
+      keyed: false,
+      children: (_s: Scope | null, itemAccessor: () => string, idx: number) => {
         const span = document.createElement("span");
         // itemAccessor is a signal that should update when items[idx] changes
         effect(() => {
@@ -194,13 +194,14 @@ describe("Index component reactivity", () => {
     expect(observedValues).toContain("1:B");
   });
 
-  test("Index should efficiently handle value updates", () => {
+  test("positional rows handle value updates without rebuilding", () => {
     const items = signal([1, 2, 3, 4, 5]);
     let effectRuns = 0;
 
-    const element = Index(null, {
+    const element = For(null, {
       each: items,
-      children: (_s, itemAccessor, _idx) => {
+      keyed: false,
+      children: (_s: Scope | null, itemAccessor: () => number, _idx: number) => {
         const span = document.createElement("span");
         effect(() => {
           effectRuns++;

@@ -421,7 +421,7 @@ describe("declared optimality", () => {
         "control-flow-for-static-body",
       ]),
     )
-    // Every one of the fourteen flow components is emitted as a real call, and
+    // Every one of the thirteen flow components is emitted as a real call, and
     // the shape of that call is declared rather than left to a snapshot.
     expect(by(8), "the flow catalogue").toEqual(
       expect.arrayContaining([
@@ -898,13 +898,12 @@ describe("target 7 — delegated events as expando writes", () => {
  * re-derived. The list below is therefore not a tolerance — it is the complete
  * set of REFUSALS, and each one has a reason in `passes/flow.rs`.
  */
-describe("K5 — the fourteen constructs, and the four they lower onto", () => {
+describe("K5 — the thirteen constructs, and the four they lower onto", () => {
   const LOWERED = [
     "Show",
     "Switch",
     "Match",
     "For",
-    "Index",
     "Repeat",
     "Loading",
     "Suspense",

@@ -322,6 +322,16 @@ interface SignalNode<T> {
   _fn: ((prev?: T) => T) | undefined; // undefined on plain signals; discriminates the two kinds
   _affected: number; // affects() refcount; non-zero means the value reads as pending
   _snapshot: unknown; // Captured value, or NO_SNAPSHOT when nothing was captured
+  _override: PendingLayer<T>[] | null; // Pending lanes; null on every ordinary signal
+}
+
+/**
+ * One lane's pending mutation of one signal. `lane` is the transaction that
+ * owns it; `patch` is applied over the authoritative value at read time.
+ */
+export interface PendingLayer<T> {
+  readonly lane: object;
+  patch: (prev: T) => T;
 }
 
 /** Computed node extends signal with computation state */
@@ -544,6 +554,9 @@ let tracking = false; // Only true during computation
 let batchDepth = 0;
 let scheduled = false;
 let latestDepth = 0; // Inside latest(): pending reads return stale values
+let probeDepth = 0; // Inside isPending()
+let probeObserver: ComputedNode<unknown> | null = null; // Observer at probe entry
+let probeSawLane = false; // A lane was seen by the probe's OWN reads
 // oxlint-disable-next-line no-unused-vars -- flush-pass counter, not read yet
 let clock = 0;
 
@@ -1775,6 +1788,7 @@ export function signal<T>(
     _fn: undefined,
     _affected: 0,
     _snapshot: NO_SNAPSHOT,
+    _override: null,
   };
 
   if (slowSignalRead !== 0 && snapshotCaptureActive && options?.noSnapshot !== true) {
@@ -1829,7 +1843,10 @@ export function signal<T>(
   const accessor = read as Signal<T>;
   accessor.set = write;
   accessor.update = (fn: (prev: T) => T) => write(fn(node._value));
-  accessor.peek = () => node._value;
+  accessor.peek = () =>
+    slowSignalRead !== 0 && node._override !== null && latestDepth === 0
+      ? foldOverride(node)
+      : node._value;
   (accessor as unknown as { _node: SignalNode<T> })._node = node;
 
   return accessor;
@@ -1870,6 +1887,7 @@ function createComputedNode<T>(
     _value: undefined as T,
     _subs: null,
     _subsTail: null,
+    _override: null,
     _equals:
       kind === EFFECT_PURE
         ? options?.equals !== undefined
@@ -2659,16 +2677,31 @@ export function unclaimedSeeds(): string[] {
 }
 
 /**
- * Returns whether any value read by fn is currently pending.
- * Reactive: subscribes to the values fn reads.
+ * Returns whether an answer is coming for anything `fn` reads: an unsettled
+ * async value, or a value a lane is overriding (A5).
+ *
+ * Reactive: subscribes to the values fn reads. A lane counts only when the
+ * probe reads the overridden value ITSELF — a lane is not a status and does
+ * not propagate through derivations, because a derivation carrying it would
+ * make a `Loading` boundary suspend the very content the override exists to
+ * show. `affects()` is the primitive that deliberately does propagate.
  */
 export function isPending(fn: () => unknown): boolean {
+  const prevObserver = probeObserver;
+  const prevSaw = probeSawLane;
+  probeObserver = currentObserver;
+  probeSawLane = false;
+  probeDepth++;
   try {
     fn();
-    return false;
+    return probeSawLane;
   } catch (err) {
     if (err instanceof NotReadyError) return true;
     throw err;
+  } finally {
+    probeDepth--;
+    probeObserver = prevObserver;
+    probeSawLane = prevSaw;
   }
 }
 
@@ -2793,6 +2826,15 @@ function readSignalSlow<T>(node: SignalNode<T>): T {
     throw new NotReadyError();
   }
 
+  if (node._override !== null) {
+    if (tracking && currentObserver !== null && !(currentObserver._flags & REACTIVE_DISPOSED)) {
+      link(node as SignalNode<unknown>, currentObserver);
+    }
+    if (latestDepth > 0) return node._value;
+    notePendingLane();
+    return foldOverride(node);
+  }
+
   if (!tracking) return node._value;
 
   const observer = currentObserver;
@@ -2855,6 +2897,133 @@ export function markInMotion(target: () => unknown): () => void {
     propagate(node, REACTIVE_DIRTY);
     schedule();
   };
+}
+
+// ============================================================================
+// Overrides and lanes (SEMANTICS.md A5)
+// ============================================================================
+
+/**
+ * Which buffer a read wants. A read is not a dependency, so this cannot be
+ * derived: a memo would cache one mode's answer and serve it to another,
+ * which is why the override lives on the node and the switch happens below
+ * memoization.
+ */
+export function readingLatest(): boolean {
+  return latestDepth > 0;
+}
+
+export function probingPending(): boolean {
+  return probeDepth > 0 && latestDepth === 0;
+}
+
+/**
+ * Report a live lane to an `isPending` probe, but only when the probe is the
+ * one reading. A read made inside a computation the probe entered belongs to
+ * that computation, not to the probe.
+ */
+export function notePendingLane(): void {
+  if (probeDepth > 0 && currentObserver === probeObserver) probeSawLane = true;
+}
+
+function foldOverride<T>(node: SignalNode<T>): T {
+  const layers = node._override as PendingLayer<T>[];
+  const prevTracking = tracking;
+  tracking = false;
+  try {
+    let value = node._value;
+    for (let i = 0; i < layers.length; i++) value = layers[i].patch(value);
+    return value;
+  } finally {
+    tracking = prevTracking;
+  }
+}
+
+/** Every node a lane has an override on, so retiring is O(touched). */
+const laneNodes = new WeakMap<object, Set<SignalNode<unknown>>>();
+
+function overridableNode<T>(target: () => T): SignalNode<T> {
+  const node = (target as unknown as { _node?: SignalNode<T> })._node;
+  if (node === undefined || node._fn !== undefined) {
+    throw new Error("an override needs a plain signal created by this runtime.");
+  }
+  return node;
+}
+
+/**
+ * Write `patch` into `target`'s override buffer on behalf of `lane`. The
+ * authoritative value is left alone, so a live write landing underneath is not
+ * lost and needs no revert target: dropping the lane exposes a value that is
+ * already correct.
+ *
+ * A lane holds ONE patch, and a second write COMPOSES over the first rather
+ * than replacing it — `update(n => n + 1)` twice in one action is `+2`, which is
+ * what the store form has always done by appending to its call list. A `set`
+ * still wins outright: a constant patch ignores the value handed to it.
+ */
+export function overrideWrite<T>(target: () => T, lane: object, patch: (prev: T) => T): void {
+  const node = overridableNode(target);
+  let layers = node._override;
+  if (layers === null) {
+    layers = [];
+    node._override = layers;
+    slowSignalRead++;
+  }
+  let claimed = false;
+  for (let i = 0; i < layers.length; i++) {
+    if (layers[i].lane === lane) {
+      const before = layers[i].patch;
+      layers[i].patch = (value: T) => patch(before(value));
+      claimed = true;
+      break;
+    }
+  }
+  if (!claimed) {
+    layers.push({ lane, patch });
+    let owned = laneNodes.get(lane);
+    if (owned === undefined) {
+      owned = new Set();
+      laneNodes.set(lane, owned);
+    }
+    owned.add(node as SignalNode<unknown>);
+  }
+  propagate(node as SignalNode<unknown>, REACTIVE_DIRTY);
+  schedule();
+}
+
+/** The authoritative value, whatever is layered over it. */
+export function authoritative<T>(target: () => T): T {
+  return overridableNode(target)._value;
+}
+
+/** True while any lane is overriding `target`. */
+export function overridden<T>(target: () => T): boolean {
+  return overridableNode(target)._override !== null;
+}
+
+/**
+ * Drop every override `lane` holds. Lanes never merge: a lane is an explicit
+ * transaction lifetime, so two of them overriding one node stack in claim
+ * order and retiring one leaves the other's patch folding over the current
+ * authoritative value.
+ */
+export function retireLane(lane: object): void {
+  const owned = laneNodes.get(lane);
+  if (owned === undefined) return;
+  laneNodes.delete(lane);
+  for (const node of owned) {
+    const layers = node._override;
+    if (layers === null) continue;
+    const next = layers.filter((layer) => layer.lane !== lane);
+    if (next.length === 0) {
+      node._override = null;
+      slowSignalRead--;
+    } else {
+      node._override = next;
+    }
+    propagate(node, REACTIVE_DIRTY);
+  }
+  schedule();
 }
 
 // ============================================================================

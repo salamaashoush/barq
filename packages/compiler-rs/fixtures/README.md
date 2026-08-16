@@ -167,10 +167,10 @@ are:
   `props-renamed-and-defaulted`, `props-rest-spread`, `component-spread`,
   `component-getter-props`. Flattening a getter is the failure mode, and each
   shape flattens at a different moment.
-- **all fourteen flow components** — `For`, `Index`, `Repeat`, `Show`, `Switch`,
+- **all thirteen flow components** — `For`, `Repeat`, `Show`, `Switch`,
   `Match`, `Loading`, `Errored`, `Reveal`, `Suspense`, `Await`, `Portal`,
   `Dynamic`, `ErrorBoundary`, plus `control-flow-nested`, `for-unkeyed-rows`
-  (which delegates to `Index` and INVERTS the row contract) and
+  (`keyed={false}`, which INVERTS the row contract) and
   `for-each-local-function`.
 - **splice sites and roots** — `arrow-body-component` (a concise arrow body),
   `fragment-root` (multi-root), `component-child-of-element`.
