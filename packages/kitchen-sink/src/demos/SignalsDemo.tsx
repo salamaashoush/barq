@@ -1,6 +1,6 @@
 /**
  * Signals & State Demo
- * Tests: signal, computed, effect, batch, untrack, createScope, onCleanup, onMount, Context
+ * Tests: signal, computed, effect, batch, untrack, scope, onCleanup, onMount, Context
  *
  * NOTE: This file uses clean syntax that the compiler transforms:
  * - Signal reads: `count` instead of `count()`
@@ -12,8 +12,8 @@
 import {
   Show,
   batch,
-  createContext,
-  createScope,
+  context,
+  scope,
   onCleanup,
   onMount,
   untrack,
@@ -270,7 +270,7 @@ function ScopeDemo() {
   const startScope = () => {
     if (disposeScope) return;
 
-    disposeScope = createScope(() => {
+    disposeScope = scope(() => {
       addLog("Scope created");
 
       const counter = signal(0);
@@ -306,7 +306,7 @@ function ScopeDemo() {
   };
 
   return (
-    <DemoCard title="createScope - Effect Isolation">
+    <DemoCard title="scope - Effect Isolation">
       <p>
         Scope active: <strong>{scopeActive() ? "Yes" : "No"}</strong>
       </p>
@@ -430,8 +430,8 @@ function OnMountDemo() {
 }
 
 // Context demo
-const ThemeContext = createContext<"light" | "dark">("light");
-const UserContext = createContext<{ name: string; role: string }>();
+const ThemeContext = context<"light" | "dark">("light");
+const UserContext = context<{ name: string; role: string }>();
 
 function ContextDemo() {
   const theme = signal<"light" | "dark">("dark");

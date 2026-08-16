@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  createContext,
-  createScope,
+  context,
+  scope,
   getContext,
   setContext,
   NoOwnerError,
@@ -17,89 +17,89 @@ import {
   signal,
 } from "./signals.ts";
 
-// Helper: createRoot is createScope with detached=true
-const createRoot = <T>(fn: (dispose: () => void) => T): T => createScope(fn, true);
+// Helper: root is scope with detached=true
+const root = <T>(fn: (dispose: () => void) => T): T => scope(fn, true);
 
 describe("context", () => {
   test("should create context with default value", () => {
-    const context = createContext(1);
+    const ctx = context(1);
 
-    expect(context.id).toBeDefined();
-    expect(context.defaultValue).toEqual(1);
+    expect(ctx.id).toBeDefined();
+    expect(ctx.defaultValue).toEqual(1);
 
-    createRoot(() => {
-      setContext(context);
-      expect(getContext(context)).toEqual(1);
+    root(() => {
+      setContext(ctx);
+      expect(getContext(ctx)).toEqual(1);
     });
   });
 
   test("should forward context across roots", () => {
-    const context = createContext(1);
-    createRoot(() => {
-      setContext(context, 2);
-      createRoot(() => {
-        expect(getContext(context)).toEqual(2);
-        createRoot(() => {
-          expect(getContext(context)).toEqual(2);
+    const ctx = context(1);
+    root(() => {
+      setContext(ctx, 2);
+      root(() => {
+        expect(getContext(ctx)).toEqual(2);
+        root(() => {
+          expect(getContext(ctx)).toEqual(2);
         });
       });
     });
   });
 
   test("should not expose context on parent when set in child", () => {
-    const context = createContext(1);
-    createRoot(() => {
-      createRoot(() => {
-        setContext(context, 4);
+    const ctx = context(1);
+    root(() => {
+      root(() => {
+        setContext(ctx, 4);
       });
 
-      expect(getContext(context)).toEqual(1);
+      expect(getContext(ctx)).toEqual(1);
     });
   });
 
   test("should throw error when trying to get context outside owner", () => {
-    const context = createContext<number>();
-    expect(() => getContext(context)).toThrow(NoOwnerError);
+    const ctx = context<number>();
+    expect(() => getContext(ctx)).toThrow(NoOwnerError);
   });
 
   test("should throw error when trying to set context outside owner", () => {
-    const context = createContext<number>();
-    expect(() => setContext(context)).toThrow(NoOwnerError);
+    const ctx = context<number>();
+    expect(() => setContext(ctx)).toThrow(NoOwnerError);
   });
 
   test("should throw error when trying to get context without setting it first", () => {
-    const context = createContext<number>();
-    expect(() => createRoot(() => getContext(context))).toThrow(ContextNotFoundError);
+    const ctx = context<number>();
+    expect(() => root(() => getContext(ctx))).toThrow(ContextNotFoundError);
   });
 
   test("should override context value in nested scope", () => {
-    const context = createContext(1);
-    createRoot(() => {
-      setContext(context, 10);
-      expect(getContext(context)).toEqual(10);
+    const ctx = context(1);
+    root(() => {
+      setContext(ctx, 10);
+      expect(getContext(ctx)).toEqual(10);
 
-      createRoot(() => {
-        setContext(context, 20);
-        expect(getContext(context)).toEqual(20);
+      root(() => {
+        setContext(ctx, 20);
+        expect(getContext(ctx)).toEqual(20);
       });
 
       // Parent still has original value
-      expect(getContext(context)).toEqual(10);
+      expect(getContext(ctx)).toEqual(10);
     });
   });
 
   test("should work with multiple contexts", () => {
-    const context1 = createContext("a");
-    const context2 = createContext(1);
+    const context1 = context("a");
+    const context2 = context(1);
 
-    createRoot(() => {
+    root(() => {
       setContext(context1, "b");
       setContext(context2, 2);
 
       expect(getContext(context1)).toEqual("b");
       expect(getContext(context2)).toEqual(2);
 
-      createRoot(() => {
+      root(() => {
         setContext(context1, "c");
         expect(getContext(context1)).toEqual("c");
         expect(getContext(context2)).toEqual(2); // Inherited
@@ -108,12 +108,12 @@ describe("context", () => {
   });
 });
 
-describe("createScope (detached mode = createRoot)", () => {
+describe("scope (detached mode = root)", () => {
   test("should dispose of inner computations", () => {
     let effectRuns = 0;
     let cleanupRuns = 0;
 
-    const dispose = createRoot((dispose) => {
+    const dispose = root((dispose) => {
       effect(() => {
         effectRuns++;
         onCleanup(() => {
@@ -133,7 +133,7 @@ describe("createScope (detached mode = createRoot)", () => {
   });
 
   test("should return result", () => {
-    const result = createRoot((dispose) => {
+    const result = root((dispose) => {
       dispose();
       return 10;
     });
@@ -145,7 +145,7 @@ describe("createScope (detached mode = createRoot)", () => {
     let rootRuns = 0;
     const count = signal(0);
 
-    createRoot(() => {
+    root(() => {
       count();
       rootRuns++;
     });
@@ -158,20 +158,20 @@ describe("createScope (detached mode = createRoot)", () => {
   });
 
   test("should hold parent context", () => {
-    const context = createContext("default");
+    const ctx = context("default");
 
-    createRoot(() => {
-      setContext(context, "parent");
+    root(() => {
+      setContext(ctx, "parent");
 
-      createRoot(() => {
-        expect(getContext(context)).toBe("parent");
+      root(() => {
+        expect(getContext(ctx)).toBe("parent");
       });
     });
   });
 
   test("should not throw if dispose called during active disposal process", () => {
     expect(() => {
-      createRoot((dispose) => {
+      root((dispose) => {
         onCleanup(() => dispose());
         dispose();
       });
@@ -179,13 +179,13 @@ describe("createScope (detached mode = createRoot)", () => {
   });
 });
 
-describe("createScope (attached mode)", () => {
+describe("scope (attached mode)", () => {
   test("should auto-dispose when parent disposes", () => {
     let childDisposed = false;
 
-    const dispose = createScope((dispose) => {
+    const dispose = scope((dispose) => {
       // Child scope (attached by default)
-      createScope(() => {
+      scope(() => {
         onCleanup(() => {
           childDisposed = true;
         });
@@ -203,9 +203,9 @@ describe("createScope (attached mode)", () => {
     let childDisposed = false;
     let childDisposeRef: (() => void) | null = null;
 
-    const dispose = createScope((dispose) => {
+    const dispose = scope((dispose) => {
       // Child scope (detached)
-      createScope((childDispose) => {
+      scope((childDispose) => {
         childDisposeRef = childDispose;
         onCleanup(() => {
           childDisposed = true;
@@ -230,7 +230,7 @@ describe("cleanup order (LIFO)", () => {
   test("should clean up in reverse order", () => {
     const disposals: string[] = [];
 
-    const dispose = createRoot((dispose) => {
+    const dispose = root((dispose) => {
       effect(() => {
         onCleanup(() => disposals.push("A"));
         onCleanup(() => disposals.push("B"));
@@ -248,17 +248,17 @@ describe("cleanup order (LIFO)", () => {
   test("should dispose children before parent", () => {
     const disposals: string[] = [];
 
-    const dispose = createRoot((dispose) => {
+    const dispose = root((dispose) => {
       onCleanup(() => disposals.push("ROOT"));
 
-      createScope(() => {
+      scope(() => {
         onCleanup(() => disposals.push("CHILD1"));
         effect(() => {
           onCleanup(() => disposals.push("EFFECT1"));
         });
       });
 
-      createScope(() => {
+      scope(() => {
         onCleanup(() => disposals.push("CHILD2"));
         effect(() => {
           onCleanup(() => disposals.push("EFFECT2"));
@@ -278,7 +278,7 @@ describe("cleanup order (LIFO)", () => {
   test("should run onCleanup in reverse registration order within effect", () => {
     const order: number[] = [];
 
-    const dispose = createRoot((dispose) => {
+    const dispose = root((dispose) => {
       effect(() => {
         onCleanup(() => order.push(1));
         onCleanup(() => order.push(2));

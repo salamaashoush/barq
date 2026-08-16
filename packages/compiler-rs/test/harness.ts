@@ -529,7 +529,7 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
   }
 
   try {
-    core.createScope((d: () => void) => {
+    core.scope((d: () => void) => {
       dispose = d
       // C1: the default export is a component and takes the scope it runs
       // under, so `render` is handed the BLOCK and opens that scope itself.
@@ -892,7 +892,7 @@ export function templateAnchors(code: string): number {
 
 /**
  * The primitives that take an anchor as their THIRD argument, `($s, parent,
- * anchor, …)`. `portal`, `reveal` and `dyn` are NOT among them — each is a value
+ * anchor, …)`. `portal`, `reveal` and `dynamic` are NOT among them — each is a value
  * an `insert` or a `branch` places, so it consumes its parent's anchor and never
  * one of its own.
  */

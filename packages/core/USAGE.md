@@ -175,14 +175,14 @@ function Timer() {
 }
 ```
 
-### createContext / useContext - Dependency Injection
+### context / useContext - Dependency Injection
 
 ```tsx
-import { createContext, useContext, useState } from "@barqjs/core";
+import { context, useContext, useState } from "@barqjs/core";
 
 // Create context with optional default
-const ThemeContext = createContext<"light" | "dark">("light");
-const UserContext = createContext<{ name: string }>();
+const ThemeContext = context<"light" | "dark">("light");
+const UserContext = context<{ name: string }>();
 
 // Provider sets value for children (MUST use callback pattern)
 function App() {
@@ -574,7 +574,7 @@ Match children **must** be functions. TypeScript enforces this.
 Context Provider children **must** be callbacks for `useContext` to work correctly.
 
 ```tsx
-const ThemeContext = createContext<"light" | "dark">("light");
+const ThemeContext = context<"light" | "dark">("light");
 
 // CORRECT - callback wrapper
 <ThemeContext.Provider value="dark">

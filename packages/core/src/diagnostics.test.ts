@@ -7,7 +7,7 @@ import {
   DEV,
   type Owner,
   computed,
-  createScope,
+  scope,
   effect,
   flush,
   getOwner,
@@ -61,7 +61,7 @@ describe("DEV.diagnostics", () => {
 
   test("RUN_WITH_DISPOSED_OWNER warns", () => {
     let disposedOwner: Owner | null = null;
-    createScope((dispose) => {
+    scope((dispose) => {
       disposedOwner = getOwner();
       dispose();
     });
@@ -89,7 +89,7 @@ describe("DEV.diagnostics", () => {
 
   test("subscribe receives events and unsubscribes", () => {
     let disposedOwner: Owner | null = null;
-    createScope((dispose) => {
+    scope((dispose) => {
       disposedOwner = getOwner();
       dispose();
     });

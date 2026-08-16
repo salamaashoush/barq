@@ -16,8 +16,8 @@
  *     alive, which is not a cascade at all.
  *
  * What is left is a construct that opens its scope at CALL time, directly under
- * whatever scope called it: `Loading` does, through `createLoadingBoundary`'s
- * `createOwner("branch")` (`boundaries.ts:213`). Three of them side by side is
+ * whatever scope called it: `Loading` does, through `loadingBoundary`'s
+ * `owner("branch")` (`boundaries.ts:213`). Three of them side by side is
  * three kids the render root itself holds the disposers for, and disposing the
  * root is then a real cascade with a real order to get right.
  *

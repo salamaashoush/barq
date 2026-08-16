@@ -110,10 +110,10 @@ describe("the nine workarounds are deletions", () => {
     expect(ROUTER).toContain("const key = (): unknown => errorAt() ?? routeAt();");
   });
 
-  // #5 — a detached `createScope(fn, true)` plus a manual `disposeCurrentRoute`.
+  // #5 — a detached `scope(fn, true)` plus a manual `disposeCurrentRoute`.
   // Replaced by: branch disposal.
   test("5. nothing disposes a route by hand and nothing detaches a scope", () => {
-    expect(nowhere(/disposeCurrentRoute|createScope\(/)).toEqual([]);
+    expect(nowhere(/disposeCurrentRoute|scope\(/)).toEqual([]);
   });
 
   // #6 — the duplicated first render at :1691, "avoids 404 flash when Router

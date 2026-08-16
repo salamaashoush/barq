@@ -1130,8 +1130,8 @@ mod tests {
     #[test]
     fn a_child_is_a_block_taking_a_scope_never_a_built_node() {
         let code = emit(
-            "import { createContext } from \"@barqjs/core\";\n\
-             const Ctx = createContext();\n\
+            "import { context } from \"@barqjs/core\";\n\
+             const Ctx = context();\n\
              const Child = () => <span>{Ctx.use()()}</span>;\n\
              export const App = () => <Ctx.Provider value={1}><Child /></Ctx.Provider>;\n",
         )

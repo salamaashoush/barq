@@ -12,7 +12,7 @@
  */
 
 import type { Computed, Signal } from "./signals.ts";
-import { computed, createScope, onCleanup, signal } from "./signals.ts";
+import { computed, scope, onCleanup, signal } from "./signals.ts";
 import type { Scope } from "./scope.ts";
 
 export type Maybe<T> = T | undefined | null | false;
@@ -95,7 +95,7 @@ export function mapArray<Item, MappedItem>(
 
   const createRow = (item: Item, index: number): Row<Item, MappedItem> => {
     let row!: Row<Item, MappedItem>;
-    createScope(
+    scope(
       (dispose, scope) => {
         const itemSignal = itemIsSignal ? signal(item, ROW_SIGNAL) : undefined;
         // Built BEFORE the mapper runs: the index accessor below reads through
@@ -260,7 +260,7 @@ function createFallbackRow<Item, MappedItem>(
   fallback: (scope: Scope) => unknown,
 ): Row<Item, MappedItem> {
   let row!: Row<Item, MappedItem>;
-  createScope(
+  scope(
     (dispose, scope) => {
       row = {
         _dispose: dispose,
@@ -306,7 +306,7 @@ export function repeat<MappedItem>(
 
   const createRow = (index: number): Row<never, MappedItem> => {
     let row!: Row<never, MappedItem>;
-    createScope(
+    scope(
       (dispose, scope) => {
         row = {
           _dispose: dispose,

@@ -96,7 +96,7 @@ pub enum Helper {
     SetProp = 2,
     /// `_$element($s, tag, props)` — one element by tag NAME, built rather than
     /// cloned. The two shapes that need it are §3.13's: a tag chosen at run time
-    /// (`dyn`'s string arm), and an intrinsic the tree builder would not produce
+    /// (`dynamic`'s string arm), and an intrinsic the tree builder would not produce
     /// as written, which a template therefore cannot carry. Both go through
     /// `spread` and `insert` from there, so the props and children rules are the
     /// compiled ones.
@@ -149,10 +149,10 @@ pub enum Helper {
     /// one of the four primitives and never was; what M9 removed is the
     /// component around it.
     Reveal = 15,
-    /// `_$dyn($s, component, props)` — §3.13 item 4. The branch that swaps it is
+    /// `_$dynamic($s, component, props)` — §3.13 item 4. The branch that swaps it is
     /// the compiler's; the one question left is whether the resolved value is a
     /// tag or a component, and only the value can answer that.
-    Dyn = 16,
+    Dynamic = 16,
     // ── §3.5's resolved channels ──────────────────────────────────────────
     //
     // One entry point per channel, chosen at compile time. There is no
@@ -253,7 +253,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "portal",
     "COUNT",
     "reveal",
-    "dyn",
+    "dynamic",
     "setAttr",
     "setDomProp",
     "setLive",

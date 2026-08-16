@@ -7,10 +7,10 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports - use raw signals for fair comparison
-import { signal, computed, effect, batch, createScope } from "@barqjs/core";
+import { signal, computed, effect, batch, scope } from "@barqjs/core";
 
 // SolidJS imports
-import { createEffect, createMemo, createRoot, createSignal, batch as solidBatch } from "solid-js";
+import { createEffect, createMemo, root, createSignal, batch as solidBatch } from "solid-js";
 
 export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
@@ -24,7 +24,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
 
   results.push(
     await benchmark("signals", "solid", "create signal", () => {
-      createRoot(() => {
+      root(() => {
         createSignal(0);
       });
     }),
@@ -54,7 +54,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "1000 signal updates (batched)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [count, setCount] = createSignal(0);
           solidBatch(() => {
             for (let i = 0; i < 1000; i++) {
@@ -71,7 +71,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   // Computed/Memo creation
   results.push(
     await benchmark("signals", "barq", "create computed", () => {
-      createScope(() => {
+      scope(() => {
         const count = signal(0);
         computed(() => count() * 2);
       }, true);
@@ -80,7 +80,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
 
   results.push(
     await benchmark("signals", "solid", "create computed", () => {
-      createRoot((dispose) => {
+      root((dispose) => {
         const [count] = createSignal(0);
         createMemo(() => count() * 2);
         dispose();
@@ -95,7 +95,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "effect with 100 updates (batched)",
       () => {
-        createScope((dispose) => {
+        scope((dispose) => {
           let effectRuns = 0;
           const count = signal(0);
           effect(() => {
@@ -120,7 +120,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "effect with 100 updates (batched)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           let effectRuns = 0;
           const [count, setCount] = createSignal(0);
           createEffect(() => {
@@ -146,7 +146,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "computed chain (5 deep)",
       () => {
-        createScope((dispose) => {
+        scope((dispose) => {
           const a = signal(1);
           const b = computed(() => a() * 2);
           const c = computed(() => b() + 1);
@@ -173,7 +173,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "computed chain (5 deep)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [a, setA] = createSignal(1);
           const b = createMemo(() => a() * 2);
           const c = createMemo(() => b() + 1);
@@ -201,7 +201,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "wide deps (10 signals)",
       () => {
-        createScope((dispose) => {
+        scope((dispose) => {
           const signals = Array.from({ length: 10 }, (_, i) => signal(i));
           const sum = computed(() => signals.reduce((acc, s) => acc + s(), 0));
 
@@ -224,7 +224,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "wide deps (10 signals)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const signals = Array.from({ length: 10 }, (_, i) => createSignal(i));
           const sum = createMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
 
@@ -248,7 +248,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "diamond pattern (100 updates)",
       () => {
-        createScope((dispose) => {
+        scope((dispose) => {
           const x = signal(1);
           const a = computed(() => x() * 2);
           const b = computed(() => x() * 3);
@@ -273,7 +273,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "diamond pattern (100 updates)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [x, setX] = createSignal(1);
           const a = createMemo(() => x() * 2);
           const b = createMemo(() => x() * 3);

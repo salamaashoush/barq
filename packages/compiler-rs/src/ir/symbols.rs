@@ -56,8 +56,8 @@ pub enum SourceKind {
     /// Calling it is a reactive read. `nonreactive` masks members that are NOT
     /// tracked reads.
     Accessor { nonreactive: MemberMask },
-    /// ANY member read is a reactive read: `useStore()[0]`, `createProjection`,
-    /// `createOptimisticStore()[0]`.
+    /// ANY member read is a reactive read: `useStore()[0]`, `projection`,
+    /// `optimisticStore()[0]`.
     ReactiveObject,
     /// Members are accessors: member READ is inert, member CALL is reactive.
     /// `Resource<T>`: `.state()` `.loading()` `.error()` `.latest()`;
@@ -110,15 +110,12 @@ impl SourceKind {
 pub enum Prim {
     Signal,
     Computed,
-    UseState,
-    UseMemo,
-    UseStore,
+    Store,
     Resource,
     UseContext,
-    CreateAsync,
-    CreateOptimistic,
-    CreateOptimisticStore,
-    CreateProjection,
+    Optimistic,
+    OptimisticStore,
+    Projection,
     MapArray,
     Repeat,
     Untrack,
@@ -135,15 +132,15 @@ impl Prim {
         Some(match name {
             "signal" => Prim::Signal,
             "computed" => Prim::Computed,
-            "useState" => Prim::UseState,
-            "useMemo" => Prim::UseMemo,
-            "useStore" => Prim::UseStore,
-            "resource" | "useResource" => Prim::Resource,
+            "store" => Prim::Store,
+            "resource" => Prim::Resource,
+            // §13: the one `use*` that stays, because it is not an alias of a
+            // constructor — reading what the owner tree provides is its own
+            // operation, and it answers with the Cell compiled code wants.
             "useContext" => Prim::UseContext,
-            "createAsync" => Prim::CreateAsync,
-            "createOptimistic" => Prim::CreateOptimistic,
-            "createOptimisticStore" => Prim::CreateOptimisticStore,
-            "createProjection" => Prim::CreateProjection,
+            "optimistic" => Prim::Optimistic,
+            "optimisticStore" => Prim::OptimisticStore,
+            "projection" => Prim::Projection,
             "mapArray" => Prim::MapArray,
             "repeat" => Prim::Repeat,
             "untrack" => Prim::Untrack,

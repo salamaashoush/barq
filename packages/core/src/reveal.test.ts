@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { boundary, reveal } from "./flow.ts";
 import type { Scope } from "./scope.ts";
 import { render } from "./dom.ts";
-import { NotReadyError, computed, createScope, flush, signal } from "./signals.ts";
+import { NotReadyError, computed, scope, flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
 beforeEach(() => {
@@ -48,7 +48,7 @@ describe("Loading revalidation", () => {
       return d2.promise;
     });
 
-    createScope(() => {
+    scope(() => {
       const el = boundary(
         null,
         null,
@@ -88,7 +88,7 @@ describe("Reveal", () => {
     const dataA = computed(() => a.promise);
     const dataB = computed(() => b.promise);
 
-    createScope((_dispose, scope) => {
+    scope((_dispose, scope) => {
       // Children as a BLOCK: the boundaries are constructed under the scope
       // `reveal` hands over, which is the only way they reach the coordinator
       // it installed. A thunk that ignored the scope would build them under

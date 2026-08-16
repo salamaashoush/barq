@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   batch,
   computed,
-  createScope,
+  scope,
   effect,
   flush,
   linked,
@@ -420,12 +420,12 @@ describe("untrack", () => {
   });
 });
 
-describe("createScope", () => {
+describe("scope", () => {
   test("disposes effects when scope is disposed", () => {
     const count = signal(0);
     let effectCount = 0;
 
-    const result = createScope((dispose) => {
+    const result = scope((dispose) => {
       effect(() => {
         count();
         effectCount++;
@@ -447,7 +447,7 @@ describe("createScope", () => {
   test("runs cleanup functions on dispose", () => {
     let cleaned = false;
 
-    createScope((dispose) => {
+    scope((dispose) => {
       onCleanup(() => {
         cleaned = true;
       });
@@ -462,13 +462,13 @@ describe("createScope", () => {
     let innerEffectCount = 0;
     let outerEffectCount = 0;
 
-    createScope((disposeOuter) => {
+    scope((disposeOuter) => {
       effect(() => {
         count();
         outerEffectCount++;
       });
 
-      createScope((disposeInner) => {
+      scope((disposeInner) => {
         effect(() => {
           count();
           innerEffectCount++;
@@ -502,7 +502,7 @@ describe("createScope", () => {
 
     let computedRef: ReturnType<typeof computed<number>> | null = null;
 
-    createScope((dispose) => {
+    scope((dispose) => {
       computedRef = computed(() => {
         computeCount++;
         return count() * 2;
@@ -616,7 +616,7 @@ describe("memory and reactivity leaks", () => {
 
     let c: ReturnType<typeof computed<number>> | null = null;
 
-    createScope((dispose) => {
+    scope((dispose) => {
       c = computed(() => {
         computeRuns++;
         return count();
@@ -773,7 +773,7 @@ describe("propagation cost in graph depth", () => {
     let sources: Array<{ (): number; set(v: number): void }> = [];
     let heads: Array<() => number> = [];
     let dispose = () => {};
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       sources = [signal(1), signal(2), signal(3), signal(4)];
       let band: Array<() => number> = sources;

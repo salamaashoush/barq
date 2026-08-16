@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { computed, createScope, effect, flush, signal } from "./signals.ts";
+import { computed, scope, effect, flush, signal } from "./signals.ts";
 import { $PROXY, $TARGET, $TRACK, deep, isWrappable, storePath, store } from "./store.ts";
 
 describe("isWrappable", () => {
@@ -33,7 +33,7 @@ describe("$TARGET / $PROXY", () => {
 
 describe("$TRACK", () => {
   test("subscribes to key additions and removals, not value changes", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const [state, setState] = store<Record<string, number>>({ a: 1 });
       let runs = 0;
       effect(() => {
@@ -69,7 +69,7 @@ describe("deep", () => {
   });
 
   test("subscribes to every nested property it reads", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const [state, setState] = store({ user: { name: "Ada", age: 36 } });
       let runs = 0;
       const view = computed(() => {
@@ -166,7 +166,7 @@ describe("storePath", () => {
   });
 
   test("writes through storePath are reactive", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const [state, setState] = store({ user: { name: "Ada" } });
       const seen: string[] = [];
       effect(() => {
@@ -190,7 +190,7 @@ describe("storePath", () => {
 
 describe("store parity primitives interop", () => {
   test("deep inside an effect re-runs on nested array change", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const [state, setState] = store({ items: [{ n: 1 }] });
       const snapshots: unknown[] = [];
       effect(() => {
@@ -206,7 +206,7 @@ describe("store parity primitives interop", () => {
   });
 
   test("signals still work alongside store paths", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const toggle = signal(false);
       const [state, setState] = store({ n: 0 });
       const view = computed(() => (toggle() ? state.n : -1));

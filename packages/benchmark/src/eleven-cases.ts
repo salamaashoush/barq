@@ -20,7 +20,7 @@
 import {
   createEffect as sEffect,
   createMemo as sMemo,
-  createRoot as sRoot,
+  root as sRoot,
   createSignal as sSignal,
   flush as sFlush,
 } from "@solidjs/signals";
@@ -30,7 +30,7 @@ export interface BarqApi {
   computed: <T>(fn: () => T) => () => T;
   effect: (fn: () => unknown) => unknown;
   flush: () => void;
-  createScope: <T>(fn: (dispose: () => void) => T, detached?: boolean) => T;
+  scope: <T>(fn: (dispose: () => void) => T, detached?: boolean) => T;
 }
 
 export interface Case {
@@ -64,14 +64,14 @@ export function barqCases(B: BarqApi): Case[] {
   // on a module namespace object is an exotic lookup, and leaving it in the
   // loop taxes the barq side by 2-3x on the allocation-heavy rows while the
   // solid side reads a plain module binding.
-  const { signal, computed, effect, flush, createScope } = B;
+  const { signal, computed, effect, flush, scope } = B;
   const makes: (() => () => void)[] = [
     () => () => {
       signal(0);
     },
 
     () => () => {
-      createScope((dispose) => {
+      scope((dispose) => {
         const s = signal(0);
         computed(() => s() * 2);
         dispose();
@@ -79,7 +79,7 @@ export function barqCases(B: BarqApi): Case[] {
     },
 
     () => () => {
-      createScope((dispose) => {
+      scope((dispose) => {
         const s = signal(0);
         effect(() => s());
         flush();
@@ -173,7 +173,7 @@ export function barqCases(B: BarqApi): Case[] {
     },
 
     () => () => {
-      createScope((dispose) => {
+      scope((dispose) => {
         const s = signal(0);
         for (let k = 0; k < 50; k++) computed(() => s() + k);
         dispose();

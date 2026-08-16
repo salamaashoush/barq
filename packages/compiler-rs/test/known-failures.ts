@@ -97,8 +97,8 @@ const ROWS: readonly KnownFailure[] = [
   // came off this table at M2 and stay off.
   //
   // Two more rows came off in M3's fix round. Both were one defect: the `scope`
-  // pass re-signatured `createScope((d) => { … })` to `(_s$, d) => …` because
-  // the callback contained JSX in value position, while `createScope` went on
+  // pass re-signatured `scope((d) => { … })` to `(_s$, d) => …` because
+  // the callback contained JSX in value position, while `scope` went on
   // invoking it as `fn(dispose)` — so `outer` was `undefined` and the scope the
   // two control claims dispose was never disposed. C2 is what the pass was
   // missing, and `src/scope.rs` now asks the declaration question instead of the

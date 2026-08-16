@@ -6,10 +6,10 @@ import { describe, expect, test } from "bun:test";
 import {
   DEV,
   computed,
-  createOwner,
-  createReaction,
-  createScope,
-  createTrackedEffect,
+  owner,
+  reaction,
+  scope,
+  trackedEffect,
   effect,
   flush,
   getNextChildId,
@@ -27,7 +27,7 @@ import { getObserver, isEqual } from "./signals.ts";
 describe("introspection primitives", () => {
   test("getObserver is the tracking computation, null outside", () => {
     expect(getObserver()).toBeNull();
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       let inside: unknown = "unset";
       let inUntrack: unknown = "unset";
       const a = signal(0);
@@ -48,7 +48,7 @@ describe("introspection primitives", () => {
 
   test("isDisposed reflects owner lifecycle", () => {
     let owner: ReturnType<typeof getOwner> = null;
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       owner = getOwner();
       return d;
     }, true);
@@ -66,11 +66,11 @@ describe("introspection primitives", () => {
     expect(isEqual({}, {})).toBe(false);
   });
 
-  test("createOwner hosts computations and disposes with its parent", () => {
+  test("owner hosts computations and disposes with its parent", () => {
     const log: string[] = [];
-    const dispose = createScope((d) => {
-      const owner = createOwner();
-      runWithOwner(owner, () => {
+    const dispose = scope((d) => {
+      const own = owner();
+      runWithOwner(own, () => {
         onCleanup(() => log.push("owned"));
       });
       return d;
@@ -81,7 +81,7 @@ describe("introspection primitives", () => {
   });
 
   test("child ids are stable and sequential; peek does not consume", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const owner = getOwner()!;
       const first = getNextChildId(owner);
       const second = getNextChildId(owner);
@@ -95,12 +95,12 @@ describe("introspection primitives", () => {
   });
 });
 
-describe("createTrackedEffect", () => {
+describe("trackedEffect", () => {
   test("runs on creation and on dependency change", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
       const seen: number[] = [];
-      createTrackedEffect(() => {
+      trackedEffect(() => {
         seen.push(a());
       });
       expect(seen).toEqual([0]);
@@ -114,9 +114,9 @@ describe("createTrackedEffect", () => {
 
   test("returned function is the cleanup", () => {
     const log: string[] = [];
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
-      createTrackedEffect(() => {
+      trackedEffect(() => {
         const v = a();
         return () => log.push(`clean:${v}`);
       });
@@ -130,10 +130,10 @@ describe("createTrackedEffect", () => {
   });
 
   test("disposing stops it", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
       let runs = 0;
-      const stop = createTrackedEffect(() => {
+      const stop = trackedEffect(() => {
         a();
         runs++;
       });
@@ -148,9 +148,9 @@ describe("createTrackedEffect", () => {
 
   test("creating a primitive inside reports a diagnostic", () => {
     const capture = DEV.diagnostics.capture();
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
-      createTrackedEffect(() => {
+      trackedEffect(() => {
         a();
         computed(() => 1);
       });
@@ -162,12 +162,12 @@ describe("createTrackedEffect", () => {
   });
 });
 
-describe("createReaction", () => {
+describe("reaction", () => {
   test("fires once per arm, then needs re-arming", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
       let fires = 0;
-      const track = createReaction(() => {
+      const track = reaction(() => {
         fires++;
       });
       track(() => {
@@ -195,10 +195,10 @@ describe("createReaction", () => {
   });
 
   test("re-arming inside the callback keeps it listening", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
       const seen: number[] = [];
-      const track = createReaction(() => {
+      const track = reaction(() => {
         seen.push(untrack(() => a()));
         track(() => {
           a();
@@ -218,11 +218,11 @@ describe("createReaction", () => {
   });
 
   test("re-arming with a different source drops the old subscription", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
       const b = signal(0);
       let fires = 0;
-      const track = createReaction(() => {
+      const track = reaction(() => {
         fires++;
       });
       track(() => {
@@ -244,9 +244,9 @@ describe("createReaction", () => {
 
   test("callback cleanup runs before the next fire and on dispose", () => {
     const log: string[] = [];
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
-      const track = createReaction(() => {
+      const track = reaction(() => {
         const v = untrack(() => a());
         return () => log.push(`clean:${v}`);
       });
@@ -271,8 +271,8 @@ describe("createReaction", () => {
   test("disposing the owner stops the reaction", () => {
     const a = signal(0);
     let fires = 0;
-    const dispose = createScope((d) => {
-      const track = createReaction(() => {
+    const dispose = scope((d) => {
+      const track = reaction(() => {
         fires++;
       });
       track(() => {
@@ -333,7 +333,7 @@ describe("resolve", () => {
   });
 
   test("refuses to run inside a tracked scope", async () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
       let p: Promise<unknown> | undefined;
       effect(() => {

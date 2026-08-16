@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createScope, effect, flush, onCleanup, signal } from "./signals.ts";
+import { scope, effect, flush, onCleanup, signal } from "./signals.ts";
 import { mapArray, repeat } from "./map.ts";
 
 describe("mapArray - keyed by identity (default)", () => {
   test("maps and reuses rows across updates", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = { id: 1 };
       const b = { id: 2 };
       const c = { id: 3 };
@@ -26,7 +26,7 @@ describe("mapArray - keyed by identity (default)", () => {
   });
 
   test("reorders without re-running mappers", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = { id: 1 };
       const b = { id: 2 };
       const c = { id: 3 };
@@ -47,7 +47,7 @@ describe("mapArray - keyed by identity (default)", () => {
   });
 
   test("index accessor tracks position", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = { id: 1 };
       const b = { id: 2 };
       const list = signal([a, b]);
@@ -72,7 +72,7 @@ describe("mapArray - keyed by identity (default)", () => {
    * the row was built at, and a row that then keeps reading has to stay live.
    */
   test("an index first read after a reorder reads the current position", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = { id: 1 };
       const b = { id: 2 };
       const c = { id: 3 };
@@ -102,7 +102,7 @@ describe("mapArray - keyed by identity (default)", () => {
   });
 
   test("a late index read stays reactive for an effect that opened it", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = { id: 1 };
       const b = { id: 2 };
       const list = signal([a, b]);
@@ -131,7 +131,7 @@ describe("mapArray - keyed by identity (default)", () => {
 
   test("removed rows are disposed", () => {
     const disposed: number[] = [];
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = { id: 1 };
       const b = { id: 2 };
       const list = signal([a, b]);
@@ -150,7 +150,7 @@ describe("mapArray - keyed by identity (default)", () => {
   });
 
   test("handles duplicate keys as distinct rows", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const list = signal(["x", "x", "y"]);
       let calls = 0;
       const view = mapArray(list, (item) => {
@@ -165,7 +165,7 @@ describe("mapArray - keyed by identity (default)", () => {
   });
 
   test("empty list uses the fallback", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const list = signal<number[]>([]);
       const view = mapArray(list, (n) => n * 2, { fallback: () => "empty" });
       expect(view()).toEqual(["empty" as unknown as number]);
@@ -179,7 +179,7 @@ describe("mapArray - keyed by identity (default)", () => {
   });
 
   test("null and undefined lists are treated as empty", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const list = signal<number[] | null>(null);
       const view = mapArray(list, (n) => n);
       expect(view()).toEqual([]);
@@ -191,7 +191,7 @@ describe("mapArray - keyed by identity (default)", () => {
   });
 
   test("stable identity when nothing changes", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const items = [{ id: 1 }];
       const list = signal(items);
       const view = mapArray(list, (i) => i.id);
@@ -206,7 +206,7 @@ describe("mapArray - keyed by identity (default)", () => {
 
 describe("mapArray - keyed by function", () => {
   test("reuses rows when the key is unchanged and updates the value", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const list = signal([
         { id: 1, label: "a" },
         { id: 2, label: "b" },
@@ -238,7 +238,7 @@ describe("mapArray - keyed by function", () => {
 
 describe("mapArray - by index (keyed: false)", () => {
   test("rows are positional and values update in place", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const list = signal(["a", "b"]);
       let calls = 0;
       const view = mapArray(
@@ -267,7 +267,7 @@ describe("mapArray - by index (keyed: false)", () => {
 
 describe("mapArray - reactivity", () => {
   test("effects downstream see the mapped list", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const list = signal([1, 2]);
       const view = mapArray(list, (n) => n * 2);
       const seen: number[][] = [];
@@ -290,7 +290,7 @@ describe("mapArray - reactivity", () => {
 describe("repeat", () => {
   test("creates and disposes rows as the count changes", () => {
     const log: string[] = [];
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const n = signal(2);
       const view = repeat(n, (i) => {
         onCleanup(() => log.push(`clean:${i}`));
@@ -310,7 +310,7 @@ describe("repeat", () => {
   });
 
   test("from shifts the index range", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const n = signal(3);
       const from = signal(5);
       const view = repeat(n, (i) => i, { from });
@@ -323,7 +323,7 @@ describe("repeat", () => {
   });
 
   test("zero count uses the fallback", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const n = signal(0);
       const view = repeat(n, (i) => i, { fallback: () => -1 });
       expect(view()).toEqual([-1]);
@@ -337,7 +337,7 @@ describe("repeat", () => {
   });
 
   test("negative count is treated as zero", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const n = signal(-5);
       const view = repeat(n, (i) => i);
       expect(view()).toEqual([]);

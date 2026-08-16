@@ -1272,12 +1272,16 @@ export function reveal(
 }
 
 /**
- * `dyn` — the string half. The branch that swaps the component is the
+ * `dynamic` — the string half. The branch that swaps the component is the
  * compiler's, so what is left here is the one question the value answers: a tag
  * name is serialised, anything else is invoked.
  */
-export function dyn(s: Scope | null, component: unknown, props: Record<string, unknown>): unknown {
-  const resolved = untrack(() => readValue(component, "dyn.component"));
+export function dynamic(
+  s: Scope | null,
+  component: unknown,
+  props: Record<string, unknown>,
+): unknown {
+  const resolved = untrack(() => readValue(component, "dynamic.component"));
   if (resolved === null || resolved === undefined || resolved === false) return null;
   if (typeof resolved !== "string") return invokeBlock(s, resolved, [props]);
   // The tag is RUNTIME DATA here, which makes it the same injection the

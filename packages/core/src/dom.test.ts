@@ -9,7 +9,7 @@ import {
   ScopeMissingError,
   block,
   computed,
-  createScope,
+  scope,
   enterRoot,
   flush,
   signal,
@@ -425,7 +425,7 @@ describe("Reactive children", () => {
     // names none. That is the whole of C1 at this entry point, so the port is a
     // real scope rather than a cast.
     let el!: HTMLDivElement;
-    createScope((_d, s) => {
+    scope((_d, s) => {
       el = element(s, "div", { children: [a, "-", b] }) as HTMLDivElement;
     });
 
@@ -701,7 +701,7 @@ describe("Memory and cleanup", () => {
 
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
 
       // Wrap createElement to track effect runs
@@ -733,7 +733,7 @@ describe("Memory and cleanup", () => {
 
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
 
       const trackedText = () => {
@@ -764,7 +764,7 @@ describe("Memory and cleanup", () => {
 
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
 
       const trackedColor = () => {
@@ -799,7 +799,7 @@ describe("Edge cases and error handling", () => {
   test("handles mixed static and reactive children", () => {
     const dynamic = signal("dynamic");
     let el!: HTMLDivElement;
-    createScope((_d, s) => {
+    scope((_d, s) => {
       el = element(s, "div", {
         children: ["static1", dynamic, "static2", () => `computed: ${dynamic()}`],
       }) as HTMLDivElement;

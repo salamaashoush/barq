@@ -2,7 +2,7 @@
  * Micro-profile of the hot reactive paths, phase by phase.
  * Run: bun run profile-hot.ts
  */
-import { batch, computed, createScope, effect, signal } from "./src/signals.ts";
+import { batch, computed, scope, effect, signal } from "./src/signals.ts";
 
 const N = 20000;
 
@@ -18,7 +18,7 @@ function bench(name: string, fn: () => void): void {
 
 // Phase 1: creation only
 bench("create: scope+signal+effect+dispose", () => {
-  createScope((dispose) => {
+  scope((dispose) => {
     const s = signal(0);
     effect(() => {
       s();

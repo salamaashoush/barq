@@ -11,7 +11,7 @@ import {
   type Scope,
   block,
   cell,
-  createContext,
+  context,
   provide,
   read,
   readSlot,
@@ -102,7 +102,7 @@ export type UseInfiniteQueryResult<
 // The client, reached through the scope chain
 // ============================================================================
 
-const QueryClientContext = createContext<QueryClient>(undefined, "barq-query-client");
+const QueryClientContext = context<QueryClient>(undefined, "barq-query-client");
 
 /**
  * The provider is the only mechanism. An "application default" held in a module

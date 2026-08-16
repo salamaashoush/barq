@@ -12,7 +12,7 @@ const all: Record<string, [string, M]> = {
 };
 const mods: [string, M][] = order.map((k) => all[k]);
 const make = (m: M) => () => {
-  m.createScope((dispose) => {
+  m.scope((dispose) => {
     const s = m.signal(0);
     m.effect(() => {
       s();

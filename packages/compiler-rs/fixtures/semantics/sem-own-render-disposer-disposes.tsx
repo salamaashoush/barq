@@ -14,7 +14,7 @@
  *
  * SEMANTICS.md §2 O5, O3.7.
  */
-import { createScope, DEV, effect, onCleanup, render, renderEffect, signal } from "@barqjs/core"
+import { scope, DEV, effect, onCleanup, render, renderEffect, signal } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
@@ -102,7 +102,7 @@ async function mountInsideAScope(kit: Kit, eager: boolean) {
   let outer: (() => void) | undefined
   const capture = DEV.diagnostics.capture()
   const thrown = await kit.attempt(() => {
-    outer = createScope((d: () => void) => {
+    outer = scope((d: () => void) => {
       clear = eager ? render(<Tree />, host) : render(() => <Tree />, host)
       return d
     }, true)

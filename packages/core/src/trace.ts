@@ -130,7 +130,7 @@ interface Owned {
  *
  * `currentOwner` is not always a scope: a computed makes itself the owner of
  * whatever its body creates (`signals.ts:880`), so `getOwner()` inside a
- * `renderEffect` is the effect node, not the `createScope` that built it. The
+ * `renderEffect` is the effect node, not the `scope` that built it. The
  * ownership question is about the scope, so the chain is climbed until an
  * object the trace has actually seen `enter` turns up. Never mints an id:
  * minting one here would invent a scope that no `enter` event ever declared,

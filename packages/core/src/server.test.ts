@@ -19,7 +19,7 @@ import { esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
 import {
   NotReadyError,
   computed,
-  createScope,
+  scope,
   effect,
   flush,
   setAsyncSession,
@@ -239,7 +239,7 @@ describe("settle", () => {
 
     const prev = setAsyncSession(session);
     try {
-      createScope(() => {
+      scope(() => {
         const first = computed(async () => {
           await tick();
           return 1;

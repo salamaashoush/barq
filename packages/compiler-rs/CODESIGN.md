@@ -598,7 +598,7 @@ never used to adjudicate a barq-internal claim.
 during one `run`, per allocation site, the top of each side. barq: `signal` 452 B, `createComputedNode`
 291, the compiled row body 249, `createOwnerScope` + `hostScope` 226, `link` 105, `buildData` 70,
 `insert` + `applyInsert` + `childToNodes` 138. Solid: the compiled row body 231, `buildData` 171,
-`readSignal` 125, `Set` 102, `createComputation` 87, `createRoot` 74.
+`readSignal` 125, `Set` 102, `createComputation` 87, `root` 74.
 
 Two of those lines were the list's and both are gone. **An index signal per row that no row read** —
 `mapArray` decides `wantsIndex` from `map.length`, and `each` hands it a three-parameter mapper
@@ -618,7 +618,7 @@ hydrating in the ordinary case, so the row builds without it.
 
 **The rest is `signals.ts`'s and is stated so it is not re-derived.** What remains per row is 312 B of
 `createComputedNode` against Solid's 73 for the same two effects, and 251 B of Scope against Solid's
-46 for `createRoot` — 4.3x and 5.5x on the two allocations a row makes most. `signal()` is the third:
+46 for `root` — 4.3x and 5.5x on the two allocations a row makes most. `signal()` is the third:
 one node object plus four closures plus a backing store, against Solid's object plus a bound read and
 a setter. **This is the same M4b reading corrected the same way as `FAST_CLEAR` above.**
 `INDEX_UNUSED` was deleted for moving no counter at 50 rows; at 1,000 it is 226 KB, and like
@@ -832,7 +832,7 @@ enter(parent) → Scope        exit(s)        dispose(s)        pin(s, block) �
 mount(s, block, parent, anchor) → Range
 branch(s, parent, anchor, key: Cell<K>, bodies: Block[], flags)
 each(s, parent, anchor, src: Cell<T[]>, keyOf, row: Block, flags)
-dyn(s, parent, anchor, cell: Cell<Out>)
+dynamic(s, parent, anchor, cell: Cell<Out>)
 provide(s, ctx, value: Cell<T>, block: Block) → Out
 boundary(s, parent, anchor, kind, fallback: Block, block: Block, flags)
 portal(s, target: Cell<Node>, block: Block)
@@ -886,7 +886,7 @@ restores to. The rule is weakened to what is true and the restoration target is 
 handed a scope.
 
 - **O4.1 Restoration is required on both paths.** A construct that enters a scope and returns a value
-  into the caller's expression — `provide`, `boundary`, `dyn`, any Block invocation whose result is
+  into the caller's expression — `provide`, `boundary`, `dynamic`, any Block invocation whose result is
   consumed — has no opportunity other than a `finally`, so `try { … } finally { exit(c) }` is the
   conforming implementation for those. **§7.1's `provide` is correct as written.**
 - **O4.2 The cost claim is what survives, not the syntactic claim.** At most one `try/finally` per
@@ -1051,7 +1051,7 @@ ternaries, `&&`, `Dynamic` (keyed on the component value), boundaries, and a rou
 disposal. The LIS move-minimisation in `map.ts:127-208` is retained wholesale — it is genuinely
 independent of ownership.
 
-**`dyn(s, parent, anchor, cell)`** — a hole whose value is arbitrary. `Portal` is `dyn` with the
+**`dynamic(s, parent, anchor, cell)`** — a hole whose value is arbitrary. `Portal` is `dynamic` with the
 insertion target elsewhere and a scope whose parent is the **lexical** parent.
 
 **The keying contract, written down** (it is undefined at every level today, which is how `keyed={fn}`
@@ -1224,7 +1224,7 @@ One system. `resource(sourceCell, fetcher)` returns a `Cell<T>` backed by a memo
   reachability, and `action()` already delimits the transaction exactly. See A5, clause (g).
 - **Optimistic state is derived, never restored:** `() => reduce(base(), pending())`. Today
   `registerRevert` captures `revertTo` once per (target, action), so a real write landing during the
-  action is rolled back to a value that is now wrong, and `createOptimisticStore` `structuredClone`s
+  action is rolled back to a value that is now wrong, and `optimisticStore` `structuredClone`s
   the whole store to do it. With no snapshot there is nothing to clobber.
 - Deleted: `Suspense` (two `queueMicrotask`s that subscribe to nothing and flip regardless), `Await`,
   `createResource`, `suspend`, `awaitAll`.
@@ -1414,7 +1414,7 @@ the flags set stays small.
 | `appendChildren`/`appendChild`/`childToNodes` ×2/`drainFragment` | ~146 | Artefacts of the eager-children convention. |
 | `markers.ts` entire | 51 | Anchor identity is a compile-time address. A process-global `markerId` makes two renders of one tree differ byte-for-byte, which is precisely what makes hydration impossible. |
 | `Fragment` component | 19 | A fragment is a compile-time multi-root unit. Today it silently drops function children and nested arrays (verified). |
-| `Show`/`Switch`/`Match`/`Repeat`/`Dynamic`/`Portal`/`Reveal` as **components** | ~450 | Ten copy-pasted `dispose → clearRange → createScope → insertNodes` bodies, each with its own bugs: `Show` re-registers `onCleanup` **inside** its renderEffect (`components.ts:154`); `Dynamic` and `Portal` use detached scopes where `Show` uses attached; `Dynamic`'s string branch is a fifth element-creation path that JSON-stringifies objects into attributes and never removes its listeners. |
+| `Show`/`Switch`/`Match`/`Repeat`/`Dynamic`/`Portal`/`Reveal` as **components** | ~450 | Ten copy-pasted `dispose → clearRange → scope → insertNodes` bodies, each with its own bugs: `Show` re-registers `onCleanup` **inside** its renderEffect (`components.ts:154`); `Dynamic` and `Portal` use detached scopes where `Show` uses attached; `Dynamic`'s string branch is a fifth element-creation path that JSON-stringifies objects into attributes and never removes its listeners. |
 | `Suspense`, `Await`, `ErrorBoundary` | ~196 | Legacy duplicates of `Loading`/`resource`/`Errored`. `ErrorBoundary` reads its children **outside** its own boundary and lacks the `NotReady` guard. |
 | `createResource`/`suspend`/`awaitAll` (`async.ts:154-234`) | 81 | Not exported from `index.ts`; referenced only by their own tests. |
 | `setProp`/`applyProp`/`applyResolvedProp`/`diffClassList`/`diffStyleObjects` dispatch | ~180 | The compiler holds every fact these re-derive as a `NameFlags` bit. Tables move to Rust and to the generated `.d.ts` — one source of truth. |
@@ -1499,7 +1499,7 @@ reversal on evidence, and each is stated here so the table above is not read as 
 - `_affected`/`_snapshot` move off the base shape behind the rare-mode gate. **Also gated** —
   `signals.ts:223-232` documents that the opposite tradeoff was chosen deliberately for the async
   fields, which is direct evidence the intuition can fail.
-- `createScope`/`getOwner`/`runWithOwner` → `enter`/`exit`/`dispose`/`pin`. `owner._context` spread →
+- `scope`/`getOwner`/`runWithOwner` → `enter`/`exit`/`dispose`/`pin`. `owner._context` spread →
   prototype fork.
 - `untrack` documented and tested to change **only** the observer.
 - `renderEffect` → `fx(compute, apply)`.
@@ -1851,7 +1851,7 @@ only way to know the oracle works, and it means the project is never without a c
 **Source**
 
 ```jsx
-const Ctx = createContext();                       // no default → a miss THROWS
+const Ctx = context();                       // no default → a miss THROWS
 const Child = () => <span>{Ctx.use()()}</span>;
 export const App = () => <Ctx value={1}><Child /></Ctx>;
 ```
@@ -1863,7 +1863,7 @@ export const App = () => (0, Ctx.Provider)({ value: 1, children: Child({}) });
 ```
 
 `Child({})` is an **argument**. It runs at the call site, under the caller's owner, before
-`createScope` inside the Provider has created the scope that `owner._context[id] = props.value` writes
+`scope` inside the Provider has created the scope that `owner._context[id] = props.value` writes
 into. Runtime, verified: `<span>THREW:ContextNotFoundError</span>`. With a default present the failure
 is silent and the page is blank.
 
@@ -1953,7 +1953,7 @@ allocation per instance saved, and a wall-clock saving Tier 2 cannot resolve (§
 corrected at M7c; the 7.3 ns/instance figure was a stub-DOM reading and does not survive as a
 magnitude).
 
-What this deletes: ten copy-pasted `dispose → clearRange → createScope → insertNodes` bodies with
+What this deletes: ten copy-pasted `dispose → clearRange → scope → insertNodes` bodies with
 their divergent bugs; two comment nodes per control-flow instance; the props object and the call per
 instance; and the router's fourteen direct uses of `createMarkerPair`/`clearRange`/`insertNodes`, which
 become the public `branch()` handle.
@@ -2214,7 +2214,7 @@ The ASYNC half landed. `resource(source, fetcher)` is an async memo: the read is
 `NotReady` before settlement (A3), the `AbortController` is a cleanup on the creating scope and the
 signal is handed to the fetcher (A1), and every run's continuation compares the generation it
 captured at call time (A2). `createResource`, `suspend`, `awaitAll` and the `ResourceState` union
-are gone. `createOptimistic` and `createOptimisticStore` are derivations over a settled value and a
+are gone. `optimistic` and `optimisticStore` are derivations over a settled value and a
 list of pending layers, so rollback is the removal of a layer rather than the write-back of a
 snapshot (A4). A1–A4 and E2.3 moved from `VIOLATED` to `HOLDS` with three new L1 fixtures.
 
@@ -2228,9 +2228,9 @@ nothing is parked, and there is no second scope. A5 is now a seven-clause specif
 falsification procedures and is no longer the one `NOT SPECIFIED` rule.
 
 What landed is in `packages/core` only — the compiler emits nothing for transitions because there is
-no transition API to call. `createOptimistic` moved from three reactive nodes (a settled signal, a
+no transition API to call. `optimistic` moved from three reactive nodes (a settled signal, a
 `layers` signal and a memo folding one over the other) to **one node with two buffers**, and
-`createOptimisticStore`'s two stores were already those two buffers and gained the same mode-routed
+`optimisticStore`'s two stores were already those two buffers and gained the same mode-routed
 read. The M7 pending-layer list was not replaced by a second mechanism: it *is* the override buffer,
 and the resource's single `override` slot is the same thing at arity one. What forced the buffers onto
 the node was the read surface — `latest` and `isPending` are read MODES, a mode is not a dependency,
@@ -2270,7 +2270,7 @@ consequences are:
 
 - `packages/extra`'s suite is RED — 46 pass / 54 fail of 100, every failure one signature
   (`props.initialPath` off a Scope for 53 of them; the 54th is `config.base`, the same cause observed
-  from inside a `createScope`, where `getOwner()` returns a Scope rather than `null` so the throw is
+  from inside a `scope`, where `getOwner()` returns a Scope rather than `null` so the throw is
   displaced one frame into `initMemoryRouter`). Root `bun run test` therefore exits non-zero, and so
   does the CI job that runs it; `bun run test:gated` is the M2→M8 gate.
 - **`packages/kitchen-sink` renders a BLANK PAGE.** `<div id="app"></div>` stays empty, with
@@ -2767,7 +2767,7 @@ The question was whether a transition may fork the reactive graph or must be exp
 forks alone. Solid does NEITHER, and there is no second scope.
 
 `startTransition` and `useTransition` are DELETED; there is no transition API. Only opt-in
-`createOptimistic` nodes are double-buffered — `_value` authoritative, `_overrideValue` pending — and
+`optimistic` nodes are double-buffered — `_value` authoritative, `_overrideValue` pending — and
 the mechanism is stated in their own comment: "No revert target is stashed: while the override is
 active every reader sees it, so authoritative arrivals commit silently into `_value` and reverting is
 just dropping the override — `_value` is already correct." A transition's write lands in the override,
@@ -2797,11 +2797,11 @@ graphs overlap, with an active override acting as the barrier that stops the mer
 there is nothing to infer, merge or barrier. Two lanes on one node stack in claim order and retire
 independently. This is the one place their design is answering a question this one does not have.
 
-*"Two slots" is one slot holding M7's list.* The pending-layer list `createOptimistic` already had IS
+*"Two slots" is one slot holding M7's list.* The pending-layer list `optimistic` already had IS
 the override buffer — the answer to "does the override subsume the layer list or sit beside it" is
 that they were always one mechanism at two arities, and the resource's single `override` signal is the
 degenerate case. M7b unified the storage; it did not add a second. Net effect on allocation:
-`createOptimistic` went from three reactive nodes to one.
+`optimistic` went from three reactive nodes to one.
 
 *What actually forced the move onto the node was the read surface, not the double buffering.* A
 derivation over a settled signal and a pending-layer signal has exactly one mode, and `latest`,
@@ -2917,7 +2917,7 @@ this in its own place too, so that the dead number cannot be used to reopen the 
 
 Decided by the user, after the export surface was audited and found to carry **three constructor
 conventions at once**: bare (`signal`, `computed`, `effect`, `resource`), `create*`
-(`createScope`, `createContext`, `createOptimistic`, `createReaction`, …) and `use*` (`useState`,
+(`scope`, `context`, `optimistic`, `reaction`, …) and `use*` (`useState`,
 `useMemo`, `useEffect`, `useResource`, `useStore`, `useContext`, `useRef`).
 
 The split was not a design; it was sediment. Half of Solid's constructors had been renamed
@@ -2935,13 +2935,29 @@ form — two public names for one function.
 | `useContext` | **kept** | see below — it is not an alias |
 | `useRef` | the `ref` channel | §4.1; a writable binding IS the ref (B3) |
 | `createAsync` | `computed(fn, { key })` | it was `computed` plus an SSR seed key, and the key still defaults to the owner-tree id at CREATION — which is what keeps server and client numbering identical |
-| `createScope` / `createRoot` / `createOwner` / `createContext` | `scope` / `root` / `owner` / `context` | |
-| `createReaction` / `createTrackedEffect` | `reaction` / `trackedEffect` | |
-| `createOptimistic` / `createOptimisticStore` / `createProjection` | `optimistic` / `optimisticStore` / `projection` | |
-| `createErrorBoundary` / `createLoadingBoundary` / `createRevealOrder` | `errorBoundary` / `loadingBoundary` / `revealOrder` | |
-| `merge` | `mergeProps` | two names for one operation |
+| `scope` / `root` / `owner` / `context` | `scope` / `root` / `owner` / `context` | |
+| `reaction` / `trackedEffect` | `reaction` / `trackedEffect` | |
+| `optimistic` / `optimisticStore` / `projection` | `optimistic` / `optimisticStore` / `projection` | |
+| `errorBoundary` / `loadingBoundary` / `revealOrder` | `errorBoundary` / `loadingBoundary` / `revealOrder` | |
+| ~~`merge`~~ | **KEPT** | see below — the row is wrong twice over |
 | `getProperty` / `setProperty` | — | zero consumers anywhere, and one character from `setProp`, which is a different thing |
-| `dyn` | `dynamic` | the name frees up when the component dies; it was the only abbreviation among `element`, `reveal`, `branch`, `each`, `boundary`, `portal` |
+| `dynamic` | `dynamic` | the name frees up when the component dies; it was the only abbreviation among `element`, `reveal`, `branch`, `each`, `boundary`, `portal` |
+
+**`merge` STAYS, and the row above is wrong on both of its claims.** M9 tried to
+delete it and reversed on evidence.
+
+- They are not one operation. `merge` treats a later `undefined` as a VALUE and
+  `mergeProps` skips it, which is a real difference in what a defaulted prop
+  resolves to — `props.test.ts` pins it in a test named for it ("mergeProps
+  skips a later undefined; merge treats it as a value"), and `props.ts` says so
+  at the definition.
+- The direction is backwards for the version it cites. `@solidjs/signals`
+  2.0.0-beta.31 exports `merge` and has NO `mergeProps`; `mergeProps` is
+  Solid 1.x's name. Renaming toward `mergeProps` moves AWAY from Solid 2.0,
+  which is what the rest of this section is aligning with.
+
+Both names stay until someone decides which undefined rule is the one barq
+wants — that is a semantics question, and this section is about spelling.
 
 **`useContext` is the one `use*` that stays**, and the reason is that it is not an alias of a
 constructor. The four that went were one-line wrappers over `signal`, `computed`, `effect` and
@@ -2951,6 +2967,36 @@ read API is `useContext` (in `solid-js`), which wraps this primitive" — and `s
 `useContext`. barq keeps both, and the difference between them is the return: `getContext` answers
 with the VALUE and throws when there is none, `useContext` answers with the Cell (§3.0), which is
 what a component wants and what compiled code emits.
+
+### What M9 actually renamed
+
+Every row above shipped except `merge`. Counted over the repo, word-boundary:
+`createScope` 300 → `scope`, `createContext` 96 → `context`, `createRoot` 85 →
+`root`, `dyn` 64 → `dynamic`, `createOptimistic` 60 → `optimistic`,
+`createProjection` 34 → `projection`, `createOptimisticStore` 21 →
+`optimisticStore`, `createOwner` 11 → `owner`, `createLoadingBoundary` 11 →
+`loadingBoundary`, `createReaction` 11 → `reaction`, `createTrackedEffect` 10 →
+`trackedEffect`, `createErrorBoundary` 10 → `errorBoundary`, `createRevealOrder`
+9 → `revealOrder`. `getProperty`/`setProperty` left `index.ts` and stayed as
+internal helpers of `type-utils.ts`.
+
+Two things the rename needed that a search-and-replace does not give you:
+
+- **`dyn` is a Rust keyword.** The compiler is Rust, and `&dyn Any` /
+  `&'d dyn Fn(…)` are not the helper name. Renaming them produced
+  `&dynamic Any`, which does not compile — caught by `cargo build`, which is
+  why the rename runs through it.
+- **Four of the new names shadow their own initialiser.** `const context =
+  context(1)` is a TDZ error, not a shadowing warning, and it appeared in four
+  files the moment `createContext` became `context`. The LOCAL is what moves —
+  `const ctx = context(1)` — because the import is the name the section is
+  about.
+
+The compiler's own symbol table moved with it: `Prim::UseState`, `UseMemo`,
+`UseStore` and `CreateAsync` are gone, `"useResource"` stops resolving, and the
+remaining variants are named for the exports they classify (`Store`,
+`Optimistic`, `OptimisticStore`, `Projection`). A compiler that still recognises
+a name the runtime no longer exports is classifying a program that cannot load.
 
 **Solid source compatibility is not a goal and was already gone.** §11's calling convention —
 components take their scope first, props are Cells and are called — means no Solid component compiles

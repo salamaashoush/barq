@@ -452,13 +452,13 @@ export const snapshot = unwrap;
  *
  * @example
  * ```ts
- * const selected = createProjection<Record<string, boolean>>((draft) => {
+ * const selected = projection<Record<string, boolean>>((draft) => {
  *   for (const key of Object.keys(draft)) draft[key] = false;
  *   draft[selectedId()] = true;
  * }, {});
  * ```
  */
-export function createProjection<T extends object>(
+export function projection<T extends object>(
   fn: (draft: T) => void | T,
   seed: T = {} as T,
 ): DeepReadonly<T> {

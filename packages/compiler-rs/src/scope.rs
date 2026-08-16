@@ -315,11 +315,11 @@ mod tests {
 
         let disposer = rewritten(
             "export const V = () => {\n\
-               const outer = createScope((d) => { render(<b />, host); return d }, true);\n\
+               const outer = scope((d) => { render(<b />, host); return d }, true);\n\
                return <i>{outer}</i>;\n\
              };\n",
         );
-        assert!(disposer.contains("createScope((d) =>"), "{disposer}");
+        assert!(disposer.contains("scope((d) =>"), "{disposer}");
     }
 
     /// A row callback IS a Block under the new convention (C6: slot parameters

@@ -896,8 +896,8 @@ mod tests {
     #[test]
     fn a_provider_owns_its_direct_child() {
         let tree = tree_of(
-            "import { createContext } from '@barqjs/core';\n\
-             const Ctx = createContext();\n\
+            "import { context } from '@barqjs/core';\n\
+             const Ctx = context();\n\
              const Child = () => <span>x</span>;\n\
              export default function App() { return <Ctx.Provider value={1}><Child /></Ctx.Provider>; }\n",
         );
@@ -924,8 +924,8 @@ mod tests {
     #[test]
     fn a_wrapper_component_forwards_its_children_into_the_construct_it_hands_them_to() {
         let tree = tree_of(
-            "import { createContext } from '@barqjs/core';\n\
-             const Ctx = createContext();\n\
+            "import { context } from '@barqjs/core';\n\
+             const Ctx = context();\n\
              const Label = () => <span>x</span>;\n\
              function Shell(props) { return <Ctx.Provider value={1}>{props.children}</Ctx.Provider>; }\n\
              export default function App() { return <Shell><Label /></Shell>; }\n",

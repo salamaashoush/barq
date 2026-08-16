@@ -20,7 +20,7 @@ import { type StreamSink, esc, resumeDeferred, setStreamSink } from "./ssr.ts";
 import {
   NotReadyError,
   clearHydrationData,
-  createScope,
+  scope,
   flush,
   getHydrationData,
   setAsyncSession,
@@ -36,7 +36,7 @@ export function renderToString(fn: () => JSXElement): string {
   let markup: string | null = null;
   let dispose!: () => void;
 
-  createScope((d) => {
+  scope((d) => {
     dispose = d;
     const value = fn();
     // A module compiled by the SSR string backend already IS the markup, and
@@ -94,7 +94,7 @@ export async function renderPage(
 
   const prev = setAsyncSession(session);
   try {
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       const value = fn();
       if (isSsrHtml(value)) {
@@ -127,7 +127,7 @@ export async function renderPage(
     const restore = setAsyncSession(session);
     try {
       let second!: () => void;
-      createScope((d) => {
+      scope((d) => {
         second = d;
         const settled = fn();
         markup = isSsrHtml(settled) ? settled.t : typeof settled === "string" ? settled : "";
@@ -252,7 +252,7 @@ export function renderToStream(fn: () => JSXElement): ReadableStream<Uint8Array>
   const previousSession = setAsyncSession(session);
   const previousSink = setStreamSink(sink);
   try {
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       const value = fn();
       shell = isSsrHtml(value) ? value.t : esc(value);

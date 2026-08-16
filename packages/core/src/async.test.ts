@@ -18,7 +18,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { type Resource, resource } from "./async.ts";
-import { NotReadyError, batch, createScope, effect, resolve, signal } from "./signals.ts";
+import { NotReadyError, batch, scope, effect, resolve, signal } from "./signals.ts";
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
@@ -315,7 +315,7 @@ describe("A1: cancellation is structural", () => {
     let handed: AbortSignal | undefined;
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       const r = resource(
         () => null,
@@ -357,7 +357,7 @@ describe("A1: cancellation is structural", () => {
     let handed: AbortSignal | undefined;
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       const r = resource(
         () => null,
@@ -488,7 +488,7 @@ describe("A2: a response arriving after a newer request was issued never wins", 
     const handed: AbortSignal[] = [];
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       const r = resource(
         () => which(),
@@ -713,7 +713,7 @@ describe("Resource edge cases", () => {
     let dispose: (() => void) | undefined;
     let held: Resource<string> | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       held = resource(
         () => source(),

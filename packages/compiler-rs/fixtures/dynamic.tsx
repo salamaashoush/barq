@@ -23,7 +23,7 @@ export const optimality = {
   // `spread` and `insert` — the two entry points every other element goes
   // through — so the fifth element-creation path that kept this construct on
   // its adapter does not exist to emit.
-  emits: ["branch(", "dyn(", '() => "dyn"', '() => "inner"'],
+  emits: ["branch(", "dynamic(", '() => "dyn"', '() => "inner"'],
   // The adapter frame, and the props record it read `component` out of.
   absent: ["Dynamic(", "component: "],
 }

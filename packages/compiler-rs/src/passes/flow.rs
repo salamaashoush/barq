@@ -652,7 +652,7 @@ fn dynamic<'a>(
     let properties = ArenaVec::from_iter_in(properties, &shaper.allocator);
     let props = Expression::new_object_expression(span, properties, &shaper.ast);
 
-    let callee = shaper.helper(Helper::Dyn, span);
+    let callee = shaper.helper(Helper::Dynamic, span);
     let scope = shaper.ident(shaper.scope, span);
     let call = call(shaper, callee, vec![scope, dup(shaper, &cell), props], span);
     let scope = shaper.scope;

@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
   currentRevealHandle,
-  createErrorBoundary,
-  createLoadingBoundary,
-  createRevealOrder,
+  errorBoundary,
+  loadingBoundary,
+  revealOrder,
   enforceLoadingBoundary,
   flatten,
   hasEscapedError,
   resetErrorHalt,
 } from "./boundaries.ts";
-import { computed, createScope, effect, flush, signal } from "./signals.ts";
+import { computed, scope, effect, flush, signal } from "./signals.ts";
 
 /**
  * Drain pending microtasks and flush. Deliberately not settle(): that awaits
@@ -20,17 +20,17 @@ async function tick(): Promise<void> {
   flush();
 }
 
-describe("createLoadingBoundary", () => {
+describe("loadingBoundary", () => {
   test("shows the fallback while pending, then the content", async () => {
     let view!: () => unknown;
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const src = signal(1);
       const data = computed(async () => {
         const v = src();
         await Promise.resolve();
         return `data:${v}`;
       });
-      view = createLoadingBoundary(
+      view = loadingBoundary(
         () => data(),
         () => "loading",
       );
@@ -43,9 +43,9 @@ describe("createLoadingBoundary", () => {
   });
 
   test("synchronous content passes straight through", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
-      const view = createLoadingBoundary(
+      const view = loadingBoundary(
         () => a() * 2,
         () => "loading",
       );
@@ -60,14 +60,14 @@ describe("createLoadingBoundary", () => {
   test("re-shows the fallback when a new async question is asked", async () => {
     let view!: () => unknown;
     let src!: ReturnType<typeof signal<number>>;
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       src = signal(1);
       const data = computed(async () => {
         const v = src();
         await Promise.resolve();
         return `data:${v}`;
       });
-      view = createLoadingBoundary(
+      view = loadingBoundary(
         () => data(),
         () => "loading",
       );
@@ -85,8 +85,8 @@ describe("createLoadingBoundary", () => {
   });
 
   test("non-pending errors propagate out of the boundary", () => {
-    const dispose = createScope((d) => {
-      const view = createLoadingBoundary(
+    const dispose = scope((d) => {
+      const view = loadingBoundary(
         () => {
           throw new Error("kaboom");
         },
@@ -99,10 +99,10 @@ describe("createLoadingBoundary", () => {
   });
 });
 
-describe("createErrorBoundary", () => {
+describe("errorBoundary", () => {
   test("catches a synchronous throw and exposes the error", () => {
-    const dispose = createScope((d) => {
-      const view = createErrorBoundary(
+    const dispose = scope((d) => {
+      const view = errorBoundary(
         () => {
           throw new Error("bad");
         },
@@ -115,9 +115,9 @@ describe("createErrorBoundary", () => {
   });
 
   test("passes content through when nothing throws", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
-      const view = createErrorBoundary(
+      const view = errorBoundary(
         () => a() + 1,
         () => "caught",
       );
@@ -130,10 +130,10 @@ describe("createErrorBoundary", () => {
   });
 
   test("reset recovers once the source stops throwing", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       let boom = true;
       let reset!: () => void;
-      const view = createErrorBoundary(
+      const view = errorBoundary(
         () => {
           if (boom) throw new Error("bad");
           return "ok";
@@ -153,9 +153,9 @@ describe("createErrorBoundary", () => {
   });
 
   test("catches errors thrown by effects created under it", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
-      const view = createErrorBoundary(
+      const view = errorBoundary(
         () => {
           effect(() => {
             if (a() > 0) throw new Error("effect blew up");
@@ -174,10 +174,10 @@ describe("createErrorBoundary", () => {
   });
 });
 
-describe("createRevealOrder", () => {
+describe("revealOrder", () => {
   test("returns the inner value and installs a coordinator", () => {
-    const dispose = createScope((d) => {
-      const value = createRevealOrder(() => "inner");
+    const dispose = scope((d) => {
+      const value = revealOrder(() => "inner");
       expect(value).toBe("inner");
       return d;
     }, true);
@@ -185,11 +185,11 @@ describe("createRevealOrder", () => {
   });
 
   test("sequential holds later boundaries until earlier ones settle", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const first = signal(false);
       const second = signal(true);
       let displays!: Array<() => string>;
-      createRevealOrder(
+      revealOrder(
         () => {
           const handle = currentRevealHandle()!;
           const a = handle.register({ settled: () => first() });
@@ -209,11 +209,11 @@ describe("createRevealOrder", () => {
   });
 
   test("together holds everyone until all settle", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const first = signal(true);
       const second = signal(false);
       let displays!: Array<() => string>;
-      createRevealOrder(
+      revealOrder(
         () => {
           const handle = currentRevealHandle()!;
           const a = handle.register({ settled: () => first() });
@@ -232,10 +232,10 @@ describe("createRevealOrder", () => {
   });
 
   test("collapsed suppresses output past the sequential frontier", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const first = signal(false);
       let displays!: Array<() => string>;
-      createRevealOrder(
+      revealOrder(
         () => {
           const handle = currentRevealHandle()!;
           const a = handle.register({ settled: () => first() });
@@ -293,7 +293,7 @@ describe("flatten", () => {
 
 describe("enforceLoadingBoundary", () => {
   test("makes an unbounded pending read throw", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       enforceLoadingBoundary(true);
       try {
         const data = computed(async () => {
@@ -315,7 +315,7 @@ describe("enforceLoadingBoundary", () => {
 
   test("off by default", async () => {
     let ok = true;
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const data = computed(async () => {
         await Promise.resolve();
         return 1;
@@ -339,7 +339,7 @@ describe("resetErrorHalt", () => {
   test("clears the escaped-error latch", () => {
     resetErrorHalt();
     expect(hasEscapedError()).toBe(false);
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(0);
       effect(() => {
         if (a() > 0) throw new Error("escaped");

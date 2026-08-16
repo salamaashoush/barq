@@ -27,7 +27,7 @@ import {
   type Scope,
   block,
   branch,
-  createRoot,
+  root,
   each,
   element,
   getOwner,
@@ -47,7 +47,7 @@ export function h(tag: string, props: Props, ...children: Child[]): Node {
   // Every prop write is scope-owned (B4/O4.5), so a builder called outside any
   // owner needs one. `createElement` reached for `getOwner()` and threw the
   // same way; opening a root here is what keeps a bench a bench.
-  return getOwner() === null ? createRoot(build) : build();
+  return getOwner() === null ? root(build) : build();
 }
 
 /** `Show`, as the `branch` it always reached. */

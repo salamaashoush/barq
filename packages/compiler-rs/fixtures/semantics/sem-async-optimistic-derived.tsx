@@ -19,11 +19,11 @@
  *
  * SEMANTICS.md §10 A4.
  */
-import { action, createOptimistic, render } from "@barqjs/core"
+import { action, optimistic, render } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
-export const status = createOptimistic("saved")
+export const status = optimistic("saved")
 
 let release: (() => void) | null = null
 let previous: (() => void) | null = null

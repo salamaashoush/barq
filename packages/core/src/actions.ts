@@ -199,7 +199,7 @@ function claimLayer<L extends object>(
  * coming. Retiring the lane drops the override, exposing whatever the
  * authoritative buffer has become in the meantime.
  */
-export function createOptimistic<T>(initialValue: T, options?: SignalOptions<T>): Signal<T> {
+export function optimistic<T>(initialValue: T, options?: SignalOptions<T>): Signal<T> {
   const target = signal(initialValue, options);
   const read = (() => target()) as Signal<T>;
 
@@ -263,7 +263,7 @@ interface StoreLayer {
  * Reads are routed by mode exactly as a value's are: normal reads see the
  * override, `latest()` reads through to `base`, `isPending()` reports.
  */
-export function createOptimisticStore<T extends object>(seed: T): Store<T> {
+export function optimisticStore<T extends object>(seed: T): Store<T> {
   const [base, setBase] = store(seed);
   const [view, setView] = store(structuredClone(unwrap(seed)));
   const layers = signal<StoreLayer[]>([]);

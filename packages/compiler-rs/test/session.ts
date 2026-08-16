@@ -60,7 +60,7 @@ export const FRAME_MARKER = "l4-frame"
 interface CoreLike {
   flush(): void
   render(block: unknown, container: Node): () => void
-  createScope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T
+  scope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T
   clearDelegatedEvents(): void
   enter(parent: unknown, kind: string): object
   exit(scope: object): void
@@ -477,7 +477,7 @@ export async function openSession(
   }
 
   try {
-    core.createScope(
+    core.scope(
       (d: () => void) => {
         dispose = d
         clear = core.render(mod.default as never, container)

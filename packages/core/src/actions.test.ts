@@ -3,10 +3,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { action, affects, commit, createOptimistic, createOptimisticStore } from "./actions.ts";
+import { action, affects, commit, optimistic, optimisticStore } from "./actions.ts";
 import {
   computed,
-  createScope,
+  scope,
   effect,
   flush,
   isPending,
@@ -45,7 +45,7 @@ describe("action", () => {
   });
 
   test("errors propagate and still complete the action", async () => {
-    const opt = createOptimistic(0);
+    const opt = optimistic(0);
     const run = action(function* () {
       opt.set(99);
       yield Promise.reject(new Error("api down"));
@@ -58,9 +58,9 @@ describe("action", () => {
   });
 });
 
-describe("createOptimistic", () => {
+describe("optimistic", () => {
   test("writes outside an action behave like a signal", () => {
-    const opt = createOptimistic(1);
+    const opt = optimistic(1);
     opt.set(5);
     expect(opt()).toBe(5);
     opt.update((n) => n + 1);
@@ -68,7 +68,7 @@ describe("createOptimistic", () => {
   });
 
   test("writes during an action revert on completion", async () => {
-    const opt = createOptimistic("saved");
+    const opt = optimistic("saved");
     const seen: string[] = [];
     effect(() => {
       seen.push(opt());
@@ -89,7 +89,7 @@ describe("createOptimistic", () => {
   });
 
   test("optimistic write after a yield still reverts (generator context)", async () => {
-    const opt = createOptimistic(0);
+    const opt = optimistic(0);
 
     const run = action(function* () {
       yield tick();
@@ -112,7 +112,7 @@ describe("createOptimistic", () => {
       await tick();
       return serverValue;
     });
-    const opt = createOptimistic<number | null>(null);
+    const opt = optimistic<number | null>(null);
     // UI value: optimistic overlay if present, else server data
     const display = computed(() => opt() ?? data());
 
@@ -150,7 +150,7 @@ describe("createOptimistic", () => {
   // what remains. A snapshot taken at the first optimistic write would name the
   // value the settled state had BEFORE the push, and write it back over it.
   test("a real write landing mid-action survives the action's retirement", async () => {
-    const opt = createOptimistic("saved");
+    const opt = optimistic("saved");
 
     const save = action(function* () {
       opt.set("saving...");
@@ -170,7 +170,7 @@ describe("createOptimistic", () => {
   });
 
   test("two overlapping actions each retire only their own layer", async () => {
-    const opt = createOptimistic(0);
+    const opt = optimistic(0);
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((res) => {
       releaseFirst = res;
@@ -215,7 +215,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   // rethrows is a value that has never held one, read from inside a derivation,
   // where the throw is what a boundary is for. Everywhere else they answer.
   test("latest() answers `undefined` for a never-settled value outside a derivation", () => {
-    createScope(() => {
+    scope(() => {
       const pending = computed(() => new Promise<string>(() => {}) as unknown as string);
       expect(latest(() => pending())).toBeUndefined();
       expect(isPending(() => pending())).toBe(false);
@@ -224,7 +224,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   });
 
   test("and both suspend for one INSIDE a derivation, which is the boundary's cue", () => {
-    createScope(() => {
+    scope(() => {
       const pending = computed(() => new Promise<string>(() => {}) as unknown as string);
       const derived = computed(() => latest(() => pending()));
       expect(() => derived()).toThrow(NotReadyError);
@@ -255,7 +255,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   });
 
   test("a normal read sees the override, latest() reads through it", async () => {
-    const opt = createOptimistic("saved");
+    const opt = optimistic("saved");
     const save = action(function* () {
       opt.set("saving...");
       yield tick();
@@ -276,7 +276,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   // authoritative buffer UNDERNEATH the override, so no revert target is
   // stashed and settling is just dropping the override.
   test("a live write during a lane lands under the override, visible through latest()", async () => {
-    const opt = createOptimistic("saved");
+    const opt = optimistic("saved");
     const save = action(function* () {
       opt.set("saving...");
       yield tick();
@@ -294,7 +294,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   });
 
   test("isPending reports a lane on the value it overrides, and stops when it retires", async () => {
-    const opt = createOptimistic(0);
+    const opt = optimistic(0);
     expect(isPending(() => opt())).toBe(false);
 
     let release!: () => void;
@@ -320,7 +320,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   // readable and a Loading boundary has nothing to suspend. A lane that
   // propagated as a status would suspend the content it exists to show.
   test("a derivation over an overridden value stays readable and is not pending", async () => {
-    const opt = createOptimistic(1);
+    const opt = optimistic(1);
     const doubled = computed(() => opt() * 2);
     expect(doubled()).toBe(2);
 
@@ -346,7 +346,7 @@ describe("A5: overrides, lanes and the read surface", () => {
 
   // affects() is the primitive that DOES propagate, and it still does.
   test("affects still holds a derived value pending, unlike a lane", async () => {
-    const opt = createOptimistic(1);
+    const opt = optimistic(1);
     const doubled = computed(() => opt() * 2);
     doubled();
 
@@ -374,7 +374,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   // exists to avoid. The mode switch therefore applies where the override
   // lives — at the node — and a derivation serves whatever it last computed.
   test("the mode switch does not reach through a memo", async () => {
-    const opt = createOptimistic(1);
+    const opt = optimistic(1);
     const doubled = computed(() => opt() * 2);
 
     let release!: () => void;
@@ -402,8 +402,8 @@ describe("A5: overrides, lanes and the read surface", () => {
   // No union-find: a lane is an explicit transaction lifetime, so two lanes
   // whose graphs overlap never merge and neither blocks the other.
   test("lanes do not merge, even where their graphs overlap", async () => {
-    const a = createOptimistic(0);
-    const b = createOptimistic(0);
+    const a = optimistic(0);
+    const b = optimistic(0);
     const sum = computed(() => a() + b());
 
     let releaseSlow!: () => void;
@@ -456,7 +456,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   });
 
   test("the override slot is released, not merely emptied", async () => {
-    const opt = createOptimistic(0);
+    const opt = optimistic(0);
     const run = action(function* () {
       opt.set(1);
       yield tick();
@@ -471,9 +471,9 @@ describe("A5: overrides, lanes and the read surface", () => {
   // asserted because the failure this pins is that the two orders disagree —
   // one of them alone reads like the mode reaching through.
   test("the memo answers in whichever mode first computed it, in both orders", async () => {
-    const first = createOptimistic(1);
+    const first = optimistic(1);
     const firstDoubled = computed(() => first() * 2);
-    const second = createOptimistic(1);
+    const second = optimistic(1);
     const secondDoubled = computed(() => second() * 2);
 
     let release!: () => void;
@@ -511,7 +511,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   // The store form has always accumulated its setter calls; the value form now
   // agrees, so `update(n => n + 1)` twice in one action is `+2` in both.
   test("two writes in one lane compose rather than replace", async () => {
-    const n = createOptimistic(0);
+    const n = optimistic(0);
     let release!: () => void;
     const gate = new Promise<void>((res) => {
       release = res;
@@ -533,7 +533,7 @@ describe("A5: overrides, lanes and the read surface", () => {
     await p;
     expect(n()).toBe(0);
 
-    const m = createOptimistic(0);
+    const m = optimistic(0);
     let release2!: () => void;
     const gate2 = new Promise<void>((res) => {
       release2 = res;
@@ -553,7 +553,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   // is a LANE write and is dropped when the lane retires. `commit` is the way
   // an action writes the answer it went to fetch.
   test("commit() writes the authoritative buffer from inside the action", async () => {
-    const value = createOptimistic("server-0");
+    const value = optimistic("server-0");
     const run = action(function* () {
       value.set("optimistic");
       yield tick();
@@ -574,7 +574,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   // The stated constraint the line above exists for: WITHOUT `commit`, the
   // post-yield write is a lane write and retires with the lane.
   test("without commit() a post-yield write is a lane write and retires", async () => {
-    const value = createOptimistic("server-0");
+    const value = optimistic("server-0");
     const run = action(function* () {
       value.set("optimistic");
       yield tick();
@@ -586,7 +586,7 @@ describe("A5: overrides, lanes and the read surface", () => {
   });
 
   test("commit() reaches the store form and survives the lane", async () => {
-    const [state, setState] = createOptimisticStore({ n: 0 });
+    const [state, setState] = optimisticStore({ n: 0 });
     const run = action(function* () {
       setState((draft) => {
         draft.n = 1;
@@ -608,16 +608,16 @@ describe("A5: overrides, lanes and the read surface", () => {
   });
 
   test("commit() outside an action is a plain call", () => {
-    const value = createOptimistic(1);
+    const value = optimistic(1);
     expect(commit(() => value() + 1)).toBe(2);
     commit(() => value.set(4));
     expect(value()).toBe(4);
   });
 });
 
-describe("createOptimisticStore", () => {
+describe("optimisticStore", () => {
   test("setter writes during an action revert on completion", async () => {
-    const [todos, setTodos] = createOptimisticStore<{
+    const [todos, setTodos] = optimisticStore<{
       items: { text: string; pending?: boolean }[];
     }>({ items: [{ text: "a" }] });
 
@@ -639,7 +639,7 @@ describe("createOptimisticStore", () => {
   });
 
   test("writes outside an action persist", () => {
-    const [state, setState] = createOptimisticStore<{ n: number }>({ n: 0 });
+    const [state, setState] = optimisticStore<{ n: number }>({ n: 0 });
     setState("n", 5);
     expect(state.n).toBe(5);
   });
@@ -648,7 +648,7 @@ describe("createOptimisticStore", () => {
   // store at the first optimistic write and wrote the clone back at
   // completion, so this real write disappeared.
   test("a real store write landing mid-action survives the action's retirement", async () => {
-    const [state, setState] = createOptimisticStore<{ n: number; note: string }>({
+    const [state, setState] = optimisticStore<{ n: number; note: string }>({
       n: 0,
       note: "",
     });
@@ -675,7 +675,7 @@ describe("createOptimisticStore", () => {
   // does. The lane's setter calls are how `view` is RECOMPUTED, not a second
   // place values are kept.
   test("a normal read sees the override, latest() reads through it", async () => {
-    const [state, setState] = createOptimisticStore<{ n: number }>({ n: 1 });
+    const [state, setState] = optimisticStore<{ n: number }>({ n: 1 });
 
     let release!: () => void;
     const gate = new Promise<void>((res) => {
@@ -699,7 +699,7 @@ describe("createOptimisticStore", () => {
   });
 
   test("the routed store still enumerates and unwraps", () => {
-    const [state] = createOptimisticStore<{ a: number; b: string }>({ a: 1, b: "x" });
+    const [state] = optimisticStore<{ a: number; b: string }>({ a: 1, b: "x" });
     expect(Object.keys(state).toSorted()).toEqual(["a", "b"]);
     expect("a" in state).toBe(true);
     expect("zz" in state).toBe(false);

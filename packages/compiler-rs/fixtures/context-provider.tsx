@@ -1,6 +1,6 @@
-import { createContext, signal, useContext } from "@barqjs/core"
+import { context, signal, useContext } from "@barqjs/core"
 
-const Theme = createContext<() => string>(() => "light")
+const Theme = context<() => string>(() => "light")
 
 export const theme = signal("dark")
 

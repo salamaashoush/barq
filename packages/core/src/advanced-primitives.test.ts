@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { action, affects } from "./actions.ts";
 import {
   computed,
-  createScope,
+  scope,
   effect,
   enableExternalSource,
   flush,
@@ -20,7 +20,7 @@ afterEach(() => {
 
 describe("markInMotion", () => {
   test("a marked derived value reads as pending until released", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
       const c = computed(() => a() * 2);
       expect(untrack(() => c())).toBe(2);
@@ -38,7 +38,7 @@ describe("markInMotion", () => {
   });
 
   test("the mark survives a recompute", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
       const c = computed(() => a() * 2);
       untrack(() => c());
@@ -54,7 +54,7 @@ describe("markInMotion", () => {
   });
 
   test("marks stack and each needs its own release", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const c = computed(() => 1);
       untrack(() => c());
       const r1 = markInMotion(c);
@@ -69,7 +69,7 @@ describe("markInMotion", () => {
   });
 
   test("releasing twice is harmless", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const c = computed(() => 1);
       untrack(() => c());
       const release = markInMotion(c);
@@ -82,7 +82,7 @@ describe("markInMotion", () => {
   });
 
   test("pending flows downstream", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
       const c = computed(() => a() * 2);
       const downstream = computed(() => c() + 1);
@@ -97,7 +97,7 @@ describe("markInMotion", () => {
   });
 
   test("works on plain signals too", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
       expect(untrack(() => a())).toBe(1);
 
@@ -114,7 +114,7 @@ describe("markInMotion", () => {
   });
 
   test("a marked signal makes its readers pending", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(2);
       const double = computed(() => a() * 2);
       expect(untrack(() => double())).toBe(4);
@@ -135,7 +135,7 @@ describe("markInMotion", () => {
 
 describe("affects", () => {
   test("holds a derived value pending for the life of the action", async () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
       const c = computed(() => a() * 2);
       untrack(() => c());
@@ -158,7 +158,7 @@ describe("affects", () => {
   });
 
   test("releases even when the action throws", async () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const c = computed(() => 1);
       untrack(() => c());
       const run = action(async () => {
@@ -175,7 +175,7 @@ describe("affects", () => {
   });
 
   test("outside an action it is a no-op", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const c = computed(() => 1);
       untrack(() => c());
       affects(c);
@@ -200,7 +200,7 @@ describe("enableExternalSource", () => {
       },
     });
 
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const seen: number[] = [];
       effect(() => {
         seen.push(external);
@@ -228,7 +228,7 @@ describe("enableExternalSource", () => {
       }),
     });
 
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       computed(() => 1);
       return d;
     }, true);
@@ -272,7 +272,7 @@ describe("enableExternalSource", () => {
       }),
     });
 
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const c = computed(() => 1);
       untrack(() => c());
       return d;
@@ -285,7 +285,7 @@ describe("enableExternalSource", () => {
     enableExternalSource({
       factory: (fn) => ({ track: (prev) => fn(prev), dispose: () => {} }),
     });
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
       const c = computed(() => a() * 3);
       expect(untrack(() => c())).toBe(3);

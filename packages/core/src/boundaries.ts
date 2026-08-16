@@ -15,7 +15,7 @@ import {
   LOADING_BOUNDARY,
   NotReadyError,
   computed,
-  createOwner,
+  owner,
   enforceLoadingBoundary,
   getOwner,
   hasEscapedError,
@@ -105,16 +105,16 @@ export function createRevealCoordinator(
  *
  * Both options are accessors so the order can change reactively.
  */
-export function createRevealOrder<T>(
+export function revealOrder<T>(
   fn: () => T,
   options?: { order?: () => RevealOrder; collapsed?: () => boolean },
 ): T {
   const order = options?.order ?? ((): RevealOrder => "sequential");
   const collapsed = options?.collapsed ?? ((): boolean => false);
-  const owner = createOwner("branch");
-  const handle = runWithOwner(owner, () => createRevealCoordinator(order, collapsed));
-  provideOn(owner, REVEAL_COORD, handle);
-  return runWithOwner(owner, fn);
+  const own = owner("branch");
+  const handle = runWithOwner(own, () => createRevealCoordinator(order, collapsed));
+  provideOn(own, REVEAL_COORD, handle);
+  return runWithOwner(own, fn);
 }
 
 // ============================================================================
@@ -125,7 +125,7 @@ export function createRevealOrder<T>(
  * Collects the pending async work below a boundary. Install the handle on an
  * owner and every pending computation under it registers here.
  *
- * Shared by createLoadingBoundary and the `<Loading>` component, which differ
+ * Shared by loadingBoundary and the `<Loading>` component, which differ
  * only in what they do once `count()` is non-zero.
  */
 export interface PendingCollector {
@@ -163,7 +163,7 @@ export function createPendingCollector(): PendingCollector {
 
 /**
  * Captures errors raised below a boundary - both synchronous throws and
- * errors surfacing later from effects. Shared by createErrorBoundary and the
+ * errors surfacing later from effects. Shared by errorBoundary and the
  * `<Errored>` component.
  */
 export interface ErrorCollector {
@@ -206,16 +206,16 @@ export function createErrorCollector(): ErrorCollector {
  * is in flight, the boundary shows the fallback again instead of holding
  * stale content.
  */
-export function createLoadingBoundary<T, U>(
+export function loadingBoundary<T, U>(
   fn: () => T,
   fallback: () => U,
   options?: { on?: () => unknown },
 ): Computed<T | U> {
-  const owner = createOwner("branch");
+  const own = owner("branch");
   const pending = createPendingCollector();
-  pending.install(owner);
+  pending.install(own);
 
-  const content = runWithOwner(owner, () => computed(fn));
+  const content = runWithOwner(own, () => computed(fn));
 
   const onFn = options?.on;
   let lastOn: unknown;
@@ -262,15 +262,15 @@ export function createLoadingBoundary<T, U>(
  * A pending async read is not an error: it propagates so an enclosing Loading
  * boundary can handle it.
  */
-export function createErrorBoundary<T, U>(
+export function errorBoundary<T, U>(
   fn: () => T,
   fallback: (error: () => unknown, reset: () => void) => U,
 ): Computed<T | U> {
-  const owner = createOwner("branch");
+  const own = owner("branch");
   const collector = createErrorCollector();
-  collector.install(owner);
+  collector.install(own);
 
-  const content = runWithOwner(owner, () => computed(fn));
+  const content = runWithOwner(own, () => computed(fn));
 
   const reset = (): void => {
     collector.clear();

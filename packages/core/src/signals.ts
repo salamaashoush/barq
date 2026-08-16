@@ -1931,7 +1931,7 @@ function createComputedNode<T>(
     emitDiagnostic(
       "PRIMITIVE_IN_FORBIDDEN_SCOPE",
       "error",
-      "Reactive primitives cannot be created inside createTrackedEffect; it is a leaf effect for wiring external sources.",
+      "Reactive primitives cannot be created inside trackedEffect; it is a leaf effect for wiring external sources.",
       options?.name,
     );
   }
@@ -2257,7 +2257,7 @@ export function renderEffect<T>(
  * The returned function, if any, is the cleanup: it runs before each re-run
  * and on disposal.
  */
-export function createTrackedEffect(
+export function trackedEffect(
   compute: () => void | (() => void),
   options?: { name?: string },
 ): () => void {
@@ -2281,9 +2281,7 @@ export function createTrackedEffect(
  * `onInvalidate` may return a cleanup, run before the next fire and on
  * disposal of the owner that created the reaction.
  */
-export function createReaction(
-  onInvalidate: () => void | (() => void),
-): (tracking: () => void) => void {
+export function reaction(onInvalidate: () => void | (() => void)): (tracking: () => void) => void {
   let pendingCleanup: (() => void) | undefined;
   const owner = getCurrentOwner();
   let disposeArm: (() => void) | undefined;
@@ -2440,10 +2438,10 @@ export function batch(fn: () => void): void {
 /**
  * Create a reactive scope with optional automatic disposal.
  *
- * - `createScope(fn)` - Auto-disposed when parent disposes (default)
- * - `createScope(fn, true)` - Detached, requires manual disposal
+ * - `scope(fn)` - Auto-disposed when parent disposes (default)
+ * - `scope(fn, true)` - Detached, requires manual disposal
  */
-export function createScope<T>(
+export function scope<T>(
   fn: (dispose: () => void, scope: Scope) => T,
   detached = false,
   kind: ScopeKind = "scope",
@@ -2501,7 +2499,7 @@ export function isTracking(): boolean {
  * Create an owner scope without running anything in it; pair with
  * runWithOwner. Disposed with its parent, or manually via dispose().
  */
-export function createOwner(kind: ScopeKind = "scope"): Owner {
+export function owner(kind: ScopeKind = "scope"): Owner {
   return createOwnerScope(true, kind);
 }
 
@@ -3192,7 +3190,7 @@ export interface Context<T> {
 /**
  * Create a context for dependency injection.
  */
-export function createContext<T>(defaultValue?: T, description?: string): Context<T> {
+export function context<T>(defaultValue?: T, description?: string): Context<T> {
   const id = Symbol(description ?? "context");
 
   /**

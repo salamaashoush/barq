@@ -8,7 +8,7 @@ import { benchmark, generateItems } from "./utils.ts";
 
 // Barq imports
 import {
-  createScope,
+  scope,
   effect,
   computed,
   signal,
@@ -22,7 +22,7 @@ import {
   Show as SolidShow,
   createEffect,
   createMemo,
-  createRoot,
+  root,
   createSignal,
 } from "solid-js";
 import { render as solidRender, template } from "solid-js/web";
@@ -49,12 +49,12 @@ const suites: BenchmarkSuite[] = [
       {
         operation: "create signal",
         barq: () => {
-          createScope(() => {
+          scope(() => {
             signal(0);
           });
         },
         solid: () => {
-          createRoot(() => {
+          root(() => {
             createSignal(0);
           });
         },
@@ -63,7 +63,7 @@ const suites: BenchmarkSuite[] = [
         operation: "1000 signal updates",
         iterations: 500,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const count = signal(0);
             for (let i = 0; i < 1000; i++) {
               count.set(i);
@@ -72,7 +72,7 @@ const suites: BenchmarkSuite[] = [
           });
         },
         solid: () => {
-          createRoot((dispose) => {
+          root((dispose) => {
             const [count, setCount] = createSignal(0);
             for (let i = 0; i < 1000; i++) {
               count.set(i);
@@ -84,14 +84,14 @@ const suites: BenchmarkSuite[] = [
       {
         operation: "create computed",
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const [count] = signal(0);
             computed(() => count() * 2);
             dispose();
           });
         },
         solid: () => {
-          createRoot((dispose) => {
+          root((dispose) => {
             const [count] = createSignal(0);
             createMemo(() => count() * 2);
             dispose();
@@ -102,7 +102,7 @@ const suites: BenchmarkSuite[] = [
         operation: "effect with 100 updates",
         iterations: 500,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             let effectRuns = 0;
             const count = signal(0);
             effect(() => {
@@ -116,7 +116,7 @@ const suites: BenchmarkSuite[] = [
           });
         },
         solid: () => {
-          createRoot((dispose) => {
+          root((dispose) => {
             let effectRuns = 0;
             const [count, setCount] = createSignal(0);
             createEffect(() => {
@@ -134,7 +134,7 @@ const suites: BenchmarkSuite[] = [
         operation: "computed chain (5 deep)",
         iterations: 500,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const a = signal(1);
             const b = computed(() => a() * 2);
             const c = computed(() => b() + 1);
@@ -150,7 +150,7 @@ const suites: BenchmarkSuite[] = [
           });
         },
         solid: () => {
-          createRoot((dispose) => {
+          root((dispose) => {
             const [a, setA] = createSignal(1);
             const b = createMemo(() => a() * 2);
             const c = createMemo(() => b() + 1);
@@ -170,7 +170,7 @@ const suites: BenchmarkSuite[] = [
         operation: "wide deps (10 signals)",
         iterations: 500,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const signals = Array.from({ length: 10 }, (_, i) => signal(i));
             const sum = computed(() => signals.reduce((acc, [s]) => acc + s(), 0));
 
@@ -182,7 +182,7 @@ const suites: BenchmarkSuite[] = [
           });
         },
         solid: () => {
-          createRoot((dispose) => {
+          root((dispose) => {
             const signals = Array.from({ length: 10 }, (_, i) => createSignal(i));
             const sum = createMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
 
@@ -274,7 +274,7 @@ const suites: BenchmarkSuite[] = [
         operation: "render 100 items",
         iterations: 500,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const el = For(() => items100, (_scope, item: () => { id: number; name: string }) =>
                 h("div", { class: "item", "data-id": String(item().id) }, item().name),
@@ -306,7 +306,7 @@ const suites: BenchmarkSuite[] = [
         operation: "render 1000 items",
         iterations: 100,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const el = For(() => items1000, (_scope, item: () => { id: number; name: string }) =>
                 h("div", { class: "item", "data-id": String(item().id) }, item().name),
@@ -338,7 +338,7 @@ const suites: BenchmarkSuite[] = [
         operation: "render 10000 items",
         iterations: 20,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const el = For(() => items10000, (_scope, item: () => { id: number; name: string }) =>
                 h("div", { class: "item", "data-id": String(item().id) }, item().name),
@@ -375,7 +375,7 @@ const suites: BenchmarkSuite[] = [
         operation: "toggle show/hide 100x",
         iterations: 500,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const visible = signal(true);
             const el = Show(visible, () => h("div", { class: "content" }, "Hello World"));
@@ -417,7 +417,7 @@ const suites: BenchmarkSuite[] = [
         operation: "show/fallback toggle 100x",
         iterations: 500,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const visible = signal(true);
             const el = Show(
@@ -474,7 +474,7 @@ const suites: BenchmarkSuite[] = [
         operation: "text update 1000x",
         iterations: 200,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const count = signal(0);
             const el = h("div", null, count);
@@ -510,7 +510,7 @@ const suites: BenchmarkSuite[] = [
         operation: "class update 1000x",
         iterations: 200,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const active = signal(false);
             const el = h("div", {
@@ -548,7 +548,7 @@ const suites: BenchmarkSuite[] = [
         operation: "style update 1000x",
         iterations: 200,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const width = signal(0);
             const el = h("div", {
@@ -592,7 +592,7 @@ const suites: BenchmarkSuite[] = [
         operation: "multi-attr update 500x",
         iterations: 200,
         barq: () => {
-          createScope((dispose) => {
+          scope((dispose) => {
             const container = document.createElement("div");
             const state = signal({ x: 0, y: 0, scale: 1 });
             const el = h("div", {

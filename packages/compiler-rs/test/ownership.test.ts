@@ -408,7 +408,7 @@ describe("the channel is not inert", () => {
  * 15 paired processes, min-of-21 within each, alternating order, happy-dom:
  *
  *   workload                  trace OFF     sites REMOVED   ratio     Wilcoxon
- *   createScope + dispose       5.72          5.72 ns/scope  1.0012x   p=0.532
+ *   scope + dispose       5.72          5.72 ns/scope  1.0012x   p=0.532
  *   template clone            936.18        924.81 ns/clone  1.0123x   p=0.307
  *   200-row mount + dispose   924.49        883.36 ns/row    1.0466x   p=0.281
  *
@@ -420,7 +420,7 @@ describe("the channel is not inert", () => {
  *
  * (A first attempt loaded both runtimes into one process and reported
  * 1.10x–1.22x. That was every shared call site going polymorphic — `insert`,
- * `template` and `createScope` were each two different functions behind one
+ * `template` and `scope` were each two different functions behind one
  * call expression — which is a larger effect than the thing being measured and
  * lands on whichever variant ran second. Separate processes remove it, and it
  * is worth recording as the shape of measurement error this channel invites.)
@@ -433,13 +433,13 @@ describe("the channel is not inert", () => {
 describe("the trace costs nothing when it is off", () => {
   it("adds no field to the scope object, in either state", async () => {
     const core = (await import("@barqjs/core")) as unknown as {
-      createScope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T
+      scope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T
       getOwner: () => object | null
       beginOwnershipTrace: () => void
       endOwnershipTrace: () => unknown[]
     }
     const shape = (): string[] =>
-      core.createScope(() => Object.keys(core.getOwner() ?? {}).sort(), true)
+      core.scope(() => Object.keys(core.getOwner() ?? {}).sort(), true)
     const off = shape()
     core.beginOwnershipTrace()
     const on = shape()
@@ -481,11 +481,11 @@ describe("the trace costs nothing when it is off", () => {
 
   it("mints no identity for a scope created while it is off", async () => {
     const core = (await import("@barqjs/core")) as unknown as {
-      createScope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T
+      scope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T
       getOwner: () => object | null
       ownershipIdOf: (scope: object | null) => number
     }
-    const owner = core.createScope(() => core.getOwner(), true)
+    const owner = core.scope(() => core.getOwner(), true)
     expect(
       core.ownershipIdOf(owner),
       "a scope built outside a trace window must carry no trace identity; the WeakMap " +
@@ -508,13 +508,13 @@ describe("the trace costs nothing when it is off", () => {
 
   it("records nothing at all while it is off", async () => {
     const core = (await import("@barqjs/core")) as unknown as {
-      createScope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T
+      scope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T
       template: (html: string) => () => Node
       beginOwnershipTrace: () => void
       endOwnershipTrace: () => unknown[]
     }
     const make = core.template("<b>x</b>")
-    core.createScope((d: () => void) => {
+    core.scope((d: () => void) => {
       make()
       d()
     }, true)
@@ -660,7 +660,7 @@ describe("self-check: the assertion would notice", () => {
     // has that block build under the root instead. Nothing is edited after the
     // fact; the events are whatever the runtime produced.
     const core = (await import("@barqjs/core")) as unknown as {
-      createScope: <T>(fn: (d: () => void, s: object) => T, detached?: boolean, kind?: string) => T
+      scope: <T>(fn: (d: () => void, s: object) => T, detached?: boolean, kind?: string) => T
       getOwner: () => object | null
       runWithOwner: <T>(owner: object | null, fn: () => T) => T
       template: (html: string) => () => Node
@@ -678,10 +678,10 @@ describe("self-check: the assertion would notice", () => {
       core.beginOwnershipTrace()
       try {
         let dispose: (() => void) | undefined
-        core.createScope(
+        core.scope(
           (d: () => void, root: object) => {
             dispose = d
-            core.createScope(
+            core.scope(
               (_d: () => void, provide: object) => {
                 // `insert` is HANDED the scope it must build under (§3.3 C6),
                 // so `given` is threaded rather than read back off `CURRENT` at
@@ -734,7 +734,7 @@ describe("self-check: the assertion would notice", () => {
     // a check that reported the cheating run through the clone arm would pass
     // this test without ever looking at an effect.
     const core = (await import("@barqjs/core")) as unknown as {
-      createScope: <T>(fn: (d: () => void, s: object) => T, detached?: boolean, kind?: string) => T
+      scope: <T>(fn: (d: () => void, s: object) => T, detached?: boolean, kind?: string) => T
       runWithOwner: <T>(owner: object | null, fn: () => T) => T
       template: (html: string) => () => Node
       insert: (s: object | null, parent: Node, value: unknown, marker?: Node | null) => void
@@ -754,10 +754,10 @@ describe("self-check: the assertion would notice", () => {
       core.beginOwnershipTrace()
       try {
         let dispose: (() => void) | undefined
-        core.createScope(
+        core.scope(
           (d: () => void, root: object) => {
             dispose = d
-            core.createScope(
+            core.scope(
               (_d: () => void, provide: object) => {
                 core.insert(provide, host, () => {
                   const node = make()

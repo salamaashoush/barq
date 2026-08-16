@@ -182,33 +182,30 @@ mod tests {
     #[test]
     fn the_return_shape_table_follows_the_real_signatures() {
         let allocator = Allocator::new();
-        let source = "import { useState, useStore, useResource, createProjection } from \"@barqjs/core\";\n\
-                      const [value, setValue] = useState(0);\n\
-                      const [store, setStore] = useStore({});\n\
-                      const resource = useResource(() => 1, async () => 2);\n\
-                      const projected = createProjection(() => ({}));\n";
+        let source = "import { signal, store, resource, projection } from \"@barqjs/core\";\n\
+                      const value = signal(0);\n\
+                      const [state, setState] = store({});\n\
+                      const loaded = resource(() => 1, async () => 2);\n\
+                      const projected = projection(() => ({}));\n";
         let module = module_of(&allocator, source);
-        assert_eq!(local(&module, "value"), ACCESSOR);
-        assert_eq!(local(&module, "setValue"), SourceKind::Inert);
-        assert_eq!(local(&module, "store"), SourceKind::ReactiveObject);
-        assert_eq!(local(&module, "setStore"), SourceKind::Inert);
-        assert_eq!(local(&module, "resource"), SourceKind::AccessorRecord);
+        assert_eq!(local(&module, "value"), SIGNAL);
+        assert_eq!(local(&module, "state"), SourceKind::ReactiveObject);
+        assert_eq!(local(&module, "setState"), SourceKind::Inert);
+        assert_eq!(local(&module, "loaded"), SourceKind::AccessorRecord);
         assert_eq!(local(&module, "projected"), SourceKind::ReactiveObject);
     }
 
-    /// `CODESIGN.md` §3.8 collapsed the async primitives onto one `resource`.
-    /// `useResource` is the hook-shaped alias for the same export, so both
-    /// spellings have to reach the same row of the return-shape table — and a
-    /// LOCAL binding named `resource` must still be whatever it was bound to.
+    /// `CODESIGN.md` §3.8 collapsed the async primitives onto one `resource`,
+    /// and §13 deleted the `use*` spelling of every constructor — so `resource`
+    /// is the only name that reaches that row, and a LOCAL binding of the same
+    /// name must still be whatever it was bound to.
     #[test]
-    fn the_one_resource_classifies_under_both_of_its_spellings() {
+    fn the_one_resource_classifies_under_its_only_spelling() {
         let allocator = Allocator::new();
-        let source = "import { resource, useResource } from \"@barqjs/core\";\n\
-                      const direct = resource(() => 1, async () => 2);\n\
-                      const hooked = useResource(() => 1, async () => 2);\n";
+        let source = "import { resource } from \"@barqjs/core\";\n\
+                      const direct = resource(() => 1, async () => 2);\n";
         let module = module_of(&allocator, source);
         assert_eq!(local(&module, "direct"), SourceKind::AccessorRecord);
-        assert_eq!(local(&module, "hooked"), SourceKind::AccessorRecord);
 
         let allocator = Allocator::new();
         let shadowed = "const resource = 4;\n\

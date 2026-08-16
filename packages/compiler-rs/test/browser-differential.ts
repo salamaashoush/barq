@@ -185,7 +185,7 @@ function entrySource(fixtures: PageRow[]): string {
 
   return `${PRAGMA}${imports}
 import { normalizeChannels, resetIdentity } from "../../normalize.ts"
-import { clearDelegatedEvents, createScope, delegateEvents, flush, render } from "@barqjs/core"
+import { clearDelegatedEvents, scope, delegateEvents, flush, render } from "@barqjs/core"
 
 const CORPUS = [
 ${table}
@@ -255,7 +255,7 @@ async function drive(mod, delegated) {
     return frame
   }
   try {
-    createScope((d) => {
+    scope((d) => {
       dispose = d
       // C1: render takes the Block, not a built subtree.
       render(mod.default, container)

@@ -22,9 +22,9 @@
  * `SEMANTICS.md` §2 O2, O2.1; §4 X1.
  * Registered in `ownership-known-failures.ts`.
  */
-import { createContext, useContext } from "@barqjs/core"
+import { context, useContext } from "@barqjs/core"
 
-const Theme = createContext<() => string>(() => "fallback-theme")
+const Theme = context<() => string>(() => "fallback-theme")
 
 function Label() {
   const value = useContext(Theme)

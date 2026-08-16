@@ -7,7 +7,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { For, Fragment, Match, Show, Switch } from "./components.ts";
 import { childToNodes, insert } from "./dom.ts";
 import type { Child } from "./dom.ts";
-import { signal, effect, createScope, batch, onCleanup, flush } from "./signals.ts";
+import { signal, effect, scope, batch, onCleanup, flush } from "./signals.ts";
 import type { Scope } from "./scope.ts";
 
 // Simple DOM setup for testing
@@ -321,7 +321,7 @@ describe("Show component", () => {
 
     let disposeParent: (() => void) | undefined;
 
-    createScope((dispose, scope) => {
+    scope((dispose, scope) => {
       disposeParent = dispose;
 
       const node = Show(scope, {
@@ -1111,7 +1111,7 @@ describe("Memory and cleanup", () => {
     let innerEffectRuns = 0;
     const trigger = signal(0);
 
-    const node = createScope((_dispose, scope) =>
+    const node = scope((_dispose, scope) =>
       Show(scope, {
         when: outer,
         children: (inner$: Scope | null) => {
@@ -1158,7 +1158,7 @@ describe("Memory and cleanup", () => {
     const trigger = signal(0);
     let totalEffectRuns = 0;
 
-    const node = createScope((_dispose, scope) =>
+    const node = scope((_dispose, scope) =>
       Show(scope, {
         when: show,
         children: (row$: Scope | null) =>

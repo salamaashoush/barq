@@ -70,7 +70,7 @@
  *
  * The machinery. Each function below resolves its props and calls `branch`,
  * `each`, `boundary` or `portal` (`flow.ts`); what left at M4 was ten
- * copy-pasted `dispose -> clearRange -> createScope -> insertNodes` bodies, the
+ * copy-pasted `dispose -> clearRange -> scope -> insertNodes` bodies, the
  * marker pair per instance, `Show`'s `onCleanup` re-registered inside its own
  * renderEffect, `Dynamic`'s and `Portal`'s detached scopes, `Dynamic`'s fifth
  * element-creation path, `ErrorBoundary`'s build-then-install ordering, and
@@ -82,7 +82,7 @@
 
 import type { Resource } from "./async.ts";
 import type { Child, JSXElement } from "./dom.ts";
-import { dyn } from "./dom.ts";
+import { dynamic } from "./dom.ts";
 import { COUNT, boundary, branch, each, portal, reveal } from "./flow.ts";
 import type { Block, Cell, Scope, Slot } from "./scope.ts";
 import { omit } from "./props.ts";
@@ -401,7 +401,7 @@ export function Portal(
 
 /**
  * `<Dynamic component={c}>` — a `branch` keyed on the component VALUE with one
- * body for every key, and `dyn` inside it. §3.13 item 4: the tag or component
+ * body for every key, and `dynamic` inside it. §3.13 item 4: the tag or component
  * cannot be resolved at compile time, so the choice is made at run time and
  * nowhere else. The swap and the teardown are the branch's.
  */
@@ -412,7 +412,7 @@ export function Dynamic(
   const component = computed(() => readValue(props.component, "Dynamic.component"));
   const rest = omit(props, "component");
   return branch(_s, null, null, component, (scope: Scope | null) =>
-    dyn(scope, component as unknown as Cell<never>, rest),
+    dynamic(scope, component as unknown as Cell<never>, rest),
   ) as JSXElement;
 }
 

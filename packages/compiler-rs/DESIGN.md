@@ -327,11 +327,11 @@ pub struct FreeVars { pub mask: u64, pub only_globals: bool }
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SourceKind {
     /// Calling it is a reactive read. Signal<T> / Computed<T> / createAsync /
-    /// createOptimistic / useMemo / useContext results, and control-flow index
+    /// optimistic / useMemo / useContext results, and control-flow index
     /// accessors. `nonreactive` masks members that are NOT tracked reads.
     Accessor { nonreactive: MemberMask },   // .set .peek .update
-    /// ANY member read is a reactive read: `useStore()[0]`, createProjection,
-    /// `createOptimisticStore()[0]`.
+    /// ANY member read is a reactive read: `useStore()[0]`, projection,
+    /// `optimisticStore()[0]`.
     ReactiveObject,
     /// Members are accessors: member READ is inert, member CALL is reactive.
     /// `Resource<T>`: `.state()` `.loading()` `.error()` `.latest()`;
@@ -518,9 +518,9 @@ does not. Then a small worklist runs to fixpoint over:
 
 - **Return-shape table per primitive.** `signal(v)` → a callable `Signal<T>` with
   `.set`/`.update`/`.peek` — *not* a tuple. `useState(v)` → `[Accessor, Inert]`.
-  `useStore(o)` → `[ReactiveObject, Inert]`. `createProjection(f)` → `ReactiveObject` directly.
-  `resource(s, f)` / `useResource(s, f)` → `AccessorRecord`. `computed`/`useMemo`/`createAsync`/`createOptimistic`
-  → `Accessor`. `createOptimisticStore(s)` → `[ReactiveObject, Inert]`.
+  `useStore(o)` → `[ReactiveObject, Inert]`. `projection(f)` → `ReactiveObject` directly.
+  `resource(s, f)` / `useResource(s, f)` → `AccessorRecord`. `computed`/`useMemo`/`createAsync`/`optimistic`
+  → `Accessor`. `optimisticStore(s)` → `[ReactiveObject, Inert]`.
 - **Aliasing.** `const c = count` → `Accessor`; `const c = count()` → `Inert`.
 - **Reassigned `let`.** Join every write RHS kind; any unresolvable RHS ⇒ `Opaque`.
 - **Control-flow parameter attribution, by arity and position, from the real signatures.**

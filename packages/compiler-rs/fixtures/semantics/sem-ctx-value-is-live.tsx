@@ -13,14 +13,14 @@
  * SEMANTICS.md §4 X2.
  */
 import type { Block } from "@barqjs/core"
-import { createContext, render, signal, useContext } from "@barqjs/core"
+import { context, render, signal, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["X2"]
 
-const Locale = createContext<() => string>()
+const Locale = context<() => string>()
 
 export const locale = signal("fr")
 

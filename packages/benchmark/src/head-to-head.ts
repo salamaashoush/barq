@@ -5,7 +5,7 @@
  */
 import {
   computed as bComputed,
-  createScope as bScope,
+  scope as bScope,
   effect as bEffect,
   flush as bFlush,
   signal as bSignal,
@@ -13,7 +13,7 @@ import {
 import {
   createEffect as sEffect,
   createMemo as sMemo,
-  createRoot as sRoot,
+  root as sRoot,
   createSignal as sSignal,
   flush as sFlush,
 } from "@solidjs/signals";

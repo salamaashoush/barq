@@ -24,11 +24,11 @@
  * 50`), so an adapter that did not flush would not be measuring the same
  * program, it would be failing the benchmark's own assertions.
  */
-import { computed as bComputed, effect as bEffect, flush as bFlush, signal as bSignal, createScope as bScope } from "@barqjs/core"
+import { computed as bComputed, effect as bEffect, flush as bFlush, signal as bSignal, scope as bScope } from "@barqjs/core"
 import {
   createEffect as sEffect,
   createMemo as sMemo,
-  createRoot as sRoot,
+  root as sRoot,
   createSignal as sSignal,
   flush as sFlush,
 } from "@solidjs/signals"

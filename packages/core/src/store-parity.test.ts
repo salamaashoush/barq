@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { merge, omit } from "./props.ts";
 import { effect, flush, signal } from "./signals.ts";
-import { createProjection, reconcile, snapshot, unwrap, store } from "./store.ts";
+import { projection, reconcile, snapshot, unwrap, store } from "./store.ts";
 
 describe("draft-first setters", () => {
   test("mutating the draft commits fine-grained updates", () => {
@@ -89,10 +89,10 @@ describe("draft-first setters", () => {
   });
 });
 
-describe("createProjection", () => {
+describe("projection", () => {
   test("derives a read-only store reactively (selection map)", () => {
     const selectedId = signal("a");
-    const selected = createProjection<Record<string, boolean>>(
+    const selected = projection<Record<string, boolean>>(
       (draft) => {
         for (const key of Object.keys(draft)) draft[key] = false;
         draft[selectedId()] = true;
@@ -111,7 +111,7 @@ describe("createProjection", () => {
 
   test("subscribers only re-run for keys that changed", () => {
     const source = signal(1);
-    const proj = createProjection<{ doubled: number; constant: string }>(
+    const proj = projection<{ doubled: number; constant: string }>(
       (draft) => {
         draft.doubled = source() * 2;
         draft.constant = "static";

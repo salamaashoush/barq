@@ -26,7 +26,7 @@ export {
   cls,
   clsList,
   content,
-  dyn,
+  dynamic,
   each,
   esc,
   escAttr,

@@ -284,14 +284,14 @@ describe("clearDelegatedEvents", () => {
  */
 describe("a delegated handler runs under the scope stapled to its element", () => {
   test("work created in a handler is owned by that scope and dies with it", async () => {
-    const { createScope, delegate, getOwner, onCleanup } = await import("./index.ts");
+    const { scope, delegate, getOwner, onCleanup } = await import("./index.ts");
     const el = document.createElement("div");
     container.appendChild(el);
 
     let sawOwner: unknown = "not run";
     const cleanups: number[] = [];
     let disposeRoot!: () => void;
-    const root = createScope((dispose, scope) => {
+    const root = scope((dispose, scope) => {
       disposeRoot = dispose;
       return scope;
     }, true);
@@ -311,7 +311,7 @@ describe("a delegated handler runs under the scope stapled to its element", () =
   });
 
   test("a Block forwarded into a handler slot is refused rather than invoked with the Event", async () => {
-    const { block, createScope } = await import("./index.ts");
+    const { block, scope } = await import("./index.ts");
     const el = document.createElement("div");
     container.appendChild(el);
 
@@ -320,7 +320,7 @@ describe("a delegated handler runs under the scope stapled to its element", () =
       invokedWith = scope;
       return null;
     });
-    const root = createScope((_dispose, scope) => scope, true);
+    const root = scope((_dispose, scope) => scope, true);
     // Written as the COMPILED path writes it — the expando directly, with no
     // `delegate` call to guard — because that is the only shape in which this
     // can reach the dispatcher at all.

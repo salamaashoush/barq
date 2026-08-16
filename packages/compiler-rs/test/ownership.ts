@@ -311,7 +311,7 @@ export interface OwnershipRun {
 
 interface CoreLike {
   flush(): void
-  createScope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T
+  scope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T
   render(node: unknown, container: Element): () => void
   clearDelegatedEvents(): void
   beginOwnershipTrace(): void
@@ -366,7 +366,7 @@ export async function trace(
     // runs under. `render` opens that scope, so the mount is handed over as a
     // BLOCK — `mod.default` itself, by identity — rather than called here,
     // which would construct the whole subtree before any scope existed.
-    core.createScope(
+    core.scope(
       (d: () => void) => {
         dispose = d
         clear = core.render(mod.default as never, container)

@@ -109,7 +109,7 @@ const ROWS: readonly OwnershipKnownFailure[] = [
   //
   //   - **the detached scope** (`control-flow-await-suspense` ×3, `portal` ×1).
   //     `Suspense`, `Await` and `Portal` opened their instance scope with
-  //     `createScope(…, detached: true)`, so it had no parent and its chain
+  //     `scope(…, detached: true)`, so it had no parent and its chain
   //     never reached the render root. `branch`/`boundary`/`portal` in
   //     `packages/core/src/flow.ts` call `enter(given)` and nothing else, so an
   //     instance is a child of the scope the construct was handed — by

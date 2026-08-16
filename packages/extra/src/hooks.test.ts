@@ -6,12 +6,12 @@
  * primitives, no component, no props object, no JSX — so nothing here changed
  * with the calling convention. What they DO need, and never had asserted, is an
  * owner: every one of them opens an effect, and an effect with no owner is a
- * leak. Each test runs its hook inside `createScope` and disposes it, which is
+ * leak. Each test runs its hook inside `scope` and disposes it, which is
  * the only shape that can observe the cleanup half at all.
  */
 
 import { describe, expect, test } from "bun:test";
-import { createScope, effect, flush } from "@barqjs/core";
+import { scope, effect, flush } from "@barqjs/core";
 import {
   useClickOutside,
   useCounter,
@@ -36,7 +36,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 function owned<T>(body: () => T): [T, () => void] {
   let value!: T;
   let dispose!: () => void;
-  createScope((d) => {
+  scope((d) => {
     dispose = d;
     value = body();
   }, true);

@@ -5,8 +5,8 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
-import { signal, computed, effect, batch, createScope } from "@barqjs/core";
-import { createEffect, createMemo, createRoot, createSignal, batch as solidBatch } from "solid-js";
+import { signal, computed, effect, batch, scope } from "@barqjs/core";
+import { createEffect, createMemo, root, createSignal, batch as solidBatch } from "solid-js";
 
 const ITERATIONS = 10000;
 
@@ -36,7 +36,7 @@ profile("barq: signal set", () => {
 });
 
 profile("solid: signal set", () => {
-  createRoot((dispose) => {
+  root((dispose) => {
     const [, setS] = createSignal(0);
     for (let i = 0; i < 100; i++) setS(i);
     dispose();
@@ -47,7 +47,7 @@ profile("solid: signal set", () => {
 console.log("\n--- Signal with 1 computed subscriber ---");
 
 profile("barq: signal + 1 computed", () => {
-  createScope((dispose) => {
+  scope((dispose) => {
     const s = signal(0);
     const c = computed(() => s() * 2);
     batch(() => {
@@ -59,7 +59,7 @@ profile("barq: signal + 1 computed", () => {
 });
 
 profile("solid: signal + 1 computed", () => {
-  createRoot((dispose) => {
+  root((dispose) => {
     const [s, setS] = createSignal(0);
     const c = createMemo(() => s() * 2);
     solidBatch(() => {
@@ -74,7 +74,7 @@ profile("solid: signal + 1 computed", () => {
 console.log("\n--- Effect triggering ---");
 
 profile("barq: effect trigger", () => {
-  createScope((dispose) => {
+  scope((dispose) => {
     let runs = 0;
     const s = signal(0);
     effect(() => {
@@ -89,7 +89,7 @@ profile("barq: effect trigger", () => {
 });
 
 profile("solid: effect trigger", () => {
-  createRoot((dispose) => {
+  root((dispose) => {
     let runs = 0;
     const [s, setS] = createSignal(0);
     createEffect(() => {
@@ -107,7 +107,7 @@ profile("solid: effect trigger", () => {
 console.log("\n--- Computed Chain (5 deep) ---");
 
 profile("barq: computed chain", () => {
-  createScope((dispose) => {
+  scope((dispose) => {
     const a = signal(1);
     const b = computed(() => a() * 2);
     const c = computed(() => b() + 1);
@@ -123,7 +123,7 @@ profile("barq: computed chain", () => {
 });
 
 profile("solid: computed chain", () => {
-  createRoot((dispose) => {
+  root((dispose) => {
     const [a, setA] = createSignal(1);
     const b = createMemo(() => a() * 2);
     const c = createMemo(() => b() + 1);
@@ -149,17 +149,17 @@ profile("solid: empty batch", () => {
   solidBatch(() => {});
 });
 
-// Test 6: createScope/createRoot overhead
+// Test 6: scope/root overhead
 console.log("\n--- Scope creation overhead ---");
 
-profile("barq: createScope", () => {
-  createScope((dispose) => {
+profile("barq: scope", () => {
+  scope((dispose) => {
     dispose();
   }, true);
 });
 
-profile("solid: createRoot", () => {
-  createRoot((dispose) => {
+profile("solid: root", () => {
+  root((dispose) => {
     dispose();
   });
 });
@@ -176,7 +176,7 @@ profile("barq: computed read (cached)", () => {
 });
 
 let solidC: () => number;
-createRoot(() => {
+root(() => {
   const [s] = createSignal(42);
   solidC = createMemo(() => s() * 2);
   solidC(); // initial compute
@@ -190,7 +190,7 @@ profile("solid: computed read (cached)", () => {
 console.log("\n--- Diamond pattern ---");
 
 profile("barq: diamond", () => {
-  createScope((dispose) => {
+  scope((dispose) => {
     const x = signal(1);
     const a = computed(() => x() * 2);
     const b = computed(() => x() * 3);
@@ -204,7 +204,7 @@ profile("barq: diamond", () => {
 });
 
 profile("solid: diamond", () => {
-  createRoot((dispose) => {
+  root((dispose) => {
     const [x, setX] = createSignal(1);
     const a = createMemo(() => x() * 2);
     const b = createMemo(() => x() * 3);

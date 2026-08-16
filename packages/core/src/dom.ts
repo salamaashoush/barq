@@ -440,7 +440,7 @@ export type { JSXElement as Element };
  * the same two entry points every other element goes through, rather than the
  * fifth element-creation path `createDynamicElement` used to be.
  */
-export function dyn(
+export function dynamic(
   s: Scope | null,
   component: Cell<string | ((s: Scope | null, props: Record<string, unknown>) => unknown)>,
   props: Record<string, unknown>,
@@ -459,7 +459,7 @@ export function dyn(
  * One element, by tag NAME, with a props source list — the shape a template
  * cannot express and the only element-creation path beside `template()`.
  *
- * Two callers, both of them the compiler's: `dyn`'s string arm, and the
+ * Two callers, both of them the compiler's: `dynamic`'s string arm, and the
  * intrinsic P1 refuses because the tree builder would not produce it as written
  * (`<td>` outside a row, `<body>`). Everything it does goes through the same
  * two entry points a compiled element goes through — `spread` for the props,
@@ -1532,7 +1532,7 @@ export function insert(
   // function exactly once and returns nodes — so `<table>{a()}-{b()}</table>`
   // rendered `A-B` and never moved again. It is only reachable where the
   // compiler cannot split the children into holes of their own: `element`'s
-  // props, `dyn`'s, a component's `children` (§3.13). Everywhere else P1 emits
+  // props, `dynamic`'s, a component's `children` (§3.13). Everywhere else P1 emits
   // one `_$insert` per hole and never gets here.
   //
   // ONE effect for the whole array, not one per element, which is what Solid's

@@ -13,7 +13,7 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { type ReactiveFramework, SkipTest, testSuite } from "reactive-framework-test-suite";
-import { batch, computed, createScope, effect, flush, signal, untrack } from "./index.ts";
+import { batch, computed, scope, effect, flush, signal, untrack } from "./index.ts";
 
 // barq batches flushes on the microtask queue; the suite expects effects to
 // have run by assertion time, so writes/effect creation flush synchronously.
@@ -40,7 +40,7 @@ const barq: ReactiveFramework = {
   },
   // Each case runs inside its own disposable root for isolation.
   run: (fn) => {
-    createScope((dispose) => {
+    scope((dispose) => {
       try {
         fn();
       } finally {

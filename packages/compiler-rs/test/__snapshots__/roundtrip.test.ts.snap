@@ -1168,10 +1168,10 @@ export const steps = [
 `;
 
 exports[`emitted code snapshots context-provider 1`] = `
-"import { createContext, signal, useContext, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { context, signal, useContext, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="badge"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
-const Theme = createContext<() => string>(() => "light");
+const Theme = context<() => string>(() => "light");
 export const theme = signal("dark");
 function Badge(_s$) {
   const value = useContext(Theme);
@@ -2536,16 +2536,16 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots create-optimistic-signal 1`] = `
-"import { createOptimistic, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
+"import { optimistic, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="optimistic"></button>\`);
-const _h$1 = () => optimistic.set(optimistic() + 1);
+const _h$1 = () => pending.set(pending() + 1);
 _$delegateEvents(["click"]);
-/** \`createOptimistic\` returns a \`Signal<T>\`, not a tuple — \`.set\` is a method. */
-export const optimistic = createOptimistic(0);
+/** \`optimistic\` returns a \`Signal<T>\`, not a tuple — \`.set\` is a method. */
+export const pending = optimistic(0);
 export default function CreateOptimisticSignal(_s$) {
   const _el$1 = _tmpl$1();
   _el$1.$$click = _h$1, _el$1.$$s = _s$;
-  _$insert(_s$, _el$1, () => optimistic());
+  _$insert(_s$, _el$1, () => pending());
   return _el$1;
 }
 CreateOptimisticSignal = _$block(CreateOptimisticSignal);
@@ -2554,25 +2554,25 @@ export const optimality = {
   target: 1,
   milestone: 5,
   templates: 1,
-  // \`createOptimistic\` returns an Accessor with signal-shaped write members, so
-  // \`optimistic.set\` is NOT a tracked read: the handler closes over nothing the
+  // \`optimistic\` returns an Accessor with signal-shaped write members, so
+  // \`pending.set\` is NOT a tracked read: the handler closes over nothing the
   // component owns and hoists to module scope.
   // The hoisted handler is a module-scope const above the component; the read
   // inside the hole is the live one.
-  emits: ["= () => optimistic.set", "() => optimistic()"]
+  emits: ["= () => pending.set", "() => pending()"]
 };
 "
 `;
 
 exports[`emitted code snapshots create-projection-store 1`] = `
-"import { createProjection, signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+"import { projection, signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="projection"></div>\`);
 export const on = signal(false);
 /**
-* \`createProjection\` returns the store PROXY directly, not a tuple and not an
+* \`projection\` returns the store PROXY directly, not a tuple and not an
 * accessor: \`selected.on\` is the tracked read and \`selected()\` would throw.
 */
-const selected = createProjection<{
+const selected = projection<{
   on: boolean;
 }>((draft) => {
   draft.on = on();
@@ -2591,10 +2591,10 @@ export const optimality = {
   target: 1,
   milestone: 5,
   templates: 1,
-  // \`createProjection\` returns a ReactiveObject directly — not a tuple — so any
+  // \`projection\` returns a ReactiveObject directly — not a tuple — so any
   // MEMBER read of it is the tracked read and both holes bind live off \`.on\`.
   emits: ["() => selected.on"],
-  // The unwrapped form the member read would take if \`createProjection\` had
+  // The unwrapped form the member read would take if \`projection\` had
   // been classified as a tuple instead of a ReactiveObject.
   absent: ["insert(_el, selected.on"]
 };
@@ -2657,7 +2657,7 @@ DangerouslySetInnerHtml = _$block(DangerouslySetInnerHtml);
 `;
 
 exports[`emitted code snapshots dashboard-composite 1`] = `
-"import { signal, store, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setLive as _$setLive, setClass as _$setClass, bindProp as _$bindProp } from "@barqjs/core";
+"import { signal, store, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setLive as _$setLive, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><input class="search"><button type="button" class="tab">switch</button><ul class="rows"></ul></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="anon">anonymous</p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<h1>Hello, </h1>\`);
@@ -2687,7 +2687,9 @@ export default function DashboardComposite(_s$) {
   _$bindEffect(_s$, () => ({ a: tab() === "posts" ? "posts" : "other" }), (_v$, _p$ = {}) => {
     _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
   });
-  _$bindProp(_s$, _el$2, _$setLive, "value", () => state.filters.search);
+  _$bindEffect(_s$, () => state.filters.search, (_v$) => {
+    _$setLive(_el$2, "value", _v$);
+  });
   _el$2.$$input = _h$1, _el$2.$$s = _s$;
   _el$3.$$click = _h$2, _el$3.$$s = _s$;
   _$branch(_s$, _el$1, _el$2, () => state.user.name !== "" || false, _$block((_s$) => {
@@ -3046,14 +3048,14 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots dynamic 1`] = `
-"import { signal, template as _$template, block as _$block, branch as _$branch, dyn as _$dyn } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch, dynamic as _$dynamic } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _k$1 = () => "dyn";
 const _k$2 = () => "inner";
 export const tag = signal<"span" | "b">("span");
 export default function DynamicFixture(_s$) {
   const _el$1 = _tmpl$1();
-  _$branch(_s$, _el$1, null, tag, _$block((_s$) => _$dyn(_s$, tag, {
+  _$branch(_s$, _el$1, null, tag, _$block((_s$) => _$dynamic(_s$, tag, {
     class: _k$1,
     children: _k$2
   })));
@@ -3073,7 +3075,7 @@ export const optimality = {
   // its adapter does not exist to emit.
   emits: [
     "branch(",
-    "dyn(",
+    "dynamic(",
     "() => \\"dyn\\"",
     "() => \\"inner\\""
   ],
@@ -5335,7 +5337,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots store-member 1`] = `
-"import { store, template as _$template, insert as _$insert, block as _$block, setAttr as _$setAttr, bindProp as _$bindProp } from "@barqjs/core";
+"import { store, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="store"><span class="name"></span><em>n</em></div>\`);
 /**
 * \`store\` returns \`[proxy, setter]\` and ANY member read on the proxy is a
@@ -5351,7 +5353,9 @@ export default function StoreMember(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$bindProp(_s$, _el$3, _$setAttr, "data-count", () => String(state.count));
+  _$bindEffect(_s$, () => String(state.count), (_v$, _p$) => {
+    if (_v$ !== _p$) _$setAttr(_el$3, "data-count", _v$);
+  });
   _$insert(_s$, _el$2, () => state.user.name);
   return _el$1;
 }

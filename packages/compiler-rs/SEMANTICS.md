@@ -144,7 +144,7 @@ both halves: a computation that owns nothing allocates none, and one that regist
 allocates one the trace never sees.
 
 **Status.** `PLANNED` (M2/M3). Today a `Provider`, an `ErrorBoundary` and each of the ten flow
-components allocate one scope per instance via `createScope`, and a plain component allocates none —
+components allocate one scope per instance via `scope`, and a plain component allocates none —
 so the count is right for plain components and wrong for the rest, for the wrong reason.
 
 **Pinned by.** `sem-own-component-allocates-nothing.tsx` *(new)*.
@@ -364,7 +364,7 @@ and the restoration target is specified.
 
 **O4.1 — restoration is required on both paths.** `CURRENT` MUST be restored to its prior value on
 the normal path *and* on the exceptional path. A construct that enters a scope and returns a value
-into the caller's expression — `provide`, `boundary`, `dyn`, and any Block invocation whose result is
+into the caller's expression — `provide`, `boundary`, `dynamic`, and any Block invocation whose result is
 consumed — has no other opportunity, so `try { … } finally { exit(c) }` is the conforming
 implementation for those. **§7.1's `provide` is correct as written.**
 
@@ -896,7 +896,7 @@ Calling a Block twice is *not* an error of the Block — building twice is corre
 DOM has identity and two invocations mean two subtrees. It is an error of the **consumer**.
 
 **Falsified by.** Instrument a Block with a counter and drive every built-in consumer — `branch`,
-`each`, `boundary`, `portal`, `provide`, `dyn` — through mount, one no-op update, one key flip and
+`each`, `boundary`, `portal`, `provide`, `dynamic` — through mount, one no-op update, one key flip and
 one dispose. The counter MUST equal the number of activations, exactly. In particular: a key flip
 from A to B to A MUST show A's Block invoked twice (two activations) and a *no-op* write MUST show no
 additional invocation (K2).
@@ -926,7 +926,7 @@ the consumers actually are: `test/single-evaluation.test.ts` compiles eighteen f
 the recorded sequence against the exact sequence the fixture declares. Both directions come free —
 too few invocations and too many are both a different array — and the map from C7's consumer list to
 the fixture that drives it is asserted TOTAL, so a consumer with no fixture fails rather than going
-unmentioned. `provide` and `dyn` are covered there (`c7-provider`, `c7-reveal`), which is what the
+unmentioned. `provide` and `dynamic` are covered there (`c7-provider`, `c7-reveal`), which is what the
 previous paragraph said they were not.
 
 One thing the milestone found and worth writing down: **no sequence of writes against the shipped
@@ -2107,10 +2107,10 @@ clobber. A real write landing during an action is not rolled back.
 **Falsified by.** Start an optimistic action; land a real write to the same target mid-flight; settle;
 the real write MUST survive.
 
-**Status.** `HOLDS` since M7. `createOptimistic` is a settled signal, a list of pending layers and a
+**Status.** `HOLDS` since M7. `optimistic` is a settled signal, a list of pending layers and a
 memo that folds one over the other; an action's writes claim one layer, and completing the action
 removes it. Rollback on failure is not a second code path — it is the same removal, which is what
-"follows from the derivation" means. `createOptimisticStore` derives the same way, replaying the
+"follows from the derivation" means. `optimisticStore` derives the same way, replaying the
 running action's setter calls over the settled store, so the whole-store `structuredClone` that
 existed only to be written back is gone.
 
@@ -2130,7 +2130,7 @@ entry could not answer — what a write to a parked subtree does, whether parked
 or merely detached, and what happens when the live scope and a pending transition scope both write
 one signal — do not arise, because neither a parked subtree nor a pending scope exists.
 
-**(c) Double buffering is opt-in, per value.** `createOptimistic` and `createOptimisticStore`
+**(c) Double buffering is opt-in, per value.** `optimistic` and `optimisticStore`
 allocate a second buffer. `signal` does not. A plain signal written inside an action writes straight
 through: it does not revert when the action settles and it never reports pending. The restraint is
 the design, not an omission from it — making every signal transition-aware would put a second slot
@@ -2228,7 +2228,7 @@ nothing to infer, merge, or barrier.
 
 **Status.** `HOLDS` since M7b. What changed, and what did not:
 
-M7 already had the mechanism at two arities without naming it as one. `createOptimistic` was a
+M7 already had the mechanism at two arities without naming it as one. `optimistic` was a
 settled signal, a `layers` signal and a memo folding one over the other; `resource` was a memo with a
 single `override` signal beside it. The pending-layer list **is** the override buffer, and the
 resource's one slot is the degenerate case — so the answer to "does the override slot subsume the
@@ -2241,7 +2241,7 @@ The resource keeps its slot as a signal beside the memo, and that is correct rat
 authoritative arrival then commits into `settled` and drops the override — the same "already correct"
 invariant as clause (e), which is why the resource never needed a revert target either.
 
-Cost, both halves of it. `createOptimistic` went from three reactive nodes to one. A program with **no
+Cost, both halves of it. `optimistic` went from three reactive nodes to one. A program with **no
 lane in flight** pays the same two branches it paid at M7 — the override sits behind the
 `slowSignalRead` global that already gated snapshot capture and `affects()`, and `_override` is `null`
 on every node `signal()` creates. While **any lane is in flight**, that global is non-zero, so every
@@ -2253,7 +2253,7 @@ capture already made. An action whose promise never settles pins the program on 
 `completeAction` is the only caller of `retireLane`.
 
 **Pinned by.** `packages/core/src/actions.test.ts` (`A5: overrides, lanes and the read surface`,
-fourteen claims, plus the three store-form claims in `createOptimisticStore`). §14.1 names
+fourteen claims, plus the three store-form claims in `optimisticStore`). §14.1 names
 `sem-async-optimistic-lane` as the compiler-side fixture still to be written: every claim above is
 runtime behaviour, so the core channel discriminates all nine procedures, but no fixture yet drives
 them through compiled JSX.
@@ -2541,7 +2541,7 @@ as coordinates, so `keydown` and the typed value and the caret position are in t
 Source:
 
 ```jsx
-const Ctx = createContext();                       // no default → a miss THROWS
+const Ctx = context();                       // no default → a miss THROWS
 const Child = () => <span>{Ctx.use()()}</span>;
 export const App = () => <Ctx.Provider value={1}><Child /></Ctx.Provider>;
 ```
@@ -2578,7 +2578,7 @@ export const App = () => (0, Ctx.Provider)({ value: 1, children: Child({}) });
 ```
 
 `Child({})` is an argument. It runs at the call site, under the caller's owner — which is `null`,
-verified — before `createScope` inside `Provider` has created the scope that `owner._context[id]`
+verified — before `scope` inside `Provider` has created the scope that `owner._context[id]`
 writes into. Result: `<span>THREW:ContextNotFoundError</span>`. Rules violated: **O2, O2.1, X1, C6**.
 The un-compiled `createElement` path fails identically, which is why the differential harness was
 green, which is why L1 exists.
@@ -2750,7 +2750,7 @@ absence is not.
 
 **Async (3).** `sem-async-abort-on-dispose`, `sem-async-stale-response`, `sem-async-optimistic-lane`
 (A5, added at M7b: an action overriding a value a template reads, driving A5's nine procedures through
-compiled JSX rather than through `createOptimistic` called by hand).
+compiled JSX rather than through `optimistic` called by hand).
 
 **Hydration (0).** The five planned fixtures were not written, and the rules were struck off anyway —
 by CHANNELS, which is §14.2's category and the honest one for this family. A single fixture cannot

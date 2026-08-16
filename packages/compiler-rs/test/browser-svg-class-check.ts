@@ -24,7 +24,7 @@ import { compileFixture } from "./harness.ts"
 
 const PROBE = `
 import Component, { active } from "./fixture.js"
-import { createScope, flush, render, setProp } from "@barqjs/core"
+import { scope, flush, render, setProp } from "@barqjs/core"
 
 const SVG = "http://www.w3.org/2000/svg"
 const result = { probes: {}, fixture: {} }
@@ -56,7 +56,7 @@ result.probes.setPropClassList = two.getAttribute("class")
 // The compiled fixture, rendered and driven.
 const root = document.createElement("div")
 document.body.appendChild(root)
-createScope((_dispose, scope) => {
+scope((_dispose, scope) => {
   render((s) => Component(s), root)
 }, true)
 flush()

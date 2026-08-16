@@ -47,7 +47,7 @@
 import {
   block,
   cell,
-  createScope,
+  scope,
   enter,
   exit,
   flush,
@@ -582,7 +582,7 @@ function keyingArm(mode: "default" | "byFn" | "false", n: number): KeyingArm {
   const source = signal(keyRows(n))
   let built = 0
   const out: KeyingArm = { builtOnReplace: 0, builtOnReorder: 0, replaceMs: 0, reorderMs: 0 }
-  const dispose = createScope((d: () => void) => {
+  const dispose = scope((d: () => void) => {
     const make = (): unknown => {
       built++
       return {}

@@ -14,11 +14,11 @@ export {
   renderEffect,
   batch,
   untrack,
-  createScope,
+  scope,
   onCleanup,
   onMount,
   onSettled,
-  createContext,
+  context,
   getContext,
   useContext,
   hasContext,
@@ -42,9 +42,9 @@ export type { LoadingBoundaryHandle, DiagnosticEvent } from "./signals.ts";
 
 // Solid 2.0 parity primitives
 export {
-  createOwner,
-  createReaction,
-  createTrackedEffect,
+  owner,
+  reaction,
+  trackedEffect,
   getNextChildId,
   isDisposed,
   peekNextChildId,
@@ -56,9 +56,9 @@ export {
 } from "./signals.ts";
 export type { ExternalSource, ExternalSourceConfig, ExternalSourceFactory } from "./signals.ts";
 
-// createRoot: detached scope for SolidJS compatibility
-import { createScope as _createScope } from "./signals.ts";
-export function createRoot<T>(fn: (dispose: () => void) => T): T {
+// root: detached scope for SolidJS compatibility
+import { scope as _createScope } from "./signals.ts";
+export function root<T>(fn: (dispose: () => void) => T): T {
   return _createScope(fn, true);
 }
 
@@ -120,22 +120,17 @@ export type {
 } from "./config.ts";
 
 // Store - fine-grained nested reactivity
-export { store, produce, reconcile, unwrap, snapshot, createProjection, deep } from "./store.ts";
+export { store, produce, reconcile, unwrap, snapshot, projection, deep } from "./store.ts";
 export type { Part, StorePathRange } from "./store.ts";
 
 // Actions & optimistic updates
-export { action, affects, commit, createOptimistic, createOptimisticStore } from "./actions.ts";
+export { action, affects, commit, optimistic, optimisticStore } from "./actions.ts";
 
 // Server-side rendering
 export { renderToString } from "./server.ts";
 
 // Core hooks
-export {
-  createErrorBoundary,
-  createLoadingBoundary,
-  createRevealOrder,
-  flatten,
-} from "./boundaries.ts";
+export { errorBoundary, loadingBoundary, revealOrder, flatten } from "./boundaries.ts";
 export type { RevealDisplay, RevealOrder } from "./boundaries.ts";
 
 export { mapArray, repeat } from "./map.ts";
@@ -160,7 +155,7 @@ export {
 
 // DOM
 export {
-  dyn,
+  dynamic,
   element,
   render,
   hydrate,
@@ -258,7 +253,10 @@ export type {
 export type { JSX } from "./jsx-runtime.ts";
 
 // Type utilities
-export { isArray, toString, setProperty } from "./type-utils.ts";
+// §13: `getProperty`/`setProperty` are NOT exported — zero consumers, and one
+// character from `setProp`, which is a different thing. Both stay as internal
+// helpers of `type-utils.ts`, which `dom.ts` uses to write a `{current}` ref.
+export { isArray, toString } from "./type-utils.ts";
 
 // Helper types for components (following SolidJS/React patterns)
 export type {

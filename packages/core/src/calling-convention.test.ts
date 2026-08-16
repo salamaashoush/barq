@@ -14,8 +14,8 @@ import { describe, expect, test } from "bun:test";
 import { Errored, For, Fragment, Show } from "./components.ts";
 import {
   block,
-  createContext,
-  createScope,
+  context,
+  scope,
   getContext,
   getOwner,
   flush,
@@ -60,9 +60,9 @@ describe("O2: a construct runs under the scope it is GIVEN", () => {
     test(`${label}: given A while B is ambient, the child lands under A`, () => {
       const names = new Map<Scope, string>();
       let seen: Scope | null = null;
-      createScope((_d, A) => {
+      scope((_d, A) => {
         names.set(A, "A(passed)");
-        createScope((_d2, B) => {
+        scope((_d2, B) => {
           names.set(B, "B(ambient)");
           const kid = (_s: Scope | null): Node => {
             seen = getOwner() as Scope;
@@ -103,7 +103,7 @@ describe("rule 3: a Block invoked with no scope throws", () => {
     // context and returns a string is invisible to every claim that observes
     // what reached the DOM — and a fallback to CURRENT files its cleanup on
     // whatever scope happened to be ambient, which is the Provider bug.
-    const Theme = createContext<string>("DEFAULT");
+    const Theme = context<string>("DEFAULT");
     const filed: string[] = [];
     let bodyRan = 0;
     const quiet = block((s?: Scope | null) => {
@@ -114,7 +114,7 @@ describe("rule 3: a Block invoked with no scope throws", () => {
     });
 
     let ambientCleanups = 0;
-    createScope((dispose) => {
+    scope((dispose) => {
       expect(() => (quiet as (s?: Scope | null) => unknown)()).toThrow(ScopeMissingError);
       dispose();
       ambientCleanups = filed.length;
@@ -133,9 +133,9 @@ describe("C8: a fragment is an array, and `insert` owns what it places", () => {
   test("a function child is owned by the scope insert was given, not the ambient one", () => {
     const names = new Map<Scope, string>();
     let seen: Scope | null = null;
-    createScope((_d, A) => {
+    scope((_d, A) => {
       names.set(A, "A(passed)");
-      createScope((_d2, B) => {
+      scope((_d2, B) => {
         names.set(B, "B(ambient)");
         const kid = (): Node => {
           seen = getOwner() as Scope;
@@ -159,9 +159,9 @@ describe("C8: a fragment is an array, and `insert` owns what it places", () => {
     // scope the argument names is the scope the child builds under.
     const names = new Map<Scope, string>();
     let seen: Scope | null = null;
-    createScope((_d, A) => {
+    scope((_d, A) => {
       names.set(A, "A(passed)");
-      createScope((_d2, B) => {
+      scope((_d2, B) => {
         names.set(B, "B(ambient)");
         const kid = (): Node => {
           seen = getOwner() as Scope;
@@ -181,9 +181,9 @@ describe("O4.5: an explicit scope argument beats an ambient pin", () => {
   test("pin has something to override", () => {
     const names = new Map<Scope, string>();
     let seen: Scope | null = null;
-    createScope((_d, X) => {
+    scope((_d, X) => {
       names.set(X, "X(explicit)");
-      createScope((_d2, P) => {
+      scope((_d2, P) => {
         names.set(P, "P(pinned)");
         pin(P, () => {
           const host = document.createElement("div");
@@ -206,15 +206,15 @@ describe("O4.5: an explicit scope argument beats an ambient pin", () => {
 
 describe("X1/O2: a Provider provides on the scope it was GIVEN", () => {
   test("given A while B is ambient, the binding is installed on A's line", () => {
-    const Ctx = createContext<string>("DEFAULT");
+    const Ctx = context<string>("DEFAULT");
     const names = new Map<Scope, string>();
     let seenValue: string | null = null;
     let seenChain = "";
 
-    createScope((_d, A) => {
+    scope((_d, A) => {
       names.set(A, "A(passed)");
       provideOn(A, Symbol.for("marker.A"), 1);
-      createScope((_d2, B) => {
+      scope((_d2, B) => {
         names.set(B, "B(ambient)");
         Ctx.Provider(A, {
           value: "PROVIDED",
@@ -236,12 +236,12 @@ describe("X1/O2: a Provider provides on the scope it was GIVEN", () => {
   });
 
   test("the same claim through `provide`, the primitive the compiler emits", () => {
-    const Ctx = createContext<string>("DEFAULT");
+    const Ctx = context<string>("DEFAULT");
     const names = new Map<Scope, string>();
     let seenChain = "";
-    createScope((_d, A) => {
+    scope((_d, A) => {
       names.set(A, "A(passed)");
-      createScope((_d2, B) => {
+      scope((_d2, B) => {
         names.set(B, "B(ambient)");
         provide(
           A,

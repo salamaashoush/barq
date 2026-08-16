@@ -15,15 +15,15 @@
  * `<span class="label"> </span>` occurs at `root > provide` and at no other
  * position in this module; the runtime clones it at `root`, because
  * `Label({})` is an *argument* of the provider call and runs before
- * `createScope` inside `Provider` has made the scope that
+ * `scope` inside `Provider` has made the scope that
  * `owner._context[id] = props.value` writes into.
  *
  * `SEMANTICS.md` §2 O2, O2.1; §4 X1, X3; §3 C6.
  * Registered in `ownership-known-failures.ts`.
  */
-import { createContext, useContext } from "@barqjs/core"
+import { context, useContext } from "@barqjs/core"
 
-const Theme = createContext<() => string>(() => "fallback-theme")
+const Theme = context<() => string>(() => "fallback-theme")
 
 function Label() {
   const value = useContext(Theme)

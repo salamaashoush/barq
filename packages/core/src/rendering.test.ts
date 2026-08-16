@@ -5,7 +5,7 @@
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { element } from "./dom.ts";
-import { signal, effect, computed, createScope, batch, onCleanup, flush } from "./signals.ts";
+import { signal, effect, computed, scope, batch, onCleanup, flush } from "./signals.ts";
 import { Await, Dynamic, ErrorBoundary, For, Match, Portal, Show, Switch } from "./components.ts";
 import { mergeProps, splitProps } from "./props.ts";
 import type { Scope } from "./scope.ts";
@@ -332,7 +332,7 @@ describe("Portal component", () => {
       let disposed = false;
       let disposeScope!: () => void;
 
-      createScope((dispose, scope) => {
+      scope((dispose, scope) => {
         disposeScope = dispose;
 
         const node = Portal(scope, {
@@ -731,7 +731,7 @@ describe("Effect cleanup order", () => {
     const inner = signal(0);
     const log: string[] = [];
 
-    createScope(() => {
+    scope(() => {
       effect(() => {
         if (outer()) {
           log.push("outer:run");
@@ -762,15 +762,15 @@ describe("Effect cleanup order", () => {
 });
 
 // ============================================================================
-// Issue 15: createScope disposal
+// Issue 15: scope disposal
 // ============================================================================
-describe("createScope disposal", () => {
-  test("createScope disposes all children on dispose", () => {
+describe("scope disposal", () => {
+  test("scope disposes all children on dispose", () => {
     const trigger = signal(0);
     let effectRuns = 0;
     let dispose!: () => void;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       effect(() => {
         trigger();
@@ -798,7 +798,7 @@ describe("createScope disposal", () => {
     let disposeOuter!: () => void;
     let disposeInner!: () => void;
 
-    createScope((d) => {
+    scope((d) => {
       disposeOuter = d;
       effect(() => {
         trigger();
@@ -806,7 +806,7 @@ describe("createScope disposal", () => {
       });
 
       // Detached scope
-      createScope((dInner) => {
+      scope((dInner) => {
         disposeInner = dInner;
         effect(() => {
           trigger();

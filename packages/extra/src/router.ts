@@ -16,7 +16,7 @@ import {
   branch,
   cell,
   computed,
-  createContext,
+  context,
   flush,
   insert,
   listen,
@@ -886,7 +886,7 @@ function memoryHistory(initialPath: string): History {
 // Context
 // ============================================================================
 
-const RouterContext = createContext<RouterState>(undefined, "barq-router");
+const RouterContext = context<RouterState>(undefined, "barq-router");
 
 /** Resolved through the scope chain at READ time, so two routers can coexist. */
 function useRouterState(): RouterState {

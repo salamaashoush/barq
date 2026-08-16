@@ -13,7 +13,7 @@ import {
   latest,
   NotReadyError,
   clearHydrationData,
-  createScope,
+  scope,
   DEV,
   getHydrationData,
   getOwner,
@@ -39,7 +39,7 @@ async function renderInSession(build: () => void): Promise<Payload> {
   const prev = setAsyncSession(session);
   let dispose!: () => void;
   try {
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       build();
     }, true);
@@ -138,7 +138,7 @@ describe("createAsync auto-keying", () => {
 
   test("sibling owner scopes do not collide", async () => {
     const branch = (label: string) => {
-      createScope(() => {
+      scope(() => {
         const value = computed(async () => label);
         start(value);
       });
@@ -158,10 +158,10 @@ describe("createAsync auto-keying", () => {
     const tree = () => {
       const top = computed(tracked("top", pending));
       start(top);
-      createScope(() => {
+      scope(() => {
         const nested = computed(tracked("nested", pending));
         start(nested);
-        createScope(() => {
+        scope(() => {
           const deep = computed(tracked("deep", pending));
           start(deep);
         });
@@ -175,7 +175,7 @@ describe("createAsync auto-keying", () => {
     pending.length = 0;
     resetChildIds();
     let dispose!: () => void;
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       tree();
     }, true);
@@ -192,7 +192,7 @@ describe("createAsync auto-keying", () => {
     const tree = () => {
       const a = computed(async () => "a");
       start(a);
-      createScope(() => {
+      scope(() => {
         const b = computed(async () => "b");
         start(b);
       });
@@ -212,7 +212,7 @@ describe("createAsync auto-keying", () => {
         fetches++;
         return "Ada";
       });
-      createScope(() => {
+      scope(() => {
         const posts = computed(async () => {
           fetches++;
           return ["hello"];
@@ -232,7 +232,7 @@ describe("createAsync auto-keying", () => {
     seedStore(data);
     resetChildIds();
     let dispose!: () => void;
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       tree();
     }, true);
@@ -287,11 +287,11 @@ describe("createAsync auto-keying", () => {
    */
   test("a divergent client tree shifts the auto-keys, and the drift is reported", async () => {
     const a = () =>
-      createScope(() => {
+      scope(() => {
         start(computed(async () => "A-VALUE"));
       });
     const b = () =>
-      createScope(() => {
+      scope(() => {
         const value = computed(async () => "B-VALUE");
         start(value);
         return value;
@@ -312,7 +312,7 @@ describe("createAsync auto-keying", () => {
     const capture = DEV.diagnostics.capture();
     let dispose!: () => void;
     let read!: () => unknown;
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       read = b() as () => unknown;
     }, true);
@@ -336,11 +336,11 @@ describe("createAsync auto-keying", () => {
   test("a named read refetches on a divergent tree instead of seeding wrong data", async () => {
     let fetches = 0;
     const a = () =>
-      createScope(() => {
+      scope(() => {
         start(computed(async () => "A-VALUE", { name: "a" }));
       });
     const b = () =>
-      createScope(() => {
+      scope(() => {
         const value = computed(
           async () => {
             fetches++;
@@ -363,7 +363,7 @@ describe("createAsync auto-keying", () => {
     resetChildIds();
     let dispose!: () => void;
     let read!: () => unknown;
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       read = b() as () => unknown;
     }, true);

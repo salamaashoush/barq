@@ -18,9 +18,9 @@
  * ownership is never right, which is not a finding about anything. It passes,
  * and it must keep passing.
  */
-import { createContext, useContext } from "@barqjs/core"
+import { context, useContext } from "@barqjs/core"
 
-const Theme = createContext<() => string>(() => "fallback-theme")
+const Theme = context<() => string>(() => "fallback-theme")
 
 function Label() {
   const value = useContext(Theme)

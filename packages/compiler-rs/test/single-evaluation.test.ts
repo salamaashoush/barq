@@ -64,7 +64,7 @@ const CONSUMERS: Record<string, string> = {
   "boundary (async, Suspense/Await)": "c7-await-suspense",
   portal: "c7-portal",
   provide: "c7-provider",
-  "dyn (Reveal, a construct owning no range)": "c7-reveal",
+  "dynamic (Reveal, a construct owning no range)": "c7-reveal",
 }
 
 const CORPUS = listFixtures()
@@ -111,7 +111,7 @@ describe("L4 — C7, single evaluation", () => {
     // §3.4's four, plus the two C7 names beyond them. A conformance suite that
     // covered `branch` sixteen times and `portal` never would pass every
     // assertion below and prove a quarter of the rule.
-    for (const construct of ["branch", "each", "boundary", "portal", "provide", "dyn"]) {
+    for (const construct of ["branch", "each", "boundary", "portal", "provide", "dynamic"]) {
       expect(
         Object.keys(CONSUMERS).some((name) => name.startsWith(construct)),
         `no consumer named ${construct} is driven`,
@@ -168,7 +168,7 @@ describe("L4 — C7, single evaluation", () => {
     document.body.appendChild(host)
     const capture = core.DEV.diagnostics.capture()
     try {
-      core.createScope((d: () => void) => {
+      core.scope((d: () => void) => {
         core.render(document.createElement("p") as never, host)
         d()
       }, true)

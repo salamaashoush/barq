@@ -206,10 +206,10 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
  */
 describe("L3 — the flow pass alone, bisected", () => {
   const FLOW_OFF = { passes: [["flow", "off"]] }
-  // `reveal` and `dyn` join the four: M9 lowers `Reveal` onto a provide-scope
+  // `reveal` and `dynamic` join the four: M9 lowers `Reveal` onto a provide-scope
   // call and `Dynamic` onto a branch whose body resolves the component, so both
   // are primitives the flow-off build does not emit.
-  const PRIMITIVES = ["branch", "each", "boundary", "portal", "reveal", "dyn"]
+  const PRIMITIVES = ["branch", "each", "boundary", "portal", "reveal", "dynamic"]
 
   /** The fixtures the pass actually moves, which is the population under test. */
   const lowered = listFixtures().filter(

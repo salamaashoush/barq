@@ -98,7 +98,7 @@ export function provide<T, R>(
   try {
     let out: R = block(instance);
     // A Block forwarded inside a Cell is still a Block, and it has to run here,
-    // inside the scope that carries the binding. See `createContext`'s Provider.
+    // inside the scope that carries the binding. See `context`'s Provider.
     while (isBlock(out)) out = (out as unknown as Block<R>)(instance);
     built = true;
     return out;

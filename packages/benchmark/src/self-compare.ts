@@ -20,7 +20,7 @@ const cases: Case[] = [
   {
     name: "create: scope + signal + effect + dispose",
     make: (m) => () => {
-      m.createScope((dispose) => {
+      m.scope((dispose) => {
         const s = m.signal(0);
         m.effect(() => {
           s();

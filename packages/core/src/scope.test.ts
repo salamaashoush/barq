@@ -26,8 +26,8 @@ import {
 } from "./scope.ts";
 import {
   DEV,
-  createContext,
-  createScope,
+  context,
+  scope,
   effect,
   flush,
   getContext,
@@ -232,7 +232,7 @@ describe("O1 — the scope creation set is closed", () => {
     // no `enter`, so the trace's scope count and the allocation count are
     // different numbers and O1's procedure needs the second.
     const before = scopeAllocations();
-    const disposer = createScope((d) => {
+    const disposer = scope((d) => {
       effect(() => {
         onCleanup(() => undefined);
       });
@@ -241,14 +241,14 @@ describe("O1 — the scope creation set is closed", () => {
     flush();
     const declared = scopeAllocations() - before;
     disposer();
-    // The createScope root, plus the one the effect materialised because a
+    // The scope root, plus the one the effect materialised because a
     // cleanup asked for an owner.
     expect(declared).toBe(2);
   });
 
   test("a computation that owns nothing allocates no scope", () => {
     const before = scopeAllocations();
-    const disposer = createScope((d) => {
+    const disposer = scope((d) => {
       effect(() => undefined);
       return d;
     }, true);
@@ -270,11 +270,11 @@ describe("O4 — ambient hygiene", () => {
 
   test("O4.1: a construct that throws still restores CURRENT through its finally", () => {
     const root = enterRoot();
-    const context = createContext<number>();
+    const ctx = context<number>();
     expect(() =>
       provide(
         root,
-        context,
+        ctx,
         () => 1,
         () => {
           throw new Error("built nothing");
@@ -295,7 +295,7 @@ describe("O4 — ambient hygiene", () => {
     let inner = 0;
     const source = signal(0);
 
-    const disposer = createScope((d) => {
+    const disposer = scope((d) => {
       effect(() => {
         const owner = getOwner();
         const child = enter(owner);
@@ -333,7 +333,7 @@ describe("O4 — ambient hygiene", () => {
   });
 
   test("O4.4: provide disposes the instance scope when the block throws", () => {
-    const context = createContext<number>();
+    const ctx = context<number>();
     const root = enterRoot();
     const ran: string[] = [];
     let instance: Scope | undefined;
@@ -341,7 +341,7 @@ describe("O4 — ambient hygiene", () => {
     expect(() =>
       provide(
         root,
-        context,
+        ctx,
         () => 1,
         (s: Scope) => {
           instance = s;
@@ -485,7 +485,7 @@ describe("O6 — owner and observer are separate ambients", () => {
     let ownerInside: unknown = null;
     let ownerInUntrack: unknown = null;
 
-    const disposer = createScope((d) => {
+    const disposer = scope((d) => {
       effect(() => {
         ran++;
         ownerInside = getOwner();
@@ -518,9 +518,9 @@ describe("X — context on the scope", () => {
     const child = enter(root);
     expect(child.ctx).toBe(root.ctx);
 
-    const context = createContext<string>();
+    const ctx = context<string>();
     const grand = enter(child);
-    install(grand, context, () => "provided");
+    install(grand, ctx, () => "provided");
     expect(grand.ctx).not.toBe(child.ctx);
     expect(Object.getPrototypeOf(grand.ctx)).toBe(child.ctx);
     expect(child.ctx).toBe(root.ctx);
@@ -532,19 +532,19 @@ describe("X — context on the scope", () => {
   });
 
   test("X3: a read walks the chain from the reading scope, at read time", () => {
-    const context = createContext<number>();
+    const ctx = context<number>();
     const root = enterRoot();
     const value = signal(1);
     const seen: number[] = [];
 
     const out = provide(
       root,
-      context,
+      ctx,
       () => value(),
       (inner: Scope) => {
         const deep = enter(inner);
         const nested = enter(deep);
-        seen.push(read(context, nested)());
+        seen.push(read(ctx, nested)());
         exit(nested);
         exit(deep);
         return "built";
@@ -562,9 +562,9 @@ describe("X — context on the scope", () => {
   });
 
   test("X5: a miss with no default throws", () => {
-    const context = createContext<number>();
+    const ctx = context<number>();
     const root = enterRoot();
-    expect(() => read(context, root)()).toThrow();
+    expect(() => read(ctx, root)()).toThrow();
     exit(root);
     dispose(root);
   });
@@ -576,60 +576,60 @@ describe("X — context on the scope", () => {
     // forked — construction-time capture, which X3 forbids in as many words.
     // It is also the shape `ErrorBoundary` has: children built at
     // `components.ts:942`, ERROR_BOUNDARY installed 43 lines later.
-    const context = createContext<string>("default");
+    const ctx = context<string>("default");
     const root = enterRoot();
     const early = enter(root);
     const deep = enter(early);
     exit(deep);
     exit(early);
 
-    expect(read(context, deep)()).toBe("default");
+    expect(read(ctx, deep)()).toBe("default");
 
-    install(root, context, () => "late");
-    expect(read(context, deep)()).toBe("late");
-    expect(read(context, early)()).toBe("late");
-    expect(read(context, root)()).toBe("late");
+    install(root, ctx, () => "late");
+    expect(read(ctx, deep)()).toBe("late");
+    expect(read(ctx, early)()).toBe("late");
+    expect(read(ctx, root)()).toBe("late");
     exit(root);
     dispose(root);
   });
 
   test("X3: the nearest provider on the chain wins, whenever it installed", () => {
-    const context = createContext<string>("default");
+    const ctx = context<string>("default");
     const root = enterRoot();
-    install(root, context, () => "root");
+    install(root, ctx, () => "root");
     const middle = enter(root);
     const leaf = enter(middle);
     exit(leaf);
     exit(middle);
 
-    expect(read(context, leaf)()).toBe("root");
-    install(middle, context, () => "middle");
-    expect(read(context, leaf)()).toBe("middle");
-    expect(read(context, root)()).toBe("root");
+    expect(read(ctx, leaf)()).toBe("root");
+    install(middle, ctx, () => "middle");
+    expect(read(ctx, leaf)()).toBe("middle");
+    expect(read(ctx, root)()).toBe("root");
     exit(root);
     dispose(root);
   });
 
   test("the two context channels agree on Cell vs raw", () => {
-    const context = createContext<number>();
+    const ctx = context<number>();
     const root = enterRoot();
-    install(root, context, () => 42);
+    install(root, ctx, () => 42);
 
-    expect(read(context, root)()).toBe(42);
-    expect(getContext(context, root)).toBe(42);
-    expect(useContext(context)()).toBe(42);
+    expect(read(ctx, root)()).toBe(42);
+    expect(getContext(ctx, root)).toBe(42);
+    expect(useContext(ctx)()).toBe(42);
     exit(root);
     dispose(root);
   });
 
   test("a function stored as a VALUE is handed back, not invoked", () => {
-    const context = createContext<() => string>();
+    const ctx = context<() => string>();
     const value = (): string => "I AM THE VALUE";
     const root = enterRoot();
-    setContext(context, value, root);
+    setContext(ctx, value, root);
 
-    expect(read(context, root)()).toBe(value);
-    expect(getContext(context, root)).toBe(value);
+    expect(read(ctx, root)()).toBe(value);
+    expect(getContext(ctx, root)).toBe(value);
     exit(root);
     dispose(root);
   });
@@ -646,20 +646,20 @@ describe("X3 — what resolving at READ time costs", () => {
     // Pinned here so the asymmetry is a decision with an observation attached
     // rather than something the next reader rediscovers. If M4's catcher work
     // adds a read-side diagnostic, this test is where that shows up.
-    const context = createContext<string>("OUTER-DEFAULT");
+    const ctx = context<string>("OUTER-DEFAULT");
     const root = enterRoot();
     const provider = enter(root);
-    install(provider, context, () => "PROVIDED");
+    install(provider, ctx, () => "PROVIDED");
     const child = enter(provider);
     exit(child);
     exit(provider);
 
-    expect(read(context, child)()).toBe("PROVIDED");
+    expect(read(ctx, child)()).toBe("PROVIDED");
 
     dispose(provider);
     expect(isDisposed(provider)).toBe(true);
     expect(isDisposed(child)).toBe(true);
-    expect(read(context, child)()).toBe("PROVIDED");
+    expect(read(ctx, child)()).toBe("PROVIDED");
 
     exit(root);
     dispose(root);

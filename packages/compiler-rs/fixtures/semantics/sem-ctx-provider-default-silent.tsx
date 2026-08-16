@@ -11,14 +11,14 @@
  * SEMANTICS.md §2 O2; §4 X3.
  */
 import type { Block } from "@barqjs/core"
-import { createContext, render, useContext } from "@barqjs/core"
+import { context, render, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "X3"]
 
-const Theme = createContext<string>("light")
+const Theme = context<string>("light")
 
 function Badge() {
   const theme = useContext(Theme)

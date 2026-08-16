@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { For, Repeat, Show } from "./components.ts";
 import { cell } from "./props.ts";
 import type { JSXElement } from "./dom.ts";
-import { dyn, element, render } from "./dom.ts";
+import { dynamic, element, render } from "./dom.ts";
 import { branch } from "./flow.ts";
 import type { Scope } from "./scope.ts";
-import { createScope, flush, signal } from "./signals.ts";
+import { scope, flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
 beforeEach(() => {
@@ -23,7 +23,7 @@ describe("For keyed unification", () => {
     const items = signal(["a", "b"]);
     let renders = 0;
 
-    createScope(() => {
+    scope(() => {
       const el = For(null, {
         each: () => items(),
         keyed: false,
@@ -53,7 +53,7 @@ describe("For keyed unification", () => {
     ]);
     let renders = 0;
 
-    createScope(() => {
+    scope(() => {
       const el = For(null, {
         each: () => items(),
         keyed: cell((item: { id: number; text: string }) => item.id),
@@ -82,7 +82,7 @@ describe("Repeat", () => {
   test("renders count blocks with stable indices", () => {
     const count = signal(3);
 
-    createScope(() => {
+    scope(() => {
       const el = Repeat(null, {
         count: () => count(),
         children: (_s, i) => element(null, "span", { children: String(i) }) as Node,
@@ -104,7 +104,7 @@ describe("Repeat", () => {
   test("from offsets indices; fallback for zero", () => {
     const count = signal(0);
 
-    createScope(() => {
+    scope(() => {
       const el = Repeat(null, {
         count: () => count(),
         from: 10,
@@ -127,7 +127,7 @@ describe("Show keyed semantics", () => {
     const user = signal<{ name: string } | null>({ name: "John" });
     let renders = 0;
 
-    createScope(() => {
+    scope(() => {
       const el = Show(null, {
         when: () => user(),
         keyed: false,
@@ -162,7 +162,7 @@ describe("Show keyed semantics", () => {
     const user = signal<{ name: string } | null>({ name: "John" });
     let renders = 0;
 
-    createScope(() => {
+    scope(() => {
       const el = Show(null, {
         when: () => user(),
         children: (_s: unknown, u: { name: string }) => {
@@ -182,18 +182,18 @@ describe("Show keyed semantics", () => {
   });
 });
 
-describe("dyn — a tag chosen at run time (§3.13 item 4)", () => {
+describe("dynamic — a tag chosen at run time (§3.13 item 4)", () => {
   test("swaps the element when the source moves, keeping the props", () => {
     // M9 deleted the `dynamic(source)` FACTORY along with `<Dynamic>`. What it
     // did — return a component whose tag a signal drives — is what the compiler
     // emits directly: a `branch` keyed on the component value, whose body is
-    // `dyn`. The branch is the compiler's; `dyn`'s only question is whether the
+    // `dynamic`. The branch is the compiler's; `dynamic`'s only question is whether the
     // resolved value is a tag or a component, and only the value can answer it.
     const which = signal<"div" | "span">("div");
     const props = { class: "x", children: "hi" };
 
-    createScope((_dispose, scope) => {
-      const el = branch(scope, null, null, which, (s: Scope | null) => dyn(s, which, props));
+    scope((_dispose, scope) => {
+      const el = branch(scope, null, null, which, (s: Scope | null) => dynamic(s, which, props));
       render(el as JSXElement, container);
     });
     flush();

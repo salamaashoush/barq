@@ -11,14 +11,14 @@
  *
  * SEMANTICS.md §2 O2, O2.1; §4 X1; §3 C6.
  */
-import { createContext, getOwner, hasContext, render, signal, useContext } from "@barqjs/core"
+import { context, getOwner, hasContext, render, signal, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "O2.1", "X1", "C6"]
 
-const Ctx = createContext<() => string>()
+const Ctx = context<() => string>()
 
 const provided = signal("provided")
 

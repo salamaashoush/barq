@@ -7,11 +7,11 @@
  * and a provider that re-invoked its Block on a value change would be caught by
  * the log and by nothing else — the markup is identical either way.
  */
-import { createContext, signal, useContext } from "@barqjs/core"
+import { context, signal, useContext } from "@barqjs/core"
 
 export const log: string[] = []
 
-const Locale = createContext<() => string>()
+const Locale = context<() => string>()
 
 export const locale = signal("fr")
 

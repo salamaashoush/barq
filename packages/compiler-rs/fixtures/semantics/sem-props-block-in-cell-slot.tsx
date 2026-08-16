@@ -30,7 +30,7 @@
  * SEMANTICS.md §3 C3.6, C3.7, C3.8, C3.9, C5.1.
  */
 import { block, delegate, dispose, enterRoot, exit, isBlock, listen, pin, ref, render, setProp } from "@barqjs/core"
-import { branch, boundary, each, onCleanup, portal, provide, createContext, useContext } from "@barqjs/core"
+import { branch, boundary, each, onCleanup, portal, provide, context, useContext } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -64,7 +64,7 @@ type Shape = "guarded" | "pinned" | "laundered"
 /** A Cell in a Block slot: arity-tolerant, so `cell($s)` and `cell()` agree (C3.6). */
 const arityTolerant = () => "tolerated"
 
-const Theme = createContext<string>("default")
+const Theme = context<string>("default")
 
 interface Slotted extends Record<string, unknown> {
   thing: () => unknown

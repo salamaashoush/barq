@@ -18,14 +18,14 @@
  * SEMANTICS.md §2 O2; §4 X3.
  */
 import type { Block } from "@barqjs/core"
-import { createContext, effect, ErrorBoundary, hasContext, getOwner, render, useContext } from "@barqjs/core"
+import { context, effect, ErrorBoundary, hasContext, getOwner, render, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "X3"]
 
-const Locale = createContext<string>()
+const Locale = context<string>()
 
 let boundAtFallback: unknown = "not reached"
 

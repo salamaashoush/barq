@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test";
 import {
   NotReadyError,
   computed,
-  createScope,
+  scope,
   effect,
   flush,
   isPending,
@@ -191,7 +191,7 @@ describe("Loading boundary", () => {
       return "loaded";
     });
 
-    createScope(() => {
+    scope(() => {
       const el = Loading(null, {
         fallback: document.createTextNode("loading..."),
         children: () => {
@@ -222,7 +222,7 @@ describe("Errored boundary", () => {
   test("catches synchronous render errors", () => {
     const container = document.createElement("div");
 
-    createScope(() => {
+    scope(() => {
       const el = Errored(null, {
         fallback: (_s, error) => document.createTextNode(`error: ${error().message}`),
         children: () => {
@@ -240,7 +240,7 @@ describe("Errored boundary", () => {
     const container = document.createElement("div");
     const trigger = signal(false);
 
-    createScope(() => {
+    scope(() => {
       const el = Errored(null, {
         fallback: (_s, error) => document.createTextNode(`caught: ${error().message}`),
         children: () => {
@@ -266,7 +266,7 @@ describe("Errored boundary", () => {
     let shouldThrow = true;
     let resetFn: (() => void) | null = null;
 
-    createScope(() => {
+    scope(() => {
       const el = Errored(null, {
         fallback: (_s, error, reset) => {
           resetFn = reset;

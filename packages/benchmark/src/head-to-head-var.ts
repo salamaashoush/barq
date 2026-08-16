@@ -7,7 +7,7 @@
  */
 const {
   computed: bComputed,
-  createScope: bScope,
+  scope: bScope,
   effect: bEffect,
   flush: bFlush,
   signal: bSignal,
@@ -15,7 +15,7 @@ const {
 import {
   createEffect as sEffect,
   createMemo as sMemo,
-  createRoot as sRoot,
+  root as sRoot,
   createSignal as sSignal,
   flush as sFlush,
 } from "@solidjs/signals";

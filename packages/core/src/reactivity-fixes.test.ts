@@ -8,15 +8,15 @@
  *    are dropped after the run (suite semantics: an effect's write to
  *    its own dependency does not re-trigger that effect).
  * 2. runWithOwner used to swallow thrown errors.
- * 3. createContext Provider used to create a DETACHED scope, leaking its
+ * 3. context Provider used to create a DETACHED scope, leaking its
  *    effects/cleanups when the parent owner disposed.
  */
 
 import { describe, expect, test } from "bun:test";
 import {
   computed,
-  createContext,
-  createScope,
+  context,
+  scope,
   effect,
   flush,
   getOwner,
@@ -109,7 +109,7 @@ describe("runWithOwner error propagation", () => {
   });
 
   test("restores the previous owner after a throw", () => {
-    createScope((dispose) => {
+    scope((dispose) => {
       const before = getOwner();
       try {
         runWithOwner(null, () => {
@@ -130,9 +130,9 @@ describe("runWithOwner error propagation", () => {
 
 describe("context provider disposal", () => {
   test("provider scope is disposed when the parent scope disposes", () => {
-    const Ctx = createContext<number>(0);
+    const Ctx = context<number>(0);
     let cleaned = false;
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       Ctx.Provider(getOwner(), {
         value: 42,
         children: () => {
@@ -152,7 +152,7 @@ describe("context provider disposal", () => {
 
 describe("dependency read order", () => {
   test("a dep read in a different order on a later run stays subscribed", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const flip = signal(false);
       const a = signal(1);
       const b = signal(2);
@@ -181,7 +181,7 @@ describe("dependency read order", () => {
   });
 
   test("repeated non-consecutive reads keep every dep", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const a = signal(1);
       const b = signal(10);
       const c = computed(() => a() + b() + a() + b());
@@ -201,7 +201,7 @@ describe("dependency read order", () => {
   });
 
   test("three deps rotated across runs", () => {
-    const dispose = createScope((d) => {
+    const dispose = scope((d) => {
       const order = signal(0);
       const x = signal(1);
       const y = signal(2);

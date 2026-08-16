@@ -609,17 +609,13 @@ impl<'a> Binder<'_, 'a> {
         let accessor = SourceKind::Accessor { nonreactive: MemberMask::EMPTY };
         match prim {
             Prim::Signal => Produced::kind(signal),
-            Prim::Computed
-            | Prim::UseMemo
-            | Prim::CreateAsync
-            | Prim::CreateOptimistic
-            | Prim::MapArray
-            | Prim::Repeat => Produced::kind(accessor),
-            Prim::UseState => Produced::tuple(accessor, SourceKind::Inert),
-            Prim::UseStore | Prim::CreateOptimisticStore => {
+            Prim::Computed | Prim::Optimistic | Prim::MapArray | Prim::Repeat => {
+                Produced::kind(accessor)
+            }
+            Prim::Store | Prim::OptimisticStore => {
                 Produced::tuple(SourceKind::ReactiveObject, SourceKind::Inert)
             }
-            Prim::CreateProjection => Produced::kind(SourceKind::ReactiveObject),
+            Prim::Projection => Produced::kind(SourceKind::ReactiveObject),
             Prim::Resource => Produced::kind(SourceKind::AccessorRecord),
             // `useContext` hands back whatever was provided; guessing is the one
             // kind of wrong verdict that produces a silently dead UI.

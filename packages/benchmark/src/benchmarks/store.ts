@@ -11,7 +11,7 @@ import { store, produce, reconcile, effect } from "@barqjs/core";
 
 // SolidJS imports
 import { createStore, produce as solidProduce, reconcile as solidReconcile } from "solid-js/store";
-import { createRoot, createEffect } from "solid-js";
+import { root, createEffect } from "solid-js";
 
 export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
@@ -25,7 +25,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
 
   results.push(
     await benchmark("store", "solid", "create store", () => {
-      createRoot((dispose) => {
+      root((dispose) => {
         createStore({ count: 0, user: { name: "John", age: 30 } });
         dispose();
       });
@@ -54,7 +54,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "1000 property updates",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [state, setState] = createStore({ count: 0 });
           for (let i = 0; i < 1000; i++) {
             setState("count", i);
@@ -90,7 +90,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "500 deep path updates",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [state, setState] = createStore({
             user: { profile: { settings: { theme: "light" } } },
           });
@@ -131,7 +131,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "store + effect (100 updates)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           let effectRuns = 0;
           const [state, setState] = createStore({ a: 0, b: 0 });
           createEffect(() => {
@@ -180,7 +180,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "produce (100 updates)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [state, setState] = createStore({
             users: [
               { id: 1, name: "Alice", score: 0 },
@@ -230,7 +230,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "reconcile (50 array updates)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [state, setState] = createStore({
             items: Array.from({ length: 100 }, (_, i) => ({ id: i, value: i })),
           });
@@ -272,7 +272,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "solid",
       "array index updates (500)",
       () => {
-        createRoot((dispose) => {
+        root((dispose) => {
           const [state, setState] = createStore({
             items: Array.from({ length: 10 }, (_, i) => ({ id: i, done: false })),
           });

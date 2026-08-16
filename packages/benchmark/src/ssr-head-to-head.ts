@@ -142,7 +142,7 @@ function barqUncompiledPage(): unknown {
         }),
       ],
     });
-  return scope === null ? barqCore.createRoot(build) : build();
+  return scope === null ? barqCore.root(build) : build();
 }
 
 // ---------------------------------------------------------------- what each emits

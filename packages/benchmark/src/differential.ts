@@ -25,7 +25,7 @@ const barq: Api = {
   effect: (fn) => {
     B.effect(fn);
   },
-  root: (fn) => B.createScope(fn, true),
+  root: (fn) => B.scope(fn, true),
   flush: () => B.flush(),
   cleanup: (fn) => {
     B.onCleanup(fn);
@@ -42,7 +42,7 @@ const solid: Api = {
   effect: (fn) => {
     S.createEffect(fn as never, () => {});
   },
-  root: (fn) => S.createRoot(fn),
+  root: (fn) => S.root(fn),
   flush: () => S.flush(),
   cleanup: (fn) => {
     S.onCleanup(fn);

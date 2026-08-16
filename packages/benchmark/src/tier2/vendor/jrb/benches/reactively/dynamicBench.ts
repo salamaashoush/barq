@@ -12,9 +12,9 @@ function percent(n: number): string {
 
 export function makeTitle(config: TestConfig): string {
   const { width, totalLayers, staticFraction, nSources, readFraction } = config;
-  const dyn = staticFraction < 1 ? " - dyn" + percent(1 - staticFraction) : "";
+  const dynamic = staticFraction < 1 ? " - dynamic" + percent(1 - staticFraction) : "";
   const read = readFraction < 1 ? ` - lazy${percent(1 - readFraction)}` : "";
-  return `${nSources}-${width}x${totalLayers}${dyn}${read}`;
+  return `${nSources}-${width}x${totalLayers}${dynamic}${read}`;
 }
 
 /** benchmark a single test under single framework.

@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { store, produce, reconcile, unwrap } from "./store.ts";
-import { effect, createScope, batch } from "./signals.ts";
+import { effect, scope, batch } from "./signals.ts";
 
 describe("store", () => {
   test("creates store with initial state", () => {
@@ -501,7 +501,7 @@ describe("Store with effects disposal", () => {
     let effectRuns = 0;
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
       effect(() => {
         void state.count;
@@ -530,7 +530,7 @@ describe("Store with effects disposal", () => {
     let innerRuns = 0;
     let dispose: (() => void) | undefined;
 
-    createScope((d) => {
+    scope((d) => {
       dispose = d;
 
       effect(() => {

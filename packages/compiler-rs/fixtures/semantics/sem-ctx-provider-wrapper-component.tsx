@@ -24,14 +24,14 @@
  * SEMANTICS.md §2 O1, O2, O2.1; §4 X1; §15.4.
  */
 import type { Block } from "@barqjs/core"
-import { createContext, getOwner, hasContext, render, useContext } from "@barqjs/core"
+import { context, getOwner, hasContext, render, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "O2.1", "X1"]
 
-const Theme = createContext<string>("fallback-theme")
+const Theme = context<string>("fallback-theme")
 
 let labelRuns = 0
 let ownerAtBody: unknown = "not reached"
