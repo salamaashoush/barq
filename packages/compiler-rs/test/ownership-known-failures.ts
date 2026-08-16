@@ -186,13 +186,17 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * three, because the runtime keying arm calls its content Block from inside the
  * region's own body — so a clone this channel could not attribute is exactly
  * the defect that arm risks.
+ *
+ * `control-flow-show-keyed-false` is the fourth: 140 fixtures, 399 scopes, 265
+ * effects, 312 clones, 310 determined. It is the arm of `Show` that had no
+ * fixture at all, which is how its body parameter went untyped.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 139,
-  scopes: 394,
-  effects: 262,
-  clones: 308,
-  determined: 306,
+  fixtures: 140,
+  scopes: 399,
+  effects: 265,
+  clones: 312,
+  determined: 310,
   unattributed: 1,
   cascades: 1,
 })

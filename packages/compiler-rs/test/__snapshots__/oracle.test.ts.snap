@@ -1928,3 +1928,19 @@ attrs 3: 0/0 b: class"
 `;
 
 exports[`marker channel control-flow-spread-show: anchor layout 1`] = `"<div><b>alpha</b></div>"`;
+
+exports[`rendered DOM golden control-flow-show-keyed-false: rendered DOM 1`] = `
+"initial: <div class="keyed-false-show"><b class="shown">alpha</b></div>
+step 0: <div class="keyed-false-show"><b class="shown">beta</b></div>
+step 1: <div class="keyed-false-show"><i>none</i></div>
+step 2: <div class="keyed-false-show"><b class="shown">gamma</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class
+attrs 3: 0/0 b: class"
+`;
+
+exports[`marker channel control-flow-show-keyed-false: anchor layout 1`] = `"<div><b>alpha</b></div>"`;

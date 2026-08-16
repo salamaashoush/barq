@@ -122,10 +122,13 @@ export const MATRIX_EXCEPTIONS = {
 // which is `Show`'s runtime keying arm — both programs emitted, the test at run
 // time — and it has to read identically through all seven modes, because the
 // test is in the emitted expression rather than in either backend.
+// And +1 fixture, +7 cells, +1 renderableOnBoth for `control-flow-show-keyed-false`,
+// which is the `Show` arm that had no fixture — the reason its body parameter
+// went untyped long enough for the read in it to be applied once.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 185,
+  fixtures: 186,
   modes: 7,
-  cells: 1295,
-  renderableOnBoth: 158,
+  cells: 1302,
+  renderableOnBoth: 159,
   renderableOnNeither: 27,
 })

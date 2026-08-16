@@ -2311,6 +2311,59 @@ export const optimality = {
 "
 `;
 
+exports[`emitted code snapshots control-flow-show-keyed-false 1`] = `
+"import { signal, template as _$template, insert as _$insert, block as _$block, branch as _$branch } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="keyed-false-show"></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<i>none</i>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<b class="shown"></b>\`);
+export const value = signal<string | null>("alpha");
+/**
+* \`<Show keyed={false}>\` — the narrowed-accessor mode, and the one arm of the
+* construct that had no fixture.
+*
+* \`keyed={false}\` re-renders only when TRUTHINESS flips, so across a value
+* change the content stays mounted and only its reads move. That makes the body
+* parameter an accessor, and \`analysis::bind::row_params\` did not say so: it
+* typed \`For\` and \`Repeat\` and returned early for everything else, so \`{v()}\`
+* was an opaque call the classifier applied ONCE and the text froze at
+* activation. It is the by-item \`For\` bug (V8) in the construct beside it.
+*
+* Step 0 is the only frame that can see it. \`alpha\` to \`beta\` is a value change
+* with no truthiness change, so a frozen read and a live one agree on every
+* other frame — which is exactly why 131 fixtures missed it.
+*/
+export default function ControlFlowShowKeyedFalse(_s$) {
+  const _el$1 = _tmpl$1();
+  _$branch(_s$, _el$1, null, () => value() ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => _$block((_s$, v) => {
+    const _el$2 = _tmpl$3();
+    _$insert(_s$, _el$2, v);
+    return _el$2;
+  })(_s$, value))]);
+  return _el$1;
+}
+ControlFlowShowKeyedFalse = _$block(ControlFlowShowKeyedFalse);
+export const steps = [
+  () => value.set("beta"),
+  () => value.set(null),
+  () => value.set("gamma")
+];
+export const optimality = {
+  target: 1,
+  milestone: 10,
+  templates: 3,
+  // The key is the truthiness index and the body is the two-row table. The
+  // read η-reduces to the accessor, which is the whole claim: a bare name in
+  // the hole is what a LIVE binding looks like here.
+  emits: [
+    "branch(",
+    "? 1 : 0",
+    ", v) =>"
+  ],
+  absent: ["Show(", "v())"]
+};
+"
+`;
+
 exports[`emitted code snapshots control-flow-show-static-body 1`] = `
 "import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>\`);

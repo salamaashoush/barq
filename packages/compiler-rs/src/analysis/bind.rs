@@ -945,13 +945,31 @@ impl<'a> Binder<'_, 'a> {
             (Flow::For, Keyed::ByFn) => &[accessor, accessor],
             (Flow::For, _) => &[accessor, SourceKind::Inert],
             (Flow::Repeat, _) => &[SourceKind::Inert],
+            // `Show` and `Match` discriminate on `keyed` exactly as `For` does,
+            // and returning early for them left the one parameter they hand
+            // over untyped. `keyed={false}` is Solid 2.0's narrowed accessor —
+            // the content stays mounted across a value change and only its
+            // READS move — so a body written `{v()}` was an opaque call applied
+            // once and the text froze at activation. That is the `For` by-item
+            // bug (V8) in the construct next to it, and it never had a fixture.
+            //
+            // The keyed default hands the VALUE, like a by-item row. `ByFn` is
+            // where a spread lands, and there the body may receive either — the
+            // adapter had the same ambiguity and `show`'s runtime arm keeps it
+            // — so it takes the accessor, which is the arm that stays correct
+            // when wrong: `insert` subscribes to a function and takes a
+            // non-function as the value it is.
+            (Flow::Show | Flow::Match, Keyed::ByItem) => &[SourceKind::RowValue],
+            (Flow::Show | Flow::Match, _) => &[accessor],
             _ => return,
         };
-        // Only `For`'s signature reads `keyed`; `Repeat` hands over a plain
-        // number, so an unreadable attribute list leaves it proved.
-        let proved = proved || flow != Flow::For;
+        // Only `For`, `Show` and `Match` read `keyed`; `Repeat` hands over a
+        // plain number, so an unreadable attribute list leaves it proved.
+        let proved = proved || !matches!(flow, Flow::For | Flow::Show | Flow::Match);
 
-        if keyed == Keyed::ByIndex && proved {
+        // K3 is about a ROW whose identity is its index. A `Show` has no rows,
+        // so `keyed={false}` there is not the thing the hint warns about.
+        if keyed == Keyed::ByIndex && proved && matches!(flow, Flow::For | Flow::Repeat) {
             self.positional_state_hint(element);
         }
 

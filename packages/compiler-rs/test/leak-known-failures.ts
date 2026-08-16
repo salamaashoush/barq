@@ -118,11 +118,16 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * 279 effects. One effect for six more scope entries is the runtime keying
  * arm's shape — one `branch` whose single body enters a scope per activation,
  * where a two-row table would have entered the same ones.
+ *
+ * And once more for `control-flow-show-keyed-false`: 154 sessions, 484 scope
+ * entries, 282 effects. Three effects for one fixture is the point of it — the
+ * narrowed accessor is a LIVE read now, where it used to be applied once, so
+ * the effect that carries it is what the fixture exists to observe.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
-  sessions: 153,
-  scopesEntered: 479,
-  effectsCreated: 279,
+  sessions: 154,
+  scopesEntered: 484,
+  effectsCreated: 282,
   listeners: 30,
 })
 
