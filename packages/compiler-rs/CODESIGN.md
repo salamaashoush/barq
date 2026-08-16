@@ -1414,8 +1414,8 @@ the flags set stays small.
 | `appendChildren`/`appendChild`/`childToNodes` ×2/`drainFragment` | ~146 | Artefacts of the eager-children convention. |
 | `markers.ts` entire | 51 | Anchor identity is a compile-time address. A process-global `markerId` makes two renders of one tree differ byte-for-byte, which is precisely what makes hydration impossible. |
 | `Fragment` component | 19 | A fragment is a compile-time multi-root unit. Today it silently drops function children and nested arrays (verified). |
-| `Show`/`Switch`/`Match`/`Repeat`/`Dynamic`/`Portal`/`Reveal` as **components** | ~450 | Ten copy-pasted `dispose → clearRange → scope → insertNodes` bodies, each with its own bugs: `Show` re-registers `onCleanup` **inside** its renderEffect (`components.ts:154`); `Dynamic` and `Portal` use detached scopes where `Show` uses attached; `Dynamic`'s string branch is a fifth element-creation path that JSON-stringifies objects into attributes and never removes its listeners. |
-| `Suspense`, `Await`, `ErrorBoundary` | ~196 | Legacy duplicates of `Loading`/`resource`/`Errored`. `ErrorBoundary` reads its children **outside** its own boundary and lacks the `NotReady` guard. |
+| ~~`Show`/`Switch`/`Match`/`Repeat`/`Dynamic`/`Portal`/`Reveal` as **components**~~ **STRUCK at M10 — they are the `-O0` emission; see below** | ~450 | Ten copy-pasted `dispose → clearRange → scope → insertNodes` bodies, each with its own bugs: `Show` re-registers `onCleanup` **inside** its renderEffect (`components.ts:154`); `Dynamic` and `Portal` use detached scopes where `Show` uses attached; `Dynamic`'s string branch is a fifth element-creation path that JSON-stringifies objects into attributes and never removes its listeners. |
+| ~~`Suspense`, `Await`, `ErrorBoundary`~~ **STRUCK at M10, same reason** | ~196 | Legacy duplicates of `Loading`/`resource`/`Errored`. `ErrorBoundary` reads its children **outside** its own boundary and lacks the `NotReady` guard. |
 | `createResource`/`suspend`/`awaitAll` (`async.ts:154-234`) | 81 | Not exported from `index.ts`; referenced only by their own tests. |
 | `setProp`/`applyProp`/`applyResolvedProp`/`diffClassList`/`diffStyleObjects` dispatch | ~180 | The compiler holds every fact these re-derive as a `NameFlags` bit. Tables move to Rust and to the generated `.d.ts` — one source of truth. |
 | `mergeProps`/`merge`/`omit`/`splitProps` `for…in` bodies | ~90 | Become one-liners over `Object.assign` and destructuring. Law 4 does the work. |
@@ -1470,6 +1470,42 @@ reversal on evidence, and each is stated here so the table above is not read as 
   error after it fails, which IS the three-state key the adapter computed — and `Reveal` keeps its
   provide scope as `reveal($s, order, collapsed, body)` in `flow.ts`, beside the four primitives
   rather than among them.
+
+#### What M10 changed about it, also on measurement
+
+- **The fourteen flow components and `ssr.ts`'s twelve string adapters are STRUCK from the list,
+  not deferred.** M9 put them back and recorded the blocker as one compiler gap: `passes::flow`
+  could not lower a construct whose props arrived through a SPREAD. M10 closed that gap for ten of
+  the thirteen — `admits_spread` names the three that still refuse and why — and the last surviving
+  flow import at `-Ox` went with it, 1 of 131 fixtures to 0.
+
+  The adapters stayed anyway, and the reason was never the gap. **`Opt::flow` is one of the nine
+  flippable knobs and `-O0` turns it off**, so at `-O0` the pass does not run, every construct is a
+  component call, and the adapter is what it calls. Over the corpus:
+
+  | level | fixtures keeping a flow import |
+  |---|---|
+  | `-Ox` | **0** of 131 |
+  | `-O0` | **37** of 131, across all thirteen constructs |
+
+  `-O0` is not a debug convenience. §6 L3 grades every optimisation by rendering the corpus at both
+  levels and requiring the frames to agree, so the `-O0` emission is the flow pass's own reference —
+  deleting the adapters would delete what the pass is graded against. This is a third independent
+  reason after M9's two, and unlike those it is not a gap anybody can close: it is what a flippable
+  optimisation MEANS.
+
+  What the lowering buys instead is the `(parent, anchor)` pair §3.4 exists to deliver, at every
+  spread site. `<For {...opts}>` emitted `_$insert($s, el, For($s, _$props([…])))` — an adapter
+  frame inside an insert hole, at a position the compiler already knew — and now emits
+  `_$each($s, el, null, …)`. On the one fixture that had this shape before, effects (3 created / 8
+  runs) and clones (3) are unchanged and the emitted function grew 327 → 336 bytes: the work was
+  always the same work, and what leaves is the frame and the import.
+
+- **`Show`'s `keyed` was the one place M9's "the two answers are different programs" was true**, and
+  it is emittable anyway. The two programs differ in exactly two expressions — the key, and what the
+  content Block is handed — and `branch`'s ABI covers both, because a single Block used for every
+  key is already what the keyed arm passes. The two-row table is an optimisation of the keyed shape
+  rather than a second mechanism.
 
 ### 4.2 `signals.ts` — opened, contrary to the previous pass
 

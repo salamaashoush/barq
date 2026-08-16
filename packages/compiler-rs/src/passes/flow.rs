@@ -20,26 +20,34 @@
 //! | `Errored` / `ErrorBoundary` | `boundary("error")` | the collector's |
 //! | `Portal` | `portal` | the target |
 //!
+//! `Dynamic`, `Await` and `Reveal` lower too, since M9. `Await` is the outer of
+//! two boundaries rather than a three-state key; `Reveal` is a `reveal` call
+//! rather than a region row, because it creates a PROVIDE scope and not a range.
+//!
 //! ## What is not, and why each refusal is a fact rather than a gap
 //!
-//! - **`Dynamic`** needs the string arm's element construction, which lives in
-//!   `components.ts` as a private `createDynamicElement` and is not on the ABI
-//!   §3.0 enumerates. Lowering it would mean emitting a fifth element-creation
-//!   path out of the compiler, which is the thing M4 deleted from the runtime.
-//! - **`Await`** discriminates a `Resource` from a `Cell` carrying one by a
-//!   property test on the value (`"state" in carrier`), and its key and its
-//!   three bodies each need the resolved resource. Without a shared local that
-//!   is four evaluations of the `resource` prop, and the compiler cannot prove
-//!   they yield the same object.
-//! - **`Reveal`** creates a PROVIDE scope, not a range — `ownership.rs` says so
-//!   and O1 lists `provide` separately from `branch`. It is not one of the four
-//!   primitives, and lowering it onto `branch` would put a context binding where
-//!   a conditional belongs.
+//! - **`Switch` whose arms are not literal `<Match>` elements.** A mapped list
+//!   of arms, or a component that returns one, is a runtime scan
+//!   ([`admits_arms`]). `Match` goes with it: it is only ever read by a `Switch`
+//!   that folded it.
+//! - **`Dynamic` behind a spread.** Everything but `component` is the RESOLVED
+//!   component's props, so the source list is not the construct's to read off.
+//! - **An unreadable `keyed` written as a static attribute.** `<Show keyed={x}>`
+//!   is refused where `<Show {...p}>` is not, and the asymmetry is deliberate:
+//!   off a spread the pass emits both programs and tests at run time
+//!   ([`show`]), and doing the same for a named prop it could have read would
+//!   pay for a decision nobody asked it to defer.
 //!
-//! Every refusal — these three, and every construct whose props the pass cannot
-//! read statically — leaves the component call exactly as it was, which reaches
-//! the same primitive one adapter frame later. That direction is always safe;
-//! the other never is.
+//! Every refusal leaves the component call exactly as it was, which reaches the
+//! same primitive one adapter frame later. That direction is always safe; the
+//! other never is.
+//!
+//! **The adapters are not a migration artefact and do not get deleted.**
+//! `Opt::flow` is a flippable knob and `-O0` turns this pass off, so at `-O0`
+//! every construct is a component call — 37 of 131 fixtures keep a flow import
+//! there, against 0 at `-Ox`. §6 L3 grades this pass by comparing the two, so
+//! `components.ts` and `ssr.ts`'s string half are the reference it is graded
+//! against. `CODESIGN.md` §4.1's row is struck on that ground.
 
 use oxc::allocator::{Box as ArenaBox, CloneIn, Vec as ArenaVec};
 use oxc::ast::ast::{

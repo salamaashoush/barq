@@ -1,70 +1,52 @@
 /**
  * The flow components — the adapters `passes::flow` falls back to.
  *
- * ## Why these still exist, measured
+ * ## Why these exist, and why the deletion §4.1 asks for cannot happen
  *
- * `CODESIGN.md` §4.1 lists all fourteen for deletion, and M9 deleted them and
- * put them back.
+ * `CODESIGN.md` §4.1 lists the fourteen for deletion. M9 deleted them, put them
+ * back, and recorded the blocker as one compiler gap — a construct whose props
+ * arrive through a SPREAD stays a component call. M10 closed that gap for ten of
+ * the thirteen and found the row was wrong for a reason that has nothing to do
+ * with spreads.
  *
- * It is not that a construct fails to lower. Every FORM of every construct
- * lowers — `<For>` alone covers identity-keyed (the K1 default), `keyed={false}`,
- * `keyed={fn}` and a `keyed` the analysis cannot prove, and all four emit
- * `_$each` with no `For` import left behind:
+ * **`Opt::flow` is a flippable knob and `-O0` turns it off.** At `-O0` the flow
+ * pass does not run, so every construct is a component call and reaches the
+ * adapter here. Compiling the whole corpus at both levels:
  *
- *     control-flow-for                    each=YES  keeps For import=no
- *     control-flow-for-keyed-by-item      each=YES  keeps For import=no
- *     control-flow-for-keyed-false        each=YES  keeps For import=no
- *     control-flow-for-keyed-fn           each=YES  keeps For import=no
- *     control-flow-for-keyed-unprovable   each=YES  keeps For import=no
- *     control-flow-for-keyed-spread       each=no   keeps For import=YES
+ *     -Ox   0 of 131 fixtures keep a flow import
+ *     -O0  37 of 131 keep one, across ALL THIRTEEN constructs
+ *          For 16 · Show 14 · Match 3 · Switch 3 · Errored 2 · Repeat 2
+ *          Reveal 2 · Await 1 · Dynamic 1 · ErrorBoundary 1 · Loading 1
+ *          Portal 1 · Suspense 1
  *
- * The exception is the last row, and it is not about `For`: P-new `flow` reads
- * a construct's PROPS to pick a lowering, and a spread is the one source it
- * cannot read. `<For {...opts}>` therefore stays a component call, and so would
- * `<Show {...p}>` or any of the other twelve. Over the whole 131-fixture corpus
- * that is the only surviving flow import there is.
+ * And `-O0` is not a debug convenience: §6 L3 grades every optimisation by
+ * rendering the corpus at both levels and requiring the frames to agree, so the
+ * `-O0` emission is the flow pass's own reference. Deleting these would delete
+ * what the pass is graded against. The row is struck, not deferred.
  *
- * The string backend has the identical gap and the identical fallback —
- * `codegen::ssr::flow_call` routes the same shape to `ssrShow`/`ssrFor`/the
- * other ten, and a probe confirmed all eleven are reachable from legal source,
- * one construct at a time. So the fourteen adapters here and the twelve in
- * `ssr.ts` are ONE deletion, blocked on ONE compiler gap, and neither half can
- * go first: deleting them turns `<Show {...props}>` from a working program into
- * a load-time `SyntaxError: Export named 'Show' not found`.
+ * Three constructs also still refuse at `-Ox`, each for a stated reason in
+ * `passes::flow::admits_spread`, so their adapters are reachable from an
+ * optimised build as well: `Switch` needs literal `<Match>` arms it can read
+ * (`admits_arms`), `Match` goes with it, and `Dynamic`'s unrecognised props are
+ * the RESOLVED component's rather than the construct's.
  *
- * ## Why a spread cannot just lower like an element's does
+ * ## What M10 did buy, measured
  *
- * §5.3 put a spread back on the template path for ELEMENTS, so the obvious
- * question is why the same answer does not work here. The refusal is one line —
- * `passes::flow::admits_element` rejects a `SpreadAttribute` before any per-prop
- * reasoning runs — and the asymmetry behind it is real:
+ * The last surviving flow import at `-Ox` went. Before, `<For {...opts}>`
+ * emitted `_$insert($s, el, For($s, _$props([…])))` — an adapter frame inside an
+ * insert hole, at a position the compiler already knew. Now it emits
+ * `_$each($s, el, null, …)` against a binding the source list is evaluated into
+ * once, which is the `(parent, anchor)` pair §3.4 exists to deliver.
  *
- *  - On an element every name has the SAME KIND of destination: an attribute
- *    channel. `_$spread` resolves each at run time through the same tables the
- *    compiler reads, in source order. Unknown names cost nothing structural.
- *  - On a flow construct each prop decides a DIFFERENT PART OF THE LOWERING.
- *    `each`/`when`/`count` is the region's source; `fallback` is a second Block;
- *    `keyed` selects one of three key expressions; and `children` is the body
- *    Block whose PARAMETER LIST changes with the keying mode — `(item, index)`
- *    keyed, `(item(), index())` by key function, `(item(), index)` positional.
- *    `admits_value` says it for `keyed` in as many words: "the key it builds is
- *    a different expression depending on the answer… the two answers are
- *    different programs."
+ * On `control-flow-for-keyed-spread`, the one fixture that had this shape
+ * before: effects 3 created / 8 runs, unchanged; clones 3, unchanged; emitted
+ * function 327 → 336 bytes. The counters do not move because the work was
+ * always the same work — what leaves is the frame it went through and the
+ * import that pulled this file into the bundle.
  *
- * The existing unprovable-prop rule does not stretch to cover it either.
- * `control-flow-for-keyed-unprovable` is `keyed={byId}` — a NAMED prop behind a
- * binding, where the compiler still knows WHICH prop it is and only its value is
- * opaque, so it can take "the key-function arm, which is the one that is safe
- * when wrong". A spread hides which props exist at all, so there is nothing for
- * that rule to apply to.
- *
- * **What lowering one would take:** emit the region against a merged source list
- * instead of named attributes — `_$each($s, parent, anchor, () => p.each,
- * keyOf(p), body, flags, () => p.fallback)` with `p = _$props([…])` — and then
- * settle the body's ARITY, which is the part that cannot become an argument
- * because it changes the emitted function's own parameter list. That last step
- * is the real blocker, and an adapter is exactly what a runtime keying decision
- * looks like. It is a compiler feature, and it is not M9's.
+ * `control-flow-spread-precedence` reads 4 created / 10 runs, which is exactly
+ * `control-flow-for-keyed-false`'s row: a lowered spread costs what the static
+ * equivalent costs.
  *
  * ## What DID go, and stays gone
  *
@@ -78,6 +60,10 @@
  * went at M9 — these re-exported it and never called it — and so did
  * `children()`, `dynamic()` and the `DocumentFragment` `Fragment` built, which
  * C8 replaced with an array.
+ *
+ * `For`'s copy of §3.0 rule 1 went at M10: `each`'s own `keyMode` resolves the
+ * keying carrier for both the adapter and the compiled path, so there is one
+ * implementation of it rather than three.
  */
 
 import type { Resource } from "./async.ts";

@@ -10,7 +10,11 @@ finished. Three commits, `c84b8a7` → `b0af252` → `93a44c6`, each its own ste
 way is under `## M9, done` below, including three rows of `CODESIGN.md` that were REVERSED on
 evidence; read those before re-attempting any of them.
 
-**Next is M10: async and transitions, on Solid 2.0's model.** `CODESIGN.md` §12 records the mechanism
+**M10 is in progress.** Its first item — `passes::flow` lowering a spread source — is DONE, and it
+answered the adapter-deletion question in the negative on evidence; see `## M10, so far` below
+before re-reading §4.1. What remains is the async and transition half.
+
+**M10 proper is async and transitions, on Solid 2.0's model.** `CODESIGN.md` §12 records the mechanism
 in full, read out of their shipped `@solidjs/signals` rather than from documentation. M7b landed a
 first cut; the user wants it finished properly. Read §12 before touching it — the design this project
 originally guessed (a pending scope beside the live one, `KEEPALIVE` parking) is the one the
@@ -25,23 +29,26 @@ a spread, and that single gap is what keeps twenty-six runtime adapters alive ac
 
 ```
 cargo test                    303 pass, 0 fail
-compiler-rs bun test         3356 pass, 0 fail, 8 todo, 394 snapshots
+compiler-rs bun test         3420 pass, 0 fail, 8 todo
 packages/core                 951 pass, 0 fail
 packages/extra                153 pass, 0 fail
 packages/testing               16 pass, 0 fail   (now COMPILED — see below)
 packages/compiler              22 pass, 0 fail
 root bun run ci               EXIT=0
-fixtures                      131
+fixtures                      135
 kitchen-sink                  builds; all 9 routes drive in real Chrome, reactive, routed
 ```
 
 Registries: `known-failures.ts` 5 · `ownership-known-failures.ts` 2 · `leak-known-failures.ts` 3.
+`hydration.ts`'s `control-flow-for-keyed-spread` row is DELETED at M10 — it was registered for
+`not-hydratable` because an adapter has no flags to forward, and the construct is a region with the
+flag on it now.
 `oracle-known-failures.ts` is DELETED — all 34 rows were `cause: "C1"` or `"C6"`, both of which are
 facts about an un-compiled path that no longer runs. Each surviving row names the rule it violates
 and the milestone that fixes it, and the registry **fails the suite if a registered fixture starts
 passing** — that is the signal a milestone worked, not a problem to route around.
 
-`git status` is clean at `93a44c6`.
+`git status` is clean at `3af14f0`.
 
 ---
 
@@ -88,12 +95,11 @@ failed, which is what it is for.
 Do not re-attempt these without doing the measurement again.
 
 - **The fourteen flow components stay** (`components.ts`), and so do **`ssr.ts`'s twelve string
-  adapters**. They are ONE deletion blocked on ONE compiler gap. `passes::flow::admits_element`
-  refuses any `SpreadAttribute`, so `<For {...opts}>` stays a component call — the only surviving
-  flow import in all 131 fixtures. Every FORM lowers; a spread is what does not. The header of
-  `components.ts` has the corpus numbers and the reason the element answer does not transfer: on an
-  element every unknown name has the same kind of destination, and on a flow construct each prop
-  decides a different part of the lowering — including the body Block's own parameter list.
+  adapters**. M9 recorded this as ONE deletion blocked on ONE compiler gap — `admits_element`
+  refused any `SpreadAttribute`. **M10 closed that gap and they still stay**, for a reason that is
+  not a gap at all: `-O0` turns the flow pass off, so the adapters are the `-O0` emission and §6 L3
+  grades the pass against it. The verdict is unchanged and the REASON is replaced; read
+  `## M10, so far` and `components.ts`'s header, not this row's original argument.
 - **The Block brand does NOT go behind `dev`.** Its closure is not a DEV facility; it establishes the
   ambient owner (C1/O4.5). Ablated: 100-row `renderToString`, 51x100 iters, medians 4.62/4.88
   shipping vs 4.53/4.74 with the brand alone — the two shipping runs differ by more than shipping
@@ -127,6 +133,106 @@ HEAD, on no branch. Its content is intact in HEAD's tree (`repropagate`/`openWav
 the depth regression test, `CODESIGN.md` §0.8) because M8's `git add -A` swept it into `35be05c`. So
 the code is safe and the attribution is wrong. Do not "restore" it; just know the M8 commit message
 does not describe half of what that commit contains.
+
+---
+
+## M10, so far
+
+Four commits. The first is M9's loose end; the other three are M10's first item.
+
+| commit | what |
+|---|---|
+| `1496787` | M9's mutation table — 23 rows, 23 killed, no equivalent |
+| `7b32fd6` | `cargo fmt`, which HEAD was not clean under (18 files; six untouched by anything else) |
+| `7f65c5c` | `passes::flow` lowers a spread source |
+| `57a21bd` | `Show` lowers one too, by emitting both programs |
+| `3af14f0` | `Show`'s body parameter is typed, so `keyed={false}` stays live |
+
+### The stated blocker was two things, and the smaller one was false
+
+M9 wrote that a flow construct's props "each decide a different part of the LOWERING — `keyed`
+selects one of three key expressions and the body Block's own PARAMETER LIST changes with it".
+
+For `For` that is false, and three facts say so. `each` invokes every row as
+`build(scope, body, [item, index])` in all three list modes (`flow.ts`), and `mapArray` decides what
+`item` and `index` ARE. The three keying fixtures compile to emissions that differ at the `keyOf`
+argument — `null` / `false` / `(row) => row.id` — and nowhere else. And `analysis::bind` already
+resolved a spread to `Keyed::ByFn`, so the body's INTERIOR was already on the safe arm. The keying
+mode was already a runtime argument; the pass was refusing to pass it.
+
+For `Show` it was true, and it is emittable anyway. The two programs differ in exactly two
+expressions — the key, and what the content Block is handed — and `branch`'s ABI covers both,
+because a single Block used for every key is what the keyed arm already passes.
+
+**Ten of thirteen constructs admit a spread now.** `admits_spread` is a match with one arm per
+construct so each exclusion is stated where it is enforced.
+
+### The prize does not exist, and the reason is structural
+
+`-Ox` surviving flow imports across 131 fixtures: **1 → 0**. That is the whole measured win, plus
+the `(parent, anchor)` pair every spread site now gets instead of an `insert` hole around an adapter
+frame.
+
+The twenty-six adapters do NOT go, and it is not a gap anybody can close:
+
+| level | fixtures keeping a flow import |
+|---|---|
+| `-Ox` | **0** of 131 |
+| `-O0` | **37** of 131, across all thirteen constructs |
+
+`Opt::flow` is one of the nine flippable knobs and `-O0` turns it off, so at `-O0` every construct
+is a component call and the adapters are what it calls. §6 L3 grades every optimisation by rendering
+the corpus at both levels and requiring the frames to agree — so `components.ts` and `ssr.ts`'s
+string half ARE the flow pass's reference. Deleting them deletes the oracle. §4.1's two rows are
+struck rather than deferred, and `components.ts`'s header carries the table.
+
+Three constructs also still refuse at `-Ox`, so their adapters are reachable from an optimised build
+too: `Switch` needs literal `<Match>` arms (`admits_arms`, never about spreads), `Match` goes with
+it, and `Dynamic`'s unrecognised props are the resolved component's.
+
+### Two defects found by reading the emission, one of them old
+
+- **`Uids::temp` is one undecorated name** whose invariant is that the flow pass declares it at the
+  head of a body arrow and reads it in the same arrow. A spread source binding is declared AROUND a
+  body that declares one too and read INSIDE it, so `Repeat`'s index shift shadowed the props object
+  and `_v$.from` read a property off a number — silently, because `?? 0` swallowed it. Source
+  bindings have their own numbered base now, `_o$N`, and `UID_BASES` is twelve.
+- **`analysis::bind::row_params` typed `For` and `Repeat` and returned early for everything else**,
+  so `<Show keyed={false}>`'s body parameter was not known to be an accessor and `{v()}` was applied
+  once — the text froze at activation. Pre-existing, and the arm had no fixture, which is how it
+  survived. `control-flow-show-keyed-false` pins it; step 0 is the only frame that can see it.
+
+### What the app says
+
+Driven in real Chrome with an explicit session key. All nine kitchen-sink routes render, the counter
+is reactive, no console errors. The spread fixtures were driven separately, compiled and bundled:
+`For` keyed by `row.id` updates in place, `control-flow-spread-precedence` takes its source from the
+static prop rather than the spread's stale one, `Repeat`'s `from: 10` shift lands, and `Show` was run
+against four carriers — absent, `keyed: true`, `keyed: false`, and one with a fallback — beside the
+static path compiled from the same body. The frames are identical, which is the claim.
+
+### Gates
+
+```
+cargo test                    303 pass, 0 fail
+compiler-rs bun test         3420 pass, 0 fail
+packages/core                 951 pass, 0 fail
+packages/extra                153 pass, 0 fail
+packages/testing               16 pass, 0 fail
+packages/compiler              22 pass, 0 fail
+root bun run ci               EXIT=0
+fixtures                      135  (+4: three spread forms, and Show's keyed={false} arm)
+```
+
+`effect-counts.ts` gained four rows and changed none. The mode matrix, the leak probes and the
+ownership channel each moved their reach pin, and each says what moved and why.
+
+### What M10 still owes
+
+Items 2 and 3 of the instruction — transitions getting a compiler surface, and reveal ordering
+moving into the boundary contract — are untouched. So are the `flow.ts` `Loading` bug M7 bisected,
+`computed`'s `AsyncIterable`, the other half of `sem-own-given-scope-wins`'s O4.5 row, and
+`packages/extra/src/css.ts`.
 
 ---
 
@@ -230,9 +336,8 @@ concrete openers. In the order they unblock each other:
 2. **Reveal ordering belongs in the boundary contract** (§12). `reveal` is a separate primitive
    standing in for it — it creates a *provide* scope rather than a range, which is why it never fit
    among the four. If the async model follows Solid's, this is where it goes.
-3. **`passes::flow` lowering a spread source** — M9's finding, detailed under "Open" below. It is the
-   single gap keeping twenty-six runtime adapters alive across both backends, and it is the one item
-   with a measured payoff attached (§4.1's whole flow-component row).
+3. ~~**`passes::flow` lowering a spread source**~~ — **DONE.** It did not keep the twenty-six
+   adapters alive; `-O0` does. `## M10, so far` has the numbers.
 
 The `flow.ts` bug M7 found is still open and still not async-specific; it will bite anything built on
 `Loading`.
@@ -247,14 +352,6 @@ intend to keep working.
 
 ## Open, not yet scoped
 
-- **`passes::flow` cannot lower a construct whose props arrive through a SPREAD** — M9's finding, and
-  the one with the largest surface behind it. `admits_element` refuses any `SpreadAttribute` before
-  any per-prop reasoning runs, so `<For {...opts}>` stays a component call and `codegen::ssr` routes
-  the same shape to `ssrFor`. That keeps fourteen DOM adapters and twelve string adapters alive that
-  §4.1 lists for deletion. The hard part is not the refusal, it is that a flow construct's props each
-  decide a different part of the LOWERING — `keyed` selects one of three key expressions and the body
-  Block's own PARAMETER LIST changes with it — so an unknown prop cannot be resolved at run time the
-  way `_$spread` resolves an unknown attribute. `components.ts`'s header states the whole argument.
 - **`Reveal` has no home in the four primitives.** It creates a *provide* scope, not a range, and
   `boundary()` has no ordering channel. Reveal ordering is first-class in Solid 2.0's boundary story,
   so if the async model follows theirs, this belongs in the boundary contract.

@@ -932,34 +932,32 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
 // The thirteen constructs, as string components
 // ============================================================================
 //
-// `passes/flow.rs` lowers ten of these to a primitive directly and never
-// emits the call below for them. What is left is the shapes the pass refuses —
-// a spread source, an unreadable `keyed`, and the three constructs §3.4 names
-// as refusals — and they reach the SAME four primitives one adapter frame
-// later, which is the direction that is always safe.
+// `passes/flow.rs` lowers ten of the thirteen to a primitive directly at `-Ox`
+// and never emits the call below for them. What is left reaches the SAME four
+// primitives one adapter frame later, which is the direction that is always
+// safe.
 //
 // These are `components.ts`'s adapters with the string primitives underneath.
 // They exist so that no construct anywhere sends anything to another backend:
 // the whole-module SSR→DOM downgrade is gone, and with it the eight-component
 // set that triggered it.
 
-// M9 tried to delete eleven of the twelve adapters below and put them back.
+// M9 tried to delete eleven of the twelve below and put them back on a corpus
+// scan. M10 answered the question that scan could not, and the answer is that
+// they are not deletable at all. `components.ts`'s header carries the table.
 //
-// A corpus scan says only `ssrFor` is emitted: compiling all 131 fixtures with
-// `ssr: true` finds it in exactly one module (`control-flow-for-keyed-spread`)
-// and the other eleven in none. That scan is necessary and not sufficient, and
-// the difference is what `codegen::ssr::flow_call` is for — P-new `flow` lowers
-// every construct it can READ, and what reaches the adapter is the shapes it
-// cannot: a spread source, an unreadable `keyed`. `<Show {...props}>` compiles
-// to `_$ssrShow` today, and it was checked one construct at a time rather than
-// inferred: all eleven are reachable from legal source, and the corpus simply
-// has one such fixture rather than twelve.
+// The short version: `Opt::flow` is a flippable knob and `-O0` turns it off, so
+// at `-O0` every construct is a component call and these are what it calls —
+// 37 of 131 fixtures keep a flow import there, against 0 at `-Ox`. §6 L3 grades
+// the flow pass by rendering the corpus at both levels and requiring the frames
+// to agree, so this file IS the reference the pass is graded against. Deleting
+// it would delete the oracle.
 //
-// So the corpus number measures the corpus, not the surface. Deleting these
-// would turn a legal program into a load-time `SyntaxError: Export named
-// 'ssrShow' not found`, which is the failure mode §4.1's own deletion list is
-// meant to prevent rather than create. They go when the flow pass lowers a
-// spread source — not before.
+// Three constructs also still refuse at `-Ox`, so `ssrSwitch`, `ssrMatch` and
+// `ssrDynamic` are reachable from an optimised build too: `Switch` needs
+// literal `<Match>` arms it can read, `Match` goes with it, and `Dynamic`'s
+// unrecognised props are the resolved component's rather than the construct's.
+// `passes::flow::admits_spread` states each one where it is enforced.
 
 /** A CELL-slot read (§3.0 rule 2): called with no scope, never with one. */
 function readValue(slot: unknown, origin: string): unknown {
