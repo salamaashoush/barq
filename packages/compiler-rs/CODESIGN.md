@@ -1222,6 +1222,21 @@ One system. `resource(sourceCell, fetcher)` returns a `Cell<T>` backed by a memo
 
   Solid's union-find lanes are **not** adopted: they merge transactions inferred from graph
   reachability, and `action()` already delimits the transaction exactly. See A5, clause (g).
+- **The compiler surface is `<form action={fn}>`** *(M10, `SEMANTICS.md` B8)*. It is the place an
+  action meets JSX, and until M10 it was the place an action was silently destroyed: `action` went
+  down the attribute channel, `bindProp` applied §3.0 rule 1 to it — an `action()` is
+  `(...args) => Promise<R>`, so its arity is 0 — and the action was CALLED at mount with the promise
+  it returned written into the form's target as `action="[object Promise]"`. Neither half reported
+  anything.
+
+  The rule is §3.5's own, already written for the case next door: a function arriving at a HANDLER
+  slot is the handler, never a Cell. `action` on a `<form>` is that slot, which is where React 19
+  and Solid 2.0 both landed. `Op::FormAction` rather than a channel, because the listener it
+  installs is owned by the position (B4) and a channel call has no scope to give it. A literal URL
+  still folds into the template; the string backend writes a URL and writes nothing for a handler.
+
+  This is also what makes §3.8 gradable: before it, every one of A5's nine procedures ran from a
+  hand-written call in `actions.test.ts` and no corpus fixture reached an action at all.
 - **Optimistic state is derived, never restored:** `() => reduce(base(), pending())`. Today
   `registerRevert` captures `revertTo` once per (target, action), so a real write landing during the
   action is rolled back to a value that is now wrong, and `optimisticStore` `structuredClone`s

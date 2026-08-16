@@ -394,6 +394,11 @@ intend to keep working.
   `git add -A`. Splice on LINE indices with asserted anchors, and check `grep -c "^## "` after.
 - **ferridriver needs an explicit session key** (`ks:main`, `m8:verify`). The default session goes
   stale and reports a CDP error that looks like the tool is broken. It is not.
+- **`packages/core/dist` is what a browser bundle resolves, and it is stale by default.** The bun
+  suites reach `src/index.ts` through the workspace's `bun` export condition, but
+  `bun build --target browser` takes the `import` condition and gets `dist/`. Three M10 browser runs
+  were against a pre-change core before this was noticed; they happened to agree, which is worse
+  than failing. Run `bun run --cwd packages/core build` before bundling anything for Chrome.
 - **When driving the app, let the microtask flush.** Reading the DOM synchronously after a click shows
   stale values and looks exactly like broken reactivity. Use an in-page
   `await new Promise(r => setTimeout(r, 120))`.

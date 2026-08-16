@@ -2027,6 +2027,45 @@ than left to be discovered.
 **Pinned by.** `sem-form-selection-preserved.tsx` *(new)*, `test/browser-caret-check.ts` *(new, the
 real-browser channel)*.
 
+### B8 — `action` on a `<form>` is decided by the SLOT, not by the value's shape
+
+**Rule.** `action` on a `<form>` is the form's URL when it holds a string and its SUBMIT HANDLER when
+it holds a function. The handler MUST NOT be called to obtain an attribute, MUST NOT be serialised
+into the target, and MUST run on submit with the form's `FormData` — including the submitter's own
+name and value — with the browser's default navigation prevented. The listener is owned by the
+position (B4). A literal URL MUST still fold into the template bytes, and `action` on any other
+element MUST stay the attribute it always was.
+
+This is §3.5's handler-channel rule, which the runtime cannot apply for itself: an `action()` is
+`(...args) => Promise<R>`, so its arity is 0 and §3.0 rule 1 reads it as a Cell. Nothing about the
+expression separates a Cell yielding a URL from a handler. The SLOT is the only thing that can.
+
+**Falsified by.** Render `<form action={fn}>` and observe TWO things before any interaction: `fn`
+MUST NOT have been called, and `getAttribute("action")` MUST be null. Then submit: `fn` MUST receive
+a `FormData` carrying the form's fields, and `location` MUST NOT change.
+
+**Status.** `HOLDS` since M10, and it did not before — this is a defect that shipped, not a gap that
+was left. `action` went down the attribute channel, so `bindProp` applied §3.0 rule 1 to the
+function, CALLED it at mount, and wrote the promise it returned into the form's target:
+
+```
+action ran at mount:  ["RAN"]
+action attribute:     "[object Promise]"
+```
+
+Both halves silent — no console error, and a form whose target is a relative URL named after a
+promise. It is `ERGONOMICS`'s dominant harm exactly: the value crossed a boundary and lost its kind.
+
+The string backend writes a URL and writes nothing for a handler, which is stated rather than
+averaged: there is no byte on the wire that means client behaviour, so a form submitted before
+hydration performs the browser's own default submit. Progressive enhancement would need a
+server-generated endpoint per action, which is a routing feature.
+
+**Pinned by.** `sem-form-action-slot.tsx`, whose four claims are the falsification procedure above
+plus the CONTROL, and `form-action.tsx`, which is the corpus channel — the emission, the goldens and
+the seven modes. `test/leaks.test.ts`'s listener census is where B4 is asserted for the listener this
+installs.
+
 ---
 
 ## 10. A — Async
@@ -2671,7 +2710,8 @@ green, which is why L1 exists.
 | A2 | staleness by `gen` captured at call time | H (M7) | `sem-async-stale-response` |
 | A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
 | A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `optimistic-signal` |
-| A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | no compiler-rs channel — there is no transition API to emit; all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
+| A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | `form-action` — the compiler channel A5 did not have until M10; all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
+| B8 | `action` on a `<form>` is decided by the slot, not by the value's shape | H (M10) | `sem-form-action-slot`, `form-action` |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
 | H2 | the wire carries what recovery needs; the key is a dev-only axis | **H** (M7b) | the branch-key comparison in both builds + L6's two tables + the three-wire byte measurement |
 | H3 | logical index is free on the client path | **H** | emission diff, flag on against off (corpus-wide) |
@@ -2796,7 +2836,7 @@ Recorded so that "unpinned" does not silently mean "unenforced".
 | K8 | a lint rule: no module-level mutable insertion state in `packages/core` |
 | R5 | the ablation benchmark in `packages/core`, with correctness assertions per variant |
 | R8 | `packages/core/src/signals.test.ts` "propagation cost in graph depth" — ms per layer at 800 layers against ms per layer at 100, which FAILS on the pre-fix build — with `eleven-cases.ts`'s twelfth case (`chain(500)`) and the `__jrbDepth` sweep in `packages/benchmark/src/tier2/jrb.ts` as the Tier-1 and Tier-2 channels. The rule's observable form is a COST, so a compiler fixture cannot reach it: emission is byte-identical either side of the fix, which is exactly why the defect survived 110 fixtures and eleven reactivity cases. |
-| A5 | `packages/core/src/actions.test.ts`, which runs all nine of A5's falsification procedures. A5 is entirely runtime behaviour — there is no transition API for the compiler to emit — so this is the discriminating channel, not a stopgap. What §14.1's `sem-async-optimistic-lane` adds is that the same nine run through compiled JSX. |
+| A5 | `packages/core/src/actions.test.ts`, which runs all nine of A5's falsification procedures, and remains the discriminating channel for eight of them. **The claim that there is no transition API for the compiler to emit was withdrawn at M10**: `<form action={fn}>` is one (B8), and `form-action.tsx` is the corpus fixture that reaches an action through compiled JSX. Driven in a real browser and sampled per microtask across one submit, it observes clauses (d) and (e) and procedure 7 as a sequence — the guess live in the override, `commit` writing the answer underneath it, the lane retiring onto a value that is already right. The forward reference to a `sem-async-optimistic-lane` fixture was never built and is dropped. |
 
 ---
 

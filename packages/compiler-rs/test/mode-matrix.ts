@@ -129,10 +129,12 @@ export const MATRIX_EXCEPTIONS = {
 // compiler surface. It renders on both backends and they deliberately DISAGREE
 // about the attribute — the client installs a submit handler, the server writes
 // no `action` at all — which is why it is worth one cell in each of the seven.
+// `sem-form-action-slot` is the semantics half of the same rule (B8) and adds
+// the last +1/+7/+1: four claims, of which two are the defect that shipped.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 187,
+  fixtures: 188,
   modes: 7,
-  cells: 1309,
-  renderableOnBoth: 160,
+  cells: 1316,
+  renderableOnBoth: 161,
   renderableOnNeither: 27,
 })
