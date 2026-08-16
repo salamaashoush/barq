@@ -6,7 +6,7 @@
  * exception out of one escaped to `window.onerror` with no framework
  * involvement at all — the delegated dispatcher had no `try`, and a
  * non-delegated handler was a bare `addEventListener` with nothing around it.
- * An `ErrorBoundary` standing directly over the button caught nothing.
+ * An `Errored` standing directly over the button caught nothing.
  *
  * Both halves are driven, because they are two different registrations: the
  * delegated set routes through the document-level dispatcher, and everything
@@ -22,7 +22,7 @@
  *
  * SEMANTICS.md §6 E2, E2.2.
  */
-import { ErrorBoundary, render } from "@barqjs/core"
+import { Errored, render } from "@barqjs/core"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -53,25 +53,25 @@ function Direct() {
 }
 
 function GuardedDelegated() {
-  return <ErrorBoundary fallback={() => <b class="fb">caught</b>}>{() => <Delegated />}</ErrorBoundary>
+  return <Errored fallback={() => <b class="fb">caught</b>}>{() => <Delegated />}</Errored>
 }
 
 function GuardedDirect() {
-  return <ErrorBoundary fallback={() => <b class="fb">caught</b>}>{() => <Direct />}</ErrorBoundary>
+  return <Errored fallback={() => <b class="fb">caught</b>}>{() => <Direct />}</Errored>
 }
 
 function Nested() {
   return (
-    <ErrorBoundary fallback={() => <b class="outer-fb">outer</b>}>
+    <Errored fallback={() => <b class="outer-fb">outer</b>}>
       {() => (
         <div class="outer">
           <em class="sibling">sibling</em>
-          <ErrorBoundary fallback={() => <b class="fb">inner</b>}>
+          <Errored fallback={() => <b class="fb">inner</b>}>
             {() => <Direct />}
-          </ErrorBoundary>
+          </Errored>
         </div>
       )}
-    </ErrorBoundary>
+    </Errored>
   )
 }
 

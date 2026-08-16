@@ -1,12 +1,12 @@
 /**
  * Async & Resources Demo
- * Tests: resource, Suspense, Await
+ * Tests: resource, Loading, Errored
  *
  * NOTE: resource returns accessors that need explicit () calls.
  * The compiler handles JSX expressions but resource methods need manual calls.
  */
 
-import { Await, Show, resource, signal } from "@barqjs/core";
+import { Errored, Loading, Show, resource, signal } from "@barqjs/core";
 import {
   css,
 } from "../styles";
@@ -24,7 +24,7 @@ export function AsyncDemo() {
     <DemoSection>
       <ResourceDemo />
       <ResourceWithSourceDemo />
-      <AwaitDemo />
+      <LoadingBoundaryDemo />
       <ErrorResourceDemo />
       <RefetchDemo />
     </DemoSection>
@@ -118,8 +118,8 @@ function ResourceWithSourceDemo() {
   );
 }
 
-// Await component
-function AwaitDemo() {
+// Loading + Errored, the two boundaries Solid 2.0 ships
+function LoadingBoundaryDemo() {
   const fetchId = signal(0);
 
   const slowData = resource(
@@ -132,24 +132,23 @@ function AwaitDemo() {
   );
 
   return (
-    <DemoCard title="Await - Resource State Rendering">
+    <DemoCard title="Loading + Errored - Resource State Rendering">
       <Button onClick={() => fetchId.update((id) => id + 1)}>Fetch Slow Data</Button>
 
       <div class={resultBoxStyle}>
-        <Await
-          resource={slowData}
-          loading={<div class={loadingStyle}>Waiting for slow response...</div>}
-          error={(err) => <div class={errorStyle}>Error: {err.message}</div>}
-        >
-          {(data) => (
-            <Show when={data !== null} fallback={<p>Click button to fetch</p>}>
-              <div class={successStyle}>Response: {JSON.stringify(data)}</div>
+        <Loading fallback={<div class={loadingStyle}>Waiting for slow response...</div>}>
+          <Errored fallback={(err) => <div class={errorStyle}>Error: {() => err().message}</div>}>
+            <Show when={() => slowData() !== null} fallback={<p>Click button to fetch</p>}>
+              <div class={successStyle}>Response: {() => JSON.stringify(slowData())}</div>
             </Show>
-          )}
-        </Await>
+          </Errored>
+        </Loading>
       </div>
 
-      <p class={noteStyle}>Await renders different content based on resource state.</p>
+      <p class={noteStyle}>
+        Reading a resource throws before it settles and throws the error after it fails, so the two
+        boundaries ARE the three states.
+      </p>
     </DemoCard>
   );
 }

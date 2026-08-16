@@ -1152,11 +1152,9 @@ pub(crate) fn server_flow(flow: Flow) -> Helper {
         Flow::Show => Helper::SsrShow,
         Flow::Switch => Helper::SsrSwitch,
         Flow::Match => Helper::SsrMatch,
-        Flow::Loading | Flow::Suspense => Helper::SsrLoading,
+        Flow::Loading => Helper::SsrLoading,
         Flow::Errored => Helper::SsrErrored,
-        Flow::ErrorBoundary => Helper::SsrErrorBoundary,
         Flow::Portal => Helper::SsrPortal,
-        Flow::Await => Helper::SsrAwait,
         Flow::Dynamic => Helper::SsrDynamic,
         Flow::Reveal => Helper::SsrReveal,
     }

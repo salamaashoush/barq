@@ -6,7 +6,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { element } from "./dom.ts";
 import { signal, effect, computed, scope, batch, onCleanup, flush } from "./signals.ts";
-import { Await, Dynamic, ErrorBoundary, For, Match, Portal, Show, Switch } from "./components.ts";
+import { Dynamic, Errored, For, Loading, Match, Portal, Show, Switch } from "./components.ts";
 import { mergeProps, splitProps } from "./props.ts";
 import type { Scope } from "./scope.ts";
 import { resource } from "./async.ts";
@@ -211,10 +211,10 @@ describe("For keyed={false} reactivity", () => {
 });
 
 // ============================================================================
-// Issue 4: Suspense implementation
+// Issue 4: the loading boundary
 // ============================================================================
-describe("Suspense component", () => {
-  test("Suspense should show fallback while loading", async () => {
+describe("Loading component", () => {
+  test("Loading shows its fallback until the resource settles", async () => {
     let resolvePromise!: (value: string) => void;
     const promise = new Promise<string>((resolve) => {
       resolvePromise = resolve;
@@ -227,10 +227,12 @@ describe("Suspense component", () => {
       },
     );
 
-    const node = Await(null, {
-      resource: r,
-      loading: element(null, "div", { children: "Loading..." }),
-      children: (_s, data) => element(null, "div", { children: data }),
+    // `Await` was this, and went at M10: reading a resource throws `NotReady`
+    // before it settles, so the boundary IS the loading state and the read is
+    // the body. Solid 2.0 ships no `Await`.
+    const node = Loading(null, {
+      fallback: element(null, "div", { children: "Loading..." }),
+      children: (_s: unknown) => element(null, "div", { children: r() }),
     });
 
     container.appendChild(node as Node);
@@ -247,17 +249,19 @@ describe("Suspense component", () => {
 });
 
 // ============================================================================
-// Issue 5: ErrorBoundary should catch errors in effects
+// Issue 5: the error boundary should catch errors in effects
 // ============================================================================
-describe("ErrorBoundary", () => {
-  test("ErrorBoundary catches synchronous errors", () => {
+describe("Errored", () => {
+  test("Errored catches synchronous errors", () => {
     const ThrowingComponent = () => {
       throw new Error("Test error");
     };
 
-    const node = ErrorBoundary(null, {
-      fallback: (_s, error, _reset) =>
-        element(null, "div", { children: `Error: ${error.message}` }),
+    // The error arrives as an ACCESSOR, which is `Errored`'s signature and
+    // Solid 2.0's. `ErrorBoundary` handed it over by value and went at M10.
+    const node = Errored(null, {
+      fallback: (_s: unknown, error: () => Error, _reset: () => void) =>
+        element(null, "div", { children: `Error: ${error().message}` }),
       children: ThrowingComponent,
     });
 
@@ -267,7 +271,7 @@ describe("ErrorBoundary", () => {
     expect(container.textContent).toContain("Error: Test error");
   });
 
-  test("ErrorBoundary reset should re-render children", () => {
+  test("Errored reset should re-render children", () => {
     const throwSignal = signal(true);
     let resetFn: (() => void) | null = null;
 
@@ -276,10 +280,10 @@ describe("ErrorBoundary", () => {
       return element(null, "div", { children: "Success" });
     };
 
-    const node = ErrorBoundary(null, {
-      fallback: (_s, error, reset) => {
+    const node = Errored(null, {
+      fallback: (_s: unknown, error: () => Error, reset: () => void) => {
         resetFn = reset;
-        return element(null, "div", { children: `Error: ${error.message}` });
+        return element(null, "div", { children: `Error: ${error().message}` });
       },
       children: MaybeThrow,
     });

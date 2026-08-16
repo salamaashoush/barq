@@ -16,13 +16,17 @@
 //! | `Switch` / `Match` | `branch` | the winning arm's INDEX, an integer |
 //! | `For` | `each` | `keyOf`, whose default is IDENTITY |
 //! | `Repeat` | `each` (`COUNT`) | the index |
-//! | `Loading` / `Suspense` | `boundary("loading")` | the collector's |
-//! | `Errored` / `ErrorBoundary` | `boundary("error")` | the collector's |
+//! | `Loading` | `boundary("loading")` | the collector's |
+//! | `Errored` | `boundary("error")` | the collector's |
 //! | `Portal` | `portal` | the target |
 //!
-//! `Dynamic`, `Await` and `Reveal` lower too, since M9. `Await` is the outer of
-//! two boundaries rather than a three-state key; `Reveal` is a `reveal` call
+//! `Dynamic` and `Reveal` lower too, since M9. `Reveal` is a `reveal` call
 //! rather than a region row, because it creates a PROVIDE scope and not a range.
+//!
+//! There are ten constructs, not thirteen: `Suspense`, `Await` and
+//! `ErrorBoundary` went at M10 because Solid 2.0 ships neither, and each was a
+//! spelling of something here — `Loading`, a `Loading` around an `Errored`, and
+//! `Errored` with the error by value.
 //!
 //! ## What is not, and why each refusal is a fact rather than a gap
 //!
@@ -77,10 +81,9 @@ fn recognised(flow: Flow) -> &'static [&'static str] {
         Flow::For => &["each", "fallback", "keyed"],
         Flow::Repeat => &["count", "from", "fallback"],
         Flow::Loading => &["fallback", "on"],
-        Flow::Suspense | Flow::Errored | Flow::ErrorBoundary | Flow::Switch => &["fallback"],
+        Flow::Errored | Flow::Switch => &["fallback"],
         Flow::Portal => &["target"],
         Flow::Match => &["when", "keyed"],
-        Flow::Await => &["resource", "loading", "error"],
         Flow::Reveal => &["order", "collapsed"],
         // Every other attribute IS the props of whatever the component resolves
         // to, so there is no row to close here: `admits` reads the tag's own
@@ -95,8 +98,7 @@ fn required(flow: Flow) -> &'static [&'static str] {
         Flow::Show | Flow::Match => &["when"],
         Flow::For => &["each"],
         Flow::Repeat => &["count"],
-        Flow::Errored | Flow::ErrorBoundary => &["fallback"],
-        Flow::Await => &["resource"],
+        Flow::Errored => &["fallback"],
         Flow::Dynamic => &["component"],
         _ => &[],
     }
@@ -106,13 +108,8 @@ fn kind_of(flow: Flow) -> Option<RegionKind> {
     Some(match flow {
         Flow::Show | Flow::Switch | Flow::Dynamic => RegionKind::Branch,
         Flow::For | Flow::Repeat => RegionKind::Each,
-        // `Await` is the OUTER of two boundaries: the loading one, whose body
-        // holds the error one, whose body reads the resource. Reading a
-        // resource before it settles throws `NotReady` and after it fails throws
-        // the error, so the two boundaries ARE the three states — no key, no
-        // body table, and no property test to tell a Resource from a Cell.
-        Flow::Loading | Flow::Suspense | Flow::Await => RegionKind::Loading,
-        Flow::Errored | Flow::ErrorBoundary => RegionKind::Error,
+        Flow::Loading => RegionKind::Loading,
+        Flow::Errored => RegionKind::Error,
         Flow::Portal => RegionKind::Portal,
         // `Match` never reaches a primitive of its own: `Switch` folds every arm
         // into ONE branch, which is the shape the adapter produces and the
@@ -169,15 +166,9 @@ pub(super) fn admits_reveal<'a>(shaper: &Shaper<'a, '_>, element: &JSXElement<'a
 fn admits_spread(flow: Flow) -> bool {
     #[expect(clippy::match_same_arms, reason = "one arm per construct, each with its own reason")]
     match flow {
-        Flow::For
-        | Flow::Repeat
-        | Flow::Loading
-        | Flow::Suspense
-        | Flow::Errored
-        | Flow::ErrorBoundary
-        | Flow::Portal
-        | Flow::Await
-        | Flow::Reveal => true,
+        Flow::For | Flow::Repeat | Flow::Loading | Flow::Errored | Flow::Portal | Flow::Reveal => {
+            true
+        }
         // Both answers emitted, the test at run time. See [`show`].
         Flow::Show => true,
         // Read only by a `Switch` that folded it, and `Switch` refuses.
@@ -543,11 +534,8 @@ pub(super) fn lower<'a>(
         Flow::Switch => switch(shaper, &mut bag, kids, span),
         Flow::For => list(shaper, &mut bag, kids, span),
         Flow::Repeat => repeat(shaper, &mut bag, kids, span),
-        Flow::Loading | Flow::Suspense | Flow::Errored | Flow::ErrorBoundary => {
-            boundary(shaper, flow, &mut bag, kids, span)
-        }
+        Flow::Loading | Flow::Errored => boundary(shaper, &mut bag, kids, span),
         Flow::Portal => portal(shaper, &mut bag, kids, span),
-        Flow::Await => await_boundaries(shaper, &mut bag, kids, span),
         Flow::Dynamic => dynamic(shaper, &mut bag, kids, span),
         Flow::Match | Flow::Reveal => unreachable!("refused by `admits`"),
     };
@@ -863,11 +851,10 @@ fn repeat<'a>(
     region
 }
 
-/// `Loading` / `Suspense` / `Errored` / `ErrorBoundary` — `boundary`, whose key
+/// `Loading` / `Errored` — `boundary`, whose key
 /// is its own collector's state and therefore never the compiler's.
 fn boundary<'a>(
     shaper: &mut Shaper<'a, '_>,
-    flow: Flow,
     bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
@@ -879,12 +866,11 @@ fn boundary<'a>(
 
     let mut region = blank(shaper, span);
     region.body = body;
-    // `ErrorBoundary`'s fallback takes the error BY VALUE where `Errored`'s
-    // takes an accessor, and one wrapper is the whole difference between them.
-    region.fallback = match (flow, fallback) {
-        (Flow::ErrorBoundary, Some(fallback)) => Some(unwrap_error(shaper, fallback, span)),
-        (_, fallback) => fallback,
-    };
+    // The error reaches the fallback as an ACCESSOR, which is `Errored`'s
+    // signature and Solid 2.0's. `ErrorBoundary` was the same boundary with the
+    // error handed over by value, and `unwrap_error` was that one wrapper; both
+    // went at M10 with the construct.
+    region.fallback = fallback;
     region.on = on;
     region
 }
@@ -909,54 +895,6 @@ fn portal<'a>(
         arrow(shaper, void, span)
     }));
     region.body = body;
-    region
-}
-
-/// `Await` — two boundaries, not four states.
-///
-/// The three arms it used to compute a key for are the three things reading a
-/// resource does: throw `NotReady` before it settles, throw the error after it
-/// fails, return the value otherwise. So the loading boundary catches the first,
-/// the error boundary inside it catches the second, and the body — which reads
-/// the resource where the author wrote a parameter — is the third.
-///
-/// That also removes the property test the adapter needed. `resource={r}` is a
-/// Cell like any other; nothing here asks whether it IS the resource or carries
-/// one, because the only thing done with it is a read.
-fn await_boundaries<'a>(
-    shaper: &mut Shaper<'a, '_>,
-    bag: &mut Bag<'a>,
-    kids: Vec<Expression<'a>>,
-    span: Span,
-) -> Region<'a> {
-    let resource = bag.take(shaper, "resource").expect("checked by `admits`");
-    let loading = bag.take(shaper, "loading").map(|attr| slot_of(shaper, attr));
-    let failed = bag.take(shaper, "error").map(|attr| slot_of(shaper, attr));
-
-    // The body takes the settled VALUE where the author declared a parameter,
-    // and a read of the resource is what produces it — after the two boundaries
-    // above have had their answer.
-    // ONE reference to the resource, in the one place its value is used. The
-    // adapter needed four — a key and three bodies — which is what made a
-    // shared local necessary and the discrimination test unavoidable.
-    let body = match body_of(shaper, bag, kids, span) {
-        Some(body) => pass_value(shaper, body, resource.value, span),
-        None => Expression::new_null_literal(span, &shaper.ast),
-    };
-
-    let mut inner = blank(shaper, span);
-    inner.flow = Flow::Errored;
-    inner.kind = RegionKind::Error;
-    inner.span = span;
-    // `Await`'s error slot takes the error BY VALUE, exactly as
-    // `ErrorBoundary`'s does.
-    inner.fallback = failed.map(|fallback| unwrap_error(shaper, fallback, span));
-    inner.body = body;
-    let nested = shaper.nested_region(inner, span);
-
-    let mut region = blank(shaper, span);
-    region.fallback = loading;
-    region.body = shaper.block(nested, span);
     region
 }
 
@@ -1256,33 +1194,6 @@ fn shift_index<'a>(
         false,
         None,
         params(shaper, &[scope, index], span),
-        None,
-        ArrowFunctionBody::from(inner),
-        &shaper.ast,
-    );
-    shaper.brand(arrow, span)
-}
-
-/// `(_s$, e, r) => fallback(_s$, e(), r)` — `ErrorBoundary`'s fallback takes the
-/// error by value where `boundary` hands it an accessor.
-fn unwrap_error<'a>(
-    shaper: &mut Shaper<'a, '_>,
-    fallback: Expression<'a>,
-    span: Span,
-) -> Expression<'a> {
-    let error = shaper.uids.temp();
-    let reset = shaper.allocator.alloc_str(&format!("{error}r")) as &'a str;
-    let scope = shaper.ident(shaper.scope, span);
-    let read = shaper.ident(error, span);
-    let value = call(shaper, read, vec![], span);
-    let handle = shaper.ident(reset, span);
-    let inner = call(shaper, fallback, vec![scope, value, handle], span);
-    let scope = shaper.scope;
-    let arrow = Expression::new_arrow_function_expression(
-        span,
-        false,
-        None,
-        params(shaper, &[scope, error, reset], span),
         None,
         ArrowFunctionBody::from(inner),
         &shaper.ast,

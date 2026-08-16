@@ -1,4 +1,4 @@
-import { ErrorBoundary, signal } from "@barqjs/core"
+import { Errored, signal } from "@barqjs/core"
 
 export const broken = signal(true)
 
@@ -10,15 +10,15 @@ function Fragile() {
 export default function ControlFlowErrorBoundary() {
   return (
     <div>
-      <ErrorBoundary
+      <Errored
         fallback={(error, reset) => (
           <button type="button" onClick={reset}>
-            {error.message}
+            {() => error().message}
           </button>
         )}
       >
         {() => <Fragile />}
-      </ErrorBoundary>
+      </Errored>
     </div>
   )
 }
@@ -35,7 +35,7 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // K5: `ErrorBoundary` ceases to exist and becomes `boundary`, whose kind is
+  // K5: `Errored` ceases to exist and becomes `boundary`, whose kind is
   // the string `"error"` and whose insertion pair is the one the walk computed.
   // `fallback` is `(error, reset) => Child`, so it is a real two-parameter
   // callback and never a built node; `reset` reaches the button as a handler
@@ -43,5 +43,5 @@ export const optimality = {
   emits: ["boundary(", '"error"', ", error, reset) =>"],
   // The adapter frame -O0 still pays: a props object, and the two slots the
   // boundary now takes positionally.
-  absent: ["ErrorBoundary(", "fallback: ", "children: "],
+  absent: ["Errored(", "ErrorBoundary(", "fallback: ", "children: "],
 }

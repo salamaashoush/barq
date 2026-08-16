@@ -9,7 +9,7 @@
  * The old `ErrorBoundary` built its fallback twice on a construction throw: once
  * inline in the `catch` and once when the effect re-ran on the captured error.
  */
-import { ErrorBoundary, signal } from "@barqjs/core"
+import { Errored, signal } from "@barqjs/core"
 
 export const log: string[] = []
 
@@ -23,10 +23,10 @@ function Fragile() {
 export default function C7ErrorBoundary() {
   return (
     <div class="host">
-      <ErrorBoundary
+      <Errored
         fallback={(error, reset) => (
           <button type="button" onClick={reset}>
-            {error.message}
+            {() => error().message}
           </button>
         )}
       >
@@ -34,7 +34,7 @@ export default function C7ErrorBoundary() {
           log.push("content")
           return <Fragile />
         }}
-      </ErrorBoundary>
+      </Errored>
     </div>
   )
 }

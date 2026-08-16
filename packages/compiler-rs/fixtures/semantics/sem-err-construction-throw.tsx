@@ -6,18 +6,22 @@
  * `Errored({ fallback: …, children: Boom({}) })` — `Boom({})` is an argument.
  * Arguments are evaluated before the callee. There is no boundary yet when it
  * throws, and the throw walks straight out of `render` and kills the page. The
- * same is true of `ErrorBoundary`, of `Loading` and a `NotReadyError`, and of
- * the `Reveal > Loading > Errored` stack that `control-flow-errored-loading`
+ * same is true of `Loading` and a `NotReadyError`, and of the
+ * `Reveal > Loading > Errored` stack that `control-flow-errored-loading`
  * already carries in its workaround form.
  *
- * The last claim is the CONTROL: all four boundaries do catch, in the
+ * The last claim is the CONTROL: every boundary does catch, in the
  * explicit-thunk form. The boundaries are not broken. The calling convention is.
+ *
+ * An `ErrorBoundary` claim stood beside the `Errored` one until M10. It went
+ * with the construct, and it cost no coverage: both used a zero-argument
+ * fallback, so they drove one path — `ErrorBoundary` was `Errored` with the
+ * error handed over by VALUE, and neither claim read it.
  *
  * SEMANTICS.md §6 E2.1; §2 O4.4.
  */
 import type { Block } from "@barqjs/core"
 import {
-  ErrorBoundary,
   Errored,
   Loading,
   NotReadyError,
@@ -67,26 +71,6 @@ async function mount(kit: Kit, build: Block<unknown>) {
 const THREW = "the child under test never raised, so no boundary was ever given anything to catch"
 
 export const claims: Claim[] = [
-  {
-    id: "errorboundary-catches-a-direct-child",
-    rule: "E2.1",
-    says: "a boundary enters its scope, installs its catcher, and THEN invokes the content Block inside a try",
-    async check(kit) {
-      const { host, thrown } = await mount(kit, () => (
-        <ErrorBoundary fallback={() => <p class="fb">caught</p>}>
-          <Boom />
-        </ErrorBoundary>
-      ))
-      kit.precondition(raised > 0, THREW)
-      if (host.querySelector(".fb") === null) {
-        kit.fail(
-          `the fallback did not render; ${formatThrown(thrown)} escaped past the boundary and out ` +
-            `of render(). The throwing child is a syntactic ARGUMENT of the ErrorBoundary call, ` +
-            `so it ran before the boundary existed`,
-        )
-      }
-    },
-  },
   {
     id: "errored-catches-a-direct-child",
     rule: "E2.1",
@@ -157,10 +141,10 @@ export const claims: Claim[] = [
     async check(kit) {
       cleanups.length = 0
       const { thrown } = await mount(kit, () => (
-        <ErrorBoundary fallback={() => <p class="fb">caught</p>}>
+        <Errored fallback={() => <p class="fb">caught</p>}>
           <Tracked />
           <Boom />
-        </ErrorBoundary>
+        </Errored>
       ))
       kit.precondition(raised > 0, THREW)
       if (cleanups.length !== 1) {
@@ -181,12 +165,12 @@ export const claims: Claim[] = [
       cleanups.length = 0
       const { host, thrown } = await mount(kit, () => (
         <div>
-          <ErrorBoundary fallback={() => <p class="eb">eb</p>}>{() => <Boom />}</ErrorBoundary>
+          <Errored fallback={() => <p class="eb">eb</p>}>{() => <Boom />}</Errored>
           <Errored fallback={() => <p class="er">er</p>}>{() => <Boom />}</Errored>
           <Loading fallback={<span class="ld">ld</span>}>{() => <Suspending />}</Loading>
-          <ErrorBoundary fallback={() => <p class="cl">cl</p>}>
+          <Errored fallback={() => <p class="cl">cl</p>}>
             {() => [<Tracked />, <Boom />]}
-          </ErrorBoundary>
+          </Errored>
         </div>
       ))
       kit.precondition(raised > 0, THREW)

@@ -12,7 +12,7 @@
  *
  * SEMANTICS.md §3 C7, §5 E3.
  */
-import { ErrorBoundary, signal } from "@barqjs/core"
+import { Errored, signal } from "@barqjs/core"
 
 export const log: string[] = []
 
@@ -26,18 +26,18 @@ function Fragile() {
 export default function C7ErrorBoundaryFallback() {
   return (
     <div class="host">
-      <ErrorBoundary
-        fallback={(error: Error, reset: () => void) => {
+      <Errored
+        fallback={(error, reset) => {
           log.push("fallback")
           return (
             <button type="button" onClick={reset}>
-              {error.message}
+              {() => error().message}
             </button>
           )
         }}
       >
         {() => <Fragile />}
-      </ErrorBoundary>
+      </Errored>
     </div>
   )
 }

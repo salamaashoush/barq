@@ -66,7 +66,6 @@
  * implementation of it rather than three.
  */
 
-import type { Resource } from "./async.ts";
 import type { Child, JSXElement } from "./dom.ts";
 import { dynamic } from "./dom.ts";
 import { COUNT, boundary, branch, each, portal, reveal } from "./flow.ts";
@@ -148,19 +147,6 @@ export interface RevealProps {
 export interface ErroredProps {
   fallback: Block<Child, [error: Cell<Error>, reset: () => void]>;
   children: Slot<Child>;
-}
-
-/** The pre-Solid-2.0 spelling, whose fallback takes the error by VALUE. */
-export interface ErrorBoundaryProps {
-  fallback: Block<Child, [error: Error, reset: () => void]>;
-  children: Slot<Child>;
-}
-
-export interface AwaitProps<T> {
-  resource: Cell<Resource<T>>;
-  loading?: Slot<Child>;
-  error?: Block<Child, [error: Error]>;
-  children: Block<Child, [data: T]>;
 }
 
 export interface PortalProps {
@@ -326,14 +312,6 @@ export function Loading(
   ) as JSXElement;
 }
 
-/** The pre-Solid-2.0 spelling of `Loading`. One boundary, not two. */
-export function Suspense(
-  _s: Scope | null,
-  props: { fallback: unknown; children: unknown },
-): JSXElement {
-  return Loading(_s, props);
-}
-
 export function Errored(
   _s: Scope | null,
   props: { fallback: unknown; children: unknown },
@@ -344,23 +322,6 @@ export function Errored(
     null,
     "error",
     props.fallback as Block<unknown>,
-    props.children as Block<unknown>,
-  ) as JSXElement;
-}
-
-/** The pre-Solid-2.0 spelling, whose fallback takes the error by VALUE. */
-export function ErrorBoundary(
-  _s: Scope | null,
-  props: { fallback: unknown; children: unknown },
-): JSXElement {
-  const fallback: Block<unknown> = (scope: Scope | null, error: unknown, reset: unknown): unknown =>
-    callSlot(props.fallback, scope, (error as Cell<Error>)(), reset);
-  return boundary(
-    _s,
-    null,
-    null,
-    "error",
-    fallback,
     props.children as Block<unknown>,
   ) as JSXElement;
 }
@@ -390,41 +351,6 @@ export function Dynamic(
   const rest = omit(props, "component");
   return branch(_s, null, null, component, (scope: Scope | null) =>
     dynamic(scope, component as unknown as Cell<never>, rest),
-  ) as JSXElement;
-}
-
-/**
- * `<Await>` — TWO NESTED BOUNDARIES, not a three-state adapter (§4.1's M9 note).
- *
- * Reading a resource throws `NotReadyError` before it settles and throws the
- * error after it fails, so the three-state key the old adapter computed is what
- * the boundaries already answer: an error boundary outside, a loading boundary
- * inside, and the body reads the resource.
- */
-export function Await<T>(
-  _s: Scope | null,
-  props: { resource: unknown; loading?: unknown; error?: unknown; children: unknown },
-): JSXElement {
-  const read = (): T => {
-    const carrier = props.resource;
-    const resolved =
-      typeof carrier === "function" && "loading" in (carrier as object)
-        ? carrier
-        : readValue(carrier, "Await.resource");
-    return (resolved as () => T)();
-  };
-  const inner: Block<unknown> = (scope: Scope | null): unknown =>
-    boundary(scope, null, null, "loading", slotBlock(props.loading), ((s: Scope | null): unknown =>
-      callSlot(props.children, s, read())) as Block<unknown>);
-  if (props.error === undefined) return inner(_s) as JSXElement;
-  return boundary(
-    _s,
-    null,
-    null,
-    "error",
-    ((s: Scope | null, error: unknown): unknown =>
-      callSlot(props.error, s, (error as Cell<Error>)())) as Block<unknown>,
-    inner,
   ) as JSXElement;
 }
 

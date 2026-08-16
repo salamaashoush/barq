@@ -1208,7 +1208,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-await-suspense 1`] = `
-"import { signal, resource, template as _$template, insert as _$insert, block as _$block, boundary as _$boundary } from "@barqjs/core";
+"import { resource, signal, template as _$template, insert as _$insert, block as _$block, boundary as _$boundary } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="pending">waiting</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<span class="loading">loading</span>\`);
@@ -1218,42 +1218,50 @@ export const settled = signal<((value: string) => void) | null>(null);
 const value = resource<string>(() => null, () => new Promise<string>((resolve) => {
   settled.set(resolve);
 }));
+/**
+* The file name is historical and is kept because a fixture is never deleted:
+* this was \`<Suspense><Await/></Suspense>\` until M10, when both spellings went.
+*
+* Solid 2.0 ships ten control-flow constructs and neither is among them —
+* \`Suspense\` was \`Loading\` under its pre-2.0 name and forwarded to it verbatim,
+* and \`Await\` was this nesting, which is what the compiler already lowered it
+* to. Reading a resource throws \`NotReady\` before it settles and throws the
+* error after it fails, so the two boundaries ARE the three states and the
+* resource is referenced ONCE, where the body reads it.
+*/
 export default function ControlFlowAwaitSuspense(_s$) {
   const _el$1 = _tmpl$1();
-  _$boundary(_s$, _el$1, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => _$boundary(_s$, null, null, "loading", _$block((_s$) => _tmpl$3()), _$block((_s$) => _$boundary(_s$, null, null, "error", _$block((_s$, _v$, _v$r) => _$block((_s$, error: Error) => {
+  _$boundary(_s$, _el$1, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => _$boundary(_s$, null, null, "loading", _$block((_s$) => _tmpl$3()), _$block((_s$) => _$boundary(_s$, null, null, "error", _$block((_s$, error) => {
     const _el$2 = _tmpl$4();
-    _$insert(_s$, _el$2, error.message);
+    _$insert(_s$, _el$2, () => error().message);
     return _el$2;
-  })(_s$, _v$(), _v$r)), _$block((_s$) => _$block((_s$, data: string) => {
+  }), _$block((_s$) => {
     const _el$3 = _tmpl$5();
-    _$insert(_s$, _el$3, data);
+    _$insert(_s$, _el$3, () => value());
     return _el$3;
-  })(_s$, value)))))));
+  }))))));
   return _el$1;
 }
 ControlFlowAwaitSuspense = _$block(ControlFlowAwaitSuspense);
 export const steps = [() => settled()?.("ready")];
 export const optimality = {
   target: 8,
-  milestone: 9,
+  milestone: 10,
   templates: 5,
-  // K5 from both sides in one module, and since M9 both sides are the same
-  // side. \`Suspense\` becomes \`boundary\` under the kind string \`"loading"\`,
-  // taking the insertion pair the walk computed and its fallback positionally.
-  // \`Await\` becomes TWO boundaries — loading outside, error inside — because
-  // its three states are what reading a resource does: throw \`NotReady\`, throw
-  // the error, return the value. The resource is referenced ONCE, where the
-  // body reads it, so the property test that told a Resource from a Cell
-  // carrying one has nothing left to decide.
+  // K5 from both sides in one module. A boundary is \`boundary\` under its kind
+  // string, taking the insertion pair the walk computed and its fallback
+  // positionally — and that is now the whole story, because there is no
+  // three-state adapter left to compute a key for.
   emits: [
     "boundary(",
     "\\"loading\\"",
-    "\\"error\\"",
-    ", data: string) =>"
+    "\\"error\\""
   ],
   absent: [
     "Suspense(",
     "Await(",
+    "Loading(",
+    "Errored(",
     "resource: "
   ]
 };
@@ -1273,12 +1281,12 @@ function Fragile(_s$) {
 }
 export default function ControlFlowErrorBoundary(_s$) {
   const _el$1 = _tmpl$2();
-  _$boundary(_s$, _el$1, null, "error", _$block((_s$, _v$, _v$r) => _$block((_s$, error, reset) => {
+  _$boundary(_s$, _el$1, null, "error", _$block((_s$, error, reset) => {
     const _el$2 = _tmpl$3();
     _$bindEvent(_s$, _el$2, "click", reset);
-    _$insert(_s$, _el$2, error.message);
+    _$insert(_s$, _el$2, () => error().message);
     return _el$2;
-  })(_s$, _v$(), _v$r)), _$block((_s$) => Fragile(_s$, {})));
+  }), _$block((_s$) => Fragile(_s$, {})));
   return _el$1;
 }
 ControlFlowErrorBoundary = _$block(ControlFlowErrorBoundary);
@@ -1291,7 +1299,7 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // K5: \`ErrorBoundary\` ceases to exist and becomes \`boundary\`, whose kind is
+  // K5: \`Errored\` ceases to exist and becomes \`boundary\`, whose kind is
   // the string \`"error"\` and whose insertion pair is the one the walk computed.
   // \`fallback\` is \`(error, reset) => Child\`, so it is a real two-parameter
   // callback and never a built node; \`reset\` reaches the button as a handler
@@ -1304,6 +1312,7 @@ export const optimality = {
   // The adapter frame -O0 still pays: a props object, and the two slots the
   // boundary now takes positionally.
   absent: [
+    "Errored(",
     "ErrorBoundary(",
     "fallback: ",
     "children: "

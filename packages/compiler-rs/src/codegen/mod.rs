@@ -57,7 +57,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 60;
+pub const HELPER_COUNT: usize = 58;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -67,7 +67,7 @@ pub const FIRST_SERVER_HELPER: usize = 36;
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 59;
+pub const FIRST_INTERP_HELPER: usize = 57;
 
 /// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
 /// and `flow.ts`'s four primitives with `each`'s count symbol.
@@ -247,17 +247,15 @@ pub enum Helper {
     AttrLit = 50,
     SsrLoading = 51,
     SsrErrored = 52,
-    SsrErrorBoundary = 53,
-    SsrPortal = 54,
-    SsrAwait = 55,
-    SsrDynamic = 56,
-    SsrReveal = 57,
+    SsrPortal = 53,
+    SsrDynamic = 54,
+    SsrReveal = 55,
     /// `_$formAttr(value)` — the string half of `formAction`. A URL is written
     /// and a handler is not: there is no byte on the wire that means client
     /// behaviour, and `ssr.ts` states the consequence for a pre-hydration submit.
-    FormAttr = 58,
+    FormAttr = 56,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 59,
+    Interp = 57,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -314,9 +312,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "attrLit",
     "ssrLoading",
     "ssrErrored",
-    "ssrErrorBoundary",
     "ssrPortal",
-    "ssrAwait",
     "ssrDynamic",
     "ssrReveal",
     "formAttr",

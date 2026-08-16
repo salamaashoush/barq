@@ -153,11 +153,8 @@ impl Prim {
             "Loading" => Prim::Flow(Flow::Loading),
             "Errored" => Prim::Flow(Flow::Errored),
             "Reveal" => Prim::Flow(Flow::Reveal),
-            "Suspense" => Prim::Flow(Flow::Suspense),
-            "Await" => Prim::Flow(Flow::Await),
             "Portal" => Prim::Flow(Flow::Portal),
             "Dynamic" => Prim::Flow(Flow::Dynamic),
-            "ErrorBoundary" => Prim::Flow(Flow::ErrorBoundary),
             _ => return None,
         })
     }
@@ -232,12 +229,23 @@ pub enum Flow {
     Loading,
     Errored,
     Reveal,
-    Suspense,
-    Await,
     Portal,
     Dynamic,
-    ErrorBoundary,
 }
+
+// `Suspense`, `Await` and `ErrorBoundary` were here until M10 and are gone.
+// Solid 2.0's shipped control-flow surface is ten constructs — `For`, `Repeat`,
+// `Show`, `Switch`, `Match`, `Errored`, `Loading`, `Reveal` from `solid-js`,
+// plus `Portal` and `Dynamic` from `@solidjs/web` — read out of
+// `solid-js@2.0.0-rc.0` rather than out of its documentation. None of the three
+// is in it, and `CODESIGN.md` §3.8 and §4.1 had already called them legacy
+// duplicates of `Loading` / `resource` / `Errored`.
+//
+// `Suspense` was `Loading` under its pre-2.0 name and forwarded to it verbatim.
+// `ErrorBoundary` was `Errored` with the error handed over BY VALUE instead of
+// as an accessor. `Await` was the one with content of its own, and it was the
+// nesting the compiler already lowered it to: a `Loading` around an `Errored`
+// whose body reads the resource.
 
 impl Flow {
     /// `Match` returns its own props object and `Switch` reads them, so the DOM
@@ -260,11 +268,8 @@ impl Flow {
             Flow::Loading => "Loading",
             Flow::Errored => "Errored",
             Flow::Reveal => "Reveal",
-            Flow::Suspense => "Suspense",
-            Flow::Await => "Await",
             Flow::Portal => "Portal",
             Flow::Dynamic => "Dynamic",
-            Flow::ErrorBoundary => "ErrorBoundary",
         }
     }
 
@@ -284,7 +289,6 @@ impl Flow {
             (Flow::Show | Flow::Match, "when") => Some("branch key"),
             (Flow::Portal, "target") => Some("portal target"),
             (Flow::Loading, "on") => Some("boundary on"),
-            (Flow::Await, "resource") => Some("boundary on"),
             (Flow::Reveal, "order" | "collapsed") => Some("branch key"),
             (Flow::Dynamic, "component") => Some("branch key"),
             _ => None,
@@ -490,18 +494,21 @@ mod tests {
             Flow::Loading,
             Flow::Errored,
             Flow::Reveal,
-            Flow::Suspense,
-            Flow::Await,
             Flow::Portal,
             Flow::Dynamic,
-            Flow::ErrorBoundary,
         ];
         // M6 deleted `inlinable_on_server`, the six/eight split it named, and
         // the whole-module downgrade it drove. What replaced it is a TOTAL map
         // from a construct to a string implementation, so the property worth
-        // asserting is that the map has no hole: every one of the thirteen
-        // resolves to a helper, and a helper resolves to a name in `IMPORTED`.
-        assert_eq!(all.len(), 13);
+        // asserting is that the map has no hole: every construct resolves to a
+        // helper, and a helper resolves to a name in `IMPORTED`.
+        //
+        // TEN, since M10. Solid 2.0's shipped surface is `For`, `Repeat`,
+        // `Show`, `Switch`, `Match`, `Errored`, `Loading` and `Reveal` from
+        // `solid-js`, plus `Portal` and `Dynamic` from `@solidjs/web` — read out
+        // of `solid-js@2.0.0-rc.0`. `Suspense`, `Await` and `ErrorBoundary` were
+        // the three barq carried beyond it and are gone.
+        assert_eq!(all.len(), 10);
         for flow in all {
             let helper = crate::codegen::ssr::server_flow(flow);
             assert!(

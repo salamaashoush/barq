@@ -20,7 +20,6 @@
  * whole-module SSR→DOM downgrade behind it.
  */
 
-import type { Resource } from "./async.ts";
 import {
   REVEAL_COORD,
   type RevealHandle,
@@ -1141,15 +1140,6 @@ export function ssrErrored(
 }
 
 /** The pre-Solid-2.0 spelling, whose fallback takes the error BY VALUE. */
-export function ssrErrorBoundary(
-  s: Scope | null,
-  props: { fallback: unknown; children: unknown },
-): SsrHtml {
-  const fallback: Block<unknown> = (scope: Scope | null, error: unknown, reset: unknown): unknown =>
-    invokeBlock(scope, props.fallback, [(error as Cell<Error>)(), reset]);
-  return boundary(s, null, null, "error", fallback, props.children as Block<unknown>);
-}
-
 export function ssrPortal(
   s: Scope | null,
   props: { target?: unknown; children: unknown },
@@ -1166,50 +1156,6 @@ export function ssrPortal(
  * `Await` — four states, three bodies, one `branch` keyed on the state. The
  * same shape `components.ts` builds, with the error arm's bare-message case
  * emitting text instead of a text NODE.
- */
-export function ssrAwait<T>(
-  s: Scope | null,
-  props: { resource?: unknown; loading?: unknown; error?: unknown; children: unknown },
-): SsrHtml {
-  const resolve = (): Resource<T> => {
-    const carrier = props.resource;
-    // A `Resource` is itself callable, so forwarding one by name (C5) puts a
-    // value-carrying Cell and the resource in the same slot. The resource is
-    // told from its own value by a property it has and a value does not.
-    return (
-      typeof carrier === "function" && "state" in carrier
-        ? carrier
-        : readValue(carrier, "Await.resource")
-    ) as Resource<T>;
-  };
-  const key = (): number => {
-    switch (resolve().state()) {
-      case "unresolved":
-      case "pending":
-        return 0;
-      case "errored":
-        return 1;
-      default:
-        return 2;
-    }
-  };
-  const failed: Block<unknown> = (scope: Scope | null): unknown => {
-    const error = untrack(() => resolve().error());
-    if (props.error && error) return invokeBlock(scope, props.error, [error]);
-    return error ? error.message : null;
-  };
-  const ready: Block<unknown> = (scope: Scope | null): unknown => {
-    const data = untrack(() => resolve().latest());
-    return data === undefined ? null : invokeBlock(scope, props.children, [data]);
-  };
-  return branch(s, null, null, key, [slotBlock(props.loading), failed, ready]);
-}
-
-/**
- * `Dynamic` — a `branch` keyed on the component VALUE, with one body for every
- * key. The string arm writes the tag itself: `spreadAttrs` is the same
- * attribute policy every other hole on this backend goes through, so a
- * runtime-chosen tag cannot escape the escaping.
  */
 export function ssrDynamic(
   s: Scope | null,

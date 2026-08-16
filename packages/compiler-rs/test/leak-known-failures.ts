@@ -137,11 +137,16 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * scope forever. Six more entries, six more disposals, and the count of
  * survivors still zero — which is the half that matters, because the defect
  * being fixed was an undisposed scope per revalidation.
+ *
+ * 284 effects became 287 at M10's `Await` removal, and all three are the same
+ * shape: an error handed to a fallback as an ACCESSOR is a live read, where
+ * `ErrorBoundary` handed it over by value and the read was applied once.
+ * `Errored` is Solid 2.0's signature and the only one left.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
   sessions: 155,
   scopesEntered: 492,
-  effectsCreated: 284,
+  effectsCreated: 287,
   listeners: 31,
 })
 

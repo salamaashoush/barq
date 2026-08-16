@@ -1,6 +1,6 @@
 /**
  * Components Demo
- * Tests: Show, For (both keying modes), Switch, Match, Portal, Fragment, ErrorBoundary
+ * Tests: Show, For (both keying modes), Switch, Match, Portal, Fragment, Errored
  *
  * NOTE: This file uses clean syntax that the compiler transforms:
  * - Control flow: `when={visible}` instead of `when={() => visible()}`
@@ -8,7 +8,7 @@
  */
 
 import {
-  ErrorBoundary,
+  Errored,
   For,
   Match,
   Portal,
@@ -29,7 +29,7 @@ export function ComponentsDemo() {
       <IndexDemo />
       <SwitchDemo />
       <PortalDemo />
-      <ErrorBoundaryDemo />
+      <ErroredDemo />
       <FragmentDemo />
     </DemoSection>
   );
@@ -244,22 +244,22 @@ function PortalDemo() {
   );
 }
 
-// ErrorBoundary component
-function ErrorBoundaryDemo() {
+// Errored component
+function ErroredDemo() {
   const shouldError = signal(false);
 
   return (
-    <DemoCard title="ErrorBoundary - Error Handling">
+    <DemoCard title="Errored - Error Handling">
       <Button onClick={() => shouldError.update((e) => !e)}>
         {shouldError() ? "Fix Component" : "Break Component"}
       </Button>
 
       <div class={boundaryBoxStyle}>
-        <ErrorBoundary
+        <Errored
           fallback={(error, reset) => (
             <div class={errorBoxStyle}>
               <strong>Caught Error:</strong>
-              <p>{error.message}</p>
+              <p>{() => error().message}</p>
               <Button
                 onClick={() => {
                   shouldError.set(false);
@@ -271,15 +271,20 @@ function ErrorBoundaryDemo() {
             </div>
           )}
         >
-          {() => {
-            // This function is called inside ErrorBoundary's effect
-            // so it will re-run when shouldError changes
-            if (shouldError()) {
-              throw new Error("Intentional error for testing!");
-            }
-            return <div class={contentStyle}>Component is working fine.</div>;
-          }}
-        </ErrorBoundary>
+          {() => (
+            <div class={contentStyle}>
+              {() => {
+                // The throw has to come from a TRACKED position. A body builds
+                // once per activation and its reads are untracked, so a throw
+                // from the body itself fires once and never again; a hole is
+                // its own effect, so it re-runs when `shouldError` moves and
+                // the boundary sees the throw.
+                if (shouldError()) throw new Error("Intentional error for testing!");
+                return "Component is working fine.";
+              }}
+            </div>
+          )}
+        </Errored>
       </div>
     </DemoCard>
   );

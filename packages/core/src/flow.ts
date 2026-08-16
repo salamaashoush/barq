@@ -485,6 +485,13 @@ function region<K>(
   let instance = NOTHING;
   let previous: K | typeof UNSET = UNSET;
   let swapping = false;
+  /**
+   * The last attempt at `previous` SUSPENDED, so there is nothing standing at
+   * this position and the key has not moved. Both halves have to be answered or
+   * the region wedges: see `attemptTracked` below for the dependency, and the
+   * `retry` test in the key effect for the rebuild.
+   */
+  let retry = false;
 
   const pick = (k: K): Block<unknown> | null | undefined =>
     typeof bodies === "function" ? bodies : bodies[k as unknown as number];
@@ -495,6 +502,29 @@ function region<K>(
       swapInner(k);
     } finally {
       swapping = false;
+    }
+  };
+
+  /**
+   * A body build is UNTRACKED — a body's own reads must not become dependencies
+   * of the key, or every value the content displays would re-swap the whole
+   * region instead of updating in place. That is right for a body that builds,
+   * and wrong for one that SUSPENDS: a `NotReadyError` means nothing was built,
+   * and an untracked read registered no dependency, so nothing will ever wake
+   * this position again. The boundary above shows its fallback for good.
+   *
+   * So a suspended body is retried TRACKED. The read then lands on the key
+   * effect, the resource settling re-runs it, and `retry` is what stops the
+   * "key did not move" short-circuit from reading that as nothing to do. The
+   * cost is confined to the suspended case: a body that completes is never
+   * tracked, so nothing about the ordinary path changes.
+   */
+  const swapMaybeSuspending = (k: K): void => {
+    try {
+      untrack(() => swap(k));
+    } catch (error) {
+      if (!(error instanceof NotReadyError)) throw error;
+      swap(k);
     }
   };
 
@@ -563,9 +593,13 @@ function region<K>(
     renderEffect(() => {
       const k = key();
       cellSlot(k, "branch key");
-      if (previous !== UNSET && k === previous) return;
+      if (previous !== UNSET && k === previous && !retry) return;
       previous = k;
-      untrack(() => swap(k));
+      // Set before the attempt and cleared on the far side of one that
+      // returned, so a throw leaves it standing and the next run is a retry.
+      retry = true;
+      swapMaybeSuspending(k);
+      retry = false;
     });
   }
 
@@ -589,9 +623,11 @@ function region<K>(
   return (): void => {
     if (swapping) return;
     const k = untrack(key);
-    if (previous !== UNSET && k === previous) return;
+    if (previous !== UNSET && k === previous && !retry) return;
     previous = k;
-    untrack(() => swap(k));
+    retry = true;
+    swapMaybeSuspending(k);
+    retry = false;
   };
 }
 
@@ -1075,8 +1111,15 @@ function loadingBoundary(
 
   const move = (target: Site): void => {
     if (live === target) return;
+    // Leaving the park takes EVERYTHING in it, not the node list the last build
+    // returned. The fragment holds this boundary's content and nothing else, so
+    // its child list is the truth — including whatever a nested region swapped
+    // in while the content was parked, which the build's own list has never
+    // heard of. Moving the list instead left those nodes in a fragment that
+    // never reaches the document, which is the orphan half of M7's report.
+    const moving = live === park ? [...park.parent!.childNodes] : instance.nodes;
     live = target;
-    insertAt(target, instance.nodes);
+    insertAt(target, moving);
   };
 
   try {

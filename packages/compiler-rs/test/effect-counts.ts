@@ -93,7 +93,7 @@ const ROWS: readonly EffectCount[] = [
   { fixture: "conditional-children", created: 1, runs: 4, busiest: 4, frames: 4 },
   { fixture: "context-provider", created: 2, runs: 3, busiest: 2, frames: 2 },
   { fixture: "control-flow-await-suspense", created: 8, runs: 11, busiest: 2, frames: 2 },
-  { fixture: "control-flow-error-boundary", created: 1, runs: 2, busiest: 2, frames: 2 },
+  { fixture: "control-flow-error-boundary", created: 2, runs: 3, busiest: 2, frames: 2 },
   { fixture: "control-flow-errored-loading", created: 4, runs: 5, busiest: 2, frames: 2 },
   { fixture: "control-flow-for", created: 4, runs: 9, busiest: 4, frames: 4 },
   { fixture: "control-flow-for-keyed-by-item", created: 1, runs: 3, busiest: 3, frames: 3 },

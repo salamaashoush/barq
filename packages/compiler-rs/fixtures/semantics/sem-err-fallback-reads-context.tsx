@@ -5,7 +5,7 @@
  * This one is not a construction throw. The boundary is written in the
  * workaround form, so it DOES catch — the child throws from an effect and the
  * fallback renders. Only the provider above it is written in the direct form.
- * That is enough: `ErrorBoundary({…})` is evaluated as an argument to
+ * That is enough: `Errored({…})` is evaluated as an argument to
  * `Locale.Provider({…})`, so the boundary — and everything it later builds,
  * including its fallback — was constructed at the provider's call site and has
  * no scope carrying the binding on its chain.
@@ -18,7 +18,7 @@
  * SEMANTICS.md §2 O2; §4 X3.
  */
 import type { Block } from "@barqjs/core"
-import { context, effect, ErrorBoundary, hasContext, getOwner, render, useContext } from "@barqjs/core"
+import { context, effect, Errored, hasContext, getOwner, render, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
@@ -51,7 +51,7 @@ function Fallback() {
 function Direct() {
   return (
     <Locale.Provider value="fr">
-      <ErrorBoundary fallback={() => <Fallback />}>{() => <Late />}</ErrorBoundary>
+      <Errored fallback={() => <Fallback />}>{() => <Late />}</Errored>
     </Locale.Provider>
   )
 }
@@ -59,7 +59,7 @@ function Direct() {
 function Thunked() {
   return (
     <Locale.Provider value="fr">
-      {() => <ErrorBoundary fallback={() => <Fallback />}>{() => <Late />}</ErrorBoundary>}
+      {() => <Errored fallback={() => <Fallback />}>{() => <Late />}</Errored>}
     </Locale.Provider>
   )
 }

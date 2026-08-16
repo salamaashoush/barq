@@ -200,11 +200,15 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * `ownership.rs` models the pair. `clones` and `determined` did not move, which
  * is the assertion that matters — the same clones, at a path the static tree
  * now predicts.
+ *
+ * One more effect at the `Await` removal: `control-flow-error-boundary`'s
+ * fallback reads the error through an accessor now, which is a live binding
+ * where the by-value form was applied once.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
   fixtures: 141,
   scopes: 407,
-  effects: 267,
+  effects: 268,
   clones: 313,
   determined: 311,
   unattributed: 1,

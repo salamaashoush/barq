@@ -224,12 +224,9 @@ export {
   Repeat,
   Switch,
   Match,
-  Suspense,
   Loading,
   Reveal,
-  ErrorBoundary,
   Errored,
-  Await,
   Portal,
   Dynamic,
 } from "./components.ts";
@@ -242,8 +239,6 @@ export type {
   LoadingProps,
   RevealProps,
   ErroredProps,
-  ErrorBoundaryProps,
-  AwaitProps,
   PortalProps,
   DynamicComponent,
 } from "./components.ts";

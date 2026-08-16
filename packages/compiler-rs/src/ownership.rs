@@ -591,8 +591,10 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
         // exactly one shape: a component whose body forwards `props.children`
         // into a construct that DOES own — the provider wrapper.
         let mut children_owner = None;
-        // `Await` is the one construct that owns TWO scopes, so its `loading`
-        // fallback belongs to the outer one and everything else to the inner.
+        // A LOADING boundary owns two scopes, so a prop of it can belong to
+        // either: its `fallback` is built under the boundary's own scope —
+        // `loadingBoundary` builds `shown` there, beside the collector — and
+        // everything else belongs to the content instance.
         let mut outer: Option<u32> = None;
         let inner = match self.classify(name) {
             Tag::Intrinsic => owner,
@@ -618,7 +620,7 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
             // both directions — it named nodes that were gone and omitted the
             // ones that were there, so a revalidation left the nested arm in
             // the document and inserted a second copy beside it.
-            Tag::Flow(Flow::Loading | Flow::Suspense, label) => {
+            Tag::Flow(Flow::Loading, label) => {
                 let boundary = self.tree.push(
                     owner,
                     OwnKind::Branch,
@@ -628,28 +630,6 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
                 );
                 outer = Some(boundary);
                 self.tree.push(boundary, OwnKind::Branch, label, element.span, self.module)
-            }
-            // `Await` is a loading boundary around an error one whose body
-            // reads the resource — so it is the two above plus the error
-            // boundary's own instance scope, and the static tree has to carry
-            // all three or the trace comes out deeper than the compiler says.
-            Tag::Flow(Flow::Await, label) => {
-                let boundary = self.tree.push(
-                    owner,
-                    OwnKind::Branch,
-                    label.clone(),
-                    element.span,
-                    self.module,
-                );
-                outer = Some(boundary);
-                let content = self.tree.push(
-                    boundary,
-                    OwnKind::Branch,
-                    label.clone(),
-                    element.span,
-                    self.module,
-                );
-                self.tree.push(content, OwnKind::Branch, label, element.span, self.module)
             }
             Tag::Flow(flow, label) => {
                 self.tree.push(owner, OwnKind::of_flow(flow), label, element.span, self.module)
@@ -688,8 +668,11 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
         for item in &element.opening_element.attributes {
             let JSXAttributeItem::Attribute(attribute) = item else { continue };
             let inner = match (&attribute.name, outer) {
+                // The fallback is the boundary's, not the content's: it is what
+                // stands at the position while the content is not there, so it
+                // cannot be owned by the instance that is missing.
                 (oxc::ast::ast::JSXAttributeName::Identifier(name), Some(outer))
-                    if name.name == "loading" =>
+                    if name.name == "fallback" =>
                 {
                     outer
                 }
