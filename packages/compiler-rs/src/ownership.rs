@@ -602,20 +602,54 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
             // activation. A node here made the static tree claim a scope the
             // runtime has never had and never will.
             Tag::Flow(Flow::Match, _) => owner,
-            // `Await` is TWO boundaries: the loading one, and the error one
-            // inside it whose body reads the resource. Both enter a scope, so
-            // the static tree has to carry both or the trace comes out one step
-            // deeper than the compiler says it will.
-            Tag::Flow(Flow::Await, label) => {
-                let loading = self.tree.push(
+            // A LOADING boundary is TWO scopes, and the reason is O2 rather
+            // than bookkeeping. The outer one is the boundary's own, entered at
+            // call time: it holds the pending collector, the reveal
+            // registration and the mode effects, all of which have to outlive
+            // any one build. The inner one is the CONTENT INSTANCE, and O2 says
+            // each activation gets a fresh one — a revalidation is an
+            // activation, so the body's scope is per-build.
+            //
+            // Until M10 `loadingBoundary` had only the outer one and rebuilt
+            // the body into it, which is why the trace was one step shallower
+            // than this. It was also the defect: nested regions under a
+            // rebuilt body were never disposed, and the node list the boundary
+            // removed instead was a snapshot that a nested swap made wrong in
+            // both directions — it named nodes that were gone and omitted the
+            // ones that were there, so a revalidation left the nested arm in
+            // the document and inserted a second copy beside it.
+            Tag::Flow(Flow::Loading | Flow::Suspense, label) => {
+                let boundary = self.tree.push(
                     owner,
                     OwnKind::Branch,
                     label.clone(),
                     element.span,
                     self.module,
                 );
-                outer = Some(loading);
-                self.tree.push(loading, OwnKind::Branch, label, element.span, self.module)
+                outer = Some(boundary);
+                self.tree.push(boundary, OwnKind::Branch, label, element.span, self.module)
+            }
+            // `Await` is a loading boundary around an error one whose body
+            // reads the resource — so it is the two above plus the error
+            // boundary's own instance scope, and the static tree has to carry
+            // all three or the trace comes out deeper than the compiler says.
+            Tag::Flow(Flow::Await, label) => {
+                let boundary = self.tree.push(
+                    owner,
+                    OwnKind::Branch,
+                    label.clone(),
+                    element.span,
+                    self.module,
+                );
+                outer = Some(boundary);
+                let content = self.tree.push(
+                    boundary,
+                    OwnKind::Branch,
+                    label.clone(),
+                    element.span,
+                    self.module,
+                );
+                self.tree.push(content, OwnKind::Branch, label, element.span, self.module)
             }
             Tag::Flow(flow, label) => {
                 self.tree.push(owner, OwnKind::of_flow(flow), label, element.span, self.module)

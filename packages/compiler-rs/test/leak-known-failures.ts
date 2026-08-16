@@ -130,10 +130,17 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * leaked — is B4 for it: the listener goes through `listen`, so its removal is
  * a cleanup on the scope that owns the form. A probe that counted 31 and
  * reported one surviving would be the whole point of the channel.
+ *
+ * 486 scope entries became 492 with no fixture added, and that is the M10
+ * loading-boundary fix: a boundary's CONTENT is an instance with its own scope
+ * now, one per activation, where it used to be rebuilt into the boundary's own
+ * scope forever. Six more entries, six more disposals, and the count of
+ * survivors still zero — which is the half that matters, because the defect
+ * being fixed was an undisposed scope per revalidation.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
   sessions: 155,
-  scopesEntered: 486,
+  scopesEntered: 492,
   effectsCreated: 284,
   listeners: 31,
 })

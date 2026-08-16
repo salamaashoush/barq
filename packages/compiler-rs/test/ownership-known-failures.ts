@@ -194,10 +194,16 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * `form-action` is the fifth: 141 fixtures, 401 scopes, 267 effects, 313 clones,
  * 311 determined — §3.8 reached from compiled JSX rather than a hand-written
  * call, which it never had been.
+ *
+ * 401 scopes became 407 with no fixture added: the M10 loading-boundary fix
+ * gives a boundary's CONTENT its own instance scope, one per activation, and
+ * `ownership.rs` models the pair. `clones` and `determined` did not move, which
+ * is the assertion that matters — the same clones, at a path the static tree
+ * now predicts.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
   fixtures: 141,
-  scopes: 401,
+  scopes: 407,
   effects: 267,
   clones: 313,
   determined: 311,

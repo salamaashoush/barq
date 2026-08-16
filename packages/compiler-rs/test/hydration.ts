@@ -302,11 +302,11 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     why: "M9 lowers `Dynamic`, so the branch is claimed and the FLAGS are there — but the element its string arm builds is built by tag name, and a built subtree has no counterpart on the wire to claim: the range is claimed, its content rebuilt, and the server's node reconciled away",
   },
   "control-flow-await-suspense": {
-    kinds: ["range"],
-    recovered: true,
-    reuse: 0,
+    kinds: ["structure"],
+    recovered: false,
+    reuse: 43,
     shape: null,
-    why: "M9 lowers `Await` to two nested boundaries, and the inner one sits at a ROOT position — the same shape `control-flow-errored-loading` carries: the region driver is re-entered after the outer claim is spent, the range it looks for is not where it looks, and the page degrades to a cold render",
+    why: "M10 stopped the loading boundary rebuilding its body into one scope by hand and routed it through `attempt`, so the claim is spent by the thing that owns it and the page no longer degrades — recovered true → false, reuse 0% → 43%. What remains is the built subtree the inner boundary produces at a ROOT position, which has no counterpart on the wire to claim: the range is claimed, its content rebuilt, and the server's nodes reconciled away",
   },
 
   // ── a boundary that parks, and a boundary that recovers ────────────────
@@ -325,11 +325,11 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     why: "the body throws on the client exactly as it did on the server, so the claim is spent by the attempt that failed and the fallback is built cold — E3's `try` and the claim are the same activation",
   },
   "control-flow-errored-loading": {
-    kinds: ["range"],
-    recovered: true,
-    reuse: 0,
+    kinds: ["structure"],
+    recovered: false,
+    reuse: 33,
     shape: null,
-    why: "a Loading boundary wrapping an Errored boundary whose body throws re-enters the region driver at a ROOT position after the claim has been spent; detected as a range that is not there, and the page degrades to a cold render",
+    why: "the same M10 move as `control-flow-await-suspense`, and the same improvement — recovered true → false, reuse 0% → 33%. A Loading boundary wrapping an Errored boundary whose body throws now spends its claim through `attempt` rather than through a hand-rolled rebuild; what is left is the fallback subtree, built cold because a body that threw has no server nodes worth claiming",
   },
 
   // ── raw text, where the tokenizer eats a newline nobody can see ────────

@@ -1070,28 +1070,44 @@ function loadingBoundary(
   const own = enter(given, "branch");
   const park: Site = { parent: document.createDocumentFragment(), anchor: null };
   let live: Site = park;
-  let content: readonly Node[] = EMPTY;
+  let instance: Instance = NOTHING;
   let shown: readonly Node[] = EMPTY;
 
   const move = (target: Site): void => {
     if (live === target) return;
     live = target;
-    insertAt(target, content);
+    insertAt(target, instance.nodes);
   };
 
   try {
     pending.install(own);
 
-    // Build BEFORE removing: a revalidation that throws `NotReadyError` leaves
-    // the previous nodes exactly where they are, which is what "revalidation
-    // keeps stale content" means. Clearing first and rebuilding second showed a
-    // blank frame for every refresh.
+    // ONE INSTANCE PER BUILD, torn down through its own scope — which is what
+    // `activate` does for every other consumer of `region`, and what this
+    // rebuilt by hand until M10.
+    //
+    // The hand-rolled version kept a NODE LIST and removed it directly. Both
+    // halves were wrong the moment the body contained a region of its own,
+    // because a nested region swaps its own nodes and the list is a snapshot
+    // taken at the last build: it names nodes that are gone and omits the ones
+    // that are there. A revalidation then removed a stale list, left the
+    // nested region's current arm in the document, and inserted a fresh build
+    // beside it — a DUPLICATED subtree, and one accumulating undisposed scope
+    // per revalidation, since the body's own scope was entered once and never
+    // re-entered.
+    //
+    // Going through `attempt` fixes both by not tracking anything: disposal
+    // reaches the instance scope, every nested region under it is a CHILD, and
+    // each removes whatever it currently owns through its own `ownRange`.
+    //
+    // Build BEFORE tearing down: a revalidation that throws `NotReadyError`
+    // leaves the previous instance exactly where it is, which is what
+    // "revalidation keeps stale content" means. Clearing first and rebuilding
+    // second showed a blank frame for every refresh.
     renderEffect(() => {
-      activation++;
-      const next = build(own, body, EMPTY_ARGS);
-      if (content.length !== 0) removeNodes(content);
-      content = next;
-      insertAt(live, content);
+      const next = attempt(own, live, body, EMPTY_ARGS, 0, "branch", null);
+      if (instance !== NOTHING) teardown(instance);
+      instance = next;
     });
 
     renderEffect(() => {
@@ -1145,9 +1161,9 @@ function loadingBoundary(
 
     onCleanup(() => {
       removeNodes(shown);
-      removeNodes(content);
       shown = EMPTY;
-      content = EMPTY;
+      // The instance's own nodes go with its scope, which is a child of `own`
+      // and is disposed by the same cascade that runs this.
     });
   } finally {
     exit(own);
