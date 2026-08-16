@@ -294,6 +294,7 @@ fn classify_position(op: Op) -> Option<(PositionKind, u32)> {
         }
         Op::Ref { .. } => (PositionKind::Ref, 0),
         Op::Bind { prop, .. } => (PositionKind::Bind, prop),
+        Op::FormAction { .. } => (PositionKind::Bind, 0),
         Op::Spread { .. } => (PositionKind::Spread, 0),
         Op::Insert { slot, .. } | Op::Region { slot, .. } => (PositionKind::Slot, slot),
         Op::EffectGroup { .. } => return None,

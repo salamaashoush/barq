@@ -1944,3 +1944,20 @@ attrs 3: 0/0 b: class"
 `;
 
 exports[`marker channel control-flow-show-keyed-false: anchor layout 1`] = `"<div><b>alpha</b></div>"`;
+
+exports[`rendered DOM golden form-action: rendered DOM 1`] = `
+"initial: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved"></p></form>
+event 0: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved">HELLO</p></form>
+attrs 0: 0 form: class
+attrs 0: 0/0 input: name
+attrs 0: 0/1 button: type
+attrs 0: 0/2 p: class
+attrs 0: 0/3 p: class
+attrs 1: 0 form: class
+attrs 1: 0/0 input: name
+attrs 1: 0/1 button: type
+attrs 1: 0/2 p: class
+attrs 1: 0/3 p: class"
+`;
+
+exports[`marker channel form-action: anchor layout 1`] = `"<form><input><button>save</button><p></p><p></p></form>"`;

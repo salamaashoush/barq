@@ -32,6 +32,7 @@ export {
   escAttr,
   escapeAttribute,
   escapeText,
+  formAttr,
   html,
   isSsrHtml,
   portal,

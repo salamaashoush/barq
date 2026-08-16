@@ -139,6 +139,7 @@ const ROWS: readonly EffectCount[] = [
   { fixture: "flow-prop-eta-boundary", created: 3, runs: 7, busiest: 3, frames: 6 },
   { fixture: "for-each-local-function", created: 1, runs: 3, busiest: 3, frames: 3 },
   { fixture: "for-unkeyed-rows", created: 4, runs: 7, busiest: 3, frames: 3 },
+  { fixture: "form-action", created: 2, runs: 5, busiest: 3, frames: 2 },
   { fixture: "fragment-root", created: 1, runs: 2, busiest: 2, frames: 2 },
   { fixture: "handler-by-reference", created: 1, runs: 4, busiest: 4, frames: 4 },
   { fixture: "handler-closure", created: 1, runs: 4, busiest: 4, frames: 4 },

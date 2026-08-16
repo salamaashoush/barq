@@ -270,6 +270,13 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
     /// A writable binding cannot be READ back through a nullary slot, so the
     /// assignment itself is what the slot holds: the interpreter calls it with
     /// the element instead of calling `ref` with a value.
+    fn form_action(&mut self, at: At<'_>, value: ExprId) -> Self::Out {
+        let span = at.span();
+        let node = self.node(at.target(), span);
+        let slot = self.once(value, span);
+        Some(self.record("formAction", vec![node, slot], span))
+    }
+
     fn set_ref(&mut self, at: At<'_>, value: ExprId, write: bool) -> Self::Out {
         let span = at.span();
         let node = self.node(at.target(), span);

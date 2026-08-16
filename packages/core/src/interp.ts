@@ -49,6 +49,7 @@ import {
   bindEvent,
   bindProp,
   bindValue,
+  formAction,
   insert,
   listen,
   ref,
@@ -111,6 +112,7 @@ export type Op =
   | readonly ["delegate", number, string, number]
   | readonly ["listen", number, string, number]
   | readonly ["ref", number, number, "assign" | "apply"]
+  | readonly ["formAction", number, number]
   | readonly ["bind", number, string, string, number]
   | readonly ["spread", number, number, boolean]
   | readonly ["insert", number, number, Plan, number | null]
@@ -155,6 +157,7 @@ export const HANDLED: readonly string[] = [
   "delegate",
   "listen",
   "ref",
+  "formAction",
   "bind",
   "spread",
   "insert",
@@ -258,6 +261,13 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
 
     case "bind":
       bindValue(s, nodes[op[1]] as Element, op[2], op[3], slots[op[4]]);
+      return;
+
+    // §3.8. The slot is a nullary thunk over the value the author wrote, and
+    // the runtime is what tells a URL from a submit handler — which is the
+    // whole point of the op, so the interpreter hands it over unread.
+    case "formAction":
+      formAction(s, nodes[op[1]] as HTMLFormElement, slots[op[2]]());
       return;
 
     // §3.13 item 1: the one channel whose NAMES are runtime data. `live` is the

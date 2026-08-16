@@ -57,17 +57,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 58;
+pub const HELPER_COUNT: usize = 60;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 35;
+pub const FIRST_SERVER_HELPER: usize = 36;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 57;
+pub const FIRST_INTERP_HELPER: usize = 59;
 
 /// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
 /// and `flow.ts`'s four primitives with `each`'s count symbol.
@@ -191,11 +191,18 @@ pub enum Helper {
     BindValue = 28,
     /// A scope-owned `ref` registration (B3, E2 #7).
     Ref = 29,
+    /// `_$formAction($s, el, value)` — §3.8's compiler surface. `action` on a
+    /// `<form>` is a URL or a SUBMIT HANDLER, and nothing about the expression
+    /// tells them apart: an `action()` is `(...args) => Promise<R>`, so its
+    /// arity is 0 and §3.0 rule 1 reads it as a Cell. The SLOT decides, exactly
+    /// as it does for `on*`. It takes a scope because the listener it installs
+    /// is owned by the position (B4).
+    FormAction = 30,
     /// A scope-owned `addEventListener` (B4, E2 #6).
-    Listen = 30,
+    Listen = 31,
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
-    BindEvent = 31,
+    BindEvent = 32,
     // ── the hydration-only walk (`SEMANTICS.md` H3) ───────────────────────
     //
     // `child(n, 3)` is H3's own spelling. Under `hydratable` the template walk
@@ -209,9 +216,9 @@ pub enum Helper {
     // the flag off not one of these appears.
     /// `_$child(base, k)` — the k-th logical child, from the start when `k >= 0`
     /// and from the end when `k < 0` (`-1` is the last).
-    Child = 32,
+    Child = 33,
     /// `_$sib(base, k)` — `k` logical siblings forward, or `-k` backward.
-    Sib = 33,
+    Sib = 34,
     /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
     /// THEN build the value that goes in it.
     ///
@@ -221,32 +228,36 @@ pub enum Helper {
     /// the cursor rather than from its own hole. The compiler knows the position
     /// statically — that is what an address IS — so it says so, instead of the
     /// runtime guessing from the shape of the tree it is walking.
-    Hole = 34,
+    Hole = 35,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 35,
-    EscAttr = 36,
-    Attr = 37,
-    Cls = 38,
-    Content = 39,
-    Html = 40,
-    RawText = 41,
-    SpreadAttrs = 42,
-    SsrFor = 43,
-    SsrRepeat = 44,
-    SsrShow = 45,
-    SsrSwitch = 46,
-    SsrMatch = 47,
-    ClsList = 48,
-    AttrLit = 49,
-    SsrLoading = 50,
-    SsrErrored = 51,
-    SsrErrorBoundary = 52,
-    SsrPortal = 53,
-    SsrAwait = 54,
-    SsrDynamic = 55,
-    SsrReveal = 56,
+    Esc = 36,
+    EscAttr = 37,
+    Attr = 38,
+    Cls = 39,
+    Content = 40,
+    Html = 41,
+    RawText = 42,
+    SpreadAttrs = 43,
+    SsrFor = 44,
+    SsrRepeat = 45,
+    SsrShow = 46,
+    SsrSwitch = 47,
+    SsrMatch = 48,
+    ClsList = 49,
+    AttrLit = 50,
+    SsrLoading = 51,
+    SsrErrored = 52,
+    SsrErrorBoundary = 53,
+    SsrPortal = 54,
+    SsrAwait = 55,
+    SsrDynamic = 56,
+    SsrReveal = 57,
+    /// `_$formAttr(value)` — the string half of `formAction`. A URL is written
+    /// and a handler is not: there is no byte on the wire that means client
+    /// behaviour, and `ssr.ts` states the consequence for a pre-hydration submit.
+    FormAttr = 58,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 57,
+    Interp = 59,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -280,6 +291,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "bindProp",
     "bindValue",
     "ref",
+    "formAction",
     "listen",
     "bindEvent",
     "child",
@@ -307,6 +319,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrAwait",
     "ssrDynamic",
     "ssrReveal",
+    "formAttr",
     "interp",
 ];
 

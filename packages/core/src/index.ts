@@ -180,6 +180,7 @@ export {
   bindEvent,
   bindChannelOf,
   ref,
+  formAction,
   listen,
   delegate,
   spread,

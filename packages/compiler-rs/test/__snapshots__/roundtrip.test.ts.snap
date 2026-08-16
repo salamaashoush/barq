@@ -3634,6 +3634,65 @@ export const optimality = {
 "
 `;
 
+exports[`emitted code snapshots form-action 1`] = `
+"import { action, commit, optimistic, signal, template as _$template, insert as _$insert, block as _$block, setLive as _$setLive, formAction as _$formAction } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<form class="editor"><input name="title"><button type="submit">save</button><p class="draft"></p><p class="saved"></p></form>\`);
+export const saved = signal("");
+export const draft = optimistic("");
+export const log: string[] = [];
+/**
+* \`<form action={…}>\` — §3.8's compiler surface, and the whole of A5 reached
+* from compiled JSX rather than from a hand-written call.
+*
+* \`action\` on a \`<form>\` is a URL when it holds a string and a SUBMIT HANDLER
+* when it holds a function, and nothing about the expression separates them: an
+* \`action()\` is \`(...args) => Promise<R>\`, so its arity is 0 and §3.0 rule 1
+* reads it as a Cell. Before M10 the attribute channel did exactly that — it
+* CALLED the action at mount and wrote the promise it returned into the form's
+* target as \`action="[object Promise]"\`, with no console error. The SLOT decides
+* now, as it does for \`on*\`.
+*
+* The body is A5 clause (e): the guess lands in the override buffer, the answer
+* after the \`yield\` goes through \`commit\` so it reaches the authoritative one,
+* and retiring the lane drops the override onto a value that is already right.
+* Written without \`commit\` the answer would retire with the lane.
+*/
+const submit = action(function* (data: FormData) {
+  const text = String(data.get("title") ?? "");
+  log.push(\`start:\${text}\`);
+  draft.set(text);
+  const answer = (yield Promise.resolve(text.toUpperCase())) as string;
+  commit(() => saved.set(answer));
+  log.push(\`done:\${answer}\`);
+});
+export default function FormAction(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  const _el$4 = _el$3.previousSibling;
+  _$formAction(_s$, _el$1, submit);
+  _$setLive(_el$2, "value", "hello");
+  _$insert(_s$, _el$4, () => draft());
+  _$insert(_s$, _el$3, () => saved());
+  return _el$1;
+}
+FormAction = _$block(FormAction);
+export const events = [(root: HTMLElement) => root.querySelector<HTMLButtonElement>("button")?.click()];
+export const optimality = {
+  target: 1,
+  milestone: 10,
+  templates: 1,
+  // One call, taking the scope — the listener it installs is owned by the
+  // position (B4), which is why this is an op and not a channel.
+  emits: ["formAction(", ", submit)"],
+  // The two ways it used to go wrong, both silent: the attribute channel wrote
+  // the promise into the form's target, and \`bindProp\` called the action at
+  // mount to get it.
+  absent: ["\\"action\\"", "bindProp"]
+};
+"
+`;
+
 exports[`emitted code snapshots fragment-root 1`] = `
 "import { signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<h2 class="head">head</h2>\`);

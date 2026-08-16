@@ -159,6 +159,7 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "flow-prop-eta-boundary", clones: 6, unattributed: 0, opaque: [] },
   { fixture: "for-each-local-function", clones: 4, unattributed: 0, opaque: [] },
   { fixture: "for-unkeyed-rows", clones: 4, unattributed: 0, opaque: [] },
+  { fixture: "form-action", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "fragment-root", clones: 3, unattributed: 0, opaque: [] },
   { fixture: "handler-by-reference", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "handler-closure", clones: 1, unattributed: 0, opaque: [] },

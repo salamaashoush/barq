@@ -71,6 +71,7 @@ corpus/escaping-adversarial  3b73f9279e65 ac28e3dae261 00c2b49d2e8a c00355ddafa7
 corpus/flow-prop-eta-boundary  f1d34a674fb4 db8fe2a46067 8a15fbd4ae16 c06806f0a274 03f8184433ba ec79b5e577ba f3366857a254
 corpus/for-each-local-function  262885bfbc52 db0f2c2c1651 b3aa45b42371 53cc7f5ab8b0 6fde081ce7f7 baec8d7ff694 aeb58d9ed21f
 corpus/for-unkeyed-rows  a837f902f299 09a9b5daf923 7e6ef2ad340e 3f15457f58e1 a745d30735a6 743177d4e110 462b8e1f9cd0
+corpus/form-action  8413c852e443 898176d9907c 590efc5aa7fb 590efc5aa7fb 77da3def58d4 075306e5dbfc 590efc5aa7fb
 corpus/fragment-root  051f57205438 91c9f9ee1cd9 162ead0fc9f1 162ead0fc9f1 1cd4f6f1465e 9c149bb09341 162ead0fc9f1
 corpus/handler-by-reference  051912d5a9d0 c619fd6d95e1 35a4e303a90d 35a4e303a90d 36a3b162b739 a2e4f1d41a54 35a4e303a90d
 corpus/handler-closure  8907a4337122 e98ad310bea0 bcc5360a24f1 bcc5360a24f1 96139e9eeec1 66b0ded16c28 bcc5360a24f1

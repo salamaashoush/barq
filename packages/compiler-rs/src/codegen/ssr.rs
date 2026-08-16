@@ -496,6 +496,9 @@ fn attribute_slot(op: Op) -> Slot {
             Slot::Named(name)
         }
         Op::Spread { .. } => Slot::Unnamed,
+        // The one op whose value decides whether it is an attribute at all, so
+        // it owns a NAMED slot and writes nothing into it for a handler.
+        Op::FormAction { .. } => Slot::Unnamed,
         // Dropped, and no cut is made: `<button class="btn">Bump` stays one
         // contiguous quasi with no empty `""` slot in it.
         Op::Delegate { .. }
@@ -712,6 +715,17 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
     fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId) {}
 
     fn set_ref(&mut self, _at: At<'_>, _value: ExprId, _write: bool) {}
+
+    /// `${_$formAttr(value)}` — a URL is written and a handler is not. There is
+    /// no byte on the wire that means client behaviour, and the consequence for
+    /// a pre-hydration submit is stated in `ssr.ts` rather than papered over.
+    fn form_action(&mut self, at: At<'_>, value: ExprId) {
+        let span = at.span();
+        let value = take(self.ctx, self.unit, value, span);
+        let callee = self.ctx.helper(Helper::FormAttr, span);
+        let call = self.ctx.call(callee, vec![Argument::from(value)], span);
+        self.chunks.hole(call);
+    }
 
     /// The `bind:` channel is a listener plus a property write, and a server
     /// render has neither. The INITIAL value does reach the wire — as the

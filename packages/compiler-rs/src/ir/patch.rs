@@ -69,6 +69,19 @@ pub enum Op {
         value: ExprId,
         write: bool,
     },
+    /// `<form action={…}>`. §3.8's compiler surface, and the one attribute whose
+    /// value decides whether it is an attribute at all: a string is the form's
+    /// URL and a function is its SUBMIT HANDLER. Nothing about the expression
+    /// separates them — an `action()` is `(...args) => Promise<R>`, whose arity
+    /// is 0, so §3.0 rule 1 reads it as a Cell — which is why the SLOT decides,
+    /// exactly as it does for `on*` (§3.5's `is_cell` exception).
+    ///
+    /// It is its own op rather than a `Chan` because the handler it may install
+    /// is a listener the POSITION owns (B4), so the emission needs the scope and
+    /// a channel call does not have one.
+    FormAction {
+        value: ExprId,
+    },
     /// §3.10's channel half. `prop` is the property a user edit lands on and
     /// `event` the one that reports it, both resolved from the tag and the
     /// `type` attribute at compile time. Selection and focus preservation are M7.

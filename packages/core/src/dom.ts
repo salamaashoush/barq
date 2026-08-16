@@ -759,6 +759,58 @@ export function ref(s: Scope | null, element: Element, value: unknown): void {
 }
 
 /**
+ * `<form action={…}>` — §3.8's compiler surface, and §3.5's handler-channel rule
+ * applied to the one attribute that carries either kind of value.
+ *
+ * `action` on a `<form>` is a URL when it holds a string and a SUBMIT HANDLER
+ * when it holds a function, which is what React 19 and Solid 2.0 both settled
+ * on. Nothing about the expression can tell them apart — an `action()` is
+ * `(...args) => Promise<R>`, so its `length` is 0 and §3.0 rule 1 reads it as a
+ * Cell — so the SLOT decides, exactly as it does for `on*`: a function arriving
+ * here is the handler, never a Cell yielding a URL.
+ *
+ * Until M10 the compiler routed this down the attribute channel and `bindProp`
+ * applied §3.0 rule 1 to it. Both halves of that were wrong and both were
+ * silent: the action was CALLED at mount, and the promise it returned was
+ * stringified into the form's target as `action="[object Promise]"`. No console
+ * error, and the form posted to a relative URL named after a promise.
+ *
+ * The listener is installed once per element and reads the current handler out
+ * of the expando, so a live `action` is one `addEventListener` for the life of
+ * the position rather than one per update. `listen` owns the removal (B4) and
+ * routes a throw to the enclosing boundary (E2 #6).
+ */
+export function formAction(s: Scope | null, form: HTMLFormElement, value: unknown): void {
+  const el = form as HTMLFormElement & { $$action?: unknown; $$actionBound?: true };
+  if (typeof value !== "function") {
+    el.$$action = undefined;
+    setAttr(form, "action", value);
+    return;
+  }
+  // A handler replaces whatever URL was written before it, because the two are
+  // one attribute and the last write wins — `setAttr(el, "action", undefined)`
+  // is how that is spelled.
+  if (el.$$action === undefined) setAttr(form, "action", undefined);
+  el.$$action = value;
+  if (el.$$actionBound === true) return;
+  el.$$actionBound = true;
+  listen(s, form, "submit", (event: Event): void => {
+    const handler = el.$$action;
+    if (typeof handler !== "function") return;
+    event.preventDefault();
+    // The submitter's own name/value belong in the payload; a `<button
+    // name="intent" value="delete">` is how a form says WHICH action it means,
+    // and dropping it would make every submitter look alike.
+    const submitter = (event as SubmitEvent).submitter;
+    const data =
+      submitter instanceof HTMLElement
+        ? new FormData(form, submitter as HTMLButtonElement)
+        : new FormData(form);
+    (handler as (data: FormData, event: Event) => unknown)(data, event);
+  });
+}
+
+/**
  * B4 — a listener dies with its position. `addEventListener` paired with a
  * cleanup on the scope the element belongs to, so removal costs no bookkeeping
  * and cannot be forgotten. A handler that throws routes to the boundary (E2 #6).

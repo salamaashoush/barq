@@ -125,10 +125,14 @@ export const MATRIX_EXCEPTIONS = {
 // And +1 fixture, +7 cells, +1 renderableOnBoth for `control-flow-show-keyed-false`,
 // which is the `Show` arm that had no fixture — the reason its body parameter
 // went untyped long enough for the read in it to be applied once.
+// And +1 fixture, +7 cells, +1 renderableOnBoth for `form-action`, §3.8's
+// compiler surface. It renders on both backends and they deliberately DISAGREE
+// about the attribute — the client installs a submit handler, the server writes
+// no `action` at all — which is why it is worth one cell in each of the seven.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 186,
+  fixtures: 187,
   modes: 7,
-  cells: 1302,
-  renderableOnBoth: 159,
+  cells: 1309,
+  renderableOnBoth: 160,
   renderableOnNeither: 27,
 })

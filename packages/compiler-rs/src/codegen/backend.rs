@@ -115,6 +115,9 @@ backend! {
     Listen { event: NameId, handler: HandlerRef } => listen;
     /// §3.5: not a prop. `write` lowers to `binding = _n1`.
     Ref { value: ExprId, write: bool } => set_ref;
+    /// §3.8's compiler surface: `<form action={…}>` is a URL or a submit
+    /// handler, and only the value can say which.
+    FormAction { value: ExprId } => form_action;
     /// §3.10's channel half, with the property and the reporting event already
     /// resolved from the tag and the `type` attribute.
     Bind { prop: NameId, event: NameId, value: ExprId } => bind;
@@ -184,6 +187,9 @@ mod tests {
         fn set_ref(&mut self, _at: At<'_>, _value: ExprId, _write: bool) {
             self.0.push("Ref");
         }
+        fn form_action(&mut self, _at: At<'_>, _value: ExprId) {
+            self.0.push("FormAction");
+        }
         fn bind(&mut self, _at: At<'_>, _prop: NameId, _event: NameId, _value: ExprId) {
             self.0.push("Bind");
         }
@@ -227,6 +233,7 @@ mod tests {
             Op::Delegate { event: 0, handler: HandlerRef::Inline(0), data: None },
             Op::Listen { event: 0, handler: HandlerRef::Inline(0) },
             Op::Ref { value: 0, write: false },
+            Op::FormAction { value: 0 },
             Op::Bind { prop: 0, event: 0, value: 0 },
             Op::Spread { value: 0, live: false },
             Op::Insert { slot: 0, anchor: Anchor::End, value: 0, plan: InsertPlan::Once },

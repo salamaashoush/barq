@@ -123,12 +123,19 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * entries, 282 effects. Three effects for one fixture is the point of it — the
  * narrowed accessor is a LIVE read now, where it used to be applied once, so
  * the effect that carries it is what the fixture exists to observe.
+ *
+ * `form-action` is the one that moved the LISTENER count, 30 to 31, and it is
+ * the only fixture in the corpus that ever has. `<form action={fn}>` installs a
+ * scope-owned `submit` listener, and this file's assertion — that nothing
+ * leaked — is B4 for it: the listener goes through `listen`, so its removal is
+ * a cleanup on the scope that owns the form. A probe that counted 31 and
+ * reported one surviving would be the whole point of the channel.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
-  sessions: 154,
-  scopesEntered: 484,
-  effectsCreated: 282,
-  listeners: 30,
+  sessions: 155,
+  scopesEntered: 486,
+  effectsCreated: 284,
+  listeners: 31,
 })
 
 export function leakKey(fixture: string, leak: string): string {

@@ -436,6 +436,29 @@ const ATTR_INTERCEPTED: Record<string, 1> = {
  * are the one place a name is runtime data, and `checkName` is what stops
  * `{"x onload=alert(1) y": "1"}` from becoming three attributes.
  */
+/**
+ * `<form action={…}>` on the wire — the string half of `dom.ts`'s `formAction`.
+ *
+ * Named apart from it deliberately: the two take different arguments — this one
+ * writes bytes and has no element and no scope — so one alias for both would
+ * read like one call with two implementations, which is what `SHARED_ABI` means
+ * and this is not.
+ *
+ * A URL is written. A HANDLER is not: it is client behaviour and there is no
+ * byte on the wire that means it. Stated rather than hidden, because it has a
+ * consequence — a form submitted before hydration performs the browser's own
+ * default submit, which for a form with no `action` is a same-document GET.
+ * Progressive enhancement would need a server-generated endpoint per action,
+ * which is a routing feature and not this file's.
+ *
+ * What this does buy is the thing the DOM half exists for: the function is
+ * never `toString`ed into the target. Before M10 it reached `attr` and the
+ * server wrote the source text of the action as the form's URL.
+ */
+export function formAttr(value: unknown): string {
+  return typeof value === "function" ? "" : attr("action", value);
+}
+
 export function attrLit(name: string, value: unknown): string {
   const resolved = typeof value === "function" ? (value as () => unknown)() : value;
   if (resolved === null || resolved === undefined || resolved === false) return "";

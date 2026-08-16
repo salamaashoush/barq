@@ -391,6 +391,23 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// B3: `ref` is not a prop. A writable binding is an ASSIGNMENT — today's
     /// `setProp(el, "ref", el)` READS the variable and never writes it — and
     /// everything else is a scope-owned registration.
+    /// `_$formAction($s, el, value)`. The scope is here because the listener the
+    /// runtime may install is owned by the position (B4), which is also why this
+    /// is an op rather than a channel: a channel call has no scope to give it.
+    fn form_action(&mut self, at: At<'_>, value: ExprId) -> Self::Out {
+        let span = at.span();
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let value = take(self.ctx, self.unit, value, span);
+        let scope = self.ctx.scope(span);
+        let callee = self.ctx.helper(Helper::FormAction, span);
+        let call = self.ctx.call(
+            callee,
+            vec![Argument::from(scope), Argument::from(element), Argument::from(value)],
+            span,
+        );
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+
     fn set_ref(&mut self, at: At<'_>, value: ExprId, write: bool) -> Self::Out {
         let span = at.span();
         let element = ref_ident(self.ctx, self.unit, at.target(), span);

@@ -116,6 +116,10 @@ enum AttrKind {
     /// (§3.13 item 1), so the channel per key is resolved at run time — by the
     /// same tables `build.rs` generates the compiler's from.
     Spread,
+    /// `action` on a `<form>`. §3.8's compiler surface: the name is resolved
+    /// here like every other, and it is the one whose VALUE decides whether it
+    /// is an attribute at all.
+    FormAction,
 }
 
 impl TmpAttr<'_> {
@@ -453,6 +457,7 @@ impl<'a> Lower<'a, '_> {
                 AttrKind::Event => Op::SetEvent { event: name, value },
                 AttrKind::Ref => Op::Ref { value, write: writable },
                 AttrKind::Spread => Op::Spread { value, live: false },
+                AttrKind::FormAction => Op::FormAction { value },
                 AttrKind::Bind => {
                     let text = self.module.interner.name(name).text;
                     let (prop, event) = names::bind_channel(text, tag, input_type, editable);
@@ -527,6 +532,18 @@ impl<'a> Lower<'a, '_> {
                     AttrKind::Event,
                     self.allocator.alloc_str(&name[2..].to_ascii_lowercase()) as &'a str,
                 ),
+                // §3.8. `action` on a `<form>` is a URL or a SUBMIT HANDLER,
+                // and §3.0 rule 1 cannot separate them: an `action()` is
+                // `(...args) => Promise<R>`, whose arity is 0, so the attribute
+                // channel read it as a Cell, CALLED it at mount, and wrote the
+                // promise it returned into the form's target. The slot decides,
+                // exactly as it does for `on*` (§3.5's `is_cell` exception).
+                //
+                // A literal `action="/url"` never reaches here: it is bakeable
+                // by name and folds into the template bytes.
+                names::Prefixed::Plain(name) if name == "action" && !in_svg && tag == "form" => {
+                    (AttrKind::FormAction, "action")
+                }
                 names::Prefixed::Plain(name) => (
                     AttrKind::Chan(names::channel_of(names::normalize(name), in_svg, tag)),
                     names::attr_name(name, in_svg, self.allocator),
@@ -540,6 +557,12 @@ impl<'a> Lower<'a, '_> {
                     (AttrKind::Chan(crate::ir::Chan::Attr), names::Prefixed::Chan(..)) => true,
                     (AttrKind::Chan(_), names::Prefixed::Plain(_)) => {
                         names::bakeable(names::normalize(raw), in_svg, tag)
+                    }
+                    // A literal URL is still template bytes. Only a value the
+                    // parser cannot produce — anything that is not a string —
+                    // reaches the op, which is the case the op exists for.
+                    (AttrKind::FormAction, names::Prefixed::Plain(_)) => {
+                        names::bakeable("action", in_svg, tag)
                     }
                     _ => false,
                 };

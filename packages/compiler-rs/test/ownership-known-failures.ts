@@ -190,13 +190,17 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * `control-flow-show-keyed-false` is the fourth: 140 fixtures, 399 scopes, 265
  * effects, 312 clones, 310 determined. It is the arm of `Show` that had no
  * fixture at all, which is how its body parameter went untyped.
+ *
+ * `form-action` is the fifth: 141 fixtures, 401 scopes, 267 effects, 313 clones,
+ * 311 determined — §3.8 reached from compiled JSX rather than a hand-written
+ * call, which it never had been.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 140,
-  scopes: 399,
-  effects: 265,
-  clones: 312,
-  determined: 310,
+  fixtures: 141,
+  scopes: 401,
+  effects: 267,
+  clones: 313,
+  determined: 311,
   unattributed: 1,
   cascades: 1,
 })
