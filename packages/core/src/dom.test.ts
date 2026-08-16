@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { createElement, insert, render, setProp, spread, useRef, template } from "./dom.ts";
+import { element, insert, render, setProp, spread, template } from "./dom.ts";
 import { boundary } from "./flow.ts";
 import {
   ScopeMissingError,
@@ -28,62 +28,72 @@ afterEach(() => {
   container.remove();
 });
 
-describe("createElement", () => {
+describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
+  // M9 deleted `createElement`. What replaces it is not a rename: `element`
+  // takes its scope FIRST, builds by tag name only, and applies props through
+  // `spread` and children through `insert` — the same two entry points a
+  // compiled element uses, minus the clone. A component is no longer something
+  // this function can invoke; C1 says a component call is a plain call, so the
+  // two tests at the bottom of this block call theirs directly.
   test("creates basic HTML element", () => {
-    const el = createElement("div", null) as HTMLDivElement;
+    const el = element(null, "div", {}) as HTMLDivElement;
     expect(el.tagName).toBe("DIV");
   });
 
   test("creates element with static props", () => {
-    const el = createElement("div", { id: "test", class: "my-class" }) as HTMLDivElement;
+    const el = element(null, "div", { id: "test", class: "my-class" }) as HTMLDivElement;
     expect(el.id).toBe("test");
     expect(el.className).toBe("my-class");
   });
 
   test("creates element with children", () => {
-    const el = createElement("div", null, "hello", " ", "world") as HTMLDivElement;
+    const el = element(null, "div", { children: ["hello", " ", "world"] }) as HTMLDivElement;
     expect(el.textContent).toBe("hello world");
   });
 
   test("creates SVG element", () => {
-    const el = createElement("svg", { viewBox: "0 0 100 100" }) as SVGSVGElement;
+    const el = element(null, "svg", { viewBox: "0 0 100 100" }) as SVGSVGElement;
     expect(el.namespaceURI).toBe("http://www.w3.org/2000/svg");
     expect(el.getAttribute("viewBox")).toBe("0 0 100 100");
   });
 
   test("creates nested SVG elements", () => {
-    const el = createElement(
-      "svg",
-      { viewBox: "0 0 100 100" },
-      createElement("circle", { cx: "50", cy: "50", r: "40" }),
-    ) as SVGSVGElement;
+    const el = element(null, "svg", {
+      viewBox: "0 0 100 100",
+      children: element(null, "circle", { cx: "50", cy: "50", r: "40" }),
+    }) as SVGSVGElement;
 
     const circle = el.querySelector("circle");
     expect(circle).not.toBeNull();
     expect(circle?.namespaceURI).toBe("http://www.w3.org/2000/svg");
   });
 
-  test("handles fragment tag", () => {
-    const frag = createElement("fragment", null, "a", "b", "c") as DocumentFragment;
-    expect(frag).toBeInstanceOf(DocumentFragment);
-    expect(frag.textContent).toBe("abc");
+  test("there is no fragment TAG — a fragment is an array (C8)", () => {
+    // `createElement("fragment", …)` built a DocumentFragment. Nothing emits
+    // that: a fragment is a compile-time multi-root unit, so what a position
+    // receives is the ARRAY, and `insert` flattens it like any other child.
+    // Asking `element` for a "fragment" tag now builds an element named
+    // `fragment`, which is what a tag name means and is the honest answer.
+    const host = document.createElement("div");
+    insert(null, host, ["a", "b", "c"]);
+    expect(host.textContent).toBe("abc");
   });
 
   test("handles component functions", () => {
     const MyComponent = (_s: unknown, props: { name: string }) => {
-      return createElement("span", null, `Hello ${props.name}`);
+      return element(null, "span", { children: `Hello ${props.name}` });
     };
 
-    const el = createElement(MyComponent, { name: "World" }) as HTMLSpanElement;
+    const el = MyComponent(null, { name: "World" }) as HTMLSpanElement;
     expect(el.textContent).toBe("Hello World");
   });
 
   test("component receives children prop", () => {
     const Wrapper = (_s: unknown, props: { children: unknown }) => {
-      return createElement("div", { class: "wrapper" }, props.children as string);
+      return element(null, "div", { class: "wrapper", children: props.children as string });
     };
 
-    const el = createElement(Wrapper, null, "content") as HTMLDivElement;
+    const el = Wrapper(null, { children: "content" }) as HTMLDivElement;
     expect(el.className).toBe("wrapper");
     expect(el.textContent).toBe("content");
   });
@@ -94,7 +104,7 @@ describe("Event handling", () => {
   // so elements must be connected and events must bubble.
   test("attaches onClick handler (delegated)", () => {
     let clicked = false;
-    const el = createElement("button", {
+    const el = element(null, "button", {
       onClick: () => {
         clicked = true;
       },
@@ -107,7 +117,7 @@ describe("Event handling", () => {
 
   test("attaches onInput handler (delegated)", () => {
     let value = "";
-    const el = createElement("input", {
+    const el = element(null, "input", {
       onInput: (e: Event) => {
         value = (e.target as HTMLInputElement).value;
       },
@@ -121,11 +131,10 @@ describe("Event handling", () => {
 
   test("delegated click bubbles from a nested child", () => {
     let clicks = 0;
-    const el = createElement(
-      "div",
-      { onClick: () => clicks++ },
-      createElement("span", null, "inner"),
-    ) as HTMLDivElement;
+    const el = element(null, "div", {
+      onClick: () => clicks++,
+      children: element(null, "span", { children: "inner" }),
+    }) as HTMLDivElement;
 
     container.appendChild(el);
     (el.querySelector("span") as HTMLElement).dispatchEvent(
@@ -136,13 +145,10 @@ describe("Event handling", () => {
 
   test("stopPropagation halts the delegated walk", () => {
     let outerClicks = 0;
-    const el = createElement(
-      "div",
-      { onClick: () => outerClicks++ },
-      createElement("button", {
-        onClick: (e: Event) => e.stopPropagation(),
-      }),
-    ) as HTMLDivElement;
+    const el = element(null, "div", {
+      onClick: () => outerClicks++,
+      children: element(null, "button", { onClick: (e: Event) => e.stopPropagation() }),
+    }) as HTMLDivElement;
 
     container.appendChild(el);
     (el.querySelector("button") as HTMLButtonElement).click();
@@ -151,7 +157,7 @@ describe("Event handling", () => {
 
   test("handles multiple event handlers (delegated + direct)", () => {
     const events: string[] = [];
-    const el = createElement("button", {
+    const el = element(null, "button", {
       onClick: () => events.push("click"),
       // mouseenter/mouseleave do not bubble: attached directly
       onMouseEnter: () => events.push("enter"),
@@ -170,7 +176,7 @@ describe("Event handling", () => {
 describe("Ref handling", () => {
   test("ref callback is called with element", () => {
     let refEl: Element | null = null;
-    const el = createElement("div", {
+    const el = element(null, "div", {
       ref: (el: Element) => {
         refEl = el;
       },
@@ -180,8 +186,11 @@ describe("Ref handling", () => {
   });
 
   test("ref object is set", () => {
-    const ref = useRef<HTMLDivElement>();
-    const el = createElement("div", { ref }) as HTMLDivElement;
+    // M9 deleted the `useRef()` FACTORY (§4.1) — a ref is a writable binding
+    // (B3) or a callback, and the box is one object literal. The `{current}`
+    // SHAPE is still a ref the channel writes, which is what this asserts.
+    const ref: { current: HTMLDivElement | null } = { current: null };
+    const el = element(null, "div", { ref }) as HTMLDivElement;
 
     expect(ref.current).toBe(el);
   });
@@ -189,7 +198,7 @@ describe("Ref handling", () => {
 
 describe("Style handling", () => {
   test("applies style object", () => {
-    const el = createElement("div", {
+    const el = element(null, "div", {
       style: { color: "red", fontSize: "16px" },
     }) as HTMLDivElement;
 
@@ -198,9 +207,7 @@ describe("Style handling", () => {
   });
 
   test("applies style string", () => {
-    const el = createElement("div", {
-      style: "color: blue; font-size: 14px",
-    }) as HTMLDivElement;
+    const el = element(null, "div", { style: "color: blue; font-size: 14px" }) as HTMLDivElement;
 
     expect(el.style.color).toBe("blue");
     expect(el.style.fontSize).toBe("14px");
@@ -212,7 +219,7 @@ describe("Style handling", () => {
     // round-trip it through the CSSOM serializer (which appends ";"), and the
     // compiled and un-compiled paths would then disagree on the attribute.
     const literal = "color: red; font-weight: bold";
-    const el = createElement("div", { style: literal }) as HTMLDivElement;
+    const el = element(null, "div", { style: literal }) as HTMLDivElement;
     expect(el.getAttribute("style")).toBe(literal);
 
     const parsed = document.createElement("template");
@@ -223,16 +230,14 @@ describe("Style handling", () => {
   });
 
   test("handles numeric values with px suffix", () => {
-    const el = createElement("div", {
-      style: { width: 100, height: 50 },
-    }) as HTMLDivElement;
+    const el = element(null, "div", { style: { width: 100, height: 50 } }) as HTMLDivElement;
 
     expect(el.style.width).toBe("100px");
     expect(el.style.height).toBe("50px");
   });
 
   test("handles unitless CSS properties", () => {
-    const el = createElement("div", {
+    const el = element(null, "div", {
       style: { zIndex: 10, opacity: 0.5, flexGrow: 1 },
     }) as HTMLDivElement;
 
@@ -242,9 +247,7 @@ describe("Style handling", () => {
   });
 
   test("handles zero values without px", () => {
-    const el = createElement("div", {
-      style: { margin: 0, padding: 0 },
-    }) as HTMLDivElement;
+    const el = element(null, "div", { style: { margin: 0, padding: 0 } }) as HTMLDivElement;
 
     // Browsers normalize "0" to "0px" for length properties
     expect(el.style.margin).toBe("0px");
@@ -253,9 +256,7 @@ describe("Style handling", () => {
 
   test("reactive style properties", () => {
     const color = signal("red");
-    const el = createElement("div", {
-      style: { color },
-    }) as HTMLDivElement;
+    const el = element(null, "div", { style: { color } }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.style.color).toBe("red");
@@ -267,9 +268,7 @@ describe("Style handling", () => {
 
   test("removes style property when null", () => {
     const width = signal<number | null>(100);
-    const el = createElement("div", {
-      style: { width },
-    }) as HTMLDivElement;
+    const el = element(null, "div", { style: { width } }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.style.width).toBe("100px");
@@ -282,41 +281,41 @@ describe("Style handling", () => {
 
 describe("Class handling", () => {
   test("applies class string", () => {
-    const el = createElement("div", { class: "foo bar" }) as HTMLDivElement;
+    const el = element(null, "div", { class: "foo bar" }) as HTMLDivElement;
     expect(el.className).toBe("foo bar");
   });
 
   test("applies className string", () => {
-    const el = createElement("div", { className: "foo bar" }) as HTMLDivElement;
+    const el = element(null, "div", { className: "foo bar" }) as HTMLDivElement;
     expect(el.className).toBe("foo bar");
   });
 
   test("applies class array", () => {
-    const el = createElement("div", { class: ["foo", "bar", "baz"] }) as HTMLDivElement;
+    const el = element(null, "div", { class: ["foo", "bar", "baz"] }) as HTMLDivElement;
     expect(el.className).toBe("foo bar baz");
   });
 
   test("filters falsy values from class array", () => {
-    const el = createElement("div", {
+    const el = element(null, "div", {
       class: ["foo", "", null, "bar", false, "baz"],
     }) as HTMLDivElement;
     expect(el.className).toBe("foo bar baz");
   });
 
   test("applies class object", () => {
-    const el = createElement("div", {
+    const el = element(null, "div", {
       class: { foo: true, bar: false, baz: true },
     }) as HTMLDivElement;
     expect(el.className).toBe("foo baz");
   });
 
   test("removes class when value is null", () => {
-    const el = createElement("div", { class: null }) as HTMLDivElement;
+    const el = element(null, "div", { class: null }) as HTMLDivElement;
     expect(el.hasAttribute("class")).toBe(false);
   });
 
   test("removes class when value is false", () => {
-    const el = createElement("div", { class: false }) as HTMLDivElement;
+    const el = element(null, "div", { class: false }) as HTMLDivElement;
     expect(el.hasAttribute("class")).toBe(false);
   });
 
@@ -344,7 +343,7 @@ describe("Class handling", () => {
 describe("Reactive props", () => {
   test("updates prop when signal changes", () => {
     const title = signal("initial");
-    const el = createElement("div", { title }) as HTMLDivElement;
+    const el = element(null, "div", { title }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.title).toBe("initial");
@@ -356,7 +355,7 @@ describe("Reactive props", () => {
 
   test("updates attribute when signal changes", () => {
     const ariaLabel = signal("label 1");
-    const el = createElement("div", { "aria-label": ariaLabel }) as HTMLDivElement;
+    const el = element(null, "div", { "aria-label": ariaLabel }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.getAttribute("aria-label")).toBe("label 1");
@@ -368,7 +367,7 @@ describe("Reactive props", () => {
 
   test("handles boolean attribute reactively", () => {
     const disabled = signal(true);
-    const el = createElement("button", { disabled }) as HTMLButtonElement;
+    const el = element(null, "button", { disabled }) as HTMLButtonElement;
 
     container.appendChild(el);
     expect(el.hasAttribute("disabled")).toBe(true);
@@ -381,7 +380,7 @@ describe("Reactive props", () => {
   test("handles computed prop values", () => {
     const count = signal(0);
     const label = computed(() => `Count: ${count()}`);
-    const el = createElement("div", { title: label }) as HTMLDivElement;
+    const el = element(null, "div", { title: label }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.title).toBe("Count: 0");
@@ -395,7 +394,7 @@ describe("Reactive props", () => {
 describe("Reactive children", () => {
   test("updates text content from signal", () => {
     const text = signal("hello");
-    const el = createElement("div", null, text) as HTMLDivElement;
+    const el = element(null, "div", { children: text }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("hello");
@@ -408,7 +407,7 @@ describe("Reactive children", () => {
   test("updates text from computed", () => {
     const count = signal(0);
     const label = computed(() => `Count: ${count()}`);
-    const el = createElement("div", null, label) as HTMLDivElement;
+    const el = element(null, "div", { children: label }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("Count: 0");
@@ -421,7 +420,14 @@ describe("Reactive children", () => {
   test("handles multiple reactive children", () => {
     const a = signal("A");
     const b = signal("B");
-    const el = createElement("div", null, a, "-", b) as HTMLDivElement;
+    // `element` takes its scope EXPLICITLY where `createElement` read the
+    // ambient owner, and a reactive child needs an owner to bind under — `null`
+    // names none. That is the whole of C1 at this entry point, so the port is a
+    // real scope rather than a cast.
+    let el!: HTMLDivElement;
+    createScope((_d, s) => {
+      el = element(s, "div", { children: [a, "-", b] }) as HTMLDivElement;
+    });
 
     container.appendChild(el);
     expect(el.textContent).toContain("A-B");
@@ -434,12 +440,14 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: reactive child changes from text to array", () => {
     const content = signal<string | string[]>("text");
-    const el = createElement("div", null, () => {
-      const val = content();
-      if (Array.isArray(val)) {
-        return val.map((v) => createElement("span", null, v));
-      }
-      return val;
+    const el = element(null, "div", {
+      children: () => {
+        const val = content();
+        if (Array.isArray(val)) {
+          return val.map((v) => element(null, "span", { children: v }));
+        }
+        return val;
+      },
     }) as HTMLDivElement;
 
     container.appendChild(el);
@@ -458,9 +466,9 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: reactive child changes from node to primitive", () => {
     const showNode = signal(true);
-    const el = createElement("div", null, () =>
-      showNode() ? createElement("span", null, "node") : "primitive",
-    ) as HTMLDivElement;
+    const el = element(null, "div", {
+      children: () => (showNode() ? element(null, "span", { children: "node" }) : "primitive"),
+    }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.querySelector("span")).not.toBeNull();
@@ -477,7 +485,7 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: rapid reactive child updates", () => {
     const count = signal(0);
-    const el = createElement("div", null, count) as HTMLDivElement;
+    const el = element(null, "div", { children: count }) as HTMLDivElement;
 
     container.appendChild(el);
 
@@ -491,7 +499,7 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: null/undefined reactive child", () => {
     const content = signal<string | null>("visible");
-    const el = createElement("div", null, () => content()) as HTMLDivElement;
+    const el = element(null, "div", { children: () => content() }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("visible");
@@ -508,11 +516,9 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: deeply nested reactive children", () => {
     const inner = signal("deep");
-    const el = createElement(
-      "div",
-      null,
-      createElement("div", null, createElement("div", null, inner)),
-    ) as HTMLDivElement;
+    const el = element(null, "div", {
+      children: element(null, "div", { children: element(null, "div", { children: inner }) }),
+    }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("deep");
@@ -525,22 +531,22 @@ describe("Reactive children", () => {
 
 describe("DOM properties vs attributes", () => {
   test("sets value property on input", () => {
-    const el = createElement("input", { value: "test" }) as HTMLInputElement;
+    const el = element(null, "input", { value: "test" }) as HTMLInputElement;
     expect(el.value).toBe("test");
   });
 
   test("sets checked property on checkbox", () => {
-    const el = createElement("input", { type: "checkbox", checked: true }) as HTMLInputElement;
+    const el = element(null, "input", { type: "checkbox", checked: true }) as HTMLInputElement;
     expect(el.checked).toBe(true);
   });
 
   test("sets selected property on option", () => {
-    const el = createElement("option", { selected: true }) as HTMLOptionElement;
+    const el = element(null, "option", { selected: true }) as HTMLOptionElement;
     expect(el.selected).toBe(true);
   });
 
   test("sets innerHTML", () => {
-    const el = createElement("div", {
+    const el = element(null, "div", {
       dangerouslySetInnerHTML: { __html: "<b>bold</b>" },
     }) as HTMLDivElement;
     expect(el.innerHTML).toBe("<b>bold</b>");
@@ -548,7 +554,7 @@ describe("DOM properties vs attributes", () => {
 
   test("reactive value property", () => {
     const value = signal("initial");
-    const el = createElement("input", { value }) as HTMLInputElement;
+    const el = element(null, "input", { value }) as HTMLInputElement;
 
     container.appendChild(el);
     expect(el.value).toBe("initial");
@@ -560,7 +566,7 @@ describe("DOM properties vs attributes", () => {
 
   test("reactive checked property", () => {
     const checked = signal(false);
-    const el = createElement("input", { type: "checkbox", checked }) as HTMLInputElement;
+    const el = element(null, "input", { type: "checkbox", checked }) as HTMLInputElement;
 
     container.appendChild(el);
     expect(el.checked).toBe(false);
@@ -573,7 +579,7 @@ describe("DOM properties vs attributes", () => {
 
 describe("render function", () => {
   test("renders element to container", () => {
-    const el = createElement("div", null, "content") as HTMLDivElement;
+    const el = element(null, "div", { children: "content" }) as HTMLDivElement;
     render(el, container);
 
     expect(container.textContent).toBe("content");
@@ -581,7 +587,7 @@ describe("render function", () => {
 
   test("clears container before rendering", () => {
     container.innerHTML = "<span>old content</span>";
-    const el = createElement("div", null, "new content") as HTMLDivElement;
+    const el = element(null, "div", { children: "new content" }) as HTMLDivElement;
 
     render(el, container);
 
@@ -590,7 +596,7 @@ describe("render function", () => {
   });
 
   test("returns cleanup function", () => {
-    const el = createElement("div", null, "content") as HTMLDivElement;
+    const el = element(null, "div", { children: "content" }) as HTMLDivElement;
     const cleanup = render(el, container);
 
     expect(container.textContent).toBe("content");
@@ -627,9 +633,9 @@ describe("render function", () => {
 
   test("renders array of elements", () => {
     const elements = [
-      createElement("span", null, "a"),
-      createElement("span", null, "b"),
-      createElement("span", null, "c"),
+      element(null, "span", { children: "a" }),
+      element(null, "span", { children: "b" }),
+      element(null, "span", { children: "c" }),
     ];
     render(elements, container);
 
@@ -638,15 +644,17 @@ describe("render function", () => {
   });
 });
 
-describe("useRef", () => {
-  test("creates ref object with null current", () => {
-    const ref = useRef<HTMLDivElement>();
+describe("the { current } ref shape", () => {
+  // `useRef()` returned `{ current: null }` and nothing else, so M9 deleted it
+  // (§4.1) and left the SHAPE, which is what the ref channel actually writes.
+  test("a fresh box starts null", () => {
+    const ref: { current: HTMLDivElement | null } = { current: null };
     expect(ref.current).toBeNull();
   });
 
-  test("ref.current is set when attached to element", () => {
-    const ref = useRef<HTMLInputElement>();
-    const el = createElement("input", { ref }) as HTMLInputElement;
+  test("current is set when attached to an element", () => {
+    const ref: { current: HTMLInputElement | null } = { current: null };
+    const el = element(null, "input", { ref }) as HTMLInputElement;
 
     expect(ref.current).toBe(el);
   });
@@ -703,7 +711,7 @@ describe("Memory and cleanup", () => {
         return originalTitle();
       };
 
-      createElement("div", { title: trackedTitle });
+      element(null, "div", { title: trackedTitle });
     });
 
     expect(effectRuns).toBe(1);
@@ -733,7 +741,7 @@ describe("Memory and cleanup", () => {
         return text();
       };
 
-      const el = createElement("div", null, trackedText);
+      const el = element(null, "div", { children: trackedText });
       container.appendChild(el as Node);
     });
 
@@ -764,7 +772,7 @@ describe("Memory and cleanup", () => {
         return color();
       };
 
-      const el = createElement("div", { style: { color: trackedColor } });
+      const el = element(null, "div", { style: { color: trackedColor } });
       container.appendChild(el as Node);
     });
 
@@ -784,20 +792,18 @@ describe("Memory and cleanup", () => {
 
 describe("Edge cases and error handling", () => {
   test("handles empty children array", () => {
-    const el = createElement("div", null) as HTMLDivElement;
+    const el = element(null, "div", {}) as HTMLDivElement;
     expect(el.childNodes.length).toBe(0);
   });
 
   test("handles mixed static and reactive children", () => {
     const dynamic = signal("dynamic");
-    const el = createElement(
-      "div",
-      null,
-      "static1",
-      dynamic,
-      "static2",
-      () => `computed: ${dynamic()}`,
-    ) as HTMLDivElement;
+    let el!: HTMLDivElement;
+    createScope((_d, s) => {
+      el = element(s, "div", {
+        children: ["static1", dynamic, "static2", () => `computed: ${dynamic()}`],
+      }) as HTMLDivElement;
+    });
 
     container.appendChild(el);
     expect(el.textContent).toContain("static1");
@@ -812,40 +818,29 @@ describe("Edge cases and error handling", () => {
   });
 
   test("handles nested arrays in children", () => {
-    const el = createElement("div", null, ["a", ["b", "c"]], "d") as HTMLDivElement;
+    const el = element(null, "div", { children: [["a", ["b", "c"]], "d"] }) as HTMLDivElement;
 
     expect(el.textContent).toBe("abcd");
   });
 
   test("handles props with undefined values", () => {
-    const el = createElement("div", {
-      title: undefined,
-      id: "test",
-    }) as HTMLDivElement;
+    const el = element(null, "div", { title: undefined, id: "test" }) as HTMLDivElement;
 
     expect(el.hasAttribute("title")).toBe(false);
     expect(el.id).toBe("test");
   });
 
   test("handles props with null values", () => {
-    const el = createElement("div", {
-      title: null,
-      id: "test",
-    }) as HTMLDivElement;
+    const el = element(null, "div", { title: null, id: "test" }) as HTMLDivElement;
 
     expect(el.hasAttribute("title")).toBe(false);
     expect(el.id).toBe("test");
   });
 
   test("kebab-case SVG attributes", () => {
-    const el = createElement(
-      "svg",
-      null,
-      createElement("rect", {
-        strokeWidth: "2",
-        fillOpacity: "0.5",
-      }),
-    ) as SVGSVGElement;
+    const el = element(null, "svg", {
+      children: element(null, "rect", { strokeWidth: "2", fillOpacity: "0.5" }),
+    }) as SVGSVGElement;
 
     const rect = el.querySelector("rect");
     expect(rect?.getAttribute("stroke-width")).toBe("2");
@@ -853,7 +848,7 @@ describe("Edge cases and error handling", () => {
   });
 
   test("preserves viewBox casing", () => {
-    const el = createElement("svg", { viewBox: "0 0 100 100" }) as SVGSVGElement;
+    const el = element(null, "svg", { viewBox: "0 0 100 100" }) as SVGSVGElement;
     expect(el.getAttribute("viewBox")).toBe("0 0 100 100");
   });
 });
@@ -870,9 +865,7 @@ describe("BUG: isSignalGetter false positive", () => {
 
     // If callback is incorrectly treated as a signal getter,
     // it will be wrapped in an effect and called
-    const el = createElement("div", {
-      "data-value": callback,
-    }) as HTMLDivElement;
+    const el = element(null, "div", { "data-value": callback }) as HTMLDivElement;
 
     container.appendChild(el);
 
@@ -888,13 +881,13 @@ describe("BUG: textNode stale reference", () => {
     // This tests the potential bug where textNode reference becomes stale
     const content = signal<string | Node>("initial");
 
-    const el = createElement("div", null, () => content()) as HTMLDivElement;
+    const el = element(null, "div", { children: () => content() }) as HTMLDivElement;
     container.appendChild(el);
 
     expect(el.textContent).toContain("initial");
 
     // Change to a node
-    content.set(createElement("span", null, "node") as Node);
+    content.set(element(null, "span", { children: "node" }) as Node);
     flush();
     expect(el.querySelector("span")).not.toBeNull();
 
@@ -906,9 +899,9 @@ describe("BUG: textNode stale reference", () => {
 
     // Rapid changes
     content.set("text1");
-    content.set(createElement("div", null, "div") as Node);
+    content.set(element(null, "div", { children: "div" }) as Node);
     content.set("text2");
-    content.set(createElement("span", null, "span") as Node);
+    content.set(element(null, "span", { children: "span" }) as Node);
     content.set("final");
     flush();
 

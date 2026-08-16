@@ -328,7 +328,7 @@ function RefTypesDemo() {
     <DemoCard title="Ref Types">
       <div class={rowStyle}>
         <label>Signal ref:</label>
-        <input type="text" ref={setRefSignal} class={inputStyle} placeholder="Signal ref" />
+        <input type="text" ref={refSignal.set} class={inputStyle} placeholder="Signal ref" />
         <Button onClick={focusRef}>Focus</Button>
       </div>
 
@@ -353,7 +353,7 @@ function RefTypesDemo() {
       {/* Ref via component prop */}
       <div class={rowStyle}>
         <label>Component prop:</label>
-        <RefInput inputRef={setRefSignal} />
+        <RefInput inputRef={refSignal.set} />
       </div>
 
       <Log logs={logs()} />

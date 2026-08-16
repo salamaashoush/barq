@@ -14,14 +14,7 @@
 
 import type * as CSS from "csstype";
 import { Fragment } from "./components.ts";
-import {
-  type ArrayElement,
-  type Child,
-  type Component,
-  type JSXElement,
-  type Props,
-  createElement,
-} from "./dom.ts";
+import type { ArrayElement, Child, Component, JSXElement, Props } from "./dom.ts";
 
 export { Fragment };
 
@@ -766,35 +759,3 @@ export namespace JSX {
     mode?: FunctionMaybe<string>;
   }
 }
-
-/**
- * JSX factory function
- * Overloaded to support both intrinsic elements (strings) and components with proper type inference
- */
-export function jsx(type: string, props: Props | null, _key?: string): JSXElement;
-export function jsx<P>(type: Component<P>, props: P | null, _key?: string): JSXElement;
-export function jsx<P>(
-  type: string | Component<P>,
-  props: P | Props | null,
-  _key?: string,
-): JSXElement {
-  const propsRecord: Record<string, unknown> = (props ?? {}) as Record<string, unknown>;
-  const { children, ...rest } = propsRecord;
-  const childArray: Child[] =
-    children === null || children === undefined
-      ? []
-      : Array.isArray(children)
-        ? children
-        : [children];
-  return createElement(type as string, rest as Props, ...childArray);
-}
-
-/**
- * JSX factory for elements with static children
- */
-export const jsxs = jsx;
-
-/**
- * Development JSX factory (same as production for now)
- */
-export const jsxDEV = jsx;

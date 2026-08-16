@@ -940,6 +940,24 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
 // the whole-module SSR→DOM downgrade is gone, and with it the eight-component
 // set that triggered it.
 
+// M9 tried to delete eleven of the twelve adapters below and put them back.
+//
+// A corpus scan says only `ssrFor` is emitted: compiling all 131 fixtures with
+// `ssr: true` finds it in exactly one module (`control-flow-for-keyed-spread`)
+// and the other eleven in none. That scan is necessary and not sufficient, and
+// the difference is what `codegen::ssr::flow_call` is for — P-new `flow` lowers
+// every construct it can READ, and what reaches the adapter is the shapes it
+// cannot: a spread source, an unreadable `keyed`. `<Show {...props}>` compiles
+// to `_$ssrShow` today, and it was checked one construct at a time rather than
+// inferred: all eleven are reachable from legal source, and the corpus simply
+// has one such fixture rather than twelve.
+//
+// So the corpus number measures the corpus, not the surface. Deleting these
+// would turn a legal program into a load-time `SyntaxError: Export named
+// 'ssrShow' not found`, which is the failure mode §4.1's own deletion list is
+// meant to prevent rather than create. They go when the flow pass lowers a
+// spread source — not before.
+
 /** A CELL-slot read (§3.0 rule 2): called with no scope, never with one. */
 function readValue(slot: unknown, origin: string): unknown {
   cellSlot(slot, origin);

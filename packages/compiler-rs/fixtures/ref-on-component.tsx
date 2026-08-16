@@ -1,7 +1,8 @@
-import { useRef } from "@barqjs/core"
 
-export const viaComponent = useRef<HTMLSpanElement>()
-export const viaElement = useRef<HTMLElement>()
+// M9 deleted the `useRef()` factory (§4.1); the `{current}` shape the ref
+// channel writes is one object literal and is what this fixture pins.
+export const viaComponent: { current: HTMLSpanElement | null } = { current: null }
+export const viaElement: { current: HTMLElement | null } = { current: null }
 
 /**
  * `ref` on a COMPONENT is an ordinary prop — the component decides what to do

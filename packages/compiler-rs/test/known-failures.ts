@@ -166,19 +166,24 @@ const ROWS: readonly KnownFailure[] = [
     fixture: "sem-own-given-scope-wins",
     claim: "a-children-block-is-invoked-with-the-given-scope",
     rule: "O4.5",
-    observed: "10ec557cc555",
+    observed: "4266b62b1a4c",
     status: "VIOLATED",
-    greenAt: "M9",
+    greenAt: "M10",
     reason:
-      "`childToNodes` invokes a children Block with `getOwner()` and not with the `s` the call was " +
-      "given, so a Block reached through `insert`'s array path runs under the ambient owner. The " +
-      "one-line change is coupled to O5 and was MEASURED, not assumed: handing `s` down turns " +
+      "HALF of this closed at M9, and the ratchet is how it was noticed. `insert` used to hand an " +
+      "array straight to `childToNodes`, which calls each function element once under whatever was " +
+      "ambient — so the Block was both frozen and mis-owned. An array holding a function is now one " +
+      "live hole like any other and goes through the effect `ownedBy(given, …)` opens, so DISPOSAL " +
+      "reaches it: `ranCleanup` moved 0 → 1 and the observation moved with it. " +
+      "What is left is the ARGUMENT. `childToNodes` still invokes the Block with `getOwner()` rather " +
+      "than the `s` it was given, so `sawScope` is the effect and not A. Handing `s` down is one " +
+      "line and is still coupled to O5, measured rather than assumed: it turns " +
       "`sem-own-render-disposer-disposes`'s `control-the-argument-form-reports-that-it-cannot-dispose` " +
-      "red, because the root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing. The two " +
-      "halves have to land together, in the change that lowers `render`'s JSX argument to a Block " +
-      "and re-cuts that fixture — which is the row above. It moves M5 → M9 WITH that row, by " +
-      "measurement and not by preference: the one-line change is landable today and its cost is " +
-      "paid by a claim in another fixture, so the two markers are one marker.",
+      "red, because the root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing. It also " +
+      "moves WHERE the Block's cleanups are filed — on A rather than on the effect — so a Block " +
+      "re-invoked on update would accumulate them instead of having them cleared per run. The two " +
+      "halves land together, in the change that lowers `render`'s JSX argument to a Block and " +
+      "re-cuts that fixture, which is the row above.",
   },
 
   // -------------------------------------------------------------------------

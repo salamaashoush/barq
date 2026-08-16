@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createElement, setProp, spread } from "./dom.ts";
+import { element, setProp, spread } from "./dom.ts";
 import { flush, signal } from "./signals.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -134,7 +134,7 @@ describe("SVG className is read-only in browsers", () => {
 
   test("createElement applies class to an SVG element", () => {
     const el = withReadOnlySvgPrototype(
-      () => createElement("circle", { class: "ring" }) as SVGElement,
+      () => element(null, "circle", { class: "ring" }) as SVGElement,
     );
     expect(el.namespaceURI).toBe(SVG_NS);
     expect(el.getAttribute("class")).toBe("ring");
@@ -245,7 +245,7 @@ describe("SVG classList", () => {
 
   test("createElement applies it to an SVG element", () => {
     const el = withReadOnlySvgPrototype(
-      () => createElement("circle", { classList: { ring: true } }) as SVGElement,
+      () => element(null, "circle", { classList: { ring: true } }) as SVGElement,
     );
     expect(el.namespaceURI).toBe(SVG_NS);
     expect(el.getAttribute("class")).toBe("ring");

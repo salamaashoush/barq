@@ -274,7 +274,7 @@ function IntersectionDemo() {
           <p>Scroll down to see the box...</p>
           <div style={{ height: "200px" }} />
           <div
-            ref={setRef}
+            ref={ref.set}
             class={targetBoxStyle}
             style={{ background: isVisible() ? "#22c55e" : "#ef4444" }}
           >

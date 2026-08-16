@@ -5,7 +5,7 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { createElement, hydrate, insert, setProp, spread } from "./dom.ts";
+import { element, hydrate, insert, setProp, spread } from "./dom.ts";
 import { flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
@@ -197,7 +197,7 @@ describe("[handler, data] delegation tuples", () => {
     const handler = (data: unknown, e: Event) => {
       seen.push([data, e.type]);
     };
-    const el = createElement("button", { onClick: [handler, 42] }) as HTMLButtonElement;
+    const el = element(null, "button", { onClick: [handler, 42] }) as HTMLButtonElement;
     container.appendChild(el);
     el.click();
     expect(seen).toEqual([[42, "click"]]);
@@ -205,7 +205,7 @@ describe("[handler, data] delegation tuples", () => {
 
   test("non-delegated tuple wraps into a listener", () => {
     const seen: unknown[] = [];
-    const el = createElement("div", {
+    const el = element(null, "div", {
       onMouseEnter: [(data: unknown) => seen.push(data), "hover-data"],
     }) as HTMLDivElement;
     container.appendChild(el);
@@ -217,7 +217,8 @@ describe("[handler, data] delegation tuples", () => {
 describe("pre-hydration event replay", () => {
   test("captured clicks replay against the hydrated DOM", () => {
     let clicks = 0;
-    const makeApp = () => () => createElement("button", { onClick: () => clicks++ }, "go");
+    const makeApp = () => () =>
+      element(null, "button", { onClick: () => clicks++, children: "go" });
 
     // Simulate the inline capture script's leftovers
     let stopCalled = false;

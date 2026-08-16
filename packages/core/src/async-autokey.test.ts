@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Loading } from "./components.ts";
+import { boundary } from "./flow.ts";
 import { hydrate } from "./dom.ts";
 import { renderPage } from "./server.ts";
 import {
@@ -254,10 +254,9 @@ describe("createAsync auto-keying", () => {
         fetches++;
         return `Hello ${user()}`;
       });
-      return Loading(null, {
-        fallback: document.createTextNode("loading..."),
-        children: () => document.createTextNode(greeting()),
-      });
+      return boundary(null, null, null, "loading", document.createTextNode("loading..."), () =>
+        document.createTextNode(greeting()),
+      );
     };
 
     const { html, data } = await renderPage(app);

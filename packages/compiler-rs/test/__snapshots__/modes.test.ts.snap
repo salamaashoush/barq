@@ -101,9 +101,9 @@ corpus/props-renamed-and-defaulted  dc511dd77b6e 5b7c97ed36aa 2b9e42e92043 a9220
 corpus/props-rest-spread  de82f4d4648b 2009080b9bc4 7a475f6cbf9a 767fc74ecc6d 69643b26f208 edadceccde30 7a475f6cbf9a
 corpus/reactive-attribute  2e8aec9afd9f 1c1289b286a2 1a200267f475 1a200267f475 8c25158da6bc 2e8aec9afd9f 1a200267f475
 corpus/reassigned-binding  268c56ff0d07 cb9d6efe75b0 c2f55e538fdd c2f55e538fdd 1847b3d8071b 58422e28fc8f c2f55e538fdd
-corpus/ref-binding  2247fa5d19b2 3275826481ed 368ca3e17aa2 368ca3e17aa2 f7d06732341c 5424ab6be4fa 368ca3e17aa2
+corpus/ref-binding  2446a67427e1 4b4e1aff0fbf 9df6e058333a 9df6e058333a bba42eddc24d 3be34b6f33ef 9df6e058333a
 corpus/ref-cleanup  b23ad4eebe40 37e6310f287e c18098ebd700 c18098ebd700 9266cba21f8c 31ced39e29d3 c18098ebd700
-corpus/ref-on-component  91f3e51ea6b5 cb896c8f285e 522da6740c9b 3b56d6fc2071 f6072783f83a e9cfad34b423 c1c5b512c0eb
+corpus/ref-on-component  ef639d92d03b a0e71453f467 5d2cdb677fc8 20b41db86fc1 b2c601b62c6c 3ff683d28039 a31cb3a56016
 corpus/ref-writable-binding  e10b83484ff1 4b513d321e23 f1535c55f696 f1535c55f696 51375c344c74 7e31e037acfe f1535c55f696
 corpus/renamed-core-import  b38e7079fd46 e2f35f0541d6 d1a0ff99f1a3 9ec020a5e033 d90af927055e 5cf40e38d8be 6b1ce0e11650
 corpus/select-option-multiple  e2abf52dfa30 ab31364ae56b d10fa40e307a d10fa40e307a 50223ff7c1ab 64f9c2bfb6b9 d10fa40e307a

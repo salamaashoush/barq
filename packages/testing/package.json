@@ -45,6 +45,7 @@
     "@testing-library/dom": "^10.4.0"
   },
   "devDependencies": {
+    "@barqjs/compiler-rs": "workspace:*",
     "@happy-dom/global-registrator": "^15.11.7",
     "@types/bun": "latest",
     "happy-dom": "^15.11.7",

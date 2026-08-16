@@ -242,7 +242,7 @@ describe("dual render: the compiled SSR string", () => {
       // reporting — the front end is shared, so it cannot be the front end.
       const dom = await renderSsrViaDom(name)
       const compiled = await renderSsrCompiled(name)
-      const declared = (await loadModule(fixtureSource(name), `ssr-decl-${name}`)).ssrDiffers
+      const declared = (await loadModule(compileFixture(name), `ssr-decl-${name}`)).ssrDiffers
       if (!declared) {
         expect(sameTree(compiled.html), `${name} (compiled SSR) vs the DOM backend`).toBe(
           sameTree(dom.html),
@@ -266,7 +266,7 @@ describe("dual render: the compiled SSR string", () => {
     // `ssrDiffers` becomes a way to sign off on any bug at all.
     const unexplained: string[] = []
     for (const name of CORPUS) {
-      const mod = await loadModule(fixtureSource(name), `ssr-why-${name}`)
+      const mod = await loadModule(compileFixture(name), `ssr-why-${name}`)
       if (!mod.ssrDiffers) continue
       // Read off the emitted DOM module rather than the fixture source: the
       // question is whether the COMPILER bound one of the three, not whether the

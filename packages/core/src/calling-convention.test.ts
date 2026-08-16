@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Fragment, Show, For, Errored } from "./components.ts";
+import { Errored, For, Fragment, Show } from "./components.ts";
 import {
   block,
   createContext,
@@ -26,6 +26,7 @@ import {
 } from "./signals.ts";
 import { provide } from "./scope.ts";
 import type { Scope } from "./scope.ts";
+import type { Child } from "./dom.ts";
 import { insert, setProp } from "./dom.ts";
 
 function chain(s: Scope | null, names: Map<Scope, string>): string {
@@ -37,10 +38,6 @@ function chain(s: Scope | null, names: Map<Scope, string>): string {
 
 describe("O2: a construct runs under the scope it is GIVEN", () => {
   for (const [label, run] of [
-    [
-      "Fragment",
-      (s: Scope | null, kid: (s: Scope | null) => Node) => Fragment(s, { children: kid }),
-    ],
     [
       "Show",
       (s: Scope | null, kid: (s: Scope | null) => Node) =>
@@ -128,6 +125,58 @@ describe("rule 3: a Block invoked with no scope throws", () => {
   });
 });
 
+describe("C8: a fragment is an array, and `insert` owns what it places", () => {
+  // The row this replaces read `Fragment(s, { children: kid })` and asserted the
+  // adapter's `underScope`. M9 deleted the adapter: a fragment is an ARRAY of
+  // its parts and invokes nothing, so the scope that decides is the one `insert`
+  // is given.
+  test("a function child is owned by the scope insert was given, not the ambient one", () => {
+    const names = new Map<Scope, string>();
+    let seen: Scope | null = null;
+    createScope((_d, A) => {
+      names.set(A, "A(passed)");
+      createScope((_d2, B) => {
+        names.set(B, "B(ambient)");
+        const kid = (): Node => {
+          seen = getOwner() as Scope;
+          return document.createTextNode("k");
+        };
+        insert(A, document.createElement("div"), kid);
+        flush();
+      });
+    });
+    const path = chain(seen, names);
+    expect(path).toContain("A(passed)");
+    expect(path).not.toContain("B(ambient)");
+  });
+
+  test("and so is a child inside an ARRAY — the fragment case", () => {
+    // This was the O5 row, and M9 closed it. `insert` used to hand an array
+    // straight to `childToNodes`, which calls each function element ONCE under
+    // whatever was ambient — so a fragment's children were both frozen and
+    // mis-owned. An array holding a function is now one live hole like any
+    // other, so it goes through the effect `ownedBy(given, …)` opens, and the
+    // scope the argument names is the scope the child builds under.
+    const names = new Map<Scope, string>();
+    let seen: Scope | null = null;
+    createScope((_d, A) => {
+      names.set(A, "A(passed)");
+      createScope((_d2, B) => {
+        names.set(B, "B(ambient)");
+        const kid = (): Node => {
+          seen = getOwner() as Scope;
+          return document.createTextNode("k");
+        };
+        insert(A, document.createElement("div"), Fragment(A, { children: kid }) as Child);
+        flush();
+      });
+    });
+    const path = chain(seen, names);
+    expect(path).toContain("A(passed)");
+    expect(path).not.toContain("B(ambient)");
+  });
+});
+
 describe("O4.5: an explicit scope argument beats an ambient pin", () => {
   test("pin has something to override", () => {
     const names = new Map<Scope, string>();
@@ -137,13 +186,17 @@ describe("O4.5: an explicit scope argument beats an ambient pin", () => {
       createScope((_d2, P) => {
         names.set(P, "P(pinned)");
         pin(P, () => {
-          const el = Fragment(X, {
-            children: (): Node => {
-              seen = getOwner() as Scope;
-              return document.createTextNode("k");
-            },
-          });
-          void el;
+          const host = document.createElement("div");
+          insert(
+            X,
+            host,
+            Fragment(X, {
+              children: (): Node => {
+                seen = getOwner() as Scope;
+                return document.createTextNode("k");
+              },
+            }) as Child,
+          );
         })();
       });
     });

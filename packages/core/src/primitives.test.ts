@@ -13,10 +13,8 @@ import {
   effect,
   flush,
   getNextChildId,
-  getObserver,
   getOwner,
   isDisposed,
-  isEqual,
   onCleanup,
   peekNextChildId,
   resolve,
@@ -24,6 +22,7 @@ import {
   signal,
   untrack,
 } from "./index.ts";
+import { getObserver, isEqual } from "./signals.ts";
 
 describe("introspection primitives", () => {
   test("getObserver is the tracking computation, null outside", () => {

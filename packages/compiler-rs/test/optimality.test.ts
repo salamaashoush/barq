@@ -400,7 +400,7 @@ describe("declared optimality", () => {
     const rotted: string[] = []
     for (const [name, excuse] of Object.entries(NO_DECLARATION)) {
       const source = fixtureSource(name)
-      const mod = await loadModule(source, `excuse-${name}`)
+      const mod = await loadModule(compileFixture(name), `excuse-${name}`)
       if (!excuse.holds({ name, source, code: compileFixtureBody(name), mod })) {
         rotted.push(`${name}: ${excuse.why}`)
       }

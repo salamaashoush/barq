@@ -435,7 +435,7 @@ const UserContext = createContext<{ name: string; role: string }>();
 
 function ContextDemo() {
   const theme = signal<"light" | "dark">("dark");
-  const [user] = signal({ name: "Alice", role: "Admin" });
+  const user = signal({ name: "Alice", role: "Admin" });
 
   return (
     <DemoCard title="Context - Dependency Injection">

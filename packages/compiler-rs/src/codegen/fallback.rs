@@ -1,10 +1,11 @@
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, ArrayExpressionElement, Expression, IdentifierName, JSXAttributeItem, JSXChild,
-    JSXElement, JSXElementName, JSXFragment, JSXMemberExpression, JSXMemberExpressionObject,
-    ObjectProperty, ObjectPropertyKind, PropertyKey, PropertyKind, SpreadElement, StringLiteral,
+    Argument, ArrayExpressionElement, ArrowFunctionBody, Expression, FormalParameterKind,
+    FormalParameters, IdentifierName, JSXAttributeItem, JSXChild, JSXElement, JSXElementName,
+    JSXFragment, JSXMemberExpression, JSXMemberExpressionObject, ObjectProperty, ObjectPropertyKind,
+    PropertyKey, PropertyKind, SpreadElement, StringLiteral,
 };
-use oxc::span::SPAN;
+use oxc::span::{GetSpan, SPAN};
 
 use super::{Emit, Helper};
 use crate::lower::entity;
@@ -54,7 +55,7 @@ impl<'a> Emit<'a, '_> {
         span: oxc::span::Span,
     ) -> Expression<'a> {
         let props = self.props(attributes);
-        let kids = self.child_arguments(children);
+        let kids = self.child_arguments(children, true);
         if kids.is_empty() {
             return props;
         }
@@ -134,7 +135,7 @@ impl<'a> Emit<'a, '_> {
         fragment: ArenaBox<'a, JSXFragment<'a>>,
     ) -> Expression<'a> {
         let JSXFragment { span, children, .. } = fragment.unbox();
-        let elements = self.child_arguments(children).into_iter().map(|argument| match argument {
+        let elements = self.child_arguments(children, false).into_iter().map(|argument| match argument {
             Argument::SpreadElement(spread) => ArrayExpressionElement::SpreadElement(spread),
             other => ArrayExpressionElement::from(other.into_expression()),
         });
@@ -244,7 +245,11 @@ impl<'a> Emit<'a, '_> {
         }
     }
 
-    fn child_arguments(&mut self, children: ArenaVec<'a, JSXChild<'a>>) -> Vec<Argument<'a>> {
+    fn child_arguments(
+        &mut self,
+        children: ArenaVec<'a, JSXChild<'a>>,
+        live: bool,
+    ) -> Vec<Argument<'a>> {
         let source = self.source;
         let mut out = Vec::with_capacity(children.len());
         for child in children {
@@ -266,7 +271,7 @@ impl<'a> Emit<'a, '_> {
                 }
                 JSXChild::ExpressionContainer(container) => {
                     if let Some(value) = expression_of(container.unbox().expression) {
-                        out.push(Argument::from(value));
+                        out.push(Argument::from(if live { self.live_child(value) } else { value }));
                     }
                 }
                 JSXChild::Spread(spread) => {
@@ -279,6 +284,68 @@ impl<'a> Emit<'a, '_> {
             }
         }
         out
+    }
+
+    /// A `{…}` child of a REFUSED ELEMENT, as something `insert` can keep live.
+    ///
+    /// Only the element path (`live = true`). A FRAGMENT's parts are left as
+    /// they are: a fragment is an array of values, each of which is already
+    /// whatever its own position made it, and wrapping a component call there
+    /// turns the component's result into a Cell yielding it.
+    ///
+    /// This path has no `ExprId`, so `dom::thunk`'s reactivity verdict is not
+    /// available: `fallback.rs` runs on raw JSX, which is the whole reason P1
+    /// refused the element. Without a thunk the expression is evaluated once at
+    /// the call site and the child is frozen — `<table>{a()}-{b()}</table>`
+    /// emitted `{ children: [a(), "-", b()] }` and never updated again, on a
+    /// shape the template path gets right (`_$insert($s, el, a)`).
+    ///
+    /// So the rule here is conservative in the SAFE direction: everything that
+    /// is not provably inert becomes `() => value`. A static value inside a
+    /// thunk still renders correctly and costs one effect that runs once; a live
+    /// value NOT inside one is a miscompile. Two shapes are left alone — a
+    /// literal, which cannot change, and a function, which is already the Cell
+    /// or Block `insert` wants and would be double-wrapped.
+    fn live_child(&self, value: Expression<'a>) -> Expression<'a> {
+        let inert = matches!(
+            value,
+            Expression::StringLiteral(_)
+                | Expression::NumericLiteral(_)
+                | Expression::BooleanLiteral(_)
+                | Expression::NullLiteral(_)
+                | Expression::BigIntLiteral(_)
+                | Expression::TemplateLiteral(_)
+                | Expression::JSXElement(_)
+                | Expression::JSXFragment(_)
+                | Expression::ArrowFunctionExpression(_)
+                | Expression::FunctionExpression(_)
+        );
+        // A template literal with an interpolation is NOT inert — only a
+        // cooked-only one is, and `quasis.len() == 1` is exactly that test.
+        let inert = match &value {
+            Expression::TemplateLiteral(literal) => literal.expressions.is_empty(),
+            _ => inert,
+        };
+        if inert {
+            return value;
+        }
+        let span = value.span();
+        let params = FormalParameters::boxed(
+            span,
+            FormalParameterKind::ArrowFormalParameters,
+            ArenaVec::new_in(&self.allocator),
+            None,
+            &self.ast,
+        );
+        Expression::new_arrow_function_expression(
+            span,
+            false,
+            None,
+            params,
+            None,
+            ArrowFunctionBody::from(value),
+            &self.ast,
+        )
     }
 
     fn decoded(&self, text: &'a str) -> &'a str {

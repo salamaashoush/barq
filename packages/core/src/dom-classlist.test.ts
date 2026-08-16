@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createElement, setProp, spread } from "./dom.ts";
+import { element, setProp, spread } from "./dom.ts";
 import { flush, signal } from "./signals.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -75,7 +75,7 @@ describe("classList", () => {
   });
 
   test("createElement applies it", () => {
-    const el = createElement("div", { classList: { active: true } }) as HTMLElement;
+    const el = element(null, "div", { classList: { active: true } }) as HTMLElement;
     expect(classes(el)).toEqual(["active"]);
     expect(el.hasAttribute("classlist")).toBe(false);
   });

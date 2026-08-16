@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { merge, omit } from "./components.ts";
+import { merge, omit } from "./props.ts";
 import { effect, flush, signal } from "./signals.ts";
 import { createProjection, reconcile, snapshot, unwrap, store } from "./store.ts";
 

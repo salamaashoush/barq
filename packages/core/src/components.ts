@@ -1,81 +1,92 @@
 /**
- * The built-in flow components, on the M3 calling convention (`Comp(s, props)`,
- * every prop a `Cell`, every renderable slot a `Block`) and, since M4, holding
- * **no control-flow machinery of their own**.
+ * The flow components — the adapters `passes::flow` falls back to.
  *
- * Each one below resolves its props and calls `branch`, `each`, `boundary` or
- * `portal` (`flow.ts`). What went with that: ten copy-pasted
- * `dispose → clearRange → createScope → insertNodes` bodies, the marker pair per
- * instance, `Show`'s `onCleanup` re-registered inside its own renderEffect,
- * `Dynamic`'s and `Portal`'s detached scopes, `Dynamic`'s fifth
+ * ## Why these still exist, measured
+ *
+ * `CODESIGN.md` §4.1 lists all fourteen for deletion, and M9 deleted them and
+ * put them back.
+ *
+ * It is not that a construct fails to lower. Every FORM of every construct
+ * lowers — `<For>` alone covers identity-keyed (the K1 default), `keyed={false}`,
+ * `keyed={fn}` and a `keyed` the analysis cannot prove, and all four emit
+ * `_$each` with no `For` import left behind:
+ *
+ *     control-flow-for                    each=YES  keeps For import=no
+ *     control-flow-for-keyed-by-item      each=YES  keeps For import=no
+ *     control-flow-for-keyed-false        each=YES  keeps For import=no
+ *     control-flow-for-keyed-fn           each=YES  keeps For import=no
+ *     control-flow-for-keyed-unprovable   each=YES  keeps For import=no
+ *     control-flow-for-keyed-spread       each=no   keeps For import=YES
+ *
+ * The exception is the last row, and it is not about `For`: P-new `flow` reads
+ * a construct's PROPS to pick a lowering, and a spread is the one source it
+ * cannot read. `<For {...opts}>` therefore stays a component call, and so would
+ * `<Show {...p}>` or any of the other twelve. Over the whole 131-fixture corpus
+ * that is the only surviving flow import there is.
+ *
+ * The string backend has the identical gap and the identical fallback —
+ * `codegen::ssr::flow_call` routes the same shape to `ssrShow`/`ssrFor`/the
+ * other ten, and a probe confirmed all eleven are reachable from legal source,
+ * one construct at a time. So the fourteen adapters here and the twelve in
+ * `ssr.ts` are ONE deletion, blocked on ONE compiler gap, and neither half can
+ * go first: deleting them turns `<Show {...props}>` from a working program into
+ * a load-time `SyntaxError: Export named 'Show' not found`.
+ *
+ * ## Why a spread cannot just lower like an element's does
+ *
+ * §5.3 put a spread back on the template path for ELEMENTS, so the obvious
+ * question is why the same answer does not work here. The refusal is one line —
+ * `passes::flow::admits_element` rejects a `SpreadAttribute` before any per-prop
+ * reasoning runs — and the asymmetry behind it is real:
+ *
+ *  - On an element every name has the SAME KIND of destination: an attribute
+ *    channel. `_$spread` resolves each at run time through the same tables the
+ *    compiler reads, in source order. Unknown names cost nothing structural.
+ *  - On a flow construct each prop decides a DIFFERENT PART OF THE LOWERING.
+ *    `each`/`when`/`count` is the region's source; `fallback` is a second Block;
+ *    `keyed` selects one of three key expressions; and `children` is the body
+ *    Block whose PARAMETER LIST changes with the keying mode — `(item, index)`
+ *    keyed, `(item(), index())` by key function, `(item(), index)` positional.
+ *    `admits_value` says it for `keyed` in as many words: "the key it builds is
+ *    a different expression depending on the answer… the two answers are
+ *    different programs."
+ *
+ * The existing unprovable-prop rule does not stretch to cover it either.
+ * `control-flow-for-keyed-unprovable` is `keyed={byId}` — a NAMED prop behind a
+ * binding, where the compiler still knows WHICH prop it is and only its value is
+ * opaque, so it can take "the key-function arm, which is the one that is safe
+ * when wrong". A spread hides which props exist at all, so there is nothing for
+ * that rule to apply to.
+ *
+ * **What lowering one would take:** emit the region against a merged source list
+ * instead of named attributes — `_$each($s, parent, anchor, () => p.each,
+ * keyOf(p), body, flags, () => p.fallback)` with `p = _$props([…])` — and then
+ * settle the body's ARITY, which is the part that cannot become an argument
+ * because it changes the emitted function's own parameter list. That last step
+ * is the real blocker, and an adapter is exactly what a runtime keying decision
+ * looks like. It is a compiler feature, and it is not M9's.
+ *
+ * ## What DID go, and stays gone
+ *
+ * The machinery. Each function below resolves its props and calls `branch`,
+ * `each`, `boundary` or `portal` (`flow.ts`); what left at M4 was ten
+ * copy-pasted `dispose -> clearRange -> createScope -> insertNodes` bodies, the
+ * marker pair per instance, `Show`'s `onCleanup` re-registered inside its own
+ * renderEffect, `Dynamic`'s and `Portal`'s detached scopes, `Dynamic`'s fifth
  * element-creation path, `ErrorBoundary`'s build-then-install ordering, and
- * `Suspense`'s two `queueMicrotask`s that subscribed to nothing.
- * `CODESIGN.md` §4.1 is the audit; §3.4 is the replacement.
- *
- * These names are also the only path compiled code has: M4's `flow` pass — the
- * one that would emit `branch`/`each`/`boundary`/`portal` directly and hand them
- * a non-zero flags integer — did not land, so `<Show>` still compiles to
- * `Show($s, {…})` and reaches the adapter below at both `-O0` and `-Ox`. The
- * flags mechanism is therefore reachable from these adapters and from the
- * conformance suite, and from nothing the compiler emits.
+ * `Suspense`'s two `queueMicrotask`s that subscribed to nothing. `markers.ts`
+ * went at M9 — these re-exported it and never called it — and so did
+ * `children()`, `dynamic()` and the `DocumentFragment` `Fragment` built, which
+ * C8 replaced with an array.
  */
 
 import type { Resource } from "./async.ts";
 import type { Child, JSXElement } from "./dom.ts";
-import { childToNodes, setProp } from "./dom.ts";
-import { REVEAL_COORD, createRevealCoordinator } from "./boundaries.ts";
-import { clearRange, createMarker, createMarkerPair, insertNodes } from "./markers.ts";
-import { COUNT, boundary, branch, each, portal } from "./flow.ts";
-import { mapArray, repeat } from "./map.ts";
-import { merge, omit } from "./props.ts";
+import { dyn } from "./dom.ts";
+import { COUNT, boundary, branch, each, portal, reveal } from "./flow.ts";
 import type { Block, Cell, Scope, Slot } from "./scope.ts";
-import {
-  computed,
-  enter,
-  exit,
-  getOwner,
-  provideOn,
-  readSlot,
-  underScope,
-  untrack,
-} from "./signals.ts";
-
-export { createMarker, createMarkerPair, clearRange, insertNodes, childToNodes };
-export { mapArray, repeat };
-
-/**
- * A CELL-slot read (§3.0 rule 2): the value is called with no scope. A branded
- * Block reaching here is rule 3's throw, not a silent build under `CURRENT`.
- */
-function readValue(slot: unknown, origin: string): unknown {
-  return readSlot(slot, origin);
-}
-
-/** A renderable slot, as the primitives want it: a Block, or nothing. */
-function slotBlock(slot: unknown): Block<unknown> | null {
-  return slot === null || slot === undefined ? null : (slot as Block<unknown>);
-}
-
-/**
- * Invoke a renderable slot, scope first. Compiled code always supplies a Block
- * (C6); the un-compiled surface `packages/extra` is still on supplies built
- * nodes, and a value that is not callable is already its own answer.
- */
-function callSlot(slot: unknown, scope: Scope | null, ...args: unknown[]): unknown {
-  return typeof slot === "function" ? (slot as Block<unknown, unknown[]>)(scope, ...args) : slot;
-}
-
-/**
- * Fragment: a compile-time multi-root unit everywhere the compiler is involved
- * (C8). This is the un-compiled spelling `packages/extra`'s router still holds.
- */
-export function Fragment(_s: Scope | null, props: { children?: Child | Child[] }): JSXElement {
-  return underScope(_s, "Fragment", (s): JSXElement => {
-    const fragment = document.createDocumentFragment();
-    for (const node of childToNodes(props.children as Child, s)) fragment.appendChild(node);
-    return fragment;
-  });
-}
+import { omit } from "./props.ts";
+import { computed, readSlot, untrack } from "./signals.ts";
 
 /**
  * Show props — discriminated on `keyed` so children params infer:
@@ -98,47 +109,6 @@ export type ShowProps<T> =
       children: Block<Child, [item: Cell<NonNullable<T>>]> | Cell<Child>;
     };
 
-export function Show<T>(_s: Scope | null, props: ShowProps<T>): JSXElement {
-  const value = computed(() => readValue(props.when, "Show.when") as T | undefined | null | false);
-  const keyed = readValue(props.keyed, "Show.keyed");
-  // Non-keyed: the key tracks only truthiness, so content survives a value
-  // change. Keyed: the value itself is the key, so a new value is a new branch.
-  // The KEY is what decides a rebuild, so it carries exactly what the mode says
-  // it should: keyed (the default) re-renders when the value changes, so the
-  // value IS the key; non-keyed re-renders only when truthiness flips, so the
-  // key is the boolean. Every falsy value collapses onto one key, which is what
-  // keeps a fallback in place across `0`, `""` and `null`.
-  const key: Cell<unknown> =
-    keyed === false
-      ? (): unknown => value() !== false && !!value()
-      : (): unknown => value() || false;
-  const kids = props.children as unknown;
-  // One body for every key (§3.4): it reads the value at ACTIVATION time, which
-  // is why the branch takes no slot argument of its own. Keyed children get the
-  // raw value; non-keyed get a narrowed accessor, so their reads stay live.
-  const content: Block<unknown> = (scope: Scope | null): unknown => {
-    const current = untrack(value);
-    return current
-      ? callSlot(kids, scope, keyed === false ? value : current)
-      : callSlot(props.fallback, scope);
-  };
-  return branch(_s, null, null, key, content) as JSXElement;
-}
-
-/**
- * One list primitive, three modes, discriminated on `keyed` so children params
- * infer correctly:
- * - omitted / true: keyed by identity — children get (item, indexAccessor)
- * - a key fn: the row survives an item change, so the item arrives through a row
- *   SIGNAL — children get (itemAccessor, indexAccessor)
- * - false: positional — children get (itemAccessor, index)
- *
- * Each mode admits the LITERAL as well as a Cell carrying it. `For` reads the
- * slot through `readSlot`, and the compiler special-cases the literal spelling
- * — `<For keyed={false}>` resolves at compile time and never allocates a Cell —
- * so a type that demanded a Cell would make the direct-call form of the very
- * spelling the compiler prefers unwritable.
- */
 export type ForProps<T, U extends JSXElement> =
   | {
       each: Cell<readonly T[] | undefined | null>;
@@ -159,11 +129,113 @@ export type ForProps<T, U extends JSXElement> =
       children: Block<U, [item: Cell<T>, index: number]>;
     };
 
-export function For<T, U extends JSXElement>(_s: Scope | null, props: ForProps<T, U>): JSXElement {
-  // `keyed`'s VALUE is a function, so a bare key function and a Cell carrying
-  // one land in the same slot. They are told apart by the parameter a key
-  // function declares and a Cell never does (§3.0 rule 1).
-  const carrier = props.keyed as unknown;
+export interface MatchProps<T> {
+  when: Cell<T | undefined | null | false>;
+  keyed?: Cell<boolean>;
+  children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
+}
+
+export interface RepeatProps {
+  count: Cell<number>;
+  from?: Cell<number>;
+  fallback?: Slot<Child>;
+  children: Block<Child, [index: number]>;
+}
+
+export interface SwitchProps {
+  fallback?: Slot<Child>;
+  children: Slot<JSXElement | JSXElement[]>;
+}
+
+export interface LoadingProps {
+  fallback?: Slot<Child>;
+  on?: Cell<unknown>;
+  children: Slot<Child>;
+}
+
+export interface RevealProps {
+  order?: Cell<"sequential" | "together" | "natural">;
+  collapsed?: Cell<boolean>;
+  children: Slot<Child>;
+}
+
+export interface ErroredProps {
+  fallback: Block<Child, [error: Cell<Error>, reset: () => void]>;
+  children: Slot<Child>;
+}
+
+/** The pre-Solid-2.0 spelling, whose fallback takes the error by VALUE. */
+export interface ErrorBoundaryProps {
+  fallback: Block<Child, [error: Error, reset: () => void]>;
+  children: Slot<Child>;
+}
+
+export interface AwaitProps<T> {
+  resource: Cell<Resource<T>>;
+  loading?: Slot<Child>;
+  error?: Block<Child, [error: Error]>;
+  children: Block<Child, [data: T]>;
+}
+
+export interface PortalProps {
+  target?: Cell<HTMLElement | string>;
+  children: Slot<Child>;
+}
+
+export type DynamicComponent =
+  | keyof HTMLElementTagNameMap
+  | ((s: Scope | null, props: Record<string, unknown>) => JSXElement);
+
+/** A CELL-slot read (§3.0 rule 2): the value is called with no scope. */
+function readValue(slot: unknown, origin: string): unknown {
+  return readSlot(slot, origin);
+}
+
+function slotBlock(slot: unknown): Block<unknown> | null {
+  return slot === null || slot === undefined ? null : (slot as Block<unknown>);
+}
+
+function callSlot(slot: unknown, scope: Scope | null, ...args: unknown[]): unknown {
+  return typeof slot === "function" ? (slot as Block<unknown, unknown[]>)(scope, ...args) : slot;
+}
+
+export function Fragment(_s: Scope | null, props: { children?: Child | Child[] }): JSXElement {
+  // C8: a fragment is an ARRAY of its parts. Nothing builds a DocumentFragment.
+  const kids = props.children;
+  return (Array.isArray(kids) ? kids : [kids]) as unknown as JSXElement;
+}
+
+export function Show<T>(
+  _s: Scope | null,
+  props: { when: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
+): JSXElement {
+  const value = computed(() => readValue(props.when, "Show.when") as T | undefined | null | false);
+  const keyed = readValue(props.keyed, "Show.keyed");
+  // The KEY decides a rebuild, so it carries exactly what the mode says it
+  // should: keyed (the default) re-renders when the value changes, so the value
+  // IS the key; non-keyed re-renders only when truthiness flips, so the key is
+  // the boolean. Every falsy value collapses onto one key, which keeps a
+  // fallback in place across `0`, `""` and `null`.
+  const key: Cell<unknown> =
+    keyed === false
+      ? (): unknown => value() !== false && !!value()
+      : (): unknown => value() || false;
+  const content: Block<unknown> = (scope: Scope | null): unknown => {
+    const current = untrack(value);
+    return current
+      ? callSlot(props.children, scope, keyed === false ? value : current)
+      : callSlot(props.fallback, scope);
+  };
+  return branch(_s, null, null, key, content) as JSXElement;
+}
+
+export function For<T>(
+  _s: Scope | null,
+  props: { each: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
+): JSXElement {
+  // §3.0 rule 1: a Cell declares no parameter and a key function declares one,
+  // and that is the only thing separating them once both are values in one slot.
+  const carrier = props.keyed;
   const resolved =
     typeof carrier === "function" && (carrier as { length: number }).length >= 1
       ? carrier
@@ -174,58 +246,11 @@ export function For<T, U extends JSXElement>(_s: Scope | null, props: ForProps<T
       : resolved === false
         ? false
         : null;
-  return eachOf(_s, props.each as Cell<readonly T[]>, keyOf, props, "For");
-}
-
-/**
- * Repeat (Solid 2.0) — render a block `count` times. No diffing: children get a
- * plain, stable index. `each`'s `COUNT` mode is the same primitive with a count
- * for a source.
- */
-export function Repeat(
-  _s: Scope | null,
-  props: {
-    count: Cell<number>;
-    from?: Cell<number>;
-    fallback?: Slot<Child>;
-    children: Block<Child, [index: number]>;
-  },
-): JSXElement {
-  const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
-  const count = (): number => readValue(props.count, "Repeat.count") as number;
-  // `from` shifts the index the row Block sees, which `repeat` expresses and
-  // `each`'s COUNT mode forwards; a zero shift is the overwhelming case.
-  const shifted: Block<unknown> = (scope: Scope | null, index: unknown): unknown =>
-    (props.children as unknown as (s: Scope | null, i: number) => unknown)(
-      scope,
-      (index as number) + from(),
-    );
   return each(
     _s,
     null,
     null,
-    count,
-    COUNT,
-    shifted as Block<unknown, never[]>,
-    0,
-    slotBlock(props.fallback),
-  ) as JSXElement;
-}
-
-function eachOf<T>(
-  s: Scope | null,
-  source: Cell<readonly T[]>,
-  keyOf: ((item: T) => unknown) | false | null,
-  props: { children: unknown; fallback?: Slot<Child> },
-  origin: string,
-): JSXElement {
-  const list = (): readonly T[] | undefined | null =>
-    readValue(source, `${origin}.each`) as readonly T[] | undefined | null;
-  return each(
-    s,
-    null,
-    null,
-    list as Cell<readonly T[]>,
+    props.each as Cell<readonly T[]>,
     keyOf,
     props.children as Block<unknown, never[]>,
     0,
@@ -233,31 +258,44 @@ function eachOf<T>(
   ) as JSXElement;
 }
 
-export interface MatchProps<T> {
-  when: Cell<T | undefined | null | false>;
-  keyed?: Cell<boolean>;
-  children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
+export function Repeat(
+  _s: Scope | null,
+  props: { count: unknown; from?: unknown; fallback?: unknown; children: unknown },
+): JSXElement {
+  const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
+  const count = (): number => readValue(props.count, "Repeat.count") as number;
+  const shifted: Block<unknown> = (scope: Scope | null, index: unknown): unknown =>
+    (props.children as (s: Scope | null, i: number) => unknown)(scope, (index as number) + from());
+  return each(
+    _s,
+    null,
+    null,
+    count as Cell<number>,
+    COUNT,
+    shifted as Block<unknown, never[]>,
+    0,
+    slotBlock(props.fallback),
+  ) as JSXElement;
 }
 
 /** C8-adjacent: `Match` is an identity function — `Switch` reads its props. */
-export function Match<T>(_s: Scope | null, props: MatchProps<T>): JSXElement {
+export function Match<T>(_s: Scope | null, props: T): JSXElement {
   return props as unknown as JSXElement;
 }
 
-/**
- * Switch — one `branch` whose key is the winning arm. `Match` builds nothing,
- * so re-invoking the children Block inside the memo costs an object per arm and
- * keeps every `when` read tracked by it.
- */
 export function Switch(
   _s: Scope | null,
-  props: { fallback?: Slot<Child>; children: Slot<JSXElement | JSXElement[]> },
+  props: { fallback?: unknown; children: unknown },
 ): JSXElement {
   const arms = computed(() => {
     const resolved = callSlot(props.children, _s);
-    const children = Array.isArray(resolved) ? resolved : [resolved];
+    const children = (Array.isArray(resolved) ? resolved : [resolved]) as Array<{
+      when?: unknown;
+      keyed?: unknown;
+      children?: unknown;
+    }>;
     for (let i = 0; i < children.length; i++) {
-      const child = children[i] as unknown as MatchProps<unknown>;
+      const child = children[i];
       if (!child || typeof child !== "object" || !("when" in child)) continue;
       const value = readValue(child.when, "Match.when");
       if (value) return { index: i, value, match: child };
@@ -295,14 +333,9 @@ export function Switch(
 
 const UNSEEN: unique symbol = Symbol("unseen");
 
-/**
- * Loading (Solid 2.0) — the async boundary. `boundary(kind: "loading")` is the
- * whole implementation; what it replaced was a second range, a parked
- * content fragment and a hand-rolled `moveRange`.
- */
 export function Loading(
   _s: Scope | null,
-  props: { fallback?: Slot<Child>; on?: Cell<unknown>; children: Slot<Child> },
+  props: { fallback?: unknown; on?: unknown; children: unknown },
 ): JSXElement {
   return boundary(
     _s,
@@ -316,63 +349,17 @@ export function Loading(
   ) as JSXElement;
 }
 
-/** Suspense — the pre-Solid-2.0 spelling of `Loading`. One boundary, not two. */
+/** The pre-Solid-2.0 spelling of `Loading`. One boundary, not two. */
 export function Suspense(
   _s: Scope | null,
-  props: { fallback: Slot<Child>; children: Slot<Child> },
+  props: { fallback: unknown; children: unknown },
 ): JSXElement {
   return Loading(_s, props);
 }
 
-/**
- * Reveal (Solid 2.0, replaces SuspenseList) — a `provide`, which is one of O1's
- * six scope creators. It coordinates how descendant `Loading` boundaries reveal
- * their content and owns no range of its own.
- */
-export function Reveal(
-  _s: Scope | null,
-  props: {
-    order?: Cell<"sequential" | "together" | "natural">;
-    collapsed?: Cell<boolean>;
-    children: Slot<Child>;
-  },
-): JSXElement {
-  const handle = createRevealCoordinator(
-    () =>
-      (readValue(props.order, "Reveal.order") as
-        | "sequential"
-        | "together"
-        | "natural"
-        | undefined) ?? "natural",
-    () => readValue(props.collapsed, "Reveal.collapsed") === true,
-  );
-  // X1: enter, fork, write, invoke — in that order, and on a scope of its own
-  // rather than on the caller's, which would put the coordinator in reach of
-  // every sibling the caller has.
-  const scope = enter(_s ?? null, "provide");
-  try {
-    provideOn(scope, REVEAL_COORD, handle);
-    const fragment = document.createDocumentFragment();
-    for (const node of childToNodes(callSlot(props.children, scope) as Child, scope)) {
-      fragment.appendChild(node);
-    }
-    return fragment as unknown as JSXElement;
-  } finally {
-    exit(scope);
-  }
-}
-
-/**
- * Errored (Solid 2.0) — the error boundary. E3: a branch on
- * `{content | fallback}` plus a `try`, with the catcher installed BEFORE the
- * content Block is invoked (E2.1) and `NotReadyError` re-thrown (E2.3).
- */
 export function Errored(
   _s: Scope | null,
-  props: {
-    fallback: Block<Child, [error: Cell<Error>, reset: () => void]>;
-    children: Slot<Child>;
-  },
+  props: { fallback: unknown; children: unknown },
 ): JSXElement {
   return boundary(
     _s,
@@ -384,16 +371,10 @@ export function Errored(
   ) as JSXElement;
 }
 
-/**
- * ErrorBoundary — the pre-Solid-2.0 spelling, whose fallback takes the error by
- * VALUE where `Errored`'s takes an accessor. One adapter, one boundary.
- */
+/** The pre-Solid-2.0 spelling, whose fallback takes the error by VALUE. */
 export function ErrorBoundary(
   _s: Scope | null,
-  props: {
-    fallback: Block<Child, [error: Error, reset: () => void]>;
-    children: Slot<Child>;
-  },
+  props: { fallback: unknown; children: unknown },
 ): JSXElement {
   const fallback: Block<unknown> = (scope: Scope | null, error: unknown, reset: unknown): unknown =>
     callSlot(props.fallback, scope, (error as Cell<Error>)(), reset);
@@ -407,139 +388,87 @@ export function ErrorBoundary(
   ) as JSXElement;
 }
 
-/**
- * Await — render on a resource's state. Four states, four bodies, one `branch`
- * keyed on the state: exactly the shape §3.4 describes, and the reason the
- * detached scope that made `<Await>`'s subtree unreachable from the render root
- * is gone.
- */
-export function Await<T>(
-  _s: Scope | null,
-  props: {
-    resource: Cell<Resource<T>>;
-    loading?: Slot<Child>;
-    error?: Block<Child, [error: Error]>;
-    children: Block<Child, [data: T]>;
-  },
-): JSXElement {
-  // A `Resource` is itself callable, so forwarding one by name (C5) puts a
-  // value-carrying Cell and the resource in the same slot. The resource is told
-  // from its own value by a property it has and a value does not.
-  const resolve = (): Resource<T> => {
-    const carrier = props.resource as unknown;
-    return (
-      typeof carrier === "function" && "state" in carrier
-        ? carrier
-        : readValue(carrier, "Await.resource")
-    ) as Resource<T>;
-  };
-
-  const key = (): number => {
-    switch (resolve().state()) {
-      case "pending":
-        return 0;
-      case "errored":
-        return 1;
-      default:
-        return 2;
-    }
-  };
-
-  const loading = slotBlock(props.loading);
-  const failed: Block<unknown> = (scope: Scope | null): unknown => {
-    const error = untrack(() => resolve().error());
-    if (props.error && error) return callSlot(props.error, scope, error);
-    return error ? document.createTextNode(error.message) : null;
-  };
-  const ready: Block<unknown> = (scope: Scope | null): unknown => {
-    const data = untrack(() => resolve().latest());
-    return data === undefined ? null : callSlot(props.children, scope, data);
-  };
-
-  return branch(_s, null, null, key, [loading, failed, ready]) as JSXElement;
-}
-
-/** Portal — `portal`, whose scope's parent is the LEXICAL one (§3.4, X4). */
 export function Portal(
   _s: Scope | null,
-  props: { target?: Cell<HTMLElement | string>; children: Slot<Child> },
+  props: { target?: unknown; children: unknown },
 ): JSXElement {
   return portal(
     _s,
-    () => readValue(props.target, "Portal.target") as HTMLElement | string | undefined,
+    () => readValue(props.target, "Portal.target") as Node | string | undefined,
     props.children as Block<unknown>,
   ) as unknown as JSXElement;
 }
 
 /**
- * Dynamic — a `branch` keyed on the component VALUE, with one body used for
- * every key (§3.4). The string arm renders through the same `createElement` the
- * rest of the runtime uses instead of the fifth element-creation path it had,
- * which is where the JSON-stringified attributes and the never-removed
- * listeners came from.
+ * `<Dynamic component={c}>` — a `branch` keyed on the component VALUE with one
+ * body for every key, and `dyn` inside it. §3.13 item 4: the tag or component
+ * cannot be resolved at compile time, so the choice is made at run time and
+ * nowhere else. The swap and the teardown are the branch's.
  */
-export function Dynamic<
-  T extends
-    | keyof HTMLElementTagNameMap
-    | ((s: Scope | null, props: Record<string, unknown>) => JSXElement),
->(_s: Scope | null, props: { component: Cell<T> } & Record<string, unknown>): JSXElement {
-  const component = computed(() => readValue(props.component, "Dynamic.component") as T);
-  const body: Block<unknown> = (scope: Scope | null): unknown => {
-    const resolved = untrack(component);
-    if (!resolved) return null;
-    // C3/C5: `rest` is a VIEW of the same carriers, not a copy — the callee's
-    // `props.x()` still reaches the caller's Cell.
-    const rest = omit(props as Record<string, unknown>, "component");
-    if (typeof resolved === "string") {
-      return createDynamicElement(scope, resolved, rest);
-    }
-    return callSlot(resolved, scope, rest);
+export function Dynamic(
+  _s: Scope | null,
+  props: { component: unknown } & Record<string, unknown>,
+): JSXElement {
+  const component = computed(() => readValue(props.component, "Dynamic.component"));
+  const rest = omit(props, "component");
+  return branch(_s, null, null, component, (scope: Scope | null) =>
+    dyn(scope, component as unknown as Cell<never>, rest),
+  ) as JSXElement;
+}
+
+/**
+ * `<Await>` — TWO NESTED BOUNDARIES, not a three-state adapter (§4.1's M9 note).
+ *
+ * Reading a resource throws `NotReadyError` before it settles and throws the
+ * error after it fails, so the three-state key the old adapter computed is what
+ * the boundaries already answer: an error boundary outside, a loading boundary
+ * inside, and the body reads the resource.
+ */
+export function Await<T>(
+  _s: Scope | null,
+  props: { resource: unknown; loading?: unknown; error?: unknown; children: unknown },
+): JSXElement {
+  const read = (): T => {
+    const carrier = props.resource;
+    const resolved =
+      typeof carrier === "function" && "loading" in (carrier as object)
+        ? carrier
+        : readValue(carrier, "Await.resource");
+    return (resolved as () => T)();
   };
-  return branch(_s, null, null, component, body) as JSXElement;
+  const inner: Block<unknown> = (scope: Scope | null): unknown =>
+    boundary(scope, null, null, "loading", slotBlock(props.loading), ((s: Scope | null): unknown =>
+      callSlot(props.children, s, read())) as Block<unknown>);
+  if (props.error === undefined) return inner(_s) as JSXElement;
+  return boundary(
+    _s,
+    null,
+    null,
+    "error",
+    ((s: Scope | null, error: unknown): unknown =>
+      callSlot(props.error, s, (error as Cell<Error>)())) as Block<unknown>,
+    inner,
+  ) as JSXElement;
 }
 
 /**
- * An intrinsic tag chosen at runtime. Every prop goes through the ONE prop
- * channel `setProp` owns, and every listener is registered on the instance
- * scope's own element, so it dies with the branch instance that created it (B4).
+ * Reveal (Solid 2.0, replaces SuspenseList) — a `provide`, which is one of O1's
+ * six scope creators. It coordinates how descendant `Loading` boundaries reveal
+ * their content and owns no range of its own.
  */
-function createDynamicElement(
-  scope: Scope | null,
-  tag: string,
-  rest: Record<string, unknown>,
-): Node {
-  const element = document.createElement(tag);
-  for (const name in rest) {
-    if (name === "children") continue;
-    // Applied ONCE, through the one prop channel. What the fifth
-    // element-creation path did instead was `JSON.stringify` an object into an
-    // attribute and `addEventListener` with nothing to remove it; `setProp`
-    // resolves the channel and a delegated handler dies with the element (B4).
-    // Liveness is B1's and lands with the element channels in M5.
-    setProp(scope, element, name, readValue(rest[name], `Dynamic.${name}`));
-  }
-  const children = rest.children;
-  if (children !== undefined && children !== null) {
-    for (const node of childToNodes(children as Child, scope)) element.appendChild(node);
-  }
-  return element;
-}
-
-/**
- * dynamic(source) factory (Solid 2.0): a stable component whose identity is
- * driven reactively by `source`.
- */
-export function dynamic<P extends Record<string, unknown>>(
-  source: Cell<
-    keyof HTMLElementTagNameMap | ((s: Scope | null, props: Record<string, unknown>) => JSXElement)
-  >,
-): (s: Scope | null, props: P) => JSXElement {
-  return (s: Scope | null, props: P): JSXElement =>
-    Dynamic(s, merge(props, { component: source }) as { component: Cell<never> });
-}
-
-export { mergeProps, merge, omit, splitProps } from "./props.ts";
-
-export function children(fn: Slot<Child>, s: Scope | null = getOwner()): () => Node[] {
-  return computed(() => childToNodes(callSlot(fn, s) as Child, s));
+export function Reveal(
+  _s: Scope | null,
+  props: { order?: unknown; collapsed?: unknown; children: unknown },
+): JSXElement {
+  return reveal(
+    _s,
+    () =>
+      (readValue(props.order, "Reveal.order") as
+        | "sequential"
+        | "together"
+        | "natural"
+        | undefined) ?? "natural",
+    () => readValue(props.collapsed, "Reveal.collapsed") === true,
+    props.children as Block<unknown>,
+  ) as unknown as JSXElement;
 }

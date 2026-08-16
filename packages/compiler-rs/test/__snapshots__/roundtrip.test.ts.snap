@@ -4745,9 +4745,14 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots ref-binding 1`] = `
-"import { useRef, template as _$template, block as _$block, ref as _$ref } from "@barqjs/core";
+"import { template as _$template, block as _$block, ref as _$ref } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><div class="boxed">target</div><span>callback</span></div>\`);
-export const box = useRef<HTMLDivElement>();
+// M9 deleted the \`useRef()\` factory (§4.1): a ref is a writable binding (B3)
+// or a callback, and the \`{current}\` box the ref channel writes is one object
+// literal. The SHAPE is what this fixture is about, and it is unchanged.
+export const box: {
+  current: HTMLDivElement | null;
+} = { current: null };
 export default function RefBinding(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
@@ -4757,7 +4762,7 @@ export default function RefBinding(_s$) {
   return _el$1;
 }
 RefBinding = _$block(RefBinding);
-// Reads the object ref back out: without this the useRef path never reaches the DOM.
+// Reads the object ref back out: without this the object-ref path never reaches the DOM.
 export const steps = [() => box.current?.setAttribute("data-ref-resolved", box.current.className)];
 export const optimality = {
   target: 1,
@@ -4822,12 +4827,18 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots ref-on-component 1`] = `
-"import { useRef, template as _$template, insert as _$insert, block as _$block, ref as _$ref } from "@barqjs/core";
+"import { template as _$template, insert as _$insert, block as _$block, ref as _$ref } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="boxed"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="refs"><b class="direct">element</b></div>\`);
 const _k$1 = () => "component";
-export const viaComponent = useRef<HTMLSpanElement>();
-export const viaElement = useRef<HTMLElement>();
+// M9 deleted the \`useRef()\` factory (§4.1); the \`{current}\` shape the ref
+// channel writes is one object literal and is what this fixture pins.
+export const viaComponent: {
+  current: HTMLSpanElement | null;
+} = { current: null };
+export const viaElement: {
+  current: HTMLElement | null;
+} = { current: null };
 /**
 * \`ref\` on a COMPONENT is an ordinary prop — the component decides what to do
 * with it — where \`ref\` on an intrinsic element is a runtime channel the

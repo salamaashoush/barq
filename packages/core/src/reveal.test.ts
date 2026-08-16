@@ -3,10 +3,9 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { Loading, Reveal } from "./components.ts";
+import { boundary, reveal } from "./flow.ts";
 import type { Scope } from "./scope.ts";
 import { render } from "./dom.ts";
-import type { JSXElement } from "./dom.ts";
 import { NotReadyError, computed, createScope, flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
@@ -50,10 +49,14 @@ describe("Loading revalidation", () => {
     });
 
     createScope(() => {
-      const el = Loading(null, {
-        fallback: document.createTextNode("loading..."),
-        children: asyncChild(() => data(), "v"),
-      });
+      const el = boundary(
+        null,
+        null,
+        null,
+        "loading",
+        document.createTextNode("loading..."),
+        asyncChild(() => data(), "v"),
+      );
       render(el, container);
     });
     flush();
@@ -87,23 +90,32 @@ describe("Reveal", () => {
 
     createScope((_dispose, scope) => {
       // Children as a BLOCK: the boundaries are constructed under the scope
-      // `Reveal` hands over, which is the only way they reach the coordinator
+      // `reveal` hands over, which is the only way they reach the coordinator
       // it installed. A thunk that ignored the scope would build them under
       // whatever was ambient, and the coordinator would never be found.
-      const el = Reveal(scope, {
-        order,
-        collapsed,
-        children: ((inner: Scope | null) => [
-          Loading(inner, {
-            fallback: document.createTextNode("[fa]"),
-            children: asyncChild(() => dataA(), "A"),
-          }),
-          Loading(inner, {
-            fallback: document.createTextNode("[fb]"),
-            children: asyncChild(() => dataB(), "B"),
-          }),
-        ]) as unknown as JSXElement,
-      });
+      const el = reveal(
+        scope,
+        () => order,
+        () => collapsed,
+        (inner: Scope | null) => [
+          boundary(
+            inner,
+            null,
+            null,
+            "loading",
+            document.createTextNode("[fa]"),
+            asyncChild(() => dataA(), "A"),
+          ),
+          boundary(
+            inner,
+            null,
+            null,
+            "loading",
+            document.createTextNode("[fb]"),
+            asyncChild(() => dataB(), "B"),
+          ),
+        ],
+      );
       render(() => el, container);
     });
     flush();

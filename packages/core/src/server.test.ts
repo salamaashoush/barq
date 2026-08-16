@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Loading } from "./components.ts";
-import { createElement, hydrate } from "./dom.ts";
+import { element, hydrate } from "./dom.ts";
 import {
   clearRenderData,
   generateHydrationScript,
@@ -40,7 +40,7 @@ describe("renderToString", () => {
     const doubled = computed(() => count() + 1);
 
     const html = renderToString(() =>
-      createElement("div", { class: "app" }, "Count: ", () => String(doubled())),
+      element(null, "div", { class: "app", children: ["Count: ", () => String(doubled())] }),
     );
 
     expect(html).toContain('<div class="app">');
@@ -50,7 +50,7 @@ describe("renderToString", () => {
 
   test("escapes HTML in text content (XSS-safe by construction)", () => {
     const userInput = '<img src=x onerror="alert(1)">';
-    const html = renderToString(() => createElement("p", null, userInput));
+    const html = renderToString(() => element(null, "p", { children: userInput }));
 
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
@@ -113,8 +113,10 @@ describe("renderToStringAsync", () => {
     );
 
     await renderToStringAsync(() => {
-      return createElement("div", null, () => {
-        return String(b());
+      return element(null, "div", {
+        children: () => {
+          return String(b());
+        },
       });
     });
 
@@ -126,7 +128,9 @@ describe("renderToStringAsync", () => {
   test("generateHydrationScript escapes script-breaking content", async () => {
     const evil = computed(async () => "</script><script>alert(1)</script>", { key: "evil" });
 
-    await renderToStringAsync(() => createElement("div", null, () => evil().length.toString()));
+    await renderToStringAsync(() =>
+      element(null, "div", { children: () => evil().length.toString() }),
+    );
 
     const script = generateHydrationScript();
     expect(script.startsWith("<script>window.__BARQ_DATA__=")).toBe(true);
@@ -178,11 +182,10 @@ describe("hydrate", () => {
     const makeApp = () => {
       const count = signal(0);
       return () =>
-        createElement(
-          "button",
-          { onClick: () => count.update((n) => n + 1) },
-          () => `clicks: ${count()}`,
-        );
+        element(null, "button", {
+          onClick: () => count.update((n) => n + 1),
+          children: () => `clicks: ${count()}`,
+        });
     };
 
     const serverHtml = renderToString(makeApp());

@@ -6,8 +6,6 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  Errored,
-  Loading,
   NotReadyError,
   computed,
   createScope,
@@ -19,6 +17,7 @@ import {
   render,
   signal,
 } from "./index.ts";
+import { Errored, Loading } from "./components.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 

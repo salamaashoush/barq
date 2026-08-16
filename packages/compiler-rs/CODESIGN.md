@@ -1446,6 +1446,25 @@ reversal on evidence, and each is stated here so the table above is not read as 
   browser's tree builder would not produce as written. It takes a scope, applies props through
   `spread` and children through `insert`, so it is not a fifth path: it is the same two entry
   points a compiled element uses, minus the clone.
+- **The Block brand does NOT go behind `dev`, and the reason is a measurement.** The item asks for
+  the brand to be DEV-only because "it allocates a closure per construction to serve two DEV
+  facilities". Two things are wrong with that. First, the closure is not a DEV facility: it
+  establishes the ambient owner (`currentOwner = scope`), which is C1/O4.5 — without it the argument
+  decides only for the primitives that take a scope explicitly, and every `getContext`, `onCleanup`
+  and `effect` in the same body follows `CURRENT`, which is the Provider bug split across two
+  owners. Only the `[BLOCK] = true` property write is DEV, and a property write is not a closure.
+  Second, the cost was ablated: `block()` reduced to the bare brand, 100-row page,
+  `renderToString` envelope, 51 trials x 100 iters —
+
+  | build | median µs |
+  |---|---|
+  | brand + guard (shipping) | 4.62, 4.88 |
+  | brand only (ablation) | 4.53, 4.74 |
+
+  The two shipping runs differ by more than shipping differs from ablated, so the effect is inside
+  this harness's noise floor. That agrees with M5, which measured the same thing from the other
+  direction and recorded it in as many words: "The SSR bar did NOT move with it, and the brand was
+  not the cause." The item is closed on evidence, not done.
 - **`Dynamic`, `Await` and `Reveal` lower**, so the components go with the other ten. `Await` is
   two nested boundaries — reading a resource throws `NotReady` before it settles and throws the
   error after it fails, which IS the three-state key the adapter computed — and `Reveal` keeps its
@@ -1757,13 +1776,20 @@ nothing had replaced it for P2 and P4. The other is executable and lives in `tes
 decides — a tracked read is live wherever it is written, a snapshot of one is not — asserted in every
 live mode, and written in the DIRECT form the corpus steers away from.
 
-**M9 discharged the condition rather than waiving it.** Two absolute graders replaced the one that
-went, and both bind the front end: `test/effect-counts.ts` (131 equalities — the classify mutation
-that made every tracked read `React::Static` lowers a `created` count, and an equality reports a
-lower number as loudly as a higher one, where the old BOUND treated it as a win) and the per-fixture
-rendered-DOM golden (a read that stopped being live changes a driven frame, and the frame is
-recorded). Neither is a differential, so neither goes green on a front end that is wrong on both
-sides.
+**M9 discharged the condition rather than waiving it, and the mutation gate is the evidence.** Two
+absolute graders replaced the one that went — `test/effect-counts.ts` (131 equalities, and an
+equality reports a LOWER count as loudly as a higher one, where the old one-sided bound treated it
+as a win) and the per-fixture rendered-DOM golden (a read that stopped being live changes a driven
+frame, and every frame is recorded). Neither is a differential.
+
+`test/mutants.ts` was then re-run on the build with the oracle gone: **23 rows, 22 killed and 1
+equivalent**. `classify-makes-a-tracked-read-static` — the row this section names as the one only
+the oracle and the optimality claims caught — dies on four channels now, and the report names them:
+EMI over the corpus, the `-O0`/`-Ox` DOM differential, the flow bisect, and the front end's own
+absolute claim that every emitted flag is one the compiler proved. That is a measurement rather
+than the inference above it, and it is a broader answer than this section predicted: the corpus has
+grown a fixture whose bare read the differential CAN see, so the mutation is no longer invisible to
+L3 either.
 
 ### L4 — Graded properties, replacing five of the seven current channels
 

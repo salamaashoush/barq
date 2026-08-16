@@ -4,9 +4,12 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { For, Repeat, Show, dynamic } from "./components.ts";
+import { For, Repeat, Show } from "./components.ts";
 import { cell } from "./props.ts";
-import { createElement, render } from "./dom.ts";
+import type { JSXElement } from "./dom.ts";
+import { dyn, element, render } from "./dom.ts";
+import { branch } from "./flow.ts";
+import type { Scope } from "./scope.ts";
 import { createScope, flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
@@ -26,7 +29,7 @@ describe("For keyed unification", () => {
         keyed: false,
         children: (_s: unknown, item: () => string, index: number) => {
           renders++;
-          return createElement("li", null, () => `${index}:${item()}`) as Node;
+          return element(null, "li", { children: () => `${index}:${item()}` }) as Node;
         },
       });
       render(el, container);
@@ -56,7 +59,7 @@ describe("For keyed unification", () => {
         keyed: cell((item: { id: number; text: string }) => item.id),
         children: (_s: unknown, item: () => { id: number; text: string }) => {
           renders++;
-          return createElement("li", null, () => item().text) as Node;
+          return element(null, "li", { children: () => item().text }) as Node;
         },
       });
       render(el, container);
@@ -82,7 +85,7 @@ describe("Repeat", () => {
     createScope(() => {
       const el = Repeat(null, {
         count: () => count(),
-        children: (_s, i) => createElement("span", null, String(i)) as Node,
+        children: (_s, i) => element(null, "span", { children: String(i) }) as Node,
       });
       render(el, container);
     });
@@ -106,7 +109,7 @@ describe("Repeat", () => {
         count: () => count(),
         from: 10,
         fallback: document.createTextNode("empty"),
-        children: (_s, i) => createElement("span", null, String(i)) as Node,
+        children: (_s, i) => element(null, "span", { children: String(i) }) as Node,
       });
       render(el, container);
     });
@@ -130,7 +133,7 @@ describe("Show keyed semantics", () => {
         keyed: false,
         children: (_s: unknown, u: () => { name: string }) => {
           renders++;
-          return createElement("div", null, () => u().name) as Node;
+          return element(null, "div", { children: () => u().name }) as Node;
         },
       });
       render(el, container);
@@ -164,7 +167,7 @@ describe("Show keyed semantics", () => {
         when: () => user(),
         children: (_s: unknown, u: { name: string }) => {
           renders++;
-          return createElement("div", null, u.name) as Node;
+          return element(null, "div", { children: u.name }) as Node;
         },
       });
       render(el, container);
@@ -179,14 +182,19 @@ describe("Show keyed semantics", () => {
   });
 });
 
-describe("dynamic() factory", () => {
-  test("returns a stable component driven by the source", () => {
+describe("dyn — a tag chosen at run time (§3.13 item 4)", () => {
+  test("swaps the element when the source moves, keeping the props", () => {
+    // M9 deleted the `dynamic(source)` FACTORY along with `<Dynamic>`. What it
+    // did — return a component whose tag a signal drives — is what the compiler
+    // emits directly: a `branch` keyed on the component value, whose body is
+    // `dyn`. The branch is the compiler's; `dyn`'s only question is whether the
+    // resolved value is a tag or a component, and only the value can answer it.
     const which = signal<"div" | "span">("div");
-    const Dyn = dynamic(() => which());
+    const props = { class: "x", children: "hi" };
 
-    createScope(() => {
-      const el = Dyn(null, { class: "x", children: "hi" });
-      render(el, container);
+    createScope((_dispose, scope) => {
+      const el = branch(scope, null, null, which, (s: Scope | null) => dyn(s, which, props));
+      render(el as JSXElement, container);
     });
     flush();
     expect(container.querySelector("div.x")?.textContent).toBe("hi");
@@ -201,7 +209,7 @@ describe("dynamic() factory", () => {
 describe("ref arrays", () => {
   test("ref={[a, b]} runs every ref with the element", () => {
     const seen: string[] = [];
-    const el = createElement("div", {
+    const el = element(null, "div", {
       ref: [
         (node: Element) => seen.push(`a:${node.tagName}`),
         (node: Element) => seen.push(`b:${node.tagName}`),

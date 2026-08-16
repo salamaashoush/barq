@@ -4,21 +4,10 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { createElement } from "./dom.ts";
+import { element } from "./dom.ts";
 import { signal, effect, computed, createScope, batch, onCleanup, flush } from "./signals.ts";
-import {
-  Show,
-  For,
-  Switch,
-  Match,
-  Portal,
-  ErrorBoundary,
-  Await,
-  Dynamic,
-  splitProps,
-  mergeProps,
-  children,
-} from "./components.ts";
+import { Await, Dynamic, ErrorBoundary, For, Match, Portal, Show, Switch } from "./components.ts";
+import { mergeProps, splitProps } from "./props.ts";
 import type { Scope } from "./scope.ts";
 import { resource } from "./async.ts";
 
@@ -46,7 +35,7 @@ describe("For component item updates", () => {
     let renderCount = 0;
     const renderedNames: string[] = [];
 
-    const element = For(null, {
+    const node = For(null, {
       each: items,
       children: (_s: unknown, item: { id: number; name: string }, _index: () => number) => {
         renderCount++;
@@ -59,7 +48,7 @@ describe("For component item updates", () => {
       },
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toBe("AliceBob");
     expect(renderCount).toBe(2);
 
@@ -78,7 +67,7 @@ describe("For component item updates", () => {
   test("For should handle items with same key but different values", () => {
     const items = signal([{ id: 1, value: "a" }]);
 
-    const element = For(null, {
+    const node = For(null, {
       each: items,
       children: (_s: unknown, item) => {
         const span = document.createElement("span");
@@ -87,7 +76,7 @@ describe("For component item updates", () => {
       },
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toBe("a");
 
     // Same key, different value
@@ -107,7 +96,7 @@ describe("LIS algorithm performance", () => {
     const initialItems = Array.from({ length: size }, (_, i) => ({ id: i, value: `item-${i}` }));
     const items = signal(initialItems);
 
-    const element = For(null, {
+    const node = For(null, {
       each: items,
       children: (_s: unknown, item) => {
         const div = document.createElement("div");
@@ -116,7 +105,7 @@ describe("LIS algorithm performance", () => {
       },
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
 
     // Reverse the list - this should use LIS for minimal moves
     const start = performance.now();
@@ -138,7 +127,7 @@ describe("LIS algorithm performance", () => {
     const size = 500;
     const items = signal(Array.from({ length: size }, (_, i) => ({ id: i })));
 
-    const element = For(null, {
+    const node = For(null, {
       each: items,
       children: (_s: unknown, item) => {
         const div = document.createElement("div");
@@ -147,7 +136,7 @@ describe("LIS algorithm performance", () => {
       },
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
 
     // Shuffle
     const shuffled = items().toSorted(() => Math.random() - 0.5);
@@ -168,7 +157,7 @@ describe("For keyed={false} reactivity", () => {
     const items = signal(["a", "b", "c"]);
     const observedValues: string[] = [];
 
-    const element = For(null, {
+    const node = For(null, {
       each: items,
       keyed: false,
       children: (_s: Scope | null, itemAccessor: () => string, idx: number) => {
@@ -183,7 +172,7 @@ describe("For keyed={false} reactivity", () => {
       },
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toBe("abc");
     expect(observedValues).toEqual(["0:a", "1:b", "2:c"]);
 
@@ -198,7 +187,7 @@ describe("For keyed={false} reactivity", () => {
     const items = signal([1, 2, 3, 4, 5]);
     let effectRuns = 0;
 
-    const element = For(null, {
+    const node = For(null, {
       each: items,
       keyed: false,
       children: (_s: Scope | null, itemAccessor: () => number, _idx: number) => {
@@ -211,7 +200,7 @@ describe("For keyed={false} reactivity", () => {
       },
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(effectRuns).toBe(5); // Initial render
 
     // Update only one value
@@ -238,13 +227,13 @@ describe("Suspense component", () => {
       },
     );
 
-    const element = Await(null, {
+    const node = Await(null, {
       resource: r,
-      loading: createElement("div", null, "Loading..."),
-      children: (_s, data) => createElement("div", null, data),
+      loading: element(null, "div", { children: "Loading..." }),
+      children: (_s, data) => element(null, "div", { children: data }),
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
 
     // Should show loading initially
     await new Promise((r) => setTimeout(r, 10));
@@ -266,12 +255,13 @@ describe("ErrorBoundary", () => {
       throw new Error("Test error");
     };
 
-    const element = ErrorBoundary(null, {
-      fallback: (_s, error, _reset) => createElement("div", null, `Error: ${error.message}`),
+    const node = ErrorBoundary(null, {
+      fallback: (_s, error, _reset) =>
+        element(null, "div", { children: `Error: ${error.message}` }),
       children: ThrowingComponent,
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
 
     // Should show error fallback
     expect(container.textContent).toContain("Error: Test error");
@@ -283,18 +273,18 @@ describe("ErrorBoundary", () => {
 
     const MaybeThrow = () => {
       if (throwSignal()) throw new Error("Intentional error");
-      return createElement("div", null, "Success");
+      return element(null, "div", { children: "Success" });
     };
 
-    const element = ErrorBoundary(null, {
+    const node = ErrorBoundary(null, {
       fallback: (_s, error, reset) => {
         resetFn = reset;
-        return createElement("div", null, `Error: ${error.message}`);
+        return element(null, "div", { children: `Error: ${error.message}` });
       },
       children: MaybeThrow,
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toContain("Error");
 
     // Fix the error and reset
@@ -318,12 +308,12 @@ describe("Portal component", () => {
     document.body.appendChild(target);
 
     try {
-      const element = Portal(null, {
+      const node = Portal(null, {
         target: "#portal-target",
-        children: createElement("span", null, "Portal content"),
+        children: element(null, "span", { children: "Portal content" }),
       });
 
-      container.appendChild(element as Node);
+      container.appendChild(node as Node);
 
       await new Promise((r) => setTimeout(r, 10));
 
@@ -345,17 +335,17 @@ describe("Portal component", () => {
       createScope((dispose, scope) => {
         disposeScope = dispose;
 
-        const element = Portal(scope, {
+        const node = Portal(scope, {
           target: "#portal-cleanup-target",
           children: () => {
             onCleanup(() => {
               disposed = true;
             });
-            return createElement("span", null, "Content");
+            return element(null, "span", { children: "Content" });
           },
         });
 
-        container.appendChild(element as Node);
+        container.appendChild(node as Node);
       });
 
       await new Promise((r) => setTimeout(r, 10));
@@ -383,7 +373,7 @@ describe("Reactive styles", () => {
     const height = signal(100);
     let styleUpdates = 0;
 
-    const element = createElement("div", {
+    const node = element(null, "div", {
       style: {
         width: () => {
           styleUpdates++;
@@ -396,7 +386,7 @@ describe("Reactive styles", () => {
       },
     }) as HTMLDivElement;
 
-    container.appendChild(element);
+    container.appendChild(node);
     expect(styleUpdates).toBe(2); // Initial
 
     // Batch update both
@@ -406,8 +396,8 @@ describe("Reactive styles", () => {
     });
 
     // Should update both but efficiently
-    expect((element as HTMLElement).style.width).toBe("200px");
-    expect((element as HTMLElement).style.height).toBe("200px");
+    expect((node as HTMLElement).style.width).toBe("200px");
+    expect((node as HTMLElement).style.height).toBe("200px");
   });
 });
 
@@ -420,18 +410,18 @@ describe("Show keyed rendering", () => {
     const counter = signal(0);
     let effectRuns = 0;
 
-    const element = Show(null, {
+    const node = Show(null, {
       when: show,
       children: () => {
         effect(() => {
           counter();
           effectRuns++;
         });
-        return createElement("div", null, "Content");
+        return element(null, "div", { children: "Content" });
       },
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(effectRuns).toBe(1);
 
     // Update counter - effect should run
@@ -573,24 +563,24 @@ describe("Switch/Match edge cases", () => {
   test("Switch handles dynamic match order", () => {
     const value = signal<"a" | "b" | "c">("a");
 
-    const element = Switch(null, {
+    const node = Switch(null, {
       children: [
         Match(null, {
           when: () => value() === "a",
-          children: () => createElement("span", null, "A"),
+          children: () => element(null, "span", { children: "A" }),
         }),
         Match(null, {
           when: () => value() === "b",
-          children: () => createElement("span", null, "B"),
+          children: () => element(null, "span", { children: "B" }),
         }),
         Match(null, {
           when: () => value() === "c",
-          children: () => createElement("span", null, "C"),
+          children: () => element(null, "span", { children: "C" }),
         }),
       ],
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toBe("A");
 
     value.set("b");
@@ -609,17 +599,17 @@ describe("Switch/Match edge cases", () => {
   test("Switch fallback when no match", () => {
     const value = signal<string | null>(null);
 
-    const element = Switch(null, {
-      fallback: createElement("span", null, "No match"),
+    const node = Switch(null, {
+      fallback: element(null, "span", { children: "No match" }),
       children: [
         Match(null, {
           when: () => value() === "a",
-          children: () => createElement("span", null, "A"),
+          children: () => element(null, "span", { children: "A" }),
         }),
       ],
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toBe("No match");
 
     value.set("a");
@@ -640,18 +630,12 @@ describe("Event handler lifecycle", () => {
     const show = signal(true);
     let clickCount = 0;
 
-    const element = Show(null, {
+    const node = Show(null, {
       when: show,
-      children: createElement(
-        "button",
-        {
-          onClick: () => clickCount++,
-        },
-        "Click me",
-      ),
+      children: element(null, "button", { onClick: () => clickCount++, children: "Click me" }),
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
 
     const button = container.querySelector("button");
     button?.click();
@@ -681,7 +665,7 @@ describe("Deep nested reactivity", () => {
     // Dropping the scope on the way down (`() => Show(null, …)`) leaves the
     // inner region owned by nobody, and the only thing that used to hide that
     // was the marker pair M4 deletes.
-    const element = Show(null, {
+    const node = Show(null, {
       when: level1,
       children: (outer: Scope | null) =>
         Show(outer, {
@@ -689,12 +673,12 @@ describe("Deep nested reactivity", () => {
           children: (inner: Scope | null) =>
             For(inner, {
               each: items,
-              children: (_s: unknown, item) => createElement("span", null, String(item)),
+              children: (_s: unknown, item) => element(null, "span", { children: String(item) }),
             }),
         }),
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toBe("123");
 
     level2.set(false);
@@ -863,13 +847,13 @@ describe("Dynamic component", () => {
   test("renders intrinsic elements dynamically", () => {
     const tag = signal<"div" | "span">("div");
 
-    const element = Dynamic(null, {
+    const node = Dynamic(null, {
       component: () => tag(),
       class: "test",
       children: "Hello",
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
 
     let el = container.querySelector(".test");
     expect(el?.tagName).toBe("DIV");
@@ -884,19 +868,19 @@ describe("Dynamic component", () => {
 
   test("renders function components dynamically", () => {
     const ComponentA = (_s: unknown, props: { text: string }) =>
-      createElement("div", { class: "a" }, props.text);
+      element(null, "div", { class: "a", children: props.text });
     const ComponentB = (_s: unknown, props: { text: string }) =>
-      createElement("span", { class: "b" }, props.text);
+      element(null, "span", { class: "b", children: props.text });
 
     // signal(fn) creates a writable derived signal; wrap to store a function value
     const current = signal<typeof ComponentA>(() => ComponentA);
 
-    const element = Dynamic(null, {
+    const node = Dynamic(null, {
       component: () => current(),
       text: "Hello",
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
 
     expect(container.querySelector(".a")?.textContent).toBe("Hello");
     expect(container.querySelector(".b")).toBeNull();
@@ -911,12 +895,12 @@ describe("Dynamic component", () => {
   test("handles null component gracefully", () => {
     const comp = signal<"div" | null>("div");
 
-    const element = Dynamic(null, {
+    const node = Dynamic(null, {
       component: () => comp() as "div",
       children: "Content",
     });
 
-    container.appendChild(element as Node);
+    container.appendChild(node as Node);
     expect(container.textContent).toContain("Content");
 
     comp.set(null);
@@ -991,36 +975,12 @@ describe("mergeProps", () => {
   });
 });
 
-describe("children helper", () => {
-  test("resolves children to nodes", () => {
-    const childFn = children(() => createElement("span", null, "Hello"));
-    const nodes = childFn();
-
-    expect(nodes.length).toBe(1);
-    expect(nodes[0].textContent).toBe("Hello");
-  });
-
-  test("handles reactive children", () => {
-    const text = signal("Hello");
-    const childFn = children(() => createElement("span", null, text()));
-
-    let nodes = childFn();
-    expect(nodes[0].textContent).toBe("Hello");
-
-    text.set("World");
-    nodes = childFn();
-    expect(nodes[0].textContent).toBe("World");
-  });
-
-  test("handles array children", () => {
-    const childFn = children(() => [
-      createElement("span", null, "A"),
-      createElement("span", null, "B"),
-    ]);
-    const nodes = childFn();
-
-    expect(nodes.length).toBe(2);
-    expect(nodes[0].textContent).toBe("A");
-    expect(nodes[1].textContent).toBe("B");
-  });
-});
+// `describe("children helper")` was deleted at M9 with `components.ts` (§4.1).
+//
+// `children(fn)` resolved a slot to a Node[] and memoised it — an artefact of
+// the EAGER-children convention, where a child arrived as a built subtree and
+// something had to flatten it. Under C6 a child is a Block, `insert` owns the
+// position it lands in, and `childToNodes` is internal to that. What the three
+// tests claimed — a slot resolves to nodes, re-resolves when its signal moves,
+// and flattens an array — is what `components.test.ts`'s `childToNodes` block
+// asserts directly and what every `insert` test in `dom.test.ts` drives.

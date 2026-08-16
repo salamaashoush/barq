@@ -1,6 +1,8 @@
-import { useRef } from "@barqjs/core"
 
-export const box = useRef<HTMLDivElement>()
+// M9 deleted the `useRef()` factory (§4.1): a ref is a writable binding (B3)
+// or a callback, and the `{current}` box the ref channel writes is one object
+// literal. The SHAPE is what this fixture is about, and it is unchanged.
+export const box: { current: HTMLDivElement | null } = { current: null }
 
 export default function RefBinding() {
   return (
@@ -13,7 +15,7 @@ export default function RefBinding() {
   )
 }
 
-// Reads the object ref back out: without this the useRef path never reaches the DOM.
+// Reads the object ref back out: without this the object-ref path never reaches the DOM.
 export const steps = [() => box.current?.setAttribute("data-ref-resolved", box.current.className)]
 export const optimality = {
   target: 1,

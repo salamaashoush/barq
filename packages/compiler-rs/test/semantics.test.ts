@@ -309,7 +309,9 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
       if (row.status !== "VIOLATED" && row.status !== "PLANNED") {
         malformed.push(`${registryKey(row.fixture, row.claim)}: status ${row.status}`)
       }
-      if (!/^M[0-9]$/.test(row.greenAt)) {
+      // `M[0-9]+`, not `M[0-9]`: the single-digit form rejected every M10 row,
+      // which is the next milestone. Found by writing one.
+      if (!/^M[0-9]+$/.test(row.greenAt)) {
         malformed.push(`${registryKey(row.fixture, row.claim)}: greenAt ${row.greenAt}`)
       }
       if (row.reason.trim().length < 40) {

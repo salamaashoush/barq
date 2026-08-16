@@ -21,7 +21,6 @@ export {
   createContext,
   getContext,
   useContext,
-  setContext,
   hasContext,
   flush,
   getOwner,
@@ -31,14 +30,10 @@ export {
   latest,
   refresh,
   settle,
-  setAsyncSession,
   // Boundary context keys (used by Loading/Errored components)
-  LOADING_BOUNDARY,
-  ERROR_BOUNDARY,
   // Dev diagnostics
   DEV,
   // Error classes
-  NoOwnerError,
   ContextNotFoundError,
   NotReadyError,
   ScopeMissingError,
@@ -51,23 +46,13 @@ export {
   createReaction,
   createTrackedEffect,
   getNextChildId,
-  getObserver,
   isDisposed,
-  isEqual,
   peekNextChildId,
   scopeAllocations,
   effectAllocations,
   resetChildIds,
-  unclaimedSeeds,
   resolve,
-  enableExternalSource,
-  resetExternalSource,
   markInMotion,
-  setSnapshotCapture,
-  markSnapshotScope,
-  releaseSnapshotScope,
-  clearSnapshots,
-  SUPPORTS_PROXY,
 } from "./signals.ts";
 export type { ExternalSource, ExternalSourceConfig, ExternalSourceFactory } from "./signals.ts";
 
@@ -135,44 +120,21 @@ export type {
 } from "./config.ts";
 
 // Store - fine-grained nested reactivity
-export {
-  store,
-  produce,
-  reconcile,
-  unwrap,
-  snapshot,
-  createProjection,
-  deep,
-  isWrappable,
-  storePath,
-  $PROXY,
-  $TARGET,
-  $TRACK,
-} from "./store.ts";
+export { store, produce, reconcile, unwrap, snapshot, createProjection, deep } from "./store.ts";
 export type { Part, StorePathRange } from "./store.ts";
 
 // Actions & optimistic updates
 export { action, affects, commit, createOptimistic, createOptimisticStore } from "./actions.ts";
 
 // Server-side rendering
-export {
-  renderToString,
-  renderToStringAsync,
-  renderPage,
-  generateHydrationScript,
-  getRenderData,
-  clearRenderData,
-} from "./server.ts";
+export { renderToString } from "./server.ts";
 
 // Core hooks
 export {
   createErrorBoundary,
   createLoadingBoundary,
   createRevealOrder,
-  enforceLoadingBoundary,
   flatten,
-  hasEscapedError,
-  resetErrorHalt,
 } from "./boundaries.ts";
 export type { RevealDisplay, RevealOrder } from "./boundaries.ts";
 
@@ -191,7 +153,6 @@ export {
   child,
   sib,
   hole,
-  HydrationMismatch,
   type HydrationReport,
   type Mismatch,
   type MismatchKind,
@@ -199,12 +160,10 @@ export {
 
 // DOM
 export {
-  createElement,
   dyn,
   element,
   render,
   hydrate,
-  useRef,
   template,
   insert,
   setProp,
@@ -232,7 +191,6 @@ export {
   delegateEvents,
   clearDelegatedEvents,
   classToString,
-  styleToString,
   type Channel,
   // The SSR string backend's brand. It is read on the CLIENT too: a module that
   // fell back to this backend renders a string-compiled component's markup
@@ -258,7 +216,11 @@ export { writeLive, coerceLive, holdsLive, captureCaret, restoreCaret } from "./
 export { branch, each, boundary, portal, reveal, COUNT, STATIC_KEY, NO_SCOPE } from "./flow.ts";
 export type { BoundaryKind } from "./flow.ts";
 
-// Components
+// The flow components — the adapters `passes::flow` falls back to when it
+// cannot read a construct's props, which today is exactly a SPREAD. See
+// `components.ts` for the corpus measurement and for what unblocks deleting
+// them; `ssr.ts` carries the same twelve on the string side, for the same
+// reason, and the two are one deletion.
 export {
   Fragment,
   Show,
@@ -274,39 +236,29 @@ export {
   Await,
   Portal,
   Dynamic,
-  dynamic,
-  children,
-  // DOM marker utilities
-  createMarkerPair,
-  insertNodes,
-  clearRange,
-  childToNodes,
 } from "./components.ts";
-export type { MatchProps } from "./components.ts";
+export type {
+  ShowProps,
+  ForProps,
+  MatchProps,
+  RepeatProps,
+  SwitchProps,
+  LoadingProps,
+  RevealProps,
+  ErroredProps,
+  ErrorBoundaryProps,
+  AwaitProps,
+  PortalProps,
+  DynamicComponent,
+} from "./components.ts";
 
-// JSX
+// JSX — the TYPES stay whole; `jsx`/`jsxs`/`jsxDEV` are gone (§4.1). Bun's JSX
+// transform cannot produce scope-taking Blocks, so an un-compiled authoring
+// path could not have the same semantics and there is no point shipping one.
 export type { JSX } from "./jsx-runtime.ts";
-export { jsx, jsxs, Fragment as JSXFragment } from "./jsx-runtime.ts";
 
 // Type utilities
-export {
-  isString,
-  isNumber,
-  isBoolean,
-  isFunction,
-  isObject,
-  isArray,
-  isNullish,
-  isNode,
-  isElement,
-  isHTMLElement,
-  toString,
-  asHTMLElement,
-  asElement,
-  asNode,
-  getProperty,
-  setProperty,
-} from "./type-utils.ts";
+export { isArray, toString, setProperty } from "./type-utils.ts";
 
 // Helper types for components (following SolidJS/React patterns)
 export type {
@@ -330,6 +282,3 @@ export type {
 // for; every instrumentation site behind it is one branch when it is off.
 export { beginOwnershipTrace, endOwnershipTrace, ownershipIdOf } from "./trace.ts";
 export type { OwnershipEvent, OwnershipEventKind, ScopeKind } from "./trace.ts";
-
-// Version
-export const VERSION = "0.1.0";

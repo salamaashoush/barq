@@ -589,9 +589,17 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
 /**
  * The fixture's own optimality claim. Loading the module evaluates it, which
  * only ever creates module-scope signals — the component is not called.
+ *
+ * The COMPILED module, not the source. Loading a fixture un-compiled makes bun
+ * lower its JSX with its own transform, which needs `jsx`/`jsxs` to resolve on
+ * `@barqjs/core/jsx-runtime` — and M9 deleted them (§4.1), because bun's
+ * transform cannot produce scope-taking Blocks and an authoring path that
+ * cannot have the same semantics is worse than none. The declarations are
+ * module-scope constants and survive the compile untouched, so reading them off
+ * the compiled module is the same answer with no un-compiled path involved.
  */
 export async function fixtureOptimality(name: string): Promise<OptimalityExpectation | undefined> {
-  const mod = await loadModule(fixtureSource(name), `declaration-${name}`)
+  const mod = await loadModule(compileFixture(name), `declaration-${name}`)
   return mod.optimality
 }
 

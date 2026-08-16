@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { JSXElement } from "./dom.ts";
 import type { Cell, Scope } from "./scope.ts";
-import { createElement, render } from "./dom.ts";
+import { element, render } from "./dom.ts";
 import { For, Match, Repeat, Show, Switch } from "./components.ts";
 import { cell, props } from "./props.ts";
 import { renderToString } from "./server.ts";
@@ -35,11 +35,14 @@ import {
  * failure, and one that under-escapes is an XSS hole.
  */
 function oracleText(value: unknown): string {
-  return renderToString(() => createElement("p", null, value as never)).replace(/^<p>|<\/p>$/g, "");
+  return renderToString(() => element(null, "p", { children: value as never })).replace(
+    /^<p>|<\/p>$/g,
+    "",
+  );
 }
 
 function oracleAttr(value: unknown): string {
-  const markup = renderToString(() => createElement("p", { title: value }));
+  const markup = renderToString(() => element(null, "p", { title: value }));
   const match = /^<p title="([\s\S]*)"><\/p>$/.exec(markup);
   return match ? match[1] : markup;
 }
@@ -191,7 +194,7 @@ describe("escaping", () => {
   });
 
   test("a real DOM node from a fallback module reaches the wire as markup", () => {
-    const node = createElement("b", { class: "c" }, "hi") as Node;
+    const node = element(null, "b", { class: "c", children: "hi" }) as Node;
     expect(esc(node)).toBe('<b class="c">hi</b>');
     // …and the node is not consumed: it is cloned, not moved.
     expect((node as Element).textContent).toBe("hi");
@@ -265,7 +268,7 @@ describe("attributes", () => {
       ["option", "selected", true],
       ["option", "value", "hi"],
     ] as Array<[string, string, unknown]>) {
-      const oracle = renderToString(() => createElement(tag, { [name]: value }) as never);
+      const oracle = renderToString(() => element(null, tag, { [name]: value }) as never);
       expect(oracle, `${tag}.${name}`).toBe(
         `<${tag}${attr(name, value, tag)}></${tag}>`.replace("></input>", ">"),
       );
@@ -349,7 +352,7 @@ describe("attributes", () => {
         undefined,
         0,
       ] as unknown[]) {
-        const oracle = renderToString(() => createElement("div", { [name]: value }) as never);
+        const oracle = renderToString(() => element(null, "div", { [name]: value }) as never);
         const string = `<div${attr(name, value, "div")}></div>`;
         if (oracle !== string) {
           wrong.push(`${name}=${JSON.stringify(value)}: DOM ${oracle} vs string ${string}`);
@@ -360,13 +363,13 @@ describe("attributes", () => {
 
     // Both answers are really reached, so neither clause is vacuous — and the
     // empty one is the one that regressed.
-    expect(renderToString(() => createElement("div", { class: "" }) as never)).toBe(
+    expect(renderToString(() => element(null, "div", { class: "" }) as never)).toBe(
       '<div class=""></div>',
     );
-    expect(renderToString(() => createElement("div", { class: null }) as never)).toBe(
+    expect(renderToString(() => element(null, "div", { class: null }) as never)).toBe(
       "<div></div>",
     );
-    expect(renderToString(() => createElement("div", { classList: {} }) as never)).toBe(
+    expect(renderToString(() => element(null, "div", { classList: {} }) as never)).toBe(
       "<div></div>",
     );
   });
@@ -545,7 +548,7 @@ describe("the six string-inlinable flow components", () => {
           For<{ n: string }, JSXElement>(null, {
             each: () => rows,
             children: (_s: Scope | null, item: { n: string }, index: Cell<number>) =>
-              createElement("li", null, `${index()}: ${item.n}`),
+              element(null, "li", { children: `${index()}: ${item.n}` }),
           }),
       ],
       [
@@ -560,16 +563,20 @@ describe("the six string-inlinable flow components", () => {
             each: () => rows,
             keyed: false,
             children: (_s: Scope | null, item: Cell<{ n: string }>, index: number) =>
-              createElement("li", null, `${index}: ${item().n}`),
+              element(null, "li", { children: `${index}: ${item().n}` }),
           }),
       ],
       [
         ssrRepeat(null, { count: 2, children: (_s, i) => html(`<li>${i}</li>`) }).toString(),
-        () => Repeat(null, { count: 2, children: (_s, i) => createElement("li", null, String(i)) }),
+        () =>
+          Repeat(null, {
+            count: 2,
+            children: (_s, i) => element(null, "li", { children: String(i) }),
+          }),
       ],
       [
         ssrShow(null, { when: true, children: html("<i>on</i>") }).toString(),
-        () => Show(null, { when: () => true, children: createElement("i", null, "on") }),
+        () => Show(null, { when: () => true, children: element(null, "i", { children: "on" }) }),
       ],
       [
         ssrSwitch(null, {
@@ -578,7 +585,10 @@ describe("the six string-inlinable flow components", () => {
         () =>
           Switch(null, {
             children: [
-              Match(null, { when: () => true, children: () => createElement("i", null, "m") }),
+              Match(null, {
+                when: () => true,
+                children: () => element(null, "i", { children: "m" }),
+              }),
             ],
           }),
       ],
@@ -602,14 +612,17 @@ describe("the two SSR strategies compose", () => {
     // The direction the brand exists for: a fallback module builds real nodes
     // and one of its children is markup a string-compiled module produced.
     const container = document.createElement("div");
-    render(createElement("section", null, html('<b class="x">bold</b>') as never), container);
+    render(
+      element(null, "section", { children: html('<b class="x">bold</b>') as never }),
+      container,
+    );
     expect(container.innerHTML).toBe('<section><b class="x">bold</b></section>');
     expect(container.querySelector("b")?.className).toBe("x");
   });
 
   test("and it is not inserted as escaped text", () => {
     const container = document.createElement("div");
-    render(createElement("section", null, "<b>bold</b>") as never, container);
+    render(element(null, "section", { children: "<b>bold</b>" }) as never, container);
     expect(container.innerHTML).toBe("<section>&lt;b&gt;bold&lt;/b&gt;</section>");
   });
 });
@@ -638,7 +651,7 @@ describe("the brand cannot be forged", () => {
     // Before the brand was a registered symbol this rendered a live
     // `<img onerror>`; an unbranded object is now what it always was —
     // a value with no node meaning, stringified into a text node.
-    const markup = renderToString(() => createElement("div", null, forged as never));
+    const markup = renderToString(() => element(null, "div", { children: forged as never }));
     expect(markup).not.toContain("<img");
     expect(markup).toBe("<div>[object Object]</div>");
   });

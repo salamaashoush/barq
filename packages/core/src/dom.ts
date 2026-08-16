@@ -429,70 +429,6 @@ export type JSXElement = Node | ArrayElement | (string & {}) | number | boolean 
 export type { JSXElement as Element };
 
 /**
- * Create a DOM element with reactive props
- * Overloaded to support both intrinsic elements (strings) and components with proper type inference
- */
-export function createElement(tag: string, props: Props | null, ...children: Child[]): JSXElement;
-export function createElement<P>(
-  tag: Component<P>,
-  props: P | null,
-  ...children: Child[]
-): JSXElement;
-export function createElement(
-  tag: string | Component<unknown>,
-  props: Record<string, unknown> | null,
-  ...children: Child[]
-): JSXElement {
-  // C1: there is ONE calling convention, so this path invokes a component the
-  // same way compiled code does. It stays only as the element builder core's
-  // own DOM tests are written against; the compiler has not emitted it since
-  // M1 and §4.1 retires it at M9.
-  if (typeof tag === "function") {
-    const finalProps: Record<string, unknown> = { ...props };
-    if (children.length > 0) {
-      finalProps.children = children.length === 1 ? children[0] : children;
-    }
-    return (tag as unknown as (s: unknown, p: Record<string, unknown>) => JSXElement)(
-      getOwner(),
-      finalProps,
-    );
-  }
-
-  // Everything below BUILDS. This is the element path the compiler cannot put
-  // on a template — a spread, a namespace P1 refuses, a `<template>` whose
-  // children live in a `content` fragment — and a subtree built here has no
-  // counterpart on the wire for a walk to claim, because the string backend
-  // serialised the whole thing inline as one hole's value. Claiming inside it
-  // would take the NEXT position's node and call it this one's, which is
-  // precisely the "handlers attached to the wrong elements" failure. The
-  // enclosing `insert` reconciles the server's nodes away instead: that hole
-  // loses its node identity, and nothing else does.
-  return withoutClaim(() => {
-    if (tag === "fragment" || tag === "") {
-      const fragment = document.createDocumentFragment();
-      appendChildren(getOwner(), fragment, children);
-      return fragment;
-    }
-
-    const isSvg = tag in SVG_TAGS;
-    const element = isSvg ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
-
-    if (props) {
-      const owner = getOwner();
-      for (const key in props) {
-        if (key !== "children") {
-          setProp(owner, element, key, props[key]);
-        }
-      }
-    }
-
-    appendChildren(getOwner(), element, children);
-
-    return element;
-  });
-}
-
-/**
  * `<Dynamic component={c}>` — §3.13 item 4, which is the whole reason this
  * exists: a component or a tag whose value is not a module-local `const` cannot
  * be resolved at compile time, so the choice is made here and nowhere else.
@@ -977,7 +913,7 @@ const reportedEdits = new WeakMap<object, Signal<number>>();
 function editsOf(value: object): Signal<number> {
   let counter = reportedEdits.get(value);
   if (counter === undefined) {
-    counter = signal(0, { equals: false, noSnapshot: true, ownedWrite: true });
+    counter = signal(0, { equals: false, ownedWrite: true });
     reportedEdits.set(value, counter);
   }
   return counter;
@@ -1307,54 +1243,6 @@ function setStylePropDirect(style: CSSStyleDeclaration, cssProperty: string, val
 }
 
 /**
- * Append children to a parent node
- */
-function appendChildren(s: Scope | null, parent: Node, children: Child[]): void {
-  for (let i = 0; i < children.length; i++) {
-    appendChild(s, parent, children[i]);
-  }
-}
-
-/**
- * Append a single child (handles all child types)
- */
-function appendChild(s: Scope | null, parent: Node, child: Child): void {
-  // Skip null, undefined, boolean
-  if (child === null || child === undefined || child === true || child === false) {
-    return;
-  }
-
-  // Node - append directly
-  if (child instanceof Node) {
-    parent.appendChild(child);
-    return;
-  }
-
-  if (isSsrHtml(child as unknown)) {
-    for (const node of ssrHtmlNodes(child as unknown as { readonly t: string }))
-      parent.appendChild(node);
-    return;
-  }
-
-  // Reactive child: the hole tracks its own nodes, appended at the end
-  if (typeof child === "function") {
-    insert(s, parent, child as () => Child, null);
-    return;
-  }
-
-  // Array - flatten and append each
-  if (Array.isArray(child)) {
-    for (let i = 0; i < child.length; i++) {
-      appendChild(s, parent, child[i]);
-    }
-    return;
-  }
-
-  // Primitive - create text node
-  parent.appendChild(document.createTextNode(String(child)));
-}
-
-/**
  * Reading a fragment's children is destructive: whoever reads them inserts
  * them, which MOVES them out, so a second read of the same eager
  * `children`/`fallback` finds an empty fragment and the content is gone for
@@ -1364,7 +1252,7 @@ function appendChild(s: Scope | null, parent: Node, child: Child): void {
  */
 const drainedFragments = new WeakMap<DocumentFragment, Node[]>();
 
-export function drainFragment(fragment: DocumentFragment): Node[] {
+function drainFragment(fragment: DocumentFragment): Node[] {
   if (fragment.firstChild === null) {
     const remembered = drainedFragments.get(fragment);
     return remembered === undefined ? [] : remembered.slice();
@@ -1637,6 +1525,28 @@ export function insert(
 ): void {
   const given = requireScope(s, "insert");
   let anchor = marker ?? null;
+
+  // An ARRAY holding a function is a live hole, and it is ONE hole.
+  //
+  // Without this the array went straight to `childToNodes`, which calls each
+  // function exactly once and returns nodes — so `<table>{a()}-{b()}</table>`
+  // rendered `A-B` and never moved again. It is only reachable where the
+  // compiler cannot split the children into holes of their own: `element`'s
+  // props, `dyn`'s, a component's `children` (§3.13). Everywhere else P1 emits
+  // one `_$insert` per hole and never gets here.
+  //
+  // ONE effect for the whole array, not one per element, which is what Solid's
+  // `insertExpression` does with `normalizeIncomingArray`'s `dynamic` flag and
+  // is the right shape for two reasons. It is cheaper — N reads share one
+  // effect and one range instead of N of each. And it is the only one that
+  // keeps ORDER: N anchorless holes in one parent each append at the end, so
+  // the moment one of them re-renders from empty it lands after its siblings
+  // instead of between them. That is the interleaving `Anchor::Marker` is
+  // mandatory for (DESIGN P5 rule 2), and a single range has no way to hit it.
+  if (isArray(value) && (value as Child[]).some(holdsAFunction)) {
+    insert(s, parent, () => value as Child, marker, mode);
+    return;
+  }
 
   // H1 plus the single-hole blocker, in one line.
   //
@@ -1968,6 +1878,17 @@ export function spread(
  * handed. `s` is threaded from `insert`'s parameter, never read back off the
  * ambient owner.
  */
+/**
+ * Whether a child value holds a function anywhere inside it — the test that
+ * decides whether an array is a LIVE hole. Recursive, because a nested array is
+ * flattened into the same range and a function two levels down is as live as
+ * one at the top.
+ */
+function holdsAFunction(child: Child): boolean {
+  if (typeof child === "function") return true;
+  return isArray(child) && (child as Child[]).some(holdsAFunction);
+}
+
 export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[] {
   if (child === null || child === undefined || child === true || child === false) {
     return [];
@@ -1991,12 +1912,17 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
   // The scope handed to the Block is the AMBIENT one, not the `s` this call was
   // given, and that is an O4.5 violation with a reason: `render` opens its root,
   // makes it current and then reaches here with the caller's `s`, so passing `s`
-  // puts the whole mount under whatever was current at the `render` call site —
-  // which is the O5 defect the registry still carries. Handing `s` down here is
-  // half of that row's fix and belongs in the same change as the other half,
-  // the lowering of `render`'s argument to a Block. Passing `s` on its own
-  // fails five of this fixture's claims, which is how this comment was found to
-  // be describing code that did the opposite.
+  // puts the whole mount under whatever was current at the `render` call site.
+  // Handing `s` down here is half of that row's fix and belongs in the same
+  // change as the other half, the lowering of `render`'s argument to a Block.
+  // Passing `s` on its own fails five of this fixture's claims, which is how
+  // this comment was found to be describing code that did the opposite.
+  //
+  // M9 narrowed what that costs. An ARRAY holding a function no longer reaches
+  // here un-owned: `insert` routes it through its own effect first, so the
+  // ambient owner at this line IS a descendant of the scope `insert` was given.
+  // What is left is a bare function reaching `childToNodes` directly, which is
+  // the `render` path above and nothing else.
   if (typeof child === "function") {
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("children", s);
     const built = (child as (s: unknown) => Child)(getOwner());
@@ -2408,13 +2334,6 @@ function mount(
   return () => {
     disposeScope(root);
   };
-}
-
-/**
- * Create a ref object for element references
- */
-export function useRef<T extends Element = HTMLElement>(): { current: T | null } {
-  return { current: null };
 }
 
 /**
