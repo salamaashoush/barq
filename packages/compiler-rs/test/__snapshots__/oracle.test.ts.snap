@@ -1912,3 +1912,19 @@ attrs 2: 0/0 span: class"
 exports[`marker channel control-flow-spread-precedence: anchor layout 1`] = `"<ul><li>0: alpha</li><li>1: beta</li></ul>"`;
 
 exports[`marker channel control-flow-spread-repeat: anchor layout 1`] = `"<div><span>10</span><span>11</span></div>"`;
+
+exports[`rendered DOM golden control-flow-spread-show: rendered DOM 1`] = `
+"initial: <div class="spread-show"><b class="shown">alpha</b></div>
+step 0: <div class="spread-show"><b class="shown">beta</b></div>
+step 1: <div class="spread-show">none</div>
+step 2: <div class="spread-show"><b class="shown">gamma</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class
+attrs 3: 0/0 b: class"
+`;
+
+exports[`marker channel control-flow-spread-show: anchor layout 1`] = `"<div><b>alpha</b></div>"`;

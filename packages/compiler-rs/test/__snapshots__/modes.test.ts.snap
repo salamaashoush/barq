@@ -49,6 +49,7 @@ corpus/control-flow-show-static-body  189b21ccab85 b269fbe01520 ad7c46501a2e 740
 corpus/control-flow-show-static-key  bf4688ed5360 a0884d149be6 4bfe1c14eb1a 275dda9b00cb e5d71a4ffdb8 c13085c5b9d7 df597421e2a4
 corpus/control-flow-spread-precedence  b1e0a2181768 ab09e6fe9168 d2ae0c47c3d2 239379780a93 e8ca40c97681 c3f3b68131fc 31fc82b1771c
 corpus/control-flow-spread-repeat  0cae14069c02 c48f115aa043 21702edcc169 5db4c37a4480 bad8dabf89c6 3ca4504f841f 0936e0b56720
+corpus/control-flow-spread-show  d4ac45fea486 a8ab81883c01 cc4043f3c3cb fb7e087f0edb 8cf996dd12d3 8f397e5804ce 1ba8ac71c4f8
 corpus/control-flow-switch-match  3ad1d486500b 867929b199f3 f41278e5edcc 9daeae1d49d9 9f44aed309be db8f350043b5 ddb8a41d9dfa
 corpus/control-flow-switch-static-key  03e23dc9e6dc cff886544cb0 63a36428ced4 a63c8df77975 41403230008f 78a36a6968ef c90eaa8bc759
 corpus/custom-elements  d250fff4ff46 e85f9e5c91b8 63d8076340b0 63d8076340b0 d52039221eda 42487c7e07b5 63d8076340b0

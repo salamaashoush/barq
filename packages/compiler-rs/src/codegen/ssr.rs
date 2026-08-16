@@ -1532,22 +1532,28 @@ mod tests {
     /// the thirteen has one: the component call survives and is rewritten to the
     /// adapter over the same four primitives.
     ///
-    /// The example is `Show` behind a spread, and it used to be `For`. M10
-    /// lowers a spread source for the nine constructs whose props are arguments
-    /// the primitive already takes; `Show` is not among them, because `keyed`
-    /// picks between two different EMITTED PROGRAMS — the value as the key with
-    /// one body, or truthiness as the key with a two-row table — and a carrier
-    /// nothing can read cannot pick between them. `admits_spread` states the
-    /// whole list and the reason for each exclusion.
+    /// The example is `Dynamic` behind a spread, and it used to be `For`, then
+    /// `Show`. Both of those lower now: M10 admits a spread for ten of the
+    /// thirteen. What is left is stated in `admits_spread` and none of it is
+    /// about spreads — `Dynamic`'s unrecognised props are the RESOLVED
+    /// component's rather than the construct's, and `Switch` needs literal
+    /// `<Match>` arms it can read (`admits_arms`), which takes `Match` with it.
     #[test]
     fn a_refused_construct_becomes_its_string_component() {
-        let code = ssr("import { Show } from \"@barqjs/core\";\n\
-             export const V = () => <div><Show {...p}>{(r) => <li>{r.n}</li>}</Show></div>;\n")
+        let code = ssr("import { Dynamic } from \"@barqjs/core\";\n\
+             export const V = () => <div><Dynamic {...p}/></div>;\n")
         .code;
-        assert!(code.contains("_$ssrShow("), "{code}");
+        assert!(code.contains("_$ssrDynamic("), "{code}");
         // Markup, so no escaper wraps it.
         assert!(!code.contains("_$esc(_$ssr"), "{code}");
         assert!(code.contains("from \"@barqjs/core/server\""), "{code}");
+
+        // A `Switch` whose arms are not literal `<Match>` elements, which is the
+        // refusal no spread work can close.
+        let scanned = ssr("import { Switch } from \"@barqjs/core\";\n\
+             export const V = () => <div><Switch>{arms.map((a) => a)}</Switch></div>;\n")
+        .code;
+        assert!(scanned.contains("_$ssrSwitch("), "{scanned}");
 
         // And the other direction, which is the half that moved: a spread the
         // pass DOES admit reaches the primitive here exactly as it does on the
@@ -1557,6 +1563,12 @@ mod tests {
         .code;
         assert!(lowered.contains("_$each("), "{lowered}");
         assert!(!lowered.contains("_$ssrFor("), "{lowered}");
+
+        let shown = ssr("import { Show } from \"@barqjs/core\";\n\
+             export const V = () => <div><Show {...p}>{(r) => <li>{r.n}</li>}</Show></div>;\n")
+        .code;
+        assert!(shown.contains("_$branch("), "{shown}");
+        assert!(!shown.contains("_$ssrShow("), "{shown}");
 
         // `Match` is an identity function, not a fragment: it returns its own
         // props record and `Switch` reads it, so it is never interpolated as
@@ -1776,30 +1788,30 @@ mod tests {
     /// comes off only when EVERY reference was rewritten.
     #[test]
     fn an_import_whose_every_reference_was_rewritten_comes_off() {
-        let gone = ssr("import { Show } from \"@barqjs/core\";\n\
-             export const V = () => <div><Show {...p}>y</Show></div>;\n")
+        let gone = ssr("import { Dynamic } from \"@barqjs/core\";\n\
+             export const V = () => <div><Dynamic {...p}/></div>;\n")
         .code;
-        assert!(gone.contains("_$ssrShow("), "{gone}");
+        assert!(gone.contains("_$ssrDynamic("), "{gone}");
         // The SPECIFIER is what has to come off, not the whole import: since
         // `codegen::brand`, every component declaration carries `_$block`,
         // which is a shared-ABI helper and lives in the module source, so the
         // import itself survives with one specifier that is not `Show`.
-        assert!(!core_import(&gone).contains("Show"), "{gone}");
+        assert!(!core_import(&gone).contains("Dynamic"), "{gone}");
 
         // One reader left is one reader too many.
-        let kept = ssr("import { Show } from \"@barqjs/core\";\n\
-             const alias = Show;\n\
-             export const V = () => <div><Show {...p}>y</Show></div>;\n")
+        let kept = ssr("import { Dynamic } from \"@barqjs/core\";\n\
+             const alias = Dynamic;\n\
+             export const V = () => <div><Dynamic {...p}/></div>;\n")
         .code;
-        assert!(core_import(&kept).contains("Show"), "{kept}");
+        assert!(core_import(&kept).contains("Dynamic"), "{kept}");
 
         // And a binding the backend never rewrote is untouched.
-        let other = ssr("import { Show, signal } from \"@barqjs/core\";\n\
+        let other = ssr("import { Dynamic, signal } from \"@barqjs/core\";\n\
              export const n = signal(0);\n\
-             export const V = () => <div><Show {...p}>y</Show></div>;\n")
+             export const V = () => <div><Dynamic {...p}/></div>;\n")
         .code;
         assert!(core_import(&other).contains("signal"), "{other}");
-        assert!(!core_import(&other).contains("Show"), "{other}");
+        assert!(!core_import(&other).contains("Dynamic"), "{other}");
     }
 
     /// Every fixture in the corpus compiles through the string backend, and

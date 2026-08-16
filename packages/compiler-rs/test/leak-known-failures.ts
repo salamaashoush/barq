@@ -113,11 +113,16 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * adapter's `insert` hole entered one for the hole and then the primitive
  * entered its own. Nothing leaked, which is what the four assertions say and
  * what this pin is here to stop being mistaken for coverage.
+ *
+ * Then again for `control-flow-spread-show`: 153 sessions, 479 scope entries,
+ * 279 effects. One effect for six more scope entries is the runtime keying
+ * arm's shape — one `branch` whose single body enters a scope per activation,
+ * where a two-row table would have entered the same ones.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
-  sessions: 152,
-  scopesEntered: 473,
-  effectsCreated: 278,
+  sessions: 153,
+  scopesEntered: 479,
+  effectsCreated: 279,
   listeners: 30,
 })
 

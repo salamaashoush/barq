@@ -180,13 +180,19 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * adapter's was a child of whatever the enclosing `insert` hole had entered.
  * `determined` moving in step with `clones` is what says the channel still
  * resolves every one of them.
+ *
+ * `control-flow-spread-show` is the third: 139 fixtures, 394 scopes, 262
+ * effects, 308 clones, 306 determined. It matters most to this channel of the
+ * three, because the runtime keying arm calls its content Block from inside the
+ * region's own body — so a clone this channel could not attribute is exactly
+ * the defect that arm risks.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 138,
-  scopes: 388,
-  effects: 261,
-  clones: 304,
-  determined: 302,
+  fixtures: 139,
+  scopes: 394,
+  effects: 262,
+  clones: 308,
+  determined: 306,
   unattributed: 1,
   cascades: 1,
 })

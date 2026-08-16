@@ -124,6 +124,7 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "control-flow-index", clones: 7, unattributed: 0, opaque: [] },
   { fixture: "control-flow-nested", clones: 12, unattributed: 0, opaque: [] },
   { fixture: "control-flow-repeat", clones: 5, unattributed: 0, opaque: [] },
+  { fixture: "control-flow-spread-show", clones: 4, unattributed: 0, opaque: [] },
   { fixture: "control-flow-spread-precedence", clones: 4, unattributed: 0, opaque: [] },
   { fixture: "control-flow-spread-repeat", clones: 5, unattributed: 0, opaque: [] },
   { fixture: "control-flow-reveal", clones: 3, unattributed: 0, opaque: [] },

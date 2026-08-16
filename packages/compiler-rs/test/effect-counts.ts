@@ -113,6 +113,7 @@ const ROWS: readonly EffectCount[] = [
   { fixture: "control-flow-show-fragment-body", created: 1, runs: 4, busiest: 4, frames: 4 },
   { fixture: "control-flow-show-static-body", created: 1, runs: 4, busiest: 4, frames: 4 },
   { fixture: "control-flow-show-static-key", created: 1, runs: 2, busiest: 2, frames: 2 },
+  { fixture: "control-flow-spread-show", created: 1, runs: 4, busiest: 4, frames: 4 },
   { fixture: "control-flow-spread-precedence", created: 4, runs: 10, busiest: 4, frames: 4 },
   { fixture: "control-flow-spread-repeat", created: 1, runs: 3, busiest: 3, frames: 3 },
   { fixture: "control-flow-switch-match", created: 1, runs: 4, busiest: 4, frames: 4 },

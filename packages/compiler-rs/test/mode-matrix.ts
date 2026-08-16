@@ -118,10 +118,14 @@ export const MATRIX_EXCEPTIONS = {
 // off a slot the primitive does not read. Both render on both backends, which
 // is the point: the lowering is in `region_call`, so the two halves reach the
 // same primitive with the same arguments.
+// Then +1 fixture, +7 cells, +1 renderableOnBoth for `control-flow-spread-show`,
+// which is `Show`'s runtime keying arm — both programs emitted, the test at run
+// time — and it has to read identically through all seven modes, because the
+// test is in the emitted expression rather than in either backend.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 184,
+  fixtures: 185,
   modes: 7,
-  cells: 1288,
-  renderableOnBoth: 157,
+  cells: 1295,
+  renderableOnBoth: 158,
   renderableOnNeither: 27,
 })

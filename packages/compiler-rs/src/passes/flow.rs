@@ -135,30 +135,50 @@ pub(super) fn admits_reveal<'a>(shaper: &Shaper<'a, '_>, element: &JSXElement<'a
 /// Whether a SPREAD may carry this construct's props.
 ///
 /// M9 recorded the refusal as one gap; it is two, and only one of them is about
-/// the spread. `admits_value`'s `keyed` rule is the real one — for `Show` and
-/// `Match` the two answers are different EMITTED PROGRAMS (one body against a
-/// two-row table), so a carrier nothing can read cannot pick between them. For
-/// `For` it never was: `keyOf` is already a runtime argument `each` dispatches
-/// on, `mapArray` decides what a row's `item` and `index` are, and the row
-/// Block's own parameter list is `(scope, item, index)` in all three modes —
-/// the three fixtures differ at the `keyOf` argument and nowhere else.
+/// the spread.
 ///
-/// `Switch` is refused for a reason that has nothing to do with spreads at all
-/// (`admits_arms`), and `Dynamic`'s unrecognised props ARE the resolved
-/// component's, so its source list is not the construct's to read off.
+/// For `For` there was never a gap at all: `keyOf` is already a runtime argument
+/// `each` dispatches on, `mapArray` decides what a row's `item` and `index` are,
+/// and the row Block's own parameter list is `(scope, item, index)` in all three
+/// modes — the three keying fixtures differ at the `keyOf` argument and nowhere
+/// else. The same is true of every pass-through construct here.
+///
+/// For `Show` the gap was real — `admits_value` refuses an unreadable `keyed`
+/// because "the two answers are different programs", one body against a two-row
+/// table — and [`show`] closes it by emitting both and testing at run time. The
+/// keyed body already dispatches, so the table is an optimisation of it rather
+/// than a second mechanism.
+///
+/// What is left, and neither is about spreads:
+///
+/// - **`Switch`** refuses on [`admits_arms`]: its arms must be literal `<Match>`
+///   elements resolved by `SymbolId`, and `<Switch>{arms.map(…)}</Switch>` is a
+///   runtime scan. `Match` goes with it, because it is only ever read by a
+///   `Switch` that folded it. Those two adapters are not deletable by any amount
+///   of spread work.
+/// - **`Dynamic`**'s unrecognised props ARE the resolved component's, so its
+///   source list is not the construct's to read off.
 fn admits_spread(flow: Flow) -> bool {
-    matches!(
-        flow,
+    #[expect(clippy::match_same_arms, reason = "one arm per construct, each with its own reason")]
+    match flow {
         Flow::For
-            | Flow::Repeat
-            | Flow::Loading
-            | Flow::Suspense
-            | Flow::Errored
-            | Flow::ErrorBoundary
-            | Flow::Portal
-            | Flow::Await
-            | Flow::Reveal
-    )
+        | Flow::Repeat
+        | Flow::Loading
+        | Flow::Suspense
+        | Flow::Errored
+        | Flow::ErrorBoundary
+        | Flow::Portal
+        | Flow::Await
+        | Flow::Reveal => true,
+        // Both answers emitted, the test at run time. See [`show`].
+        Flow::Show => true,
+        // Read only by a `Switch` that folded it, and `Switch` refuses.
+        Flow::Match => false,
+        // `admits_arms` — a fact about the construct, not about spreads.
+        Flow::Switch => false,
+        // The source list is the resolved component's props, not the region's.
+        Flow::Dynamic => false,
+    }
 }
 
 fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<'a>) -> bool {
@@ -360,6 +380,36 @@ fn slot_of<'a>(shaper: &mut Shaper<'a, '_>, attr: Attr<'a>) -> Expression<'a> {
     if attr.proven { body_slot(shaper, vec![attr.value], attr.span) } else { attr.value }
 }
 
+/// A renderable slot that the LOWERING calls rather than the primitive, and
+/// therefore has to know the provenance of. Only `Show` needs it.
+struct Slot<'a> {
+    value: Expression<'a>,
+    /// The slot came off a source list, so the call is an optional one: the
+    /// spread may simply not carry this prop, and `Show`'s `fallback` is
+    /// optional in the first place.
+    maybe: bool,
+}
+
+impl<'a> Slot<'a> {
+    fn of(shaper: &mut Shaper<'a, '_>, attr: Attr<'a>) -> Self {
+        let maybe = !attr.proven;
+        Self { value: slot_of(shaper, attr), maybe }
+    }
+
+    fn invoke(
+        self,
+        shaper: &Shaper<'a, '_>,
+        arguments: Vec<Expression<'a>>,
+        span: Span,
+    ) -> Expression<'a> {
+        if self.maybe {
+            optional_call(shaper, self.value, arguments, span)
+        } else {
+            call(shaper, self.value, arguments, span)
+        }
+    }
+}
+
 /// The same rule for a slot the primitive takes as a Cell and CALLS itself:
 /// `each`'s source. A spread hands its own object's values through untouched,
 /// so what arrives may be a Cell or may be a raw value — which is exactly the
@@ -540,6 +590,18 @@ fn blank<'a>(shaper: &Shaper<'a, '_>, span: Span) -> Region<'a> {
     }
 }
 
+/// Which of `Show`'s three programs is being emitted.
+enum Keying<'a> {
+    /// The value IS the key, and one body serves every key.
+    Value,
+    /// `keyed={false}`: the key is a truthiness INDEX into a two-row table.
+    Index,
+    /// The carrier came through a spread and nothing can read it, so both
+    /// answers are emitted and a test picks between them at run time. The
+    /// expression is `_$readSlot(…, "Show.keyed") !== false`, duplicable.
+    Runtime(Expression<'a>),
+}
+
 /// `Show` — `branch` on the value itself, or on its truthiness.
 ///
 /// The keyed default re-renders when the VALUE moves, so the value IS the key
@@ -547,6 +609,28 @@ fn blank<'a>(shaper: &Shaper<'a, '_>, span: Span) -> Region<'a> {
 /// by the value rather than by an index. `keyed={false}` moves only on a
 /// truthiness flip, which IS an index, so it takes a two-row body table whose
 /// falsy row is the fallback.
+///
+/// ## The third arm, and why it is not a table
+///
+/// A `keyed` the compiler cannot read is what `admits_value` refuses in as many
+/// words — "the two answers are different programs" — and off a SPREAD there is
+/// nothing to read at all. What makes it emittable anyway is that the two
+/// programs differ in exactly two expressions, and `branch`'s ABI already
+/// covers both: the KEY, and what the content Block is handed.
+///
+/// The keyed body is the general one. It reads the value at activation and
+/// dispatches to content or fallback itself, which is the two-row table's whole
+/// job — so the table is an optimisation of the keyed shape rather than a second
+/// mechanism, and the runtime arm keeps the general one and varies its slot
+/// argument. `branch` is told a single Block, which it uses for every key, so
+/// the two key SPACES — a value, or 0/1 — never have to agree.
+///
+/// The test is re-read rather than bound once. The adapter read `keyed` once at
+/// construction; this reads it in the key closure and again at activation, on
+/// the same ground `keyed_body`'s second read of `when` already stands on: a
+/// Cell is explicitly not memoised (C3.2). The difference is observable only for
+/// a `keyed` that CHANGES over the construct's life, where re-reading re-keys
+/// the region and the adapter silently ignored it.
 fn show<'a>(
     shaper: &mut Shaper<'a, '_>,
     bag: &mut Bag<'a>,
@@ -554,31 +638,69 @@ fn show<'a>(
     span: Span,
 ) -> Region<'a> {
     let when = bag.take(shaper, "when").expect("checked by `admits`");
-    let keyed = bag.take(shaper, "keyed").is_none_or(
-        |attr| !matches!(&attr.value, Expression::BooleanLiteral(literal) if !literal.value),
-    );
+    let keying = match bag.take(shaper, "keyed") {
+        None => Keying::Value,
+        Some(attr) if attr.proven => match &attr.value {
+            Expression::BooleanLiteral(literal) if !literal.value => Keying::Index,
+            _ => Keying::Value,
+        },
+        Some(attr) => {
+            let at = attr.span;
+            let read = read_slot(shaper, attr.value, "Show.keyed", at);
+            let no = Expression::new_boolean_literal(at, false, &shaper.ast);
+            Keying::Runtime(Expression::new_binary_expression(
+                at,
+                read,
+                BinaryOperator::StrictInequality,
+                no,
+                &shaper.ast,
+            ))
+        }
+    };
     let inert = inert_bodies(shaper, bag, &kids);
     let konst = shaper.lift.rx(&when.value).konst.is_some();
-    let fallback = bag.take(shaper, "fallback").map(|attr| slot_of(shaper, attr));
-    let content = body_slot_of(shaper, kids, span);
-    let cell = shaper.cell_value(when.value, when.span);
+    // `Show` is the one construct that CALLS its Block slots itself rather than
+    // handing them to the primitive, so it is the one that has to know which of
+    // them it can prove are there. A slot off the source list is a member read
+    // and may be nothing at all.
+    let fallback = bag.take(shaper, "fallback").map(|attr| Slot::of(shaper, attr));
+    let content = match body_slot_of(shaper, kids, span) {
+        Some(body) => Some(Slot { value: body, maybe: false }),
+        None => bag.take(shaper, "children").map(|attr| Slot::of(shaper, attr)),
+    };
+    let cell = cell_of(shaper, when);
     let read = read_of(shaper, dup(shaper, &cell), span);
     let statik = is_static(shaper, &read, konst);
 
     let mut region = blank(shaper, span);
-    if keyed {
+    match keying {
         // `value || false` collapses every falsy value onto ONE key, which is
         // what keeps a fallback in place across `0`, `""` and `null`.
-        region.key = Some(arrow(shaper, or_false(shaper, read, span), span));
-        region.body = keyed_body(shaper, &cell, content, fallback, span);
-    } else {
-        let one = number(shaper, 1.0, span);
-        let zero = number(shaper, 0.0, span);
-        region.key = Some(arrow(shaper, ternary(shaper, read, one, zero, span), span));
-        // Non-keyed children are handed the narrowed accessor, which is the
-        // `when` Cell itself, so their reads stay live inside the body.
-        let content = content.map(|body| pass_value(shaper, body, cell, span));
-        region.body = table(shaper, vec![fallback, content], span);
+        Keying::Value => {
+            region.key = Some(arrow(shaper, or_false(shaper, read, span), span));
+            region.body = keyed_body(shaper, &cell, None, content, fallback, span);
+        }
+        Keying::Index => {
+            let one = number(shaper, 1.0, span);
+            let zero = number(shaper, 0.0, span);
+            region.key = Some(arrow(shaper, ternary(shaper, read, one, zero, span), span));
+            // Non-keyed children are handed the narrowed accessor, which is the
+            // `when` Cell itself, so their reads stay live inside the body.
+            let content = content.map(|slot| pass_value(shaper, slot.value, cell, span));
+            region.body = table(shaper, vec![fallback.map(|slot| slot.value), content], span);
+        }
+        Keying::Runtime(test) => {
+            let keyed_key = or_false(shaper, read, span);
+            let again = read_of(shaper, dup(shaper, &cell), span);
+            let one = number(shaper, 1.0, span);
+            let zero = number(shaper, 0.0, span);
+            let index_key = ternary(shaper, again, one, zero, span);
+            let picked = ternary(shaper, dup(shaper, &test), keyed_key, index_key, span);
+            region.key = Some(arrow(shaper, picked, span));
+            region.body = keyed_body(shaper, &cell, Some(test), content, fallback, span);
+            // Nothing off a spread is proven, so neither flag is.
+            return region;
+        }
     }
     region.flags = flags(statik, inert);
     region
@@ -974,11 +1096,17 @@ fn table<'a>(
 /// never per key evaluation, and it is what lets a keyed body tell a truthy
 /// value from a falsy one without the slot argument `branch` deliberately does
 /// not have.
+///
+/// `narrowed` is the third arm's other half. When it is `Some(test)` the slot
+/// argument becomes `test ? value : cell` — the value under keyed, the narrowed
+/// accessor under `keyed={false}` — which is the one thing the two-row table
+/// does that this shape otherwise would not.
 fn keyed_body<'a>(
     shaper: &mut Shaper<'a, '_>,
     cell: &Expression<'a>,
-    content: Option<Expression<'a>>,
-    fallback: Option<Expression<'a>>,
+    narrowed: Option<Expression<'a>>,
+    content: Option<Slot<'a>>,
+    fallback: Option<Slot<'a>>,
     span: Span,
 ) -> Expression<'a> {
     let temp = shaper.uids.temp();
@@ -986,17 +1114,24 @@ fn keyed_body<'a>(
     let declaration = binding(shaper, temp, read, span);
 
     let shown = match content {
-        Some(body) => {
+        Some(slot) => {
             let scope = shaper.ident(shaper.scope, span);
             let taken = shaper.ident(temp, span);
-            call(shaper, body, vec![scope, taken], span)
+            let taken = match narrowed {
+                Some(test) => {
+                    let accessor = dup(shaper, cell);
+                    ternary(shaper, test, taken, accessor, span)
+                }
+                None => taken,
+            };
+            slot.invoke(shaper, vec![scope, taken], span)
         }
         None => Expression::new_null_literal(span, &shaper.ast),
     };
     let hidden = match fallback {
-        Some(body) => {
+        Some(slot) => {
             let scope = shaper.ident(shaper.scope, span);
-            call(shaper, body, vec![scope], span)
+            slot.invoke(shaper, vec![scope], span)
         }
         None => Expression::new_null_literal(span, &shaper.ast),
     };
@@ -1250,6 +1385,23 @@ fn call<'a>(
     let arguments =
         ArenaVec::from_iter_in(arguments.into_iter().map(Argument::from), &shaper.allocator);
     Expression::new_call_expression(span, callee, None, arguments, false, &shaper.ast)
+}
+
+/// `slot?.(…)` — a Block slot the compiler cannot prove is there.
+///
+/// Only `Show`'s keyed body needs it. Every other construct hands its optional
+/// slots to the PRIMITIVE, which tests them itself (`each`'s `fallback === null
+/// || fallback === undefined`); this one dispatches inline, so the absent case
+/// is a call on `undefined` unless it is written here.
+fn optional_call<'a>(
+    shaper: &Shaper<'a, '_>,
+    callee: Expression<'a>,
+    arguments: Vec<Expression<'a>>,
+    span: Span,
+) -> Expression<'a> {
+    let arguments =
+        ArenaVec::from_iter_in(arguments.into_iter().map(Argument::from), &shaper.allocator);
+    Expression::new_call_expression(span, callee, None, arguments, true, &shaper.ast)
 }
 
 fn arrow<'a>(shaper: &Shaper<'a, '_>, body: Expression<'a>, span: Span) -> Expression<'a> {
