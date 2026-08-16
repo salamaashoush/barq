@@ -13,11 +13,9 @@ import {
   type PropsWithChildren,
   type Ref,
   type RefCallback,
-  type RefObject,
   Show,
   type VoidProps,
-  useRef,
-  useState,
+  signal,
 } from "@barqjs/core";
 import {
   clsx,
@@ -132,14 +130,14 @@ export function JsxTypesDemo() {
 // ============================================================================
 
 function ReactiveAttributesDemo() {
-  const [text, setText] = useState("Hello");
-  const [disabled, setDisabled] = useState(false);
-  const [hidden, setHidden] = useState(false);
-  const [className, setClassName] = useState("default");
-  const [logs, setLogs] = useState<string[]>([]);
+  const text = signal("Hello");
+  const disabled = signal(false);
+  const hidden = signal(false);
+  const className = signal("default");
+  const logs = signal<string[]>([]);
 
   const addLog = (msg: string) => {
-    setLogs((prev) => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    logs.update((prev) => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
   };
 
   return (
@@ -150,7 +148,7 @@ function ReactiveAttributesDemo() {
           value={text()}
           onInput={(e: Event) => {
             const value = (e.target as HTMLInputElement).value;
-            setText(value);
+            text.set(value);
             addLog(`Input changed to "${value}"`);
           }}
           class={inputStyle}
@@ -169,7 +167,7 @@ function ReactiveAttributesDemo() {
           {() => (disabled() ? "Disabled" : "Click Me")}
         </button>
 
-        <Button onClick={() => setDisabled((d) => !d)}>Toggle Disabled</Button>
+        <Button onClick={() => disabled.update((d) => !d)}>Toggle Disabled</Button>
       </div>
 
       <div class={rowStyle}>
@@ -178,7 +176,7 @@ function ReactiveAttributesDemo() {
           This box can be hidden
         </div>
 
-        <Button onClick={() => setHidden((h) => !h)}>
+        <Button onClick={() => hidden.update((h) => !h)}>
           Toggle Hidden ({() => (hidden() ? "show" : "hide")})
         </Button>
       </div>
@@ -196,13 +194,13 @@ function ReactiveAttributesDemo() {
         </div>
 
         <div class={buttonRowStyle}>
-          <Button variant="secondary" onClick={() => setClassName("default")}>
+          <Button variant="secondary" onClick={() => className.set("default")}>
             Default
           </Button>
-          <Button variant="secondary" onClick={() => setClassName("active")}>
+          <Button variant="secondary" onClick={() => className.set("active")}>
             Active
           </Button>
-          <Button variant="danger" onClick={() => setClassName("error")}>
+          <Button variant="danger" onClick={() => className.set("error")}>
             Error
           </Button>
         </div>
@@ -220,11 +218,11 @@ function ReactiveAttributesDemo() {
 // ============================================================================
 
 function EventHandlersDemo() {
-  const [logs, setLogs] = useState<string[]>([]);
-  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const logs = signal<string[]>([]);
+  const coords = signal({ x: 0, y: 0 });
 
   const addLog = (msg: string) => {
-    setLogs((prev) => [...prev.slice(-4), msg]);
+    logs.update((prev) => [...prev.slice(-4), msg]);
   };
 
   return (
@@ -277,7 +275,7 @@ function EventHandlersDemo() {
       {/* Mouse position tracking */}
       <div
         onMouseMove={(e) => {
-          setCoords({ x: e.clientX, y: e.clientY });
+          coords.set({ x: e.clientX, y: e.clientY });
         }}
         class={trackingAreaStyle}
       >
@@ -300,35 +298,37 @@ function EventHandlersDemo() {
 // ============================================================================
 
 function RefTypesDemo() {
-  const [logs, setLogs] = useState<string[]>([]);
+  const logs = signal<string[]>([]);
 
-  // Test different ref patterns
-  const refObject = useRef<HTMLInputElement>();
+  // Test different ref patterns. The `{current}` box is gone with `useRef`:
+  // a ref is either a writable binding (B3, an assignment) or a callback.
   let refVariable: HTMLInputElement | null = null;
+  const refSignal = signal<HTMLInputElement | null>(null);
 
   const refCallback: RefCallback<HTMLInputElement> = (el) => {
-    setLogs((prev) => [...prev, "RefCallback invoked"]);
+    logs.update((prev) => [...prev, "RefCallback invoked"]);
   };
 
   const focusRef = () => {
-    if (refObject.current) {
-      refObject.current.focus();
-      setLogs((prev) => [...prev, "Focused via refObject"]);
+    const el = refSignal();
+    if (el) {
+      el.focus();
+      logs.update((prev) => [...prev, "Focused via signal ref"]);
     }
   };
 
   const focusVariable = () => {
     if (refVariable) {
       refVariable.focus();
-      setLogs((prev) => [...prev, "Focused via variable ref"]);
+      logs.update((prev) => [...prev, "Focused via variable ref"]);
     }
   };
 
   return (
     <DemoCard title="Ref Types">
       <div class={rowStyle}>
-        <label>RefObject:</label>
-        <input type="text" ref={refObject} class={inputStyle} placeholder="RefObject ref" />
+        <label>Signal ref:</label>
+        <input type="text" ref={setRefSignal} class={inputStyle} placeholder="Signal ref" />
         <Button onClick={focusRef}>Focus</Button>
       </div>
 
@@ -353,7 +353,7 @@ function RefTypesDemo() {
       {/* Ref via component prop */}
       <div class={rowStyle}>
         <label>Component prop:</label>
-        <RefInput inputRef={refObject} />
+        <RefInput inputRef={setRefSignal} />
       </div>
 
       <Log logs={logs()} />
@@ -370,7 +370,7 @@ function RefTypesDemo() {
 // ============================================================================
 
 function HelperTypesDemo() {
-  const [count, setCount] = useState(0);
+  const count = signal(0);
 
   return (
     <DemoCard title="Helper Types">
@@ -397,7 +397,7 @@ function HelperTypesDemo() {
 
       {/* Accessor and FunctionMaybe */}
       <div class={rowStyle}>
-        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
         <ReactiveDisplay value="Static string" count={count} />
       </div>
 
@@ -417,8 +417,8 @@ function HelperTypesDemo() {
 // ============================================================================
 
 function StyleAttributesDemo() {
-  const [size, setSize] = useState(100);
-  const [color, setColor] = useState("#3b82f6");
+  const size = signal(100);
+  const color = signal("#3b82f6");
 
   return (
     <DemoCard title="Style Attributes">
@@ -449,7 +449,7 @@ function StyleAttributesDemo() {
           min="50"
           max="200"
           value={size()}
-          onInput={(e: Event) => setSize(Number.parseInt((e.target as HTMLInputElement).value))}
+          onInput={(e: Event) => size.set(Number.parseInt((e.target as HTMLInputElement).value))}
         />
       </div>
 
@@ -458,7 +458,7 @@ function StyleAttributesDemo() {
         <input
           type="color"
           value={color()}
-          onInput={(e: Event) => setColor((e.target as HTMLInputElement).value)}
+          onInput={(e: Event) => color.set((e.target as HTMLInputElement).value)}
         />
       </div>
 
@@ -474,8 +474,8 @@ function StyleAttributesDemo() {
 // ============================================================================
 
 function AriaAndDataDemo() {
-  const [expanded, setExpanded] = useState(false);
-  const [progress, setProgress] = useState(50);
+  const expanded = signal(false);
+  const progress = signal(50);
 
   return (
     <DemoCard title="ARIA & Data Attributes">
@@ -485,7 +485,7 @@ function AriaAndDataDemo() {
           aria-expanded={expanded}
           aria-controls="expandable-content"
           aria-label="Toggle content visibility"
-          onClick={() => setExpanded((e) => !e)}
+          onClick={() => expanded.update((e) => !e)}
           class={buttonStyle}
         >
           {() => (expanded() ? "Collapse" : "Expand")} (aria-expanded)
@@ -520,7 +520,7 @@ function AriaAndDataDemo() {
           min="0"
           max="100"
           value={progress()}
-          onInput={(e: Event) => setProgress(Number.parseInt((e.target as HTMLInputElement).value))}
+          onInput={(e: Event) => progress.set(Number.parseInt((e.target as HTMLInputElement).value))}
         />
       </div>
 

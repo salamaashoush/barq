@@ -51,21 +51,6 @@ export const events = [
   },
 ]
 
-// `{n()}` is a bare read the compiler thunks (O4), and `data-same` is a member
-// read on the props object, which crosses the boundary as a getter.
-export const goesLive = ["count", "Chip data-same"]
-
-export const wins = [
-  {
-    kind: "event" as const,
-    index: 0,
-    compiled:
-      '<div class="wrap"><b class="count" data-clicked="2">2</b>' +
-      '<button class="chip" data-same="true" type="button">legacy</button></div>',
-    why: "the delegated tuple fired and the compiled count is live, where createElement read `n()` once at construction",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 5,

@@ -134,8 +134,8 @@ export interface SsrRender {
  * Render a loaded module to markup.
  *
  * A compiled SSR module returns a string and is used as it stands. Anything
- * else — the un-compiled oracle, and the SSR fallback DESIGN §5 keeps for the
- * eight flow components that cannot be inlined — goes through the runtime's own
+ * else — a compiled DOM module, and the SSR fallback DESIGN §5 keeps for the
+ * flow constructs that cannot be inlined — goes through the runtime's own
  * `renderToString`. Accepting both is the point: the fallback is a documented
  * strategy rather than a failure, and the markup it produces is held to exactly
  * the same comparison.
@@ -184,11 +184,15 @@ function isSsrHtml(value: unknown): boolean {
   )
 }
 
-export async function renderSsrOracle(name: string): Promise<SsrRender> {
-  return renderSsr(await loadModule(fixtureSource(name), `ssr-oracle-${name}`))
-}
-
-/** The compiled DOM module, serialised by the same runtime as the oracle. */
+/**
+ * The compiled DOM module, serialised by the runtime's own `renderToString`.
+ *
+ * This is the reference the string backend is held to. `CODESIGN.md` §6 retires
+ * the un-compiled `createElement` path as an oracle, and the replacement here is
+ * §6 L2's construction rather than a second implementation: one lowering, one
+ * IR, two `Backend` impls. A new `Op` is a Rust compile error in both, so the
+ * two sides cannot drift, and neither carries a decision the other does not.
+ */
 export async function renderSsrViaDom(name: string): Promise<SsrRender> {
   const code = compileSource(fixtureSource(name), `${name}.tsx`)
   return renderSsr(await loadModule(code, `ssr-dom-${name}`))
@@ -205,10 +209,6 @@ export async function renderSourceViaDom(source: string, tag: string): Promise<S
 /** An already-emitted module, rendered as it stands — for the corruption checks. */
 export async function renderCode(code: string, tag: string): Promise<SsrRender> {
   return renderSsr(await loadModule(code, tag))
-}
-
-export async function renderSourceViaOracle(source: string, tag: string): Promise<SsrRender> {
-  return renderSsr(await loadModule(source, `ssr-oracle-${tag}`))
 }
 
 export async function renderSourceViaSsr(source: string, tag: string): Promise<SsrRender> {

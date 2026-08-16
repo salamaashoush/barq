@@ -3,7 +3,7 @@
  * Tests: useQuery, useMutation, useInfiniteQuery, useQueryClient, useIsFetching, useIsMutating
  */
 
-import { For, Show, useState } from "@barqjs/core";
+import { For, Show, signal } from "@barqjs/core";
 import {
   useInfiniteQuery,
   useIsFetching,
@@ -100,7 +100,7 @@ function BasicQueryDemo() {
 
 // Query with dynamic params
 function QueryWithParamsDemo() {
-  const [userId, setUserId] = useState(1);
+  const userId = signal(1);
 
   const query = useQuery(() => ({
     queryKey: ["user", userId()],
@@ -114,13 +114,13 @@ function QueryWithParamsDemo() {
   return (
     <DemoCard title="useQuery - Dynamic Params">
       <div class={buttonRowStyle}>
-        <Button onClick={() => setUserId(1)} variant={userId() === 1 ? "primary" : "secondary"}>
+        <Button onClick={() => userId.set(1)} variant={userId() === 1 ? "primary" : "secondary"}>
           User 1
         </Button>
-        <Button onClick={() => setUserId(2)} variant={userId() === 2 ? "primary" : "secondary"}>
+        <Button onClick={() => userId.set(2)} variant={userId() === 2 ? "primary" : "secondary"}>
           User 2
         </Button>
-        <Button onClick={() => setUserId(3)} variant={userId() === 3 ? "primary" : "secondary"}>
+        <Button onClick={() => userId.set(3)} variant={userId() === 3 ? "primary" : "secondary"}>
           User 3
         </Button>
       </div>
@@ -146,10 +146,10 @@ function QueryWithParamsDemo() {
 // useMutation
 function MutationDemo() {
   const queryClient = useQueryClient();
-  const [logs, setLogs] = useState<string[]>([]);
+  const logs = signal<string[]>([]);
 
   const addLog = (msg: string) => {
-    setLogs((l) => [...l.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    logs.update((l) => [...l.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
   };
 
   const mutation = useMutation(() => ({

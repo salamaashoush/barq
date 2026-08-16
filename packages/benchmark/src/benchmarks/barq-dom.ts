@@ -9,15 +9,12 @@ import { benchmark, generateItems } from "../utils.ts";
 import {
   type Child,
   type Component,
-  For,
-  Fragment,
-  Show,
-  createElement as h,
   render,
-  useEffect,
-  useMemo,
-  useState,
+  effect,
+  computed,
+  signal,
 } from "@barqjs/core";
+import { For, Show, h } from "../h.ts";
 
 type Item = { id: number; name: string; value: number };
 
@@ -123,11 +120,11 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "reactive text (1000 updates)",
       () => {
         const container = document.createElement("div");
-        const [count, setCount] = useState(0);
+        const count = signal(0);
         const el = h("div", null, count);
         render(el, container);
         for (let i = 0; i < 1000; i++) {
-          setCount(i);
+          count.set(i);
         }
       },
       { iterations: 100 },
@@ -142,11 +139,11 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "reactive class (1000 updates)",
       () => {
         const container = document.createElement("div");
-        const [active, setActive] = useState(false);
+        const active = signal(false);
         const el = h("div", { class: () => (active() ? "active" : "inactive") });
         render(el, container);
         for (let i = 0; i < 1000; i++) {
-          setActive(i % 2 === 0);
+          active.set(i % 2 === 0);
         }
       },
       { iterations: 100 },
@@ -161,7 +158,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "reactive style (1000 updates)",
       () => {
         const container = document.createElement("div");
-        const [width, setWidth] = useState(0);
+        const width = signal(0);
         const el = h("div", {
           style: {
             width: () => `${width()}px`,
@@ -170,7 +167,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
         });
         render(el, container);
         for (let i = 0; i < 1000; i++) {
-          setWidth(i);
+          width.set(i);
         }
       },
       { iterations: 100 },
@@ -185,14 +182,11 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "Show toggle (100 times)",
       () => {
         const container = document.createElement("div");
-        const [visible, setVisible] = useState(true);
-        const el = h(Show, {
-          when: visible,
-          children: h("div", { class: "content" }, "Visible"),
-        });
+        const visible = signal(true);
+        const el = Show(visible, () => h("div", { class: "content" }, "Visible"));
         render(el, container);
         for (let i = 0; i < 100; i++) {
-          setVisible(i % 2 === 0);
+          visible.set(i % 2 === 0);
         }
       },
       { iterations: 200 },
@@ -207,15 +201,15 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "Show with fallback (100 times)",
       () => {
         const container = document.createElement("div");
-        const [visible, setVisible] = useState(true);
-        const el = h(Show, {
-          when: visible,
-          fallback: h("div", null, "Loading..."),
-          children: h("div", null, "Loaded!"),
-        });
+        const visible = signal(true);
+        const el = Show(
+          visible,
+          () => h("div", null, "Loaded!"),
+          () => h("div", null, "Loading..."),
+        );
         render(el, container);
         for (let i = 0; i < 100; i++) {
-          setVisible(i % 2 === 0);
+          visible.set(i % 2 === 0);
         }
       },
       { iterations: 200 },
@@ -231,12 +225,10 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "For render (100 items)",
       () => {
         const container = document.createElement("div");
-        const [items] = useState(items100);
-        const el = h(For<Item>, {
-          each: items,
-          children: (item: Item, index: () => number) =>
-            h("div", { "data-id": String(item.id) }, item.name),
-        });
+        const [items] = signal(items100);
+        const el = For(items, (_scope, item: () => Item) =>
+          h("div", { "data-id": String(item().id) }, item().name),
+        );
         render(el, container);
       },
       { iterations: 200 },
@@ -251,12 +243,10 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "For render (1000 items)",
       () => {
         const container = document.createElement("div");
-        const [items] = useState(items1000);
-        const el = h(For<Item>, {
-          each: items,
-          children: (item: Item, index: () => number) =>
-            h("div", { "data-id": String(item.id) }, item.name),
-        });
+        const [items] = signal(items1000);
+        const el = For(items, (_scope, item: () => Item) =>
+          h("div", { "data-id": String(item().id) }, item().name),
+        );
         render(el, container);
       },
       { iterations: 50 },
@@ -264,12 +254,14 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
   );
 
   // Component render
-  function Card(props: { title: string; children: Child }) {
+  // C1: a component takes its scope first and its props as Cells. The benchmark
+  // calls it the way compiled code calls it, because there is no other way.
+  function Card(_scope: unknown, props: { title: () => string; children: () => Child }): Node {
     return h(
       "div",
       { class: "card" },
-      h("h2", { class: "card-title" }, props.title),
-      h("div", { class: "card-body" }, props.children),
+      h("h2", { class: "card-title" }, props.title()),
+      h("div", { class: "card-body" }, props.children()),
     );
   }
 
@@ -282,7 +274,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
         const container = document.createElement("div");
         const cards = [];
         for (let i = 0; i < 100; i++) {
-          cards.push(h(Card, { title: `Card ${i}`, children: `Content ${i}` }));
+          cards.push(Card(null, { title: () => `Card ${i}`, children: () => `Content ${i}` }));
         }
         const el = h("div", null, ...cards);
         render(el, container);

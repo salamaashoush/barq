@@ -48,11 +48,20 @@ pub struct Context<'a> {
     pub parent: Option<&'a str>,
     pub open: Open,
     pub in_svg: bool,
+    /// Inside a `<math>` subtree the tokenizer is in foreign content too, and
+    /// the same rule applies: an HTML tag closes it, so only MathML tags may go
+    /// on with the template.
+    pub in_math: bool,
 }
 
 impl<'a> Context<'a> {
     pub fn inside(self, tag: &'a str, is_svg: bool) -> Self {
-        Self { parent: Some(tag), open: self.open.after(tag), in_svg: self.in_svg || is_svg }
+        Self {
+            parent: Some(tag),
+            open: self.open.after(tag),
+            in_svg: self.in_svg || is_svg,
+            in_math: self.in_math || tag == "math",
+        }
     }
 }
 
@@ -101,17 +110,22 @@ const CLOSES_P: [&str; 40] = [
     "ul",
 ];
 
-/// Never inserted where `createElement` would put it: the document structure
-/// tags (their attributes are merged into an existing element and the token is
-/// dropped), the namespace switch, `<template>`'s content fragment, and the two
-/// obsolete tags the parser rewrites into something else entirely.
-const NEVER: [&str; 9] =
-    ["body", "frame", "frameset", "head", "html", "isindex", "math", "plaintext", "template"];
+/// Never a node of its own in the tree the parser builds: the document
+/// structure tags (their attributes are merged into an existing element and the
+/// token is dropped), and the two obsolete tags the parser rewrites into
+/// something else entirely.
+///
+/// `math` and `template` used to be here. Both parse into a tree the compiler
+/// can clone — `<math>` switches the tokenizer into foreign content and its
+/// subtree lands in the MathML namespace, and `<template>`'s children land on
+/// `.content`, which `cloneNode` copies. They were refused because
+/// `createElement` could reproduce neither, and that reference is gone.
+const NEVER: [&str; 7] = ["body", "frame", "frameset", "head", "html", "isindex", "plaintext"];
 
-/// True when the browser would build a different tree than `createElement` +
-/// `appendChild` for `tag` at this position.
+/// True when the browser's tree builder produces something other than the
+/// element the JSX names, at this position.
 pub fn reshapes(tag: &str, at: Context<'_>) -> bool {
-    if at.in_svg {
+    if at.in_svg || at.in_math {
         // Foreign content inserts elements verbatim: no implied end tags, no
         // foster parenting, no active formatting elements.
         return false;
@@ -171,10 +185,30 @@ pub fn fosters_text(tag: &str) -> bool {
 }
 
 /// A raw-text element runs to the first `</tag`, and nothing inside it is
-/// escaped or decoded. So a `<` in the source can close it early and inject
-/// live markup into the template, and an `&` can decode into one.
-pub fn raw_text_hazard(text: &str) -> bool {
-    text.bytes().any(|byte| byte == b'<' || byte == b'&')
+/// escaped or decoded — so bytes that spell a close tag END the element and
+/// everything after them becomes live markup in the template.
+///
+/// Asked of the DECODED text, because decoding is what P1 does before it bakes:
+/// `&lt;/style&gt;` is harmless in the source and is `</style>` by the time it
+/// reaches the template string. Text that trips this does not refuse the
+/// element — it travels as a string through the same insert a hole would, where
+/// the string backend's `rawText` neutralises it and the DOM side writes a text
+/// node no parser ever reads.
+pub fn raw_text_hazard(text: &str, tag: &str) -> bool {
+    let mut rest = text;
+    while let Some(at) = rest.find('<') {
+        rest = &rest[at + 1..];
+        // `<!--` is the only way into script-data-escaped state, where a
+        // following `<script` makes `</script>` stop closing the element.
+        if tag == "script" && rest.starts_with("!--") {
+            return true;
+        }
+        let Some(after) = rest.strip_prefix('/') else { continue };
+        if after.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -201,9 +235,20 @@ mod tests {
 
     #[test]
     fn the_document_structure_tags_are_never_inlined() {
-        for tag in ["html", "head", "body", "frameset", "frame", "math", "template", "plaintext"] {
+        for tag in ["html", "head", "body", "frameset", "frame", "plaintext"] {
             assert!(root(tag), "{tag} at a template root");
             assert!(under(&["div"], tag), "{tag} inside a div");
+        }
+    }
+
+    /// Both parse into a tree a clone reproduces. `<math>` opens foreign
+    /// content and `<template>` fills `.content`, which `cloneNode` copies —
+    /// neither is a reshaping the tree builder performs.
+    #[test]
+    fn math_and_template_are_the_tree_the_author_wrote() {
+        for tag in ["math", "template"] {
+            assert!(!root(tag), "{tag} at a template root");
+            assert!(!under(&["div"], tag), "{tag} inside a div");
         }
     }
 
@@ -337,12 +382,19 @@ mod tests {
     }
 
     #[test]
-    fn raw_text_hazards_are_the_two_bytes_that_can_close_the_element() {
-        assert!(raw_text_hazard("a</style><img src=x onerror=alert(1)>"));
-        assert!(raw_text_hazard("a&lt;/style&gt;"));
-        assert!(raw_text_hazard("if (a < b) {}"));
-        assert!(!raw_text_hazard(".card { color: red }"));
-        assert!(!raw_text_hazard("var a = 1;"));
+    fn raw_text_hazards_are_the_sequences_that_close_the_element() {
+        assert!(raw_text_hazard("a</style><img src=x onerror=alert(1)>", "style"));
+        // The DECODED form of `a&lt;/style&gt;`, which is what P1 would bake.
+        assert!(raw_text_hazard("a</style>", "style"));
+        assert!(raw_text_hazard("</SCRIPT>", "script"));
+        assert!(raw_text_hazard("<!--<script>", "script"));
+        // Script data only. `<!--` is a legal CDO token in CSS.
+        assert!(!raw_text_hazard("<!-- a -->", "style"));
+        // A `<` that no letter follows stays raw text in every tokenizer state.
+        assert!(!raw_text_hazard("if (a < b) {}", "script"));
+        assert!(!raw_text_hazard("a </ b", "style"));
+        assert!(!raw_text_hazard(".card { color: red }", "style"));
+        assert!(!raw_text_hazard("var a = 1;", "script"));
     }
 
     #[test]

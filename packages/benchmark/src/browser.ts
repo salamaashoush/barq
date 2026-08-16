@@ -8,15 +8,13 @@ import { benchmark, generateItems } from "./utils.ts";
 
 // Barq imports
 import {
-  For,
-  Show,
   createScope,
-  createElement as h,
-  useEffect,
-  useMemo,
-  useState,
+  effect,
+  computed,
+  signal,
   render as barqRender,
 } from "@barqjs/core";
+import { For, Show, h } from "./h.ts";
 
 // SolidJS imports
 import {
@@ -52,7 +50,7 @@ const suites: BenchmarkSuite[] = [
         operation: "create signal",
         barq: () => {
           createScope(() => {
-            useState(0);
+            signal(0);
           });
         },
         solid: () => {
@@ -66,9 +64,9 @@ const suites: BenchmarkSuite[] = [
         iterations: 500,
         barq: () => {
           createScope((dispose) => {
-            const [count, setCount] = useState(0);
+            const count = signal(0);
             for (let i = 0; i < 1000; i++) {
-              setCount(i);
+              count.set(i);
             }
             dispose();
           });
@@ -77,7 +75,7 @@ const suites: BenchmarkSuite[] = [
           createRoot((dispose) => {
             const [count, setCount] = createSignal(0);
             for (let i = 0; i < 1000; i++) {
-              setCount(i);
+              count.set(i);
             }
             dispose();
           });
@@ -87,8 +85,8 @@ const suites: BenchmarkSuite[] = [
         operation: "create computed",
         barq: () => {
           createScope((dispose) => {
-            const [count] = useState(0);
-            useMemo(() => count() * 2);
+            const [count] = signal(0);
+            computed(() => count() * 2);
             dispose();
           });
         },
@@ -106,13 +104,13 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             let effectRuns = 0;
-            const [count, setCount] = useState(0);
-            useEffect(() => {
+            const count = signal(0);
+            effect(() => {
               const _ = count();
               effectRuns++;
             });
             for (let i = 0; i < 100; i++) {
-              setCount(i);
+              count.set(i);
             }
             dispose();
           });
@@ -126,7 +124,7 @@ const suites: BenchmarkSuite[] = [
               effectRuns++;
             });
             for (let i = 0; i < 100; i++) {
-              setCount(i);
+              count.set(i);
             }
             dispose();
           });
@@ -137,15 +135,15 @@ const suites: BenchmarkSuite[] = [
         iterations: 500,
         barq: () => {
           createScope((dispose) => {
-            const [a, setA] = useState(1);
-            const b = useMemo(() => a() * 2);
-            const c = useMemo(() => b() + 1);
-            const d = useMemo(() => c() * 3);
-            const e = useMemo(() => d() - 2);
-            const f = useMemo(() => e() + a());
+            const a = signal(1);
+            const b = computed(() => a() * 2);
+            const c = computed(() => b() + 1);
+            const d = computed(() => c() * 3);
+            const e = computed(() => d() - 2);
+            const f = computed(() => e() + a());
 
             for (let i = 0; i < 100; i++) {
-              setA(i);
+              a.set(i);
               f();
             }
             dispose();
@@ -161,7 +159,7 @@ const suites: BenchmarkSuite[] = [
             const f = createMemo(() => e() + a());
 
             for (let i = 0; i < 100; i++) {
-              setA(i);
+              a.set(i);
               f();
             }
             dispose();
@@ -173,8 +171,8 @@ const suites: BenchmarkSuite[] = [
         iterations: 500,
         barq: () => {
           createScope((dispose) => {
-            const signals = Array.from({ length: 10 }, (_, i) => useState(i));
-            const sum = useMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
+            const signals = Array.from({ length: 10 }, (_, i) => signal(i));
+            const sum = computed(() => signals.reduce((acc, [s]) => acc + s(), 0));
 
             for (let i = 0; i < 100; i++) {
               signals[i % 10][1](i);
@@ -278,11 +276,9 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const el = h(For, {
-              each: items100,
-              children: (item: { id: number; name: string }) =>
-                h("div", { class: "item", "data-id": String(item.id) }, item.name),
-            });
+            const el = For(() => items100, (_scope, item: () => { id: number; name: string }) =>
+                h("div", { class: "item", "data-id": String(item().id) }, item().name),
+              );
             barqRender(el, container);
             dispose();
           });
@@ -312,11 +308,9 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const el = h(For, {
-              each: items1000,
-              children: (item: { id: number; name: string }) =>
-                h("div", { class: "item", "data-id": String(item.id) }, item.name),
-            });
+            const el = For(() => items1000, (_scope, item: () => { id: number; name: string }) =>
+                h("div", { class: "item", "data-id": String(item().id) }, item().name),
+              );
             barqRender(el, container);
             dispose();
           });
@@ -346,11 +340,9 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const el = h(For, {
-              each: items10000,
-              children: (item: { id: number; name: string }) =>
-                h("div", { class: "item", "data-id": String(item.id) }, item.name),
-            });
+            const el = For(() => items10000, (_scope, item: () => { id: number; name: string }) =>
+                h("div", { class: "item", "data-id": String(item().id) }, item().name),
+              );
             barqRender(el, container);
             dispose();
           });
@@ -385,15 +377,12 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const [visible, setVisible] = useState(true);
-            const el = h(Show, {
-              when: visible,
-              children: h("div", { class: "content" }, "Hello World"),
-            });
+            const visible = signal(true);
+            const el = Show(visible, () => h("div", { class: "content" }, "Hello World"));
             barqRender(el, container);
 
             for (let i = 0; i < 100; i++) {
-              setVisible(i % 2 === 0);
+              visible.set(i % 2 === 0);
             }
             dispose();
           });
@@ -430,16 +419,16 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const [visible, setVisible] = useState(true);
-            const el = h(Show, {
-              when: visible,
-              fallback: h("div", { class: "fallback" }, "Loading..."),
-              children: h("div", { class: "content" }, "Loaded!"),
-            });
+            const visible = signal(true);
+            const el = Show(
+              visible,
+              () => h("div", { class: "content" }, "Loaded!"),
+              () => h("div", { class: "fallback" }, "Loading..."),
+            );
             barqRender(el, container);
 
             for (let i = 0; i < 100; i++) {
-              setVisible(i % 2 === 0);
+              visible.set(i % 2 === 0);
             }
             dispose();
           });
@@ -487,12 +476,12 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const [count, setCount] = useState(0);
+            const count = signal(0);
             const el = h("div", null, count);
             barqRender(el, container);
 
             for (let i = 0; i < 1000; i++) {
-              setCount(i);
+              count.set(i);
             }
             dispose();
           });
@@ -523,14 +512,14 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const [active, setActive] = useState(false);
+            const active = signal(false);
             const el = h("div", {
               class: () => (active() ? "active" : "inactive"),
             });
             barqRender(el, container);
 
             for (let i = 0; i < 1000; i++) {
-              setActive(i % 2 === 0);
+              active.set(i % 2 === 0);
             }
             dispose();
           });
@@ -561,7 +550,7 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const [width, setWidth] = useState(0);
+            const width = signal(0);
             const el = h("div", {
               style: {
                 width: () => `${width()}px`,
@@ -572,7 +561,7 @@ const suites: BenchmarkSuite[] = [
             barqRender(el, container);
 
             for (let i = 0; i < 1000; i++) {
-              setWidth(i % 500);
+              width.set(i % 500);
             }
             dispose();
           });
@@ -605,7 +594,7 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           createScope((dispose) => {
             const container = document.createElement("div");
-            const [state, setState] = useState({ x: 0, y: 0, scale: 1 });
+            const state = signal({ x: 0, y: 0, scale: 1 });
             const el = h("div", {
               "data-x": () => String(state().x),
               "data-y": () => String(state().y),
@@ -617,7 +606,7 @@ const suites: BenchmarkSuite[] = [
             barqRender(el, container);
 
             for (let i = 0; i < 500; i++) {
-              setState({ x: i, y: i * 2, scale: 1 + i * 0.01 });
+              state.set({ x: i, y: i * 2, scale: 1 + i * 0.01 });
             }
             dispose();
           });

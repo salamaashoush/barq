@@ -9,28 +9,27 @@
  * The sentence names the mechanism, not merely the symptom. Near-total equality
  * has one grade for everything, so anything that legitimately differs has to be
  * bought out per fixture — and every exemption is a hole whose size nobody
- * measures. Three of them existed before this file:
+ * measures. Three of them existed before this file, and M9 removed the source
+ * of all three by removing the reference they were exemptions FROM:
  *
- *  - `FixtureModule.wins`, which turns a step's DOM comparison into "differs,
- *    and here is the exact markup it must differ into";
- *  - `oracle-known-failures.ts`, which turns a whole fixture's comparison into
- *    "diverges on exactly these channels";
- *  - the two `if (oracle.channels[i].html !== compiled.channels[i].html) continue`
- *    guards, which are exemptions nobody had to write down: the node-identity
- *    and attribute-order channels switch THEMSELVES off, per frame, precisely
- *    when the frames disagree.
+ *  - `FixtureModule.wins`, which turned a step's DOM comparison into "differs,
+ *    and here is the exact markup it must differ into". Gone: the per-fixture
+ *    rendered-DOM golden records every frame, not only the differing ones.
+ *  - `oracle-known-failures.ts`, which turned a whole fixture's comparison into
+ *    "diverges on exactly these channels". Gone with the reference: all 34 rows
+ *    were `cause: "C1"` or `"C6"`, both of which are facts about an un-compiled
+ *    path that no longer runs.
+ *  - the two `if (oracle.channels[i].html !== compiled.channels[i].html)
+ *    continue` guards — exemptions nobody had to write down, because the
+ *    node-identity and attribute-order channels switched THEMSELVES off, per
+ *    frame, precisely when the frames disagreed. Gone with the differential
+ *    identity channel they lived on; the metamorphic one that replaces it has
+ *    no such guard, and never had.
  *
- * The third of those was still unwritten when this file first claimed it had
- * been removed. The METAMORPHIC identity channel is genuinely unconditional —
- * every `continue` in `metamorphic.ts` filters on a frame kind or on the step's
- * own source text, never on frame agreement — but the DIFFERENTIAL identity
- * comparison in `harness.ts` and `browser-differential.ts` was still live under
- * the guard, under the same channel id, so the table read `exemptions: []` for
- * a channel two files were buying an exception out of. The two are separate
- * properties at separate grades and they are now separate rows, with the guard
- * written into the one that honours it. `graded.test.ts` asserts that no file
- * outside a channel's `where` emits that channel's id, so the collision cannot
- * come back silently.
+ * `graded.test.ts` asserts that no file outside a channel's `where` emits that
+ * channel's id, so two properties cannot silently collide on one row again —
+ * which is how the guard above stayed invisible while the table read
+ * `exemptions: []` for a channel two files were buying an exception out of.
  *
  * A GRADE is the alternative. Each channel gets the property it can actually
  * carry, stated once here, and the property is then unconditional within its own
@@ -88,13 +87,20 @@ export const CHANNELS: readonly Channel[] = Object.freeze([
   {
     id: "rendered-dom",
     grade: "differential",
-    property: "the DOM after every frame is byte-identical at -O0 and at -Ox, and equal to the createElement oracle's",
-    premise: "both paths ran the same number of frames",
-    where: ["differential.test.ts", "oracle.test.ts"],
-    exemptions: [
-      "FixtureModule.wins — a step whose DOM the compiled path is declared MORE correct at, with the exact markup named",
-      "oracle-known-failures.ts — a fixture whose un-compiled reference cannot run at all (C1)",
-    ],
+    property: "the DOM after every frame is byte-identical at -O0, at -Ox and through the IR interpreter",
+    premise: "the same fixture, compiled three ways from one lowered IR",
+    where: ["differential.test.ts", "optimisation.test.ts", "interp.test.ts"],
+    exemptions: [],
+    rules: ["C1"],
+  },
+  {
+    id: "rendered-dom-golden",
+    grade: "golden",
+    property:
+      "every frame the fixture drives, and every element's attribute line, recorded per fixture — so a change to what the compiler RENDERS is a visible diff rather than an agreement between two builds that moved together",
+    premise: "none",
+    where: ["oracle.test.ts", "__snapshots__/"],
+    exemptions: [],
     rules: ["C1"],
   },
   {
@@ -112,13 +118,11 @@ export const CHANNELS: readonly Channel[] = Object.freeze([
     id: "node-identity-differential",
     grade: "differential",
     property:
-      "the nodes that survived each update at -Ox are the ones the createElement oracle kept, element for element",
+      "a build with one thing deliberately broken keeps the nodes the CLEAN build of the same fixture kept, element for element — the detector that says the metamorphic channel above is not inert",
     premise:
-      "both paths ran the same number of frames, AND this frame's own DOM already matches — the guard is per frame, and it is the exemption below",
-    where: ["harness.ts compareToOracle", "browser-differential.ts", "oracle.test.ts", "oracle-known-failures.ts"],
-    exemptions: [
-      "the per-frame `if (oracle.channels[i].html !== compiled.channels[i].html) continue` guard in harness.ts and browser-differential.ts — a declared win has no shared element set to compare identities across, so the channel switches ITSELF off exactly where the frames disagree. This is the shape §6 L4 complains about and it is written down rather than removed, because the identity property the guard cannot carry is carried unconditionally by the metamorphic channel above",
-    ],
+      "the two renders are the same fixture through the same compiler, so the channel runs on every frame unconditionally and has nothing to buy out of",
+    where: ["harness.ts compareRenders", "browser-differential.ts compareRuns", "oracle.test.ts"],
+    exemptions: [],
     rules: ["K2", "K6"],
   },
   {
@@ -146,10 +150,11 @@ export const CHANNELS: readonly Channel[] = Object.freeze([
   {
     id: "effect-counts",
     grade: "absolute",
-    property: "per-fixture effect creation and run counts, bounded against hand-written numbers",
-    premise: "the fixture declares its optimality target",
-    where: ["harness.ts boundEffects", "optimality.test.ts"],
-    exemptions: ["FixtureModule.goesLive — one extra effect per hole the compiler turns live"],
+    property:
+      "per-fixture effect creations, total runs and busiest single effect, each an EQUALITY against a hand-written number",
+    premise: "none — the numbers are written down, not derived from a second execution",
+    where: ["effect-counts.ts", "effect-counts.test.ts", "optimality.test.ts"],
+    exemptions: [],
     rules: ["O4"],
   },
   {
@@ -158,7 +163,7 @@ export const CHANNELS: readonly Channel[] = Object.freeze([
     property:
       "the anchors in the live DOM equal the anchors the template clones attached to it bake in, and every baked anchor is named by an insert call",
     premise: "none — both sides come off the emitted module and the clones it produced",
-    where: ["harness.ts auditAnchors", "oracle.test.ts", "browser-differential.ts"],
+    where: ["harness.ts auditCompiled", "oracle.test.ts", "browser-differential.ts"],
     exemptions: [],
     rules: ["K7"],
   },
@@ -176,7 +181,7 @@ export const CHANNELS: readonly Channel[] = Object.freeze([
     id: "fused-golden",
     grade: "golden",
     property:
-      "attribute order, emitted bytes, diagnostics and sourcemap are one snapshot per fixture, so a silently-dropped diagnostic or a corrupted mapping is a visible diff",
+      "emitted bytes, diagnostics and sourcemap are one snapshot per fixture, so a silently-dropped diagnostic or a corrupted mapping is a visible diff",
     premise: "none",
     where: ["optimality.test.ts", "roundtrip.test.ts", "diagnostics.test.ts", "__snapshots__/"],
     exemptions: [],

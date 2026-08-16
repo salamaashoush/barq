@@ -1,5 +1,5 @@
 /**
- * The differential comparison, in a real browser.
+ * The corpus, rendered and driven in a real browser.
  *
  * `oracle.test.ts` runs the whole corpus against happy-dom, and happy-dom has
  * already hidden three separate bug classes on this project: HTML tree
@@ -9,12 +9,26 @@
  * `SVGAnimatedString` as a writable string). Each one was a green suite over a
  * compiler that was wrong where it counts.
  *
- * So the same corpus runs here too: both paths bundled into one page, rendered
- * side by side in Chrome, driven through their own `steps` and `events`, and
- * diffed with the same `normalize.ts` walk the happy-dom suite uses. What it
- * does NOT carry over is the effect tracer — that is `mock.module`, which has
- * no meaning in a browser — so this is the DOM half of the invariant, which is
- * exactly the half a fake DOM can lie about.
+ * So the same corpus runs here too: every compiled module bundled into one
+ * page, rendered in Chrome, driven through its own `steps` and `events`, and
+ * walked with the same `normalize.ts` channels the happy-dom suite uses. What
+ * it does NOT carry over is the effect tracer — that is `mock.module`, which
+ * has no meaning in a browser — so this is the DOM half of the invariant, which
+ * is exactly the half a fake DOM can lie about.
+ *
+ * ## What M9 changed here
+ *
+ * This used to bundle the fixture's own source BESIDE the compiled module and
+ * diff the two. `CODESIGN.md` §6 retires that reference, so the page now drives
+ * the compiled module alone and returns what it observed. Two things replace
+ * the diff, and neither needs a second implementation:
+ *
+ *  - the page keeps the channels that were always self-checks — marker layout
+ *    against the anchors the clones baked in, and the attribute PARTITION —
+ *    which are the two the real parser is needed for in the first place;
+ *  - `compareRuns` below diffs a CORRUPTED run against the CLEAN one, in node.
+ *    That is what every detector in `browser.test.ts` was actually measuring:
+ *    the reference was never load-bearing there, the corruption was.
  *
  * Cost: one Chrome launch and one bundle for the whole corpus, about three
  * seconds. It is not per-fixture, which is what makes it affordable in CI.
@@ -24,7 +38,6 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import type { Page } from "./chrome.ts"
-import { ORACLE_FAILURES } from "./oracle-known-failures.ts"
 import {
   browserOnlySource,
   compileBrowserOnly,
@@ -42,13 +55,12 @@ const PRAGMA = "/** @jsxImportSource @barqjs/core */\n"
  * `@barqjs/core` with `template` recording every clone it hands out.
  *
  * The happy-dom harness gets this from `mock.module`, which has no meaning in a
- * browser, so the COMPILED modules import through this shim instead — and only
- * they do: the oracle never calls `template`, and both specifiers resolve to the
- * same real module, so the runtime's own module state (the installed delegated
- * event set above all) stays shared exactly as it is in production.
+ * browser, so the compiled modules import through this shim instead.
  *
  * `export *` skips a name the module also exports locally, so `template` here is
- * the one every compiled module binds and every other export is the real one.
+ * the one every compiled module binds and every other export is the real one;
+ * the runtime's own module state (the installed delegated event set above all)
+ * stays shared exactly as it is in production.
  *
  * Without it the marker-layout channel had to ask "does this module clone each
  * template exactly once?" and, whenever the answer was no, degrade to "a module
@@ -100,28 +112,49 @@ export interface BrowserDivergence {
     | "marker-layout"
     | "attribute-order"
     | "node-identity-differential"
-    | "oracle-anchor"
-    | "stale-win"
-    | "unmet-win"
     | "step-count"
     | "event-count"
     | "threw"
   step?: number
-  oracle: string
-  compiled: string
+  expected: string
+  actual: string
+}
+
+/** One frame, as `normalize.ts` walks it. */
+export interface BrowserFrame {
+  html: string
+  markers: string
+  attributes: string[]
+  anchors: number
+  identity: number[]
+}
+
+/** Everything one fixture's compiled module produced, kept for comparison in node. */
+export interface BrowserRender {
+  fixture: string
+  initial: BrowserFrame
+  frames: BrowserFrame[]
+  events: BrowserFrame[]
 }
 
 export interface DifferentialReport {
   checked: number
   frames: number
   /**
-   * Attribute lines the order channel actually compared, summed over frames. A
+   * Attribute lines the order channel actually saw, summed over frames. A
    * channel that silently stopped producing lines reports zero divergences and
    * is indistinguishable from a clean run; this is the number that tells them
    * apart, and browser.test.ts asserts on it.
    */
   attributeLines: number
+  /**
+   * The self-check divergences the page itself can report: marker layout
+   * against the anchors the clones baked in, the attribute partition, and a
+   * fixture that threw. Everything else is a comparison between two RUNS and is
+   * computed by `compareRuns` in node.
+   */
   divergences: BrowserDivergence[]
+  renders: BrowserRender[]
 }
 
 /**
@@ -134,25 +167,24 @@ interface PageRow {
   delegated: string[]
   /** Attribute names the patch code applies after the clone — read off the code. */
   patched: string[]
+  /** Whether the module emits `_$spread`, whose names the compiler cannot know. */
+  spread: boolean
 }
 
 function entrySource(fixtures: PageRow[]): string {
   const imports = fixtures
-    .map(
-      (_, i) =>
-        `import * as oracle${i} from "./oracle-${i}.tsx"\nimport * as compiled${i} from "./compiled-${i}.tsx"`,
-    )
+    .map((_, i) => `import * as compiled${i} from "./compiled-${i}.tsx"`)
     .join("\n")
   const table = fixtures
     .map(
-      ({ name, delegated, patched }, i) =>
-        `  [${JSON.stringify(name)}, oracle${i}, compiled${i}, ${JSON.stringify(delegated)}, ` +
-        `${JSON.stringify(patched)}],`,
+      ({ name, delegated, patched, spread }, i) =>
+        `  [${JSON.stringify(name)}, compiled${i}, ${JSON.stringify(delegated)}, ` +
+        `${JSON.stringify(patched)}, ${JSON.stringify(spread)}],`,
     )
     .join("\n")
 
   return `${PRAGMA}${imports}
-import { expectedAttributeOrder, normalizeChannels, resetIdentity } from "../../normalize.ts"
+import { normalizeChannels, resetIdentity } from "../../normalize.ts"
 import { clearDelegatedEvents, createScope, delegateEvents, flush, render } from "@barqjs/core"
 
 const CORPUS = [
@@ -167,13 +199,13 @@ async function settle() {
 }
 
 // The installed-delegated-events set is MODULE state on the runtime, and it is
-// torn down between renders so the compiled path cannot free-ride on the
-// listener the oracle installed. In the happy-dom harness each module is
-// imported immediately before its render, so the compiled module's own
+// torn down between renders so one fixture cannot free-ride on the listener
+// another installed. In the happy-dom harness each module is imported
+// immediately before its render, so the compiled module's own
 // \`delegateEvents([...])\` runs at the right moment; here every module is
 // evaluated once when the bundle loads, long before the first teardown. The
 // types are the ones read out of THAT call at build time, so a compiler that
-// stopped emitting it installs nothing and the event frames diverge.
+// stopped emitting it installs nothing and the event frames go quiet.
 // A fixture that never settles used to hang the whole page, and the only thing
 // that noticed was \`beforeAll\`'s 300-second timeout — which names no fixture
 // and produces no report. A watchdog turns it into an ordinary divergence
@@ -225,8 +257,7 @@ async function drive(mod, delegated) {
   try {
     createScope((d) => {
       dispose = d
-      // C1: render takes the Block, not a built subtree. The oracle module's
-      // root ignores the argument, so one spelling drives both paths.
+      // C1: render takes the Block, not a built subtree.
       render(mod.default, container)
     }, true)
     await settle()
@@ -241,7 +272,7 @@ async function drive(mod, delegated) {
       await settle()
       snapshot(events)
     }
-    return { initial, frames, events, expectedAnchors, wins: mod.wins ?? [] }
+    return { initial, frames, events, expectedAnchors }
   } finally {
     dispose?.()
     container.remove()
@@ -252,74 +283,21 @@ async function drive(mod, delegated) {
 
 window.__barqDifferential = async function () {
   const divergences = []
+  const renders = []
   let frames = 0
   let attributeLines = 0
 
-  for (const [name, oracleModule, compiledModule, delegated, patched] of CORPUS) {
-    let oracle
+  for (const [name, compiledModule, delegated, patched, spread] of CORPUS) {
     let compiled
     try {
-      oracle = await withDeadline(drive(oracleModule, []), name + " (oracle)")
-      compiled = await withDeadline(drive(compiledModule, delegated), name + " (compiled)")
+      compiled = await withDeadline(drive(compiledModule, delegated), name)
     } catch (error) {
-      divergences.push({ fixture: name, kind: "threw", oracle: "", compiled: String(error && error.stack || error) })
+      divergences.push({ fixture: name, kind: "threw", expected: "", actual: String(error && error.stack || error) })
       continue
     }
 
-    const claimed = (kind, index, actual) => {
-      const win = compiled.wins.find((w) => w.kind === kind && w.index === index)
-      return Boolean(win) && win.compiled === actual
-    }
-
-    // A declared win that stopped describing reality is worse than no win: it
-    // permanently disarms the comparison for that frame. The happy-dom harness
-    // has always failed on one; without the same check here the browser half
-    // accepted it silently.
-    for (const win of compiled.wins) {
-      const mine = win.kind === "step" ? compiled.frames : compiled.events
-      const theirs = win.kind === "step" ? oracle.frames : oracle.events
-      const got = mine[win.index] && mine[win.index].html
-      const want = theirs[win.index] && theirs[win.index].html
-      if (got === undefined || want === undefined) continue
-      if (got === want) {
-        divergences.push({ fixture: name, kind: "stale-win", step: win.index, oracle: want, compiled: got })
-      } else if (got !== win.compiled) {
-        divergences.push({ fixture: name, kind: "unmet-win", step: win.index, oracle: win.compiled, compiled: got })
-      }
-    }
-
-    // A compiled module that stopped producing frames part-way compared only
-    // the prefix and reported nothing, because both loops below are bounded by
-    // the MINIMUM. The counts are the bound.
-    if (oracle.frames.length !== compiled.frames.length) {
-      divergences.push({ fixture: name, kind: "step-count", oracle: String(oracle.frames.length), compiled: String(compiled.frames.length) })
-    }
-    if (oracle.events.length !== compiled.events.length) {
-      divergences.push({ fixture: name, kind: "event-count", oracle: String(oracle.events.length), compiled: String(compiled.events.length) })
-    }
-
     frames += 1 + compiled.frames.length + compiled.events.length
-
-    if (oracle.initial.html !== compiled.initial.html) {
-      divergences.push({ fixture: name, kind: "initial-dom", oracle: oracle.initial.html, compiled: compiled.initial.html })
-    }
-    // Every compiled anchor bound is stated against the oracle producing NONE,
-    // and the oracle appends in source order on every frame, not only the first.
-    const oracleChannels = [oracle.initial, ...oracle.frames, ...oracle.events]
-    for (let i = 0; i < oracleChannels.length; i++) {
-      if (oracleChannels[i].anchors === 0) continue
-      divergences.push({ fixture: name, kind: "oracle-anchor", step: i, oracle: String(oracleChannels[i].anchors), compiled: "0" })
-    }
-    for (let i = 0; i < Math.min(oracle.frames.length, compiled.frames.length); i++) {
-      if (oracle.frames[i].html === compiled.frames[i].html) continue
-      if (claimed("step", i, compiled.frames[i].html)) continue
-      divergences.push({ fixture: name, kind: "step-dom", step: i, oracle: oracle.frames[i].html, compiled: compiled.frames[i].html })
-    }
-    for (let i = 0; i < Math.min(oracle.events.length, compiled.events.length); i++) {
-      if (oracle.events[i].html === compiled.events[i].html) continue
-      if (claimed("event", i, compiled.events[i].html)) continue
-      divergences.push({ fixture: name, kind: "event-dom", step: i, oracle: oracle.events[i].html, compiled: compiled.events[i].html })
-    }
+    const channels = [compiled.initial, ...compiled.frames, ...compiled.events]
 
     // Target #9 in the real parser, as an EQUALITY for every fixture. The
     // expectation comes from the clones themselves, recorded by the \`template\`
@@ -327,49 +305,45 @@ window.__barqDifferential = async function () {
     // each accounted for exactly — where the old rule could only say "this
     // module bakes no anchor, so it may produce none" and said nothing at all
     // about the seven fixtures that bake one.
-    const channels = [compiled.initial, ...compiled.frames, ...compiled.events]
     for (let i = 0; i < channels.length; i++) {
       const allowed = compiled.expectedAnchors[i] ?? 0
       if (channels[i].anchors === allowed) continue
-      divergences.push({ fixture: name, kind: "marker-layout", step: i, oracle: String(allowed), compiled: String(channels[i].anchors) })
+      divergences.push({ fixture: name, kind: "marker-layout", step: i, expected: String(allowed), actual: String(channels[i].anchors) })
     }
 
-    // The attribute-order channel, carried into the real parser. Rule 2 of
-    // normalize.ts sorts attributes out of \`html\`, so a codegen that emitted
-    // them backwards compares equal there — and the order a template ACTUALLY
-    // produces is decided by the HTML parser, which is the one thing happy-dom
-    // is not. \`patched\` is read off the emitted module in node; the partition
-    // itself is normalize.ts's, shared with the happy-dom harness so the two
-    // engines cannot end up measuring different things.
-    // Node identity, carried into the real parser. Every other channel is a
-    // function of the DOM's shape, so a flow component that rebuilt every node
-    // on every update was indistinguishable from one that reused them.
-    if (oracle.frames.length === compiled.frames.length && oracle.events.length === compiled.events.length) {
-      for (let i = 0; i < channels.length; i++) {
-        if (oracleChannels[i].html !== channels[i].html) continue
-        const want = oracleChannels[i].identity.join(",")
-        const got = channels[i].identity.join(",")
-        if (want === got) continue
-        divergences.push({ fixture: name, kind: "node-identity-differential", step: i, oracle: want, compiled: got })
-      }
-    }
-
-    if (oracle.frames.length === compiled.frames.length && oracle.events.length === compiled.events.length) {
-      const names = new Set(patched)
-      for (let i = 0; i < channels.length; i++) {
-        if (oracleChannels[i].html !== channels[i].html) continue
-        const want = oracleChannels[i].attributes.map((line) => expectedAttributeOrder(line, names))
-        const got = channels[i].attributes
-        attributeLines += want.length
-        for (let j = 0; j < Math.max(want.length, got.length); j++) {
-          if (want[j] === got[j]) continue
-          divergences.push({ fixture: name, kind: "attribute-order", step: i, oracle: want[j] ?? "<missing>", compiled: got[j] ?? "<missing>" })
+    // The attribute PARTITION, carried into the real parser: every prop the
+    // patch code writes reaches the element after every attribute the template
+    // baked in. Rule 2 of normalize.ts sorts attributes out of \`html\`, so a
+    // codegen that emitted them backwards compares equal there — and the order
+    // a template ACTUALLY produces is decided by the HTML parser, which is the
+    // one thing happy-dom is not. \`patched\` is read off the emitted module in
+    // node. The order WITHIN each group is compared against the clean run, in
+    // node, by \`compareRuns\`.
+    // A module carrying a spread is EXEMPT: a spread's names are the one
+    // attribute fact the compiler cannot have (§3.13 item 1), so nothing read
+    // off the code can say which attributes the patch wrote — and §5.3's M9
+    // note bakes NOTHING on such an element, so there is no partition there.
+    const names = new Set(patched)
+    for (let i = 0; i < channels.length; i++) {
+      for (const line of channels[i].attributes) {
+        const cut = line.indexOf(": ")
+        if (cut < 0) continue
+        attributeLines++
+        if (spread) continue
+        let seenPatched = false
+        for (const attribute of line.slice(cut + 2).split(",")) {
+          if (names.has(attribute)) { seenPatched = true; continue }
+          if (!seenPatched) continue
+          divergences.push({ fixture: name, kind: "attribute-order", step: i, expected: line.slice(0, cut) + ": baked before patched", actual: line })
+          break
         }
       }
     }
+
+    renders.push({ fixture: name, initial: compiled.initial, frames: compiled.frames, events: compiled.events })
   }
 
-  return JSON.stringify({ checked: CORPUS.length, frames, attributeLines, divergences })
+  return JSON.stringify({ checked: CORPUS.length, frames, attributeLines, divergences, renders })
 }
 `
 }
@@ -405,13 +379,9 @@ export async function buildDifferentialPage(
   writeFileSync(join(workdir, "core-instrumented.ts"), CORE_SHIM)
 
   const names = rows.map((row) => row.name)
-  const fixtures = rows.map(({ name, source, compile }, i) => {
+  const fixtures = rows.map(({ name, compile }, i) => {
     const clean = compile(name.replace("browser-only/", ""))
     const code = corrupt ? corrupt(name, clean) : clean
-    writeFileSync(join(workdir, `oracle-${i}.tsx`), PRAGMA + source)
-    // Only the COMPILED module goes through the shim: it is the only one that
-    // calls `template`, and pointing the oracle at it too would be one more
-    // difference between the two paths for no gain.
     writeFileSync(
       join(workdir, `compiled-${i}.tsx`),
       PRAGMA + code.replaceAll('from "@barqjs/core"', 'from "./core-instrumented.ts"'),
@@ -420,6 +390,7 @@ export async function buildDifferentialPage(
       name,
       delegated: delegatedTypes(code),
       patched: [...patchedAttributeNames(code)],
+      spread: code.includes("_$spread("),
     }
   })
   writeFileSync(join(workdir, "entry.tsx"), entrySource(fixtures))
@@ -489,40 +460,140 @@ export async function checkDifferential(
 }
 
 /**
- * Partition the report the way `browser.test.ts` does. A divergence in a
- * fixture the oracle registry accounts for is a DECLARED state, not a finding:
- * printing it as an unexplained failure and exiting 1 makes a documented entry
- * point red for a reason it does not itself explain, which is how a developer
- * learns to ignore it.
+ * A corrupted run against the clean one, fixture by fixture and frame by frame.
+ *
+ * This is what every detector in `browser.test.ts` was measuring through the
+ * retired reference. The reference was never the load-bearing half: the claim
+ * was "corrupt the compiler and the browser notices", and the clean run of the
+ * same corpus answers it without a second implementation in the page.
+ *
+ * A fixture the corrupted run failed to produce at all is a divergence, not a
+ * skipped comparison — that is the shape a truncated run used to hide behind.
  */
+export function compareRuns(
+  clean: DifferentialReport,
+  subject: DifferentialReport,
+): BrowserDivergence[] {
+  const divergences: BrowserDivergence[] = []
+  const byFixture = new Map(subject.renders.map((render) => [render.fixture, render]))
+
+  for (const want of clean.renders) {
+    const got = byFixture.get(want.fixture)
+    if (got === undefined) {
+      divergences.push({
+        fixture: want.fixture,
+        kind: "threw",
+        expected: "a render",
+        actual: "the run produced none",
+      })
+      continue
+    }
+
+    if (want.initial.html !== got.initial.html) {
+      divergences.push({
+        fixture: want.fixture,
+        kind: "initial-dom",
+        expected: want.initial.html,
+        actual: got.initial.html,
+      })
+    }
+
+    // A run that stopped producing frames part-way compared only the prefix and
+    // reported nothing, because both loops below are bounded by the MINIMUM.
+    // The counts are the bound.
+    if (want.frames.length !== got.frames.length) {
+      divergences.push({
+        fixture: want.fixture,
+        kind: "step-count",
+        expected: String(want.frames.length),
+        actual: String(got.frames.length),
+      })
+    }
+    if (want.events.length !== got.events.length) {
+      divergences.push({
+        fixture: want.fixture,
+        kind: "event-count",
+        expected: String(want.events.length),
+        actual: String(got.events.length),
+      })
+    }
+
+    for (let i = 0; i < Math.min(want.frames.length, got.frames.length); i++) {
+      if (want.frames[i].html === got.frames[i].html) continue
+      divergences.push({
+        fixture: want.fixture,
+        kind: "step-dom",
+        step: i,
+        expected: want.frames[i].html,
+        actual: got.frames[i].html,
+      })
+    }
+    for (let i = 0; i < Math.min(want.events.length, got.events.length); i++) {
+      if (want.events[i].html === got.events[i].html) continue
+      divergences.push({
+        fixture: want.fixture,
+        kind: "event-dom",
+        step: i,
+        expected: want.events[i].html,
+        actual: got.events[i].html,
+      })
+    }
+
+    const wantChannels = [want.initial, ...want.frames, ...want.events]
+    const gotChannels = [got.initial, ...got.frames, ...got.events]
+    for (let i = 0; i < Math.min(wantChannels.length, gotChannels.length); i++) {
+      // Attribute ORDER, in the real parser. Rule 2 of normalize.ts sorts
+      // attributes out of `html`, so this is the only channel that sees a
+      // template emitted backwards.
+      const a = wantChannels[i].attributes
+      const b = gotChannels[i].attributes
+      for (let j = 0; j < Math.max(a.length, b.length); j++) {
+        if (a[j] === b[j]) continue
+        divergences.push({
+          fixture: want.fixture,
+          kind: "attribute-order",
+          step: i,
+          expected: a[j] ?? "<missing>",
+          actual: b[j] ?? "<missing>",
+        })
+      }
+
+      // Node identity. Every other channel is a function of the DOM's shape, so
+      // a construct that rebuilt every node on every update is indistinguishable
+      // from one that reused them.
+      const wantId = wantChannels[i].identity.join(",")
+      const gotId = gotChannels[i].identity.join(",")
+      if (wantId === gotId) continue
+      divergences.push({
+        fixture: want.fixture,
+        kind: "node-identity-differential",
+        step: i,
+        expected: wantId,
+        actual: gotId,
+      })
+    }
+  }
+
+  return divergences
+}
+
 export function reportDifferential(report: DifferentialReport): number {
   console.log(
     `corpus rendered in a real browser: ${report.checked} fixtures, ${report.frames} frames, ` +
       `${report.attributeLines} attribute lines`,
   )
-  const reason = new Map(ORACLE_FAILURES.map((row) => [row.fixture, `${row.cause} — ${row.reason}`]))
-  let unexplained = 0
   for (const d of report.divergences) {
-    const registered = reason.get(d.fixture)
-    const head =
+    console.error(
       `\n[${d.kind}${d.step === undefined ? "" : ` step ${d.step}`}] ${d.fixture}` +
-      `\n  oracle  : ${d.oracle}\n  compiled: ${d.compiled}`
-    if (registered === undefined) {
-      unexplained++
-      console.error(head)
-    } else {
-      console.log(`${head}\n  REGISTERED: ${registered}`)
-    }
-  }
-  const registered = report.divergences.length - unexplained
-  if (report.divergences.length === 0) {
-    console.log("every frame is identical to the oracle")
-  } else {
-    console.log(
-      `\n${registered} divergence(s) explained by the oracle registry, ${unexplained} not`,
+        `\n  expected: ${d.expected}\n  actual  : ${d.actual}`,
     )
   }
-  return unexplained
+  if (report.divergences.length === 0) {
+    console.log("every fixture renders and drives clean in Chrome")
+  } else {
+    console.log(`\n${report.divergences.length} divergence(s)`)
+  }
+  return report.divergences.length
 }
 
 if (import.meta.main) {

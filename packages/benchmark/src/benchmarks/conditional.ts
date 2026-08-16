@@ -7,7 +7,8 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports
-import { Show, createElement as h, useState, render as barqRender } from "@barqjs/core";
+import { signal, render as barqRender } from "@barqjs/core";
+import { Show, h } from "../h.ts";
 
 // SolidJS imports
 import { Show as SolidShow, createSignal } from "solid-js";
@@ -24,15 +25,12 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "toggle show/hide 100x",
       () => {
         const container = document.createElement("div");
-        const [visible, setVisible] = useState(true);
-        const el = h(Show, {
-          when: visible,
-          children: h("div", { class: "content" }, "Hello World"),
-        });
+        const visible = signal(true);
+        const el = Show(visible, () => h("div", { class: "content" }, "Hello World"));
         barqRender(el, container);
 
         for (let i = 0; i < 100; i++) {
-          setVisible(i % 2 === 0);
+          visible.set(i % 2 === 0);
         }
       },
       { iterations: 500 },
@@ -79,16 +77,16 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "show/fallback toggle 100x",
       () => {
         const container = document.createElement("div");
-        const [visible, setVisible] = useState(true);
-        const el = h(Show, {
-          when: visible,
-          fallback: h("div", { class: "fallback" }, "Loading..."),
-          children: h("div", { class: "content" }, "Loaded!"),
-        });
+        const visible = signal(true);
+        const el = Show(
+          visible,
+          () => h("div", { class: "content" }, "Loaded!"),
+          () => h("div", { class: "fallback" }, "Loading..."),
+        );
         barqRender(el, container);
 
         for (let i = 0; i < 100; i++) {
-          setVisible(i % 2 === 0);
+          visible.set(i % 2 === 0);
         }
       },
       { iterations: 500 },
@@ -141,35 +139,35 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "switch 5 tabs 100x",
       () => {
         const container = document.createElement("div");
-        const [tab, setTab] = useState(0);
+        const tab = signal(0);
         const el = h(
           "div",
           null,
-          h(Show, {
-            when: () => tab() === 0,
-            children: h("div", null, "Tab 0"),
-          }),
-          h(Show, {
-            when: () => tab() === 1,
-            children: h("div", null, "Tab 1"),
-          }),
-          h(Show, {
-            when: () => tab() === 2,
-            children: h("div", null, "Tab 2"),
-          }),
-          h(Show, {
-            when: () => tab() === 3,
-            children: h("div", null, "Tab 3"),
-          }),
-          h(Show, {
-            when: () => tab() === 4,
-            children: h("div", null, "Tab 4"),
-          }),
+          Show(
+            () => tab() === 0,
+            () => h("div", null, "Tab 0"),
+          ),
+          Show(
+            () => tab() === 1,
+            () => h("div", null, "Tab 1"),
+          ),
+          Show(
+            () => tab() === 2,
+            () => h("div", null, "Tab 2"),
+          ),
+          Show(
+            () => tab() === 3,
+            () => h("div", null, "Tab 3"),
+          ),
+          Show(
+            () => tab() === 4,
+            () => h("div", null, "Tab 4"),
+          ),
         );
         barqRender(el, container);
 
         for (let i = 0; i < 100; i++) {
-          setTab(i % 5);
+          tab.set(i % 5);
         }
       },
       { iterations: 200 },

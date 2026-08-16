@@ -90,7 +90,7 @@ export const BLOCK: unique symbol = Symbol.for("barq.block");
  *
  * The guard alone made the argument decide only for the primitives that take it
  * explicitly — `insert`, `bindEffect`, the four flow primitives. Everything in
- * the same body that reads the AMBIENT owner instead — `useContext`,
+ * the same body that reads the AMBIENT owner instead — `getContext`,
  * `onCleanup`, `effect`, a `signal`'s owner — followed `CURRENT`, so one
  * component handed A while B was ambient split its ownership across both: its
  * hole under A, its cleanup under B. Nothing in the calling convention
@@ -176,9 +176,19 @@ export class ContextNotFoundError extends Error {
  * Caught by Loading boundaries and by isPending()/latest().
  */
 export class NotReadyError extends Error {
-  constructor() {
+  /**
+   * The node whose read threw, when there is one.
+   *
+   * `latest` and `isPending` both need it: their rule is not "was it pending"
+   * but "was it pending AND has it never held a value", and only the source
+   * knows the second half.
+   */
+  readonly source?: { _flags: number };
+
+  constructor(source?: { _flags: number }) {
     super("Async value is not ready yet.");
     this.name = "NotReadyError";
+    this.source = source;
   }
 }
 
@@ -2052,10 +2062,17 @@ function computedRead<T>(node: ComputedNode<T>): T {
   }
 
   if (node._flags & (STATUS_PENDING | REACTIVE_AFFECTED)) {
-    if (latestDepth > 0 && !(node._flags & REACTIVE_UNINITIALIZED)) {
+    // A5's read modes, and the rule is Solid 2.0's: `latest` yields the last
+    // visible value, and the ONE case it rethrows is a value that has never
+    // held one AND a caller that is itself a derivation — where the throw is
+    // how a `Loading` boundary learns there is nothing to show yet. Outside a
+    // derivation there is no boundary to catch it and nothing to suspend, so
+    // "what is the latest you have" answers `undefined` rather than exploding
+    // in a click handler.
+    if (latestDepth > 0 && (currentObserver === null || !(node._flags & REACTIVE_UNINITIALIZED))) {
       return node._value;
     }
-    throw new NotReadyError();
+    throw new NotReadyError(node as { _flags: number });
   }
 
   return node._value;
@@ -2080,11 +2097,66 @@ function computedPeek<T>(node: ComputedNode<T>): T {
 /**
  * Create a computed signal that derives its value from other signals.
  * Lazy: evaluated on first read, revalidated on read after invalidation.
- * May return a Promise - the computed then carries pending status until
- * resolution (see NotReadyError, latest, isPending).
+ *
+ * **This is the async primitive too.** A compute that returns a Promise leaves
+ * the computed pending until it resolves, and a read in the meantime throws
+ * `NotReadyError` — which `Loading` catches, `isPending` reports and `latest`
+ * reads through. There is no second constructor for async values, which is
+ * also where Solid 2.0 landed: their signals package ships `createMemo` and no
+ * async primitive at all.
+ *
+ * ## SSR seeding
+ *
+ * A pending value resolved on the server is recorded (`getHydrationData` /
+ * `generateHydrationScript`) and consumed from `__BARQ_DATA__` on the client,
+ * so the first read resolves synchronously with the server's answer instead of
+ * refetching. The seeded first run does not track `fn`'s dependencies; use
+ * `refresh()` to refetch.
+ *
+ * The serialization key is taken HERE, at creation, from the owner-tree id —
+ * never at first read, because the two orders differ between server and client
+ * and the id has to be the same on both. With no owner there is no tree to key
+ * off and nothing is serialized.
+ *
+ * A position is not an identity: if the client tree diverges from the server's,
+ * the ids after the divergence shift, and a read can claim the value recorded
+ * for a DIFFERENT call and resolve synchronously with it. `name` folds an
+ * identity into the auto-key — siblings only have to differ from each other,
+ * and a drifted key then misses and refetches instead of seeding the wrong
+ * value. `key` replaces the auto-key outright and has to be unique across the
+ * page. `unclaimedSeeds()` reports the drift after the fact; `hydrate()` calls
+ * it once the first render has settled.
  */
-export function computed<T>(fn: (prev?: T) => T, options?: SignalOptions<T>): Computed<T> {
-  const node = createComputedNode(fn, EFFECT_PURE, options);
+export function computed<T>(
+  fn: (prev?: T) => T | Promise<T>,
+  options?: SignalOptions<T> & { key?: string },
+): Computed<T> {
+  // The slot is reserved at CREATION, in creation order, which is what makes
+  // the server's numbering and the client's the same. The STRING is not built
+  // here: `key()` formats it on the first read that needs it, so a synchronous
+  // computed — almost all of them — pays one integer and no allocation.
+  const owner = currentOwner;
+  const slot = options?.key === undefined && owner !== null ? reserveChildSlot(owner) : -1;
+  const key = (): string | undefined => {
+    if (options?.key !== undefined) return options.key;
+    return owner !== null && slot >= 0 ? formatReserved(owner, slot, options?.name) : undefined;
+  };
+
+  let trySeed = true;
+  const compute = (prev?: T): T => {
+    if (trySeed) {
+      trySeed = false;
+      const id = key();
+      if (id !== undefined) {
+        node._serializeKey = id;
+        const seed = getSeed(id);
+        if (seed.found) return seed.value as T;
+      }
+    }
+    return fn(prev) as T;
+  };
+
+  const node = createComputedNode(compute, EFFECT_PURE, options);
 
   const accessor = (() => computedRead(node)) as Computed<T>;
   accessor.peek = () => computedPeek(node);
@@ -2099,7 +2171,7 @@ export function computed<T>(fn: (prev?: T) => T, options?: SignalOptions<T>): Co
  * over it and the write is gone.
  *
  * One primitive covering three problems the ergonomics work had listed
- * separately: the read-copy trap (`useState(props.value)` frozen at the first
+ * separately: the read-copy trap (`signal(props.value)` frozen at the first
  * value it ever saw), the controlled input whose signal must accept an edit and
  * still be re-seeded by the server's answer, and the two-way component prop.
  * Angular's `linkedSignal` is the shipped precedent.
@@ -2562,18 +2634,30 @@ export function getNextChildId(owner: Owner): string {
   return formatChildId(ownerId(owner), next);
 }
 
+/**
+ * Consume an owner-tree slot WITHOUT formatting its id.
+ *
+ * Every `computed` reserves one, so the numbering is the same on both sides of
+ * a render — but only a value that actually settles asynchronously is ever
+ * serialised, and only then is the string built. Formatting eagerly would put a
+ * string allocation on the hottest constructor in the system for a key almost
+ * no node uses.
+ */
+function reserveChildSlot(owner: Owner): number {
+  const next = childCounts.get(owner) ?? 0;
+  childCounts.set(owner, next + 1);
+  return next;
+}
+
+/** The id `reserveChildSlot` reserved, formatted on demand. */
+function formatReserved(owner: Owner, index: number, name: string | undefined): string {
+  const id = formatChildId(ownerId(owner), index);
+  return name === undefined ? id : `${id}~${name}`;
+}
+
 /** The id getNextChildId would return next, without consuming it. */
 export function peekNextChildId(owner: Owner): string {
   return formatChildId(ownerId(owner), childCounts.get(owner) ?? 0);
-}
-
-/**
- * The serialization key of an auto-keyed read. The counter is consumed either
- * way, so naming one read never renumbers its siblings.
- */
-function autoKey(owner: Owner, name: string | undefined): string {
-  const id = getNextChildId(owner);
-  return name === undefined ? id : `${id}~${name}`;
 }
 
 /**
@@ -2766,7 +2850,23 @@ export function isPending(fn: () => unknown): boolean {
     fn();
     return probeSawLane;
   } catch (err) {
-    if (err instanceof NotReadyError) return true;
+    if (err instanceof NotReadyError) {
+      // Solid 2.0's rule, ported: a value that has NEVER held one is not
+      // "pending", it is absent — and inside a derivation the throw has to go
+      // on to the boundary rather than be answered as a boolean, or the probe
+      // silently converts "there is nothing to show" into "show stale content
+      // that does not exist". Outside a derivation the same read is simply
+      // not-yet, and the honest answer is whether a lane was seen at all.
+      const uninitialized =
+        err.source !== undefined && (err.source._flags & REACTIVE_UNINITIALIZED) !== 0;
+      // A value that HAS held one and is pending again is the stale-content
+      // case `isPending` exists to report — an in-flight refresh, or a node
+      // `affects()` marked, which is the primitive that deliberately does
+      // propagate pendingness.
+      if (!uninitialized) return true;
+      if (currentObserver !== null) throw err;
+      return probeSawLane;
+    }
     throw err;
   } finally {
     probeDepth--;
@@ -2893,7 +2993,7 @@ function readSignalSlow<T>(node: SignalNode<T>): T {
     if (tracking && currentObserver !== null && !(currentObserver._flags & REACTIVE_DISPOSED)) {
       link(node as SignalNode<unknown>, currentObserver);
     }
-    throw new NotReadyError();
+    throw new NotReadyError(node as unknown as { _flags: number });
   }
 
   if (node._override !== null) {
@@ -2931,7 +3031,7 @@ function readSignalSlow<T>(node: SignalNode<T>): T {
  * settled value) until the returned release is called.
  *
  * Marks stack, so overlapping declarations each need their own release.
- * Targets must be derived (`computed` / `createAsync`); a plain signal has no
+ * Targets must be derived (`computed` / `computed`); a plain signal has no
  * status channel to carry the mark.
  */
 export function markInMotion(target: () => unknown): () => void {
@@ -3167,58 +3267,6 @@ function wireExternalSource(node: ComputedNode<unknown>, owner: Scope | null): v
   };
 }
 
-/**
- * Async derived value: a computed whose function returns a promise.
- * Reading it before resolution throws NotReadyError (caught by Loading
- * boundaries / isPending / latest).
- *
- * The resolved value is recorded on the server (see getHydrationData /
- * generateHydrationScript) and consumed from `__BARQ_DATA__` on the
- * client: the first read resolves synchronously with the server value
- * instead of refetching. Note the seeded first run doesn't track fn's
- * dependencies; use refresh() to refetch.
- *
- * The serialization key defaults to the owner-tree id of this call
- * (getNextChildId), so server and client agree as long as they build the
- * same owner tree. Called with no owner there is no tree to key off and
- * nothing is serialized.
- *
- * A position is not an identity: if the client tree diverges from the
- * server's, the ids after the divergence shift, and a read can claim the
- * value recorded for a DIFFERENT call and resolve synchronously with it.
- * `name` folds an identity into the auto-key — siblings only have to differ
- * from each other, and a drifted key then misses and refetches instead of
- * seeding the wrong value. `key` replaces the auto-key outright and has to be
- * unique across the page. `unclaimedSeeds()` reports the drift after the
- * fact; `hydrate()` calls it once the first render has settled.
- */
-export function createAsync<T>(
-  fn: (prev?: T) => Promise<T> | T,
-  options?: SignalOptions<T> & { key?: string },
-): Computed<T> {
-  const owner = currentOwner;
-  const key = options?.key ?? (owner !== null ? autoKey(owner, options?.name) : undefined);
-  if (key === undefined) {
-    return computed(fn as (prev?: T) => T, options);
-  }
-
-  let trySeed = true;
-  const wrapped = (prev?: T): T => {
-    if (trySeed) {
-      trySeed = false;
-      const seed = getSeed(key);
-      if (seed.found) {
-        return seed.value as T;
-      }
-    }
-    return fn(prev) as T;
-  };
-
-  const accessor = computed(wrapped, options);
-  (accessor as unknown as { _node: ComputedNode<T> })._node._serializeKey = key;
-  return accessor;
-}
-
 // ============================================================================
 // Context API
 // ============================================================================
@@ -3369,8 +3417,20 @@ export function cellOf(value: unknown): () => unknown {
 }
 
 /**
- * Get the current value from a context.
- * Always returns an accessor function for consistent API.
+ * The user-facing context read, returning a Cell — §3.0's rule applied to the
+ * context channel, and the form every compiled read takes.
+ *
+ * The name is Solid's, and so is the split: `@solidjs/signals` marks its
+ * `getContext(ctx, owner?)` `@internal` and says "the user-facing read API is
+ * `useContext` (in `solid-js`), which wraps this primitive". `getContext` above
+ * is that low-level owner-targeted read and answers with the VALUE; this one is
+ * what components call, and it answers with the accessor so the read stays
+ * live. Two readers, two questions.
+ *
+ * It is also the one `use*` name §13 keeps, and the reason is that it is not an
+ * alias of anything: the four that went — `useState`, `useMemo`, `useEffect`,
+ * `useResource` — were one-line wrappers over `signal`, `computed`, `effect`
+ * and `resource`. Reading a value the OWNER TREE provides is its own operation.
  */
 export function useContext<T>(context: Context<T>): () => T {
   const stored = lookupContext(getCurrentOwner(), context.id);

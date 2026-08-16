@@ -40,6 +40,7 @@ import {
   isRefCallback,
   isSignalGetter,
 } from "./type-utils.ts";
+import type { Cell } from "./scope.ts";
 import { writeLive } from "./forms.ts";
 import {
   HydrationMismatch,
@@ -488,6 +489,59 @@ export function createElement(
     appendChildren(getOwner(), element, children);
 
     return element;
+  });
+}
+
+/**
+ * `<Dynamic component={c}>` — §3.13 item 4, which is the whole reason this
+ * exists: a component or a tag whose value is not a module-local `const` cannot
+ * be resolved at compile time, so the choice is made here and nowhere else.
+ *
+ * The compiler has already done everything else. The key is a `branch`'s, so
+ * the swap and the teardown are the primitive's; the props are a SOURCE LIST
+ * (C9), not a copied object; the children are a Block inside it. What is left
+ * is one `typeof` — and the string arm builds through `spread` and `insert`,
+ * the same two entry points every other element goes through, rather than the
+ * fifth element-creation path `createDynamicElement` used to be.
+ */
+export function dyn(
+  s: Scope | null,
+  component: Cell<string | ((s: Scope | null, props: Record<string, unknown>) => unknown)>,
+  props: Record<string, unknown>,
+): unknown {
+  // The branch key already tracks this; reading it again inside the body would
+  // make the body's own construction a dependency of the swap that created it.
+  const resolved = untrack(component as () => unknown);
+  if (resolved === null || resolved === undefined || resolved === false) return null;
+  if (typeof resolved !== "string") {
+    return (resolved as (s: Scope | null, props: Record<string, unknown>) => unknown)(s, props);
+  }
+  return element(s, resolved, props);
+}
+
+/**
+ * One element, by tag NAME, with a props source list — the shape a template
+ * cannot express and the only element-creation path beside `template()`.
+ *
+ * Two callers, both of them the compiler's: `dyn`'s string arm, and the
+ * intrinsic P1 refuses because the tree builder would not produce it as written
+ * (`<td>` outside a row, `<body>`). Everything it does goes through the same
+ * two entry points a compiled element goes through — `spread` for the props,
+ * `insert` for the children — so there is no second answer here to what a prop
+ * or a child means.
+ *
+ * A subtree built here has no counterpart on the wire for a walk to claim: the
+ * string backend serialised it inline as one hole's value. `withoutClaim` says
+ * so, and the enclosing `insert` reconciles the server's nodes away instead.
+ */
+export function element(s: Scope | null, tag: string, props: Record<string, unknown>): Element {
+  return withoutClaim(() => {
+    const node =
+      tag in SVG_TAGS ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
+    spread(s, node, props);
+    const children = props.children;
+    if (children !== undefined && children !== null) insert(s, node, children as Child);
+    return node;
   });
 }
 
@@ -2210,7 +2264,7 @@ function eventFor(rec: CapturedEvent): Event {
  *
  * `fn` runs under a root, mirroring the one `renderToString` and `renderPage`
  * put around theirs: without it the client's owner tree is a level shallower
- * than the server's, and `createAsync`'s auto-keys — which are owner-tree ids —
+ * than the server's, and `computed`'s auto-keys — which are owner-tree ids —
  * address different values on the two sides.
  */
 export function hydrate(

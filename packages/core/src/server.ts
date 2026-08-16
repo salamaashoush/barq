@@ -6,7 +6,7 @@
  * GlobalRegistrator on a Bun/Node server). Text goes through real text
  * nodes, so HTML injection is escaped by construction.
  *
- * Async flow: components read keyed async values (createAsync with
+ * Async flow: components read keyed async values (computed with
  * `key`); renderToStringAsync settles the graph, Loading boundaries swap
  * to content, and the resolved values are captured for the client via
  * generateHydrationScript - hydrate() then resolves them synchronously
@@ -120,7 +120,7 @@ export async function renderPage(
 
   if (stringMode) {
     // A string boundary has no later frame to swap content into, so the settled
-    // values are read by rendering a second time. Keyed `createAsync` results
+    // values are read by rendering a second time. Keyed `computed` results
     // are cached against the session, so nothing is fetched twice.
     // `renderToStream` is the other answer: it parks the content Block instead
     // of re-running the page.

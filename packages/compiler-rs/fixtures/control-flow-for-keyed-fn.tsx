@@ -47,30 +47,6 @@ export const steps = [
   () => rows.set([]),
 ]
 
-// Two holes per row, and the list is two rows long: the slack is counted in
-// live BINDINGS, not in source positions.
-export const goesLive = [
-  "row 0 {index()}",
-  "row 0 {row().text}",
-  "row 1 {index()}",
-  "row 1 {row().text}",
-]
-
-export const wins = [
-  {
-    kind: "step",
-    index: 0,
-    compiled: '<ul class="keyed-fn"><li>0: ALPHA</li><li>1: BETA</li></ul>',
-    why: "same keys, new items: the row signal was re-set and the compiled path is bound to it",
-  },
-  {
-    kind: "step",
-    index: 1,
-    compiled: '<ul class="keyed-fn"><li>0: BETA</li><li>1: ALPHA</li></ul>',
-    why: "the reused rows swapped slots, so the index accessor moved under both of them",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 3,

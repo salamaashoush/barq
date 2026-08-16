@@ -6,11 +6,11 @@
 import { describe, expect, test } from "bun:test";
 import { merge, omit } from "./components.ts";
 import { effect, flush, signal } from "./signals.ts";
-import { createProjection, reconcile, snapshot, unwrap, useStore } from "./store.ts";
+import { createProjection, reconcile, snapshot, unwrap, store } from "./store.ts";
 
 describe("draft-first setters", () => {
   test("mutating the draft commits fine-grained updates", () => {
-    const [state, setState] = useStore({ count: 0, user: { name: "John", age: 30 } });
+    const [state, setState] = store({ count: 0, user: { name: "John", age: 30 } });
 
     setState((s) => {
       s.count++;
@@ -23,7 +23,7 @@ describe("draft-first setters", () => {
   });
 
   test("array mutations via draft (push) work", () => {
-    const [state, setState] = useStore<{ list: string[] }>({ list: ["a"] });
+    const [state, setState] = store<{ list: string[] }>({ list: ["a"] });
 
     setState((s) => {
       s.list.push("b");
@@ -33,7 +33,7 @@ describe("draft-first setters", () => {
   });
 
   test("only mutated paths notify subscribers", () => {
-    const [state, setState] = useStore({ a: 1, b: 2 });
+    const [state, setState] = store({ a: 1, b: 2 });
     let aRuns = 0;
     let bRuns = 0;
 
@@ -58,7 +58,7 @@ describe("draft-first setters", () => {
   });
 
   test("returning a partial still applies a shallow update (compat)", () => {
-    const [state, setState] = useStore({ count: 0, label: "x" });
+    const [state, setState] = store({ count: 0, label: "x" });
 
     setState((s) => ({ count: s.count + 5 }));
 
@@ -67,7 +67,7 @@ describe("draft-first setters", () => {
   });
 
   test("reconcile composes with draft setters", () => {
-    const [state, setState] = useStore<{ items: { id: number; text: string }[] }>({
+    const [state, setState] = store<{ items: { id: number; text: string }[] }>({
       items: [{ id: 1, text: "old" }],
     });
 
@@ -141,7 +141,7 @@ describe("createProjection", () => {
 
 describe("snapshot", () => {
   test("returns the raw object (no tracking, serializable)", () => {
-    const [state] = useStore({ user: { name: "John" } });
+    const [state] = store({ user: { name: "John" } });
     const raw = snapshot(state as { user: { name: string } });
     expect(raw.user.name).toBe("John");
     expect(JSON.stringify(raw)).toBe('{"user":{"name":"John"}}');

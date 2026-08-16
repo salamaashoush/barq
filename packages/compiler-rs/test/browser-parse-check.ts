@@ -225,6 +225,12 @@ export interface ShapeDivergence extends Template {
    * rows above. Everything else is a real disagreement about the tree.
    */
   leadingNewlineOnly: boolean
+  /**
+   * True when they differ only by an EMPTY text node happy-dom creates inside
+   * an empty raw-text element and Chrome does not. It materialises nothing and
+   * serialises to nothing, so no walk and no comparison downstream can see it.
+   */
+  emptyTextOnly: boolean
 }
 
 /**
@@ -232,9 +238,20 @@ export interface ShapeDivergence extends Template {
  * first child being a text node, which is exactly the position the parser's
  * rule is about, and the run is spelled `\n` because the signature is built
  * with `JSON.stringify`.
+ *
+ * An EMPTY text node goes with it, and for the same class of reason: happy-dom
+ * creates one inside an empty raw-text element where Chrome creates no child at
+ * all. It materialises nothing, contributes nothing to a sibling walk and
+ * serialises to nothing, so a signature that counts it is comparing the two
+ * parsers' bookkeeping rather than the tree.
  */
 function withoutTheLeadingNewline(signature: string): string {
   return signature.replace(/((?:pre|textarea|listing)\[#t")(?:\\n)+/g, "$1")
+}
+
+/** The same signature with happy-dom's empty text nodes dropped. */
+function withoutEmptyText(signature: string): string {
+  return signature.replaceAll('#t""', "")
 }
 
 /**
@@ -264,6 +281,7 @@ export async function checkParserAgreement(
       fake: fake[index],
       leadingNewlineOnly:
         withoutTheLeadingNewline(chrome[index]) === withoutTheLeadingNewline(fake[index]),
+      emptyTextOnly: withoutEmptyText(chrome[index]) === withoutEmptyText(fake[index]),
     })
   }
   return out

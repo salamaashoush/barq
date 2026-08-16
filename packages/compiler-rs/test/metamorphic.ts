@@ -3,8 +3,8 @@
  *
  * ## What was wrong with the differential grading
  *
- * `compareToOracle` compares the compiled render's surviving-node vector against
- * the `createElement` render's, and it does so under a guard:
+ * Until M9 `compareToOracle` compared the compiled render's surviving-node
+ * vector against the `createElement` render's, and it did so under a guard:
  *
  * ```ts
  * if (oracle.channels[i].html !== compiled.channels[i].html) continue
@@ -19,8 +19,11 @@
  *  2. **The expectation is whatever the reference incidentally kept.** The
  *     `createElement` oracle is not a specification of node survival; it is one
  *     more implementation, with its own reuse behaviour. A rebuild both paths
- *     perform is certified, not caught. This is the same blindness
- *     `oracle-known-failures.ts` documents for ownership, on a different channel.
+ *     perform is certified, not caught.
+ *
+ * §6 retired that reference at M9, which settles (2) by removing it. This file
+ * is what (1) needed either way, and it predates the retirement: an
+ * unconditional property is not something a better reference could have given.
  *
  * ## What replaces it
  *

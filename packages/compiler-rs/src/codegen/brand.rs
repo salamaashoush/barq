@@ -79,17 +79,18 @@ struct Brand<'a, 'm, 'e> {
     scope: &'a str,
 }
 
-/// Whether the emitted body uses its scope: names the scope identifier, or
-/// reaches a helper that creates reactive work while taking no scope.
+/// Whether the emitted body uses its scope — which since M9 is one question,
+/// because every helper that creates reactive work takes one. `createElement`
+/// was the exception this used to carry: it opened bindings off `getOwner()`
+/// and took no scope, so a body whose only work was that call named nothing.
 struct UsesScope<'s> {
     scope: &'s str,
-    scopeless: &'s str,
     found: bool,
 }
 
 impl<'a> Visit<'a> for UsesScope<'_> {
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
-        self.found |= it.name == self.scope || it.name == self.scopeless;
+        self.found |= it.name == self.scope;
     }
 }
 
@@ -143,11 +144,7 @@ impl<'a> Brand<'a, '_, '_> {
     }
 
     fn scan(&self) -> UsesScope<'_> {
-        UsesScope {
-            scope: self.scope,
-            scopeless: self.emit.local[Helper::CreateElement as usize],
-            found: false,
-        }
+        UsesScope { scope: self.scope, found: false }
     }
 
     fn brands_function(&self, function: &Function<'a>) -> bool {

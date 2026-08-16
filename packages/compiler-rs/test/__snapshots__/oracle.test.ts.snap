@@ -1,8 +1,1614 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`rendered DOM golden array-hole: rendered DOM 1`] = `
+"initial: <ul class="list"><li class="row">a</li><li class="row">b</li><li class="count">2</li></ul>
+step 0: <ul class="list"><li class="row">a</li><li class="row">b</li><li class="row">c</li><li class="count">3</li></ul>
+step 1: <ul class="list"><li class="row">c</li><li class="count">1</li></ul>
+step 2: <ul class="list"><li class="count">0</li></ul>
+step 3: <ul class="list"><li class="row">x</li><li class="row">y</li><li class="count">2</li></ul>
+attrs 0: 0 ul: class
+attrs 0: 0/0 li: class
+attrs 0: 0/1 li: class
+attrs 0: 0/2 li: class
+attrs 1: 0 ul: class
+attrs 1: 0/0 li: class
+attrs 1: 0/1 li: class
+attrs 1: 0/2 li: class
+attrs 1: 0/3 li: class
+attrs 2: 0 ul: class
+attrs 2: 0/0 li: class
+attrs 2: 0/1 li: class
+attrs 3: 0 ul: class
+attrs 3: 0/0 li: class
+attrs 4: 0 ul: class
+attrs 4: 0/0 li: class
+attrs 4: 0/1 li: class
+attrs 4: 0/2 li: class"
+`;
+
+exports[`rendered DOM golden arrow-body-component: rendered DOM 1`] = `
+"initial: <section class="host"><div class="c">1</div></section>
+step 0: <section class="host"><div class="c">2</div></section>
+step 1: <section class="host"><div class="c">3</div></section>
+attrs 0: 0 section: class
+attrs 0: 0/0 div: class
+attrs 1: 0 section: class
+attrs 1: 0/0 div: class
+attrs 2: 0 section: class
+attrs 2: 0/0 div: class"
+`;
+
+exports[`rendered DOM golden async-value: rendered DOM 1`] = `
+"initial: <div class="async"><span>ada</span></div>
+step 0: <div class="async"><span>grace</span></div>
+step 1: <div class="async"><span>hopper</span></div>
+attrs 0: 0 div: class
+attrs 1: 0 div: class
+attrs 2: 0 div: class"
+`;
+
+exports[`rendered DOM golden attribute-namespaces: rendered DOM 1`] = `
+"initial: <div><my-grid compact="" label="grid"></my-grid><button data-beeps="0" type="button">beep</button></div>
+step 0: <div><my-grid compact="" label="grid"></my-grid><button data-beeps="0" type="button">beep</button></div>
+step 1: <div><my-grid label="grid"></my-grid><button data-beeps="0" type="button">beep</button></div>
+step 2: <div><my-grid data-rows="5" label="grid"></my-grid><button data-beeps="0" type="button">beep</button></div>
+event 0: <div><my-grid data-rows="5" label="grid"></my-grid><button data-beeps="1" type="button">beep</button></div>
+attrs 0: 0/0 my-grid: label,compact
+attrs 0: 0/1 button: type,data-beeps
+attrs 1: 0/0 my-grid: label,compact
+attrs 1: 0/1 button: type,data-beeps
+attrs 2: 0/0 my-grid: label
+attrs 2: 0/1 button: type,data-beeps
+attrs 3: 0/0 my-grid: label,data-rows
+attrs 3: 0/1 button: type,data-beeps
+attrs 4: 0/0 my-grid: label,data-rows
+attrs 4: 0/1 button: type,data-beeps"
+`;
+
+exports[`rendered DOM golden auto-thunked-read: rendered DOM 1`] = `
+"initial: <div><p title="count: 1">attr</p><span>n=1</span><b>1</b></div>
+step 0: <div><p title="count: 2">attr</p><span>n=2</span><b>2</b></div>
+attrs 0: 0/0 p: title
+attrs 1: 0/0 p: title"
+`;
+
+exports[`rendered DOM golden bind-family: rendered DOM 1`] = `
+"initial: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="ada" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="2" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="seeded" class="draft" type="text"><b class="echo">ada/2</b></form>
+step 0: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="grace" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="2" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="seeded" class="draft" type="text"><b class="echo">grace/2</b></form>
+step 1: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="grace" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="seeded" class="draft" type="text"><b class="echo">grace/9</b></form>
+step 2: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="grace" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="reseeded" class="draft" type="text"><b class="echo">grace/9</b></form>
+event 0: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="typed" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="reseeded" class="draft" type="text"><b class="echo">typed/9</b></form>
+event 1: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="typed" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=true .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="reseeded" class="draft" type="text"><b class="echo">typed/9</b></form>
+attrs 0: 0 form: class
+attrs 0: 0/0 input: type,class
+attrs 0: 0/1 textarea: class
+attrs 0: 0/2 input: type,class
+attrs 0: 0/3 input: type,class
+attrs 0: 0/4 input: type,class
+attrs 0: 0/5 b: class
+attrs 1: 0 form: class
+attrs 1: 0/0 input: type,class
+attrs 1: 0/1 textarea: class
+attrs 1: 0/2 input: type,class
+attrs 1: 0/3 input: type,class
+attrs 1: 0/4 input: type,class
+attrs 1: 0/5 b: class
+attrs 2: 0 form: class
+attrs 2: 0/0 input: type,class
+attrs 2: 0/1 textarea: class
+attrs 2: 0/2 input: type,class
+attrs 2: 0/3 input: type,class
+attrs 2: 0/4 input: type,class
+attrs 2: 0/5 b: class
+attrs 3: 0 form: class
+attrs 3: 0/0 input: type,class
+attrs 3: 0/1 textarea: class
+attrs 3: 0/2 input: type,class
+attrs 3: 0/3 input: type,class
+attrs 3: 0/4 input: type,class
+attrs 3: 0/5 b: class
+attrs 4: 0 form: class
+attrs 4: 0/0 input: type,class
+attrs 4: 0/1 textarea: class
+attrs 4: 0/2 input: type,class
+attrs 4: 0/3 input: type,class
+attrs 4: 0/4 input: type,class
+attrs 4: 0/5 b: class
+attrs 5: 0 form: class
+attrs 5: 0/0 input: type,class
+attrs 5: 0/1 textarea: class
+attrs 5: 0/2 input: type,class
+attrs 5: 0/3 input: type,class
+attrs 5: 0/4 input: type,class
+attrs 5: 0/5 b: class"
+`;
+
+exports[`rendered DOM golden bind-value-channel: rendered DOM 1`] = `
+"initial: <label><input .checked=false .defaultValue="" .indeterminate=false .value="hi" type="text"><b>hi</b></label>
+step 0: <label><input .checked=false .defaultValue="" .indeterminate=false .value="edited" type="text"><b>edited</b></label>
+event 0: <label><input .checked=false .defaultValue="" .indeterminate=false .value="typed" type="text"><b>typed</b></label>
+attrs 0: 0/0 input: type
+attrs 1: 0/0 input: type
+attrs 2: 0/0 input: type"
+`;
+
+exports[`rendered DOM golden boolean-and-nullish-props: rendered DOM 1`] = `
+"initial: <div><button type="button">b</button><span></span></div>
+step 0: <div><button disabled="" type="button">b</button><span data-present="yes"></span></div>
+step 1: <div><button type="button">b</button><span></span></div>
+attrs 0: 0/0 button: type
+attrs 1: 0/0 button: type,disabled
+attrs 1: 0/1 span: data-present
+attrs 2: 0/0 button: type"
+`;
+
+exports[`rendered DOM golden class-empty-string: rendered DOM 1`] = `
+"initial: <div class="host"><span class="" data-p="static"></span><span class="" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
+step 0: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
+step 1: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="on hit" data-p="merged"></span><span data-p="not-an-object"></span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: data-p,class
+attrs 0: 0/1 span: data-p,class
+attrs 0: 0/2 span: data-p,class
+attrs 0: 0/3 span: data-p
+attrs 1: 0 div: class
+attrs 1: 0/0 span: data-p,class
+attrs 1: 0/1 span: data-p,class
+attrs 1: 0/2 span: data-p,class
+attrs 1: 0/3 span: data-p
+attrs 2: 0 div: class
+attrs 2: 0/0 span: data-p,class
+attrs 2: 0/1 span: data-p,class
+attrs 2: 0/2 span: data-p,class
+attrs 2: 0/3 span: data-p"
+`;
+
+exports[`rendered DOM golden class-list-array-object: rendered DOM 1`] = `
+"initial: <div><span class="a b">array</span><span class="base">object</span></div>
+step 0: <div><span class="a b">array</span><span class="base active">object</span></div>
+step 1: <div><span class="a b">array</span><span class="base">object</span></div>
+attrs 0: 0/0 span: class
+attrs 0: 0/1 span: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 span: class
+attrs 2: 0/0 span: class
+attrs 2: 0/1 span: class"
+`;
+
+exports[`rendered DOM golden class-list-prop: rendered DOM 1`] = `
+"initial: <div class="host"><span class="badge">keyed</span><span class="three">reactive</span></div>
+step 0: <div class="host"><span class="badge active">keyed</span><span class="one two">reactive</span></div>
+step 1: <div class="host"><span class="badge">keyed</span><span class="three">reactive</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 0: 0/1 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 span: class
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class
+attrs 2: 0/1 span: class"
+`;
+
+exports[`rendered DOM golden class-owns-only-its-tokens: rendered DOM 1`] = `
+"initial: <b class="ref-added red pinned" title="first">x</b>
+step 0: <b class="ref-added red pinned" title="second">x</b>
+step 1: <b class="ref-added pinned blue" title="second">x</b>
+attrs 0: 0 b: class,title
+attrs 1: 0 b: class,title
+attrs 2: 0 b: class,title"
+`;
+
+exports[`rendered DOM golden class-with-live-siblings: rendered DOM 1`] = `
+"initial: <div class="red extra" id="first" title="first">x</div>
+step 0: <div class="red extra" id="second" title="second">x</div>
+step 1: <div class="extra blue" id="second" title="second">x</div>
+attrs 0: 0 div: class,title,id
+attrs 1: 0 div: class,title,id
+attrs 2: 0 div: class,title,id"
+`;
+
+exports[`rendered DOM golden component-boundary-props: rendered DOM 1`] = `
+"initial: <section><p class="greeting">Hello, world!</p><p class="greeting">Hello, static?</p></section>
+step 0: <section><p class="greeting">Hello, barq!</p><p class="greeting">Hello, static?</p></section>
+attrs 0: 0/0 p: class
+attrs 0: 0/1 p: class
+attrs 1: 0/0 p: class
+attrs 1: 0/1 p: class"
+`;
+
+exports[`rendered DOM golden component-child-of-element: rendered DOM 1`] = `
+"initial: <div class="host"><h1>Title</h1><p class="body">shown</p><footer>end</footer></div>
+step 0: <div class="host"><h1>Title</h1><em class="off">off</em><footer>end</footer></div>
+step 1: <div class="host"><h1>Title</h1><p class="body">shown</p><footer>end</footer></div>
+attrs 0: 0 div: class
+attrs 0: 0/1 p: class
+attrs 1: 0 div: class
+attrs 1: 0/1 em: class
+attrs 2: 0 div: class
+attrs 2: 0/1 p: class"
+`;
+
+exports[`rendered DOM golden component-children-slot: rendered DOM 1`] = `
+"initial: <main class="page"><p class="lead">before</p><section class="panel"><h2 class="panel__title">Inbox</h2><div class="panel__body"><span class="item">one</span><b class="count">3</b><span class="item">two</span></div></section><p class="tail">after</p></main>
+step 0: <main class="page"><p class="lead">before</p><section class="panel"><h2 class="panel__title">Inbox</h2><div class="panel__body"><span class="item">one</span><b class="count">7</b><span class="item">two</span></div></section><p class="tail">after</p></main>
+step 1: <main class="page"><p class="lead">before</p><section class="panel"><h2 class="panel__title">Inbox</h2><div class="panel__body"><span class="item">one</span><b class="count">0</b><span class="item">two</span></div></section><p class="tail">after</p></main>
+attrs 0: 0 main: class
+attrs 0: 0/0 p: class
+attrs 0: 0/1 section: class
+attrs 0: 0/1/0 h2: class
+attrs 0: 0/1/1 div: class
+attrs 0: 0/1/1/0 span: class
+attrs 0: 0/1/1/1 b: class
+attrs 0: 0/1/1/2 span: class
+attrs 0: 0/2 p: class
+attrs 1: 0 main: class
+attrs 1: 0/0 p: class
+attrs 1: 0/1 section: class
+attrs 1: 0/1/0 h2: class
+attrs 1: 0/1/1 div: class
+attrs 1: 0/1/1/0 span: class
+attrs 1: 0/1/1/1 b: class
+attrs 1: 0/1/1/2 span: class
+attrs 1: 0/2 p: class
+attrs 2: 0 main: class
+attrs 2: 0/0 p: class
+attrs 2: 0/1 section: class
+attrs 2: 0/1/0 h2: class
+attrs 2: 0/1/1 div: class
+attrs 2: 0/1/1/0 span: class
+attrs 2: 0/1/1/1 b: class
+attrs 2: 0/1/1/2 span: class
+attrs 2: 0/2 p: class"
+`;
+
+exports[`rendered DOM golden component-forwarded-handler-tuple: rendered DOM 1`] = `
+"initial: <div class="wrap"><b class="picked">none</b><button class="chip" data-render-same="true" data-same="true" data-tone="alpha" type="button">long</button></div>
+event 0: <div class="wrap"><b class="picked">alpha</b><button class="chip" data-render-same="true" data-same="true" data-tone="alpha" type="button">long</button></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 0: 0/1 button: type,class,data-tone,data-same,data-render-same
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 1: 0/1 button: type,class,data-tone,data-same,data-render-same"
+`;
+
+exports[`rendered DOM golden component-function-props: rendered DOM 1`] = `
+"initial: <div class="wrap"><b class="count">0</b><button class="chip" data-same="true" type="button">legacy</button></div>
+event 0: <div class="wrap"><b class="count" data-clicked="2">2</b><button class="chip" data-same="true" type="button">legacy</button></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 0: 0/1 button: type,class,data-same
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class,data-clicked
+attrs 1: 0/1 button: type,class,data-same"
+`;
+
+exports[`rendered DOM golden component-getter-props: rendered DOM 1`] = `
+"initial: <div class="wrap"><b class="badge">0</b></div>
+step 0: <div class="wrap"><b class="badge">7</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class"
+`;
+
+exports[`rendered DOM golden component-spread: rendered DOM 1`] = `
+"initial: <div><span class="chip" data-tone="warm" id="chip-1">first</span><span class="chip" data-tone="warm" id="chip-2">static</span></div>
+step 0: <div><span class="chip" data-tone="warm" id="chip-1">second</span><span class="chip" data-tone="warm" id="chip-2">static</span></div>
+attrs 0: 0/0 span: class,data-tone,id
+attrs 0: 0/1 span: class,data-tone,id
+attrs 1: 0/0 span: class,data-tone,id
+attrs 1: 0/1 span: class,data-tone,id"
+`;
+
+exports[`rendered DOM golden computed-derived: rendered DOM 1`] = `
+"initial: <p class="memo"><span>5</span><b>4</b></p>
+step 0: <p class="memo"><span>11</span><b>10</b></p>
+step 1: <p class="memo"><span>1</span><b>0</b></p>
+attrs 0: 0 p: class
+attrs 1: 0 p: class
+attrs 2: 0 p: class"
+`;
+
+exports[`rendered DOM golden conditional-children: rendered DOM 1`] = `
+"initial: <div><span class="a">A</span><footer>end</footer></div>
+step 0: <div><em>B</em><footer>end</footer></div>
+step 1: <div><footer>end</footer></div>
+step 2: <div><span class="a">A</span><footer>end</footer></div>
+attrs 0: 0/0 span: class
+attrs 3: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden context-provider: rendered DOM 1`] = `
+"initial: <div><span class="badge">dark</span><span class="badge">light</span></div>
+step 0: <div><span class="badge">sepia</span><span class="badge">light</span></div>
+attrs 0: 0/0 span: class
+attrs 0: 0/1 span: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 span: class"
+`;
+
+exports[`rendered DOM golden control-flow-await-suspense: rendered DOM 1`] = `
+"initial: <div><span class="loading">loading</span></div>
+step 0: <div><p class="loaded">ready</p></div>
+attrs 0: 0/0 span: class
+attrs 1: 0/0 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-error-boundary: rendered DOM 1`] = `
+"initial: <div><button type="button">boom</button></div>
+event 0: <div><p class="ok">recovered</p></div>
+attrs 0: 0/0 button: type
+attrs 1: 0/0 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-errored-loading: rendered DOM 1`] = `
+"initial: <button type="button">nope</button>
+event 0: <p class="fine">fine</p>
+attrs 0: 0 button: type
+attrs 1: 0 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-for: rendered DOM 1`] = `
+"initial: <ul class="list"><li data-id="1">0: alpha</li><li data-id="2">1: beta</li></ul>
+step 0: <ul class="list"><li data-id="1">0: alpha</li><li data-id="2">1: beta</li><li data-id="3">2: gamma</li></ul>
+step 1: <ul class="list"><li data-id="2">0: beta</li><li data-id="3">1: gamma</li></ul>
+step 2: <ul class="list"><li class="empty">none</li></ul>
+attrs 0: 0 ul: class
+attrs 0: 0/0 li: data-id
+attrs 0: 0/1 li: data-id
+attrs 1: 0 ul: class
+attrs 1: 0/0 li: data-id
+attrs 1: 0/1 li: data-id
+attrs 1: 0/2 li: data-id
+attrs 2: 0 ul: class
+attrs 2: 0/0 li: data-id
+attrs 2: 0/1 li: data-id
+attrs 3: 0 ul: class
+attrs 3: 0/0 li: class"
+`;
+
+exports[`rendered DOM golden control-flow-for-keyed-by-item: rendered DOM 1`] = `
+"initial: <ul class="keyed-item"><li>alpha</li><li>beta</li></ul>
+step 0: <ul class="keyed-item"><li>ALPHA</li><li>BETA</li></ul>
+step 1: <ul class="keyed-item"></ul>
+attrs 0: 0 ul: class
+attrs 1: 0 ul: class
+attrs 2: 0 ul: class"
+`;
+
+exports[`rendered DOM golden control-flow-for-keyed-false: rendered DOM 1`] = `
+"initial: <ul class="keyed-false"><li>0: alpha</li><li>1: beta</li></ul>
+step 0: <ul class="keyed-false"><li>0: ALPHA</li><li>1: BETA</li></ul>
+step 1: <ul class="keyed-false"><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li></ul>
+step 2: <ul class="keyed-false"><li>0: only</li></ul>
+attrs 0: 0 ul: class
+attrs 1: 0 ul: class
+attrs 2: 0 ul: class
+attrs 3: 0 ul: class"
+`;
+
+exports[`rendered DOM golden control-flow-for-keyed-fn: rendered DOM 1`] = `
+"initial: <ul class="keyed-fn"><li>0: alpha</li><li>1: beta</li></ul>
+step 0: <ul class="keyed-fn"><li>0: ALPHA</li><li>1: BETA</li></ul>
+step 1: <ul class="keyed-fn"><li>0: BETA</li><li>1: ALPHA</li></ul>
+step 2: <ul class="keyed-fn"><li class="empty">none</li></ul>
+attrs 0: 0 ul: class
+attrs 1: 0 ul: class
+attrs 2: 0 ul: class
+attrs 3: 0 ul: class
+attrs 3: 0/0 li: class"
+`;
+
+exports[`rendered DOM golden control-flow-for-keyed-spread: rendered DOM 1`] = `
+"initial: <ul class="keyed-spread"><li>alpha</li><li>beta</li></ul>
+step 0: <ul class="keyed-spread"><li>ALPHA</li><li>BETA</li></ul>
+step 1: <ul class="keyed-spread"><li>ALPHA</li></ul>
+attrs 0: 0 ul: class
+attrs 1: 0 ul: class
+attrs 2: 0 ul: class"
+`;
+
+exports[`rendered DOM golden control-flow-for-keyed-unprovable: rendered DOM 1`] = `
+"initial: <ul class="keyed-var"><li>alpha</li><li>beta</li></ul>
+step 0: <ul class="keyed-var"><li>ALPHA</li><li>BETA</li></ul>
+step 1: <ul class="keyed-var"><li>BETA</li></ul>
+attrs 0: 0 ul: class
+attrs 1: 0 ul: class
+attrs 2: 0 ul: class"
+`;
+
+exports[`rendered DOM golden control-flow-for-static-body: rendered DOM 1`] = `
+"initial: <ul class="static-rows"><li class="row"><span>fixed</span></li><li class="row"><span>fixed</span></li></ul>
+step 0: <ul class="static-rows"><li class="row"><span>fixed</span></li><li class="row"><span>fixed</span></li><li class="row"><span>fixed</span></li></ul>
+step 1: <ul class="static-rows"><li class="row"><span>fixed</span></li></ul>
+step 2: <ul class="static-rows"></ul>
+attrs 0: 0 ul: class
+attrs 0: 0/0 li: class
+attrs 0: 0/1 li: class
+attrs 1: 0 ul: class
+attrs 1: 0/0 li: class
+attrs 1: 0/1 li: class
+attrs 1: 0/2 li: class
+attrs 2: 0 ul: class
+attrs 2: 0/0 li: class
+attrs 3: 0 ul: class"
+`;
+
+exports[`rendered DOM golden control-flow-index: rendered DOM 1`] = `
+"initial: <ol><li>0=1</li><li>1=2</li><li>2=3</li></ol>
+step 0: <ol><li>0=9</li><li>1=2</li><li>2=3</li></ol>
+step 1: <ol><li>0=9</li></ol>
+step 2: <ol><li>0=1</li><li>1=2</li><li>2=3</li><li>3=4</li></ol>"
+`;
+
+exports[`rendered DOM golden control-flow-nested: rendered DOM 1`] = `
+"initial: <div class="nest"><ul class="rows"><li>1</li><li>2</li><li>3</li></ul></div>
+step 0: <div class="nest"><ul class="rows"><li>1</li><li>2</li></ul></div>
+step 1: <div class="nest"><span class="off">off</span></div>
+step 2: <div class="nest"><ul class="rows"><li>1</li><li>2</li></ul></div>
+step 3: <div class="nest"><ul class="rows"><li>4</li><li>5</li><li>6</li></ul></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 ul: class
+attrs 1: 0 div: class
+attrs 1: 0/0 ul: class
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class
+attrs 3: 0 div: class
+attrs 3: 0/0 ul: class
+attrs 4: 0 div: class
+attrs 4: 0/0 ul: class"
+`;
+
+exports[`rendered DOM golden control-flow-repeat: rendered DOM 1`] = `
+"initial: <div><span class="cell">0</span><span class="cell">1</span></div>
+step 0: <div><span class="cell">0</span><span class="cell">1</span><span class="cell">2</span><span class="cell">3</span></div>
+step 1: <div><span class="cell">0</span></div>
+attrs 0: 0/0 span: class
+attrs 0: 0/1 span: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 span: class
+attrs 1: 0/2 span: class
+attrs 1: 0/3 span: class
+attrs 2: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden control-flow-reveal: rendered DOM 1`] = `
+"initial: <div class="reveal-host"><p class="first">one</p><p class="second">tail</p></div>
+step 0: <div class="reveal-host"><p class="first">two</p><p class="second">tail</p></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 p: class
+attrs 0: 0/1 p: class
+attrs 1: 0 div: class
+attrs 1: 0/0 p: class
+attrs 1: 0/1 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-show: rendered DOM 1`] = `
+"initial: <div><p class="content">shown</p><footer>tail</footer></div>
+step 0: <div><span class="empty">nothing</span><footer>tail</footer></div>
+step 1: <div><p class="content">shown</p><footer>tail</footer></div>
+attrs 0: 0/0 p: class
+attrs 1: 0/0 span: class
+attrs 2: 0/0 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-show-cleanup-body: rendered DOM 1`] = `
+"initial: <div class="host"><span class="live">0</span></div>
+step 0: <div class="host"><span class="live">1</span><p class="panel">open</p></div>
+step 1: <div class="host"><span class="live">0</span></div>
+step 2: <div class="host"><span class="live">1</span><p class="panel">open</p></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 p: class
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class
+attrs 3: 0 div: class
+attrs 3: 0/0 span: class
+attrs 3: 0/1 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-show-eager-children: rendered DOM 1`] = `
+"initial: <div class="eager"><div class="content">Content</div></div>
+step 0: <div class="eager"><span class="hidden">Hidden</span></div>
+step 1: <div class="eager"><div class="content">Content</div></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 div: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 2: 0 div: class
+attrs 2: 0/0 div: class"
+`;
+
+exports[`rendered DOM golden control-flow-show-eager-static-body: rendered DOM 1`] = `
+"initial: 
+step 0: <div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>
+step 1: 
+step 2: <div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>
+attrs 1: 0 div: class
+attrs 3: 0 div: class"
+`;
+
+exports[`rendered DOM golden control-flow-show-fragment-body: rendered DOM 1`] = `
+"initial: <div class="frag"><a href="#one">body-one</a><b>body-two</b></div>
+step 0: <div class="frag"><i>fallback-one</i><u>fallback-two</u></div>
+step 1: <div class="frag"><a href="#one">body-one</a><b>body-two</b></div>
+step 2: <div class="frag"><i>fallback-one</i><u>fallback-two</u></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 a: href
+attrs 1: 0 div: class
+attrs 2: 0 div: class
+attrs 2: 0/0 a: href
+attrs 3: 0 div: class"
+`;
+
+exports[`rendered DOM golden control-flow-show-static-body: rendered DOM 1`] = `
+"initial: 
+step 0: <div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>
+step 1: 
+step 2: <div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>
+attrs 1: 0 div: class
+attrs 3: 0 div: class"
+`;
+
+exports[`rendered DOM golden control-flow-show-static-key: rendered DOM 1`] = `
+"initial: <div class="gate"><p class="loud">ready</p><p class="quiet">on</p></div>
+step 0: <div class="gate"><p class="loud">done</p><p class="quiet">on</p></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 p: class
+attrs 0: 0/1 p: class
+attrs 1: 0 div: class
+attrs 1: 0/0 p: class
+attrs 1: 0/1 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-switch-match: rendered DOM 1`] = `
+"initial: <div class="status"><p>Loading…</p></div>
+step 0: <div class="status"><p class="ok">Ready</p></div>
+step 1: <div class="status"><span>unknown</span></div>
+step 2: <div class="status"><p>Loading…</p></div>
+attrs 0: 0 div: class
+attrs 1: 0 div: class
+attrs 1: 0/0 p: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class"
+`;
+
+exports[`rendered DOM golden control-flow-switch-static-key: rendered DOM 1`] = `
+"initial: <div class="mode"><p class="full">0</p></div>
+step 0: <div class="mode"><p class="full">1</p></div>
+step 1: <div class="mode"><p class="full">2</p></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 p: class
+attrs 1: 0 div: class
+attrs 1: 0/0 p: class
+attrs 2: 0 div: class
+attrs 2: 0/0 p: class"
+`;
+
+exports[`rendered DOM golden create-optimistic-signal: rendered DOM 1`] = `
+"initial: <button class="optimistic" type="button">0</button>
+event 0: <button class="optimistic" type="button">1</button>
+attrs 0: 0 button: type,class
+attrs 1: 0 button: type,class"
+`;
+
+exports[`rendered DOM golden create-projection-store: rendered DOM 1`] = `
+"initial: <div class="projection" data-on="0">no</div>
+step 0: <div class="projection" data-on="1">yes</div>
+step 1: <div class="projection" data-on="0">no</div>
+attrs 0: 0 div: class,data-on
+attrs 1: 0 div: class,data-on
+attrs 2: 0 div: class,data-on"
+`;
+
+exports[`rendered DOM golden custom-elements: rendered DOM 1`] = `
+"initial: <div><my-widget size="lg"></my-widget><x-thing data-value="v1"></x-thing><my-widget>with children</my-widget></div>
+step 0: <div><my-widget size="lg"></my-widget><x-thing data-value="v2"></x-thing><my-widget>with children</my-widget></div>
+attrs 0: 0/0 my-widget: size
+attrs 0: 0/1 x-thing: data-value
+attrs 1: 0/0 my-widget: size
+attrs 1: 0/1 x-thing: data-value"
+`;
+
+exports[`rendered DOM golden dangerously-set-inner-html: rendered DOM 1`] = `
+"initial: <div class="wrap"><div><b>bold</b></div><span>after</span></div>
+attrs 0: 0 div: class"
+`;
+
+exports[`rendered DOM golden dashboard-composite: rendered DOM 1`] = `
+"initial: <div class="posts"><h1>Hello, John</h1><input .checked=false .defaultValue="" .indeterminate=false .value="" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
+step 0: <div class="posts"><h1>Hello, John</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
+step 1: <div class="posts"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
+step 2: <div class="posts"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
+event 0: <div class="other"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
+event 1: <div class="other"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="typed" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
+attrs 0: 0 div: class
+attrs 0: 0/1 input: class
+attrs 0: 0/2 button: type,class
+attrs 0: 0/3 ul: class
+attrs 1: 0 div: class
+attrs 1: 0/1 input: class
+attrs 1: 0/2 button: type,class
+attrs 1: 0/3 ul: class
+attrs 2: 0 div: class
+attrs 2: 0/1 input: class
+attrs 2: 0/2 button: type,class
+attrs 2: 0/3 ul: class
+attrs 3: 0 div: class
+attrs 3: 0/1 input: class
+attrs 3: 0/2 button: type,class
+attrs 3: 0/3 ul: class
+attrs 4: 0 div: class
+attrs 4: 0/1 input: class
+attrs 4: 0/2 button: type,class
+attrs 4: 0/3 ul: class
+attrs 5: 0 div: class
+attrs 5: 0/1 input: class
+attrs 5: 0/2 button: type,class
+attrs 5: 0/3 ul: class"
+`;
+
+exports[`rendered DOM golden dedup-identical-markup: rendered DOM 1`] = `
+"initial: <div class="grid"><div class="cell"><span>x</span></div><div class="cell"><span>x</span></div></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 div: class
+attrs 0: 0/1 div: class"
+`;
+
+exports[`rendered DOM golden deep-walk: rendered DOM 1`] = `
+"initial: <div><div><div><div><div><span class="deep">L</span></div></div></div></div><p>sibling</p></div>
+step 0: <div><div><div><div><div><span class="deep">LL</span></div></div></div></div><p>sibling</p></div>
+attrs 0: 0/0/0/0/0/0 span: class
+attrs 1: 0/0/0/0/0/0 span: class"
+`;
+
+exports[`rendered DOM golden delegated-event: rendered DOM 1`] = `
+"initial: <button type="button">clicked 0</button>
+step 0: <button type="button">clicked 1</button>
+event 0: <button type="button">clicked 2</button>
+event 1: <button type="button">clicked 3</button>
+attrs 0: 0 button: type
+attrs 1: 0 button: type
+attrs 2: 0 button: type
+attrs 3: 0 button: type"
+`;
+
+exports[`rendered DOM golden delegated-handler-tuple: rendered DOM 1`] = `
+"initial: <ul><li data-row="a">a</li><li data-row="b">b</li><li data-row="picked">none</li></ul>
+event 0: <ul><li data-row="a">a</li><li data-row="b">b</li><li data-row="picked">b</li></ul>
+event 1: <ul><li data-row="a">a</li><li data-row="b">b</li><li data-row="picked">a</li></ul>
+attrs 0: 0/0 li: data-row
+attrs 0: 0/1 li: data-row
+attrs 0: 0/2 li: data-row
+attrs 1: 0/0 li: data-row
+attrs 1: 0/1 li: data-row
+attrs 1: 0/2 li: data-row
+attrs 2: 0/0 li: data-row
+attrs 2: 0/1 li: data-row
+attrs 2: 0/2 li: data-row"
+`;
+
+exports[`rendered DOM golden delegated-two-types: rendered DOM 1`] = `
+"initial: <button type="button">0/0</button>
+step 0: <button type="button">5/0</button>
+event 0: <button type="button">6/0</button>
+event 1: <button type="button">6/1</button>
+event 2: <button type="button">7/1</button>
+attrs 0: 0 button: type
+attrs 1: 0 button: type
+attrs 2: 0 button: type
+attrs 3: 0 button: type
+attrs 4: 0 button: type"
+`;
+
+exports[`rendered DOM golden derived-local-thunk: rendered DOM 1`] = `
+"initial: <p class="chain"><span>2</span><b>4</b></p>
+step 0: <p class="chain"><span>6</span><b>12</b></p>
+step 1: <p class="chain"><span>0</span><b>0</b></p>
+attrs 0: 0 p: class
+attrs 1: 0 p: class
+attrs 2: 0 p: class"
+`;
+
+exports[`rendered DOM golden diagnostic-accessor-coercion: rendered DOM 1`] = `
+"initial: <div><p id="1">live attribute</p><b>1</b><span>total: () => {
+    if (slowSignalRead !== 0)
+      return readSignalSlow(node);
+    if (!tracking)
+      return node._value;
+    if (currentObserver && !(currentObserver._flags & 32))
+      link(node, currentObserver);
+    return node._value;
+  }</span></div>
+step 0: <div><p id="2">live attribute</p><b>2</b><span>total: () => {
+    if (slowSignalRead !== 0)
+      return readSignalSlow(node);
+    if (!tracking)
+      return node._value;
+    if (currentObserver && !(currentObserver._flags & 32))
+      link(node, currentObserver);
+    return node._value;
+  }</span></div>
+attrs 0: 0/0 p: id
+attrs 1: 0/0 p: id"
+`;
+
+exports[`rendered DOM golden dom-prop-static-value: rendered DOM 1`] = `
+"initial: <form class="statics"><input .checked=false .defaultValue="" .indeterminate=false .value="abc" readonly="" type="text"><input .checked=true .defaultValue="" .indeterminate=false .value="on" type="checkbox"></form>
+attrs 0: 0 form: class
+attrs 0: 0/0 input: type,readonly
+attrs 0: 0/1 input: type"
+`;
+
+exports[`rendered DOM golden dynamic: rendered DOM 1`] = `
+"initial: <div><span class="dyn">inner</span></div>
+step 0: <div><b class="dyn">inner</b></div>
+step 1: <div><span class="dyn">inner</span></div>
+attrs 0: 0/0 span: class
+attrs 1: 0/0 b: class
+attrs 2: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden equal-liveness: rendered DOM 1`] = `
+"initial: <b class="red" id="red" title="red"></b>
+step 0: <b class="blue" id="blue" title="blue"></b>
+step 1: <b class="green" id="green" title="green"></b>
+attrs 0: 0 b: class,id,title
+attrs 1: 0 b: class,id,title
+attrs 2: 0 b: class,id,title"
+`;
+
+exports[`rendered DOM golden escaped-text-and-attribute: rendered DOM 1`] = `
+"initial: <div class="escaped" data-markup="<x>" title="a"b"><script>alert(1)</script>1 & 2</div>
+attrs 0: 0 div: class,title,data-markup"
+`;
+
+exports[`rendered DOM golden escaping-adversarial: rendered DOM 1`] = `
+"initial: <div class="adv"><p class="text"><img src=x onerror="alert(1)"></p><p class="attr" data-amp="a & b &amp; c &#38; d" title="" onmouseover="alert(1)" data-x="">attr</p><p class="static" title="" onload="x"><b>not markup</b> &   𝕏 \u2028 done</p><pre class="pre"><img src=x onerror="alert(1)"></pre><textarea .defaultValue="<img src=x onerror=\\"alert(1)\\">" .value="<img src=x onerror=\\"alert(1)\\">" class="area"><img src=x onerror="alert(1)"></textarea><style class="sheet">.adv { color: red }</style></div>
+step 0: <div class="adv"><p class="text"></p><script>alert(1)</script></p><p class="attr" data-amp="a & b &amp; c &#38; d" title="" onmouseover="alert(1)" data-x="">attr</p><p class="static" title="" onload="x"><b>not markup</b> &   𝕏 \u2028 done</p><pre class="pre"></p><script>alert(1)</script></pre><textarea .defaultValue="</p><script>alert(1)</script>" .value="</p><script>alert(1)</script>" class="area"></p><script>alert(1)</script></textarea><style class="sheet">.adv { color: red }</style></div>
+step 1: <div class="adv"><p class="text"></p><script>alert(1)</script></p><p class="attr" data-amp="a & b &amp; c &#38; d" title="]]> --> &lt; <!--">attr</p><p class="static" title="" onload="x"><b>not markup</b> &   𝕏 \u2028 done</p><pre class="pre"></p><script>alert(1)</script></pre><textarea .defaultValue="</p><script>alert(1)</script>" .value="</p><script>alert(1)</script>" class="area"></p><script>alert(1)</script></textarea><style class="sheet">.adv { color: red }</style></div>
+step 2: <div class="adv"><p class="text"></p><script>alert(1)</script></p><p class="attr" data-amp="😀𠮞 &nbsp;" title="]]> --> &lt; <!--">attr</p><p class="static" title="" onload="x"><b>not markup</b> &   𝕏 \u2028 done</p><pre class="pre"></p><script>alert(1)</script></pre><textarea .defaultValue="</p><script>alert(1)</script>" .value="</p><script>alert(1)</script>" class="area"></p><script>alert(1)</script></textarea><style class="sheet">.adv { color: red }</style></div>
+step 3: <div class="adv"><p class="text">plain</p><p class="attr" data-amp="😀𠮞 &nbsp;" title="]]> --> &lt; <!--">attr</p><p class="static" title="" onload="x"><b>not markup</b> &   𝕏 \u2028 done</p><pre class="pre">plain</pre><textarea .defaultValue="plain" .value="plain" class="area">plain</textarea><style class="sheet">.adv { color: red }</style></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 p: class
+attrs 0: 0/1 p: class,title,data-amp
+attrs 0: 0/2 p: class,title
+attrs 0: 0/3 pre: class
+attrs 0: 0/4 textarea: class
+attrs 0: 0/5 style: class
+attrs 1: 0 div: class
+attrs 1: 0/0 p: class
+attrs 1: 0/1 p: class,title,data-amp
+attrs 1: 0/2 p: class,title
+attrs 1: 0/3 pre: class
+attrs 1: 0/4 textarea: class
+attrs 1: 0/5 style: class
+attrs 2: 0 div: class
+attrs 2: 0/0 p: class
+attrs 2: 0/1 p: class,title,data-amp
+attrs 2: 0/2 p: class,title
+attrs 2: 0/3 pre: class
+attrs 2: 0/4 textarea: class
+attrs 2: 0/5 style: class
+attrs 3: 0 div: class
+attrs 3: 0/0 p: class
+attrs 3: 0/1 p: class,title,data-amp
+attrs 3: 0/2 p: class,title
+attrs 3: 0/3 pre: class
+attrs 3: 0/4 textarea: class
+attrs 3: 0/5 style: class
+attrs 4: 0 div: class
+attrs 4: 0/0 p: class
+attrs 4: 0/1 p: class,title,data-amp
+attrs 4: 0/2 p: class,title
+attrs 4: 0/3 pre: class
+attrs 4: 0/4 textarea: class
+attrs 4: 0/5 style: class"
+`;
+
+exports[`rendered DOM golden flow-prop-eta-boundary: rendered DOM 1`] = `
+"initial: <div class="eta"><p class="body">shown</p><span class="row">a</span><span class="row">b</span>recovering</div>
+step 0: <div class="eta"><span class="row">a</span><span class="row">b</span>recovering</div>
+step 1: <div class="eta">recovering</div>
+step 2: <div class="eta">recovering</div>
+step 3: <div class="eta"><p class="body">shown</p>recovering</div>
+step 4: <div class="eta"><p class="body">shown</p><span class="row">c</span>recovering</div>
+attrs 0: 0 div: class
+attrs 0: 0/0 p: class
+attrs 0: 0/1 span: class
+attrs 0: 0/2 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 span: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class
+attrs 4: 0 div: class
+attrs 4: 0/0 p: class
+attrs 5: 0 div: class
+attrs 5: 0/0 p: class
+attrs 5: 0/1 span: class"
+`;
+
+exports[`rendered DOM golden for-each-local-function: rendered DOM 1`] = `
+"initial: <ul class="filtered"><li>a</li></ul>
+step 0: <ul class="filtered"><li>a</li><li>b</li></ul>
+step 1: <ul class="filtered"><li>c</li></ul>
+attrs 0: 0 ul: class
+attrs 1: 0 ul: class
+attrs 2: 0 ul: class"
+`;
+
+exports[`rendered DOM golden for-unkeyed-rows: rendered DOM 1`] = `
+"initial: <ul class="unkeyed"><li data-index="0">a</li><li data-index="1">b</li></ul>
+step 0: <ul class="unkeyed"><li data-index="0">z</li><li data-index="1">b</li></ul>
+step 1: <ul class="unkeyed"><li data-index="0">z</li><li data-index="1">b</li><li data-index="2">c</li></ul>
+attrs 0: 0 ul: class
+attrs 0: 0/0 li: data-index
+attrs 0: 0/1 li: data-index
+attrs 1: 0 ul: class
+attrs 1: 0/0 li: data-index
+attrs 1: 0/1 li: data-index
+attrs 2: 0 ul: class
+attrs 2: 0/0 li: data-index
+attrs 2: 0/1 li: data-index
+attrs 2: 0/2 li: data-index"
+`;
+
+exports[`rendered DOM golden fragment-root: rendered DOM 1`] = `
+"initial: <h2 class="head">head</h2><p class="body">mid</p><footer class="foot">foot</footer>
+step 0: <h2 class="head">head</h2><p class="body">changed</p><footer class="foot">foot</footer>
+attrs 0: 0 h2: class
+attrs 0: 1 p: class
+attrs 0: 2 footer: class
+attrs 1: 0 h2: class
+attrs 1: 1 p: class
+attrs 1: 2 footer: class"
+`;
+
+exports[`rendered DOM golden handler-by-reference: rendered DOM 1`] = `
+"initial: <div><button type="button">0</button><button type="button">reset</button></div>
+event 0: <div><button type="button">1</button><button type="button">reset</button></div>
+event 1: <div><button type="button">2</button><button type="button">reset</button></div>
+event 2: <div><button type="button">0</button><button type="button">reset</button></div>
+attrs 0: 0/0 button: type
+attrs 0: 0/1 button: type
+attrs 1: 0/0 button: type
+attrs 1: 0/1 button: type
+attrs 2: 0/0 button: type
+attrs 2: 0/1 button: type
+attrs 3: 0/0 button: type
+attrs 3: 0/1 button: type"
+`;
+
+exports[`rendered DOM golden handler-closure: rendered DOM 1`] = `
+"initial: <button type="button">0</button>
+step 0: <button type="button">6</button>
+event 0: <button type="button">9</button>
+event 1: <button type="button">12</button>
+attrs 0: 0 button: type
+attrs 1: 0 button: type
+attrs 2: 0 button: type
+attrs 3: 0 button: type"
+`;
+
+exports[`rendered DOM golden handler-no-closure: rendered DOM 1`] = `
+"initial: <button type="button">log</button>
+event 0: <button data-clicked="yes" type="button">log</button>
+attrs 0: 0 button: type
+attrs 1: 0 button: type,data-clicked"
+`;
+
+exports[`rendered DOM golden hole-then-element-sibling: rendered DOM 1`] = `
+"initial: <div class="pair">A<span class="tail">tail:B</span></div>
+step 0: <div class="pair">Z<span class="tail">tail:B</span></div>
+step 1: <div class="pair">Z<span class="tail">tail:Y</span></div>
+step 2: <div class="pair"><span class="tail">tail:Y</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class
+attrs 3: 0 div: class
+attrs 3: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden html-entities: rendered DOM 1`] = `
+"initial: <div title="a & b < c">a < b && c   d © e > f</div>
+attrs 0: 0 div: title"
+`;
+
+exports[`rendered DOM golden hygiene-shifted-uids: rendered DOM 1`] = `
+"initial: <div title="_el$1 and _tmpl$1 are ordinary text here">start one end</div>
+step 0: <div title="_el$1 and _tmpl$1 are ordinary text here">start two end</div>
+step 1: <div title="_el$1 and _tmpl$1 are ordinary text here">start  end</div>
+attrs 0: 0 div: title
+attrs 1: 0 div: title
+attrs 2: 0 div: title"
+`;
+
+exports[`rendered DOM golden inert-member-reads: rendered DOM 1`] = `
+"initial: <ul class="inert"><li>3</li><li>three</li><li>4</li></ul>
+attrs 0: 0 ul: class"
+`;
+
+exports[`rendered DOM golden inner-html-with-children: rendered DOM 1`] = `
+"initial: <section class="wrap"><div class="raw"><b>bold</b>replaced</div><span>after</span></section>
+attrs 0: 0 section: class
+attrs 0: 0/0 div: class"
+`;
+
+exports[`rendered DOM golden literal-class-style: rendered DOM 1`] = `
+"initial: <div><button class="btn btn--primary" type="button">concat</button><span class="on">ternary</span><i style="color: red; font-weight: bold">literal style</i></div>
+attrs 0: 0/0 button: type,class
+attrs 0: 0/1 span: class
+attrs 0: 0/2 i: style"
+`;
+
+exports[`rendered DOM golden live-call-hole: rendered DOM 1`] = `
+"initial: <p class="call-hole" data-text="1" title="1">1<b class="control" title="c1">c</b></p>
+step 0: <p class="call-hole" data-text="5" title="5">5<b class="control" title="c1">c</b></p>
+step 1: <p class="call-hole" data-text="5" title="5">5<b class="control" title="c2">c</b></p>
+attrs 0: 0 p: class,title,data-text
+attrs 0: 0/0 b: class,title
+attrs 1: 0 p: class,title,data-text
+attrs 1: 0/0 b: class,title
+attrs 2: 0 p: class,title,data-text
+attrs 2: 0/0 b: class,title"
+`;
+
+exports[`rendered DOM golden logical-and-child: rendered DOM 1`] = `
+"initial: <div class="cond"><span class="head">head</span><em class="flag">on</em><span class="mid">hello</span><span class="opt">empty</span><span class="zero">0</span><span class="tail">tail</span></div>
+step 0: <div class="cond"><span class="head">head</span><span class="mid">hello</span><span class="opt">empty</span><span class="zero">0</span><span class="tail">tail</span></div>
+step 1: <div class="cond"><span class="head">head</span><span class="mid">fallback</span><span class="opt">empty</span><span class="zero">0</span><span class="tail">tail</span></div>
+step 2: <div class="cond"><span class="head">head</span><span class="mid">fallback</span><span class="opt">given</span><span class="zero">0</span><span class="tail">tail</span></div>
+step 3: <div class="cond"><span class="head">head</span><span class="mid">fallback</span><span class="opt">given</span><span class="zero">nonzero</span><span class="tail">tail</span></div>
+step 4: <div class="cond"><span class="head">head</span><em class="flag">on</em><span class="mid">fallback</span><span class="opt">given</span><span class="zero">nonzero</span><span class="tail">tail</span></div>
+step 5: <div class="cond"><span class="head">head</span><em class="flag">on</em><span class="mid">fallback</span><span class="opt">given</span><span class="zero">0</span><span class="tail">tail</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 0: 0/1 em: class
+attrs 0: 0/2 span: class
+attrs 0: 0/3 span: class
+attrs 0: 0/4 span: class
+attrs 0: 0/5 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 span: class
+attrs 1: 0/2 span: class
+attrs 1: 0/3 span: class
+attrs 1: 0/4 span: class
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class
+attrs 2: 0/1 span: class
+attrs 2: 0/2 span: class
+attrs 2: 0/3 span: class
+attrs 2: 0/4 span: class
+attrs 3: 0 div: class
+attrs 3: 0/0 span: class
+attrs 3: 0/1 span: class
+attrs 3: 0/2 span: class
+attrs 3: 0/3 span: class
+attrs 3: 0/4 span: class
+attrs 4: 0 div: class
+attrs 4: 0/0 span: class
+attrs 4: 0/1 span: class
+attrs 4: 0/2 span: class
+attrs 4: 0/3 span: class
+attrs 4: 0/4 span: class
+attrs 5: 0 div: class
+attrs 5: 0/0 span: class
+attrs 5: 0/1 em: class
+attrs 5: 0/2 span: class
+attrs 5: 0/3 span: class
+attrs 5: 0/4 span: class
+attrs 5: 0/5 span: class
+attrs 6: 0 div: class
+attrs 6: 0/0 span: class
+attrs 6: 0/1 em: class
+attrs 6: 0/2 span: class
+attrs 6: 0/3 span: class
+attrs 6: 0/4 span: class
+attrs 6: 0/5 span: class"
+`;
+
+exports[`rendered DOM golden marker-literal-text: rendered DOM 1`] = `
+"initial: <div data-note="<!---->" title="_$insert( is not a call site here"><!----><span>end</span></div>
+step 0: <div data-note="<!---->" title="_$insert( is not a call site here"><!---->x<span>end</span></div>
+step 1: <div data-note="<!---->" title="_$insert( is not a call site here">plain<span>end</span></div>
+attrs 0: 0 div: data-note,title
+attrs 1: 0 div: data-note,title
+attrs 2: 0 div: data-note,title"
+`;
+
+exports[`rendered DOM golden mathml: rendered DOM 1`] = `
+"initial: <div><math display="block"><mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow></math></div>
+attrs 0: 0/0 math: display"
+`;
+
+exports[`rendered DOM golden multi-prop-one-element: rendered DOM 1`] = `
+"initial: <div data-width="10" id="a" title="first"></div>
+step 0: <div data-width="10" id="b" title="first"></div>
+step 1: <div data-width="10" id="b" title="second"></div>
+step 2: <div data-width="20" id="b" title="second"></div>
+attrs 0: 0 div: id,title,data-width
+attrs 1: 0 div: id,title,data-width
+attrs 2: 0 div: id,title,data-width
+attrs 3: 0 div: id,title,data-width"
+`;
+
+exports[`rendered DOM golden multi-signal-expression: rendered DOM 1`] = `
+"initial: <div class="sum" data-both="1/2">3</div>
+step 0: <div class="sum" data-both="10/2">12</div>
+step 1: <div class="sum" data-both="10/20">30</div>
+attrs 0: 0 div: class,data-both
+attrs 1: 0 div: class,data-both
+attrs 2: 0 div: class,data-both"
+`;
+
+exports[`rendered DOM golden nested-fragments: rendered DOM 1`] = `
+"initial: <div class="outer"><span>one</span><span>mid</span><b>deep</b><span>two</span></div>
+step 0: <div class="outer"><span>one</span><span>changed</span><b>deep</b><span>two</span></div>
+attrs 0: 0 div: class
+attrs 1: 0 div: class"
+`;
+
+exports[`rendered DOM golden nested-template-element: rendered DOM 1`] = `
+"initial: <div class="host"><template id="row"><li class="row"><span>cell</span></li></template><ul></ul></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 template: id
+attrs 0: 0/0/0 li: class"
+`;
+
+exports[`rendered DOM golden non-delegated-event: rendered DOM 1`] = `
+"initial: <div>out</div>
+step 0: <div>in</div>
+event 0: <div>out</div>
+event 1: <div>in</div>
+event 2: <div>out</div>
+event 3: <div>in</div>"
+`;
+
+exports[`rendered DOM golden numeric-and-boolean-attrs: rendered DOM 1`] = `
+"initial: <div class="attrs"><input .checked=false .defaultValue="" .indeterminate=false .value="" id="x" maxlength="10" tabindex="2"><span data-live="off">s</span></div>
+step 0: <div class="attrs"><input .checked=false .defaultValue="" .indeterminate=false .value="" id="x" maxlength="10" tabindex="2"><span data-live="on">s</span></div>
+step 1: <div class="attrs"><input .checked=false .defaultValue="" .indeterminate=false .value="" id="x" maxlength="10" tabindex="2"><span data-live="off">s</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 input: id,tabindex,maxlength
+attrs 0: 0/1 span: data-live
+attrs 1: 0 div: class
+attrs 1: 0/0 input: id,tabindex,maxlength
+attrs 1: 0/1 span: data-live
+attrs 2: 0 div: class
+attrs 2: 0/0 input: id,tabindex,maxlength
+attrs 2: 0/1 span: data-live"
+`;
+
+exports[`rendered DOM golden portal: rendered DOM 1`] = `
+"initial: <div class="host"><div id="portal-target"><div style="display: contents;"><p class="teleported">over here</p></div></div></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 div: id
+attrs 0: 0/0/0 div: style
+attrs 0: 0/0/0/0 p: class"
+`;
+
+exports[`rendered DOM golden pre-dynamic-leading-newline: rendered DOM 1`] = `
+"initial: <div class="doc"><pre class="hole">first line
+second line</pre><textarea .defaultValue="draft" .value="draft" class="field">draft</textarea></div>
+step 0: <div class="doc"><pre class="hole">no newline</pre><textarea .defaultValue="draft" .value="draft" class="field">draft</textarea></div>
+step 1: <div class="doc"><pre class="hole">no newline</pre><textarea .defaultValue="" .value="" class="field"></textarea></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 pre: class
+attrs 0: 0/1 textarea: class
+attrs 1: 0 div: class
+attrs 1: 0/0 pre: class
+attrs 1: 0/1 textarea: class
+attrs 2: 0 div: class
+attrs 2: 0/0 pre: class
+attrs 2: 0/1 textarea: class"
+`;
+
+exports[`rendered DOM golden pre-leading-newline: rendered DOM 1`] = `
+"initial: <div class="doc"><pre class="block">line one
+line two</pre><pre class="plain">no leading newline</pre><textarea .defaultValue="draft" .value="draft" class="field">draft</textarea><p class="tail">one</p></div>
+step 0: <div class="doc"><pre class="block">line one
+line two</pre><pre class="plain">no leading newline</pre><textarea .defaultValue="draft" .value="draft" class="field">draft</textarea><p class="tail">two</p></div>
+step 1: <div class="doc"><pre class="block">line one
+line two</pre><pre class="plain">no leading newline</pre><textarea .defaultValue="draft" .value="draft" class="field">draft</textarea><p class="tail"></p></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 pre: class
+attrs 0: 0/1 pre: class
+attrs 0: 0/2 textarea: class
+attrs 0: 0/3 p: class
+attrs 1: 0 div: class
+attrs 1: 0/0 pre: class
+attrs 1: 0/1 pre: class
+attrs 1: 0/2 textarea: class
+attrs 1: 0/3 p: class
+attrs 2: 0 div: class
+attrs 2: 0/0 pre: class
+attrs 2: 0/1 pre: class
+attrs 2: 0/2 textarea: class
+attrs 2: 0/3 p: class"
+`;
+
+exports[`rendered DOM golden pre-whitespace: rendered DOM 1`] = `"initial: <div><pre>  indented lines  kept</pre><textarea .defaultValue="raw   text" .value="raw   text">raw   text</textarea></div>"`;
+
+exports[`rendered DOM golden property-attrs: rendered DOM 1`] = `
+"initial: <form><input .checked=false .defaultValue="" .indeterminate=false .value="typed" readonly="" type="text"><input .checked=false .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+step 0: <form><input .checked=false .defaultValue="" .indeterminate=false .value="typed" readonly="" type="text"><input .checked=true .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+step 1: <form><input .checked=false .defaultValue="" .indeterminate=false .value="edited" readonly="" type="text"><input .checked=true .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+attrs 0: 0/0 input: type,readonly
+attrs 0: 0/1 input: type,disabled
+attrs 1: 0/0 input: type,readonly
+attrs 1: 0/1 input: type,disabled
+attrs 2: 0/0 input: type,readonly
+attrs 2: 0/1 input: type,disabled"
+`;
+
+exports[`rendered DOM golden props-destructured-body: rendered DOM 1`] = `
+"initial: <div class="chips"><span class="chip" data-tone="warm">first</span></div>
+step 0: <div class="chips"><span class="chip" data-tone="warm">second</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class,data-tone
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class,data-tone"
+`;
+
+exports[`rendered DOM golden props-destructured-param: rendered DOM 1`] = `
+"initial: <div class="chips"><span class="chip" data-tone="warm">first</span><span class="chip" data-tone="cool">static</span></div>
+step 0: <div class="chips"><span class="chip" data-tone="warm">second</span><span class="chip" data-tone="cool">static</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class,data-tone
+attrs 0: 0/1 span: class,data-tone
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class,data-tone
+attrs 1: 0/1 span: class,data-tone"
+`;
+
+exports[`rendered DOM golden props-raw-forward: rendered DOM 1`] = `
+"initial: <div class="wrap"><span class="chip" data-tone="warm">warm</span></div>
+step 0: <div class="wrap"><span class="chip" data-tone="cool">cool</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class,data-tone
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class,data-tone"
+`;
+
+exports[`rendered DOM golden props-renamed-and-defaulted: rendered DOM 1`] = `
+"initial: <div class="chips"><span class="chip" data-tone="warm">first</span><span class="chip" data-tone="cool">static</span></div>
+step 0: <div class="chips"><span class="chip" data-tone="warm">second</span><span class="chip" data-tone="cool">static</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class,data-tone
+attrs 0: 0/1 span: class,data-tone
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class,data-tone
+attrs 1: 0/1 span: class,data-tone"
+`;
+
+exports[`rendered DOM golden props-rest-spread: rendered DOM 1`] = `
+"initial: <div class="chips"><span class="chip" data-tone="warm" id="chip-1">first</span></div>
+step 0: <div class="chips"><span class="chip" data-tone="warm" id="chip-1">second</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class,id,data-tone
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class,id,data-tone"
+`;
+
+exports[`rendered DOM golden reactive-attribute: rendered DOM 1`] = `
+"initial: <a class="link" data-static="keep" href="/home">go</a>
+step 0: <a class="link active" data-static="keep" href="/home">go</a>
+step 1: <a class="link active" data-static="keep" href="/about">go</a>
+step 2: <a class="link" data-static="keep" href="/about">go</a>
+attrs 0: 0 a: data-static,href,class
+attrs 1: 0 a: data-static,href,class
+attrs 2: 0 a: data-static,href,class
+attrs 3: 0 a: data-static,href,class"
+`;
+
+exports[`rendered DOM golden reassigned-binding: rendered DOM 1`] = `
+"initial: <p class="reassigned" title="after">second</p>
+attrs 0: 0 p: class,title"
+`;
+
+exports[`rendered DOM golden ref-binding: rendered DOM 1`] = `
+"initial: <div><div class="boxed">target</div><span data-reffed="yes">callback</span></div>
+step 0: <div><div class="boxed" data-ref-resolved="boxed">target</div><span data-reffed="yes">callback</span></div>
+attrs 0: 0/0 div: class
+attrs 0: 0/1 span: data-reffed
+attrs 1: 0/0 div: class,data-ref-resolved
+attrs 1: 0/1 span: data-reffed"
+`;
+
+exports[`rendered DOM golden ref-cleanup: rendered DOM 1`] = `
+"initial: <div class="host"><button type="button">ref cleanup</button></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 button: type"
+`;
+
+exports[`rendered DOM golden ref-on-component: rendered DOM 1`] = `
+"initial: <div class="refs"><span class="boxed">component</span><b class="direct">element</b></div>
+step 0: <div class="refs"><span class="boxed">component</span><b class="direct" data-element-ref="direct">element</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 0: 0/1 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 b: class,data-element-ref"
+`;
+
+exports[`rendered DOM golden ref-writable-binding: rendered DOM 1`] = `
+"initial: <p><i class="k">x</i></p>
+step 0: <p><i class="k" data-el="k">x</i></p>
+attrs 0: 0/0 i: class
+attrs 1: 0/0 i: class,data-el"
+`;
+
+exports[`rendered DOM golden renamed-core-import: rendered DOM 1`] = `
+"initial: <div class="renamed"><span class="zero">zero</span><ul><li>a</li><li>b</li></ul></div>
+step 0: <div class="renamed"><b class="positive">2</b><ul><li>a</li><li>b</li></ul></div>
+step 1: <div class="renamed"><b class="positive">2</b><ul><li>a</li><li>b</li><li>c</li></ul></div>
+step 2: <div class="renamed"><span class="zero">zero</span><ul><li>a</li><li>b</li><li>c</li></ul></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 2: 0 div: class
+attrs 2: 0/0 b: class
+attrs 3: 0 div: class
+attrs 3: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden select-option-multiple: rendered DOM 1`] = `
+"initial: <select .value="" class="picker" multiple=""><option .selected=false .value="one" value="one">one</option><option .selected=false .value="two" value="two">two</option></select>
+attrs 0: 0 select: class,multiple
+attrs 0: 0/0 option: value
+attrs 0: 0/1 option: value"
+`;
+
+exports[`rendered DOM golden sibling-live-props: rendered DOM 1`] = `
+"initial: <div class="pair"><span class="a" data-tag="l1!" title="l1">a</span><span class="b" data-tag="r1!" title="r1">b</span></div>
+step 0: <div class="pair"><span class="a" data-tag="l2!" title="l2">a</span><span class="b" data-tag="r1!" title="r1">b</span></div>
+step 1: <div class="pair"><span class="a" data-tag="l2!" title="l2">a</span><span class="b" data-tag="r2!" title="r2">b</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class,title,data-tag
+attrs 0: 0/1 span: class,title,data-tag
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class,title,data-tag
+attrs 1: 0/1 span: class,title,data-tag
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class,title,data-tag
+attrs 2: 0/1 span: class,title,data-tag"
+`;
+
+exports[`rendered DOM golden sibling-walk: rendered DOM 1`] = `
+"initial: <div><i>0</i><i>1</i><i>1</i><i>3</i><i>2</i></div>
+step 0: <div><i>0</i><i>1</i><i>A</i><i>3</i><i>2</i></div>
+step 1: <div><i>0</i><i>1</i><i>A</i><i>3</i><i>B</i></div>"
+`;
+
+exports[`rendered DOM golden signal-alias: rendered DOM 1`] = `
+"initial: <div class="alias" data-total="41">2</div>
+step 0: <div class="alias" data-total="41">5</div>
+step 1: <div class="alias" data-total="41">0</div>
+attrs 0: 0 div: class,data-total
+attrs 1: 0 div: class,data-total
+attrs 2: 0 div: class,data-total"
+`;
+
+exports[`rendered DOM golden signal-methods-in-handler: rendered DOM 1`] = `
+"initial: <button class="methods" data-seen="0" type="button">0</button>
+event 0: <button class="methods" data-seen="1" type="button">1</button>
+event 1: <button class="methods" data-seen="2" type="button">2</button>
+attrs 0: 0 button: type,class,data-seen
+attrs 1: 0 button: type,class,data-seen
+attrs 2: 0 button: type,class,data-seen"
+`;
+
+exports[`rendered DOM golden signal-object: rendered DOM 1`] = `
+"initial: <div class="tuple"><span data-plus-one="1">1</span><button type="button">bump</button></div>
+step 0: <div class="tuple"><span data-plus-one="6">6</span><button type="button">bump</button></div>
+step 1: <div class="tuple"><span data-plus-one="11">11</span><button type="button">bump</button></div>
+event 0: <div class="tuple"><span data-plus-one="12">12</span><button type="button">bump</button></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: data-plus-one
+attrs 0: 0/1 button: type
+attrs 1: 0 div: class
+attrs 1: 0/0 span: data-plus-one
+attrs 1: 0/1 button: type
+attrs 2: 0 div: class
+attrs 2: 0/0 span: data-plus-one
+attrs 2: 0/1 button: type
+attrs 3: 0 div: class
+attrs 3: 0/0 span: data-plus-one
+attrs 3: 0/1 button: type"
+`;
+
+exports[`rendered DOM golden spread-static-mix: rendered DOM 1`] = `
+"initial: <div class="after-spread" data-n="1" id="fixed" role="button">spread</div>
+step 0: <div class="after-spread" data-n="2" id="fixed" role="link">spread</div>
+step 1: <div class="after-spread" id="fixed">spread</div>
+attrs 0: 0 div: id,role,data-n,class
+attrs 1: 0 div: id,role,data-n,class
+attrs 2: 0 div: id,class"
+`;
+
+exports[`rendered DOM golden static-attribute-expression: rendered DOM 1`] = `
+"initial: <div class="grid" data-columns="4" title="grid of 4"><span data-cells="16">fixed</span></div>
+attrs 0: 0 div: class,data-columns,title
+attrs 0: 0/0 span: data-cells"
+`;
+
+exports[`rendered DOM golden static-only: rendered DOM 1`] = `
+"initial: <section class="card" data-kind="static"><h2 class="title">Barq</h2><p>Nothing here ever changes.</p><ul><li>one</li><li>two</li><li>three</li></ul></section>
+attrs 0: 0 section: class,data-kind
+attrs 0: 0/0 h2: class"
+`;
+
+exports[`rendered DOM golden store-member: rendered DOM 1`] = `
+"initial: <div class="store"><span class="name">John</span><em data-count="0">n</em></div>
+step 0: <div class="store"><span class="name">Jane</span><em data-count="0">n</em></div>
+step 1: <div class="store"><span class="name">Jane</span><em data-count="3">n</em></div>
+step 2: <div class="store"><span class="name">Jane</span><em data-count="7">n</em></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 0: 0/1 em: data-count
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 em: data-count
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class
+attrs 2: 0/1 em: data-count
+attrs 3: 0 div: class
+attrs 3: 0/0 span: class
+attrs 3: 0/1 em: data-count"
+`;
+
+exports[`rendered DOM golden style-object: rendered DOM 1`] = `
+"initial: <div style="color: blue; font-size: 14px;"><span style="width: 12px; opacity: 1;">sized</span></div>
+step 0: <div style="color: blue; font-size: 14px;"><span style="width: 30px; opacity: 1;">sized</span></div>
+attrs 0: 0 div: style
+attrs 0: 0/0 span: style
+attrs 1: 0 div: style
+attrs 1: 0/0 span: style"
+`;
+
+exports[`rendered DOM golden svg: rendered DOM 1`] = `
+"initial: <svg:svg height="24" viewBox="0 0 24 24" width="24"><svg:g class="group"><svg:circle cx="12" cy="12" fill="currentColor" r="4"></svg:circle><svg:path d="M0 0h24v24H0z" stroke-width="2"></svg:path></svg:g></svg:svg>
+step 0: <svg:svg height="24" viewBox="0 0 24 24" width="24"><svg:g class="group"><svg:circle cx="12" cy="12" fill="currentColor" r="8"></svg:circle><svg:path d="M0 0h24v24H0z" stroke-width="2"></svg:path></svg:g></svg:svg>
+attrs 0: 0 svg:svg: viewBox,width,height
+attrs 0: 0/0 svg:g: class
+attrs 0: 0/0/0 svg:circle: cx,cy,fill,r
+attrs 0: 0/0/1 svg:path: d,stroke-width
+attrs 1: 0 svg:svg: viewBox,width,height
+attrs 1: 0/0 svg:g: class
+attrs 1: 0/0/0 svg:circle: cx,cy,fill,r
+attrs 1: 0/0/1 svg:path: d,stroke-width"
+`;
+
+exports[`rendered DOM golden svg-dynamic-class: rendered DOM 1`] = `
+"initial: <svg:svg height="24" viewBox="0 0 24 24" width="24"><svg:g class="group"><svg:circle class="dot" cx="12" cy="12" r="6" stroke-width="1"></svg:circle></svg:g></svg:svg>
+step 0: <svg:svg height="24" viewBox="0 0 24 24" width="24"><svg:g class="group"><svg:circle class="dot dot--on" cx="12" cy="12" r="6" stroke-width="3"></svg:circle></svg:g></svg:svg>
+step 1: <svg:svg height="24" viewBox="0 0 24 24" width="24"><svg:g class="group"><svg:circle class="dot" cx="12" cy="12" r="6" stroke-width="1"></svg:circle></svg:g></svg:svg>
+attrs 0: 0 svg:svg: viewBox,width,height
+attrs 0: 0/0 svg:g: class
+attrs 0: 0/0/0 svg:circle: cx,cy,r,class,stroke-width
+attrs 1: 0 svg:svg: viewBox,width,height
+attrs 1: 0/0 svg:g: class
+attrs 1: 0/0/0 svg:circle: cx,cy,r,class,stroke-width
+attrs 2: 0 svg:svg: viewBox,width,height
+attrs 2: 0/0 svg:g: class
+attrs 2: 0/0/0 svg:circle: cx,cy,r,class,stroke-width"
+`;
+
+exports[`rendered DOM golden svg-nested-in-html: rendered DOM 1`] = `
+"initial: <div class="icon-wrap"><svg:svg viewBox="0 0 10 10"><svg:rect height="8" width="8" x="1" y="1"></svg:rect></svg:svg><span>label</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 svg:svg: viewBox
+attrs 0: 0/0/0 svg:rect: x,y,width,height"
+`;
+
+exports[`rendered DOM golden switch-match-component-bodies: rendered DOM 1`] = `
+"initial: <div class="switch"><span class="spinner">…</span></div>
+step 0: <div class="switch"><p class="content">done</p></div>
+step 1: <div class="switch"><span class="spinner">…</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 p: class
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden table-root-shapes: rendered DOM 1`] = `
+"initial: <table class="shapes" data-rev="1"><caption class="cap">totals</caption><colgroup><col class="wide"></colgroup><thead><tr class="hrow"><th scope="col">head</th></tr></thead><tbody class="cells"><tr><td class="cell">7</td></tr></tbody><tfoot class="foot"><tr><td>total</td></tr></tfoot></table>
+step 0: <table class="shapes" data-rev="2"><caption class="cap">totals</caption><colgroup><col class="wide"></colgroup><thead><tr class="hrow"><th scope="col">head</th></tr></thead><tbody class="cells"><tr><td class="cell">7</td></tr></tbody><tfoot class="foot"><tr><td>total</td></tr></tfoot></table>
+step 1: <table class="shapes" data-rev="3"><caption class="cap">totals</caption><colgroup><col class="wide"></colgroup><thead><tr class="hrow"><th scope="col">head</th></tr></thead><tbody class="cells"><tr><td class="cell">7</td></tr></tbody><tfoot class="foot"><tr><td>total</td></tr></tfoot></table>
+attrs 0: 0 table: class,data-rev
+attrs 0: 0/0 caption: class
+attrs 0: 0/1/0 col: class
+attrs 0: 0/2/0 tr: class
+attrs 0: 0/2/0/0 th: scope
+attrs 0: 0/3 tbody: class
+attrs 0: 0/3/0/0 td: class
+attrs 0: 0/4 tfoot: class
+attrs 1: 0 table: class,data-rev
+attrs 1: 0/0 caption: class
+attrs 1: 0/1/0 col: class
+attrs 1: 0/2/0 tr: class
+attrs 1: 0/2/0/0 th: scope
+attrs 1: 0/3 tbody: class
+attrs 1: 0/3/0/0 td: class
+attrs 1: 0/4 tfoot: class
+attrs 2: 0 table: class,data-rev
+attrs 2: 0/0 caption: class
+attrs 2: 0/1/0 col: class
+attrs 2: 0/2/0 tr: class
+attrs 2: 0/2/0/0 th: scope
+attrs 2: 0/3 tbody: class
+attrs 2: 0/3/0/0 td: class
+attrs 2: 0/4 tfoot: class"
+`;
+
+exports[`rendered DOM golden table-rows: rendered DOM 1`] = `
+"initial: <table class="grid"><tbody><tr class="row" data-id="1"><td class="col-id">1</td><td class="col-label"><a class="lbl">alpha</a></td><td class="col-pad"></td></tr><tr class="row" data-id="2"><td class="col-id">2</td><td class="col-label"><a class="lbl">beta</a></td><td class="col-pad"></td></tr></tbody></table>
+step 0: <table class="grid"><tbody><tr class="row" data-id="1"><td class="col-id">1</td><td class="col-label"><a class="lbl">alpha</a></td><td class="col-pad"></td></tr><tr class="row" data-id="2"><td class="col-id">2</td><td class="col-label"><a class="lbl">beta</a></td><td class="col-pad"></td></tr><tr class="row" data-id="3"><td class="col-id">3</td><td class="col-label"><a class="lbl">gamma</a></td><td class="col-pad"></td></tr></tbody></table>
+step 1: <table class="grid"><tbody><tr class="row" data-id="1"><td class="col-id">1</td><td class="col-label"><a class="lbl">alpha</a></td><td class="col-pad"></td></tr><tr class="row" data-id="2"><td class="col-id">2</td><td class="col-label"><a class="lbl">beta</a></td><td class="col-pad"></td></tr><tr class="row danger" data-id="3"><td class="col-id">3</td><td class="col-label"><a class="lbl">gamma</a></td><td class="col-pad"></td></tr></tbody></table>
+step 2: <table class="grid"><tbody><tr class="row" data-id="2"><td class="col-id">2</td><td class="col-label"><a class="lbl">beta</a></td><td class="col-pad"></td></tr><tr class="row danger" data-id="3"><td class="col-id">3</td><td class="col-label"><a class="lbl">gamma</a></td><td class="col-pad"></td></tr></tbody></table>
+step 3: <table class="grid"><tbody></tbody></table>
+attrs 0: 0 table: class
+attrs 0: 0/0/0 tr: class,data-id
+attrs 0: 0/0/0/0 td: class
+attrs 0: 0/0/0/1 td: class
+attrs 0: 0/0/0/1/0 a: class
+attrs 0: 0/0/0/2 td: class
+attrs 0: 0/0/1 tr: class,data-id
+attrs 0: 0/0/1/0 td: class
+attrs 0: 0/0/1/1 td: class
+attrs 0: 0/0/1/1/0 a: class
+attrs 0: 0/0/1/2 td: class
+attrs 1: 0 table: class
+attrs 1: 0/0/0 tr: class,data-id
+attrs 1: 0/0/0/0 td: class
+attrs 1: 0/0/0/1 td: class
+attrs 1: 0/0/0/1/0 a: class
+attrs 1: 0/0/0/2 td: class
+attrs 1: 0/0/1 tr: class,data-id
+attrs 1: 0/0/1/0 td: class
+attrs 1: 0/0/1/1 td: class
+attrs 1: 0/0/1/1/0 a: class
+attrs 1: 0/0/1/2 td: class
+attrs 1: 0/0/2 tr: class,data-id
+attrs 1: 0/0/2/0 td: class
+attrs 1: 0/0/2/1 td: class
+attrs 1: 0/0/2/1/0 a: class
+attrs 1: 0/0/2/2 td: class
+attrs 2: 0 table: class
+attrs 2: 0/0/0 tr: class,data-id
+attrs 2: 0/0/0/0 td: class
+attrs 2: 0/0/0/1 td: class
+attrs 2: 0/0/0/1/0 a: class
+attrs 2: 0/0/0/2 td: class
+attrs 2: 0/0/1 tr: class,data-id
+attrs 2: 0/0/1/0 td: class
+attrs 2: 0/0/1/1 td: class
+attrs 2: 0/0/1/1/0 a: class
+attrs 2: 0/0/1/2 td: class
+attrs 2: 0/0/2 tr: class,data-id
+attrs 2: 0/0/2/0 td: class
+attrs 2: 0/0/2/1 td: class
+attrs 2: 0/0/2/1/0 a: class
+attrs 2: 0/0/2/2 td: class
+attrs 3: 0 table: class
+attrs 3: 0/0/0 tr: class,data-id
+attrs 3: 0/0/0/0 td: class
+attrs 3: 0/0/0/1 td: class
+attrs 3: 0/0/0/1/0 a: class
+attrs 3: 0/0/0/2 td: class
+attrs 3: 0/0/1 tr: class,data-id
+attrs 3: 0/0/1/0 td: class
+attrs 3: 0/0/1/1 td: class
+attrs 3: 0/0/1/1/0 a: class
+attrs 3: 0/0/1/2 td: class
+attrs 4: 0 table: class"
+`;
+
+exports[`rendered DOM golden text-gt-hole: rendered DOM 1`] = `
+"initial: <div>a & b > c<span>tail</span>x<b>end</b></div>
+step 0: <div>a & b > c<span>tail</span>y<b>end</b></div>
+step 1: <div>a & b > c<span>tail</span><b>end</b></div>"
+`;
+
+exports[`rendered DOM golden text-hole-adjacent: rendered DOM 1`] = `
+"initial: <div>ab</div>
+step 0: <div>Ab</div>
+step 1: <div>AB</div>
+step 2: <div>B</div>"
+`;
+
+exports[`rendered DOM golden text-hole-followed: rendered DOM 1`] = `
+"initial: <div>0<span class="suffix">items</span></div>
+step 0: <div>3<span class="suffix">items</span></div>
+step 1: <div>7<span class="suffix">items</span></div>
+attrs 0: 0/0 span: class
+attrs 1: 0/0 span: class
+attrs 2: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden text-hole-fused: rendered DOM 1`] = `
+"initial: <p>Total: 0 clicks</p>
+step 0: <p>Total: 1 clicks</p>
+step 1: <p>Total: 12 clicks</p>"
+`;
+
+exports[`rendered DOM golden text-hole-trailing: rendered DOM 1`] = `
+"initial: <div class="counter">0</div>
+step 0: <div class="counter">1</div>
+step 1: <div class="counter">42</div>
+step 2: <div class="counter">0</div>
+attrs 0: 0 div: class
+attrs 1: 0 div: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class"
+`;
+
+exports[`rendered DOM golden two-components-two-templates: rendered DOM 1`] = `
+"initial: <div class="pair"><p class="cell"><span>a</span></p><p class="cell"><span>b</span></p></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 p: class
+attrs 0: 0/1 p: class"
+`;
+
+exports[`rendered DOM golden two-nested-holes: rendered DOM 1`] = `
+"initial: <div class="nested"><span>1:A</span><span>2:B</span></div>
+step 0: <div class="nested"><span>1:A</span><span>2:Z</span></div>
+step 1: <div class="nested"><span>1:Y</span><span>2:Z</span></div>
+attrs 0: 0 div: class
+attrs 1: 0 div: class
+attrs 2: 0 div: class"
+`;
+
+exports[`rendered DOM golden unicode-long-template: rendered DOM 1`] = `
+"initial: <p class="lead" data-kind="prose">This paragraph is deliberately long so that the accented word sits past the search budget — café naïve, 日本語のテキスト, and an emoji 🎉 for the astral case.<span>un</span></p>
+step 0: <p class="lead" data-kind="prose">This paragraph is deliberately long so that the accented word sits past the search budget — café naïve, 日本語のテキスト, and an emoji 🎉 for the astral case.<span>deux</span></p>
+step 1: <p class="lead" data-kind="prose">This paragraph is deliberately long so that the accented word sits past the search budget — café naïve, 日本語のテキスト, and an emoji 🎉 for the astral case.<span></span></p>
+attrs 0: 0 p: class,data-kind
+attrs 1: 0 p: class,data-kind
+attrs 2: 0 p: class,data-kind"
+`;
+
+exports[`rendered DOM golden void-elements: rendered DOM 1`] = `
+"initial: <div><br><img alt="a" src="a.png"><hr><input .checked=false .defaultValue="" .indeterminate=false .value="" name="q" type="text"><wbr></div>
+attrs 0: 0/1 img: src,alt
+attrs 0: 0/3 input: type,name"
+`;
+
+exports[`rendered DOM golden walk-from-the-back: rendered DOM 1`] = `
+"initial: <ul class="row"><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li class="penultimate">Y</li><li class="last">Z</li></ul>
+step 0: <ul class="row"><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li class="penultimate">Y</li><li class="last">ZZ</li></ul>
+step 1: <ul class="row"><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li class="penultimate">YY</li><li class="last">ZZ</li></ul>
+attrs 0: 0 ul: class
+attrs 0: 0/5 li: class
+attrs 0: 0/6 li: class
+attrs 1: 0 ul: class
+attrs 1: 0/5 li: class
+attrs 1: 0/6 li: class
+attrs 2: 0 ul: class
+attrs 2: 0/5 li: class
+attrs 2: 0/6 li: class"
+`;
+
+exports[`rendered DOM golden whitespace-only: rendered DOM 1`] = `"initial: <p><span>a</span> <span>b</span><i>c</i></p>"`;
+
 exports[`marker channel array-hole: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>2</li></ul>"`;
 
 exports[`marker channel arrow-body-component: anchor layout 1`] = `"<section><div>1</div></section>"`;
+
+exports[`marker channel async-value: anchor layout 1`] = `"<div><span>ada</span></div>"`;
 
 exports[`marker channel attribute-namespaces: anchor layout 1`] = `"<div><my-grid></my-grid><button>beep</button></div>"`;
 
@@ -37,6 +1643,8 @@ exports[`marker channel component-function-props: anchor layout 1`] = `"<div><b>
 exports[`marker channel component-getter-props: anchor layout 1`] = `"<div><b>0</b></div>"`;
 
 exports[`marker channel component-spread: anchor layout 1`] = `"<div><span>first</span><!----><span>static</span></div>"`;
+
+exports[`marker channel computed-derived: anchor layout 1`] = `"<p><span>5</span><b>4</b></p>"`;
 
 exports[`marker channel conditional-children: anchor layout 1`] = `"<div><span>A</span><footer>end</footer></div>"`;
 
@@ -88,8 +1696,6 @@ exports[`marker channel control-flow-switch-match: anchor layout 1`] = `"<div><p
 
 exports[`marker channel control-flow-switch-static-key: anchor layout 1`] = `"<div><p>0</p></div>"`;
 
-exports[`marker channel create-async-value: anchor layout 1`] = `"<div><span>ada</span></div>"`;
-
 exports[`marker channel create-optimistic-signal: anchor layout 1`] = `"<button>0</button>"`;
 
 exports[`marker channel create-projection-store: anchor layout 1`] = `"<div>no</div>"`;
@@ -132,7 +1738,7 @@ exports[`marker channel equal-liveness: anchor layout 1`] = `"<b></b>"`;
 
 exports[`marker channel escaped-text-and-attribute: anchor layout 1`] = `"<div><script>alert(1)</script>1 & 2</div>"`;
 
-exports[`marker channel escaping-adversarial: anchor layout 1`] = `"<div><p><img src=x onerror="alert(1)"></p><p>attr</p><p><b>not markup</b> &   𝕏 \u2028 done</p><pre><img src=x onerror="alert(1)"></pre><textarea><img src=x onerror="alert(1)"></textarea><!----><style>.adv { color: red }</style></div>"`;
+exports[`marker channel escaping-adversarial: anchor layout 1`] = `"<div><p><img src=x onerror="alert(1)"></p><p>attr</p><p><b>not markup</b> &   𝕏 \u2028 done</p><pre><img src=x onerror="alert(1)"></pre><textarea><img src=x onerror="alert(1)"></textarea><style>.adv { color: red }</style></div>"`;
 
 exports[`marker channel flow-prop-eta-boundary: anchor layout 1`] = `"<div><p>shown</p><!----><span>a</span><span>b</span><!---->recovering</div>"`;
 
@@ -230,11 +1836,15 @@ exports[`marker channel signal-alias: anchor layout 1`] = `"<div>2</div>"`;
 
 exports[`marker channel signal-methods-in-handler: anchor layout 1`] = `"<button>0</button>"`;
 
+exports[`marker channel signal-object: anchor layout 1`] = `"<div><span>1</span><button>bump</button></div>"`;
+
 exports[`marker channel spread-static-mix: anchor layout 1`] = `"<div>spread</div>"`;
 
 exports[`marker channel static-attribute-expression: anchor layout 1`] = `"<div><span>fixed</span></div>"`;
 
 exports[`marker channel static-only: anchor layout 1`] = `"<section><h2>Barq</h2><p>Nothing here ever changes.</p><ul><li>one</li><li>two</li><li>three</li></ul></section>"`;
+
+exports[`marker channel store-member: anchor layout 1`] = `"<div><span>John</span><em>n</em></div>"`;
 
 exports[`marker channel style-object: anchor layout 1`] = `"<div><span>sized</span></div>"`;
 
@@ -265,12 +1875,6 @@ exports[`marker channel two-components-two-templates: anchor layout 1`] = `"<div
 exports[`marker channel two-nested-holes: anchor layout 1`] = `"<div><span>1:A</span><span>2:B</span></div>"`;
 
 exports[`marker channel unicode-long-template: anchor layout 1`] = `"<p>This paragraph is deliberately long so that the accented word sits past the search budget — café naïve, 日本語のテキスト, and an emoji 🎉 for the astral case.<span>un</span></p>"`;
-
-exports[`marker channel use-memo-derived: anchor layout 1`] = `"<p><span>5</span><b>4</b></p>"`;
-
-exports[`marker channel use-state-tuple: anchor layout 1`] = `"<div><span>1</span><button>bump</button></div>"`;
-
-exports[`marker channel use-store-member: anchor layout 1`] = `"<div><span>John</span><em>n</em></div>"`;
 
 exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><input><wbr></div>"`;
 

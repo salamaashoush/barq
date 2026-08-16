@@ -26,7 +26,6 @@ import {
   NotReadyError,
   type Owner,
   computed,
-  createAsync,
   getOwner,
   latest as readLatest,
   onCleanup,
@@ -52,7 +51,7 @@ export interface ResourceOptions {
   /**
    * Serialization key for SSR seeding. Opt-in rather than positional: the
    * auto-key stream is a shared counter and a resource silently consuming a
-   * slot would shift every `createAsync` after it.
+   * slot would shift every `computed` after it.
    */
   readonly key?: string;
 }
@@ -148,10 +147,10 @@ export function resource<T, S = unknown>(
     return tracked as unknown as T;
   };
 
-  const fetched: Computed<T> =
-    options?.key === undefined
-      ? computed<T>(compute)
-      : createAsync<T>(compute, { key: options.key });
+  // One primitive: `computed` IS the async one, and a key is just an option on
+  // it. `resource` adds what a memo has no business having — an
+  // `AbortController` per run, the generation guard, and the override lane.
+  const fetched: Computed<T> = computed<T>(compute, { key: options?.key });
 
   /**
    * A4's shape at the level of one value: the read is a derivation over the

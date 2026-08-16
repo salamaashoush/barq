@@ -25,11 +25,6 @@ export default function ComponentSpread() {
 
 export const steps = [() => label.set("second")]
 
-// One coalesced effect per `Chip` for `data-tone` + `id`, both read off the
-// props object the compiled call site handed over. The oracle reads them once
-// out of `{ ...props }` and can never see a later write.
-export const goesLive = ["Chip 1 tone/id", "Chip 2 tone/id"]
-
 export const optimality = {
   target: 4,
   milestone: 5,

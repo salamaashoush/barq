@@ -6,9 +6,8 @@ Every `*.tsx` here is a real, compilable module with two exports:
 export default function Fixture(): JSXElement                 // required
 export const steps: Array<() => void>                         // optional, default []
 export const events: Array<(root: HTMLElement) => void>       // optional, default []
-export const wins: CompilerWin[]                              // optional, default []
-export const goesLive: string[]                               // optional, default []
 export const optimality: OptimalityExpectation                // optional
+export const ssrDiffers: SsrDivergence                        // optional
 ```
 
 `steps` drives UPDATE correctness: the harness renders once, then applies each step
@@ -25,42 +24,45 @@ fire once the event reaches `document`.
 Both exports must actually change the DOM — `oracle.test.ts` fails a fixture whose steps
 or events are inert, so a fixture cannot quietly stop testing anything.
 
-## The invariant, and the two ways out of it
+## What holds a fixture, after M9
 
-- **Initial-render DOM is identical. No exceptions.** Nothing a fixture exports can
-  declare its way out of it — `compareToOracle` never consults a declaration for the
-  first frame.
-- **Every later frame is identical too, unless the fixture declares a `win`.**
-- **Effect counts are an UPPER bound**, lifted per entry in `goesLive`.
+There is **nothing left for a fixture to declare its way out of**, and that is the point
+of `CODESIGN.md` §6. Until M9 every frame was compared against the un-compiled
+`createElement` path, so a fixture the compiler was RIGHT about had to buy the difference
+back — with a `win` on the DOM channel or a `goesLive` entry on the effect channel. Both
+exports are gone with the reference that made them necessary.
 
-`wins` — a step or event where the compiled path is deliberately **more correct** than
-the oracle, naming the exact DOM it must produce:
+What replaces them is absolute rather than comparative:
 
-```ts
-export const wins: CompilerWin[] = [
-  { kind: "step", index: 0, compiled: "<div>…</div>", why: "the oracle appends with marker = null" },
-]
-```
+- **Rendered DOM** — every frame, and every element's attribute line, recorded per
+  fixture in `__snapshots__/oracle.test.ts.snap`. A change to what the compiler renders
+  is a diff to read, not an agreement between two builds that moved together.
+- **Effect counts** — `test/effect-counts.ts`, one hand-written row per fixture:
+  creations, total runs, and the busiest single effect, each an **equality**. The old
+  bound was one-sided, so a binding that silently went missing read as a win; an equality
+  catches both directions. Regenerate with `BARQ_EFFECTS=print bun test
+  test/effect-counts.test.ts` and read the diff.
+- **Marker layout and the attribute partition** — self-checks in `harness.ts
+  auditCompiled`. Both sides come off the emitted module and the clones it produced, so
+  there was never a reference involved.
+- **`-O0` vs `-Ox` vs `interp`** — the differential, in `optimisation.test.ts` and
+  `interp.test.ts`.
 
-It is not a licence to differ. The harness fails if the compiled frame is not `compiled`
-byte for byte, and fails as **stale** if the two paths stopped differing there. See
-`conditional-children.tsx`, the only win in the corpus.
+Fixtures are written in **explicit-thunk style** (`{() => count()}`,
+`when={() => flag()}`). A fixture that means to exercise O4 auto-thunking writes
+`{count()}` instead; it needs no declaration, because the effect row for it is simply one
+higher and a hole that stopped going live moves that number.
 
-`goesLive` — holes that compiler-mode auto-thunking (O4) turns into live bindings where
-the oracle reads them once. Each entry **lifts** the effect-count bound by one and the
-effect-run bound by one per driven frame; it does not switch either off, and an entry the
-compiler does not actually need is reported as **stale** the way a win is. Empty
-everywhere at M2, because nothing is classified yet.
-
-Fixtures are otherwise written in **explicit-thunk style** (`{() => count()}`,
-`when={() => flag()}`), which is the un-compiled contract the JSX runtime specifies.
-A fixture that means to exercise auto-thunking writes `{count()}` and declares it in
-`goesLive`.
+`ssrDiffers` is the one declaration left, and it is not an exemption from a reference: it
+names markup the string backend is **required** to differ on, because DESIGN §5 drops
+`Delegate`, `Listen` and `Ref` and a handler cannot exist on the wire. `ssr.test.ts`
+fails if the markup is not the declared bytes, and fails as stale if the two backends
+stop differing.
 
 ## `optimality` — what the compiler must eventually make of this fixture
 
-`steps`, `events` and `wins` are all about behaviour. `optimality` is the other half:
-the claim that the emitted code is *good*, stated next to the JSX it is a claim about.
+`steps` and `events` are about behaviour. `optimality` is the other half: the claim that
+the emitted code is *good*, stated next to the JSX it is a claim about.
 
 ```ts
 export const optimality = {
@@ -87,7 +89,7 @@ otherwise `absent: ["=>"]` would satisfy a search for `=>`.
 
 `normalize.ts` sorts attributes and drops empty comments, and neither rule can be
 weakened without failing every legitimate output. Both are recovered on side channels
-that `compareToOracle` asserts separately:
+that `auditCompiled` and the per-fixture golden assert separately:
 
 - **anchors** — every `<!---->` in place, with no text fused across one, snapshotted per
   fixture under `test/__snapshots__/oracle.test.ts.snap`. This is the behavioural test for
@@ -126,7 +128,7 @@ done" is a fact about the corpus rather than about whichever fixture got looked 
 
 | target | fixtures | the claim |
 | --- | --- | --- |
-| 1 semantic reactivity | `static-only`, `static-attribute-expression`, `auto-thunked-read`, `inert-member-reads`, `signal-alias`, `signal-methods-in-handler`, `use-store-member`, `component-getter-props`, `live-call-hole` | a provably-static expression gets no effect, no thunk, no closure — and the same identifier can be reactive as a call and inert as a member |
+| 1 semantic reactivity | `static-only`, `static-attribute-expression`, `auto-thunked-read`, `inert-member-reads`, `signal-alias`, `signal-methods-in-handler`, `store-member`, `component-getter-props`, `live-call-hole` | a provably-static expression gets no effect, no thunk, no closure — and the same identifier can be reactive as a call and inert as a member |
 | 2 static subtree | `static-only`, `void-elements`, `whitespace-only`, `svg-nested-in-html`, `fragment-root`, `select-option-multiple` | one clone, zero patch calls, zero effects — including one template per root where a fragment cannot be one |
 | 3 constant folding | `literal-class-style`, `escaped-text-and-attribute`, `dom-prop-static-value`, `reassigned-binding` | the concat, the ternary, the style string and a constant TEXT child are baked into the template HTML, escaped; a `DOM_PROPS` name is refused however constant it is; and a binding that is WRITTEN to is not a constant however literal its initialiser looks |
 | 4 one effect per element | `multi-prop-one-element`, `class-with-live-siblings`, `reactive-attribute`, `sibling-live-props` | live props on one element share one effect; a runtime-diffed prop (`class`) never joins it; and the group never crosses to the next element |
@@ -153,9 +155,9 @@ now the only record of them** — the plugin and its tests were deleted at M6, s
 shape that leaves this directory leaves the project. The rows worth knowing about
 are:
 
-- **the P0 return-shape table** — `use-state-tuple` (`[accessor, setter]`),
-  `use-store-member` (proxy, member reads), `use-memo-derived` (`Computed`),
-  `create-async-value` (behind a call), `create-optimistic-signal` (a `Signal`,
+- **the P0 return-shape table** — `signal-object` (a callable `Signal` with `.set` / `.update`),
+  `store-member` (proxy, member reads), `computed-derived` (`Computed`),
+  `async-value` (behind a call), `create-optimistic-signal` (a `Signal`,
   not a tuple), `create-projection-store` (the proxy directly). Each primitive
   returns a different shape and every one of them is a different lifting rule.
 - **resolution by SymbolId, never by name** — `renamed-core-import` imports
@@ -241,10 +243,11 @@ each is asked the question that is dangerous for it.
 
 ## `semantics/` — the L1 fixtures, which are expected to FAIL
 
-Everything above this line is judged by comparing two implementations. The corpus
-missed the Provider defect for four years because both of them fail it identically:
-the `createElement` oracle evaluates `children` at the call site exactly the way the
-compiled path does, so `compareToOracle` certified the bug. Worse, the style rule
+Everything above this line is judged by what the compiler renders and by what it
+emits. The corpus missed the Provider defect for four years because it was judged
+against a second implementation that failed identically: the `createElement` oracle
+evaluated `children` at the call site exactly the way the compiled path did, so the
+comparison certified the bug. That reference is retired (§6). Worse, the style rule
 this file states — explicit-thunk children, `{() => <Badge />}` — **is** the
 hand-written workaround for that defect, so no fixture written to this README's
 convention can reach it. `context-provider.tsx` is written that way and passes.

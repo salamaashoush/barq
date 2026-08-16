@@ -9,8 +9,10 @@ import { Loading } from "./components.ts";
 import { hydrate } from "./dom.ts";
 import { renderPage } from "./server.ts";
 import {
+  computed,
+  latest,
+  NotReadyError,
   clearHydrationData,
-  createAsync,
   createScope,
   DEV,
   getHydrationData,
@@ -85,7 +87,7 @@ describe("createAsync auto-keying", () => {
 
     const data = await renderInSession(() => {
       expected = peekNextChildId(getOwner()!);
-      const answer = createAsync(async () => 42);
+      const answer = computed(async () => 42);
       start(answer);
     });
 
@@ -95,7 +97,7 @@ describe("createAsync auto-keying", () => {
 
   test("an explicit key wins over the auto-key", async () => {
     const data = await renderInSession(() => {
-      const user = createAsync(async () => "Ada", { key: "user" });
+      const user = computed(async () => "Ada", { key: "user" });
       start(user);
     });
 
@@ -109,9 +111,9 @@ describe("createAsync auto-keying", () => {
     const data = await renderInSession(() => {
       const owner = getOwner()!;
       expected = peekNextChildId(owner);
-      const keyed = createAsync(async () => "Ada", { key: "user" });
+      const keyed = computed(async () => "Ada", { key: "user" });
       afterExplicit = peekNextChildId(owner);
-      const auto = createAsync(async () => "Grace");
+      const auto = computed(async () => "Grace");
       start(keyed);
       start(auto);
     });
@@ -122,9 +124,9 @@ describe("createAsync auto-keying", () => {
 
   test("sibling createAsync calls under one owner do not collide", async () => {
     const data = await renderInSession(() => {
-      const first = createAsync(async () => "first");
-      const second = createAsync(async () => "second");
-      const third = createAsync(async () => "third");
+      const first = computed(async () => "first");
+      const second = computed(async () => "second");
+      const third = computed(async () => "third");
       start(first);
       start(second);
       start(third);
@@ -137,7 +139,7 @@ describe("createAsync auto-keying", () => {
   test("sibling owner scopes do not collide", async () => {
     const branch = (label: string) => {
       createScope(() => {
-        const value = createAsync(async () => label);
+        const value = computed(async () => label);
         start(value);
       });
     };
@@ -154,13 +156,13 @@ describe("createAsync auto-keying", () => {
   test("keys are stable across a server render and the matching client render", async () => {
     const pending: Promise<unknown>[] = [];
     const tree = () => {
-      const top = createAsync(tracked("top", pending));
+      const top = computed(tracked("top", pending));
       start(top);
       createScope(() => {
-        const nested = createAsync(tracked("nested", pending));
+        const nested = computed(tracked("nested", pending));
         start(nested);
         createScope(() => {
-          const deep = createAsync(tracked("deep", pending));
+          const deep = computed(tracked("deep", pending));
           start(deep);
         });
       });
@@ -188,10 +190,10 @@ describe("createAsync auto-keying", () => {
 
   test("keys are stable across two server renders in different sessions", async () => {
     const tree = () => {
-      const a = createAsync(async () => "a");
+      const a = computed(async () => "a");
       start(a);
       createScope(() => {
-        const b = createAsync(async () => "b");
+        const b = computed(async () => "b");
         start(b);
       });
     };
@@ -206,12 +208,12 @@ describe("createAsync auto-keying", () => {
   test("auto-keyed server data seeds the client synchronously, with no refetch", async () => {
     let fetches = 0;
     const tree = () => {
-      const user = createAsync(async () => {
+      const user = computed(async () => {
         fetches++;
         return "Ada";
       });
       createScope(() => {
-        const posts = createAsync(async () => {
+        const posts = computed(async () => {
           fetches++;
           return ["hello"];
         });
@@ -243,12 +245,12 @@ describe("createAsync auto-keying", () => {
   test("renderPage and hydrate agree on the auto-keys, with no refetch", async () => {
     let fetches = 0;
     const app = () => {
-      const user = createAsync(async () => {
+      const user = computed(async () => {
         fetches++;
         return "Ada";
       });
       // waterfall: the second fetch can only start once the first resolves
-      const greeting = createAsync(async () => {
+      const greeting = computed(async () => {
         fetches++;
         return `Hello ${user()}`;
       });
@@ -287,11 +289,11 @@ describe("createAsync auto-keying", () => {
   test("a divergent client tree shifts the auto-keys, and the drift is reported", async () => {
     const a = () =>
       createScope(() => {
-        start(createAsync(async () => "A-VALUE"));
+        start(computed(async () => "A-VALUE"));
       });
     const b = () =>
       createScope(() => {
-        const value = createAsync(async () => "B-VALUE");
+        const value = computed(async () => "B-VALUE");
         start(value);
         return value;
       });
@@ -336,11 +338,11 @@ describe("createAsync auto-keying", () => {
     let fetches = 0;
     const a = () =>
       createScope(() => {
-        start(createAsync(async () => "A-VALUE", { name: "a" }));
+        start(computed(async () => "A-VALUE", { name: "a" }));
       });
     const b = () =>
       createScope(() => {
-        const value = createAsync(
+        const value = computed(
           async () => {
             fetches++;
             return "B-VALUE";
@@ -366,8 +368,11 @@ describe("createAsync auto-keying", () => {
       dispose = d;
       read = b() as () => unknown;
     }, true);
-    // A miss, not A's value: the read is pending and a real fetch is running.
-    expect(isPending(read)).toBe(true);
+    // A miss, not A's value. `isPending` reports STALENESS and this value has
+    // never held one, so the honest probe is the read itself: it throws, which
+    // is what a `Loading` boundary would catch, and a real fetch is running.
+    expect(() => read()).toThrow(NotReadyError);
+    expect(latest(read)).toBeUndefined();
     expect(fetches).toBe(2);
     dispose();
   });
@@ -389,9 +394,9 @@ describe("createAsync auto-keying", () => {
 
   test("naming one read does not renumber its siblings", async () => {
     const data = await renderInSession(() => {
-      start(createAsync(async () => "first"));
-      start(createAsync(async () => "second", { name: "middle" }));
-      start(createAsync(async () => "third"));
+      start(computed(async () => "first"));
+      start(computed(async () => "second", { name: "middle" }));
+      start(computed(async () => "third"));
     });
     const keys = Object.keys(data);
     expect(keys).toHaveLength(3);
@@ -401,7 +406,7 @@ describe("createAsync auto-keying", () => {
 
   test("with no owner there is no tree to key off, so nothing is serialized", async () => {
     const pending: Promise<unknown>[] = [];
-    const orphan = createAsync(tracked("orphan", pending));
+    const orphan = computed(tracked("orphan", pending));
     start(orphan);
     await Promise.allSettled(pending);
 

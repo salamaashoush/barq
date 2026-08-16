@@ -15,15 +15,15 @@ export default function DynamicFixture() {
 export const steps = [() => tag.set("b"), () => tag.set("span")]
 export const optimality = {
   target: 8,
-  milestone: 5,
+  milestone: 9,
   templates: 1,
-  // `component` is one of the five props the runtime unwraps, so the accessor
-  // goes in bare; everything else `Dynamic` is given is an ordinary object
-  // property it spreads onto the element it renders.
-  // K5 refuses `Dynamic`: its string arm needs `createDynamicElement`, which is
-  // private to `components.ts` and not on the ABI §3.0 enumerates, so lowering
-  // it would mean a fifth element-creation path out of the compiler — the
-  // thing M4 deleted from the runtime.
-  emits: ["Dynamic(", "component: tag", '() => "dyn"', '() => "inner"'],
-  absent: ["branch(", "component: () =>"],
+  // K5 lowers `Dynamic` onto the `branch` it always reached, keyed on the
+  // component itself: the swap and the teardown are the primitive's, and the
+  // body is one call that resolves the value. Its string arm builds through
+  // `spread` and `insert` — the two entry points every other element goes
+  // through — so the fifth element-creation path that kept this construct on
+  // its adapter does not exist to emit.
+  emits: ["branch(", "dyn(", '() => "dyn"', '() => "inner"'],
+  // The adapter frame, and the props record it read `component` out of.
+  absent: ["Dynamic(", "component: "],
 }

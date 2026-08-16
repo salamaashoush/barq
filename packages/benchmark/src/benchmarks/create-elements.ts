@@ -7,7 +7,7 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark, generateItems } from "../utils.ts";
 
 // Barq imports
-import { createElement as barqCreate } from "@barqjs/core";
+import { h as barqCreate } from "../h.ts";
 
 // SolidJS imports - we'll use the raw h function equivalent
 import { createComponent, mergeProps } from "solid-js";

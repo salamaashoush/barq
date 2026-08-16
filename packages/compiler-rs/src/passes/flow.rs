@@ -72,7 +72,12 @@ fn recognised(flow: Flow) -> &'static [&'static str] {
         Flow::Suspense | Flow::Errored | Flow::ErrorBoundary | Flow::Switch => &["fallback"],
         Flow::Portal => &["target"],
         Flow::Match => &["when", "keyed"],
-        Flow::Await | Flow::Dynamic | Flow::Reveal => &[],
+        Flow::Await => &["resource", "loading", "error"],
+        Flow::Reveal => &["order", "collapsed"],
+        // Every other attribute IS the props of whatever the component resolves
+        // to, so there is no row to close here: `admits` reads the tag's own
+        // props off the list and hands the rest through.
+        Flow::Dynamic => &[],
     }
 }
 
@@ -83,21 +88,31 @@ fn required(flow: Flow) -> &'static [&'static str] {
         Flow::For => &["each"],
         Flow::Repeat => &["count"],
         Flow::Errored | Flow::ErrorBoundary => &["fallback"],
+        Flow::Await => &["resource"],
+        Flow::Dynamic => &["component"],
         _ => &[],
     }
 }
 
 fn kind_of(flow: Flow) -> Option<RegionKind> {
     Some(match flow {
-        Flow::Show | Flow::Switch => RegionKind::Branch,
+        Flow::Show | Flow::Switch | Flow::Dynamic => RegionKind::Branch,
         Flow::For | Flow::Repeat => RegionKind::Each,
-        Flow::Loading | Flow::Suspense => RegionKind::Loading,
+        // `Await` is the OUTER of two boundaries: the loading one, whose body
+        // holds the error one, whose body reads the resource. Reading a
+        // resource before it settles throws `NotReady` and after it fails throws
+        // the error, so the two boundaries ARE the three states — no key, no
+        // body table, and no property test to tell a Resource from a Cell.
+        Flow::Loading | Flow::Suspense | Flow::Await => RegionKind::Loading,
         Flow::Errored | Flow::ErrorBoundary => RegionKind::Error,
         Flow::Portal => RegionKind::Portal,
         // `Match` never reaches a primitive of its own: `Switch` folds every arm
         // into ONE branch, which is the shape the adapter produces and the
         // reason `ownership.rs` gives `Match` no node.
-        Flow::Match | Flow::Await | Flow::Dynamic | Flow::Reveal => return None,
+        //
+        // `Reveal` is not a range at all — it is a provide scope — so it has no
+        // region row and is lowered to a direct `reveal` call instead.
+        Flow::Match | Flow::Reveal => return None,
     })
 }
 
@@ -112,6 +127,11 @@ pub(super) fn admits<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXEleme
     kind_of(flow).is_some() && admits_element(shaper, flow, element)
 }
 
+/// The same question for the one construct with no region row.
+pub(super) fn admits_reveal<'a>(shaper: &Shaper<'a, '_>, element: &JSXElement<'a>) -> bool {
+    admits_element(shaper, Flow::Reveal, element)
+}
+
 fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<'a>) -> bool {
     let mut seen: Vec<&str> = Vec::new();
     for item in &element.opening_element.attributes {
@@ -122,7 +142,14 @@ fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<
         let name = identifier.name.as_str();
         // A `children=` attribute competes with the JSX children for one slot,
         // and `component_call` already owns that precedence rule.
-        if !recognised(flow).contains(&name) || seen.contains(&name) {
+        //
+        // `Dynamic` is the one construct whose extra attributes are not its own:
+        // everything but `component` is the resolved component's props, and it
+        // passes them through as a source list rather than reading them.
+        let admitted = recognised(flow).contains(&name)
+            || (flow == Flow::Dynamic && name != "children")
+            || (flow == Flow::Dynamic && name == "component");
+        if !admitted || seen.contains(&name) {
             return false;
         }
         seen.push(name);
@@ -254,7 +281,7 @@ fn parts<'a>(
         let span = attribute.span;
         let value = match attribute.value {
             None => Expression::new_boolean_literal(span, true, &shaper.ast),
-            Some(value) => attribute_expression(value, &shaper.ast),
+            Some(value) => attribute_expression(value, &shaper.ast, shaper.allocator),
         };
         attrs.push(Attr { name, value, span });
     }
@@ -290,9 +317,9 @@ pub(super) fn lower<'a>(
             boundary(shaper, flow, &mut attrs, kids, span)
         }
         Flow::Portal => portal(shaper, &mut attrs, kids, span),
-        Flow::Match | Flow::Await | Flow::Dynamic | Flow::Reveal => {
-            unreachable!("refused by `admits`")
-        }
+        Flow::Await => await_boundaries(shaper, &mut attrs, kids, span),
+        Flow::Dynamic => dynamic(shaper, &mut attrs, kids, span),
+        Flow::Match | Flow::Reveal => unreachable!("refused by `admits`"),
     };
     region.flow = flow;
     region.kind = kind;
@@ -552,6 +579,135 @@ fn portal<'a>(
     }));
     region.body = body;
     region
+}
+
+/// `Await` — two boundaries, not four states.
+///
+/// The three arms it used to compute a key for are the three things reading a
+/// resource does: throw `NotReady` before it settles, throw the error after it
+/// fails, return the value otherwise. So the loading boundary catches the first,
+/// the error boundary inside it catches the second, and the body — which reads
+/// the resource where the author wrote a parameter — is the third.
+///
+/// That also removes the property test the adapter needed. `resource={r}` is a
+/// Cell like any other; nothing here asks whether it IS the resource or carries
+/// one, because the only thing done with it is a read.
+fn await_boundaries<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    attrs: &mut Vec<Attr<'a>>,
+    kids: Vec<Expression<'a>>,
+    span: Span,
+) -> Region<'a> {
+    let resource = take(attrs, "resource").expect("checked by `admits`");
+    let loading = take(attrs, "loading").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
+    let failed = take(attrs, "error").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
+
+    // The body takes the settled VALUE where the author declared a parameter,
+    // and a read of the resource is what produces it — after the two boundaries
+    // above have had their answer.
+    // ONE reference to the resource, in the one place its value is used. The
+    // adapter needed four — a key and three bodies — which is what made a
+    // shared local necessary and the discrimination test unavoidable.
+    let body = match body_slot_of(shaper, kids, span) {
+        Some(body) => pass_value(shaper, body, resource.value, span),
+        None => Expression::new_null_literal(span, &shaper.ast),
+    };
+
+    let mut inner = blank(shaper, span);
+    inner.flow = Flow::Errored;
+    inner.kind = RegionKind::Error;
+    inner.span = span;
+    // `Await`'s error slot takes the error BY VALUE, exactly as
+    // `ErrorBoundary`'s does.
+    inner.fallback = failed.map(|fallback| unwrap_error(shaper, fallback, span));
+    inner.body = body;
+    let nested = shaper.nested_region(inner, span);
+
+    let mut region = blank(shaper, span);
+    region.fallback = loading;
+    region.body = shaper.block(nested, span);
+    region
+}
+
+/// `Dynamic` — a `branch` keyed on the component VALUE with ONE body, which is
+/// what the adapter always did; what M9 removes is the props OBJECT it built by
+/// `omit`, and the fifth element-creation path its string arm had.
+fn dynamic<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    attrs: &mut Vec<Attr<'a>>,
+    kids: Vec<Expression<'a>>,
+    span: Span,
+) -> Region<'a> {
+    let component = take(attrs, "component").expect("checked by `admits`");
+    let cell = shaper.cell_value(component.value, component.span);
+
+    let mut properties = Vec::with_capacity(attrs.len() + 1);
+    for attr in std::mem::take(attrs) {
+        let value = shaper.cell_value(attr.value, attr.span);
+        properties.push(shaper.property(attr.name, value, attr.span));
+    }
+    if let Some(children) = body_slot_of(shaper, kids, span) {
+        properties.push(shaper.property("children", children, span));
+    }
+    let properties = ArenaVec::from_iter_in(properties, &shaper.allocator);
+    let props = Expression::new_object_expression(span, properties, &shaper.ast);
+
+    let callee = shaper.helper(Helper::Dyn, span);
+    let scope = shaper.ident(shaper.scope, span);
+    let call = call(shaper, callee, vec![scope, dup(shaper, &cell), props], span);
+    let scope = shaper.scope;
+    let body = Expression::new_arrow_function_expression(
+        span,
+        false,
+        None,
+        params(shaper, &[scope], span),
+        None,
+        ArrowFunctionBody::from(call),
+        &shaper.ast,
+    );
+
+    let mut region = blank(shaper, span);
+    region.key = Some(cell);
+    region.body = shaper.brand(body, span);
+    region
+}
+
+/// An attribute as a Cell, or `() => void 0` when it was not written — which is
+/// what an absent option reads as on the other side.
+fn optional_cell<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    attr: Option<Attr<'a>>,
+    span: Span,
+) -> Expression<'a> {
+    match attr {
+        Some(attr) => shaper.cell_value(attr.value, attr.span),
+        None => {
+            let value = Expression::new_void_0(span, &shaper.ast);
+            arrow(shaper, value, span)
+        }
+    }
+}
+
+/// `Reveal` — a provide scope, so it is a CALL rather than a region row. The
+/// order and the collapsed flag are Cells the compiler computed and the children
+/// are the Block they already were; nothing reads a props record to find them.
+pub(super) fn reveal<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    element: ArenaBox<'a, JSXElement<'a>>,
+) -> Expression<'a> {
+    let span = element.span;
+    let mut element = element.unbox();
+    shaper.consumed(&element.opening_element.name);
+    let (mut attrs, kids) = parts(shaper, &mut element);
+
+    let order = optional_cell(shaper, take(&mut attrs, "order"), span);
+    let collapsed = optional_cell(shaper, take(&mut attrs, "collapsed"), span);
+    let body = body_slot_of(shaper, kids, span)
+        .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
+
+    let callee = shaper.helper(Helper::Reveal, span);
+    let scope = shaper.ident(shaper.scope, span);
+    call(shaper, callee, vec![scope, order, collapsed, body], span)
 }
 
 // ============================================================================

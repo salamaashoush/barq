@@ -3,7 +3,7 @@
  * Tests: css, styled, keyframe, globalCss, clsx, variants, createTheme, token, cssVar, defineVars
  */
 
-import { For, useState } from "@barqjs/core";
+import { For, signal } from "@barqjs/core";
 import {
   type DesignTokens,
   clsx,
@@ -117,7 +117,7 @@ function StyledDemo() {
 
 // Keyframe animations
 function KeyframeDemo() {
-  const [animating, setAnimating] = useState(false);
+  const animating = signal(false);
 
   const pulse = keyframe`
     0%, 100% {
@@ -162,7 +162,7 @@ function KeyframeDemo() {
 
   return (
     <DemoCard title="keyframe - Animations">
-      <Button onClick={() => setAnimating((a) => !a)}>
+      <Button onClick={() => animating.update((a) => !a)}>
         {() => (animating() ? "Stop" : "Start")} Animations
       </Button>
 
@@ -201,9 +201,9 @@ function KeyframeDemo() {
 
 // clsx utility
 function ClsxDemo() {
-  const [active, setActive] = useState(false);
-  const [disabled, setDisabled] = useState(false);
-  const [size, setSize] = useState<"sm" | "md" | "lg">("md");
+  const active = signal(false);
+  const disabled = signal(false);
+  const size = signal<"sm" | "md" | "lg">("md");
 
   const baseClass = css`
     padding: 12px 24px;
@@ -240,11 +240,11 @@ function ClsxDemo() {
   return (
     <DemoCard title="clsx - Class Composition">
       <div class={buttonRowStyle}>
-        <Button onClick={() => setActive((a) => !a)}>Toggle Active</Button>
-        <Button onClick={() => setDisabled((d) => !d)}>Toggle Disabled</Button>
-        <Button onClick={() => setSize("sm")}>Small</Button>
-        <Button onClick={() => setSize("md")}>Medium</Button>
-        <Button onClick={() => setSize("lg")}>Large</Button>
+        <Button onClick={() => active.update((a) => !a)}>Toggle Active</Button>
+        <Button onClick={() => disabled.update((d) => !d)}>Toggle Disabled</Button>
+        <Button onClick={() => size.set("sm")}>Small</Button>
+        <Button onClick={() => size.set("md")}>Medium</Button>
+        <Button onClick={() => size.set("lg")}>Large</Button>
       </div>
 
       <div class={computedClass} style={{ background: active() ? undefined : "#475569" }}>
@@ -262,8 +262,8 @@ function ClsxDemo() {
 
 // variants (CVA-like)
 function VariantsDemo() {
-  const [intent, setIntent] = useState<"primary" | "secondary" | "danger">("primary");
-  const [size, setSize] = useState<"sm" | "md" | "lg">("md");
+  const intent = signal<"primary" | "secondary" | "danger">("primary");
+  const size = signal<"sm" | "md" | "lg">("md");
 
   const button = variants({
     base: css`
@@ -319,7 +319,7 @@ function VariantsDemo() {
           class={selectStyle}
           value={intent()}
           onChange={(e: Event) =>
-            setIntent(
+            intent.set(
               (e.target as HTMLSelectElement).value as typeof intent extends () => infer T
                 ? T
                 : never,
@@ -335,7 +335,7 @@ function VariantsDemo() {
           class={selectStyle}
           value={size()}
           onChange={(e: Event) =>
-            setSize(
+            size.set(
               (e.target as HTMLSelectElement).value as typeof size extends () => infer T
                 ? T
                 : never,
@@ -438,7 +438,7 @@ function ThemeDemo() {
 
 // CSS Variables
 function CssVarDemo() {
-  const [hue, setHue] = useState(220);
+  const hue = signal(220);
 
   // Make vars reactive by using a getter function
   const getVars = () =>
@@ -455,7 +455,7 @@ function CssVarDemo() {
         min="0"
         max="360"
         value={hue()}
-        onInput={(e: Event) => setHue(Number((e.target as HTMLInputElement).value))}
+        onInput={(e: Event) => hue.set(Number((e.target as HTMLInputElement).value))}
         class={rangeStyle}
       />
       <p>Hue: {hue}</p>

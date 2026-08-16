@@ -18,4 +18,3 @@ export default function DangerouslySetInnerHtml() {
   )
 }
 
-export const goesLive = ["dangerouslySetInnerHTML={{ __html: html() }}"]

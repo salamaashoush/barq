@@ -129,7 +129,7 @@ describe("-O0 is a build, not a debug mode", () => {
 describe("L3 — the -O0/-Ox differential over the corpus", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically at both levels`, async () => {
-      const optimised = await drive(name, "compiler")
+      const optimised = await drive(name)
       const reference = await renderViaCompiler(name, {}, O0)
       preconditions(name, optimised.code ?? "", reference.code ?? "")
 
@@ -206,7 +206,10 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
  */
 describe("L3 — the flow pass alone, bisected", () => {
   const FLOW_OFF = { passes: [["flow", "off"]] }
-  const PRIMITIVES = ["branch", "each", "boundary", "portal"]
+  // `reveal` and `dyn` join the four: M9 lowers `Reveal` onto a provide-scope
+  // call and `Dynamic` onto a branch whose body resolves the component, so both
+  // are primitives the flow-off build does not emit.
+  const PRIMITIVES = ["branch", "each", "boundary", "portal", "reveal", "dyn"]
 
   /** The fixtures the pass actually moves, which is the population under test. */
   const lowered = listFixtures().filter(
@@ -425,6 +428,39 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
   },
 ]
 
+/**
+ * The APPLY half of every `bindEffect(scope, compute, apply)` in a module.
+ *
+ * The compute reads; the apply writes, and what it writes to is the question —
+ * so the extraction is deliberately the second argument only. Brace matching
+ * rather than a regex, because an apply body contains object literals.
+ */
+function applyBodies(code: string): string[] {
+  const out: string[] = []
+  const marker = /_\$+bindEffect\(/g
+  let match: RegExpExecArray | null
+  while ((match = marker.exec(code)) !== null) {
+    let depth = 1
+    let commas = 0
+    let start = -1
+    for (let at = match.index + match[0].length; at < code.length; at++) {
+      const char = code[at]
+      if (char === "(" || char === "{" || char === "[") depth++
+      else if (char === ")" || char === "}" || char === "]") {
+        depth--
+        if (depth === 0) {
+          if (start !== -1) out.push(code.slice(start, at))
+          break
+        }
+      } else if (char === "," && depth === 1) {
+        commas++
+        if (commas === 2) start = at + 1
+      }
+    }
+  }
+  return out
+}
+
 describe("the front end L3 cannot grade, graded absolutely", () => {
   /**
    * The flag census, in the suite the mutation runner drives — because a flag
@@ -443,6 +479,42 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
    */
   it("every flag the corpus emits is one the compiler proved", () => {
     expect(emittedFlags()).toEqual([...FLAG_CENSUS])
+  })
+
+  /**
+   * B2's grouping key, asserted absolutely — the one mutation the whole L3 axis
+   * could not see.
+   *
+   * `group.rs` fuses consecutive `SetLive` patches only while `target` is the
+   * SAME element. Removing that condition (the `fuse-merges-across-elements`
+   * row in `mutants.ts`) merges the live props of two elements into one
+   * `bindEffect`, and the differential stays green: `-O0` fuses nothing, so both
+   * builds still write the same values in the same order — what changes is
+   * WHICH effect owns them, which a rendered-DOM comparison cannot report.
+   * Node identity cannot see it either; both elements are still cloned once.
+   *
+   * The symptom it hides is real: one record, so a write to either element's
+   * value re-applies BOTH, and the record's `prev` slots collide by index.
+   *
+   * So it is graded here, where it is a fact about the emitted module: an apply
+   * body names exactly one element binding. This is the check the mutation
+   * runner reports as `front end (absolute)`.
+   */
+  it("a fused effect applies to exactly one element", () => {
+    const offenders: string[] = []
+    for (const name of listFixtures()) {
+      const code = compileFixture(name)
+      for (const apply of applyBodies(code)) {
+        const elements = new Set(apply.match(/_el\$\d+/g) ?? [])
+        if (elements.size > 1) {
+          offenders.push(`${name}: ${[...elements].join(" + ")} share one bindEffect`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+    // The channel is not vacuous: the corpus really does emit fused effects.
+    const applies = listFixtures().flatMap((name) => applyBodies(compileFixture(name)))
+    expect(applies.length, "no fixture emits a bindEffect at all").toBeGreaterThan(10)
   })
 
   for (const mode of liveModes()) {

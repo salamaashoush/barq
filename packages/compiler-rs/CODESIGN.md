@@ -1426,6 +1426,32 @@ the flags set stays small.
 The API restarts from the ~70 exports that are actually used and re-earns the rest. Anything kept for
 parity is import-flipped so it is tree-shakeable and off the node shape.
 
+#### What M9 changed about this list, on measurement
+
+Three rows above were written when the compiler could not emit what it emits now, and M9 reversed
+them rather than forcing the runtime through a shape the compiler cannot produce. Each is a
+reversal on evidence, and each is stated here so the table above is not read as the outcome.
+
+- **`spread()` is KEPT, and is now the compiled channel.** The row says "never emitted by the DOM
+  backend"; that was true because P1 refused any element carrying a spread. §5.2 said that refusal
+  had to go, and it has: an element with a spread stays on the template path and the spread is an
+  `Op::Spread` the DOM backend emits as `_$spread($s, el, sources)`. Its NAMES are §3.13 item 1 —
+  the one attribute fact the compiler cannot have — so the runtime resolves them, which is also why
+  `setProp` and `channelOf` survive with it. Everything else in the dispatch row still goes: no
+  compiled element write asks a name question.
+- **`createElement` is gone, and `element(scope, tag, props)` replaces the part of it that was not
+  a second calling convention.** The objection was to a second implementation of COMPONENT
+  invocation, and that is what left. Building one element by tag NAME is a different thing and is
+  still needed twice — for `<Dynamic component={"div"}>` (§3.13 item 4) and for the intrinsic the
+  browser's tree builder would not produce as written. It takes a scope, applies props through
+  `spread` and children through `insert`, so it is not a fifth path: it is the same two entry
+  points a compiled element uses, minus the clone.
+- **`Dynamic`, `Await` and `Reveal` lower**, so the components go with the other ten. `Await` is
+  two nested boundaries — reading a resource throws `NotReady` before it settles and throws the
+  error after it fails, which IS the three-state key the adapter computed — and `Reveal` keeps its
+  provide scope as `reveal($s, order, collapsed, body)` in `flow.ts`, beside the four primitives
+  rather than among them.
+
 ### 4.2 `signals.ts` — opened, contrary to the previous pass
 
 **Kept because I would design it this way, each with its warrant:**
@@ -1544,6 +1570,23 @@ at `compile.rs:302-310`; `codegen/fallback.rs`'s `createElement` path; the `clas
 early return; every `Helper` entry naming a deleted runtime export; the `createElement`-parity
 tree-construction refusals.
 
+**M9, in full.** The tree-construction gate is re-based from "what `createElement` would build" to
+"what a browser's tree builder produces", and every refusal that existed only for parity with the
+un-compiled path is gone with it:
+
+| refused before M9 | now | why the refusal was parity, not a parse fact |
+|---|---|---|
+| a JSX fragment | an ARRAY of its parts | `template()` returns `content.firstChild`, so a fragment is one template per root plus an array. Nothing needed a component. |
+| `<select multiple>` with options | one template | `multiple` is the one DOM_PROP whose ATTRIBUTE is the state, so the parser puts it in place before the options arrive — which is exactly what §3.13 item 8 requires and what writing it as a property after the clone failed to do. |
+| `<math>` | one template | `<math>` switches the tokenizer into foreign content and the clone carries the MathML namespace. Only `createElement`, which reaches `createElementNS` for SVG alone, could not produce it. |
+| `<template>` | one template, when nothing inside is dynamic | its children land on `.content`, which `cloneNode` copies. What a clone cannot carry is a WALK into them, so a hole inside one still leaves the template path. |
+| a hole in `<style>`/`<textarea>` | one template, with the whole child list as ONE insert | a `<!---->` inside raw text is character data, so the hole may never be given an anchor — and it never needs one, because it owns the element. |
+| `dangerouslySetInnerHTML` beside children | one template, children not baked | the write is an attribute patch and attribute patches run before inserts, which is the ordering `createElement` got by applying props before appending. |
+| an element carrying a spread | one template, no attribute baked | see §4.1's M9 note: the ordering is source order on both backends, which is the one arrangement that agrees with itself. |
+
+What is genuinely refused after that is markup no clone can carry — `<td>` outside a row, `<body>`
+— and it is BUILT by `element(scope, tag, props)` rather than refused to a second runtime.
+
 ### 5.4 Compile budget
 
 Today 0.013–0.025 ms/file against 1 ms — ~40x headroom. Every new pass is a linear walk over an IR
@@ -1574,6 +1617,45 @@ force:
    both. That is precisely the constraint this design lifts.
 
 Six layers replace it, each owning the channels it suits.
+
+#### Executed at M9 — what each channel actually became
+
+The retirement above was written as a design. This is what shipped, and it is recorded here because
+two of the replacements are not the ones this section anticipated.
+
+| channel | was | is |
+|---|---|---|
+| rendered DOM | differential against `createElement` | a per-fixture GOLDEN (`__snapshots__/oracle.test.ts.snap`, every frame plus every attribute line) beside the `-O0`/`-Ox`/`interp` differentials |
+| effect counts | an upper BOUND against the oracle's count | `test/effect-counts.ts` — 131 hand-written rows, `created`/`runs`/`busiest`, each an **equality** |
+| node identity | differential, under a per-frame guard | metamorphic (`metamorphic.ts`), unconditional; the differential survives only as a clean-vs-corrupted DETECTOR |
+| marker layout, attribute partition | already self-checks | unchanged, in `harness.ts auditCompiled` |
+| the corruption self-checks (L6) | corrupted-vs-oracle | corrupted-vs-CLEAN-COMPILED (`compareToClean`, `compareRuns`) |
+| `ssr.test.ts`'s reference | the un-compiled path | the DOM backend (`renderSsrViaDom`) — L2's construction, one IR and two `Backend` impls |
+
+**The bound became an equality, and that is the substantive change.** "Fewer effects than the oracle
+is the entire point of the compiler" made the old channel one-sided, so a binding that silently went
+missing — target #1 over-applied — was reported as a win. An absolute number catches both directions
+and needs no `goesLive` to lift it: a hole O4 turns live simply makes the row one higher.
+
+**`wins` and `goesLive` are deleted from the corpus**, 12 and 18 declarations respectively. Reason 2
+above is the whole of it: both were exemptions from a comparison that no longer runs. The exemption
+count across `graded.ts`'s whole table went 3 → 1, and the one that remains is
+`leak-known-failures.ts`, which is a real defect rather than a reference artefact.
+
+**Two live findings came out of the retirement, which is the argument for it.**
+
+- `attribute_expression` handed a JSX attribute's string literal to the runtime **un-decoded**, so
+  `title="a &quot; b"` reached `setAttribute` as the six characters `&quot;` and serialised as
+  `&amp;quot;`. It hit `element(scope, tag, props)` and every component prop; the template path was
+  correct because the parser resolves references out of baked bytes. Nothing could see it: the
+  reference was un-compiled, so it never went down either channel, and the one comparison that would
+  have caught it compared SSR against that same reference. Re-pointing that comparison at the DOM
+  backend failed on the first run.
+- The coarse marker bound counted `_$insert` call sites as the only anchor consumers. K5 lowered
+  control flow onto the four primitives in M4b, so a `branch`/`each`/`boundary` anchor had been
+  counted as unanchored ever since — masked because `flow-prop-eta-boundary` carried `marker-count`
+  among the kinds of a registry row whose stated cause was C1. A stale bound had been sitting inside
+  an exemption written for something else.
 
 ### L1 — `SEMANTICS.md`, a written and fixture-pinned specification
 
@@ -1668,12 +1750,20 @@ damage instead of removing it: `getter_shaped` turns a function prop into a gett
 what the program means is not an optimisation level, and `-O0` sharing the props model is a promise
 made two paragraphs above this one.
 
-So the ungated front end needs an **absolute** grader, and two exist. The `createElement` oracle is one
-— which is why L4 retiring five channels must not be read as retiring `oracle.test.ts` while nothing
-has replaced it for P2 and P4. The other is executable and lives in `test/optimisation.test.ts`
+So the ungated front end needs an **absolute** grader, and two exist. The `createElement` oracle was
+one — which is why L4 retiring five channels was not to be read as retiring `oracle.test.ts` while
+nothing had replaced it for P2 and P4. The other is executable and lives in `test/optimisation.test.ts`
 ("the front end L3 cannot grade, graded absolutely"): the smallest claims that pin what the classifier
 decides — a tracked read is live wherever it is written, a snapshot of one is not — asserted in every
 live mode, and written in the DIRECT form the corpus steers away from.
+
+**M9 discharged the condition rather than waiving it.** Two absolute graders replaced the one that
+went, and both bind the front end: `test/effect-counts.ts` (131 equalities — the classify mutation
+that made every tracked read `React::Static` lowers a `created` count, and an equality reports a
+lower number as loudly as a higher one, where the old BOUND treated it as a win) and the per-fixture
+rendered-DOM golden (a read that stopped being live changes a driven frame, and the frame is
+recorded). Neither is a differential, so neither goes green on a front end that is wrong on both
+sides.
 
 ### L4 — Graded properties, replacing five of the seven current channels
 
@@ -2794,3 +2884,53 @@ copy-flattening — `{...p}` READS a getter and hands on a dead value, so every 
 component silently loses reactivity — which is a correctness argument that no benchmark decides, and
 which all three submitted designs made independently before any allocation number existed. §0.2 says
 this in its own place too, so that the dead number cannot be used to reopen the live decision.
+
+---
+
+## 13. NAMING (2026-08-16, M9)
+
+Decided by the user, after the export surface was audited and found to carry **three constructor
+conventions at once**: bare (`signal`, `computed`, `effect`, `resource`), `create*`
+(`createScope`, `createContext`, `createOptimistic`, `createReaction`, …) and `use*` (`useState`,
+`useMemo`, `useEffect`, `useResource`, `useStore`, `useContext`, `useRef`).
+
+The split was not a design; it was sediment. Half of Solid's constructors had been renamed
+(`createSignal → signal`, `createMemo → computed`, `createEffect → effect`,
+`createRenderEffect → renderEffect`) and the other half kept verbatim, so no rule told a reader
+which form a given constructor takes. Four of the `use*` names were one-line aliases of the bare
+form — two public names for one function.
+
+**The rule: a constructor is the noun it makes.** No prefix.
+
+| deleted | use instead | note |
+|---|---|---|
+| `useState` | `signal` | not a rename: the tuple form goes, `s()` reads and `s.set`/`s.update` write |
+| `useMemo` / `useEffect` / `useResource` / `useStore` | `computed` / `effect` / `resource` / `store` | pure aliases; the wrappers held nothing |
+| `useContext` | **kept** | see below — it is not an alias |
+| `useRef` | the `ref` channel | §4.1; a writable binding IS the ref (B3) |
+| `createAsync` | `computed(fn, { key })` | it was `computed` plus an SSR seed key, and the key still defaults to the owner-tree id at CREATION — which is what keeps server and client numbering identical |
+| `createScope` / `createRoot` / `createOwner` / `createContext` | `scope` / `root` / `owner` / `context` | |
+| `createReaction` / `createTrackedEffect` | `reaction` / `trackedEffect` | |
+| `createOptimistic` / `createOptimisticStore` / `createProjection` | `optimistic` / `optimisticStore` / `projection` | |
+| `createErrorBoundary` / `createLoadingBoundary` / `createRevealOrder` | `errorBoundary` / `loadingBoundary` / `revealOrder` | |
+| `merge` | `mergeProps` | two names for one operation |
+| `getProperty` / `setProperty` | — | zero consumers anywhere, and one character from `setProp`, which is a different thing |
+| `dyn` | `dynamic` | the name frees up when the component dies; it was the only abbreviation among `element`, `reveal`, `branch`, `each`, `boundary`, `portal` |
+
+**`useContext` is the one `use*` that stays**, and the reason is that it is not an alias of a
+constructor. The four that went were one-line wrappers over `signal`, `computed`, `effect` and
+`resource`; reading a value the OWNER TREE provides is its own operation. Solid draws the same line
+in the same place: `@solidjs/signals` marks `getContext(ctx, owner?)` `@internal` — "the user-facing
+read API is `useContext` (in `solid-js`), which wraps this primitive" — and `solid-js` exports
+`useContext`. barq keeps both, and the difference between them is the return: `getContext` answers
+with the VALUE and throws when there is none, `useContext` answers with the Cell (§3.0), which is
+what a component wants and what compiled code emits.
+
+**Solid source compatibility is not a goal and was already gone.** §11's calling convention —
+components take their scope first, props are Cells and are called — means no Solid component compiles
+here unchanged. A vocabulary that is half theirs buys nothing and costs the rule above.
+
+**What stays Solid's, and why.** The names that are the same BECAUSE the semantics are the same:
+`isPending`, `latest`, `refresh`, `untrack`, `batch`, `flush`, `onCleanup`, `onMount`, `onSettled`,
+`getOwner`, `runWithOwner`, `mapArray`, `repeat`, `NotReadyError`, `affects`, `resolve`. Renaming
+those would cost a reader the one thing parity is good for, which is transferring a mental model.

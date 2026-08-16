@@ -1229,6 +1229,50 @@ const VOID_TAGS = new Set([
  * publishes the coordinator descendant loading boundaries register with and
  * owns nothing else, which is exactly as true on the wire as it is in the DOM.
  */
+/**
+ * `reveal` — the string half of the same name (`SHARED_ABI`). The compiler
+ * emits one call with one argument order; which module it is imported from is
+ * the TARGET's decision and nothing else differs.
+ */
+export function reveal(
+  s: Scope | null,
+  order: unknown,
+  collapsed: unknown,
+  block: unknown,
+): SsrHtml {
+  const handle: RevealHandle = createRevealCoordinator(
+    () => (readValue(order, "reveal.order") as "sequential" | "together" | "natural") ?? "natural",
+    () => readValue(collapsed, "reveal.collapsed") === true,
+  );
+  const scope = enter(s ?? null, "provide");
+  try {
+    provideOn(scope, REVEAL_COORD, handle);
+    return html(esc(invokeBlock(scope, block, NO_ARGS)));
+  } finally {
+    exit(scope);
+  }
+}
+
+/**
+ * `dyn` — the string half. The branch that swaps the component is the
+ * compiler's, so what is left here is the one question the value answers: a tag
+ * name is serialised, anything else is invoked.
+ */
+export function dyn(s: Scope | null, component: unknown, props: Record<string, unknown>): unknown {
+  const resolved = untrack(() => readValue(component, "dyn.component"));
+  if (resolved === null || resolved === undefined || resolved === false) return null;
+  if (typeof resolved !== "string") return invokeBlock(s, resolved, [props]);
+  // The tag is RUNTIME DATA here, which makes it the same injection the
+  // attribute-name check exists for: `component={"div onload=alert(1)"}` writes
+  // two attributes into markup where `document.createElement` throws
+  // `InvalidCharacterError` and writes nothing. Refusing is what makes the two
+  // paths agree.
+  checkName(resolved, "tag");
+  const inner = props.children === undefined ? "" : esc(props.children);
+  const open = `<${resolved}${spreadAttrs(omit(props, "children"), resolved)}`;
+  return raw(VOID_TAGS.has(resolved) ? `${open}>` : `${open}>${inner}</${resolved}>`);
+}
+
 export function ssrReveal(
   s: Scope | null,
   props: { order?: unknown; collapsed?: unknown; children: unknown },

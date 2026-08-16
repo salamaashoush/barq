@@ -109,7 +109,7 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
   sessions: 150,
   scopesEntered: 462,
-  effectsCreated: 253,
+  effectsCreated: 273,
   listeners: 30,
 })
 

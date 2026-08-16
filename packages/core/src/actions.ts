@@ -34,7 +34,7 @@ import {
   signal,
 } from "./signals.ts";
 import type { Signal, SignalOptions } from "./signals.ts";
-import { type Store, unwrap, useStore } from "./store.ts";
+import { type Store, unwrap, store } from "./store.ts";
 
 interface ActionContext {
   retire: (() => void)[];
@@ -264,8 +264,8 @@ interface StoreLayer {
  * override, `latest()` reads through to `base`, `isPending()` reports.
  */
 export function createOptimisticStore<T extends object>(seed: T): Store<T> {
-  const [base, setBase] = useStore(seed);
-  const [view, setView] = useStore(structuredClone(unwrap(seed)));
+  const [base, setBase] = store(seed);
+  const [view, setView] = store(structuredClone(unwrap(seed)));
   const layers = signal<StoreLayer[]>([]);
   const owned = new WeakMap<ActionContext, StoreLayer>();
 

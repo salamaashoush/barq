@@ -1,12 +1,12 @@
 /**
  * Signals & State Demo
- * Tests: useState, useMemo, useEffect, batch, untrack, createScope, onCleanup, onMount, Context
+ * Tests: signal, computed, effect, batch, untrack, createScope, onCleanup, onMount, Context
  *
  * NOTE: This file uses clean syntax that the compiler transforms:
  * - Signal reads: `count` instead of `count()`
  * - JSX expressions: `{count + 1}` instead of `{() => count() + 1}`
  * - Control flow: `when={visible}` instead of `when={() => visible()}`
- * - Auto-computed: `const doubled = count * 2` instead of `useMemo(() => count() * 2)`
+ * - Auto-computed: `const doubled = count * 2` instead of `computed(() => count() * 2)`
  */
 
 import {
@@ -18,9 +18,8 @@ import {
   onMount,
   untrack,
   useContext,
-  useEffect,
-  useRef,
-  useState,
+  effect,
+  signal,
 } from "@barqjs/core";
 import {
   css,
@@ -44,13 +43,13 @@ export function SignalsDemo() {
   );
 }
 
-// Counter with useState
+// Counter with signal
 function CounterDemo() {
-  const [count, setCount] = useState(0);
-  const [step, setStep] = useState(1);
+  const count = signal(0);
+  const step = signal(1);
 
   return (
-    <DemoCard title="useState - Counter">
+    <DemoCard title="signal - Counter">
       <p>
         Count: <strong>{count}</strong>
       </p>
@@ -58,30 +57,30 @@ function CounterDemo() {
         Step: <strong>{step}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setCount((c) => c - step())}>-{step}</Button>
-        <Button onClick={() => setCount((c) => c + step())}>+{step}</Button>
-        <Button onClick={() => setCount(0)}>Reset</Button>
+        <Button onClick={() => count.update((c) => c - step())}>-{step}</Button>
+        <Button onClick={() => count.update((c) => c + step())}>+{step}</Button>
+        <Button onClick={() => count.set(0)}>Reset</Button>
       </div>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setStep(1)}>Step 1</Button>
-        <Button onClick={() => setStep(5)}>Step 5</Button>
-        <Button onClick={() => setStep(10)}>Step 10</Button>
+        <Button onClick={() => step.set(1)}>Step 1</Button>
+        <Button onClick={() => step.set(5)}>Step 5</Button>
+        <Button onClick={() => step.set(10)}>Step 10</Button>
       </div>
     </DemoCard>
   );
 }
 
-// Derived values with auto-computed (compiler transforms to useMemo)
+// Derived values with auto-computed (compiler transforms to computed)
 function MemoDemo() {
-  const [firstName, setFirstName] = useState("John");
-  const [lastName, setLastName] = useState("Doe");
+  const firstName = signal("John");
+  const lastName = signal("Doe");
 
   // §11 rejected implicit reads: an accessor in a template literal stringifies
   // to its own source text, and BARQ001 says so at the exact position.
   const fullName = () => `${firstName()} ${lastName()}`;
 
   // Expensive computation (simulated)
-  const [items, setItems] = useState([1, 2, 3, 4, 5]);
+  const items = signal([1, 2, 3, 4, 5]);
   // Auto-computed values - need to call items() for method access
   const sum = () => items().reduce((a: number, b: number) => a + b, 0);
   const doubled = () => items().map((x: number) => x * 2);
@@ -92,14 +91,14 @@ function MemoDemo() {
         <input
           type="text"
           value={firstName}
-          onInput={(e: Event) => setFirstName((e.target as HTMLInputElement).value)}
+          onInput={(e: Event) => firstName.set((e.target as HTMLInputElement).value)}
           placeholder="First name"
           class={inputStyle}
         />
         <input
           type="text"
           value={lastName}
-          onInput={(e: Event) => setLastName((e.target as HTMLInputElement).value)}
+          onInput={(e: Event) => lastName.set((e.target as HTMLInputElement).value)}
           placeholder="Last name"
           class={inputStyle}
         />
@@ -115,34 +114,34 @@ function MemoDemo() {
         Sum: <strong>{sum}</strong>
       </p>
       <p>Doubled: {doubled().join(", ")}</p>
-      <Button onClick={() => setItems((arr) => [...arr, arr.length + 1])}>Add Item</Button>
+      <Button onClick={() => items.update((arr) => [...arr, arr.length + 1])}>Add Item</Button>
     </DemoCard>
   );
 }
 
-// Side effects with useEffect
+// Side effects with effect
 function EffectDemo() {
-  const [count, setCount] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
+  const count = signal(0);
+  const logs = signal<string[]>([]);
 
   const addLog = (msg: string) => {
-    setLogs((l) => [...l.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    logs.update((l) => [...l.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
   };
 
   // Effect that runs on count change - still need count() in effects
-  useEffect(() => {
+  effect(() => {
     addLog(`Count changed to ${count()}`);
   });
 
   // Effect with cleanup
-  const [intervalActive, setIntervalActive] = useState(false);
+  const intervalActive = signal(false);
 
-  useEffect(() => {
+  effect(() => {
     if (!intervalActive()) return;
 
     addLog("Interval started");
     const id = setInterval(() => {
-      setCount((c) => c + 1);
+      count.update((c) => c + 1);
     }, 1000);
 
     return () => {
@@ -152,13 +151,13 @@ function EffectDemo() {
   });
 
   return (
-    <DemoCard title="useEffect - Side Effects">
+    <DemoCard title="effect - Side Effects">
       <p>
         Count: <strong>{count}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
-        <Button onClick={() => setIntervalActive((a) => !a)}>
+        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => intervalActive.update((a) => !a)}>
           {intervalActive() ? "Stop" : "Start"} Interval
         </Button>
       </div>
@@ -169,24 +168,24 @@ function EffectDemo() {
 
 // Batched updates
 function BatchDemo() {
-  const [a, setA] = useState(0);
-  const [b, setB] = useState(0);
-  const [renderCount, setRenderCount] = useState(0);
+  const a = signal(0);
+  const b = signal(0);
+  const renderCount = signal(0);
 
   // Track renders
-  useEffect(() => {
-    setRenderCount((c) => c + 1);
+  effect(() => {
+    renderCount.update((c) => c + 1);
   });
 
   const unbatchedUpdate = () => {
-    setA((x) => x + 1);
-    setB((x) => x + 1);
+    a.update((x) => x + 1);
+    b.update((x) => x + 1);
   };
 
   const batchedUpdate = () => {
     batch(() => {
-      setA((x) => x + 1);
-      setB((x) => x + 1);
+      a.update((x) => x + 1);
+      b.update((x) => x + 1);
     });
   };
 
@@ -203,9 +202,9 @@ function BatchDemo() {
         <Button onClick={batchedUpdate}>Batched +1</Button>
         <Button
           onClick={() => {
-            setA(0);
-            setB(0);
-            setRenderCount(0);
+            a.set(0);
+            b.set(0);
+            renderCount.set(0);
           }}
         >
           Reset
@@ -220,16 +219,16 @@ function BatchDemo() {
 
 // Untracked reads
 function UntrackDemo() {
-  const [tracked, setTracked] = useState(0);
-  const [untrackedVal, setUntracked] = useState(0);
-  const [effectRuns, setEffectRuns] = useState(0);
+  const tracked = signal(0);
+  const untrackedVal = signal(0);
+  const effectRuns = signal(0);
 
-  useEffect(() => {
+  effect(() => {
     // This effect depends on tracked, but reads untracked without dependency
     const t = tracked();
     const u = untrack(() => untrackedVal());
     console.log(`Effect: tracked=${t}, untracked=${u}`);
-    setEffectRuns((c) => c + 1);
+    effectRuns.update((c) => c + 1);
   });
 
   return (
@@ -244,10 +243,10 @@ function UntrackDemo() {
         Effect runs: <strong>{effectRuns}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setTracked((t) => t + 1)}>
+        <Button onClick={() => tracked.update((t) => t + 1)}>
           Increment Tracked (triggers effect)
         </Button>
-        <Button onClick={() => setUntracked((u) => u + 1)}>
+        <Button onClick={() => untrackedVal.update((u) => u + 1)}>
           Increment Untracked (no effect trigger)
         </Button>
       </div>
@@ -257,14 +256,14 @@ function UntrackDemo() {
 
 // Effect scope management
 function ScopeDemo() {
-  const [scopeActive, setScopeActive] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  const scopeActive = signal(false);
+  const logs = signal<string[]>([]);
   let disposeScope: (() => void) | null = null;
 
   // Use untrack to prevent addLog from creating signal dependencies
   const addLog = (msg: string) => {
     untrack(() => {
-      setLogs((l) => [...l.slice(-4), msg]);
+      logs.update((l) => [...l.slice(-4), msg]);
     });
   };
 
@@ -274,9 +273,9 @@ function ScopeDemo() {
     disposeScope = createScope(() => {
       addLog("Scope created");
 
-      const [counter, setCounter] = useState(0);
+      const counter = signal(0);
 
-      useEffect(() => {
+      effect(() => {
         // Read counter value, then log without tracking
         const value = counter();
         addLog(`Scoped effect: counter = ${value}`);
@@ -285,7 +284,7 @@ function ScopeDemo() {
 
       // Simulate some work
       const interval = setInterval(() => {
-        setCounter((c) => c + 1);
+        counter.update((c) => c + 1);
       }, 1000);
 
       // Return cleanup
@@ -295,14 +294,14 @@ function ScopeDemo() {
       };
     });
 
-    setScopeActive(true);
+    scopeActive.set(true);
   };
 
   const stopScope = () => {
     if (disposeScope) {
       disposeScope();
       disposeScope = null;
-      setScopeActive(false);
+      scopeActive.set(false);
     }
   };
 
@@ -327,11 +326,13 @@ function ScopeDemo() {
 
 // DOM refs
 function RefDemo() {
-  const inputRef = useRef<HTMLInputElement>();
-  const [value, setValue] = useState("");
+  // B3: a writable binding IS the ref. `ref={inputRef}` compiles to an
+  // assignment, so there is no `{current}` box and nothing to unwrap.
+  let inputRef: HTMLInputElement | undefined;
+  const value = signal("");
 
   const focusInput = () => {
-    inputRef.current?.focus();
+    inputRef?.focus();
   };
 
   const selectAll = () => {
@@ -339,12 +340,12 @@ function RefDemo() {
   };
 
   return (
-    <DemoCard title="useRef - DOM References">
+    <DemoCard title="ref - DOM References">
       <input
         ref={inputRef}
         type="text"
         value={value}
-        onInput={(e: Event) => setValue((e.target as HTMLInputElement).value)}
+        onInput={(e: Event) => value.set((e.target as HTMLInputElement).value)}
         placeholder="Type something..."
         class={inputStyle}
       />
@@ -359,14 +360,14 @@ function RefDemo() {
 
 // onCleanup demo - cleanup when effect re-runs
 function OnCleanupDemo() {
-  const [count, setCount] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
+  const count = signal(0);
+  const logs = signal<string[]>([]);
 
   const addLog = (msg: string) => {
-    setLogs((l) => [...l.slice(-4), msg]);
+    logs.update((l) => [...l.slice(-4), msg]);
   };
 
-  useEffect(() => {
+  effect(() => {
     addLog(`Effect started for count=${count()}`);
 
     // Register cleanup - runs when effect re-runs or is disposed
@@ -381,8 +382,8 @@ function OnCleanupDemo() {
         Count: <strong>{count}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
-        <Button onClick={() => setCount(0)}>Reset</Button>
+        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => count.set(0)}>Reset</Button>
       </div>
       <Log logs={logs()} />
       <p class={noteStyle}>onCleanup runs before effect re-runs and when disposed.</p>
@@ -392,11 +393,11 @@ function OnCleanupDemo() {
 
 // onMount demo - runs once after component mounts
 function OnMountDemo() {
-  const [logs, setLogs] = useState<string[]>([]);
-  const [showChild, setShowChild] = useState(false);
+  const logs = signal<string[]>([]);
+  const showChild = signal(false);
 
   const addLog = (msg: string) => {
-    setLogs((l) => [...l.slice(-4), msg]);
+    logs.update((l) => [...l.slice(-4), msg]);
   };
 
   // This runs once when component mounts
@@ -416,7 +417,7 @@ function OnMountDemo() {
     <DemoCard title="onMount - After First Render">
       <p>onMount runs once after the component renders.</p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setShowChild((s) => !s)}>
+        <Button onClick={() => showChild.update((s) => !s)}>
           {showChild() ? "Hide" : "Show"} Child
         </Button>
       </div>
@@ -433,8 +434,8 @@ const ThemeContext = createContext<"light" | "dark">("light");
 const UserContext = createContext<{ name: string; role: string }>();
 
 function ContextDemo() {
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
-  const [user] = useState({ name: "Alice", role: "Admin" });
+  const theme = signal<"light" | "dark">("dark");
+  const [user] = signal({ name: "Alice", role: "Admin" });
 
   return (
     <DemoCard title="Context - Dependency Injection">
@@ -442,7 +443,7 @@ function ContextDemo() {
         Current theme setting: <strong>{theme}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}>
+        <Button onClick={() => theme.update((t) => (t === "light" ? "dark" : "light"))}>
           Toggle Theme
         </Button>
       </div>
@@ -459,7 +460,7 @@ function ContextDemo() {
 }
 
 function ContextConsumer() {
-  // useContext returns a getter for reactive access
+  // getContext returns a getter for reactive access
   const theme = useContext(ThemeContext);
   const user = useContext(UserContext);
 

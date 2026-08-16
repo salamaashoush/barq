@@ -31,31 +31,6 @@ export const steps = [
   () => rows.set(["only"]),
 ]
 
-export const goesLive = ["row 0 {row()}", "row 1 {row()}", "row 2 {row()}"]
-
-export const wins = [
-  {
-    kind: "step",
-    index: 0,
-    compiled:
-      '<ul class="keyed-false"><li>0: ALPHA</li><li>1: BETA</li></ul>',
-    why: "positional rows are reused, so the item accessor is the only thing that moved",
-  },
-  {
-    kind: "step",
-    index: 1,
-    compiled:
-      '<ul class="keyed-false"><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li></ul>',
-    why: "the two reused slots keep the values the oracle read once at creation",
-  },
-  {
-    kind: "step",
-    index: 2,
-    compiled: '<ul class="keyed-false"><li>0: only</li></ul>',
-    why: "slot 0 survives the shrink and its accessor is bound to the new value",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 3,

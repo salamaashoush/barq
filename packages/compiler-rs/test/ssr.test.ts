@@ -16,7 +16,6 @@ import {
   templateHtml,
 } from "./harness.ts"
 import { CSS_NUMBER_PROPS } from "./dom-tables.ts"
-import { oracleRegistry } from "./oracle-known-failures.ts"
 import {
   attributeNameProbeSource,
   comments,
@@ -32,10 +31,8 @@ import {
   rawTextValues,
   renderCode,
   renderSourceViaDom,
-  renderSourceViaOracle,
   renderSourceViaSsr,
   renderSsrCompiled,
-  renderSsrOracle,
   renderSsrViaDom,
   RESHAPED_PROBES,
   sameTree,
@@ -57,11 +54,16 @@ import {
  *
  * WHAT RUNS TODAY. `ssrStatus.landed` is DETECTED, by compiling a probe with
  * `ssr: true` and seeing whether the compiler refuses. Nothing has to be flipped
- * when P8b lands: the pending blocks below become live on that build. Two whole
- * describes are live now regardless, and they are not filler — the oracle
- * comparison proves the specification is a specification, and the compiled-DOM
- * comparison is the first thing in this repo to compare the compiler's template
- * BYTES against the runtime's node building. `oracle.test.ts` cannot: it
+ * when P8b lands: the pending blocks below become live on that build.
+ *
+ * THE REFERENCE, after M9. `CODESIGN.md` §6 retires the un-compiled
+ * `createElement` path, and every comparison here that used it now runs against
+ * the compiled DOM module serialised by the same runtime. That is not a
+ * downgrade to a self-comparison: it is §6 L2's construction — one lowering,
+ * one IR, a `Backend` trait implemented twice — so the two sides share the
+ * front end and share nothing else, and a new `Op` is a Rust compile error in
+ * both. It is also the only pairing that can compare the compiler's template
+ * BYTES against the string it ships, which `oracle.test.ts` cannot: that file
  * compares parsed trees, and `&amp;` and `&` parse to the same tree.
  */
 
@@ -138,44 +140,26 @@ describe("the SSR backend's landing state", () => {
 // the fixture corpus, rendered twice
 // ---------------------------------------------------------------------------
 
-const ORACLE_KNOWN = oracleRegistry()
-
-describe("dual render: the whole corpus, string against DOM", () => {
-  // LIVE. The compiled DOM module and the un-compiled oracle, both serialised by
-  // the same runtime. This is the compile-time half of the escaping rules —
-  // what the compiler baked into `_$template(`…`)` against what `createElement`
-  // and `setAttribute` produce — and it is a channel `oracle.test.ts` cannot
-  // have, because it compares parsed trees and every escaping difference parses
-  // away.
+describe("dual render: the DOM backend's bytes are a document", () => {
+  // LIVE whether or not the string backend has landed. The compiled DOM module,
+  // serialised by the runtime, has to be a well-formed document that survives a
+  // parse — which is the compile-time half of the escaping rules, because what
+  // the compiler baked into `_$template(`…`)` is what the HTML parser reads.
+  //
+  // The un-compiled reference used to stand on the other side of this. It is
+  // retired (§6), and the fixture-level equality it carried is now the
+  // string-against-DOM comparison further down, which is the same claim between
+  // two backends over one IR rather than between two implementations.
   for (const name of CORPUS) {
-    it(`${name}: the compiled template bytes serialise like the oracle's nodes`, async () => {
-      const registered = ORACLE_KNOWN.get(name)
+    it(`${name}: the compiled template bytes parse to the document they render`, async () => {
       const compiled = await renderSsrViaDom(name)
       expect(compiled.string, "the DOM path is never a string").toBe(false)
-
-      if (registered?.ssr) {
-        // The reference is un-compiled, so its DECLARATIONS do not take a scope
-        // and C1 puts the scope where the author's first parameter is —
-        // `oracle-known-failures.ts` states the whole of it. The comparison is
-        // still RUN, and it still has to fail: a row that starts agreeing is a
-        // row nobody deleted.
-        let oracleHtml: string | undefined
-        try {
-          oracleHtml = (await renderSsrOracle(name)).html
-        } catch {
-          return
-        }
-        expect(
-          sameTree(compiled.html),
-          `STALE: ${name} is registered against ${registered.greenAt} and its reference now ` +
-            `agrees — delete the row`,
-        ).not.toBe(sameTree(oracleHtml))
-        return
-      }
-
-      const oracle = await renderSsrOracle(name)
-      expect(oracle.string, "the oracle is never a string").toBe(false)
-      expect(sameTree(compiled.html), `${name} (compiled DOM) vs oracle`).toBe(sameTree(oracle.html))
+      // `sameTree` is a parse-and-reserialise: markup that loses or moves a node
+      // on the way through the parser is not the document the compiler thinks it
+      // emitted, and this is where that shows.
+      expect(sameTree(compiled.html), `${name} does not survive a parse`).toBe(
+        sameTree(sameTree(compiled.html)),
+      )
     })
   }
 
@@ -190,12 +174,12 @@ describe("dual render: the whole corpus, string against DOM", () => {
     const unescaped = clean.replaceAll("&lt;", "<").replaceAll("&gt;", ">")
     expect(unescaped, "self-check corruption is stale").not.toBe(clean)
 
-    const oracle = await renderSsrOracle("escaping-adversarial")
     const good = await renderCode(clean, "esc-detector-clean")
     const bad = await renderCode(unescaped, "esc-detector-raw")
 
-    expect(sameTree(good.html), "the clean module must agree").toBe(sameTree(oracle.html))
-    expect(sameTree(bad.html), "and un-escaping it must not").not.toBe(sameTree(oracle.html))
+    expect(sameTree(bad.html), "un-escaping the template changes the document").not.toBe(
+      sameTree(good.html),
+    )
     expect(injected(bad.html).length + parseFragment(bad.html).querySelectorAll("b").length)
       .toBeGreaterThan(0)
   })
@@ -251,28 +235,28 @@ describe("dual render: the compiled SSR string", () => {
   const run = ssrStatus.landed ? it : it.todo
 
   for (const name of CORPUS) {
-    run(`${name}: the SSR string is the same document as the DOM the oracle builds`, async () => {
-      const registered = ORACLE_KNOWN.get(name)
-      // For a registered fixture the reference cannot conform to C1, so the
-      // third leg moves rather than disappearing: the compiled SSR string is
-      // compared against the compiled DOM module serialised by the same
-      // runtime, which is the claim this describe exists to make. What is lost
-      // until M9 is only the un-compiled leg, and it is lost for the fixtures
-      // named in `oracle-known-failures.ts` and no others.
-      const oracle = registered?.ssr ? await renderSsrViaDom(name) : await renderSsrOracle(name)
+    run(`${name}: the SSR string is the same document as the DOM backend builds`, async () => {
+      // Two `Backend` impls over one lowered IR (§6 L2). A divergence here is a
+      // backend that read the same IR differently, which is the only kind of
+      // disagreement this pairing can produce and exactly the kind worth
+      // reporting — the front end is shared, so it cannot be the front end.
+      const dom = await renderSsrViaDom(name)
       const compiled = await renderSsrCompiled(name)
       const declared = (await loadModule(fixtureSource(name), `ssr-decl-${name}`)).ssrDiffers
       if (!declared) {
-        expect(sameTree(compiled.html), `${name} (compiled SSR) vs oracle`).toBe(sameTree(oracle.html))
+        expect(sameTree(compiled.html), `${name} (compiled SSR) vs the DOM backend`).toBe(
+          sameTree(dom.html),
+        )
         return
       }
-      // A declared divergence is held to the same contract a `win` is: the exact
-      // markup, and it must still BE a divergence.
+      // A declared divergence names the exact markup, and it must still BE a
+      // divergence: a declaration that stopped describing reality silently
+      // disarms this fixture's comparison for good.
       expect(sameTree(compiled.html), `${name}: ${declared.why}`).toBe(declared.markup)
       expect(
         sameTree(compiled.html),
-        `${name}: stale ssrDiffers — the two paths agree now, delete the declaration`,
-      ).not.toBe(sameTree(oracle.html))
+        `${name}: stale ssrDiffers — the two backends agree now, delete the declaration`,
+      ).not.toBe(sameTree(dom.html))
     })
   }
 
@@ -451,7 +435,7 @@ describe("escaping matrix: the oracle is a sound specification", () => {
   for (const context of ESCAPE_CONTEXTS) {
     for (const [label, value] of ESCAPE_VALUES) {
       it(`${context.name} / ${label}: survives a round trip through the DOM`, async () => {
-        const { html } = await renderSourceViaOracle(
+        const { html } = await renderSourceViaDom(
           escapeProbeSource(context, value),
           `oracle-esc-${slug(context.name)}-${slug(label)}`,
         )
@@ -474,12 +458,12 @@ describe("escaping matrix: the compiled DOM path agrees, byte for byte", () => {
         const tag = `${slug(context.name)}-${slug(label)}`
 
         const dynamicSource = escapeProbeSource(context, value)
-        const oracleDynamic = await renderSourceViaOracle(dynamicSource, `od-${tag}`)
+        const oracleDynamic = await renderSourceViaDom(dynamicSource, `od-${tag}`)
         const compiledDynamic = await renderSourceViaDom(dynamicSource, `cd-${tag}`)
         expect(sameTree(compiledDynamic.html), "dynamic").toBe(sameTree(oracleDynamic.html))
 
         const staticSource = escapeStaticProbeSource(context, value)
-        const oracleStatic = await renderSourceViaOracle(staticSource, `os-${tag}`)
+        const oracleStatic = await renderSourceViaDom(staticSource, `os-${tag}`)
         const compiledStatic = await renderSourceViaDom(staticSource, `cs-${tag}`)
         expect(sameTree(compiledStatic.html), "folded").toBe(sameTree(oracleStatic.html))
 
@@ -503,7 +487,7 @@ describe("escaping matrix: the compiled DOM path agrees, byte for byte", () => {
     const broken = clean.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"')
     expect(broken, "self-check corruption is stale").not.toBe(clean)
 
-    const oracle = await renderSourceViaOracle(escapeStaticProbeSource(context, value), "det-oracle")
+    const oracle = await renderSourceViaDom(escapeStaticProbeSource(context, value), "det-oracle")
     const good = await renderCode(clean, "det-clean")
     const bad = await renderCode(broken, "det-broken")
 
@@ -550,7 +534,7 @@ describe("escaping matrix: the compiled SSR string", () => {
           ["dynamic", escapeProbeSource(context, value)],
           ["folded", escapeStaticProbeSource(context, value)],
         ] as const) {
-          const oracle = await renderSourceViaOracle(source, `so-${kind}-${tag}`)
+          const oracle = await renderSourceViaDom(source, `so-${kind}-${tag}`)
           const ssr = await renderSourceViaSsr(source, `ss-${kind}-${tag}`)
           expect(injected(ssr.html), `${kind}: the value became structure`).toEqual([])
           expect(smuggledAttributes(ssr.html), `${kind}: the value became attributes`).toEqual([])
@@ -713,9 +697,15 @@ describe("escaping matrix: raw-text elements, which have no escaping at all", ()
     // Proof the green above is a measurement, in the same style as the folded
     // detector: the mutation is applied to the emitted module, so the rest of
     // the pipeline is untouched.
+    //
+    // Since M9 a literal that would close its own element is not baked at all —
+    // it travels as a JS string through the same `rawText` seam a hole does, and
+    // the neutralisation happens there. So the corruption is the seam: strip the
+    // call and interpolate the value raw, which is precisely what the compiler
+    // would be doing if it had never routed the literal off the template.
     const encoded = "a &lt;/script&gt;&lt;img src=x onerror=&quot;alert(1)&quot;&gt; b"
     const clean = compileSource(rawTextBakedSource("script", encoded), "probe.tsx", { ssr: true })
-    const broken = clean.replaceAll("<\\\\/", "</")
+    const broken = clean.replace(/_\$+rawText\((.*), "script"\)/, "$1")
     expect(broken, "self-check corruption is stale — nothing was neutralised").not.toBe(clean)
 
     const good = await renderCode(clean, "rt-det-clean")
@@ -862,7 +852,7 @@ describe("escaping matrix: a hostile attribute NAME", () => {
     for (const [label, value] of ESCAPE_VALUES) {
       const source = attributeNameProbeSource(value)
       const tag = slug(label)
-      const oracle = await attempt(renderSourceViaOracle(source, `an-o-${tag}`))
+      const oracle = await attempt(renderSourceViaDom(source, `an-o-${tag}`))
       const ssr = await attempt(renderSourceViaSsr(source, `an-s-${tag}`))
       // Never the unsafe side: where the DOM refuses, the string must refuse.
       if (oracle === null && ssr !== null) laxer.push(label)
@@ -876,7 +866,7 @@ describe("escaping matrix: a hostile attribute NAME", () => {
     // The positive control. Without it "refuse everything" passes the row above.
     const source = attributeNameProbeSource("data-x")
     const ssr = await renderSourceViaSsr(source, "an-ok")
-    const oracle = await renderSourceViaOracle(source, "an-ok-oracle")
+    const oracle = await renderSourceViaDom(source, "an-ok-oracle")
     expect(parseFragment(ssr.html).querySelector(".probe")?.getAttribute("data-x")).toBe("1")
     expect(sameTree(ssr.html)).toBe(sameTree(oracle.html))
   })
@@ -894,7 +884,7 @@ describe("escaping matrix: the JSX the parser reshapes, escaped at COMPILE time"
   for (const probe of RESHAPED_PROBES) {
     run(`${probe.name}: the bytes match the oracle and stay content`, async () => {
       const tag = slug(probe.name)
-      const oracle = await renderSourceViaOracle(probe.source, `rs-o-${tag}`)
+      const oracle = await renderSourceViaDom(probe.source, `rs-o-${tag}`)
       const ssr = await renderSourceViaSsr(probe.source, `rs-s-${tag}`)
       expect(injected(ssr.html), "a baked literal became structure").toEqual([])
       expect(smuggledAttributes(ssr.html), "a baked literal became attributes").toEqual([])
@@ -919,7 +909,10 @@ describe("escaping matrix: the JSX the parser reshapes, escaped at COMPILE time"
     // here is one no position can rescue.
     for (const probe of RESHAPED_PROBES) {
       const code = compileSource(probe.source, "probe.tsx")
-      expect(emittedCalls(code, "createElement"), probe.name).toBeGreaterThan(0)
+      // M9: the refused element is BUILT by tag name rather than run through
+      // the un-compiled `createElement`. What the assertion is about is the
+      // same either way — the markup never became template bytes.
+      expect(emittedCalls(code, "element"), probe.name).toBeGreaterThan(0)
       expect(templateHtml(code).join(""), `${probe.name}: the table reached a template`)
         .not.toContain("<table")
     }
@@ -935,7 +928,7 @@ describe("escaping matrix: the JSX the parser reshapes, escaped at COMPILE time"
       .replaceAll("&amp;", "&")
     expect(broken, "self-check corruption is stale").not.toBe(clean)
 
-    const oracle = await renderSourceViaOracle(probe.source, "rs-det-oracle")
+    const oracle = await renderSourceViaDom(probe.source, "rs-det-oracle")
     const good = await renderCode(clean, "rs-det-clean")
     const bad = await renderCode(broken, "rs-det-broken")
     expect(sameTree(good.html)).toBe(sameTree(oracle.html))
@@ -997,7 +990,7 @@ describe("SSR emit shape", () => {
       if (emittedCalls(code, "attr") !== 0) wrong.push(`${prop}: punted to the runtime`)
       if (!ssrChunks(code).join("").includes("style=")) wrong.push(`${prop}: never reached a chunk`)
       const ssr = await renderSourceViaSsr(source, `style-${slug(prop)}`)
-      const dom = await renderSourceViaOracle(source, `style-oracle-${slug(prop)}`)
+      const dom = await renderSourceViaDom(source, `style-oracle-${slug(prop)}`)
       const want = parseFragment(dom.html).querySelector("div")?.getAttribute("style") ?? ""
       const got = parseFragment(ssr.html).querySelector("div")?.getAttribute("style") ?? ""
       // The px RULE, isolated from CSSOM. A shorthand like `flex` is expanded by

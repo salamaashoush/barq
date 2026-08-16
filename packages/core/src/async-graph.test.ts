@@ -10,7 +10,6 @@ import {
   Loading,
   NotReadyError,
   computed,
-  createAsync,
   createScope,
   effect,
   flush,
@@ -25,7 +24,7 @@ const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("createAsync", () => {
   test("read before resolution throws NotReadyError; resolves to value", async () => {
-    const data = createAsync(async () => {
+    const data = computed(async () => {
       await tick();
       return 42;
     });
@@ -39,13 +38,16 @@ describe("createAsync", () => {
 
   test("re-fetches when a dependency changes, keeps stale value via latest", async () => {
     const id = signal(1);
-    const user = createAsync(async () => {
+    const user = computed(async () => {
       const current = id();
       await tick();
       return `user-${current}`;
     });
 
-    expect(isPending(() => user())).toBe(true);
+    // The first read is UNINITIALIZED, which `isPending` reports as `false` —
+    // nothing is stale because nothing has ever been there. The read itself is
+    // the probe, and it also kicks the lazy fetch.
+    expect(() => user()).toThrow(NotReadyError);
     await tick();
     await tick();
     expect(user()).toBe("user-1");
@@ -62,7 +64,7 @@ describe("createAsync", () => {
   });
 
   test("rejection propagates as a thrown error on read", async () => {
-    const failing = createAsync(async () => {
+    const failing = computed(async () => {
       await tick();
       throw new Error("fetch failed");
     });
@@ -74,16 +76,24 @@ describe("createAsync", () => {
   });
 
   test("pending status propagates through derived computeds", async () => {
-    const data = createAsync(async () => {
+    const data = computed(async () => {
       await tick();
       return 10;
     });
     const doubled = computed(() => data() * 2);
 
-    expect(isPending(() => doubled())).toBe(true);
+    // Pendingness propagates as the THROW: a derived value over an unsettled
+    // one is unsettled, which is what reaches the boundary.
+    expect(() => doubled()).toThrow(NotReadyError);
     await tick();
     await tick();
     expect(doubled()).toBe(20);
+
+    // And once it HAS a value, a refresh reads as pending through the
+    // derivation, with the stale value still available.
+    refresh(data);
+    expect(isPending(() => doubled())).toBe(true);
+    expect(latest(() => doubled())).toBe(20);
   });
 });
 
@@ -101,12 +111,26 @@ describe("isPending / latest", () => {
     ).toThrow("boom");
   });
 
-  test("latest throws NotReadyError for never-resolved values", () => {
-    const data = createAsync(async () => {
+  // Solid 2.0's rule, read out of `@solidjs/signals@2.0.0-beta.31`:
+  // `latest` rethrows ONLY for a value that has never held one AND a caller
+  // that is itself a derivation, where the throw is what a `Loading` boundary
+  // is for. Outside a derivation there is nothing to suspend and the honest
+  // answer is `undefined`.
+  test("latest answers undefined for a never-resolved value outside a derivation", () => {
+    const data = computed(async () => {
       await tick();
       return 1;
     });
-    expect(() => latest(() => data())).toThrow(NotReadyError);
+    expect(latest(() => data())).toBeUndefined();
+  });
+
+  test("latest rethrows for a never-resolved value INSIDE a derivation", () => {
+    const data = computed(async () => {
+      await tick();
+      return 1;
+    });
+    const derived = computed(() => latest(() => data()));
+    expect(() => derived()).toThrow(NotReadyError);
   });
 });
 
@@ -132,7 +156,7 @@ describe("refresh", () => {
 
   test("observed async computeds re-run and notify on refresh", async () => {
     let fetches = 0;
-    const data = createAsync(async () => {
+    const data = computed(async () => {
       fetches++;
       await tick();
       return fetches;
@@ -163,7 +187,7 @@ describe("refresh", () => {
 describe("Loading boundary", () => {
   test("shows fallback while pending, content after resolution", async () => {
     const container = document.createElement("div");
-    const data = createAsync(async () => {
+    const data = computed(async () => {
       await tick();
       return "loaded";
     });

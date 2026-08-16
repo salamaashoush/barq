@@ -39,17 +39,6 @@ export default function PropsRawForward() {
 
 export const steps = [() => tone.set("cool")]
 
-export const goesLive = ["Chip data-tone", "Chip text"]
-
-export const wins = [
-  {
-    kind: "step" as const,
-    index: 0,
-    compiled: '<div class="wrap"><span class="chip" data-tone="cool">cool</span></div>',
-    why: "the getter survives both layers, so the read stays live where createElement's copied props object froze it at the outermost call",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 5,

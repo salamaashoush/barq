@@ -1,8 +1,8 @@
-import { For, Show, useState, useStore } from "@barqjs/core"
+import { For, Show, signal, store } from "@barqjs/core"
 
-const [tab, setTab] = useState("posts")
-const [state, setState] = useStore({ filters: { search: "" }, user: { name: "John" } })
-const [rows, setRows] = useState(["alpha", "beta"])
+const tab = signal("posts")
+const [state, setState] = store({ filters: { search: "" }, user: { name: "John" } })
+const rows = signal(["alpha", "beta"])
 
 /**
  * The dead plugin's "complete component", rebuilt as one module: a ternary
@@ -27,7 +27,7 @@ export default function DashboardComposite() {
         }
       />
 
-      <button type="button" class="tab" onClick={() => setTab("other")}>
+      <button type="button" class="tab" onClick={() => tab.set("other")}>
         switch
       </button>
 
@@ -41,7 +41,7 @@ export default function DashboardComposite() {
 export const steps = [
   () => setState("filters", "search", "q"),
   () => setState("user", "name", "Ada"),
-  () => setRows(["gamma"]),
+  () => rows.set(["gamma"]),
 ]
 
 export const events = [

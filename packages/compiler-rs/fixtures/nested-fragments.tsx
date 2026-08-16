@@ -26,8 +26,10 @@ export const optimality = {
   // `content.firstChild` only (DESIGN §8 V5) — and each of its children has to
   // become a root of its own.
   templates: 5,
-  emits: ["Fragment", "<span>one</span>", "<b>deep</b>", "<span>two</span>"],
-  // The nesting is preserved rather than flattened: flattening changes what
-  // `childToNodes` walks and the order nodes are inserted in.
-  absent: ['<div class="outer"><span>one</span>'],
+  emits: ["<span>one</span>", "<b>deep</b>", "<span>two</span>"],
+  // The nesting is preserved rather than flattened: flattening changes the
+  // order the nodes are inserted in. A fragment is the ARRAY of its parts and
+  // nothing else — there is no component behind it, so nothing re-derives at
+  // run time what the nesting already says.
+  absent: ['<div class="outer"><span>one</span>', "createElement"],
 }

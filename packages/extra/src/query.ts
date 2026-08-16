@@ -15,8 +15,8 @@ import {
   provide,
   read,
   readSlot,
-  useEffect,
-  useState,
+  effect,
+  signal,
 } from "@barqjs/core";
 import {
   type DefaultError,
@@ -177,16 +177,16 @@ export function useQuery<
     opts,
   );
 
-  const [state, setState] = useState<UseQueryResult<TData, TError>>(observer.getCurrentResult());
+  const state = signal<UseQueryResult<TData, TError>>(observer.getCurrentResult());
 
-  useEffect(() => {
+  effect(() => {
     // Update options if they change
     observer.setOptions(options());
 
     // Subscribe to observer updates
     const unsubscribe = observer.subscribe(
       notifyManager.batchCalls((result: QueryObserverResult<TData, TError>) => {
-        setState(result);
+        state.set(result);
       }),
     );
 
@@ -236,17 +236,17 @@ export function useMutation<
 
   const observer = new MutationObserver<TData, TError, TVariables, TContext>(client, opts);
 
-  const [state, setState] = useState<MutationObserverResult<TData, TError, TVariables, TContext>>(
+  const state = signal<MutationObserverResult<TData, TError, TVariables, TContext>>(
     observer.getCurrentResult(),
   );
 
-  useEffect(() => {
+  effect(() => {
     observer.setOptions(options());
 
     const unsubscribe = observer.subscribe(
       notifyManager.batchCalls(
         (result: MutationObserverResult<TData, TError, TVariables, TContext>) => {
-          setState(result);
+          state.set(result);
         },
       ),
     );
@@ -321,16 +321,16 @@ export function useInfiniteQuery<
     opts as unknown as InfiniteQueryObserverOptions,
   );
 
-  const [state, setState] = useState<UseInfiniteQueryResult<TData, TError>>(
+  const state = signal<UseInfiniteQueryResult<TData, TError>>(
     observer.getCurrentResult() as UseInfiniteQueryResult<TData, TError>,
   );
 
-  useEffect(() => {
+  effect(() => {
     observer.setOptions(options() as unknown as InfiniteQueryObserverOptions);
 
     const unsubscribe = observer.subscribe(
       notifyManager.batchCalls((result) => {
-        setState(result as UseInfiniteQueryResult<TData, TError>);
+        state.set(result as UseInfiniteQueryResult<TData, TError>);
       }),
     );
 
@@ -376,11 +376,11 @@ export function useQueryClient(): QueryClient {
  */
 export function useIsFetching(filters?: { queryKey?: QueryKey }): () => number {
   const client = resolveClient();
-  const [count, setCount] = useState(client.isFetching(filters));
+  const count = signal(client.isFetching(filters));
 
-  useEffect(() => {
+  effect(() => {
     const unsubscribe = client.getQueryCache().subscribe(() => {
-      setCount(client.isFetching(filters));
+      count.set(client.isFetching(filters));
     });
 
     return unsubscribe;
@@ -406,11 +406,11 @@ export function useIsFetching(filters?: { queryKey?: QueryKey }): () => number {
  */
 export function useIsMutating(filters?: { mutationKey?: QueryKey }): () => number {
   const client = resolveClient();
-  const [count, setCount] = useState(client.isMutating(filters));
+  const count = signal(client.isMutating(filters));
 
-  useEffect(() => {
+  effect(() => {
     const unsubscribe = client.getMutationCache().subscribe(() => {
-      setCount(client.isMutating(filters));
+      count.set(client.isMutating(filters));
     });
 
     return unsubscribe;

@@ -27,7 +27,6 @@ import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["C1", "C2", "C3"]
 
-
 let counted = 0
 
 /** A Cell that reports every read. Forwarding one may not read it. */

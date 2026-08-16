@@ -37,17 +37,7 @@ export const steps = [
   () => rows.set(["x", "y"]),
 ]
 
-// `rows().length` is a bare tracked read the compiler binds (O4). The array
-// hole is an author-written thunk, so the un-compiled path binds that one too.
-export const goesLive = ["rows().length"]
-
 const frame = (items: string[]): string =>
   `<ul class="list">${items.map((r) => `<li class="row">${r}</li>`).join("")}` +
   `<li class="count">${items.length}</li></ul>`
 
-export const wins = [
-  { kind: "step" as const, index: 0, compiled: frame(["a", "b", "c"]), why: "the array hole is live" },
-  { kind: "step" as const, index: 1, compiled: frame(["c"]), why: "and it shrinks" },
-  { kind: "step" as const, index: 2, compiled: frame([]), why: "and it empties without taking the sibling hole with it" },
-  { kind: "step" as const, index: 3, compiled: frame(["x", "y"]), why: "and it refills" },
-]

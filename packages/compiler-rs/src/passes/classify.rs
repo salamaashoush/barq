@@ -132,6 +132,15 @@ impl<'a> Classify<'a, '_> {
                 };
                 Some(Op::Insert { slot, anchor, value, plan })
             }
+            // A spread whose source is proved static is applied ONCE, with no
+            // effect and no diff record. Anything else — including `Opaque` —
+            // re-reads, because the object is the only place the names are and
+            // a stale one leaves attributes the source has dropped.
+            Op::Spread { value, .. } => {
+                let rx = unit.exprs.rx(value);
+                let live = rx.react != React::Static || rx.live();
+                Some(Op::Spread { value, live })
+            }
             _ => None,
         }
     }

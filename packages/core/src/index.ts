@@ -19,15 +19,14 @@ export {
   onMount,
   onSettled,
   createContext,
-  useContext,
   getContext,
+  useContext,
   setContext,
   hasContext,
   flush,
   getOwner,
   runWithOwner,
   // Async helpers
-  createAsync,
   isPending,
   latest,
   refresh,
@@ -137,7 +136,7 @@ export type {
 
 // Store - fine-grained nested reactivity
 export {
-  useStore,
+  store,
   produce,
   reconcile,
   unwrap,
@@ -180,12 +179,9 @@ export type { RevealDisplay, RevealOrder } from "./boundaries.ts";
 export { mapArray, repeat } from "./map.ts";
 export type { Maybe } from "./map.ts";
 
-export { useState, useMemo, useEffect } from "./hooks.ts";
-
-// Async data loading — CODESIGN §3.8's one resource. `useResource` is the
+// Async data loading — CODESIGN §3.8's one resource. `resource` is the
 // hook-shaped alias and nothing more.
 export { resource } from "./async.ts";
-export { useResource } from "./hooks.ts";
 
 // Claim-based hydration (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4, H6). The
 // two walk helpers are emitted ONLY by a `hydratable` compile — H3's "the index
@@ -204,6 +200,8 @@ export {
 // DOM
 export {
   createElement,
+  dyn,
+  element,
   render,
   hydrate,
   useRef,
@@ -257,7 +255,7 @@ export { writeLive, coerceLive, holdsLive, captureCaret, restoreCaret } from "./
 // The four control-flow primitives — CODESIGN §3.4, SEMANTICS K and E.
 // Everything under `Components` below is an adapter over these; compiled code
 // reaches them directly.
-export { branch, each, boundary, portal, COUNT, STATIC_KEY, NO_SCOPE } from "./flow.ts";
+export { branch, each, boundary, portal, reveal, COUNT, STATIC_KEY, NO_SCOPE } from "./flow.ts";
 export type { BoundaryKind } from "./flow.ts";
 
 // Components

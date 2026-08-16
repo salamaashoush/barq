@@ -15,8 +15,10 @@ import { childToNodes } from "./dom.ts";
 import {
   REVEAL_COORD,
   type RevealHandle,
+  type RevealOrder,
   createErrorCollector,
   createPendingCollector,
+  createRevealCoordinator,
 } from "./boundaries.ts";
 import {
   HydrationMismatch,
@@ -1185,6 +1187,38 @@ export function portal(
   });
 
   return marker;
+}
+
+/**
+ * Reveal ordering — the fifth thing `flow.ts` owns, and the one that is not a
+ * range.
+ *
+ * It creates a PROVIDE scope: the coordinator every `Loading` boundary below it
+ * asks how to time its reveal. That is why it is not `branch` and never was —
+ * `ownership.rs` lists `provide` separately, and there is no conditional here.
+ * What M9 removed is the COMPONENT around it: the order and the collapsed flag
+ * arrive as Cells the compiler computed, the children as the Block they already
+ * were, and nothing reads a props record to find them.
+ *
+ * X1's order is the whole of it: enter, fork, write, invoke.
+ */
+export function reveal(
+  s: Scope | null,
+  order: Cell<RevealOrder | undefined>,
+  collapsed: Cell<boolean | undefined>,
+  block: Block<unknown>,
+): Node[] {
+  const handle: RevealHandle = createRevealCoordinator(
+    () => order() ?? "natural",
+    () => collapsed() === true,
+  );
+  const scope = enter(s ?? null, "provide");
+  try {
+    provideOn(scope, REVEAL_COORD, handle);
+    return childToNodes(block(scope) as Child, scope);
+  } finally {
+    exit(scope);
+  }
 }
 
 function resolveTarget(requested: Node | string | null | undefined): Node | null {

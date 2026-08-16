@@ -113,19 +113,6 @@ const native = loadNative()
 export const nativeCompiler: NativeCompiler = native
 
 /**
- * A step or event where the compiled path is deliberately MORE correct than the
- * oracle, with the exact DOM it must produce. Declaring one is not a licence to
- * differ: the harness fails if the compiled frame is not `compiled` byte for
- * byte, and fails if the oracle stopped differing (the note has gone stale).
- */
-export interface CompilerWin {
-  kind: "step" | "event"
-  index: number
-  compiled: string
-  why: string
-}
-
-/**
  * What a fixture claims the compiler must eventually do to it. Behaviour is
  * `oracle.test.ts`'s job; this is the optimality half, declared next to the JSX
  * it is a claim about instead of hard-coded in a test file far away.
@@ -153,15 +140,6 @@ export interface FixtureModule {
   default: () => unknown
   steps?: Array<() => void>
   events?: Array<(root: HTMLElement) => void>
-  /** Frames the compiler is expected to get right where the oracle does not. */
-  wins?: CompilerWin[]
-  /**
-   * Holes the compiler turns into live bindings that the oracle reads once
-   * (O4 auto-thunking). Each entry lifts the effect-count and effect-run upper
-   * bounds by one — the bound stays a bound, it does not disappear. Empty at
-   * M2, because nothing is classified yet; M3 fills it per fixture.
-   */
-  goesLive?: string[]
   /** What the compiler must eventually make of this fixture. */
   optimality?: OptimalityExpectation
   /**
@@ -172,7 +150,7 @@ export interface FixtureModule {
    *
    * It is not a licence to differ: `ssr.test.ts` fails if the SSR markup is not
    * `markup` byte for byte, and fails as STALE if the two paths stopped
-   * differing at all — the same contract `wins` has on the DOM side.
+   * differing at all.
    */
   ssrDiffers?: SsrDivergence
 }
@@ -218,10 +196,7 @@ export interface RenderResult {
    * been called UNREACHED and then mutated.
    */
   seen: string
-  /** As declared by the fixture module that produced this render. */
-  wins: CompilerWin[]
-  goesLive: string[]
-  /** The compiled path's emitted module; absent on the oracle path. */
+  /** The emitted module this render came from. */
   code?: string
 }
 
@@ -593,8 +568,6 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
       trace: summarize(trace),
       runs: trace.effects.map((e) => e.runs),
       seen: [...seen, ...trace.templates.map((instance) => markupOf(instance.node))].join("\n"),
-      wins: mod.wins ?? [],
-      goesLive: mod.goesLive ?? [],
     }
   } finally {
     endTrace()
@@ -620,12 +593,6 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
 export async function fixtureOptimality(name: string): Promise<OptimalityExpectation | undefined> {
   const mod = await loadModule(fixtureSource(name), `declaration-${name}`)
   return mod.optimality
-}
-
-/** The specification: JSX lowered to createElement() against the real runtime. */
-export async function renderViaRuntime(name: string): Promise<RenderResult> {
-  const mod = await loadModule(fixtureSource(name), `oracle-${name}`)
-  return renderModule(mod)
 }
 
 /**
@@ -664,13 +631,9 @@ export async function renderViaInterp(
   return renderViaCompiler(name, corrupt, { interp: true, ...options })
 }
 
-/**
- * Apply the fixture's scripted signal updates, snapshotting the DOM after each.
- * Exposed separately so a caller can drive one path on its own; the comparison
- * helpers below drive both.
- */
-export async function drive(name: string, via: "runtime" | "compiler"): Promise<RenderResult> {
-  return via === "runtime" ? renderViaRuntime(name) : renderViaCompiler(name)
+/** Apply the fixture's scripted signal updates, snapshotting the DOM after each. */
+export async function drive(name: string): Promise<RenderResult> {
+  return renderViaCompiler(name)
 }
 
 // ---------------------------------------------------------------------------
@@ -919,6 +882,17 @@ export function templateAnchors(code: string): number {
  * attached to it, exactly, for every module. See `RenderResult.expectedAnchors`.
  */
 
+/**
+ * The primitives that take an anchor as their THIRD argument, `($s, parent,
+ * anchor, …)`. `portal`, `reveal` and `dyn` are NOT among them — each is a value
+ * an `insert` or a `branch` places, so it consumes its parent's anchor and never
+ * one of its own.
+ */
+const REGION_PRIMITIVES = ["branch", "each", "boundary"] as const
+
+/** Every call site that consumes a baked anchor. `insert` takes it fourth. */
+const ANCHOR_CONSUMERS = ["insert", ...REGION_PRIMITIVES] as const
+
 export interface AnchorAudit {
   /** Anchors baked into the emitted templates. */
   baked: number
@@ -1009,7 +983,7 @@ export function auditAnchors(code: string): AnchorAudit {
   // `_$branch($s, parent, anchor, …)`. Since M4b that is where most of the
   // corpus's anchors are read, so an audit that only knew about `insert` would
   // report every one of them as baked-and-unused (K5, K7).
-  for (const primitive of ["branch", "each", "boundary"]) {
+  for (const primitive of REGION_PRIMITIVES) {
     for (const call of callsTo(stripped, primitive)) {
       if (call.length < 3) continue
       claim(call[2].trim())
@@ -1150,44 +1124,19 @@ export interface Divergence {
     | "attribute-order"
     | "node-identity-differential"
   step?: number
-  oracle: string
-  compiled: string
+  expected: string
+  actual: string
   message: string
 }
 
 export interface Comparison {
   ok: boolean
   divergences: Divergence[]
-  /** Declared wins that actually materialised, in fixture order. */
-  wins: CompilerWin[]
-  /** Negative means the compiled output created fewer effects — a win. */
+  /** Negative means the subject created fewer effects than the reference. */
   effectDelta: number
   runDelta: number
-  oracle: RenderResult
-  compiled: RenderResult
-}
-
-export interface EffectBoundInput {
-  oracleCreated: number
-  compiledCreated: number
-  oracleTotalRuns: number
-  compiledTotalRuns: number
-  /** Per-effect run counts, creation-ordered, one array per path. */
-  oracleRuns: number[]
-  compiledRuns: number[]
-  /** As declared by the fixture: one entry per auto-thunked hole. */
-  goesLive: string[]
-  /** Initial render plus every scripted step and dispatched event. */
-  frames: number
-  /**
-   * Target #4's grouping, measured off the emitted module rather than inferred
-   * from the effect-count delta: how many compiled effects can legitimately run
-   * on a UNION of triggers. Merging k props into one effect removes k-1 effects
-   * but yields exactly ONE that runs on the union, so at k >= 3 the delta
-   * excuses merge results that do not exist and an unrelated per-frame effect
-   * rides in on the surplus.
-   */
-  merges: number
+  reference: RenderResult
+  subject: RenderResult
 }
 
 /** `bindEffect`s covering two or more props, counted off the emitted module. */
@@ -1210,279 +1159,184 @@ export function propCalls(code: string): number {
 }
 
 /**
- * The effect bound, whole. Pure so it can be driven with numbers no fixture
- * would produce today — M3 is the milestone that makes this arithmetic the
- * proof of target #1, and it has to be right before the passes land.
+ * Two renders of ONE fixture, compared channel by channel.
  *
- * Fewer effects than the oracle is the entire point of the compiler, so only
- * the upper bound is an error, and DOM equality across every frame is what
- * keeps a low count from meaning "a binding went missing".
+ * The reference used to be the un-compiled `createElement` path. `CODESIGN.md`
+ * §6 retires it — a second implementation that shares your defect certifies the
+ * defect — so nothing in the corpus sweep calls this with a second
+ * implementation any more. What survives is the L6 use: the reference is the
+ * CLEAN compiled render and the subject is the same fixture compiled with one
+ * thing deliberately broken, which is how the suite answers "would I notice a
+ * wrong compiler change?".
  *
- * `goesLive` LIFTS the bound, never removes it. Compiler-mode auto-thunking
- * (O4) makes `{count()}` a live binding where the oracle reads it once, so one
- * declared hole buys exactly one extra effect, which may re-run once per frame
- * and no more. Everything else stays bounded by the oracle.
+ * The corpus channels moved to graders that need no reference at all:
+ * `effect-counts.ts` (absolute, hand-written per fixture), the per-fixture DOM
+ * golden in `oracle.test.ts`, `auditCompiled` below (self-check), and the
+ * `-O0`/`-Ox` differential in `optimisation.test.ts`.
  */
-export function boundEffects(input: EffectBoundInput): Divergence[] {
-  const divergences = bound(input, input.goesLive.length)
-
-  // A goesLive entry that is not doing any work is the same failure mode as a
-  // stale win: it silently and permanently loosens the bound. Mirror the check.
-  //
-  // Stated as "would the bound still be clean with one fewer declared hole",
-  // not as arithmetic on the effect counts. The arithmetic version cannot be
-  // made to work: EVERY optimization the compiler performs — target #1 dropping
-  // an effect the oracle created for a provably-static expression, target #3
-  // folding a prop into the template, target #4 coalescing — lowers the compiled
-  // count, and each one eats into the excess that a live hole is supposed to be
-  // evidenced by. A fixture that auto-thunks one hole and also proves one prop
-  // static has an excess of ZERO with a perfectly load-bearing declaration.
-  //
-  // Asking the bound itself is exact by construction and stays exact as later
-  // milestones add relaxations beside it.
-  const slack = input.goesLive.length
-  if (slack > 0) {
-    let needed = 0
-    while (needed < slack && bound(input, needed).length > 0) needed++
-    if (needed < slack) {
-      divergences.push({
-        kind: "effect-count",
-        oracle: String(needed),
-        compiled: String(slack),
-        message:
-          `stale goesLive declaration: ${slack} hole(s) declared live, but the bound is already ` +
-          `clean with ${needed} (${input.goesLive.join(", ")})`,
-      })
-    }
-  }
-
-  return divergences
-}
-
-function bound(input: EffectBoundInput, slack: number): Divergence[] {
+export function compareRenders(reference: RenderResult, subject: RenderResult): Comparison {
   const divergences: Divergence[] = []
-  const busiest = (runs: number[]): number => runs.reduce((n, r) => Math.max(n, r), 0)
 
-  const countExcess = input.compiledCreated - input.oracleCreated
-  if (countExcess > slack) {
-    divergences.push({
-      kind: "effect-count",
-      oracle: String(input.oracleCreated + slack),
-      compiled: String(input.compiledCreated),
-      message: slack
-        ? `compiled output created more effects than the oracle plus its ${slack} declared live hole(s)`
-        : "compiled output created MORE effects than the un-compiled runtime",
-    })
-  }
-
-  // One live hole costs ONE extra effect, but that effect RE-RUNS once per
-  // frame the fixture drives, so the run allowance scales with the number of
-  // frames. A flat `+ slack` fires on the first M3 fixture that declares one.
-  const runSlack = slack * input.frames
-  if (input.compiledTotalRuns > input.oracleTotalRuns + runSlack) {
-    divergences.push({
-      kind: "effect-runs",
-      oracle: String(input.oracleTotalRuns + runSlack),
-      compiled: String(input.compiledTotalRuns),
-      message: "compiled output ran effects MORE times than the un-compiled runtime",
-    })
-  }
-
-  // The aggregate above hides one binding that re-runs on every frame whenever
-  // some other binding runs fewer times, so the busiest effect is bounded
-  // separately. Creation order is not comparable across the two paths, so the
-  // comparison is rank by rank on the descending run counts.
-  //
-  // Two kinds of compiled effect are allowed to run once per frame rather than
-  // being held to the busiest ORACLE effect, and both are visible in the
-  // counts, so neither has to be taken on trust:
-  //
-  //  - a declared live hole (`goesLive`, O4 auto-thunking) — `slack` of them;
-  //  - a COALESCED effect. Target #4 puts every dynamic prop of an element in
-  //    one bindEffect, so that effect necessarily runs on the UNION of their
-  //    triggers where the oracle ran one effect per prop.
-  //
-  // The allowance is the number of multi-prop `bindEffect`s the module
-  // actually emitted, counted off the code. It used to be the effect-count
-  // delta, which is a DIFFERENT number: merging k props removes k-1 effects but
-  // yields exactly one that runs on the union, so at k >= 3 the delta excused
-  // merge results that do not exist and an unrelated per-frame effect rode in
-  // on the surplus — invisibly, because equal total runs kept the aggregate
-  // bound quiet too.
-  //
-  // Everything below those ranks is still bounded by the busiest oracle effect,
-  // and the total-run bound above is untouched — a coalesced effect that runs
-  // once per frame still does strictly less total work than the effects it
-  // replaced, which is the invariant that matters.
-  //
-  // LIMIT: the count is module-wide, not per element, so the allowance is not
-  // attributed to the specific effect that over-ran. Tightening that needs the
-  // group headers from the IR, not just the emitted text.
-  const oracleBusiest = busiest(input.oracleRuns)
-  const liveAllowance = Math.max(oracleBusiest, input.frames)
-  const relaxed = slack + input.merges
-  const ranked = [...input.compiledRuns].sort((a, b) => b - a)
-  for (let rank = 0; rank < ranked.length; rank++) {
-    const allowed = rank < relaxed ? liveAllowance : oracleBusiest
-    if (ranked[rank] <= allowed) continue
-    divergences.push({
-      kind: "effect-runs",
-      oracle: String(allowed),
-      compiled: String(ranked[rank]),
-      message:
-        rank < slack
-          ? `a declared live hole re-ran ${ranked[rank]} times across ${input.frames} frame(s)`
-          : rank < relaxed
-            ? `a coalesced effect re-ran ${ranked[rank]} times across ${input.frames} frame(s)`
-            : "one compiled effect re-ran more times than the busiest oracle effect",
-    })
-    break
-  }
-
-  return divergences
-}
-
-export async function compareToOracle(
-  name: string,
-  corrupt: Corruptions = {},
-): Promise<Comparison> {
-  const oracle = await renderViaRuntime(name)
-  const compiled = await renderViaCompiler(name, corrupt)
-
-  const divergences: Divergence[] = []
-  const wins: CompilerWin[] = []
-
-  /**
-   * The corrected invariant, in one place.
-   *
-   *  - Initial DOM must be identical. No exceptions, nothing may declare its
-   *    way out of it, so this helper is never consulted for it.
-   *  - A later frame may differ ONLY where the fixture declared the compiled
-   *    path more correct AND named the exact DOM it must produce. A declaration
-   *    that does not match is a divergence like any other; a declaration whose
-   *    frames stopped differing is reported as stale below.
-   */
-  const claimed = (kind: "step" | "event", index: number, actual: string): boolean => {
-    const win = compiled.wins.find((w) => w.kind === kind && w.index === index)
-    if (!win) return false
-    if (win.compiled !== actual) return false
-    wins.push(win)
-    return true
-  }
-
-  if (oracle.html !== compiled.html) {
+  if (reference.html !== subject.html) {
     divergences.push({
       kind: "initial-dom",
-      oracle: oracle.html,
-      compiled: compiled.html,
-      message: "initial render DOM differs from the oracle",
+      expected: reference.html,
+      actual: subject.html,
+      message: "initial render DOM differs from the reference render",
     })
   }
 
-  if (oracle.frames.length !== compiled.frames.length) {
+  if (reference.frames.length !== subject.frames.length) {
     divergences.push({
       kind: "step-count",
-      oracle: String(oracle.frames.length),
-      compiled: String(compiled.frames.length),
-      message: "the two paths ran a different number of scripted steps",
+      expected: String(reference.frames.length),
+      actual: String(subject.frames.length),
+      message: "the two renders ran a different number of scripted steps",
     })
   }
 
-  const steps = Math.min(oracle.frames.length, compiled.frames.length)
+  const steps = Math.min(reference.frames.length, subject.frames.length)
   for (let i = 0; i < steps; i++) {
-    if (oracle.frames[i] !== compiled.frames[i] && !claimed("step", i, compiled.frames[i])) {
-      divergences.push({
-        kind: "step-dom",
-        step: i,
-        oracle: oracle.frames[i],
-        compiled: compiled.frames[i],
-        message: `DOM differs from the oracle after scripted step ${i}`,
-      })
-    }
+    if (reference.frames[i] === subject.frames[i]) continue
+    divergences.push({
+      kind: "step-dom",
+      step: i,
+      expected: reference.frames[i],
+      actual: subject.frames[i],
+      message: `DOM differs from the reference render after scripted step ${i}`,
+    })
   }
 
-  if (oracle.eventFrames.length !== compiled.eventFrames.length) {
+  if (reference.eventFrames.length !== subject.eventFrames.length) {
     divergences.push({
       kind: "event-count",
-      oracle: String(oracle.eventFrames.length),
-      compiled: String(compiled.eventFrames.length),
-      message: "the two paths dispatched a different number of events",
+      expected: String(reference.eventFrames.length),
+      actual: String(subject.eventFrames.length),
+      message: "the two renders dispatched a different number of events",
     })
   }
 
-  const events = Math.min(oracle.eventFrames.length, compiled.eventFrames.length)
+  const events = Math.min(reference.eventFrames.length, subject.eventFrames.length)
   for (let i = 0; i < events; i++) {
-    if (
-      oracle.eventFrames[i] !== compiled.eventFrames[i] &&
-      !claimed("event", i, compiled.eventFrames[i])
-    ) {
+    if (reference.eventFrames[i] === subject.eventFrames[i]) continue
+    divergences.push({
+      kind: "event-dom",
+      step: i,
+      expected: reference.eventFrames[i],
+      actual: subject.eventFrames[i],
+      message: `DOM differs from the reference render after dispatched event ${i}`,
+    })
+  }
+
+  // Effects are an EQUALITY between two renders of one fixture, not a bound.
+  // The bound existed because the reference was a different implementation and
+  // creating fewer effects than it was the point; two builds of the same
+  // fixture have no such asymmetry, and the corpus-level optimality claim is
+  // `effect-counts.ts` rather than a comparison at all.
+  if (reference.trace.created !== subject.trace.created) {
+    divergences.push({
+      kind: "effect-count",
+      expected: String(reference.trace.created),
+      actual: String(subject.trace.created),
+      message: "the two renders created a different number of effects",
+    })
+  }
+  if (reference.trace.totalRuns !== subject.trace.totalRuns) {
+    divergences.push({
+      kind: "effect-runs",
+      expected: String(reference.trace.totalRuns),
+      actual: String(subject.trace.totalRuns),
+      message: "the two renders ran their effects a different number of times",
+    })
+  }
+
+  for (let i = 0; i < Math.min(reference.channels.length, subject.channels.length); i++) {
+    const want = reference.channels[i].identity.join(",")
+    const got = subject.channels[i].identity.join(",")
+    if (want === got) continue
+    divergences.push({
+      kind: "node-identity-differential",
+      step: i,
+      expected: want,
+      actual: got,
+      message:
+        "the nodes that survived this update are not the ones the reference render kept — a " +
+        "rebuilt node loses focus, selection, scroll offset and any dirty form state living on it",
+    })
+  }
+
+  for (let i = 0; i < Math.min(reference.channels.length, subject.channels.length); i++) {
+    const want = reference.channels[i].attributes
+    const got = subject.channels[i].attributes
+    for (let j = 0; j < Math.max(want.length, got.length); j++) {
+      if (want[j] === got[j]) continue
       divergences.push({
-        kind: "event-dom",
+        kind: "attribute-order",
         step: i,
-        oracle: oracle.eventFrames[i],
-        compiled: compiled.eventFrames[i],
-        message: `DOM differs from the oracle after dispatched event ${i}`,
+        expected: want[j] ?? "<missing>",
+        actual: got[j] ?? "<missing>",
+        message: "attributes reached the DOM in an order the reference render does not explain",
       })
     }
   }
 
-  // Every declared win has to be a real one: a note that stopped describing
-  // reality is worse than no note, because it silently disarms the assertion.
-  for (const win of compiled.wins) {
-    const frames = win.kind === "step" ? compiled.frames : compiled.eventFrames
-    const against = win.kind === "step" ? oracle.frames : oracle.eventFrames
-    if (frames[win.index] === against[win.index]) {
-      divergences.push({
-        kind: win.kind === "step" ? "step-dom" : "event-dom",
-        step: win.index,
-        oracle: against[win.index] ?? "<missing>",
-        compiled: frames[win.index] ?? "<missing>",
-        message: `stale win declaration: the two paths agree here (${win.why})`,
-      })
-    } else if (frames[win.index] !== win.compiled) {
-      divergences.push({
-        kind: win.kind === "step" ? "step-dom" : "event-dom",
-        step: win.index,
-        oracle: win.compiled,
-        compiled: frames[win.index] ?? "<missing>",
-        message: `declared win did not produce the DOM it names (${win.why})`,
-      })
-    }
+  return {
+    ok: divergences.length === 0,
+    divergences,
+    effectDelta: subject.trace.created - reference.trace.created,
+    runDelta: subject.trace.totalRuns - reference.trace.totalRuns,
+    reference,
+    subject,
   }
+}
 
-  divergences.push(
-    ...boundEffects({
-      oracleCreated: oracle.trace.created,
-      compiledCreated: compiled.trace.created,
-      oracleTotalRuns: oracle.trace.totalRuns,
-      compiledTotalRuns: compiled.trace.totalRuns,
-      oracleRuns: oracle.runs,
-      compiledRuns: compiled.runs,
-      goesLive: compiled.goesLive,
-      frames: 1 + compiled.frames.length + compiled.eventFrames.length,
-      merges: countMerges(compiled.code ?? ""),
-    }),
-  )
+export interface CompiledAudit {
+  ok: boolean
+  divergences: Divergence[]
+  render: RenderResult
+}
 
-  // Markers are invisible to the DOM comparison by construction (normalize.ts
-  // rule 4), so the only thing standing between a spurious `<!---->` and a green
-  // suite is a count. M2 gives every hole exactly one; M4's elision only ever
-  // lowers it.
-  if (compiled.code !== undefined) {
+/**
+ * Every channel the compiled render can be held to WITHOUT a second render.
+ * Both sides of each check come off the emitted module and the DOM that module
+ * actually produced, which is §6 L4's `self-check` grade.
+ */
+export async function auditCompiled(
+  name: string,
+  corrupt: Corruptions = {},
+  options: Record<string, unknown> = {},
+): Promise<CompiledAudit> {
+  const render = await renderViaCompiler(name, corrupt, options)
+  return { ...auditRender(render), render }
+}
+
+/** The same audit over a render a caller already has. */
+export function auditRender(render: RenderResult): { ok: boolean; divergences: Divergence[] } {
+  const divergences: Divergence[] = []
+  const code = render.code
+
+  if (code !== undefined) {
     // Both sides are read off the module EXACTLY: anchors at text positions
     // inside `_$template(`…`)`, holes at real call sites. A fixture is source
     // like any other and reaches the emitted module, so a `<!---->` it writes in
     // an attribute value and an `_$insert(` it writes in a doc comment would
     // otherwise both move the bound — one tightening it into a false failure,
     // the other buying slack that was never earned.
-    const markers = templateAnchors(compiled.code)
-    const holes = emittedCalls(compiled.code, "insert")
+    // Every call that CONSUMES an anchor, not only `insert`. Since K5 lowered
+    // control flow onto the four primitives, most of the corpus's anchors are
+    // read by a region — `_$branch($s, parent, anchor, …)` — and a bound that
+    // knew only about `insert` reported those as unanchored. It was masked by
+    // the retired oracle registry: `flow-prop-eta-boundary` carried
+    // `marker-count` among its declared kinds under a row whose stated cause was
+    // C1, so a stale bound sat inside an exemption written for something else.
+    const markers = templateAnchors(code)
+    const holes = ANCHOR_CONSUMERS.reduce((n, name) => n + emittedCalls(code, name), 0)
     if (markers > holes) {
       divergences.push({
         kind: "marker-count",
-        oracle: String(holes),
-        compiled: String(markers),
-        message: "the emitted templates carry more insert anchors than there are holes to anchor",
+        expected: String(holes),
+        actual: String(markers),
+        message: "the emitted templates carry more anchors than there are holes to anchor",
       })
     }
 
@@ -1491,20 +1345,20 @@ export async function compareToOracle(
     // satisfies every count above — it reaches the DOM, where rule 4 of
     // normalize.ts makes it invisible. An anchor no `_$insert` names is either
     // an elision the compiler missed or a marker it emitted for nothing.
-    const audit = auditAnchors(compiled.code)
+    const audit = auditAnchors(code)
     if (audit.unused > 0) {
       divergences.push({
         kind: "marker-count",
-        oracle: String(audit.used),
-        compiled: String(audit.baked),
+        expected: String(audit.used),
+        actual: String(audit.baked),
         message: `${audit.unused} baked anchor(s) that no insert call uses`,
       })
     }
     if (audit.unresolved > 0) {
       divergences.push({
         kind: "marker-count",
-        oracle: "0",
-        compiled: String(audit.unresolved),
+        expected: "0",
+        actual: String(audit.unresolved),
         message:
           `${audit.unresolved} insert anchor(s) the walk resolver could not follow — the ` +
           "emitted walk shape changed and this bound has gone blind",
@@ -1514,136 +1368,106 @@ export async function compareToOracle(
     // The count above is code against code. This one is code against the DOM
     // that actually came out, and it is an EQUALITY for every module.
     //
-    // It used to be an equality only for modules that could be shown to clone
-    // each template once, and a module that called a component dropped to "a
-    // module whose templates bake no anchor cannot produce one" — which
-    // switched target #9's per-frame check off entirely for seven fixtures,
-    // including the one the exclusion was written for. The expectation now
-    // comes from the clones themselves (tracer.ts wraps `template`), so a
-    // component called twice, a `For` cloning a row per item and a `Show`
-    // parking its body in a detached fragment are each accounted for exactly
-    // and none of them costs any coverage.
-    for (const [i, frame] of compiled.channels.entries()) {
-      const allowed = compiled.expectedAnchors[i] ?? 0
+    // The expectation comes from the clones themselves (tracer.ts wraps
+    // `template`), so a component called twice, a `For` cloning a row per item
+    // and a `Show` parking its body in a detached fragment are each accounted
+    // for exactly and none of them costs any coverage.
+    for (const [i, frame] of render.channels.entries()) {
+      const allowed = render.expectedAnchors[i] ?? 0
       if (frame.anchors === allowed) continue
       divergences.push({
         kind: "marker-count",
         step: i,
-        oracle: String(allowed),
-        compiled: String(frame.anchors),
+        expected: String(allowed),
+        actual: String(frame.anchors),
         message:
           "the anchors in the DOM are not the anchors the template clones attached to it bake in",
       })
     }
-  }
 
-  // The oracle appends in source order and never needs an anchor, so a nonzero
-  // count here means the runtime started manufacturing them — at which point
-  // every bound above is measuring the wrong thing and has to be re-derived.
-  for (let i = 0; i < oracle.channels.length; i++) {
-    const anchors = oracle.channels[i].anchors
-    if (anchors === 0) continue
-    divergences.push({
-      kind: "marker-count",
-      step: i,
-      oracle: String(anchors),
-      compiled: "0",
-      message: "the oracle produced an insert anchor of its own — the marker bounds no longer hold",
-    })
-  }
-
-  // Every channel above is a function of the DOM's SHAPE, and a component that
-  // destroys and rebuilds each node on every update produces exactly the shape
-  // of one that reuses them. This is where the difference is visible: which
-  // nodes survived each update, oracle sequence against compiled sequence.
-  //
-  // Only frames whose DOM already agrees are compared — a declared win has no
-  // shared element set to compare identities across.
-  if (
-    oracle.frames.length === compiled.frames.length &&
-    oracle.eventFrames.length === compiled.eventFrames.length
-  ) {
-    for (let i = 0; i < compiled.channels.length; i++) {
-      if (oracle.channels[i].html !== compiled.channels[i].html) continue
-      const want = oracle.channels[i].identity.join(",")
-      const got = compiled.channels[i].identity.join(",")
-      if (want === got) continue
-      divergences.push({
-        kind: "node-identity-differential",
-        step: i,
-        oracle: want,
-        compiled: got,
-        message:
-          "the nodes that survived this update are not the ones the oracle kept — a rebuilt " +
-          "node loses focus, selection, scroll offset and any dirty form state living on it",
-      })
-    }
-  }
-
-  // Rule 2 of normalize.ts sorts attributes out of the main diff, so a codegen
-  // that emitted them backwards compares equal there. This is the channel that
-  // sees it. Frames only line up index for index when both paths ran the same
-  // number of them, and the counts above already report it when they did not.
-  if (
-    oracle.frames.length === compiled.frames.length &&
-    oracle.eventFrames.length === compiled.eventFrames.length
-  ) {
-    const patched = patchedAttributeNames(compiled.code ?? "")
-    for (let i = 0; i < compiled.channels.length; i++) {
-      // A frame whose DOM already differs — a declared win, or a divergence
-      // reported above — has no shared element set to compare an order across.
-      if (oracle.channels[i].html !== compiled.channels[i].html) continue
-      const want = oracle.channels[i].attributes.map((line) => expectedAttributeOrder(line, patched))
-      const got = compiled.channels[i].attributes
-      for (let j = 0; j < Math.max(want.length, got.length); j++) {
-        if (want[j] === got[j]) continue
-        divergences.push({
-          kind: "attribute-order",
-          step: i,
-          oracle: want[j] ?? "<missing>",
-          compiled: got[j] ?? "<missing>",
-          message: "attributes reached the DOM in an order source order does not explain",
-        })
+    // Attribute ORDER, at the one grade a single render can carry: the props
+    // the patch code writes reach the element AFTER every attribute the
+    // template baked in. That partition is what source order lowers to on both
+    // backends (`CODESIGN.md` §5.3), and it is the half a self-check can see —
+    // the order WITHIN each group is pinned absolutely by the per-fixture DOM
+    // golden, and a build that reorders either group is caught by comparing it
+    // against the clean build (`compareRenders`).
+    //
+    // A module that emits `_$spread` is EXEMPT, and the exemption is §3.13 item
+    // 1 rather than a concession: a spread's names are the one attribute fact
+    // the compiler cannot have, so the runtime resolves them and no reading of
+    // the emitted code can tell which of an element's attributes the patch code
+    // wrote. §5.3's M9 note also makes those elements bake nothing at all, so
+    // there is no partition on them to check — every attribute is applied, in
+    // source order, and the golden is what records it.
+    const patched = patchedAttributeNames(code)
+    if (!code.includes("_$spread(")) for (const [i, frame] of render.channels.entries()) {
+      for (const line of frame.attributes) {
+        const cut = line.indexOf(": ")
+        if (cut < 0) continue
+        const names = line.slice(cut + 2).split(",")
+        let seenPatched = false
+        for (const attribute of names) {
+          if (patched.has(attribute)) {
+            seenPatched = true
+            continue
+          }
+          if (!seenPatched) continue
+          divergences.push({
+            kind: "attribute-order",
+            step: i,
+            expected: `${line.slice(0, cut)}: baked before patched`,
+            actual: line,
+            message:
+              `a baked attribute (${attribute}) reached the element after one the patch code ` +
+              "writes — source order lowers to baked-then-applied on both backends",
+          })
+          break
+        }
       }
     }
   }
 
-  return {
-    ok: divergences.length === 0,
-    divergences,
-    wins,
-    effectDelta: compiled.trace.created - oracle.trace.created,
-    runDelta: compiled.trace.totalRuns - oracle.trace.totalRuns,
-    oracle,
-    compiled,
-  }
+  return { ok: divergences.length === 0, divergences }
+}
+
+/**
+ * The clean compiled render against a deliberately broken one — L6's channel.
+ * `CODESIGN.md` §6 L6: "would my suite notice a wrong compiler change?"
+ */
+export async function compareToClean(
+  name: string,
+  corrupt: Corruptions,
+  options: Record<string, unknown> = {},
+): Promise<Comparison> {
+  const clean = await renderViaCompiler(name, {}, options)
+  const broken = await renderViaCompiler(name, corrupt, options)
+  const comparison = compareRenders(clean, broken)
+  // The marker channels are a property of the broken module alone, and they are
+  // the ones no DOM diff can see, so they belong in the same verdict.
+  comparison.divergences.push(...auditRender(broken).divergences)
+  comparison.ok = comparison.divergences.length === 0
+  return comparison
 }
 
 export function formatDivergences(name: string, divergences: Divergence[]): string {
-  const lines = [`fixture "${name}" diverged from the oracle:`]
+  const lines = [`fixture "${name}" diverged:`]
   for (const d of divergences) {
     lines.push(`  [${d.kind}${d.step === undefined ? "" : ` step ${d.step}`}] ${d.message}`)
-    lines.push(`    oracle  : ${d.oracle}`)
-    lines.push(`    compiled: ${d.compiled}`)
+    lines.push(`    expected: ${d.expected}`)
+    lines.push(`    actual  : ${d.actual}`)
   }
   return lines.join("\n")
 }
 
 /**
- * The precondition every oracle comparison ASSUMES and none of them stated.
+ * The precondition every channel over the emitted module ASSUMES and none of
+ * them stated. Under an identity `transform(code) { return { code } }` bun
+ * lowers the fixture onto `@barqjs/core/jsx-runtime` and every assertion about
+ * "the compiled module" goes green against a compiler that compiled nothing.
  *
- * The reference module is loaded UN-COMPILED, so bun lowers it onto
- * `@barqjs/core/jsx-runtime`. Under an identity `transform(code) { return
- * { code } }` the compiled side is lowered by bun onto the same runtime — the
- * two sides become the same program, and 221 of this file's 298 assertions go
- * green against a compiler that compiled nothing. `CODESIGN.md` §6 names that
- * failure in as many words: a reference implementation that shares your defect
- * is worse than none.
- *
- * So each comparison states a fact no build that skipped the work can produce:
- * the emitted module is not the source, and it carries at least one `_$` helper.
- * `optimisation.test.ts` has had the same three lines per fixture since M1; this
- * is the channel that did not.
+ * So each check states a fact no build that skipped the work can produce: the
+ * emitted module is not the source, and it carries at least one `_$` helper.
  */
 export function assertReallyCompiled(name: string, code: string): void {
   if (code === fixtureSource(name)) {
@@ -1651,15 +1475,16 @@ export function assertReallyCompiled(name: string, code: string): void {
   }
   if (!code.includes("_$")) {
     throw new Error(
-      `${name}: the compiled module carries no runtime helper, so both sides of this ` +
-        `comparison are the un-compiled jsx-runtime path and the comparison is a self-comparison`,
+      `${name}: the compiled module carries no runtime helper, so this is the un-compiled ` +
+        `jsx-runtime path and the check is measuring bun's transform`,
     )
   }
 }
 
-export async function assertMatchesOracle(name: string): Promise<Comparison> {
-  const result = await compareToOracle(name)
-  assertReallyCompiled(name, result.compiled.code ?? "")
+/** The compiled render, audited on every channel that needs no second render. */
+export async function assertCompiledIsClean(name: string): Promise<CompiledAudit> {
+  const result = await auditCompiled(name)
+  assertReallyCompiled(name, result.render.code ?? "")
   if (!result.ok) throw new Error(formatDivergences(name, result.divergences))
   return result
 }

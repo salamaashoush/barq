@@ -1,14 +1,14 @@
-import { useStore } from "@barqjs/core"
+import { store } from "@barqjs/core"
 
 /**
- * `useStore` returns `[proxy, setter]` and ANY member read on the proxy is a
+ * `store` returns `[proxy, setter]` and ANY member read on the proxy is a
  * tracked read — `SourceKind::ReactiveObject`. Nothing about the NAME `state`
  * says so, and a nested read (`state.user.name`) has to stay reactive to the
  * depth it was written at.
  */
-const [state, setState] = useStore({ user: { name: "John" }, count: 0 })
+const [state, setState] = store({ user: { name: "John" }, count: 0 })
 
-export default function UseStoreMember() {
+export default function StoreMember() {
   return (
     <div class="store">
       <span class="name">{() => state.user.name}</span>

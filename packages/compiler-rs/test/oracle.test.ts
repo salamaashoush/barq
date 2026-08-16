@@ -4,23 +4,56 @@ import { join } from "node:path"
 import { describe, expect, it } from "bun:test"
 
 import {
-  assertMatchesOracle,
-  boundEffects,
-  compareToOracle,
+  assertCompiledIsClean,
+  auditCompiled,
+  compareToClean,
   compileFixture,
   compileSource,
-  drive,
   fixtureSource,
   formatDivergences,
   listFixtures,
   renderViaCompiler,
-  renderViaRuntime,
   stripLiterals,
   templateAnchors,
 } from "./harness.ts"
 import { countAnchors, normalizeDom } from "./normalize.ts"
-import { duplicateOracleRows, oracleRegistry, ORACLE_FAILURES } from "./oracle-known-failures.ts"
-import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts"
+
+/**
+ * THE ORACLE, after M9 removed its reference implementation.
+ *
+ * `CODESIGN.md` §6 retires the un-compiled `createElement` path as an oracle on
+ * three grounds, the first of which is decisive: both paths rendered a blank
+ * page for `<Provider><Child/></Provider>`, so the harness was green on the very
+ * bug that prompted the redesign. A second implementation that shares your
+ * defect is worse than no oracle, because it certifies the defect.
+ *
+ * What that leaves, and where each piece went:
+ *
+ *  - RENDERED DOM was a differential against the reference. It is now the
+ *    per-fixture GOLDEN below plus the `-O0`/`-Ox` differential in
+ *    `optimisation.test.ts` — the settled answer for an optimising compiler is
+ *    your own compiler with the optimisations off.
+ *  - EFFECT COUNTS were an upper bound against the reference's count. They are
+ *    now absolute, hand-written per fixture, in `effect-counts.ts`.
+ *  - NODE IDENTITY was a differential. It is now metamorphic and unconditional
+ *    in `metamorphic.ts`; the differential's per-frame `if (html !== html)
+ *    continue` guard — a channel that switched itself off exactly where the
+ *    frames disagreed — is gone with it.
+ *  - MARKER LAYOUT and the ATTRIBUTE PARTITION never needed a reference: both
+ *    sides come off the emitted module and the clones it produced. They stay,
+ *    as `harness.ts auditCompiled`.
+ *  - The corruption self-checks stay, and they are the point of §6 L6 —
+ *    "would my suite notice a wrong compiler change?". Their reference is now
+ *    the CLEAN compiled render of the same fixture (`compareToClean`), which is
+ *    not a second implementation and cannot share an implementation's defect.
+ *
+ * `wins` and `goesLive` are gone from the corpus with the reference that made
+ * them necessary. Both were exemption machinery: a `win` bought one frame out
+ * of a DOM comparison the reference could not pass, and a `goesLive` entry
+ * bought one effect out of a bound the reference set. Neither has anything left
+ * to buy out of — the golden records what the compiled path renders and the
+ * table records how many effects it creates.
+ */
 
 /**
  * Corrupt the compiled path by deleting one exact substring of the fixture
@@ -118,117 +151,103 @@ function reverseAppliedProps(code: string): string {
  * a one-line reason; nothing is ever deleted from the corpus to make the suite
  * green. Empty today.
  *
- * A park switches nine assertion loops off for its fixture, so a park that
- * outlives the bug it describes is a silent hole. `the parked list has no stale
- * entries` below re-runs the comparison for every parked name and fails if it
- * now passes — the same staleness check `NO_DECLARATION` and `wins` already get.
+ * A park switches the sweeps below off for its fixture, so a park that outlives
+ * the bug it describes is a silent hole. `the parked list has no stale entries`
+ * re-runs the audit for every parked name and fails if it now passes.
  */
 const PARKED: Record<string, string> = {}
 
 const fixtures = listFixtures()
 
-/**
- * The un-compiled reference cannot conform to C1 — see
- * `oracle-known-failures.ts` for why, and for why `Interp` does not replace it.
- * A registered fixture still RUNS the comparison; what changes is the
- * expectation, which becomes "diverges, on exactly these channels".
- */
-const ORACLE_KNOWN = oracleRegistry()
-
-/** Rows whose reference module is structurally wrong, so it renders nothing usable. */
-const REFERENCE_IS_DEAD = new Set(
-  ORACLE_FAILURES.filter((row) => row.cause === "C1").map((row) => row.fixture),
-)
-
-function skipped(name: string): boolean {
-  return PARKED[name] !== undefined || REFERENCE_IS_DEAD.has(name)
-}
-
-/**
- * Already divergent for a declared reason, whatever the cause. A corruption
- * sweep cannot say "and by NOTHING else" about a fixture that is diverging on
- * another channel before the corruption is applied.
- */
-function alreadyDivergent(name: string): boolean {
-  return PARKED[name] !== undefined || ORACLE_KNOWN.has(name)
-}
-
-async function observedDivergence(name: string): Promise<{ kinds: string[]; threw?: string }> {
-  try {
-    const result = await compareToOracle(name)
-    if (result.ok) return { kinds: [] }
-    return { kinds: [...new Set(result.divergences.map((d) => d.kind))].sort() }
-  } catch (error) {
-    return { kinds: ["THREW"], threw: String(error) }
-  }
-}
-
-describe("oracle equivalence", () => {
+describe("compiled render integrity", () => {
   it("the corpus is big enough to mean something", () => {
     expect(fixtures.length).toBeGreaterThanOrEqual(25)
   })
 
-  it("the registry has no duplicate rows", () => {
-    expect(duplicateOracleRows().join(", ")).toBe("")
-  })
-
-  it("no registered fixture is past the milestone it promised", () => {
-    const late = ORACLE_FAILURES.filter((row) => overdue(row.greenAt)).map(
-      (row) =>
-        `OVERDUE: ${row.fixture} promised green at ${row.greenAt} and still diverges at ` +
-        `M${CURRENT_MILESTONE}`,
-    )
-    expect(late.join("\n"), OVERDUE_WHY).toBe("")
-  })
-
-  it("every registered fixture is a fixture", () => {
-    for (const row of ORACLE_FAILURES) {
-      expect(fixtures, `${row.fixture} is registered but is not a fixture`).toContain(row.fixture)
-    }
-  })
-
-  /**
-   * Assertion 4: `cause: "C1"` is EVIDENCED. The construct the un-compiled path
-   * cannot reproduce is a scope-passing call site, so a fixture that emits none
-   * cannot be registered under that cause — which keeps the registry from
-   * absorbing a fixture whose divergence has some other origin.
-   */
-  it("every C1 row is a fixture whose compiled module actually passes a scope", async () => {
-    for (const row of ORACLE_FAILURES) {
-      if (row.cause !== "C1") continue
-      const code = (await renderViaCompiler(row.fixture)).code ?? ""
-      const passesScope = /[A-Za-z_$][\w$]*\(_s\$, /.test(code) || /: \(_s\$[,)]/.test(code)
-      expect(passesScope, `${row.fixture} is registered as C1 but passes no scope`).toBe(true)
-    }
-  }, 120_000)
-
   for (const name of fixtures) {
     const parked = PARKED[name]
     const run = parked ? it.todo : it
-    const row = ORACLE_KNOWN.get(name)
     run(`${name}${parked ? ` — ${parked}` : ""}`, async () => {
-      if (!row) {
-        await assertMatchesOracle(name)
-        return
-      }
-      const observed = await observedDivergence(name)
-      expect(
-        observed.kinds.length,
-        `STALE: ${name} is registered against ${row.greenAt} and now MATCHES the oracle — delete the row`,
-      ).toBeGreaterThan(0)
-      expect(
-        observed.kinds,
-        `${name} diverges on channels its registry row does not declare: ${row.reason}`,
-      ).toEqual([...row.kinds])
-      if (row.kinds.includes("THREW")) {
-        expect(
-          observed.threw ?? "",
-          `${name} is registered as a reference that CRASHES, and the crash must be the ` +
-            `scope landing in a declared parameter slot`,
-        ).toMatch(/is not a function|Cannot destructure|is an instance of|undefined is not an object/)
-      }
+      await assertCompiledIsClean(name)
     })
   }
+
+  it("the parked list has no stale entries", async () => {
+    for (const name of Object.keys(PARKED)) {
+      expect(fixtures, `${name} is parked but is not a fixture`).toContain(name)
+      const result = await auditCompiled(name)
+      expect(result.ok, `${name} is parked as divergent but is now clean — delete the park`).toBe(
+        false,
+      )
+    }
+  }, 60_000)
+
+  /**
+   * Across the whole cycle, not just the first frame. K7 deletes the markers a
+   * control-flow instance used to splice in, so a root-position `Show` that
+   * starts closed and has no fallback renders exactly nothing at frame 0 —
+   * correctly. Asserting frame 0 alone would be asserting the comment nodes are
+   * back. What "the compiler is doing work" needs is that SOME frame the fixture
+   * drives has DOM in it.
+   */
+  it("the compiled path produces non-empty DOM for every fixture", async () => {
+    for (const name of fixtures) {
+      if (PARKED[name] !== undefined) continue
+      const result = await renderViaCompiler(name)
+      const widest = Math.max(result.html.length, ...result.frames.map((frame) => frame.length))
+      expect(widest, `nothing rendered for ${name}, in any frame`).toBeGreaterThan(0)
+    }
+  }, 60_000)
+
+  /**
+   * A fixture whose steps change nothing is a fixture whose step channel is
+   * decoration: every DOM assertion after frame 0 compares two identical
+   * strings and a dropped binding is invisible.
+   *
+   * Under the retired oracle this list held four exceptions, and all four were
+   * statements about the REFERENCE rather than about the fixture —
+   * `createElement` reads a bare `{count()}` once at construction, so
+   * `auto-thunked-read`, `equal-liveness` and `ref-writable-binding` were inert
+   * on the reference and declared `wins` against it, and `spread-static-mix`
+   * read its spread object exactly once. The compiled path binds all four (O4,
+   * B1, B3, and `_$spread`'s source list), so the exception list is now empty
+   * and the assertion is the flat one.
+   */
+  it("fixtures declaring steps actually observe a DOM change", async () => {
+    const withSteps: string[] = []
+    const inert: string[] = []
+
+    for (const name of fixtures) {
+      if (PARKED[name] !== undefined) continue
+      if (!/^export const steps\b/m.test(fixtureSource(name))) continue
+      withSteps.push(name)
+      const result = await renderViaCompiler(name)
+      if (!result.frames.some((f) => f !== result.html)) inert.push(name)
+    }
+
+    // Raised with the shape catalogue: the floor is what says the sweep is
+    // still looking at most of the corpus, so it has to move when the corpus does.
+    expect(withSteps.length).toBeGreaterThanOrEqual(40)
+    expect(inert).toEqual([])
+  }, 60_000)
+
+  it("fixtures declaring events actually observe a DOM change", async () => {
+    const withEvents: string[] = []
+
+    for (const name of fixtures) {
+      if (PARKED[name] !== undefined) continue
+      if (!/^export const events\b/m.test(fixtureSource(name))) continue
+      withEvents.push(name)
+      const result = await renderViaCompiler(name)
+      const baseline = result.frames.at(-1) ?? result.html
+      expect(
+        result.eventFrames.some((f) => f !== baseline),
+        `${name} dispatches events that change nothing`,
+      ).toBe(true)
+    }
+
+    expect(withEvents.length).toBeGreaterThanOrEqual(5)
+  }, 60_000)
 
   it("the marker bound is an equality for every fixture, with nothing excused", async () => {
     // There used to be a degraded bound here, and a list of seven fixtures on
@@ -259,7 +278,7 @@ describe("oracle equivalence", () => {
       const callsComponent = /\b[A-Z][\w$]*\(_s\$,\s*(\{|_\$props\()|\)\s*\(_s\$,\s*(\{|_\$props\()/
       expect(callsComponent.test(stripLiterals(result.code ?? "")), `${name} calls no component`).toBe(true)
       // And the bound is now live on it: a real number per frame, compared for
-      // equality by `compareToOracle`.
+      // equality by `auditCompiled`.
       expect(result.expectedAnchors.length).toBe(result.channels.length)
       expect(
         result.channels.map((frame) => frame.anchors),
@@ -273,14 +292,7 @@ describe("oracle equivalence", () => {
     // folds `Left` and `Right` onto ONE template and calls both, so that
     // template is cloned twice and the old rule said only "this module bakes an
     // anchor, so it may produce any number of them".
-    //
-    // It replaced `component-boundary-props` here, which is the fixture the
-    // exclusion was originally written for and is now registered in
-    // `oracle-known-failures.ts`: its reference module cannot run at all, and a
-    // self-check whose subject crashes on the reference side proves nothing.
-    // The property is unchanged and the subject still satisfies both halves of
-    // it, asserted below rather than assumed.
-    const result = await compareToOracle("dedup-identical-markup", {
+    const result = await auditCompiled("dedup-identical-markup", {
       emitted: (code) => {
         const out = code.replace("<span>x</span>", "<span>x</span><!---->")
         if (out === code) throw new Error("self-check corruption is stale")
@@ -292,158 +304,25 @@ describe("oracle equivalence", () => {
     expect(marker.length).toBeGreaterThan(0)
     // TWO anchors baked where ONE is used: the audit is code against code and
     // does not care how often the template is cloned.
-    expect(marker.some((d) => d.compiled === "2" && d.oracle === "1")).toBe(true)
+    expect(marker.some((d) => d.actual === "2" && d.expected === "1")).toBe(true)
     // And the subject really is a template cloned TWICE, which is the half the
     // old bound could not account for and the reason this fixture is here: the
     // expected anchor count per frame grows by 2 for the one anchor added.
     const clean = await renderViaCompiler("dedup-identical-markup")
     expect(
-      result.compiled.expectedAnchors[0]! - clean.expectedAnchors[0]!,
+      result.render.expectedAnchors[0]! - clean.expectedAnchors[0]!,
       "one baked anchor, two clones",
     ).toBe(2)
   })
 
-  it("the parked list has no stale entries", async () => {
-    for (const name of Object.keys(PARKED)) {
-      expect(fixtures, `${name} is parked but is not a fixture`).toContain(name)
-      const result = await compareToOracle(name)
-      expect(
-        result.ok,
-        `${name} is parked as divergent but now matches the oracle — delete the park`,
-      ).toBe(false)
-    }
-  }, 60_000)
-})
-
-describe("oracle path integrity", () => {
-  // A harness whose oracle silently renders nothing would pass every
-  // comparison. These assert the oracle is actually doing work.
-
-  /**
-   * Across the whole cycle, not just the first frame. Until M4 every fixture's
-   * first frame was non-empty because every control-flow instance spliced a
-   * marker PAIR into it; K7 deletes the markers, so a root-position `Show` that
-   * starts closed and has no fallback now renders exactly nothing at frame 0 —
-   * correctly. Asserting frame 0 alone would be asserting the comment nodes are
-   * back. What "the oracle is doing work" needs is that SOME frame the fixture
-   * drives has DOM in it.
-   */
-  it("the oracle produces non-empty DOM for every fixture", async () => {
-    for (const name of fixtures) {
-      if (skipped(name)) continue
-      const result = await renderViaRuntime(name)
-      const widest = Math.max(result.html.length, ...result.frames.map((frame) => frame.length))
-      expect(widest, `oracle rendered nothing for ${name}, in any frame`).toBeGreaterThan(0)
-    }
-  }, 60_000)
-
-  /**
-   * `compareToOracle` checks a `wins` declaration against the frame the
-   * compiled path produced — but only after the oracle has produced a frame to
-   * compare against. A fixture whose reference THROWS (`kinds: ["THREW"]`, C1)
-   * never reaches that check, so its `wins` are read by nothing and can rot
-   * silently. Four of them had: the `control-flow-for-keyed-*` rows carried
-   * `<!--Index:#-->` marker comments the compiled path stopped emitting at M4b
-   * and went on passing for three milestones.
-   *
-   * This assertion needs no oracle. It renders the compiled path alone and
-   * requires every declared win to name the frame that path actually produces,
-   * which is the half of the contract a throwing reference does not disturb.
-   */
-  it("every declared win names the frame the compiled path actually produces", async () => {
-    const checked: string[] = []
-    for (const name of fixtures) {
-      // NOT `skipped`, which excludes exactly the C1 rows this exists for.
-      if (PARKED[name] !== undefined) continue
-      if (!/^export const wins\b/m.test(fixtureSource(name))) continue
-      const compiled = await renderViaCompiler(name)
-      for (const win of compiled.wins) {
-        const frames = win.kind === "step" ? compiled.frames : compiled.eventFrames
-        expect(
-          frames[win.index],
-          `${name}: declared win on ${win.kind} ${win.index} does not name the compiled frame (${win.why})`,
-        ).toBe(win.compiled)
-        checked.push(`${name}:${win.kind}:${win.index}`)
-      }
-    }
-    // A floor, so a corpus that stopped declaring wins reports it rather than
-    // passing an empty loop. `optimisation.test.ts` counts twelve.
-    expect(checked.length).toBeGreaterThanOrEqual(12)
-  }, 60_000)
-
-  it("fixtures declaring steps actually observe a DOM change", async () => {
-    const withSteps: string[] = []
-    const inert: string[] = []
-
-    for (const name of fixtures) {
-      if (skipped(name)) continue
-      if (!/^export const steps\b/m.test(fixtureSource(name))) continue
-      withSteps.push(name)
-      const result = await renderViaRuntime(name)
-      const changed = result.frames.some((f) => f !== result.html)
-      if (!changed) inert.push(name)
-    }
-
-    // Raised with the shape catalogue: the floor is what says the sweep is
-    // still looking at most of the corpus, so it has to move when the corpus does.
-    expect(withSteps.length).toBeGreaterThanOrEqual(40)
-    // Three documented exceptions, and all three are statements about the
-    // ORACLE:
-    //
-    //  - spread-static-mix: the un-compiled runtime reads a spread object
-    //    exactly once, so its steps are SUPPOSED to be inert. That is the
-    //    oracle's spread semantics, and what the compiler's reactive _$spread
-    //    must be measured against.
-    //  - auto-thunked-read: every hole is a BARE tracked read, which
-    //    `createElement` evaluates once at construction. The compiled path
-    //    binds them (O4), so the fixture declares the divergence as a win and
-    //    the harness asserts the exact DOM the compiled path must produce.
-    //  - ref-writable-binding: `<i ref={box}>` with a writable binding is an
-    //    ASSIGNMENT the compiler emits (B3). A props object carries the
-    //    binding's VALUE and has nothing to assign to, so the oracle's step
-    //    reads an `undefined` box and touches no DOM. Declared as a win.
-    //  - equal-liveness: B1's own falsification procedure, `class={s()}
-    //    id={s()} title={s()}`. Bare reads again, so the oracle freezes at
-    //    construction for the same reason auto-thunked-read does. Declared as
-    //    two wins, one per step.
-    //
-    // `component-getter-props` and `props-raw-forward` used to be here for the
-    // same kind of reason — `createElement` copies the props object, so the
-    // oracle freezes at its first value. Both are now registered in
-    // `oracle-known-failures.ts` and skipped by `skipped()`, because their
-    // reference module no longer renders the right thing at all rather than
-    // merely failing to update.
-    expect(inert).toEqual([
-      "auto-thunked-read",
-      "equal-liveness",
-      "ref-writable-binding",
-      "spread-static-mix",
-    ])
-  }, 60_000)
-
-  it("fixtures declaring events actually observe a DOM change", async () => {
-    const withEvents: string[] = []
-
-    for (const name of fixtures) {
-      if (skipped(name)) continue
-      if (!/^export const events\b/m.test(fixtureSource(name))) continue
-      withEvents.push(name)
-      const result = await drive(name, "runtime")
-      const baseline = result.frames.at(-1) ?? result.html
-      const changed = result.eventFrames.some((f) => f !== baseline)
-      expect(changed, `${name} dispatches events that change nothing`).toBe(true)
-    }
-
-    expect(withEvents.length).toBeGreaterThanOrEqual(5)
-  }, 60_000)
-
   it("the reactivity tracer is intercepting effect creation", async () => {
-    // Without this the effect bound goes inert the moment mock.module stops
-    // resolving signals.ts, and every comparison silently reports 0 vs 0.
+    // Without this every effect channel goes inert the moment mock.module stops
+    // resolving signals.ts, and `effect-counts.ts` becomes a table of zeroes
+    // that agrees with itself.
     let tracked = 0
     for (const name of fixtures) {
-      if (skipped(name)) continue
-      const result = await renderViaRuntime(name)
+      if (PARKED[name] !== undefined) continue
+      const result = await renderViaCompiler(name)
       if (result.trace.created > 0) tracked++
     }
     expect(tracked, "the tracer counted nothing — mock.module is no longer intercepting").toBeGreaterThanOrEqual(20)
@@ -451,8 +330,8 @@ describe("oracle path integrity", () => {
 
   it("every fixture creating an effect reports a non-zero run count", async () => {
     for (const name of fixtures) {
-      if (skipped(name)) continue
-      const result = await renderViaRuntime(name)
+      if (PARKED[name] !== undefined) continue
+      const result = await renderViaCompiler(name)
       if (result.trace.created === 0) continue
       expect(result.trace.totalRuns, `${name} created effects that never ran`).toBeGreaterThanOrEqual(
         result.trace.created,
@@ -461,18 +340,60 @@ describe("oracle path integrity", () => {
   }, 60_000)
 })
 
+describe("rendered DOM golden", () => {
+  /**
+   * The absolute grader for rendered DOM, and the half that had been carried by
+   * the retired reference. §6 L4 assigns a golden to attribute order, emitted
+   * bytes, diagnostics and sourcemaps for a reason that applies here word for
+   * word — "a silently-dropped diagnostic, a corrupted mapping or a size
+   * regression becomes a visible diff" — and once the reference is gone, the
+   * DOM the compiler produces has the same need and no other grader.
+   *
+   * What it records is every frame the fixture drives, plus the attribute-order
+   * channel, which `normalize.ts` rule 2 sorts out of the main diff. A
+   * differential can only ever say the two sides agree; this says WHAT they
+   * agree on, which is the thing a review can read.
+   */
+  for (const name of fixtures) {
+    if (PARKED[name] !== undefined) continue
+    it(`${name}: rendered DOM`, async () => {
+      const result = await renderViaCompiler(name)
+      const frames = [
+        `initial: ${result.html}`,
+        ...result.frames.map((frame, i) => `step ${i}: ${frame}`),
+        ...result.eventFrames.map((frame, i) => `event ${i}: ${frame}`),
+        ...result.channels.flatMap((frame, i) =>
+          frame.attributes.map((line) => `attrs ${i}: ${line}`),
+        ),
+      ]
+      expect(frames.join("\n")).toMatchSnapshot()
+    })
+  }
+
+  it("records exactly one DOM snapshot per fixture", () => {
+    const recorded = new Set<string>()
+    const text = readFileSync(join(import.meta.dir, "__snapshots__", "oracle.test.ts.snap"), "utf8")
+    for (const [, name] of text.matchAll(/^exports\[`rendered DOM golden (.+): rendered DOM 1`\]/gm)) {
+      recorded.add(name)
+    }
+    const live = new Set(fixtures.filter((name) => !PARKED[name]))
+
+    expect([...recorded].filter((name) => !live.has(name))).toEqual([])
+    expect([...live].filter((name) => !recorded.has(name))).toEqual([])
+  })
+})
+
 describe("marker channel", () => {
   /**
-   * `normalize.ts` rule 4 has to drop empty comments — the oracle produces one
-   * text node where a compiled template produces text, anchor, text — and it
-   * cannot be weakened without failing every legitimate output. So the anchors
-   * live here instead: `channels.markers` is the same walk with every anchor
-   * kept in place and no text fused across one, snapshotted per fixture.
+   * `normalize.ts` rule 4 has to drop empty comments — an anchor is invisible in
+   * the main diff by construction — so the anchors live here instead:
+   * `channels.markers` is the same walk with every anchor kept in place and no
+   * text fused across one, snapshotted per fixture.
    *
    * This is the behavioural test target #9 (marker elision, M4) does not
-   * otherwise have. When elision lands, every anchor it removes shows up as a
-   * line in this snapshot's diff, and an anchor removed where something still
-   * follows the hole shows up as a `bun test` failure on the DOM diff.
+   * otherwise have. Every anchor elision removes shows up as a line in this
+   * snapshot's diff, and an anchor removed where something still follows the
+   * hole shows up as a `bun test` failure on the DOM golden above.
    */
   for (const name of fixtures) {
     if (PARKED[name] !== undefined) continue
@@ -506,22 +427,22 @@ describe("marker channel", () => {
   })
 })
 
-describe("node-identity-differential channel self-check", () => {
-  // Every other channel is a function of the DOM's SHAPE, so a compiled path
-  // that reused a node where the oracle rebuilt one — or rebuilt where the
-  // oracle reused — produced byte-identical html, markers, attributes and
-  // anchor counts. These are the mutations that prove the channel is not inert.
+describe("node-identity self-check", () => {
+  // Every other channel is a function of the DOM's SHAPE, so a build that
+  // reused a node where the clean one rebuilt it — or rebuilt where the clean
+  // one reused — produces byte-identical html, markers, attributes and anchor
+  // counts. These are the mutations that prove the channel is not inert.
+  //
+  // The unconditional version of this property is `metamorphic.ts`, which
+  // compares a render against ITSELF under a transform of the input and needs
+  // no second render at all. What lives here is the DETECTOR: proof that a
+  // corrupted build shows up on this channel and on no other.
 
   it("catches a control-flow body handed over as a node instead of as a thunk", async () => {
     // The M5 miscompile, exactly: unwrapping the author's `() => _tmpl$N()`
-    // evaluates the body once at call time, so `Show` re-inserts the SAME node
-    // on every toggle where the oracle calls the arrow again. The fixture
-    // toggles off and back on, so the oracle really does build two.
-    // C6 moved the shape: a child is a Block, so the arrow declares the scope.
-    // K5 moved it again: the body is not a `children` prop at all, it is the
-    // Block `_$branch` is handed. Unwrapping it is still exactly the miscompile
-    // — the body is evaluated at the call site instead of under the receiving
-    // scope.
+    // evaluates the body once at call time, so `branch` re-inserts the SAME node
+    // on every toggle where the clean build calls the Block again. The fixture
+    // toggles off and back on, so the clean build really does build two.
     const unwrapThunk = (code: string): string => {
       const out = code.replace(
         /([\w$]*block)\(\(_s\$\) => (_tmpl\$\d+)\(\)\)/g,
@@ -532,7 +453,7 @@ describe("node-identity-differential channel self-check", () => {
       }
       return out
     }
-    const result = await compareToOracle("control-flow-show-static-body", { emitted: unwrapThunk })
+    const result = await compareToClean("control-flow-show-static-body", { emitted: unwrapThunk })
     expect(result.ok).toBe(false)
     const kinds = new Set(result.divergences.map((d) => d.kind))
     // And by NOTHING else: this is the measurement of how blind the rest of the
@@ -540,10 +461,10 @@ describe("node-identity-differential channel self-check", () => {
     expect([...kinds]).toEqual(["node-identity-differential"])
   })
 
-  it("catches a re-render that rebuilds a subtree the oracle kept", async () => {
-    // The opposite direction, driven from the runtime side of the same fixture:
-    // forcing `Show` to build a fresh node every time `when` is read makes the
-    // compiled path churn where the oracle's thunk result is stable.
+  it("catches a re-render that rebuilds a subtree the clean build kept", async () => {
+    // The opposite direction: forcing the body to build a fresh node every time
+    // the branch key is read makes the corrupted build churn where the clean
+    // one's Block result is stable.
     const rebuildEveryFrame = (code: string): string => {
       const out = code.replace(
         /([\w$]*block\()\(_s\$\) => (_tmpl\$\d+)\(\)/g,
@@ -555,7 +476,7 @@ describe("node-identity-differential channel self-check", () => {
     // Same nodes, same attributes, same everything — the corruption is a no-op
     // for every channel including this one, which is what says the detector
     // above is measuring identity and not merely noticing a rewritten module.
-    const result = await compareToOracle("control-flow-show-static-body", {
+    const result = await compareToClean("control-flow-show-static-body", {
       emitted: rebuildEveryFrame,
     })
     expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(true)
@@ -580,12 +501,12 @@ describe("marker channel self-check", () => {
     const caughtElsewhere: string[] = []
 
     for (const name of fixtures) {
-      if (alreadyDivergent(name)) continue
+      if (PARKED[name] !== undefined) continue
       const clean = compileFixture(name)
       if (!clean.includes("_$template(")) continue
       if (anchorAfterEveryText(clean) === clean) continue
       affected.push(name)
-      const result = await compareToOracle(name, { emitted: anchorAfterEveryText })
+      const result = await auditCompiled(name, { emitted: anchorAfterEveryText })
       if (result.ok) survived.push(name)
       const kinds = new Set(result.divergences.map((d) => d.kind))
       if (kinds.size !== 1 || !kinds.has("marker-count")) caughtElsewhere.push(name)
@@ -599,7 +520,7 @@ describe("marker channel self-check", () => {
   }, 120_000)
 
   it("a spurious anchor is invisible to the DOM diff and caught by the count", async () => {
-    const result = await compareToOracle("text-hole-trailing", {
+    const result = await compareToClean("text-hole-trailing", {
       emitted: (code) => code.replace('<div class="counter">', '<div class="counter"><!---->'),
     })
     expect(result.ok).toBe(false)
@@ -634,36 +555,33 @@ describe("marker channel self-check", () => {
     // And both are anchors nothing inserts before, so the exact bound reports
     // them where the DOM diff and the counts cannot.
     for (const corrupt of [before, after]) {
-      const result = await compareToOracle("deep-walk", { emitted: corrupt })
+      const result = await compareToClean("deep-walk", { emitted: corrupt })
       expect(result.divergences.map((d) => d.kind)).toEqual(["marker-count"])
     }
   })
-
-  it("the oracle never produces an anchor of its own", async () => {
-    // The compiled bounds are all stated against zero. If the runtime starts
-    // manufacturing anchors on the un-compiled path they stop meaning anything.
-    for (const name of fixtures) {
-      if (skipped(name)) continue
-      const oracle = await renderViaRuntime(name)
-      for (const frame of oracle.channels) {
-        expect(countAnchors(frame.markers), `${name} oracle produced an anchor`).toBe(0)
-      }
-    }
-  }, 60_000)
 })
 
 describe("attribute-order channel", () => {
   /**
    * `normalize.ts` rule 2 sorts attributes, because inline-into-template and
    * setProp-after-clone genuinely reorder them and the main diff would fail
-   * every fixture otherwise. So order lives on its own channel, and it is
-   * compared against the ORACLE's order — which is source order, since
-   * `createElement` walks the props object — partitioned into the attributes
-   * the template bakes in and the props the patch code applies after the clone.
+   * every fixture otherwise. So order lives on its own channel, at two grades.
+   *
+   * ABSOLUTE: the per-fixture DOM golden above records every element's
+   * attribute line verbatim, so any reordering anywhere in the corpus is a
+   * visible diff. That is the grade §6 L4 assigns attribute order, and it is
+   * what the retired reference was standing in for.
+   *
+   * SELF-CHECK: `auditCompiled` asserts the PARTITION — every prop the patch
+   * code writes reaches the element after every attribute the template baked
+   * in. That is what source order lowers to on both backends (§5.3), and it
+   * holds without any reference at all.
+   *
+   * The two below are the detectors that say neither grade is inert.
    */
   it("reversing the order attributes are baked into the template goes red", async () => {
     for (const name of ["static-only", "svg", "svg-dynamic-class"]) {
-      const result = await compareToOracle(name, { emitted: reverseBakedAttributes })
+      const result = await compareToClean(name, { emitted: reverseBakedAttributes })
       expect(result.ok, name).toBe(false)
       // Nothing else sees it: the main diff sorts, so this is the only channel.
       expect([...new Set(result.divergences.map((d) => d.kind))], name).toEqual(["attribute-order"])
@@ -672,7 +590,7 @@ describe("attribute-order channel", () => {
 
   it("reversing the order the patch code applies props in goes red", async () => {
     for (const name of ["multi-prop-one-element", "reactive-attribute", "svg-dynamic-class"]) {
-      const result = await compareToOracle(name, { emitted: reverseAppliedProps })
+      const result = await compareToClean(name, { emitted: reverseAppliedProps })
       expect(result.ok, name).toBe(false)
       expect([...new Set(result.divergences.map((d) => d.kind))], name).toEqual(["attribute-order"])
     }
@@ -682,11 +600,11 @@ describe("attribute-order channel", () => {
     // reactive-attribute is `<a href={…} class={…} data-static="keep">`: the
     // template bakes data-static in first and the patch code sets href and
     // class after. That is the partition, and it must stay green.
-    const result = await compareToOracle("reactive-attribute")
+    const result = await auditCompiled("reactive-attribute")
     expect(result.divergences).toEqual([])
   })
 
-  it("the channel is live for most of the corpus, not silently empty", async () => {
+  it("the partition is live for most of the corpus, not silently empty", async () => {
     let withAttributes = 0
     for (const name of fixtures) {
       if (PARKED[name] !== undefined) continue
@@ -695,207 +613,25 @@ describe("attribute-order channel", () => {
     }
     expect(withAttributes).toBeGreaterThanOrEqual(30)
   }, 60_000)
-})
 
-describe("effect bound arithmetic", () => {
-  /**
-   * M3 turns the effect count into the proof of target #1, so the bound has to
-   * be right before the passes land. These drive `boundEffects` with numbers no
-   * fixture produces today; each one names the bug it would catch.
-   */
-  const base = {
-    oracleCreated: 1,
-    compiledCreated: 1,
-    oracleTotalRuns: 4,
-    compiledTotalRuns: 4,
-    oracleRuns: [4],
-    compiledRuns: [4],
-    goesLive: [] as string[],
-    frames: 4,
-    merges: 0,
-  }
-
-  it("no declaration, no slack: matching numbers report nothing", () => {
-    expect(boundEffects(base)).toEqual([])
-  })
-
-  it("one live hole lifts the RUN allowance by one per frame, not by one", () => {
-    // The bug: a flat `+ slack`. A live hole costs one effect that re-runs once
-    // per frame, so on a four-frame fixture that is four runs, not one.
-    const divergences = boundEffects({
-      ...base,
-      compiledCreated: 2,
-      compiledTotalRuns: 8,
-      compiledRuns: [4, 4],
-      goesLive: ["the live hole"],
+  it("the partition goes red when a baked attribute lands after a patched one", async () => {
+    // The partition can only be trusted if a violation of it is reachable. Move
+    // a baked attribute out of the template and write it AFTER the live ones,
+    // which is the shape a mis-ordered codegen produces.
+    const result = await auditCompiled("reactive-attribute", {
+      emitted: (code) => {
+        const out = code
+          .replace(' data-static="keep"', "")
+          .replace(
+            /\n(\s*)return (_el\$\d+)/,
+            (_m, indent: string, el: string) =>
+              `\n${indent}${el}.setAttribute("data-static", "keep");\n${indent}return ${el}`,
+          )
+        if (out === code) throw new Error("self-check corruption is stale")
+        return out
+      },
     })
-    expect(divergences).toEqual([])
-  })
-
-  it("a live hole does not switch the busiest-effect bound off for everyone else", () => {
-    // The bug: `slack > 0` disabled the per-effect bound entirely, so one
-    // declaration bought unlimited re-runs for every other effect in the
-    // module. Here the top rank is the declared hole and the SECOND rank is a
-    // regression, and it has to be reported.
-    const divergences = boundEffects({
-      oracleCreated: 11,
-      compiledCreated: 12,
-      oracleTotalRuns: 22,
-      compiledTotalRuns: 26,
-      oracleRuns: Array(11).fill(2),
-      compiledRuns: [3, 3, ...Array(10).fill(2)],
-      goesLive: ["the live hole"],
-      frames: 4,
-      merges: 0,
-    })
-    expect(divergences.map((d) => d.kind)).toEqual(["effect-runs"])
-    expect(divergences[0].message).toContain("busiest oracle effect")
-  })
-
-  it("a live hole is itself bounded: it may re-run once per frame and no more", () => {
-    const divergences = boundEffects({
-      ...base,
-      compiledCreated: 2,
-      compiledTotalRuns: 103,
-      compiledRuns: [99, 4],
-      goesLive: ["the live hole"],
-    })
-    expect(divergences.map((d) => d.message).join("\n")).toContain("declared live hole re-ran 99")
-  })
-
-  it("a declaration that buys nothing is reported stale, like a stale win", () => {
-    const divergences = boundEffects({ ...base, goesLive: ["nothing is live here"] })
-    expect(divergences.map((d) => d.message).join("\n")).toContain("stale goesLive")
-  })
-
-  it("a coalesced effect may run once per frame — that is target 4, not a regression", () => {
-    // Three props on one element: the oracle makes three effects that each run
-    // twice; the compiler makes ONE that runs on every frame. Fewer effects,
-    // fewer total runs, and a busier single effect — all three at once.
-    expect(
-      boundEffects({
-        oracleCreated: 3,
-        compiledCreated: 1,
-        oracleTotalRuns: 6,
-        compiledTotalRuns: 4,
-        oracleRuns: [2, 2, 2],
-        compiledRuns: [4],
-        goesLive: [],
-        frames: 4,
-        merges: 1,
-      }),
-    ).toEqual([])
-  })
-
-  it("coalescing does not license a SECOND busy effect it cannot account for", () => {
-    // Two oracle effects became one, so exactly one compiled effect may run per
-    // frame. A second one at the same rate is not explained by the merge.
-    const divergences = boundEffects({
-      oracleCreated: 3,
-      compiledCreated: 2,
-      oracleTotalRuns: 9,
-      compiledTotalRuns: 8,
-      oracleRuns: [3, 3, 3],
-      compiledRuns: [4, 4],
-      goesLive: [],
-      frames: 4,
-      merges: 1,
-    })
-    expect(divergences.map((d) => d.kind)).toEqual(["effect-runs"])
-    expect(divergences[0].message).toContain("busiest oracle effect")
-  })
-
-  it("a three-way merge licenses ONE busy effect, not the two its delta would buy", () => {
-    // The dead spot in the delta-only allowance. Merging 3 effects into 1
-    // removes 2, but yields only ONE effect that runs on the union of their
-    // triggers. Reading the allowance off the delta alone excused a second,
-    // entirely unrelated per-frame effect — and with total runs equal on both
-    // sides, the aggregate bound did not catch it either.
-    const numbers = {
-      oracleCreated: 4,
-      compiledCreated: 2,
-      oracleTotalRuns: 8,
-      compiledTotalRuns: 8,
-      oracleRuns: [2, 2, 2, 2],
-      compiledRuns: [4, 4],
-      goesLive: [] as string[],
-      frames: 4,
-    }
-    const reported = boundEffects({ ...numbers, merges: 1 })
-    expect(reported.map((d) => d.kind)).toEqual(["effect-runs"])
-    expect(reported[0].message).toContain("busiest oracle effect")
-
-    // Two real multi-prop effects DO account for both, and are not reported.
-    expect(boundEffects({ ...numbers, merges: 2 })).toEqual([])
-  })
-
-  it("a live hole on a fixture that also merges is not reported stale", () => {
-    // The arithmetic the two relaxations disagreed about: coalescing REMOVES
-    // effects, so a fixture that both merges and auto-thunks has a raw excess
-    // of zero while its declaration is perfectly real.
-    expect(
-      boundEffects({
-        oracleCreated: 3,
-        compiledCreated: 3,
-        oracleTotalRuns: 6,
-        compiledTotalRuns: 8,
-        oracleRuns: [2, 2, 2],
-        compiledRuns: [4, 2, 2],
-        goesLive: ["the live hole"],
-        frames: 4,
-        merges: 1,
-      }),
-    ).toEqual([])
-  })
-
-  it("a live hole is not stale merely because the compiler ALSO deleted an oracle effect", () => {
-    // The dead spot the merge-adjusted arithmetic still had. Here the compiler
-    // does three things at once: it proves one prop static and emits no effect
-    // for it (target #1), it merges two more into one (target #4), and it makes
-    // one bare read live (O4). Net effect count: 3 -> 2, an excess of MINUS one.
-    //
-    // Any version of the stale check that measures the declaration against the
-    // excess — raw or merge-adjusted — reports this as stale, because every
-    // optimization the compiler performs eats the evidence the live hole is
-    // supposed to leave. The declaration is load-bearing all the same: without
-    // it the second-ranked compiled effect is over the busiest-oracle bound.
-    const numbers = {
-      oracleCreated: 3,
-      compiledCreated: 2,
-      oracleTotalRuns: 6,
-      compiledTotalRuns: 8,
-      oracleRuns: [2, 2, 2],
-      compiledRuns: [4, 4],
-      frames: 4,
-      merges: 1,
-    }
-    expect(boundEffects({ ...numbers, goesLive: [] }).map((d) => d.kind)).toContain("effect-runs")
-    expect(boundEffects({ ...numbers, goesLive: ["the live hole"] })).toEqual([])
-  })
-
-  it("a SECOND declaration on a fixture that only needed one is reported stale", () => {
-    // Partial staleness: the check names how many holes are actually
-    // load-bearing rather than only firing when none of them are.
-    const divergences = boundEffects({
-      oracleCreated: 1,
-      compiledCreated: 2,
-      oracleTotalRuns: 4,
-      compiledTotalRuns: 8,
-      oracleRuns: [4],
-      compiledRuns: [4, 4],
-      goesLive: ["real", "imaginary"],
-      frames: 4,
-      merges: 0,
-    })
-    expect(divergences.map((d) => d.message).join("\n")).toContain(
-      "2 hole(s) declared live, but the bound is already clean with 1",
-    )
-  })
-
-  it("fewer effects than the oracle is never a divergence — it is the point", () => {
-    expect(
-      boundEffects({ ...base, compiledCreated: 0, compiledTotalRuns: 0, compiledRuns: [] }),
-    ).toEqual([])
+    expect(result.divergences.map((d) => d.kind)).toContain("attribute-order")
   })
 })
 
@@ -944,9 +680,13 @@ describe("template parse conformance", () => {
     const cases: Array<[string, string]> = [
       ["<table>text</table>", "<table>"],
       ["<div><body>b</body></div>", "<body"],
-      ["<style>{css}</style>", "<style>"],
-      ["<textarea>{value}</textarea>", "<textarea>"],
-      ["<div><style>{`a`}&lt;/style&gt;</style></div>", "<style>"],
+      // A raw-text element with a hole in it KEEPS its template since M9 — what
+      // it may not do is bake anything into it, because a `<!---->` there is
+      // text and a literal `</style` closes the element. So the forbidden shape
+      // is the CONTENT, not the tag.
+      ["<style>{css}</style>", "<style>."],
+      ["<textarea>{value}</textarea>", "<textarea>x"],
+      ["<div><style>{`a`}&lt;/style&gt;</style></div>", "</style></style>"],
     ]
     for (const [jsx, forbidden] of cases) {
       const code = compileSource(`const V = () => ${jsx};\n`, "probe.tsx")
@@ -954,16 +694,33 @@ describe("template parse conformance", () => {
         expect(html, jsx).not.toContain(forbidden)
       }
     }
+
+    // The same rule stated positively: the element is baked EMPTY, and its
+    // whole child list is one insert.
+    for (const [jsx, template] of [
+      ["<style>{css}</style>", "<style></style>"],
+      ["<textarea>x {value} y</textarea>", "<textarea></textarea>"],
+    ]) {
+      const code = compileSource(`const V = () => ${jsx};\n`, "probe.tsx")
+      expect(templateStrings(code), jsx).toEqual([template])
+    }
   })
 })
 
 describe("harness self-check", () => {
-  // The guard against a vacuous suite. Each case corrupts one thing and names
-  // the detector that must catch it; if any of these start passing, the
-  // corresponding assertion in the suite above has stopped working.
+  // §6 L6, the layer no other project in the survey has: "would my suite notice
+  // a wrong compiler change?" Each case corrupts one thing and names the
+  // detector that must catch it; if any of these start passing, the
+  // corresponding assertion above has stopped working.
+  //
+  // The reference for every one of them is the CLEAN compiled render of the
+  // same fixture. That is not a second implementation — it is the same compiler
+  // on the same source with nothing broken — so it cannot share an
+  // implementation's defect, which is the objection §6 raises against the
+  // retired `createElement` oracle.
 
   it("detects a changed static attribute value (initial-dom)", async () => {
-    const result = await compareToOracle("text-hole-trailing", {
+    const result = await compareToClean("text-hole-trailing", {
       emitted: (code) => code.replace('"counter"', '"corrupted"'),
     })
     expect(result.ok).toBe(false)
@@ -975,29 +732,29 @@ describe("harness self-check", () => {
     // not tracked, so the hole can never update. `{count()}` used to serve here
     // and no longer does — O4 auto-thunking makes the compiler keep THAT one
     // live, which is a fix, not a corruption.
-    const result = await compareToOracle("text-hole-trailing", {
+    const result = await compareToClean("text-hole-trailing", {
       source: (src) => src.replace("{() => count()}", "{count.peek()}"),
     })
     expect(result.ok).toBe(false)
     // The initial render is identical — this is precisely the corruption that a
-    // render-only harness cannot see, so drive() is what catches it.
+    // render-only harness cannot see, so driving the steps is what catches it.
     expect(result.divergences.map((d) => d.kind)).toContain("step-dom")
     expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom")
   })
 
   it("detects extra reactive work on identical DOM (effect-count)", async () => {
-    const result = await compareToOracle("static-only", {
+    const result = await compareToClean("static-only", {
       source: (src) => src.replace('class="card"', 'class={() => "card"}'),
     })
     expect(result.ok).toBe(false)
     expect(result.divergences.map((d) => d.kind)).toContain("effect-count")
-    // The DOM is byte-identical; only the effect bound catches this.
+    // The DOM is byte-identical; only the effect channel catches this.
     expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom")
     expect(result.effectDelta).toBeGreaterThan(0)
   })
 
   it("detects a removed element (initial-dom)", async () => {
-    const result = await compareToOracle("static-only", {
+    const result = await compareToClean("static-only", {
       source: (src) => src.replace("<li>two</li>", ""),
     })
     expect(result.ok).toBe(false)
@@ -1007,7 +764,7 @@ describe("harness self-check", () => {
   it("whitespace normalization does not mask a text-content change", async () => {
     // Rule 3 of normalize.ts drops whitespace-only text that contains a
     // newline. A trailing space INSIDE a text node is not that, and must fail.
-    const result = await compareToOracle("static-only", {
+    const result = await compareToClean("static-only", {
       source: (src) => src.replace(">Barq<", ">Barq <"),
     })
     expect(result.ok).toBe(false)
@@ -1015,7 +772,7 @@ describe("harness self-check", () => {
   })
 
   it("attribute sorting does not mask a changed attribute value", async () => {
-    const result = await compareToOracle("static-only", {
+    const result = await compareToClean("static-only", {
       source: (src) => src.replace('data-kind="static"', 'data-kind="dynamic"'),
     })
     expect(result.ok).toBe(false)
@@ -1023,7 +780,7 @@ describe("harness self-check", () => {
   })
 
   it("detects a dropped delegated handler (event-dom)", async () => {
-    const result = await compareToOracle("delegated-event", {
+    const result = await compareToClean("delegated-event", {
       source: drop("onClick={() => count.update((n) => n + 1)}"),
     })
     expect(result.ok).toBe(false)
@@ -1035,7 +792,7 @@ describe("harness self-check", () => {
   })
 
   it("detects a dropped non-delegated handler (event-dom)", async () => {
-    const result = await compareToOracle("non-delegated-event", {
+    const result = await compareToClean("non-delegated-event", {
       source: drop("onMouseLeave={() => hovered.set(false)}"),
     })
     expect(result.ok).toBe(false)
@@ -1043,7 +800,7 @@ describe("harness self-check", () => {
   })
 
   it("detects a dropped tuple handler (event-dom)", async () => {
-    const result = await compareToOracle("delegated-handler-tuple", {
+    const result = await compareToClean("delegated-handler-tuple", {
       source: drop('onClick={[pick, "b"]}'),
     })
     expect(result.ok).toBe(false)
@@ -1051,13 +808,13 @@ describe("harness self-check", () => {
   })
 
   it("detects a dropped object ref (step-dom)", async () => {
-    const result = await compareToOracle("ref-binding", { source: drop(" ref={box}") })
+    const result = await compareToClean("ref-binding", { source: drop(" ref={box}") })
     expect(result.ok).toBe(false)
     expect(result.divergences.map((d) => d.kind)).toContain("step-dom")
   })
 
   it("detects a dropped callback ref (initial-dom)", async () => {
-    const result = await compareToOracle("ref-binding", {
+    const result = await compareToClean("ref-binding", {
       source: drop(' ref={(el: HTMLElement) => el.setAttribute("data-reffed", "yes")}'),
     })
     expect(result.ok).toBe(false)
@@ -1081,46 +838,42 @@ describe("harness self-check", () => {
   it("detects a spurious template marker (marker-count)", async () => {
     // normalize.ts rule 4 fuses text runs across an empty comment, so no DOM
     // comparison can see this one. The count bound is the only detector.
-    const result = await compareToOracle("text-hole-trailing", {
+    const result = await compareToClean("text-hole-trailing", {
       emitted: (code) => code.replace('<div class="counter">', '<div class="counter"><!---->'),
     })
     expect(result.ok).toBe(false)
     expect(result.divergences.map((d) => d.kind)).toContain("marker-count")
   })
 
-  it("a declared live hole lifts the effect bound, across every frame", async () => {
-    // What M3 turns on: an auto-thunked hole costs one extra effect that re-runs
-    // once per scripted step. The DOM is identical throughout.
+  /**
+   * The channel that made `goesLive` necessary, stated without it.
+   *
+   * Turning a static attribute into a live one costs exactly one effect that
+   * re-runs once per frame. Under the retired oracle that read as the compiled
+   * path creating MORE effects than the reference, so the fixture had to buy
+   * the difference back with a declaration. Between two builds of one fixture
+   * there is nothing to buy: the corruption creates one effect the clean build
+   * does not, the equality reports it, and `effect-counts.ts` carries the
+   * absolute number for the clean build.
+   */
+  it("a hole that goes live costs one effect, re-running once per frame", async () => {
     const goLive = (src: string) =>
       src.replace('class="counter"', 'class={() => (count(), "counter")}')
-    const declare = (code: string) => `${code}\nexport const goesLive = ["counter class"]\n`
 
-    const undeclared = await compareToOracle("text-hole-trailing", { source: goLive })
-    expect(undeclared.ok).toBe(false)
-    expect(undeclared.divergences.map((d) => d.kind)).toContain("effect-count")
-
-    const declared = await compareToOracle("text-hole-trailing", {
-      source: goLive,
-      emitted: (code) => declare(goLive(code)),
-    })
-    expect(declared.divergences).toEqual([])
-    expect(declared.ok).toBe(true)
-    expect(declared.effectDelta).toBe(1)
-    // the run delta is per-frame, which is exactly what the flat `+ slack` bound
-    // used to get wrong
-    expect(declared.runDelta).toBeGreaterThan(1)
-  })
-
-  it("detects a goesLive declaration that is not earning its slack (stale)", async () => {
-    const result = await compareToOracle("text-hole-trailing", {
-      emitted: (code) => `${code}\nexport const goesLive = ["nothing is live here"]\n`,
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.message).join("\n")).toContain("stale goesLive")
+    const result = await compareToClean("text-hole-trailing", { source: goLive })
+    expect(result.divergences.map((d) => d.kind)).toContain("effect-count")
+    expect(result.effectDelta).toBe(1)
+    // The run delta is per-frame, which is exactly what a flat `+ 1` bound used
+    // to get wrong.
+    expect(result.runDelta).toBeGreaterThan(1)
+    // And the DOM is identical throughout: this is reactive work nothing else
+    // in the harness can see.
+    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom")
+    expect(result.divergences.map((d) => d.kind)).not.toContain("step-dom")
   })
 
   it("an uncorrupted fixture is not reported as divergent", async () => {
-    const result = await compareToOracle("text-hole-trailing")
+    const result = await compareToClean("text-hole-trailing", {})
     expect(result.divergences).toEqual([])
     expect(result.ok).toBe(true)
   })

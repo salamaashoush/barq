@@ -6,13 +6,13 @@
  * dropped clone, from the other end. This is the direct statement: the resolved
  * Block is invoked once, when the resource resolves, and not before.
  */
-import { Await, Suspense, signal, useResource } from "@barqjs/core"
+import { Await, Suspense, signal, resource } from "@barqjs/core"
 
 export const log: string[] = []
 
 export const settled = signal<((value: string) => void) | null>(null)
 
-const value = useResource<string>(
+const value = resource<string>(
   () => null,
   () =>
     new Promise<string>((resolve) => {

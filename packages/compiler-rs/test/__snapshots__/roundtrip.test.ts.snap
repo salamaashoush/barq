@@ -42,40 +42,7 @@ export const steps = [
   () => rows.set([]),
   () => rows.set(["x", "y"])
 ];
-// \`rows().length\` is a bare tracked read the compiler binds (O4). The array
-// hole is an author-written thunk, so the un-compiled path binds that one too.
-export const goesLive = ["rows().length"];
 const frame = (items: string[]): string => \`<ul class="list">\${items.map((r) => \`<li class="row">\${r}</li>\`).join("")}\` + \`<li class="count">\${items.length}</li></ul>\`;
-export const wins = [
-  {
-    kind: "step" as const,
-    index: 0,
-    compiled: frame([
-      "a",
-      "b",
-      "c"
-    ]),
-    why: "the array hole is live"
-  },
-  {
-    kind: "step" as const,
-    index: 1,
-    compiled: frame(["c"]),
-    why: "and it shrinks"
-  },
-  {
-    kind: "step" as const,
-    index: 2,
-    compiled: frame([]),
-    why: "and it empties without taking the sibling hole with it"
-  },
-  {
-    kind: "step" as const,
-    index: 3,
-    compiled: frame(["x", "y"]),
-    why: "and it refills"
-  }
-];
 "
 `;
 
@@ -102,6 +69,37 @@ export default function ArrowBodyComponent(_s$) {
 }
 ArrowBodyComponent = _$block(ArrowBodyComponent);
 export const steps = [() => n.set(2), () => n.set(3)];
+"
+`;
+
+exports[`emitted code snapshots async-value 1`] = `
+"import { computed, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="async"><span></span></div>\`);
+export const who = signal("ada");
+/**
+* \`computed\` without a key is a \`Computed<T>\`, so the value is behind a CALL
+* and \`user.name\` is a member read on the accessor itself — the read has to be
+* \`user().name\`, and \`user\` alone is inert.
+*/
+const user = computed(() => ({ name: who() }));
+export default function AsyncValue(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  _$insert(_s$, _el$2, () => user().name);
+  return _el$1;
+}
+AsyncValue = _$block(AsyncValue);
+export const steps = [() => who.set("grace"), () => who.set("hopper")];
+export const optimality = {
+  target: 1,
+  milestone: 5,
+  templates: 1,
+  // \`computed\` returns an Accessor like \`computed\` does, so the CALL is the
+  // tracked read and the member on its result rides along inside one thunk —
+  // not two reads and not a member on an Opaque object.
+  emits: ["() => user().name"],
+  absent: ["get name()"]
+};
 "
 `;
 
@@ -225,17 +223,6 @@ export default function AutoThunkedRead(_s$) {
 }
 AutoThunkedRead = _$block(AutoThunkedRead);
 export const steps = [() => count.set(2)];
-export const goesLive = [
-  "title={\`count: \${count()}\`}",
-  "{\`n=\${count()}\`}",
-  "{count()}"
-];
-export const wins = [{
-  kind: "step",
-  index: 0,
-  compiled: "<div><p title=\\"count: 2\\">attr</p><span>n=2</span><b>2</b></div>",
-  why: "the oracle read count() once at createElement time; the compiled path bound it"
-}];
 export const optimality = {
   target: 1,
   milestone: 3,
@@ -706,11 +693,6 @@ export default function ComponentBoundaryProps(_s$) {
 }
 ComponentBoundaryProps = _$block(ComponentBoundaryProps);
 export const steps = [() => name.set("barq")];
-// Two \`Greeting\` instances, each reading \`props.name\` and \`props.punctuation\`
-// through a \`PropsParam\` binding. \`createElement\` copies the props object, so
-// the oracle reads both once; the compiled call site passes getters and the
-// reads stay live across the boundary.
-export const goesLive = ["Greeting 1 props", "Greeting 2 props"];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -829,10 +811,6 @@ export default function ComponentChildrenSlot(_s$) {
 }
 ComponentChildrenSlot = _$block(ComponentChildrenSlot);
 export const steps = [() => badge.set(7), () => badge.set(0)];
-// Both props are read through a \`PropsParam\` binding, so the compiled callee
-// binds where \`createElement\` copied the props object once — including
-// \`children\`, which the caller handed over as a built array.
-export const goesLive = ["Panel title", "Panel children"];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -937,10 +915,6 @@ ComponentForwardedHandlerTuple = _$block(ComponentForwardedHandlerTuple);
 export const events = [(root: HTMLElement): void => {
   root.querySelector("button")?.click();
 }];
-// \`data-tone\`, \`data-same\` and \`data-render-same\` are three props reads on one
-// element, so they share ONE effect the oracle never creates at all — it read
-// the copied props object once at construction.
-export const goesLive = ["Chip data-tone/data-same/data-render-same"];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -1014,15 +988,6 @@ ComponentFunctionProps = _$block(ComponentFunctionProps);
 export const events = [(root: HTMLElement): void => {
   root.querySelector("button")?.click();
 }];
-// \`{n()}\` is a bare read the compiler thunks (O4), and \`data-same\` is a member
-// read on the props object, which crosses the boundary as a getter.
-export const goesLive = ["count", "Chip data-same"];
-export const wins = [{
-  kind: "event" as const,
-  index: 0,
-  compiled: "<div class=\\"wrap\\"><b class=\\"count\\" data-clicked=\\"2\\">2</b>" + "<button class=\\"chip\\" data-same=\\"true\\" type=\\"button\\">legacy</button></div>",
-  why: "the delegated tuple fired and the compiled count is live, where createElement read \`n()\` once at construction"
-}];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -1072,13 +1037,6 @@ export default function ComponentGetterProps(_s$) {
 }
 ComponentGetterProps = _$block(ComponentGetterProps);
 export const steps = [() => total.set(7)];
-export const goesLive = ["Badge count"];
-export const wins = [{
-  kind: "step" as const,
-  index: 0,
-  compiled: "<div class=\\"wrap\\"><b class=\\"badge\\">7</b></div>",
-  why: "createElement copies the props object, so the oracle's \`count\` is a snapshot; the compiled call site passes a getter and the read stays live"
-}];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -1140,10 +1098,6 @@ export default function ComponentSpread(_s$) {
 }
 ComponentSpread = _$block(ComponentSpread);
 export const steps = [() => label.set("second")];
-// One coalesced effect per \`Chip\` for \`data-tone\` + \`id\`, both read off the
-// props object the compiled call site handed over. The oracle reads them once
-// out of \`{ ...props }\` and can never see a later write.
-export const goesLive = ["Chip 1 tone/id", "Chip 2 tone/id"];
 export const optimality = {
   target: 4,
   milestone: 5,
@@ -1160,6 +1114,34 @@ export const optimality = {
     "\\"id\\""
   ],
   absent: ["(Chip, {", "spread("]
+};
+"
+`;
+
+exports[`emitted code snapshots computed-derived 1`] = `
+"import { computed, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="memo"><span></span><b></b></p>\`);
+const count = signal(2);
+/** A \`Computed<T>\`: an Accessor whose dep set is its body's, one level removed. */
+const doubled = computed(() => count() * 2);
+export default function ComputedDerived(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$insert(_s$, _el$2, () => doubled() + 1);
+  _$insert(_s$, _el$3, doubled);
+  return _el$1;
+}
+ComputedDerived = _$block(ComputedDerived);
+export const steps = [() => count.set(5), () => count.set(0)];
+export const optimality = {
+  target: 1,
+  milestone: 5,
+  templates: 1,
+  // \`computed\` returns an Accessor, so calling it is a tracked read and the bare
+  // hole in the \`<b>\` passes the accessor itself: no closure per hole, and
+  // \`insert\` calls it exactly as it would call a thunk.
+  emits: ["() => doubled() + 1", ", doubled)"]
 };
 "
 `;
@@ -1182,22 +1164,6 @@ export const steps = [
   () => mode.set("none"),
   () => mode.set("a")
 ];
-// The un-compiled path appends this hole with \`marker = null\`, so when the hole
-// re-renders, \`insert\` reconciles against "the end of the parent" and the new
-// node lands AFTER <footer>. The compiled path keeps an anchor for the hole, so
-// the replacement lands where the source puts it. Same initial DOM, and the
-// oracle is the one that is wrong afterwards.
-export const wins = [{
-  kind: "step" as const,
-  index: 0,
-  compiled: "<div><em>B</em><footer>end</footer></div>",
-  why: "createElement appends the hole with no anchor, so its replacement moves to the end"
-}, {
-  kind: "step" as const,
-  index: 2,
-  compiled: "<div><span class=\\"a\\">A</span><footer>end</footer></div>",
-  why: "createElement appends the hole with no anchor, so its replacement moves to the end"
-}];
 "
 `;
 
@@ -1242,56 +1208,54 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-await-suspense 1`] = `
-"import { Await, signal, useResource, template as _$template, insert as _$insert, block as _$block, boundary as _$boundary } from "@barqjs/core";
+"import { signal, resource, template as _$template, insert as _$insert, block as _$block, boundary as _$boundary } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="pending">waiting</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<span class="loading">loading</span>\`);
 const _tmpl$4 = /* @__PURE__ */ _$template(\`<span class="failed"></span>\`);
 const _tmpl$5 = /* @__PURE__ */ _$template(\`<p class="loaded"></p>\`);
 export const settled = signal<((value: string) => void) | null>(null);
-const value = useResource<string>(() => null, () => new Promise<string>((resolve) => {
+const value = resource<string>(() => null, () => new Promise<string>((resolve) => {
   settled.set(resolve);
 }));
 export default function ControlFlowAwaitSuspense(_s$) {
   const _el$1 = _tmpl$1();
-  _$boundary(_s$, _el$1, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => Await(_s$, {
-    resource: () => value,
-    loading: _$block((_s$) => _tmpl$3()),
-    error: _$block((_s$, error: Error) => {
-      const _el$2 = _tmpl$4();
-      _$insert(_s$, _el$2, error.message);
-      return _el$2;
-    }),
-    children: _$block((_s$, data: string) => {
-      const _el$3 = _tmpl$5();
-      _$insert(_s$, _el$3, data);
-      return _el$3;
-    })
-  })));
+  _$boundary(_s$, _el$1, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => _$boundary(_s$, null, null, "loading", _$block((_s$) => _tmpl$3()), _$block((_s$) => _$boundary(_s$, null, null, "error", _$block((_s$, _v$, _v$r) => _$block((_s$, error: Error) => {
+    const _el$2 = _tmpl$4();
+    _$insert(_s$, _el$2, error.message);
+    return _el$2;
+  })(_s$, _v$(), _v$r)), _$block((_s$) => _$block((_s$, data: string) => {
+    const _el$3 = _tmpl$5();
+    _$insert(_s$, _el$3, data);
+    return _el$3;
+  })(_s$, value)))))));
   return _el$1;
 }
 ControlFlowAwaitSuspense = _$block(ControlFlowAwaitSuspense);
 export const steps = [() => settled()?.("ready")];
 export const optimality = {
   target: 8,
-  milestone: 5,
+  milestone: 9,
   templates: 5,
-  // K5 from both sides in one module. \`Suspense\` LOWERS: it becomes \`boundary\`
-  // under the kind string \`"loading"\`, taking the insertion pair the walk
-  // computed and its fallback positionally. \`Await\` REFUSES — it tells a
-  // Resource from a Cell carrying one by a property test on the value, and its
-  // key and all three of its bodies each need the resolved resource, which
-  // without a shared local is four evaluations of one prop — so it keeps the
-  // adapter and reaches the same runtime one frame later. It takes the RESOLVED
-  // DATA in its children, so that callback keeps its parameter and its arrow.
+  // K5 from both sides in one module, and since M9 both sides are the same
+  // side. \`Suspense\` becomes \`boundary\` under the kind string \`"loading"\`,
+  // taking the insertion pair the walk computed and its fallback positionally.
+  // \`Await\` becomes TWO boundaries — loading outside, error inside — because
+  // its three states are what reading a resource does: throw \`NotReady\`, throw
+  // the error, return the value. The resource is referenced ONCE, where the
+  // body reads it, so the property test that told a Resource from a Cell
+  // carrying one has nothing left to decide.
   emits: [
     "boundary(",
     "\\"loading\\"",
-    "Await(",
-    "resource: () => value",
+    "\\"error\\"",
     ", data: string) =>"
   ],
-  absent: ["Suspense("]
+  absent: [
+    "Suspense(",
+    "Await(",
+    "resource: "
+  ]
 };
 "
 `;
@@ -1349,7 +1313,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-errored-loading 1`] = `
-"import { Reveal, signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block, boundary as _$boundary, bindEvent as _$bindEvent } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block, boundary as _$boundary, reveal as _$reveal, bindEvent as _$bindEvent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="fine">fine</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="busy">busy</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
@@ -1361,15 +1325,12 @@ function Flaky(_s$) {
   return _tmpl$1();
 }
 export default function ControlFlowErroredLoading(_s$) {
-  return Reveal(_s$, {
-    order: _k$1,
-    children: _$block((_s$) => _$boundary(_s$, null, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => _$boundary(_s$, null, null, "error", _$block((_s$, error, reset) => {
-      const _el$1 = _tmpl$3();
-      _$bindEvent(_s$, _el$1, "click", reset);
-      _$insert(_s$, _el$1, error().message);
-      return _el$1;
-    }), _$block((_s$) => Flaky(_s$, {}))))))
-  });
+  return _$reveal(_s$, _k$1, () => void 0, _$block((_s$) => _$boundary(_s$, null, null, "loading", _$block((_s$) => _tmpl$2()), _$block((_s$) => _$boundary(_s$, null, null, "error", _$block((_s$, error, reset) => {
+    const _el$1 = _tmpl$3();
+    _$bindEvent(_s$, _el$1, "click", reset);
+    _$insert(_s$, _el$1, error().message);
+    return _el$1;
+  }), _$block((_s$) => Flaky(_s$, {})))))));
 }
 ControlFlowErroredLoading = _$block(ControlFlowErroredLoading);
 export const events = [(root: HTMLElement) => {
@@ -1380,14 +1341,13 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 3,
-  // Two of the three constructs cease to exist (K5): \`Loading\` and \`Errored\`
-  // are the same \`boundary\` primitive under two kind strings, and the arms are
-  // Blocks handed to it positionally. \`Reveal\` is NOT lowered — it creates a
-  // PROVIDE scope, not a range, so it is not one of the four primitives — and
-  // it stays the ordinary call it always was. \`Errored\`'s fallback takes an
-  // error ACCESSOR, so the read inside it is still a call.
+  // All three constructs cease to exist (K5): \`Loading\` and \`Errored\` are the
+  // same \`boundary\` primitive under two kind strings, and \`Reveal\` is the
+  // \`reveal\` call its provide scope always was. The arms are Blocks handed over
+  // positionally; \`Errored\`'s fallback takes an error ACCESSOR, so the read
+  // inside it is still a call.
   emits: [
-    "Reveal(",
+    "reveal(",
     "boundary(",
     "\\"loading\\"",
     "\\"error\\"",
@@ -1396,12 +1356,14 @@ export const optimality = {
   // Both boundaries stand FREE of any template — the construct is the whole of
   // \`Reveal\`'s children, so there is no walk to take a pair from and the region
   // expands in place with \`(null, null)\`, which is \`flow.ts\`'s own \`siteFor\`
-  // path. The adapter frames -O0 still pays are the two named props each
-  // boundary took; \`Reveal\`'s own props object survives, because \`Reveal\` does.
+  // path. The adapter frames -O0 still pays are the named props all three
+  // constructs took, and none of them survives here.
   absent: [
     "Loading(",
     "Errored(",
-    "fallback: "
+    "Reveal(",
+    "fallback: ",
+    "children: "
   ]
 };
 "
@@ -1555,31 +1517,6 @@ export const steps = [
   ]),
   () => rows.set(["only"])
 ];
-export const goesLive = [
-  "row 0 {row()}",
-  "row 1 {row()}",
-  "row 2 {row()}"
-];
-export const wins = [
-  {
-    kind: "step",
-    index: 0,
-    compiled: "<ul class=\\"keyed-false\\"><li>0: ALPHA</li><li>1: BETA</li></ul>",
-    why: "positional rows are reused, so the item accessor is the only thing that moved"
-  },
-  {
-    kind: "step",
-    index: 1,
-    compiled: "<ul class=\\"keyed-false\\"><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li></ul>",
-    why: "the two reused slots keep the values the oracle read once at creation"
-  },
-  {
-    kind: "step",
-    index: 2,
-    compiled: "<ul class=\\"keyed-false\\"><li>0: only</li></ul>",
-    why: "slot 0 survives the shrink and its accessor is bound to the new value"
-  }
-];
 export const optimality = {
   target: 1,
   milestone: 3,
@@ -1652,25 +1589,6 @@ export const steps = [
   }]),
   () => rows.set([])
 ];
-// Two holes per row, and the list is two rows long: the slack is counted in
-// live BINDINGS, not in source positions.
-export const goesLive = [
-  "row 0 {index()}",
-  "row 0 {row().text}",
-  "row 1 {index()}",
-  "row 1 {row().text}"
-];
-export const wins = [{
-  kind: "step",
-  index: 0,
-  compiled: "<ul class=\\"keyed-fn\\"><li>0: ALPHA</li><li>1: BETA</li></ul>",
-  why: "same keys, new items: the row signal was re-set and the compiled path is bound to it"
-}, {
-  kind: "step",
-  index: 1,
-  compiled: "<ul class=\\"keyed-fn\\"><li>0: BETA</li><li>1: ALPHA</li></ul>",
-  why: "the reused rows swapped slots, so the index accessor moved under both of them"
-}];
 export const optimality = {
   target: 1,
   milestone: 3,
@@ -1746,18 +1664,6 @@ export const steps = [() => rows.set([{
   id: 1,
   text: "ALPHA"
 }])];
-export const goesLive = ["row 0 {row().text}", "row 1 {row().text}"];
-export const wins = [{
-  kind: "step",
-  index: 0,
-  compiled: "<ul class=\\"keyed-spread\\"><li>ALPHA</li><li>BETA</li></ul>",
-  why: "the un-compiled path reads row().text once, so only the live binding sees the new items"
-}, {
-  kind: "step",
-  index: 1,
-  compiled: "<ul class=\\"keyed-spread\\"><li>ALPHA</li></ul>",
-  why: "the surviving row keeps the value it was re-pointed at in step 0"
-}];
 export const optimality = {
   target: 1,
   milestone: 3,
@@ -1820,18 +1726,6 @@ export const steps = [() => rows.set([{
   id: 2,
   text: "BETA"
 }])];
-export const goesLive = ["row 0 {row().text}", "row 1 {row().text}"];
-export const wins = [{
-  kind: "step",
-  index: 0,
-  compiled: "<ul class=\\"keyed-var\\"><li>ALPHA</li><li>BETA</li></ul>",
-  why: "the keys did not move, so only a live binding sees the new item behind them"
-}, {
-  kind: "step",
-  index: 1,
-  compiled: "<ul class=\\"keyed-var\\"><li>BETA</li></ul>",
-  why: "the surviving row carries the value it was re-pointed at in step 0"
-}];
 export const optimality = {
   target: 1,
   milestone: 3,
@@ -2082,7 +1976,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-reveal 1`] = `
-"import { Reveal, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block, reveal as _$reveal } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="reveal-host"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="first"></p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="second">tail</p>\`);
@@ -2096,36 +1990,35 @@ export const label = signal("one");
 */
 export default function ControlFlowReveal(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Reveal(_s$, {
-    order: _k$1,
-    children: _$block((_s$) => [(() => {
-      const _el$2 = _tmpl$2();
-      _$insert(_s$, _el$2, () => label());
-      return _el$2;
-    })(), _tmpl$3()])
-  }));
+  _$insert(_s$, _el$1, _$reveal(_s$, _k$1, () => void 0, _$block((_s$) => [(() => {
+    const _el$2 = _tmpl$2();
+    _$insert(_s$, _el$2, () => label());
+    return _el$2;
+  })(), _tmpl$3()])));
   return _el$1;
 }
 ControlFlowReveal = _$block(ControlFlowReveal);
 export const steps = [() => label.set("two")];
 export const optimality = {
   target: 8,
-  milestone: 5,
+  milestone: 9,
   templates: 3,
   // \`Reveal\` takes its children as nodes, so target #8 applies to both of them:
   // the one with a hole is built by an IIFE and the fully static one is a bare
   // clone. Neither is wrapped in a thunk the compiler would have had to
   // manufacture.
-  // K5 refuses \`Reveal\`, and the refusal is a fact rather than a gap: it
-  // creates a PROVIDE scope, not a range. \`ownership.rs\` says so and O1 lists
-  // \`provide\` separately from \`branch\`, so lowering it onto \`branch\` would put
-  // a context binding where a conditional belongs.
-  emits: [
-    "Reveal(",
-    "() => \\"sequential\\"",
-    "children: "
-  ],
-  absent: ["branch(", "children: () =>"]
+  //
+  // K5 lowers it to a CALL rather than to a region: it creates a PROVIDE scope,
+  // not a range — \`ownership.rs\` says so and O1 lists \`provide\` separately from
+  // \`branch\` — so the order and the collapsed flag arrive as Cells and the
+  // children as the Block they already were. What is gone is the props record
+  // in between.
+  emits: ["reveal(", "() => \\"sequential\\""],
+  absent: [
+    "branch(",
+    "children: ",
+    "Reveal("
+  ]
 };
 "
 `;
@@ -2349,7 +2242,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-show-fragment-body 1`] = `
-"import { signal, template as _$template, createElement as _$createElement, Fragment as _$Fragment, block as _$block, branch as _$branch } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="frag"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<i>fallback-one</i>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<u>fallback-two</u>\`);
@@ -2361,13 +2254,14 @@ export const on = signal(true);
 * through a full hide/show/hide cycle.
 *
 * This class had no coverage at all, and it hid a runtime bug that only becomes
-* reachable once the body is re-mounted: \`childToNodes(fragment)\` returns
-* \`Array.from(fragment.childNodes)\`, the first insert MOVES those nodes out, and
-* every later read of the same eager \`children\` found an EMPTY fragment. The
-* content was gone permanently after one toggle, on both paths — invisible to
-* the differential precisely because both paths lost it. The steps below drive
-* the cycle twice, so a fragment that drained would show up as an empty
-* \`<div class="frag">\` on the third frame.
+* reachable once the body is re-mounted: the eager form read the built
+* DocumentFragment's \`childNodes\`, the first insert MOVED those nodes out, and
+* every later read of the same children found an EMPTY fragment. The content
+* was gone permanently after one toggle, on both paths — invisible to the
+* differential precisely because both paths lost it. The steps below drive the
+* cycle twice, so a fragment that drained would show up as an empty
+* \`<div class="frag">\` on the third frame. A fragment is now an ARRAY of built
+* roots, which has no shared mutable container to drain.
 *
 * Target #8 makes this shape COMMON rather than rare: an eager multi-node body
 * is exactly what the compiler now hands over instead of a thunk.
@@ -2376,7 +2270,7 @@ export default function ControlFlowShowFragmentBody(_s$) {
   const _el$1 = _tmpl$1();
   _$branch(_s$, _el$1, null, () => on() || false, _$block((_s$) => {
     const _v$ = on();
-    return _v$ ? _$block((_s$) => _$createElement(_$Fragment, null, _tmpl$4(), _tmpl$5()))(_s$, _v$) : _$block((_s$) => _$createElement(_$Fragment, null, _tmpl$2(), _tmpl$3()))(_s$);
+    return _v$ ? _$block((_s$) => [_tmpl$4(), _tmpl$5()])(_s$, _v$) : _$block((_s$) => [_tmpl$2(), _tmpl$3()])(_s$);
   }));
   return _el$1;
 }
@@ -2391,18 +2285,14 @@ export const optimality = {
   milestone: 5,
   // Five: the host, and one per node in each multi-node fragment. Neither the
   // body nor the fallback is wrapped in a thunk the compiler manufactured —
-  // both are eager \`Fragment\` calls over built clones, which is the shape that
-  // makes the drained-fragment bug reachable at all.
+  // both are arrays of built clones inside the Block the branch owns.
   templates: 5,
-  emits: [
-    "branch(",
-    "() => on() || false",
-    "Fragment"
-  ],
+  emits: ["branch(", "() => on() || false"],
   absent: [
     "when:",
     "children:",
-    "fallback:"
+    "fallback:",
+    "createElement"
   ]
 };
 "
@@ -2645,37 +2535,6 @@ export const optimality = {
 "
 `;
 
-exports[`emitted code snapshots create-async-value 1`] = `
-"import { createAsync, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="async"><span></span></div>\`);
-export const who = signal("ada");
-/**
-* \`createAsync\` without a key is a \`Computed<T>\`, so the value is behind a CALL
-* and \`user.name\` is a member read on the accessor itself — the read has to be
-* \`user().name\`, and \`user\` alone is inert.
-*/
-const user = createAsync(() => ({ name: who() }));
-export default function CreateAsyncValue(_s$) {
-  const _el$1 = _tmpl$1();
-  const _el$2 = _el$1.firstChild;
-  _$insert(_s$, _el$2, () => user().name);
-  return _el$1;
-}
-CreateAsyncValue = _$block(CreateAsyncValue);
-export const steps = [() => who.set("grace"), () => who.set("hopper")];
-export const optimality = {
-  target: 1,
-  milestone: 5,
-  templates: 1,
-  // \`createAsync\` returns an Accessor like \`computed\` does, so the CALL is the
-  // tracked read and the member on its result rides along inside one thunk —
-  // not two reads and not a member on an Opaque object.
-  emits: ["() => user().name"],
-  absent: ["get name()"]
-};
-"
-`;
-
 exports[`emitted code snapshots create-optimistic-signal 1`] = `
 "import { createOptimistic, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="optimistic"></button>\`);
@@ -2794,25 +2653,24 @@ export default function DangerouslySetInnerHtml(_s$) {
   return _el$1;
 }
 DangerouslySetInnerHtml = _$block(DangerouslySetInnerHtml);
-export const goesLive = ["dangerouslySetInnerHTML={{ __html: html() }}"];
 "
 `;
 
 exports[`emitted code snapshots dashboard-composite 1`] = `
-"import { useState, useStore, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setLive as _$setLive, setClass as _$setClass } from "@barqjs/core";
+"import { signal, store, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, branch as _$branch, each as _$each, setLive as _$setLive, setClass as _$setClass, bindProp as _$bindProp } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><input class="search"><button type="button" class="tab">switch</button><ul class="rows"></ul></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="anon">anonymous</p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<h1>Hello, </h1>\`);
 const _tmpl$4 = /* @__PURE__ */ _$template(\`<li></li>\`);
 const _h$1 = (event: InputEvent) => setState("filters", "search", (event.target as HTMLInputElement).value);
-const _h$2 = () => setTab("other");
+const _h$2 = () => tab.set("other");
 _$delegateEvents(["click", "input"]);
-const [tab, setTab] = useState("posts");
-const [state, setState] = useStore({
+const tab = signal("posts");
+const [state, setState] = store({
   filters: { search: "" },
   user: { name: "John" }
 });
-const [rows, setRows] = useState(["alpha", "beta"]);
+const rows = signal(["alpha", "beta"]);
 /**
 * The dead plugin's "complete component", rebuilt as one module: a ternary
 * class over one source, a \`Show\` over another, a store read in a DOM_PROPS
@@ -2829,9 +2687,7 @@ export default function DashboardComposite(_s$) {
   _$bindEffect(_s$, () => ({ a: tab() === "posts" ? "posts" : "other" }), (_v$, _p$ = {}) => {
     _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
   });
-  _$bindEffect(_s$, () => state.filters.search, (_v$) => {
-    _$setLive(_el$2, "value", _v$);
-  });
+  _$bindProp(_s$, _el$2, _$setLive, "value", () => state.filters.search);
   _el$2.$$input = _h$1, _el$2.$$s = _s$;
   _el$3.$$click = _h$2, _el$3.$$s = _s$;
   _$branch(_s$, _el$1, _el$2, () => state.user.name !== "" || false, _$block((_s$) => {
@@ -2853,7 +2709,7 @@ DashboardComposite = _$block(DashboardComposite);
 export const steps = [
   () => setState("filters", "search", "q"),
   () => setState("user", "name", "Ada"),
-  () => setRows(["gamma"])
+  () => rows.set(["gamma"])
 ];
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click(), (root: HTMLElement) => {
   const input = root.querySelector("input") as HTMLInputElement;
@@ -3190,40 +3046,39 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots dynamic 1`] = `
-"import { Dynamic, signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, block as _$block, branch as _$branch, dyn as _$dyn } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _k$1 = () => "dyn";
 const _k$2 = () => "inner";
 export const tag = signal<"span" | "b">("span");
 export default function DynamicFixture(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Dynamic(_s$, {
-    component: tag,
+  _$branch(_s$, _el$1, null, tag, _$block((_s$) => _$dyn(_s$, tag, {
     class: _k$1,
     children: _k$2
-  }));
+  })));
   return _el$1;
 }
 DynamicFixture = _$block(DynamicFixture);
 export const steps = [() => tag.set("b"), () => tag.set("span")];
 export const optimality = {
   target: 8,
-  milestone: 5,
+  milestone: 9,
   templates: 1,
-  // \`component\` is one of the five props the runtime unwraps, so the accessor
-  // goes in bare; everything else \`Dynamic\` is given is an ordinary object
-  // property it spreads onto the element it renders.
-  // K5 refuses \`Dynamic\`: its string arm needs \`createDynamicElement\`, which is
-  // private to \`components.ts\` and not on the ABI §3.0 enumerates, so lowering
-  // it would mean a fifth element-creation path out of the compiler — the
-  // thing M4 deleted from the runtime.
+  // K5 lowers \`Dynamic\` onto the \`branch\` it always reached, keyed on the
+  // component itself: the swap and the teardown are the primitive's, and the
+  // body is one call that resolves the value. Its string arm builds through
+  // \`spread\` and \`insert\` — the two entry points every other element goes
+  // through — so the fifth element-creation path that kept this construct on
+  // its adapter does not exist to emit.
   emits: [
-    "Dynamic(",
-    "component: tag",
+    "branch(",
+    "dyn(",
     "() => \\"dyn\\"",
     "() => \\"inner\\""
   ],
-  absent: ["branch(", "component: () =>"]
+  // The adapter frame, and the props record it read \`component\` out of.
+  absent: ["Dynamic(", "component: "]
 };
 "
 `;
@@ -3261,31 +3116,6 @@ export default function EqualLiveness(_s$) {
 }
 EqualLiveness = _$block(EqualLiveness);
 export const steps = [() => tone.set("blue"), () => tone.set("green")];
-/**
-* ONE entry for THREE holes, and that is B2's arithmetic rather than a slip.
-* \`goesLive\` buys effect-count slack, and every bare read on this element is a
-* field of the same record — so three holes that the oracle reads once cost the
-* compiled path exactly one effect between them. Listing three would be a stale
-* declaration and the harness says so.
-*/
-export const goesLive = ["<b class={tone()} id={tone()} title={tone()}> — three bare reads, one fused effect"];
-/**
-* The oracle reads each hole once at \`createElement\` time and freezes there, so
-* every frame after the first is a divergence the compiled path is RIGHT about.
-* That is the same statement \`auto-thunked-read\` makes; this fixture makes it
-* about three names that used to disagree with each other.
-*/
-export const wins = [{
-  kind: "step" as const,
-  index: 0,
-  compiled: "<b class=\\"blue\\" id=\\"blue\\" title=\\"blue\\"></b>",
-  why: "the oracle read tone() once at construction; the compiled path bound all three"
-}, {
-  kind: "step" as const,
-  index: 1,
-  compiled: "<b class=\\"green\\" id=\\"green\\" title=\\"green\\"></b>",
-  why: "and \`class\` moves with its siblings, which is the whole of B1"
-}];
 export const optimality = {
   target: 4,
   milestone: 5,
@@ -3340,8 +3170,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots escaping-adversarial 1`] = `
-"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="adv"><p class="text"></p><p class="attr">attr</p><p class="static" title="&quot; onload=&quot;x">&lt;b&gt;not markup&lt;/b&gt; &amp;   𝕏 \u2028 done</p><pre class="pre"></pre><!----></div>\`);
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="adv"><p class="text"></p><p class="attr">attr</p><p class="static" title="&quot; onload=&quot;x">&lt;b&gt;not markup&lt;/b&gt; &amp;   𝕏 \u2028 done</p><pre class="pre"></pre><textarea class="area"></textarea><style class="sheet"></style></div>\`);
 export const markup = signal("<img src=x onerror=\\"alert(1)\\">");
 export const quoted = signal("\\" onmouseover=\\"alert(1)\\" data-x=\\"");
 export const amp = signal("a & b &amp; c &#38; d");
@@ -3383,6 +3213,7 @@ export default function EscapingAdversarial(_s$) {
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
   const _el$5 = _el$4.previousSibling;
+  const _el$6 = _el$5.previousSibling;
   _$bindEffect(_s$, () => ({
     a: quoted(),
     b: amp()
@@ -3390,10 +3221,10 @@ export default function EscapingAdversarial(_s$) {
     if (_v$.a !== _p$.a) _$setAttr(_el$3, "title", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$3, "data-amp", _v$.b);
   });
-  _$insert(_s$, _el$1, _$createElement("textarea", { class: "area" }, () => markup()), _el$4);
-  _$insert(_s$, _el$1, _$createElement("style", { class: "sheet" }, ".adv { color: red }"));
   _$insert(_s$, _el$2, () => markup());
+  _$insert(_s$, _el$6, () => markup());
   _$insert(_s$, _el$5, () => markup());
+  _$insert(_s$, _el$4, ".adv { color: red }");
   return _el$1;
 }
 EscapingAdversarial = _$block(EscapingAdversarial);
@@ -3522,10 +3353,10 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots for-each-local-function 1`] = `
-"import { useStore, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
+"import { store, template as _$template, insert as _$insert, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="filtered"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li></li>\`);
-const [state, setState] = useStore({ items: [{
+const [state, setState] = store({ items: [{
   name: "a",
   active: true
 }, {
@@ -3630,7 +3461,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots fragment-root 1`] = `
-"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, Fragment as _$Fragment, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<h2 class="head">head</h2>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="body"></p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<footer class="foot">foot</footer>\`);
@@ -3638,15 +3469,19 @@ export const label = signal("mid");
 /**
 * A component whose ROOT is a fragment. \`template()\` returns \`content.firstChild\`
 * and nothing else, so a multi-root unit cannot be one template — it is one
-* template per root plus an array, and \`insert\`, \`render\` and \`childToNodes\`
-* all have to accept that array.
+* template per root plus an array, and \`insert\` and \`render\` both have to
+* accept that array.
 */
 export default function FragmentRoot(_s$) {
-  return _$createElement(_$Fragment, null, _tmpl$1(), (() => {
-    const _el$1 = _tmpl$2();
-    _$insert(_s$, _el$1, () => label());
-    return _el$1;
-  })(), _tmpl$3());
+  return [
+    _tmpl$1(),
+    (() => {
+      const _el$1 = _tmpl$2();
+      _$insert(_s$, _el$1, () => label());
+      return _el$1;
+    })(),
+    _tmpl$3()
+  ];
 }
 FragmentRoot = _$block(FragmentRoot);
 export const steps = [() => label.set("changed")];
@@ -3658,7 +3493,8 @@ export const optimality = {
   // siblings, which would silently render only the first.
   templates: 3,
   patchCalls: 1,
-  emits: ["<h2 class=\\"head\\">head</h2>", "<footer class=\\"foot\\">foot</footer>"]
+  emits: ["<h2 class=\\"head\\">head</h2>", "<footer class=\\"foot\\">foot</footer>"],
+  absent: ["createElement"]
 };
 "
 `;
@@ -3893,49 +3729,42 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots inner-html-with-children 1`] = `
-"import { template as _$template, insert as _$insert, createElement as _$createElement, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<section class="wrap"><span>after</span></section>\`);
+"import { template as _$template, insert as _$insert, block as _$block, setHtml as _$setHtml } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<section class="wrap"><div class="raw"></div><span>after</span></section>\`);
 /**
 * \`dangerouslySetInnerHTML\` on an element that ALSO has JSX children — the last
 * of the dead plugin's template-codegen cases, and the one it handled by
 * bailing the whole element out of the template.
 *
-* \`createElement\` writes the props first and appends the children afterwards,
-* so the children survive the innerHTML write. A template bakes the children in
-* at PARSE time — before any patch runs — so the innerHTML write would erase
-* them, and the two paths would disagree about which one wins. The element is
-* therefore refused from the template outright (\`lower::names::replaces_children\`,
-* the same refusal \`<select multiple>\` takes) and goes down the \`createElement\`
-* path, where the runtime's own ordering settles it.
+* Neither bail is needed. The write is an ATTRIBUTE patch and attribute patches
+* run before inserts, so the order the un-compiled path got by applying props
+* before appending children is the order the patch program already has. What a
+* template cannot do is BAKE those children — the parser would put them there
+* and the write would delete them — so the element keeps its template and its
+* children become one insert after the write.
 *
-* No \`steps\`: the innerHTML value is read once by \`createElement\`, so any
-* scripted write to it is inert on the oracle side and would assert nothing.
+* No \`steps\`: the innerHTML value is a literal here, so a scripted write to it
+* would assert nothing.
 */
 export default function InnerHtmlWithChildren(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$insert(_s$, _el$1, _$createElement("div", {
-    class: "raw",
-    dangerouslySetInnerHTML: { __html: "<b>bold</b>" }
-  }, "replaced"), _el$2);
+  _$setHtml(_el$2, "dangerouslySetInnerHTML", { __html: "<b>bold</b>" });
+  _$insert(_s$, _el$2, "replaced");
   return _el$1;
 }
 InnerHtmlWithChildren = _$block(InnerHtmlWithChildren);
 export const optimality = {
   target: 2,
-  milestone: 5,
+  milestone: 9,
+  // One template for the whole section, the \`div\` included. Only the CHILDREN
+  // of the element whose content is replaced leave the template — the write
+  // would delete them where the parser put them, and it runs first.
   templates: 1,
-  // The refusal, and its blast radius. \`dangerouslySetInnerHTML\` beside
-  // children cannot be compiled: a template bakes the children first and the
-  // innerHTML write then deletes them, where \`createElement\` applies props
-  // before appending and the children win. So that ONE element bails — and the
-  // markup around it stays a template, with the bailed element as a hole in it.
-  emits: [
-    "<section class=\\"wrap\\"><span>after</span></section>",
-    "createElement(\\"div\\"",
-    "dangerouslySetInnerHTML"
-  ],
-  absent: ["<div class=\\"raw\\"", "<b>bold</b></div>"]
+  emits: ["<section class=\\"wrap\\"><div class=\\"raw\\"></div><span>after</span></section>", "dangerouslySetInnerHTML"],
+  // The children baked where the write would erase them, and the un-compiled
+  // builder that used to own the ordering.
+  absent: ["<div class=\\"raw\\">replaced", "createElement"]
 };
 "
 `;
@@ -4005,18 +3834,6 @@ export default function LiveCallHole(_s$) {
 }
 LiveCallHole = _$block(LiveCallHole);
 export const steps = [() => count.set("5"), () => label.set("c2")];
-export const goesLive = ["title/data-text, one group", "{String(count())}"];
-export const wins = [{
-  kind: "step" as const,
-  index: 0,
-  compiled: "<p class=\\"call-hole\\" data-text=\\"5\\" title=\\"5\\">5<b class=\\"control\\" title=\\"c1\\">c</b></p>",
-  why: "the oracle read count() once at createElement time; the compiled path bound both holes"
-}, {
-  kind: "step" as const,
-  index: 1,
-  compiled: "<p class=\\"call-hole\\" data-text=\\"5\\" title=\\"5\\">5<b class=\\"control\\" title=\\"c2\\">c</b></p>",
-  why: "the step-0 divergence persists into every later frame"
-}];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -4082,17 +3899,6 @@ export const steps = [
 // the two differ in what the hole is handed while the guard is false — \`false\`
 // here, \`null\` there.
 const frame = (mid: string, opt: string, zero: string, flag: boolean): string => \`<div class="cond"><span class="head">head</span>\${flag ? "<em class=\\"flag\\">on</em>" : ""}\` + \`<span class="mid">\${mid}</span><span class="opt">\${opt}</span>\` + \`<span class="zero">\${zero}</span><span class="tail">tail</span></div>\`;
-export const wins = [{
-  kind: "step" as const,
-  index: 4,
-  compiled: frame("fallback", "given", "nonzero", true),
-  why: "createElement appends the hole with no anchor, so the \`<em>\` returns at the end"
-}, {
-  kind: "step" as const,
-  index: 5,
-  compiled: frame("fallback", "given", "0", true),
-  why: "and it stays there for every later frame"
-}];
 export const optimality = {
   target: 9,
   milestone: 5,
@@ -4164,15 +3970,11 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots mathml 1`] = `
-"import { template as _$template, insert as _$insert, createElement as _$createElement, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
-const _tmpl$2 = /* @__PURE__ */ _$template(\`<mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow>\`);
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><math display="block"><mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow></math></div>\`);
 export default function MathMl(_s$) {
-  const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, _$createElement("math", { display: "block" }, _tmpl$2()));
-  return _el$1;
+  return _tmpl$1();
 }
-MathMl = _$block(MathMl);
 "
 `;
 
@@ -4249,7 +4051,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots nested-fragments 1`] = `
-"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, Fragment as _$Fragment, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="outer"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span>one</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<span></span>\`);
@@ -4258,11 +4060,15 @@ const _tmpl$5 = /* @__PURE__ */ _$template(\`<span>two</span>\`);
 export const label = signal("mid");
 export default function NestedFragments(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, _$createElement(_$Fragment, null, _tmpl$2(), _$createElement(_$Fragment, null, (() => {
-    const _el$2 = _tmpl$3();
-    _$insert(_s$, _el$2, () => label());
-    return _el$2;
-  })(), _tmpl$4()), _tmpl$5()));
+  _$insert(_s$, _el$1, [
+    _tmpl$2(),
+    [(() => {
+      const _el$2 = _tmpl$3();
+      _$insert(_s$, _el$2, () => label());
+      return _el$2;
+    })(), _tmpl$4()],
+    _tmpl$5()
+  ]);
   return _el$1;
 }
 NestedFragments = _$block(NestedFragments);
@@ -4276,40 +4082,36 @@ export const optimality = {
   // become a root of its own.
   templates: 5,
   emits: [
-    "Fragment",
     "<span>one</span>",
     "<b>deep</b>",
     "<span>two</span>"
   ],
-  // The nesting is preserved rather than flattened: flattening changes what
-  // \`childToNodes\` walks and the order nodes are inserted in.
-  absent: ["<div class=\\"outer\\"><span>one</span>"]
+  // The nesting is preserved rather than flattened: flattening changes the
+  // order the nodes are inserted in. A fragment is the ARRAY of its parts and
+  // nothing else — there is no component behind it, so nothing re-derives at
+  // run time what the nesting already says.
+  absent: ["<div class=\\"outer\\"><span>one</span>", "createElement"]
 };
 "
 `;
 
 exports[`emitted code snapshots nested-template-element 1`] = `
-"import { template as _$template, insert as _$insert, createElement as _$createElement, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><ul></ul></div>\`);
-const _tmpl$2 = /* @__PURE__ */ _$template(\`<li class="row"><span>cell</span></li>\`);
+"import { template as _$template } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><template id="row"><li class="row"><span>cell</span></li></template><ul></ul></div>\`);
 export default function NestedTemplateElement(_s$) {
-  const _el$1 = _tmpl$1();
-  const _el$2 = _el$1.firstChild;
-  _$insert(_s$, _el$1, _$createElement("template", { id: "row" }, _tmpl$2()), _el$2);
-  return _el$1;
+  return _tmpl$1();
 }
-NestedTemplateElement = _$block(NestedTemplateElement);
 export const optimality = {
   target: 2,
-  milestone: 5,
-  templates: 2,
-  // A \`<template>\` ELEMENT in the source cannot itself be baked into a
-  // \`template()\` string: the HTML parser puts its children into a
-  // DocumentFragment on \`.content\`, so a clone of the outer template would
-  // carry them somewhere \`firstChild\` cannot reach. It is built through
-  // \`createElement\` while its child stays a template of its own.
-  emits: ["createElement(\\"template\\", { id: \\"row\\" }", "<li class=\\"row\\"><span>cell</span></li>"],
-  absent: ["<template"]
+  milestone: 9,
+  templates: 1,
+  // A \`<template>\` ELEMENT is baked whole. The parser puts its children on
+  // \`.content\` and \`cloneNode\` copies that, so the clone carries them — the
+  // one thing it does not carry is a walk into them, because the element's own
+  // \`firstChild\` is null. That costs nothing here and is why a \`<template>\`
+  // holding a HOLE leaves the template path instead.
+  emits: ["<template id=\\"row\\"><li class=\\"row\\"><span>cell</span></li></template>"],
+  absent: ["createElement"]
 };
 "
 `;
@@ -4427,8 +4229,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots pre-dynamic-leading-newline 1`] = `
-"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="doc"><pre class="hole"></pre></div>\`);
+"import { signal, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="doc"><pre class="hole"></pre><textarea class="field"></textarea></div>\`);
 export const body = signal("\\nfirst line\\nsecond line");
 export const draft = signal("\\ndraft");
 /**
@@ -4460,8 +4262,9 @@ export const draft = signal("\\ndraft");
 export default function PreDynamicLeadingNewline(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$insert(_s$, _el$1, _$createElement("textarea", { class: "field" }, () => draft()));
+  const _el$3 = _el$1.lastChild;
   _$insert(_s$, _el$2, () => body());
+  _$insert(_s$, _el$3, () => draft());
   return _el$1;
 }
 PreDynamicLeadingNewline = _$block(PreDynamicLeadingNewline);
@@ -4729,13 +4532,6 @@ export default function PropsRawForward(_s$) {
 }
 PropsRawForward = _$block(PropsRawForward);
 export const steps = [() => tone.set("cool")];
-export const goesLive = ["Chip data-tone", "Chip text"];
-export const wins = [{
-  kind: "step" as const,
-  index: 0,
-  compiled: "<div class=\\"wrap\\"><span class=\\"chip\\" data-tone=\\"cool\\">cool</span></div>",
-  why: "the getter survives both layers, so the read stays live where createElement's copied props object froze it at the outermost call"
-}];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -4797,8 +4593,9 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots props-rest-spread 1`] = `
-"import { signal, template as _$template, insert as _$insert, createElement as _$createElement, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
+"import { signal, template as _$template, insert as _$insert, spread as _$spread, block as _$block, setClass as _$setClass } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<span></span>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
 const _k$1 = () => "chip-1";
 const _k$2 = () => "warm";
 export const label = signal("first");
@@ -4815,33 +4612,42 @@ function Chip(_s$, props: {
   "data-tone": string;
 }) {
   const { text, ...rest } = props;
-  return _$createElement("span", {
-    class: "chip",
-    ...rest
-  }, text);
+  const _el$1 = _tmpl$1();
+  _$setClass(_el$1, "class", "chip");
+  _$spread(_s$, _el$1, () => rest);
+  _$insert(_s$, _el$1, text);
+  return _el$1;
 }
 Chip = _$block(Chip);
 export default function PropsRestSpread(_s$) {
-  const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, Chip(_s$, {
+  const _el$2 = _tmpl$2();
+  _$insert(_s$, _el$2, Chip(_s$, {
     text: label,
     id: _k$1,
     "data-tone": _k$2
   }));
-  return _el$1;
+  return _el$2;
 }
 PropsRestSpread = _$block(PropsRestSpread);
 export const steps = [() => label.set("second")];
 export const optimality = {
   target: 1,
-  milestone: 5,
-  // One template, for the outer div. \`Chip\` spreads its rest object onto an
-  // intrinsic element, which is the \`createElement\` path by design: a spread
-  // can be shadowed by a later attribute and vice versa, so the baked/patched
-  // partition a template needs does not exist.
-  templates: 1,
-  emits: ["Chip(", "...rest"],
-  absent: ["get text()", "(Chip, {"]
+  milestone: 9,
+  // Two templates: the outer div, and \`Chip\`'s own span. The spread does not
+  // take the span off the template path — it takes its ATTRIBUTES off it, and
+  // \`class="chip"\` is applied in source order beside the spread rather than
+  // baked, because a key inside \`rest\` may name it.
+  templates: 2,
+  emits: [
+    "Chip(",
+    "spread(",
+    "rest"
+  ],
+  absent: [
+    "get text()",
+    "(Chip, {",
+    "createElement"
+  ]
 };
 "
 `;
@@ -5055,9 +4861,6 @@ export const steps = [() => {
   viaComponent.current?.setAttribute("data-component-ref", viaComponent.current.className);
   viaElement.current?.setAttribute("data-element-ref", viaElement.current.className);
 }];
-// \`props.label\` is a \`PropsParam\` member read, so it crosses the boundary as a
-// getter and stays live where the oracle's copied props object froze it.
-export const goesLive = ["Boxed label"];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -5102,12 +4905,6 @@ export default function RefWritableBinding(_s$) {
   return _el$1;
 }
 export const steps = [() => box?.setAttribute("data-el", box.className)];
-export const wins = [{
-  kind: "step" as const,
-  index: 0,
-  compiled: "<p><i class=\\"k\\" data-el=\\"k\\">x</i></p>",
-  why: "a writable ref binding is an assignment the compiler emits; a props object cannot write one"
-}];
 export const optimality = {
   target: 1,
   milestone: 5,
@@ -5189,46 +4986,40 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots select-option-multiple 1`] = `
-"import { template as _$template, createElement as _$createElement, block as _$block, setDomProp as _$setDomProp } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<option>one</option>\`);
-const _tmpl$2 = /* @__PURE__ */ _$template(\`<option>two</option>\`);
+"import { template as _$template, setDomProp as _$setDomProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<select class="picker" multiple><option>one</option><option>two</option></select>\`);
 /**
-* \`<select>\` is a reshaping element, so the compiler refuses to put it in a
-* template and joins it back with \`createElement\`. The \`<option>\` children
-* still compile, which means each one arrives as a \`<template>\` CLONE rather
-* than as a freshly-constructed element — and a select decides its options'
-* default selectedness with the "ask for a reset" algorithm as each child
-* arrives.
+* A select decides its options' default selectedness with the "ask for a reset"
+* algorithm as each child arrives, and the answer depends on \`multiple\` being
+* in place before they are (§3.13 item 8).
+*
+* The parser puts it there. \`multiple\` is the one DOM_PROP whose ATTRIBUTE
+* carries the state rather than a default, so it is baked into the template and
+* the whole select — options included — is one clone. Written as a property
+* after the clone it would arrive too late and the first option would come out
+* selected, which is what made this element bail out of the template path
+* before M9.
 *
 * happy-dom models neither that algorithm nor \`HTMLSelectElement.value\`, so the
 * only place this shape is judged at all is the Chrome differential.
 */
 export default function SelectOptionMultiple(_s$) {
-  return _$createElement("select", {
-    class: "picker",
-    multiple: true
-  }, (() => {
-    const _el$1 = _tmpl$1();
-    _$setDomProp(_el$1, "value", "one");
-    return _el$1;
-  })(), (() => {
-    const _el$2 = _tmpl$2();
-    _$setDomProp(_el$2, "value", "two");
-    return _el$2;
-  })());
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$setDomProp(_el$2, "value", "one");
+  _$setDomProp(_el$3, "value", "two");
+  return _el$1;
 }
-SelectOptionMultiple = _$block(SelectOptionMultiple);
 export const optimality = {
   target: 2,
   milestone: 4,
-  // One template per option; the select itself is refused, correctly.
-  templates: 2,
-  emits: ["<option>one</option>", "<option>two</option>"],
-  // The tag as a TEMPLATE would spell it, attribute and all: the doc comment
-  // above names the bare tag too, and a module-wide search cannot tell markup
-  // from prose. Naming the emitted uid instead is not an option — a fixture that
-  // mentions one owns it, and hygiene then shifts every uid in the module.
-  absent: ["<select class=\\"picker\\">"]
+  // One template for the whole select, with \`multiple\` baked into it.
+  templates: 1,
+  emits: ["<select class=\\"picker\\" multiple><option>one</option><option>two</option></select>"],
+  // The select without its \`multiple\`, which is the shape that gets the
+  // ordering wrong, and the un-compiled path that used to build it.
+  absent: ["<select class=\\"picker\\">", "createElement"]
 };
 "
 `;
@@ -5395,21 +5186,74 @@ export const optimality = {
 "
 `;
 
+exports[`emitted code snapshots signal-object 1`] = `
+"import { signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="tuple"><span></span><button type="button">bump</button></div>\`);
+const _h$1 = () => count.update((n) => n + 1);
+_$delegateEvents(["click"]);
+/**
+* \`signal\` returns ONE binding that is both the read and the write: \`count()\`
+* is an Accessor and \`count.update(…)\` is a member call that writes. The shape
+* that matters to a symbol-resolving compiler is that the same identifier is
+* reactive as a CALL and inert as a MEMBER — so the handler that only writes
+* captures nothing and hoists to module scope.
+*/
+const count = signal(0);
+export default function SignalObject(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$bindEffect(_s$, () => String(count() + 1), (_v$, _p$) => {
+    if (_v$ !== _p$) _$setAttr(_el$2, "data-plus-one", _v$);
+  });
+  _el$3.$$click = _h$1, _el$3.$$s = _s$;
+  _$insert(_s$, _el$2, () => count() + 1);
+  return _el$1;
+}
+SignalObject = _$block(SignalObject);
+export const steps = [() => count.set(5), () => count.update((n) => n * 2)];
+export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
+export const optimality = {
+  target: 1,
+  milestone: 5,
+  templates: 1,
+  // The return-shape row: one binding, two verdicts. \`count()\` reads live, and
+  // \`count.update\` is a write rather than a tracked read — so the handler that
+  // only writes hoists to module scope with no closure at all.
+  emits: ["() => count() + 1", "= () => count.update("],
+  absent: ["() => count.set()"]
+};
+"
+`;
+
 exports[`emitted code snapshots spread-static-mix 1`] = `
-"import { signal, createElement as _$createElement, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, spread as _$spread, block as _$block, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div>spread</div>\`);
 export const extra = signal<Record<string, unknown>>({
   role: "button",
   "data-n": "1"
 });
-// The steps below are deliberately inert: createElement receives a plain props
-// object, so the un-compiled runtime reads a spread exactly once. A reactive
-// _$spread would change the DOM here where the oracle does not.
+/**
+* A spread between two literal attributes — the shape that decides the ORDER
+* rule.
+*
+* The element stays on the template path and none of its attributes are baked
+* into it. A literal written after the spread would otherwise be applied by the
+* parser BEFORE the spread ran, and a literal written before it would win a
+* collapse the source says it loses: duplicate attributes in markup keep the
+* first, where a props object keeps the last. Applying all three in source
+* order is the one arrangement that agrees with itself on both backends.
+*
+* The steps drive the spread through a rename and an empty object, so a channel
+* that only ever ADDS keys — the shape of every spread implementation that
+* forgets its previous value — leaves \`role\` and \`data-n\` behind and fails.
+*/
 export default function SpreadStaticMix(_s$) {
-  return _$createElement("div", {
-    id: "fixed",
-    ...extra(),
-    class: "after-spread"
-  }, "spread");
+  const _el$1 = _tmpl$1();
+  _$setAttr(_el$1, "id", "fixed");
+  _$spread(_s$, _el$1, extra);
+  _$setClass(_el$1, "class", "after-spread");
+  return _el$1;
 }
 SpreadStaticMix = _$block(SpreadStaticMix);
 export const steps = [() => extra.set({
@@ -5418,21 +5262,17 @@ export const steps = [() => extra.set({
 }), () => extra.set({})];
 export const optimality = {
   target: 2,
-  milestone: 5,
-  // An element with a spread has no attribute list the compiler can bake, so
-  // the whole element leaves the template path — NO template, no patch, and no
-  // reactive \`spread()\` either. The un-compiled runtime reads a spread exactly
-  // once, and the steps above are inert precisely so that a reactive spread
-  // would show up as a divergence.
-  templates: 0,
-  patchCalls: 0,
+  milestone: 9,
+  // The markup is still a template; only the attribute list leaves it.
+  templates: 1,
   emits: [
-    "createElement(\\"div\\"",
-    "id: \\"fixed\\"",
-    "...extra()",
-    "class: \\"after-spread\\""
+    "<div>spread</div>",
+    "\\"id\\", \\"fixed\\"",
+    "\\"class\\", \\"after-spread\\""
   ],
-  absent: ["spread(", "template("]
+  // The un-compiled path that used to build this element, and the baked
+  // attributes whose order it could not honour.
+  absent: ["createElement", "<div id=\\"fixed\\""]
 };
 "
 `;
@@ -5479,6 +5319,45 @@ export const optimality = {
   templates: 1,
   patchCalls: 0,
   absent: ["=>"]
+};
+"
+`;
+
+exports[`emitted code snapshots store-member 1`] = `
+"import { store, template as _$template, insert as _$insert, block as _$block, setAttr as _$setAttr, bindProp as _$bindProp } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="store"><span class="name"></span><em>n</em></div>\`);
+/**
+* \`store\` returns \`[proxy, setter]\` and ANY member read on the proxy is a
+* tracked read — \`SourceKind::ReactiveObject\`. Nothing about the NAME \`state\`
+* says so, and a nested read (\`state.user.name\`) has to stay reactive to the
+* depth it was written at.
+*/
+const [state, setState] = store({
+  user: { name: "John" },
+  count: 0
+});
+export default function StoreMember(_s$) {
+  const _el$1 = _tmpl$1();
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _$bindProp(_s$, _el$3, _$setAttr, "data-count", () => String(state.count));
+  _$insert(_s$, _el$2, () => state.user.name);
+  return _el$1;
+}
+StoreMember = _$block(StoreMember);
+export const steps = [
+  () => setState("user", "name", "Jane"),
+  () => setState("count", 3),
+  () => setState({ count: 7 })
+];
+export const optimality = {
+  target: 1,
+  milestone: 4,
+  templates: 1,
+  patchCalls: 2,
+  // A store proxy is read as a MEMBER, never called. \`state()\` throws.
+  emits: ["state.user.name", "state.count"],
+  absent: ["state()"]
 };
 "
 `;
@@ -6007,115 +5886,6 @@ export default function UnicodeLongTemplate(_s$) {
 }
 UnicodeLongTemplate = _$block(UnicodeLongTemplate);
 export const steps = [() => suffix.set("deux"), () => suffix.set("")];
-"
-`;
-
-exports[`emitted code snapshots use-memo-derived 1`] = `
-"import { useMemo, useState, template as _$template, insert as _$insert, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="memo"><span></span><b></b></p>\`);
-const [count, setCount] = useState(2);
-/** A \`Computed<T>\`: an Accessor whose dep set is its body's, one level removed. */
-const doubled = useMemo(() => count() * 2);
-export default function UseMemoDerived(_s$) {
-  const _el$1 = _tmpl$1();
-  const _el$2 = _el$1.firstChild;
-  const _el$3 = _el$1.lastChild;
-  _$insert(_s$, _el$2, () => doubled() + 1);
-  _$insert(_s$, _el$3, doubled);
-  return _el$1;
-}
-UseMemoDerived = _$block(UseMemoDerived);
-export const steps = [() => setCount(5), () => setCount(0)];
-export const optimality = {
-  target: 1,
-  milestone: 5,
-  templates: 1,
-  // \`useMemo\` returns an Accessor, so calling it is a tracked read and the bare
-  // hole in the \`<b>\` passes the accessor itself: no closure per hole, and
-  // \`insert\` calls it exactly as it would call a thunk.
-  emits: ["() => doubled() + 1", ", doubled)"]
-};
-"
-`;
-
-exports[`emitted code snapshots use-state-tuple 1`] = `
-"import { useState, template as _$template, insert as _$insert, bindEffect as _$bindEffect, delegateEvents as _$delegateEvents, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="tuple"><span></span><button type="button">bump</button></div>\`);
-const _h$1 = () => setCount((n) => n + 1);
-_$delegateEvents(["click"]);
-/**
-* \`useState\` is the TUPLE primitive: \`[() => T, setter]\`. The dead Babel plugin
-* proved it could track this shape by rewriting \`{count + 1}\` into a thunk; the
-* shape that matters to a symbol-resolving compiler is that \`count\` is an
-* Accessor and \`setCount\` is Inert, both bound by the same array pattern.
-*/
-const [count, setCount] = useState(0);
-export default function UseStateTuple(_s$) {
-  const _el$1 = _tmpl$1();
-  const _el$2 = _el$1.firstChild;
-  const _el$3 = _el$1.lastChild;
-  _$bindEffect(_s$, () => String(count() + 1), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$2, "data-plus-one", _v$);
-  });
-  _el$3.$$click = _h$1, _el$3.$$s = _s$;
-  _$insert(_s$, _el$2, () => count() + 1);
-  return _el$1;
-}
-UseStateTuple = _$block(UseStateTuple);
-export const steps = [() => setCount(5), () => setCount((n) => n * 2)];
-export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
-export const optimality = {
-  target: 1,
-  milestone: 5,
-  templates: 1,
-  // The return-shape row: \`useState(v)\` is a TUPLE whose first element is an
-  // accessor and whose second is inert. Both halves have to be right — \`count\`
-  // reads live, and \`setCount\` is not a tracked read, so the handler that only
-  // captures it hoists to module scope with no closure at all.
-  emits: ["() => count() + 1", "= () => setCount"],
-  absent: ["() => setCount()"]
-};
-"
-`;
-
-exports[`emitted code snapshots use-store-member 1`] = `
-"import { useStore, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="store"><span class="name"></span><em>n</em></div>\`);
-/**
-* \`useStore\` returns \`[proxy, setter]\` and ANY member read on the proxy is a
-* tracked read — \`SourceKind::ReactiveObject\`. Nothing about the NAME \`state\`
-* says so, and a nested read (\`state.user.name\`) has to stay reactive to the
-* depth it was written at.
-*/
-const [state, setState] = useStore({
-  user: { name: "John" },
-  count: 0
-});
-export default function UseStoreMember(_s$) {
-  const _el$1 = _tmpl$1();
-  const _el$2 = _el$1.firstChild;
-  const _el$3 = _el$1.lastChild;
-  _$bindEffect(_s$, () => String(state.count), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$3, "data-count", _v$);
-  });
-  _$insert(_s$, _el$2, () => state.user.name);
-  return _el$1;
-}
-UseStoreMember = _$block(UseStoreMember);
-export const steps = [
-  () => setState("user", "name", "Jane"),
-  () => setState("count", 3),
-  () => setState({ count: 7 })
-];
-export const optimality = {
-  target: 1,
-  milestone: 4,
-  templates: 1,
-  patchCalls: 2,
-  // A store proxy is read as a MEMBER, never called. \`state()\` throws.
-  emits: ["state.user.name", "state.count"],
-  absent: ["state()"]
-};
 "
 `;
 

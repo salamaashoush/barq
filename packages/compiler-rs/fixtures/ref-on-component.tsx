@@ -35,9 +35,6 @@ export const steps = [
   },
 ]
 
-// `props.label` is a `PropsParam` member read, so it crosses the boundary as a
-// getter and stays live where the oracle's copied props object froze it.
-export const goesLive = ["Boxed label"]
 export const optimality = {
   target: 1,
   milestone: 5,

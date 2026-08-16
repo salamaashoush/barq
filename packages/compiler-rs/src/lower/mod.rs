@@ -9,8 +9,8 @@ use std::collections::VecDeque;
 
 use oxc::allocator::{Allocator, Box as ArenaBox, TakeIn, Vec as ArenaVec};
 use oxc::ast::ast::{
-    ArrowFunctionExpression, Expression, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement,
-    JSXExpression, ReturnStatement, VariableDeclarator,
+    ArrayExpressionElement, ArrowFunctionExpression, Expression, JSXAttributeItem,
+    JSXAttributeValue, JSXChild, JSXElement, JSXExpression, ReturnStatement, VariableDeclarator,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -53,6 +53,19 @@ pub fn lower<'a>(
         lower.root(index as u32);
         index += 1;
     }
+}
+
+/// At least one child position the patch program has to fill. An empty
+/// expression container — `{}`, `{/* a comment */}` — is not one: P1 drops it
+/// exactly as it drops whitespace-only text.
+fn holds_a_hole(children: &[JSXChild<'_>]) -> bool {
+    children.iter().any(|child| match child {
+        JSXChild::ExpressionContainer(container) => {
+            !matches!(container.expression, JSXExpression::EmptyExpression(_))
+        }
+        JSXChild::Text(_) => false,
+        _ => true,
+    })
 }
 
 struct Lower<'a, 'm> {
@@ -99,6 +112,10 @@ enum AttrKind {
     /// `bind:x` — resolved into `(property, event)` by the element
     Bind,
     Ref,
+    /// `{...rest}`. The one attribute whose NAMES are not a compile-time fact
+    /// (§3.13 item 1), so the channel per key is resolved at run time — by the
+    /// same tables `build.rs` generates the compiler's from.
+    Spread,
 }
 
 impl TmpAttr<'_> {
@@ -167,9 +184,9 @@ impl<'a> Lower<'a, '_> {
 
     // ── the inlinability gate ─────────────────────────────────────────────
 
-    /// Whether the HTML parser reproduces this element exactly as
-    /// `createElement` would. Everything refused here still renders, through
-    /// the un-compiled `createElement` path.
+    /// Whether the browser's tree builder produces this element as written.
+    /// Everything refused here is split out of the template and joined back
+    /// with `insert`, which never foster-parents.
     fn inlinable(&self, element: &JSXElement<'a>, at: parse::Context<'a>) -> bool {
         if !self.use_templates {
             return false;
@@ -182,8 +199,8 @@ impl<'a> Lower<'a, '_> {
         }
         let svg = names::is_svg_tag(tag);
         if at.in_svg {
-            // A non-SVG tag closes foreign content in the parser but not in
-            // `createElement`, which would move it out of the subtree.
+            // A non-SVG tag closes foreign content, which would move it out of
+            // the subtree the JSX puts it in.
             if !svg {
                 return false;
             }
@@ -192,26 +209,85 @@ impl<'a> Lower<'a, '_> {
             // `template(html, true)`.
             return false;
         }
-        let has_children = !element.children.is_empty();
-        let bad_attribute = element.opening_element.attributes.iter().any(|item| match item {
-            JSXAttributeItem::SpreadAttribute(_) => true,
+        // The same rule in the other foreign namespace. An HTML tag inside
+        // `<math>` is a MathML text integration point's business and nothing
+        // here proves it is at one, so the element leaves the template.
+        if at.in_math && !names::is_math_tag(tag) {
+            return false;
+        }
+        // `<template>`'s children are parsed into `.content`, where no sibling
+        // walk can reach them: `firstChild` on the element itself is null. The
+        // bytes are still exactly what the author wrote, so a subtree with
+        // nothing dynamic in it bakes and a subtree with a hole in it does not.
+        if tag == "template" && !self.wholly_static(element) {
+            return false;
+        }
+        // A `children=` attribute is the one name that still takes an element
+        // off the template path: it is a PROP whose value is the child list,
+        // and P4 is where a child list becomes a Block.
+        let names_children = element.opening_element.attributes.iter().any(|item| match item {
+            // A spread stays on the template path (§5.2). Its NAMES are the one
+            // thing about an attribute the compiler cannot know, so the channel
+            // per key is resolved at run time — but the element around it, its
+            // literal attributes and its children are compiled as ever.
+            JSXAttributeItem::SpreadAttribute(_) => false,
             JSXAttributeItem::Attribute(attribute) => {
-                let name = attribute_name(&attribute.name, self.allocator);
-                name == "children"
-                    || (has_children && names::replaces_children(name))
-                    // `multiple` is a DOM_PROP, so it is written AFTER the clone
-                    // and the template parses as a single-select — which selects
-                    // its first `<option>` on the spot. `createElement` sets the
-                    // property before it appends anything, so nothing is
-                    // selected there, and the two `selectedIndex`es differ. Only
-                    // a real browser has the rule; happy-dom does not.
-                    || (has_children && tag == "select" && names::normalize(name) == "multiple")
+                attribute_name(&attribute.name, self.allocator) == "children"
             }
         });
-        if bad_attribute {
+        if names_children {
             return false;
         }
         self.children_survive_the_parser(element, tag)
+    }
+
+    /// Nothing under this element addresses a node at run time: every attribute
+    /// is a source literal a template may carry and every child is text or
+    /// another such element. The predicate a `<template>` has to satisfy,
+    /// because a patch inside one could never find its target.
+    fn wholly_static(&self, element: &JSXElement<'a>) -> bool {
+        let attributes = element.opening_element.attributes.iter().all(|item| match item {
+            JSXAttributeItem::SpreadAttribute(_) => false,
+            JSXAttributeItem::Attribute(attribute) => {
+                let name = attribute_name(&attribute.name, self.allocator);
+                let tag = intrinsic_tag(&element.opening_element.name).unwrap_or("");
+                if !names::bakeable(names::normalize(name), false, tag) {
+                    return false;
+                }
+                match attribute.value {
+                    Some(JSXAttributeValue::StringLiteral(_)) => true,
+                    // A bare intercepted name is the one literal P1 still sends
+                    // down a channel: `<div class/>` REMOVES the attribute the
+                    // parser would have written.
+                    None => !crate::tables::is_intercepted(names::normalize(name)),
+                    _ => false,
+                }
+            }
+        });
+        attributes
+            && element.children.iter().all(|child| match child {
+                JSXChild::Text(_) => true,
+                JSXChild::Element(child) => {
+                    intrinsic_tag(&child.opening_element.name).is_some() && self.wholly_static(child)
+                }
+                _ => false,
+            })
+    }
+
+    /// Whether a raw-text element's whole child list becomes ONE value rather
+    /// than baked bytes: because something in it is dynamic, or because the
+    /// bytes it would bake would close the element early.
+    fn content_is_a_value(&self, children: &[JSXChild<'a>], tag: &str) -> bool {
+        if holds_a_hole(children) {
+            return true;
+        }
+        tag_flags(tag).contains(TagFlags::RAW_TEXT)
+            && children.iter().any(|child| {
+                let JSXChild::Text(text) = child else { return false };
+                text::clean(text.span.source_text(self.source), self.allocator).is_some_and(
+                    |cleaned| parse::raw_text_hazard(self.bake_text(cleaned, true), tag),
+                )
+            })
     }
 
     /// The child half of the same question. A void element's children are not
@@ -237,16 +313,32 @@ impl<'a> Lower<'a, '_> {
         if !raw && !text_only && !fosters {
             return !element.children.iter().any(|child| matches!(child, JSXChild::Spread(_)));
         }
+        // A `<!---->` inside a `<style>` is TEXT, so a hole in raw text may
+        // never be given an anchor — and it never needs one, because the whole
+        // child list becomes ONE insert: the static runs travel as strings in
+        // the same array as the holes, in source order, and the element is
+        // baked empty. That is also the shape the string backend writes with no
+        // boundary comments and the client claims as `WHOLE`.
+        //
+        // Text that would close the element early takes the same route, which
+        // is why the hazard is not a refusal here.
+        if text_only && self.content_is_a_value(&element.children, tag) {
+            return !element.children.iter().any(|child| matches!(child, JSXChild::Spread(_)));
+        }
         element.children.iter().all(|child| match child {
             JSXChild::Text(text) => {
                 let Some(cleaned) = text::clean(text.span.source_text(self.source), self.allocator)
                 else {
                     return true;
                 };
-                if raw && parse::raw_text_hazard(cleaned) {
-                    return false;
-                }
                 !(fosters && cleaned.bytes().any(|byte| !byte.is_ascii_whitespace()))
+            }
+            // `{}` and `{/* … */}` carry no value, so they are not a position
+            // and there is nothing for the parser to disagree about.
+            JSXChild::ExpressionContainer(container)
+                if matches!(container.expression, JSXExpression::EmptyExpression(_)) =>
+            {
+                true
             }
             // A `<!---->` inside `<style>` is text, not a comment, and the hole
             // would anchor against it forever.
@@ -359,6 +451,7 @@ impl<'a> Lower<'a, '_> {
                 AttrKind::Chan(chan) => Op::SetOpaque { name, value, chan },
                 AttrKind::Event => Op::SetEvent { event: name, value },
                 AttrKind::Ref => Op::Ref { value, write: writable },
+                AttrKind::Spread => Op::Spread { value, live: false },
                 AttrKind::Bind => {
                     let text = self.module.interner.name(name).text;
                     let (prop, event) = names::bind_channel(text, tag, input_type, editable);
@@ -386,9 +479,28 @@ impl<'a> Lower<'a, '_> {
         tag: &str,
     ) -> Vec<TmpAttr<'a>> {
         let mut ordered: Vec<TmpAttr<'a>> = Vec::with_capacity(attributes.len());
+        // A spread closes the whole element to baking, in BOTH directions. The
+        // template is applied by the parser, before every patch, so a literal
+        // written after a spread would be applied before it; and duplicate
+        // attributes in markup keep the FIRST where a props object keeps the
+        // LAST, so a literal baked before a spread would win a collapse the
+        // source says it loses. Applying the list in source order is the only
+        // arrangement that agrees with itself, and it is one patch per name.
+        let spread_seen =
+            attributes.iter().any(|item| matches!(item, JSXAttributeItem::SpreadAttribute(_)));
         for item in attributes {
-            let JSXAttributeItem::Attribute(attribute) = item else {
-                unreachable!("a spread attribute is refused by inlinable")
+            let attribute = match item {
+                JSXAttributeItem::Attribute(attribute) => attribute,
+                JSXAttributeItem::SpreadAttribute(spread) => {
+                    let spread = spread.unbox();
+                    ordered.push(TmpAttr {
+                        key: self.module.interner.intern_name("..."),
+                        kind: AttrKind::Spread,
+                        value: TmpAttrValue::Dynamic(spread.argument),
+                        span: spread.span,
+                    });
+                    continue;
+                }
             };
             let attribute = attribute.unbox();
             let raw = attribute_name(&attribute.name, self.allocator);
@@ -422,13 +534,14 @@ impl<'a> Lower<'a, '_> {
             // Only a plain name or an explicit `attr:` may become template
             // bytes: every other channel writes something the HTML parser does
             // not produce.
-            let bakeable = match (kind, names::prefixed(raw)) {
-                (AttrKind::Chan(crate::ir::Chan::Attr), names::Prefixed::Chan(..)) => true,
-                (AttrKind::Chan(_), names::Prefixed::Plain(_)) => {
-                    names::bakeable(names::normalize(raw), in_svg)
-                }
-                _ => false,
-            };
+            let bakeable = !spread_seen
+                && match (kind, names::prefixed(raw)) {
+                    (AttrKind::Chan(crate::ir::Chan::Attr), names::Prefixed::Chan(..)) => true,
+                    (AttrKind::Chan(_), names::Prefixed::Plain(_)) => {
+                        names::bakeable(names::normalize(raw), in_svg, tag)
+                    }
+                    _ => false,
+                };
             let key = self.module.interner.intern_name(key);
             // `None` once the value is not a literal, once the name may not be
             // baked, and once the parser would not hand these bytes back.
@@ -479,16 +592,37 @@ impl<'a> Lower<'a, '_> {
                 }
                 Some(value) => {
                     let span = value.span();
-                    let value = attribute_expression(value, &self.ast);
+                    let value = attribute_expression(value, &self.ast, self.allocator);
                     TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span }
                 }
             };
-            if let Some(previous) = ordered.iter().position(|entry| entry.key == key) {
+            // A spread names nothing, so it never collapses with anything and
+            // nothing collapses THROUGH it: `{...a} id="x"` keeps both, in that
+            // order, because the object the spread carries may hold `id` too.
+            let collapses = ordered
+                .iter()
+                .position(|entry| entry.key == key && !matches!(entry.kind, AttrKind::Spread));
+            if let Some(previous) = collapses
+                && !ordered[previous..].iter().any(|entry| matches!(entry.kind, AttrKind::Spread))
+            {
                 ordered.remove(previous);
             }
             ordered.push(attr);
         }
         ordered
+    }
+
+    /// Whether an attribute on this element writes its whole content, which is
+    /// what stops its children being baked into the template.
+    fn content_is_replaced(&self, build: &Build<'a>, node: NodeId) -> bool {
+        build.attribute_patches.iter().any(|patch| {
+            let name = match patch.op {
+                Op::SetOpaque { name, .. } => name,
+                _ => return false,
+            };
+            patch.target == node
+                && names::replaces_children(self.module.interner.name(name).text)
+        })
     }
 
     /// `<input type="number">` — the literal the `bind:` channel is resolved
@@ -539,12 +673,27 @@ impl<'a> Lower<'a, '_> {
         let Group { parent, children, at } = group;
         let lo = build.unit.skeleton.nodes.len() as NodeId;
         let mut materialised = 0u32;
-        let raw_text = self
-            .module
-            .interner
-            .tag(self.parent_tag(build, parent))
-            .flags
-            .contains(TagFlags::RAW_TEXT);
+        let flags = self.module.interner.tag(self.parent_tag(build, parent)).flags;
+        let raw_text = flags.contains(TagFlags::RAW_TEXT);
+
+        let tag = self.module.interner.tag(self.parent_tag(build, parent)).text;
+        // A name that REPLACES the content — `dangerouslySetInnerHTML`,
+        // `innerHTML`, `innerText`, `textContent` — is an attribute patch, and
+        // attribute patches run before inserts. So the children may not be
+        // baked (the write would delete them) but they may still be children:
+        // one insert, after the write, which is the order the un-compiled path
+        // produced by applying props before it appended anything.
+        let replaced = self.content_is_replaced(build, parent);
+        if replaced
+            || ((raw_text || flags.contains(TagFlags::ESCAPABLE_RAW_TEXT))
+                && self.content_is_a_value(&children, tag))
+        {
+            let span = children.first().map_or(Span::default(), GetSpan::span);
+            if let Some(value) = self.text_content(children, span) {
+                build.slot(parent, value, span);
+            }
+            return (lo, build.unit.skeleton.nodes.len() as NodeId, 0);
+        }
 
         for child in children {
             match child {
@@ -579,6 +728,64 @@ impl<'a> Lower<'a, '_> {
         }
 
         (lo, build.unit.skeleton.nodes.len() as NodeId, materialised)
+    }
+
+    /// The whole child list of a raw-text element as ONE value: the static runs
+    /// as string literals, the holes as themselves, in source order. A single
+    /// part is that part; more than one is an array, which `insert` appends in
+    /// order and the string backend concatenates.
+    ///
+    /// Nothing is baked, so nothing here is escaped for a parser: the DOM side
+    /// writes a text node and the string side neutralises the close sequence at
+    /// the seam. Character references are resolved because that is a rule of the
+    /// JSX TRANSFORM and not of the HTML parser — `bake_text` resolves them for
+    /// a raw-text template too, for the same reason.
+    fn text_content(
+        &mut self,
+        children: ArenaVec<'a, JSXChild<'a>>,
+        span: Span,
+    ) -> Option<Expression<'a>> {
+        let mut parts: Vec<Expression<'a>> = Vec::with_capacity(children.len());
+        for child in children {
+            match child {
+                JSXChild::Text(text) => {
+                    let raw = text.span.source_text(self.source);
+                    let Some(cleaned) = text::clean(raw, self.allocator) else { continue };
+                    let value = self.decoded(cleaned);
+                    parts.push(Expression::new_string_literal(
+                        text.span,
+                        value,
+                        None,
+                        &self.ast,
+                    ));
+                }
+                JSXChild::ExpressionContainer(container) => {
+                    if let Some(value) = expression_of(container.unbox().expression) {
+                        parts.push(value);
+                    }
+                }
+                JSXChild::Element(element) => parts.push(Expression::JSXElement(element)),
+                JSXChild::Fragment(fragment) => parts.push(Expression::JSXFragment(fragment)),
+                JSXChild::Spread(_) => unreachable!("refused by inlinable"),
+            }
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        if parts.len() == 1 {
+            return Some(parts.remove(0));
+        }
+        let elements = parts.into_iter().map(ArrayExpressionElement::from);
+        let elements = ArenaVec::from_iter_in(elements, &self.allocator);
+        Some(Expression::new_array_expression(span, elements, &self.ast))
+    }
+
+    fn decoded(&self, text: &'a str) -> &'a str {
+        match entity::decode(text) {
+            Some(Cow::Borrowed(same)) => same,
+            Some(owned) => self.allocator.alloc_str(&owned),
+            None => text,
+        }
     }
 
     fn parent_tag(&self, build: &Build<'a>, parent: NodeId) -> TagId {

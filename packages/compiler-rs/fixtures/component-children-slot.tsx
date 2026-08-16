@@ -45,11 +45,6 @@ export default function ComponentChildrenSlot() {
 
 export const steps = [() => badge.set(7), () => badge.set(0)]
 
-// Both props are read through a `PropsParam` binding, so the compiled callee
-// binds where `createElement` copied the props object once — including
-// `children`, which the caller handed over as a built array.
-export const goesLive = ["Panel title", "Panel children"]
-
 export const optimality = {
   target: 1,
   milestone: 5,

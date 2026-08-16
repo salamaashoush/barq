@@ -7,13 +7,14 @@ export const on = signal(true)
  * through a full hide/show/hide cycle.
  *
  * This class had no coverage at all, and it hid a runtime bug that only becomes
- * reachable once the body is re-mounted: `childToNodes(fragment)` returns
- * `Array.from(fragment.childNodes)`, the first insert MOVES those nodes out, and
- * every later read of the same eager `children` found an EMPTY fragment. The
- * content was gone permanently after one toggle, on both paths — invisible to
- * the differential precisely because both paths lost it. The steps below drive
- * the cycle twice, so a fragment that drained would show up as an empty
- * `<div class="frag">` on the third frame.
+ * reachable once the body is re-mounted: the eager form read the built
+ * DocumentFragment's `childNodes`, the first insert MOVED those nodes out, and
+ * every later read of the same children found an EMPTY fragment. The content
+ * was gone permanently after one toggle, on both paths — invisible to the
+ * differential precisely because both paths lost it. The steps below drive the
+ * cycle twice, so a fragment that drained would show up as an empty
+ * `<div class="frag">` on the third frame. A fragment is now an ARRAY of built
+ * roots, which has no shared mutable container to drain.
  *
  * Target #8 makes this shape COMMON rather than rare: an eager multi-node body
  * is exactly what the compiler now hands over instead of a thunk.
@@ -46,9 +47,8 @@ export const optimality = {
   milestone: 5,
   // Five: the host, and one per node in each multi-node fragment. Neither the
   // body nor the fallback is wrapped in a thunk the compiler manufactured —
-  // both are eager `Fragment` calls over built clones, which is the shape that
-  // makes the drained-fragment bug reachable at all.
+  // both are arrays of built clones inside the Block the branch owns.
   templates: 5,
-  emits: ["branch(", "() => on() || false", "Fragment"],
-  absent: ["when:", "children:", "fallback:"],
+  emits: ["branch(", "() => on() || false"],
+  absent: ["when:", "children:", "fallback:", "createElement"],
 }

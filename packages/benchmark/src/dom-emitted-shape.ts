@@ -132,12 +132,12 @@ for (const c of cases) {
 function rowShape(benchmark: string): string {
   const code = emittedBarq.get(benchmark) ?? "";
   const template = /_\$+template\(`([^`]*)`\)/.exec(code)?.[1] ?? null;
-  const fell = /_\$+createElement\(/.test(code);
+  const fell = /_\$+element\(/.test(code);
   const head = `      ${benchmark}: `;
-  if (template === null) return `${head}no template — ${fell ? "createElement" : "no DOM call"}`;
+  if (template === null) return `${head}no template — ${fell ? "built by name" : "no DOM call"}`;
   const count = code.match(/_\$+template\(/g)?.length ?? 0;
   return `${head}${count} template${count === 1 ? "" : "s"}, first is \`${template}\`${
-    fell ? ", plus createElement" : ", no createElement"
+    fell ? ", plus a built element" : ", no built element"
   }`;
 }
 

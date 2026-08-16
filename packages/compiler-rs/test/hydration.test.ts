@@ -250,6 +250,24 @@ describe("H3 the hydration index is free when nothing hydrates", () => {
 // the other setting of the axis
 // ---------------------------------------------------------------------------
 
+/**
+ * The one fixture whose two columns are allowed to differ, and why.
+ *
+ * `escaping-adversarial` puts a hole inside a `<textarea>`. The server writes a
+ * compensating U+000A there because a conforming parser eats one; happy-dom eats
+ * neither that one nor the one in the client's own template parse, so the
+ * claimed text is a newline longer than the value. Production SEES that as a
+ * text drift and carries on — the DOM it ends up with is the cold one, node for
+ * node. Development takes the structural route the detection axis exists for and
+ * REBUILDS the range, which is the same tree by a more expensive path.
+ *
+ * It is a property of the fake DOM, not of the emission: `browser-parse-check.ts`
+ * measures the same bytes in Chrome, where both newlines are eaten and neither
+ * column reports anything. Named here rather than absorbed, so a SECOND fixture
+ * arriving in this state is a failure that has to be read.
+ */
+const DEV_DIVERGES = new Set(["escaping-adversarial"])
+
 describe("L5 hydration conformance, with detection on", () => {
   for (const name of FIXTURES) {
     test(`${name} hydrates the same way under \`dev\``, async () => {
@@ -259,16 +277,22 @@ describe("L5 hydration conformance, with detection on", () => {
       // divergence, never make one — and the corpus has none, so a dev build
       // that reports anything production does not has found a false positive in
       // the detector rather than a bug in the corpus.
+      //
+      // The tree is compared for every fixture; the REPORT is what a registered
+      // row above may differ on, because detection is what decides whether a
+      // drift it can see is recovered from or lived with.
+      expect({ name, cold: development.coldShape, shape: development.hydratedShape }).toEqual({
+        name,
+        cold: production.coldShape,
+        shape: production.hydratedShape,
+      })
+      if (DEV_DIVERGES.has(name)) return
       expect({
         name,
-        cold: development.coldShape,
-        shape: development.hydratedShape,
         kinds: [...new Set(development.mismatches)].toSorted(),
         recovered: development.recovered,
       }).toEqual({
         name,
-        cold: production.coldShape,
-        shape: production.hydratedShape,
         kinds: [...new Set(production.mismatches)].toSorted(),
         recovered: production.recovered,
       })

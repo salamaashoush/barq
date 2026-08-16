@@ -67,17 +67,19 @@ export const MATRIX_EXCEPTIONS = {
   /**
    * Fixtures whose `interp` emission is byte-identical to their DOM emission.
    *
-   * That looks like the reference backend being ignored and is not: both of
-   * these leave the template path entirely, so there is no template for the
-   * reference backend to serialise beside the module. `spread-static-mix` has a
-   * spread, which means no bakeable attribute list and therefore no template at
-   * all (its own `optimality` says `templates: 0`); `c7-dynamic`'s whole output
-   * is a `Dynamic`, which is a component call.
+   * That looks like the reference backend being ignored and is not: this one
+   * leaves the template path entirely, so there is no template for the
+   * reference backend to serialise beside the module — `c7-dynamic`'s whole
+   * output is a `Dynamic`, which is a component call.
+   *
+   * `spread-static-mix` was here until M9 and is not any more: a spread stays
+   * on the template path now, so the fixture has a template and the reference
+   * backend has something to serialise.
    *
    * Pinned by name because "some fixtures are identical" is exactly the sentence
    * a genuinely ignored `interp` option would also satisfy.
    */
-  interpIdentical: ["corpus/spread-static-mix", "l4/c7-dynamic"] as readonly string[],
+  interpIdentical: ["l4/c7-dynamic"] as readonly string[],
 
   /**
    * `fixtures/browser-only/` exists because happy-dom is structurally unable to

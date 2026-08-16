@@ -7,7 +7,8 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports
-import { createElement as h, useState, render as barqRender } from "@barqjs/core";
+import { signal, render as barqRender } from "@barqjs/core";
+import { h } from "../h.ts";
 
 // SolidJS imports
 import { createSignal } from "solid-js";
@@ -24,12 +25,12 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "text update 1000x",
       () => {
         const container = document.createElement("div");
-        const [count, setCount] = useState(0);
+        const count = signal(0);
         const el = h("div", null, count);
         barqRender(el, container);
 
         for (let i = 0; i < 1000; i++) {
-          setCount(i);
+          count.set(i);
         }
       },
       { iterations: 200 },
@@ -70,12 +71,12 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "class update 1000x",
       () => {
         const container = document.createElement("div");
-        const [active, setActive] = useState(false);
+        const active = signal(false);
         const el = h("div", { class: () => (active() ? "active" : "inactive") });
         barqRender(el, container);
 
         for (let i = 0; i < 1000; i++) {
-          setActive(i % 2 === 0);
+          active.set(i % 2 === 0);
         }
       },
       { iterations: 200 },
@@ -116,7 +117,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "style update 1000x",
       () => {
         const container = document.createElement("div");
-        const [width, setWidth] = useState(0);
+        const width = signal(0);
         const el = h("div", {
           style: {
             width: () => `${width()}px`,
@@ -127,7 +128,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         barqRender(el, container);
 
         for (let i = 0; i < 1000; i++) {
-          setWidth(i % 500);
+          width.set(i % 500);
         }
       },
       { iterations: 200 },
@@ -170,7 +171,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "multi-attr update 500x",
       () => {
         const container = document.createElement("div");
-        const [state, setState] = useState({ x: 0, y: 0, scale: 1 });
+        const state = signal({ x: 0, y: 0, scale: 1 });
         const el = h("div", {
           "data-x": () => String(state().x),
           "data-y": () => String(state().y),
@@ -181,7 +182,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         barqRender(el, container);
 
         for (let i = 0; i < 500; i++) {
-          setState({ x: i, y: i * 2, scale: 1 + i * 0.01 });
+          state.set({ x: i, y: i * 2, scale: 1 + i * 0.01 });
         }
       },
       { iterations: 200 },

@@ -77,7 +77,7 @@ describe("L4 — the grade table", () => {
     for (const c of CHANNELS) {
       expect(c.where.length, `${c.id} says nowhere`).toBeGreaterThan(0)
       for (const entry of c.where) {
-        // Some entries name a function inside a file ("harness.ts boundEffects")
+        // Some entries name a function inside a file ("harness.ts auditCompiled")
         // or a directory; the file is the first word either way.
         const file = entry.split(" ")[0]
         if (file.includes("§") || file.endsWith("/")) continue
@@ -150,7 +150,8 @@ describe("L4 — the grade table", () => {
   it("every exemption that IS honoured is named, with the mechanism that grants it", () => {
     // Five remain across the whole table, and none of them is anonymous. An
     // exemption nobody wrote down is the thing this file exists to prevent —
-    // `compareToOracle`'s two `if (… !== …) continue` guards were exactly that.
+    // `compareToOracle`'s two `if (… !== …) continue` guards were exactly that,
+    // and M9 removed both with the reference they guarded.
     // The metamorphic regrade removed the identity channel's DEPENDENCE on the
     // first guard; it did not remove the guard, which is still live in
     // `harness.ts` and `browser-differential.ts`. That comparison is a separate

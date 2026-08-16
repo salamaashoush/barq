@@ -387,10 +387,15 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         Some(self.record("effectGroup", vec![members], span))
     }
 
-    // ── off the template path entirely ────────────────────────────────────
-
-    fn spread(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
-        None
+    /// The one channel whose names are runtime data. `live` decides whether the
+    /// interpreter re-reads the source, exactly as it decides whether the DOM
+    /// backend hands `spread` a thunk.
+    fn spread(&mut self, at: At<'_>, value: ExprId, live: bool) -> Self::Out {
+        let span = at.span();
+        let node = self.node(at.target(), span);
+        let slot = if live { self.read(value, span) } else { self.once(value, span) };
+        let live = Expression::new_boolean_literal(span, live, &self.ctx.ast);
+        Some(self.record("spread", vec![node, slot, live], span))
     }
 }
 

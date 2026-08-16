@@ -7,9 +7,11 @@
  * here is a hand-written impression of a backend's output, so neither side can
  * drift away from what actually ships.
  *
- * The uncompiled `createElement` path is kept as a clearly labelled contrast
- * row. It is what this file used to measure, and it is NOT the path the
- * compiler takes.
+ * The BUILT path is kept as a clearly labelled contrast row: `element` renders
+ * real DOM under happy-dom and `renderToString` reads it back. It is what this
+ * file used to measure through `createElement`, and it is NOT the path the
+ * compiler takes — since M9 it is not an authoring path at all, only the
+ * builder a template cannot replace.
  *
  * Run: bun run src/ssr-head-to-head.ts
  * Do NOT pass --conditions=browser: `solid-js/web` would resolve to its client
@@ -121,20 +123,26 @@ const solidStatic = await loadModule<Compiled>(
   "solid-ssr-static",
 );
 
-// The uncompiled path: components build real DOM, renderToString reads innerHTML.
+// The BUILT path: `element` makes real DOM, renderToString reads innerHTML.
 function barqUncompiledPage(): unknown {
-  return barqCore.createElement(
-    "div",
-    { class: "page" },
-    barqCore.createElement("h1", null, "Title"),
-    barqCore.createElement(
-      "ul",
-      null,
-      ...DATA.map((row) =>
-        barqCore.createElement("li", { class: "row", "data-id": String(row.id) }, row.label),
-      ),
-    ),
-  );
+  const scope = barqCore.getOwner();
+  const build = (): unknown =>
+    barqCore.element(barqCore.getOwner(), "div", {
+      class: "page",
+      children: [
+        barqCore.element(barqCore.getOwner(), "h1", { children: "Title" }),
+        barqCore.element(barqCore.getOwner(), "ul", {
+          children: DATA.map((row) =>
+            barqCore.element(barqCore.getOwner(), "li", {
+              class: "row",
+              "data-id": String(row.id),
+              children: row.label,
+            }),
+          ),
+        }),
+      ],
+    });
+  return scope === null ? barqCore.createRoot(build) : build();
 }
 
 // ---------------------------------------------------------------- what each emits

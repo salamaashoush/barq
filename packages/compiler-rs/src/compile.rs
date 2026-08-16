@@ -1100,12 +1100,14 @@ mod tests {
     }
 
     #[test]
-    fn a_component_is_called_and_a_fragment_still_is_not() {
+    fn a_component_is_called_and_a_fragment_is_an_array() {
         let source = "const V = () => <><Foo.Bar {...rest} x={1} />{cond ? <A /> : null}</>;\n";
         let output = compile_ok(source, "V.tsx");
-        // A fragment has no props object to build, so it stays on the runtime's
-        // own path.
-        assert!(output.code.contains("_$createElement(_$Fragment, null"), "{}", output.code);
+        // A fragment is the ARRAY of its parts. Every position that admits a
+        // child admits an array of children, so there is nothing for a wrapper
+        // component to do.
+        assert!(output.code.contains("const V = () => [(0, Foo.Bar)("), "{}", output.code);
+        assert!(!output.code.contains("createElement"), "{}", output.code);
         // C1/C9. A component is called with its scope first, and a spread is a
         // SOURCE LIST rather than a JavaScript spread — there is no object to
         // copy, so there is no getter for a copy to read.
@@ -1215,14 +1217,21 @@ mod tests {
     }
 
     #[test]
-    fn tags_the_html_parser_reshapes_stay_on_the_uncompiled_path() {
-        // `<template>` children land in a DocumentFragment, `<math>` switches
-        // the parser's namespace — `createElement` does neither.
+    fn the_two_foreign_trees_are_baked_rather_than_built() {
+        // `<template>` children land on `.content`, which `cloneNode` copies,
+        // and `<math>` switches the parser into foreign content — so both are
+        // exactly what a clone reproduces, as long as nothing addresses a node
+        // inside them.
         let output = compile_ok("const V = () => <template><li>a</li></template>;\n", "V.tsx");
-        assert!(output.code.contains("_$createElement(\"template\""), "{}", output.code);
+        assert!(output.code.contains("_$template(`<template><li>a</li></template>`)"), "{}", output.code);
 
         let output = compile_ok("const V = () => <div><math><mi>x</mi></math></div>;\n", "V.tsx");
-        assert!(output.code.contains("_$createElement(\"math\""), "{}", output.code);
+        assert!(output.code.contains("<div><math><mi>x</mi></math></div>"), "{}", output.code);
+
+        // A hole inside a `<template>` has no walk that could reach it: the
+        // element's own `firstChild` is null. It leaves the template path.
+        let output = compile_ok("const V = () => <template><li>{n}</li></template>;\n", "V.tsx");
+        assert!(!output.code.contains("<template>"), "{}", output.code);
     }
 
     #[test]
@@ -1273,10 +1282,19 @@ mod tests {
         assert!(output.code.contains("_$template(`<pre></pre>`)"), "{}", output.code);
         assert!(output.code.contains("_$insert(_s$, _el$1, a)"), "{}", output.code);
 
-        // `<textarea>` is RCDATA: the `<!---->` would be literal TEXT in the field.
+        // `<textarea>` is RCDATA, so the `<!---->` would be literal TEXT in the
+        // field — which is why the whole child list is ONE insert with no
+        // anchor rather than a hole among baked siblings.
         let output = compile_ok("const V = () => <textarea>{a}</textarea>;\n", "V.tsx");
-        assert!(output.code.contains("_$createElement(\"textarea\""), "{}", output.code);
-        assert!(!output.code.contains("<textarea>"), "{}", output.code);
+        assert!(output.code.contains("_$template(`<textarea></textarea>`)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_s$, _el$1, a)"), "{}", output.code);
+        assert!(!output.code.contains("<!---->"), "{}", output.code);
+
+        let output = compile_ok("const V = () => <textarea>x {a} y</textarea>;\n", "V.tsx");
+        assert!(output.code.contains("_$template(`<textarea></textarea>`)"), "{}", output.code);
+        for part in ["_$insert(_s$, _el$1, [", "\"x \",", "\" y\""] {
+            assert!(output.code.contains(part), "{part}\n{}", output.code);
+        }
     }
 
     #[test]
@@ -1418,12 +1436,12 @@ mod tests {
     }
 
     #[test]
-    fn disabling_templates_leaves_every_element_on_the_uncompiled_path() {
+    fn disabling_templates_builds_every_element_by_name() {
         let options =
             ResolvedOptions { templates: false, ..ResolvedOptions::with_filename("V.tsx") };
         let output = compile("const V = () => <div class=\"c\">x</div>;\n", &options).unwrap();
         assert!(!output.code.contains("_$template"), "{}", output.code);
-        assert!(output.code.contains("_$createElement(\"div\""), "{}", output.code);
+        assert!(output.code.contains("_$element(_s$, \"div\""), "{}", output.code);
     }
 
     /// The flag was accepted and refused from M1 to M5, because emitting the
@@ -1483,23 +1501,34 @@ mod tests {
 
     #[test]
     fn a_raw_text_element_never_gets_a_marker_or_an_early_closer() {
-        // A `<!---->` inside <style> is text, and a decoded `</style` closes the
-        // element and injects live markup into the template.
+        // A `<!---->` inside <style> is text, and a decoded `</style` in a BAKED
+        // run closes the element and injects live markup into the template. So a
+        // raw-text element with anything dynamic in it bakes NOTHING: the whole
+        // child list is one insert, with no anchor to place a marker at and no
+        // literal for the parser to read as a close tag.
         let output = compile_ok("const V = () => <div><style>{css}</style></div>;\n", "V.tsx");
-        assert!(output.code.contains("_$createElement(\"style\""), "{}", output.code);
-        assert!(!output.code.contains("<style>"), "{}", output.code);
+        assert!(output.code.contains("_$template(`<div><style></style></div>`)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_s$, _el$2, css)"), "{}", output.code);
+        assert!(!output.code.contains("<!---->"), "{}", output.code);
 
         let source = "const V = () => <div><style>{\"a\"}&lt;/style&gt;</style></div>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_$createElement(\"style\""), "{}", output.code);
+        assert!(output.code.contains("[\"a\", \"</style>\"]"), "{}", output.code);
+        assert!(!output.code.contains("<style>.</style>"), "{}", output.code);
+        // The string backend is where those bytes are dangerous, and `rawText`
+        // is what neutralises them there.
+        let ssr = compile(source, &ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("V.tsx") })
+            .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
+        assert!(ssr.code.contains("_$rawText([\"a\", \"</style>\"], \"style\")"), "{}", ssr.code);
 
         let output = compile_ok("const V = () => <script>{\"var a = 1;\"}</script>;\n", "V.tsx");
-        assert!(output.code.contains("_$createElement(\"script\""), "{}", output.code);
+        assert!(output.code.contains("_$insert(_s$, _el$1, \"var a = 1;\")"), "{}", output.code);
 
-        // literal-only, no hazard byte: still a template
+        // literal-only: baked, references resolved at compile time because the
+        // tokenizer will not resolve them inside raw text.
         let output =
             compile_ok("const V = () => <style>{}.a &#123; color: red &#125;</style>;\n", "V.tsx");
-        assert!(output.code.contains("_$createElement(\"style\""), "{}", output.code);
+        assert!(output.code.contains("_$template(`<style>.a { color: red }</style>`)"), "{}", output.code);
         let output = compile_ok("const V = () => <style>.a - b</style>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<style>.a - b</style>`)"), "{}", output.code);
     }
@@ -3038,9 +3067,9 @@ mod tests {
         assert!(output.code.contains("_$template(`<div>t</div>`)"), "{}", output.code);
 
         // In TEXT there is no patch channel to fall back to, so the element
-        // leaves the template altogether and renders through createElement.
+        // leaves the template altogether and is BUILT by tag name instead.
         let output = compile_ok("const V = () => <div>x&#0;y</div>;\n", "V.tsx");
-        assert!(output.code.contains("_$createElement(\"div\""), "{}", output.code);
+        assert!(output.code.contains("_$element(_s$, \"div\""), "{}", output.code);
         assert!(!output.code.contains("_$template("), "{}", output.code);
     }
 

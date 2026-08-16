@@ -79,11 +79,6 @@ export const events = [
   },
 ]
 
-// `data-tone`, `data-same` and `data-render-same` are three props reads on one
-// element, so they share ONE effect the oracle never creates at all — it read
-// the copied props object once at construction.
-export const goesLive = ["Chip data-tone/data-same/data-render-same"]
-
 export const optimality = {
   target: 1,
   milestone: 5,

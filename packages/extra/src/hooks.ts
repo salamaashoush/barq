@@ -2,7 +2,7 @@
  * Extra hooks - utility hooks for common patterns
  */
 
-import { type Resource, onMount, useEffect, useResource, useState } from "@barqjs/core";
+import { type Resource, onMount, effect, resource, signal } from "@barqjs/core";
 
 /**
  * Async data fetching with fetch API
@@ -10,7 +10,7 @@ import { type Resource, onMount, useEffect, useResource, useState } from "@barqj
 export function useFetch<T>(url: string | (() => string), options?: RequestInit): Resource<T> {
   const getUrl = typeof url === "function" ? url : () => url;
 
-  return useResource(getUrl, async (currentUrl: string) => {
+  return resource(getUrl, async (currentUrl: string) => {
     const response = await fetch(currentUrl, options);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -24,12 +24,12 @@ export function useFetch<T>(url: string | (() => string), options?: RequestInit)
  * Debounced value
  */
 export function useDebounce<T>(source: () => T, delay: number): () => T {
-  const [debounced, setDebounced] = useState(source());
+  const debounced = signal(source());
 
-  useEffect(() => {
+  effect(() => {
     const value = source();
     const timeout = setTimeout(() => {
-      setDebounced(value);
+      debounced.set(value);
     }, delay);
 
     return () => clearTimeout(timeout);
@@ -42,15 +42,15 @@ export function useDebounce<T>(source: () => T, delay: number): () => T {
  * Throttled value
  */
 export function useThrottle<T>(source: () => T, limit: number): () => T {
-  const [throttled, setThrottled] = useState(source());
+  const throttled = signal(source());
   let lastRun = 0;
 
-  useEffect(() => {
+  effect(() => {
     const value = source();
     const now = Date.now();
 
     if (now - lastRun >= limit) {
-      setThrottled(value);
+      throttled.set(value);
       lastRun = now;
     }
   });
@@ -62,14 +62,14 @@ export function useThrottle<T>(source: () => T, limit: number): () => T {
  * Previous value - returns a reactive getter
  */
 export function usePrevious<T>(source: () => T): () => T | undefined {
-  const [prev, setPrev] = useState<T | undefined>(undefined);
+  const prev = signal<T | undefined>(undefined);
   const current = { value: undefined as T | undefined };
 
-  useEffect(() => {
+  effect(() => {
     const value = source();
     // On first run, current.value is undefined, so prev stays undefined
     // On subsequent runs, prev gets the previous value
-    setPrev(current.value);
+    prev.set(current.value);
     current.value = value;
   });
 
@@ -80,8 +80,8 @@ export function usePrevious<T>(source: () => T): () => T | undefined {
  * Boolean toggle
  */
 export function useToggle(initial = false): [() => boolean, () => void, (value: boolean) => void] {
-  const [value, setValue] = useState(initial);
-  return [value, () => setValue((v) => !v), setValue];
+  const value = signal(initial);
+  return [value, () => value.update((v) => !v), (next: boolean) => value.set(next)];
 }
 
 /**
@@ -94,14 +94,14 @@ export function useCounter(initial = 0): {
   reset: () => void;
   set: (value: number) => void;
 } {
-  const [count, setCount] = useState(initial);
+  const count = signal(initial);
 
   return {
     count,
-    increment: () => setCount((c) => c + 1),
-    decrement: () => setCount((c) => c - 1),
-    reset: () => setCount(initial),
-    set: setCount,
+    increment: () => count.update((c) => c + 1),
+    decrement: () => count.update((c) => c - 1),
+    reset: () => count.set(initial),
+    set: (next: number) => count.set(next),
   };
 }
 
@@ -121,28 +121,28 @@ export function useLocalStorage<T>(key: string, initialValue: T): [() => T, (val
     // Ignore parse errors
   }
 
-  const [value, setValue] = useState(initial);
+  const value = signal(initial);
 
-  useEffect(() => {
+  effect(() => {
     localStorage.setItem(key, JSON.stringify(value()));
   });
 
-  return [value, setValue];
+  return [value, (next: T) => value.set(next)];
 }
 
 /**
  * Media query match
  */
 export function useMediaQuery(query: string): () => boolean {
-  const [matches, setMatches] = useState(false);
+  const matches = signal(false);
 
-  useEffect(() => {
+  effect(() => {
     if (typeof window === "undefined") return;
 
     const mediaQuery = window.matchMedia(query);
-    setMatches(mediaQuery.matches);
+    matches.set(mediaQuery.matches);
 
-    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    const handler = (e: MediaQueryListEvent) => matches.set(e.matches);
     mediaQuery.addEventListener("change", handler);
 
     return () => mediaQuery.removeEventListener("change", handler);
@@ -155,15 +155,15 @@ export function useMediaQuery(query: string): () => boolean {
  * Window dimensions
  */
 export function useWindowSize(): { width: () => number; height: () => number } {
-  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 0);
-  const [height, setHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 0);
+  const width = signal(typeof window !== "undefined" ? window.innerWidth : 0);
+  const height = signal(typeof window !== "undefined" ? window.innerHeight : 0);
 
-  useEffect(() => {
+  effect(() => {
     if (typeof window === "undefined") return;
 
     const handler = () => {
-      setWidth(window.innerWidth);
-      setHeight(window.innerHeight);
+      width.set(window.innerWidth);
+      height.set(window.innerHeight);
     };
     window.addEventListener("resize", handler);
 
@@ -180,14 +180,14 @@ export function useIntersection(
   ref: { current: Element | null } | (() => Element | null),
   options?: IntersectionObserverInit,
 ): () => boolean {
-  const [isIntersecting, setIsIntersecting] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const isIntersecting = signal(false);
+  const mounted = signal(false);
   let observer: IntersectionObserver | null = null;
 
   // Trigger re-run after mount when ref.current is set
-  onMount(() => setMounted(true));
+  onMount(() => mounted.set(true));
 
-  useEffect(() => {
+  effect(() => {
     // Read mounted to create dependency
     mounted();
 
@@ -195,7 +195,7 @@ export function useIntersection(
     if (!element) return;
 
     observer = new IntersectionObserver(([entry]) => {
-      setIsIntersecting(entry.isIntersecting);
+      isIntersecting.set(entry.isIntersecting);
     }, options);
 
     observer.observe(element);
@@ -218,7 +218,7 @@ export function useClickOutside(
   ref: { current: Element | null } | (() => Element | null),
   handler: () => void,
 ): void {
-  useEffect(() => {
+  effect(() => {
     const listener = (event: Event) => {
       const element = typeof ref === "function" ? ref() : ref.current;
       const target = event.target;
@@ -246,7 +246,7 @@ export function useKeyboard(
   handler: (e: KeyboardEvent) => void,
   options?: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean },
 ): void {
-  useEffect(() => {
+  effect(() => {
     const listener = (e: KeyboardEvent) => {
       if (e.key !== key) return;
       if (options?.ctrl && !e.ctrlKey) return;
@@ -266,7 +266,7 @@ export function useKeyboard(
  * Document title
  */
 export function useTitle(title: string | (() => string)): void {
-  useEffect(() => {
+  effect(() => {
     const t = typeof title === "function" ? title() : title;
     document.title = t;
   });
@@ -282,11 +282,11 @@ export function useInterval(
   // Store callback in a ref so we always call the latest version
   let savedCallback = callback;
 
-  useEffect(() => {
+  effect(() => {
     savedCallback = callback;
   });
 
-  useEffect(() => {
+  effect(() => {
     const d = typeof delay === "function" ? delay() : delay;
     if (d === null) return;
 
@@ -305,11 +305,11 @@ export function useTimeout(
   // Store callback in a ref so we always call the latest version
   let savedCallback = callback;
 
-  useEffect(() => {
+  effect(() => {
     savedCallback = callback;
   });
 
-  useEffect(() => {
+  effect(() => {
     const d = typeof delay === "function" ? delay() : delay;
     if (d === null) return;
 

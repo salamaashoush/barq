@@ -5,7 +5,7 @@
  *        useClickOutside, useKeyboard, useTitle, useInterval, useTimeout
  */
 
-import { Show, useRef, useState } from "@barqjs/core";
+import { Show, signal } from "@barqjs/core";
 import {
   useClickOutside,
   useCounter,
@@ -79,7 +79,7 @@ function FetchDemo() {
 
 // useDebounce and useThrottle
 function DebounceThrottleDemo() {
-  const [value, setValue] = useState("");
+  const value = signal("");
   const debounced = useDebounce(value, 500);
   const throttled = useThrottle(value, 500);
 
@@ -88,7 +88,7 @@ function DebounceThrottleDemo() {
       <input
         type="text"
         value={value()}
-        onInput={(e: Event) => setValue((e.target as HTMLInputElement).value)}
+        onInput={(e: Event) => value.set((e.target as HTMLInputElement).value)}
         placeholder="Type something..."
         class={inputStyle}
       />
@@ -113,7 +113,7 @@ function DebounceThrottleDemo() {
 
 // usePrevious
 function PreviousDemo() {
-  const [count, setCount] = useState(0);
+  const count = signal(0);
   const previous = usePrevious(count);
 
   return (
@@ -126,9 +126,9 @@ function PreviousDemo() {
       </p>
 
       <div class={buttonRowStyle}>
-        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
-        <Button onClick={() => setCount((c) => c - 1)}>Decrement</Button>
-        <Button onClick={() => setCount(Math.floor(Math.random() * 100))}>Random</Button>
+        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => count.update((c) => c - 1)}>Decrement</Button>
+        <Button onClick={() => count.set(Math.floor(Math.random() * 100))}>Random</Button>
       </div>
     </DemoCard>
   );
@@ -258,7 +258,9 @@ function WindowSizeDemo() {
 
 // useIntersection
 function IntersectionDemo() {
-  const ref = useRef<HTMLDivElement>();
+  // The hooks take an ACCESSOR, so a signal is the ref: the element arrives
+  // through the ref channel and every reader is live from that moment.
+  const ref = signal<HTMLDivElement | null>(null);
   const isVisible = useIntersection(ref, { threshold: 0.5 });
 
   return (
@@ -272,7 +274,7 @@ function IntersectionDemo() {
           <p>Scroll down to see the box...</p>
           <div style={{ height: "200px" }} />
           <div
-            ref={ref}
+            ref={setRef}
             class={targetBoxStyle}
             style={{ background: isVisible() ? "#22c55e" : "#ef4444" }}
           >
@@ -287,14 +289,14 @@ function IntersectionDemo() {
 
 // useClickOutside
 function ClickOutsideDemo() {
-  const ref = useRef<HTMLDivElement>();
-  const [isOpen, setIsOpen] = useState(false);
-  const [clickCount, setClickCount] = useState(0);
+  const ref = signal<HTMLDivElement | null>(null);
+  const isOpen = signal(false);
+  const clickCount = signal(0);
 
   useClickOutside(ref, () => {
     if (isOpen()) {
-      setIsOpen(false);
-      setClickCount((c) => c + 1);
+      isOpen.set(false);
+      clickCount.update((c) => c + 1);
     }
   });
 
@@ -305,7 +307,7 @@ function ClickOutsideDemo() {
       </p>
 
       <div ref={ref} class={dropdownStyle} style={{ background: isOpen() ? "#3b82f6" : "#475569" }}>
-        <Button onClick={() => setIsOpen((o) => !o)}>
+        <Button onClick={() => isOpen.update((o) => !o)}>
           {() => (isOpen() ? "Close" : "Open")} Dropdown
         </Button>
 
@@ -321,10 +323,10 @@ function ClickOutsideDemo() {
 
 // useKeyboard
 function KeyboardDemo() {
-  const [logs, setLogs] = useState<string[]>([]);
+  const logs = signal<string[]>([]);
 
   const addLog = (msg: string) => {
-    setLogs((l) => [...l.slice(-4), msg]);
+    logs.update((l) => [...l.slice(-4), msg]);
   };
 
   useKeyboard("Escape", () => addLog("Escape pressed"));
@@ -353,18 +355,18 @@ function KeyboardDemo() {
 
 // useInterval and useTimeout
 function TimerDemo() {
-  const [count, setCount] = useState(0);
-  const [intervalActive, setIntervalActive] = useState(false);
-  const [message, setMessage] = useState("");
+  const count = signal(0);
+  const intervalActive = signal(false);
+  const message = signal("");
 
   useInterval(
-    () => setCount((c) => c + 1),
+    () => count.update((c) => c + 1),
     () => (intervalActive() ? 1000 : null),
   );
 
-  const [showTimeout, setShowTimeout] = useState(false);
+  const showTimeout = signal(false);
   useTimeout(
-    () => setMessage("Timeout fired!"),
+    () => message.set("Timeout fired!"),
     () => (showTimeout() ? 2000 : null),
   );
 
@@ -375,7 +377,7 @@ function TimerDemo() {
           <p>
             Interval count: <strong>{count}</strong>
           </p>
-          <Button onClick={() => setIntervalActive((a) => !a)}>
+          <Button onClick={() => intervalActive.update((a) => !a)}>
             {() => (intervalActive() ? "Stop" : "Start")} Interval
           </Button>
         </div>
@@ -386,8 +388,8 @@ function TimerDemo() {
           </p>
           <Button
             onClick={() => {
-              setMessage("");
-              setShowTimeout(true);
+              message.set("");
+              showTimeout.set(true);
             }}
           >
             Start 2s Timeout

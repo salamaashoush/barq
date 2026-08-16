@@ -7,7 +7,7 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports
-import { useStore, produce, reconcile, useEffect } from "@barqjs/core";
+import { store, produce, reconcile, effect } from "@barqjs/core";
 
 // SolidJS imports
 import { createStore, produce as solidProduce, reconcile as solidReconcile } from "solid-js/store";
@@ -19,7 +19,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
   // Store creation
   results.push(
     await benchmark("store", "barq", "create store", () => {
-      useStore({ count: 0, user: { name: "John", age: 30 } });
+      store({ count: 0, user: { name: "John", age: 30 } });
     }),
   );
 
@@ -39,7 +39,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "1000 property updates",
       () => {
-        const [state, setState] = useStore({ count: 0 });
+        const [state, setState] = store({ count: 0 });
         for (let i = 0; i < 1000; i++) {
           setState("count", i);
         }
@@ -73,7 +73,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "500 deep path updates",
       () => {
-        const [state, setState] = useStore({
+        const [state, setState] = store({
           user: { profile: { settings: { theme: "light" } } },
         });
         for (let i = 0; i < 500; i++) {
@@ -112,8 +112,8 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "store + effect (100 updates)",
       () => {
         let effectRuns = 0;
-        const [state, setState] = useStore({ a: 0, b: 0 });
-        useEffect(() => {
+        const [state, setState] = store({ a: 0, b: 0 });
+        effect(() => {
           state.a;
           effectRuns++;
         });
@@ -155,7 +155,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "produce (100 updates)",
       () => {
-        const [state, setState] = useStore({
+        const [state, setState] = store({
           users: [
             { id: 1, name: "Alice", score: 0 },
             { id: 2, name: "Bob", score: 0 },
@@ -209,7 +209,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "reconcile (50 array updates)",
       () => {
-        const [state, setState] = useStore({
+        const [state, setState] = store({
           items: Array.from({ length: 100 }, (_, i) => ({ id: i, value: i })),
         });
         for (let i = 0; i < 50; i++) {
@@ -255,7 +255,7 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "array index updates (500)",
       () => {
-        const [state, setState] = useStore({
+        const [state, setState] = store({
           items: Array.from({ length: 10 }, (_, i) => ({ id: i, done: false })),
         });
         for (let i = 0; i < 500; i++) {

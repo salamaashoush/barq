@@ -153,8 +153,8 @@ describe("barqVitePlugin", () => {
     // warning would be a lie about the emitted module. BARQ004 (DESIGN O3) is
     // the dev-gated note that survived, so the PROBE moved and the claim — dev
     // is derived from Vite's own command/mode — did not.
-    const DEV_NOTE = `import { For, useStore } from "@barqjs/core";\n
-      const [state] = useStore({ rows: [] });
+    const DEV_NOTE = `import { For, store } from "@barqjs/core";\n
+      const [state] = store({ rows: [] });
       export const V = () => <ul><For each={state.rows}>{(row) => <li>{row.name}</li>}</For></ul>;\n`;
 
     test("a dev server run warns", () => {

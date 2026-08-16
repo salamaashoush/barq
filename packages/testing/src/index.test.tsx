@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Scope, useState } from "@barqjs/core";
+import { type Scope, signal } from "@barqjs/core";
 import type { Ui } from "./types.ts";
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index.ts";
 
@@ -8,14 +8,14 @@ import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index
 // SIGNATURE, and a component that still destructured its first argument would
 // be destructuring the scope.
 function Counter(_s: Scope | null, props: { initial?: number }) {
-  const [count, setCount] = useState(props.initial ?? 0);
+  const count = signal(props.initial ?? 0);
   return (
     <div>
       <span data-testid="count">Count: {count}</span>
-      <button type="button" onClick={() => setCount((c) => c + 1)}>
+      <button type="button" onClick={() => count.update((c) => c + 1)}>
         Increment
       </button>
-      <button type="button" onClick={() => setCount((c) => c - 1)}>
+      <button type="button" onClick={() => count.update((c) => c - 1)}>
         Decrement
       </button>
     </div>
@@ -29,10 +29,10 @@ function ThemeWrapper(_s: Scope | null, props: { children: Ui }) {
 
 // Component with async behavior
 function AsyncComponent(_s: Scope | null) {
-  const [data, setData] = useState<string | null>(null);
+  const data = signal<string | null>(null);
 
   const loadData = () => {
-    setTimeout(() => setData("loaded"), 50);
+    setTimeout(() => data.set("loaded"), 50);
   };
 
   return (
@@ -123,8 +123,8 @@ describe("reactive updates", () => {
 describe("renderHook", () => {
   test("renders a hook", () => {
     const { result } = renderHook(() => {
-      const [count, setCount] = useState(0);
-      return { count, setCount };
+      const count = signal(0);
+      return { count, set: (next: number) => count.set(next) };
     });
 
     expect(result.current.count()).toBe(0);
@@ -132,10 +132,10 @@ describe("renderHook", () => {
 
   test("hook updates work", () => {
     const { result } = renderHook(() => {
-      const [count, setCount] = useState(0);
+      const count = signal(0);
       return {
         count,
-        increment: () => setCount((c) => c + 1),
+        increment: () => count.update((c) => c + 1),
       };
     });
 
@@ -147,7 +147,7 @@ describe("renderHook", () => {
   test("renderHook with initial props", () => {
     const { result } = renderHook(
       (props: { initial: number }) => {
-        const [count] = useState(props.initial);
+        const count = signal(props.initial);
         return count;
       },
       { initialProps: { initial: 5 } },

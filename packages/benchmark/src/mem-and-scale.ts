@@ -8,7 +8,7 @@ import {
   effect as bEffect,
   flush as bFlush,
   signal as bSignal,
-  useStore as bStore,
+  store as bStore,
 } from "@barqjs/core";
 import {
   createEffect as sEffect,

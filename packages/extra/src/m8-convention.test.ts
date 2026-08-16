@@ -121,7 +121,7 @@ describe("the nine workarounds are deletions", () => {
   // first render is already right and there is nothing to duplicate.
   test("6. the match chain is derived from the location, never assigned", () => {
     expect(ROUTER).toContain("const matched = computed(() => matchRoutes(location().pathname");
-    expect(ROUTER).not.toMatch(/setMatchedRoutes|useEffect\(renderRoute\)/);
+    expect(ROUTER).not.toMatch(/setMatchedRoutes|effect\(renderRoute\)/);
   });
 
   // #7 — `OutletLevelContext` depth threading, written at three sites and read
@@ -132,7 +132,7 @@ describe("the nine workarounds are deletions", () => {
     expect(ROUTER).toContain("children: block(");
   });
 
-  // #8 — `return useMemo(…) as unknown as JSXElement` in `Loading`. Replaced by:
+  // #8 — `return computed(…) as unknown as JSXElement` in `Loading`. Replaced by:
   // `Out` admits a Cell, so the cast has nothing to convert — and `Loading`
   // itself was reached by nobody and is gone.
   test("8. no component casts a memo into an element", () => {

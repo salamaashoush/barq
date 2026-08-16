@@ -591,6 +591,9 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
         // exactly one shape: a component whose body forwards `props.children`
         // into a construct that DOES own — the provider wrapper.
         let mut children_owner = None;
+        // `Await` is the one construct that owns TWO scopes, so its `loading`
+        // fallback belongs to the outer one and everything else to the inner.
+        let mut outer: Option<u32> = None;
         let inner = match self.classify(name) {
             Tag::Intrinsic => owner,
             // C8-adjacent: `Match` builds nothing and owns nothing. It carries a
@@ -599,6 +602,16 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
             // activation. A node here made the static tree claim a scope the
             // runtime has never had and never will.
             Tag::Flow(Flow::Match, _) => owner,
+            // `Await` is TWO boundaries: the loading one, and the error one
+            // inside it whose body reads the resource. Both enter a scope, so
+            // the static tree has to carry both or the trace comes out one step
+            // deeper than the compiler says it will.
+            Tag::Flow(Flow::Await, label) => {
+                let loading =
+                    self.tree.push(owner, OwnKind::Branch, label.clone(), element.span, self.module);
+                outer = Some(loading);
+                self.tree.push(loading, OwnKind::Branch, label, element.span, self.module)
+            }
             Tag::Flow(flow, label) => {
                 self.tree.push(owner, OwnKind::of_flow(flow), label, element.span, self.module)
             }
@@ -635,6 +648,14 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
         // construct invokes under its own scope, so it belongs to `inner`.
         for item in &element.opening_element.attributes {
             let JSXAttributeItem::Attribute(attribute) = item else { continue };
+            let inner = match (&attribute.name, outer) {
+                (oxc::ast::ast::JSXAttributeName::Identifier(name), Some(outer))
+                    if name.name == "loading" =>
+                {
+                    outer
+                }
+                _ => inner,
+            };
             match attribute.value.as_ref() {
                 Some(JSXAttributeValue::ExpressionContainer(container)) => {
                     if let JSXExpression::EmptyExpression(_) = &container.expression {

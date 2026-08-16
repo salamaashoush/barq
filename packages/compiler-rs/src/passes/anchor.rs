@@ -1,6 +1,6 @@
 use oxc::allocator::{Allocator, Vec as ArenaVec};
 
-use crate::ir::{Anchor, Module, NONE, NodeId, Op, SkelNode, Unit};
+use crate::ir::{Anchor, Interner, Module, NONE, NodeId, Op, SkelNode, TagFlags, Unit};
 
 /// P5's anchor half — target #9. A hole only pays for a `<!---->` when no node
 /// already standing in the template can serve as its insert anchor. P1 leaves
@@ -11,8 +11,9 @@ use crate::ir::{Anchor, Module, NONE, NodeId, Op, SkelNode, Unit};
 /// `<!---->` and anchors against it, which is always a legal insert position —
 /// the elision is what has to prove something about the parse.
 pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>, elide: bool) {
+    let interner = &module.interner;
     for unit in module.units.iter_mut() {
-        choose(allocator, unit, elide);
+        choose(allocator, interner, unit, elide);
     }
 }
 
@@ -35,7 +36,12 @@ enum Choice {
     Marker(NodeId),
 }
 
-fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>, elide: bool) {
+fn choose<'a>(
+    allocator: &'a Allocator,
+    interner: &Interner<'a>,
+    unit: &mut Unit<'a>,
+    elide: bool,
+) {
     // Indexed by `SlotId`, not by how many slots survived: P3 folds a constant
     // child away and deletes its patch, which leaves the remaining ids sparse.
     let Some(slots) = unit.patch.iter().filter_map(|patch| patch.op.slot()).max() else {
@@ -44,16 +50,26 @@ fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>, elide: bool) {
     let mut choice: Vec<Choice> = vec![Choice::End; slots as usize + 1];
     let mut markers: Vec<NodeId> = Vec::new();
 
-    let mut groups: Vec<(NodeId, NodeId)> = vec![unit.skeleton.roots];
+    // A group whose parent can hold no marker at all: a `<!---->` inside a
+    // raw-text element is TEXT the value would be read as, and inside an element
+    // whose content is replaced the write deletes the marker before the insert
+    // that anchors against it runs. P1 gives both of them exactly one child
+    // position, at the end, so `End` is the only anchor either can need — and
+    // that has to hold at `-O0` too, where elision is off.
+    let mut groups: Vec<(NodeId, NodeId, bool)> = vec![(unit.skeleton.roots.0, unit.skeleton.roots.1, true)];
     for id in 0..unit.skeleton.len() {
         if let SkelNode::Element(element) = unit.skeleton.nodes[id]
             && element.children.0 < element.children.1
         {
-            groups.push(element.children);
+            groups.push((
+                element.children.0,
+                element.children.1,
+                markable(interner, unit, id as NodeId),
+            ));
         }
     }
 
-    for (lo, hi) in groups {
+    for (lo, hi, markable) in groups {
         let mut prev = Prev::Nothing;
         for node in lo..hi {
             let SkelNode::Slot(slot) = unit.skeleton.nodes[node as usize] else {
@@ -66,7 +82,11 @@ fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>, elide: bool) {
                 };
                 continue;
             };
-            let decision = if elide { decide(unit, node, hi, prev) } else { Choice::Marker(node) };
+            let decision = match (markable, elide) {
+                (false, _) => Choice::End,
+                (true, true) => decide(unit, node, hi, prev),
+                (true, false) => Choice::Marker(node),
+            };
             if matches!(decision, Choice::Marker(_)) {
                 markers.push(node);
                 prev = Prev::Node;
@@ -86,6 +106,27 @@ fn choose<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>, elide: bool) {
         };
     }
     debug_assert_eq!(unit.skeleton.validate(), Ok(()));
+}
+
+/// Whether a `<!---->` inside this element would be a comment node at all.
+///
+/// Inside `<script>`/`<style>`/`<textarea>`/`<title>` it is character data, and
+/// inside an element whose content a patch REPLACES it is deleted before the
+/// insert that would anchor against it. P1 keeps both shapes to one trailing
+/// child position, so neither ever needs one.
+fn markable<'a>(interner: &Interner<'a>, unit: &Unit<'a>, node: NodeId) -> bool {
+    let Some(element) = unit.skeleton.node(node).as_element() else { return true };
+    let flags = interner.tag(element.tag).flags;
+    if flags.contains(TagFlags::RAW_TEXT) || flags.contains(TagFlags::ESCAPABLE_RAW_TEXT) {
+        return false;
+    }
+    !unit.patch.iter().any(|patch| {
+        let name = match patch.op {
+            Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => name,
+            _ => return false,
+        };
+        patch.target == node && crate::lower::names::replaces_children(interner.name(name).text)
+    })
 }
 
 /// DESIGN §3/P5, in order. Every skeleton node but a `Slot` materialises, so the

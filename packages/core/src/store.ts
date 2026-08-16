@@ -298,7 +298,7 @@ function draft<T extends object>(target: T): T {
  *
  * @example
  * ```ts
- * const [state, setState] = useStore({
+ * const [state, setState] = store({
  *   user: { name: "John", age: 30 },
  *   todos: [{ id: 1, text: "Learn signals", done: false }]
  * });
@@ -319,7 +319,7 @@ function draft<T extends object>(target: T): T {
  * setState("todos", 0, "done", true);
  * ```
  */
-export function useStore<T extends object>(initialState: T): Store<T> {
+export function store<T extends object>(initialState: T): Store<T> {
   const state = wrap(initialState) as DeepReadonly<T>;
 
   const setState: StoreSetter<T> = (...args: unknown[]) => {
@@ -424,7 +424,7 @@ function applyUpdates<T extends object>(target: T, updates: Partial<T>): void {
  *
  * @example
  * ```ts
- * const [state] = useStore({ user: { name: "John" } });
+ * const [state] = store({ user: { name: "John" } });
  *
  * // Get raw object (no reactivity tracking)
  * const raw = unwrap(state);
@@ -462,7 +462,7 @@ export function createProjection<T extends object>(
   fn: (draft: T) => void | T,
   seed: T = {} as T,
 ): DeepReadonly<T> {
-  const [state, setState] = useStore(seed);
+  const [state, setState] = store(seed);
 
   renderEffect(() => {
     setState((draftState) => fn(draftState) as Partial<T> | void);
@@ -762,7 +762,7 @@ export interface ReconcileOptions<T> {
  *
  * @example
  * ```ts
- * const [state, setState] = useStore({ items: [] });
+ * const [state, setState] = store({ items: [] });
  *
  * // Update items with reconciliation using options object
  * setState("items", reconcile(newItems, { key: "id" }));

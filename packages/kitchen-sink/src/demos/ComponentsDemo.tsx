@@ -10,12 +10,11 @@
 import {
   ErrorBoundary,
   For,
-  Fragment,
   Match,
   Portal,
   Show,
   Switch,
-  useState,
+  signal,
 } from "@barqjs/core";
 import {
   css,
@@ -38,14 +37,14 @@ export function ComponentsDemo() {
 
 // Show component
 function ShowDemo() {
-  const [visible, setVisible] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const visible = signal(true);
+  const loading = signal(false);
 
   return (
     <DemoCard title="Show - Conditional Rendering">
       <div class={buttonRowStyle}>
-        <Button onClick={() => setVisible((v) => !v)}>Toggle Content</Button>
-        <Button onClick={() => setLoading((l) => !l)}>Toggle Loading</Button>
+        <Button onClick={() => visible.update((v) => !v)}>Toggle Content</Button>
+        <Button onClick={() => loading.update((l) => !l)}>Toggle Loading</Button>
       </div>
 
       <Show when={loading} fallback={null}>
@@ -68,25 +67,25 @@ function ShowDemo() {
 
 // For component - keyed list
 function ForDemo() {
-  const [items, setItems] = useState([
+  const items = signal([
     { id: 1, name: "Apple" },
     { id: 2, name: "Banana" },
     { id: 3, name: "Cherry" },
   ]);
-  const [nextId, setNextId] = useState(4);
+  const nextId = signal(4);
 
   const addItem = () => {
     const id = nextId();
-    setItems((arr) => [...arr, { id, name: `Item ${id}` }]);
-    setNextId((i) => i + 1);
+    items.update((arr) => [...arr, { id, name: `Item ${id}` }]);
+    nextId.update((i) => i + 1);
   };
 
   const removeItem = (id: number) => {
-    setItems((arr) => arr.filter((item) => item.id !== id));
+    items.update((arr) => arr.filter((item) => item.id !== id));
   };
 
   const shuffleItems = () => {
-    setItems((arr) => [...arr].sort(() => Math.random() - 0.5));
+    items.update((arr) => [...arr].sort(() => Math.random() - 0.5));
   };
 
   return (
@@ -124,10 +123,10 @@ function ForDemo() {
 
 // For keyed={false} - the positional mode
 function IndexDemo() {
-  const [values, setValues] = useState(["A", "B", "C", "D"]);
+  const values = signal(["A", "B", "C", "D"]);
 
   const updateValue = (idx: number, value: string) => {
-    setValues((arr) => {
+    values.update((arr) => {
       const newArr = [...arr];
       newArr[idx] = value;
       return newArr;
@@ -135,11 +134,11 @@ function IndexDemo() {
   };
 
   const addValue = () => {
-    setValues((arr) => [...arr, String.fromCharCode(65 + arr.length)]);
+    values.update((arr) => [...arr, String.fromCharCode(65 + arr.length)]);
   };
 
   const removeValue = () => {
-    setValues((arr) => arr.slice(0, -1));
+    values.update((arr) => arr.slice(0, -1));
   };
 
   return (
@@ -173,15 +172,15 @@ function IndexDemo() {
 
 // Switch/Match component
 function SwitchDemo() {
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const status = signal<"idle" | "loading" | "success" | "error">("idle");
 
   return (
     <DemoCard title="Switch/Match - Pattern Matching">
       <div class={buttonRowStyle}>
-        <Button onClick={() => setStatus("idle")}>Idle</Button>
-        <Button onClick={() => setStatus("loading")}>Loading</Button>
-        <Button onClick={() => setStatus("success")}>Success</Button>
-        <Button onClick={() => setStatus("error")}>Error</Button>
+        <Button onClick={() => status.set("idle")}>Idle</Button>
+        <Button onClick={() => status.set("loading")}>Loading</Button>
+        <Button onClick={() => status.set("success")}>Success</Button>
+        <Button onClick={() => status.set("error")}>Error</Button>
       </div>
 
       <div class={statusBoxStyle}>
@@ -210,15 +209,15 @@ function SwitchDemo() {
 
 // Portal component
 function PortalDemo() {
-  const [showModal, setShowModal] = useState(false);
+  const showModal = signal(false);
 
   const closeModal = () => {
-    setShowModal(false);
+    showModal.set(false);
   };
 
   return (
     <DemoCard title="Portal - Render Outside DOM Tree">
-      <Button onClick={() => setShowModal(true)}>Open Modal</Button>
+      <Button onClick={() => showModal.set(true)}>Open Modal</Button>
 
       <Show when={showModal}>
         <Portal>
@@ -247,11 +246,11 @@ function PortalDemo() {
 
 // ErrorBoundary component
 function ErrorBoundaryDemo() {
-  const [shouldError, setShouldError] = useState(false);
+  const shouldError = signal(false);
 
   return (
     <DemoCard title="ErrorBoundary - Error Handling">
-      <Button onClick={() => setShouldError((e) => !e)}>
+      <Button onClick={() => shouldError.update((e) => !e)}>
         {shouldError() ? "Fix Component" : "Break Component"}
       </Button>
 
@@ -263,7 +262,7 @@ function ErrorBoundaryDemo() {
               <p>{error.message}</p>
               <Button
                 onClick={() => {
-                  setShouldError(false);
+                  shouldError.set(false);
                   reset();
                 }}
               >
@@ -288,23 +287,26 @@ function ErrorBoundaryDemo() {
 
 // Fragment demo
 function FragmentDemo() {
-  const [items, setItems] = useState(["Item 1", "Item 2", "Item 3"]);
+  const items = signal(["Item 1", "Item 2", "Item 3"]);
 
   return (
     <DemoCard title="Fragment - Grouping Without Wrapper">
       <p>Items rendered with Fragment (no wrapper div):</p>
 
       <div class={fragmentContainerStyle}>
-        <Fragment>
+        <>
           <For each={items}>{(item) => <span class={fragmentItemStyle}>{item}</span>}</For>
-        </Fragment>
+        </>
       </div>
 
-      <Button onClick={() => setItems((arr) => [...arr, `Item ${arr.length + 1}`])}>
+      <Button onClick={() => items.update((arr) => [...arr, `Item ${arr.length + 1}`])}>
         Add Item
       </Button>
 
-      <p class={noteStyle}>Fragment groups elements without adding extra DOM nodes.</p>
+      <p class={noteStyle}>
+        A fragment groups elements without adding extra DOM nodes. It compiles to an ARRAY of its
+        parts — there is no component behind it.
+      </p>
     </DemoCard>
   );
 }

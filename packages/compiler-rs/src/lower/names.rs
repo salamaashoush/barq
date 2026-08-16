@@ -2,7 +2,7 @@ use oxc::allocator::Allocator;
 
 use crate::ir::Chan;
 
-pub use crate::tables::{is_dom_prop, is_svg_tag};
+pub use crate::tables::{is_dom_prop, is_math_tag, is_svg_tag};
 
 /// What a `namespace:name` attribute means. The prefix is the author overriding
 /// a decision the compiler would otherwise take from the name (§3.12), and it is
@@ -55,6 +55,8 @@ pub fn channel_of(name: &str, is_svg: bool, tag: &str) -> Chan {
         "style" => Chan::Style,
         "classList" => Chan::ClassList,
         "dangerouslySetInnerHTML" => Chan::Html,
+        // §3.13 item 8's third parser fact — see `state_attribute`.
+        _ if state_attribute(name, tag) => Chan::Attr,
         // §3.10.1 before the plain property channel: these are properties too,
         // and what separates them is who else writes them.
         _ if !is_svg && crate::tables::is_user_mutable(tag, name) => Chan::Live,
@@ -147,16 +149,30 @@ fn reaches_set_element_attr(name: &str) -> bool {
 /// this namespace — the ONE question P1 and P3 Fold both have to answer, and
 /// the one two separate copies disagreed about: `channel()` ignored the
 /// namespace, so a literal on an SVG element missed a fold P1 permits.
-pub fn attribute_channel(name: &str, is_svg: bool) -> bool {
+pub fn attribute_channel(name: &str, is_svg: bool, tag: &str) -> bool {
     // `applyProp`'s test is `key[0] === "o" && key[1] === "n"`, so `once` binds
     // a `ce` listener and a baked `once=""` would never reach the DOM.
     if name.starts_with("on") || name == "children" {
         return false;
     }
+    if state_attribute(name, tag) {
+        return true;
+    }
     // `DOM_PROPS` are written as PROPERTIES — baking `value="x"` sets only the
-    // default attribute and diverges on a dirty form field. The runtime takes
-    // that branch only under `!isSvg` (`dom.ts:581`).
+    // default attribute and diverges on a dirty form field.
     !(!is_svg && is_dom_prop(name))
+}
+
+/// The DOM_PROPS whose ATTRIBUTE carries the state rather than a default, so
+/// baking one into the template is not the `value="x"` divergence above.
+///
+/// `multiple` is the whole list, and it is here because of §3.13 item 8: a
+/// `<select>` runs "ask for a reset" as each `<option>` arrives, and the answer
+/// depends on `multiple` being in place BEFORE they are. In the template it is;
+/// as a property written after the clone it is not, and the first option comes
+/// out selected.
+pub fn state_attribute(name: &str, tag: &str) -> bool {
+    name == "multiple" && tag == "select"
 }
 
 /// Names whose write REPLACES everything under the element. `createElement`
@@ -173,8 +189,8 @@ pub fn replaces_children(name: &str) -> bool {
 /// produce the same bytes. The rest reach the DOM through `setProp`, which is
 /// the un-compiled path byte for byte — and for `style` P3 folds it anyway,
 /// once the analysis has proved the value really is a string.
-pub fn bakeable(name: &str, is_svg: bool) -> bool {
-    if !attribute_channel(name, is_svg) {
+pub fn bakeable(name: &str, is_svg: bool, tag: &str) -> bool {
+    if !attribute_channel(name, is_svg, tag) {
         return false;
     }
     !crate::tables::is_intercepted(name) || matches!(name, "class" | "className")
@@ -293,19 +309,29 @@ mod tests {
 
     #[test]
     fn a_property_channel_name_never_reaches_the_template() {
-        assert!(!bakeable("value", false));
-        assert!(!bakeable("disabled", false));
+        assert!(!bakeable("value", false, "input"));
+        assert!(!bakeable("disabled", false, "input"));
         // On an SVG element the runtime skips the DOM_PROPS branch entirely.
-        assert!(bakeable("value", true));
-        assert!(!bakeable("style", false));
-        assert!(!bakeable("onClick", false));
-        assert!(!bakeable("ref", false));
-        assert!(!bakeable("classList", false));
-        assert!(!bakeable("classList", true));
-        assert!(!bakeable("dangerouslySetInnerHTML", true));
-        assert!(bakeable("class", false));
-        assert!(bakeable("class", true));
-        assert!(bakeable("viewBox", true));
-        assert!(bakeable("data-kind", false));
+        assert!(bakeable("value", true, "path"));
+        assert!(!bakeable("style", false, "div"));
+        assert!(!bakeable("onClick", false, "div"));
+        assert!(!bakeable("ref", false, "div"));
+        assert!(!bakeable("classList", false, "div"));
+        assert!(!bakeable("classList", true, "path"));
+        assert!(!bakeable("dangerouslySetInnerHTML", true, "path"));
+        assert!(bakeable("class", false, "div"));
+        assert!(bakeable("class", true, "path"));
+        assert!(bakeable("viewBox", true, "svg"));
+        assert!(bakeable("data-kind", false, "div"));
+    }
+
+    /// §3.13 item 8: the attribute is the state, and it has to be in the
+    /// template because the children's default selectedness depends on it.
+    #[test]
+    fn multiple_is_an_attribute_on_a_select_and_a_property_everywhere_else() {
+        assert!(bakeable("multiple", false, "select"));
+        assert_eq!(channel_of("multiple", false, "select"), Chan::Attr);
+        assert!(!bakeable("multiple", false, "input"));
+        assert_eq!(channel_of("multiple", false, "input"), Chan::Prop);
     }
 }

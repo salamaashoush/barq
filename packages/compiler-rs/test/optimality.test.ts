@@ -6,7 +6,8 @@ import { join } from "node:path"
 
 import {
   auditAnchors,
-  compareToOracle,
+  auditCompiled,
+  countMerges,
   renderViaCompiler,
   compileFixture,
   compileFixtureBody,
@@ -28,7 +29,6 @@ import {
 } from "./harness.ts"
 import { measure, typicalComponentFile } from "./measure.ts"
 import { countAnchors } from "./normalize.ts"
-import { oracleRegistry } from "./oracle-known-failures.ts"
 
 /**
  * The definition of done for milestones 2-6.
@@ -278,14 +278,24 @@ describe("declared optimality", () => {
     return body.includes(JSON.stringify(subject.name))
   }
 
+  /** Every frame the fixture drives is recorded in the rendered-DOM golden. */
+  const recordedIn = (file: string) => (subject: { name: string }) => {
+    const text = readFileSync(join(import.meta.dir, "__snapshots__", file), "utf8")
+    return text.includes(`exports[\`rendered DOM golden ${subject.name}: rendered DOM 1\`]`)
+  }
+
   const NO_DECLARATION: Record<string, Excuse> = {
+    // Both used to point at their declared `win`s, which were behavioural
+    // claims against the retired oracle. §6 replaces that channel with the
+    // per-fixture rendered-DOM golden, which records every frame either fixture
+    // drives rather than only the ones that differed from a reference.
     "conditional-children": {
-      why: "the claim is the two declared `win`s, which are behavioural",
-      holds: ({ mod }) => (mod.wins ?? []).length >= 2,
+      why: "behavioural: every frame is recorded in the rendered-DOM golden",
+      holds: recordedIn("oracle.test.ts.snap"),
     },
     "array-hole": {
-      why: "an insert() receiving an Array; the claim is the four declared wins",
-      holds: ({ mod }) => (mod.wins ?? []).length >= 4,
+      why: "an insert() receiving an Array; behavioural, in the rendered-DOM golden",
+      holds: recordedIn("oracle.test.ts.snap"),
     },
     "arrow-body-component": {
       why: "the ArrowBody splice site, pinned by the emitted-code snapshot",
@@ -341,10 +351,17 @@ describe("declared optimality", () => {
     },
     mathml: {
       why:
-        "namespace handling: `<math>` is a namespace ROOT and cannot be a template root, so it " +
-        "is built through createElement while its subtree stays a template the parse pass reads",
-      holds: ({ code }) =>
-        code.includes('createElement("math"') && templateHtml(code).join("").includes("<mrow>"),
+        "namespace handling: `<math>` switches the parser into foreign content, so the whole " +
+        "subtree bakes into ONE template and the clone carries the MathML namespace with it — " +
+        "the parse conformance pass is what reads those bytes back",
+      holds: ({ code }) => {
+        const html = templateHtml(code).join("")
+        return (
+          templateHtml(code).length === 1 &&
+          html.includes('<math display="block"><mrow>') &&
+          !code.includes("createElement")
+        )
+      },
     },
     svg: {
       why:
@@ -458,8 +475,8 @@ describe("declared optimality", () => {
     run(`${name} — target ${decl.target} (M${decl.milestone})`, async () => {
       assertDeclared(name, decl, compileFixtureBody(name))
       if (decl.effects === undefined) return
-      const result = await compareToOracle(name)
-      expect(result.compiled.trace.created, `${name} effects`).toBe(decl.effects)
+      const render = await renderViaCompiler(name)
+      expect(render.trace.created, `${name} effects`).toBe(decl.effects)
     })
   }
 })
@@ -519,16 +536,16 @@ describe("target 2 — fully-static subtree costs one clone and nothing else", (
   })
 
   it("static-only: creates zero effects at runtime", async () => {
-    const result = await compareToOracle("static-only")
+    const render = await renderViaCompiler("static-only")
     // Zero effects is a property of un-compiled static JSX too, so the count on
     // its own says nothing. What says something is WHICH runtime surface the
     // module touched: one `template` import and no other helper at all means the
     // whole subtree became a clone, and there is nothing left that could create
     // an effect later.
-    expect(runtimeImports(result.compiled.code ?? "")).toEqual(["template"])
-    expect(result.compiled.code).toMatch(/return _tmpl\$\d+\(\)/)
-    expect(result.compiled.html.length, "and it still rendered something").toBeGreaterThan(0)
-    expect(result.compiled.trace.created).toBe(0)
+    expect(runtimeImports(render.code ?? "")).toEqual(["template"])
+    expect(render.code).toMatch(/return _tmpl\$\d+\(\)/)
+    expect(render.html.length, "and it still rendered something").toBeGreaterThan(0)
+    expect(render.trace.created).toBe(0)
   })
 
   it.todo("dedup-identical-markup: zero patch calls across both components", () => {
@@ -562,9 +579,16 @@ describe("target 3 — constant folding into the template string", () => {
 
 describe("target 4 — one effect per element, not one per prop", () => {
   it("multi-prop-one-element: three dynamic props share a single effect", async () => {
-    const result = await compareToOracle("multi-prop-one-element")
-    expect(result.compiled.trace.created).toBe(1)
-    expect(result.oracle.trace.created).toBe(3)
+    // The contrast used to be the oracle's count — one effect per live prop.
+    // §6 retires it, so the same claim is stated off the module: ONE bindEffect
+    // that covers two or more channel writes, and one effect at run time. The
+    // module half is the stronger of the two, because the count alone is also
+    // what a compiler that dropped two props produces.
+    const code = compileFixtureBody("multi-prop-one-element")
+    expect(countMerges(code), "one effect covering more than one prop").toBe(1)
+    expect(bindEffectBodies(code), "and no second effect beside it").toHaveLength(1)
+    const render = await renderViaCompiler("multi-prop-one-element")
+    expect(render.trace.created).toBe(1)
   })
 
   it("class-with-live-siblings: class is a FIELD of the one effect, not an exception to it", async () => {
@@ -589,10 +613,10 @@ describe("target 4 — one effect per element, not one per prop", () => {
       }
     }
 
-    const result = await compareToOracle("class-with-live-siblings")
+    const result = await auditCompiled("class-with-live-siblings")
     expect(result.ok, formatDivergences("class-with-live-siblings", result.divergences)).toBe(true)
-    expect(result.compiled.trace.created, "one fused record for the element").toBe(1)
-    expect(result.oracle.trace.created, "the oracle makes one per live prop").toBe(3)
+    expect(result.render.trace.created, "one fused record for the element").toBe(1)
+    expect(countMerges(code), "and it covers class, title and id together").toBe(1)
   })
 
   it("reactive-attribute: href and class are two fields of one record", async () => {
@@ -608,11 +632,11 @@ describe("target 4 — one effect per element, not one per prop", () => {
     ])
     expect(bindEffectBodies(code)).toHaveLength(1)
 
-    const result = await compareToOracle("reactive-attribute")
     // Was 2 at M4 — one compiled effect for `href`, one the runtime opened for
-    // `class`. The oracle still makes one per live prop.
-    expect(result.compiled.trace.created).toBe(1)
-    expect(result.oracle.trace.created).toBe(2)
+    // `class`. Both are fields of one record now.
+    expect(countMerges(code), "href and class in one effect").toBe(1)
+    const render = await renderViaCompiler("reactive-attribute")
+    expect(render.trace.created).toBe(1)
   })
 
   /**
@@ -686,10 +710,12 @@ describe("target 4 — one effect per element, not one per prop", () => {
 
   it("no effect group spans two elements, across the corpus", () => {
     // P5 merges a CONTIGUOUS run of live props on ONE element. Merging across
-    // elements would still produce identical DOM and FEWER effects, so no bound
-    // in the differential harness can see it — `boundEffects` treats fewer
-    // effects as never a divergence. `passes::group::tests` pins the pass
-    // itself; this pins what codegen actually emitted.
+    // elements would still produce identical DOM and FEWER effects, so the old
+    // one-sided effect BOUND could not see it — fewer effects was never a
+    // divergence against a reference. `effect-counts.ts` makes the count an
+    // equality and would now move, but the number alone does not say WHICH
+    // elements a group spans. `passes::group::tests` pins the pass itself; this
+    // pins what codegen actually emitted.
     let groups = 0
     for (const name of listFixtures()) {
       const code = compileFixtureBody(name)
@@ -910,6 +936,12 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     "Errored",
     "ErrorBoundary",
     "Portal",
+    // M9. `Await` is two boundaries, `Dynamic` a branch whose body resolves the
+    // component, `Reveal` a `reveal` call — the provide scope it always was,
+    // with the component around it gone.
+    "Await",
+    "Dynamic",
+    "Reveal",
   ]
 
   it("no construct the pass understands survives as a call", () => {
@@ -932,28 +964,34 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     expect(survivors).toEqual(["control-flow-for-keyed-spread: For"])
   })
 
-  it("the three constructs the pass refuses keep their adapters, and say why", () => {
-    const refused: string[] = []
-    for (const name of listFixtures()) {
-      const code = stripLiterals(compileFixtureBody(name))
+  it("the three constructs M8 refused now lower too, onto what they always were", () => {
+    // The refusals were three facts about the constructs, and M9 answered each
+    // one rather than routing around it:
+    //
+    //  - `Await`'s three states are what READING a resource does — throw
+    //    `NotReady`, throw the error, return the value — so it is a loading
+    //    boundary around an error boundary and the property test that told a
+    //    Resource from a Cell carrying one is gone with the key it fed.
+    //  - `Dynamic`'s string arm builds through `spread` and `insert` like every
+    //    other element, so the fifth element-creation path it needed does not
+    //    exist to emit.
+    //  - `Reveal` is still a provide scope rather than a range, and is lowered
+    //    to the CALL that says so — not onto `branch`, which would have put a
+    //    context binding where a conditional belongs.
+    const bodies = listFixtures().map((name) => [name, compileFixtureBody(name)] as const)
+    for (const [name, code] of bodies) {
       for (const construct of ["Await", "Dynamic", "Reveal"]) {
-        if (new RegExp(`(?<![\\w$])${construct}\\(_s\\$`).test(code)) {
-          refused.push(`${name}: ${construct}`)
-        }
+        expect(
+          new RegExp(`(?<![\\w$])${construct}\\(_s\\$`).test(stripLiterals(code)),
+          `${name}: ${construct} still reaches its adapter`,
+        ).toBe(false)
       }
     }
-    // `Dynamic` needs `createDynamicElement`, which is private to
-    // `components.ts` and not on the ABI §3.0 enumerates. `Await` needs the
-    // resolved resource in its key and in all three of its bodies, and without
-    // a shared local that is four evaluations of one prop. `Reveal` creates a
-    // PROVIDE scope rather than a range, so it is not one of the four
-    // primitives at all.
-    expect(refused.sort()).toEqual([
-      "control-flow-await-suspense: Await",
-      "control-flow-errored-loading: Reveal",
-      "control-flow-reveal: Reveal",
-      "dynamic: Dynamic",
-    ])
+    // And the primitives they reach instead really are emitted.
+    const all = bodies.map(([, code]) => code).join("\n")
+    for (const primitive of ["_$reveal(", "_$dyn(", "_$boundary("]) {
+      expect(all, `${primitive} is emitted by no fixture`).toContain(primitive)
+    }
   })
 
   /**
@@ -1067,10 +1105,11 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     expect(emittedCalls(code, "insert") + propCalls(code)).toBe(0)
 
     // The observable consequence of the change, measured rather than asserted:
-    // with the Block, each toggle REBUILDS the body. With the eager clone `Show`
-    // handed the same node back every time, which is what the un-compiled
-    // reference still does — that is the whole of this fixture's row in
-    // `oracle-known-failures.ts`, and `oracle.test.ts` owns the comparison.
+    // with the Block, each toggle REBUILDS the body. The eager argument form
+    // handed the same node back every time, and it was the only shape the
+    // retired un-compiled reference could express — which is why this fixture
+    // was registered as a known oracle divergence for six milestones. Stated
+    // directly it needs no registry at all.
     const rendered = await renderViaCompiler("control-flow-show-eager-static-body")
     const identities = rendered.channels.map((frame) => frame.identity.join(","))
     expect(new Set(identities).size, "the toggle rebuilt the body").toBeGreaterThan(1)
@@ -1091,11 +1130,12 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // keeps a fallback in place across `0`, `""` and `null`.
     expect(code).toMatch(/\(\) => on\(\) \|\| false/)
 
-    const result = await compareToOracle("control-flow-show-static-body")
+    const result = await auditCompiled("control-flow-show-static-body")
     expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(true)
-    // The fixture toggles off and back on, so the oracle really did build a
-    // second `.panel`; matching it means the compiled path did too.
-    const identities = result.compiled.channels.map((frame) => frame.identity.join(","))
+    // The fixture toggles off and back on, and C6 says a branch that comes back
+    // is REBUILT: the Block runs again under a fresh scope, so the second
+    // `.panel` is a different node.
+    const identities = result.render.channels.map((frame) => frame.identity.join(","))
     expect(new Set(identities).size, "the toggle rebuilt the body").toBeGreaterThan(1)
   })
 
@@ -1120,11 +1160,12 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // disposable and the activation still gets a `Scope`.
     expect(code, "an unprovable body ships no flag").not.toMatch(/\}\), \d\)/)
 
-    // The oracle leg moved: `control-flow-nested` is registered in
-    // `oracle-known-failures.ts` because its reference module binds the scope to
-    // the row callback's item slot, and `oracle.test.ts` holds it to exactly
-    // that divergence. What is asserted here is the half this test is about —
-    // the body really is built, and only when `when` is first true.
+    // What is asserted here is the half this test is about — the body really is
+    // built, and only when `when` is first true. It used to need saying that
+    // the comparison leg lived elsewhere, because `control-flow-nested`'s
+    // un-compiled reference bound the scope to the row callback's item slot;
+    // that reference is retired and the fixture is held to its rendered-DOM
+    // golden like every other.
     const rendered = await renderViaCompiler("control-flow-nested")
     expect(rendered.html, "the body was built").toContain("<li>")
   })
@@ -1181,18 +1222,17 @@ describe("target 9 — marker elision", () => {
     expect(countRaw(code, /_\$+insert\(/), "the substring count this replaced").toBeGreaterThan(1)
     expect(emittedCalls(code, "insert"), "one call site").toBe(1)
 
-    const result = await compareToOracle("marker-literal-text")
+    const result = await auditCompiled("marker-literal-text")
     expect(result.ok, formatDivergences("marker-literal-text", result.divergences)).toBe(true)
-    expect(result.compiled.channels[0].anchors, "no anchor reached the DOM").toBe(0)
+    expect(result.render.channels[0].anchors, "no anchor reached the DOM").toBe(0)
     expect(
-      countAnchors(result.compiled.channels[0].markers),
+      countAnchors(result.render.channels[0].markers),
       "and the marker channel agrees, because it escapes the text a hole renders",
     ).toBe(0)
-    expect(result.oracle.channels[0].anchors, "the oracle renders the text and no anchor").toBe(0)
   })
 
   it("the exact bound still catches a spurious anchor on that same fixture", async () => {
-    const result = await compareToOracle("marker-literal-text", {
+    const result = await auditCompiled("marker-literal-text", {
       emitted: (code) => code.replace("<span>end</span>", "<span>end</span><!---->"),
     })
     expect(result.ok).toBe(false)
@@ -1282,44 +1322,45 @@ describe("open questions the harness must be able to state", () => {
   // Not targets: decisions that change what "correct" means. Written down here
   // so they are visible in the suite instead of living only in a design doc.
 
-  it("O4: a bare tracked read is auto-thunked, and every fixture holding one declares it live", async () => {
-    // `<div>{count()}</div>` is a dead read in the oracle and a live binding
-    // once auto-thunking is on. This used to forbid the shape corpus-wide,
-    // which kept the effect bound simple but made the compiler-BUILT thunk
-    // unreachable from any fixture — the arrow-construction path in
-    // `codegen::dom::thunk` had zero coverage in either suite as a result.
+  it("O4: a bare tracked read is auto-thunked, and the corpus reaches that path", async () => {
+    // `<div>{count()}</div>` is a dead read under an un-compiled runtime and a
+    // live binding once auto-thunking is on. This used to forbid the shape
+    // corpus-wide, which kept the old effect BOUND simple but made the
+    // compiler-BUILT thunk unreachable from any fixture — the arrow-construction
+    // path in `codegen::dom::thunk` had zero coverage in either suite as a
+    // result.
     //
-    // The rule is now the one that actually matters: a fixture may hold a bare
-    // read, but it must DECLARE what goes live, so the bound is lifted by
-    // exactly the holes that earned it and stays a bound for everything else.
+    // It then became "a fixture may hold a bare read, but it must DECLARE what
+    // goes live", because a live hole cost one effect the reference did not
+    // create and the bound had to be lifted by exactly the holes that earned it.
+    // §6 retires the reference and `effect-counts.ts` makes the count absolute,
+    // so there is nothing left to declare: the number for a fixture holding a
+    // bare read simply IS one higher, and a hole that stopped going live moves
+    // that number and fails there.
+    //
+    // What remains here is the half a count cannot state — that the shape is
+    // REACHED and that it really is bound rather than read once.
     // `(?<!$)` because `${a()}` inside a template literal is an interpolation,
-    // not a JSX hole — the compiler never auto-thunks it on its own, and counting
-    // it made a fixture whose only holes are author-written thunks demand a
-    // `goesLive` it could never earn. `[=>]{` because the attribute form has to
-    // start at an attribute (`x={`) or at a hole (`>{`), not mid-expression.
+    // not a JSX hole; `[=>]{` because the attribute form has to start at an
+    // attribute (`x={`) or at a hole (`>{`), not mid-expression.
     const bare = listFixtures().filter((name) =>
       /(?<!\$)\{\s*[A-Za-z_$][\w.$]*\(\)\s*\}|[=>]\{`[^`]*\$\{[^}]*\(\)[^}]*\}/.test(
         fixtureSource(name),
       ),
     )
     expect(bare, "the fixture that reaches the compiler-built thunk").toContain("auto-thunked-read")
+    expect(bare.length, "the shape is reached by more than one fixture").toBeGreaterThanOrEqual(2)
 
-    const registry = oracleRegistry()
+    // Every one of them binds: a bare read reaches the runtime as an accessor or
+    // inside a thunk, never as an already-evaluated value. A compiler that
+    // stopped auto-thunking emits the read at the call site and this goes red.
     for (const name of bare) {
-      // A registered fixture keeps the declaration half of this rule — the
-      // bound is still lifted by exactly the holes that earned it — and loses
-      // only the equality, which `oracle-known-failures.ts` explains and
-      // `oracle.test.ts` holds to a stated set of channels.
-      if (registry.has(name)) {
-        const compiled = await renderViaCompiler(name)
-        expect(compiled.goesLive.length, `${name} must declare its live holes`).toBeGreaterThan(0)
-        continue
-      }
-      const result = await compareToOracle(name)
-      expect(result.compiled.goesLive.length, `${name} must declare its live holes`).toBeGreaterThan(
-        0,
-      )
-      expect(result.ok, formatDivergences(name, result.divergences)).toBe(true)
+      const audit = await auditCompiled(name)
+      expect(audit.ok, formatDivergences(name, audit.divergences)).toBe(true)
+      expect(
+        audit.render.trace.created,
+        `${name} holds a bare tracked read and must bind it`,
+      ).toBeGreaterThan(0)
     }
   })
 
@@ -1343,39 +1384,37 @@ describe("open questions the harness must be able to state", () => {
       /async\s*\(\s*\)\s*=>/,
     )
 
-    const result = await compareToOracle("auto-thunked-read")
+    const result = await auditCompiled("auto-thunked-read")
     expect(result.ok, formatDivergences("auto-thunked-read", result.divergences)).toBe(true)
-    expect(result.wins.length, "the declared win must materialise").toBe(1)
-    expect(result.compiled.trace.created, "three live holes, three effects").toBe(3)
-    expect(result.oracle.trace.created, "the oracle reads each once and binds nothing").toBe(0)
+    expect(result.render.trace.created, "three live holes, three effects").toBe(3)
+    // And they are LIVE, which is the whole claim: the fixture's steps write
+    // the signal and every frame moves. Under an un-compiled runtime each hole
+    // is read once at construction and the frames are identical — that was the
+    // divergence the fixture used to declare as a `win`, stated here as the
+    // property instead of as an exemption from a comparison.
+    expect(result.render.frames.length, "the fixture drives a step").toBeGreaterThan(0)
+    for (const frame of result.render.frames) {
+      expect(frame, "a live hole updates").not.toBe(result.render.html)
+    }
   })
 
-  it("spread: the oracle reads a spread object once; reactive _$spread does strictly more work", async () => {
-    // spread-static-mix has scripted steps that the oracle deliberately
-    // ignores. If the compiler emits a reactive spread, its frames will change
-    // where the oracle's do not, and this fixture fails on step-dom.
-    //
-    // `ok === true` is trivially true of an un-compiled module, which IS the
-    // oracle — this was one of the six. The positive half is that the JSX went
-    // through the compiler and came out on the createElement path, which is the
-    // path whose once-only spread semantics the steps are pinning.
+  it("spread: the element keeps its template and the attribute list is applied in source order", () => {
+    // M9. A spread no longer takes the element off the template path: it takes
+    // its ATTRIBUTES off it, because the parser applies baked bytes before any
+    // patch runs and duplicate attributes in markup collapse the opposite way
+    // from a props object. What is left is one clone plus one call per name, in
+    // the order the author wrote them.
     const code = compileFixtureBody("spread-static-mix")
-    expect(code, "the JSX is gone").not.toContain("<div")
-    expect(code).toContain('_$createElement("div"')
-    // `_$spread` never existed: `Helper` carries `spreadAttrs`, which is SSR
-    // and does not match `_$spread(`, so this needle could not fail whatever
-    // the compiler did to spreads. What CAN fail is the spread being re-applied
-    // after construction, and both needles below are live elsewhere in the
-    // corpus.
-    expect(propCalls(code), "the spread is not re-applied after construction").toBe(0)
-    expect(emittedCalls(code, "bindEffect"), "and no reactive spread was emitted").toBe(0)
-
-    const result = await compareToOracle("spread-static-mix")
-    expect(result.ok, formatDivergences("spread-static-mix", result.divergences)).toBe(true)
-    expect(
-      result.compiled.frames.every((frame) => frame === result.compiled.html),
-      "the compiled path's spread stayed inert too",
-    ).toBe(true)
+    expect(templateHtml(code)).toEqual(["<div>spread</div>"])
+    const order = ["_$setAttr(_el$1, \"id\"", "_$spread(_s$, _el$1,", "_$setClass(_el$1, \"class\""]
+    let cursor = -1
+    for (const needle of order) {
+      const at = code.indexOf(needle)
+      expect(at, `${needle} is emitted`).toBeGreaterThan(-1)
+      expect(at, `${needle} is in source order`).toBeGreaterThan(cursor)
+      cursor = at
+    }
+    expect(code, "the un-compiled builder is gone").not.toContain("createElement")
   })
 
   it("pre/textarea: the oracle applies ordinary JSX text cleaning, with no whitespace exemption", async () => {
@@ -1392,7 +1431,7 @@ describe("open questions the harness must be able to state", () => {
       "<div><pre>  indented lines  kept</pre><textarea>raw   text</textarea></div>",
     ])
 
-    const result = await compareToOracle("pre-whitespace")
+    const result = await auditCompiled("pre-whitespace")
     expect(result.divergences).toEqual([])
     expect(result.ok).toBe(true)
   })

@@ -20,8 +20,9 @@
 
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, Expression, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement, JSXExpression,
-    JSXFragment, TemplateElement, TemplateElementValue, TemplateLiteral,
+    Argument, Expression, IdentifierName, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement,
+    JSXExpression, JSXFragment, ObjectProperty, ObjectPropertyKind, PropertyKey, PropertyKind,
+    SpreadElement, StringLiteral, TemplateElement, TemplateElementValue, TemplateLiteral,
 };
 use oxc::span::{GetSpan, Span};
 
@@ -327,6 +328,23 @@ fn open_tag<'a>(
     }
     items.sort_by_key(|(order, _)| *order);
 
+    // A spread and a named attribute can name the same key, and the two
+    // collapse in OPPOSITE directions: a props object keeps the last write and
+    // duplicate attributes in markup keep the FIRST. So once a spread is on the
+    // element the whole list is written as one object, in source order, and
+    // `spreadAttrs` serialises what survives — which is the same answer the DOM
+    // backend gets from applying the same list in the same order.
+    if items.iter().any(|(_, item)| matches!(item, Item::Patch(index) if matches!(unit.patch[*index].op, Op::Spread { .. })))
+    {
+        let object = attribute_object(ctx, unit, node, &items);
+        let span = unit.spans[node as usize];
+        let name = ctx.string(tag, span);
+        let callee = ctx.helper(Helper::SpreadAttrs, span);
+        let call = ctx.call(callee, vec![Argument::from(object), Argument::from(name)], span);
+        chunks.hole(call);
+        return;
+    }
+
     // The class arrives in as many pieces as the author wrote (a baked literal,
     // a dynamic `class`, a `classList` object) and markup has exactly one
     // `class=` slot, so the pieces are joined into one `cls(...)` at the
@@ -368,6 +386,83 @@ fn open_tag<'a>(
 enum Item {
     Baked(usize),
     Patch(usize),
+}
+
+/// `name: value`, with a string key wherever the name is not an identifier —
+/// `data-kind` and `aria-label` are the common ones.
+fn property<'a>(
+    ctx: &Emit<'a, '_>,
+    name: &'a str,
+    value: Expression<'a>,
+    span: Span,
+) -> ObjectPropertyKind<'a> {
+    let key = if crate::lower::jsx::is_identifier_name(name) {
+        PropertyKey::StaticIdentifier(ArenaBox::new_in(
+            IdentifierName::new(span, name, &ctx.ast),
+            &ctx.allocator,
+        ))
+    } else {
+        PropertyKey::StringLiteral(ArenaBox::new_in(
+            StringLiteral::new(span, name, None, &ctx.ast),
+            &ctx.allocator,
+        ))
+    };
+    ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
+        ObjectProperty::new(span, PropertyKind::Init, key, value, false, false, false, &ctx.ast),
+        &ctx.allocator,
+    ))
+}
+
+/// The whole attribute list of a spread-carrying element as ONE object literal,
+/// in source order: a literal is a property, a patch is a property holding its
+/// expression, a spread is a JS spread. Evaluation order and last-wins collapse
+/// are then JavaScript's, which is exactly the rule the DOM backend gets by
+/// applying the same list in the same order.
+fn attribute_object<'a>(
+    ctx: &mut Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    node: NodeId,
+    items: &[(u32, Item)],
+) -> Expression<'a> {
+    let element = *unit.skeleton.node(node).as_element().expect("checked by the caller");
+    let span = unit.spans[node as usize];
+    let mut properties = Vec::with_capacity(items.len());
+    for (_, item) in items {
+        match *item {
+            Item::Baked(index) => {
+                let attr = element.attrs[index];
+                let name = ctx.module.interner.name(attr.name).text;
+                let value = match attr.value {
+                    SkelAttrValue::Bare => Expression::new_boolean_literal(span, true, &ctx.ast),
+                    SkelAttrValue::Str(value) => {
+                        let text = ctx.module.interner.str(value);
+                        ctx.string(text, span)
+                    }
+                };
+                properties.push(property(ctx, name, value, span));
+            }
+            Item::Patch(index) => {
+                let patch = unit.patch[index];
+                let Some(id) = patch.op.value() else { continue };
+                let value = take(ctx, unit, id, patch.span);
+                match attribute_slot(patch.op) {
+                    Slot::Named(name) => {
+                        let name = ctx.module.interner.name(name).text;
+                        properties.push(property(ctx, name, value, patch.span));
+                    }
+                    Slot::Unnamed => properties.push(ObjectPropertyKind::SpreadProperty(
+                        ArenaBox::new_in(
+                            SpreadElement::new(patch.span, value, &ctx.ast),
+                            &ctx.allocator,
+                        ),
+                    )),
+                    Slot::Elsewhere => {}
+                }
+            }
+        }
+    }
+    let properties = ArenaVec::from_iter_in(properties, &ctx.allocator);
+    Expression::new_object_expression(span, properties, &ctx.ast)
 }
 
 fn attribute_order(unit: &Unit<'_>, node: NodeId, name: u32) -> u32 {
@@ -479,6 +574,15 @@ impl<'a> Ssr<'a, '_, '_, '_, '_> {
             }
         }
     }
+
+    /// The tag of `node`, when its content is RAW text — `<script>`, `<style>`.
+    /// Escapable raw text (`<textarea>`, `<title>`) is not here: the tokenizer
+    /// does decode references inside those, so the ordinary escaper is right.
+    fn raw_text_owner(&self, node: NodeId) -> Option<&'a str> {
+        let element = self.unit.skeleton.node(node).as_element()?;
+        let row = self.ctx.module.interner.tag(element.tag);
+        row.flags.contains(TagFlags::RAW_TEXT).then_some(row.text)
+    }
 }
 
 impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
@@ -521,6 +625,24 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         match self.place {
             Place::Child => {
                 let expression = take(self.ctx, self.unit, value, at.span());
+                // Nothing inside `<script>`/`<style>` is ENTITY-escaped, by the
+                // tokenizer and by the DOM serialiser alike, so `esc` would
+                // corrupt the content instead of protecting it. The owning tag
+                // travels with the value so the runtime neutralises the one
+                // sequence that would end the element early — and a hole in raw
+                // text is never delimited, because a `<!--[-->` there is TEXT.
+                if let Some(tag) = self.raw_text_owner(at.target()) {
+                    let span = at.span();
+                    let owner = self.ctx.string(tag, span);
+                    let callee = self.ctx.helper(Helper::RawText, span);
+                    let call = self.ctx.call(
+                        callee,
+                        vec![Argument::from(expression), Argument::from(owner)],
+                        span,
+                    );
+                    self.chunks.hole(call);
+                    return;
+                }
                 // The bytes recovery needs, at a hole, and NOT ONE MORE.
                 //
                 // A DELIMITED hole pays two comments and each earns its place:
@@ -1089,7 +1211,7 @@ fn jsx_element_into<'a>(
             let name = names::attr_name(raw, is_svg, ctx.allocator);
             if names::replaces_children(name) {
                 let value = match attribute.value {
-                    Some(value) => attribute_expression(value, &ctx.ast),
+                    Some(value) => attribute_expression(value, &ctx.ast, ctx.allocator),
                     None => Expression::new_boolean_literal(span, true, &ctx.ast),
                 };
                 content = Some((name, value));
@@ -1098,7 +1220,7 @@ fn jsx_element_into<'a>(
             // The same two bakeable shapes P1 puts straight into a skeleton: a
             // literal value and a bare `disabled`. Everything else is a runtime
             // decision `attr` makes, exactly as `setElementAttr` makes it.
-            let bakeable = names::bakeable(names::normalize(raw), is_svg);
+            let bakeable = names::bakeable(names::normalize(raw), is_svg, tag);
             match attribute.value {
                 None if bakeable && !crate::tables::is_intercepted(names::normalize(raw)) => {
                     chunks.text(" ");
@@ -1116,7 +1238,7 @@ fn jsx_element_into<'a>(
                 value => {
                     let key = ctx.string(name, span);
                     let value = match value {
-                        Some(value) => attribute_expression(value, &ctx.ast),
+                        Some(value) => attribute_expression(value, &ctx.ast, ctx.allocator),
                         None => Expression::new_boolean_literal(span, true, &ctx.ast),
                     };
                     let mut arguments = vec![Argument::from(key), Argument::from(value)];
@@ -1550,20 +1672,26 @@ mod tests {
         let code = ssr("export const V = () => <div><script>{src}</script></div>;\n").code;
         assert!(code.contains("_$rawText(src, \"script\")"), "{code}");
 
-        // JSX text cannot hold a bare `<`, but this decodes to one.
+        // JSX text cannot hold a bare `<`, but this decodes to one — and a
+        // literal that would close the element is not baked at all. It travels
+        // as a JS STRING through the same seam a hole would, where `rawText`
+        // neutralises it. The DOM side then writes a text node no parser reads,
+        // so the two backends agree on the character data byte for byte, which
+        // a compile-time `<\/style>` in the template would not.
         let baked =
             ssr("export const V = () => <style>a &lt;/style&gt;&lt;img src=x&gt; b</style>;\n")
                 .code;
-        assert!(baked.contains("a <\\\\/style><img src=x> b"), "{baked}");
-        assert!(!baked.contains("a </style>"), "{baked}");
+        assert!(baked.contains("_$rawText(\"a </style><img src=x> b\", \"style\")"), "{baked}");
+        assert!(!baked.contains("<style>a "), "{baked}");
 
         // `<!--` is the only route into script-data-escaped state, and it is a
-        // legal CDO token in CSS — so script pays for it and style does not.
+        // legal CDO token in CSS — so script leaves the template for it and
+        // style bakes it.
         let script =
             ssr("export const V = () => <script>a &lt;!--&lt;script&gt; b</script>;\n").code;
-        assert!(script.contains("a <\\\\!--<"), "{script}");
+        assert!(script.contains("_$rawText(\"a <!--<script> b\", \"script\")"), "{script}");
         let style = ssr("export const V = () => <style>a &lt;!-- b</style>;\n").code;
-        assert!(style.contains("a <!-- b"), "{style}");
+        assert!(style.contains("<style>a <!-- b</style>"), "{style}");
     }
 
     /// Target #3 in the one context where a style object really can be folded:

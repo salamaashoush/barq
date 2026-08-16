@@ -160,7 +160,7 @@ function mountC(parent: HTMLElement, data: readonly Row[]): void {
 
 // ---------------------------------------------------------------- D
 // The chosen convention: the scope comes first and `block` makes it the ambient
-// owner for the whole body, so `useContext`, `onCleanup` and `effect` inside
+// owner for the whole body, so `getContext`, `onCleanup` and `effect` inside
 // the component are decided by the argument rather than by whatever was
 // current at the call site.
 

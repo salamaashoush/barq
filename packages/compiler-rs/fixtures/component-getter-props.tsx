@@ -33,17 +33,6 @@ export default function ComponentGetterProps() {
 
 export const steps = [() => total.set(7)]
 
-export const goesLive = ["Badge count"]
-
-export const wins = [
-  {
-    kind: "step" as const,
-    index: 0,
-    compiled: '<div class="wrap"><b class="badge">7</b></div>',
-    why: "createElement copies the props object, so the oracle's `count` is a snapshot; the compiled call site passes a getter and the read stays live",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 5,

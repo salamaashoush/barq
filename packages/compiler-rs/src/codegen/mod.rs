@@ -57,17 +57,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 55;
+pub const HELPER_COUNT: usize = 57;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 32;
+pub const FIRST_SERVER_HELPER: usize = 34;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 54;
+pub const FIRST_INTERP_HELPER: usize = 56;
 
 /// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
 /// and `flow.ts`'s four primitives with `each`'s count symbol.
@@ -94,8 +94,18 @@ pub enum Helper {
     Template = 0,
     Insert = 1,
     SetProp = 2,
-    CreateElement = 3,
-    Fragment = 4,
+    /// `_$element($s, tag, props)` — one element by tag NAME, built rather than
+    /// cloned. The two shapes that need it are §3.13's: a tag chosen at run time
+    /// (`dyn`'s string arm), and an intrinsic the tree builder would not produce
+    /// as written, which a template therefore cannot carry. Both go through
+    /// `spread` and `insert` from there, so the props and children rules are the
+    /// compiled ones.
+    Element = 3,
+    /// `_$spread($s, el, sources)` — §3.13 item 1 on an element. The one
+    /// channel whose NAMES are not a compile-time fact, so the object travels
+    /// whole and the runtime resolves each key through the same tables
+    /// `build.rs` generates the compiler's from.
+    Spread = 4,
     /// `_$bindEffect($s, compute, apply)` — the element-binding effect, O4.5.
     ///
     /// Scope FIRST, like every other entry point on this surface. The bare
@@ -133,36 +143,46 @@ pub enum Helper {
     Portal = 13,
     /// `COUNT` — `each`'s fourth mode, where `src` is a count rather than a list.
     Count = 14,
+    // ── two more names that exist in BOTH halves ──────────────────────────
+    /// `_$reveal($s, order, collapsed, body)` — reveal ORDERING, which is a
+    /// provide scope rather than a range (O1 lists `provide` separately). Not
+    /// one of the four primitives and never was; what M9 removed is the
+    /// component around it.
+    Reveal = 15,
+    /// `_$dyn($s, component, props)` — §3.13 item 4. The branch that swaps it is
+    /// the compiler's; the one question left is whether the resolved value is a
+    /// tag or a component, and only the value can answer that.
+    Dyn = 16,
     // ── §3.5's resolved channels ──────────────────────────────────────────
     //
     // One entry point per channel, chosen at compile time. There is no
     // `setProp` on the compiled path: the name never reaches the runtime as a
     // question, only as the argument the channel already knows what to do with.
-    SetAttr = 15,
-    SetDomProp = 16,
+    SetAttr = 17,
+    SetDomProp = 18,
     /// §3.10.1 — the user-mutable channel. Compares against the ELEMENT rather
     /// than against what the framework last applied, and preserves the caret of
     /// whatever the user is inside. Emitted only for the names that need it.
-    SetLive = 17,
-    SetBool = 18,
-    SetClass = 19,
-    SetStyle = 20,
-    SetStyleProp = 21,
-    SetClassList = 22,
-    SetHtml = 23,
+    SetLive = 19,
+    SetBool = 20,
+    SetClass = 21,
+    SetStyle = 22,
+    SetStyleProp = 23,
+    SetClassList = 24,
+    SetHtml = 25,
     /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question §3.13 keeps
     /// at run time: whether the value that arrived is a live Cell. The channel
     /// is the compiler's and is passed in.
-    BindProp = 24,
+    BindProp = 26,
     /// `bind:` — the two-way channel, property and reporting event resolved.
-    BindValue = 25,
+    BindValue = 27,
     /// A scope-owned `ref` registration (B3, E2 #7).
-    Ref = 26,
+    Ref = 28,
     /// A scope-owned `addEventListener` (B4, E2 #6).
-    Listen = 27,
+    Listen = 29,
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
-    BindEvent = 28,
+    BindEvent = 30,
     // ── the hydration-only walk (`SEMANTICS.md` H3) ───────────────────────
     //
     // `child(n, 3)` is H3's own spelling. Under `hydratable` the template walk
@@ -176,9 +196,9 @@ pub enum Helper {
     // the flag off not one of these appears.
     /// `_$child(base, k)` — the k-th logical child, from the start when `k >= 0`
     /// and from the end when `k < 0` (`-1` is the last).
-    Child = 29,
+    Child = 31,
     /// `_$sib(base, k)` — `k` logical siblings forward, or `-k` backward.
-    Sib = 30,
+    Sib = 32,
     /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
     /// THEN build the value that goes in it.
     ///
@@ -188,40 +208,40 @@ pub enum Helper {
     /// the cursor rather than from its own hole. The compiler knows the position
     /// statically — that is what an address IS — so it says so, instead of the
     /// runtime guessing from the shape of the tree it is walking.
-    Hole = 31,
+    Hole = 33,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 32,
-    EscAttr = 33,
-    Attr = 34,
-    Cls = 35,
-    Content = 36,
-    Html = 37,
-    RawText = 38,
-    SpreadAttrs = 39,
-    SsrFor = 40,
-    SsrRepeat = 41,
-    SsrShow = 42,
-    SsrSwitch = 43,
-    SsrMatch = 44,
-    ClsList = 45,
-    AttrLit = 46,
-    SsrLoading = 47,
-    SsrErrored = 48,
-    SsrErrorBoundary = 49,
-    SsrPortal = 50,
-    SsrAwait = 51,
-    SsrDynamic = 52,
-    SsrReveal = 53,
+    Esc = 34,
+    EscAttr = 35,
+    Attr = 36,
+    Cls = 37,
+    Content = 38,
+    Html = 39,
+    RawText = 40,
+    SpreadAttrs = 41,
+    SsrFor = 42,
+    SsrRepeat = 43,
+    SsrShow = 44,
+    SsrSwitch = 45,
+    SsrMatch = 46,
+    ClsList = 47,
+    AttrLit = 48,
+    SsrLoading = 49,
+    SsrErrored = 50,
+    SsrErrorBoundary = 51,
+    SsrPortal = 52,
+    SsrAwait = 53,
+    SsrDynamic = 54,
+    SsrReveal = 55,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 54,
+    Interp = 56,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
     "template",
     "insert",
     "setProp",
-    "createElement",
-    "Fragment",
+    "element",
+    "spread",
     "bindEffect",
     "delegateEvents",
     "props",
@@ -232,6 +252,8 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "boundary",
     "portal",
     "COUNT",
+    "reveal",
+    "dyn",
     "setAttr",
     "setDomProp",
     "setLive",
@@ -427,9 +449,18 @@ impl<'a, 'm> Emit<'a, 'm> {
         }
         let Some(element) = unit.skeleton.node(parent).as_element() else { return false };
         let flags = self.module.interner.tag(element.tag).flags;
-        !flags.contains(crate::ir::TagFlags::RAW_TEXT)
-            && !flags.contains(crate::ir::TagFlags::ESCAPABLE_RAW_TEXT)
-            && !flags.contains(crate::ir::TagFlags::PRESERVE_WS)
+        // Raw text has no comments at all — a `<!--[-->` inside `<textarea>` is
+        // CHARACTER DATA and would be read back as part of the value — so the
+        // hole there always owns the child list and the leading newline is
+        // protected by the doubling the serialiser writes instead. `<pre>` and
+        // `<listing>` are ordinary parsing, so their comment is a comment and
+        // the refusal stands.
+        if flags.contains(crate::ir::TagFlags::RAW_TEXT)
+            || flags.contains(crate::ir::TagFlags::ESCAPABLE_RAW_TEXT)
+        {
+            return true;
+        }
+        !flags.contains(crate::ir::TagFlags::PRESERVE_WS)
     }
 
     /// The same question for a REGION, and one extra condition: not under
@@ -592,7 +623,7 @@ impl<'a, 'm> Emit<'a, 'm> {
     pub(super) fn create_element_path(&mut self, expression: Expression<'a>) -> Expression<'a> {
         match expression {
             Expression::JSXElement(element) => self.create_element(element),
-            Expression::JSXFragment(fragment) => self.fragment_call(fragment),
+            Expression::JSXFragment(fragment) => self.fragment_array(fragment),
             other => other,
         }
     }

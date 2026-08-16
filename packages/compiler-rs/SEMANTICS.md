@@ -1714,7 +1714,7 @@ that C5.2 may not η-reduce.
 
 **Status.** `VIOLATED` for `useState`, `HOLDS` for `signal`.
 
-**Pinned by.** `use-state-tuple.tsx`, `signal-methods-in-handler.tsx` (existing, re-pinned).
+**Pinned by.** `signal-object.tsx`, `signal-methods-in-handler.tsx` (existing, re-pinned).
 
 ### R7 — `linked` is writable derived state that re-seeds
 
@@ -2051,7 +2051,7 @@ that had already answered is *not* aborted by a later disposal, without which `a
 no information at all. Before M7 the controller was created inside `load()` and handed nowhere, so
 "abort" meant "ignore the answer": the request itself ran to completion.
 
-**Pinned by.** `sem-async-abort-on-dispose.tsx`, `create-async-value.tsx` (existing),
+**Pinned by.** `sem-async-abort-on-dispose.tsx`, `async-value.tsx` (existing),
 `packages/core/src/async.test.ts` (`A1: cancellation is structural`).
 
 ### A2 — staleness is decided by `s.gen` captured at call time
@@ -2657,7 +2657,7 @@ green, which is why L1 exists.
 | R3 | a Cell is neutral | P (M3) | `sem-react-cell-neutrality` *(new)* |
 | R4 | `untrack` changes only the observer | H | `sem-react-untrack-keeps-owner` |
 | R5 | epoch dedupe and `markWave` are load-bearing | H | ablation bench (§14) |
-| R6 | a signal getter is a Cell | H / **V** | `use-state-tuple`, `signal-methods-in-handler` |
+| R6 | a signal getter is a Cell | H / **V** | `signal-object`, `signal-methods-in-handler` |
 | R7 | `linked` re-seeds on its source | H (M7) | `sem-state-linked-reseeds` |
 | R8 | a mark implies its closure; propagation is linear in depth | H (M7c) | depth test + bench (§14) |
 | B1 | every binding on an element is equally live | H | `equal-liveness`, `class-with-live-siblings` |
@@ -2667,7 +2667,7 @@ green, which is why L1 exists.
 | B5 | property-vs-attribute is a stated rule | P (M5) | `attribute-namespaces`, `bind-value-channel`, `custom-elements`, `property-attrs` |
 | B6 | a user-mutable property is compared against the element | H (M7) | `sem-form-dom-compare`, `bind-family`, `property-attrs`, `dom-prop-static-value` |
 | B7 | a write preserves the selection and the focus | H (M7) | `sem-form-selection-preserved`, `browser-caret-check.ts` |
-| A1 | cancellation is structural | H (M7) | `sem-async-abort-on-dispose`, `create-async-value` |
+| A1 | cancellation is structural | H (M7) | `sem-async-abort-on-dispose`, `async-value` |
 | A2 | staleness by `gen` captured at call time | H (M7) | `sem-async-stale-response` |
 | A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
 | A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `create-optimistic-signal` |

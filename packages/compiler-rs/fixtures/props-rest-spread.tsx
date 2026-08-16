@@ -30,12 +30,12 @@ export const steps = [() => label.set("second")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
-  // One template, for the outer div. `Chip` spreads its rest object onto an
-  // intrinsic element, which is the `createElement` path by design: a spread
-  // can be shadowed by a later attribute and vice versa, so the baked/patched
-  // partition a template needs does not exist.
-  templates: 1,
-  emits: ["Chip(", "...rest"],
-  absent: ["get text()", "(Chip, {"],
+  milestone: 9,
+  // Two templates: the outer div, and `Chip`'s own span. The spread does not
+  // take the span off the template path — it takes its ATTRIBUTES off it, and
+  // `class="chip"` is applied in source order beside the spread rather than
+  // baked, because a key inside `rest` may name it.
+  templates: 2,
+  emits: ["Chip(", "spread(", "rest"],
+  absent: ["get text()", "(Chip, {", "createElement"],
 }

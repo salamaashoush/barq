@@ -84,13 +84,6 @@ export function wire(mod: FixtureModule): string {
   return typeof value === "string" ? value : ""
 }
 
-export function host(markup = ""): HTMLElement {
-  const element = document.createElement("div")
-  element.innerHTML = markup
-  document.body.appendChild(element)
-  return element
-}
-
 /**
  * The tags whose first U+000A a conforming parser ignores.
  *
@@ -103,6 +96,15 @@ export function host(markup = ""): HTMLElement {
  * pinned by `compile.rs`'s two O9 tests and the three Chrome rows behind them.
  */
 const NEWLINE_EATING = new Set(["pre", "textarea", "listing"])
+
+export function host(markup = ""): HTMLElement {
+  const element = document.createElement("div")
+  element.innerHTML = markup
+  document.body.appendChild(element)
+  return element
+}
+
+
 
 // ---------------------------------------------------------------------------
 // the node-identity census — M5's metamorphic channel, pointed at hydration
@@ -280,56 +282,6 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   // foreign namespace. The string backend serialised the whole subtree inline
   // as one hole's value, so there is no walk to claim it with, and `_$hole(null,
   // null, …)` says so at the call site. The hole rebuilds; nothing else does.
-  mathml: {
-    kinds: [],
-    recovered: false,
-    reuse: 11,
-    shape: null,
-    why: "<math> is built by createElement — P1 refuses a foreign-namespace root — so its subtree has no template walk to claim with",
-  },
-  "nested-template-element": {
-    kinds: [],
-    recovered: false,
-    reuse: 80,
-    shape: null,
-    why: "a <template> element's children live in a DocumentFragment on `.content`, which `firstChild` cannot reach; it is built, and the <li> inside it with it",
-  },
-  "props-rest-spread": {
-    kinds: [],
-    recovered: false,
-    reuse: 33,
-    shape: null,
-    why: "a rest pattern spread onto an intrinsic element is the createElement path by design (the fixture says so); the <span> it builds replaces the server's",
-  },
-  "select-option-multiple": {
-    kinds: ["not-hydratable"],
-    recovered: true,
-    reuse: 0,
-    shape: null,
-    why: "the module ROOT is a <select> built by createElement, so the page claims nothing at all and degrades to a cold render — which is exactly today's behaviour",
-  },
-  "spread-static-mix": {
-    kinds: ["not-hydratable"],
-    recovered: true,
-    reuse: 0,
-    shape: null,
-    why: "the module ROOT carries a spread, so it is createElement's; nothing is claimed and the page degrades to a cold render",
-  },
-  "escaping-adversarial": {
-    kinds: [],
-    recovered: false,
-    reuse: 81,
-    shape: null,
-    why: "a <textarea> with a dynamic value is RAWTEXT — the tokenizer decodes nothing inside it, so `<!--[-->` there would be literal text and the element is built instead",
-  },
-  "pre-dynamic-leading-newline": {
-    kinds: [],
-    recovered: false,
-    reuse: 80,
-    shape:
-      '<div class="doc"><pre class="hole">\nfirst line\nsecond line</pre><textarea class="field">draft</textarea></div>',
-    why: "the same rawtext fact, plus the newline the parser eats: the rebuilt <textarea> loses the leading U+000A the server doubled for the parse, which happy-dom does not implement in either direction",
-  },
 
   // ── a construct the flow pass REFUSED, reaching its primitive through an
   //    adapter that has no flags to forward ───────────────────────────────
@@ -341,11 +293,11 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   // change to the thirteen constructs' own surface (M8's consumers touch the
   // same seam) rather than to the claim algorithm.
   dynamic: {
-    kinds: ["not-hydratable"],
+    kinds: ["structure"],
     recovered: false,
     reuse: 33,
     shape: null,
-    why: "Dynamic is one of §3.4's three refusals: it reaches `branch` through the adapter, with no flags",
+    why: "M9 lowers `Dynamic`, so the branch is claimed and the FLAGS are there — but the element its string arm builds is built by tag name, and a built subtree has no counterpart on the wire to claim: the range is claimed, its content rebuilt, and the server's node reconciled away",
   },
   "control-flow-for-keyed-spread": {
     kinds: ["not-hydratable"],
@@ -355,11 +307,11 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     why: "a spread source is a shape the flow pass cannot read statically, so `For` reaches `each` through the adapter, with no flags",
   },
   "control-flow-await-suspense": {
-    kinds: ["not-hydratable", "structure"],
-    recovered: false,
-    reuse: 60,
+    kinds: ["range"],
+    recovered: true,
+    reuse: 0,
     shape: null,
-    why: "Await reaches `branch` through the adapter (no flags), inside a Loading boundary that parks — both rows below",
+    why: "M9 lowers `Await` to two nested boundaries, and the inner one sits at a ROOT position — the same shape `control-flow-errored-loading` carries: the region driver is re-entered after the outer claim is spent, the range it looks for is not where it looks, and the page degrades to a cold render",
   },
 
   // ── a boundary that parks, and a boundary that recovers ────────────────
@@ -385,13 +337,45 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     why: "a Loading boundary wrapping an Errored boundary whose body throws re-enters the region driver at a ROOT position after the claim has been spent; detected as a range that is not there, and the page degrades to a cold render",
   },
 
-  // ── channels that write past the claim ─────────────────────────────────
-  "inner-html-with-children": {
-    kinds: [],
+  // ── raw text, where the tokenizer eats a newline nobody can see ────────
+  //
+  // M9 put a hole inside `<textarea>`/`<style>` on the template path, so the
+  // server writes the value's own bytes there and the client CLAIMS them. In a
+  // browser that is exact: the serialiser doubles a leading U+000A because the
+  // parser eats one, and the two cancel. happy-dom implements neither half, so
+  // the claimed text is one newline longer than the value and the detector says
+  // so — `text` here is the fake DOM's gap, measured, not a divergence the
+  // compiler caused. `browser-parse-check.ts` is where the real answer is read.
+  "escaping-adversarial": {
+    kinds: ["text"],
     recovered: false,
-    reuse: 56,
+    reuse: 100,
     shape: null,
-    why: "`innerHTML` plus a child means the served bytes are not the html the channel writes, so the skip-if-equal guard cannot fire and the write clears what the server sent",
+    why: "happy-dom does not eat the newline the serialiser doubled in front of the <textarea> hole, so the claimed text is one U+000A longer than the value; the DOM the client ends up with is still the cold one, node for node",
+  },
+  "pre-dynamic-leading-newline": {
+    kinds: ["text"],
+    recovered: false,
+    reuse: 100,
+    shape:
+      '<div class="doc"><pre class="hole">\nfirst line\nsecond line</pre><textarea class="field">draft</textarea></div>',
+    why: "the same un-eaten newline in the one element that still pays for a hole comment: `<pre>` is ordinary parsing, so its `<!--[-->` is a real comment and the text behind it keeps the newline happy-dom did not eat",
+  },
+
+  // ── channels that write past the claim ─────────────────────────────────
+  //
+  // The content write and the children are two patches on one element, and the
+  // server wrote them as one run of bytes. The claim covers that whole run, so
+  // the write lands on nodes the insert then reconciles away. Closing it means
+  // a claim that starts after the content the write owns, which is an addressing
+  // change rather than a lowering one.
+  "inner-html-with-children": {
+    kinds: ["text"],
+    recovered: false,
+    reuse: 57,
+    shape:
+      '<section class="wrap"><div class="raw">replaced</div><span>after</span></section>',
+    why: "`innerHTML` and a child are one claimed run on the wire: the write replaces what the server sent, and the insert then reconciles its claimed nodes over the write's own",
   },
   "attribute-namespaces": {
     kinds: [],

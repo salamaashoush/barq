@@ -1,12 +1,12 @@
 /**
  * Async & Resources Demo
- * Tests: useResource, Suspense, Await
+ * Tests: resource, Suspense, Await
  *
- * NOTE: useResource returns accessors that need explicit () calls.
+ * NOTE: resource returns accessors that need explicit () calls.
  * The compiler handles JSX expressions but resource methods need manual calls.
  */
 
-import { Await, Show, useResource, useState } from "@barqjs/core";
+import { Await, Show, resource, signal } from "@barqjs/core";
 import {
   css,
 } from "../styles";
@@ -31,9 +31,9 @@ export function AsyncDemo() {
   );
 }
 
-// Basic useResource
+// Basic resource
 function ResourceDemo() {
-  const users = useResource(
+  const users = resource(
     () => "users",
     async () => {
       const res = await fetch("/api/users");
@@ -43,7 +43,7 @@ function ResourceDemo() {
   );
 
   return (
-    <DemoCard title="useResource - Basic">
+    <DemoCard title="resource - Basic">
       <Show when={users.loading()}>
         <div class={loadingStyle}>Loading users...</div>
       </Show>
@@ -68,11 +68,11 @@ function ResourceDemo() {
   );
 }
 
-// useResource with reactive source
+// resource with reactive source
 function ResourceWithSourceDemo() {
-  const [userId, setUserId] = useState(1);
+  const userId = signal(1);
 
-  const user = useResource(
+  const user = resource(
     () => userId(),
     async (id) => {
       const res = await fetch(`/api/users/${id}`);
@@ -82,11 +82,11 @@ function ResourceWithSourceDemo() {
   );
 
   return (
-    <DemoCard title="useResource - Reactive Source">
+    <DemoCard title="resource - Reactive Source">
       <div class={buttonRowStyle}>
-        <Button onClick={() => setUserId(1)}>User 1</Button>
-        <Button onClick={() => setUserId(2)}>User 2</Button>
-        <Button onClick={() => setUserId(3)}>User 3</Button>
+        <Button onClick={() => userId.set(1)}>User 1</Button>
+        <Button onClick={() => userId.set(2)}>User 2</Button>
+        <Button onClick={() => userId.set(3)}>User 3</Button>
       </div>
 
       <p>
@@ -120,9 +120,9 @@ function ResourceWithSourceDemo() {
 
 // Await component
 function AwaitDemo() {
-  const [fetchId, setFetchId] = useState(0);
+  const fetchId = signal(0);
 
-  const slowData = useResource(
+  const slowData = resource(
     () => fetchId(),
     async () => {
       if (fetchId() === 0) return null;
@@ -133,7 +133,7 @@ function AwaitDemo() {
 
   return (
     <DemoCard title="Await - Resource State Rendering">
-      <Button onClick={() => setFetchId((id) => id + 1)}>Fetch Slow Data</Button>
+      <Button onClick={() => fetchId.update((id) => id + 1)}>Fetch Slow Data</Button>
 
       <div class={resultBoxStyle}>
         <Await
@@ -156,9 +156,9 @@ function AwaitDemo() {
 
 // Error handling
 function ErrorResourceDemo() {
-  const [shouldFetch, setShouldFetch] = useState(false);
+  const shouldFetch = signal(false);
 
-  const errorData = useResource(
+  const errorData = resource(
     () => shouldFetch(),
     async (doFetch) => {
       if (!doFetch) return null;
@@ -170,7 +170,7 @@ function ErrorResourceDemo() {
 
   return (
     <DemoCard title="Resource Error Handling">
-      <Button onClick={() => setShouldFetch(true)}>Fetch (will fail)</Button>
+      <Button onClick={() => shouldFetch.set(true)}>Fetch (will fail)</Button>
 
       <div class={resultBoxStyle}>
         <Show when={errorData.loading()}>
@@ -197,9 +197,9 @@ function ErrorResourceDemo() {
 
 // Manual refetch and mutate
 function RefetchDemo() {
-  const [counter, setCounter] = useState(0);
+  const counter = signal(0);
 
-  const data = useResource(
+  const data = resource(
     () => null,
     async () => {
       const res = await fetch("/api/users");
@@ -210,7 +210,7 @@ function RefetchDemo() {
   const handleMutate = () => {
     // Optimistically update the data
     data.mutate([{ id: 999, name: "Optimistic User", email: "optimistic@example.com" }]);
-    setCounter((c) => c + 1);
+    counter.update((c) => c + 1);
   };
 
   return (

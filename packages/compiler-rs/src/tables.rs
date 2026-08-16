@@ -5,6 +5,49 @@ pub fn is_svg_tag(tag: &str) -> bool {
     SVG_TAGS.binary_search(&tag).is_ok()
 }
 
+/// MathML Core's element names. Not generated from the runtime the way
+/// `SVG_TAGS` is, because no runtime table answers this question: nothing in
+/// `dom.ts` ever created a MathML node. It is a PARSER fact — which tags the
+/// tokenizer keeps in foreign content once `<math>` has opened it — and the
+/// tree builder is the only thing that consumes it.
+const MATH_TAGS: [&str; 30] = [
+    "annotation",
+    "annotation-xml",
+    "maction",
+    "math",
+    "merror",
+    "mfrac",
+    "mi",
+    "mmultiscripts",
+    "mn",
+    "mo",
+    "mover",
+    "mpadded",
+    "mphantom",
+    "mprescripts",
+    "mroot",
+    "mrow",
+    "ms",
+    "mspace",
+    "msqrt",
+    "mstyle",
+    "msub",
+    "msubsup",
+    "msup",
+    "mtable",
+    "mtd",
+    "mtext",
+    "mtr",
+    "munder",
+    "munderover",
+    "semantics",
+];
+
+#[inline]
+pub fn is_math_tag(tag: &str) -> bool {
+    MATH_TAGS.binary_search(&tag).is_ok()
+}
+
 /// Written as a PROPERTY by `setElementAttr`, so a literal value may never be
 /// folded into the template HTML: that would set only the default attribute and
 /// diverge on a dirty form field.

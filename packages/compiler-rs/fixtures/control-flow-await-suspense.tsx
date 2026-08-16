@@ -1,8 +1,8 @@
-import { Await, Suspense, signal, useResource } from "@barqjs/core"
+import { Await, Suspense, signal, resource } from "@barqjs/core"
 
 export const settled = signal<((value: string) => void) | null>(null)
 
-const value = useResource<string>(
+const value = resource<string>(
   () => null,
   () =>
     new Promise<string>((resolve) => {
@@ -30,22 +30,16 @@ export const steps = [() => settled()?.("ready")]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
+  milestone: 9,
   templates: 5,
-  // K5 from both sides in one module. `Suspense` LOWERS: it becomes `boundary`
-  // under the kind string `"loading"`, taking the insertion pair the walk
-  // computed and its fallback positionally. `Await` REFUSES — it tells a
-  // Resource from a Cell carrying one by a property test on the value, and its
-  // key and all three of its bodies each need the resolved resource, which
-  // without a shared local is four evaluations of one prop — so it keeps the
-  // adapter and reaches the same runtime one frame later. It takes the RESOLVED
-  // DATA in its children, so that callback keeps its parameter and its arrow.
-  emits: [
-    "boundary(",
-    '"loading"',
-    "Await(",
-    "resource: () => value",
-    ", data: string) =>",
-  ],
-  absent: ["Suspense("],
+  // K5 from both sides in one module, and since M9 both sides are the same
+  // side. `Suspense` becomes `boundary` under the kind string `"loading"`,
+  // taking the insertion pair the walk computed and its fallback positionally.
+  // `Await` becomes TWO boundaries — loading outside, error inside — because
+  // its three states are what reading a resource does: throw `NotReady`, throw
+  // the error, return the value. The resource is referenced ONCE, where the
+  // body reads it, so the property test that told a Resource from a Cell
+  // carrying one has nothing left to decide.
+  emits: ["boundary(", '"loading"', '"error"', ", data: string) =>"],
+  absent: ["Suspense(", "Await(", "resource: "],
 }

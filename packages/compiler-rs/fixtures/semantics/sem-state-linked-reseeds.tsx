@@ -1,7 +1,7 @@
 /**
  * R7 — `linked(source, compute)` is writable derived state that RE-SEEDS.
  *
- * The read-copy trap, which is the problem it exists for: `useState(props.x)`
+ * The read-copy trap, which is the problem it exists for: `signal(props.x)`
  * reads the prop once and freezes at whatever it was, so the local copy and the
  * thing it was copied from drift apart for the rest of the component's life. A
  * plain `computed` does not drift, and cannot be written. `linked` is the pair:
@@ -9,7 +9,7 @@
  *
  * Both directions are claims, because a framework that only does one of them
  * passes half of this and is wrong in a way the other half names. A signal that
- * ignores writes is "always re-seeded"; a `useState` copy is "always keeps the
+ * ignores writes is "always re-seeded"; a `signal` copy is "always keeps the
  * write". Only holding both is the rule.
  *
  * The last claim is the one it was designed for: the controlled input. The
@@ -83,7 +83,7 @@ export const claims: Claim[] = [
       if (draft() !== "grace") {
         kit.fail(
           `the cell still reads ${JSON.stringify(draft())} after its source became "grace". ` +
-            "This is `useState(props.value)` freezing at the first value it ever saw, which is " +
+            "This is `signal(props.value)` freezing at the first value it ever saw, which is " +
             "the defect R7 names",
         )
       }

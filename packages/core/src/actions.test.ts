@@ -6,11 +6,12 @@ import { describe, expect, test } from "bun:test";
 import { action, affects, commit, createOptimistic, createOptimisticStore } from "./actions.ts";
 import {
   computed,
-  createAsync,
+  createScope,
   effect,
   flush,
   isPending,
   latest,
+  NotReadyError,
   overridden,
   refresh,
   signal,
@@ -107,7 +108,7 @@ describe("createOptimistic", () => {
 
   test("real source refreshed during action wins after revert", async () => {
     let serverValue = 1;
-    const data = createAsync(async () => {
+    const data = computed(async () => {
       await tick();
       return serverValue;
     });
@@ -115,7 +116,12 @@ describe("createOptimistic", () => {
     // UI value: optimistic overlay if present, else server data
     const display = computed(() => opt() ?? data());
 
-    expect(isPending(() => display())).toBe(true); // kick off the lazy fetch
+    // `isPending` reports STALENESS, not absence (Solid 2.0's rule): a value
+    // that has never held one is not pending, it is simply not there yet — so
+    // this probe answers `false` and its job here is only to kick off the lazy
+    // fetch. Inside a derivation the same read throws instead, which is how a
+    // `Loading` boundary learns there is nothing to show.
+    expect(isPending(() => display())).toBe(false);
     await tick();
     await tick();
     expect(display()).toBe(1);
@@ -197,6 +203,57 @@ describe("createOptimistic", () => {
 // picks a buffer by mode. There is no transition API, no second scope and
 // nothing is parked.
 describe("A5: overrides, lanes and the read surface", () => {
+  // The two read modes, against the reference implementation rather than
+  // against this project's memory of it. `@solidjs/signals@2.0.0-beta.31`
+  // (`dist/dev.js`) is in `node_modules` and both rules were read out of it:
+  //
+  //   latest:    `if (NotReadyError && (!context || !UNINITIALIZED)) return visibleValue`
+  //   isPending: `if (probe.found && !uninitialized) return true;
+  //               if (context && uninitialized) throw e; return probe.found`
+  //
+  // `context` is the computed being recomputed — so the ONE case either mode
+  // rethrows is a value that has never held one, read from inside a derivation,
+  // where the throw is what a boundary is for. Everywhere else they answer.
+  test("latest() answers `undefined` for a never-settled value outside a derivation", () => {
+    createScope(() => {
+      const pending = computed(() => new Promise<string>(() => {}) as unknown as string);
+      expect(latest(() => pending())).toBeUndefined();
+      expect(isPending(() => pending())).toBe(false);
+      return null;
+    });
+  });
+
+  test("and both suspend for one INSIDE a derivation, which is the boundary's cue", () => {
+    createScope(() => {
+      const pending = computed(() => new Promise<string>(() => {}) as unknown as string);
+      const derived = computed(() => latest(() => pending()));
+      expect(() => derived()).toThrow(NotReadyError);
+      const probing = computed(() => isPending(() => pending()));
+      expect(() => probing()).toThrow(NotReadyError);
+      return null;
+    });
+  });
+
+  test("a value that HAS settled and is pending again reads as pending, and latest() is the stale one", async () => {
+    let answer = "first";
+    const value = computed(async () => {
+      await tick();
+      return answer;
+    });
+    isPending(() => value());
+    await tick();
+    await tick();
+    expect(value()).toBe("first");
+
+    answer = "second";
+    refresh(value);
+    expect(isPending(() => value())).toBe(true);
+    expect(latest(() => value())).toBe("first");
+    await tick();
+    await tick();
+    expect(value()).toBe("second");
+  });
+
   test("a normal read sees the override, latest() reads through it", async () => {
     const opt = createOptimistic("saved");
     const save = action(function* () {

@@ -175,9 +175,9 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
   fixtures: 136,
   scopes: 377,
-  effects: 245,
-  clones: 296,
-  determined: 294,
+  effects: 254,
+  clones: 295,
+  determined: 293,
   unattributed: 1,
   cascades: 1,
 })

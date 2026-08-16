@@ -1,6 +1,6 @@
-import { For, useStore } from "@barqjs/core"
+import { For, store } from "@barqjs/core"
 
-const [state, setState] = useStore({ items: [{ name: "a", active: true }, { name: "b", active: false }] })
+const [state, setState] = store({ items: [{ name: "a", active: true }, { name: "b", active: false }] })
 
 /**
  * `each` bound to a LOCAL function that derives the list. `For` unwraps a

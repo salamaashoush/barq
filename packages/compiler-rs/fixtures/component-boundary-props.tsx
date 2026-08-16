@@ -22,12 +22,6 @@ export default function ComponentBoundaryProps() {
 
 export const steps = [() => name.set("barq")]
 
-// Two `Greeting` instances, each reading `props.name` and `props.punctuation`
-// through a `PropsParam` binding. `createElement` copies the props object, so
-// the oracle reads both once; the compiled call site passes getters and the
-// reads stay live across the boundary.
-export const goesLive = ["Greeting 1 props", "Greeting 2 props"]
-
 export const optimality = {
   target: 1,
   milestone: 5,

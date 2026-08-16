@@ -19,7 +19,6 @@ import { esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
 import {
   NotReadyError,
   computed,
-  createAsync,
   createScope,
   effect,
   flush,
@@ -58,7 +57,7 @@ describe("renderToString", () => {
   });
 
   test("pending async renders the Loading fallback", () => {
-    const data = createAsync(async () => {
+    const data = computed(async () => {
       await tick();
       return "late";
     });
@@ -84,7 +83,7 @@ describe("renderToString", () => {
 
 describe("renderToStringAsync", () => {
   test("waits for async values; Loading shows content", async () => {
-    const user = createAsync(
+    const user = computed(
       async () => {
         await tick();
         return { name: "Ada" };
@@ -104,8 +103,8 @@ describe("renderToStringAsync", () => {
   });
 
   test("records keyed async values for hydration", async () => {
-    const a = createAsync(async () => 1, { key: "a" });
-    const b = createAsync(
+    const a = computed(async () => 1, { key: "a" });
+    const b = computed(
       async () => {
         // waterfall: depends on a
         return a() + 1;
@@ -125,7 +124,7 @@ describe("renderToStringAsync", () => {
   });
 
   test("generateHydrationScript escapes script-breaking content", async () => {
-    const evil = createAsync(async () => "</script><script>alert(1)</script>", { key: "evil" });
+    const evil = computed(async () => "</script><script>alert(1)</script>", { key: "evil" });
 
     await renderToStringAsync(() => createElement("div", null, () => evil().length.toString()));
 
@@ -141,7 +140,7 @@ describe("hydrate", () => {
     // --- server ---
     let fetches = 0;
     const makeApp = () => {
-      const user = createAsync(
+      const user = computed(
         async () => {
           fetches++;
           await tick();
@@ -206,7 +205,7 @@ describe("hydrate", () => {
 describe("concurrent server renders", () => {
   test("two renders in flight settle independently with their own data", async () => {
     const makeApp = (label: string, delay: number) => {
-      const data = createAsync(
+      const data = computed(
         async () => {
           await new Promise((resolve) => setTimeout(resolve, delay));
           return label;
@@ -238,11 +237,11 @@ describe("settle", () => {
     const prev = setAsyncSession(session);
     try {
       createScope(() => {
-        const first = createAsync(async () => {
+        const first = computed(async () => {
           await tick();
           return 1;
         });
-        const second = createAsync(async () => {
+        const second = computed(async () => {
           const base = first(); // throws NotReady until first resolves
           await tick();
           return base + 1;
@@ -294,7 +293,7 @@ describe("renderToStream", () => {
   }
 
   test("the shell is flushed before the boundary resolves, and the content follows", async () => {
-    const late = createAsync(async () => {
+    const late = computed(async () => {
       await tick();
       return "Ada";
     });
@@ -332,7 +331,7 @@ describe("renderToStream", () => {
   });
 
   test("the swap replaces exactly the deferred range", async () => {
-    const late = createAsync(async () => {
+    const late = computed(async () => {
       await tick();
       return "Ada";
     });

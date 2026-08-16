@@ -150,11 +150,11 @@ const MUTANTS: Mutant[] = [
       {
         file: "src/passes/fold.rs",
         find:
-          "    if !crate::lower::names::attribute_channel(interner.name(name).text, is_svg) {\n" +
+          "    if !crate::lower::names::attribute_channel(interner.name(name).text, is_svg, tag) {\n" +
           "        return false;\n" +
           "    }",
         replace:
-          "    let _ = crate::lower::names::attribute_channel(interner.name(name).text, is_svg);",
+          "    let _ = crate::lower::names::attribute_channel(interner.name(name).text, is_svg, tag);",
       },
       {
         file: "src/passes/fold.rs",
@@ -163,8 +163,11 @@ const MUTANTS: Mutant[] = [
       },
       {
         file: "src/passes/fold.rs",
-        find: "        Chan::Prop | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,",
-        replace: "        Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,",
+        find:
+          "        Chan::Prop | Chan::Live | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => {\n" +
+          "            false\n" +
+          "        }",
+        replace: "        Chan::Live | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,",
       },
     ],
   },

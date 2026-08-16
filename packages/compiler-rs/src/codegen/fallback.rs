@@ -1,8 +1,8 @@
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, Expression, IdentifierName, JSXAttributeItem, JSXChild, JSXElement, JSXElementName,
-    JSXFragment, JSXMemberExpression, JSXMemberExpressionObject, ObjectProperty,
-    ObjectPropertyKind, PropertyKey, PropertyKind, SpreadElement, StringLiteral,
+    Argument, ArrayExpressionElement, Expression, IdentifierName, JSXAttributeItem, JSXChild,
+    JSXElement, JSXElementName, JSXFragment, JSXMemberExpression, JSXMemberExpressionObject,
+    ObjectProperty, ObjectPropertyKind, PropertyKey, PropertyKind, SpreadElement, StringLiteral,
 };
 use oxc::span::SPAN;
 
@@ -11,8 +11,15 @@ use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, is_identifier_name};
 use crate::lower::text;
 
-/// The un-compiled path, for every JSX shape a template cannot express: user
-/// components, fragments, spreads, and the markup the HTML parser reshapes.
+/// The BUILT path — one element by tag name, for the intrinsic P1 refused.
+///
+/// Every JSX shape that used to arrive here has left: a fragment is an array, a
+/// spread stays on the template path, `<math>`, `<template>` and
+/// `<select multiple>` all bake, and a component is a call with a source list.
+/// What remains is markup the browser's tree builder would not produce as
+/// written — `<td>` outside a row, `<body>` — which no clone can carry and no
+/// diagnostic should refuse, because the DOM insertion `element` performs never
+/// foster-parents.
 impl<'a> Emit<'a, '_> {
     pub(super) fn create_element(
         &mut self,
@@ -20,25 +27,67 @@ impl<'a> Emit<'a, '_> {
     ) -> Expression<'a> {
         let JSXElement { span, opening_element, children, .. } = element.unbox();
         let opening = opening_element.unbox();
-        // An INTRINSIC tag here is an element the template path refused — a
-        // spread, `<select>`, `<template>`, a foreign namespace — and it is
-        // BUILT rather than cloned. The string backend serialised the whole
-        // subtree inline as one hole's value, so there is no walk for the
-        // client to claim it with: everything under this call has to build
-        // cold, or a `template()` inside it takes the node belonging to the
-        // NEXT position and the handlers land on the wrong elements.
-        //
-        // A COMPONENT tag is left alone. Its children are Blocks and its
-        // subtree is compiled the ordinary way, so the positions under it are
-        // exactly the positions the server wrote.
-        let cold = self.hydratable && matches!(opening.name, JSXElementName::Identifier(_));
-        let callee = self.helper(Helper::CreateElement, span);
+        // The subtree is BUILT rather than cloned. The string backend serialised
+        // the whole thing inline as one hole's value, so there is no walk for the
+        // client to claim it with: everything under this call has to build cold,
+        // or a `template()` inside it takes the node belonging to the NEXT
+        // position and the handlers land on the wrong elements.
+        let cold = self.hydratable;
+        let callee = self.helper(Helper::Element, span);
+        let scope = self.scope(span);
         let tag = self.element_name(opening.name);
-        let mut arguments =
-            vec![Argument::from(tag), Argument::from(self.props(opening.attributes))];
-        arguments.extend(self.child_arguments(children));
-        let call = self.call(callee, arguments, span);
+        let props = self.props_with_children(opening.attributes, children, span);
+        let call = self.call(
+            callee,
+            vec![Argument::from(scope), Argument::from(tag), Argument::from(props)],
+            span,
+        );
         if cold { self.cold_call(call, span) } else { call }
+    }
+
+    /// The element's attributes as one object, with its children under
+    /// `children` — the shape `element` hands to `spread` and to `insert`.
+    fn props_with_children(
+        &mut self,
+        attributes: ArenaVec<'a, JSXAttributeItem<'a>>,
+        children: ArenaVec<'a, JSXChild<'a>>,
+        span: oxc::span::Span,
+    ) -> Expression<'a> {
+        let props = self.props(attributes);
+        let kids = self.child_arguments(children);
+        if kids.is_empty() {
+            return props;
+        }
+        let value = if kids.len() == 1 {
+            match kids.into_iter().next().expect("checked") {
+                Argument::SpreadElement(spread) => {
+                    let elements = ArenaVec::from_iter_in(
+                        [ArrayExpressionElement::SpreadElement(spread)],
+                        &self.allocator,
+                    );
+                    Expression::new_array_expression(span, elements, &self.ast)
+                }
+                other => other.into_expression(),
+            }
+        } else {
+            let elements = kids.into_iter().map(|argument| match argument {
+                Argument::SpreadElement(spread) => ArrayExpressionElement::SpreadElement(spread),
+                other => ArrayExpressionElement::from(other.into_expression()),
+            });
+            let elements = ArenaVec::from_iter_in(elements, &self.allocator);
+            Expression::new_array_expression(span, elements, &self.ast)
+        };
+        let property = self.property("children", value, span);
+        match props {
+            Expression::ObjectExpression(mut object) => {
+                object.properties.push(property);
+                Expression::ObjectExpression(object)
+            }
+            _ => {
+                let properties = ArenaVec::from_iter_in([property], &self.allocator);
+                Expression::new_object_expression(span, properties, &self.ast)
+            }
+        }
     }
 
     /// `_$hole(null, null, () => …)` — a position the server did not address.
@@ -75,17 +124,22 @@ impl<'a> Emit<'a, '_> {
         )
     }
 
-    pub(super) fn fragment_call(
+    /// A fragment is an ARRAY of its parts — one template per root plus the
+    /// array, which is what `template()` returning `content.firstChild` forces
+    /// (DESIGN §8 V5). There is no `Fragment` component behind it: every
+    /// position that admits a child already admits an array of children, so the
+    /// wrapper only ever added a call and a second flattening rule.
+    pub(super) fn fragment_array(
         &mut self,
         fragment: ArenaBox<'a, JSXFragment<'a>>,
     ) -> Expression<'a> {
         let JSXFragment { span, children, .. } = fragment.unbox();
-        let callee = self.helper(Helper::CreateElement, span);
-        let tag = self.helper(Helper::Fragment, span);
-        let null = Expression::new_null_literal(span, &self.ast);
-        let mut arguments = vec![Argument::from(tag), Argument::from(null)];
-        arguments.extend(self.child_arguments(children));
-        self.call(callee, arguments, span)
+        let elements = self.child_arguments(children).into_iter().map(|argument| match argument {
+            Argument::SpreadElement(spread) => ArrayExpressionElement::SpreadElement(spread),
+            other => ArrayExpressionElement::from(other.into_expression()),
+        });
+        let elements = ArenaVec::from_iter_in(elements, &self.allocator);
+        Expression::new_array_expression(span, elements, &self.ast)
     }
 
     fn element_name(&mut self, name: JSXElementName<'a>) -> Expression<'a> {
@@ -141,7 +195,7 @@ impl<'a> Emit<'a, '_> {
                     let key = self.property_key(name, attribute.span);
                     let value = match attribute.value {
                         None => Expression::new_boolean_literal(attribute.span, true, &self.ast),
-                        Some(value) => attribute_expression(value, &self.ast),
+                        Some(value) => attribute_expression(value, &self.ast, self.allocator),
                     };
                     properties.push(ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
                         ObjectProperty::new(
@@ -161,6 +215,19 @@ impl<'a> Emit<'a, '_> {
         }
         let properties = ArenaVec::from_iter_in(properties, &self.allocator);
         Expression::new_object_expression(SPAN, properties, &self.ast)
+    }
+
+    fn property(
+        &self,
+        name: &'a str,
+        value: Expression<'a>,
+        span: oxc::span::Span,
+    ) -> ObjectPropertyKind<'a> {
+        let key = self.property_key(name, span);
+        ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
+            ObjectProperty::new(span, PropertyKind::Init, key, value, false, false, false, &self.ast),
+            &self.allocator,
+        ))
     }
 
     fn property_key(&self, name: &'a str, span: oxc::span::Span) -> PropertyKey<'a> {

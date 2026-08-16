@@ -3,33 +3,33 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { useStore, produce, reconcile, unwrap } from "./store.ts";
+import { store, produce, reconcile, unwrap } from "./store.ts";
 import { effect, createScope, batch } from "./signals.ts";
 
-describe("useStore", () => {
+describe("store", () => {
   test("creates store with initial state", () => {
-    const [state] = useStore({ count: 0, name: "test" });
+    const [state] = store({ count: 0, name: "test" });
 
     expect(state.count).toBe(0);
     expect(state.name).toBe("test");
   });
 
   test("setState updates single property", () => {
-    const [state, setState] = useStore({ count: 0 });
+    const [state, setState] = store({ count: 0 });
 
     setState("count", 5);
     expect(state.count).toBe(5);
   });
 
   test("setState with update function", () => {
-    const [state, setState] = useStore({ count: 10 });
+    const [state, setState] = store({ count: 10 });
 
     setState("count", (prev) => prev + 5);
     expect(state.count).toBe(15);
   });
 
   test("setState with partial object", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { name: "John", age: 30 },
     });
 
@@ -39,7 +39,7 @@ describe("useStore", () => {
   });
 
   test("setState with full updates object", () => {
-    const [state, setState] = useStore({ a: 1, b: 2, c: 3 });
+    const [state, setState] = store({ a: 1, b: 2, c: 3 });
 
     setState({ a: 10, b: 20 });
     expect(state.a).toBe(10);
@@ -48,14 +48,14 @@ describe("useStore", () => {
   });
 
   test("setState with function returning updates", () => {
-    const [state, setState] = useStore({ count: 0 });
+    const [state, setState] = store({ count: 0 });
 
     setState((s) => ({ count: s.count + 10 }));
     expect(state.count).toBe(10);
   });
 
   test("tracks property access reactively", () => {
-    const [state, setState] = useStore({ count: 0 });
+    const [state, setState] = store({ count: 0 });
     let effectRuns = 0;
 
     effect(() => {
@@ -73,7 +73,7 @@ describe("useStore", () => {
   });
 
   test("only triggers effects for accessed properties", () => {
-    const [state, setState] = useStore({ a: 0, b: 0 });
+    const [state, setState] = store({ a: 0, b: 0 });
     let aEffectRuns = 0;
     let bEffectRuns = 0;
 
@@ -100,7 +100,7 @@ describe("useStore", () => {
   });
 
   test("prevents direct mutation", () => {
-    const [state] = useStore({ count: 0 });
+    const [state] = store({ count: 0 });
 
     // Direct mutation throws TypeError because proxy's set trap returns false
     expect(() => {
@@ -114,7 +114,7 @@ describe("useStore", () => {
 
 describe("Nested store reactivity", () => {
   test("tracks nested property access", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { name: "John", address: { city: "NYC" } },
     });
     let effectRuns = 0;
@@ -132,7 +132,7 @@ describe("Nested store reactivity", () => {
   });
 
   test("updates deep nested values", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       level1: { level2: { level3: { value: 0 } } },
     });
     let effectRuns = 0;
@@ -154,7 +154,7 @@ describe("Nested store reactivity", () => {
   });
 
   test("handles arrays in store", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [
         { id: 1, name: "one" },
         { id: 2, name: "two" },
@@ -175,7 +175,7 @@ describe("Nested store reactivity", () => {
   });
 
   test("tracks array element access", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: ["a", "b", "c"],
     });
     let effectRuns = 0;
@@ -192,7 +192,7 @@ describe("Nested store reactivity", () => {
   });
 
   test("tracks array length", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [1, 2, 3],
     });
     let effectRuns = 0;
@@ -211,7 +211,7 @@ describe("Nested store reactivity", () => {
 
 describe("Store batching", () => {
   test("batches multiple setState calls", () => {
-    const [state, setState] = useStore({ a: 0, b: 0 });
+    const [state, setState] = store({ a: 0, b: 0 });
     let effectRuns = 0;
 
     effect(() => {
@@ -237,7 +237,7 @@ describe("Store batching", () => {
 
 describe("produce function", () => {
   test("creates updater function for immutable updates", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { name: "John", score: 0 },
     });
 
@@ -254,7 +254,7 @@ describe("produce function", () => {
   });
 
   test("produce works with arrays", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [1, 2, 3],
     });
 
@@ -270,7 +270,7 @@ describe("produce function", () => {
   });
 
   test("produce works with nested objects", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       data: {
         users: [
           { id: 1, name: "Alice", score: 0 },
@@ -294,7 +294,7 @@ describe("produce function", () => {
 
 describe("reconcile function", () => {
   test("reconciles array with key", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [
         { id: 1, name: "one", extra: "data" },
         { id: 2, name: "two" },
@@ -319,7 +319,7 @@ describe("reconcile function", () => {
   });
 
   test("reconcile with string key shorthand", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [{ id: 1, value: "old" }],
     });
 
@@ -329,7 +329,7 @@ describe("reconcile function", () => {
   });
 
   test("reconcile without merge", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [{ id: 1, name: "one", extra: "data" }],
     });
 
@@ -340,7 +340,7 @@ describe("reconcile function", () => {
   });
 
   test("reconcile without key returns new data", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [{ a: 1 }, { b: 2 }],
     });
 
@@ -352,7 +352,7 @@ describe("reconcile function", () => {
 
 describe("Store edge cases", () => {
   test("EDGE CASE: accessing non-existent property", () => {
-    const [state] = useStore({ existing: 1 });
+    const [state] = store({ existing: 1 });
 
     // @ts-expect-error - Testing runtime behavior
     const nonExistent = state.nonExistent;
@@ -360,7 +360,7 @@ describe("Store edge cases", () => {
   });
 
   test("EDGE CASE: setting property that doesn't exist yet", () => {
-    const [state, setState] = useStore<{ count: number; newProp?: string }>({ count: 0 });
+    const [state, setState] = store<{ count: number; newProp?: string }>({ count: 0 });
 
     setState("newProp" as keyof typeof state, "hello" as never);
 
@@ -368,7 +368,7 @@ describe("Store edge cases", () => {
   });
 
   test("EDGE CASE: empty object store", () => {
-    const [state, setState] = useStore<Record<string, number>>({});
+    const [state, setState] = store<Record<string, number>>({});
     let effectRuns = 0;
 
     effect(() => {
@@ -384,7 +384,7 @@ describe("Store edge cases", () => {
   });
 
   test("EDGE CASE: null values in store", () => {
-    const [state, setState] = useStore<{ value: string | null }>({ value: null });
+    const [state, setState] = store<{ value: string | null }>({ value: null });
     let effectRuns = 0;
 
     effect(() => {
@@ -405,7 +405,7 @@ describe("Store edge cases", () => {
   });
 
   test("EDGE CASE: deeply nested update triggers correct effects", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       a: { b: { c: { d: { value: 0 } } } },
     });
 
@@ -438,7 +438,7 @@ describe("Store edge cases", () => {
     const obj: { self?: typeof obj; value: number } = { value: 1 };
     // Note: intentionally not adding circular ref as structuredClone would fail
 
-    const [state, setState] = useStore({ data: obj });
+    const [state, setState] = store({ data: obj });
 
     expect(state.data.value).toBe(1);
 
@@ -447,13 +447,13 @@ describe("Store edge cases", () => {
   });
 
   test("EDGE CASE: Symbol.toStringTag returns 'Store'", () => {
-    const [state] = useStore({ value: 1 });
+    const [state] = store({ value: 1 });
 
     expect(Object.prototype.toString.call(state)).toBe("[object Store]");
   });
 
   test("EDGE CASE: rapid updates to same property", () => {
-    const [state, setState] = useStore({ count: 0 });
+    const [state, setState] = store({ count: 0 });
     let effectRuns = 0;
 
     effect(() => {
@@ -474,7 +474,7 @@ describe("Store edge cases", () => {
   });
 
   test("EDGE CASE: batched rapid updates", () => {
-    const [state, setState] = useStore({ count: 0 });
+    const [state, setState] = store({ count: 0 });
     let effectRuns = 0;
 
     effect(() => {
@@ -497,7 +497,7 @@ describe("Store edge cases", () => {
 
 describe("Store with effects disposal", () => {
   test("effects dispose correctly with scope", () => {
-    const [state, setState] = useStore({ count: 0 });
+    const [state, setState] = store({ count: 0 });
     let effectRuns = 0;
     let dispose: (() => void) | undefined;
 
@@ -521,7 +521,7 @@ describe("Store with effects disposal", () => {
   });
 
   test("nested effects with store dispose correctly", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       show: true,
       data: { value: 0 },
     });
@@ -570,7 +570,7 @@ describe("Store with effects disposal", () => {
 
 describe("Path-based setters", () => {
   test("deep path update with 2 levels", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { name: "John", age: 30 },
     });
 
@@ -580,7 +580,7 @@ describe("Path-based setters", () => {
   });
 
   test("deep path update with 3 levels", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { address: { city: "NYC", zip: "10001" } },
     });
 
@@ -590,7 +590,7 @@ describe("Path-based setters", () => {
   });
 
   test("deep path update with 4 levels", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       a: { b: { c: { d: 1 } } },
     });
 
@@ -599,7 +599,7 @@ describe("Path-based setters", () => {
   });
 
   test("array index update", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [
         { id: 1, name: "one" },
         { id: 2, name: "two" },
@@ -612,7 +612,7 @@ describe("Path-based setters", () => {
   });
 
   test("array index with numeric key", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       list: ["a", "b", "c"],
     });
 
@@ -622,7 +622,7 @@ describe("Path-based setters", () => {
   });
 
   test("path-based update with function updater", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { score: 10 },
     });
 
@@ -631,7 +631,7 @@ describe("Path-based setters", () => {
   });
 
   test("path-based update triggers correct effects", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { name: "John", address: { city: "NYC" } },
     });
 
@@ -663,7 +663,7 @@ describe("Path-based setters", () => {
   });
 
   test("path-based update on nested array of objects", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       todos: [
         { id: 1, text: "Learn signals", done: false },
         { id: 2, text: "Build app", done: false },
@@ -679,14 +679,14 @@ describe("Path-based setters", () => {
 describe("unwrap utility", () => {
   test("returns raw object from store proxy", () => {
     const initial = { count: 0, name: "test" };
-    const [state] = useStore(initial);
+    const [state] = store(initial);
 
     const raw = unwrap(state);
     expect(raw).toBe(initial);
   });
 
   test("unwrapped object does not track access", () => {
-    const [state] = useStore({ count: 0 });
+    const [state] = store({ count: 0 });
     let effectRuns = 0;
 
     effect(() => {
@@ -708,7 +708,7 @@ describe("unwrap utility", () => {
   });
 
   test("unwrapped object can be serialized", () => {
-    const [state] = useStore({
+    const [state] = store({
       user: { name: "John", scores: [1, 2, 3] },
     });
 
@@ -725,7 +725,7 @@ describe("Improved produce (proxy-based)", () => {
       b: { value: 2 },
       c: { value: 3 },
     };
-    const [state, setState] = useStore(original);
+    const [state, setState] = store(original);
 
     setState(
       produce((draft) => {
@@ -750,7 +750,7 @@ describe("Improved produce (proxy-based)", () => {
   });
 
   test("handles array mutations", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [1, 2, 3],
     });
 
@@ -766,7 +766,7 @@ describe("Improved produce (proxy-based)", () => {
   });
 
   test("handles nested object mutations", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       users: [
         { id: 1, name: "Alice", profile: { age: 25 } },
         { id: 2, name: "Bob", profile: { age: 30 } },
@@ -788,7 +788,7 @@ describe("Improved produce (proxy-based)", () => {
   });
 
   test("handles delete operations", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       data: { a: 1, b: 2, c: 3 } as Record<string, number>,
     });
 
@@ -829,7 +829,7 @@ describe("Improved produce (proxy-based)", () => {
 
 describe("Proxy caching", () => {
   test("same nested access returns cached proxy", () => {
-    const [state] = useStore({
+    const [state] = store({
       user: { name: "John" },
     });
 
@@ -842,7 +842,7 @@ describe("Proxy caching", () => {
   });
 
   test("deeply nested access is cached", () => {
-    const [state] = useStore({
+    const [state] = store({
       a: { b: { c: { d: 1 } } },
     });
 
@@ -855,7 +855,7 @@ describe("Proxy caching", () => {
 
 describe("Additional edge cases", () => {
   test("undefined to defined transition", () => {
-    const [state, setState] = useStore<{ value?: string }>({});
+    const [state, setState] = store<{ value?: string }>({});
     let effectRuns = 0;
 
     effect(() => {
@@ -872,7 +872,7 @@ describe("Additional edge cases", () => {
   });
 
   test("defined to undefined transition", () => {
-    const [state, setState] = useStore<{ value?: string }>({ value: "hello" });
+    const [state, setState] = store<{ value?: string }>({ value: "hello" });
 
     expect(state.value).toBe("hello");
 
@@ -881,7 +881,7 @@ describe("Additional edge cases", () => {
   });
 
   test("replacing entire nested object", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       user: { name: "John", address: { city: "NYC" } },
     });
 
@@ -901,7 +901,7 @@ describe("Additional edge cases", () => {
   });
 
   test("setting array to empty", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       items: [1, 2, 3],
     });
 
@@ -919,7 +919,7 @@ describe("Additional edge cases", () => {
   });
 
   test("concurrent updates from batch", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       a: 0,
       b: 0,
       c: 0,
@@ -946,7 +946,7 @@ describe("Additional edge cases", () => {
   });
 
   test("deeply nested path-based update", () => {
-    const [state, setState] = useStore({
+    const [state, setState] = store({
       level1: {
         level2: {
           level3: {
@@ -964,7 +964,7 @@ describe("Additional edge cases", () => {
   });
 
   test("path-based setter throws on null parent", () => {
-    const [_state, setState] = useStore<{ user: { address: null | { city: string } } }>({
+    const [_state, setState] = store<{ user: { address: null | { city: string } } }>({
       user: { address: null },
     });
 

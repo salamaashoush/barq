@@ -33,7 +33,7 @@
  *     The limit of this one is real and worth stating: it cannot mask a CONTENT
  *     divergence, but it does erase anchor POSITION. `a<!---->b` and
  *     `a b<!---->` serialize identically here, so a misplaced or spurious marker
- *     is invisible to the DOM comparison. That is why `compareToOracle` bounds
+ *     is invisible to the DOM comparison. That is why `auditCompiled` bounds
  *     the marker COUNT against the emitted code instead, and why M4's marker
  *     elision needs a position assertion before it can be trusted.
  *
@@ -46,7 +46,8 @@
  * failing every legitimate output. So the same walk emits two SIDE CHANNELS
  * that carry exactly what the main string threw away — `markers` keeps every
  * anchor in place, `attributes` keeps every attribute in document order — and
- * `compareToOracle` asserts on them separately. See `normalizeChannels`.
+ * `auditCompiled` and the per-fixture golden assert on them separately. See
+ * `normalizeChannels`.
  */
 
 const VOID_ELEMENTS = new Set([
@@ -337,9 +338,11 @@ function serializeChildren(
  * does not.
  *
  * It lives HERE, beside the walk that produces the lines it partitions, because
- * it has two consumers: `compareToOracle` under happy-dom and the differential
- * page running in Chrome. A second copy in the page source is how a channel
- * quietly starts measuring two different things in the two engines.
+ * it had two consumers: the happy-dom harness and the differential page running
+ * in Chrome. Both now check the PARTITION rather than a reference's order — the
+ * order within each group is a golden (§6 L4) — so this is what remains of the
+ * shared derivation, kept because a second copy in the page source is how a
+ * channel quietly starts measuring two different things in the two engines.
  *
  * LIMIT: the partition is computed from the module-wide set of patched names,
  * so an attribute that is static on one element and dynamic on another is

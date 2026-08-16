@@ -32,21 +32,6 @@ export default function AutoThunkedRead() {
 
 export const steps = [() => count.set(2)]
 
-export const goesLive = [
-  "title={`count: ${count()}`}",
-  "{`n=${count()}`}",
-  "{count()}",
-]
-
-export const wins = [
-  {
-    kind: "step",
-    index: 0,
-    compiled: '<div><p title="count: 2">attr</p><span>n=2</span><b>2</b></div>',
-    why: "the oracle read count() once at createElement time; the compiled path bound it",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 3,

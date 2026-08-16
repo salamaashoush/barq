@@ -36,24 +36,6 @@ export const steps = [
   () => rows.set([{ id: 1, text: "ALPHA" }]),
 ]
 
-export const goesLive = ["row 0 {row().text}", "row 1 {row().text}"]
-
-export const wins = [
-  {
-    kind: "step",
-    index: 0,
-    compiled:
-      '<ul class="keyed-spread"><li>ALPHA</li><li>BETA</li></ul>',
-    why: "the un-compiled path reads row().text once, so only the live binding sees the new items",
-  },
-  {
-    kind: "step",
-    index: 1,
-    compiled: '<ul class="keyed-spread"><li>ALPHA</li></ul>',
-    why: "the surviving row keeps the value it was re-pointed at in step 0",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 3,

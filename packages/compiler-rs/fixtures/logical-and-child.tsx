@@ -58,21 +58,6 @@ const frame = (mid: string, opt: string, zero: string, flag: boolean): string =>
   `<span class="mid">${mid}</span><span class="opt">${opt}</span>` +
   `<span class="zero">${zero}</span><span class="tail">tail</span></div>`
 
-export const wins = [
-  {
-    kind: "step" as const,
-    index: 4,
-    compiled: frame("fallback", "given", "nonzero", true),
-    why: "createElement appends the hole with no anchor, so the `<em>` returns at the end",
-  },
-  {
-    kind: "step" as const,
-    index: 5,
-    compiled: frame("fallback", "given", "0", true),
-    why: "and it stays there for every later frame",
-  },
-]
-
 export const optimality = {
   target: 9,
   milestone: 5,

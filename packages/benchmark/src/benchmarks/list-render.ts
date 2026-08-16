@@ -7,7 +7,8 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark, generateItems, shuffle } from "../utils.ts";
 
 // Barq imports
-import { For, createElement as h, useState, render as barqRender } from "@barqjs/core";
+import { signal, render as barqRender } from "@barqjs/core";
+import { For, h } from "../h.ts";
 
 // SolidJS imports
 import { For as SolidFor, createSignal } from "solid-js";
@@ -26,12 +27,10 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 100 items",
       () => {
         const container = document.createElement("div");
-        const [items] = useState(items100);
-        const el = h(For, {
-          each: items,
-          children: (item: { id: number; name: string }) =>
-            h("div", { class: "item", "data-id": String(item.id) }, item.name),
-        });
+        const [items] = signal(items100);
+        const el = For(items as unknown as () => readonly { id: number; name: string }[], (_scope, item: () => { id: number; name: string }) =>
+          h("div", { class: "item", "data-id": String(item().id) }, item().name),
+        );
         barqRender(el, container);
       },
       { iterations: 500 },
@@ -76,12 +75,10 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 1000 items",
       () => {
         const container = document.createElement("div");
-        const [items] = useState(items1000);
-        const el = h(For, {
-          each: items,
-          children: (item: { id: number; name: string }) =>
-            h("div", { class: "item", "data-id": String(item.id) }, item.name),
-        });
+        const [items] = signal(items1000);
+        const el = For(items as unknown as () => readonly { id: number; name: string }[], (_scope, item: () => { id: number; name: string }) =>
+          h("div", { class: "item", "data-id": String(item().id) }, item().name),
+        );
         barqRender(el, container);
       },
       { iterations: 100 },

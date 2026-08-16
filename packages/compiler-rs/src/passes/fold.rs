@@ -91,6 +91,21 @@ fn fold_children<'a>(
     folded
 }
 
+/// Whether an attribute on `node` writes the element's whole content —
+/// `dangerouslySetInnerHTML`, `innerHTML`, `innerText`, `textContent`.
+fn content_is_replaced(interner: &Interner<'_>, unit: &Unit<'_>, node: NodeId) -> bool {
+    unit.patch.iter().any(|patch| {
+        if patch.target != node {
+            return false;
+        }
+        let name = match patch.op {
+            Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => name,
+            _ => return false,
+        };
+        crate::lower::names::replaces_children(interner.name(name).text)
+    })
+}
+
 /// `Some(None)` is a child that renders nothing; `None` is a refusal.
 fn child_text<'a>(
     konst: Const<'a>,
@@ -106,6 +121,12 @@ fn child_text<'a>(
         && let SkelNode::Element(element) = unit.skeleton.node(parent)
         && interner.tag(element.tag).flags.contains(crate::ir::TagFlags::RAW_TEXT)
     {
+        return None;
+    }
+    // An element whose content is REPLACED bakes nothing: the write happens
+    // before every insert and would delete whatever the parser had put there.
+    // P1 already took these children off the template for that reason.
+    if parent != NONE && content_is_replaced(interner, unit, parent) {
         return None;
     }
     match konst {
@@ -175,7 +196,17 @@ fn fold_unit<'a>(
         let SkelNode::Element(element) = unit.skeleton.node(unit.patch[index].target) else {
             continue;
         };
-        if !bakeable(interner, name, element.ns != Ns::Html, chan, konst) {
+        let tag = interner.tag(element.tag).text;
+        if !bakeable(interner, name, element.ns != Ns::Html, tag, chan, konst) {
+            continue;
+        }
+        // P1 keeps a spread-carrying element out of the template for an
+        // ordering reason (`ordered_attributes`), and folding a constant back
+        // into it would undo exactly that.
+        let target = unit.patch[index].target;
+        if unit.patch.iter().any(|patch| {
+            patch.target == target && matches!(patch.op, Op::Spread { .. })
+        }) {
             continue;
         }
         let Some(baked) = bake(konst, allocator) else { continue };
@@ -220,10 +251,11 @@ fn bakeable(
     interner: &Interner<'_>,
     name: NameId,
     is_svg: bool,
+    tag: &str,
     chan: Chan,
     konst: Const<'_>,
 ) -> bool {
-    if !crate::lower::names::attribute_channel(interner.name(name).text, is_svg) {
+    if !crate::lower::names::attribute_channel(interner.name(name).text, is_svg, tag) {
         return false;
     }
     match chan {

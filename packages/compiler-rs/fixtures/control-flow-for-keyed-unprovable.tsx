@@ -34,23 +34,6 @@ export const steps = [
   () => rows.set([{ id: 2, text: "BETA" }]),
 ]
 
-export const goesLive = ["row 0 {row().text}", "row 1 {row().text}"]
-
-export const wins = [
-  {
-    kind: "step",
-    index: 0,
-    compiled: '<ul class="keyed-var"><li>ALPHA</li><li>BETA</li></ul>',
-    why: "the keys did not move, so only a live binding sees the new item behind them",
-  },
-  {
-    kind: "step",
-    index: 1,
-    compiled: '<ul class="keyed-var"><li>BETA</li></ul>',
-    why: "the surviving row carries the value it was re-pointed at in step 0",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 3,

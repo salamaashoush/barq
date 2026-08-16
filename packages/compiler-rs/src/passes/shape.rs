@@ -293,7 +293,7 @@ impl<'a> Shaper<'a, '_> {
                     let at = attribute.span;
                     let value = match attribute.value {
                         None => Expression::new_boolean_literal(at, true, &self.ast),
-                        Some(value) => attribute_expression(value, &self.ast),
+                        Some(value) => attribute_expression(value, &self.ast, self.allocator),
                     };
                     if name == "keyed" {
                         keyed = Keyed::of_expression(&value);
@@ -911,14 +911,39 @@ impl<'a> Shaper<'a, '_> {
         flow: Flow,
         element: ArenaBox<'a, JSXElement<'a>>,
     ) -> Result<Expression<'a>, ArenaBox<'a, JSXElement<'a>>> {
-        if !self.lower_flow || !super::flow::admits(self, flow, &element) {
+        if !self.lower_flow {
+            return Err(element);
+        }
+        // `Reveal` is a provide scope rather than a range, so its lowering is a
+        // CALL and there is no row for the patch program to hand a
+        // `(parent, anchor)` pair to.
+        if flow == Flow::Reveal {
+            if !super::flow::admits_reveal(self, &element) {
+                return Err(element);
+            }
+            return Ok(super::flow::reveal(self, element));
+        }
+        if !super::flow::admits(self, flow, &element) {
             return Err(element);
         }
         let span = element.span;
         let region = super::flow::lower(self, flow, element);
+        Ok(self.nested_region(region, span))
+    }
+
+    /// Stages one region row and returns its id. `Await` uses it twice: the
+    /// error boundary it nests is a row of its own, referenced from inside the
+    /// loading boundary's Block.
+    pub(super) fn stage(&mut self, region: Region<'a>) -> crate::ir::RegionId {
         let id = self.regions.len() as crate::ir::RegionId;
         self.regions.push(Some(region));
-        Ok(self.ident(self.uids.region(id, self.allocator), span))
+        id
+    }
+
+    /// The placeholder for a region nested inside another region's body.
+    pub(super) fn nested_region(&mut self, region: Region<'a>, span: Span) -> Expression<'a> {
+        let id = self.stage(region);
+        self.ident(self.uids.region(id, self.allocator), span)
     }
 
     /// Records that one reference to a flow binding was consumed by the

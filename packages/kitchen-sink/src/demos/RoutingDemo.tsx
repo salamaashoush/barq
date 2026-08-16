@@ -6,7 +6,7 @@
  * This demo uses MemoryRouter for isolated nested route demos.
  */
 
-import { For, Show, useState } from "@barqjs/core";
+import { For, Show, signal } from "@barqjs/core";
 import {
   clsx,
   css,
@@ -82,18 +82,18 @@ const adminGuard: NavigationGuard = async () => {
 
 // Dashboard Layout - wraps all dashboard routes
 export function DashboardLayout(props: { children: unknown }) {
-  const [authState, setAuthState] = useState(true);
-  const [roleState, setRoleState] = useState("admin");
+  const authState = signal(true);
+  const roleState = signal("admin");
 
   // Sync local state with module-level state
   const toggleAuth = () => {
     isAuthenticated = !isAuthenticated;
-    setAuthState(isAuthenticated);
+    authState.set(isAuthenticated);
   };
 
   const toggleRole = () => {
     userRole = userRole === "admin" ? "user" : "admin";
-    setRoleState(userRole);
+    roleState.set(userRole);
   };
 
   return (

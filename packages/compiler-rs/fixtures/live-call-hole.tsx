@@ -34,25 +34,6 @@ export default function LiveCallHole() {
 
 export const steps = [() => count.set("5"), () => label.set("c2")]
 
-export const goesLive = ["title/data-text, one group", "{String(count())}"]
-
-export const wins = [
-  {
-    kind: "step" as const,
-    index: 0,
-    compiled:
-      '<p class="call-hole" data-text="5" title="5">5<b class="control" title="c1">c</b></p>',
-    why: "the oracle read count() once at createElement time; the compiled path bound both holes",
-  },
-  {
-    kind: "step" as const,
-    index: 1,
-    compiled:
-      '<p class="call-hole" data-text="5" title="5">5<b class="control" title="c2">c</b></p>',
-    why: "the step-0 divergence persists into every later frame",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 5,

@@ -10,7 +10,7 @@
  *    asserts the throw, and `r.latest()` is the read that never throws.
  * 2. **It is a memo, so it is lazy.** The fetch starts at the first READ, not
  *    at creation; `kick` is that read. A resource nobody renders costs nothing,
- *    which is the same rule `createAsync` has always followed.
+ *    which is the same rule `computed` has always followed.
  * 3. `createResource`, `suspend` and `awaitAll` are gone. `createResource(f)`
  *    is `resource(() => null, f)`; `suspend` was a promise nobody awaited and
  *    is the `NotReady` read; `awaitAll` is `resolve()`.

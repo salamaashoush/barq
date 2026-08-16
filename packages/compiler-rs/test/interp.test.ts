@@ -231,7 +231,7 @@ function divergences(reference: RenderResult, subject: RenderResult): string[] {
 describe("L2 — the Interp differential over the corpus", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically through the interpreter`, async () => {
-      const compiled = await drive(name, "compiler")
+      const compiled = await drive(name)
       const reference = await renderViaInterp(name)
       expect(divergences(compiled, reference).join("\n"), name).toBe("")
     })
@@ -394,7 +394,7 @@ describe("harness self-check", () => {
       return null
     }
     if (mutated === clean.code) return null
-    const reference = await drive(name, "compiler")
+    const reference = await drive(name)
     try {
       const corrupted = await renderViaInterp(name, { emitted: mutate })
       return divergences(reference, corrupted).length === 0
@@ -434,7 +434,7 @@ describe("harness self-check", () => {
   })
 
   it("an uncorrupted fixture is not reported as divergent", async () => {
-    const reference = await drive("walk-from-the-back", "compiler")
+    const reference = await drive("walk-from-the-back")
     const subject = await renderViaInterp("walk-from-the-back")
     expect(divergences(reference, subject)).toEqual([])
   })

@@ -12,13 +12,13 @@ export default function NestedTemplateElement() {
 }
 export const optimality = {
   target: 2,
-  milestone: 5,
-  templates: 2,
-  // A `<template>` ELEMENT in the source cannot itself be baked into a
-  // `template()` string: the HTML parser puts its children into a
-  // DocumentFragment on `.content`, so a clone of the outer template would
-  // carry them somewhere `firstChild` cannot reach. It is built through
-  // `createElement` while its child stays a template of its own.
-  emits: ['createElement("template", { id: "row" }', '<li class="row"><span>cell</span></li>'],
-  absent: ["<template"],
+  milestone: 9,
+  templates: 1,
+  // A `<template>` ELEMENT is baked whole. The parser puts its children on
+  // `.content` and `cloneNode` copies that, so the clone carries them — the
+  // one thing it does not carry is a walk into them, because the element's own
+  // `firstChild` is null. That costs nothing here and is why a `<template>`
+  // holding a HOLE leaves the template path instead.
+  emits: ['<template id="row"><li class="row"><span>cell</span></li></template>'],
+  absent: ["createElement"],
 }

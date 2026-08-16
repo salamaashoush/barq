@@ -1,12 +1,12 @@
 /**
  * Store Demo
- * Tests: useStore, produce, reconcile
+ * Tests: store, produce, reconcile
  *
  * NOTE: This file uses clean syntax that the compiler transforms.
  * Store access like `state.count` is automatically wrapped.
  */
 
-import { For, Show, produce, reconcile, unwrap, useEffect, useState, useStore } from "@barqjs/core";
+import { For, Show, produce, reconcile, unwrap, effect, signal, store } from "@barqjs/core";
 import {
   css,
 } from "../styles";
@@ -41,7 +41,7 @@ export function StoreDemo() {
 
 // Basic store usage
 function BasicStoreDemo() {
-  const [state, setState] = useStore({
+  const [state, setState] = store({
     count: 0,
     message: "Hello",
   });
@@ -70,7 +70,7 @@ function BasicStoreDemo() {
 
 // Nested store paths
 function NestedStoreDemo() {
-  const [user, setUser] = useStore<User>({
+  const [user, setUser] = store<User>({
     name: "John Doe",
     email: "john@example.com",
     preferences: {
@@ -80,10 +80,10 @@ function NestedStoreDemo() {
   });
 
   // Signal to hold the raw JSON snapshot
-  const [rawJson, setRawJson] = useState("");
+  const rawJson = signal("");
 
   // Effect tracks store changes, then stores unwrapped raw value
-  useEffect(() => {
+  effect(() => {
     // Access through proxy to track changes
     user.name;
     user.email;
@@ -92,7 +92,7 @@ function NestedStoreDemo() {
 
     // Get raw object and store as JSON
     const raw = unwrap(user);
-    setRawJson(JSON.stringify(raw, null, 2));
+    rawJson.set(JSON.stringify(raw, null, 2));
   });
 
   return (
@@ -166,13 +166,13 @@ function NestedStoreDemo() {
 
 // Todo list with store
 function TodoStoreDemo() {
-  const [state, setState] = useStore({
+  const [state, setState] = store({
     todos: [] as Todo[],
     filter: "all" as "all" | "active" | "completed",
     nextId: 1,
   });
 
-  const [inputValue, setInputValue] = useStore({ text: "" });
+  const [inputValue, setInputValue] = store({ text: "" });
 
   const addTodo = () => {
     const text = inputValue.text.trim();
@@ -274,7 +274,7 @@ function TodoStoreDemo() {
 
 // produce for immutable updates
 function ProduceDemo() {
-  const [state, setState] = useStore({
+  const [state, setState] = store({
     users: [
       { id: 1, name: "Alice", score: 100 },
       { id: 2, name: "Bob", score: 85 },
@@ -325,7 +325,7 @@ function ProduceDemo() {
 
 // reconcile for efficient diffing
 function ReconcileDemo() {
-  const [state, setState] = useStore({
+  const [state, setState] = store({
     items: [
       { id: 1, value: "A" },
       { id: 2, value: "B" },

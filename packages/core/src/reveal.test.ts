@@ -7,7 +7,7 @@ import { Loading, Reveal } from "./components.ts";
 import type { Scope } from "./scope.ts";
 import { render } from "./dom.ts";
 import type { JSXElement } from "./dom.ts";
-import { NotReadyError, createAsync, createScope, flush, signal } from "./signals.ts";
+import { NotReadyError, computed, createScope, flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
 beforeEach(() => {
@@ -42,7 +42,7 @@ describe("Loading revalidation", () => {
     const source = signal(1);
     const d1 = deferred<string>();
     let d2: ReturnType<typeof deferred<string>> | null = null;
-    const data = createAsync(async () => {
+    const data = computed(async () => {
       const v = source();
       if (v === 1) return d1.promise;
       d2 = deferred<string>();
@@ -82,8 +82,8 @@ describe("Reveal", () => {
   function setup(order: "sequential" | "together" | "natural", collapsed = false) {
     const a = deferred<string>();
     const b = deferred<string>();
-    const dataA = createAsync(() => a.promise);
-    const dataB = createAsync(() => b.promise);
+    const dataA = computed(() => a.promise);
+    const dataB = computed(() => b.promise);
 
     createScope((_dispose, scope) => {
       // Children as a BLOCK: the boundaries are constructed under the scope

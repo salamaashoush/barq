@@ -1,10 +1,14 @@
 /**
- * `<select>` is a reshaping element, so the compiler refuses to put it in a
- * template and joins it back with `createElement`. The `<option>` children
- * still compile, which means each one arrives as a `<template>` CLONE rather
- * than as a freshly-constructed element — and a select decides its options'
- * default selectedness with the "ask for a reset" algorithm as each child
- * arrives.
+ * A select decides its options' default selectedness with the "ask for a reset"
+ * algorithm as each child arrives, and the answer depends on `multiple` being
+ * in place before they are (§3.13 item 8).
+ *
+ * The parser puts it there. `multiple` is the one DOM_PROP whose ATTRIBUTE
+ * carries the state rather than a default, so it is baked into the template and
+ * the whole select — options included — is one clone. Written as a property
+ * after the clone it would arrive too late and the first option would come out
+ * selected, which is what made this element bail out of the template path
+ * before M9.
  *
  * happy-dom models neither that algorithm nor `HTMLSelectElement.value`, so the
  * only place this shape is judged at all is the Chrome differential.
@@ -21,12 +25,10 @@ export default function SelectOptionMultiple() {
 export const optimality = {
   target: 2,
   milestone: 4,
-  // One template per option; the select itself is refused, correctly.
-  templates: 2,
-  emits: ["<option>one</option>", "<option>two</option>"],
-  // The tag as a TEMPLATE would spell it, attribute and all: the doc comment
-  // above names the bare tag too, and a module-wide search cannot tell markup
-  // from prose. Naming the emitted uid instead is not an option — a fixture that
-  // mentions one owns it, and hygiene then shifts every uid in the module.
-  absent: ['<select class="picker">'],
+  // One template for the whole select, with `multiple` baked into it.
+  templates: 1,
+  emits: ['<select class="picker" multiple><option>one</option><option>two</option></select>'],
+  // The select without its `multiple`, which is the shape that gets the
+  // ordering wrong, and the un-compiled path that used to build it.
+  absent: ['<select class="picker">', "createElement"],
 }

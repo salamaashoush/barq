@@ -26,15 +26,6 @@ export default function RefWritableBinding() {
 
 export const steps = [() => box?.setAttribute("data-el", box.className)]
 
-export const wins = [
-  {
-    kind: "step" as const,
-    index: 0,
-    compiled: '<p><i class="k" data-el="k">x</i></p>',
-    why: "a writable ref binding is an assignment the compiler emits; a props object cannot write one",
-  },
-]
-
 export const optimality = {
   target: 1,
   milestone: 5,

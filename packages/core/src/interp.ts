@@ -61,6 +61,7 @@ import {
   setHtml,
   setStyle,
   setStyleProp,
+  spread,
   type Channel,
 } from "./dom.ts";
 import { boundary, branch, each, portal } from "./flow.ts";
@@ -111,6 +112,7 @@ export type Op =
   | readonly ["listen", number, string, number]
   | readonly ["ref", number, number, "assign" | "apply"]
   | readonly ["bind", number, string, string, number]
+  | readonly ["spread", number, number, boolean]
   | readonly ["insert", number, number, Plan, number | null]
   | Region
   | readonly ["effectGroup", readonly SetLive[]];
@@ -154,24 +156,20 @@ export const HANDLED: readonly string[] = [
   "listen",
   "ref",
   "bind",
+  "spread",
   "insert",
   "region",
   "effectGroup",
 ];
 
 /**
- * The one opcode that never reaches this file, and why: P1 refuses to put an
- * element carrying a spread on the template path, so the whole subtree is
- * emitted through `createElement` — on this backend for the same reason and by
- * the same route as on the DOM backend, which answers `None` for exactly it.
- *
- * `setClass`, `setStyle` and `setHtml` were here at M4b and are DELETED, not
- * moved: `class`, `style` and `dangerouslySetInnerHTML` are CHANNELS now
- * (§3.5), reached through `setOnce` / `setLive` / `setOpaque` like every other
- * name, and the three `Op` variants that used to carry them were never
- * constructed by any pass.
+ * Opcodes the compiler can emit that never reach this file. Empty since M9,
+ * when `spread` joined the template path: `setClass`, `setStyle` and `setHtml`
+ * were here at M4b and are DELETED, not moved — `class`, `style` and
+ * `dangerouslySetInnerHTML` are CHANNELS now (§3.5), reached through `setOnce`
+ * / `setLive` / `setOpaque` like every other name.
  */
-export const OFF_TEMPLATE: readonly string[] = ["spread"];
+export const OFF_TEMPLATE: readonly string[] = [];
 
 /**
  * Build one unit and return its root node.
@@ -260,6 +258,13 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
 
     case "bind":
       bindValue(s, nodes[op[1]] as Element, op[2], op[3], slots[op[4]]);
+      return;
+
+    // §3.13 item 1: the one channel whose NAMES are runtime data. `live` is the
+    // compiler saying the source may change, and it is the same bit that makes
+    // the DOM backend hand `spread` a thunk instead of an object.
+    case "spread":
+      spread(s, nodes[op[1]] as Element, (op[3] ? slots[op[2]] : slots[op[2]]()) as never);
       return;
 
     case "insert": {

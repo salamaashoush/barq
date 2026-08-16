@@ -422,15 +422,30 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(fused_effect(self.ctx, self.unit, at.members, at.patch))
     }
 
-    // ── off the template path entirely ────────────────────────────────────
-    //
-    // P1 refuses to lower an element carrying a spread, so the whole subtree
-    // goes through `createElement` and it never reaches a patch program the DOM
-    // backend prints. Answering it is that decision written down, not a case
-    // that fell through: there is no wildcard arm to fall through.
-
-    fn spread(&mut self, _at: At<'_>, _value: ExprId, _live: bool) -> Self::Out {
-        None
+    /// §3.13 item 1's one concession on an ELEMENT. Every other channel is
+    /// resolved at compile time because the compiler knows the name; here it
+    /// does not, so the object is handed to the runtime whole and the same
+    /// tables `build.rs` reads to build the compiler's decide each key.
+    ///
+    /// A live spread arrives as a THUNK, which is what makes `spread` open its
+    /// own effect and diff against what it last applied — the keys that vanish
+    /// between two objects are removals nobody else can see.
+    fn spread(&mut self, at: At<'_>, value: ExprId, live: bool) -> Self::Out {
+        let span = at.span();
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let value = if live {
+            thunk(self.ctx, self.unit, value, span)
+        } else {
+            take(self.ctx, self.unit, value, span)
+        };
+        let scope = self.ctx.scope(span);
+        let callee = self.ctx.helper(Helper::Spread, span);
+        let call = self.ctx.call(
+            callee,
+            vec![Argument::from(scope), Argument::from(element), Argument::from(value)],
+            span,
+        );
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 }
 

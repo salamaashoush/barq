@@ -3,16 +3,15 @@
  * of the dead plugin's template-codegen cases, and the one it handled by
  * bailing the whole element out of the template.
  *
- * `createElement` writes the props first and appends the children afterwards,
- * so the children survive the innerHTML write. A template bakes the children in
- * at PARSE time — before any patch runs — so the innerHTML write would erase
- * them, and the two paths would disagree about which one wins. The element is
- * therefore refused from the template outright (`lower::names::replaces_children`,
- * the same refusal `<select multiple>` takes) and goes down the `createElement`
- * path, where the runtime's own ordering settles it.
+ * Neither bail is needed. The write is an ATTRIBUTE patch and attribute patches
+ * run before inserts, so the order the un-compiled path got by applying props
+ * before appending children is the order the patch program already has. What a
+ * template cannot do is BAKE those children — the parser would put them there
+ * and the write would delete them — so the element keeps its template and its
+ * children become one insert after the write.
  *
- * No `steps`: the innerHTML value is read once by `createElement`, so any
- * scripted write to it is inert on the oracle side and would assert nothing.
+ * No `steps`: the innerHTML value is a literal here, so a scripted write to it
+ * would assert nothing.
  */
 export default function InnerHtmlWithChildren() {
   return (
@@ -26,13 +25,16 @@ export default function InnerHtmlWithChildren() {
 }
 export const optimality = {
   target: 2,
-  milestone: 5,
+  milestone: 9,
+  // One template for the whole section, the `div` included. Only the CHILDREN
+  // of the element whose content is replaced leave the template — the write
+  // would delete them where the parser put them, and it runs first.
   templates: 1,
-  // The refusal, and its blast radius. `dangerouslySetInnerHTML` beside
-  // children cannot be compiled: a template bakes the children first and the
-  // innerHTML write then deletes them, where `createElement` applies props
-  // before appending and the children win. So that ONE element bails — and the
-  // markup around it stays a template, with the bailed element as a hole in it.
-  emits: ['<section class="wrap"><span>after</span></section>', 'createElement("div"', "dangerouslySetInnerHTML"],
-  absent: ['<div class="raw"', "<b>bold</b></div>"],
+  emits: [
+    '<section class="wrap"><div class="raw"></div><span>after</span></section>',
+    "dangerouslySetInnerHTML",
+  ],
+  // The children baked where the write would erase them, and the un-compiled
+  // builder that used to own the ordering.
+  absent: ['<div class="raw">replaced', "createElement"],
 }
