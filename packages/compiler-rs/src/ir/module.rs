@@ -216,14 +216,37 @@ pub struct Uids<'a> {
     /// A lowered control-flow region (`_g$N`), standing where the component call
     /// used to, until a patch claims it or codegen expands it in place.
     region: &'a str,
+    /// The ordered source list a construct whose props came through a SPREAD
+    /// reads them off (`_o$N`).
+    ///
+    /// It cannot be [`Uids::temp`]. That name's whole invariant is that the flow
+    /// pass declares it at the head of a body arrow and reads it in the same
+    /// arrow, so a nested declaration shadows an outer one only after the outer
+    /// value has been read. A source binding is declared AROUND a body that
+    /// declares one too and is read INSIDE it — `Repeat`'s index shift is the
+    /// case — so the undecorated name reads the shift's own index and finds a
+    /// property on a number. Numbered, and its own base, so neither can happen.
+    sources: &'a str,
     next_element: u32,
     next_value: u32,
 }
 
 impl<'a> Uids<'a> {
     pub fn new(source: &str, allocator: &'a Allocator) -> Self {
-        let [element, template, root, handler, prev, value, ir, scope, konst, block, region] =
-            free_names(source, allocator);
+        let [
+            element,
+            template,
+            root,
+            handler,
+            prev,
+            value,
+            ir,
+            scope,
+            konst,
+            block,
+            region,
+            sources,
+        ] = free_names(source, allocator);
         Self {
             element,
             template,
@@ -236,6 +259,7 @@ impl<'a> Uids<'a> {
             konst,
             block,
             region,
+            sources,
             next_element: 0,
             next_value: 0,
         }
@@ -243,6 +267,13 @@ impl<'a> Uids<'a> {
 
     pub fn region(&self, id: crate::ir::RegionId, allocator: &'a Allocator) -> &'a str {
         numbered(self.region, id + 1, allocator)
+    }
+
+    /// The Nth spread source binding of this module. The counter is the shape
+    /// pass's own — it is the only thing that mints these — which is also what
+    /// keeps this immutable where `value` is not.
+    pub fn sources(&self, n: u32, allocator: &'a Allocator) -> &'a str {
+        numbered(self.sources, n + 1, allocator)
     }
 
     /// The prefix is absent from the source text, so no user identifier can
@@ -347,17 +378,17 @@ fn numbered<'a>(prefix: &str, value: u32, allocator: &'a Allocator) -> &'a str {
     allocator.alloc_str(&name)
 }
 
-const UID_BASES: [&str; 11] =
-    ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$", "_ir$", "_s$", "_k$", "_b$", "_g$"];
+const UID_BASES: [&str; 12] =
+    ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$", "_ir$", "_s$", "_k$", "_b$", "_g$", "_o$"];
 
-/// Eleven names the source never mentions. `generate_uid` against a real scope
+/// Twelve names the source never mentions. `generate_uid` against a real scope
 /// tree is not on oxc 0.143's `Scoping` — DESIGN §4 assumes an API that only
 /// `oxc_traverse`'s `TraverseScoping` has.
 ///
 /// Every base opens with `_`, so the underscores are the only positions a
 /// collision can start at and one scan answers all of them. A source that spells
 /// one is rare enough to be worth no more than the escalating re-scan below.
-fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 11] {
+fn free_names<'a>(source: &str, allocator: &'a Allocator) -> [&'a str; 12] {
     let mut taken = [false; UID_BASES.len()];
     for (at, _) in source.match_indices('_') {
         let rest = &source[at..];

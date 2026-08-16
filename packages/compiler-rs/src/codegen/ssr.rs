@@ -20,9 +20,10 @@
 
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, Expression, IdentifierName, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement,
-    JSXExpression, JSXFragment, ObjectProperty, ObjectPropertyKind, PropertyKey, PropertyKind,
-    SpreadElement, StringLiteral, TemplateElement, TemplateElementValue, TemplateLiteral,
+    Argument, Expression, IdentifierName, JSXAttributeItem, JSXAttributeValue, JSXChild,
+    JSXElement, JSXExpression, JSXFragment, ObjectProperty, ObjectPropertyKind, PropertyKey,
+    PropertyKind, SpreadElement, StringLiteral, TemplateElement, TemplateElementValue,
+    TemplateLiteral,
 };
 use oxc::span::{GetSpan, Span};
 
@@ -450,12 +451,12 @@ fn attribute_object<'a>(
                         let name = ctx.module.interner.name(name).text;
                         properties.push(property(ctx, name, value, patch.span));
                     }
-                    Slot::Unnamed => properties.push(ObjectPropertyKind::SpreadProperty(
-                        ArenaBox::new_in(
+                    Slot::Unnamed => {
+                        properties.push(ObjectPropertyKind::SpreadProperty(ArenaBox::new_in(
                             SpreadElement::new(patch.span, value, &ctx.ast),
                             &ctx.allocator,
-                        ),
-                    )),
+                        )))
+                    }
                     Slot::Elsewhere => {}
                 }
             }
@@ -1528,18 +1529,34 @@ mod tests {
     }
 
     /// What the flow pass REFUSES still has a string answer, and every one of
-    /// the thirteen has one: a spread source hides the construct's shape, so the
-    /// component call survives and is rewritten to the adapter over the same
-    /// four primitives.
+    /// the thirteen has one: the component call survives and is rewritten to the
+    /// adapter over the same four primitives.
+    ///
+    /// The example is `Show` behind a spread, and it used to be `For`. M10
+    /// lowers a spread source for the nine constructs whose props are arguments
+    /// the primitive already takes; `Show` is not among them, because `keyed`
+    /// picks between two different EMITTED PROGRAMS — the value as the key with
+    /// one body, or truthiness as the key with a two-row table — and a carrier
+    /// nothing can read cannot pick between them. `admits_spread` states the
+    /// whole list and the reason for each exclusion.
     #[test]
     fn a_refused_construct_becomes_its_string_component() {
-        let code = ssr("import { For } from \"@barqjs/core\";\n\
-             export const V = () => <div><For {...p}>{(r) => <li>{r.n}</li>}</For></div>;\n")
+        let code = ssr("import { Show } from \"@barqjs/core\";\n\
+             export const V = () => <div><Show {...p}>{(r) => <li>{r.n}</li>}</Show></div>;\n")
         .code;
-        assert!(code.contains("_$ssrFor("), "{code}");
+        assert!(code.contains("_$ssrShow("), "{code}");
         // Markup, so no escaper wraps it.
         assert!(!code.contains("_$esc(_$ssr"), "{code}");
         assert!(code.contains("from \"@barqjs/core/server\""), "{code}");
+
+        // And the other direction, which is the half that moved: a spread the
+        // pass DOES admit reaches the primitive here exactly as it does on the
+        // DOM backend, with no adapter between them.
+        let lowered = ssr("import { For } from \"@barqjs/core\";\n\
+             export const V = () => <div><For {...p}>{(r) => <li>{r.n}</li>}</For></div>;\n")
+        .code;
+        assert!(lowered.contains("_$each("), "{lowered}");
+        assert!(!lowered.contains("_$ssrFor("), "{lowered}");
 
         // `Match` is an identity function, not a fragment: it returns its own
         // props record and `Switch` reads it, so it is never interpolated as

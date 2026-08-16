@@ -55,7 +55,7 @@ export {
 
 export { COUNT } from "./flow.ts";
 export { cell, props } from "./props.ts";
-export { block } from "./signals.ts";
+export { block, readSlot } from "./signals.ts";
 
 export {
   clearRenderData,

@@ -60,6 +60,7 @@ pub fn emit_unit<'a>(
 ) -> Expression<'a> {
     let mut slots: Vec<Expression<'a>> = Vec::new();
     let mut ops: Vec<Expression<'a>> = Vec::new();
+    let mut sources: Vec<(&'a str, Expression<'a>)> = Vec::new();
 
     // The driver, and the one thing the `Backend` trait deliberately does not
     // cover: program order, one pass, group members read off the records that
@@ -78,7 +79,7 @@ pub fn emit_unit<'a>(
             }
             _ => Vec::new(),
         };
-        let mut backend = Interp { ctx, unit, slots: &mut slots };
+        let mut backend = Interp { ctx, unit, slots: &mut slots, sources: &mut sources };
         if let Some(record) = lower(&mut backend, At { patch, members: &members }) {
             ops.push(record);
         }
@@ -93,10 +94,16 @@ pub fn emit_unit<'a>(
 
     let scope = ctx.scope(span);
     let callee = ctx.helper(Helper::Interp, span);
+    // Innermost first, so the lists evaluate in region order — the same order
+    // the other two backends evaluate them in.
+    let mut values = array(ctx, slots, span);
+    for (binding, list) in sources.into_iter().rev() {
+        values = crate::codegen::dom::bind_sources(ctx, Some((binding, list)), values, span);
+    }
     let arguments = vec![
         oxc::ast::ast::Argument::from(scope),
         oxc::ast::ast::Argument::from(ctx.ident(name, span)),
-        oxc::ast::ast::Argument::from(array(ctx, slots, span)),
+        oxc::ast::ast::Argument::from(values),
     ];
     ctx.call(callee, arguments, span)
 }
@@ -138,6 +145,12 @@ struct Interp<'a, 'e, 'm, 'u, 's> {
     ctx: &'e mut Emit<'a, 'm>,
     unit: &'u mut Unit<'a>,
     slots: &'s mut Vec<Expression<'a>>,
+    /// The spread source lists this unit's regions read their props off, in
+    /// region order. The DOM and string backends bind one around each primitive
+    /// CALL; there is no call here — a region is a data record and its arguments
+    /// are slots — so the bindings go around the SLOT ARRAY instead, which is
+    /// the one expression every slot is inside and is built exactly once.
+    sources: &'s mut Vec<(&'a str, Expression<'a>)>,
 }
 
 impl<'a> Interp<'a, '_, '_, '_, '_> {
@@ -329,6 +342,9 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         );
         let kind = text_of(self.ctx, row.kind.as_str(), span);
         let flags = number(self.ctx, u32::from(row.emitted_flags()), span);
+        if let Some(sources) = row.sources {
+            self.sources.push(sources);
+        }
         let key = self.verbatim(row.key, span);
         let body = self.raw(row.body, span);
         let keyed = self.verbatim(row.keyed, span);

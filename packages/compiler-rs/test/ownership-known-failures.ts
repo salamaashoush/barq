@@ -171,13 +171,22 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * coverage nobody has reviewed — a fixture arrived and nobody asked what the
  * channel now claims about it. Regenerating is a diff, in the change that
  * caused it.
+ *
+ * M10: +2 fixtures (`control-flow-spread-precedence`, `control-flow-spread-repeat`),
+ * +11 scopes, +7 effects, +9 clones, +9 determined. The two are the spread
+ * lowering's own shapes and they matter to THIS channel in particular, because
+ * what the lowering changes about ownership is the point of it: the construct's
+ * instance scope is a child of the scope the region was HANDED (O2), where the
+ * adapter's was a child of whatever the enclosing `insert` hole had entered.
+ * `determined` moving in step with `clones` is what says the channel still
+ * resolves every one of them.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 136,
-  scopes: 377,
-  effects: 254,
-  clones: 295,
-  determined: 293,
+  fixtures: 138,
+  scopes: 388,
+  effects: 261,
+  clones: 304,
+  determined: 302,
   unattributed: 1,
   cascades: 1,
 })

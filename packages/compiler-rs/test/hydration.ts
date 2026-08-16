@@ -265,14 +265,16 @@ export interface KnownDivergence {
  * wire got smaller, not because the claim got worse, and the check that says so
  * is the one every row already passes: `hydratedShape === coldShape`.
  *
- * One row moved the other way and that is the interesting one.
- * `control-flow-for-keyed-spread` now reuses 100%: it reaches `each` through an
- * adapter with no flags, and the recovery that path takes — release whatever the
- * server wrote at this position and build cold — has nothing to release when the
- * position was written with no comments, so the enclosing `insert` reconciles
- * onto the server's own nodes instead. It is still a registered divergence
- * because it still REPORTS `not-hydratable`; what it stopped doing is throwing
- * nodes away.
+ * One row LEFT this registry at M10 and is worth recording, because it is the
+ * shape the rest of the "no flags to forward" note below still describes.
+ * `control-flow-for-keyed-spread` was registered for `not-hydratable`: a
+ * construct whose props arrived through a spread stayed a component call, and
+ * `components.ts`'s adapters call the primitives with `flags = 0`, so the
+ * primitive was never told the module was `hydratable` and built cold inside the
+ * range the enclosing `insert` had claimed. M10 lowers a spread source, so that
+ * construct is a region with the flag on it and the row is not a divergence any
+ * more. It is deleted rather than re-measured, which is what a registry row is
+ * for.
  */
 export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   // ── the fallback element path: built, never claimed ────────────────────
@@ -298,13 +300,6 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     reuse: 33,
     shape: null,
     why: "M9 lowers `Dynamic`, so the branch is claimed and the FLAGS are there — but the element its string arm builds is built by tag name, and a built subtree has no counterpart on the wire to claim: the range is claimed, its content rebuilt, and the server's node reconciled away",
-  },
-  "control-flow-for-keyed-spread": {
-    kinds: ["not-hydratable"],
-    recovered: false,
-    reuse: 100,
-    shape: null,
-    why: "a spread source is a shape the flow pass cannot read statically, so `For` reaches `each` through the adapter, with no flags",
   },
   "control-flow-await-suspense": {
     kinds: ["range"],

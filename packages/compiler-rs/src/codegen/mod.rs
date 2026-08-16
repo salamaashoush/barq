@@ -57,17 +57,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 57;
+pub const HELPER_COUNT: usize = 58;
 
 /// The first helper that lives in `<module_source>/server` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 34;
+pub const FIRST_SERVER_HELPER: usize = 35;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 56;
+pub const FIRST_INTERP_HELPER: usize = 57;
 
 /// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
 /// and `flow.ts`'s four primitives with `each`'s count symbol.
@@ -85,6 +85,9 @@ pub const FIRST_INTERP_HELPER: usize = 56;
 /// so `@barqjs/core`'s DOM runtime cannot reach a server bundle through a helper
 /// that merely happens to be DOM-free today.
 pub const SHARED_ABI: std::ops::Range<usize> = (Helper::Props as usize)..(Helper::SetAttr as usize);
+// `ReadSlot` is the last of them and is deliberately inside the range: the
+// spread lowering that emits it runs in the shape pass, before a backend is
+// chosen, so `@barqjs/core` and `@barqjs/core/server` must both export it.
 
 /// Runtime entry points the two backends are allowed to call. Every one is read
 /// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
@@ -153,36 +156,46 @@ pub enum Helper {
     /// the compiler's; the one question left is whether the resolved value is a
     /// tag or a component, and only the value can answer that.
     Dynamic = 16,
+    /// `_$readSlot(v, "origin")` — §3.0 rule 2's Cell-slot read, at the one
+    /// place the compiler cannot perform it itself: a prop that arrived through
+    /// a SPREAD, where the source object is the author's own and nothing wrapped
+    /// its values into Cells. It is the call the fourteen adapters made under
+    /// the name `readValue`, and the `origin` string is what makes a Block
+    /// landing in a Cell slot throw with the prop's name instead of stringify.
+    ///
+    /// It sits inside [`SHARED_ABI`] because the lowering that emits it runs
+    /// before the backend is chosen, so both halves must answer to the name.
+    ReadSlot = 17,
     // ── §3.5's resolved channels ──────────────────────────────────────────
     //
     // One entry point per channel, chosen at compile time. There is no
     // `setProp` on the compiled path: the name never reaches the runtime as a
     // question, only as the argument the channel already knows what to do with.
-    SetAttr = 17,
-    SetDomProp = 18,
+    SetAttr = 18,
+    SetDomProp = 19,
     /// §3.10.1 — the user-mutable channel. Compares against the ELEMENT rather
     /// than against what the framework last applied, and preserves the caret of
     /// whatever the user is inside. Emitted only for the names that need it.
-    SetLive = 19,
-    SetBool = 20,
-    SetClass = 21,
-    SetStyle = 22,
-    SetStyleProp = 23,
-    SetClassList = 24,
-    SetHtml = 25,
+    SetLive = 20,
+    SetBool = 21,
+    SetClass = 22,
+    SetStyle = 23,
+    SetStyleProp = 24,
+    SetClassList = 25,
+    SetHtml = 26,
     /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question §3.13 keeps
     /// at run time: whether the value that arrived is a live Cell. The channel
     /// is the compiler's and is passed in.
-    BindProp = 26,
+    BindProp = 27,
     /// `bind:` — the two-way channel, property and reporting event resolved.
-    BindValue = 27,
+    BindValue = 28,
     /// A scope-owned `ref` registration (B3, E2 #7).
-    Ref = 28,
+    Ref = 29,
     /// A scope-owned `addEventListener` (B4, E2 #6).
-    Listen = 29,
+    Listen = 30,
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
-    BindEvent = 30,
+    BindEvent = 31,
     // ── the hydration-only walk (`SEMANTICS.md` H3) ───────────────────────
     //
     // `child(n, 3)` is H3's own spelling. Under `hydratable` the template walk
@@ -196,9 +209,9 @@ pub enum Helper {
     // the flag off not one of these appears.
     /// `_$child(base, k)` — the k-th logical child, from the start when `k >= 0`
     /// and from the end when `k < 0` (`-1` is the last).
-    Child = 31,
+    Child = 32,
     /// `_$sib(base, k)` — `k` logical siblings forward, or `-k` backward.
-    Sib = 32,
+    Sib = 33,
     /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
     /// THEN build the value that goes in it.
     ///
@@ -208,32 +221,32 @@ pub enum Helper {
     /// the cursor rather than from its own hole. The compiler knows the position
     /// statically — that is what an address IS — so it says so, instead of the
     /// runtime guessing from the shape of the tree it is walking.
-    Hole = 33,
+    Hole = 34,
     // ── `<module_source>/server` ──────────────────────────────────────────
-    Esc = 34,
-    EscAttr = 35,
-    Attr = 36,
-    Cls = 37,
-    Content = 38,
-    Html = 39,
-    RawText = 40,
-    SpreadAttrs = 41,
-    SsrFor = 42,
-    SsrRepeat = 43,
-    SsrShow = 44,
-    SsrSwitch = 45,
-    SsrMatch = 46,
-    ClsList = 47,
-    AttrLit = 48,
-    SsrLoading = 49,
-    SsrErrored = 50,
-    SsrErrorBoundary = 51,
-    SsrPortal = 52,
-    SsrAwait = 53,
-    SsrDynamic = 54,
-    SsrReveal = 55,
+    Esc = 35,
+    EscAttr = 36,
+    Attr = 37,
+    Cls = 38,
+    Content = 39,
+    Html = 40,
+    RawText = 41,
+    SpreadAttrs = 42,
+    SsrFor = 43,
+    SsrRepeat = 44,
+    SsrShow = 45,
+    SsrSwitch = 46,
+    SsrMatch = 47,
+    ClsList = 48,
+    AttrLit = 49,
+    SsrLoading = 50,
+    SsrErrored = 51,
+    SsrErrorBoundary = 52,
+    SsrPortal = 53,
+    SsrAwait = 54,
+    SsrDynamic = 55,
+    SsrReveal = 56,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 56,
+    Interp = 57,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -254,6 +267,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "COUNT",
     "reveal",
     "dynamic",
+    "readSlot",
     "setAttr",
     "setDomProp",
     "setLive",

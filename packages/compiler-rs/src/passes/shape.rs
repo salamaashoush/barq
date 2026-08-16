@@ -82,6 +82,7 @@ pub fn run<'a>(
             regions,
             flow_rewrites,
             konsts: FxHashMap::default(),
+            spreads: 0,
             retarget: &mut retarget,
             diagnostics: &mut diagnostics,
             dev: options.dev,
@@ -140,6 +141,10 @@ pub(super) struct Shaper<'a, 'm> {
     /// Printed constant → the `_k$N` already minted for it, so a module with a
     /// thousand `tone="w"` props hoists one thunk.
     konsts: FxHashMap<String, HoistId>,
+    /// How many spread source bindings this module has minted. The shape pass
+    /// is the only thing that mints them, so the counter lives here rather than
+    /// on `Uids`, which the pass holds immutably.
+    spreads: u32,
     retarget: &'m mut Vec<(u32, Span)>,
     diagnostics: &'m mut Vec<Diag<'a>>,
     dev: bool,
@@ -170,7 +175,7 @@ pub(super) enum Callee<'a> {
 /// last-wins. A record is never merged across a spread, because a later spread
 /// has to be able to shadow an earlier literal and an earlier literal has to be
 /// able to shadow a still-earlier spread.
-enum Source<'a> {
+pub(super) enum Source<'a> {
     Record(Vec<ObjectPropertyKind<'a>>),
     Spread(Expression<'a>),
 }
@@ -413,7 +418,14 @@ impl<'a> Shaper<'a, '_> {
     /// nothing. Otherwise `_$props([…])`, whose sources are in written order and
     /// read last-wins (C9). Empty records are dropped, so `<Foo {...a} />` is one
     /// source rather than three.
-    fn source_list(&mut self, sources: Vec<Source<'a>>, span: Span) -> Expression<'a> {
+    /// A fresh `_o$N` for one construct's spread source list.
+    pub(super) fn mint_sources(&mut self) -> &'a str {
+        let name = self.uids.sources(self.spreads, self.allocator);
+        self.spreads += 1;
+        name
+    }
+
+    pub(super) fn source_list(&mut self, sources: Vec<Source<'a>>, span: Span) -> Expression<'a> {
         let mut parts: Vec<Expression<'a>> = Vec::with_capacity(sources.len());
         let mut spreads = 0;
         for source in sources {

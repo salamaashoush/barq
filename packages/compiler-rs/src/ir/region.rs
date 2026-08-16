@@ -139,6 +139,15 @@ pub struct Region<'a> {
     pub fallback: Option<Expression<'a>>,
     /// A loading boundary's `on` `Cell`.
     pub on: Option<Expression<'a>>,
+    /// The construct's props, when a SPREAD put them out of static reach: the
+    /// binding name every unreadable slot above is a member of, and the source
+    /// list it takes. `region_call` evaluates the list once around the primitive
+    /// call, so a spread argument runs exactly as often as it did when the
+    /// adapter received it.
+    ///
+    /// `None` is every construct whose attributes are all literal names, which
+    /// is the overwhelming case and emits nothing extra.
+    pub sources: Option<(&'a str, Expression<'a>)>,
 }
 
 impl Region<'_> {

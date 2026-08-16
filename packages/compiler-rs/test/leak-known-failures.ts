@@ -105,11 +105,19 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * file stayed green through it, because a probe that covers one more fixture
  * and finds nothing reports exactly what a probe that covers 149 and finds
  * nothing reports.
+ *
+ * M10 moved it a second time, and for the same kind of reason: the two spread
+ * fixtures. 150 sessions became 152, 462 scope entries became 473, 273 effects
+ * became 278. The scope entries are the interesting half — eleven of them for
+ * two fixtures, because a lowered region enters a scope per row where the
+ * adapter's `insert` hole entered one for the hole and then the primitive
+ * entered its own. Nothing leaked, which is what the four assertions say and
+ * what this pin is here to stop being mistaken for coverage.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
-  sessions: 150,
-  scopesEntered: 462,
-  effectsCreated: 273,
+  sessions: 152,
+  scopesEntered: 473,
+  effectsCreated: 278,
   listeners: 30,
 })
 

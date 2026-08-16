@@ -54,6 +54,7 @@ import {
   onCleanup,
   ownRange,
   provideOn,
+  readSlot,
   renderEffect,
   requireScope,
   ScopeMissingError,
@@ -668,13 +669,45 @@ const EMPTY_ARGS: readonly unknown[] = [];
  * | a function  | `keyOf(item)`           | `(item: Cell, index: Cell)` |
  * | `false`     | the index               | `(item: Cell, index)`       |
  * | `COUNT`     | the index; `src` counts | `(index)`                   |
+ *
+ * The mode is a RUNTIME argument, not a compiled-in shape: the row Block's
+ * parameter list is `(scope, item, index)` in all three list modes and it is
+ * `mapArray` that decides what `item` and `index` are. That is what lets a
+ * construct whose `keyed` arrived through a spread lower here at all — the
+ * carrier crosses unresolved and `keyed` below is §3.0 rule 1, asked once per
+ * construction rather than per row.
  */
+/**
+ * §3.0 rule 1, applied to the keying slot: a key FUNCTION declares a parameter
+ * and a Cell declares none, and that is the only thing separating them once both
+ * are values in one slot. `true` and `undefined` are identity, which `mapArray`
+ * spells `null`.
+ *
+ * The compiler answers this statically wherever it can see the prop and emits
+ * `null` / `false` / the function itself, so the three tests below cost one
+ * `typeof` per construction on that path. It is only a spread that reaches here
+ * with something still to resolve.
+ */
+export function keyMode<T>(
+  carrier: ((item: T) => unknown) | false | null | typeof COUNT | Cell<unknown>,
+): ((item: T) => unknown) | false | null | typeof COUNT {
+  if (carrier === COUNT || carrier === false || carrier === null || carrier === undefined) {
+    return carrier === COUNT || carrier === false ? carrier : null;
+  }
+  const resolved =
+    typeof carrier === "function" && (carrier as { length: number }).length >= 1
+      ? carrier
+      : readSlot(carrier, "each keyOf");
+  if (typeof resolved === "function") return resolved as (item: T) => unknown;
+  return resolved === false ? false : null;
+}
+
 export function each<T>(
   s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   src: Cell<Maybe<readonly T[]>> | Cell<number>,
-  keyOf: ((item: T) => unknown) | false | null | typeof COUNT,
+  carrier: ((item: T) => unknown) | false | null | typeof COUNT | Cell<unknown>,
   row: Block<unknown, never[]>,
   // Positional and part of the ABI — `fallback` sits behind it. The only bit
   // this frame reads is `HYDRATE`: `STATIC_KEY` is meaningless for a list, and
@@ -683,6 +716,7 @@ export function each<T>(
   fallback?: Block<unknown> | null,
 ): Node | null {
   const given = requireScope(s, "each");
+  const keyOf = keyMode<T>(carrier);
   // The source is handed to `mapArray`/`repeat` BY IDENTITY, so the read
   // happens inside their own effects and there is no site here to test the
   // yielded value at. Wrapping it would cost a closure per construction on the

@@ -233,25 +233,16 @@ export function For<T>(
   _s: Scope | null,
   props: { each: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
 ): JSXElement {
-  // §3.0 rule 1: a Cell declares no parameter and a key function declares one,
-  // and that is the only thing separating them once both are values in one slot.
-  const carrier = props.keyed;
-  const resolved =
-    typeof carrier === "function" && (carrier as { length: number }).length >= 1
-      ? carrier
-      : readValue(carrier, "For.keyed");
-  const keyOf =
-    typeof resolved === "function"
-      ? (resolved as (item: T) => unknown)
-      : resolved === false
-        ? false
-        : null;
+  // §3.0 rule 1 — a Cell declares no parameter and a key function declares one
+  // — is `each`'s own, so the carrier goes through unresolved. This adapter and
+  // the compiler's spread lowering therefore reach the primitive with the same
+  // argument rather than with two implementations of one rule.
   return each(
     _s,
     null,
     null,
     props.each as Cell<readonly T[]>,
-    keyOf,
+    props.keyed as Cell<unknown>,
     props.children as Block<unknown, never[]>,
     0,
     slotBlock(props.fallback),

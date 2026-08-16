@@ -44,9 +44,9 @@
 use oxc::allocator::{Box as ArenaBox, CloneIn, Vec as ArenaVec};
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, BinaryOperator, BindingPattern,
-    Expression, FormalParameter, FormalParameterKind, FormalParameters, JSXAttributeItem,
-    JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, LogicalOperator,
-    NumberBase, Statement, VariableDeclarationKind, VariableDeclarator,
+    Expression, FormalParameter, FormalParameterKind, FormalParameters, IdentifierName,
+    JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
+    LogicalOperator, NumberBase, Statement, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc::span::Span;
 
@@ -56,7 +56,7 @@ use crate::ir::{Flow, NO_SCOPE, React, Region, RegionKind, STATIC_KEY, SourceKin
 use crate::lower::jsx::{attribute_expression, attribute_name};
 use crate::lower::text;
 
-use super::shape::Shaper;
+use super::shape::{Shaper, Source};
 use oxc::ast_visit::VisitMut;
 
 /// The attribute names each construct answers to. An attribute outside its row
@@ -132,12 +132,53 @@ pub(super) fn admits_reveal<'a>(shaper: &Shaper<'a, '_>, element: &JSXElement<'a
     admits_element(shaper, Flow::Reveal, element)
 }
 
+/// Whether a SPREAD may carry this construct's props.
+///
+/// M9 recorded the refusal as one gap; it is two, and only one of them is about
+/// the spread. `admits_value`'s `keyed` rule is the real one — for `Show` and
+/// `Match` the two answers are different EMITTED PROGRAMS (one body against a
+/// two-row table), so a carrier nothing can read cannot pick between them. For
+/// `For` it never was: `keyOf` is already a runtime argument `each` dispatches
+/// on, `mapArray` decides what a row's `item` and `index` are, and the row
+/// Block's own parameter list is `(scope, item, index)` in all three modes —
+/// the three fixtures differ at the `keyOf` argument and nowhere else.
+///
+/// `Switch` is refused for a reason that has nothing to do with spreads at all
+/// (`admits_arms`), and `Dynamic`'s unrecognised props ARE the resolved
+/// component's, so its source list is not the construct's to read off.
+fn admits_spread(flow: Flow) -> bool {
+    matches!(
+        flow,
+        Flow::For
+            | Flow::Repeat
+            | Flow::Loading
+            | Flow::Suspense
+            | Flow::Errored
+            | Flow::ErrorBoundary
+            | Flow::Portal
+            | Flow::Await
+            | Flow::Reveal
+    )
+}
+
 fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<'a>) -> bool {
     let mut seen: Vec<&str> = Vec::new();
+    let mut spread = false;
     for item in &element.opening_element.attributes {
-        // C9's source list is a runtime object: a spread hides which props exist
-        // at all, so there is nothing static to read the construct's shape off.
-        let JSXAttributeItem::Attribute(attribute) = item else { return false };
+        // C9's source list is a runtime object, so a spread hides WHICH props
+        // exist. That is fatal only where a prop decides the shape of the
+        // emitted program rather than the value of an argument.
+        let JSXAttributeItem::Attribute(attribute) = item else {
+            if !admits_spread(flow) {
+                return false;
+            }
+            // A prop written before a spread can be overridden by it, so it
+            // stops being static — `seen` is cleared for the duplicate check
+            // and every name reverts to the source list.
+            spread = true;
+            seen.clear();
+            continue;
+        };
         let JSXAttributeName::Identifier(identifier) = &attribute.name else { return false };
         let name = identifier.name.as_str();
         // A `children=` attribute competes with the JSX children for one slot,
@@ -157,7 +198,10 @@ fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<
             return false;
         }
     }
-    if required(flow).iter().any(|name| !seen.contains(name)) {
+    // A required prop may arrive through the spread, where nothing can see it.
+    // The adapter had the same blindness and reached the same runtime error, so
+    // refusing here would only move which frame reports it.
+    if !spread && required(flow).iter().any(|name| !seen.contains(name)) {
         return false;
     }
     if flow == Flow::Switch { admits_arms(shaper, element) } else { true }
@@ -260,39 +304,167 @@ struct Attr<'a> {
     name: &'a str,
     value: Expression<'a>,
     span: Span,
+    /// Whether the expression is the one the AUTHOR wrote at this name, or a
+    /// member read off the spread source list. The two are not interchangeable:
+    /// an authored expression still has to be wrapped into the Cell or Block the
+    /// primitive takes, and a member of a props object ALREADY IS one (C3.1), so
+    /// wrapping it a second time would hand the runtime a Cell holding a Cell.
+    /// It is also what every flag proof reads — nothing off a spread is proven.
+    proven: bool,
 }
 
-/// Everything the construct carries: its attributes, and its children already
-/// through the shape pass's own `children` rule.
+/// Everything the construct carries: its attributes, its children already
+/// through the shape pass's own `children` rule, and — when a spread put some of
+/// the props out of static reach — the source list to read the rest off.
+///
+/// The split is written where `_$props` already puts it. Sources are last-wins,
+/// so an attribute written AFTER the last spread cannot be overridden and is
+/// read directly; everything up to and including that spread goes into the list.
+struct Bag<'a> {
+    /// Attributes nothing can override, in written order.
+    statik: Vec<Attr<'a>>,
+    /// The binding name and the source list, when a spread is present.
+    spread: Option<(&'a str, Expression<'a>)>,
+    span: Span,
+}
+
+impl<'a> Bag<'a> {
+    /// The construct's prop of this name, wherever it lives. `proven` on the
+    /// result is what tells the caller which of the two it got.
+    fn take(&mut self, shaper: &Shaper<'a, '_>, name: &'static str) -> Option<Attr<'a>> {
+        if let Some(at) = self.statik.iter().position(|attr| attr.name == name) {
+            return Some(self.statik.remove(at));
+        }
+        let (binding, _) = self.spread.as_ref()?;
+        let span = self.span;
+        let object = shaper.ident(binding, span);
+        let value = Expression::new_static_member_expression(
+            span,
+            object,
+            IdentifierName::new(span, name, &shaper.ast),
+            false,
+            &shaper.ast,
+        );
+        Some(Attr { name, value, span, proven: false })
+    }
+
+    fn has_spread(&self) -> bool {
+        self.spread.is_some()
+    }
+}
+
+/// A renderable slot — a `fallback`, a `loading` arm — as the Block or Cell the
+/// primitive takes. An authored expression is wrapped; a prop off the source
+/// list is handed on, because C3.1 already made it one.
+fn slot_of<'a>(shaper: &mut Shaper<'a, '_>, attr: Attr<'a>) -> Expression<'a> {
+    if attr.proven { body_slot(shaper, vec![attr.value], attr.span) } else { attr.value }
+}
+
+/// The same rule for a slot the primitive takes as a Cell and CALLS itself:
+/// `each`'s source. A spread hands its own object's values through untouched,
+/// so what arrives may be a Cell or may be a raw value — which is exactly the
+/// slot the primitive already validates.
+fn cell_of<'a>(shaper: &mut Shaper<'a, '_>, attr: Attr<'a>) -> Expression<'a> {
+    if attr.proven { shaper.cell_value(attr.value, attr.span) } else { attr.value }
+}
+
+/// A slot the primitive READS but does not treat as a Cell — `portal`'s target,
+/// a boundary's `on`, `Reveal`'s order. The adapters wrapped these in
+/// `() => readValue(prop)` so a raw value in the slot is a value rather than a
+/// call on a non-function, and the lowering keeps that wrapper for exactly the
+/// props a spread put out of reach.
+fn value_cell<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    attr: Attr<'a>,
+    origin: &'static str,
+) -> Expression<'a> {
+    if attr.proven {
+        return shaper.cell_value(attr.value, attr.span);
+    }
+    let span = attr.span;
+    let read = read_slot(shaper, attr.value, origin, span);
+    arrow(shaper, read, span)
+}
+
+/// `_$readSlot(v, "origin")` — §3.0 rule 2, emitted rather than assumed.
+fn read_slot<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    value: Expression<'a>,
+    origin: &'static str,
+    span: Span,
+) -> Expression<'a> {
+    let callee = shaper.helper(Helper::ReadSlot, span);
+    let name = Expression::new_string_literal(span, origin, None, &shaper.ast);
+    call(shaper, callee, vec![value, name], span)
+}
+
+/// The construct's body: its JSX children, or — when it has none and a spread
+/// may carry them — the `children` prop off the source list.
+///
+/// JSX children are written INSIDE the element, so they come after every spread
+/// and win. That is the same precedence `component_call` applies by pushing them
+/// into the last record.
+fn body_of<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    bag: &mut Bag<'a>,
+    kids: Vec<Expression<'a>>,
+    span: Span,
+) -> Option<Expression<'a>> {
+    if let Some(body) = body_slot_of(shaper, kids, span) {
+        return Some(body);
+    }
+    bag.take(shaper, "children").map(|attr| slot_of(shaper, attr))
+}
+
 fn parts<'a>(
     shaper: &mut Shaper<'a, '_>,
     element: &mut JSXElement<'a>,
-) -> (Vec<Attr<'a>>, Vec<Expression<'a>>) {
+) -> (Bag<'a>, Vec<Expression<'a>>) {
     let allocator = shaper.allocator;
+    let span = element.span;
     let taken =
         std::mem::replace(&mut element.opening_element.attributes, ArenaVec::new_in(&allocator));
-    let mut attrs = Vec::with_capacity(taken.len());
+
+    // Nothing is put in the source list until a spread is seen, and everything
+    // written after the LAST one goes back to being static — which is why a
+    // construct with no spread reaches the same expressions it always did.
+    let mut statik: Vec<Attr<'a>> = Vec::with_capacity(taken.len());
+    let mut sources: Vec<Source<'a>> = Vec::new();
     for item in taken {
-        let JSXAttributeItem::Attribute(attribute) = item else {
-            unreachable!("a spread is refused by `admits`")
-        };
-        let attribute = attribute.unbox();
-        let name = attribute_name(&attribute.name, allocator);
-        let span = attribute.span;
-        let value = match attribute.value {
-            None => Expression::new_boolean_literal(span, true, &shaper.ast),
-            Some(value) => attribute_expression(value, &shaper.ast, shaper.allocator),
-        };
-        attrs.push(Attr { name, value, span });
+        match item {
+            JSXAttributeItem::SpreadAttribute(spread) => {
+                let record = std::mem::take(&mut statik);
+                sources.push(Source::Record(
+                    record
+                        .into_iter()
+                        .map(|attr| {
+                            let cell = shaper.cell_at(attr.value, attr.span, Some(attr.name));
+                            shaper.property(attr.name, cell, attr.span)
+                        })
+                        .collect(),
+                ));
+                sources.push(Source::Spread(spread.unbox().argument));
+            }
+            JSXAttributeItem::Attribute(attribute) => {
+                let attribute = attribute.unbox();
+                let name = attribute_name(&attribute.name, allocator);
+                let span = attribute.span;
+                let value = match attribute.value {
+                    None => Expression::new_boolean_literal(span, true, &shaper.ast),
+                    Some(value) => attribute_expression(value, &shaper.ast, shaper.allocator),
+                };
+                statik.push(Attr { name, value, span, proven: true });
+            }
+        }
     }
+
     let children = std::mem::replace(&mut element.children, ArenaVec::new_in(&allocator));
     let kids = shaper.children(children);
-    (attrs, kids)
-}
-
-fn take<'a>(attrs: &mut Vec<Attr<'a>>, name: &str) -> Option<Attr<'a>> {
-    let at = attrs.iter().position(|attr| attr.name == name)?;
-    Some(attrs.remove(at))
+    let spread = (!sources.is_empty()).then(|| {
+        let binding = shaper.mint_sources();
+        (binding, shaper.source_list(sources, span))
+    });
+    (Bag { statik, spread, span }, kids)
 }
 
 /// Lower one construct. `admits` has already said yes, so every `unreachable!`
@@ -306,24 +478,25 @@ pub(super) fn lower<'a>(
     let mut element = element.unbox();
     shaper.consumed(&element.opening_element.name);
     let kind = kind_of(flow).expect("checked by `admits`");
-    let (mut attrs, kids) = parts(shaper, &mut element);
+    let (mut bag, kids) = parts(shaper, &mut element);
 
     let mut region = match flow {
-        Flow::Show => show(shaper, &mut attrs, kids, span),
-        Flow::Switch => switch(shaper, &mut attrs, kids, span),
-        Flow::For => list(shaper, &mut attrs, kids, span),
-        Flow::Repeat => repeat(shaper, &mut attrs, kids, span),
+        Flow::Show => show(shaper, &mut bag, kids, span),
+        Flow::Switch => switch(shaper, &mut bag, kids, span),
+        Flow::For => list(shaper, &mut bag, kids, span),
+        Flow::Repeat => repeat(shaper, &mut bag, kids, span),
         Flow::Loading | Flow::Suspense | Flow::Errored | Flow::ErrorBoundary => {
-            boundary(shaper, flow, &mut attrs, kids, span)
+            boundary(shaper, flow, &mut bag, kids, span)
         }
-        Flow::Portal => portal(shaper, &mut attrs, kids, span),
-        Flow::Await => await_boundaries(shaper, &mut attrs, kids, span),
-        Flow::Dynamic => dynamic(shaper, &mut attrs, kids, span),
+        Flow::Portal => portal(shaper, &mut bag, kids, span),
+        Flow::Await => await_boundaries(shaper, &mut bag, kids, span),
+        Flow::Dynamic => dynamic(shaper, &mut bag, kids, span),
         Flow::Match | Flow::Reveal => unreachable!("refused by `admits`"),
     };
     region.flow = flow;
     region.kind = kind;
     region.span = span;
+    region.sources = bag.spread;
 
     // The walk `component_call` gets for free by being spliced back into the
     // expression the visitor is standing on. A body still holding JSX, or a
@@ -343,6 +516,10 @@ fn region_slots<'a, 'r>(
         region.keyed.as_mut(),
         region.fallback.as_mut(),
         region.on.as_mut(),
+        // A spread argument is an ordinary expression and may hold JSX of its
+        // own. It left the tree with the rest of the construct, so it is shaped
+        // here or nowhere.
+        region.sources.as_mut().map(|(_, list)| list),
     ]
     .into_iter()
     .flatten()
@@ -359,6 +536,7 @@ fn blank<'a>(shaper: &Shaper<'a, '_>, span: Span) -> Region<'a> {
         keyed: None,
         fallback: None,
         on: None,
+        sources: None,
     }
 }
 
@@ -371,18 +549,17 @@ fn blank<'a>(shaper: &Shaper<'a, '_>, span: Span) -> Region<'a> {
 /// falsy row is the fallback.
 fn show<'a>(
     shaper: &mut Shaper<'a, '_>,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let when = take(attrs, "when").expect("checked by `admits`");
-    let keyed = take(attrs, "keyed").is_none_or(
+    let when = bag.take(shaper, "when").expect("checked by `admits`");
+    let keyed = bag.take(shaper, "keyed").is_none_or(
         |attr| !matches!(&attr.value, Expression::BooleanLiteral(literal) if !literal.value),
     );
-    let inert = inert_bodies(shaper, attrs, &kids);
+    let inert = inert_bodies(shaper, bag, &kids);
     let konst = shaper.lift.rx(&when.value).konst.is_some();
-    let fallback =
-        take(attrs, "fallback").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
+    let fallback = bag.take(shaper, "fallback").map(|attr| slot_of(shaper, attr));
     let content = body_slot_of(shaper, kids, span);
     let cell = shaper.cell_value(when.value, when.span);
     let read = read_of(shaper, dup(shaper, &cell), span);
@@ -411,12 +588,11 @@ fn show<'a>(
 /// the fallback, so "no arm matched" is a key like any other.
 fn switch<'a>(
     shaper: &mut Shaper<'a, '_>,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let fallback =
-        take(attrs, "fallback").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
+    let fallback = bag.take(shaper, "fallback").map(|attr| slot_of(shaper, attr));
     let mut bodies: Vec<Option<Expression<'a>>> = vec![fallback];
     let mut tests: Vec<(Expression<'a>, Span)> = Vec::new();
     let mut statik = true;
@@ -426,8 +602,8 @@ fn switch<'a>(
         let arm_span = arm.span;
         let mut arm = arm.unbox();
         shaper.consumed(&arm.opening_element.name);
-        let (mut arm_attrs, arm_kids) = parts(shaper, &mut arm);
-        let when = take(&mut arm_attrs, "when").expect("checked by `admits`");
+        let (mut arm_bag, arm_kids) = parts(shaper, &mut arm);
+        let when = arm_bag.take(shaper, "when").expect("checked by `admits`");
         let konst = shaper.lift.rx(&when.value).konst.is_some();
         let cell = shaper.cell_value(when.value, when.span);
         let value = read_of(shaper, dup(shaper, &cell), arm_span);
@@ -459,14 +635,22 @@ fn switch<'a>(
 /// a function is a custom key (K1).
 fn list<'a>(
     shaper: &mut Shaper<'a, '_>,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let source = take(attrs, "each").expect("checked by `admits`");
-    let fallback =
-        take(attrs, "fallback").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
-    let keyed = match take(attrs, "keyed") {
+    let source = bag.take(shaper, "each").expect("checked by `admits`");
+    let fallback = bag.take(shaper, "fallback").map(|attr| slot_of(shaper, attr));
+    let keyed = match bag.take(shaper, "keyed") {
+        // Off a spread the three modes are not a compile-time choice, and they
+        // do not have to be: `keyOf` is already a RUNTIME argument that `each`
+        // dispatches on, and §3.0 rule 1 — a Cell declares no parameter, a key
+        // function declares one — is the same discriminator the compiler
+        // applies here statically. So the carrier goes through unresolved and
+        // `each` reads it. The body is untouched either way: `mapArray` decides
+        // what `item` and `index` ARE, and the row Block's parameter list is
+        // `(scope, item, index)` in all three modes.
+        Some(attr) if !attr.proven => Some(attr.value),
         None => None,
         Some(attr) => match &attr.value {
             // absent and `true` are the same arm — identity is the item — and
@@ -482,7 +666,7 @@ fn list<'a>(
     // took the component call away. A by-item row is a plain value, so
     // `{item.name}` is applied once with no thunk — right whenever the rows are
     // what `mapArray` recreated, and silently stale when they are store proxies.
-    if shaper.dev() && keyed.is_none() && shaper.unproven_rows(&source.value) {
+    if shaper.dev() && source.proven && keyed.is_none() && shaper.unproven_rows(&source.value) {
         shaper.diagnose(
             crate::diag::Code::Barq004,
             source.span,
@@ -493,9 +677,9 @@ fn list<'a>(
     }
 
     let mut region = blank(shaper, span);
-    region.key = Some(shaper.cell_value(source.value, source.span));
+    region.key = Some(cell_of(shaper, source));
     region.keyed = keyed;
-    region.body = body_slot_of(shaper, kids, span)
+    region.body = body_of(shaper, bag, kids, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
     region.fallback = fallback;
     region
@@ -504,26 +688,44 @@ fn list<'a>(
 /// `Repeat` — `each`'s fourth mode, where the source is a count.
 fn repeat<'a>(
     shaper: &mut Shaper<'a, '_>,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let count = take(attrs, "count").expect("checked by `admits`");
-    let from = take(attrs, "from");
-    let fallback =
-        take(attrs, "fallback").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
-    let row = body_slot_of(shaper, kids, span)
+    let count = bag.take(shaper, "count").expect("checked by `admits`");
+    let from = bag.take(shaper, "from");
+    let fallback = bag.take(shaper, "fallback").map(|attr| slot_of(shaper, attr));
+    let row = body_of(shaper, bag, kids, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
 
     let mut region = blank(shaper, span);
-    region.key = Some(shaper.cell_value(count.value, count.span));
+    region.key = Some(cell_of(shaper, count));
     region.keyed = Some(shaper.helper(Helper::Count, span));
     region.body = match from {
         // `from` shifts the index the row Block sees: one addition per
         // activation, and nothing at all when it is absent.
+        //
+        // Off a spread the prop is ALWAYS present as a member read — the list
+        // may or may not carry it and nothing here can tell — so the shift is
+        // emitted unconditionally and `_$readSlot(…) ?? 0` is what an absent
+        // `from` reads as, which is the adapter's own `readValue(…) ?? 0`.
         Some(attr) => {
-            let shift = shaper.cell_value(attr.value, attr.span);
-            shift_index(shaper, row, shift, attr.span)
+            let at = attr.span;
+            let read = if attr.proven {
+                let cell = shaper.cell_value(attr.value, at);
+                read_of(shaper, cell, at)
+            } else {
+                let read = read_slot(shaper, attr.value, "Repeat.from", at);
+                let zero = number(shaper, 0.0, at);
+                Expression::new_logical_expression(
+                    at,
+                    read,
+                    LogicalOperator::Coalesce,
+                    zero,
+                    &shaper.ast,
+                )
+            };
+            shift_index(shaper, row, read, at)
         }
         None => row,
     };
@@ -536,14 +738,13 @@ fn repeat<'a>(
 fn boundary<'a>(
     shaper: &mut Shaper<'a, '_>,
     flow: Flow,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let fallback =
-        take(attrs, "fallback").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
-    let on = take(attrs, "on").map(|attr| shaper.cell_value(attr.value, attr.span));
-    let body = body_slot_of(shaper, kids, span)
+    let fallback = bag.take(shaper, "fallback").map(|attr| slot_of(shaper, attr));
+    let on = bag.take(shaper, "on").map(|attr| value_cell(shaper, attr, "Loading.on"));
+    let body = body_of(shaper, bag, kids, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
 
     let mut region = blank(shaper, span);
@@ -562,12 +763,12 @@ fn boundary<'a>(
 /// marker standing at its LEXICAL position, and the patch inserts that.
 fn portal<'a>(
     shaper: &mut Shaper<'a, '_>,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let target = take(attrs, "target").map(|attr| shaper.cell_value(attr.value, attr.span));
-    let body = body_slot_of(shaper, kids, span)
+    let target = bag.take(shaper, "target").map(|attr| value_cell(shaper, attr, "Portal.target"));
+    let body = body_of(shaper, bag, kids, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
 
     let mut region = blank(shaper, span);
@@ -594,13 +795,13 @@ fn portal<'a>(
 /// one, because the only thing done with it is a read.
 fn await_boundaries<'a>(
     shaper: &mut Shaper<'a, '_>,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let resource = take(attrs, "resource").expect("checked by `admits`");
-    let loading = take(attrs, "loading").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
-    let failed = take(attrs, "error").map(|attr| body_slot(shaper, vec![attr.value], attr.span));
+    let resource = bag.take(shaper, "resource").expect("checked by `admits`");
+    let loading = bag.take(shaper, "loading").map(|attr| slot_of(shaper, attr));
+    let failed = bag.take(shaper, "error").map(|attr| slot_of(shaper, attr));
 
     // The body takes the settled VALUE where the author declared a parameter,
     // and a read of the resource is what produces it — after the two boundaries
@@ -608,7 +809,7 @@ fn await_boundaries<'a>(
     // ONE reference to the resource, in the one place its value is used. The
     // adapter needed four — a key and three bodies — which is what made a
     // shared local necessary and the discrimination test unavoidable.
-    let body = match body_slot_of(shaper, kids, span) {
+    let body = match body_of(shaper, bag, kids, span) {
         Some(body) => pass_value(shaper, body, resource.value, span),
         None => Expression::new_null_literal(span, &shaper.ast),
     };
@@ -634,15 +835,15 @@ fn await_boundaries<'a>(
 /// `omit`, and the fifth element-creation path its string arm had.
 fn dynamic<'a>(
     shaper: &mut Shaper<'a, '_>,
-    attrs: &mut Vec<Attr<'a>>,
+    bag: &mut Bag<'a>,
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let component = take(attrs, "component").expect("checked by `admits`");
+    let component = bag.take(shaper, "component").expect("checked by `admits`");
     let cell = shaper.cell_value(component.value, component.span);
 
-    let mut properties = Vec::with_capacity(attrs.len() + 1);
-    for attr in std::mem::take(attrs) {
+    let mut properties = Vec::with_capacity(bag.statik.len() + 1);
+    for attr in std::mem::take(&mut bag.statik) {
         let value = shaper.cell_value(attr.value, attr.span);
         properties.push(shaper.property(attr.name, value, attr.span));
     }
@@ -677,10 +878,11 @@ fn dynamic<'a>(
 fn optional_cell<'a>(
     shaper: &mut Shaper<'a, '_>,
     attr: Option<Attr<'a>>,
+    origin: &'static str,
     span: Span,
 ) -> Expression<'a> {
     match attr {
-        Some(attr) => shaper.cell_value(attr.value, attr.span),
+        Some(attr) => value_cell(shaper, attr, origin),
         None => {
             let value = Expression::new_void_0(span, &shaper.ast);
             arrow(shaper, value, span)
@@ -698,16 +900,23 @@ pub(super) fn reveal<'a>(
     let span = element.span;
     let mut element = element.unbox();
     shaper.consumed(&element.opening_element.name);
-    let (mut attrs, kids) = parts(shaper, &mut element);
+    let (mut bag, kids) = parts(shaper, &mut element);
 
-    let order = optional_cell(shaper, take(&mut attrs, "order"), span);
-    let collapsed = optional_cell(shaper, take(&mut attrs, "collapsed"), span);
-    let body = body_slot_of(shaper, kids, span)
+    let order = optional_cell(shaper, bag.take(shaper, "order"), "Reveal.order", span);
+    let collapsed = optional_cell(shaper, bag.take(shaper, "collapsed"), "Reveal.collapsed", span);
+    let body = body_of(shaper, &mut bag, kids, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
 
     let callee = shaper.helper(Helper::Reveal, span);
     let scope = shaper.ident(shaper.scope, span);
-    call(shaper, callee, vec![scope, order, collapsed, body], span)
+    let mut call = call(shaper, callee, vec![scope, order, collapsed, body], span);
+    // `reveal` is a call rather than a region row, so the source list is bound
+    // here instead of in `region_call` — same shape, same one evaluation.
+    if let Some((binding, mut list)) = bag.spread.take() {
+        shaper.visit_expression(&mut list);
+        call = bind_sources(shaper, binding, list, call, span);
+    }
+    call
 }
 
 // ============================================================================
@@ -860,16 +1069,36 @@ fn wants_value(body: &Expression<'_>) -> bool {
     }
 }
 
+/// `((_p$1) => call)(sources)` — the same binding `region_call` makes, for the
+/// one construct that is a call rather than a region row.
+fn bind_sources<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    binding: &'a str,
+    list: Expression<'a>,
+    call_expression: Expression<'a>,
+    span: Span,
+) -> Expression<'a> {
+    let arrow = Expression::new_arrow_function_expression(
+        span,
+        false,
+        None,
+        params(shaper, &[binding], span),
+        None,
+        ArrowFunctionBody::from(call_expression),
+        &shaper.ast,
+    );
+    call(shaper, arrow, vec![list], span)
+}
+
 /// `(_s$, i) => row(_s$, i + from())` — `Repeat`'s index shift.
 fn shift_index<'a>(
     shaper: &mut Shaper<'a, '_>,
     row: Expression<'a>,
-    from: Expression<'a>,
+    read: Expression<'a>,
     span: Span,
 ) -> Expression<'a> {
     let index = shaper.uids.temp();
     let scope = shaper.ident(shaper.scope, span);
-    let read = read_of(shaper, from, span);
     let shifted = Expression::new_binary_expression(
         span,
         shaper.ident(index, span),
@@ -947,9 +1176,13 @@ fn is_static<'a>(shaper: &mut Shaper<'a, '_>, read: &Expression<'a>, konst: bool
     konst || shaper.lift.rx(read).react == React::Static
 }
 
-fn inert_bodies<'a>(shaper: &Shaper<'a, '_>, attrs: &[Attr<'a>], kids: &[Expression<'a>]) -> bool {
-    kids.iter().all(|kid| inert_value(shaper, kid))
-        && attrs
+/// A proof, so a spread is disqualifying: what the source list carries in the
+/// slots this reads is exactly what cannot be seen.
+fn inert_bodies<'a>(shaper: &Shaper<'a, '_>, bag: &Bag<'a>, kids: &[Expression<'a>]) -> bool {
+    !bag.has_spread()
+        && kids.iter().all(|kid| inert_value(shaper, kid))
+        && bag
+            .statik
             .iter()
             .filter(|attr| attr.name == "fallback")
             .all(|attr| inert_value(shaper, &attr.value))

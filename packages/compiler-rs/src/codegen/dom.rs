@@ -1,8 +1,8 @@
 use oxc::allocator::{Allocator, Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, ArrowFunctionExpression, AssignmentTarget,
-    BindingPattern, Expression, FormalParameterKind, FormalParameters, IdentifierName,
-    MemberExpression, Statement, VariableDeclarationKind, VariableDeclarator,
+    BindingPattern, Expression, FormalParameter, FormalParameterKind, FormalParameters,
+    IdentifierName, MemberExpression, Statement, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc::span::Span;
 use rustc_hash::FxHashSet;
@@ -463,6 +463,7 @@ pub(super) fn empty_region<'a>(ctx: &Emit<'a, '_>, span: Span) -> Region<'a> {
         keyed: None,
         fallback: None,
         on: None,
+        sources: None,
     }
 }
 
@@ -483,7 +484,7 @@ pub fn region_call<'a>(
     site: Option<(Expression<'a>, Option<Expression<'a>>)>,
     span: Span,
 ) -> Expression<'a> {
-    let Region { kind, flags, key, body, keyed, fallback, on, .. } = region;
+    let Region { kind, flags, key, body, keyed, fallback, on, sources, .. } = region;
     // The flags the compiler ADDS rather than proves.
     //
     // `HYDRATE` goes to BOTH backends from one option, which is what makes the
@@ -525,13 +526,14 @@ pub fn region_call<'a>(
             arguments.push(Argument::from(number(ctx, flags, span)));
         }
         let call = ctx.call(callee, arguments, span);
-        let Some(parent) = parent else { return call };
+        let Some(parent) = parent else { return bind_sources(ctx, sources, call, span) };
         let scope = ctx.scope(span);
         let callee = ctx.helper(Helper::Insert, span);
         let mut arguments =
             vec![Argument::from(scope), Argument::from(parent), Argument::from(call)];
         arguments.extend(anchor.map(Argument::from));
-        return ctx.call(callee, arguments, span);
+        let call = ctx.call(callee, arguments, span);
+        return bind_sources(ctx, sources, call, span);
     }
 
     let scope = ctx.scope(span);
@@ -591,7 +593,57 @@ pub fn region_call<'a>(
         let value = value.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
         arguments.push(Argument::from(value));
     }
-    ctx.call(callee, arguments, span)
+    let call = ctx.call(callee, arguments, span);
+    bind_sources(ctx, sources, call, span)
+}
+
+/// A construct whose props came through a spread reads them off a binding, and
+/// this is where the binding is made: `((_p$1) => <the primitive call>)(sources)`.
+///
+/// It is an argument rather than a `const` because `region_call` is shared by
+/// both backends and by three callers, one of which needs an EXPRESSION — a
+/// region standing free of any template. One shape everywhere beats a statement
+/// here and an IIFE there.
+///
+/// The arrow is one allocation per construction, at spread sites only, and it
+/// replaces the adapter frame that used to stand in the same place.
+pub(super) fn bind_sources<'a>(
+    ctx: &mut Emit<'a, '_>,
+    sources: Option<(&'a str, Expression<'a>)>,
+    call: Expression<'a>,
+    span: Span,
+) -> Expression<'a> {
+    let Some((name, list)) = sources else { return call };
+    let binding = BindingPattern::new_binding_identifier(span, name, &ctx.ast);
+    let parameter = FormalParameter::new(
+        span,
+        ArenaVec::new_in(&ctx.allocator),
+        binding,
+        None,
+        None,
+        false,
+        None,
+        false,
+        false,
+        &ctx.ast,
+    );
+    let params = FormalParameters::boxed(
+        span,
+        FormalParameterKind::ArrowFormalParameters,
+        ArenaVec::from_iter_in([parameter], &ctx.allocator),
+        None,
+        &ctx.ast,
+    );
+    let arrow = Expression::new_arrow_function_expression(
+        span,
+        false,
+        None,
+        params,
+        None,
+        ArrowFunctionBody::from(call),
+        &ctx.ast,
+    );
+    ctx.call(arrow, vec![Argument::from(list)], span)
 }
 
 /// `_$hole(parent, anchor, () => value)` — the claim, made where the address is

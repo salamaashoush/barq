@@ -29,7 +29,7 @@ import {
   createRevealCoordinator,
 } from "./boundaries.ts";
 import { SSR_HTML_BRAND, classToString, isSsrHtml, styleToString } from "./dom.ts";
-import { COUNT, NO_SCOPE } from "./flow.ts";
+import { COUNT, NO_SCOPE, keyMode } from "./flow.ts";
 import { omit } from "./props.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
 import {
@@ -740,19 +740,22 @@ export function branch<K>(
  * | `COUNT`    | the index       | `(index)`                   |
  *
  * Getting the boxing backwards is the classic `For` bug, so it is one table in
- * both halves rather than two readings of prose.
+ * both halves rather than two readings of prose — and `keyMode` is one function
+ * in both halves for the same reason, because a construct whose `keyed` came
+ * through a spread reaches here with the carrier still unresolved.
  */
 export function each<T>(
   s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   src: Cell<readonly T[] | null | undefined> | Cell<number>,
-  keyOf: ((item: T) => unknown) | false | null | typeof COUNT,
+  carrier: ((item: T) => unknown) | false | null | typeof COUNT | Cell<unknown>,
   row: Block<unknown, never[]>,
   flags = 0,
   fallback?: Block<unknown> | null,
 ): SsrHtml {
   const given = requireScope(s, "each");
+  const keyOf = keyMode<T>(carrier);
   refuseASite(parent, anchor, "each");
   cellSlot(src, "each source");
   const value = untrack(src as Cell<unknown>);
@@ -1005,27 +1008,15 @@ export function ssrFor<T>(
     children: (s: Scope | null, item: never, index: never) => unknown;
   },
 ): SsrHtml {
-  // §3.0 rule 1, drawn where `For` draws it (components.ts:158): a Cell declares
-  // no parameter and a key function declares one, and that is the only thing
-  // separating them once both are values in the same slot.
-  const carrier = props.keyed;
-  const resolved =
-    typeof carrier === "function" && (carrier as { length: number }).length >= 1
-      ? carrier
-      : readValue(carrier, "For.keyed");
-  const keyOf =
-    typeof resolved === "function"
-      ? (resolved as (item: T) => unknown)
-      : resolved === false
-        ? false
-        : null;
-  return eachOf(s, props.each, keyOf, props, "For");
+  // §3.0 rule 1 is `each`'s own (`flow.ts`'s `keyMode`), so the carrier crosses
+  // unresolved and both backends reach one implementation of it.
+  return eachOf<T>(s, props.each, props.keyed as Cell<unknown>, props, "For");
 }
 
 function eachOf<T>(
   s: Scope | null,
   source: unknown,
-  keyOf: ((item: T) => unknown) | false | null,
+  keyOf: ((item: T) => unknown) | false | null | Cell<unknown>,
   props: { children: unknown; fallback?: unknown },
   origin: string,
 ): SsrHtml {

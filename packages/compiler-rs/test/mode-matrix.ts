@@ -111,10 +111,17 @@ export const MATRIX_EXCEPTIONS = {
  * backend or the reference backend — which is the question this whole file
  * exists to make somebody answer.
  */
+// M10 +2 fixtures, +14 cells, +2 renderableOnBoth: `control-flow-spread-precedence`
+// and `control-flow-spread-repeat`, the two shapes the spread lowering added
+// that no existing fixture covers — a named prop written after the last spread
+// staying static beside one only the spread carries, and `Repeat`'s index shift
+// off a slot the primitive does not read. Both render on both backends, which
+// is the point: the lowering is in `region_call`, so the two halves reach the
+// same primitive with the same arguments.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 182,
+  fixtures: 184,
   modes: 7,
-  cells: 1274,
-  renderableOnBoth: 155,
+  cells: 1288,
+  renderableOnBoth: 157,
   renderableOnNeither: 27,
 })

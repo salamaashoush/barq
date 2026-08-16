@@ -201,7 +201,7 @@ describe("declared optimality", () => {
       // passing, because it is asserted against the body with the block
       // stripped. That is the exact silent hole this test exists for, and the
       // C1 call shape is asserted from here instead (`the call shape is C1's`).
-      return declaration !== null && /_\$|_el\$|_p\$|_v\$|_tmpl\$|_s\$|_k\$/.test(declaration[0])
+      return declaration !== null && /_\$|_el\$|_p\$|_v\$|_o\$|_tmpl\$|_s\$|_k\$/.test(declaration[0])
     })
     expect(offenders).toEqual([])
   })
@@ -956,12 +956,17 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
         }
       }
     }
-    // `control-flow-for-keyed-spread` is the ONE construct in this list that
-    // still reaches its adapter, and the reason is C9: a spread is a runtime
-    // source list, so the props cannot be read statically and the pass refuses
-    // rather than guessing. Refusing is always safe — the adapter reaches the
-    // same `each` one frame later.
-    expect(survivors).toEqual(["control-flow-for-keyed-spread: For"])
+    // Empty since M10, and the row that used to be here is why the assertion is
+    // worth making. `control-flow-for-keyed-spread` was the ONE survivor: a
+    // spread is a runtime source list (C9), so the pass could not read the
+    // construct's props and refused. What M10 found is that it did not need to
+    // read the one prop the refusal was written for — `keyed` is already a
+    // runtime argument `each` dispatches on, and the row Block's parameter list
+    // does not change with it. The other four constructs a spread reaches
+    // (`Show`, `Match`, `Switch`, `Dynamic`) still refuse, each for a reason
+    // stated in `passes::flow::admits_spread`, and none of them is in `LOWERED`
+    // with a spread fixture behind it.
+    expect(survivors).toEqual([])
   })
 
   it("the three constructs M8 refused now lower too, onto what they always were", () => {

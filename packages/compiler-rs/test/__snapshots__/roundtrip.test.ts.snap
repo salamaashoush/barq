@@ -1617,7 +1617,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-for-keyed-spread 1`] = `
-"import { For, signal, template as _$template, insert as _$insert, props as _$props, block as _$block } from "@barqjs/core";
+"import { signal, template as _$template, insert as _$insert, props as _$props, block as _$block, each as _$each } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="keyed-spread"></ul>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<li></li>\`);
 export const rows = signal([{
@@ -1631,26 +1631,34 @@ const opts = { keyed: (row: {
   id: number;
 }) => row.id };
 /**
-* \`keyed\` arriving through a SPREAD. Reading only \`JSXAttributeItem::Attribute\`
-* left the spread invisible, so the row took the by-item arm and \`{row().text}\`
-* was applied once — the ERGONOMICS §4.3 stale cell, reached by a different
-* door. A spread cannot be proved not to carry \`keyed\`, so it resolves to the
-* key-function arm, which is the one that is safe when wrong.
+* \`keyed\` arriving through a SPREAD, and since M10 this LOWERS.
 *
-* Step 0 is the only frame that can tell: the keys do not move and the items
-* behind them do.
+* Two separate things had to be right, and only one of them is about the row.
+*
+* The row: reading only \`JSXAttributeItem::Attribute\` left the spread invisible,
+* so the body took the by-item arm and \`{row().text}\` was applied once — the
+* ERGONOMICS §4.3 stale cell, reached by a different door. A spread cannot be
+* proved not to carry \`keyed\`, so \`analysis::bind\` resolves it to the
+* key-function arm, which is the one that is safe when wrong. Step 0 is the only
+* frame that can tell: the keys do not move and the items behind them do.
+*
+* The construct: what M9 recorded as one gap was two, and the one this fixture
+* names was never real. \`keyOf\` is already a RUNTIME argument — \`each\` dispatches
+* on it and \`mapArray\` decides what a row's \`item\` and \`index\` ARE — so the row
+* Block's own parameter list is \`(scope, item, index)\` in all three modes and the
+* three keying fixtures differ at the \`keyOf\` argument and nowhere else. The
+* carrier therefore crosses unresolved and \`flow.ts\`'s \`keyMode\` reads it, which
+* is the same §3.0 rule 1 the compiler applies statically when it can see the
+* prop. What the lowering buys is the \`(parent, anchor)\` pair §3.4 exists to
+* deliver, in place of an \`insert\` hole around an adapter frame.
 */
 export default function ControlFlowForKeyedSpread(_s$) {
   const _el$1 = _tmpl$1();
-  _$insert(_s$, _el$1, For(_s$, _$props([
-    { each: rows },
-    opts,
-    { children: _$block((_s$, row) => {
-      const _el$2 = _tmpl$2();
-      _$insert(_s$, _el$2, () => row().text);
-      return _el$2;
-    }) }
-  ])));
+  ((_o$1) => _$each(_s$, _el$1, null, _o$1.each, _o$1.keyed, _$block((_s$, row) => {
+    const _el$2 = _tmpl$2();
+    _$insert(_s$, _el$2, () => row().text);
+    return _el$2;
+  }), 0, _o$1.fallback))(_$props([{ each: rows }, opts]));
   return _el$1;
 }
 ControlFlowForKeyedSpread = _$block(ControlFlowForKeyedSpread);
@@ -1666,20 +1674,25 @@ export const steps = [() => rows.set([{
 }])];
 export const optimality = {
   target: 1,
-  milestone: 3,
+  milestone: 10,
   templates: 2,
-  // C9: a spread makes the props a RUNTIME source list, so there is nothing
-  // static to read the construct's shape off and the flow pass refuses. The
-  // adapter survives and reaches the same \`each\` one frame later — refusing is
-  // always the safe direction — and the negative below is what says the pass
-  // refused rather than guessed.
+  // C9's source list is still a runtime object — that part does not change. What
+  // changed is that the construct no longer needs to READ it at compile time:
+  // every prop it takes is either an argument the primitive accepts as it stands
+  // or a slot the runtime already resolves, so the region is emitted against
+  // member reads off one binding the source list is evaluated into exactly once.
+  //
+  // The \`keyed\` member read below is the whole of the keying decision, crossing
+  // unresolved, and the primitive is what resolves it.
   emits: [
-    "For(",
-    "opts,",
+    "each(",
+    ".each, ",
+    ".keyed, ",
+    ".fallback)",
     ", row) =>",
     "() => row().text"
   ],
-  absent: ["each(", ", row().text)"]
+  absent: ["For(", ", row().text)"]
 };
 "
 `;
@@ -2426,6 +2439,117 @@ export const optimality = {
 "
 `;
 
+exports[`emitted code snapshots control-flow-spread-precedence 1`] = `
+"import { signal, template as _$template, insert as _$insert, props as _$props, block as _$block, each as _$each } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<ul class="precedence"></ul>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<li>: </li>\`);
+export const rows = signal(["alpha", "beta"]);
+const opts = {
+  each: () => ["stale"],
+  keyed: false as const
+};
+/**
+* A spread and a named prop on the same construct, and the ORDER decides which
+* one the lowering can read.
+*
+* A source list is last-wins, so a prop written AFTER the last spread
+* cannot be overridden and stays static — \`each\` here η-reduces to the accessor
+* and never reaches the source list at all, which is why \`opts.each\` is dead. A
+* prop that is only in the spread is a member read off the binding the list is
+* evaluated into, and \`keyed\` is that: the carrier crosses unresolved and
+* \`each\`'s own \`keyMode\` reads it.
+*
+* The steps are what tell \`keyed: false\` from the identity default. Positional
+* rows keep their slots and change their contents; identity rows would be
+* rebuilt.
+*/
+export default function ControlFlowSpreadPrecedence(_s$) {
+  const _el$1 = _tmpl$1();
+  ((_o$1) => _$each(_s$, _el$1, null, rows, _o$1.keyed, _$block((_s$, row, index) => {
+    const _el$2 = _tmpl$2();
+    const _el$3 = _el$2.firstChild;
+    _$insert(_s$, _el$2, index, _el$3);
+    _$insert(_s$, _el$2, row);
+    return _el$2;
+  }), 0, _o$1.fallback))(_$props([opts]));
+  return _el$1;
+}
+ControlFlowSpreadPrecedence = _$block(ControlFlowSpreadPrecedence);
+export const steps = [
+  () => rows.set(["ALPHA", "BETA"]),
+  () => rows.set([
+    "ALPHA",
+    "BETA",
+    "gamma"
+  ]),
+  () => rows.set(["only"])
+];
+export const optimality = {
+  target: 1,
+  milestone: 10,
+  templates: 2,
+  // The source is the accessor itself, static. The keying carrier is the member
+  // read, unresolved. Both in one call, which is the whole claim.
+  emits: [
+    "each(",
+    ", rows, ",
+    ".keyed, ",
+    ", row, index) =>"
+  ],
+  absent: ["For(", "opts.each"]
+};
+"
+`;
+
+exports[`emitted code snapshots control-flow-spread-repeat 1`] = `
+"import { signal, template as _$template, insert as _$insert, props as _$props, block as _$block, each as _$each, COUNT as _$COUNT, readSlot as _$readSlot } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="spread-repeat"></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="cell"></span>\`);
+export const n = signal(2);
+const opts = {
+  count: () => n(),
+  from: () => 10
+};
+/**
+* \`Repeat\` with both of its value props behind a spread.
+*
+* Two slots, two different rules, and the difference is what the primitive does
+* with each. \`count\` is \`each\`'s source and the primitive CALLS it, so the
+* member read crosses as it stands. \`from\` is not a slot any primitive reads —
+* the index shift is the compiler's own arrow — so it goes through \`readSlot\`
+* exactly where the adapter's \`readValue\` was, and \`?? 0\` is still what an
+* absent \`from\` reads as.
+*/
+export default function ControlFlowSpreadRepeat(_s$) {
+  const _el$1 = _tmpl$1();
+  ((_o$1) => _$each(_s$, _el$1, null, _o$1.count, _$COUNT, _$block((_s$, _v$) => _$block((_s$, i) => {
+    const _el$2 = _tmpl$2();
+    _$insert(_s$, _el$2, i);
+    return _el$2;
+  })(_s$, _v$ + (_$readSlot(_o$1.from, "Repeat.from") ?? 0))), 0, _o$1.fallback))(_$props([opts]));
+  return _el$1;
+}
+ControlFlowSpreadRepeat = _$block(ControlFlowSpreadRepeat);
+export const steps = [() => n.set(4), () => n.set(1)];
+export const optimality = {
+  target: 8,
+  milestone: 10,
+  templates: 2,
+  // The count is the member read, called by the primitive. The shift is the
+  // slot read, wrapped by the compiler.
+  emits: [
+    "each(",
+    ".count, ",
+    "COUNT",
+    "readSlot(",
+    "?? 0",
+    ", i) =>"
+  ],
+  absent: ["Repeat(", "count: "]
+};
+"
+`;
+
 exports[`emitted code snapshots control-flow-switch-match 1`] = `
 "import { signal, template as _$template, block as _$block, branch as _$branch } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="status"></div>\`);
@@ -2531,72 +2655,6 @@ export const optimality = {
     "children: ",
     "], 3)"
   ]
-};
-"
-`;
-
-exports[`emitted code snapshots optimistic-signal 1`] = `
-"import { optimistic, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="optimistic"></button>\`);
-const _h$1 = () => pending.set(pending() + 1);
-_$delegateEvents(["click"]);
-/** \`optimistic\` returns a \`Signal<T>\`, not a tuple — \`.set\` is a method. */
-export const pending = optimistic(0);
-export default function CreateOptimisticSignal(_s$) {
-  const _el$1 = _tmpl$1();
-  _el$1.$$click = _h$1, _el$1.$$s = _s$;
-  _$insert(_s$, _el$1, () => pending());
-  return _el$1;
-}
-CreateOptimisticSignal = _$block(CreateOptimisticSignal);
-export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
-export const optimality = {
-  target: 1,
-  milestone: 5,
-  templates: 1,
-  // \`optimistic\` returns an Accessor with signal-shaped write members, so
-  // \`pending.set\` is NOT a tracked read: the handler closes over nothing the
-  // component owns and hoists to module scope.
-  // The hoisted handler is a module-scope const above the component; the read
-  // inside the hole is the live one.
-  emits: ["= () => pending.set", "() => pending()"]
-};
-"
-`;
-
-exports[`emitted code snapshots projection-store 1`] = `
-"import { projection, signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="projection"></div>\`);
-export const on = signal(false);
-/**
-* \`projection\` returns the store PROXY directly, not a tuple and not an
-* accessor: \`selected.on\` is the tracked read and \`selected()\` would throw.
-*/
-const selected = projection<{
-  on: boolean;
-}>((draft) => {
-  draft.on = on();
-}, { on: false });
-export default function CreateProjectionStore(_s$) {
-  const _el$1 = _tmpl$1();
-  _$bindEffect(_s$, () => selected.on ? "1" : "0", (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-on", _v$);
-  });
-  _$insert(_s$, _el$1, () => selected.on ? "yes" : "no");
-  return _el$1;
-}
-CreateProjectionStore = _$block(CreateProjectionStore);
-export const steps = [() => on.set(true), () => on.set(false)];
-export const optimality = {
-  target: 1,
-  milestone: 5,
-  templates: 1,
-  // \`projection\` returns a ReactiveObject directly — not a tuple — so any
-  // MEMBER read of it is the tracked read and both holes bind live off \`.on\`.
-  emits: ["() => selected.on"],
-  // The unwrapped form the member read would take if \`projection\` had
-  // been classified as a tuple instead of a ReactiveObject.
-  absent: ["insert(_el, selected.on"]
 };
 "
 `;
@@ -4190,6 +4248,35 @@ export const optimality = {
 "
 `;
 
+exports[`emitted code snapshots optimistic-signal 1`] = `
+"import { optimistic, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="optimistic"></button>\`);
+const _h$1 = () => pending.set(pending() + 1);
+_$delegateEvents(["click"]);
+/** \`optimistic\` returns a \`Signal<T>\`, not a tuple — \`.set\` is a method. */
+export const pending = optimistic(0);
+export default function CreateOptimisticSignal(_s$) {
+  const _el$1 = _tmpl$1();
+  _el$1.$$click = _h$1, _el$1.$$s = _s$;
+  _$insert(_s$, _el$1, () => pending());
+  return _el$1;
+}
+CreateOptimisticSignal = _$block(CreateOptimisticSignal);
+export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
+export const optimality = {
+  target: 1,
+  milestone: 5,
+  templates: 1,
+  // \`optimistic\` returns an Accessor with signal-shaped write members, so
+  // \`pending.set\` is NOT a tracked read: the handler closes over nothing the
+  // component owns and hoists to module scope.
+  // The hoisted handler is a module-scope const above the component; the read
+  // inside the hole is the live one.
+  emits: ["= () => pending.set", "() => pending()"]
+};
+"
+`;
+
 exports[`emitted code snapshots portal 1`] = `
 "import { template as _$template, insert as _$insert, block as _$block, portal as _$portal } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><div id="portal-target"></div></div>\`);
@@ -4344,6 +4431,43 @@ const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><pre>  indented lines  kept</p
 export default function PreWhitespace(_s$) {
   return _tmpl$1();
 }
+"
+`;
+
+exports[`emitted code snapshots projection-store 1`] = `
+"import { projection, signal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, setAttr as _$setAttr } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="projection"></div>\`);
+export const on = signal(false);
+/**
+* \`projection\` returns the store PROXY directly, not a tuple and not an
+* accessor: \`selected.on\` is the tracked read and \`selected()\` would throw.
+*/
+const selected = projection<{
+  on: boolean;
+}>((draft) => {
+  draft.on = on();
+}, { on: false });
+export default function CreateProjectionStore(_s$) {
+  const _el$1 = _tmpl$1();
+  _$bindEffect(_s$, () => selected.on ? "1" : "0", (_v$, _p$) => {
+    if (_v$ !== _p$) _$setAttr(_el$1, "data-on", _v$);
+  });
+  _$insert(_s$, _el$1, () => selected.on ? "yes" : "no");
+  return _el$1;
+}
+CreateProjectionStore = _$block(CreateProjectionStore);
+export const steps = [() => on.set(true), () => on.set(false)];
+export const optimality = {
+  target: 1,
+  milestone: 5,
+  templates: 1,
+  // \`projection\` returns a ReactiveObject directly — not a tuple — so any
+  // MEMBER read of it is the tracked read and both holes bind live off \`.on\`.
+  emits: ["() => selected.on"],
+  // The unwrapped form the member read would take if \`projection\` had
+  // been classified as a tuple instead of a ReactiveObject.
+  absent: ["insert(_el, selected.on"]
+};
 "
 `;
 
