@@ -15,6 +15,7 @@ pub mod passes;
 pub mod scope;
 pub mod tables;
 
+use napi::bindgen_prelude::{FromNapiValue, JsValue, Object};
 use napi_derive::napi;
 
 pub use compile::{CompileOutput, Diagnostic, Severity, compile};
@@ -93,9 +94,45 @@ fn js_diagnostic(diagnostic: &Diagnostic) -> JsDiagnostic {
 
 // catch_unwind is opt-in: without it napi-derive emits a bare call and any panic
 // below aborts the host process instead of surfacing as a JS exception.
-#[napi(catch_unwind)]
-pub fn transform(code: String, options: Option<TransformOptions>) -> napi::Result<TransformResult> {
-    let options = options.unwrap_or_default().resolve();
+/// Reject an option this compiler does not have, rather than dropping it.
+///
+/// `#[napi(object)]` binds the fields it knows and ignores everything else, so
+/// `{ target: "ssr" }` compiled the DOM backend and returned a module that
+/// looked right. A silently-ignored option on a surface whose whole job is to
+/// pick between two backends is the same silent-failure shape this project
+/// exists to remove, so the raw object is enumerated before it is bound.
+fn reject_unknown_options(raw: &Object) -> napi::Result<()> {
+    let mut unknown: Vec<String> = Object::keys(raw)?
+        .into_iter()
+        .filter(|key| !options::OPTION_KEYS.contains(&key.as_str()))
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    unknown.sort();
+    let reasons: Vec<String> = unknown.iter().map(|key| options::unknown_option(key)).collect();
+    Err(napi::Error::from_reason(format!(
+        "[barq-compiler] {}\n  known options: {}",
+        reasons.join("\n[barq-compiler] "),
+        options::OPTION_KEYS.join(", ")
+    )))
+}
+
+// The parameter is a raw `Object` so `reject_unknown_options` can enumerate the
+// keys the caller actually passed — `#[napi(object)]` binds what it knows and
+// drops the rest, which is the whole defect. `ts_args_type` puts the real type
+// back in the generated `.d.ts`, so a TypeScript caller still fails at COMPILE
+// time and only an untyped one reaches the runtime check.
+#[napi(catch_unwind, ts_args_type = "code: string, options?: TransformOptions | undefined | null")]
+pub fn transform(code: String, options: Option<Object>) -> napi::Result<TransformResult> {
+    let options = match options {
+        Some(raw) => {
+            reject_unknown_options(&raw)?;
+            unsafe { TransformOptions::from_napi_value(raw.value().env, raw.raw())? }
+        }
+        None => TransformOptions::default(),
+    };
+    let options = options.resolve();
     match compile::compile(&code, &options) {
         Ok(output) => Ok(TransformResult {
             code: output.code,

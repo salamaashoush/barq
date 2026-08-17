@@ -175,6 +175,51 @@ pub struct TransformOptions {
     pub passes: Option<Vec<Vec<String>>>,
 }
 
+/// Every key `TransformOptions` reads, in the CAMEL CASE napi converts them to.
+///
+/// `#[napi(object)]` reads the fields it knows by name and drops the rest, so a
+/// typo'd or renamed option is silently ignored and the compile proceeds with
+/// the default. That is the worst available failure for this surface: asking
+/// for `{ target: "ssr" }` compiles the DOM backend and returns a plausible
+/// module, and the mistake is only visible to a reader who already knows what
+/// the SSR emission should import. It cost a wrong backend comparison in the
+/// M11 session, which is why the list exists.
+///
+/// Kept beside the struct deliberately: adding a field without adding it here
+/// makes that field unusable, which `options_keys_cover_every_field` catches.
+pub const OPTION_KEYS: &[&str] = &[
+    "filename",
+    "sourcemap",
+    "moduleSource",
+    "dev",
+    "templates",
+    "ssr",
+    "interp",
+    "diagnostics",
+    "checks",
+    "defaultCategory",
+    "ownership",
+    "addresses",
+    "hydratable",
+    "optimize",
+    "passes",
+];
+
+/// The message for an option this compiler does not have. Names the nearest
+/// known key when there is one, because the overwhelmingly common cause is a
+/// spelling rather than an invention.
+pub fn unknown_option(key: &str) -> String {
+    let lower = key.to_ascii_lowercase();
+    let near = OPTION_KEYS.iter().find(|known| {
+        let known_lower = known.to_ascii_lowercase();
+        known_lower.contains(&lower) || lower.contains(&known_lower)
+    });
+    match near {
+        Some(known) => format!("unknown option `{key}` (did you mean `{known}`?)"),
+        None => format!("unknown option `{key}`"),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ResolvedOptions {
     pub filename: Option<String>,
@@ -271,6 +316,76 @@ impl TransformOptions {
 
 #[cfg(test)]
 mod tests {
+    /// `OPTION_KEYS` is hand-written beside a `#[napi(object)]` struct, so the
+    /// one way it rots is a field added without a key. That field would then be
+    /// REJECTED at the boundary — the failure is loud rather than silent, but it
+    /// makes the option unusable, so it is worth a test rather than a comment.
+    ///
+    /// The struct's field names are snake_case and napi converts them to camel,
+    /// so the comparison is done on a normalised form.
+    #[test]
+    fn options_keys_cover_every_field() {
+        fn camel(field: &str) -> String {
+            let mut out = String::new();
+            let mut upper = false;
+            for ch in field.chars() {
+                if ch == '_' {
+                    upper = true;
+                } else if upper {
+                    out.push(ch.to_ascii_uppercase());
+                    upper = false;
+                } else {
+                    out.push(ch);
+                }
+            }
+            out
+        }
+
+        // Read the field list off the struct's own source rather than repeating
+        // it: a list repeated twice in one file is two lists.
+        let source = include_str!("options.rs");
+        let start =
+            source.find("pub struct TransformOptions {").expect("TransformOptions declaration");
+        // Past the declaration line itself, or `struct TransformOptions {` parses
+        // as a field named `struct`.
+        let body = &source[start + "pub struct TransformOptions {".len()..];
+        let end = body.find("\n}").expect("end of TransformOptions");
+        let fields: Vec<String> = body[..end]
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                let rest = line.strip_prefix("pub ")?;
+                let name = rest.split(':').next()?;
+                Some(camel(name))
+            })
+            .collect();
+
+        assert!(!fields.is_empty(), "parsed no fields off TransformOptions");
+        for field in &fields {
+            assert!(
+                OPTION_KEYS.contains(&field.as_str()),
+                "TransformOptions has `{field}` and OPTION_KEYS does not, so passing it would be \
+                 rejected at the boundary and the option would be unusable"
+            );
+        }
+        for key in OPTION_KEYS {
+            assert!(
+                fields.iter().any(|field| field == key),
+                "OPTION_KEYS names `{key}` and TransformOptions has no such field"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_option_names_the_nearest_key() {
+        // The case that motivated the check: `target` is not an option and the
+        // caller meant a backend, but nothing here is close enough to guess.
+        assert_eq!(unknown_option("target"), "unknown option `target`");
+        // A spelling, which is the common case.
+        assert!(unknown_option("Hydratable").contains("did you mean `hydratable`"));
+        assert!(unknown_option("sourcemaps").contains("did you mean `sourcemap`"));
+    }
+
     use super::*;
 
     #[test]

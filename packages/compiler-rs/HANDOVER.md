@@ -681,6 +681,16 @@ intend to keep working.
   `fixtures/semantics/` fixture fails L3, because the same fixture runs through the REFERENCE
   backend, which expresses the same binding as an interpreter op. Behaviour goes in the semantics
   fixture; emission shape goes in a corpus fixture's `optimality.emits`.
+- **An unknown key in `transform`'s options used to be DROPPED, and that is fixed.** `#[napi(object)]`
+  binds the fields it knows by name and ignores the rest, so `transform(src, { target: "ssr" })`
+  compiled the DOM backend and returned a plausible module — it cost a wrong backend comparison in
+  the M11 session, and the only tell was that the emission still imported from `@barqjs/core`
+  instead of `@barqjs/core/server`. The flag is `ssr: true`; there is no `target`. `transform` now
+  enumerates the raw object and rejects any key not in `options::OPTION_KEYS`, naming the nearest
+  match. TypeScript callers fail earlier still — the Rust parameter is a raw `Object` so the keys
+  can be read, and `#[napi(ts_args_type = …)]` puts `TransformOptions` back in the generated
+  `.d.ts`, so both layers hold. `options_keys_cover_every_field` parses the struct's own source and
+  fails if a field is added without a key.
 - **Do not rewrite a large Markdown file with `s.index(...)` splices in a heredoc.** It ate most of
   `HANDOVER.md` twice; the second time the broken version had already been committed by a
   `git add -A`. Splice on LINE indices with asserted anchors, and check `grep -c "^## "` after.
