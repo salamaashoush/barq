@@ -19,6 +19,7 @@ import {
   createErrorCollector,
   createPendingCollector,
   createRevealCoordinator,
+  outerRevealHandle,
 } from "./boundaries.ts";
 import {
   HydrationMismatch,
@@ -1168,7 +1169,9 @@ function loadingBoundary(
       });
     }
 
-    const slot = handle?.register({ settled: () => revealed() });
+    // A leaf's two predicates are one accessor: a boundary that has settled has
+    // its own first visible content, and that IS its full readiness (A6).
+    const slot = handle?.register({ ready: () => revealed(), minimallyReady: () => revealed() });
     // 0 content, 1 fallback, 2 nothing — the third is a collapsed `Reveal`,
     // which is a display decision and not a third kind of boundary.
     const mode = (): number => {
@@ -1205,6 +1208,10 @@ function loadingBoundary(
     onCleanup(() => {
       removeNodes(shown);
       shown = EMPTY;
+      // A slot list that only ever grows is not a contract: a boundary that
+      // dies inside a `Show` would hold its group's frontier at its own index
+      // for the rest of the page, and nothing reports it.
+      slot?.unregister();
       // The instance's own nodes go with its scope, which is a child of `own`
       // and is disposed by the same cascade that runs this.
     });
@@ -1293,7 +1300,9 @@ export function portal(
  * arrive as Cells the compiler computed, the children as the Block they already
  * were, and nothing reads a props record to find them.
  *
- * X1's order is the whole of it: enter, fork, write, invoke.
+ * X1's order is the whole of it: enter, fork, write, invoke — with the outer
+ * group looked up from the scope this was GIVEN, before the fork, because the
+ * fork is what shadows it (A6).
  */
 export function reveal(
   s: Scope | null,
@@ -1302,11 +1311,13 @@ export function reveal(
   block: Block<unknown>,
 ): Node[] {
   const handle: RevealHandle = createRevealCoordinator(
-    () => order() ?? "natural",
+    () => order() ?? "sequential",
     () => collapsed() === true,
+    outerRevealHandle(s),
   );
   const scope = enter(s ?? null, "provide");
   try {
+    onCleanup(() => handle.detach());
     provideOn(scope, REVEAL_COORD, handle);
     return childToNodes(block(scope) as Child, scope);
   } finally {

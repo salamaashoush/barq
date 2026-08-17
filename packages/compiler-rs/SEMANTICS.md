@@ -2355,6 +2355,116 @@ fourteen claims, plus the three store-form claims in `optimisticStore`). §14.1 
 runtime behaviour, so the core channel discriminates all nine procedures, but no fixture yet drives
 them through compiled JSX.
 
+### A6 — reveal ordering is a slot contract, and a nested group is ONE composite slot
+
+**Rule.** Six clauses. Two questions were open before this rule and each is answered by a clause
+rather than left implied.
+
+**(a) The coordinator stays a PROVIDE, and the boundary gains an ordering channel. They are not
+alternatives.** A `Reveal` creates a provide scope (O1 lists `provide` separately from `branch`;
+it owns no range) and publishes one coordinator on it. That provide is how a slot FINDS its group,
+and it has to be a context read through the scope chain rather than anything lexical, because a
+`<Loading>` three components deep is still in the group (X3, X4). The channel is what a slot must
+EXPOSE in order to BE one, and it is on the boundary because the thing registering is no longer
+always a boundary — clause (c). The reference does both too: `RevealControllerContext` is a
+context, and `CollectionQueue` carries `_revealController`, `_disabled` and `_collapsed`.
+
+**(b) The channel is two predicates up and one decision down.**
+
+| direction | name | meaning |
+|---|---|---|
+| up | `ready()` | every boundary in this slot has settled |
+| up | `minimallyReady()` | this slot has its own first visible content, under its own order |
+| down | `display()` | `content` \| `fallback` \| `nothing` |
+
+For a LEAF the two predicates are one accessor and there would be no reason to have two. They
+differ only for a group, which is clause (c), and that is the whole reason the channel carries two.
+
+Both predicates are facts about DATA and neither is a fact about what the slot is currently
+showing. The coordinator maps readiness onto display and never the reverse — which is what stops a
+held group from deadlocking against its own hold: its leaves are on their fallbacks *because* it is
+held, and if being on a fallback counted against readiness the hold could never lift.
+
+**(c) A nested group registers as ONE composite slot in the enclosing group.** Not as its leaves,
+and not not at all. It is held on its fallbacks until the outer releases that slot, and once
+released it runs its own order locally over whatever is still pending. There is no opt-out: nesting
+under an outer group means participating in its ordering.
+
+**(d) What each order calls "minimally ready".** This is the predicate an enclosing `together`
+releases on, and it is why `together` can promise a single cohesive reveal without waiting for every
+grandchild.
+
+| order | minimally ready when |
+|---|---|
+| `together` | every direct slot is |
+| `sequential` | the FIRST direct slot is — the frontier can advance |
+| `natural` | ANY direct slot is |
+
+An empty group is minimally ready and ready under all three.
+
+**(e) Two places an outer RELEASES a composite instead of holding it.** Both are about composites
+only; a leaf is held in both.
+
+- Under `natural`, always. The mode exists FOR nesting — at the top level it is indistinguishable
+  from omitting the `Reveal` — so holding a composite would make `natural` a `sequential` of one.
+- Under `sequential`, the FRONTIER slot. Holding a LEAF is exactly what keeps its fallback visible;
+  a composite is released instead, so its own leaves each show their own fallback while it fills in.
+  The outer still waits on the composite's full `ready()` before advancing PAST it, which is the one
+  place the two predicates are read for two different decisions about the same slot.
+
+**(f) A hold propagates through the whole subtree, carrying the outer's collapsed policy, and the
+inner order is ignored while held.** A group held as `nothing` shows nothing anywhere below it
+regardless of its own `collapsed`. `collapsed` is consulted under `sequential` only — the other two
+orders have no frontier for a slot to be past.
+
+**The default order is `sequential`.** `natural` is the one order that does nothing at the top
+level, so defaulting to it makes `<Reveal>` with no props a no-op.
+
+**A registration is released by disposal.** A slot list that only grows is not a contract: a
+boundary that dies inside a `Show` would otherwise hold its group's frontier at its own index for
+the rest of the page, and nothing reports it.
+
+**Falsified by.** Seven procedures. Each must observe a moment at which an inner group's order and
+its outer's DISAGREE, because a flat group behaves identically under a one-predicate coordinator and
+under this one — which is how the flat design survived four passing tests.
+
+1. Outer `sequential` over `[leafA, group(B, C)]`, the group `natural`. Settle B. Nothing may
+   change: the group is slot 1 and is held, so its own order does not run. *(Fails if a nested group
+   registers nothing — B reveals on its own schedule and the outer's order means nothing below the
+   first level.)*
+2. Then settle A. The group becomes the frontier and MUST be released rather than held: B shows and
+   C stays on its fallback. *(Fails if a frontier composite is held like a leaf — the whole group
+   waits on its slowest member before showing anything.)*
+3. Outer `sequential` COLLAPSED over `[group(B, C), leafD]`. Settle B. D must still render nothing:
+   the group is minimally ready and not ready, and `sequential` advances on `ready`. *(Fails if
+   `sequential` reads `minimallyReady` — the two predicates then have no reason to be two. Collapsed
+   is what makes the frontier's position observable at all: past it a slot renders nothing rather
+   than a fallback, so D's fallback appearing IS the outer having advanced.)*
+4. Outer `together` over `[leafA, group(B, C)]`, the group `sequential`. Settle A and B but not C.
+   The whole outer group MUST release. *(Fails if `together` waits on full readiness: the cohesive
+   reveal it exists to give never happens until the slowest grandchild lands.)*
+5. Outer `natural` over `[leafA, group(B, C)]`. Settle B. B must show while C does not. *(Fails if
+   a composite is held-until-ready under `natural`, which is the rule a LEAF gets.)*
+6. Outer `sequential` COLLAPSED over `[leafA, group(B)]`, the group not collapsed. Before A settles
+   the page must be A's fallback ALONE. *(Fails if the hold does not carry the outer's collapsed
+   policy down — the inner group's own `collapsed: false` then gets a say while it is held.)*
+7. A group over `[leafA, leafB]` where A's boundary is torn down without ever settling. B must
+   reveal. *(Fails if a registration outlives its boundary: the frontier pins on an index nothing
+   will ever fill, and the rest of the group is dark for the life of the page.)*
+
+**Status.** `HOLDS` since M11. Before it, `reveal` was a coordinator over a flat list of
+`{ settled }` entries and a nested `<Reveal>` simply shadowed the outer's provide, so the outer
+never learned the inner existed: procedure 1 measured `[fa]B:2[fc]` where the rule requires
+`[fa][fb][fc]`. Three of the four spellings — `flow.ts`'s `reveal`, `components.ts`'s `Reveal` and
+both of `ssr.ts`'s — also defaulted the order to `natural` while the `revealOrder` primitive beside
+them defaulted to `sequential`, so the same `<Reveal>` meant two things depending on which one the
+compiler reached.
+
+**Pinned by.** `sem-reveal-nested-group.tsx` — the seven procedures through compiled JSX —
+`packages/core/src/reveal.test.ts` (`Reveal nesting`, six claims, plus the default-order claim), and
+`packages/core/src/boundaries.test.ts` for the primitive form. `control-flow-reveal.tsx` and
+`l4/c7-reveal.tsx` keep the emission and the activation count.
+
 ---
 
 ## 11. H — Hydration
@@ -2770,6 +2880,7 @@ green, which is why L1 exists.
 | A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
 | A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `optimistic-signal` |
 | A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | `form-action` — the compiler channel A5 did not have until M10; all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
+| A6 | reveal ordering is a slot contract, and a nested group is one composite slot | H (M11) | `sem-reveal-nested-group`, `control-flow-reveal`, `l4/c7-reveal` |
 | B8 | `action` on a `<form>` is decided by the slot, not by the value's shape | H (M10) | `sem-form-action-slot`, `form-action` |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
 | H2 | the wire carries what recovery needs; the key is a dev-only axis | **H** (M7b) | the branch-key comparison in both builds + L6's two tables + the three-wire byte measurement |

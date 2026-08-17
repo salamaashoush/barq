@@ -6,7 +6,7 @@
  * The compiler handles JSX expressions but resource methods need manual calls.
  */
 
-import { Errored, Loading, Show, resource, signal } from "@barqjs/core";
+import { Errored, For, Loading, Reveal, Show, resource, signal } from "@barqjs/core";
 import {
   css,
 } from "../styles";
@@ -25,9 +25,105 @@ export function AsyncDemo() {
       <ResourceDemo />
       <ResourceWithSourceDemo />
       <LoadingBoundaryDemo />
+      <RevealOrderDemo />
       <ErrorResourceDemo />
       <RefetchDemo />
     </DemoSection>
+  );
+}
+
+/**
+ * A nested `<Reveal>` group (A6). The inner group is ONE slot of the outer, so
+ * `posts` cannot appear before `header` under `sequential` however fast it
+ * lands — and under `together` the whole page arrives at once.
+ *
+ * The delays are deliberately in the wrong order: `posts` is the fastest and is
+ * registered second, which is the only arrangement under which the three orders
+ * are distinguishable from one another.
+ */
+function RevealOrderDemo() {
+  const run = signal(0);
+  const order = signal<"sequential" | "together" | "natural">("sequential");
+
+  return (
+    <DemoCard title="Reveal - nested ordering">
+      <div class={controlsStyle}>
+        <Button onClick={() => run.update((n) => n + 1)}>Load</Button>
+        <For each={() => ["sequential", "together", "natural"] as const}>
+          {(mode) => (
+            <Button
+              onClick={() => {
+                order.set(mode);
+                run.update((n) => n + 1);
+              }}
+            >
+              {mode}
+            </Button>
+          )}
+        </For>
+        <span class={noteStyle}>
+          order: <strong data-testid="reveal-order">{() => order()}</strong>
+        </span>
+      </div>
+
+      <div class={resultBoxStyle} data-testid="reveal-group">
+        {/*
+          KEYED on the run counter, so each press is a new instance (K1.1's
+          opt-in arm). Non-keyed, the second press is a REVALIDATION: a Loading
+          boundary that has already revealed keeps its stale content and never
+          shows a fallback again, so the group would look like it revealed
+          everything at once whatever the order said.
+        */}
+        <Show when={() => run()} keyed fallback={<p>Click Load to start the group</p>}>
+          <Reveal order={() => order()} collapsed={true}>
+            <Slot name="header" delay={900} run={run()} />
+            <Reveal order="natural">
+              <Slot name="posts" delay={200} run={run()} />
+              <Slot name="comments" delay={1500} run={run()} />
+            </Reveal>
+          </Reveal>
+        </Show>
+      </div>
+
+      <p class={noteStyle}>
+        `posts` settles first (200ms), then `header` (900ms), then `comments` (1500ms). Under
+        `sequential` nothing below `header` may show before it does — the inner group is ONE slot,
+        held whole; once `header` lands the group is released and runs its own `natural` order, so
+        `posts` appears without waiting for `comments`. `collapsed` is on for all three and only
+        `sequential` consults it, which is why the tail is blank under that order and shows its
+        fallbacks under the other two.
+      </p>
+    </DemoCard>
+  );
+}
+
+function Slot(props: { name: string; delay: number; run: number }) {
+  const data = resource(
+    () => `${props.name()}:${props.run()}`,
+    async () => {
+      // `run` is in the URL as well as in the source key: without it the second
+      // press replays Chrome's HTTP cache and every slot settles in the same
+      // microtask, which reads exactly like a group that reveals all at once.
+      const res = await fetch(
+        `/api/staggered?name=${props.name()}&delay=${props.delay()}&run=${props.run()}`,
+      );
+      return res.json() as Promise<{ name: string; at: number }>;
+    },
+  );
+
+  return (
+    <Loading
+      fallback={
+        <div class={loadingStyle} data-slot={props.name} data-state="pending">
+          {props.name}
+          …
+        </div>
+      }
+    >
+      <div class={successStyle} data-slot={props.name} data-state="ready">
+        {() => `${data().name} ready`}
+      </div>
+    </Loading>
   );
 }
 
@@ -314,4 +410,11 @@ const noteStyle = css`
   color: #94a3b8;
   font-style: italic;
   margin-top: 12px;
+`;
+
+const controlsStyle = css`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 `;

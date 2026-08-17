@@ -213,11 +213,19 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * `control-flow-show-keyed` puts five clones back, and that is the point of
  * it: the arm that keys on the value rebuilds on every value change, and the
  * corpus now carries the cost of asking for it beside the saving of not.
+ *
+ * M11: 271 effects to 273, and NOTHING else moved — same 142 fixtures, same 410
+ * scopes, same 317 clones, same 315 determined. It is exactly one per `<Reveal>`
+ * in the corpus (`control-flow-reveal`, `control-flow-errored-loading`): A6's
+ * channel carries TWO readiness predicates up, so a group allocates a
+ * `minimallyReady` beside the frontier it already had. That the ownership
+ * columns held still is the assertion — the second predicate is a derivation
+ * over slots the group already knew about, not a new owner over anything.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
   fixtures: 142,
   scopes: 410,
-  effects: 271,
+  effects: 273,
   clones: 317,
   determined: 315,
   unattributed: 1,

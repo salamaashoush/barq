@@ -61,6 +61,17 @@ function mockApiPlugin(): Plugin {
           return;
         }
 
+        // One slot of a Reveal group. `?delay` is what makes the group's slots
+        // settle OUT of registration order, which is the only condition under
+        // which the three orders differ from each other at all.
+        if (url.pathname === "/api/staggered") {
+          const name = url.searchParams.get("name") ?? "?";
+          await sleep(Number(url.searchParams.get("delay") ?? "0"));
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ name, at: Date.now() }));
+          return;
+        }
+
         if (url.pathname === "/api/error") {
           res.statusCode = 500;
           res.end("Internal Server Error");

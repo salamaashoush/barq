@@ -394,7 +394,7 @@ export function Reveal(
         | "sequential"
         | "together"
         | "natural"
-        | undefined) ?? "natural",
+        | undefined) ?? "sequential",
     () => readValue(props.collapsed, "Reveal.collapsed") === true,
     props.children as Block<unknown>,
   ) as unknown as JSXElement;

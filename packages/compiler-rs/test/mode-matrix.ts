@@ -31,11 +31,15 @@ export const MATRIX_EXCEPTIONS = {
     // Its default export is one half of a two-module fixture; the harness
     // compiles the sibling with it and nothing else can.
     "ownership/own-cross-module",
-    // All 26 L1 fixtures. Their default export is not a page: it is a probe the
-    // claim runner drives with a scope and a container it controls, and several
-    // of them exist to throw. That every one of them is here is the fact this
-    // list is really recording — the L1 corpus has never been rendered by
-    // anything but L1, on either backend.
+    // 28 of the 29 L1 fixtures. Their default export is not a page: it is a
+    // probe the claim runner drives with a scope and a container it controls,
+    // and several of them exist to throw. The near-universality is the fact this
+    // list is really recording — L1 is almost the only thing that has ever
+    // rendered the L1 corpus, on either backend. The exception is
+    // `sem-form-action-slot`, which is a page as well as a probe because B8 is a
+    // rule about what the two backends WRITE, and it has been rendering since
+    // M10; the "every one of them" this comment used to claim stopped being true
+    // then and the count went on being bumped.
     "semantics/sem-async-abort-on-dispose",
     "semantics/sem-async-optimistic-derived",
     "semantics/sem-async-stale-response",
@@ -60,6 +64,7 @@ export const MATRIX_EXCEPTIONS = {
     "semantics/sem-react-apply-is-untracked",
     "semantics/sem-react-component-body-untracked",
     "semantics/sem-react-untrack-keeps-owner",
+    "semantics/sem-reveal-nested-group",
     "semantics/sem-show-nonkeyed-default",
     "semantics/sem-state-linked-reseeds",
     "semantics/sem-testing-wrapper-eager",
@@ -137,10 +142,16 @@ export const MATRIX_EXCEPTIONS = {
 // And +1 fixture / +7 cells / +1 renderableOnNeither for
 // `sem-show-nonkeyed-default`, K1.1's two claims — a claims fixture renders on
 // neither backend by construction, which is what the list above is for.
+// M11: +1 fixture / +7 cells / +1 renderableOnNeither for
+// `sem-reveal-nested-group`, A6's five claims. It is worth a cell in each of the
+// seven for a reason the other claims fixtures do not have: `Reveal` is the one
+// construct whose two backends run the SAME coordinator — `ssr.ts` builds one
+// and provides it exactly as `flow.ts` does — so a nesting rule that compiled
+// differently through the string backend would be invisible to the DOM claims.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 190,
+  fixtures: 191,
   modes: 7,
-  cells: 1330,
+  cells: 1337,
   renderableOnBoth: 162,
-  renderableOnNeither: 28,
+  renderableOnNeither: 29,
 })

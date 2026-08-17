@@ -26,6 +26,7 @@ import {
   createErrorCollector,
   createPendingCollector,
   createRevealCoordinator,
+  outerRevealHandle,
 } from "./boundaries.ts";
 import { SSR_HTML_BRAND, classToString, isSsrHtml, styleToString } from "./dom.ts";
 import { COUNT, NO_SCOPE, keyMode } from "./flow.ts";
@@ -1219,8 +1220,10 @@ export function reveal(
   block: unknown,
 ): SsrHtml {
   const handle: RevealHandle = createRevealCoordinator(
-    () => (readValue(order, "reveal.order") as "sequential" | "together" | "natural") ?? "natural",
+    () =>
+      (readValue(order, "reveal.order") as "sequential" | "together" | "natural") ?? "sequential",
     () => readValue(collapsed, "reveal.collapsed") === true,
+    outerRevealHandle(s),
   );
   const scope = enter(s ?? null, "provide");
   try {
@@ -1262,8 +1265,9 @@ export function ssrReveal(
   const handle: RevealHandle = createRevealCoordinator(
     () =>
       (readValue(props.order, "Reveal.order") as "sequential" | "together" | "natural") ??
-      "natural",
+      "sequential",
     () => readValue(props.collapsed, "Reveal.collapsed") === true,
+    outerRevealHandle(s),
   );
   // X1: enter, fork, write, invoke — in that order, and on a scope of its own.
   const scope = enter(s ?? null, "provide");

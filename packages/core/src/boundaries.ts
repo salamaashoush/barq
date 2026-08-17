@@ -19,6 +19,8 @@ import {
   enforceLoadingBoundary,
   getOwner,
   hasEscapedError,
+  lookupContext,
+  onCleanup,
   provideOn,
   refresh,
   resetErrorHalt,
@@ -36,67 +38,147 @@ const BOUNDARY_SIGNAL = { ownedWrite: true } as const;
 
 export type RevealOrder = "sequential" | "together" | "natural";
 
-/** What a coordinated boundary should show right now */
+/** What a coordinated slot should show right now */
 export type RevealDisplay = "content" | "fallback" | "nothing";
 
-export interface RevealEntry {
-  settled: () => boolean;
+/**
+ * What a slot reports UPWARD (A6). Both are facts about DATA, never about what
+ * the slot is currently showing: the coordinator maps readiness onto display
+ * and never the reverse, which is what stops a held group from deadlocking
+ * against its own hold.
+ *
+ * They are the same accessor for a leaf boundary and they differ for a nested
+ * group, and that difference is the entire reason the channel carries two.
+ */
+export interface RevealSlot {
+  /** every boundary in this slot has settled */
+  ready: () => boolean;
+  /** this slot has its own first visible content, under its own order */
+  minimallyReady: () => boolean;
 }
 
-export interface RevealHandle {
-  register(entry: RevealEntry): { display: () => RevealDisplay };
+export interface RevealRegistration {
+  display: () => RevealDisplay;
+  unregister: () => void;
+}
+
+export interface RevealHandle extends RevealSlot {
+  register(slot: RevealSlot, group?: boolean): RevealRegistration;
+  /** leave the enclosing group, if this one joined an outer group */
+  detach(): void;
 }
 
 /** Context key a Reveal group publishes for descendant Loading boundaries */
 export const REVEAL_COORD: unique symbol = Symbol("barq-reveal");
 
 /**
- * Build the coordinator that decides, for each registered boundary, whether it
+ * The group a construct joins, read from the scope it was GIVEN — before it
+ * forks one of its own, because the fork is what shadows the answer (A6, X3).
+ */
+export function outerRevealHandle(scope: Owner | null | undefined): RevealHandle | undefined {
+  const stored = lookupContext(scope ?? null, REVEAL_COORD);
+  return typeof stored === "object" && stored !== null ? (stored as RevealHandle) : undefined;
+}
+
+/**
+ * Build the coordinator that decides, for each registered slot, whether it
  * shows content, its fallback, or nothing at all.
  *
- * - `natural` - each boundary reveals as soon as it settles
- * - `together` - nobody reveals until every registered boundary has settled
- * - `sequential` - boundaries reveal in registration order; with `collapsed`,
- *   the ones past the frontier render nothing rather than a fallback
+ * - `natural` - each slot reveals as soon as it settles
+ * - `together` - nobody reveals until every slot is minimally ready
+ * - `sequential` - slots reveal in registration order; with `collapsed`, the
+ *   ones past the frontier render nothing rather than a fallback
+ *
+ * `outer` is the enclosing group this one joins as ONE composite slot (A6).
  */
 export function createRevealCoordinator(
   order: () => RevealOrder,
   collapsed: () => boolean,
+  outer?: RevealHandle,
 ): RevealHandle {
-  const entries: RevealEntry[] = [];
+  const slots: RevealSlot[] = [];
+  const groups = new WeakSet<RevealSlot>();
   const registrations = signal(0, BOUNDARY_SIGNAL);
 
   const frontier = computed(() => {
     registrations();
-    for (let i = 0; i < entries.length; i++) {
-      if (!entries[i].settled()) return i;
+    for (let i = 0; i < slots.length; i++) {
+      if (!slots[i].ready()) return i;
     }
-    return entries.length;
+    return slots.length;
   });
 
-  return {
-    register(entry) {
-      const index = entries.length;
-      entries.push(entry);
+  // Per order, what counts as "this group has something visible to show". An
+  // enclosing `together` releases on this rather than on full readiness, which
+  // is what lets it stay one cohesive reveal without waiting for every
+  // grandchild.
+  const minimallyReady = computed(() => {
+    registrations();
+    if (slots.length === 0) return true;
+    const mode = order();
+    if (mode === "together") return slots.every((slot) => slot.minimallyReady());
+    if (mode === "natural") return slots.some((slot) => slot.minimallyReady());
+    return slots[0].minimallyReady();
+  });
+
+  const held = (slot: RevealSlot): RevealDisplay => {
+    const mode = order();
+    if (mode === "natural") {
+      // A nested group is always released here: the mode exists FOR nesting,
+      // and holding a composite would make `natural` a `sequential` of one.
+      if (groups.has(slot)) return "content";
+      return slot.ready() ? "content" : "fallback";
+    }
+    if (mode === "together") return minimallyReady() ? "content" : "fallback";
+
+    const f = frontier();
+    const index = slots.indexOf(slot);
+    if (index < 0 || index < f) return "content";
+    // The frontier. Holding a LEAF is what keeps its fallback visible; a
+    // composite is released instead, so its own leaves each show their own
+    // fallback while it fills in. This group still waits on the composite's
+    // full readiness before advancing past it.
+    if (index === f) return groups.has(slot) ? "content" : "fallback";
+    return collapsed() ? "nothing" : "fallback";
+  };
+
+  const handle: RevealHandle = {
+    ready: () => frontier() === slots.length,
+    minimallyReady: () => minimallyReady(),
+
+    register(slot, group = false) {
+      slots.push(slot);
+      if (group) groups.add(slot);
       registrations.update((n) => n + 1);
 
       const display = computed<RevealDisplay>(() => {
-        const mode = order();
-        if (mode === "natural") {
-          return entry.settled() ? "content" : "fallback";
-        }
-        const f = frontier();
-        if (mode === "together") {
-          return f === entries.length ? "content" : "fallback";
-        }
-        if (index < f) return "content";
-        if (index === f) return "fallback";
-        return collapsed() ? "nothing" : "fallback";
+        // A hold from an enclosing group propagates through the whole subtree,
+        // carrying whatever collapsed policy the outer asked for. This group's
+        // own order is ignored while held and resumes once the outer releases.
+        const above = joined?.display();
+        if (above !== undefined && above !== "content") return above;
+        return held(slot);
       });
 
-      return { display: () => display() };
+      return {
+        display: () => display(),
+        unregister() {
+          const index = slots.indexOf(slot);
+          if (index < 0) return;
+          slots.splice(index, 1);
+          registrations.update((n) => n + 1);
+        },
+      };
+    },
+
+    detach() {
+      joined?.unregister();
+      joined = undefined;
     },
   };
+
+  let joined = outer?.register(handle, true);
+  return handle;
 }
 
 /**
@@ -112,7 +194,9 @@ export function revealOrder<T>(
   const order = options?.order ?? ((): RevealOrder => "sequential");
   const collapsed = options?.collapsed ?? ((): boolean => false);
   const own = owner("branch");
-  const handle = runWithOwner(own, () => createRevealCoordinator(order, collapsed));
+  const outer = currentRevealHandle();
+  const handle = runWithOwner(own, () => createRevealCoordinator(order, collapsed, outer));
+  runWithOwner(own, () => onCleanup(() => handle.detach()));
   provideOn(own, REVEAL_COORD, handle);
   return runWithOwner(own, fn);
 }

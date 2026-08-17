@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  type RevealSlot,
   currentRevealHandle,
   errorBoundary,
   loadingBoundary,
@@ -174,6 +175,11 @@ describe("errorBoundary", () => {
   });
 });
 
+/** A6: a leaf slot's two predicates are one accessor */
+function leafSlot(settled: () => boolean): RevealSlot {
+  return { ready: settled, minimallyReady: settled };
+}
+
 describe("revealOrder", () => {
   test("returns the inner value and installs a coordinator", () => {
     const dispose = scope((d) => {
@@ -192,8 +198,8 @@ describe("revealOrder", () => {
       revealOrder(
         () => {
           const handle = currentRevealHandle()!;
-          const a = handle.register({ settled: () => first() });
-          const b = handle.register({ settled: () => second() });
+          const a = handle.register(leafSlot(first));
+          const b = handle.register(leafSlot(second));
           displays = [a.display, b.display];
         },
         { order: () => "sequential" },
@@ -216,8 +222,8 @@ describe("revealOrder", () => {
       revealOrder(
         () => {
           const handle = currentRevealHandle()!;
-          const a = handle.register({ settled: () => first() });
-          const b = handle.register({ settled: () => second() });
+          const a = handle.register(leafSlot(first));
+          const b = handle.register(leafSlot(second));
           displays = [a.display, b.display];
         },
         { order: () => "together" },
@@ -238,8 +244,8 @@ describe("revealOrder", () => {
       revealOrder(
         () => {
           const handle = currentRevealHandle()!;
-          const a = handle.register({ settled: () => first() });
-          const b = handle.register({ settled: () => false });
+          const a = handle.register(leafSlot(first));
+          const b = handle.register(leafSlot(() => false));
           displays = [a.display, b.display];
         },
         { order: () => "sequential", collapsed: () => true },
