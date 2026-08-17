@@ -97,6 +97,52 @@ export const Subject = () => <Tree />
  * construct half-built by a throw leaves an effect behind, and one left
  * ownerless outlives this fixture and reaches whatever renders next.
  */
+/**
+ * Bind a handler, DISPATCH to it, and re-raise whatever the read refused.
+ *
+ * A handler is the one Cell slot whose value the callee must not invoke at the
+ * drive — calling it there would fire the handler — so the branded shapes are
+ * caught at bind time by the value test and the LAUNDERED shape, `() => aBlock`,
+ * is a legal 0-arity handler by inspection until it has been called and has
+ * handed back a Block. `applyRefs` resolved `ref` the same way, on the RETURN.
+ * Asking for a throw at the bind would ask for a verdict at a position where
+ * the information does not exist.
+ *
+ * The refusal is raised inside the handler, so it ROUTES (E2) rather than
+ * escaping — an exception thrown in a listener does not leave `dispatchEvent`,
+ * measured. An error boundary is therefore what observes it, which is also what
+ * an application would have. Re-raising keeps this slot's verdict the same
+ * shape as the other seven.
+ */
+function dispatched(
+  s: Scope,
+  bind: (inner: Scope, node: HTMLElement) => void,
+  event: Event,
+): void {
+  const host = document.createElement("div")
+  document.body.appendChild(host)
+  const node = document.createElement("div")
+  let caught: unknown = null
+  boundary(
+    s,
+    host,
+    null,
+    "error",
+    (_inner: Scope | null, error: () => Error) => {
+      caught = error()
+      return null
+    },
+    (inner: Scope | null) => {
+      host.appendChild(node)
+      bind(inner as Scope, node)
+      return null
+    },
+  )
+  node.dispatchEvent(event)
+  host.remove()
+  if (caught !== null) throw caught
+}
+
 function slots(carrier: () => unknown): Array<{ name: string; drive: (s: Scope) => void }> {
   const parent = document.createElement("div")
   const needsScope = carrier() as never
@@ -136,13 +182,27 @@ function slots(carrier: () => unknown): Array<{ name: string; drive: (s: Scope) 
       name: "ref value",
       drive: (s) => ref(s, document.createElement("div"), needsScope as never),
     },
+    // These two DISPATCH, and that is not a convenience — it is where the slot
+    // is READ, which is what C3.8 says the test has to be on.
+    //
+    // A handler is the one Cell slot whose value the callee must NOT invoke at
+    // the drive: calling it there would fire the handler. So the branded shapes
+    // are caught at bind time by the value test, and the LAUNDERED shape —
+    // `() => aBlock`, which carries no brand and is a legal 0-arity handler by
+    // inspection — is only distinguishable once it has been called and has
+    // handed back a Block. `applyRefs` already resolved `ref` the same way, by
+    // testing what the callback RETURNED.
+    //
+    // Driving only the bind would ask for a throw at a position where the
+    // information does not exist yet, which is a claim no implementation can
+    // satisfy without calling user code at the wrong time.
     {
       name: "delegated handler value",
-      drive: (s) => delegate(s, document.createElement("div"), "click", needsScope as never),
+      drive: (s) => dispatched(s, (inner, node) => delegate(inner, node, "click", needsScope as never), new MouseEvent("click", { bubbles: true })),
     },
     {
       name: "direct listener value",
-      drive: (s) => listen(s, document.createElement("div"), "scroll", needsScope as never),
+      drive: (s) => dispatched(s, (inner, node) => listen(inner, node, "scroll", needsScope as never), new Event("scroll")),
     },
   ]
 }

@@ -7,9 +7,17 @@
  * unpinned set was tracked by §14's prose, which is to say by hand.
  *
  * This list is the other direction, checked in. A rule may leave it only by
- * acquiring a channel — an L1 fixture that declares it, or the L2b channel's
- * declared reach — and adding a rule to the document without a fixture, or
- * writing a fixture without striking the rule off, is a diff either way.
+ * acquiring a channel — an L1 fixture that declares it, or a channel's declared
+ * reach (`CHANNEL_RULES`, `ADDRESS_CHANNEL_RULES`, `HYDRATION_CHANNEL_RULES`,
+ * `L4_RULES`, and `TYPE_CHANNEL_RULES` since M12) — and adding a rule to the
+ * document without a fixture, or writing a fixture without striking the rule
+ * off, is a diff either way.
+ *
+ * M12 struck C4 through the last of those. Both of C4's falsification
+ * procedures are "MUST be a type error", which no other oracle here can see:
+ * they all compile a fixture and RUN it, and a type error produces no DOM, no
+ * effect count and no diagnostic. `src/jsx-types/` was built at M11 for B8 and
+ * the counter could not see it until it had a declared reach.
  *
  * It is a floor, not a target: 76 of 88 documented rules were unobserved at M0,
  * which is what §14's worklist is for. The number is printed by the L1 banner
@@ -98,7 +106,7 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   "B1", "B2", "B3", "B5",
   // C
   "C3.1", "C3.2", "C3.3", "C3.4", "C3.5",
-  "C4", "C5", "C5.2", "C8", "C9",
+  "C5", "C5.2", "C8", "C9",
   // E
   "E1", "E3", "E4",
   // H — EMPTY. M6 struck H5 off by building the channel §14.2 named (the

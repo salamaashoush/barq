@@ -16,6 +16,7 @@ import { L4_RULES } from "./graded.ts"
 import { L4_DIR } from "./session.ts"
 import { ADDRESS_CHANNEL_RULES } from "./addresses.ts"
 import { HYDRATION_CHANNEL_RULES } from "./hydration.ts"
+import { TYPE_CHANNEL_RULES } from "./type-channel.ts"
 import { CHANNEL_RULES, OWNERSHIP_DIR } from "./ownership.ts"
 import {
   documentedRules,
@@ -89,6 +90,7 @@ const PINNED = new Set<string>([
   ...ADDRESS_CHANNEL_RULES,
   ...HYDRATION_CHANNEL_RULES,
   ...L4_RULES,
+  ...TYPE_CHANNEL_RULES,
 ])
 
 /**

@@ -2411,13 +2411,22 @@ milestone left in §8", which is a row navigating around a document rather than 
   `normalizeChildToNodes`. M9 restructured `insert` to make such an array one live hole and the
   row's text went on describing the shape from before it. A registered row can rot in its REASONING
   while its observation stays true, and only re-deriving the path finds it.
-- **C3.8's laundered/provide pair is a DECISION, not an implementation.** The measurement was made
-  at M9 and re-verified at M12: `provide` calls `provideOn(instance, context.id, value)` and never
-  invokes the Cell, so no read-side probe can make the drive throw. Either a provider's value is
-  probed EAGERLY at install — a semantic change about when a provider's Cell first runs — or the
-  claim is re-cut to observe the provide slot at its READ. The second is a fixture change and lands
-  immediately. Nothing else in the row is blocked: `each`'s source IS read synchronously and is one
-  wrap, but a partial fix moves no row, because the claim is about all 18 (shape, slot) pairs.
+- ~~**C3.8's laundered/provide pair.**~~ DONE, and it took all three answers the row was holding
+  open at once. A provider's value is **probed EAGERLY at install** — the semantic change the row
+  called "nobody's decision yet", and the one that mattered, because a provided Cell yielding a
+  Block reached every consumer and the first thing to stringify it wrote a Block's source text where
+  a value belonged. `each`'s source is tested **inside `mapArray`**, where the read has already
+  happened, so it costs a property probe rather than the closure-per-construction the row costed for
+  wrapping at the drive. The two HANDLER slots are tested on the **RETURN**, which is what
+  `applyRefs` already did for `ref`: a handler must not be invoked at the bind, so a laundered
+  carrier is indistinguishable from a legal 0-arity handler until it has been called. That last one
+  needed the claim re-cut to DISPATCH — the refusal ROUTES rather than escaping, because an
+  exception thrown in a listener does not leave `dispatchEvent` (measured), so an error boundary is
+  what observes it.
+
+**All three known-failure registries are now EMPTY.** `known-failures.ts`,
+`ownership-known-failures.ts` and `leak-known-failures.ts` carry no rows, and the L1 banner reads
+`0 registered-and-still-failing, 128 holding as controls`.
 
 
 ## 9. MEASUREMENT PLAN

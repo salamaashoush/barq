@@ -709,11 +709,30 @@ C3.7 `HOLDS`: a Cell degrades in a Block slot, and the converse is C3.8.
 C3.9 `HOLDS`: a forwarded Block is still a Block.
 `sem-props-block-in-cell-slot` drives all three.
 
-C3.8 `PARTIAL`. Ten of twelve (shape, slot) pairs take a Block and throw. The two that do not are
-registered in `test/known-failures.ts` and are the same shape: a laundered `() => aBlock` carries no
-brand, so only the slot's own read can catch it, and `each source` and `provide value` hand the Cell
-on by identity rather than reading it at a site. §13 carried this as `H` while a registered
-known-failure said otherwise.
+C3.8 `HOLDS` since M12. All EIGHTEEN (shape, slot) pairs take a Block and refuse it.
+
+The four that held out were one shape — a laundered `() => aBlock`, which carries no brand — and
+each needed its own answer, because "the carrier is stored at the drive and read later" is a
+different problem at each site:
+
+- **`provide`'s value is PROBED at install**, not merely stored. This is the semantic change the
+  registry row called "nobody's decision yet", and it is the one that mattered: a provided Cell
+  yielding a Block reached every consumer of that context, and the first thing to stringify it put a
+  Block's source text where a value belonged — the same outcome as the `setProp` case that made this
+  rule worth a row. X2 already says a provided value is a Cell so provider updates stay live; what
+  moved is only when its FIRST read happens, and `untrack` keeps that read out of whatever
+  computation is installing.
+- **`each`'s source is tested inside `mapArray`**, where the read has already happened. The row
+  costed this as "a closure per construction on the benchmarked list path" — that is the cost of
+  wrapping at the DRIVE, and testing at the read is one property probe on a value already in hand.
+  Untested it failed as `items.slice is not a function`, which names neither the rule nor the slot.
+- **The two HANDLER slots are tested on the RETURN**, which is what `applyRefs` already did for
+  `ref`. A handler is the one Cell slot whose value the callee must not invoke at the drive —
+  calling it there would fire the handler — so a laundered carrier is indistinguishable from a legal
+  0-arity handler until it has been called and has handed back a Block. The claim was re-cut to
+  DISPATCH, because that is where the slot is READ, and the refusal ROUTES rather than escaping: an
+  exception thrown in a listener does not leave `dispatchEvent`, measured. An error boundary
+  observes it, which is what an application would have.
 
 **`s === undefined` is not the whole test, and taking it for the whole test left two slots open.**
 The rule's own wording is about the ENTRY of a Block invoked with no scope, which makes the guard the
@@ -780,8 +799,18 @@ type error in value position — which is the point of stating the type at all.
 `() => string`. `props.children()` where `children: JSX.Element` MUST be a type error (a `Block`
 requires a `Scope`).
 
-**Status.** `PLANNED` (M3). **Pinned by.** `sem-props-typed-slot.d.test.ts` *(new; a type-level test,
-not a DOM fixture — this rule is checkable only in the type channel)*.
+**Status.** `HOLDS` since M12.
+
+Both falsification procedures are "MUST be a type error", so this rule is checkable ONLY in the type
+channel — invisible to every other oracle here, all of which compile a fixture and RUN it. §14.1 had
+named `sem-props-typed-slot.d.test.ts` since M3 and it was never written, because the channel did not
+exist; `src/jsx-types/` arrived at M11 for B8 and this is that test in its shape.
+
+**Pinned by.** `packages/core/src/jsx-types/props-typed-slot.types.tsx`, run by
+`form-action-types.test.ts`, which typechecks the directory in isolation and asserts BOTH directions
+— the positives compile, and every `@ts-expect-error` still FIRES. The second half is what makes a
+rule whose content is "this does not typecheck" worth anything: measured by deleting one expectation
+and confirming `tsc` then reports the error it was suppressing.
 
 ### C5 — forwarding is free, depth-independent, and kind-preserving
 
@@ -3052,9 +3081,9 @@ green, which is why L1 exists.
 | C3.1–5 | the five props laws | **V** | `sem-props-laziness-conformance` *(new)*, `sem-props-cell-not-memoised` *(new)*, `component-getter-props` |
 | C3.6 | Cells are arity-tolerant | H | `sem-props-block-in-cell-slot` |
 | C3.7 | Cell-in-Block-slot is safe; the converse is not | H | `sem-props-block-in-cell-slot` |
-| C3.8 | a Block with no scope throws, never falls back | P — 14 of 18 | `sem-props-block-in-cell-slot` |
+| C3.8 | a Block with no scope throws, never falls back | **H** (M12) — 18 of 18 | `sem-props-block-in-cell-slot` |
 | C3.9 | kind travels with the value | H | `sem-props-block-in-cell-slot` |
-| C4 | props are called; `Slot<T>` / `Props<P>` | P (M3) | `sem-props-typed-slot.d.test.ts` *(new, type channel)* |
+| C4 | props are called; `Slot<T>` / `Props<P>` | **H** (M12) | `packages/core/src/jsx-types/props-typed-slot.types.tsx` (the type channel) |
 | C5 | forwarding is identity and depth-independent | H | `props-raw-forward`, `sem-props-forward-identity` *(new)* |
 | C5.1 | a Block in a Cell slot: diagnostic or throw | H | `sem-props-block-in-cell-slot`, `docs/BARQ010.md` |
 | C5.2 | η-reduction is Cell-only | H | `flow-prop-eta-boundary` |

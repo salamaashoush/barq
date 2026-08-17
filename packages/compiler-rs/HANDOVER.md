@@ -25,13 +25,14 @@ each says so.
 
 ```
 cargo test                    303 pass, 0 fail   (clippy clean, fmt clean)
-compiler-rs bun test         3494 pass, 0 fail
-packages/core                 983 pass, 0 fail
+compiler-rs bun test         3483 pass, 0 fail   (fewer than M11: the registries emptied, so
+                                                 their per-row tests are gone)
+packages/core                 985 pass, 0 fail
 packages/extra                153 pass, 0 fail
 packages/testing               16 pass, 0 fail   (COMPILED — see M9 below)
 packages/compiler              22 pass, 0 fail
 root bun run ci               EXIT=0
-fixtures                      141  (32 semantics, 128 L1 claims; 53 of 97 rules pinned)
+fixtures                      141  (32 semantics, 128 L1 claims; 54 of 97 rules pinned)
 kitchen-sink                  builds; all 9 routes drive in real Chrome, reactive, routed
 kitchen-sink typecheck        56 errors, NOT ci-gated, two known classes (see below)
 ```
@@ -43,7 +44,9 @@ with the same suite green in isolation and green again once a `vite dev` server 
 were killed. Read the message before believing a failure there, and do not drive the app and run the
 suite at the same time.
 
-Registries: `known-failures.ts` 5 · `ownership-known-failures.ts` 2 · `leak-known-failures.ts` 3.
+Registries: **all three are EMPTY at M12** — `known-failures.ts`, `ownership-known-failures.ts` and
+`leak-known-failures.ts` carry no rows, and the L1 banner reads `0 registered-and-still-failing, 128
+holding as controls`. (The counts below are M9's, kept where they were measured.)
 `hydration.ts`'s `control-flow-for-keyed-spread` row is DELETED at M10 — it was registered for
 `not-hydratable` because an adapter has no flags to forward, and the construct is a region with the
 flag on it now.
@@ -519,6 +522,50 @@ kitchen-sink's `main.tsx` spelled the Block form out by hand as an explicit
 workaround, with a comment saying why. It is a plain JSX argument again, and all
 nine routes drive clean and reactive on it.
 
+### M12, continued — C3.8 closed, and all three registries are EMPTY
+
+The last row took all three answers it had been holding open, and each site
+needed a different one because "the carrier is stored at the drive and read
+later" is a different problem at each:
+
+- **`provide` PROBES its value at install.** This is the semantic change the row
+  called "nobody's decision yet" and it is the one that mattered: a provided Cell
+  yielding a Block reached every consumer of that context, and the first thing to
+  stringify it wrote a Block's source text where a value belonged — the outcome
+  that made this rule worth a row. X2 already says a provided value is a Cell so
+  updates stay live; what moved is only when its FIRST read happens, and
+  `untrack` keeps that read out of whatever is installing.
+- **`each`'s source is tested inside `mapArray`**, where the read has already
+  happened. The row costed this as "a closure per construction on the benchmarked
+  list path" — that is the cost of wrapping at the DRIVE. At the read it is one
+  property probe on a value in hand. Untested it failed as
+  `items.slice is not a function`, naming neither the rule nor the slot.
+- **The two HANDLER slots are tested on the RETURN**, which is what `applyRefs`
+  already did for `ref`. A handler is the one Cell slot whose value the callee
+  must NOT invoke at the drive — that would fire it — so a laundered `() => aBlock`
+  is indistinguishable from a legal 0-arity handler until it has been called. The
+  claim was re-cut to DISPATCH, and the refusal ROUTES rather than escaping:
+  **an exception thrown in a listener does not leave `dispatchEvent`**, measured.
+  An error boundary observes it, which is what an application would have.
+
+`known-failures.ts`, `ownership-known-failures.ts` and `leak-known-failures.ts`
+now carry NO rows, and the L1 banner reads `0 registered-and-still-failing, 128
+holding as controls`.
+
+### The type channel is a declared channel now
+
+`src/jsx-types/` was built at M11 for B8 and the coverage counter could not see
+it: `PINNED` was L1 fixtures plus the L2b, address, hydration and L4 reaches.
+`test/type-channel.ts` is its declared reach, on the same terms as the others —
+adding a rule to it without a `.types.tsx` that observes it is the same offence
+as adding one to the document with no fixture.
+
+C4 is pinned through it (`props-typed-slot.types.tsx`), which §14.1 had wanted
+since M3 as `sem-props-typed-slot.d.test.ts` and which was never written because
+the channel did not exist. Both of C4's falsification procedures are "MUST be a
+type error", so no other oracle here can see it — they all compile a fixture and
+RUN it. Coverage 53 → **54 of 97**.
+
 ### Two things worth knowing about the reference
 
 - **`§12` was read against `beta.31`; `rc.0` is what M10 and M11 read.** `rc.0` still exports NO
@@ -663,15 +710,28 @@ intend to keep working.
   boundary.
 - ~~**`loadingValue` — "commit #0" — has no equivalent here.**~~ CLOSED at M11 as A8, on `computed`
   and threaded through `resource`.
-- **§12 was read against `beta.31` and `rc.0` is what M10/M11 read.** `rc.0` still exports no
-  transition API, so Q7's finding holds — but its internals grew `resolveTransition`,
-  `initTransition`, transaction stashing and a loading rail described as "invisible to
-  transactions". A re-read pass against `rc.0` is worth a milestone item; two doc claims were
-  already found false at M10 by doing exactly that.
-- **A `flow.ts` bug M7 found and correctly refused to fix in a file it did not own**: after a
-  `Loading` boundary parks and reveals, a nested region at a detached site that swaps *later* writes
-  into an orphaned fragment — the fallback is built and never reaches the document. Bisected; not
-  async-specific.
+- **§12 was read against `beta.31`; M10, M11 and M12 read `rc.0`.** What that re-read has produced
+  so far, all of it landed rather than pending: the ten-construct control-flow surface and `Show`'s
+  non-keyed default (M10), `Reveal`'s three orders and the nesting matrix (A6), `computed`'s
+  `PromiseLike | AsyncIterable` (A7), `loadingValue` (A8), and the confirmation that `rc.0` exports
+  **no** transition API — no `startTransition`, no `useTransition` — so §12 Q7's finding holds at
+  the rc.
+  What is NOT yet read: `rc.0`'s internals grew `resolveTransition`, `initTransition`, transaction
+  stashing and a loading rail described as "invisible to transactions", all behind that same empty
+  public surface. That is an implementation this project has no counterpart for and no need to copy
+  — barq's `action()` delimits its transaction explicitly where theirs must infer one — but it is
+  the last part of §12 written from the older package, and the method that produced everything
+  above is the one that would settle it: `npm pack`, unpack, read `types/` and `dist/prod/`.
+- ~~**A `flow.ts` bug M7 found**~~ — CLOSED at M12 by MEASUREMENT, not by a fix, and it had no test
+  anywhere from M7 to M12. M10 fixed one half (leaving the park takes every child of the fragment).
+  The other half **does not reproduce in the shape the compiler emits**:
+  `<Loading><Show/>…</Loading>` compiles to `branch(s, null, null, …)`, so `siteFor` gives the region
+  a MARKER, the marker is one of the boundary's own nodes and travels with the content on both
+  moves, and a later swap lands wherever the marker now is. The reproducer is a region handed a
+  `DocumentFragment` AS ITS PARENT — a fragment drains when inserted, so its child list is empty
+  from that moment — and the compiler never emits that. `loading-nested-region.test.ts` pins both:
+  the compiled shape as a regression test, and the fragment shape asserted as it IS, because "does
+  not reproduce" is worth nothing without the shape that does.
 - **`Dynamic`, `Await` and `Reveal` do not lower** to primitives, each for a stated reason in M4b's
   report. Those reasons are facts about the constructs, not gaps, but they are worth revisiting once
   the async model is settled.

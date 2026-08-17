@@ -320,10 +320,19 @@ function delegatedEventHandler(e: Event): void {
           // null, so an `effect` or an `onCleanup` created here became an
           // ORPHAN that the next flush released, owned by nobody, forever.
           ownedBy(owner, "handler", () => {
+            // The RETURN is tested for the same reason `applyRefs` tests one:
+            // the LAUNDERED shape, `() => aBlock`, carries no brand for the
+            // value test above to see, and a handler is invoked with the Event
+            // so `block`'s entry guard can never fire either. The Block arrives
+            // as what the handler returned, and left alone it is a handler that
+            // silently does nothing.
             if (typeof handler === "function") {
-              handler.call(node, e);
+              refuseBlock(handler.call(node, e), `on${e.type} (a Cell yielded a Block)`);
             } else if (Array.isArray(handler) && typeof handler[0] === "function") {
-              handler[0].call(node, handler[1], e);
+              refuseBlock(
+                handler[0].call(node, handler[1], e),
+                `on${e.type} (a Cell yielded a Block)`,
+              );
             }
           });
         } catch (error) {
@@ -849,7 +858,15 @@ function routedListener(
   return function (this: unknown, e: Event): void {
     try {
       ownedBy(owner, "handler", () => {
-        handler.call(element, e);
+        // C3.8's laundered shape, tested on the RETURN — the same move
+        // `applyRefs` already makes for `ref`, and for the same reason: a
+        // handler is invoked with the EVENT, so `block`'s entry guard can never
+        // fire and a `() => aBlock` carries no brand for the value test to see.
+        // The Block arrives as what the handler returned. Left alone it is a
+        // handler that silently does nothing, which is the failure this rule is
+        // about; the cost is one property probe per dispatch, against a DOM
+        // event.
+        refuseBlock(handler.call(element, e), `on${e.type} (a Cell yielded a Block)`);
       });
     } catch (error) {
       routeError(owner, error);

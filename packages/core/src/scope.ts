@@ -28,6 +28,8 @@ import {
   lookupContext,
   ownRange,
   pin,
+  readSlot,
+  untrack,
   provideOn,
   requireScope,
   ScopeMissingError,
@@ -93,6 +95,24 @@ export function provide<T, R>(
   block: Block<R>,
 ): R {
   const instance = enter(requireScope(scope, "provide"));
+  // C3.8: the provided value is PROBED here, not merely stored.
+  //
+  // `provide` used to file the Cell and never invoke it, so a laundered
+  // `() => aBlock` — which carries no brand for a value test to see — reached
+  // every consumer of this context as a Cell that yields a Block, and the first
+  // thing to stringify it put a Block's source text where a value belonged.
+  // That is the outcome the `setProp` case made this rule worth having, and no
+  // read-side probe could reach it: nothing here ever called the Cell.
+  //
+  // The trade this makes is stated rather than hidden: a provider's Cell now
+  // runs ONCE at install rather than first at its earliest read. X2 already
+  // says a provided value is a Cell so that provider updates are live, and a
+  // consumer still reads it live; what moves is only when the first read
+  // happens. `untrack` keeps that first read out of whatever computation is
+  // installing, so it creates no dependency that did not exist before.
+  if (typeof value === "function") {
+    untrack(() => readSlot(value, "provide value"));
+  }
   provideOn(instance, context.id, value);
   let built = false;
   try {

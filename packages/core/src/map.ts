@@ -12,7 +12,7 @@
  */
 
 import type { Computed, Signal } from "./signals.ts";
-import { computed, scope, onCleanup, signal } from "./signals.ts";
+import { ScopeMissingError, computed, isBlock, scope, onCleanup, signal } from "./signals.ts";
 import type { Scope } from "./scope.ts";
 
 export type Maybe<T> = T | undefined | null | false;
@@ -144,6 +144,16 @@ export function mapArray<Item, MappedItem>(
   const node = computed<MappedItem[]>(
     () => {
       const source = list();
+      // C3.8's laundered shape, tested where the value is actually READ. `each`
+      // hands its source to this by identity, so there is no site at the drive
+      // to test the YIELD at, and wrapping it there would cost a closure per
+      // construction on the list path. Here the read has already happened and
+      // the test is one property probe on a value in hand. Without it a
+      // `() => aBlock` source fails as `items.slice is not a function`, which
+      // names neither the rule nor the slot.
+      if (isBlock(source)) {
+        throw new ScopeMissingError("each source (a Cell yielded a Block)");
+      }
       const items = source || [];
       const newLen = items.length;
 

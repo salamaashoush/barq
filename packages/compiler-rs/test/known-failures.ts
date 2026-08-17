@@ -162,6 +162,28 @@ const ROWS: readonly KnownFailure[] = [
   // value test its four Cell slots never had. The LAUNDERED shape is what is
   // left.
   //
+  // CLOSED at M12, and it took all three answers the row had been holding open.
+  //
+  //   - `provide`'s value is PROBED at install now, not merely stored. That is
+  //     the semantic change the row called "nobody's decision yet" and it is the
+  //     one that mattered: a provided Cell yielding a Block reached every
+  //     consumer, and the first thing to stringify it put a Block's source text
+  //     where a value belonged — the same outcome as the `setProp` case that
+  //     made this rule worth a row. X2 already says a provided value is a Cell;
+  //     what moved is when its FIRST read happens, and `untrack` keeps that read
+  //     out of whatever is installing.
+  //   - `each`'s source is tested inside `mapArray`, where the read has already
+  //     happened — so the test is one property probe on a value in hand rather
+  //     than the closure per construction the row costed on the list path.
+  //   - the two HANDLER slots are tested on the RETURN, which is what
+  //     `applyRefs` already did for `ref`. A handler must not be invoked at the
+  //     bind — that would fire it — so the laundered shape is indistinguishable
+  //     from a legal 0-arity handler until it has been called. The claim was
+  //     re-cut to DISPATCH, because that is the read, and the refusal ROUTES
+  //     rather than escaping: an exception thrown in a listener does not leave
+  //     `dispatchEvent`, measured. An error boundary observes it, which is what
+  //     an application would have.
+  //
   // The M2 gate round added the three slots the fixture had no way to see:
   // `ref`, a delegated handler and a direct listener. They are the two positions
   // where `block`'s entry guard is STRUCTURALLY UNREACHABLE, because the value
@@ -172,49 +194,6 @@ const ROWS: readonly KnownFailure[] = [
   // row went 2/12 → 4/18 because the fixture grew eyes, not because anything
   // regressed.
   // -------------------------------------------------------------------------
-  {
-    fixture: "sem-props-block-in-cell-slot",
-    claim: "every-shape-of-block-throws-at-every-cell-slot",
-    rule: "C3.8",
-    observed: "9a6ced41e168",
-    status: "VIOLATED",
-    greenAt: "M12",
-    reason:
-      "4 of the 18 (shape, slot) pairs still take a Block without throwing, every one of them the " +
-      "LAUNDERED shape — a Cell that yields a Block, which carries no brand, so only a test on the " +
-      "READ can see it. All four share ONE structural property: the carrier is STORED at the " +
-      "drive and read later, so there is no read inside the call to test at. `each`'s source is " +
-      "handed to `mapArray`/`repeat` by identity; `provide`'s value is read at `Ctx.use()`; a " +
-      "delegated handler and a direct listener are read at DISPATCH, and nothing is dispatched by " +
-      "binding one. `setProp`'s laundered case was CLOSED — it stringified the Block's own source " +
-      "text into the attribute, which is the outcome that made this worth a row rather than a " +
-      "note — and `ref`'s was closed in the M2 gate round: `applyRefs` invokes the carrier " +
-      "eagerly, so the Block arrives as the callback's return value and the brand test moved onto " +
-      "it. The three slots that gained a GUARDED and a PINNED pass in that round are `ref`, " +
-      "`delegate` and `listen`, and those are the blocker this row does not cover. " +
-      "M5 shipped without it and M6 was the server, so this row had no owning milestone left in " +
-      "§8, and the marker moves M5 → M9 on a MEASUREMENT that also rules out the obvious fix. " +
-      "Driving `provide(root, Theme, () => aBlock, () => null)` with a counter on the carrier " +
-      "reports the carrier called ZERO times: a provider's value Cell is stored and never invoked " +
-      "by `provide`, so a read-side `readSlot` — the fix this row's earlier text proposed — cannot " +
-      "make this drive throw at all. Closing the laundered/provide pair needs the value probed " +
-      "EAGERLY at install, which is a semantic change about when a provider's Cell first runs and " +
-      "is nobody's decision yet. The same probe shows `each`'s source IS read synchronously " +
-      "(`mapArray` reads it inside `syncRows`, and a Block reaching there fails as " +
-      "`items.slice is not a function`), so that half is one wrap — but a wrap costs a closure per " +
-      "construction on the benchmarked list path and moves no row on its own, because this claim " +
-      "is about all 18 (shape, slot) pairs. THE USER'S CALL, and the two options are: probe a " +
-      "provider's value eagerly at install, or re-cut this claim so the provide slot is observed " +
-      "at its READ rather than at the drive. " +
-      "M9 → M12 at M11. Unlike the two rows above this one is not waiting on engineering — the " +
-      "measurement that decides it was made at M9 and the answer has been ready since. It is " +
-      "waiting on the decision in the sentence before this one, which was written into a registry " +
-      "row and never put anywhere a user would answer it. That is the second thing the dead " +
-      "overdue gate cost: a row parked on a question nobody was asked. The marker moves rather " +
-      "than the row closing, because the question is still open; if the answer is 'observe the " +
-      "provide slot at its READ', the change is to this fixture and lands immediately.",
-  },
-
 ]
 
 
