@@ -192,6 +192,7 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "props-renamed-and-defaulted", clones: 3, unattributed: 0, opaque: [] },
   { fixture: "props-rest-spread", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "reactive-attribute", clones: 1, unattributed: 0, opaque: [] },
+  { fixture: "read-mode-binding", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "reassigned-binding", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "ref-cleanup", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "ref-binding", clones: 1, unattributed: 0, opaque: [] },

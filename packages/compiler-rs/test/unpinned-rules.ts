@@ -82,14 +82,15 @@ export const FICTION_PINS: readonly string[] = Object.freeze([
 ])
 
 export const UNPINNED_RULES: readonly string[] = Object.freeze([
-  // A — M7 wrote three fixtures and struck A1, A2, A3 and A4 off. A5 stays,
-  // but for a different reason since M7b: the rule now EXISTS and holds, pinned
-  // by `packages/core/src/actions.test.ts`, which runs all six of its
-  // falsification procedures. What is missing is a COMPILER fixture — A5 is
-  // entirely runtime behaviour, since there is no transition API to emit — so
-  // `sem-async-optimistic-lane` (SEMANTICS.md §14.1) drives the same six
-  // through compiled JSX and strikes this row.
-  "A5",
+  // A — M7 struck A1–A4, and M11 struck A5. The reason A5 sat here was that it
+  // was "entirely runtime behaviour, since there is no transition API to emit".
+  // Half of that survived and half did not. There is still no transition API to
+  // emit, and §12's M11 table enumerates why. But clause (f)'s READ SURFACE is a
+  // compiler surface: `isPending(fn)` and `latest(fn)` invoke their argument, so
+  // the tracked read happens at the call, and a classifier that cannot see it
+  // binds `class={{ stale: isPending(user) }}` BY VALUE — applied once at
+  // construction, for the life of the page. `sem-async-read-mode` is the fixture
+  // and it caught exactly that. A6 and A7 were written already pinned.
   // B
   // B6 and B7 are M7's and are struck: `sem-form-dom-compare` and
   // `sem-form-selection-preserved` pin them, with the real-browser caret

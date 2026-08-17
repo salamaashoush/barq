@@ -1,44 +1,47 @@
 # Handover
 
-Written 2026-08-16. Everything below was measured on this machine, on a forced native rebuild, not
-carried over from a report.
+Written 2026-08-16, extended 2026-08-17 for M11. Everything below was measured on this machine, on a
+forced native rebuild, not carried over from a report.
 
 ## Where this is, in one paragraph
 
-**M9 is done** — the old path is deleted, the `createElement` oracle is retired, and §13's naming is
-finished. Three commits, `c84b8a7` → `b0af252` → `93a44c6`, each its own step. What M9 found on the
-way is under `## M9, done` below, including three rows of `CODESIGN.md` that were REVERSED on
-evidence; read those before re-attempting any of them.
+**M9, M10 and M11 are all done.** M9 deleted the old path and retired the `createElement` oracle;
+M10 landed the spread lowering, `<form action>` as §3.8's compiler surface, and the Solid 2.0
+control-flow alignment; M11 closed M10's two remaining openers — reveal ordering into the boundary
+contract (A6) and the transition surface (§12's M11 table) — plus `computed`'s async arities (A7)
+and A5 (f)'s read surface. Read `## M11` before re-attempting anything in it, and read
+`## M9, done`'s three REVERSED rows and `## M10, so far`'s struck §4.1 rows before re-attempting
+those: each is a documented reversal on evidence, not an oversight.
 
-**M10 is in progress.** Its first item — `passes::flow` lowering a spread source — is DONE, and it
-answered the adapter-deletion question in the negative on evidence; see `## M10, so far` below
-before re-reading §4.1. What remains is the async and transition half.
-
-**M10 proper is async and transitions, on Solid 2.0's model.** `CODESIGN.md` §12 records the mechanism
-in full, read out of their shipped `@solidjs/signals` rather than from documentation. M7b landed a
-first cut; the user wants it finished properly. Read §12 before touching it — the design this project
-originally guessed (a pending scope beside the live one, `KEEPALIVE` parking) is the one the
-reference implementation **rejected on the record**, and both horns of the question this project
-deferred were wrong. `## Open, not yet scoped` below carries the rest of M10's inbox, and the biggest
-NEW item is the one M9 turned up: `passes::flow` cannot lower a construct whose props arrive through
-a spread, and that single gap is what keeps twenty-six runtime adapters alive across both backends.
+**What is left is a short list, and it is at `## Open, not yet scoped`.** The largest single item is
+the other half of `sem-own-given-scope-wins`'s O4.5 row, which is coupled to O5 by measurement.
 
 ---
 
 ## State, verified
 
+Numbers below are M11's. The M9/M10 sections keep their own numbers where they were measured, and
+each says so.
+
 ```
 cargo test                    303 pass, 0 fail
-compiler-rs bun test         3460 pass, 0 fail
-packages/core                 955 pass, 0 fail
+compiler-rs bun test         3482 pass, 0 fail
+packages/core                 973 pass, 0 fail
 packages/extra                153 pass, 0 fail
-packages/testing               16 pass, 0 fail   (now COMPILED — see below)
+packages/testing               16 pass, 0 fail   (COMPILED — see M9 below)
 packages/compiler              22 pass, 0 fail
 root bun run ci               EXIT=0
-fixtures                      139
+fixtures                      140  (139 + read-mode-binding; 31 semantics, 127 L1 claims)
 kitchen-sink                  builds; all 9 routes drive in real Chrome, reactive, routed
-kitchen-sink typecheck        49 errors, all pre-existing and NOT ci-gated (see M10)
+kitchen-sink typecheck        55 errors, NOT ci-gated, two known classes (see below)
 ```
+
+**The full `bun test` run is timing-sensitive.** `L3 — EMI mutation over generated programs` has a
+5,000 ms per-test budget and it is the first thing to blow when the machine is busy: three runs
+during M11 reported four to sixteen "failures" that were all `this test timed out after 5000ms`,
+with the same suite green in isolation and green again once a `vite dev` server and a Chrome session
+were killed. Read the message before believing a failure there, and do not drive the app and run the
+suite at the same time.
 
 Registries: `known-failures.ts` 5 · `ownership-known-failures.ts` 2 · `leak-known-failures.ts` 3.
 `hydration.ts`'s `control-flow-for-keyed-spread` row is DELETED at M10 — it was registered for
@@ -334,19 +337,119 @@ constructs. §4.1's rows stay struck for the reason in `## M10, so far`.
 
 ### Still open, and now measured
 
-- kitchen-sink typecheck is **49**, none of them ci-gated: 22 implicit-any row
-  callbacks and 16 not-callable reads. Generic inference does not survive
-  `LibraryManagedAttributes`, so `<For each={xs}>{(item) => …}` loses `item`'s
-  type. A different gap from the one that was fixed.
-- The `Show`/`Match`/`Portal` divergences above.
-- M10 items 2 and 3 of the original instruction — transitions beyond the form
-  surface, and reveal ordering moving into the boundary contract.
-- `computed`'s compute is `(prev?: T) => T | Promise<T>` and the runtime branches on
-  `instanceof Promise` alone (`signals.ts:1597`); Solid's admits an `AsyncIterable` too.
+- kitchen-sink typecheck is **55** at M11, none of them ci-gated. It was 49; the six added are the
+  same two known classes — one implicit-any row callback from `<For>` and five not-callable prop
+  reads in JS positions — in the two demos M11 added. Generic inference does not survive
+  `LibraryManagedAttributes`, so `<For each={xs}>{(item) => …}` loses `item`'s type, and a prop
+  declared `name: string` makes `props.name()` uncallable to TS while being correct at run time.
+- ~~The `Show`/`Match`/`Portal` divergences~~ — CLOSED at M10.
+- ~~M10 items 2 and 3~~ — CLOSED at M11; see `## M11` above.
+- ~~`computed`'s `instanceof Promise`~~ — CLOSED at M11 as A7.
 - The other half of `sem-own-given-scope-wins`'s O4.5 row, whose reason is written out in
   `known-failures.ts` — `childToNodes` still invokes the Block with `getOwner()` rather than the `s`
-  it was given, and the row says why it lands with O5 or not at all.
+  it was given, and the row says why it lands with O5 or not at all. **Still open at M11.**
 - `extra/src/css.ts` is NOT open: it went at M8 (`35be05c`).
+
+---
+
+## M11 — reveal ordering, the transition surface, and what a compute may return
+
+Four commits, each its own step.
+
+| commit | what |
+|---|---|
+| `c346ade` | A6 — reveal ordering is a slot contract; a nested group is ONE composite slot |
+| `d93bf73` | the transition surface is complete; its static knowledge was not |
+| `2ffcb0a` | A7 — a compute returns a value, ANY thenable, or an async iterable |
+| *(this one)* | A5 (f)'s read surface is a compiler surface, and A5 leaves `unpinned-rules.ts` |
+
+### A6 — the two questions, answered rather than implied
+
+**Does a boundary gain an ordering channel, or does the coordinator stay a provide?** BOTH, and they
+are not alternatives — the reference does both too (`RevealControllerContext` beside a
+`CollectionQueue` carrying `_revealController`/`_disabled`/`_collapsed`). The provide is how a slot
+FINDS its group and has to be a context read through the scope chain, because a `<Loading>` three
+components deep is still in the group (X3, X4). The channel is what a slot must EXPOSE to BE one,
+and it is on the boundary because after the second answer the thing registering is not always a
+boundary.
+
+**What does a nested group register as?** ONE composite slot. That is what forces the channel to
+carry TWO predicates up rather than one: `ready` is every boundary in the slot, `minimallyReady` is
+the slot's own first visible content under its own order. `sequential` advances on the first,
+`together` releases on the second, and for a LEAF they are the same accessor. Both are facts about
+DATA and neither is about what the slot is showing — that is what stops a held group deadlocking
+against its own hold.
+
+Measured before: a nested `<Reveal>` shadowed the outer's provide, so the outer never learned the
+inner existed. `[fa]B:2[fc]` where the rule requires `[fa][fb][fc]`.
+
+Also fixed with it: the default order was `natural` in three of the four spellings while the
+`revealOrder` primitive said `sequential` — and `natural` is the one order that does nothing at the
+top level, so `<Reveal>` with no props was a no-op. And a registration outlived its boundary, so a
+`<Loading>` dying inside a `<Show>` held its group's frontier for the rest of the page.
+
+### The transition surface — enumerated, and the emission really is complete
+
+`CODESIGN.md` §12 carries the table. `action()`, `commit()` and `affects()` emit nothing and should:
+no template, no scope, no ownership, and the lane is created per invocation. `<form action>` is the
+only JSX slot an action can reach — `formaction` on a submit button is typed `string` in the
+reference, so a function surface there would be barq's invention.
+
+**But every piece of static knowledge the compiler had about that surface was wrong or missing.**
+
+- `optimistic()` returns a `Signal<T>` and `analysis::bind` gave it the plain-accessor shape, so
+  `optimistic.set` was a tracked read where `signal.set` is static — and a handler passed by
+  reference LEFT THE DELEGATED SET for an `addEventListener` of its own.
+- `<form action={fn}>` had no TYPE. It was a `TS2322` in any typed app since M10; fixtures are
+  compiled and never typechecked, which is why two of them drove it green.
+- `isPending(fn)` and `latest(fn)` INVOKE their argument, so the tracked read happens inside the
+  callee. Nothing in the classifier could see it, and
+  `class={{ stale: isPending(user) }}` — the reference's own documented example — bound BY VALUE and
+  was applied once at construction. `Prim::ReadMode` is the mirror of `Prim::Untrack`.
+
+A5 (e) was also stated for "an action" and is true of one shape in three: a post-`yield` write in a
+sync generator retires and needs `commit()`, and the same write after an `await` in either async
+shape commits authoritatively. There is no hook inside an async function's own await continuations.
+`commit()` is a no-op where the lane already ended, so writing it always is correct everywhere.
+
+**One candidate declined with the measurement, not by omission.** A binding from an unrecognised
+call is not provably callable, so `onClick={someAction}` takes `bindEvent`. Special-casing `action`
+would need a new `SourceKind` whose only inhabitant is `action`, to save one `addEventListener` at a
+position whose idiomatic spelling is a closure anyway. §12 says why that trade differs from the
+`optimistic` one, which needed no new machinery at all.
+
+### A7 — three arities, one node
+
+`instanceof Promise` is a question about the CONSTRUCTOR. A thenable and an async generator both
+failed it and were stored AS VALUES. A stream is pending until its FIRST yield and settled from then
+on, its iterator is closed by disposal AND by supersession, an empty stream settles rather than
+hanging, and a bare `IteratorResult` is assimilated. Every stream procedure observes MORE THAN ONE
+yield, because one yield is indistinguishable from a promise.
+
+### Two things worth knowing about the reference
+
+- **`§12` was read against `beta.31`; `rc.0` is what M10 and M11 read.** `rc.0` still exports NO
+  transition API — no `startTransition`, no `useTransition` — so Q7's finding holds. But its
+  internals grew a transaction machinery (`resolveTransition`, `initTransition`, a loading rail
+  "invisible to transactions"), and a re-read pass is worth doing.
+- **`rc.0` has `loadingValue` — "commit #0"**, a value a memo is born with that serves during first
+  load WITHOUT suspending and with `isPending` false, leaving the lineage once the first answer
+  lands. barq has no equivalent. Not on M11's list; found while reading `signals.d.ts`.
+
+### `src/jsx-types/` — the type-level channel §14.1 has named since M3
+
+A JSX attribute type is the first thing in this project no oracle could see: every other channel
+compiles a fixture and RUNS it. It shells out to `tsc` over its own tsconfig and asserts both
+directions — the positives compile and every `@ts-expect-error` still FIRES. It is excluded from
+core's own `tsconfig` because `jsxImportSource` is a module specifier resolved from the FILE.
+
+### Where the emission channel and the conformance channel part
+
+A claim asserting `bindEffect` appears in the emission was written into `sem-async-read-mode` first,
+and L3 rejected it: the reference backend expresses the same live binding as an interpreter op. A
+conformance claim is about BEHAVIOUR; the shape of one backend's output is the corpus channel's
+question. Hence two fixtures — `read-mode-binding` for the emission, `sem-async-read-mode` for the
+behaviour.
 
 ---
 
@@ -439,18 +542,13 @@ test. A failure here is a regression, never an expectation to update.
 
 ---
 
-## Starting M10 — read this first
+## M10's three openers — all closed
 
-M10 is **async and transitions on Solid 2.0's model** (`CODESIGN.md` §12), and M9 left it three
-concrete openers. In the order they unblock each other:
-
-1. **Transitions have no compiler surface.** `action()` and `commit()` exist in the runtime and the
-   compiler emits nothing for them. Until it does, §3.8's transition story is exercised only from
-   hand-written calls.
-2. **Reveal ordering belongs in the boundary contract** (§12). `reveal` is a separate primitive
-   standing in for it — it creates a *provide* scope rather than a range, which is why it never fit
-   among the four. If the async model follows Solid's, this is where it goes.
-3. ~~**`passes::flow` lowering a spread source**~~ — **DONE.** It did not keep the twenty-six
+1. ~~**Transitions have no compiler surface.**~~ CLOSED across M10 and M11. `<form action={fn}>` is
+   the surface (B8, M10) and A5 (f)'s read surface is the other half (M11). §12's M11 table
+   enumerates what is left, which is nothing to EMIT.
+2. ~~**Reveal ordering belongs in the boundary contract.**~~ CLOSED at M11 as A6.
+3. ~~**`passes::flow` lowering a spread source**~~ — DONE at M10. It did not keep the twenty-six
    adapters alive; `-O0` does. `## M10, so far` has the numbers.
 
 The `flow.ts` bug M7 found is still open and still not async-specific; it will bite anything built on
@@ -466,9 +564,21 @@ intend to keep working.
 
 ## Open, not yet scoped
 
-- **`Reveal` has no home in the four primitives.** It creates a *provide* scope, not a range, and
-  `boundary()` has no ordering channel. Reveal ordering is first-class in Solid 2.0's boundary story,
-  so if the async model follows theirs, this belongs in the boundary contract.
+- ~~**`Reveal` has no home in the four primitives.**~~ CLOSED at M11 as A6. The answer to "does the
+  boundary gain an ordering channel or does the coordinator stay a provide" is BOTH, and the reason
+  is that a nested group registers as one composite slot, so the thing registering is not always a
+  boundary.
+- **`loadingValue` — "commit #0" — has no equivalent here.** `solid-js@2.0.0-rc.0`'s `signals.d.ts`
+  documents a memo option carrying a value the node is BORN with: it serves during first load
+  without suspending, `isPending` stays false, no transition is held, and it leaves the lineage
+  permanently once the first real answer lands (refetches then use ordinary pending semantics). It
+  is how they drive first-load skeletons from the value rather than from a boundary. Found while
+  reading for A7; never scoped here.
+- **§12 was read against `beta.31` and `rc.0` is what M10/M11 read.** `rc.0` still exports no
+  transition API, so Q7's finding holds — but its internals grew `resolveTransition`,
+  `initTransition`, transaction stashing and a loading rail described as "invisible to
+  transactions". A re-read pass against `rc.0` is worth a milestone item; two doc claims were
+  already found false at M10 by doing exactly that.
 - **A `flow.ts` bug M7 found and correctly refused to fix in a file it did not own**: after a
   `Loading` boundary parks and reveals, a nested region at a detached site that swaps *later* writes
   into an orphaned fragment — the fallback is built and never reaches the document. Bisected; not
@@ -503,6 +613,22 @@ intend to keep working.
   `"` and `class=`.
 - **Four of §13's new names shadow their own initialiser.** `const context = context(1)` is a TDZ
   error, not a warning. The LOCAL is what moves.
+- **A full `bun test` in `compiler-rs` is timing-sensitive and its failures lie.** `L3 — EMI mutation
+  over generated programs` has a 5,000 ms per-test budget and blows it first when the machine is
+  busy. Three M11 runs reported 4, 10 and 16 "failures" that were all `this test timed out after
+  5000ms`, with `differential.test.ts` green at 338/0 in isolation and the whole suite green once a
+  `vite dev` server and a Chrome session were killed. READ THE MESSAGE before believing a failure
+  there, and do not drive the app and run the suite at the same time.
+- **A new corpus fixture moves FIVE checked-in pins, not one**: `effect-counts.ts`,
+  `ownership-known-failures.ts`'s `OWNERSHIP_REACH`, `ownership-census.ts` (a per-fixture row),
+  `leak-known-failures.ts`'s `LEAK_REACH`, and `mode-matrix.ts` — plus three snapshot files. Each
+  fails separately and each wants its own sentence about what moved. The three effect counts agreed
+  across `effect-counts`, `LEAK_REACH` and `OWNERSHIP_REACH` for `read-mode-binding`, which is how
+  you know the number is the fixture's and not an artefact.
+- **An emission assertion is not a conformance claim.** A claim searching `kit.emitted` inside a
+  `fixtures/semantics/` fixture fails L3, because the same fixture runs through the REFERENCE
+  backend, which expresses the same binding as an interpreter op. Behaviour goes in the semantics
+  fixture; emission shape goes in a corpus fixture's `optimality.emits`.
 - **Do not rewrite a large Markdown file with `s.index(...)` splices in a heredoc.** It ate most of
   `HANDOVER.md` twice; the second time the broken version had already been committed by a
   `git add -A`. Splice on LINE indices with asserted anchors, and check `grep -c "^## "` after.

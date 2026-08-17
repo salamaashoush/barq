@@ -2883,7 +2883,8 @@ not. Enumerated against §3.8 and A5, with what each turned out to be:
 |---|---|---|
 | `action(fn)` | none | **nothing to emit.** No template, no scope, no ownership; the lane is created per INVOCATION and the generator is the author's own function. There is nothing to hoist and nothing to resolve |
 | `commit(fn)` | none | **nothing to emit.** A call that flips one module global for the dynamic extent of `fn` |
-| `latest(fn)` / `isPending(fn)` / `affects(fn)` | none | **nothing to emit.** Each takes a thunk, and the thunk is the live-read wrapper the compiler already builds for any hole |
+| `latest(fn)` / `isPending(fn)` | nothing to EMIT, but they must be KNOWN | **`Prim::ReadMode`** — see below. The emission is the ordinary live-read wrapper; what was missing is that the classifier could not tell there was a read to wrap |
+| `affects(fn)` | none | **nothing to emit.** It marks rather than reads, and its argument is a target, not a value the site consumes |
 | `optimistic()` | its RETURN SHAPE | **was wrong** — see below |
 | `optimisticStore()` | its return shape | correct: the `store` tuple, and it was already grouped with `Prim::Store` |
 | `<form action={fn}>` | `Op::FormAction` | done at M10 (B8) |
@@ -2899,6 +2900,29 @@ above it, which is an `addEventListener` per position and a divergence from `sig
 `optimistic` is supposed to BE a `signal`. `optimistic-signal.tsx` had asserted the correct rule in a
 comment since M5 and only ever exercised `.set` inside a closure, where both verdicts hoist
 identically — so the fixture documented the rule and never observed it.
+
+*And the read surface was a compiler surface after all.* `isPending(fn)` and `latest(fn)` INVOKE
+their argument, so the tracked read happens inside the callee. A classifier that does not know the
+callee sees nothing reactive at the site — `isPending(user)` only REFERENCES the accessor, and
+`isPending(() => user())` puts the read in a nested arrow, which is deferred everywhere else,
+because that deferral is exactly what lets a handler hoist to module scope. So
+`class={{ stale: isPending(user) }}` — which is the shape the reference's own documentation uses —
+bound BY VALUE and was applied once at construction, for the life of the page, against B1.
+
+`Prim::ReadMode` names them, and it is the mirror of `Prim::Untrack`: one says the reads inside do
+not happen here, the other says they do. **The reference gets the same case right by being
+conservative rather than by knowing anything.** Compiled through
+`@dom-expressions/compiler@0.50.0-next.25`, the same source emits
+`_$effect(() => !!isPending(user), _v$ => _el$.classList.toggle("stale", _v$))` — their rule is that
+ANY `CallExpression` in an attribute is dynamic, and a bare identifier is not. barq's rule is
+precise, which is target 1's whole argument, and the price of precision is that a combinator which
+hides a read has to be declared. Both spellings are live now and fuse into ONE effect per element
+(B2) where the reference emits one per attribute.
+
+This is also why `unpinned-rules.ts` carried A5 until M11 with the reason "entirely runtime
+behaviour, since there is no transition API to emit". Half of that was right and stayed right; the
+half that was wrong is this clause, and no fixture reached it — `isPending` and `latest` had no
+compiled-JSX coverage at all, so the corpus was green either way.
 
 *A second candidate, declined with the measurement.* A binding initialised by an unrecognised CALL is
 not provably callable, so `onClick={someAction}` takes `bindEvent` rather than the delegated expando.

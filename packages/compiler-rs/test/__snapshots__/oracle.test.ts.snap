@@ -1296,6 +1296,21 @@ attrs 2: 0 a: data-static,href,class
 attrs 3: 0 a: data-static,href,class"
 `;
 
+exports[`rendered DOM golden read-mode-binding: rendered DOM 1`] = `
+"initial: <div class="read-mode"><h1 class="">by reference</h1><h2 class="">through a thunk</h2><p class="settled">a</p><span class="">control</span></div>
+step 0: <div class="read-mode"><h1 class="">by reference</h1><h2 class="">through a thunk</h2><p class="settled">b</p><span class="">control</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 h1: class
+attrs 0: 0/1 h2: class
+attrs 0: 0/2 p: class
+attrs 0: 0/3 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 h1: class
+attrs 1: 0/1 h2: class
+attrs 1: 0/2 p: class
+attrs 1: 0/3 span: class"
+`;
+
 exports[`rendered DOM golden reassigned-binding: rendered DOM 1`] = `
 "initial: <p class="reassigned" title="after">second</p>
 attrs 0: 0 p: class,title"
@@ -1911,6 +1926,8 @@ exports[`marker channel props-renamed-and-defaulted: anchor layout 1`] = `"<div>
 exports[`marker channel props-rest-spread: anchor layout 1`] = `"<div><span>first</span></div>"`;
 
 exports[`marker channel reactive-attribute: anchor layout 1`] = `"<a>go</a>"`;
+
+exports[`marker channel read-mode-binding: anchor layout 1`] = `"<div><h1>by reference</h1><h2>through a thunk</h2><p>a</p><span>control</span></div>"`;
 
 exports[`marker channel reassigned-binding: anchor layout 1`] = `"<p>second</p>"`;
 

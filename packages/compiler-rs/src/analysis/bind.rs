@@ -624,7 +624,13 @@ impl<'a> Binder<'_, 'a> {
             // `useContext` hands back whatever was provided; guessing is the one
             // kind of wrong verdict that produces a silently dead UI.
             Prim::UseContext => Produced::OPAQUE,
-            Prim::Untrack | Prim::Batch | Prim::Peek => Produced::kind(SourceKind::Inert),
+            // `isPending` answers a boolean and `latest` answers the value; a
+            // binding initialised from either holds a plain value, so READING
+            // that binding is not a tracked read. What IS a tracked read is the
+            // call itself, and that is `classify`'s to say (A5 (f)).
+            Prim::Untrack | Prim::Batch | Prim::Peek | Prim::ReadMode => {
+                Produced::kind(SourceKind::Inert)
+            }
             Prim::Flow(_) => Produced::OPAQUE,
         }
     }

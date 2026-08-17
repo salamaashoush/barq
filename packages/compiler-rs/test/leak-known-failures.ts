@@ -153,11 +153,19 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * its own, which is the arm that OPTS IN to rebuilding: three steps, three
  * teardowns. It is here so the corpus states the cost of `keyed` rather than
  * only the saving of not using it.
+ *
+ * M11: +1 session, +2 scope entries, +3 effects, all `read-mode-binding`'s and
+ * all of them the point of it. The three effects are its three LIVE positions —
+ * two `isPending` classes and one `latest` hole — and the number agrees with
+ * `effect-counts.ts` exactly, which is the two channels measuring the same
+ * three bindings from opposite ends. The fourth element in that fixture is the
+ * control and contributes none, which is what says the fix did not simply wrap
+ * every attribute. Survivors stay at zero: a read-mode call creates no owner.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
-  sessions: 156,
-  scopesEntered: 494,
-  effectsCreated: 290,
+  sessions: 157,
+  scopesEntered: 496,
+  effectsCreated: 293,
   listeners: 31,
 })
 

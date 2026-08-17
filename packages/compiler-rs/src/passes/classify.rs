@@ -527,6 +527,34 @@ impl<'a> Lift<'a, '_> {
             return Rx { react: React::Static, ..Rx::OPAQUE };
         }
 
+        // The mirror of `untrack`, and A5 (f)'s read surface: `isPending(fn)`
+        // and `latest(fn)` INVOKE their argument, so the reads inside it happen
+        // HERE. Nothing else in the classifier can see them — a bare accessor
+        // argument is only a REFERENCE, and an accessor written as
+        // `() => user()` puts the read in a nested arrow, which is deferred
+        // everywhere else because that deferral is what makes a handler
+        // hoistable. Without this arm `class={{ stale: isPending(user) }}`
+        // binds by value and the class is applied once at mount and never
+        // again, which is the shape the reference's own documentation uses.
+        if let Some(symbol) = symbol_of(self.scoping, &call.callee)
+            && self.env.kind_of(symbol) == SourceKind::Primitive(Prim::ReadMode)
+        {
+            let mut deps = DepSet::EMPTY;
+            if let Some(argument) = call.arguments.first().and_then(|a| a.as_expression()) {
+                let inner = self.rx(argument);
+                // A closure carries its body's reads in `inner`; anything else
+                // carries its own in `deps` — and a bare accessor identifier
+                // carries neither, because the CALL is inside the callee.
+                deps = deps.join(inner.deps).join(inner.inner);
+                if let Some(argument_symbol) = symbol_of(self.scoping, argument)
+                    && matches!(self.env.kind_of(argument_symbol), SourceKind::Accessor { .. })
+                {
+                    deps = deps.join(self.dep(argument_symbol));
+                }
+            }
+            return Rx { react: React::Reactive, deps, ..Rx::OPAQUE };
+        }
+
         // A member call on a `Resource<T>` — `.state()`, `.loading()` — is the
         // tracked read; `.refetch` / `.mutate` are inert.
         if let Expression::StaticMemberExpression(member) = &call.callee

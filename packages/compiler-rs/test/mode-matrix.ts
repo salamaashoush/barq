@@ -31,7 +31,7 @@ export const MATRIX_EXCEPTIONS = {
     // Its default export is one half of a two-module fixture; the harness
     // compiles the sibling with it and nothing else can.
     "ownership/own-cross-module",
-    // 29 of the 30 L1 fixtures. Their default export is not a page: it is a
+    // 30 of the 31 L1 fixtures. Their default export is not a page: it is a
     // probe the claim runner drives with a scope and a container it controls,
     // and several of them exist to throw. The near-universality is the fact this
     // list is really recording — L1 is almost the only thing that has ever
@@ -42,6 +42,7 @@ export const MATRIX_EXCEPTIONS = {
     // then and the count went on being bumped.
     "semantics/sem-async-abort-on-dispose",
     "semantics/sem-async-optimistic-derived",
+    "semantics/sem-async-read-mode",
     "semantics/sem-async-stale-response",
     "semantics/sem-async-stream",
     "semantics/sem-calling-convention",
@@ -153,10 +154,18 @@ export const MATRIX_EXCEPTIONS = {
 // procedures run in `async-source.test.ts`; what only a fixture can ask is what
 // the BOUNDARY does across a stream's steps, which is the half of A7 that is
 // about `Loading` rather than about the node.
+// And +2 fixtures / +14 cells for A5 (f)'s read surface: `read-mode-binding`
+// (+1 renderableOnBoth) is the emission and `sem-async-read-mode` (+1
+// renderableOnNeither) is the behaviour. They are two fixtures rather than one
+// because the claim splits along the backend line — the reference backend
+// expresses the same live binding as an interpreter op, so `bindEffect` is a
+// fact about the DOM emission and not a conformance verdict. A claim asserting
+// it was written into the semantics fixture first and L3 rejected it, which is
+// the differential doing exactly what it is for.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 192,
+  fixtures: 194,
   modes: 7,
-  cells: 1344,
-  renderableOnBoth: 162,
-  renderableOnNeither: 30,
+  cells: 1358,
+  renderableOnBoth: 163,
+  renderableOnNeither: 31,
 })

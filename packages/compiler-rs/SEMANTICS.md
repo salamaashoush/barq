@@ -2280,7 +2280,19 @@ rule stated for "an action" when it is true of one shape in three.
 
 **(f) The read surface is a mode, and a mode is not a dependency.** A normal read sees the
 override; `latest(fn)` reads through it to the authoritative value; `isPending(fn)` reports that an
-answer is coming. The switch applies **at the node the override lives on** and does not reach through
+answer is coming.
+
+**Both of them INVOKE their argument, and that is a compiler fact as well as a runtime one.** The
+tracked read happens at the call, inside the callee, so a classifier that does not know the callee
+sees nothing reactive at the site: `isPending(user)` only REFERENCES the accessor, and
+`isPending(() => user())` puts the read in a nested arrow, which is deferred everywhere else —
+that deferral is exactly what lets a handler hoist to module scope. Without the rule
+`class={{ stale: isPending(user) }}` — the reference's own documented shape — binds BY VALUE and is
+applied once at construction, for the life of the page, which violates B1. `Prim::ReadMode` is the
+entry that names them, and it is the mirror of `Prim::Untrack`: one says the reads inside do not
+happen here, the other says they do. The reference gets the same case right by being CONSERVATIVE —
+`@dom-expressions/compiler` treats ANY call in an attribute as dynamic — where barq is precise, so
+what is free there has to be declared here. The switch applies **at the node the override lives on** and does not reach through
 a derivation: a memo would cache the answer it computed in one mode and serve it in another, and
 keying a memo on the read mode would mean a value slot per mode on every computed. This is also why
 the buffers cannot be a derivation over a settled signal and a pending-layer signal — that shape has
@@ -2374,10 +2386,14 @@ capture already made. An action whose promise never settles pins the program on 
 `completeAction` is the only caller of `retireLane`.
 
 **Pinned by.** `packages/core/src/actions.test.ts` (`A5: overrides, lanes and the read surface`,
-fourteen claims, plus the three store-form claims in `optimisticStore`). §14.1 names
-`sem-async-optimistic-lane` as the compiler-side fixture still to be written: every claim above is
-runtime behaviour, so the core channel discriminates all nine procedures, but no fixture yet drives
-them through compiled JSX.
+sixteen claims, plus the three store-form claims in `optimisticStore`). The compiler side is
+`form-action` and `sem-form-action-slot` for B8's slot, and `sem-async-read-mode` and
+`read-mode-binding` for clause (f)'s read surface. The forward reference to a
+`sem-async-optimistic-lane` fixture is dropped, and the claim it rested on — that A5 is "entirely
+runtime behaviour, since there is no transition API to emit" — was half wrong. There is still no
+transition API to emit (§12's M11 table enumerates why), and clause (f) is a compiler surface all
+the same: `isPending` and `latest` invoke their arguments, and a classifier that does not know it
+binds the reference's own documented example by value.
 
 ### A6 — reveal ordering is a slot contract, and a nested group is ONE composite slot
 
@@ -2980,7 +2996,7 @@ green, which is why L1 exists.
 | A2 | staleness by `gen` captured at call time | H (M7) | `sem-async-stale-response` |
 | A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
 | A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `optimistic-signal` |
-| A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | `form-action` — the compiler channel A5 did not have until M10; all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
+| A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | `form-action`, `sem-form-action-slot` (B8's slot, M10), `sem-async-read-mode` and `read-mode-binding` (clause (f)'s read surface, M11); all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
 | A6 | reveal ordering is a slot contract, and a nested group is one composite slot | H (M11) | `sem-reveal-nested-group`, `control-flow-reveal`, `l4/c7-reveal` |
 | A7 | a compute returns a value, any thenable, or an async iterable | H (M11) | `sem-async-stream`, and the eight procedures in packages/core/src/async-source.test.ts |
 | B8 | `action` on a `<form>` is decided by the slot, not by the value's shape | H (M10) | `sem-form-action-slot`, `form-action` |
@@ -3108,7 +3124,7 @@ Recorded so that "unpinned" does not silently mean "unenforced".
 | K8 | a lint rule: no module-level mutable insertion state in `packages/core` |
 | R5 | the ablation benchmark in `packages/core`, with correctness assertions per variant |
 | R8 | `packages/core/src/signals.test.ts` "propagation cost in graph depth" — ms per layer at 800 layers against ms per layer at 100, which FAILS on the pre-fix build — with `eleven-cases.ts`'s twelfth case (`chain(500)`) and the `__jrbDepth` sweep in `packages/benchmark/src/tier2/jrb.ts` as the Tier-1 and Tier-2 channels. The rule's observable form is a COST, so a compiler fixture cannot reach it: emission is byte-identical either side of the fix, which is exactly why the defect survived 110 fixtures and eleven reactivity cases. |
-| A5 | `packages/core/src/actions.test.ts`, which runs all nine of A5's falsification procedures, and remains the discriminating channel for eight of them. **The claim that there is no transition API for the compiler to emit was withdrawn at M10**: `<form action={fn}>` is one (B8), and `form-action.tsx` is the corpus fixture that reaches an action through compiled JSX. Driven in a real browser and sampled per microtask across one submit, it observes clauses (d) and (e) and procedure 7 as a sequence — the guess live in the override, `commit` writing the answer underneath it, the lane retiring onto a value that is already right. The forward reference to a `sem-async-optimistic-lane` fixture was never built and is dropped. |
+| A5 | `packages/core/src/actions.test.ts`, which runs all nine of A5's falsification procedures, and remains the discriminating channel for eight of them. **The claim that there is no transition API for the compiler to emit was withdrawn at M10**: `<form action={fn}>` is one (B8), and `form-action.tsx` is the corpus fixture that reaches an action through compiled JSX. Driven in a real browser and sampled per microtask across one submit, it observes clauses (d) and (e) and procedure 7 as a sequence — the guess live in the override, `commit` writing the answer underneath it, the lane retiring onto a value that is already right. The forward reference to a `sem-async-optimistic-lane` fixture was never built and is dropped. **M11 withdraws the other half of the same claim.** Clause (f)'s READ SURFACE is a compiler surface too: `isPending(fn)` and `latest(fn)` invoke their argument, so the tracked read happens inside the callee and a classifier that does not know them sees nothing reactive at the site. `class={{ stale: isPending(user) }}` — the reference's own documented example — bound BY VALUE and was applied once at construction. `read-mode-binding` pins the emission and `sem-async-read-mode` pins the behaviour, and A5 is struck off `unpinned-rules.ts`. |
 
 ---
 

@@ -106,6 +106,7 @@ corpus/props-raw-forward  c5bf4d62b185 e0e153843580 d209fd2848a8 d209fd2848a8 86
 corpus/props-renamed-and-defaulted  dc511dd77b6e 5b7c97ed36aa 2b9e42e92043 a922047ffb48 473c0ab30cbc 1197a037dcfc 960c207d08fe
 corpus/props-rest-spread  de82f4d4648b 2009080b9bc4 7a475f6cbf9a 767fc74ecc6d 69643b26f208 edadceccde30 7a475f6cbf9a
 corpus/reactive-attribute  2e8aec9afd9f 1c1289b286a2 1a200267f475 1a200267f475 8c25158da6bc 2e8aec9afd9f 1a200267f475
+corpus/read-mode-binding  2b74fbf7a1df a90995faa815 cfd976f1c13e cfd976f1c13e 3c65503ad43c 31ca02bb600f cfd976f1c13e
 corpus/reassigned-binding  268c56ff0d07 cb9d6efe75b0 c2f55e538fdd c2f55e538fdd 1847b3d8071b 58422e28fc8f c2f55e538fdd
 corpus/ref-binding  2446a67427e1 4b4e1aff0fbf 9df6e058333a 9df6e058333a bba42eddc24d 3be34b6f33ef 9df6e058333a
 corpus/ref-cleanup  b23ad4eebe40 37e6310f287e c18098ebd700 c18098ebd700 9266cba21f8c 31ced39e29d3 c18098ebd700
@@ -166,6 +167,7 @@ ownership/own-provider-thunked  82aea8d4d34c 071569e2fde5 26ab95f475e7 26ab95f47
 ownership/own-provider-wrapper  65361648da4d 5045ca189bc2 bfcb23b9cf93 bfcb23b9cf93 6a57dae17db3 db08c2877e33 bfcb23b9cf93
 semantics/sem-async-abort-on-dispose  4bf465651c89 f2d4d0cd7332 1d248be0204a 1d248be0204a fb67a107bd80 988d3e294c80 1d248be0204a
 semantics/sem-async-optimistic-derived  b0fac96ae3fe abeca7792f11 6ba882f440a2 6ba882f440a2 5e058e8bb0c5 6965446b7b57 6ba882f440a2
+semantics/sem-async-read-mode  876138f1c702 25fc65c1f5ac d5ae08294f06 d5ae08294f06 d75c56fb5ba0 2701631bec7f d5ae08294f06
 semantics/sem-async-stale-response  266b1b6025f1 4b81b5fbd263 6a6ca47d17bb 6a6ca47d17bb 522b24f44645 a8c87af9be59 6a6ca47d17bb
 semantics/sem-async-stream  ef8068e6fed7 19edb392dc5b 399a77e4e7c9 bc75d89ccccc 0227fdb7753d 4012969b4260 ae2cc9d3bbfc
 semantics/sem-calling-convention  05193fefbc44 0408cfa5ef3b 01afb818a703 01afb818a703 6987427227a7 27815825642e 3a4b0919efdc

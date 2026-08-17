@@ -121,6 +121,9 @@ pub enum Prim {
     Untrack,
     Batch,
     Peek,
+    /// `isPending(fn)` / `latest(fn)` — A5 (f)'s read surface. They INVOKE
+    /// their argument, so the read is theirs and not the call site's.
+    ReadMode,
     Flow(Flow),
 }
 
@@ -144,6 +147,12 @@ impl Prim {
             "mapArray" => Prim::MapArray,
             "repeat" => Prim::Repeat,
             "untrack" => Prim::Untrack,
+            // A5 (f). Both call their argument immediately, which is the fact
+            // the classifier cannot get anywhere else: `isPending(user)` only
+            // REFERENCES `user`, and `isPending(() => user())` puts the read in
+            // a nested arrow, which is deferred everywhere else — that deferral
+            // is what makes a handler hoistable.
+            "isPending" | "latest" => Prim::ReadMode,
             "batch" => Prim::Batch,
             "For" => Prim::Flow(Flow::For),
             "Repeat" => Prim::Flow(Flow::Repeat),

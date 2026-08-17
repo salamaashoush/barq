@@ -172,6 +172,7 @@ const ROWS: readonly EffectCount[] = [
   { fixture: "props-renamed-and-defaulted", created: 3, runs: 4, busiest: 2, frames: 2 },
   { fixture: "props-rest-spread", created: 2, runs: 3, busiest: 2, frames: 2 },
   { fixture: "reactive-attribute", created: 1, runs: 4, busiest: 4, frames: 4 },
+  { fixture: "read-mode-binding", created: 3, runs: 6, busiest: 2, frames: 2 },
   { fixture: "reassigned-binding", created: 0, runs: 0, busiest: 0, frames: 1 },
   { fixture: "ref-binding", created: 0, runs: 0, busiest: 0, frames: 2 },
   { fixture: "ref-cleanup", created: 0, runs: 0, busiest: 0, frames: 1 },

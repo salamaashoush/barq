@@ -214,20 +214,31 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * it: the arm that keys on the value rebuilds on every value change, and the
  * corpus now carries the cost of asking for it beside the saving of not.
  *
- * M11: 271 effects to 273, and NOTHING else moved — same 142 fixtures, same 410
+ * M11 moves it twice, and the two moves say different things.
+ *
+ * First: 271 effects to 273, and NOTHING else. Same 142 fixtures, same 410
  * scopes, same 317 clones, same 315 determined. It is exactly one per `<Reveal>`
  * in the corpus (`control-flow-reveal`, `control-flow-errored-loading`): A6's
  * channel carries TWO readiness predicates up, so a group allocates a
  * `minimallyReady` beside the frontier it already had. That the ownership
  * columns held still is the assertion — the second predicate is a derivation
  * over slots the group already knew about, not a new owner over anything.
+ *
+ * Then `read-mode-binding` is the 143rd fixture: +2 scopes, +3 effects, +1 clone,
+ * +1 determined. The three effects are its three LIVE positions — two
+ * `isPending` classes and one `latest` hole — which is A5 (f)'s fix seen from
+ * this channel, and the number agrees with `effect-counts.ts` and with
+ * `leak-known-failures.ts` exactly. The fourth element in that fixture is the
+ * CONTROL and contributes none: `determined` moving in step with `clones` is
+ * what says the channel still resolves every one of them, and a static class
+ * staying static is what says the fix did not simply wrap every attribute.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 142,
-  scopes: 410,
-  effects: 273,
-  clones: 317,
-  determined: 315,
+  fixtures: 143,
+  scopes: 412,
+  effects: 276,
+  clones: 318,
+  determined: 316,
   unattributed: 1,
   cascades: 1,
 })

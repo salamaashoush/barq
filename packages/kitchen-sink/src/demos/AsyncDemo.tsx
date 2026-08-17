@@ -6,7 +6,20 @@
  * The compiler handles JSX expressions but resource methods need manual calls.
  */
 
-import { Errored, For, Loading, Reveal, Show, resource, signal } from "@barqjs/core";
+import {
+  Errored,
+  For,
+  Loading,
+  Reveal,
+  Show,
+  action,
+  commit,
+  isPending,
+  latest,
+  optimistic,
+  resource,
+  signal,
+} from "@barqjs/core";
 import {
   css,
 } from "../styles";
@@ -25,10 +38,58 @@ export function AsyncDemo() {
       <ResourceDemo />
       <ResourceWithSourceDemo />
       <LoadingBoundaryDemo />
+      <OptimisticLaneDemo />
       <RevealOrderDemo />
       <ErrorResourceDemo />
       <RefetchDemo />
     </DemoSection>
+  );
+}
+
+/**
+ * A5's lane, in the shape the reference's own docs use:
+ * `class={{ stale: isPending(value) }}` beside a `latest()` read.
+ *
+ * Both are LIVE bindings, and both used to be applied once at construction:
+ * `isPending` and `latest` call their argument, so the tracked read happens
+ * inside the callee and the classifier could not see it (A5 (f)).
+ */
+function OptimisticLaneDemo() {
+  const title = optimistic("Untitled");
+
+  const rename = action(function* (next: string) {
+    title.set(next); // the guess, in the override buffer
+    const saved = (yield fetch(`/api/staggered?name=${next}&delay=1200`).then((r) =>
+      r.json(),
+    )) as { name: string };
+    // The answer, written UNDERNEATH the override. Without `commit` this is a
+    // lane write and reverts when the lane retires (A5 (e)).
+    commit(() => title.set(`${saved.name} (saved)`));
+  });
+
+  return (
+    <DemoCard title="optimistic + action - lanes and the read surface">
+      <div class={controlsStyle}>
+        <Button onClick={() => void rename(`Draft ${Math.floor(Math.random() * 90) + 10}`)}>
+          Rename
+        </Button>
+      </div>
+
+      <div class={resultBoxStyle}>
+        <h4 class={{ [staleClass]: true, stale: isPending(title) }} data-testid="lane-title">
+          {() => title()}
+        </h4>
+        <p class={noteStyle}>
+          authoritative: <code data-testid="lane-latest">{() => latest(() => title())}</code>
+        </p>
+      </div>
+
+      <p class={noteStyle}>
+        While the action is in flight the heading shows the guess and is marked stale; `latest()`
+        reads through the override to the value that is really committed. When the lane retires the
+        override drops onto a value that is already correct — nothing is rolled back.
+      </p>
+    </DemoCard>
   );
 }
 
@@ -410,6 +471,13 @@ const noteStyle = css`
   color: #94a3b8;
   font-style: italic;
   margin-top: 12px;
+`;
+
+const staleClass = css`
+  &.stale {
+    opacity: 0.55;
+    font-style: italic;
+  }
 `;
 
 const controlsStyle = css`
