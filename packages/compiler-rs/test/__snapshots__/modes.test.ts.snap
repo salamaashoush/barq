@@ -93,7 +93,7 @@ corpus/nested-template-element  d81a5db701a9 d81a5db701a9 045ffd7a9735 045ffd7a9
 corpus/non-delegated-event  d8640c366485 64a337f2816c 0bbca47f3d9c 0bbca47f3d9c 1e13f16b673b 8bc4aa32691b 0bbca47f3d9c
 corpus/numeric-and-boolean-attrs  e278c6febe81 fbeeb26603e8 fd2d2cb5a64b ee8f3321208e 1e664f42dd99 c9919b3a8c3f fd2d2cb5a64b
 corpus/optimistic-signal  121eec66801f cc8bed0ea5e6 ba1930c5d711 ba1930c5d711 04ff79058586 0210c9afb536 ba1930c5d711
-corpus/portal  91301032d1ac abb0c0150b26 bbf11d7e89f4 eca0e00d6269 69fc2b8bf0d6 946aaaf926ec 87bb87266f5c
+corpus/portal  7e169e9fa61c 736637b18a8a 6abe7e6836a9 65e55e6d710d 8b0e068b7575 f4f40d36828d 76bce7e2c299
 corpus/pre-dynamic-leading-newline  d2ca2703c4ac a58069b67e35 25d709e047db 25d709e047db 0ec4f9ab793a 36b55d523bc4 0ddecd568b01
 corpus/pre-leading-newline  78e18b2c78bf a4d5b48c9903 91c22fb2134e 91c22fb2134e 5b580bb0e1f4 6152a2a59bb1 91c22fb2134e
 corpus/pre-whitespace  3f5ba2a68827 3f5ba2a68827 822ac287c759 822ac287c759 533cdd44bc6d 3f5ba2a68827 822ac287c759
@@ -145,7 +145,7 @@ l4/c7-each-fallback  5e2e2127441b 691b93b4fda8 fd02ebc4a92a b30dc74a3f6e 5f085fc
 l4/c7-error-boundary  cec0b264d97c 39d794c32ae4 e1ef802020c5 001bff598c68 47c1a8cf431b 9286e80e8e95 417c1243b9f6
 l4/c7-error-boundary-fallback  098146e42bfb 5d15cf0f79e2 f6660a8533f8 fe935535b6ba 1689258103ae b0fb944e2b0c adc7ce93b440
 l4/c7-loading-errored  35a5ba174753 cb1a2e5fcb28 46894165cab6 018a84b24c8a 9045e3eb01fd ec4cae759fe0 e7da52d151c6
-l4/c7-portal  f3b43405b27c 91b56e0516d8 b7f7d5337000 8487117dd9f5 6fca7f008ddc e6ebf3f13b60 591b2c01a16f
+l4/c7-portal  f3b43405b27c e9b9dc64df4a b7f7d5337000 71086ea5ca94 6fca7f008ddc e6ebf3f13b60 591b2c01a16f
 l4/c7-provider  c504748a4317 66ce85500edc 304baaaa500a 304baaaa500a f86a099369cd 2f0cc70f9fef 304baaaa500a
 l4/c7-repeat  a0327e1d3e1f da3155cf6a7f 371e3b8fb263 44f08e4ccdbb d430c9e021f6 1f8dfa802392 cd497ac4ce3c
 l4/c7-reveal  9502d6d5edc8 ba59cc787b30 d66d0f73d374 95ac60f55edc 67a214cc2635 cfe59d7009ae a7778460db4a

@@ -16,7 +16,7 @@ export default function C7Portal() {
   return (
     <div class="host">
       <div id="c7-portal-target" />
-      <Portal target="#c7-portal-target">
+      <Portal mount="#c7-portal-target">
         {() => {
           log.push("portal")
           return <p class="teleported">{() => label()}</p>

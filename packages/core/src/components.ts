@@ -150,7 +150,13 @@ export interface ErroredProps {
 }
 
 export interface PortalProps {
-  target?: Cell<HTMLElement | string>;
+  /**
+   * Solid 2.0's name for this slot. It takes a selector STRING as well as an
+   * element, which Solid's does not — `resolveTarget` looks one up — and that
+   * is the one place this is wider than the reference rather than different
+   * from it.
+   */
+  mount?: Cell<HTMLElement | string>;
   children: Slot<Child>;
 }
 
@@ -328,11 +334,11 @@ export function Errored(
 
 export function Portal(
   _s: Scope | null,
-  props: { target?: unknown; children: unknown },
+  props: { mount?: unknown; children: unknown },
 ): JSXElement {
   return portal(
     _s,
-    () => readValue(props.target, "Portal.target") as Node | string | undefined,
+    () => readValue(props.mount, "Portal.mount") as Node | string | undefined,
     props.children as Block<unknown>,
   ) as unknown as JSXElement;
 }

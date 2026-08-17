@@ -1520,7 +1520,7 @@ mod tests {
              export const V = () => (\n  <div>\n    <For each={rows}>{(r) => <li>{r.n}</li>}</For>\n\
              <Show when={on}>yes</Show>\n\
              <Errored fallback={(e) => <b>{e().message}</b>}>x</Errored>\n\
-             <Portal target={t}>p</Portal>\n  </div>\n);\n";
+             <Portal mount={t}>p</Portal>\n  </div>\n);\n";
         let string = ssr(source);
         let nodes = dom(source).code;
         for helper in ["_$branch(", "_$each(", "_$boundary(", "_$portal("] {

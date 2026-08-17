@@ -287,7 +287,7 @@ impl Flow {
             (Flow::For, "each") => Some("each source"),
             (Flow::Repeat, "count" | "from") => Some("each source"),
             (Flow::Show | Flow::Match, "when") => Some("branch key"),
-            (Flow::Portal, "target") => Some("portal target"),
+            (Flow::Portal, "mount") => Some("portal target"),
             (Flow::Loading, "on") => Some("boundary on"),
             (Flow::Reveal, "order" | "collapsed") => Some("branch key"),
             (Flow::Dynamic, "component") => Some("branch key"),

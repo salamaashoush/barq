@@ -1140,14 +1140,11 @@ export function ssrErrored(
 }
 
 /** The pre-Solid-2.0 spelling, whose fallback takes the error BY VALUE. */
-export function ssrPortal(
-  s: Scope | null,
-  props: { target?: unknown; children: unknown },
-): SsrHtml {
+export function ssrPortal(s: Scope | null, props: { mount?: unknown; children: unknown }): SsrHtml {
   return portal(
     s,
     (): Node | string | null | undefined =>
-      readValue(props.target, "Portal.target") as Node | string | undefined,
+      readValue(props.mount, "Portal.mount") as Node | string | undefined,
     props.children as Block<unknown>,
   );
 }

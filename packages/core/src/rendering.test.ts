@@ -313,7 +313,7 @@ describe("Portal component", () => {
 
     try {
       const node = Portal(null, {
-        target: "#portal-target",
+        mount: "#portal-target",
         children: element(null, "span", { children: "Portal content" }),
       });
 
@@ -340,7 +340,7 @@ describe("Portal component", () => {
         disposeScope = dispose;
 
         const node = Portal(scope, {
-          target: "#portal-cleanup-target",
+          mount: "#portal-cleanup-target",
           children: () => {
             onCleanup(() => {
               disposed = true;

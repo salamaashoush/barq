@@ -18,7 +18,7 @@
 //! | `Repeat` | `each` (`COUNT`) | the index |
 //! | `Loading` | `boundary("loading")` | the collector's |
 //! | `Errored` | `boundary("error")` | the collector's |
-//! | `Portal` | `portal` | the target |
+//! | `Portal` | `portal` | the mount |
 //!
 //! `Dynamic` and `Reveal` lower too, since M9. `Reveal` is a `reveal` call
 //! rather than a region row, because it creates a PROVIDE scope and not a range.
@@ -82,7 +82,7 @@ fn recognised(flow: Flow) -> &'static [&'static str] {
         Flow::Repeat => &["count", "from", "fallback"],
         Flow::Loading => &["fallback", "on"],
         Flow::Errored | Flow::Switch => &["fallback"],
-        Flow::Portal => &["target"],
+        Flow::Portal => &["mount"],
         Flow::Match => &["when", "keyed"],
         Flow::Reveal => &["order", "collapsed"],
         // Every other attribute IS the props of whatever the component resolves
@@ -883,7 +883,7 @@ fn portal<'a>(
     kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Region<'a> {
-    let target = bag.take(shaper, "target").map(|attr| value_cell(shaper, attr, "Portal.target"));
+    let target = bag.take(shaper, "mount").map(|attr| value_cell(shaper, attr, "Portal.mount"));
     let body = body_of(shaper, bag, kids, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
 
