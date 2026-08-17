@@ -113,7 +113,7 @@ const ROWS: readonly KnownFailure[] = [
     rule: "O5",
     observed: "0422c93550e1",
     status: "VIOLATED",
-    greenAt: "M9",
+    greenAt: "M12",
     reason:
       "`render(<Tree/>, host)` evaluates its first argument BEFORE `render` is entered, so with an " +
       "owner current the subtree's effects are that owner's kids from the instant they exist and the " +
@@ -138,7 +138,18 @@ const ROWS: readonly KnownFailure[] = [
       "line. The marker moves M5 → M9 for a reason and not for room: §8's M9 is 'the old path " +
       "goes', and the eager `createElement` path this argument form rides on is that path. " +
       "Re-cutting this fixture's three CONTROL claims belongs in the same change, which is a " +
-      "second reason it cannot be an incidental fix inside another milestone.",
+      "second reason it cannot be an incidental fix inside another milestone. " +
+      "M9 → M12 at M11, and this move is the OVERDUE GATE's first output rather than a routine " +
+      "deferral: `CURRENT_MILESTONE` sat at 6 from M6 through M11, so the assertion that catches a " +
+      "rotting marker had itself rotted and this row read as green-with-a-note for five " +
+      "milestones. M9 did land — the old path went — and it did not close this, because " +
+      "`render(<Tree/>, host)` is a CALL and the `scope` pass rewrites DECLARATIONS; the eager " +
+      "path going did not make the argument form stop existing. M10 was spread lowering and the " +
+      "Solid 2.0 alignment, M11 was async and boundaries (A6, A7, A8, A5 (f)); neither touched a " +
+      "call-site argument and `dom.ts` still emits RENDER_SUBTREE_NOT_OWNED from the same line. " +
+      "What it needs is unchanged and now stated as one piece of work: lower a JSX argument at an " +
+      "arbitrary call site to a Block, and re-cut this fixture's three control claims in the same " +
+      "change.",
   },
 
   // -------------------------------------------------------------------------
@@ -168,7 +179,7 @@ const ROWS: readonly KnownFailure[] = [
     rule: "O4.5",
     observed: "4266b62b1a4c",
     status: "VIOLATED",
-    greenAt: "M10",
+    greenAt: "M12",
     reason:
       "HALF of this closed at M9, and the ratchet is how it was noticed. `insert` used to hand an " +
       "array straight to `childToNodes`, which calls each function element once under whatever was " +
@@ -183,7 +194,12 @@ const ROWS: readonly KnownFailure[] = [
       "moves WHERE the Block's cleanups are filed — on A rather than on the effect — so a Block " +
       "re-invoked on update would accumulate them instead of having them cleared per run. The two " +
       "halves land together, in the change that lowers `render`'s JSX argument to a Block and " +
-      "re-cuts that fixture, which is the row above.",
+      "re-cuts that fixture, which is the row above. " +
+      "M10 → M12 at M11, and it moves BECAUSE the row above moves: the coupling is measured, not " +
+      "preferred, so a marker on this row that ran ahead of O5's would be a promise this row " +
+      "cannot keep on its own. M11 read the coupling again and did not weaken it — handing `s` " +
+      "down still turns `control-the-argument-form-reports-that-it-cannot-dispose` red, because " +
+      "the root then owns a kid and RENDER_SUBTREE_NOT_OWNED stops firing.",
   },
 
   // -------------------------------------------------------------------------
@@ -211,7 +227,7 @@ const ROWS: readonly KnownFailure[] = [
     rule: "C3.8",
     observed: "9a6ced41e168",
     status: "VIOLATED",
-    greenAt: "M9",
+    greenAt: "M12",
     reason:
       "4 of the 18 (shape, slot) pairs still take a Block without throwing, every one of them the " +
       "LAUNDERED shape — a Cell that yields a Block, which carries no brand, so only a test on the " +
@@ -238,7 +254,14 @@ const ROWS: readonly KnownFailure[] = [
       "construction on the benchmarked list path and moves no row on its own, because this claim " +
       "is about all 18 (shape, slot) pairs. THE USER'S CALL, and the two options are: probe a " +
       "provider's value eagerly at install, or re-cut this claim so the provide slot is observed " +
-      "at its READ rather than at the drive.",
+      "at its READ rather than at the drive. " +
+      "M9 → M12 at M11. Unlike the two rows above this one is not waiting on engineering — the " +
+      "measurement that decides it was made at M9 and the answer has been ready since. It is " +
+      "waiting on the decision in the sentence before this one, which was written into a registry " +
+      "row and never put anywhere a user would answer it. That is the second thing the dead " +
+      "overdue gate cost: a row parked on a question nobody was asked. The marker moves rather " +
+      "than the row closing, because the question is still open; if the answer is 'observe the " +
+      "provide slot at its READ', the change is to this fixture and lands immediately.",
   },
 
 ]

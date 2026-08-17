@@ -2377,6 +2377,37 @@ mutation operator exists for it and no mutant survives.
 
 ---
 
+### M7 onward — the milestones this section never grew
+
+**§8 was written to M6 and stopped there.** Everything after it was scoped in the working session
+that ran it, and the list below is that history written back, because a milestone-order section that
+ends five milestones before the work does is the same rot the registries have gates against — and it
+has already cost something concrete: `known-failures.ts`'s C3.8 row records that it "had no owning
+milestone left in §8", which is a row navigating around a document rather than by it.
+
+| milestone | what it was |
+|---|---|
+| **M7** | async and the one `resource`; A1–A4; the `Loading`/`Errored` boundaries |
+| **M7b** | lanes and the read surface (A5); the Tier-2 benchmark lane; the hydration detection/wire split (Q4) |
+| **M7c** | the four Tier-2 re-runs; F1 (superlinear propagation), F3 (`setClass` accumulation), F4 |
+| **M8** | `extra`'s CSS decision carried out; `packages/kitchen-sink` as the acceptance app |
+| **M9** | the old path goes; the `createElement` oracle is retired; §13's naming |
+| **M10** | `passes::flow` lowers a spread source; `<form action={fn}>` (B8); the Solid 2.0 control-flow alignment |
+| **M11** | A6 (reveal ordering as a slot contract), A7 (thenable + async iterable), A8 (commit #0), A5 (f)'s read surface, and the type-level channel |
+
+**M12 is where the three surviving `known-failures.ts` rows point.** They are two pieces of work and
+one question:
+
+- **Lower a JSX argument at an arbitrary call site to a Block**, and re-cut
+  `sem-own-render-disposer-disposes`'s three control claims in the same change. This closes O5 and,
+  by a coupling that is measured rather than preferred, O4.5 with it.
+- **C3.8's laundered/provide pair is a DECISION, not an implementation.** The measurement was made
+  at M9: a provider's value Cell is stored and never invoked, so no read-side probe can make the
+  drive throw. Either a provider's value is probed EAGERLY at install — a semantic change about when
+  a provider's Cell first runs — or the claim is re-cut to observe the provide slot at its READ. The
+  second is a fixture change and lands immediately.
+
+
 ## 9. MEASUREMENT PLAN
 
 Every claim is a benchmark file plus a **Wilcoxon signed-rank p-value across ≥5 processes**, never a

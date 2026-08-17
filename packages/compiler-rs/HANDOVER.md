@@ -453,6 +453,35 @@ reads identically either way — the first mutant run proved it, surviving a
 fixture that only read text. `sem-loading-value` reads `isPending` off a live
 class instead, which makes it depend on A5 (f) being true.
 
+### The overdue gate had been dead since M6
+
+`test/milestone.ts`'s `CURRENT_MILESTONE` sat at **6** through M7, M7b, M7c, M8, M9, M10 and M11.
+Its own doc comment says it "moves in the commit that closes a milestone and nowhere else", and the
+paragraph above that says why it exists: *"three rows promised green at M5 and were still VIOLATED
+two milestones later with no assertion able to see it."* That is precisely what then happened to the
+gate itself, for five milestones, reading green throughout.
+
+Bumped to 11, it named all three surviving `known-failures.ts` rows at once — two promised M9, one
+M10. All three now say **M12** and each says why it moved. Two of them are one piece of work (lower
+a JSX argument at an arbitrary call site to a Block; O4.5 is coupled to O5 by measurement). The
+third, C3.8's laundered/provide pair, is **not** waiting on engineering: the measurement that
+decides it was made at M9 and the row ends "THE USER'S CALL". It had been parked on a question
+nobody was asked, which is the second thing the dead gate cost.
+
+Two properties of the gate, both measured rather than assumed:
+
+- `overdue` is `n < CURRENT_MILESTONE`, so a row promising M_n fires only once M_(n+1) is current —
+  ONE milestone of grace. A row marked M11 does not fire at `CURRENT_MILESTONE = 11`; one marked
+  M10 does. That is looser than the constant's own "has SHIPPED" wording implies, and tightening it
+  to `<=` is a change to what the gate promises rather than a bug fix. Left alone, and written down.
+- The other two registries (`ownership-known-failures.ts`, `leak-known-failures.ts`) have **no
+  rows**, so the bump could only ever fire on the L1 one.
+
+**`CODESIGN.md` §8 was written to M6 and stopped**, so this counter had run five milestones past the
+document that defines what it counts — and `known-failures.ts`'s C3.8 row records navigating around
+that ("this row had no owning milestone left in §8"). §8 carries the M7–M11 history and M12's
+contents now.
+
 ### Two things worth knowing about the reference
 
 - **`§12` was read against `beta.31`; `rc.0` is what M10 and M11 read.** `rc.0` still exports NO
