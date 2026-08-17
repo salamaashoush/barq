@@ -167,6 +167,7 @@ ownership/own-provider-wrapper  65361648da4d 5045ca189bc2 bfcb23b9cf93 bfcb23b9c
 semantics/sem-async-abort-on-dispose  4bf465651c89 f2d4d0cd7332 1d248be0204a 1d248be0204a fb67a107bd80 988d3e294c80 1d248be0204a
 semantics/sem-async-optimistic-derived  b0fac96ae3fe abeca7792f11 6ba882f440a2 6ba882f440a2 5e058e8bb0c5 6965446b7b57 6ba882f440a2
 semantics/sem-async-stale-response  266b1b6025f1 4b81b5fbd263 6a6ca47d17bb 6a6ca47d17bb 522b24f44645 a8c87af9be59 6a6ca47d17bb
+semantics/sem-async-stream  ef8068e6fed7 19edb392dc5b 399a77e4e7c9 bc75d89ccccc 0227fdb7753d 4012969b4260 ae2cc9d3bbfc
 semantics/sem-calling-convention  05193fefbc44 0408cfa5ef3b 01afb818a703 01afb818a703 6987427227a7 27815825642e 3a4b0919efdc
 semantics/sem-ctx-provider-default-silent  9ed6e25ee5b6 31705e925e96 7f7d6a283c60 448658e0e1c4 30e68892a3cb 848ed55f5d66 a25040d6478c
 semantics/sem-ctx-provider-direct-child  ce243828d4cf 4d2e1210ce5d a10a3dce1fbc a10a3dce1fbc dade6f29d280 cf2775eedc72 a10a3dce1fbc

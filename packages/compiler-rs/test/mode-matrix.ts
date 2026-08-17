@@ -31,7 +31,7 @@ export const MATRIX_EXCEPTIONS = {
     // Its default export is one half of a two-module fixture; the harness
     // compiles the sibling with it and nothing else can.
     "ownership/own-cross-module",
-    // 28 of the 29 L1 fixtures. Their default export is not a page: it is a
+    // 29 of the 30 L1 fixtures. Their default export is not a page: it is a
     // probe the claim runner drives with a scope and a container it controls,
     // and several of them exist to throw. The near-universality is the fact this
     // list is really recording — L1 is almost the only thing that has ever
@@ -43,6 +43,7 @@ export const MATRIX_EXCEPTIONS = {
     "semantics/sem-async-abort-on-dispose",
     "semantics/sem-async-optimistic-derived",
     "semantics/sem-async-stale-response",
+    "semantics/sem-async-stream",
     "semantics/sem-calling-convention",
     "semantics/sem-ctx-provider-default-silent",
     "semantics/sem-ctx-provider-direct-child",
@@ -148,10 +149,14 @@ export const MATRIX_EXCEPTIONS = {
 // construct whose two backends run the SAME coordinator — `ssr.ts` builds one
 // and provides it exactly as `flow.ts` does — so a nesting rule that compiled
 // differently through the string backend would be invisible to the DOM claims.
+// And +1/+7/+1 for `sem-async-stream`, A7's two claims. The node's own eight
+// procedures run in `async-source.test.ts`; what only a fixture can ask is what
+// the BOUNDARY does across a stream's steps, which is the half of A7 that is
+// about `Loading` rather than about the node.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 191,
+  fixtures: 192,
   modes: 7,
-  cells: 1337,
+  cells: 1344,
   renderableOnBoth: 162,
-  renderableOnNeither: 29,
+  renderableOnNeither: 30,
 })

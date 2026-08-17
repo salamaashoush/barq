@@ -2489,6 +2489,83 @@ compiler reached.
 `packages/core/src/boundaries.test.ts` for the primitive form. `control-flow-reveal.tsx` and
 `l4/c7-reveal.tsx` keep the emission and the activation count.
 
+### A7 — a compute returns a value, ANY thenable, or an async iterable
+
+**Rule.** `computed(fn)`'s `fn` may hand back three things and they are one node at three arities.
+
+| returned | the node |
+|---|---|
+| a plain value | settles synchronously; the ordinary case |
+| any THENABLE — Promises/A+ shape, not `instanceof Promise` | pends, then commits the awaited value |
+| an ASYNC ITERABLE | pends until the FIRST yield, then commits every yield in order |
+
+**Thenable, not `Promise`.** `instanceof Promise` is a question about the CONSTRUCTOR. A thenable
+from another realm, from a library, or out of a transpiled async function is awaitable all the same
+— `await` itself asks only for the shape — so a core that asks the narrower question disagrees with
+the language, and disagrees SILENTLY: the value is stored as-is, the node settles instantly, and
+every read gets the thenable object where the awaited value belonged.
+
+**A stream is pending until its FIRST yield and settled from then on.** A stream that re-marked
+itself pending per step would flap every `Loading` above it once per element, and the fallback is
+precisely what a stream exists to avoid. After the first answer the node is a value that keeps
+changing, which is a signal being written, not a boundary's business. The same rule decides
+`settle()`: only the first step is registered as in-flight, so a server render waits for the
+stream's first answer rather than for a producer that may never finish.
+
+**A stream that ends without yielding settles on `undefined`** rather than staying pending, because
+"pending forever" holds every boundary above it for the life of the page.
+
+**The iterator is CLOSED by disposal and by supersession**, through `iterator.return()` — which is
+what runs a generator's own `finally` and what stops an endless producer. Supersession closes the
+old stream when its replacement is INSTALLED, not when its next step happens to resolve, or an
+interval-driven producer keeps running until it next yields. This is A1 (cancellation is structural)
+reaching a stream through the only handle it has.
+
+**A bare `IteratorResult` from `next()` is assimilated, not awaited as a thenable.** `for await`
+unwraps whatever `next()` returns, and a producer with a value already buffered is entitled to skip
+the promise; calling `.then` on that is a `TypeError`.
+
+**And the tracked read must be in the COMPUTE, not in the generator body.** An async generator's
+body does not run until `next()`, which happens from a continuation the tracked region has already
+left, so a source read inside the body registers no dependency and the node never re-runs. This is
+the language's shape rather than a choice, and it is why a streaming compute is written as a
+function that reads and then returns the stream.
+
+**Falsified by.** Eight procedures. Every stream procedure must observe MORE THAN ONE yield: one
+yield is indistinguishable from a promise — the same "pending, then a value" — so a single-yield
+procedure is satisfied by an implementation that awaits the first step and abandons the iterator,
+which is most of the ways to get this wrong.
+
+1. Return a plain object with a `then` method. The node MUST pend and then read as the resolved
+   value. *(Fails on `instanceof Promise`: the node settles holding the object.)*
+2. The same, rejecting. The rejection MUST be the node's error. *(Fails the same way, with the
+   thenable stored as a value and no error anywhere.)*
+3. Return an async generator yielding 1, 2, 3 with a gap between each, under an effect that records
+   what it reads. The record MUST be `PENDING, 1, 2, 3` — pending exactly ONCE. *(Fails if the
+   iterator is abandoned after the first step, and separately if each step re-suspends.)*
+4. Return an async generator that yields nothing. The node MUST settle. *(Fails if an empty
+   completion leaves the node pending, which holds every boundary above it for good.)*
+5. Return a generator that yields once and then throws. The first value MUST commit and the throw
+   MUST become the node's error. *(Fails if the stream is abandoned after the first yield — the
+   error then never arrives at all.)*
+6. Dispose a scope containing a node over an endless generator with a `finally`. The `finally` MUST
+   run and the pull count MUST stop rising. *(Fails if disposal drops the node without closing the
+   iterator: the producer pumps into a disposed node forever and its cleanup never runs.)*
+7. Re-run the compute over a new source value. The superseded generator's `finally` MUST run and the
+   new stream's values MUST appear. *(Fails if a stream is only closed when its next step resolves.)*
+8. Return an iterable whose `next()` gives a BARE `IteratorResult`. It MUST be consumed. *(Fails
+   with a `TypeError` on `.then` of a non-thenable.)*
+
+**Status.** `HOLDS` since M11. Before it the branch was `newValue instanceof Promise`, so procedures
+1–8 all failed: the reference admits `PromiseLike` and `AsyncIterable`
+(`core/async.d.ts`'s `handleAsync`, `core/core.d.ts`'s `computed`), and barq admitted neither.
+
+**Pinned by.** `packages/core/src/async-source.test.ts`, whose eight claims are the eight procedures;
+restricting the branch to `instanceof Promise` kills all eight, and abandoning the iterator after the
+first yield kills the three that observe more than one. `sem-async-stream.tsx` drives a stream
+through compiled JSX and a `Loading` boundary, which is the claim procedure 3 makes about the
+boundary rather than about the node.
+
 ---
 
 ## 11. H — Hydration
@@ -2905,6 +2982,7 @@ green, which is why L1 exists.
 | A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `optimistic-signal` |
 | A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | `form-action` — the compiler channel A5 did not have until M10; all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
 | A6 | reveal ordering is a slot contract, and a nested group is one composite slot | H (M11) | `sem-reveal-nested-group`, `control-flow-reveal`, `l4/c7-reveal` |
+| A7 | a compute returns a value, any thenable, or an async iterable | H (M11) | `sem-async-stream`, and the eight procedures in packages/core/src/async-source.test.ts |
 | B8 | `action` on a `<form>` is decided by the slot, not by the value's shape | H (M10) | `sem-form-action-slot`, `form-action` |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
 | H2 | the wire carries what recovery needs; the key is a dev-only axis | **H** (M7b) | the branch-key comparison in both builds + L6's two tables + the three-wire byte measurement |

@@ -372,7 +372,8 @@ interface ComputedNode<T> extends SignalNode<T> {
   _asyncId?: number; // Guards stale async resolutions
   _boundary?: LoadingBoundaryHandle | null; // Boundary this pending effect registered with
   _serializeKey?: string; // SSR: record resolved value under this key
-  _inFlight?: Promise<unknown>; // Current async promise (settle registry hygiene)
+  _inFlight?: PromiseLike<unknown>; // Current async step (settle registry hygiene)
+  _closeAsync?: () => void; // Closes a streaming compute's iterator (A7)
   _session?: symbol | null; // Sticky async session (waterfall fetches keep attribution)
 }
 
@@ -1593,39 +1594,70 @@ function recompute(node: ComputedNode<unknown>): void {
     return;
   }
 
-  // Async computed: keep previous value, mark pending, commit on resolve
-  if (!isEffect && newValue instanceof Promise) {
+  // Async computed: keep previous value, mark pending, commit on settle.
+  //
+  // A compute may hand back a PROMISE, any other thenable, or an ASYNC
+  // ITERABLE, and all three are the same node in three arities (A7). The test
+  // was `instanceof Promise` until M11, so the other two were stored AS VALUES:
+  // the node settled instantly holding the thenable or the iterator object
+  // itself, and every read got that object where the awaited value belonged.
+  const source = isEffect ? null : asyncSourceOf(newValue);
+  if (source !== null) {
+    // Close a stream this run supersedes before installing its replacement,
+    // rather than when its next step happens to resolve — an interval-driven
+    // generator would otherwise keep pumping until it next yielded.
+    node._closeAsync?.();
+    node._closeAsync = undefined;
+
     const id = (node._asyncId = (node._asyncId ?? 0) + 1);
     node._flags |= STATUS_PENDING;
     if (!wasPending) {
       propagate(node, REACTIVE_DIRTY);
     }
-    if (node._inFlight) inFlight.delete(node._inFlight);
-    node._inFlight = newValue;
     const session = activeAsyncSession ?? node._session ?? null;
     node._session = session;
-    inFlight.set(newValue, session);
-    newValue.then(
-      (value) => {
-        inFlight.delete(newValue as Promise<unknown>);
-        if (node._flags & REACTIVE_DISPOSED || node._asyncId !== id) return;
-        node._flags &= ~(STATUS_PENDING | REACTIVE_UNINITIALIZED);
-        node._value = value;
-        if (node._serializeKey !== undefined) {
-          recordHydrationValue(node._session ?? null, node._serializeKey, value);
-        }
-        propagate(node, REACTIVE_DIRTY);
-        schedule();
-      },
-      (err) => {
-        inFlight.delete(newValue as Promise<unknown>);
-        if (node._flags & REACTIVE_DISPOSED || node._asyncId !== id) return;
-        node._flags = (node._flags & ~STATUS_PENDING) | STATUS_ERROR;
-        node._error = err;
-        propagate(node, REACTIVE_DIRTY);
-        schedule();
-      },
-    );
+
+    /** The node is superseded, disposed, or was never this run's */
+    const stale = (): boolean => (node._flags & REACTIVE_DISPOSED) !== 0 || node._asyncId !== id;
+
+    const settled = (value: unknown): void => {
+      node._flags &= ~(STATUS_PENDING | REACTIVE_UNINITIALIZED);
+      node._value = value;
+      if (node._serializeKey !== undefined) {
+        recordHydrationValue(node._session ?? null, node._serializeKey, value);
+      }
+      propagate(node, REACTIVE_DIRTY);
+      schedule();
+    };
+
+    const failed = (err: unknown): void => {
+      node._flags = (node._flags & ~STATUS_PENDING) | STATUS_ERROR;
+      node._error = err;
+      propagate(node, REACTIVE_DIRTY);
+      schedule();
+    };
+
+    if (source.iterator === null) {
+      const awaited = source.thenable;
+      if (node._inFlight) inFlight.delete(node._inFlight);
+      node._inFlight = awaited;
+      inFlight.set(awaited, session);
+      awaited.then(
+        (value) => {
+          inFlight.delete(awaited);
+          if (stale()) return;
+          settled(value);
+        },
+        (err) => {
+          inFlight.delete(awaited);
+          if (stale()) return;
+          failed(err);
+        },
+      );
+      return;
+    }
+
+    pumpAsyncIterator(node, source.iterator, session, stale, settled, failed);
     return;
   }
 
@@ -1708,6 +1740,10 @@ function disposeNode(node: ComputedNode<unknown>): void {
     inFlight.delete(node._inFlight);
     node._inFlight = undefined;
   }
+  // A1 reaches a stream through its iterator: disposal must run the producer's
+  // own `finally`, and an endless one keeps pumping until it does.
+  node._closeAsync?.();
+  node._closeAsync = undefined;
 
   unregisterFromBoundary(node);
 
@@ -2105,7 +2141,7 @@ function computedPeek<T>(node: ComputedNode<T>): T {
  * it once the first render has settled.
  */
 export function computed<T>(
-  fn: (prev?: T) => T | Promise<T>,
+  fn: (prev?: T) => T | PromiseLike<T> | AsyncIterable<T>,
   options?: SignalOptions<T> & { key?: string },
 ): Computed<T> {
   // The slot is reserved at CREATION, in creation order, which is what makes
@@ -2661,7 +2697,157 @@ function untrackInner<T>(fn: () => T): T {
 // ============================================================================
 
 /** In-flight async computations, stamped with the session that started them */
-const inFlight = new Map<Promise<unknown>, symbol | null>();
+const inFlight = new Map<PromiseLike<unknown>, symbol | null>();
+
+/**
+ * Promises/A+ shape. `instanceof Promise` is a test about the CONSTRUCTOR, and
+ * a thenable from another realm, another library, or a transpiled async
+ * function is none the less awaitable — `await` itself asks this question, so a
+ * reactivity core that asks the narrower one disagrees with the language.
+ */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as PromiseLike<unknown>).then === "function"
+  );
+}
+
+/**
+ * What kind of async a compute's return value is, or `null` for a plain value.
+ * An async iterable is checked FIRST: an async generator object is not a
+ * thenable, but a hand-written source may be both, and the stream is the
+ * stronger claim.
+ *
+ * The probe is untracked. The value may be a store proxy, and a `get` on one
+ * registers a dependency — on whatever observer happens to be current, since by
+ * here the recompute has already restored the outer one.
+ */
+function asyncSourceOf(
+  value: unknown,
+):
+  | { iterator: AsyncIterator<unknown>; thenable: null }
+  | { iterator: null; thenable: PromiseLike<unknown> }
+  | null {
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return null;
+  const prevTracking = tracking;
+  const prevObserver = currentObserver;
+  tracking = false;
+  currentObserver = null;
+  try {
+    const method = (value as AsyncIterable<unknown>)[Symbol.asyncIterator];
+    if (typeof method === "function") {
+      return { iterator: method.call(value), thenable: null };
+    }
+    return isThenable(value) ? { iterator: null, thenable: value } : null;
+  } finally {
+    tracking = prevTracking;
+    currentObserver = prevObserver;
+  }
+}
+
+/**
+ * Drain an async iterable into a computed, one yield at a time.
+ *
+ * The node is PENDING until the FIRST yield and settled from then on: a stream
+ * is in flight until it has an answer, and after that it is a value that keeps
+ * changing, which is a signal being written and not a boundary's business. The
+ * alternative — re-suspending per step — flaps every `Loading` above it once
+ * per element, and the fallback is exactly what a stream exists to avoid.
+ *
+ * `inFlight` therefore carries the FIRST step only, so `settle()` waits for the
+ * stream's first answer rather than for a producer that may never finish.
+ *
+ * Disposal and supersession both close the iterator through `_closeAsync`,
+ * which is what runs a generator's own `finally` and stops an endless producer.
+ */
+function pumpAsyncIterator(
+  node: ComputedNode<unknown>,
+  iterator: AsyncIterator<unknown>,
+  session: symbol | null,
+  stale: () => boolean,
+  settled: (value: unknown) => void,
+  failed: (err: unknown) => void,
+): void {
+  let closed = false;
+  let first = true;
+
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+    try {
+      const returned = iterator.return?.();
+      // A rejected `return()` is the producer's cleanup failing on a path
+      // nobody is awaiting; swallowing it beats an unhandled rejection.
+      if (isThenable(returned)) returned.then(undefined, () => {});
+    } catch {
+      // same
+    }
+  };
+  node._closeAsync = close;
+
+  const step = (): void => {
+    if (closed || stale()) {
+      close();
+      return;
+    }
+    let result: IteratorResult<unknown> | PromiseLike<IteratorResult<unknown>>;
+    try {
+      result = iterator.next();
+    } catch (err) {
+      closed = true;
+      if (!stale()) failed(err);
+      return;
+    }
+    // `for await` unwraps whatever `next()` returns, and a producer with a
+    // value already buffered is allowed to hand back a bare `IteratorResult` as
+    // a promise-free fast path. Assimilating it keeps `.then` off a non-thenable.
+    const awaited: PromiseLike<IteratorResult<unknown>> = isThenable(result)
+      ? result
+      : Promise.resolve(result);
+
+    if (first) {
+      if (node._inFlight) inFlight.delete(node._inFlight);
+      node._inFlight = awaited;
+      inFlight.set(awaited, session);
+    }
+
+    awaited.then(
+      (next) => {
+        if (first) {
+          inFlight.delete(awaited);
+          node._inFlight = undefined;
+        }
+        if (stale()) {
+          close();
+          return;
+        }
+        if (next.done === true) {
+          closed = true;
+          node._closeAsync = undefined;
+          // A stream that ends without ever yielding has no answer to give, and
+          // leaving it PENDING would hold every boundary above it for good.
+          if (first) settled(undefined);
+          return;
+        }
+        first = false;
+        settled(next.value);
+        step();
+      },
+      (err) => {
+        if (first) {
+          inFlight.delete(awaited);
+          node._inFlight = undefined;
+        }
+        closed = true;
+        node._closeAsync = undefined;
+        if (!stale()) failed(err);
+      },
+    );
+  };
+
+  step();
+}
 
 /** Resolved values of keyed async computeds, bucketed by session (SSR) */
 const hydrationData = new Map<symbol | null, Map<string, unknown>>();
@@ -2717,7 +2903,7 @@ export async function settle(session?: symbol): Promise<void> {
 
   flushInSession();
   while (true) {
-    const waiting: Promise<unknown>[] = [];
+    const waiting: PromiseLike<unknown>[] = [];
     for (const [promise, owner] of inFlight) {
       if (session === undefined || owner === session) {
         waiting.push(promise);
