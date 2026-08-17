@@ -1186,6 +1186,57 @@ procedure that writes to the DOM and then reorders instead of by an initial rend
 `control-flow-for-keyed-false.tsx`, `control-flow-index.tsx` and `for-unkeyed-rows.tsx` for the
 positional mode's; `control-flow-for-keyed-fn.tsx` for the key-function mode's.
 
+### K1.1 — a `Show` is NON-KEYED by default, and the asymmetry with `For` is the point
+
+**Rule.** `Show` and `Match` default to `keyed: false`: the key is TRUTHINESS, the content survives a
+change from one truthy value to another, and the children Block is handed the narrowed ACCESSOR.
+`keyed` opts into the other one, where the value IS the key and a new value is a new instance with
+the raw value handed over. `For` keeps the identity default (K1). The two defaults disagree on
+purpose.
+
+| construct | default | key | children receive |
+|---|---|---|---|
+| `For` | identity | the item | the item, raw |
+| `Show` / `Match` | non-keyed | truthiness | a narrowed accessor |
+
+**Why they disagree.** A list row is identified BY ITS DATA, so rebuilding it on an immutable update
+is the lesser failure — the alternative leaves stateful DOM sitting under the wrong value, which is
+silent (K1). A `Show`'s `when` is usually a CONDITION and not an identity: over this corpus it is
+`on()`, `visible()`, `open()`, `isPending`, `loading()`, `length > 0`, `!== null`. For a boolean the
+two modes are indistinguishable, so the default costs nothing where it is not needed and saves the
+subtree where it is.
+
+**What the keyed default cost, measured before it was flipped.** One immutable update to a
+still-truthy value:
+
+| default | rebuild | `<input>` node | text the user had typed |
+|---|---|---|---|
+| keyed | yes | replaced | **destroyed** |
+| non-keyed | no | same | survives |
+
+Focus, a caret, a running animation, an open `<dialog>` and a `<video>`'s position go the same way,
+and nothing reports any of it. Across the corpus the flip took 407 scopes to 404, 313 clones to 312
+and 492 scope entries to 486 with no fixture edited — fewer activations because content that used to
+be torn down is not — while effects went 268 to 270, which is the narrowed accessor making the reads
+live.
+
+**Falsified by.** Two procedures, both of which must observe an UPDATE, because the first frame is
+identical under either mode — the same reason the `keyed={fn}` miscompile hid from 110 fixtures.
+
+ 1. `<Show when={user}>` with no `keyed`, containing an `<input>`. Type into it, then set `user` to a
+    structurally-different object that is still truthy. The `<input>` MUST be the same node and the
+    typed text MUST survive; a read of the accessor MUST show the new value.
+ 2. The same shape written `keyed`. The node MUST be replaced and the typed text MUST be gone —
+    without which "the default preserves" and "nothing ever rebuilds" are the same observation.
+
+**Status.** `HOLDS` since M10. The default was keyed until then, which was inverted from the
+reference: `solid-js@2.0.0-rc.0` declares `keyed?: false` as `Show`'s and `Match`'s default overload
+and `keyed?: true` as `For`'s, read out of `types/client/flow.d.ts`.
+
+**Pinned by.** `control-flow-show-keyed-false.tsx` — the explicit spelling, which must agree with the
+absent one — and `control-flow-show-keyed.tsx`, the arm that opts in, whose five clones are the cost
+of asking for it.
+
 ### K2 — an unchanged key is a no-op
 
 **Rule.** A row whose key is unchanged MUST NOT be torn down: its scope, its nodes, their identity,
@@ -1269,30 +1320,31 @@ imported-and-renamed `Show` MUST be lowered.
 **Status.** `HOLDS` since M4b, for the resolution discipline (`SymbolId`, not name) and for the
 lowering.
 
-`Op::Region { slot, anchor, region }` is the opcode and `passes/flow.rs` is the pass. Ten
+`Op::Region { slot, anchor, region }` is the opcode and `passes/flow.rs` is the pass. The
 constructs cease to exist as components and become one of the four primitives: `Show` and
-`Switch`/`Match` are `branch`, `For`/`Repeat` are `each`, `Loading`/`Suspense` and
-`Errored`/`ErrorBoundary` are `boundary`, `Portal` is `portal`. The key is plain emitted JavaScript
-in every case — `() => visible() || false` for a keyed `Show`, `() => a() ? 1 : b() ? 2 : 0` for a
+`Switch`/`Match` are `branch`, `For`/`Repeat` are `each`, `Loading` and `Errored` are `boundary`,
+`Portal` is `portal`. The key is plain emitted JavaScript
+in every case — `() => visible() ? 1 : 0` for a `Show` (non-keyed, the default),
+`() => visible() || false` for one written `keyed`, `() => a() ? 1 : b() ? 2 : 0` for a
 `Switch` over two arms, with a hoisted body table indexed by that integer — and the
 `(parent, anchor)` pair is the one the template walk already computed, so the runtime no longer
 re-derives an insertion point the compiler knew statically. `optimality.test.ts`'s
 `K5 — the thirteen constructs, and the four they lower onto` asserts over the whole corpus that no
 lowered construct survives as a call.
 
-**Three constructs are NOT lowered, and each refusal is a fact rather than a gap.** `Dynamic` needs
-the string arm's element construction, which is private to `components.ts` and not on the ABI §3.0
-enumerates — emitting it would mean a fifth element-creation path out of the compiler, which is the
-thing M4 deleted from the runtime. `Await` discriminates a `Resource` from a `Cell` carrying one by
-a property test on the value, and its key and its three bodies each need the resolved resource;
-without a shared local that is four evaluations of one prop, and the compiler cannot prove they
-yield the same object. `Reveal` creates a PROVIDE scope rather than a range (O1 lists `provide`
-separately from `branch`), so it is not one of the four primitives at all. An eleventh case — a
-construct written with a spread — is refused for C9's reason: a source list is a runtime object, so
-the props cannot be read statically. Every refusal keeps the component call, which reaches the same
-primitive one adapter frame later; that direction is always safe and the other never is.
+**What is NOT lowered, and each refusal is a fact rather than a gap.** `Switch` needs its arms to be
+literal `<Match>` elements resolved by `SymbolId`; a mapped list of them is a runtime scan, and
+`Match` goes with it because only a `Switch` reads one. `Dynamic` behind a SPREAD is refused because
+its unrecognised props are the RESOLVED component's rather than the construct's, so the source list
+is not its to read off. `Reveal` is not a region at all — it creates a PROVIDE scope rather than a
+range (O1 lists `provide` separately from `branch`) — and lowers to a `reveal` call beside the four.
+Every refusal keeps the component call, which reaches the same primitive one adapter frame later;
+that direction is always safe and the other never is.
 
-**One evaluation moved, and it is stated rather than hidden.** A keyed `Show`'s body reads the
+`Await`, `Suspense` and `ErrorBoundary` were refusals here once and are now not constructs at all
+(M10): Solid 2.0 ships ten and none of the three is among them.
+
+**One evaluation moved, and it is stated rather than hidden.** A `Show`'s body reads the
 `when` Cell a SECOND time, at activation, to tell a truthy value from a falsy one — `branch`
 deliberately has no slot argument, and the key ran first in the same synchronous step. It costs one
 read per REBUILD, never per key evaluation, and C3.2 licenses it: a Cell is explicitly not
@@ -1603,8 +1655,14 @@ disagree.
 M5 and the diff names the position.
 
 **Status.** `HOLDS` for element bindings; `VIOLATED` inside control flow (K6's converse — today's
-`Show` hands the *same* node back across a remount, which is a different bug, and today's default-keyed
+`Show` hands the *same* node back across a remount, which is a different bug, and the default-keyed
 `For` replaces rows on an immutable update, which is this one).
+
+`Show` itself left this row at M10. Its default was keyed, so an immutable update to a still-truthy
+`when` rebuilt the content — measured: a new object replaced the `<input>` and destroyed what the
+user had typed into it. The default is non-keyed now, which is Solid 2.0's, and the content survives
+a value change. `For` keeps the identity default and keeps the row: a list row is identified by its
+data, so rebuilding it is the lesser of the two failures (K1).
 
 **Pinned by.** `sem-mount-stable-rerender.tsx` *(new)*, applied as a channel over the whole corpus.
 
@@ -2671,6 +2729,7 @@ green, which is why L1 exists.
 | X5 | a miss throws, carrying the component stack | H / P (M2) | `sem-ctx-miss-throws-with-stack` *(new)* |
 | X6 | the context record forks lazily, flat cost | H | `sem-ctx-fork-is-flat.bench.ts` *(new, bench)* |
 | K1 | the item is the default row identity | H (M7b) | `sem-key-identity-default`, `control-flow-for`, `control-flow-for-keyed-by-item`, `control-flow-for-keyed-false`, `control-flow-for-keyed-fn`, `control-flow-index`, `for-unkeyed-rows` |
+| K1.1 | a `Show` is non-keyed by default, and the asymmetry with `For` is the point | H (M10) | `control-flow-show-keyed-false`, `control-flow-show-keyed` |
 | K2 | an unchanged key is a no-op | H (M4) | `mm-branch-key-stable`, `mm-branch-nonkeyed-truthy`, `mm-keyed-move`, `mm-index-row-stable` |
 | K3 | positional + stateful row = a hint | H (M7b) | `sem-key-identity-default`, `diagnostics.test.ts` |
 | K4 | duplicate keys: DEV error, degrade to index | P (M4) | `sem-key-duplicate` *(new)* |

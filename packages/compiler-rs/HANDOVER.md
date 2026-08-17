@@ -29,13 +29,13 @@ a spread, and that single gap is what keeps twenty-six runtime adapters alive ac
 
 ```
 cargo test                    303 pass, 0 fail
-compiler-rs bun test         3440 pass, 0 fail
+compiler-rs bun test         3460 pass, 0 fail
 packages/core                 955 pass, 0 fail
 packages/extra                153 pass, 0 fail
 packages/testing               16 pass, 0 fail   (now COMPILED — see below)
 packages/compiler              22 pass, 0 fail
 root bun run ci               EXIT=0
-fixtures                      136
+fixtures                      139
 kitchen-sink                  builds; all 9 routes drive in real Chrome, reactive, routed
 kitchen-sink typecheck        49 errors, all pre-existing and NOT ci-gated (see M10)
 ```
@@ -49,7 +49,7 @@ facts about an un-compiled path that no longer runs. Each surviving row names th
 and the milestone that fixes it, and the registry **fails the suite if a registered fixture starts
 passing** — that is the signal a milestone worked, not a problem to route around.
 
-`git status` is clean at `aef0427`.
+`git status` is clean at `be44492` + the docs commit that follows it.
 
 ---
 
@@ -269,18 +269,34 @@ was nothing for `Await` to be renamed into; it was a fourth construct whose
 meaning is `<Loading><Errored>…</Errored></Loading>`, which is what the compiler
 already lowered it to.
 
-**Three divergences from Solid 2.0 remain, all measured and none decided:**
+**All three remaining divergences are CLOSED** (`03a6231`, `be44492`), so barq's
+control-flow surface now matches `solid-js@2.0.0-rc.0` prop for prop.
 
-| construct | barq | Solid 2.0 RC |
-|---|---|---|
-| `Show` | default is KEYED — children get the raw value | default `keyed: false` — children get an ACCESSOR |
-| `Match` | same as `Show` | same inversion |
-| `Portal` | `target?: Cell<HTMLElement \| string>` | `mount?: Element` |
+- **`Show` and `Match` are non-keyed by default.** `SEMANTICS.md` K1.1 is the
+  rule, and the asymmetry with `For` is stated there rather than left to look
+  like an oversight: a list row is identified BY ITS DATA so rebuilding it is
+  the lesser failure (K1), while a `Show`'s `when` is a CONDITION — over this
+  corpus it is `on()`, `visible()`, `isPending`, `loading()`, `length > 0` — and
+  for a boolean the two modes are indistinguishable anyway.
 
-Everything else matches prop for prop, including all three of `For`'s keying
-arms and `Reveal`'s three orders. Flipping `Show`'s default is breaking and the
-first frame is identical either way, so it only shows on update — which is
-exactly how the `keyed={fn}` miscompile hid from 110 fixtures.
+  What the old default cost, measured on one immutable update to a still-truthy
+  value: the `<input>` was replaced and the text the user had typed into it was
+  destroyed. Across the corpus the flip took 407 scopes to 404, 313 clones to
+  312 and 492 scope entries to 486 with nothing edited, and 268 effects to 270 —
+  fewer activations, more live bindings.
+
+  `sem-show-nonkeyed-default` pins both arms, `control-flow-show-keyed` is the
+  opt-in arm's fixture, and `control-flow-show-keyed-false` now pins that the
+  explicit spelling agrees with the absent one.
+- **`Portal`'s slot is `mount`.** barq's still takes a selector string as well
+  as an element, which is wider than the reference rather than different from
+  it, and that is written where the prop is declared.
+
+One wire fact moved with the `Show` flip: a branch's dev-only key is the
+truthiness INDEX now, so `<!--[true-->` is `<!--[1-->` and detection costs one
+byte on that page instead of four. The L6 mutation that edits the key had gone
+to "not expressible on this wire" — the no-op that file's own comment warns
+about — and was pointed at the new key.
 
 ### Three defects fixed, each found by driving rather than by a suite
 

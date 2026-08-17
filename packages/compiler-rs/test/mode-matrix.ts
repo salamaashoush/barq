@@ -60,6 +60,7 @@ export const MATRIX_EXCEPTIONS = {
     "semantics/sem-react-apply-is-untracked",
     "semantics/sem-react-component-body-untracked",
     "semantics/sem-react-untrack-keeps-owner",
+    "semantics/sem-show-nonkeyed-default",
     "semantics/sem-state-linked-reseeds",
     "semantics/sem-testing-wrapper-eager",
   ] as readonly string[],
@@ -133,10 +134,13 @@ export const MATRIX_EXCEPTIONS = {
 // the last +1/+7/+1: four claims, of which two are the defect that shipped.
 // And +1/+7/+1 for `control-flow-show-keyed`, the arm that opts in to keying —
 // added when M10 flipped the default, so the corpus covers both sides of it.
+// And +1 fixture / +7 cells / +1 renderableOnNeither for
+// `sem-show-nonkeyed-default`, K1.1's two claims — a claims fixture renders on
+// neither backend by construction, which is what the list above is for.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 189,
+  fixtures: 190,
   modes: 7,
-  cells: 1323,
+  cells: 1330,
   renderableOnBoth: 162,
-  renderableOnNeither: 27,
+  renderableOnNeither: 28,
 })
