@@ -118,7 +118,11 @@ were declaration reads, which now compile first.
 
 ### What M9 did NOT close, and why
 
-- **`packages/extra/src/css.ts`** — a goober wrapper whose pragma shim re-implements element creation
+- ~~**`packages/extra/src/css.ts`**~~ **— DONE at M8 and this row was stale until M10 read it.**
+  The file was deleted in `35be05c` and what an application wants lives in
+  `packages/kitchen-sink/src/styles.ts`, over goober, which is the CSS decision (ecosystem, not
+  framework) carried out. The original indictment, kept because it is why the row existed: a goober
+  wrapper whose pragma shim re-implements element creation
   a fifth time. §4.1 marks it and the CSS decision (ecosystem, not framework) settles it, but it was
   not in M9's instruction list and kitchen-sink's CSS demo still consumes it.
 - **The fourteen flow adapters and the twelve SSR adapters** — reversed above; deleting them needs
@@ -233,7 +237,7 @@ ownership channel each moved their reach pin, and each says what moved and why.
 Items 2 and 3 of the instruction — transitions getting a compiler surface, and reveal ordering
 moving into the boundary contract — are untouched. So are the `flow.ts` `Loading` bug M7 bisected,
 `computed`'s `AsyncIterable`, the other half of `sem-own-given-scope-wins`'s O4.5 row, and
-`packages/extra/src/css.ts`.
+`packages/extra/src/css.ts` — which was already done, see the M9 row above.
 
 ---
 
@@ -337,7 +341,12 @@ constructs. §4.1's rows stay struck for the reason in `## M10, so far`.
 - The `Show`/`Match`/`Portal` divergences above.
 - M10 items 2 and 3 of the original instruction — transitions beyond the form
   surface, and reveal ordering moving into the boundary contract.
-- `computed`'s `AsyncIterable`, O4.5's remaining half, `extra/src/css.ts`.
+- `computed`'s compute is `(prev?: T) => T | Promise<T>` and the runtime branches on
+  `instanceof Promise` alone (`signals.ts:1597`); Solid's admits an `AsyncIterable` too.
+- The other half of `sem-own-given-scope-wins`'s O4.5 row, whose reason is written out in
+  `known-failures.ts` — `childToNodes` still invokes the Block with `getOwner()` rather than the `s`
+  it was given, and the row says why it lands with O5 or not at all.
+- `extra/src/css.ts` is NOT open: it went at M8 (`35be05c`).
 
 ---
 
