@@ -41,6 +41,6 @@ export const optimality = {
   // still around it, deferring the clone until the branch is taken.
   templates: 1,
   patchCalls: 0,
-  emits: ['<div class="panel"><h3>Static heading</h3>', "branch(", "}), 2)"],
+  emits: ['<div class="panel"><h3>Static heading</h3>', "branch(", "], 2)"],
   absent: ["children:"],
 }

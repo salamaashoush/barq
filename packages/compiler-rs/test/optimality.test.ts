@@ -1101,7 +1101,10 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // …and the flag the compiler PROVED about it: nothing in the body registers
     // anything disposable, so `NO_SCOPE` is shipped and the activation
     // allocates no `Scope`.
-    expect(code, "the proven flags integer").toMatch(/\}\), 2\)/)
+    // A non-keyed `Show` — the default since M10 — ends in the two-row body
+    // TABLE rather than in the keyed shape's single Block, so the flag sits
+    // after a `]` instead of a `})`.
+    expect(code, "the proven flags integer").toMatch(/\], 2\)/)
     expect(code, "and nothing to bind it to").not.toMatch(/const _el\$/)
     // `setProp` is a needle that cannot match since M5 split it into eight
     // named channels — the same inert shape `patchedAttributeNames`,
@@ -1131,9 +1134,11 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // C6: the child is a Block, so the arrow declares the scope it runs under.
     expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/)
     // The key is the author's own `when` read, emitted as plain JavaScript
-    // (K5): `|| false` collapses every falsy value onto one key, which is what
-    // keeps a fallback in place across `0`, `""` and `null`.
-    expect(code).toMatch(/\(\) => on\(\) \|\| false/)
+    // (K5). Non-keyed is the default since M10, so what it carries is the
+    // TRUTHINESS — one index for every falsy value, which is what keeps a
+    // fallback in place across `0`, `""` and `null`, and what lets the content
+    // survive a change from one truthy value to another.
+    expect(code).toMatch(/\(\) => on\(\) \? 1 : 0/)
 
     const result = await auditCompiled("control-flow-show-static-body")
     expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(true)

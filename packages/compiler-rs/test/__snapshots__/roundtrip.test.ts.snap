@@ -726,10 +726,7 @@ export const on = signal(true);
 export default function ComponentChildOfElement(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.lastChild;
-  _$branch(_s$, _el$1, _el$2, () => on() || false, _$block((_s$) => {
-    const _v$ = on();
-    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
-  }), 2);
+  _$branch(_s$, _el$1, _el$2, () => on() ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => _tmpl$3())], 2);
   return _el$1;
 }
 ComponentChildOfElement = _$block(ComponentChildOfElement);
@@ -1905,18 +1902,15 @@ export const items = signal([
 */
 export default function ControlFlowNested(_s$) {
   const _el$1 = _tmpl$1();
-  _$branch(_s$, _el$1, null, () => visible() || false, _$block((_s$) => {
-    const _v$ = visible();
-    return _v$ ? _$block((_s$) => {
-      const _el$2 = _tmpl$3();
-      _$each(_s$, _el$2, null, items, null, _$block((_s$, item: number) => {
-        const _el$3 = _tmpl$4();
-        _$insert(_s$, _el$3, item);
-        return _el$3;
-      }));
-      return _el$2;
-    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
-  }));
+  _$branch(_s$, _el$1, null, () => visible() ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => {
+    const _el$2 = _tmpl$3();
+    _$each(_s$, _el$2, null, items, null, _$block((_s$, item: number) => {
+      const _el$3 = _tmpl$4();
+      _$insert(_s$, _el$3, item);
+      return _el$3;
+    }));
+    return _el$2;
+  })]);
   return _el$1;
 }
 ControlFlowNested = _$block(ControlFlowNested);
@@ -1946,7 +1940,7 @@ export const optimality = {
   // activates.
   emits: [
     "branch(",
-    "() => visible() || false",
+    "() => visible() ? 1 : 0",
     "each(",
     ", items, null, "
   ],
@@ -2054,10 +2048,7 @@ export const visible = signal(true);
 export default function ControlFlowShow(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$branch(_s$, _el$1, _el$2, () => visible() || false, _$block((_s$) => {
-    const _v$ = visible();
-    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
-  }), 2);
+  _$branch(_s$, _el$1, _el$2, () => visible() ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => _tmpl$3())], 2);
   return _el$1;
 }
 ControlFlowShow = _$block(ControlFlowShow);
@@ -2071,7 +2062,7 @@ export const optimality = {
   // fallback stays in place across \`0\`, \`""\` and \`null\` — and the body is one
   // Block that picks the arm from the value it reads at ACTIVATION time. The
   // \`(parent, anchor)\` pair is the one the walk above it produced.
-  emits: ["branch(", "() => visible() || false"],
+  emits: ["branch(", "() => visible() ? 1 : 0"],
   absent: [
     "Show(",
     "when:",
@@ -2116,14 +2107,11 @@ export const live = signal(0);
 export default function ControlFlowShowCleanupBody(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$branch(_s$, _el$1, null, () => on() || false, _$block((_s$) => {
-    const _v$ = on();
-    return _v$ ? _$block((_s$) => {
-      live.set(live.peek() + 1);
-      onCleanup(() => live.set(live.peek() - 1));
-      return _tmpl$2();
-    })(_s$, _v$) : null;
-  }));
+  _$branch(_s$, _el$1, null, () => on() ? 1 : 0, [null, _$block((_s$) => {
+    live.set(live.peek() + 1);
+    onCleanup(() => live.set(live.peek() - 1));
+    return _tmpl$2();
+  })]);
   _$insert(_s$, _el$2, () => live());
   return _el$1;
 }
@@ -2171,10 +2159,7 @@ export const visible = signal(true);
 */
 export default function ControlFlowShowEagerChildren(_s$) {
   const _el$1 = _tmpl$1();
-  _$branch(_s$, _el$1, null, () => visible() || false, _$block((_s$) => {
-    const _v$ = visible();
-    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
-  }), 2);
+  _$branch(_s$, _el$1, null, () => visible() ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => _tmpl$3())], 2);
   return _el$1;
 }
 ControlFlowShowEagerChildren = _$block(ControlFlowShowEagerChildren);
@@ -2189,7 +2174,7 @@ export const optimality = {
   // the fallback as a thunk, so neither gets one — each is a single clone
   // inside the Block the branch invokes, with no arrow of the compiler's own,
   // no IIFE and no element binding.
-  emits: ["branch(", "() => visible() || false"],
+  emits: ["branch(", "() => visible() ? 1 : 0"],
   absent: [
     "when:",
     "children:",
@@ -2225,10 +2210,7 @@ export const on = signal(false);
 * node back" from "built a new one".
 */
 export default function ControlFlowShowEagerStaticBody(_s$) {
-  return _$branch(_s$, null, null, () => on() || false, _$block((_s$) => {
-    const _v$ = on();
-    return _v$ ? _$block((_s$) => _tmpl$1())(_s$, _v$) : null;
-  }), 2);
+  return _$branch(_s$, null, null, () => on() ? 1 : 0, [null, _$block((_s$) => _tmpl$1())], 2);
 }
 ControlFlowShowEagerStaticBody = _$block(ControlFlowShowEagerStaticBody);
 export const steps = [
@@ -2250,7 +2232,7 @@ export const optimality = {
   emits: [
     "<div class=\\"panel\\"><h3>Static heading</h3>",
     "branch(",
-    "}), 2)"
+    "], 2)"
   ],
   // The two shapes a compiler-manufactured thunk would take, plus the prop the
   // construct used to carry.
@@ -2290,10 +2272,7 @@ export const on = signal(true);
 */
 export default function ControlFlowShowFragmentBody(_s$) {
   const _el$1 = _tmpl$1();
-  _$branch(_s$, _el$1, null, () => on() || false, _$block((_s$) => {
-    const _v$ = on();
-    return _v$ ? _$block((_s$) => [_tmpl$4(), _tmpl$5()])(_s$, _v$) : _$block((_s$) => [_tmpl$2(), _tmpl$3()])(_s$);
-  }));
+  _$branch(_s$, _el$1, null, () => on() ? 1 : 0, [_$block((_s$) => [_tmpl$2(), _tmpl$3()]), _$block((_s$) => [_tmpl$4(), _tmpl$5()])]);
   return _el$1;
 }
 ControlFlowShowFragmentBody = _$block(ControlFlowShowFragmentBody);
@@ -2309,13 +2288,73 @@ export const optimality = {
   // body nor the fallback is wrapped in a thunk the compiler manufactured —
   // both are arrays of built clones inside the Block the branch owns.
   templates: 5,
-  emits: ["branch(", "() => on() || false"],
+  emits: ["branch(", "() => on() ? 1 : 0"],
   absent: [
     "when:",
     "children:",
     "fallback:",
     "createElement"
   ]
+};
+"
+`;
+
+exports[`emitted code snapshots control-flow-show-keyed 1`] = `
+"import { signal, template as _$template, insert as _$insert, block as _$block, branch as _$branch } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="keyed-show"></div>\`);
+const _tmpl$2 = /* @__PURE__ */ _$template(\`<i>none</i>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<b class="shown"></b>\`);
+export const value = signal<{
+  name: string;
+} | null>({ name: "alpha" });
+/**
+* \`<Show keyed>\` — the arm that OPTS IN to rebuilding on a value change, and
+* since M10 the one that has to be asked for.
+*
+* Keyed makes the value itself the key, so a new object is a new instance: the
+* content is torn down and rebuilt even though truthiness never moved. The body
+* parameter is the raw value, not an accessor, which is why \`{v.name}\` reads
+* correctly here and would be a type error under the default.
+*
+* That teardown is the whole difference and it is not free — it is what
+* destroys focus, a caret, a running animation and a \`<video>\`'s position. The
+* default is non-keyed for exactly that reason; this arm exists for the case
+* where the value really IS the identity of the content.
+*
+* Step 0 is the only frame that can tell the two apart, because the first frame
+* is identical under both — the same reason the \`keyed={fn}\` miscompile hid
+* from 110 fixtures.
+*/
+export default function ControlFlowShowKeyed(_s$) {
+  const _el$1 = _tmpl$1();
+  _$branch(_s$, _el$1, null, () => value() || false, _$block((_s$) => {
+    const _v$ = value();
+    return _v$ ? _$block((_s$, v) => {
+      const _el$2 = _tmpl$3();
+      _$insert(_s$, _el$2, v.name);
+      return _el$2;
+    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
+  }));
+  return _el$1;
+}
+ControlFlowShowKeyed = _$block(ControlFlowShowKeyed);
+export const steps = [
+  () => value.set({ name: "beta" }),
+  () => value.set(null),
+  () => value.set({ name: "gamma" })
+];
+export const optimality = {
+  target: 1,
+  milestone: 10,
+  templates: 2,
+  // The value IS the key, and one body serves every key — no two-row table,
+  // because the arm is decided by the value rather than by an index.
+  emits: [
+    "branch(",
+    "|| false",
+    ", v) =>"
+  ],
+  absent: ["Show(", "? 1 : 0"]
 };
 "
 `;
@@ -2327,15 +2366,17 @@ const _tmpl$2 = /* @__PURE__ */ _$template(\`<i>none</i>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<b class="shown"></b>\`);
 export const value = signal<string | null>("alpha");
 /**
-* \`<Show keyed={false}>\` — the narrowed-accessor mode, and the one arm of the
-* construct that had no fixture.
+* \`<Show keyed={false}>\` written EXPLICITLY, which is the default since M10 —
+* the fixture is kept at its own name because a fixture is never deleted, and
+* it earns its place by pinning that the explicit spelling and the absent one
+* agree.
 *
-* \`keyed={false}\` re-renders only when TRUTHINESS flips, so across a value
-* change the content stays mounted and only its reads move. That makes the body
-* parameter an accessor, and \`analysis::bind::row_params\` did not say so: it
-* typed \`For\` and \`Repeat\` and returned early for everything else, so \`{v()}\`
-* was an opaque call the classifier applied ONCE and the text froze at
-* activation. It is the by-item \`For\` bug (V8) in the construct beside it.
+* Non-keyed re-renders only when TRUTHINESS flips, so across a value change the
+* content stays mounted and only its reads move. That makes the body parameter
+* an accessor, and \`analysis::bind::row_params\` did not say so: it typed \`For\`
+* and \`Repeat\` and returned early for everything else, so \`{v()}\` was an opaque
+* call the classifier applied ONCE and the text froze at activation. It is the
+* by-item \`For\` bug (V8) in the construct beside it.
 *
 * Step 0 is the only frame that can see it. \`alpha\` to \`beta\` is a value change
 * with no truthiness change, so a frozen read and a live one agree on every
@@ -2394,10 +2435,7 @@ export const on = signal(false);
 * where there is no author thunk to remove.
 */
 export default function ControlFlowShowStaticBody(_s$) {
-  return _$branch(_s$, null, null, () => on() || false, _$block((_s$) => {
-    const _v$ = on();
-    return _v$ ? _$block((_s$) => _tmpl$1())(_s$, _v$) : null;
-  }), 2);
+  return _$branch(_s$, null, null, () => on() ? 1 : 0, [null, _$block((_s$) => _tmpl$1())], 2);
 }
 ControlFlowShowStaticBody = _$block(ControlFlowShowStaticBody);
 export const steps = [
@@ -2416,7 +2454,7 @@ export const optimality = {
   emits: [
     "<div class=\\"panel\\"><h3>Static heading</h3>",
     "branch(",
-    "}), 2)"
+    "], 2)"
   ],
   absent: ["children:"]
 };
@@ -2456,18 +2494,12 @@ export const label = signal("ready");
 export default function ControlFlowShowStaticKey(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$branch(_s$, _el$1, _el$2, () => VERBOSE || false, _$block((_s$) => {
-    const _v$ = VERBOSE;
-    return _v$ ? _$block((_s$) => {
-      const _el$3 = _tmpl$3();
-      _$insert(_s$, _el$3, () => label());
-      return _el$3;
-    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
-  }), 1);
-  _$branch(_s$, _el$1, null, () => VERBOSE || false, _$block((_s$) => {
-    const _v$ = VERBOSE;
-    return _v$ ? _$block((_s$) => _tmpl$5())(_s$, _v$) : _$block((_s$) => _tmpl$4())(_s$);
-  }), 3);
+  _$branch(_s$, _el$1, _el$2, () => VERBOSE ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => {
+    const _el$3 = _tmpl$3();
+    _$insert(_s$, _el$3, () => label());
+    return _el$3;
+  })], 1);
+  _$branch(_s$, _el$1, null, () => VERBOSE ? 1 : 0, [_$block((_s$) => _tmpl$4()), _$block((_s$) => _tmpl$5())], 3);
   return _el$1;
 }
 ControlFlowShowStaticKey = _$block(ControlFlowShowStaticKey);
@@ -2487,9 +2519,9 @@ export const optimality = {
   // in the corpus emits either.
   emits: [
     "branch(",
-    "() => VERBOSE || false",
-    "}), 1)",
-    "}), 3)"
+    "() => VERBOSE ? 1 : 0",
+    "], 1)",
+    "], 3)"
   ],
   absent: [
     "Show(",
@@ -2638,13 +2670,13 @@ const opts = {
 */
 export default function ControlFlowSpreadShow(_s$) {
   const _el$1 = _tmpl$1();
-  ((_o$1) => _$branch(_s$, _el$1, null, () => _$readSlot(_o$1.keyed, "Show.keyed") !== false ? _o$1.when() || false : _o$1.when() ? 1 : 0, _$block((_s$) => {
+  ((_o$1) => _$branch(_s$, _el$1, null, () => _$readSlot(_o$1.keyed, "Show.keyed") === true ? _o$1.when() || false : _o$1.when() ? 1 : 0, _$block((_s$) => {
     const _v$ = _o$1.when();
     return _v$ ? _$block((_s$, v) => {
       const _el$2 = _tmpl$2();
       _$insert(_s$, _el$2, v);
       return _el$2;
-    })(_s$, _$readSlot(_o$1.keyed, "Show.keyed") !== false ? _v$ : _o$1.when) : _o$1.fallback?.(_s$);
+    })(_s$, _$readSlot(_o$1.keyed, "Show.keyed") === true ? _v$ : _o$1.when) : _o$1.fallback?.(_s$);
   })))(_$props([opts]));
   return _el$1;
 }
@@ -2873,14 +2905,11 @@ export default function DashboardComposite(_s$) {
   });
   _el$2.$$input = _h$1, _el$2.$$s = _s$;
   _el$3.$$click = _h$2, _el$3.$$s = _s$;
-  _$branch(_s$, _el$1, _el$2, () => state.user.name !== "" || false, _$block((_s$) => {
-    const _v$ = state.user.name !== "";
-    return _v$ ? _$block((_s$) => {
-      const _el$5 = _tmpl$3();
-      _$insert(_s$, _el$5, () => state.user.name);
-      return _el$5;
-    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
-  }));
+  _$branch(_s$, _el$1, _el$2, () => state.user.name !== "" ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => {
+    const _el$5 = _tmpl$3();
+    _$insert(_s$, _el$5, () => state.user.name);
+    return _el$5;
+  })]);
   _$each(_s$, _el$4, null, rows, null, _$block((_s$, row: string) => {
     const _el$6 = _tmpl$4();
     _$insert(_s$, _el$6, row);
@@ -2918,7 +2947,7 @@ export const optimality = {
     "\\"value\\"",
     ", rows, null, ",
     "branch(",
-    "() => state.user.name !== \\"\\" || false",
+    "() => state.user.name !== \\"\\" ? 1 : 0",
     "each("
   ],
   // The handlers are hoisted, so nothing rebuilds them per instance; the one
@@ -3478,10 +3507,7 @@ export default function FlowPropEtaBoundary(_s$) {
   const _el$1 = _tmpl$2();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$branch(_s$, _el$1, _el$2, () => on() || false, _$block((_s$) => {
-    const _v$ = on();
-    return _v$ ? _$block((_s$) => _tmpl$3())(_s$, _v$) : null;
-  }), 2);
+  _$branch(_s$, _el$1, _el$2, () => on() ? 1 : 0, [null, _$block((_s$) => _tmpl$3())], 2);
   _$each(_s$, _el$1, _el$3, items, null, _$block((_s$, item: string) => {
     const _el$4 = _tmpl$4();
     _$insert(_s$, _el$4, item);
@@ -3515,7 +3541,7 @@ export const optimality = {
   // fixture nobody looked at.
   emits: [
     "branch(",
-    "() => on() || false",
+    "() => on() ? 1 : 0",
     "each(",
     ", items, null, ",
     "boundary(",
@@ -5252,14 +5278,11 @@ export const rows = sig(["a", "b"]);
 export default function RenamedCoreImport(_s$) {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
-  _$branch(_s$, _el$1, _el$2, () => count() > 0 || false, _$block((_s$) => {
-    const _v$ = count() > 0;
-    return _v$ ? _$block((_s$) => {
-      const _el$3 = _tmpl$3();
-      _$insert(_s$, _el$3, () => count());
-      return _el$3;
-    })(_s$, _v$) : _$block((_s$) => _tmpl$2())(_s$);
-  }));
+  _$branch(_s$, _el$1, _el$2, () => count() > 0 ? 1 : 0, [_$block((_s$) => _tmpl$2()), _$block((_s$) => {
+    const _el$3 = _tmpl$3();
+    _$insert(_s$, _el$3, () => count());
+    return _el$3;
+  })]);
   _$each(_s$, _el$2, null, rows, null, _$block((_s$, row: string) => {
     const _el$4 = _tmpl$4();
     _$insert(_s$, _el$4, row);

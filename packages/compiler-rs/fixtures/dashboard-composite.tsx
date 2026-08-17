@@ -76,7 +76,7 @@ export const optimality = {
     // it stands BETWEEN the search input and the tab button, so its anchor is a
     // node the template already carries and the runtime re-derives nothing.
     "branch(",
-    '() => state.user.name !== "" || false',
+    '() => state.user.name !== "" ? 1 : 0',
     "each(",
   ],
   // The handlers are hoisted, so nothing rebuilds them per instance; the one

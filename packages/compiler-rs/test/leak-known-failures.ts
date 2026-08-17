@@ -142,11 +142,22 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * shape: an error handed to a fallback as an ACCESSOR is a live read, where
  * `ErrorBoundary` handed it over by value and the read was applied once.
  * `Errored` is Solid 2.0's signature and the only one left.
+ *
+ * Then `Show`'s default flipped to non-keyed and the two counters moved in
+ * OPPOSITE directions, which is the whole point of the change: 492 scope
+ * entries became 486 because content survives a value change instead of being
+ * rebuilt, and 287 effects became 289 because the narrowed accessor makes the
+ * reads live. Fewer activations, more live bindings.
+ *
+ * `control-flow-show-keyed` then adds one session and eight scope entries of
+ * its own, which is the arm that OPTS IN to rebuilding: three steps, three
+ * teardowns. It is here so the corpus states the cost of `keyed` rather than
+ * only the saving of not using it.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
-  sessions: 155,
-  scopesEntered: 492,
-  effectsCreated: 287,
+  sessions: 156,
+  scopesEntered: 494,
+  effectsCreated: 290,
   listeners: 31,
 })
 

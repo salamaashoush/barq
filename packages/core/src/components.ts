@@ -84,14 +84,14 @@ export type ShowProps<T> =
   | {
       when: Cell<T | undefined | null | false>;
       fallback?: Slot<Child>;
-      keyed?: Cell<true>;
-      children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
+      keyed?: Cell<false>;
+      children: Block<Child, [item: Cell<NonNullable<T>>]> | Cell<Child>;
     }
   | {
       when: Cell<T | undefined | null | false>;
       fallback?: Slot<Child>;
-      keyed: Cell<false>;
-      children: Block<Child, [item: Cell<NonNullable<T>>]> | Cell<Child>;
+      keyed: Cell<true>;
+      children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
     };
 
 export type ForProps<T, U extends JSXElement> =
@@ -114,11 +114,17 @@ export type ForProps<T, U extends JSXElement> =
       children: Block<U, [item: Cell<T>, index: number]>;
     };
 
-export interface MatchProps<T> {
-  when: Cell<T | undefined | null | false>;
-  keyed?: Cell<boolean>;
-  children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
-}
+export type MatchProps<T> =
+  | {
+      when: Cell<T | undefined | null | false>;
+      keyed?: Cell<false>;
+      children: Block<Child, [item: Cell<NonNullable<T>>]> | Cell<Child>;
+    }
+  | {
+      when: Cell<T | undefined | null | false>;
+      keyed: Cell<true>;
+      children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
+    };
 
 export interface RepeatProps {
   count: Cell<number>;
@@ -188,20 +194,23 @@ export function Show<T>(
   props: { when: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
 ): JSXElement {
   const value = computed(() => readValue(props.when, "Show.when") as T | undefined | null | false);
-  const keyed = readValue(props.keyed, "Show.keyed");
+  const keyed = readValue(props.keyed, "Show.keyed") === true;
   // The KEY decides a rebuild, so it carries exactly what the mode says it
-  // should: keyed (the default) re-renders when the value changes, so the value
-  // IS the key; non-keyed re-renders only when truthiness flips, so the key is
-  // the boolean. Every falsy value collapses onto one key, which keeps a
-  // fallback in place across `0`, `""` and `null`.
-  const key: Cell<unknown> =
-    keyed === false
-      ? (): unknown => value() !== false && !!value()
-      : (): unknown => value() || false;
+  // should. The DEFAULT is non-keyed (Solid 2.0): content re-renders only when
+  // truthiness flips, so the key is the boolean and the children are handed the
+  // narrowed ACCESSOR — an immutable update to a still-truthy value updates the
+  // content in place instead of rebuilding it. `keyed` opts into the other one,
+  // where the value IS the key and a new value is a new instance.
+  //
+  // Every falsy value collapses onto one key, which keeps a fallback in place
+  // across `0`, `""` and `null`.
+  const key: Cell<unknown> = keyed
+    ? (): unknown => value() || false
+    : (): unknown => value() !== false && !!value();
   const content: Block<unknown> = (scope: Scope | null): unknown => {
     const current = untrack(value);
     return current
-      ? callSlot(props.children, scope, keyed === false ? value : current)
+      ? callSlot(props.children, scope, keyed ? current : value)
       : callSlot(props.fallback, scope);
   };
   return branch(_s, null, null, key, content) as JSXElement;
@@ -294,7 +303,16 @@ export function Switch(
   const body: Block<unknown> = (scope: Scope | null): unknown => {
     const found = untrack(arms);
     if (found === null) return callSlot(props.fallback, scope);
-    return callSlot(found.match.children, scope, found.value);
+    // A `Match` follows `Show`: non-keyed by default, so its children are
+    // handed the narrowed ACCESSOR and the arm's content updates in place
+    // across a value change. A keyed arm gets the value, and the generation
+    // counter above is what rebuilds it.
+    const keyed = readValue(found.match.keyed, "Match.keyed") === true;
+    const narrowed = (): unknown => {
+      const now = arms();
+      return now === null ? undefined : now.value;
+    };
+    return callSlot(found.match.children, scope, keyed ? found.value : narrowed);
   };
 
   return branch(_s, null, null, key, body) as JSXElement;

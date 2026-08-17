@@ -123,14 +123,13 @@ describe("Repeat", () => {
 });
 
 describe("Show keyed semantics", () => {
-  test("keyed={false}: children get an accessor; no re-render on truthy value change", () => {
+  test("default (non-keyed): children get an accessor; no re-render on truthy value change", () => {
     const user = signal<{ name: string } | null>({ name: "John" });
     let renders = 0;
 
     scope(() => {
       const el = Show(null, {
         when: () => user(),
-        keyed: false,
         children: (_s: unknown, u: () => { name: string }) => {
           renders++;
           return element(null, "div", { children: () => u().name }) as Node;
@@ -158,13 +157,14 @@ describe("Show keyed semantics", () => {
     expect(renders).toBe(2);
   });
 
-  test("default (keyed): children get the raw value and re-render on change", () => {
+  test("keyed: children get the raw value and re-render on every value change", () => {
     const user = signal<{ name: string } | null>({ name: "John" });
     let renders = 0;
 
     scope(() => {
       const el = Show(null, {
         when: () => user(),
+        keyed: true,
         children: (_s: unknown, u: { name: string }) => {
           renders++;
           return element(null, "div", { children: u.name }) as Node;

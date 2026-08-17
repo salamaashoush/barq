@@ -24,6 +24,6 @@ export const optimality = {
   // fallback stays in place across `0`, `""` and `null` — and the body is one
   // Block that picks the arm from the value it reads at ACTIVATION time. The
   // `(parent, anchor)` pair is the one the walk above it produced.
-  emits: ["branch(", "() => visible() || false"],
+  emits: ["branch(", "() => visible() ? 1 : 0"],
   absent: ["Show(", "when:", "fallback:"],
 }

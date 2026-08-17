@@ -49,6 +49,6 @@ export const optimality = {
   // body nor the fallback is wrapped in a thunk the compiler manufactured —
   // both are arrays of built clones inside the Block the branch owns.
   templates: 5,
-  emits: ["branch(", "() => on() || false"],
+  emits: ["branch(", "() => on() ? 1 : 0"],
   absent: ["when:", "children:", "fallback:", "createElement"],
 }

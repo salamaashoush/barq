@@ -185,6 +185,9 @@ describe("Show component", () => {
 
     const node = Show(null, {
       when: value,
+      // The raw value is the KEYED arm; non-keyed is the default since M10 and
+      // hands over a narrowed accessor instead.
+      keyed: true,
       children: (_s: unknown, v: string) => {
         receivedValue = v;
         return document.createTextNode(v);
@@ -264,6 +267,7 @@ describe("Show component", () => {
     const count = signal(0);
     const node = Show(null, {
       when: count,
+      keyed: true,
       fallback: document.createTextNode("empty"),
       children: (_s: unknown, n: number) => document.createTextNode(`count: ${n}`),
     });
@@ -281,6 +285,7 @@ describe("Show component", () => {
     const text = signal("");
     const node = Show(null, {
       when: text,
+      keyed: true,
       fallback: document.createTextNode("empty"),
       children: (_s: unknown, t: string) => document.createTextNode(t),
     });
@@ -300,6 +305,7 @@ describe("Show component", () => {
 
     const node = Show(null, {
       when: show,
+      keyed: true,
       // This function has default param, so .length === 0
       children: (_s: unknown, item = { name: "default" }) => {
         receivedValue = item;

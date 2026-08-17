@@ -249,21 +249,21 @@ export function UserDetail(props: { data: Cell<UserDetailData | undefined> }) {
           <div class={breadcrumbStyle}>
             <Link href="/demo/dashboard/users">Users</Link>
             <span>/</span>
-            <span>{found.name}</span>
+            <span>{found().name}</span>
           </div>
 
-          <h3 class={pageTitle}>{found.name}</h3>
+          <h3 class={pageTitle}>{found().name}</h3>
 
           <div class={detailCardStyle}>
             <p>
-              <strong>Email:</strong> {found.email}
+              <strong>Email:</strong> {found().email}
             </p>
             <p>
-              <strong>Role:</strong> <span class={tagStyle}>{found.role}</span>
+              <strong>Role:</strong> <span class={tagStyle}>{found().role}</span>
             </p>
           </div>
 
-          <h4 class={subTitleStyle}>Posts by {found.name}</h4>
+          <h4 class={subTitleStyle}>Posts by {found().name}</h4>
           <Show when={() => userPosts().length > 0} fallback={<p class={emptyStyle}>No posts yet</p>}>
             <ul class={listStyle}>
               <For each={userPosts}>
@@ -356,19 +356,19 @@ export function PostDetail(props: { data: Cell<PostDetailData | undefined> }) {
           <div class={breadcrumbStyle}>
             <Link href="/demo/dashboard/posts">Posts</Link>
             <span>/</span>
-            <span>{found.title}</span>
+            <span>{found().title}</span>
           </div>
 
-          <h3 class={pageTitle}>{found.title}</h3>
+          <h3 class={pageTitle}>{found().title}</h3>
 
           <div class={detailCardStyle}>
             <p>
-              <strong>Category:</strong> <span class={categoryTagStyle}>{found.category}</span>
+              <strong>Category:</strong> <span class={categoryTagStyle}>{found().category}</span>
             </p>
             <p>
               <strong>Author:</strong>{" "}
               <Show when={author} fallback={<span>Unknown</span>}>
-                {(auth) => <Link href={`/demo/dashboard/users/${auth.id}`}>{auth.name}</Link>}
+                {(auth) => <Link href={`/demo/dashboard/users/${auth().id}`}>{auth().name}</Link>}
               </Show>
             </p>
           </div>

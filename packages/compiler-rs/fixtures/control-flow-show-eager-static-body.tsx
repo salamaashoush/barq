@@ -47,7 +47,7 @@ export const optimality = {
   // compiler can PROVE the activation registers nothing disposable: `NO_SCOPE`
   // is shipped as the flags integer `2`, and the branch activates without
   // allocating a `Scope` or an `ownRange` closure.
-  emits: ['<div class="panel"><h3>Static heading</h3>', "branch(", "}), 2)"],
+  emits: ['<div class="panel"><h3>Static heading</h3>', "branch(", "], 2)"],
   // The two shapes a compiler-manufactured thunk would take, plus the prop the
   // construct used to carry.
   absent: ["children: () =>", "children: (()", "children:"],

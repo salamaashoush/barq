@@ -600,11 +600,12 @@ enum Keying<'a> {
 
 /// `Show` — `branch` on the value itself, or on its truthiness.
 ///
-/// The keyed default re-renders when the VALUE moves, so the value IS the key
-/// (`components.ts`), and one body serves every key because the arm is decided
-/// by the value rather than by an index. `keyed={false}` moves only on a
-/// truthiness flip, which IS an index, so it takes a two-row body table whose
-/// falsy row is the fallback.
+/// The DEFAULT is non-keyed (Solid 2.0): content moves only on a truthiness
+/// flip, which IS an index, so it takes a two-row body table whose falsy row is
+/// the fallback and whose children are handed the narrowed accessor. `keyed`
+/// opts into re-rendering when the VALUE moves, so the value IS the key, and
+/// one body serves every key because the arm is decided by the value rather
+/// than by an index.
 ///
 /// ## The third arm, and why it is not a table
 ///
@@ -635,20 +636,22 @@ fn show<'a>(
 ) -> Region<'a> {
     let when = bag.take(shaper, "when").expect("checked by `admits`");
     let keying = match bag.take(shaper, "keyed") {
-        None => Keying::Value,
+        // Non-keyed is the DEFAULT (Solid 2.0): content survives a value change
+        // and only a truthiness flip rebuilds it.
+        None => Keying::Index,
         Some(attr) if attr.proven => match &attr.value {
-            Expression::BooleanLiteral(literal) if !literal.value => Keying::Index,
-            _ => Keying::Value,
+            Expression::BooleanLiteral(literal) if literal.value => Keying::Value,
+            _ => Keying::Index,
         },
         Some(attr) => {
             let at = attr.span;
             let read = read_slot(shaper, attr.value, "Show.keyed", at);
-            let no = Expression::new_boolean_literal(at, false, &shaper.ast);
+            let yes = Expression::new_boolean_literal(at, true, &shaper.ast);
             Keying::Runtime(Expression::new_binary_expression(
                 at,
                 read,
-                BinaryOperator::StrictInequality,
-                no,
+                BinaryOperator::StrictEquality,
+                yes,
                 &shaper.ast,
             ))
         }

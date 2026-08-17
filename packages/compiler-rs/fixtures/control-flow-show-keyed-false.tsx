@@ -3,15 +3,17 @@ import { Show, signal } from "@barqjs/core"
 export const value = signal<string | null>("alpha")
 
 /**
- * `<Show keyed={false}>` — the narrowed-accessor mode, and the one arm of the
- * construct that had no fixture.
+ * `<Show keyed={false}>` written EXPLICITLY, which is the default since M10 —
+ * the fixture is kept at its own name because a fixture is never deleted, and
+ * it earns its place by pinning that the explicit spelling and the absent one
+ * agree.
  *
- * `keyed={false}` re-renders only when TRUTHINESS flips, so across a value
- * change the content stays mounted and only its reads move. That makes the body
- * parameter an accessor, and `analysis::bind::row_params` did not say so: it
- * typed `For` and `Repeat` and returned early for everything else, so `{v()}`
- * was an opaque call the classifier applied ONCE and the text froze at
- * activation. It is the by-item `For` bug (V8) in the construct beside it.
+ * Non-keyed re-renders only when TRUTHINESS flips, so across a value change the
+ * content stays mounted and only its reads move. That makes the body parameter
+ * an accessor, and `analysis::bind::row_params` did not say so: it typed `For`
+ * and `Repeat` and returned early for everything else, so `{v()}` was an opaque
+ * call the classifier applied ONCE and the text froze at activation. It is the
+ * by-item `For` bug (V8) in the construct beside it.
  *
  * Step 0 is the only frame that can see it. `alpha` to `beta` is a value change
  * with no truthiness change, so a frozen read and a live one agree on every

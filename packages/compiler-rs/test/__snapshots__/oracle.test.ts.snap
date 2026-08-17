@@ -1961,3 +1961,19 @@ attrs 1: 0/3 p: class"
 `;
 
 exports[`marker channel form-action: anchor layout 1`] = `"<form><input><button>save</button><p></p><p></p></form>"`;
+
+exports[`rendered DOM golden control-flow-show-keyed: rendered DOM 1`] = `
+"initial: <div class="keyed-show"><b class="shown">alpha</b></div>
+step 0: <div class="keyed-show"><b class="shown">beta</b></div>
+step 1: <div class="keyed-show"><i>none</i></div>
+step 2: <div class="keyed-show"><b class="shown">gamma</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class
+attrs 3: 0/0 b: class"
+`;
+
+exports[`marker channel control-flow-show-keyed: anchor layout 1`] = `"<div><b>alpha</b></div>"`;

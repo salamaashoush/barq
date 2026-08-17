@@ -53,6 +53,6 @@ export const optimality = {
   // The two integers, which are the whole point of the fixture. `1` is
   // `STATIC_KEY` alone and `3` is `STATIC_KEY | NO_SCOPE`, and no other fixture
   // in the corpus emits either.
-  emits: ["branch(", "() => VERBOSE || false", "}), 1)", "}), 3)"],
+  emits: ["branch(", "() => VERBOSE ? 1 : 0", "], 1)", "], 3)"],
   absent: ["Show(", "when: ", "children: ", "fallback: "],
 }

@@ -1286,8 +1286,11 @@ mod tests {
                       export const A = () => <Show when={() => on()}><p class=\"s\">x</p></Show>;\n\
                       export const B = () => <Show when={() => on()}><p class=\"s\">{on()}</p></Show>;\n";
         let code = emit(source).code;
-        assert!(code.contains("_$branch(_s$, null, null, () => on() || false"), "{code}");
-        assert!(code.contains("_$block((_s$) => _tmpl$1())"), "{code}");
+        // Non-keyed is the default since M10, so the key is the truthiness
+        // INDEX and the bodies are a two-row table whose falsy row is the
+        // (absent) fallback.
+        assert!(code.contains("_$branch(_s$, null, null, () => on() ? 1 : 0"), "{code}");
+        assert!(code.contains("[null, _$block((_s$) => _tmpl$1())]"), "{code}");
         assert!(code.contains("_$insert(_s$, _el$1, on)"), "{code}");
         assert!(!code.contains("Show("), "{code}");
         assert!(!code.contains("when:"), "{code}");
@@ -1332,9 +1335,9 @@ mod tests {
         .code;
         assert!(code.contains("_$block((_s$) => {"), "{code}");
         assert!(code.contains("_$insert(_s$, _el$1, value)"), "{code}");
-        // A body that reaches `insert` registers something disposable, so the
-        // activation still gets a `Scope` and no flag is shipped.
-        assert!(code.contains("_v$ ? _$block"), "{code}");
+        // The two-row table of the non-keyed default, which is what a `Show`
+        // with no `keyed` emits since M10.
+        assert!(code.contains("[null, _$block("), "{code}");
         // A body that reaches `insert` registers something disposable, so the
         // activation still gets a `Scope` and no flag is shipped.
         assert!(!code.contains("}), 2)"), "{code}");

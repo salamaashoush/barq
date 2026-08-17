@@ -44,6 +44,6 @@ export const optimality = {
   // handing the primitive a pair rather than letting it re-derive one, because
   // the pair here belongs to a tree that does not exist until the branch
   // activates.
-  emits: ["branch(", "() => visible() || false", "each(", ", items, null, "],
+  emits: ["branch(", "() => visible() ? 1 : 0", "each(", ", items, null, "],
   absent: ["Show(", "For(", "when: ", "each: ", "children: ", "fallback: "],
 }

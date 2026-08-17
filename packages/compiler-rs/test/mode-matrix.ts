@@ -131,10 +131,12 @@ export const MATRIX_EXCEPTIONS = {
 // no `action` at all — which is why it is worth one cell in each of the seven.
 // `sem-form-action-slot` is the semantics half of the same rule (B8) and adds
 // the last +1/+7/+1: four claims, of which two are the defect that shipped.
+// And +1/+7/+1 for `control-flow-show-keyed`, the arm that opts in to keying —
+// added when M10 flipped the default, so the corpus covers both sides of it.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 188,
+  fixtures: 189,
   modes: 7,
-  cells: 1316,
-  renderableOnBoth: 161,
+  cells: 1323,
+  renderableOnBoth: 162,
   renderableOnNeither: 27,
 })

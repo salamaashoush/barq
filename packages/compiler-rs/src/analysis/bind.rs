@@ -937,7 +937,17 @@ impl<'a> Binder<'_, 'a> {
                 }
             }
         }
-        let (keyed, proved) = verdict.unwrap_or((Keyed::ByItem, true));
+        // The DEFAULT differs by construct, and that asymmetry is Solid 2.0's
+        // and deliberate. A list row is identified BY ITS DATA, so `For` keys on
+        // the item and an immutable update rebuilds the row rather than leaving
+        // stateful DOM under the wrong value (K1). A `Show`'s `when` is usually
+        // a CONDITION, not an identity, so it keys on truthiness and hands over
+        // a narrowed accessor — the content survives a value change instead of
+        // being torn down with whatever the user had typed into it.
+        let (keyed, proved) = verdict.unwrap_or(match flow {
+            Flow::Show | Flow::Match => (Keyed::ByIndex, true),
+            _ => (Keyed::ByItem, true),
+        });
 
         let accessor = SourceKind::Accessor { nonreactive: MemberMask::EMPTY };
         let params: &[SourceKind] = match (flow, keyed) {

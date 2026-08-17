@@ -69,7 +69,7 @@ export const optimality = {
   // fixture nobody looked at.
   emits: [
     "branch(",
-    "() => on() || false",
+    "() => on() ? 1 : 0",
     "each(",
     ", items, null, ",
     "boundary(",

@@ -204,13 +204,22 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * One more effect at the `Await` removal: `control-flow-error-boundary`'s
  * fallback reads the error through an accessor now, which is a live binding
  * where the by-value form was applied once.
+ *
+ * `Show`'s non-keyed default takes 407 scopes to 404 and 313 clones to 312,
+ * and puts 268 effects up to 270. A clone count that FALLS with no fixture
+ * edit is this channel reporting the change's own claim: a Block invoked
+ * fewer times because the content it built was not torn down.
+ *
+ * `control-flow-show-keyed` puts five clones back, and that is the point of
+ * it: the arm that keys on the value rebuilds on every value change, and the
+ * corpus now carries the cost of asking for it beside the saving of not.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 141,
-  scopes: 407,
-  effects: 268,
-  clones: 313,
-  determined: 311,
+  fixtures: 142,
+  scopes: 410,
+  effects: 271,
+  clones: 317,
+  determined: 315,
   unattributed: 1,
   cascades: 1,
 })

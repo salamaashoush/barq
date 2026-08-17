@@ -30,6 +30,6 @@ export const optimality = {
   // the fallback as a thunk, so neither gets one — each is a single clone
   // inside the Block the branch invokes, with no arrow of the compiler's own,
   // no IIFE and no element binding.
-  emits: ["branch(", "() => visible() || false"],
+  emits: ["branch(", "() => visible() ? 1 : 0"],
   absent: ["when:", "children:", "fallback:"],
 }

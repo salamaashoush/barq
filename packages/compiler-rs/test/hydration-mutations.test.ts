@@ -116,11 +116,12 @@ const MUTATIONS: Mutation[] = [
   {
     name: "a branch index disagrees",
     about:
-      "the server says it took arm `true`, the client's own read says `false`. H2 forbids " +
+      "the server says it took arm `1`, the client's own read says `0`. H2 forbids " +
       "re-deriving the condition, so the written key is the only evidence there is — and " +
       "§12 put that key on the DETECTION axis, so this is the one corruption a production " +
-      "wire cannot express.",
-    apply: (w) => w.replace("<!--[true-->", "<!--[false-->"),
+      "wire cannot express. The key is the truthiness INDEX rather than the value since " +
+      "M10 flipped `Show`'s default to non-keyed; under the keyed default it read `true`.",
+    apply: (w) => w.replace("<!--[1-->", "<!--[0-->"),
     production: null,
     development: { detected: true, degrades: "local" },
   },
@@ -468,16 +469,18 @@ describe("hydrating a page the compiler never made hydratable", () => {
     expect(production.match(/<!--\[/g)?.length).toBe(1)
 
     // Detection adds two things and they are both about the KEY. The branch's
-    // open comment gains `true`, and the list gets its comments BACK — a range
+    // open comment gains the branch's key, and the list gets its comments BACK — a range
     // that owns its element writes none in production, and a development build
     // writes them anyway because the open comment is the only place a key can
     // live. An `each` has no key, so the second is the axis paying for a
     // uniform range shape rather than for information.
-    expect(development).toContain("<!--[true-->")
+    // `1` rather than `true`: the key is the truthiness INDEX since M10 flipped
+    // `Show`'s default to non-keyed, where the keyed arm wrote the value itself.
+    expect(development).toContain("<!--[1-->")
     expect(development).toContain("<ul><!--[--><li>one</li>")
     expect(
       development
-        .replace("<!--[true-->", "<!--[-->")
+        .replace("<!--[1-->", "<!--[-->")
         .replace("<ul><!--[-->", "<ul>")
         .replace("<!--]--></ul>", "</ul>"),
     ).toBe(production)
@@ -486,8 +489,11 @@ describe("hydrating a page the compiler never made hydratable", () => {
     // detection costs a key and a second range, and a build that hydrates
     // nothing costs neither.
     expect(production.length - plain.length).toBe("<!--[-->".length + "<!--]-->".length)
+    // The key is one byte now — the truthiness index — where the keyed default
+    // spelled the value and cost four. Detection got CHEAPER on this page by
+    // flipping `Show`, which is a side effect of the flip and not its point.
     expect(development.length - production.length).toBe(
-      "true".length + "<!--[-->".length + "<!--]-->".length,
+      "1".length + "<!--[-->".length + "<!--]-->".length,
     )
   })
 })

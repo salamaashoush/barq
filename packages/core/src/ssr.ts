@@ -1001,19 +1001,18 @@ export function ssrShow<T>(
   },
 ): SsrHtml {
   const value = (): T => readValue(props.when, "Show.when") as T;
-  const keyed = readValue(props.keyed, "Show.keyed");
-  const key: Cell<unknown> =
-    keyed === false
-      ? (): unknown => value() !== false && !!value()
-      : (): unknown => value() || false;
-  // ONE body for every key (§3.4), exactly as `components.ts:119` writes it: the
+  const keyed = readValue(props.keyed, "Show.keyed") === true;
+  const key: Cell<unknown> = keyed
+    ? (): unknown => value() || false
+    : (): unknown => value() !== false && !!value();
+  // ONE body for every key (§3.4), exactly as `components.ts` writes it: the
   // value is read at ACTIVATION time, which is why the branch takes no slot
-  // argument of its own. Keyed children get the raw value; non-keyed get a
-  // narrowed accessor.
+  // argument of its own. The DEFAULT is non-keyed, so children get the narrowed
+  // accessor; `keyed` hands over the raw value.
   const content: Block<unknown> = (scope: Scope | null): unknown => {
     const current = untrack(value);
     return current
-      ? invokeBlock(scope, props.children, [keyed === false ? value : current])
+      ? invokeBlock(scope, props.children, [keyed ? current : value])
       : invokeBlock(scope, props.fallback, NO_ARGS);
   };
   return branch(s, null, null, key, content);
@@ -1102,10 +1101,16 @@ export function ssrSwitch(
   // same table `passes/flow.rs` builds when it lowers a `Switch` itself.
   const found = arms();
   const key = (): number => (found === null ? 0 : found.index + 1);
-  const body: Block<unknown> = (scope: Scope | null): unknown =>
-    found === null
-      ? invokeBlock(scope, props.fallback, NO_ARGS)
-      : invokeBlock(scope, found.match.children, [found.value]);
+  const body: Block<unknown> = (scope: Scope | null): unknown => {
+    if (found === null) return invokeBlock(scope, props.fallback, NO_ARGS);
+    // Non-keyed is the default, and its children take the narrowed accessor.
+    // A server render has one frame, so the accessor is a constant thunk over
+    // the value this arm matched on — the shape has to agree with the DOM
+    // half's or the two backends hand the same body different arguments.
+    const keyed = readValue(found.match.keyed, "Match.keyed") === true;
+    const narrowed = (): unknown => found.value;
+    return invokeBlock(scope, found.match.children, [keyed ? found.value : narrowed]);
+  };
   return branch(s, null, null, key, body);
 }
 
