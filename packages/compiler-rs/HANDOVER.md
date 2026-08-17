@@ -24,16 +24,16 @@ Numbers below are M11's. The M9/M10 sections keep their own numbers where they w
 each says so.
 
 ```
-cargo test                    303 pass, 0 fail
-compiler-rs bun test         3482 pass, 0 fail
-packages/core                 973 pass, 0 fail
+cargo test                    303 pass, 0 fail   (clippy clean, fmt clean)
+compiler-rs bun test         3494 pass, 0 fail
+packages/core                 983 pass, 0 fail
 packages/extra                153 pass, 0 fail
 packages/testing               16 pass, 0 fail   (COMPILED — see M9 below)
 packages/compiler              22 pass, 0 fail
 root bun run ci               EXIT=0
-fixtures                      140  (139 + read-mode-binding; 31 semantics, 127 L1 claims)
+fixtures                      141  (32 semantics, 128 L1 claims; 53 of 97 rules pinned)
 kitchen-sink                  builds; all 9 routes drive in real Chrome, reactive, routed
-kitchen-sink typecheck        55 errors, NOT ci-gated, two known classes (see below)
+kitchen-sink typecheck        56 errors, NOT ci-gated, two known classes (see below)
 ```
 
 **The full `bun test` run is timing-sensitive.** `L3 — EMI mutation over generated programs` has a
@@ -337,9 +337,9 @@ constructs. §4.1's rows stay struck for the reason in `## M10, so far`.
 
 ### Still open, and now measured
 
-- kitchen-sink typecheck is **55** at M11, none of them ci-gated. It was 49; the six added are the
-  same two known classes — one implicit-any row callback from `<For>` and five not-callable prop
-  reads in JS positions — in the two demos M11 added. Generic inference does not survive
+- kitchen-sink typecheck is **56** at M11, none of them ci-gated. It was 49; the seven added are the
+  same two known classes — one implicit-any row callback from `<For>` and six not-callable prop
+  reads in JS positions — in the three demos M11 added. Generic inference does not survive
   `LibraryManagedAttributes`, so `<For each={xs}>{(item) => …}` loses `item`'s type, and a prop
   declared `name: string` makes `props.name()` uncallable to TS while being correct at run time.
 - ~~The `Show`/`Match`/`Portal` divergences~~ — CLOSED at M10.
@@ -354,14 +354,15 @@ constructs. §4.1's rows stay struck for the reason in `## M10, so far`.
 
 ## M11 — reveal ordering, the transition surface, and what a compute may return
 
-Four commits, each its own step.
+Five commits, each its own step.
 
 | commit | what |
 |---|---|
 | `c346ade` | A6 — reveal ordering is a slot contract; a nested group is ONE composite slot |
 | `d93bf73` | the transition surface is complete; its static knowledge was not |
 | `2ffcb0a` | A7 — a compute returns a value, ANY thenable, or an async iterable |
-| *(this one)* | A5 (f)'s read surface is a compiler surface, and A5 leaves `unpinned-rules.ts` |
+| `91c557f` | A5 (f)'s read surface is a compiler surface, and A5 leaves `unpinned-rules.ts` |
+| *(this one)* | A8 — commit #0, on `computed` and through `resource` |
 
 ### A6 — the two questions, answered rather than implied
 
@@ -425,6 +426,32 @@ failed it and were stored AS VALUES. A stream is pending until its FIRST yield a
 on, its iterator is closed by disposal AND by supersession, an empty stream settles rather than
 hanging, and a bare `IteratorResult` is assimilated. Every stream procedure observes MORE THAN ONE
 yield, because one yield is indistinguishable from a promise.
+
+### A8 — commit #0
+
+`loadingValue` declares a value a node is BORN with, served until its first
+answer. During that window the node is SETTLED in every observable: no throw,
+`isPending` false, no boundary fallback. The mechanism is ONE omission and not a
+second state — the node never sets `STATUS_PENDING`, and that flag is what makes
+a read throw, what a boundary registers on and what `isPending` reports, so
+withholding it gives all three at once. The flight still runs and `settle()`
+still waits for it.
+
+The window closes on the first ANSWER of any kind — value, sync value,
+rejection, sync throw — and never reopens. After that the node is ordinary. The
+two states are **disjoint**, and that is the whole reason the option exists:
+`value.skeleton || isPending(value)` is the guard that covers both, one term
+each.
+
+It is threaded through `resource` too, which is where an application actually
+declares a skeleton; `computed` alone would have left it unreachable from the
+surface apps use.
+
+**A fixture claim about A8 cannot be made on the VALUE alone.** `Loading`
+revalidation keeps stale content whether the window closed or not, so the page
+reads identically either way — the first mutant run proved it, surviving a
+fixture that only read text. `sem-loading-value` reads `isPending` off a live
+class instead, which makes it depend on A5 (f) being true.
 
 ### Two things worth knowing about the reference
 
@@ -568,12 +595,8 @@ intend to keep working.
   boundary gain an ordering channel or does the coordinator stay a provide" is BOTH, and the reason
   is that a nested group registers as one composite slot, so the thing registering is not always a
   boundary.
-- **`loadingValue` — "commit #0" — has no equivalent here.** `solid-js@2.0.0-rc.0`'s `signals.d.ts`
-  documents a memo option carrying a value the node is BORN with: it serves during first load
-  without suspending, `isPending` stays false, no transition is held, and it leaves the lineage
-  permanently once the first real answer lands (refetches then use ordinary pending semantics). It
-  is how they drive first-load skeletons from the value rather than from a boundary. Found while
-  reading for A7; never scoped here.
+- ~~**`loadingValue` — "commit #0" — has no equivalent here.**~~ CLOSED at M11 as A8, on `computed`
+  and threaded through `resource`.
 - **§12 was read against `beta.31` and `rc.0` is what M10/M11 read.** `rc.0` still exports no
   transition API, so Q7's finding holds — but its internals grew `resolveTransition`,
   `initTransition`, transaction stashing and a loading rail described as "invisible to

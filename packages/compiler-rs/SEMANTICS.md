@@ -2582,6 +2582,93 @@ first yield kills the three that observe more than one. `sem-async-stream.tsx` d
 through compiled JSX and a `Loading` boundary, which is the claim procedure 3 makes about the
 boundary rather than about the node.
 
+### A8 — commit #0: a node may be born holding a value, and that window closes once
+
+**Rule.** `loadingValue` on a derived node declares a value the node is BORN with, served until the
+compute's first real answer lands.
+
+**During the window the node is SETTLED in every observable.** A read does not throw, `isPending` is
+false, `latest()` gives the same value a normal read gives, and no `Loading` boundary above it shows
+a fallback. Commit #0 answers the question by declaration, so there is nothing to wait on. First-load
+affordances come from the value itself — a `null` placeholder, a `skeleton: true` field — rather than
+from a boundary.
+
+The mechanism is one omission and not a second state: during the window the node never sets
+`STATUS_PENDING`. That flag is what makes a read throw (R1/A3), what a boundary registers on, and
+what `isPending` reports, so withholding it gives all three at once. The flight still runs and is
+still registered with `settle()`, so a server render still waits for it.
+
+**The window closes on the first ANSWER, whatever the answer is, and never reopens.** A resolved
+value, a synchronous value, a rejection and a synchronous throw all end it. After that the node is
+ordinary: a refetch shows the stale value, `isPending` is true, and a read throws unless it is under
+`latest()`.
+
+**The two states are disjoint**, which is the whole reason the option is worth having and the reason
+every procedure below observes the SECOND flight as well as the first. A guard that covers both is
+`value.skeleton || isPending(value)`.
+
+| | first flight | every later flight |
+|---|---|---|
+| a read | commit #0 | THROWS |
+| `latest()` | commit #0 | the stale value |
+| `isPending` | `false` | `true` |
+| a `Loading` above it | content | keeps stale content |
+
+**Commit #0 is also the compute's first `prev`**, so a `prev`-folding compute folds from it rather
+than from `undefined`.
+
+**An unready SOURCE during the window is not this node's pendingness.** A synchronous `NotReady`
+throw from a dependency leaves commit #0 serving and marks nothing downstream. The read that threw
+has already linked the source, so its settle re-runs this node; nothing else is needed.
+
+**The option's PRESENCE opens the window, not its value.** `undefined` is a legal placeholder, so the
+test is `"loadingValue" in options`.
+
+**Typed strictly as `T`.** To use `null`, declare it in the node's type —
+`computed<User | null>(…, { loadingValue: null })` — so every consumer sees the nullable window
+honestly. A placeholder standing in for real data should carry its own provenance rather than
+impersonate it.
+
+**Falsified by.** Ten procedures.
+
+1. A node with a `loadingValue` over an unsettled promise. The read MUST give commit #0, `isPending`
+   MUST be false and `latest()` MUST agree. *(Fails if the window is a readable kind of pending
+   rather than settled.)*
+2. Settle it, then invalidate it and start a second flight. The read MUST now THROW, `latest()` MUST
+   give the stale value and `isPending` MUST be true. *(Fails if the window never closes — and a node
+   that simply never reports pending passes procedure 1 and fails only here, which is why the
+   disjoint state has to be observed.)*
+3. The same under a `Loading` boundary whose body reads directly. The first frame MUST be content and
+   never the fallback; the second flight MUST keep stale content. *(Fails if the window is invisible
+   to reads but not to the boundary channel.)*
+4. A `prev`-taking compute. The first `prev` MUST be the loading value. *(Fails if the node is born
+   `UNINITIALIZED`, which is also what would make `latest()` throw.)*
+5. A compute reading an unsettled DEPENDENCY. Commit #0 MUST keep serving and `isPending` MUST be
+   false, and the node MUST re-run when the dependency settles. *(Fails if a source's pendingness is
+   reported as this node's; the second half fails if the fix is to swallow the throw without keeping
+   the link.)*
+6. Reject the first flight. The error MUST become the node's. *(Fails if commit #0 covers for a
+   failure forever, which turns a broken first load into a permanent skeleton.)*
+7. `loadingValue: undefined`, against the same compute with no option at all. The first MUST read
+   `undefined` and the second MUST throw. *(Fails on a `!== undefined` test, which would make the
+   documented `null`/`undefined` placeholder unreachable.)*
+8. A SYNCHRONOUS compute with a `loadingValue`. It MUST close the window on its first run and behave
+   ordinarily after. *(Fails if the window survives a compute that was never async, which would make
+   the option a permanent pending-suppressor.)*
+9. Through `resource`: during the first fetch `loading()` MUST be false and `state()` MUST be
+   `"ready"`. *(Fails if the option is reachable only from `computed`, which is not where an
+   application declares a skeleton.)*
+10. The same resource, refetched after it settled. `state()` MUST be `"refreshing"` and `latest()`
+    MUST give the previous value. *(Fails if closing the window is not threaded through the
+    resource's own status channel.)*
+
+**Status.** `HOLDS` since M11. Read out of `solid-js@2.0.0-rc.0`'s `signals.d.ts` (`MemoOptions`)
+and `@solidjs/signals`' `handleAsync`/`parkLoadingWindow`, not from documentation.
+
+**Pinned by.** `packages/core/src/loading-value.test.ts`, whose ten claims are the ten procedures.
+Three mutants were run against it: never closing the window kills procedure 2; publishing
+pendingness during the window kills five; and propagating an unready source kills procedure 5.
+
 ---
 
 ## 11. H — Hydration
@@ -2999,6 +3086,7 @@ green, which is why L1 exists.
 | A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | `form-action`, `sem-form-action-slot` (B8's slot, M10), `sem-async-read-mode` and `read-mode-binding` (clause (f)'s read surface, M11); all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
 | A6 | reveal ordering is a slot contract, and a nested group is one composite slot | H (M11) | `sem-reveal-nested-group`, `control-flow-reveal`, `l4/c7-reveal` |
 | A7 | a compute returns a value, any thenable, or an async iterable | H (M11) | `sem-async-stream`, and the eight procedures in packages/core/src/async-source.test.ts |
+| A8 | commit #0: a node may be born holding a value, and that window closes once | H (M11) | `sem-loading-value`, and the ten procedures in packages/core/src/loading-value.test.ts |
 | B8 | `action` on a `<form>` is decided by the slot, not by the value's shape | H (M10) | `sem-form-action-slot`, `form-action` |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
 | H2 | the wire carries what recovery needs; the key is a dev-only axis | **H** (M7b) | the branch-key comparison in both builds + L6's two tables + the three-wire byte measurement |

@@ -58,6 +58,7 @@ export const MATRIX_EXCEPTIONS = {
     "semantics/sem-form-dom-compare",
     "semantics/sem-form-selection-preserved",
     "semantics/sem-key-identity-default",
+    "semantics/sem-loading-value",
     "semantics/sem-own-given-scope-wins",
     "semantics/sem-own-render-disposer-disposes",
     "semantics/sem-own-slot-arguments",
@@ -154,6 +155,12 @@ export const MATRIX_EXCEPTIONS = {
 // procedures run in `async-source.test.ts`; what only a fixture can ask is what
 // the BOUNDARY does across a stream's steps, which is the half of A7 that is
 // about `Loading` rather than about the node.
+// And +1 fixture / +7 cells / +1 renderableOnNeither for `sem-loading-value`,
+// A8's two claims. Its second claim needs A5 (f) to be true — it reads
+// `isPending` off a live class, because the VALUE cannot separate A8's two
+// states: `Loading` revalidation keeps stale content whether the window closed
+// or not, so the page reads the same either way and only the pending channel
+// differs.
 // And +2 fixtures / +14 cells for A5 (f)'s read surface: `read-mode-binding`
 // (+1 renderableOnBoth) is the emission and `sem-async-read-mode` (+1
 // renderableOnNeither) is the behaviour. They are two fixtures rather than one
@@ -163,9 +170,9 @@ export const MATRIX_EXCEPTIONS = {
 // it was written into the semantics fixture first and L3 rejected it, which is
 // the differential doing exactly what it is for.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 194,
+  fixtures: 195,
   modes: 7,
-  cells: 1358,
+  cells: 1365,
   renderableOnBoth: 163,
-  renderableOnNeither: 31,
+  renderableOnNeither: 32,
 })

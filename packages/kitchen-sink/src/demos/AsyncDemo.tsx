@@ -38,11 +38,63 @@ export function AsyncDemo() {
       <ResourceDemo />
       <ResourceWithSourceDemo />
       <LoadingBoundaryDemo />
+      <LoadingValueDemo />
       <OptimisticLaneDemo />
       <RevealOrderDemo />
       <ErrorResourceDemo />
       <RefetchDemo />
     </DemoSection>
+  );
+}
+
+/**
+ * A8 — commit #0. The skeleton is the VALUE, not a boundary's fallback.
+ *
+ * During the FIRST fetch this resource reads as settled: `loading()` is false,
+ * nothing suspends, and the `<Loading>` above it never shows its fallback. The
+ * placeholder carries its own provenance (`skeleton: true`) rather than
+ * impersonating a real record. Once the first answer lands the loading value
+ * leaves the lineage and a refetch is an ordinary revalidation — stale row
+ * shown, `isPending` true — which is the `stale` class appearing.
+ */
+type Row = { name: string; skeleton?: boolean };
+
+function LoadingValueDemo() {
+  const generation = signal(0);
+
+  const row = resource<Row>(
+    () => generation(),
+    async () => {
+      const res = await fetch(`/api/staggered?name=record&delay=1200&run=${generation()}`);
+      return (await res.json()) as Row;
+    },
+    { loadingValue: { name: "————————", skeleton: true } },
+  );
+
+  return (
+    <DemoCard title="loadingValue - commit #0">
+      <div class={controlsStyle}>
+        <Button onClick={() => generation.update((n) => n + 1)}>Refetch</Button>
+      </div>
+
+      <div class={resultBoxStyle}>
+        <Loading fallback={<div class={loadingStyle}>this fallback must never appear</div>}>
+          <h4
+            class={{ [staleClass]: true, stale: isPending(row) }}
+            data-testid="commit-zero"
+            data-skeleton={() => String(row().skeleton === true)}
+          >
+            {() => row().name}
+          </h4>
+        </Loading>
+      </div>
+
+      <p class={noteStyle}>
+        The canonical guard is `row().skeleton || isPending(row)` — two terms because the two states
+        are disjoint. First load is answered by the value; a refetch is answered by the pending
+        channel.
+      </p>
+    </DemoCard>
   );
 }
 

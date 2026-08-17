@@ -47,13 +47,24 @@ export interface ResourceInfo<T> {
   readonly signal: AbortSignal;
 }
 
-export interface ResourceOptions {
+export interface ResourceOptions<T = unknown> {
   /**
    * Serialization key for SSR seeding. Opt-in rather than positional: the
    * auto-key stream is a shared counter and a resource silently consuming a
    * slot would shift every `computed` after it.
    */
   readonly key?: string;
+  /**
+   * Commit #0 (A8): a value the resource is BORN with, served until the first
+   * fetch answers. During that window `loading()` is false, `state()` is
+   * `"ready"` and nothing suspends — the skeleton is the VALUE, not a
+   * boundary's fallback. Once the first answer lands it leaves the lineage and
+   * a refetch is an ordinary revalidation.
+   *
+   * Declare it in the resource's type to use `null` — `resource<User | null>(…,
+   * { loadingValue: null })` — so every consumer sees the window honestly.
+   */
+  readonly loadingValue?: T;
 }
 
 /** §3.0: a `Cell<T>` with the status channel hung off the function object. */
@@ -84,7 +95,7 @@ function asError(thrown: unknown): Error {
 export function resource<T, S = unknown>(
   source: () => S,
   fetcher: (source: S, info: ResourceInfo<T>) => T | Promise<T>,
-  options?: ResourceOptions,
+  options?: ResourceOptions<T>,
 ): Resource<T> {
   const owner: Owner | null = getOwner();
 
@@ -150,7 +161,15 @@ export function resource<T, S = unknown>(
   // One primitive: `computed` IS the async one, and a key is just an option on
   // it. `resource` adds what a memo has no business having — an
   // `AbortController` per run, the generation guard, and the override lane.
-  const fetched: Computed<T> = computed<T>(compute, { key: options?.key });
+  // A8 goes on the node that FLIES. `view` derives from it, so a window that
+  // does not throw is a window `view` does not throw through either, and
+  // `probe()` reports `loading: false` for free.
+  const fetched: Computed<T> = computed<T>(
+    compute,
+    options !== undefined && "loadingValue" in options
+      ? { key: options.key, loadingValue: options.loadingValue as T }
+      : { key: options?.key },
+  );
 
   /**
    * A4's shape at the level of one value: the read is a derivation over the

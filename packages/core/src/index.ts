@@ -62,7 +62,7 @@ export function root<T>(fn: (dispose: () => void) => T): T {
   return _createScope(fn, true);
 }
 
-export type { SignalOptions, Owner, ContextRecord } from "./signals.ts";
+export type { SignalOptions, MemoOptions, Owner, ContextRecord } from "./signals.ts";
 
 // Scope — the ownership spine (SEMANTICS.md §2, CODESIGN.md §3.1/§3.3)
 export {

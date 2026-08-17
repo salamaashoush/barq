@@ -221,6 +221,34 @@ export interface SignalOptions<T> {
   ownedWrite?: boolean;
 }
 
+/** Options a derived node takes and a plain `signal()` has no use for. */
+export interface MemoOptions<T> extends SignalOptions<T> {
+  /**
+   * Commit #0 (A8): a value the node is BORN with, served until the compute's
+   * first real answer lands.
+   *
+   * While that first answer is in flight the node reads as a settled value
+   * everywhere — nothing suspends to a `Loading` boundary and `isPending` stays
+   * FALSE — because commit #0 answers the question by declaration. First-load
+   * affordances come from the value itself (a `null` placeholder, a
+   * `skeleton: true` field) rather than from a boundary.
+   *
+   * Once the first answer lands the loading value leaves the lineage FOREVER:
+   * a refetch is an ordinary revalidation, showing the stale value with
+   * `isPending` true. The two states are disjoint, so the guard that covers
+   * both is `value.skeleton || isPending(value)`.
+   *
+   * It is also the compute's first `prev`, so a `prev`-folding compute folds
+   * from it.
+   *
+   * Typed strictly as `T`. To use `null` as the placeholder, declare it in the
+   * node's type — `computed<User | null>(…, { loadingValue: null })` — so every
+   * consumer sees the nullable window honestly. A placeholder that stands in
+   * for real data should carry its own provenance rather than impersonate it.
+   */
+  loadingValue?: T;
+}
+
 // ============================================================================
 // Dev diagnostics
 // ============================================================================
@@ -374,6 +402,7 @@ interface ComputedNode<T> extends SignalNode<T> {
   _serializeKey?: string; // SSR: record resolved value under this key
   _inFlight?: PromiseLike<unknown>; // Current async step (settle registry hygiene)
   _closeAsync?: () => void; // Closes a streaming compute's iterator (A7)
+  _loadingWindow?: boolean; // Serving commit #0 until the first real answer (A8)
   _session?: symbol | null; // Sticky async session (waterfall fetches keep attribution)
 }
 
@@ -1569,6 +1598,13 @@ function recompute(node: ComputedNode<unknown>): void {
 
   if (threw) {
     if (notReady) {
+      // A8: an unready SOURCE reached during the loading window is not this
+      // node's pendingness to report. Commit #0 keeps serving, nothing
+      // downstream is marked and no boundary is registered — the read that
+      // threw already linked the source, so its settle re-runs us.
+      if (!isEffect && node._loadingWindow === true) {
+        return;
+      }
       node._flags |= STATUS_PENDING;
       if (isEffect) {
         registerWithBoundary(node);
@@ -1586,6 +1622,9 @@ function recompute(node: ComputedNode<unknown>): void {
         handleEffectError(node, error);
         return;
       }
+      // A8: a throw is an answer, so it ends the window rather than being
+      // covered for by commit #0 forever.
+      node._loadingWindow = false;
       node._error = error;
       node._flags |= STATUS_ERROR;
       propagate(node, REACTIVE_DIRTY);
@@ -1610,9 +1649,16 @@ function recompute(node: ComputedNode<unknown>): void {
     node._closeAsync = undefined;
 
     const id = (node._asyncId = (node._asyncId ?? 0) + 1);
-    node._flags |= STATUS_PENDING;
-    if (!wasPending) {
-      propagate(node, REACTIVE_DIRTY);
+    // A8: during the loading window the flight still runs and is still
+    // registered with `settle()`, but the node publishes NO pendingness. That
+    // one omission is the whole rule — `STATUS_PENDING` is what makes a read
+    // throw, what a `Loading` boundary registers on and what `isPending`
+    // reports, so withholding it gives all three at once.
+    if (node._loadingWindow !== true) {
+      node._flags |= STATUS_PENDING;
+      if (!wasPending) {
+        propagate(node, REACTIVE_DIRTY);
+      }
     }
     const session = activeAsyncSession ?? node._session ?? null;
     node._session = session;
@@ -1621,6 +1667,9 @@ function recompute(node: ComputedNode<unknown>): void {
     const stale = (): boolean => (node._flags & REACTIVE_DISPOSED) !== 0 || node._asyncId !== id;
 
     const settled = (value: unknown): void => {
+      // The first real answer ends the window for good: a refetch is an
+      // ordinary revalidation, with the stale value shown and `isPending` true.
+      node._loadingWindow = false;
       node._flags &= ~(STATUS_PENDING | REACTIVE_UNINITIALIZED);
       node._value = value;
       if (node._serializeKey !== undefined) {
@@ -1631,6 +1680,9 @@ function recompute(node: ComputedNode<unknown>): void {
     };
 
     const failed = (err: unknown): void => {
+      // A failure is an answer too: the window closes and the error is the
+      // node's, rather than commit #0 covering for it forever.
+      node._loadingWindow = false;
       node._flags = (node._flags & ~STATUS_PENDING) | STATUS_ERROR;
       node._error = err;
       propagate(node, REACTIVE_DIRTY);
@@ -1664,6 +1716,11 @@ function recompute(node: ComputedNode<unknown>): void {
   if (isEffect && wasPending) {
     unregisterFromBoundary(node);
   }
+
+  // A8: a plain value IS the first real answer, so a synchronous compute
+  // closes the window on its first run and the option costs such a node
+  // nothing beyond the seeded `prev`.
+  node._loadingWindow = false;
 
   const first = (node._flags & REACTIVE_UNINITIALIZED) !== 0;
   const valueChanged =
@@ -1958,7 +2015,7 @@ export function signal<T>(
 function createComputedNode<T>(
   fn: (prev?: T) => T,
   kind: number,
-  options?: SignalOptions<T>,
+  options?: MemoOptions<T>,
 ): ComputedNode<T> {
   const host = currentHost;
   const owner = getCurrentOwner();
@@ -2011,6 +2068,17 @@ function createComputedNode<T>(
     _wave: 0,
   };
   node._prevHeap = node as ComputedNode<unknown>;
+
+  // A8. `in` rather than `!== undefined`, because `undefined` is a legal
+  // placeholder and the option's presence is what declares the window open.
+  // Clearing UNINITIALIZED is most of the rule: it is what makes the loading
+  // value the compute's first `prev`, and what stops `latest()` treating the
+  // node as one that has never held a value.
+  if (options !== undefined && "loadingValue" in options) {
+    node._value = options.loadingValue as T;
+    node._loadingWindow = true;
+    node._flags &= ~REACTIVE_UNINITIALIZED;
+  }
 
   if (owner !== null) {
     (owner.kids ??= []).push(node as ComputedNode<unknown>);
@@ -2142,7 +2210,7 @@ function computedPeek<T>(node: ComputedNode<T>): T {
  */
 export function computed<T>(
   fn: (prev?: T) => T | PromiseLike<T> | AsyncIterable<T>,
-  options?: SignalOptions<T> & { key?: string },
+  options?: MemoOptions<T> & { key?: string },
 ): Computed<T> {
   // The slot is reserved at CREATION, in creation order, which is what makes
   // the server's numbering and the client's the same. The STRING is not built
@@ -2204,7 +2272,7 @@ export function linked<S, T>(
 }
 
 /** Writable derived signal: signal(fn) */
-function writableComputed<T>(fn: (prev?: T) => T, options?: SignalOptions<T>): Signal<T> {
+function writableComputed<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Signal<T> {
   const node = createComputedNode(fn, EFFECT_PURE, options);
 
   const write = (newValue: T): void => {
