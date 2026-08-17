@@ -2874,6 +2874,54 @@ it computed in one mode and serves it in another; keying a memo on the mode woul
 per mode on every computed. Hence the slot sits below memoization, which is where Solid put theirs —
 but their comment explains the *revert*, and this is the reason the shape is forced.
 
+**M11 — what the compiler emits for transitions, settled by enumeration.** M10 answered "does the
+compiler emit anything at all" with `<form action={fn}>` (B8). This is the rest of the question, and
+the answer is that the emission is COMPLETE and the compiler's static knowledge of the surface was
+not. Enumerated against §3.8 and A5, with what each turned out to be:
+
+| construct | static work | verdict |
+|---|---|---|
+| `action(fn)` | none | **nothing to emit.** No template, no scope, no ownership; the lane is created per INVOCATION and the generator is the author's own function. There is nothing to hoist and nothing to resolve |
+| `commit(fn)` | none | **nothing to emit.** A call that flips one module global for the dynamic extent of `fn` |
+| `latest(fn)` / `isPending(fn)` / `affects(fn)` | none | **nothing to emit.** Each takes a thunk, and the thunk is the live-read wrapper the compiler already builds for any hole |
+| `optimistic()` | its RETURN SHAPE | **was wrong** — see below |
+| `optimisticStore()` | its return shape | correct: the `store` tuple, and it was already grouped with `Prim::Store` |
+| `<form action={fn}>` | `Op::FormAction` | done at M10 (B8) |
+| any other JSX slot | — | **there is none.** `formaction` on a submit button is the only other candidate, and the reference types it `string` only, so a function surface there would be barq's invention |
+
+*The one thing the compiler did know about transitions, it had wrong.* `optimistic()` returns a
+`Signal<T>` — `actions.ts` builds the reader and hangs `.set`, `.update` and `.peek` off it — and
+`analysis::bind`'s return-shape table gave it the plain-accessor shape with NO masked members. So
+`optimistic.set` was a tracked read where `signal.set` is static, and the cost was not a wrapper: a
+handler passed by reference LEFT THE DELEGATED SET. `onClick={guess.set}` emitted
+`bindEvent(_s$, el, "click", guess.set)` beside `el.$$click = plain.set` for the signal three lines
+above it, which is an `addEventListener` per position and a divergence from `signal` in the one place
+`optimistic` is supposed to BE a `signal`. `optimistic-signal.tsx` had asserted the correct rule in a
+comment since M5 and only ever exercised `.set` inside a closure, where both verdicts hoist
+identically — so the fixture documented the rule and never observed it.
+
+*A second candidate, declined with the measurement.* A binding initialised by an unrecognised CALL is
+not provably callable, so `onClick={someAction}` takes `bindEvent` rather than the delegated expando.
+That is the general rule and it is CORRECT — it is what keeps `applyProp`'s `isEventHandlerValue`
+check meaningful — and `action()` could be special-cased out of it, since it provably returns a
+function. It is not, for three reasons: the gain is one expando against one listener; the idiomatic
+binding for an action is a closure that supplies its arguments, because a bare handler passes the
+`MouseEvent` as the first one; and it would need a new `SourceKind` for "provably callable, not
+reactive" whose only inhabitant would be `action`. A one-inhabitant IR variant to save one
+`addEventListener` is the wrong trade. The `optimistic` fix needed no new machinery at all — the
+`SIGNAL` mask already existed and the table entry was simply wrong.
+
+*And B8's surface had no TYPE.* `<form action={fn}>` has lowered to `Op::FormAction` since M10 while
+`jsx-runtime.ts` declared `action?: FunctionMaybe<string>` on every element, so the surface M10 built
+was a `TS2322` in any typed application. Fixtures are compiled and never typechecked, which is why
+`form-action.tsx` and `sem-form-action-slot.tsx` both drove it green. `<form>` is now the one tag
+with attributes of its own — which is B8's own rule, that the SLOT decides — and the widening is
+per-tag, so an action on a `<button>` is still refused. This is also the first thing in the project
+that no existing oracle could see: every other channel compiles a fixture and runs it, and a JSX
+attribute type survives all of them. `src/jsx-types/` is the type-level channel §14.1 has been
+naming since M3, run by shelling out to `tsc` over its own tsconfig, asserting both that the
+positives compile and that every `@ts-expect-error` still FIRES.
+
 *And the model has a hole their shape does not, because their transaction is implicit.* A generator
 action resumes IN its lane, so `value.set(serverAnswer)` after the `yield` is a lane write and retires
 with the lane — the value reverts to what it held before the action, which is the one thing "no revert

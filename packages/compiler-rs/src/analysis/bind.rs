@@ -608,10 +608,14 @@ impl<'a> Binder<'_, 'a> {
         // primitive does not have would turn a tracked read into `Static`.
         let accessor = SourceKind::Accessor { nonreactive: MemberMask::EMPTY };
         match prim {
-            Prim::Signal => Produced::kind(signal),
-            Prim::Computed | Prim::Optimistic | Prim::MapArray | Prim::Repeat => {
-                Produced::kind(accessor)
-            }
+            // `optimistic()` returns a `Signal<T>` — `actions.ts` builds the
+            // reader and hangs `.set`, `.update` and `.peek` off it, which is
+            // exactly the SIGNAL mask. It sat under `accessor` until M11, so
+            // `optimistic.set` was a tracked read where `signal.set` is static,
+            // and a handler passed by reference left the DELEGATED set for an
+            // `addEventListener` of its own (B4).
+            Prim::Signal | Prim::Optimistic => Produced::kind(signal),
+            Prim::Computed | Prim::MapArray | Prim::Repeat => Produced::kind(accessor),
             Prim::Store | Prim::OptimisticStore => {
                 Produced::tuple(SourceKind::ReactiveObject, SourceKind::Inert)
             }

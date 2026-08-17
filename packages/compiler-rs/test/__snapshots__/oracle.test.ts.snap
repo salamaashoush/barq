@@ -545,6 +545,34 @@ attrs 2: 0/0 a: href
 attrs 3: 0 div: class"
 `;
 
+exports[`rendered DOM golden control-flow-show-keyed: rendered DOM 1`] = `
+"initial: <div class="keyed-show"><b class="shown">alpha</b></div>
+step 0: <div class="keyed-show"><b class="shown">beta</b></div>
+step 1: <div class="keyed-show"><i>none</i></div>
+step 2: <div class="keyed-show"><b class="shown">gamma</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class
+attrs 3: 0/0 b: class"
+`;
+
+exports[`rendered DOM golden control-flow-show-keyed-false: rendered DOM 1`] = `
+"initial: <div class="keyed-false-show"><b class="shown">alpha</b></div>
+step 0: <div class="keyed-false-show"><b class="shown">beta</b></div>
+step 1: <div class="keyed-false-show"><i>none</i></div>
+step 2: <div class="keyed-false-show"><b class="shown">gamma</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class
+attrs 3: 0/0 b: class"
+`;
+
 exports[`rendered DOM golden control-flow-show-static-body: rendered DOM 1`] = `
 "initial: 
 step 0: <div class="panel"><h3>Static heading</h3><p>Static paragraph with no holes at all.</p></div>
@@ -563,6 +591,47 @@ attrs 0: 0/1 p: class
 attrs 1: 0 div: class
 attrs 1: 0/0 p: class
 attrs 1: 0/1 p: class"
+`;
+
+exports[`rendered DOM golden control-flow-spread-precedence: rendered DOM 1`] = `
+"initial: <ul class="precedence"><li>0: alpha</li><li>1: beta</li></ul>
+step 0: <ul class="precedence"><li>0: ALPHA</li><li>1: BETA</li></ul>
+step 1: <ul class="precedence"><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li></ul>
+step 2: <ul class="precedence"><li>0: only</li></ul>
+attrs 0: 0 ul: class
+attrs 1: 0 ul: class
+attrs 2: 0 ul: class
+attrs 3: 0 ul: class"
+`;
+
+exports[`rendered DOM golden control-flow-spread-repeat: rendered DOM 1`] = `
+"initial: <div class="spread-repeat"><span class="cell">10</span><span class="cell">11</span></div>
+step 0: <div class="spread-repeat"><span class="cell">10</span><span class="cell">11</span><span class="cell">12</span><span class="cell">13</span></div>
+step 1: <div class="spread-repeat"><span class="cell">10</span></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 span: class
+attrs 0: 0/1 span: class
+attrs 1: 0 div: class
+attrs 1: 0/0 span: class
+attrs 1: 0/1 span: class
+attrs 1: 0/2 span: class
+attrs 1: 0/3 span: class
+attrs 2: 0 div: class
+attrs 2: 0/0 span: class"
+`;
+
+exports[`rendered DOM golden control-flow-spread-show: rendered DOM 1`] = `
+"initial: <div class="spread-show"><b class="shown">alpha</b></div>
+step 0: <div class="spread-show"><b class="shown">beta</b></div>
+step 1: <div class="spread-show">none</div>
+step 2: <div class="spread-show"><b class="shown">gamma</b></div>
+attrs 0: 0 div: class
+attrs 0: 0/0 b: class
+attrs 1: 0 div: class
+attrs 1: 0/0 b: class
+attrs 2: 0 div: class
+attrs 3: 0 div: class
+attrs 3: 0/0 b: class"
 `;
 
 exports[`rendered DOM golden control-flow-switch-match: rendered DOM 1`] = `
@@ -587,22 +656,6 @@ attrs 1: 0 div: class
 attrs 1: 0/0 p: class
 attrs 2: 0 div: class
 attrs 2: 0/0 p: class"
-`;
-
-exports[`rendered DOM golden optimistic-signal: rendered DOM 1`] = `
-"initial: <button class="optimistic" type="button">0</button>
-event 0: <button class="optimistic" type="button">1</button>
-attrs 0: 0 button: type,class
-attrs 1: 0 button: type,class"
-`;
-
-exports[`rendered DOM golden projection-store: rendered DOM 1`] = `
-"initial: <div class="projection" data-on="0">no</div>
-step 0: <div class="projection" data-on="1">yes</div>
-step 1: <div class="projection" data-on="0">no</div>
-attrs 0: 0 div: class,data-on
-attrs 1: 0 div: class,data-on
-attrs 2: 0 div: class,data-on"
 `;
 
 exports[`rendered DOM golden custom-elements: rendered DOM 1`] = `
@@ -858,6 +911,21 @@ attrs 2: 0/1 li: data-index
 attrs 2: 0/2 li: data-index"
 `;
 
+exports[`rendered DOM golden form-action: rendered DOM 1`] = `
+"initial: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved"></p></form>
+event 0: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved">HELLO</p></form>
+attrs 0: 0 form: class
+attrs 0: 0/0 input: name
+attrs 0: 0/1 button: type
+attrs 0: 0/2 p: class
+attrs 0: 0/3 p: class
+attrs 1: 0 form: class
+attrs 1: 0/0 input: name
+attrs 1: 0/1 button: type
+attrs 1: 0/2 p: class
+attrs 1: 0/3 p: class"
+`;
+
 exports[`rendered DOM golden fragment-root: rendered DOM 1`] = `
 "initial: <h2 class="head">head</h2><p class="body">mid</p><footer class="foot">foot</footer>
 step 0: <h2 class="head">head</h2><p class="body">changed</p><footer class="foot">foot</footer>
@@ -1088,6 +1156,15 @@ attrs 2: 0/0 input: id,tabindex,maxlength
 attrs 2: 0/1 span: data-live"
 `;
 
+exports[`rendered DOM golden optimistic-signal: rendered DOM 1`] = `
+"initial: <div><button class="optimistic" type="button">0</button><button class="by-reference" type="button">set</button></div>
+event 0: <div><button class="optimistic" type="button">1</button><button class="by-reference" type="button">set</button></div>
+attrs 0: 0/0 button: type,class
+attrs 0: 0/1 button: type,class
+attrs 1: 0/0 button: type,class
+attrs 1: 0/1 button: type,class"
+`;
+
 exports[`rendered DOM golden portal: rendered DOM 1`] = `
 "initial: <div class="host"><div id="portal-target"><div style="display: contents;"><p class="teleported">over here</p></div></div></div>
 attrs 0: 0 div: class
@@ -1137,6 +1214,15 @@ attrs 2: 0/3 p: class"
 `;
 
 exports[`rendered DOM golden pre-whitespace: rendered DOM 1`] = `"initial: <div><pre>  indented lines  kept</pre><textarea .defaultValue="raw   text" .value="raw   text">raw   text</textarea></div>"`;
+
+exports[`rendered DOM golden projection-store: rendered DOM 1`] = `
+"initial: <div class="projection" data-on="0">no</div>
+step 0: <div class="projection" data-on="1">yes</div>
+step 1: <div class="projection" data-on="0">no</div>
+attrs 0: 0 div: class,data-on
+attrs 1: 0 div: class,data-on
+attrs 2: 0 div: class,data-on"
+`;
 
 exports[`rendered DOM golden property-attrs: rendered DOM 1`] = `
 "initial: <form><input .checked=false .defaultValue="" .indeterminate=false .value="typed" readonly="" type="text"><input .checked=false .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
@@ -1688,17 +1774,23 @@ exports[`marker channel control-flow-show-eager-static-body: anchor layout 1`] =
 
 exports[`marker channel control-flow-show-fragment-body: anchor layout 1`] = `"<div><a>body-one</a><b>body-two</b></div>"`;
 
+exports[`marker channel control-flow-show-keyed: anchor layout 1`] = `"<div><b>alpha</b></div>"`;
+
+exports[`marker channel control-flow-show-keyed-false: anchor layout 1`] = `"<div><b>alpha</b></div>"`;
+
 exports[`marker channel control-flow-show-static-body: anchor layout 1`] = `""`;
 
 exports[`marker channel control-flow-show-static-key: anchor layout 1`] = `"<div><p>ready</p><!----><p>on</p></div>"`;
 
+exports[`marker channel control-flow-spread-precedence: anchor layout 1`] = `"<ul><li>0: alpha</li><li>1: beta</li></ul>"`;
+
+exports[`marker channel control-flow-spread-repeat: anchor layout 1`] = `"<div><span>10</span><span>11</span></div>"`;
+
+exports[`marker channel control-flow-spread-show: anchor layout 1`] = `"<div><b>alpha</b></div>"`;
+
 exports[`marker channel control-flow-switch-match: anchor layout 1`] = `"<div><p>Loading…</p></div>"`;
 
 exports[`marker channel control-flow-switch-static-key: anchor layout 1`] = `"<div><p>0</p></div>"`;
-
-exports[`marker channel optimistic-signal: anchor layout 1`] = `"<button>0</button>"`;
-
-exports[`marker channel projection-store: anchor layout 1`] = `"<div>no</div>"`;
 
 exports[`marker channel custom-elements: anchor layout 1`] = `"<div><my-widget></my-widget><x-thing></x-thing><my-widget>with children</my-widget></div>"`;
 
@@ -1746,6 +1838,8 @@ exports[`marker channel for-each-local-function: anchor layout 1`] = `"<ul><li>a
 
 exports[`marker channel for-unkeyed-rows: anchor layout 1`] = `"<ul><li>a</li><li>b</li></ul>"`;
 
+exports[`marker channel form-action: anchor layout 1`] = `"<form><input><button>save</button><p></p><p></p></form>"`;
+
 exports[`marker channel fragment-root: anchor layout 1`] = `"<h2>head</h2><p>mid</p><footer>foot</footer>"`;
 
 exports[`marker channel handler-by-reference: anchor layout 1`] = `"<div><button>0</button><button>reset</button></div>"`;
@@ -1786,6 +1880,8 @@ exports[`marker channel non-delegated-event: anchor layout 1`] = `"<div>out</div
 
 exports[`marker channel numeric-and-boolean-attrs: anchor layout 1`] = `"<div><input><span>s</span></div>"`;
 
+exports[`marker channel optimistic-signal: anchor layout 1`] = `"<div><button>0</button><button>set</button></div>"`;
+
 exports[`marker channel portal: anchor layout 1`] = `"<div><div><div><p>over here</p></div></div></div>"`;
 
 exports[`marker channel pre-dynamic-leading-newline: anchor layout 1`] = `
@@ -1799,6 +1895,8 @@ line two</pre><pre>no leading newline</pre><textarea>draft</textarea><p>one</p><
 `;
 
 exports[`marker channel pre-whitespace: anchor layout 1`] = `"<div><pre>  indented lines  kept</pre><textarea>raw   text</textarea></div>"`;
+
+exports[`marker channel projection-store: anchor layout 1`] = `"<div>no</div>"`;
 
 exports[`marker channel property-attrs: anchor layout 1`] = `"<form><input><input><textarea></textarea></form>"`;
 
@@ -1881,99 +1979,3 @@ exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><
 exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
 
 exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;
-
-exports[`rendered DOM golden control-flow-spread-precedence: rendered DOM 1`] = `
-"initial: <ul class="precedence"><li>0: alpha</li><li>1: beta</li></ul>
-step 0: <ul class="precedence"><li>0: ALPHA</li><li>1: BETA</li></ul>
-step 1: <ul class="precedence"><li>0: ALPHA</li><li>1: BETA</li><li>2: gamma</li></ul>
-step 2: <ul class="precedence"><li>0: only</li></ul>
-attrs 0: 0 ul: class
-attrs 1: 0 ul: class
-attrs 2: 0 ul: class
-attrs 3: 0 ul: class"
-`;
-
-exports[`rendered DOM golden control-flow-spread-repeat: rendered DOM 1`] = `
-"initial: <div class="spread-repeat"><span class="cell">10</span><span class="cell">11</span></div>
-step 0: <div class="spread-repeat"><span class="cell">10</span><span class="cell">11</span><span class="cell">12</span><span class="cell">13</span></div>
-step 1: <div class="spread-repeat"><span class="cell">10</span></div>
-attrs 0: 0 div: class
-attrs 0: 0/0 span: class
-attrs 0: 0/1 span: class
-attrs 1: 0 div: class
-attrs 1: 0/0 span: class
-attrs 1: 0/1 span: class
-attrs 1: 0/2 span: class
-attrs 1: 0/3 span: class
-attrs 2: 0 div: class
-attrs 2: 0/0 span: class"
-`;
-
-exports[`marker channel control-flow-spread-precedence: anchor layout 1`] = `"<ul><li>0: alpha</li><li>1: beta</li></ul>"`;
-
-exports[`marker channel control-flow-spread-repeat: anchor layout 1`] = `"<div><span>10</span><span>11</span></div>"`;
-
-exports[`rendered DOM golden control-flow-spread-show: rendered DOM 1`] = `
-"initial: <div class="spread-show"><b class="shown">alpha</b></div>
-step 0: <div class="spread-show"><b class="shown">beta</b></div>
-step 1: <div class="spread-show">none</div>
-step 2: <div class="spread-show"><b class="shown">gamma</b></div>
-attrs 0: 0 div: class
-attrs 0: 0/0 b: class
-attrs 1: 0 div: class
-attrs 1: 0/0 b: class
-attrs 2: 0 div: class
-attrs 3: 0 div: class
-attrs 3: 0/0 b: class"
-`;
-
-exports[`marker channel control-flow-spread-show: anchor layout 1`] = `"<div><b>alpha</b></div>"`;
-
-exports[`rendered DOM golden control-flow-show-keyed-false: rendered DOM 1`] = `
-"initial: <div class="keyed-false-show"><b class="shown">alpha</b></div>
-step 0: <div class="keyed-false-show"><b class="shown">beta</b></div>
-step 1: <div class="keyed-false-show"><i>none</i></div>
-step 2: <div class="keyed-false-show"><b class="shown">gamma</b></div>
-attrs 0: 0 div: class
-attrs 0: 0/0 b: class
-attrs 1: 0 div: class
-attrs 1: 0/0 b: class
-attrs 2: 0 div: class
-attrs 3: 0 div: class
-attrs 3: 0/0 b: class"
-`;
-
-exports[`marker channel control-flow-show-keyed-false: anchor layout 1`] = `"<div><b>alpha</b></div>"`;
-
-exports[`rendered DOM golden form-action: rendered DOM 1`] = `
-"initial: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved"></p></form>
-event 0: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved">HELLO</p></form>
-attrs 0: 0 form: class
-attrs 0: 0/0 input: name
-attrs 0: 0/1 button: type
-attrs 0: 0/2 p: class
-attrs 0: 0/3 p: class
-attrs 1: 0 form: class
-attrs 1: 0/0 input: name
-attrs 1: 0/1 button: type
-attrs 1: 0/2 p: class
-attrs 1: 0/3 p: class"
-`;
-
-exports[`marker channel form-action: anchor layout 1`] = `"<form><input><button>save</button><p></p><p></p></form>"`;
-
-exports[`rendered DOM golden control-flow-show-keyed: rendered DOM 1`] = `
-"initial: <div class="keyed-show"><b class="shown">alpha</b></div>
-step 0: <div class="keyed-show"><b class="shown">beta</b></div>
-step 1: <div class="keyed-show"><i>none</i></div>
-step 2: <div class="keyed-show"><b class="shown">gamma</b></div>
-attrs 0: 0 div: class
-attrs 0: 0/0 b: class
-attrs 1: 0 div: class
-attrs 1: 0/0 b: class
-attrs 2: 0 div: class
-attrs 3: 0 div: class
-attrs 3: 0/0 b: class"
-`;
-
-exports[`marker channel control-flow-show-keyed: anchor layout 1`] = `"<div><b>alpha</b></div>"`;

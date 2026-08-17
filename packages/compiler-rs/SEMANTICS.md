@@ -2251,13 +2251,32 @@ and nothing is overwritten. Retiring the lane drops the override onto a value th
 correct. Rollback on failure is that same drop rather than a second code path — which is A4's
 "derived, never restored" restated at the level of the slot.
 
-The constraint this puts on the action itself is stated rather than hidden: a generator **resumes
-in-context**, so a write made after a `yield` is still a LANE write and retires with the lane. Writing
-the server's answer as `value.set(answer)` after the await therefore reverts to the pre-action value.
-`commit(fn)` is the way an action writes authoritatively: it runs `fn` with the lane suspended, so
-writes inside it go to the authoritative buffer exactly as they would outside the action. It is the
-write-side counterpart of `latest`, which reads that same buffer. A plain `signal` needs none of this
-— by clause (c) it was never double-buffered and its post-yield write was always authoritative.
+The constraint this puts on the action itself is stated rather than hidden: a SYNC generator
+**resumes in-context**, so a write made after a `yield` is still a LANE write and retires with the
+lane. Writing the server's answer as `value.set(answer)` after the yield therefore reverts to the
+pre-action value. `commit(fn)` is the way an action writes authoritatively: it runs `fn` with the
+lane suspended, so writes inside it go to the authoritative buffer exactly as they would outside the
+action. It is the write-side counterpart of `latest`, which reads that same buffer. A plain `signal`
+needs none of this — by clause (c) it was never double-buffered and its post-yield write was always
+authoritative.
+
+**And the three shapes `action()` accepts do not agree about this, which is a fact about where a
+runtime can put a hook rather than a policy.** The lane is entered around each synchronous segment;
+an `await` inside an async function or an async generator resumes on a microtask the lane no longer
+spans, because there is no hook inside an async function's own await continuations. So:
+
+| shape | a write after the async gap |
+|---|---|
+| `function*`, after `yield` | a LANE write — retires, `commit()` required |
+| `async function*`, after `await` | AUTHORITATIVE — commits, `commit()` unnecessary |
+| `async function`, after `await` | AUTHORITATIVE — commits, `commit()` unnecessary |
+
+`commit()` is a no-op where the lane has already ended, so writing it always is correct in all three
+and is what keeps an action's shape a private choice. The reference implementation has the same
+asymmetry and documents it as the opposite hazard — for Solid the escape is the surprise, and the
+remedy is a bare `yield` before the write to re-enter the transaction, because their default is that
+a write *should* be transactional. Neither default is better; what is not acceptable is leaving the
+rule stated for "an action" when it is true of one shape in three.
 
 **(f) The read surface is a mode, and a mode is not a dependency.** A normal read sees the
 override; `latest(fn)` reads through it to the authoritative value; `isPending(fn)` reports that an
@@ -2307,12 +2326,17 @@ nothing to infer, merge, or barrier.
 6. After the action settles, the override slot MUST be released, not merely emptied. *(Fails if the
    rare-read-mode counter is left incremented, which silently moves every signal in the program onto
    the slow read path for the rest of its life.)*
-7. Inside an action, after a `yield`, write the server's answer through `commit()`. It MUST survive
-   the lane's retirement. Written WITHOUT `commit()`, the same write MUST NOT survive — it is a lane
-   write and the value returns to its pre-action state. *(Fails if there is no way to write
-   authoritatively from inside an action, which is the canonical pattern the API exists for: the
-   value reverts to the pre-action value and the server's answer is written nowhere. Procedure 2
-   lands its write from OUTSIDE the action and cannot see this.)*
+7. Inside a SYNC-generator action, after a `yield`, write the server's answer through `commit()`. It
+   MUST survive the lane's retirement. Written WITHOUT `commit()`, the same write MUST NOT survive —
+   it is a lane write and the value returns to its pre-action state. Then write the same action as an
+   `async function*` and as an `async function`, with a plain `await` in place of the `yield` and no
+   `commit()`: in BOTH of those the write MUST survive, because the lane does not span an await
+   continuation. *(Fails if there is no way to write authoritatively from inside an action, which is
+   the canonical pattern the API exists for: the value reverts and the server's answer is written
+   nowhere. Procedure 2 lands its write from OUTSIDE the action and cannot see this. The second half
+   fails as a DOCUMENTATION claim: with only the generator arm pinned, the clause reads as a rule
+   about actions, and an author applying it to the other two shapes concludes their answer reverts
+   when it does not.)*
 8. Call `update()` twice on one optimistic value inside one action. The second MUST compose over the
    first, and the store form at the same arity MUST agree. *(Fails if a lane's second write replaces
    its first: the obvious optimistic-increment pattern then silently loses one, and the two arities

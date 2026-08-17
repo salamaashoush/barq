@@ -222,7 +222,7 @@ export namespace JSX {
     figcaption: HTMLAttributes<HTMLElement>;
     figure: HTMLAttributes<HTMLElement>;
     footer: HTMLAttributes<HTMLElement>;
-    form: HTMLAttributes<HTMLFormElement>;
+    form: FormHTMLAttributes<HTMLFormElement>;
     h1: HTMLAttributes<HTMLHeadingElement>;
     h2: HTMLAttributes<HTMLHeadingElement>;
     h3: HTMLAttributes<HTMLHeadingElement>;
@@ -482,6 +482,27 @@ export namespace JSX {
     onwheel?: EventHandlerUnion<T, WheelEvent>;
     onload?: EventHandlerUnion<T, Event>;
     onerror?: EventHandlerUnion<T, ErrorEvent>;
+  }
+
+  /**
+   * What an `action()` hands back, and the only value shape B8's `action` slot
+   * accepts besides a URL. The arguments are the action's own; a `<form>`
+   * submission calls it with the `FormData`, so a zero-arity action is legal
+   * too.
+   */
+  export type FormAction = (...args: never[]) => Promise<unknown>;
+
+  /**
+   * `<form>` is the one tag whose `action` is decided by the SLOT rather than
+   * by the value's shape (B8), so it is the one tag with attributes of its own.
+   * The compiler lowers a non-URL `action` to `Op::FormAction` and installs a
+   * submit listener owned by the position; `HTMLAttributes` types `action` as a
+   * URL, which is what it is on every other element, so without this a `<form
+   * action={fn}>` — the surface M10 built — did not typecheck anywhere the
+   * fixtures do not reach.
+   */
+  interface FormHTMLAttributes<T extends HTMLElement> extends Omit<HTMLAttributes<T>, "action"> {
+    action?: FunctionMaybe<string> | FormAction;
   }
 
   // Base HTML attributes

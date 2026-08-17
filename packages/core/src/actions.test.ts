@@ -613,6 +613,68 @@ describe("A5: overrides, lanes and the read surface", () => {
     commit(() => value.set(4));
     expect(value()).toBe(4);
   });
+
+  /**
+   * A5 (e), second half. The three shapes `action()` accepts do NOT agree about
+   * a write made after the async gap, and the lane is what decides: a sync
+   * generator resumes IN it, and an `await` inside an async function or async
+   * generator resumes on a microtask the lane no longer spans, so the write
+   * lands authoritative.
+   *
+   * `commit()` is therefore required in exactly one of the three, and the
+   * asymmetry is a fact about where the runtime can put a hook — there is none
+   * inside an async function's await continuations — rather than a policy. Both
+   * arms are here because a rule stated for "an action" and true of one third of
+   * them is the kind of sentence an author applies to the other two.
+   */
+  test("the shape of the action decides whether a post-async write is a lane write", async () => {
+    const fromSyncGenerator = optimistic("server-0");
+    const syncGen = action(function* () {
+      fromSyncGenerator.set("optimistic");
+      yield tick();
+      fromSyncGenerator.set("server-1");
+    });
+
+    const fromAsyncGenerator = optimistic("server-0");
+    const asyncGen = action(async function* () {
+      fromAsyncGenerator.set("optimistic");
+      await tick();
+      fromAsyncGenerator.set("server-1");
+      yield 1;
+    });
+
+    const fromAsyncFn = optimistic("server-0");
+    const asyncFn = action(async () => {
+      fromAsyncFn.set("optimistic");
+      await tick();
+      fromAsyncFn.set("server-1");
+    });
+
+    await Promise.all([syncGen(), asyncGen(), asyncFn()]);
+
+    // The lane spanned the resumption, so the write retired with it.
+    expect(fromSyncGenerator()).toBe("server-0");
+    // The lane did not, so both of these committed underneath nothing.
+    expect(fromAsyncGenerator()).toBe("server-1");
+    expect(fromAsyncFn()).toBe("server-1");
+  });
+
+  test("commit() is a no-op where the lane already ended, so one spelling is correct everywhere", async () => {
+    const value = optimistic("server-0");
+    const run = action(async function* () {
+      value.set("optimistic");
+      await tick();
+      commit(() => value.set("server-1"));
+      yield 1;
+    });
+
+    await run();
+    // Same answer the sync generator needs `commit()` to reach. Writing it
+    // always is what makes an action's shape a private choice again, and it is
+    // why the asymmetry above is documented rather than smoothed over: the
+    // runtime cannot close it, and the author can.
+    expect(value()).toBe("server-1");
+  });
 });
 
 describe("optimisticStore", () => {

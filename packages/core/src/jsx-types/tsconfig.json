@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsxImportSource": "..",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["*.tsx"],
+  // The root project excludes this directory; inheriting that would exclude us
+  // from ourselves.
+  "exclude": []
+}

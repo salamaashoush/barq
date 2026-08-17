@@ -4458,15 +4458,33 @@ export const optimality = {
 
 exports[`emitted code snapshots optimistic-signal 1`] = `
 "import { optimistic, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="optimistic"></button>\`);
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><button type="button" class="optimistic"></button><button type="button" class="by-reference">set</button></div>\`);
 const _h$1 = () => pending.set(pending() + 1);
 _$delegateEvents(["click"]);
 /** \`optimistic\` returns a \`Signal<T>\`, not a tuple — \`.set\` is a method. */
 export const pending = optimistic(0);
+/**
+* The second button is the one that DISCRIMINATES, and it did not exist until
+* M11. A \`.set\` inside a closure hoists whatever the compiler believes about
+* the member, because the call is not in a reactive position at all — so the
+* first button was satisfied by both verdicts, and the comment below it
+* asserted a rule nothing observed.
+*
+* By REFERENCE the two verdicts differ visibly: a static member reference goes
+* on the delegated path as a \`$$click\` expando, and a member the compiler
+* thinks is a tracked read has to be re-read per dispatch, so the position
+* falls out of the delegated set into an \`addEventListener\` of its own (B4).
+* \`optimistic\` sat under the plain-accessor shape until M11 and took the second
+* of those, which is a divergence from \`signal\` in the one place \`optimistic\`
+* is supposed to be a \`signal\`.
+*/
 export default function CreateOptimisticSignal(_s$) {
   const _el$1 = _tmpl$1();
-  _el$1.$$click = _h$1, _el$1.$$s = _s$;
-  _$insert(_s$, _el$1, () => pending());
+  const _el$2 = _el$1.firstChild;
+  const _el$3 = _el$1.lastChild;
+  _el$2.$$click = _h$1, _el$2.$$s = _s$;
+  _el$3.$$click = pending.set, _el$3.$$s = _s$;
+  _$insert(_s$, _el$2, () => pending());
   return _el$1;
 }
 CreateOptimisticSignal = _$block(CreateOptimisticSignal);
@@ -4480,7 +4498,14 @@ export const optimality = {
   // component owns and hoists to module scope.
   // The hoisted handler is a module-scope const above the component; the read
   // inside the hole is the live one.
-  emits: ["= () => pending.set", "() => pending()"]
+  emits: [
+    "= () => pending.set",
+    "() => pending()",
+    "$$click = pending.set"
+  ],
+  // The whole claim of the second button: the delegated set, not a listener of
+  // its own, and no per-dispatch re-read of the member.
+  absent: ["addEventListener", "bindEvent"]
 };
 "
 `;

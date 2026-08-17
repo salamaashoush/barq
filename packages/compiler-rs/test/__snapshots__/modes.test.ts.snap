@@ -93,7 +93,7 @@ corpus/nested-fragments  6a8c9b839950 5430765d5f9a 9c1082304412 9c1082304412 d82
 corpus/nested-template-element  d81a5db701a9 d81a5db701a9 045ffd7a9735 045ffd7a9735 6acd5fb0f5a9 d81a5db701a9 045ffd7a9735
 corpus/non-delegated-event  d8640c366485 64a337f2816c 0bbca47f3d9c 0bbca47f3d9c 1e13f16b673b 8bc4aa32691b 0bbca47f3d9c
 corpus/numeric-and-boolean-attrs  e278c6febe81 fbeeb26603e8 fd2d2cb5a64b ee8f3321208e 1e664f42dd99 c9919b3a8c3f fd2d2cb5a64b
-corpus/optimistic-signal  121eec66801f cc8bed0ea5e6 ba1930c5d711 ba1930c5d711 04ff79058586 0210c9afb536 ba1930c5d711
+corpus/optimistic-signal  b220bbb9671c c8f2e82e7c00 0eb446046265 0eb446046265 e625b3a45be9 424fba4042ac 0eb446046265
 corpus/portal  7e169e9fa61c 736637b18a8a 6abe7e6836a9 65e55e6d710d 8b0e068b7575 f4f40d36828d 76bce7e2c299
 corpus/pre-dynamic-leading-newline  d2ca2703c4ac a58069b67e35 25d709e047db 25d709e047db 0ec4f9ab793a 36b55d523bc4 0ddecd568b01
 corpus/pre-leading-newline  78e18b2c78bf a4d5b48c9903 91c22fb2134e 91c22fb2134e 5b580bb0e1f4 6152a2a59bb1 91c22fb2134e

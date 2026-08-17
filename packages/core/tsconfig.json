@@ -20,5 +20,10 @@
     "jsxImportSource": "."
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist"]
+  // `src/jsx-types` is its own project: `jsxImportSource` is a module specifier
+  // resolved from the FILE, so `"."` reaches `src/jsx-runtime` from `src/` and
+  // reaches nothing from a subdirectory. It also carries deliberate
+  // `@ts-expect-error`s, which only mean anything under a config that compiles
+  // it alone — `form-action-types.test.ts` is what runs it.
+  "exclude": ["node_modules", "dist", "src/jsx-types"]
 }
