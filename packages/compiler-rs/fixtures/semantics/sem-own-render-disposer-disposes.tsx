@@ -87,12 +87,42 @@ const MOUNTED =
  * The same mount, wrapped in a scope, which is how every non-trivial caller
  * reaches `render` — `hydrate` did it, and both compiler-rs harnesses do.
  *
- * `eager` chooses which of the two argument forms O5 allows. With the
+ * `eager` chooses which of the two argument forms O5's RUNTIME allows. With the
  * already-built form the subtree is constructed BEFORE `render` is entered,
  * under whatever owner is current at the call site, so it is that owner's and
  * not the root's. With the Block form the root is what builds it.
+ *
+ * **Re-cut at M12, and the re-cut is the point.** `render(<Tree/>, host)` no
+ * longer compiles to the eager form: `scope` wraps a bare JSX argument in
+ * `render`/`hydrate`'s first position into `(_s$) => <Tree/>`, so the two
+ * spellings are ONE program and the eager form has no compiled spelling left.
+ * The claims below that are about the eager form would then have been silently
+ * measuring the Block form — passing for the wrong reason, which is worse than
+ * failing.
+ *
+ * So there are THREE positions now where there were two, and the claims below
+ * are re-pointed at them:
+ *
+ *   - `jsx`   — `render(<Tree/>, host)`, the spelling an application writes.
+ *               It is a Block after the wrap, and it is what O5's own claim
+ *               measures, because O5 is about what `render` does for the code
+ *               people write.
+ *   - `block` — `render((s) => <Tree/>, host)`, written out by hand. The
+ *               control that says the wrap produced the shape it claims to.
+ *   - `built` — `const built = <Tree/>` through a LOCAL, then `render(built,
+ *               host)`. An ordinary declarator, so the compiler leaves it eager
+ *               and the callee is handed a value. This is the runtime's
+ *               argument form, which still EXISTS — a hand-written or
+ *               un-compiled caller can still produce one — and the two controls
+ *               about relocation and the diagnostic drive it, because they are
+ *               statements about the runtime and not about the compiler.
+ *
+ * Without the third position those two controls would have gone on passing
+ * while silently measuring the Block form, which is worse than failing.
  */
-async function mountInsideAScope(kit: Kit, eager: boolean) {
+type Form = "jsx" | "block" | "built"
+
+async function mountInsideAScope(kit: Kit, form: Form) {
   count.set(0)
   runs.length = 0
   cleanups.length = 0
@@ -103,7 +133,16 @@ async function mountInsideAScope(kit: Kit, eager: boolean) {
   const capture = DEV.diagnostics.capture()
   const thrown = await kit.attempt(() => {
     outer = scope((d: () => void) => {
-      clear = eager ? render(<Tree />, host) : render(() => <Tree />, host)
+      if (form === "built") {
+        // Built BEFORE `render` is entered, and through a LOCAL so the wrap
+        // does not reach it. The shape a hand-written caller still produces.
+        const built = <Tree />
+        clear = render(built, host)
+      } else if (form === "block") {
+        clear = render(() => <Tree />, host)
+      } else {
+        clear = render(<Tree />, host)
+      }
       return d
     }, true)
   })
@@ -177,7 +216,7 @@ export const claims: Claim[] = [
     rule: "O5",
     says: "the disposer disposes the root scope even when render was called with an owner already current",
     async check(kit) {
-      const seen = await mountInsideAScope(kit, true)
+      const seen = await mountInsideAScope(kit, "jsx")
       kit.precondition(seen.before > 0, MOUNTED)
       if (seen.afterClear !== seen.before) {
         kit.fail(
@@ -196,7 +235,7 @@ export const claims: Claim[] = [
     rule: "O5",
     says: "the Block form builds under the root, so the disposer disposes whatever the ambient owner is",
     async check(kit) {
-      const seen = await mountInsideAScope(kit, false)
+      const seen = await mountInsideAScope(kit, "block")
       kit.precondition(seen.before > 0, MOUNTED)
       if (seen.afterClear !== seen.before) {
         kit.fail(
@@ -217,7 +256,7 @@ export const claims: Claim[] = [
     rule: "O3.7",
     says: "an eagerly built subtree is owned by the owner current at the call site, so disposing THAT owner disposes it",
     async check(kit) {
-      const seen = await mountInsideAScope(kit, true)
+      const seen = await mountInsideAScope(kit, "built")
       kit.precondition(seen.before > 0, MOUNTED)
       kit.precondition(
         seen.afterClear !== seen.before,
@@ -239,7 +278,7 @@ export const claims: Claim[] = [
     rule: "O5",
     says: "render says so when it is handed an already-built subtree it will not own",
     async check(kit) {
-      const seen = await mountInsideAScope(kit, true)
+      const seen = await mountInsideAScope(kit, "built")
       kit.precondition(seen.before > 0, MOUNTED)
       if (!seen.diagnostics.includes("RENDER_SUBTREE_NOT_OWNED")) {
         kit.fail(

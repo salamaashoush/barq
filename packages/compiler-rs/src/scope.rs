@@ -1,8 +1,8 @@
 use oxc::allocator::{Allocator, Vec as ArenaVec};
 use oxc::ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Expression, FormalParameter, FormalParameters,
-    Function, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElementName, JSXExpression,
-    Program,
+    ArrowFunctionBody, ArrowFunctionExpression, BindingPattern, Expression, FormalParameter,
+    FormalParameterKind, FormalParameters, Function, JSXAttributeItem, JSXAttributeValue, JSXChild,
+    JSXElementName, JSXExpression, Program,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -55,12 +55,17 @@ pub fn run<'a>(allocator: &'a Allocator, program: &mut Program<'a>, module: &mut
     let declared = module.env.components.iter().map(|(span, _)| *span).collect();
     // O5's third position: the Block `render`/`hydrate` supplies the ROOT to.
     let slots: FxHashSet<Span> = module.env.root_blocks.iter().copied().collect();
+    // O5's other spelling. `render(<App/>, host)` builds before the call, so the
+    // root can never own it; the repair is to make it the Block the callee
+    // already wants, which is what `wrap_root_arg` does below.
+    let root_args: FxHashSet<Span> = module.env.root_jsx_args.iter().copied().collect();
     let mut pass = Scope {
         allocator,
         ast: AstBuilder::new(allocator),
         name,
         declared,
         slots,
+        root_args,
         jsx: 0,
         unbound: false,
     };
@@ -78,6 +83,8 @@ struct Scope<'a> {
     /// slot. A slot alone is not evidence of a Block — `when={() => on()}` is a
     /// Cell in one — so a literal here takes a scope only if it also builds JSX.
     slots: FxHashSet<Span>,
+    /// The spans of bare JSX arguments in `render`/`hydrate`'s first position.
+    root_args: FxHashSet<Span>,
     /// JSX roots seen since the innermost function was entered.
     jsx: u32,
     /// JSX below here needs a scope binding that no function between it and the
@@ -137,6 +144,53 @@ impl<'a> Scope<'a> {
         let demanded = self.jsx > 0 || self.unbound;
         self.jsx = saved.0;
         self.unbound = saved.1 || (demanded && !took_scope);
+    }
+
+    /// O5. Replace `<App/>` with `(_s$) => <App/>` in `render`/`hydrate`'s first
+    /// argument, so the two spellings of a mount compile to ONE program.
+    ///
+    /// JavaScript evaluates an argument before the call. The eager form
+    /// therefore builds the whole subtree before `render` opens its root, its
+    /// effects are the caller's owner's kids from the instant they exist, and
+    /// the root never held them — a disposer that quietly disposes nothing.
+    /// `dom.ts` could only warn about it (`RENDER_SUBTREE_NOT_OWNED`) because by
+    /// the time the callee runs the ownership is already decided.
+    ///
+    /// The runtime still ACCEPTS a built subtree: a hand-written caller can hand
+    /// it one, and `sem-own-render-disposer-disposes`'s controls drive exactly
+    /// that. What changes is that the compiler stops emitting it.
+    fn wrap_root_arg(&mut self, expression: &mut Expression<'a>) {
+        let span = match &*expression {
+            Expression::JSXElement(element) => element.span,
+            Expression::JSXFragment(fragment) => fragment.span,
+            _ => return,
+        };
+        let placeholder = Expression::new_null_literal(span, &self.ast);
+        let body = std::mem::replace(expression, placeholder);
+
+        let mut items = ArenaVec::new_in(&self.allocator);
+        items.push(self.parameter(span));
+        let params = FormalParameters::boxed(
+            span,
+            FormalParameterKind::ArrowFormalParameters,
+            items,
+            None,
+            &self.ast,
+        );
+
+        // NOT async — that second flag is `r#async`, and the expression-body
+        // shape is inferred from `ArrowFunctionBody::from`. The result is
+        // `(_s$) => <App/>`, which is what the hand-written Block form already
+        // compiles to.
+        *expression = Expression::new_arrow_function_expression(
+            span,
+            false,
+            None,
+            params,
+            None,
+            ArrowFunctionBody::from(body),
+            &self.ast,
+        );
     }
 
     /// Position 2: a function literal written DIRECTLY in a JSX slot of a
@@ -217,7 +271,22 @@ impl<'a> VisitMut<'a> for Scope<'a> {
     }
 
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        let root_arg = match &*it {
+            Expression::JSXElement(element) => self.root_args.contains(&element.span),
+            Expression::JSXFragment(fragment) => self.root_args.contains(&fragment.span),
+            _ => false,
+        };
+        if !root_arg {
+            walk_expression(self, it);
+            return;
+        }
+        // The wrap introduces a function boundary that DECLARES the scope, so
+        // the JSX below it is no longer unbound and the module-level `_s$` this
+        // mount used to need is not demanded by it any more.
+        let saved = self.enter();
         walk_expression(self, it);
+        self.exit(saved, true);
+        self.wrap_root_arg(it);
     }
 }
 

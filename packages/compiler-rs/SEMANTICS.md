@@ -455,14 +455,21 @@ and the rest of the rule is not observed. It is now honoured by the one M2 primi
 scope on the exceptional path rather than exiting and abandoning it. That is one construct, not the
 rule — the rule is about every scope entered after `prev`, and it needs the catcher.
 
-O4.5 `PARTIAL`. The `**Status.**` line above is O4.1's and O4.2's; O4.5 is a different observation and
-was reading as theirs because it is the last sub-rule marker in the section. `insert` and `setProp`
-both run their body under the scope they were HANDED since M4b's gate round, and the COMPILED
-element-binding channel does since the M2 gate round; `sem-own-given-scope-wins`'s first four claims
-pin that, and the fourth drives the EMISSION rather than a runtime helper the compiled path never
-calls. One reader is left and it is registered rather than described: `childToNodes` invokes a
-children Block with `getOwner()`, which `test/known-failures.ts` carries as
-`a-children-block-is-invoked-with-the-given-scope`, coupled to O5.
+O4.5 `HOLDS` since M12. The `**Status.**` line above is O4.1's and O4.2's; O4.5 is a different
+observation and was reading as theirs because it is the last sub-rule marker in the section. `insert`
+and `setProp` both run their body under the scope they were HANDED since M4b's gate round, and the
+COMPILED element-binding channel does since the M2 gate round; `sem-own-given-scope-wins`'s first
+four claims pin that, and the fourth drives the EMISSION rather than a runtime helper the compiled
+path never calls.
+
+The last reader closed at M12, with O5, exactly as the coupling predicted — **and the registered
+row's DIAGNOSIS was wrong**, which is the part worth keeping. It said `childToNodes` invokes the
+Block with `getOwner()`. It does, and that is not the path the claim drives: an array holding a
+function goes `insert` → the live-hole effect → `applyInsert` → `normalizeChildToNodes`, and never
+reaches `childToNodes` at all. M9 restructured `insert` to make such an array ONE live hole and the
+row's text went on describing the shape from before it — a registered row can rot in its reasoning
+while its observation stays true, and only re-deriving the path finds it. `normalizeChildToNodes`
+takes the scope now and `applyInsert` threads it.
 
 **Pinned by.** `sem-err-current-restored-after-throw.tsx` *(new)*.
 
@@ -476,9 +483,28 @@ with the root scope; insert the result; flush. The returned disposer MUST `dispo
 **Falsified by.** Render a tree containing an effect. Call the disposer. Write a signal the effect
 depends on. If the effect runs, O5 is false.
 
-**Status.** `HOLDS` (M2) **for the `block` form, unconditionally**; `PLANNED` (M5) for the
-already-built argument form, which holds **only when no owner is current at the call site**. That precondition is load-bearing
-and it is stated here because the M2 gate found it stated nowhere: `render` opens a root scope,
+**Status.** `HOLDS` since M12, for every spelling a compiled module can produce.
+
+**What closed it.** The `block` form has held unconditionally since M2; the already-built ARGUMENT
+form held only when no owner was current at the call site, and that gap survived M3 through M11
+because the repair is not the runtime's to make: JavaScript evaluates an argument before the call,
+so by the time `render` is entered the subtree is built and its ownership is already decided.
+`dom.ts` could only warn (`RENDER_SUBTREE_NOT_OWNED`).
+
+The compiler closes it instead. `scope` wraps a bare JSX argument in `render`/`hydrate`'s first
+position into `(_s$) => …`, so `render(<Tree/>, host)` and `render((s) => <Tree/>, host)` are ONE
+program and the eager form has no compiled spelling left. `bind` records the span — it already
+recognised the arrow in that position — and the wrap is the `_ => {}` arm it used to fall through.
+
+**The runtime still accepts a built subtree**, and still warns, because a hand-written or
+un-compiled caller can still produce one. That is why `sem-own-render-disposer-disposes` was re-cut
+in the same change to drive THREE positions rather than two: the compiled spelling, the hand-written
+Block, and a subtree built through a LOCAL — which the wrap does not reach, and which is the only
+way left to observe the runtime's argument form. Without the third the two controls about
+relocation and the diagnostic would have gone on passing while silently measuring the Block form.
+
+The precondition below is what the ARGUMENT form's behaviour was, and it is kept because that form
+still exists at the runtime boundary. It is stated here because the M2 gate found it stated nowhere: `render` opens a root scope,
 establishes it as a catcher, invokes `block` with it when it is given one, inserts, records the
 container as the root's range and flushes; the disposer disposes the root and removes the range.
 Verified in both forms: the effect no longer re-runs after dispose (1 → 1), the cleanup runs once,
@@ -3018,8 +3044,8 @@ green, which is why L1 exists.
 | O4.1–2 | restoration on both paths; the cost claim | **V** | `sem-err-current-restored-after-throw` *(new)* |
 | O4.3 | a catcher restores to `prev`, captured before its own `enter` | **V** | `sem-err-current-restored-after-throw` *(new)* |
 | O4.4 | no partially-constructed subtree survives a throw | P — one construct | `sem-err-construction-throw` |
-| O4.5 | `CURRENT` never decides ownership | H / P (M5) | `sem-own-given-scope-wins`, structural (§14) |
-| O5 | `render` opens a root; the disposer disposes | H / P (M5) | `sem-own-render-disposer-disposes` |
+| O4.5 | `CURRENT` never decides ownership | **H** (M12) | `sem-own-given-scope-wins`, structural (§14) |
+| O5 | `render` opens a root; the disposer disposes | **H** (M12) | `sem-own-render-disposer-disposes` |
 | O6 | owner and observer are separate | H | `sem-react-untrack-keeps-owner` |
 | C1 | `Comp(s, props)`, one convention | H | `component-boundary-props`, `arrow-body-component` |
 | C2 | components are declared, not inferred | H | `sem-calling-convention`, `sem-props-direct-call-diagnostic` *(new)* |

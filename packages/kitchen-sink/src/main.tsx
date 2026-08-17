@@ -71,9 +71,11 @@ const queryClient = new QueryClient({
 
 // Mount app (App component contains its own Router).
 //
-// O5's Block form. `render(<App/>, host)` builds the tree BEFORE render is
-// entered, so the root never owns it and the disposer has nothing to dispose;
-// the Block form is handed the root and threads it into the tree.
+// Written as the plain JSX argument, which is the whole point of O5 closing at
+// M12: `scope` wraps a bare JSX argument in `render`'s first position into
+// `(_s$) => …`, so this and the hand-written Block form are ONE program. Until
+// then this file had to spell the Block out, because the argument form built
+// the tree BEFORE `render` was entered and the root never owned it.
 const container = document.getElementById("app");
 if (!container) {
   throw new Error("[barq] #app is missing, so there is nowhere to mount");
@@ -84,11 +86,9 @@ if (!container) {
 // which is the failure a green test suite did not catch.
 try {
   render(
-    () => (
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    ),
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>,
     container,
   );
   console.log("Barq Kitchen Sink mounted");

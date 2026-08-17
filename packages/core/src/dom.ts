@@ -1322,7 +1322,7 @@ function drainFragment(fragment: DocumentFragment): Node[] {
  * Flatten a child value to nodes, reusing previous text nodes positionally
  * when their content matches (avoids re-creating text per update).
  */
-function normalizeChildToNodes(value: Child, prev: Node[]): Node[] {
+function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Node[] {
   const out: Node[] = [];
 
   const visit = (child: Child): void => {
@@ -1344,8 +1344,13 @@ function normalizeChildToNodes(value: Child, prev: Node[]): Node[] {
       return;
     }
 
+    // O4.5: the scope the INSERT was given, not the ambient owner. This is the
+    // site the O4.5 row named as `childToNodes` and it is not that function —
+    // an array holding a function goes `insert` → the live-hole effect →
+    // `applyInsert` → here, and never through `childToNodes` at all. The row's
+    // diagnosis was describing a path M9 had already restructured.
     if (typeof child === "function") {
-      visit((child as (s: unknown) => Child)(getOwner()));
+      visit((child as (s: unknown) => Child)(s));
       return;
     }
 
@@ -1495,7 +1500,13 @@ function allUnder(host: Node, nodes: readonly Node[]): boolean {
  * it costs the nodes it actually renders: a lone text hole is one text node,
  * not a text node between two comments.
  */
-function applyInsert(parent: Node, value: Child, current: Node[], marker: Node | null): Node[] {
+function applyInsert(
+  parent: Node,
+  value: Child,
+  current: Node[],
+  marker: Node | null,
+  s: Scope | null,
+): Node[] {
   const primitive = typeof value === "string" || typeof value === "number";
 
   if (primitive) {
@@ -1512,7 +1523,7 @@ function applyInsert(parent: Node, value: Child, current: Node[], marker: Node |
     }
   }
 
-  const next = normalizeChildToNodes(value, current);
+  const next = normalizeChildToNodes(value, current, s);
 
   if (current.length === 0) {
     for (let i = 0; i < next.length; i++) parent.insertBefore(next[i], marker);
@@ -1650,7 +1661,7 @@ export function insert(
             ? (value as (s: unknown) => Child)(owner)
             : withRange(claiming, () => (value as (s: unknown) => Child)(owner));
         if (claiming !== null) detectTextDrift(current, produced);
-        current = applyInsert(parent, produced, current, anchor);
+        current = applyInsert(parent, produced, current, anchor, given);
         if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
       });
     });
@@ -1667,7 +1678,7 @@ export function insert(
   // nodes, so a value that matches costs no write at all.
   if (claim !== null) {
     detectTextDrift(claim.nodes, value as Child);
-    applyInsert(parent, value as Child, claim.nodes, anchor);
+    applyInsert(parent, value as Child, claim.nodes, anchor, given);
     return;
   }
 
@@ -1961,14 +1972,19 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
   // §3.0 rules 1-2: a Cell ignores the argument, a Block needs it, and one
   // call serves both.
   //
-  // The scope handed to the Block is the AMBIENT one, not the `s` this call was
-  // given, and that is an O4.5 violation with a reason: `render` opens its root,
-  // makes it current and then reaches here with the caller's `s`, so passing `s`
-  // puts the whole mount under whatever was current at the `render` call site.
-  // Handing `s` down here is half of that row's fix and belongs in the same
-  // change as the other half, the lowering of `render`'s argument to a Block.
-  // Passing `s` on its own fails five of this fixture's claims, which is how
-  // this comment was found to be describing code that did the opposite.
+  // O4.5: the Block is invoked with the scope this call was GIVEN.
+  //
+  // It used to be handed the AMBIENT one, and the reason was `render`: it opens
+  // its root, makes it current, and used to reach here with the CALLER's `s`,
+  // so passing `s` put the whole mount under whatever was current at the
+  // `render` call site. Passing `s` on its own therefore failed five of
+  // `sem-own-render-disposer-disposes`'s claims, and the two halves had to land
+  // together.
+  //
+  // They have. The compiler wraps a bare JSX argument in `render`/`hydrate`'s
+  // first position into a Block (O5), so a mount reaches `render` as a function
+  // and `render` invokes it with the root — there is no longer a path that
+  // arrives here with a scope that is not the one the subtree belongs under.
   //
   // M9 narrowed what that costs. An ARRAY holding a function no longer reaches
   // here un-owned: `insert` routes it through its own effect first, so the
@@ -1977,7 +1993,7 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
   // the `render` path above and nothing else.
   if (typeof child === "function") {
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("children", s);
-    const built = (child as (s: unknown) => Child)(getOwner());
+    const built = (child as (s: unknown) => Child)(s);
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("children");
     return childToNodes(built, s);
   }

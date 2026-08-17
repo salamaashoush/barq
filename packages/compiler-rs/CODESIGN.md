@@ -2395,17 +2395,29 @@ milestone left in §8", which is a row navigating around a document rather than 
 | **M10** | `passes::flow` lowers a spread source; `<form action={fn}>` (B8); the Solid 2.0 control-flow alignment |
 | **M11** | A6 (reveal ordering as a slot contract), A7 (thenable + async iterable), A8 (commit #0), A5 (f)'s read surface, and the type-level channel |
 
-**M12 is where the three surviving `known-failures.ts` rows point.** They are two pieces of work and
-one question:
+**M12 — O5 and O4.5 are CLOSED; C3.8 is the one row left, and it is a question.**
 
-- **Lower a JSX argument at an arbitrary call site to a Block**, and re-cut
-  `sem-own-render-disposer-disposes`'s three control claims in the same change. This closes O5 and,
-  by a coupling that is measured rather than preferred, O4.5 with it.
+- ~~**Lower a JSX argument at a call site to a Block.**~~ DONE. `bind` already recognised an arrow in
+  `render`/`hydrate`'s first position and recorded it as a root Block; a bare JSX argument fell
+  through the same match's `_ => {}` arm. It is recorded now, and `scope` wraps it into
+  `(_s$) => …`, so the two spellings of a mount are ONE program. The runtime still accepts a built
+  subtree and still warns, because a hand-written or un-compiled caller can produce one.
+  `sem-own-render-disposer-disposes` was re-cut in the same change to drive three positions rather
+  than two — the compiled spelling, the hand-written Block, and a subtree built through a LOCAL,
+  which the wrap does not reach and which is the only way left to observe the argument form.
+- ~~**O4.5's last reader.**~~ DONE, with O5, exactly as the coupling predicted — **and the row's
+  diagnosis was wrong.** It named `childToNodes`, and the claim's path never reaches that function:
+  an array holding a function goes `insert` → the live-hole effect → `applyInsert` →
+  `normalizeChildToNodes`. M9 restructured `insert` to make such an array one live hole and the
+  row's text went on describing the shape from before it. A registered row can rot in its REASONING
+  while its observation stays true, and only re-deriving the path finds it.
 - **C3.8's laundered/provide pair is a DECISION, not an implementation.** The measurement was made
-  at M9: a provider's value Cell is stored and never invoked, so no read-side probe can make the
-  drive throw. Either a provider's value is probed EAGERLY at install — a semantic change about when
-  a provider's Cell first runs — or the claim is re-cut to observe the provide slot at its READ. The
-  second is a fixture change and lands immediately.
+  at M9 and re-verified at M12: `provide` calls `provideOn(instance, context.id, value)` and never
+  invokes the Cell, so no read-side probe can make the drive throw. Either a provider's value is
+  probed EAGERLY at install — a semantic change about when a provider's Cell first runs — or the
+  claim is re-cut to observe the provide slot at its READ. The second is a fixture change and lands
+  immediately. Nothing else in the row is blocked: `each`'s source IS read synchronously and is one
+  wrap, but a partial fix moves no row, because the claim is about all 18 (shape, slot) pairs.
 
 
 ## 9. MEASUREMENT PLAN

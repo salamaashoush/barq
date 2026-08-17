@@ -482,6 +482,43 @@ document that defines what it counts — and `known-failures.ts`'s C3.8 row reco
 that ("this row had no owning milestone left in §8"). §8 carries the M7–M11 history and M12's
 contents now.
 
+### M12 — O5 and O4.5 closed, and one row's diagnosis was wrong
+
+Both were the SAME piece of work, as the coupling said, and it was smaller than
+its own row implied. `bind` already recognised an arrow in `render`/`hydrate`'s
+first position and recorded it as a root Block; a bare JSX argument fell through
+that same match's `_ => {}` arm. Recording it, and having `scope` wrap it into
+`(_s$) => …`, makes the two spellings of a mount ONE program — so the eager form
+has no compiled spelling left and the root owns what it mounts.
+
+**The runtime still accepts a built subtree and still warns.** A hand-written or
+un-compiled caller can produce one, so `sem-own-render-disposer-disposes` was
+re-cut to drive THREE positions where it drove two: `jsx` (the compiled
+spelling, which is what O5's own claim measures), `block` (hand-written), and
+`built` (through a LOCAL, which the wrap does not reach). Without the third, the
+two controls about relocation and the diagnostic would have gone on passing
+while silently measuring the Block form — passing for the wrong reason.
+
+**O4.5's row named the wrong function, and that is the transferable lesson.** It
+said `childToNodes` invokes the Block with `getOwner()`. It does — and the
+claim's path never reaches that function: an array holding a function goes
+`insert` → the live-hole effect → `applyInsert` → `normalizeChildToNodes`. M9
+restructured `insert` to make such an array one live hole and the row's text
+went on describing the shape from before it. Passing `s` in `childToNodes`
+changed nothing measurable; the fix was threading the scope through
+`applyInsert` into `normalizeChildToNodes`. **A registered row can rot in its
+REASONING while its observation stays true**, and the only thing that finds it
+is re-deriving the path rather than trusting the row.
+
+Two fixtures' emissions moved and both are explained: the one that was re-cut,
+and `sem-ctx-provider-direct-child`, which writes `render(<Direct/>, host)` and
+now wraps. No DOM golden and no marker golden moved — the lowering changes
+ownership, not output.
+
+kitchen-sink's `main.tsx` spelled the Block form out by hand as an explicit
+workaround, with a comment saying why. It is a plain JSX argument again, and all
+nine routes drive clean and reactive on it.
+
 ### Two things worth knowing about the reference
 
 - **`§12` was read against `beta.31`; `rc.0` is what M10 and M11 read.** `rc.0` still exports NO

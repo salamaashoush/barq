@@ -367,6 +367,22 @@ pub struct ReactiveEnv<'a> {
     /// `portal`) opens a DETACHED root, so `render`'s disposer disposes
     /// nothing it mounted.
     pub root_blocks: Vec<Span>,
+    /// O5's other spelling: a bare JSX ARGUMENT in that same first position,
+    /// `render(<App/>, host)`.
+    ///
+    /// JavaScript evaluates an argument before the call, so this form builds the
+    /// whole subtree BEFORE `render` opens its root — the effects are the
+    /// caller's owner's kids from the instant they exist and the root never held
+    /// them. The runtime cannot repair it from the inside: by the time `render`
+    /// is entered the tree is built and its ownership is already decided, which
+    /// is why `dom.ts` could only warn (`RENDER_SUBTREE_NOT_OWNED`).
+    ///
+    /// The compiler CAN repair it, and this is the span it repairs: `scope`
+    /// wraps the expression into the Block the callee wants, so the two
+    /// spellings compile to one program. The runtime keeps accepting a built
+    /// subtree, because a hand-written caller can still hand it one — that is
+    /// what the fixture's controls drive.
+    pub root_jsx_args: Vec<Span>,
 }
 
 /// One proven Cell slot. `read` is where the callee consumes it, so the
@@ -398,6 +414,7 @@ impl<'a> ReactiveEnv<'a> {
             components: Vec::new(),
             cell_slots: Vec::new(),
             root_blocks: Vec::new(),
+            root_jsx_args: Vec::new(),
         }
     }
 

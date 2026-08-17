@@ -105,53 +105,22 @@ const ROWS: readonly KnownFailure[] = [
   // containment one. The same defect miscompiled `rows.map((row) => …)` into
   // `.map((_s$, row) => …)` in ordinary JavaScript, outside the corpus.
   //
-  // The one row here is what M3 did NOT close.
+  // The one row that was left — O5's `the-disposer-disposes-when-an-owner-is-current`
+  // — is GONE at M12, and its removal is what a milestone's completion looks
+  // like. The row asked for one thing and got it: a bare JSX argument in
+  // `render`/`hydrate`'s first position is wrapped into `(_s$) => …` by the
+  // `scope` pass, so the two spellings of a mount are one program and there is
+  // no compiled eager form left to leak.
+  //
+  // The runtime still ACCEPTS a built subtree and still warns about it
+  // (RENDER_SUBTREE_NOT_OWNED), because a hand-written or un-compiled caller can
+  // still produce one. The fixture was re-cut in the same change to keep that
+  // observable: `mountInsideAScope` has three modes now — `jsx` for the compiled
+  // spelling, `block` for the hand-written Block, and `built` for a subtree
+  // constructed through a LOCAL, which the wrap does not reach. Without the
+  // third the two controls about relocation and the diagnostic would have gone
+  // on passing while silently measuring the Block form.
   // -------------------------------------------------------------------------
-  {
-    fixture: "sem-own-render-disposer-disposes",
-    claim: "the-disposer-disposes-when-an-owner-is-current",
-    rule: "O5",
-    observed: "0422c93550e1",
-    status: "VIOLATED",
-    greenAt: "M12",
-    reason:
-      "`render(<Tree/>, host)` evaluates its first argument BEFORE `render` is entered, so with an " +
-      "owner current the subtree's effects are that owner's kids from the instant they exist and the " +
-      "root never held them. M3 was expected to close this by making the argument form stop existing, " +
-      "and it did not: the compiler's `scope` pass rewrites the DECLARATION of a function containing " +
-      "JSX, but `render(<Tree/>, host)` is a CALL, and nothing lowers a JSX argument into the Block " +
-      "the callee wants. `render` still accepts both forms and still emits RENDER_SUBTREE_NOT_OWNED " +
-      "rather than returning a disposer that quietly disposes nothing. Green when a JSX argument at a " +
-      "`render` call site lowers to a Block. M4b delivered the flow pass — the constructs it recognises compile " +
-      "to `_$branch`/`_$each`/`_$boundary`/`_$portal` and `NO_SCOPE` is emitted non-zero — and it did " +
-      "NOT close this row: the pass recognises a construct by the `SymbolId` its TAG resolves to, and " +
-      "`render` is neither a flow construct nor a tag. A JSX argument at an arbitrary call site is a " +
-      "separate lowering, which is why the milestone marker stays at M5. Closing it is not only a " +
-      "compiler change: " +
-      "three CONTROL claims in this fixture — `control-the-ambient-owner-disposes-what-it-was-handed`, " +
-      "`control-the-argument-form-reports-that-it-cannot-dispose` and " +
-      "`control-the-block-form-disposes-when-an-owner-is-current` — are written about the ARGUMENT " +
-      "form's behaviour and stop observing anything the moment the argument form stops existing, so " +
-      "the fixture has to be re-cut in the same change. " +
-      "M6 was the string backend, compile-time addresses and claim-based hydration; it did not " +
-      "touch the argument form and `dom.ts` still emits RENDER_SUBTREE_NOT_OWNED from the same " +
-      "line. The marker moves M5 → M9 for a reason and not for room: §8's M9 is 'the old path " +
-      "goes', and the eager `createElement` path this argument form rides on is that path. " +
-      "Re-cutting this fixture's three CONTROL claims belongs in the same change, which is a " +
-      "second reason it cannot be an incidental fix inside another milestone. " +
-      "M9 → M12 at M11, and this move is the OVERDUE GATE's first output rather than a routine " +
-      "deferral: `CURRENT_MILESTONE` sat at 6 from M6 through M11, so the assertion that catches a " +
-      "rotting marker had itself rotted and this row read as green-with-a-note for five " +
-      "milestones. M9 did land — the old path went — and it did not close this, because " +
-      "`render(<Tree/>, host)` is a CALL and the `scope` pass rewrites DECLARATIONS; the eager " +
-      "path going did not make the argument form stop existing. M10 was spread lowering and the " +
-      "Solid 2.0 alignment, M11 was async and boundaries (A6, A7, A8, A5 (f)); neither touched a " +
-      "call-site argument and `dom.ts` still emits RENDER_SUBTREE_NOT_OWNED from the same line. " +
-      "What it needs is unchanged and now stated as one piece of work: lower a JSX argument at an " +
-      "arbitrary call site to a Block, and re-cut this fixture's three control claims in the same " +
-      "change.",
-  },
-
   // -------------------------------------------------------------------------
   // sem-own-given-scope-wins. O4.5 was recorded in §13 as pinned by "structural
   // (§14)" — the SIGNATURE was the evidence, and a signature is not evidence.
@@ -170,38 +139,20 @@ const ROWS: readonly KnownFailure[] = [
   // EMISSION rather than a helper beside it. It is a control, and it goes red
   // when either half is reverted; measured, not assumed.
   //
-  // The last one is the half that did not land, and it did not land because it
-  // is coupled to the row above.
+  // The last half landed at M12, with O5, exactly as the coupling predicted —
+  // and the row's own DIAGNOSIS turned out to be wrong, which is worth keeping.
+  // It said `childToNodes` invokes the Block with `getOwner()`. It does, and
+  // that is not the path this claim drives: an array holding a function goes
+  // `insert` → the live-hole effect → `applyInsert` → `normalizeChildToNodes`,
+  // and never reaches `childToNodes` at all. M9 restructured `insert` to make
+  // the array one live hole and the row's text went on describing the shape
+  // from before it. `normalizeChildToNodes` takes the scope now, `applyInsert`
+  // threads it, and `sawScope` is A.
+  //
+  // The coupling to O5 was real and is discharged: handing the scope down turns
+  // `control-the-argument-form-reports-that-it-cannot-dispose` red only while
+  // the compiled eager form exists, and it does not any more.
   // -------------------------------------------------------------------------
-  {
-    fixture: "sem-own-given-scope-wins",
-    claim: "a-children-block-is-invoked-with-the-given-scope",
-    rule: "O4.5",
-    observed: "4266b62b1a4c",
-    status: "VIOLATED",
-    greenAt: "M12",
-    reason:
-      "HALF of this closed at M9, and the ratchet is how it was noticed. `insert` used to hand an " +
-      "array straight to `childToNodes`, which calls each function element once under whatever was " +
-      "ambient — so the Block was both frozen and mis-owned. An array holding a function is now one " +
-      "live hole like any other and goes through the effect `ownedBy(given, …)` opens, so DISPOSAL " +
-      "reaches it: `ranCleanup` moved 0 → 1 and the observation moved with it. " +
-      "What is left is the ARGUMENT. `childToNodes` still invokes the Block with `getOwner()` rather " +
-      "than the `s` it was given, so `sawScope` is the effect and not A. Handing `s` down is one " +
-      "line and is still coupled to O5, measured rather than assumed: it turns " +
-      "`sem-own-render-disposer-disposes`'s `control-the-argument-form-reports-that-it-cannot-dispose` " +
-      "red, because the root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing. It also " +
-      "moves WHERE the Block's cleanups are filed — on A rather than on the effect — so a Block " +
-      "re-invoked on update would accumulate them instead of having them cleared per run. The two " +
-      "halves land together, in the change that lowers `render`'s JSX argument to a Block and " +
-      "re-cuts that fixture, which is the row above. " +
-      "M10 → M12 at M11, and it moves BECAUSE the row above moves: the coupling is measured, not " +
-      "preferred, so a marker on this row that ran ahead of O5's would be a promise this row " +
-      "cannot keep on its own. M11 read the coupling again and did not weaken it — handing `s` " +
-      "down still turns `control-the-argument-form-reports-that-it-cannot-dispose` red, because " +
-      "the root then owns a kid and RENDER_SUBTREE_NOT_OWNED stops firing.",
-  },
-
   // -------------------------------------------------------------------------
   // sem-props-block-in-cell-slot. The fixture drove one shape of Block —
   // `block()`'s, which carries an entry guard of its own — so it measured the

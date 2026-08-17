@@ -1186,6 +1186,16 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
                 Expression::FunctionExpression(function) => {
                     self.env.root_blocks.push(function.span);
                 }
+                // A bare JSX argument is the SAME position written the other
+                // way, and the one the runtime cannot fix from the inside: the
+                // subtree is built before `render` is entered. `scope` wraps it
+                // so both spellings compile to one program (O5).
+                Expression::JSXElement(element) => {
+                    self.env.root_jsx_args.push(element.span);
+                }
+                Expression::JSXFragment(fragment) => {
+                    self.env.root_jsx_args.push(fragment.span);
+                }
                 _ => {}
             }
         }
