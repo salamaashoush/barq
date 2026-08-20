@@ -28,6 +28,19 @@ import {
   swapDeferredRange,
 } from "./server.ts";
 import { esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
+import { encodeSeed } from "./serialize.ts";
+
+async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const parts: string[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(decoder.decode(value));
+  }
+  return parts;
+}
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -138,6 +151,126 @@ describe("renderToStringAsync", () => {
     expect(script.startsWith("<script>window.__BARQ_DATA__=")).toBe(true);
     expect(script).not.toContain("</script><script>");
     expect(script.match(/<\/script>/g)?.length).toBe(1); // only the closing tag of the wrapper
+  });
+});
+
+/**
+ * The value channel. `JSON.stringify` carried none of this: a Date arrived as a
+ * string, a Map as `{}`, a cycle threw.
+ */
+describe("the seed encoder", () => {
+  test("carries Date, Map, Set, BigInt and cycles", async () => {
+    const cyclic: Record<string, unknown> = { when: new Date(0), tags: new Set(["a"]) };
+    cyclic.self = cyclic;
+    const rich = computed(async () => cyclic, { key: "rich" });
+
+    await renderToStringAsync(() => element(null, "div", { children: () => rich().tags.size }));
+
+    const back = (0, eval)(encodeSeed(getRenderData())) as Record<string, { self: unknown }>;
+    const value = back.rich as unknown as typeof cyclic;
+    expect(value.when).toBeInstanceOf(Date);
+    expect((value.when as Date).toISOString()).toBe("1970-01-01T00:00:00.000Z");
+    expect(value.tags).toBeInstanceOf(Set);
+    expect(value.self).toBe(value);
+  });
+
+  /**
+   * `Feature.ErrorPrototypeStack` suppresses the prototype `stack` and not the
+   * OWN properties Bun puts on an Error — `sourceURL` among them, holding an
+   * absolute server path. The redaction plugin is what keeps it off the wire.
+   */
+  test("redacts an Error to its name and message, with no server path", () => {
+    const payload = encodeSeed({ e: new Error("db connection failed") });
+    expect(payload).toContain("db connection failed");
+    expect(payload).not.toContain("sourceURL");
+    expect(payload).not.toContain(import.meta.dir);
+
+    const back = (0, eval)(payload) as { e: Error };
+    expect(back.e.message).toBe("db connection failed");
+    expect(Object.keys(back.e)).toEqual(["name"]);
+  });
+
+  /**
+   * seroval escapes `<` inside strings but writes a RegExp as a LITERAL whose
+   * source goes out unescaped, so `/[</script>]/` closes the script element.
+   * It cannot be repaired downstream — the payload's own helpers use `<` as an
+   * operator — so the type is refused, and refused before any output exists.
+   */
+  test("refuses a RegExp rather than emitting an unescaped literal", () => {
+    expect(() => encodeSeed({ r: new RegExp("[</script>]") })).toThrow();
+  });
+
+  /**
+   * A streamed page emits at least three inline scripts — the swap snippet, one
+   * swap per resumed boundary, and the seed. One of them without the nonce
+   * forces `script-src 'unsafe-inline'` on the whole document, which is the
+   * directive the nonce exists to avoid, so the assertion is over ALL of them.
+   */
+  test("every inline script a streamed render emits carries the nonce", async () => {
+    const late = computed(async () => {
+      await tick();
+      return "Ada";
+    });
+    const page = (): unknown =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>loading</i>"),
+            children: () => ssrHtml(`<b>${esc(late())}</b>`),
+          }),
+        )}</main>`,
+      );
+
+    const html = (await collect(renderToStream(page as never, { nonce: "r4nd0m" }))).join("");
+    const opens = html.match(/<script[^>]*>/g) ?? [];
+    expect(opens.length).toBeGreaterThanOrEqual(2);
+    for (const tag of opens) expect(tag).toContain('nonce="r4nd0m"');
+  });
+
+  /**
+   * A streamed page seeded NOTHING before this: `renderToStream` never called
+   * `getHydrationData`, so every value the server had just awaited was refetched
+   * by the client. `renderPage`'s answer — render the whole page a second time —
+   * has no equivalent here, because the shell is already on the wire.
+   */
+  test("a streamed page seeds the values it resolved, and seeds each one once", async () => {
+    const late = computed(
+      async () => {
+        await tick();
+        return "Ada";
+      },
+      { key: "streamed-user" },
+    );
+    const page = (): unknown =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>loading</i>"),
+            children: () => ssrHtml(`<b>${esc(late())}</b>`),
+          }),
+        )}</main>`,
+      );
+
+    const html = (await collect(renderToStream(page as never))).join("");
+    expect(html).toContain("__BARQ_DATA__");
+    expect(html).toContain("streamed-user");
+
+    // Seeded once, not once per round: a key already on the wire is skipped.
+    expect(html.match(/streamed-user/g)?.length).toBe(1);
+
+    // And the payload rebuilds to the value the server resolved.
+    const assign = html.match(/window\.__BARQ_DATA__=Object\.assign\([^<]*\)/)?.[0] ?? "";
+    const data = (0, eval)(`(window=>{${assign};return window.__BARQ_DATA__})({})`) as Record<
+      string,
+      unknown
+    >;
+    expect(data["streamed-user"]).toBe("Ada");
+  });
+
+  test("escapes a script-closing string and the line separators", () => {
+    const payload = encodeSeed({ s: "</script><script>alert(1)</script>", u: "a b" });
+    expect(payload).not.toContain("</script>");
+    expect(payload).not.toContain(" ");
   });
 });
 
@@ -285,18 +418,6 @@ describe("settle", () => {
  * SECOND invocation is the same Block under the same scope.
  */
 describe("renderToStream", () => {
-  async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    const parts: string[] = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      parts.push(decoder.decode(value));
-    }
-    return parts;
-  }
-
   test("the shell is flushed before the boundary resolves, and the content follows", async () => {
     const late = computed(async () => {
       await tick();

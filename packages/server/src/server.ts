@@ -30,7 +30,8 @@ import {
   setAsyncSession,
   settleStep,
 } from "@barqjs/core/internal";
-import { type StreamSink, esc, resumeDeferred, setStreamSink } from "./ssr.ts";
+import { type StreamSink, esc, escapeAttribute, resumeDeferred, setStreamSink } from "./ssr.ts";
+import { encodeSeed } from "./serialize.ts";
 
 /**
  * Render synchronously to an HTML string. Pending async values render
@@ -90,6 +91,7 @@ let lastRenderData: Record<string, unknown> = {};
  */
 export async function renderPage(
   fn: () => JSXElement,
+  options?: { nonce?: string },
 ): Promise<{ html: string; data: Record<string, unknown>; script: string }> {
   const session = Symbol("render-session");
   let dispose!: () => void;
@@ -150,7 +152,7 @@ export async function renderPage(
   lastRenderData = data;
   dispose();
 
-  return { html, data, script: hydrationScriptFor(data) };
+  return { html, data, script: hydrationScriptFor(data, options?.nonce) };
 }
 
 // ── streaming (CODESIGN.md §3.11) ────────────────────────────────────────
@@ -176,6 +178,8 @@ interface Continuation {
 export interface StreamOptions {
   /** Stops the render. The stream closes and parked boundaries keep their fallbacks. */
   signal?: AbortSignal;
+  /** CSP nonce, applied to every inline script this render emits. */
+  nonce?: string;
   /**
    * How long one boundary may stay parked before it is abandoned to its
    * fallback, in ms. Remix ships 5000 and React Router 4950 for the same knob.
@@ -299,6 +303,28 @@ export function renderToStream(
   // A pending timer must not be what keeps a server process alive.
   (timer as { unref?: () => void }).unref?.();
 
+  // Keys already on the wire. A streamed render resolves values AFTER the shell
+  // is gone, so the seed cannot be one script at the end the way `renderPage`'s
+  // is — it is flushed incrementally, and each flush carries only what the
+  // previous ones did not.
+  const sent = new Set<string>();
+  const seedScript = (): string => {
+    const fresh: Record<string, unknown> = {};
+    let any = false;
+    for (const [key, value] of Object.entries(getHydrationData(session))) {
+      if (sent.has(key)) continue;
+      sent.add(key);
+      fresh[key] = value;
+      any = true;
+    }
+    if (!any) return "";
+    return (
+      `<script${nonceAttr(options?.nonce)}>` +
+      `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${encodeSeed(fresh)})` +
+      "</script>"
+    );
+  };
+
   const signal = options?.signal;
   if (signal?.aborted) end();
   signal?.addEventListener("abort", end, { once: true });
@@ -336,8 +362,15 @@ export function renderToStream(
     async start(controller): Promise<void> {
       try {
         controller.enqueue(encoder.encode(shell));
+        // Whatever the shell already resolved. Without this a streamed page
+        // seeded nothing at all and the client refetched every value the server
+        // had just awaited.
+        const shellSeed = seedScript();
+        if (shellSeed !== "") controller.enqueue(encoder.encode(shellSeed));
         if (parked.length > 0) {
-          controller.enqueue(encoder.encode(`<script>${SWAP_SNIPPET}</script>`));
+          controller.enqueue(
+            encoder.encode(`<script${nonceAttr(options?.nonce)}>${SWAP_SNIPPET}</script>`),
+          );
         }
         // One round per settled promise, not one round per session. `settle`
         // here would hold every boundary until the slowest one in the session
@@ -376,10 +409,12 @@ export function renderToStream(
             controller.enqueue(
               encoder.encode(
                 `<template data-barq="${record.id}">${markup}</template>` +
-                  `<script>window.__BARQ_SWAP__(${record.id})</script>`,
+                  `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${record.id})</script>`,
               ),
             );
           }
+          const roundSeed = seedScript();
+          if (roundSeed !== "") controller.enqueue(encoder.encode(roundSeed));
           // Boundaries parked BY this round are already in `parked`; the ones
           // that merely stayed unready go in front of them.
           if (again.length > 0) parked.unshift(...again);
@@ -398,6 +433,7 @@ export function renderToStream(
         if (!consumerCancelled) controller.error(error);
       } finally {
         release();
+        clearHydrationData(session);
         dispose();
       }
     },
@@ -407,8 +443,16 @@ export function renderToStream(
 /**
  * Make a JSON payload safe to inline inside a <script> element:
  * escapes characters that could close the tag or open markup.
+ *
+ * NOT for the seed, which is no longer JSON. seroval's JS output inlines
+ * helpers that use `<` as a real operator \u2014 a base64 decoder's
+ * `for (let i = 0; i < length; i++)` is the one bare `<` a typed-array payload
+ * contains \u2014 so a blanket pass over it corrupts the payload rather than
+ * protecting it. That output escapes its own strings (`</script>` leaves as
+ * `\x3C/script>`, U+2028/9 as `\u2028`/`\u2029`), which is where the guarantee
+ * comes from now. Kept for callers embedding genuine JSON.
  */
-function escapeScriptPayload(json: string): string {
+export function escapeScriptPayload(json: string): string {
   return json
     .replace(/</g, "\\u003c")
     .replace(/>/g, "\\u003e")
@@ -451,9 +495,18 @@ const EVENT_CAPTURE_SNIPPET =
   "ts.forEach(function(t){document.addEventListener(t,h,true)});" +
   "return function(){ts.forEach(function(t){document.removeEventListener(t,h,true)})}})();";
 
-function hydrationScriptFor(data: Record<string, unknown>): string {
-  const payload = escapeScriptPayload(JSON.stringify(data));
-  return `<script>window.__BARQ_DATA__=${payload};${EVENT_CAPTURE_SNIPPET}</script>`;
+function hydrationScriptFor(data: Record<string, unknown>, nonce?: string): string {
+  return `<script${nonceAttr(nonce)}>window.__BARQ_DATA__=${encodeSeed(data)};${EVENT_CAPTURE_SNIPPET}</script>`;
+}
+
+/**
+ * Every inline script a render emits carries the caller's nonce, or none of
+ * them do. A streamed page emits at least three — the swap snippet, one swap
+ * per resumed boundary, and the seed — so without this the page needs
+ * `script-src 'unsafe-inline'`, which is the directive CSP exists to avoid.
+ */
+function nonceAttr(nonce?: string): string {
+  return nonce === undefined ? "" : ` nonce="${escapeAttribute(nonce)}"`;
 }
 
 /**
@@ -462,8 +515,8 @@ function hydrationScriptFor(data: Record<string, unknown>): string {
  * servers should use the `script` returned by renderPage instead.
  * Place it before the bundle that calls hydrate().
  */
-export function generateHydrationScript(): string {
-  return hydrationScriptFor(lastRenderData);
+export function generateHydrationScript(nonce?: string): string {
+  return hydrationScriptFor(lastRenderData, nonce);
 }
 
 /**

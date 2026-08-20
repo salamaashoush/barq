@@ -213,7 +213,13 @@ Configuration is not optional:
   `ArrowFunction`, `ErrorPrototypeStack`, `ObjectAssign`, `BigIntTypedArray`, `RegExp`, `Temporal`) covers it.
 - `Feature.RegExp` **disabled**. seroval escapes `<` at the string level but emits RegExp as a *literal* with unescaped source, so `serialize({p: new RegExp('[</script>]')})` emits a raw `</script>` and breaks out of the script element. There is no consumer-side fix, because seroval's JS output inlines helpers containing `<` as a real operator. Disabling throws before serialization and fails closed; with the `Serializer` class the throw routes to per-key `onError`, so one bad key drops alone. The JSON channel is unaffected. **Report privately upstream; do not file publicly.**
 - `Feature.ErrorPrototypeStack` **disabled** — necessary, not sufficient; see above.
-- Per-request `scopeId`; collisions across concurrent renders silently clobber `$R`.
+
+**Identity holds within a flush, not across flushes.** The implementation uses plain `serialize`, so each seed
+script is self-contained: a cycle or a repeated reference inside one payload is preserved (pinned by a test),
+but the same object appearing in two different rounds deserializes to two distinct objects. Fixing that means
+`crossSerialize` with a per-request `scopeId` and `getCrossReferenceHeader()` emitted ahead of the first flush,
+which also introduces a failure mode worth respecting — `scopeId` collisions across concurrent renders
+silently clobber `$R`. Not attempted; recorded so the limitation is a decision rather than a surprise.
 
 Context for the choice: every serializer in this space shipped a critical deserialization CVE within nine
 months — React Flight 10.0 (RCE), seroval 9.8 and 7.5, turbo-stream 8.1, devalue prototype pollution.
@@ -226,10 +232,12 @@ Expressiveness *is* the attack surface. The mitigation is disabling features, no
 escape `/`. `neutralizeRawText` (`ssr.ts:268`) is minimal-correct, and `server.test.ts` already asserts
 `SWAP_SNIPPET` contains no `<` — an invariant enforced by a test rather than a comment.
 
-Two gaps, neither in the escape table:
+Two gaps were identified, and moving to seroval resolved one and **closed off** the other:
 
-1. **No CSP nonce anywhere.** barq emits ≥3 inline scripts per streamed page and every one of them requires `script-src 'unsafe-inline'` today. Solid, SvelteKit and TanStack all thread a nonce.
-2. **`&` is not escaped.** Only matters under `application/xhtml+xml`, where a raw `&` in a script is a fatal XML error.
+1. **No CSP nonce anywhere** — fixed. Every inline script a render emits takes the caller's nonce, and the test asserts over *all* of them, because one bare script forces `script-src 'unsafe-inline'` on the whole document.
+2. **`&` is not escaped** — and now cannot be. `escapeScriptPayload` must not run over the seed any more, because the seed is no longer JSON: seroval's JS output inlines helpers that use `<` as a real operator. Measured on a typed-array payload, the whole thing contains exactly **one** bare `<`, and it is the `for (let i = 0; i < length; i++)` of the base64 decoder. A blanket pass corrupts the payload rather than protecting it.
+
+   The guarantee therefore moves into seroval, which was verified to escape `</script>` → `\x3C/script>` and U+2028/9 → ` `/` `. What is lost is `&` → `&`, which matters only under `application/xhtml+xml`, where a raw `&` in a script is a fatal XML error. **Serving a barq page as XHTML is not supported**, and that is now a consequence of the encoder rather than an oversight. `escapeScriptPayload` is kept and exported for callers embedding genuine JSON.
 
 Limits, from shipped defaults rather than invention:
 
@@ -317,9 +325,21 @@ Evidence the change is scoped: the L5 mode matrix is 195 fixtures × 7 modes, an
 `ssr-O0` and `ssr-hydratable` all moved. Gate: `cargo test` 305 pass, core 912 + server 78 = 990 (unchanged
 total), `bun run ci` EXIT=0.
 
-**P1 — serialization, `packages/server`.** seroval hardened per §4 — including the `Error` plugin, which is a
-disclosure fix rather than polish — replacing `JSON.stringify` in `hydrationScriptFor`; CSP nonce threading;
-`&` escaping; the 128 kB warn. Enables seeding streamed values and §2.5's pending-promise seed.
+**P1 — serialization, `packages/server`. DONE except §2.5.** `serialize.ts` replaces `JSON.stringify` in
+`hydrationScriptFor`: seroval JS mode (0 client bytes — the payload *is* the program that rebuilds the value),
+`Feature.RegExp` and `Feature.ErrorPrototypeStack` disabled, the `Error` redaction plugin, the 128 kB warn.
+CSP nonce threaded through `renderPage`, `renderToStream` and `generateHydrationScript`.
+
+**And `renderToStream` now seeds at all.** It never called `getHydrationData`, so a streamed page transferred
+nothing and the client refetched every value the server had just awaited — `renderPage`'s answer (render the
+whole page a second time) has no equivalent once the shell is on the wire. Seeds are flushed incrementally
+instead: once after the shell, once per round, each flush carrying only the keys the previous ones did not.
+
+Not done: **§2.5's pending-promise seed.** A value that settles after the client bundle has begun hydrating
+still arrives late — `__BARQ_DATA__` receives it, but nothing is waiting on it. Carrying a *pending* promise in
+the seed is what would beat SvelteKit here, and it needs a client-side registry that does not exist yet.
+
+Gate: server 84 pass (78 + 6 new), core 912, `bun run ci` EXIT=0.
 
 **P2 — the compiler pass.** `env: "client" | "server"` on `TransformOptions` (plus `OPTION_KEYS` and the
 completeness test that already guards it); `SymbolId` recognition; module classification; the mixed-module
