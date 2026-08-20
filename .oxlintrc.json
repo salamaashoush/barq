@@ -7,6 +7,10 @@
     "perf": "warn"
   },
   "rules": {
+    "no-underscore-dangle": "off",
+    "no-shadow": "off",
+    "no-unmodified-loop-condition": "off",
+
     "no-unused-vars": "error",
     "no-console": "off",
     "eqeqeq": "error",
@@ -17,7 +21,6 @@
     "unicorn/no-null": "off",
     "unicorn/prefer-top-level-await": "off",
     "unicorn/no-nested-ternary": "off",
-    "unicorn/prevent-abbreviations": "off",
     "unicorn/filename-case": "off",
     "unicorn/no-new-array": "off",
     "unicorn/prefer-global-this": "off",
@@ -40,7 +43,11 @@
     // action bodies) are legitimately `async` with no `await` inside - the
     // keyword is the return-type guarantee, not dead syntax.
     "@typescript-eslint/require-await": "off",
-    "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+    // TODO(lint-1.79), with the rest: see TODO.md.
+    "@typescript-eslint/no-unnecessary-type-assertion": "off",
+    "@typescript-eslint/no-unnecessary-type-parameters": "off",
+    "@typescript-eslint/no-unnecessary-type-conversion": "off",
+    "@typescript-eslint/consistent-return": "off",
     "@typescript-eslint/no-unsafe-type-assertion": "off",
     "@typescript-eslint/no-unsafe-argument": "warn",
 

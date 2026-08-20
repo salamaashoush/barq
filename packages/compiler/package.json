@@ -51,11 +51,11 @@
   },
   "devDependencies": {
     "@barqjs/core": "workspace:*",
-    "@types/bun": "^1.3.3",
-    "typescript": "^5.9.3"
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "vite": ">=4.0.0"
+    "vite": ">=8.0.0"
   },
   "engines": {
     "bun": ">=1.1.0"

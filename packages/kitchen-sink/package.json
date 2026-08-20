@@ -12,13 +12,13 @@
   "dependencies": {
     "@barqjs/core": "workspace:*",
     "@barqjs/extra": "workspace:*",
-    "@tanstack/query-core": "^5.62.16",
-    "goober": "^2.1.18"
+    "@tanstack/query-core": "^5.101.4",
+    "goober": "^2.1.19"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
-    "@types/bun": "latest",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.0"
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   }
 }

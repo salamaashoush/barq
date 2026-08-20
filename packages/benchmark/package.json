@@ -21,18 +21,18 @@
     "build": "bun build src/browser.ts --outdir dist --target browser --format esm"
   },
   "dependencies": {
-    "solid-js": "^1.9.3"
+    "solid-js": "^1.9.15"
   },
   "devDependencies": {
     "@anthropic-ai/tokenizer": "^0.0.4",
-    "@babel/core": "^7.28.6",
+    "@babel/core": "^8.0.1",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
-    "@happy-dom/global-registrator": "^15.11.7",
-    "@solidjs/signals": "^2.0.0-beta.31",
+    "@happy-dom/global-registrator": "^20.11.6",
+    "@solidjs/signals": "^2.0.0-rc.0",
     "@types/babel__core": "^7.20.5",
-    "@types/bun": "latest",
-    "babel-preset-solid": "^1.9.12",
-    "typescript": "^5.7.2"
+    "@types/bun": "^1.4.0",
+    "babel-preset-solid": "^1.9.15",
+    "typescript": "^7.0.2"
   }
 }

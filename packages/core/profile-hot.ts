@@ -30,7 +30,7 @@ bench("create: scope+signal+effect+dispose", () => {
 // Phase 2: writes only (subscribed effect, batched, no flush yet)
 {
   const s = signal(0);
-  let _runs = 0;
+  const _runs = 0;
   effect(() => {
     s();
     runs++;

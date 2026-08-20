@@ -228,5 +228,7 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
 
 /** Whether a value is a server function, by brand rather than by shape. */
 export function isServerFn(value: unknown): value is ServerFn<unknown, unknown> {
-  return typeof value === "function" && (value as Record<symbol, unknown>)[SERVER_FN] === true;
+  return (
+    typeof value === "function" && (value as unknown as Record<symbol, unknown>)[SERVER_FN] === true
+  );
 }

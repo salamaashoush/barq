@@ -13,7 +13,11 @@ import {
 } from "./index.ts";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
+import { createFetchHandler } from "./serve.ts";
 import { handleServerFn, mount, mounted, originAllowed, unmountAll } from "./server.ts";
+
+/** Mounts under the id the function already carries, which is what the tests mean. */
+const mountOf = (fn: { meta: { id: string } }): void => mount(fn.meta.id, fn as never);
 
 afterEach(unmountAll);
 
@@ -59,29 +63,29 @@ describe("input is fail-closed", () => {
    * the channel costs a schema or the literal 'unchecked'.
    */
   test("a function with no validator refuses any argument", async () => {
-    mount(define("no-validator", (input: unknown) => ({ saw: input })) as never);
+    mountOf(define("no-validator", (input: unknown) => ({ saw: input })) as never);
 
     const response = await handleServerFn(post("no-validator", { evil: true }));
     expect(response?.status).toBe(400);
   });
 
   test("…and still accepts a call with no argument", async () => {
-    mount(define("nullary", () => "ok") as never);
+    mountOf(define("nullary", () => "ok") as never);
 
     const response = await handleServerFn(post("nullary", undefined));
     expect(response?.status).toBe(200);
-    expect(decodeWire(await response?.json())).toBe("ok");
+    expect(decodeWire<string>(await response?.json())).toBe("ok");
   });
 
   test("a schema rejects bad input with 400 and no detail", async () => {
-    mount(define("checked", (n: number) => n * 2, positiveInt) as never);
+    mountOf(define("checked", (n: number) => n * 2, positiveInt) as never);
 
     const bad = await handleServerFn(post("checked", -1));
     expect(bad?.status).toBe(400);
     expect(await bad?.json()).toEqual({ error: "invalid input" });
 
     const good = await handleServerFn(post("checked", 21));
-    expect(decodeWire(await good?.json())).toBe(42);
+    expect(decodeWire<number>(await good?.json())).toBe(42);
   });
 
   test("'unchecked' is the opt-out, and has to be typed out", async () => {
@@ -93,10 +97,10 @@ describe("input is fail-closed", () => {
         handler: (input) => ({ saw: input }),
       },
     );
-    mount(fn as never);
+    mountOf(fn as never);
 
     const response = await handleServerFn(post("raw", { anything: 1 }));
-    expect(decodeWire(await response?.json())).toEqual({ saw: { anything: 1 } });
+    expect(decodeWire<unknown>(await response?.json())).toEqual({ saw: { anything: 1 } });
   });
 
   test("the uncompiled builder enforces the same rule in-process", async () => {
@@ -113,7 +117,7 @@ describe("the wire", () => {
    * evaluating those would be remote code execution however well escaped.
    */
   test("carries Date, Map, Set, BigInt and cycles in both directions", async () => {
-    mount(
+    mountOf(
       serverRpc<{ at: Date; tags: Set<string> }, unknown>(
         { id: "rich" },
         {
@@ -160,7 +164,7 @@ describe("the wire", () => {
 
 describe("the request is checked before the handler runs", () => {
   test("GET is refused: a mutation must not be reachable by navigation", async () => {
-    mount(define("m", () => "ran") as never);
+    mountOf(define("m", () => "ran") as never);
     const response = await handleServerFn(
       new Request(`${ORIGIN}${RPC_PREFIX}m`, { method: "GET", headers: { origin: ORIGIN } }),
     );
@@ -169,7 +173,7 @@ describe("the request is checked before the handler runs", () => {
   });
 
   test("a cross-origin call is refused", async () => {
-    mount(define("m", () => "ran") as never);
+    mountOf(define("m", () => "ran") as never);
     const response = await handleServerFn(post("m", undefined, { origin: "https://evil.test" }));
     expect(response?.status).toBe(403);
   });
@@ -222,7 +226,7 @@ describe("middleware and request context", () => {
     const deny: Middleware = async () => {
       throw new Response("unauthorized", { status: 401 });
     };
-    mount(
+    mountOf(
       withChain("guarded", [deny], () => {
         ran = true;
         return "secret";
@@ -244,7 +248,7 @@ describe("middleware and request context", () => {
         order.push(`<${name}`);
         return out;
       };
-    mount(
+    mountOf(
       withChain("ordered", [tag("a"), tag("b")], () => {
         order.push("handler");
         return null;
@@ -265,7 +269,7 @@ describe("middleware and request context", () => {
     const deny: Middleware = async () => {
       throw new Response("unauthorized", { status: 401 });
     };
-    mount(
+    mountOf(
       serverRpc<number, string>(
         { id: "guarded-checked" },
         { validator: positiveInt as never, middleware: [deny], handler: () => "secret" },
@@ -277,9 +281,9 @@ describe("middleware and request context", () => {
   });
 
   test("getRequest() reaches the handler", async () => {
-    mount(withChain("who", [], () => getRequest().headers.get("x-probe")) as never);
+    mountOf(withChain("who", [], () => getRequest().headers.get("x-probe")) as never);
     const response = await handleServerFn(post("who", undefined, { "x-probe": "here" }));
-    expect(decodeWire(await response?.json())).toBe("here");
+    expect(decodeWire<string>(await response?.json())).toBe("here");
   });
 
   /**
@@ -290,7 +294,7 @@ describe("middleware and request context", () => {
    * say so.
    */
   test("two concurrent requests never see each other's request", async () => {
-    mount(
+    mountOf(
       withChain("slow", [], async () => {
         const first = getRequest().headers.get("x-probe");
         await new Promise((r) => setTimeout(r, 10));
@@ -304,8 +308,8 @@ describe("middleware and request context", () => {
       handleServerFn(post("slow", undefined, { "x-probe": "A" })),
       handleServerFn(post("slow", undefined, { "x-probe": "B" })),
     ]);
-    expect(decodeWire(await a?.json())).toEqual(["A", "A"]);
-    expect(decodeWire(await b?.json())).toEqual(["B", "B"]);
+    expect(decodeWire<string[]>(await a?.json())).toEqual(["A", "A"]);
+    expect(decodeWire<string[]>(await b?.json())).toEqual(["B", "B"]);
   });
 
   test("getRequest() outside a server function throws rather than returning undefined", () => {
@@ -335,8 +339,8 @@ describe("progressive enhancement", () => {
   };
 
   test("a form POST reaches the handler as FormData and redirects back", async () => {
-    let saw: string | null = null;
-    mount(
+    let saw: unknown = null;
+    mountOf(
       serverRpc<FormData, void>(
         { id: "add-todo" },
         {
@@ -357,7 +361,7 @@ describe("progressive enhancement", () => {
   });
 
   test("a handler may answer the submission itself", async () => {
-    mount(
+    mountOf(
       serverRpc<FormData, Response>(
         { id: "custom" },
         {
@@ -374,7 +378,7 @@ describe("progressive enhancement", () => {
 
   /** Redirecting to a Referer from another origin would be an open redirect. */
   test("an off-site Referer is not a destination", async () => {
-    mount(
+    mountOf(
       serverRpc<FormData, void>(
         { id: "offsite" },
         { validator: "unchecked", middleware: [], handler: () => undefined },
@@ -396,7 +400,7 @@ describe("progressive enhancement", () => {
    */
   test("both paths hand the handler the same FormData", async () => {
     const seen: Array<{ isFormData: boolean; title: unknown; tags: unknown }> = [];
-    mount(
+    mountOf(
       serverRpc<FormData, void>(
         { id: "same-shape" },
         {
@@ -436,14 +440,14 @@ describe("progressive enhancement", () => {
   });
 
   test("the form path is fail-closed on input too", async () => {
-    mount(define("strict-form", () => "ran") as never);
+    mountOf(define("strict-form", () => "ran") as never);
     const response = await handleServerFn(submit("strict-form", { anything: "1" }));
     expect(response?.status).toBe(400);
   });
 
   /** The same origin rules apply: a form is not a way around them. */
   test("a cross-origin form POST is refused", async () => {
-    mount(
+    mountOf(
       serverRpc<FormData, void>(
         { id: "guarded-form" },
         { validator: "unchecked", middleware: [], handler: () => undefined },
@@ -463,7 +467,7 @@ describe("the registry", () => {
    * chain to reach into.
    */
   test("a prototype name is not callable", async () => {
-    mount(define("real", () => "ran") as never);
+    mountOf(define("real", () => "ran") as never);
     for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
       const response = await handleServerFn(post(name, undefined));
       expect(response?.status, name).toBe(404);
@@ -471,8 +475,8 @@ describe("the registry", () => {
   });
 
   test("export-ness decides the surface, and it is reviewable", () => {
-    mount(define("a", () => 1) as never);
-    mount(define("b", () => 2) as never);
+    mountOf(define("a", () => 1) as never);
+    mountOf(define("b", () => 2) as never);
     // A server function that is never mounted has no id on the wire, and is
     // still callable in-process by its siblings.
     const internal = define("c", () => 3);
@@ -481,11 +485,50 @@ describe("the registry", () => {
   });
 
   test("two functions cannot claim one id", () => {
-    mount(define("dup", () => 1) as never);
-    expect(() => mount(define("dup", () => 2) as never)).toThrow(/claim the id/);
+    mountOf(define("dup", () => 1) as never);
+    expect(() => mountOf(define("dup", () => 2) as never)).toThrow(/claim the id/);
   });
 
   test("a URL that is not a server function is not this handler's", async () => {
     expect(await handleServerFn(new Request(`${ORIGIN}/about`, { method: "POST" }))).toBeNull();
+  });
+});
+
+/**
+ * The production entry is runtime-agnostic by construction: `srvx`'s root
+ * export resolves by runtime condition, so the handler below is the same one on
+ * Node, Deno, Bun and Cloudflare. Only the request/response pair is asserted
+ * here — starting a listener would test srvx rather than this.
+ */
+describe("the fetch handler", () => {
+  test("answers a server function and delegates everything else", async () => {
+    mount("greet", define("greet", () => "hi") as never);
+    const page = createFetchHandler({
+      fetch: () => new Response("a page", { status: 200 }),
+    });
+
+    const rpc = await page(post("greet", undefined));
+    expect(decodeWire<string>(await rpc.json())).toBe("hi");
+
+    const other = await page(new Request(`${ORIGIN}/about`));
+    expect(await other.text()).toBe("a page");
+  });
+
+  /**
+   * Server functions match FIRST. A page handler that also matched the RPC URL
+   * would shadow an endpoint, and the failure that produces is a mutation
+   * quietly answered with HTML.
+   */
+  test("a page handler cannot shadow a server function", async () => {
+    mount("shadowed", define("shadowed", () => "real") as never);
+    const page = createFetchHandler({ fetch: () => new Response("<html>", { status: 200 }) });
+
+    const response = await page(post("shadowed", undefined));
+    expect(decodeWire<string>(await response.json())).toBe("real");
+  });
+
+  test("with no page handler, a non-RPC URL is a 404 rather than an error", async () => {
+    const page = createFetchHandler();
+    expect((await page(new Request(`${ORIGIN}/about`))).status).toBe(404);
   });
 });

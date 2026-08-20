@@ -2417,6 +2417,9 @@ export function reaction(onInvalidate: () => void | (() => void)): (tracking: ()
 
     runWithOwner(owner, () => {
       let armed = false;
+      // Assigned once, but not until `dispose` exists below, and the closure
+      // above closes over the binding — so it cannot take an initialiser.
+      // oxlint-disable-next-line prefer-const
       let disposeSelf: (() => void) | undefined;
       const dispose = createEffectNode(
         () => {
@@ -3528,7 +3531,10 @@ export function context<T>(defaultValue?: T, description?: string): Context<T> {
     try {
       if (typeof props.children !== "function") return props.children as JSXElement;
       if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("Provider.children", instance);
-      let out = unwrapBlocks((props.children as (scope: Scope) => JSXElement)(instance), instance);
+      const out = unwrapBlocks(
+        (props.children as (scope: Scope) => JSXElement)(instance),
+        instance,
+      );
       if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("Provider.children");
       built = true;
       return out;

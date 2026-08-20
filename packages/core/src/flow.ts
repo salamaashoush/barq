@@ -231,7 +231,7 @@ function insertAt(site: Site, nodes: readonly Node[]): void {
   const host = hostOf(site);
   if (host === null) return;
   let anchor = site.anchor;
-  for (let i = nodes.length; i--; ) {
+  for (let i = nodes.length; i--;) {
     place(host, nodes[i], anchor);
     anchor = nodes[i];
   }

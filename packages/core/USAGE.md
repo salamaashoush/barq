@@ -17,7 +17,7 @@ function Counter() {
   return (
     <div>
       <span>Count: {count}</span>
-      <button onClick={() => setCount(c => c + 1)}>+</button>
+      <button onClick={() => setCount((c) => c + 1)}>+</button>
     </div>
   );
 }
@@ -81,11 +81,11 @@ import { useState } from "@barqjs/core";
 const [count, setCount] = useState(0);
 
 // Read
-count();  // 0
+count(); // 0
 
 // Set
 setCount(5);
-setCount(c => c + 1);
+setCount((c) => c + 1);
 ```
 
 ### useStore - Nested State with Fine-Grained Reactivity
@@ -95,16 +95,16 @@ import { useStore } from "@barqjs/core";
 
 const [state, setState] = useStore({
   user: { name: "John", age: 30 },
-  todos: []
+  todos: [],
 });
 
 // Read (subscribes only to that path)
-state.user.name;  // Only re-runs when user.name changes
+state.user.name; // Only re-runs when user.name changes
 
 // Update
-setState("user", { name: "Jane" });           // Merge into user
-setState("user", prev => ({ ...prev, age: 31 }));  // Function update
-setState({ user: { name: "Bob", age: 25 } });      // Batch update
+setState("user", { name: "Jane" }); // Merge into user
+setState("user", (prev) => ({ ...prev, age: 31 })); // Function update
+setState({ user: { name: "Bob", age: 25 } }); // Batch update
 ```
 
 ### useEffect - Side Effects
@@ -135,7 +135,7 @@ import { useMemo, useState } from "@barqjs/core";
 const [items, setItems] = useState([1, 2, 3]);
 const total = useMemo(() => items().reduce((a, b) => a + b, 0));
 
-total();  // 6
+total(); // 6
 ```
 
 ### onMount - Run After Mount
@@ -188,23 +188,19 @@ const UserContext = context<{ name: string }>();
 function App() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
 
-  return (
-    <ThemeContext.Provider value={theme()}>
-      {() => <Dashboard />}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={theme()}>{() => <Dashboard />}</ThemeContext.Provider>;
 }
 
 // Consumer reads value
 function Dashboard() {
-  const theme = useContext(ThemeContext);  // "dark"
+  const theme = useContext(ThemeContext); // "dark"
 
   return <div class={theme === "dark" ? "dark-theme" : "light-theme"}>...</div>;
 }
 
 // Throws if no provider and no default
 function UserProfile() {
-  const user = useContext(UserContext);  // Throws Error if no provider
+  const user = useContext(UserContext); // Throws Error if no provider
   return <div>{user.name}</div>;
 }
 ```
@@ -229,11 +225,11 @@ import { resource, useState, Await } from "@barqjs/core";
 const [userId, setUserId] = useState("1");
 
 const user = resource(
-  () => userId(),  // Re-fetches when userId changes
+  () => userId(), // Re-fetches when userId changes
   async (id, { signal }) => {
     const res = await fetch(`/api/users/${id}`, { signal });
     return res.json();
-  }
+  },
 );
 
 // In JSX
@@ -243,7 +239,7 @@ const user = resource(
   error={(err) => <div>Error: {err.message}</div>}
 >
   {(data) => <div>{data.name}</div>}
-</Await>
+</Await>;
 ```
 
 ### linked - Writable State That Re-Seeds
@@ -263,7 +259,10 @@ const user = resource(() => userId(), fetchUser);
 
 // Seeded from the server, edited by the user, re-seeded when the server answers
 // again. No second signal, and nothing to reconcile.
-const draft = linked(() => user.latest()?.name ?? "", (name) => name);
+const draft = linked(
+  () => user.latest()?.name ?? "",
+  (name) => name,
+);
 
 <input type="text" bind:value={draft} />;
 ```
@@ -336,7 +335,11 @@ a `.set`. A read-only accessor gets a `BIND_TARGET_NOT_WRITABLE` diagnostic.
 
 ```tsx
 <For each={() => items()} fallback={<p>Empty</p>}>
-  {(item, index) => <div>{index()}: {item.name}</div>}
+  {(item, index) => (
+    <div>
+      {index()}: {item.name}
+    </div>
+  )}
 </For>
 ```
 
@@ -392,7 +395,11 @@ markup inline in the row. There is one list primitive and three modes; a separat
 
 ```tsx
 <For each={() => values()} keyed={false}>
-  {(value, index) => <li>{index}: {value()}</li>}
+  {(value, index) => (
+    <li>
+      {index}: {value()}
+    </li>
+  )}
 </For>
 ```
 
@@ -515,7 +522,7 @@ In frameworks with compilers (SolidJS, Svelte), the compiler transforms JSX chil
 // This is how you might write it intuitively:
 <Switch>
   <Match when={() => route() === "home"}>
-    <Home />  // Evaluated IMMEDIATELY, even if route() !== "home"
+    <Home /> // Evaluated IMMEDIATELY, even if route() !== "home"
   </Match>
 </Switch>
 ```
@@ -531,7 +538,7 @@ When JSX is parsed, `<Home />` is evaluated right away - before Switch or Match 
 ```tsx
 <Switch>
   <Match when={() => route() === "home"}>
-    {() => <Home />}  // Evaluated ONLY when route() === "home"
+    {() => <Home />} // Evaluated ONLY when route() === "home"
   </Match>
 </Switch>
 ```
@@ -666,9 +673,13 @@ Gets compiled to something like:
 
 ```js
 Show({
-  get when() { return isLoggedIn(); },
-  get children() { return Dashboard(); }  // Getter, not direct call
-})
+  get when() {
+    return isLoggedIn();
+  },
+  get children() {
+    return Dashboard();
+  }, // Getter, not direct call
+});
 ```
 
 The compiler makes children a getter function automatically. Without a compiler, Barq needs explicit callbacks to achieve the same lazy evaluation.

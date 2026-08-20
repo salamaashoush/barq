@@ -88,6 +88,16 @@ export interface BarqCompilerOptions {
   root?: string;
 
   /**
+   * Called with each module's `serverFns` artefact, when `serverFns` is on.
+   *
+   * The channel exists so the ids come from ONE place. A build needs the same
+   * `<module>#<export>` string on both sides — the client stub calls it and the
+   * server mounts it — and deriving it twice, once per side, is how the two
+   * halves drift into a call that reaches nothing.
+   */
+  onServerFns?: (id: string, artifact: string) => void;
+
+  /**
    * Development mode: compile-time diagnostics about runtime behaviour
    * (BARQ004, BARQ006, BARQ007) plus the dev-mode template labels. Derived from
    * Vite's own mode when left unset.
@@ -219,6 +229,7 @@ interface NativeResult {
   warnings?: string[];
   diagnostics?: BarqDiagnostic[];
   labels?: BarqTemplateLabel[];
+  serverFns?: string;
 }
 
 interface NativeCompiler {
@@ -345,6 +356,13 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       if (dev === undefined) dev = env.command === "serve" || env.mode !== "production";
     },
 
+    // A server-function id is derived relative to the project root, so an id
+    // carries no absolute path into a client bundle. Vite knows the root; a
+    // caller that passes one explicitly means something else by it and wins.
+    configResolved(config: { root?: string }) {
+      if (compilerOptions.root === undefined) compilerOptions.root = config.root;
+    },
+
     configureServer(devServer) {
       server = devServer;
       // A page that connects after the transforms have already run would
@@ -372,14 +390,33 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       ];
     },
 
-    // `ssr` is per-module, not per-plugin: Vite transforms the same file twice,
-    // once for the client and once for the server, and only this argument says
-    // which one is running.
+    // Which half is being compiled is a per-MODULE fact, not a per-plugin one:
+    // Vite runs the same file through this hook once per environment.
+    //
+    // `this.environment.name` is the Environment API's answer and is preferred.
+    // The `ssr` boolean is the pre-6 one, kept as the fallback for a caller that
+    // is not Vite at all — the tests drive this hook directly — rather than as a
+    // second opinion when both are present.
     transform(
+      this: {
+        environment?: { name?: string };
+        error(message: string, position?: number): never;
+        warn(message: string, position?: number): void;
+      },
       code: string,
       id: string,
       transformOptions?: { ssr?: boolean },
     ): TransformResult | null {
+      const environment = this?.environment;
+      // `client` is Vite's name for the browser environment and `ssr` for the
+      // server one; anything else a user configures is a server environment
+      // unless it says otherwise, which is the safe direction — a module
+      // wrongly treated as client-side loses its handler bodies and fails
+      // loudly, where the reverse ships them.
+      const forClient =
+        environment?.name !== undefined
+          ? environment.name === "client"
+          : (transformOptions?.ssr ?? false) === false;
       const shouldTransform = include.some((ext) => id.endsWith(ext));
       if (!shouldTransform) return null;
 
@@ -409,7 +446,11 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,
           serverFns: compilerOptions.serverFns,
-          env: compilerOptions.env,
+          // Derived from the same argument that already decides the backend,
+          // because it is the same fact: the client transform is the client
+          // half. Explicit only when a caller means something other than what
+          // Vite is doing.
+          env: compilerOptions.env ?? (forClient ? "client" : "server"),
           root: compilerOptions.root,
           templates: compilerOptions.templates,
           diagnostics: compilerOptions.diagnostics,
@@ -421,11 +462,11 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           // per-module one, because a client that walks logically over markup
           // that carries no ranges is the mismatch, not a configuration.
           hydratable: compilerOptions.hydratable,
-          interp: (compilerOptions.interp ?? false) && !(transformOptions?.ssr ?? false),
+          interp: (compilerOptions.interp ?? false) && forClient,
           dev,
           filename: id,
           sourcemap: true,
-          ssr: transformOptions?.ssr ?? false,
+          ssr: !forClient,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -433,6 +474,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           cause: error,
         });
       }
+
+      if (result.serverFns != null) compilerOptions.onServerFns?.(id, result.serverFns);
 
       const diagnostics = result.diagnostics ?? [];
       for (const diagnostic of diagnostics) {

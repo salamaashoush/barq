@@ -439,7 +439,40 @@ row there — a good gate that caught the omission.
 
 **P3 — `@barqjs/start` runtime.** The builder, the handler, the manifest lookup, CSRF, limits.
 
-**P4 — Vite plugin.** Two environments, manifest virtual module, dev SSR middleware.
+**P4 — the Vite plugin. DONE.** `@barqjs/start/vite` returns three plugins as one entry, and it owns the
+compiler plugin rather than sitting beside it: the ids have to come from ONE place, so it turns `serverFns` on
+and takes the artefact on a callback. There is no configuration in which the manifest is generated from a
+different answer than the client stubs were, and a test compares the two strings rather than the two rules.
+
+**Environment API throughout**, following `@tanstack/start-plugin-core` rather than approximating it:
+
+| | |
+|---|---|
+| which half a module is for | `this.environment.name`; the pre-6 `ssr` boolean is the fallback for a caller that is not Vite, not a second opinion |
+| manifest scoping | `applyToEnvironment: (env) => env.name !== "client"` — server-only by construction, because the manifest imports every server-function module and resolving it client-side would pull them all into the browser graph |
+| environments | declared in `config()` with `consumer`. Named `client` and **`ssr`** — their reason, and it is a good one: plugins that predate the Environment API still branch on that string |
+| running server code in dev | `environment.runner.import()` behind `isRunnableDevEnvironment`, not the legacy `ssrLoadModule` |
+| Node↔Web | `srvx/node`, plus their `req.originalUrl` fixup (Vite rewrites `req.url` to `/index.html` en route) and `ssrFixStacktrace` |
+
+**The production entry is runtime-agnostic.** `@barqjs/start/serve` uses `srvx`'s root export, which resolves by
+runtime condition — `deno`, `bun`, `workerd`, `node`, generic — so Node, Deno, Bun and Cloudflare are covered
+by one `Request -> Response`. The dev half deliberately is not: Vite's middleware pipeline is Connect-shaped,
+so `srvx/node` there is adapting *Vite* rather than choosing a runtime.
+
+Server functions match **before** the page handler. A page handler that also matched the RPC URL would shadow
+an endpoint, and that failure is a mutation quietly answered with HTML.
+
+**Three defects only a live server could find**, and all three were silent:
+
+1. The compiler plugin's `include` defaulted to `.tsx`/`.jsx`. A server-function module holds no JSX and is
+   normally `.ts` — so it was **never transformed at all**, and its handler bodies would have shipped. Nothing
+   errored; the module simply passed through.
+2. `root` never reached the compiler, so ids carried the absolute path — the thing RedwoodSDK ships and the
+   `root` option exists to prevent.
+3. The first version of the test hand-wrote the wire shape instead of calling `encodeWire`. A test that invents
+   the format is a third half to get wrong.
+
+Gate: 36 pass in `@barqjs/start`, six of them through a real Vite dev server on a real socket.
 
 **P5 — `<form action>` progressive enhancement.** Needs render-time URL minting, so it waits on the router.
 
@@ -455,6 +488,27 @@ including for a literal that is plainly there. Two `@barqjs/core/server` imports
 repo-wide greps for exactly that reason, and surfaced only as a module-resolution failure at test time.
 
 Use `grep -a` on anything under `test/`, and do not read an empty `grep` result there as an absence.
+
+## 7.2 The dependency sweep
+
+Everything moved to latest, no pins, JS and Rust both.
+
+**Rust.** oxc 0.143 → 0.146, napi 3 → 3.12.1, and the rest to their current releases. One breaking change:
+`VariableDeclarator::new` dropped its `kind` parameter, so six call sites lost an argument. 318 tests, clippy
+clean, fmt clean.
+
+**JS.** TypeScript 5.9 → **7.0.2** (the Go port), Vite 6 → **8.2.2**, oxlint 1.33 → 1.79, oxfmt 0.18 → 0.64,
+biome 1 → 2, happy-dom 15/20 → 20.11. `bun update --latest` only rewrites the ROOT manifest, so each workspace
+package was updated explicitly.
+
+Fallout, all fixed: `unicorn/prevent-abbreviations` no longer exists and made the config unparseable; the root
+tsconfig asked for `bun-types`, which is now `@types/bun` (directory `bun`); oxfmt 0.64 reformatted twelve
+files.
+
+oxlint 1.79 turned six rules on by default that fire 693 times across code predating them. They are `"off"`
+with the counts and the plan in `TODO.md` — a dependency bump is the wrong commit to rewrite 693 call sites in.
+`no-underscore-dangle` (403 of them) is off permanently and is not in that list: `node._value`, `_inFlight` and
+`_serializeKey` are the runtime's internal-field convention.
 
 ## 8. Oracle work this implies, unspecified as yet
 

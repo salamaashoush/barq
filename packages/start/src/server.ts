@@ -34,11 +34,17 @@ const REGISTRY = new Map<string, ServerFn<unknown, unknown>>();
  * non-exported one is never registered, so it has no id and no endpoint, and is
  * still callable from its siblings.
  */
-export function mount(fn: ServerFn<unknown, unknown>): void {
+export function mount(id: string, fn: ServerFn<unknown, unknown>): void {
   if (!isServerFn(fn)) throw new TypeError("mount() takes a server function");
-  const id = fn.meta.id;
   if (id === "") throw new TypeError("a mounted server function needs an id");
   if (REGISTRY.has(id)) throw new TypeError(`two server functions claim the id ${id}`);
+  // Stamped rather than read. The compiler leaves the SERVER half of a module
+  // alone — it is the module, compiled — so the builder has no id of its own;
+  // the id lives in the manifest the build generates, and mounting is where the
+  // two meet. `formAttr` reads it back off the function to write a form's
+  // action, so a function that is mounted has a URL and one that is not has
+  // neither an id nor an endpoint.
+  (fn.meta as { id: string }).id = id;
   REGISTRY.set(id, fn);
 }
 

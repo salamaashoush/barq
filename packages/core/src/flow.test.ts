@@ -131,7 +131,7 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
   test("a boundary calls its content once, and its fallback once per flip", () => {
     const content = counted("c");
     const fallback = counted("f");
-    let boom = true;
+    const boom = true;
     const body: Block<unknown> = (scope: Scope | null): unknown => {
       if (boom) throw new Error("boom");
       return content(scope);

@@ -247,7 +247,7 @@ export function swapDeferredRange(n: number): void {
     dead.push(node);
     node = node.nextSibling;
   }
-  for (let i = dead.length; i--; ) dead[i].parentNode?.removeChild(dead[i]);
+  for (let i = dead.length; i--;) dead[i].parentNode?.removeChild(dead[i]);
   open.parentNode?.insertBefore(t.content, node);
   open.data = "[0";
   t.parentNode?.removeChild(t);
@@ -278,12 +278,12 @@ export function seedChannel(): void {
   const waiting: Record<string, Array<() => void>> = {};
   const wake = (keys: string[] | null): void => {
     const list = keys === null ? Object.keys(waiting) : keys;
-    for (let i = list.length; i--; ) {
+    for (let i = list.length; i--;) {
       const k = list[i];
       const fns = waiting[k];
       if (!fns) continue;
       delete waiting[k];
-      for (let j = fns.length; j--; ) fns[j]();
+      for (let j = fns.length; j--;) fns[j]();
     }
   };
   (window as unknown as { __BARQ_SEED__: unknown }).__BARQ_SEED__ = {

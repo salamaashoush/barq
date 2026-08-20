@@ -273,7 +273,6 @@ fn detached_scope<'a>(emit: &mut Emit<'a, '_>) -> Statement<'a> {
     let init = Expression::new_null_literal(SPAN, &emit.ast);
     let declarator = VariableDeclarator::new(
         SPAN,
-        VariableDeclarationKind::Const,
         BindingPattern::new_binding_identifier(SPAN, name, &emit.ast),
         None,
         Some(init),
@@ -304,7 +303,6 @@ fn hoisted_declaration<'a>(emit: &mut Emit<'a, '_>, index: usize) -> Statement<'
     let init = expr.clone_in(emit.allocator);
     let declarator = VariableDeclarator::new(
         span,
-        VariableDeclarationKind::Const,
         BindingPattern::new_binding_identifier(span, name, &emit.ast),
         None,
         Some(init),
@@ -369,7 +367,6 @@ fn template_declaration<'a>(
     let name = emit.template_name(id);
     let declarator = VariableDeclarator::new(
         span,
-        VariableDeclarationKind::Const,
         BindingPattern::new_binding_identifier(span, name, &emit.ast),
         None,
         Some(init),

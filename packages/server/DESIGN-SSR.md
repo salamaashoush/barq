@@ -43,12 +43,12 @@ packages/core/src/
 
 ```typescript
 // @barqjs/server
-export { renderToString, renderToStringAsync } from "./ssr/render.ts"
-export { isServer } from "./ssr/context.ts"
+export { renderToString, renderToStringAsync } from "./ssr/render.ts";
+export { isServer } from "./ssr/context.ts";
 
 // @barqjs (main)
-export { hydrate } from "./hydrate.ts"
-export { isServer, isClient } from "./ssr/context.ts"
+export { hydrate } from "./hydrate.ts";
+export { isServer, isClient } from "./ssr/context.ts";
 ```
 
 ## Implementation Details
@@ -57,27 +57,27 @@ export { isServer, isClient } from "./ssr/context.ts"
 
 ```typescript
 // Environment detection
-export const isServer = typeof document === "undefined"
-export const isClient = !isServer
+export const isServer = typeof document === "undefined";
+export const isClient = !isServer;
 
 // Hydration ID generation - must match server/client order
-let hydrationId = 0
+let hydrationId = 0;
 
 export function nextHydrationId(): string {
-  return `hk-${hydrationId++}`
+  return `hk-${hydrationId++}`;
 }
 
 export function resetHydrationId(): void {
-  hydrationId = 0
+  hydrationId = 0;
 }
 
 // SSR rendering context
 export interface SSRContext {
-  ids: Map<unknown, string>
+  ids: Map<unknown, string>;
 }
 
 export function createSSRContext(): SSRContext {
-  return { ids: new Map() }
+  return { ids: new Map() };
 }
 ```
 
@@ -90,87 +90,99 @@ const ESCAPE_MAP: Record<string, string> = {
   ">": "&gt;",
   '"': "&quot;",
   "'": "&#39;",
-}
+};
 
 export function escapeHtml(str: string): string {
-  return str.replace(/[&<>"']/g, c => ESCAPE_MAP[c])
+  return str.replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]);
 }
 
 export function escapeAttr(str: string): string {
-  return str.replace(/[&"]/g, c => ESCAPE_MAP[c])
+  return str.replace(/[&"]/g, (c) => ESCAPE_MAP[c]);
 }
 ```
 
 ### 3. Server Rendering (src/ssr/render.ts)
 
 ```typescript
-import { escapeHtml, escapeAttr } from "./escape.ts"
-import { resetHydrationId, createSSRContext } from "./context.ts"
-import type { JSXElement } from "../dom.ts"
+import { escapeHtml, escapeAttr } from "./escape.ts";
+import { resetHydrationId, createSSRContext } from "./context.ts";
+import type { JSXElement } from "../dom.ts";
 
 const VOID_ELEMENTS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr"
-])
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
 
 export function renderToString(element: JSXElement): string {
-  resetHydrationId()
-  return renderNode(element)
+  resetHydrationId();
+  return renderNode(element);
 }
 
 export async function renderToStringAsync(element: JSXElement): Promise<string> {
-  resetHydrationId()
-  const context = createSSRContext()
+  resetHydrationId();
+  const context = createSSRContext();
 
   // Phase 1: Collect resources during render
-  const resources = collectResources(() => renderNode(element))
+  const resources = collectResources(() => renderNode(element));
 
   // Phase 2: Wait for all resources
-  await Promise.all(resources.map(r => r.promise))
+  await Promise.all(resources.map((r) => r.promise));
 
   // Phase 3: Render with resolved data
-  return renderNode(element)
+  return renderNode(element);
 }
 
 function renderNode(node: JSXElement): string {
-  if (node == null || typeof node === "boolean") return ""
-  if (typeof node === "string") return escapeHtml(node)
-  if (typeof node === "number") return String(node)
-  if (Array.isArray(node)) return node.map(renderNode).join("")
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string") return escapeHtml(node);
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(renderNode).join("");
 
   if (node instanceof DocumentFragment) {
-    return renderFragment(node)
+    return renderFragment(node);
   }
 
   if (node instanceof Element) {
-    return renderElement(node)
+    return renderElement(node);
   }
 
-  return ""
+  return "";
 }
 
 function renderElement(el: Element): string {
-  const tag = el.tagName.toLowerCase()
-  const attrs = renderAttributes(el)
+  const tag = el.tagName.toLowerCase();
+  const attrs = renderAttributes(el);
 
   if (VOID_ELEMENTS.has(tag)) {
-    return `<${tag}${attrs}>`
+    return `<${tag}${attrs}>`;
   }
 
-  const children = Array.from(el.childNodes).map(renderNode).join("")
-  return `<${tag}${attrs}>${children}</${tag}>`
+  const children = Array.from(el.childNodes).map(renderNode).join("");
+  return `<${tag}${attrs}>${children}</${tag}>`;
 }
 
 function renderAttributes(el: Element): string {
-  let result = ""
+  let result = "";
   for (const attr of el.attributes) {
-    result += ` ${attr.name}="${escapeAttr(attr.value)}"`
+    result += ` ${attr.name}="${escapeAttr(attr.value)}"`;
   }
-  return result
+  return result;
 }
 
 function renderFragment(frag: DocumentFragment): string {
-  return Array.from(frag.childNodes).map(renderNode).join("")
+  return Array.from(frag.childNodes).map(renderNode).join("");
 }
 ```
 
@@ -180,19 +192,19 @@ Components check `isServer` and branch internally:
 
 ```typescript
 // In components.ts
-import { isServer } from "./ssr/context.ts"
+import { isServer } from "./ssr/context.ts";
 
 export function Show(props: ShowProps): JSXElement {
   if (isServer) {
     // Server: evaluate condition once, return static content
-    const condition = typeof props.when === "function" ? props.when() : props.when
-    const id = nextHydrationId()
+    const condition = typeof props.when === "function" ? props.when() : props.when;
+    const id = nextHydrationId();
 
     if (condition) {
-      const content = childToNodes(props.children)
-      return createSSRMarkedContent("Show", id, content)
+      const content = childToNodes(props.children);
+      return createSSRMarkedContent("Show", id, content);
     }
-    return props.fallback ? childToNodes(props.fallback) : null
+    return props.fallback ? childToNodes(props.fallback) : null;
   }
 
   // Client: existing marker-based reactive implementation
@@ -201,19 +213,19 @@ export function Show(props: ShowProps): JSXElement {
 
 export function For<T, U extends JSXElement>(props: ForProps<T, U>): JSXElement {
   if (isServer) {
-    const id = nextHydrationId()
-    const items = typeof props.each === "function" ? props.each() : props.each
+    const id = nextHydrationId();
+    const items = typeof props.each === "function" ? props.each() : props.each;
 
     if (!items || items.length === 0) {
-      return props.fallback ?? null
+      return props.fallback ?? null;
     }
 
     const rendered = items.map((item, i) => {
-      const indexSignal = () => i  // Static on server
-      return props.children(item, indexSignal)
-    })
+      const indexSignal = () => i; // Static on server
+      return props.children(item, indexSignal);
+    });
 
-    return createSSRMarkedContent("For", id, rendered)
+    return createSSRMarkedContent("For", id, rendered);
   }
 
   // Client: existing implementation
@@ -223,19 +235,19 @@ export function For<T, U extends JSXElement>(props: ForProps<T, U>): JSXElement 
 function createSSRMarkedContent(
   type: string,
   id: string,
-  content: Node | Node[]
+  content: Node | Node[],
 ): DocumentFragment {
-  const frag = document.createDocumentFragment()
-  frag.appendChild(document.createComment(`$${type}:${id}`))
+  const frag = document.createDocumentFragment();
+  frag.appendChild(document.createComment(`$${type}:${id}`));
 
   if (Array.isArray(content)) {
-    content.forEach(n => frag.appendChild(n))
+    content.forEach((n) => frag.appendChild(n));
   } else if (content) {
-    frag.appendChild(content)
+    frag.appendChild(content);
   }
 
-  frag.appendChild(document.createComment(`/${type}:${id}`))
-  return frag
+  frag.appendChild(document.createComment(`/${type}:${id}`));
+  return frag;
 }
 ```
 
@@ -245,13 +257,13 @@ Effects are no-ops on server:
 
 ```typescript
 // In signals.ts
-import { isServer } from "./ssr/context.ts"
+import { isServer } from "./ssr/context.ts";
 
 export function effect(fn: () => void | (() => void)): () => void {
   if (isServer) {
     // Don't set up subscriptions on server
     // Just return cleanup no-op
-    return () => {}
+    return () => {};
   }
 
   // Client: full reactive implementation
@@ -264,67 +276,59 @@ Signals work normally (read/write values) but don't create subscriptions.
 ### 6. Client Hydration (src/hydrate.ts)
 
 ```typescript
-import { resetHydrationId, nextHydrationId } from "./ssr/context.ts"
-import type { JSXElement } from "./dom.ts"
+import { resetHydrationId, nextHydrationId } from "./ssr/context.ts";
+import type { JSXElement } from "./dom.ts";
 
 export function hydrate(element: JSXElement, container: HTMLElement): () => void {
-  resetHydrationId()
+  resetHydrationId();
 
   // Walk existing DOM, don't create new nodes
-  hydrateNode(element, container, container.firstChild)
+  hydrateNode(element, container, container.firstChild);
 
   return () => {
-    container.textContent = ""
-  }
+    container.textContent = "";
+  };
 }
 
-function hydrateNode(
-  vnode: JSXElement,
-  parent: Node,
-  dom: Node | null
-): Node | null {
+function hydrateNode(vnode: JSXElement, parent: Node, dom: Node | null): Node | null {
   if (vnode == null || typeof vnode === "boolean") {
-    return dom
+    return dom;
   }
 
   // Text node
   if (typeof vnode === "string" || typeof vnode === "number") {
     // Skip text node, move to next sibling
-    return dom?.nextSibling ?? null
+    return dom?.nextSibling ?? null;
   }
 
   // Array
   if (Array.isArray(vnode)) {
-    let current = dom
+    let current = dom;
     for (const child of vnode) {
-      current = hydrateNode(child, parent, current)
+      current = hydrateNode(child, parent, current);
     }
-    return current
+    return current;
   }
 
   // Element
   if (vnode instanceof Element) {
     if (dom instanceof Element) {
       // Hydrate attributes (attach event handlers)
-      hydrateAttributes(vnode, dom)
+      hydrateAttributes(vnode, dom);
 
       // Hydrate children
-      hydrateNode(
-        Array.from(vnode.childNodes),
-        dom,
-        dom.firstChild
-      )
+      hydrateNode(Array.from(vnode.childNodes), dom, dom.firstChild);
 
-      return dom.nextSibling
+      return dom.nextSibling;
     }
   }
 
   // DocumentFragment (from Show/For/etc)
   if (vnode instanceof DocumentFragment) {
-    return hydrateFragment(vnode, parent, dom)
+    return hydrateFragment(vnode, parent, dom);
   }
 
-  return dom?.nextSibling ?? null
+  return dom?.nextSibling ?? null;
 }
 
 function hydrateAttributes(vnode: Element, dom: Element): void {
@@ -332,11 +336,7 @@ function hydrateAttributes(vnode: Element, dom: Element): void {
   // This requires tracking props during createElement
 }
 
-function hydrateFragment(
-  frag: DocumentFragment,
-  parent: Node,
-  dom: Node | null
-): Node | null {
+function hydrateFragment(frag: DocumentFragment, parent: Node, dom: Node | null): Node | null {
   // Find marker comments, set up reactive contexts
   // Match <!--$Show:hk-0--> ... <!--/Show:hk-0-->
   // Attach effects for reactive updates
@@ -347,33 +347,33 @@ function hydrateFragment(
 
 ```typescript
 // In async.ts
-let ssrResources: Resource<unknown>[] | null = null
+let ssrResources: Resource<unknown>[] | null = null;
 
 export function trackResource(resource: Resource<unknown>): void {
   if (ssrResources) {
-    ssrResources.push(resource)
+    ssrResources.push(resource);
   }
 }
 
 export function collectResources(render: () => void): Resource<unknown>[] {
-  ssrResources = []
-  render()
-  const result = ssrResources
-  ssrResources = null
-  return result
+  ssrResources = [];
+  render();
+  const result = ssrResources;
+  ssrResources = null;
+  return result;
 }
 
 // In useResource, add tracking:
 export function useResource<T, S>(
   source: () => S,
-  fetcher: (source: S) => Promise<T>
+  fetcher: (source: S) => Promise<T>,
 ): Resource<T> {
   // ... existing code ...
 
   // Track for SSR
-  trackResource(resource)
+  trackResource(resource);
 
-  return resource
+  return resource;
 }
 ```
 

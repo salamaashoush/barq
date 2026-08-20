@@ -11,14 +11,19 @@
   "bugs": {
     "url": "https://github.com/salamaashoush/barq/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/salamaashoush/barq.git",
     "directory": "packages/testing"
   },
-  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -26,11 +31,6 @@
       "import": "./dist/index.js"
     }
   },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist",
-    "src"
-  ],
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
@@ -42,14 +42,14 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@testing-library/dom": "^10.4.0"
+    "@testing-library/dom": "^10.4.1"
   },
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
-    "@happy-dom/global-registrator": "^15.11.7",
-    "@types/bun": "latest",
-    "happy-dom": "^15.11.7",
-    "typescript": "^5.7.2"
+    "@happy-dom/global-registrator": "^20.11.6",
+    "@types/bun": "^1.4.0",
+    "happy-dom": "^20.11.6",
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0"

@@ -1400,7 +1400,6 @@ fn binding<'a>(
 ) -> Statement<'a> {
     let declarator = VariableDeclarator::new(
         span,
-        VariableDeclarationKind::Const,
         BindingPattern::new_binding_identifier(span, name, &shaper.ast),
         None,
         Some(init),

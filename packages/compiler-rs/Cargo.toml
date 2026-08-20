@@ -11,18 +11,18 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-napi = { version = "3", default-features = false, features = ["napi4", "dyn-symbols"] }
-napi-derive = "3"
-oxc = { version = "0.143.0", features = ["ast_visit", "codegen", "semantic"] }
-oxc_index = "5"
+napi = { version = "3.12.1", default-features = false, features = ["napi4", "dyn-symbols"] }
+napi-derive = "3.6.3"
+oxc = { version = "0.146.0", features = ["ast_visit", "codegen", "semantic"] }
+oxc_index = "5.0.0"
 # The same crate `oxc_codegen` returns its map in; named directly because the
 # `oxc` facade does not re-export it, and §6's template-interior segments have
 # to be merged into that map rather than into a second one.
-oxc_sourcemap = "8"
-rustc-hash = "2"
+oxc_sourcemap = "8.1.2"
+rustc-hash = "2.1.3"
 
 [build-dependencies]
-napi-build = "2"
+napi-build = "2.4.1"
 
 [profile.release]
 lto = true

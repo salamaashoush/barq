@@ -1,3 +1,8 @@
+// oxlint-disable no-eval -- the seed payload IS a program: seroval's JS mode
+// emits the expression that rebuilds the value, and running it is how a browser
+// consumes it. Asserting on the string instead would test the encoder against
+// itself rather than against an evaluator.
+
 /**
  * SSR round-trip: renderToString / renderToStringAsync, hydration data
  * serialization, client hydrate() seeding (no refetch), settle().
