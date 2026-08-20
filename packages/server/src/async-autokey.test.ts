@@ -4,26 +4,29 @@
  * developer hand-writing a key for every async read.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { boundary } from "./flow.ts";
-import { hydrate } from "./dom.ts";
-import { renderPage } from "./server.ts";
 import {
-  computed,
-  latest,
-  NotReadyError,
-  clearHydrationData,
-  scope,
   DEV,
-  getHydrationData,
+  NotReadyError,
+  boundary,
+  computed,
   getOwner,
+  hydrate,
   isPending,
+  latest,
   peekNextChildId,
   resetChildIds,
-  setAsyncSession,
+  scope,
   settle,
+} from "@barqjs/core";
+import {
+  clearHydrationData,
+  getHydrationData,
+  setAsyncSession,
   unclaimedSeeds,
-} from "./signals.ts";
+} from "@barqjs/core/internal";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
+import { renderPage } from "./server.ts";
 
 type Payload = Record<string, unknown>;
 

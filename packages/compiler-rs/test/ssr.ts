@@ -141,11 +141,12 @@ export interface SsrRender {
  * the same comparison.
  */
 export async function renderSsr(mod: FixtureModule): Promise<SsrRender> {
-  // Through the PACKAGE entry, not the `./server` subpath: that subpath's
-  // `types` point at `dist/`, which is a build artifact, so importing it here
-  // makes this module untypeable on a clean tree. The condition is exercised
-  // anyway, by every compiled SSR module, which imports its helpers from it.
-  const core = await import("@barqjs/core")
+  // `@barqjs/server` is where the string backend and `renderToString` live: the
+  // server runtime carries a serializer and a streaming loop, and a subpath of
+  // the client package put keeping those out of a browser bundle in the
+  // bundler's hands. It is the same module every compiled SSR module imports
+  // its helpers from.
+  const server = await import("@barqjs/server")
   // C1: a compiled module root takes its scope first, and `null` is the value
   // the compiler itself emits for one. `undefined` is what a MISSING argument
   // looks like, and `requireScope` throws on it precisely so a mistimed
@@ -156,14 +157,13 @@ export async function renderSsr(mod: FixtureModule): Promise<SsrRender> {
   // `typeof value === "string"` would classify every module as a fallback and
   // quietly turn "the string backend does no DOM work" into a claim about
   // nothing. `renderToString` accepts both shapes.
-  return { html: core.renderToString(() => value as never), string: isSsrHtml(value) }
+  return { html: server.renderToString(() => value as never), string: isSsrHtml(value) }
 }
 
 /**
  * Whether a module returned branded SSR markup rather than a DOM node.
  *
- * By the brand, because `isSsrHtml` is not on the package's main entry and the
- * `./server` subpath is not typeable before a build. `typeof value === "string"`
+ * By the brand, rather than by the runtime's own predicate. `typeof value === "string"`
  * would not do: the brand is what tells markup the compiler produced (not
  * escaped) from user data (escaped), and getting that backwards is the XSS this
  * whole file is about. If the brand is ever renamed this returns false for

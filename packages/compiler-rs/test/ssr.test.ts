@@ -766,7 +766,7 @@ describe("the lean attribute helper", () => {
     // Through `unknown`: the `./server` subpath's `types` point at `dist/`,
     // which is a build artifact, so a clean tree has no declaration for the two
     // newest exports even though the module really does have them.
-    const core = (await import("@barqjs/core/server")) as unknown as ServerAttrs
+    const core = (await import("@barqjs/server")) as unknown as ServerAttrs
 
     const disagreed: string[] = []
     for (const name of NAMES) {
@@ -796,7 +796,7 @@ describe("the lean attribute helper", () => {
     // Through `unknown`: the `./server` subpath's `types` point at `dist/`,
     // which is a build artifact, so a clean tree has no declaration for the two
     // newest exports even though the module really does have them.
-    const core = (await import("@barqjs/core/server")) as unknown as ServerAttrs
+    const core = (await import("@barqjs/server")) as unknown as ServerAttrs
 
     const wrong: string[] = []
     let compared = 0

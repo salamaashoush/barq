@@ -37,7 +37,7 @@ export default defineConfig([
     },
   },
   {
-    entry: ["./src/server-entry.ts"],
+    entry: ["./src/internal.ts"],
     format: ["esm"],
     dts: true,
     clean: false,

@@ -113,7 +113,7 @@ describe("barqVitePlugin", () => {
     // compiler's too — one concatenation, and no `template()` clone.
     const plugin = barqVitePlugin();
     const { result, warnings } = run(plugin, SOURCE, "/a/app.tsx", { ssr: true });
-    expect(result?.code).toContain("@barqjs/core/server");
+    expect(result?.code).toContain("@barqjs/server");
     expect(result?.code).not.toContain("_$template(");
     expect(warnings).toEqual([]);
 

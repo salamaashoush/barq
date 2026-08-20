@@ -946,7 +946,7 @@ mod tests {
         let options = ResolvedOptions { ssr: true, ..diagnosing("App.tsx") };
         let output = compile(was_a_fallback, &options).expect("compiles");
         assert!(codes(&output).is_empty(), "{:?}", codes(&output));
-        assert!(output.code.contains("@barqjs/core/server"), "{}", output.code);
+        assert!(output.code.contains("@barqjs/server"), "{}", output.code);
         assert!(!output.code.contains("_$template"), "{}", output.code);
     }
 
@@ -1464,7 +1464,7 @@ mod tests {
         for dom in ["_$template", "_$insert", "_$setAttr", "_$createElement", "_el$"] {
             assert!(!output.code.contains(dom), "{dom} in:\n{}", output.code);
         }
-        assert!(output.code.contains("from \"@barqjs/core/server\""), "{}", output.code);
+        assert!(output.code.contains("from \"@barqjs/server\""), "{}", output.code);
         assert!(output.warnings.is_empty(), "{:?}", output.warnings);
     }
 

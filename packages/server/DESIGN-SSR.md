@@ -382,7 +382,7 @@ export function useResource<T, S>(
 ### Server (Bun)
 
 ```typescript
-import { renderToStringAsync } from "@barqjs/core/server"
+import { renderToStringAsync } from "@barqjs/server"
 import { App } from "./App"
 
 Bun.serve({

@@ -127,7 +127,6 @@ export type { Part, StorePathRange } from "./store.ts";
 export { action, affects, commit, optimistic, optimisticStore } from "./actions.ts";
 
 // Server-side rendering
-export { renderToString } from "./server.ts";
 
 // Core hooks
 export { errorBoundary, loadingBoundary, revealOrder, flatten } from "./boundaries.ts";

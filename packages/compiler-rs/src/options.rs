@@ -2,6 +2,13 @@ use napi_derive::napi;
 
 pub const DEFAULT_MODULE_SOURCE: &str = "@barqjs/core";
 
+/// Where the string backend's helpers come from. Its own package rather than a
+/// subpath of [`DEFAULT_MODULE_SOURCE`]: the server runtime carries a
+/// serializer and a streaming loop that no client bundle may pull in, and a
+/// subpath export puts that decision in the bundler's hands instead of the
+/// dependency graph's.
+pub const DEFAULT_SERVER_SOURCE: &str = "@barqjs/server";
+
 /// Which optimisations run. `CODESIGN.md` §6 L3: the reference for an optimising
 /// compiler is the same compiler with the optimisations off, so `-O0` shares the
 /// front end, the IR, the ABI and the ownership model and can encode neither a
@@ -118,6 +125,9 @@ pub struct TransformOptions {
     pub filename: Option<String>,
     pub sourcemap: Option<bool>,
     pub module_source: Option<String>,
+    /// Module source for the string backend's helpers.
+    /// @default `@barqjs/server`
+    pub server_source: Option<String>,
     pub dev: Option<bool>,
     pub templates: Option<bool>,
     pub ssr: Option<bool>,
@@ -191,6 +201,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "filename",
     "sourcemap",
     "moduleSource",
+    "serverSource",
     "dev",
     "templates",
     "ssr",
@@ -225,6 +236,7 @@ pub struct ResolvedOptions {
     pub filename: Option<String>,
     pub sourcemap: bool,
     pub module_source: String,
+    pub server_source: String,
     pub dev: bool,
     pub templates: bool,
     pub ssr: bool,
@@ -247,6 +259,7 @@ impl Default for ResolvedOptions {
             filename: None,
             sourcemap: false,
             module_source: DEFAULT_MODULE_SOURCE.to_string(),
+            server_source: DEFAULT_SERVER_SOURCE.to_string(),
             dev: false,
             templates: true,
             ssr: false,
@@ -299,6 +312,7 @@ impl TransformOptions {
             filename: self.filename,
             sourcemap: self.sourcemap.unwrap_or(false),
             module_source: self.module_source.unwrap_or_else(|| DEFAULT_MODULE_SOURCE.to_string()),
+            server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
             dev,
             templates: self.templates.unwrap_or(true),
             ssr: self.ssr.unwrap_or(false),
@@ -397,6 +411,7 @@ mod tests {
         assert!(!resolved.interp);
         assert!(!resolved.sourcemap);
         assert_eq!(resolved.module_source, "@barqjs/core");
+        assert_eq!(resolved.server_source, "@barqjs/server");
         assert!(resolved.filename.is_none());
         assert!(!resolved.ownership);
         assert!(!resolved.addresses);

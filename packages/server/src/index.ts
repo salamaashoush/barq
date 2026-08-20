@@ -1,5 +1,5 @@
 /**
- * `@barqjs/core/server` — everything the server needs, and the module the
+ * `@barqjs/server` — everything the server needs, and the module the
  * compiler's SSR backend imports its helpers from.
  *
  * Two strategies live behind one entry point (DESIGN §5): `ssr.ts` is the
@@ -52,9 +52,9 @@ export {
   ssrSwitch,
 } from "./ssr.ts";
 
-export { COUNT } from "./flow.ts";
-export { cell, props } from "./props.ts";
-export { block, readSlot } from "./signals.ts";
+export { COUNT } from "@barqjs/core";
+export { cell, props } from "@barqjs/core";
+export { block, readSlot } from "@barqjs/core";
 
 export {
   clearRenderData,

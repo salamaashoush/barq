@@ -11,11 +11,11 @@
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
-    "lint": "oxlint --type-aware packages/core packages/extra packages/testing",
+    "lint": "oxlint --type-aware packages/core packages/server packages/extra packages/testing",
     "lint:fix": "oxlint --type-aware --fix packages",
     "format": "oxfmt packages",
-    "format:check": "oxfmt --check packages/core packages/extra packages/testing",
-    "ci": "oxlint --type-aware --deny-warnings packages/core packages/extra packages/testing && oxfmt --check packages/core packages/extra packages/testing",
+    "format:check": "oxfmt --check packages/core packages/server packages/extra packages/testing",
+    "ci": "oxlint --type-aware --deny-warnings packages/core packages/server packages/extra packages/testing && oxfmt --check packages/core packages/server packages/extra packages/testing",
     "benchmark": "bun run --cwd packages/benchmark start"
   },
   "devDependencies": {

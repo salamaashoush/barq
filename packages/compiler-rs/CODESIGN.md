@@ -2112,7 +2112,12 @@ left the ground clear for.* What shipped:
   lowered IR, two emissions. `branch`/`each`/`boundary`/`portal`/`COUNT` — and `props`/`cell`/`block`
   with them — are exported by both runtime halves under one name and one argument order, and the
   compiler chooses between them by choosing the import SOURCE (`codegen::SHARED_ABI`). A
-  string-compiled module now imports from `@barqjs/core/server` and from nothing else.
+  string-compiled module now imports from the server runtime and from nothing else. That source is
+  the `serverSource` option, `@barqjs/server` by default — **its own package, not a subpath of
+  `moduleSource`**. It was `<module_source>/server`, concatenated in codegen, which made the two
+  specifiers uncoupleable by construction; the server runtime carries a serializer and a streaming
+  loop that no client bundle may pull in, and a subpath left that in the bundler's hands rather than
+  the dependency graph's.
 - **`uninlinable_flow` is deleted**, with `Flow::inlinable_on_server`, the eight-component set, the
   module-level SSR→DOM downgrade and `BARQ007` — the diagnostic that announced it. All thirteen
   constructs have a string component in `ssr.ts` (ten of them reached only when the flow pass

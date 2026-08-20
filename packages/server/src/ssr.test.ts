@@ -1,9 +1,19 @@
+import {
+  For,
+  Match,
+  Repeat,
+  Show,
+  Switch,
+  cell,
+  element,
+  props,
+  render,
+  type Cell,
+  type JSXElement,
+  type Scope,
+} from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
-import type { JSXElement } from "./dom.ts";
-import type { Cell, Scope } from "./scope.ts";
-import { element, render } from "./dom.ts";
-import { For, Match, Repeat, Show, Switch } from "./components.ts";
-import { cell, props } from "./props.ts";
+
 import { renderToString } from "./server.ts";
 import {
   SsrHtml,

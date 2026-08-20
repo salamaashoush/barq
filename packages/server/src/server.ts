@@ -13,20 +13,24 @@
  * without refetching.
  */
 
-import type { JSXElement } from "./dom.ts";
-import { isSsrHtml, render } from "./dom.ts";
-import type { Block, Scope } from "./scope.ts";
-import { type StreamSink, esc, resumeDeferred, setStreamSink } from "./ssr.ts";
 import {
+  type Block,
+  type JSXElement,
+  type Scope,
   NotReadyError,
-  clearHydrationData,
-  scope,
   flush,
+  isSsrHtml,
+  render,
+  scope,
+  settle,
+} from "@barqjs/core";
+import {
+  clearHydrationData,
   getHydrationData,
   setAsyncSession,
-  settle,
   settleStep,
-} from "./signals.ts";
+} from "@barqjs/core/internal";
+import { type StreamSink, esc, resumeDeferred, setStreamSink } from "./ssr.ts";
 
 /**
  * Render synchronously to an HTML string. Pending async values render

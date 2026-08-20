@@ -59,7 +59,7 @@ impl Target {
 
 pub const HELPER_COUNT: usize = 58;
 
-/// The first helper that lives in `<module_source>/server` rather than in the
+/// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
 pub const FIRST_SERVER_HELPER: usize = 36;
@@ -76,7 +76,7 @@ pub const FIRST_INTERP_HELPER: usize = 57;
 /// entry point rather than to a call: one name, one argument order, two
 /// implementations, and the SOURCE is what the target chooses. A module compiled
 /// for the DOM imports `branch` from `@barqjs/core`; the same module compiled
-/// for the server imports `branch` from `@barqjs/core/server`. Nothing between
+/// for the server imports `branch` from `@barqjs/server`. Nothing between
 /// the two emissions differs — not the helper, not the arity, not the order —
 /// which is what makes `region_call` one function rather than two.
 ///
@@ -87,7 +87,7 @@ pub const FIRST_INTERP_HELPER: usize = 57;
 pub const SHARED_ABI: std::ops::Range<usize> = (Helper::Props as usize)..(Helper::SetAttr as usize);
 // `ReadSlot` is the last of them and is deliberately inside the range: the
 // spread lowering that emits it runs in the shape pass, before a backend is
-// chosen, so `@barqjs/core` and `@barqjs/core/server` must both export it.
+// chosen, so `@barqjs/core` and `@barqjs/server` must both export it.
 
 /// Runtime entry points the two backends are allowed to call. Every one is read
 /// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
@@ -229,7 +229,7 @@ pub enum Helper {
     /// statically — that is what an address IS — so it says so, instead of the
     /// runtime guessing from the shape of the tree it is walking.
     Hole = 35,
-    // ── `<module_source>/server` ──────────────────────────────────────────
+    // ── `<server_source>` ─────────────────────────────────────────────────
     Esc = 36,
     EscAttr = 37,
     Attr = 38,
@@ -326,7 +326,6 @@ pub(crate) fn imported_name(helper: Helper) -> &'static str {
     IMPORTED[helper as usize]
 }
 
-const SERVER: &str = "/server";
 const INTERP: &str = "/interp";
 
 /// A prefix no `<prefix><helper>` in the source collides with.
@@ -391,7 +390,8 @@ pub struct Emit<'a, 'm> {
     pub module: &'m mut Module<'a>,
     pub source: &'a str,
     pub module_source: &'a str,
-    /// `<module_source>/server` — where P8b's helpers come from.
+    /// `<server_source>` — where P8b's helpers come from. Its own package: the
+    /// server runtime must never reach a client bundle.
     pub server_source: &'a str,
     /// `<module_source>/interp` — the reference backend's only entry point.
     pub interp_source: &'a str,
@@ -428,9 +428,6 @@ impl<'a, 'm> Emit<'a, 'm> {
     ) -> Self {
         let local = module.helpers;
         let used = module.used_helpers;
-        let mut server_source = String::with_capacity(options.module_source.len() + SERVER.len());
-        server_source.push_str(&options.module_source);
-        server_source.push_str(SERVER);
         let mut interp_source = String::with_capacity(options.module_source.len() + INTERP.len());
         interp_source.push_str(&options.module_source);
         interp_source.push_str(INTERP);
@@ -440,7 +437,7 @@ impl<'a, 'm> Emit<'a, 'm> {
             module,
             source,
             module_source: allocator.alloc_str(&options.module_source),
-            server_source: allocator.alloc_str(&server_source),
+            server_source: allocator.alloc_str(&options.server_source),
             interp_source: allocator.alloc_str(&interp_source),
             target,
             interp_units: Vec::new(),

@@ -12,13 +12,16 @@ fn main() {
     napi_build::setup();
 
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let runtime = |name: &str| {
-        manifest.join("../core/src").join(name).canonicalize().unwrap_or_else(|error| {
-            panic!("packages/core/src/{name} is a source of the runtime tables: {error}")
-        })
+    // Two packages since the server runtime moved out of core: `dom.ts` is the
+    // client's table, `ssr.ts` is the string backend's, and the compiler reads
+    // both as the source of truth for its own.
+    let runtime = |package: &str, name: &str| {
+        manifest.join("..").join(package).join("src").join(name).canonicalize().unwrap_or_else(
+            |error| panic!("packages/{package}/src/{name} is a source of the runtime tables: {error}"),
+        )
     };
-    let dom_ts = runtime("dom.ts");
-    let ssr_ts = runtime("ssr.ts");
+    let dom_ts = runtime("core", "dom.ts");
+    let ssr_ts = runtime("server", "ssr.ts");
     println!("cargo:rerun-if-changed={}", dom_ts.display());
     println!("cargo:rerun-if-changed={}", ssr_ts.display());
     println!("cargo:rerun-if-changed=src/dom_ts.rs");

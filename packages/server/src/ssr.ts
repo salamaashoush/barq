@@ -21,31 +21,40 @@
  */
 
 import {
-  REVEAL_COORD,
-  type RevealHandle,
-  createErrorCollector,
-  createPendingCollector,
-  createRevealCoordinator,
-  outerRevealHandle,
-} from "./boundaries.ts";
-import { SSR_HTML_BRAND, classToString, isSsrHtml, styleToString } from "./dom.ts";
-import { COUNT, NO_SCOPE, keyMode } from "./flow.ts";
-import { omit } from "./props.ts";
-import type { Block, Cell, Scope } from "./scope.ts";
-import {
-  ERROR_BOUNDARY,
+  Block,
+  COUNT,
+  Cell,
+  NO_SCOPE,
   NotReadyError,
+  Scope,
   ScopeMissingError,
-  disposeScope,
+  classToString,
   enter,
   exit,
   getOwner,
+  isArray,
   isBlock,
-  provideOn,
+  isSsrHtml,
+  omit,
   requireScope,
+  toString,
   untrack,
-} from "./signals.ts";
-import { isArray, isObject, toString } from "./type-utils.ts";
+} from "@barqjs/core";
+import {
+  ERROR_BOUNDARY,
+  REVEAL_COORD,
+  SSR_HTML_BRAND,
+  createErrorCollector,
+  createPendingCollector,
+  createRevealCoordinator,
+  disposeScope,
+  isObject,
+  keyMode,
+  outerRevealHandle,
+  provideOn,
+  styleToString,
+  type RevealHandle,
+} from "@barqjs/core/internal";
 
 /**
  * Markup a compiled module produced. It is branded rather than a bare string
@@ -947,7 +956,7 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
   throw new Error(
     `${origin} was given a DOM insertion point on the string backend. The server emits ` +
       "`(null, null)`; a node here means a module compiled for the DOM is calling " +
-      "`@barqjs/core/server`.",
+      "`@barqjs/server`.",
   );
 }
 

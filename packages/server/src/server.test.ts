@@ -3,9 +3,21 @@
  * serialization, client hydrate() seeding (no refetch), settle().
  */
 
+import {
+  Loading,
+  NotReadyError,
+  computed,
+  effect,
+  element,
+  flush,
+  hydrate,
+  scope,
+  settle,
+  signal,
+} from "@barqjs/core";
+import { setAsyncSession } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
-import { Loading } from "./components.ts";
-import { element, hydrate } from "./dom.ts";
+
 import {
   clearRenderData,
   generateHydrationScript,
@@ -16,16 +28,6 @@ import {
   swapDeferredRange,
 } from "./server.ts";
 import { esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
-import {
-  NotReadyError,
-  computed,
-  scope,
-  effect,
-  flush,
-  setAsyncSession,
-  settle,
-  signal,
-} from "./signals.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 

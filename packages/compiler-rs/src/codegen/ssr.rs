@@ -1534,10 +1534,10 @@ mod tests {
         // The one thing that differs is the SOURCE the shared names come from,
         // and the string module imports from the client entry not at all.
         assert!(string.code.contains("branch as _$branch"), "{}", string.code);
-        assert!(string.code.contains("from \"@barqjs/core/server\""), "{}", string.code);
+        assert!(string.code.contains("from \"@barqjs/server\""), "{}", string.code);
         assert!(core_import(&string.code).is_empty(), "{}", string.code);
         assert!(nodes.contains("branch as _$branch"), "{nodes}");
-        assert!(!nodes.contains("@barqjs/core/server"), "{nodes}");
+        assert!(!nodes.contains("@barqjs/server"), "{nodes}");
     }
 
     /// What the flow pass REFUSES still has a string answer, and every one of
@@ -1558,7 +1558,7 @@ mod tests {
         assert!(code.contains("_$ssrDynamic("), "{code}");
         // Markup, so no escaper wraps it.
         assert!(!code.contains("_$esc(_$ssr"), "{code}");
-        assert!(code.contains("from \"@barqjs/core/server\""), "{code}");
+        assert!(code.contains("from \"@barqjs/server\""), "{code}");
 
         // A `Switch` whose arms are not literal `<Match>` elements, which is the
         // refusal no spread work can close.
@@ -1635,7 +1635,7 @@ mod tests {
             let out = ssr(&source);
             assert!(out.code.contains("_$html("), "{name}:\n{}", out.code);
             assert!(!out.code.contains("_$template"), "{name}:\n{}", out.code);
-            assert!(out.code.contains("@barqjs/core/server"), "{name}:\n{}", out.code);
+            assert!(out.code.contains("@barqjs/server"), "{name}:\n{}", out.code);
             assert!(out.warnings.is_empty(), "{name}: {:?}", out.warnings);
         }
 
@@ -1843,7 +1843,7 @@ mod tests {
             let options = ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename(&name) };
             let out =
                 compile(&source, &options).unwrap_or_else(|errors| panic!("{name}: {errors:?}"));
-            if out.code.contains("@barqjs/core/server") {
+            if out.code.contains("@barqjs/server") {
                 // The IMPORT, not a call-shaped substring: a fixture may
                 // carry `_$insert(` as literal text, and marker-literal-text
                 // deliberately does.

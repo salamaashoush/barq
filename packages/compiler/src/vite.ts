@@ -50,6 +50,14 @@ export interface BarqCompilerOptions {
   moduleSource?: string;
 
   /**
+   * Module source for the string backend's helpers. Its own package rather than
+   * a subpath of {@link moduleSource}: the server runtime carries a serializer
+   * and a streaming loop no client bundle may pull in.
+   * @default "@barqjs/server"
+   */
+  serverSource?: string;
+
+  /**
    * Development mode: compile-time diagnostics about runtime behaviour
    * (BARQ004, BARQ006, BARQ007) plus the dev-mode template labels. Derived from
    * Vite's own mode when left unset.
@@ -156,6 +164,7 @@ export type BarqOptimisation =
 
 interface NativeTransformOptions {
   moduleSource?: string;
+  serverSource?: string;
   dev?: boolean;
   templates?: boolean;
   diagnostics?: boolean;
@@ -363,6 +372,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       try {
         result = compiler.transform(code, {
           moduleSource: compilerOptions.moduleSource,
+          serverSource: compilerOptions.serverSource,
           templates: compilerOptions.templates,
           diagnostics: compilerOptions.diagnostics,
           checks: checkPairs(compilerOptions.checks),

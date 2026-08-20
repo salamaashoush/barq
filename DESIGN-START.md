@@ -200,8 +200,19 @@ encode / 217 µs decode on 200 rows against `JSON.stringify`'s 52 µs.
 
 Configuration is not optional:
 
+- **A custom `Error` plugin, redacting to `name` + `message`.** `Feature.ErrorPrototypeStack` is **not
+  sufficient**, contrary to the survey. It suppresses the prototype `stack`; on Bun an `Error` also carries
+  *own enumerable* properties, and those ride out through `Object.assign`. Measured on 1.6.2 with the flag set:
+
+  ```
+  Object.assign(new Error("db connection failed"),
+    {originalLine:3,originalColumn:16,line:3,column:15,sourceURL:"/home/…/err-probe.ts"})
+  ```
+
+  An absolute server path in a seed is a disclosure bug, and no flag in the enum (`AggregateError`,
+  `ArrowFunction`, `ErrorPrototypeStack`, `ObjectAssign`, `BigIntTypedArray`, `RegExp`, `Temporal`) covers it.
 - `Feature.RegExp` **disabled**. seroval escapes `<` at the string level but emits RegExp as a *literal* with unescaped source, so `serialize({p: new RegExp('[</script>]')})` emits a raw `</script>` and breaks out of the script element. There is no consumer-side fix, because seroval's JS output inlines helpers containing `<` as a real operator. Disabling throws before serialization and fails closed; with the `Serializer` class the throw routes to per-key `onError`, so one bad key drops alone. The JSON channel is unaffected. **Report privately upstream; do not file publicly.**
-- `Feature.ErrorPrototypeStack` **disabled** — serialized by default, and it leaks server paths.
+- `Feature.ErrorPrototypeStack` **disabled** — necessary, not sufficient; see above.
 - Per-request `scopeId`; collisions across concurrent renders silently clobber `$R`.
 
 Context for the choice: every serializer in this space shipped a critical deserialization CVE within nine
@@ -289,9 +300,26 @@ gate-shaped rather than clock-shaped — the slow boundary cannot settle until t
 observed, so a batch barrier deadlocks it. Confirmed to bite by temporarily weakening `settleStep` to
 `Promise.all`.
 
-**P1 — serialization, `packages/core`.** seroval hardened per §4, replacing `JSON.stringify` in
-`hydrationScriptFor`; CSP nonce threading; `&` escaping; the 128 kB warn. Enables seeding streamed values and
-§2.5's pending-promise seed.
+**P0.5 — the package split. DONE.** `@barqjs/server` is its own package: `ssr.ts`, `server.ts`, the entry
+(was `server-entry.ts`), the three SSR test files, `DESIGN-SSR.md`, and the `seroval` dependency. `@barqjs/core`
+keeps signals, dom, hydration, components, flow, store and actions, and no longer depends on seroval.
+
+The compiler emit moved with it. `<module_source>/server` was **concatenated in codegen**, which made the two
+specifiers uncoupleable by construction; it is now a `serverSource` option defaulting to `@barqjs/server`, and
+the `SERVER` const is deleted. `build.rs` reads `dom.ts` from `core` and `ssr.ts` from `server`.
+
+`@barqjs/core/internal` carries the 18 names the string backend needs and no application does — the boundary
+collectors, the scope operations, the async session. It exists so that moving one package did not make that
+surface public permanently, and the file says so.
+
+Evidence the change is scoped: the L5 mode matrix is 195 fixtures × 7 modes, and after the move the `dom-Ox`,
+`dom-O0`, `interp` and `dom-hydratable` columns are **byte-identical** across every row while `ssr-Ox`,
+`ssr-O0` and `ssr-hydratable` all moved. Gate: `cargo test` 305 pass, core 912 + server 78 = 990 (unchanged
+total), `bun run ci` EXIT=0.
+
+**P1 — serialization, `packages/server`.** seroval hardened per §4 — including the `Error` plugin, which is a
+disclosure fix rather than polish — replacing `JSON.stringify` in `hydrationScriptFor`; CSP nonce threading;
+`&` escaping; the 128 kB warn. Enables seeding streamed values and §2.5's pending-promise seed.
 
 **P2 — the compiler pass.** `env: "client" | "server"` on `TransformOptions` (plus `OPTION_KEYS` and the
 completeness test that already guards it); `SymbolId` recognition; module classification; the mixed-module
@@ -306,6 +334,15 @@ diagnostic; a `serverFns` side artifact carried the way `ownership` and `address
 **P6 — route-action manifest** (§6). Needs the router.
 
 ---
+
+## 7.1 One trap, recorded because it cost an hour
+
+`packages/compiler-rs/test/ssr.test.ts` is classified by `file(1)` as **`data`, not text** — its escaping
+corpus contains deliberate invalid UTF-8. `grep` therefore treats it as binary and prints *nothing*, silently,
+including for a literal that is plainly there. Two `@barqjs/core/server` imports in it survived four separate
+repo-wide greps for exactly that reason, and surfaced only as a module-resolution failure at test time.
+
+Use `grep -a` on anything under `test/`, and do not read an empty `grep` result there as an absence.
 
 ## 8. Oracle work this implies, unspecified as yet
 

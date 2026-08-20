@@ -102,6 +102,7 @@ const [name, setName] = useState("World");
 | Package | Description |
 |---------|-------------|
 | `@barqjs/core` | Core framework: signals, hooks, components, JSX runtime |
+| `@barqjs/server` | SSR: the string backend, streaming, and the hydration seed channel |
 | `@barqjs/extra` | Router, CSS-in-JS (goober), TanStack Query integration, utility hooks |
 | `@barqjs/testing` | Testing utilities built on @testing-library/dom |
 
