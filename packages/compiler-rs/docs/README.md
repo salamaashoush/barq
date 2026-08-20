@@ -13,6 +13,7 @@ Every message the compiler can produce has a stable code, a level, and a page he
 | [BARQ009](BARQ009.md) | warning | a `barq-ignore-next-line` could not be parsed |
 | [BARQ010](BARQ010.md) | warning | a Block is forwarded into a slot the callee reads as a Cell, where it throws |
 | [BARQ011](BARQ011.md) | note | `keyed={false}` binds the row's DOM state to the position, and this row holds some |
+| [BARQ012](BARQ012.md) | error | a module mixes server functions with other exports, so no client half can be synthesized for it |
 
 BARQ001, BARQ002, BARQ003 and BARQ005 are the source-level rules. They run when
 `diagnostics` is on, which defaults to `dev`. BARQ004, BARQ010 and BARQ011 are

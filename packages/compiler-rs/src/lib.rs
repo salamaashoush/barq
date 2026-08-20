@@ -70,6 +70,10 @@ pub struct TransformResult {
     /// `CODESIGN.md` §6 L2b — the oracle's expected value, derived from the
     /// source rather than from a second execution.
     pub ownership: Option<String>,
+    /// This module's export surface and which exports are server functions, as
+    /// JSON, under `serverFns: true` only. The build reads it to know what to
+    /// mount, and a reviewer reads it to see what is public.
+    pub server_fns: Option<String>,
     /// The compile-time address table as JSON, under `addresses: true` only.
     /// `CODESIGN.md` §3.11 and §5.2 P6 — `(module, unit, position)` for every
     /// position in the module, computed identically by every backend.
@@ -151,6 +155,7 @@ pub fn transform(code: String, options: Option<Object>) -> napi::Result<Transfor
                 .collect(),
             ownership: output.ownership,
             addresses: output.addresses,
+            server_fns: output.server_fns,
         }),
         Err(diagnostics) => Err(napi::Error::from_reason(format!(
             "[barq-compiler] {}\n{}",

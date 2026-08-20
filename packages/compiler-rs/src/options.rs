@@ -9,6 +9,35 @@ pub const DEFAULT_MODULE_SOURCE: &str = "@barqjs/core";
 /// dependency graph's.
 pub const DEFAULT_SERVER_SOURCE: &str = "@barqjs/server";
 
+/// Where `createServerFn` is imported from. Resolution is by `SymbolId`, so this
+/// is the specifier the import must name and not a text the source must contain.
+pub const DEFAULT_START_SOURCE: &str = "@barqjs/start";
+
+/// Which half of the program is being compiled.
+///
+/// Orthogonal to `ssr`, which picks a BACKEND. This picks what the module is
+/// FOR: under `Client` a module whose exports are all server functions is
+/// replaced by stubs rather than compiled, so no handler body, no validator and
+/// none of the imports the body needed reach a browser bundle.
+///
+/// `Server` is the default, so a caller that never heard of the axis gets what
+/// it always got.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Env {
+    Client,
+    Server,
+}
+
+impl Env {
+    fn parse(text: &str) -> Option<Self> {
+        match text {
+            "client" => Some(Env::Client),
+            "server" => Some(Env::Server),
+            _ => None,
+        }
+    }
+}
+
 /// Which optimisations run. `CODESIGN.md` §6 L3: the reference for an optimising
 /// compiler is the same compiler with the optimisations off, so `-O0` shares the
 /// front end, the IR, the ABI and the ownership model and can encode neither a
@@ -128,6 +157,22 @@ pub struct TransformOptions {
     /// Module source for the string backend's helpers.
     /// @default `@barqjs/server`
     pub server_source: Option<String>,
+    /// Module source for `createServerFn`.
+    /// @default `@barqjs/start`
+    pub start_source: Option<String>,
+    /// `"client"` or `"server"`. Picks which half of the program this module is
+    /// being compiled for, which is a different question from `ssr`'s backend.
+    /// @default `"server"`
+    pub env: Option<String>,
+    /// Project root. Server-function ids are derived relative to it, so an id
+    /// carries no absolute path — RedwoodSDK ships `/src/path.ts#name` verbatim
+    /// in its client bundle, which hands an attacker the source tree layout.
+    pub root: Option<String>,
+    /// Emit the module's server-function exports alongside the code. A side
+    /// artefact on the same terms as `ownership` and `addresses`: nothing it
+    /// produces reaches lowering, the passes or codegen, so `code` is
+    /// byte-identical either way.
+    pub server_fns: Option<bool>,
     pub dev: Option<bool>,
     pub templates: Option<bool>,
     pub ssr: Option<bool>,
@@ -202,6 +247,10 @@ pub const OPTION_KEYS: &[&str] = &[
     "sourcemap",
     "moduleSource",
     "serverSource",
+    "startSource",
+    "env",
+    "root",
+    "serverFns",
     "dev",
     "templates",
     "ssr",
@@ -237,6 +286,10 @@ pub struct ResolvedOptions {
     pub sourcemap: bool,
     pub module_source: String,
     pub server_source: String,
+    pub start_source: String,
+    pub env: Env,
+    pub root: Option<String>,
+    pub server_fns: bool,
     pub dev: bool,
     pub templates: bool,
     pub ssr: bool,
@@ -260,6 +313,10 @@ impl Default for ResolvedOptions {
             sourcemap: false,
             module_source: DEFAULT_MODULE_SOURCE.to_string(),
             server_source: DEFAULT_SERVER_SOURCE.to_string(),
+            start_source: DEFAULT_START_SOURCE.to_string(),
+            env: Env::Server,
+            root: None,
+            server_fns: false,
             dev: false,
             templates: true,
             ssr: false,
@@ -313,6 +370,10 @@ impl TransformOptions {
             sourcemap: self.sourcemap.unwrap_or(false),
             module_source: self.module_source.unwrap_or_else(|| DEFAULT_MODULE_SOURCE.to_string()),
             server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
+            start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),
+            env: self.env.as_deref().and_then(Env::parse).unwrap_or(Env::Server),
+            root: self.root,
+            server_fns: self.server_fns.unwrap_or(false),
             dev,
             templates: self.templates.unwrap_or(true),
             ssr: self.ssr.unwrap_or(false),
@@ -412,6 +473,9 @@ mod tests {
         assert!(!resolved.sourcemap);
         assert_eq!(resolved.module_source, "@barqjs/core");
         assert_eq!(resolved.server_source, "@barqjs/server");
+        assert_eq!(resolved.start_source, "@barqjs/start");
+        assert_eq!(resolved.env, Env::Server);
+        assert!(!resolved.server_fns);
         assert!(resolved.filename.is_none());
         assert!(!resolved.ownership);
         assert!(!resolved.addresses);

@@ -233,6 +233,10 @@ describe("the diagnostic engine", () => {
         "const rows = signal([]);\n" +
         "export const V = () =>\n" +
         "  <For each={rows} keyed={false}>{(row) => <li><input value={row()} /></li>}</For>;\n",
+      BARQ012:
+        `import { createServerFn } from "@barqjs/start";\n` +
+        "export const save = createServerFn().handler(async () => 1);\n" +
+        "export const V = () => <p>ok</p>;\n",
     };
 
     const advertised = native.diagnosticCodes().map((entry) => entry.code).sort();

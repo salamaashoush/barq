@@ -390,9 +390,52 @@ keeps files. Pinned by a test that drives both and compares.
 
 Gate: 28 pass, `bun run ci` EXIT=0.
 
-**P2 — the compiler pass.** `env: "client" | "server"` on `TransformOptions` (plus `OPTION_KEYS` and the
-completeness test that already guards it); `SymbolId` recognition; module classification; the mixed-module
-diagnostic; a `serverFns` side artifact carried the way `ownership` and `addresses` already are.
+**P2a — recognition, the surface, and the refusal. DONE.** `analysis/server_fn.rs`.
+
+`startSource` (default `@barqjs/start`) names where `createServerFn` is imported from, and resolution is by
+**`SymbolId`**: semantic runs, the import specifier resolves to a symbol, and every candidate is walked back
+through its call chain to the same one. That is not a stylistic preference over a name match — measured on
+four fixtures, it is the difference between right and wrong on two of them. `createServerFn as rpc` resolves
+(a name match misses it) and a local `const createServerFn = …` with no import does not (a name match, and
+TanStack's `\bcreateServerFn\b|\.\s*handler\s*\(` prescan, matches it).
+
+`serverFns` emits the export surface as a side artefact, on the same terms as `ownership` and `addresses` —
+nothing it produces reaches lowering, the passes or codegen. It carries non-server exports too, because a
+reviewer reading the mounted surface wants to see what else the module exports as much as what is mounted.
+
+`BARQ012` is the refusal, at **error**: a module exporting server functions *and* anything else cannot have a
+client half synthesized, and pruning it instead is the strategy §3 rejects. A warning here would be advice
+about a security boundary, ignored by default.
+
+One ordering bug worth recording: `symbol_id` is populated by `SemanticBuilder`, so resolving the import before
+building semantic reads an empty cell and finds nothing — the scan silently returned zero exports for every
+input until semantic moved first.
+
+**P2b — the client emit. DONE.** `env: "client" | "server"` on `TransformOptions`, orthogonal to `ssr` (which
+picks a *backend*, not a half). Under `client`, a module whose exports are all server functions returns before
+harvest with a synthesized module and never enters the IR at all:
+
+```
+import { clientRpc } from "@barqjs/start";
+export const getUser = /* @__PURE__ */ clientRpc("server/users.ts#getUser");
+export const listUsers = /* @__PURE__ */ clientRpc("server/users.ts#listUsers");
+```
+
+The claim the design rests on, measured on a module carrying `import { db } from './db'`, a bare
+`import './telemetry'`, and `const SECRET = process.env.API_KEY`: **none of the five reach the client half.**
+Not because a pass removed them — because nothing consulted the module. `import './telemetry'` is the case that
+defeats dead-code elimination outright, since it declares no binding and so can never be "unreferenced".
+
+Ids are `<project-relative module>#<export name>`. Name-derived, per §1: SolidStart derives them positionally
+and an in-flight client calling for `listUsers` invokes `deleteUser`. Project-relative via a new `root` option,
+because RedwoodSDK ships `/src/path.ts#name` verbatim and hands a reader the source-tree layout.
+
+A non-exported server function gets no stub, so it has no id and no endpoint — export-ness decides the surface
+in the compiler exactly as it does in the runtime.
+
+Gate: `cargo test` 318, clippy clean, fmt clean, compiler-rs 3483 / 0 fail, plugin 22, `bun run ci` EXIT=0.
+`test/diagnostics.test.ts` enforces that every advertised code has an input producing it, so `BARQ012` needed a
+row there — a good gate that caught the omission.
 
 **P3 — `@barqjs/start` runtime.** The builder, the handler, the manifest lookup, CSRF, limits.
 

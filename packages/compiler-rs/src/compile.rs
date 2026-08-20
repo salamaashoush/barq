@@ -87,6 +87,12 @@ pub struct CompileOutput {
     /// only. A side artefact on the same terms: the two backends compile the
     /// same source to the same address set, and nothing reads it to emit.
     pub addresses: Option<String>,
+    /// This module's exports and which of them are server functions, as JSON,
+    /// under `options.serverFns` only. What the build mounts: `@barqjs/start`
+    /// registers one endpoint per exported server function, so this list IS the
+    /// public surface and recording it is what makes it reviewable. A side
+    /// artefact on the same terms as the two above.
+    pub server_fns: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -294,6 +300,42 @@ fn compile_on_this_stack(
     } else {
         Suppressions::default()
     };
+    // Before harvest, because the exports it reads are ordinary statements and
+    // harvest is about to replace JSX inside some of them. Gated on the cheap
+    // question first: a module that never mentions the name cannot import it,
+    // and a symbol table built to discover that is pure cost.
+    let server_fns = (options.server_fns || analysis::server_fn::mentions(source_text))
+        .then(|| analysis::server_fn::scan(&program, &options.start_source))
+        .filter(|scan| !scan.exports.is_empty());
+
+    // The client half of a server-function module is SYNTHESIZED, not pruned.
+    //
+    // Pruning is the strategy every surveyed implementation that leaks relies
+    // on, and the hole is a bare side-effect import: it declares no binding, so
+    // nothing is ever "unreferenced" and the declaration survives into the
+    // client bundle. Nothing here consults the module at all — the stubs are
+    // built from the export list, so a handler body, a validator, and every
+    // import the body needed are absent by construction rather than by
+    // analysis. `BARQ012` is what keeps this total: a module it cannot replace
+    // wholesale is refused rather than half-replaced.
+    if options.env == crate::options::Env::Client
+        && let Some(scan) = server_fns.as_ref()
+        && !scan.mixed()
+        && scan.server_fns().next().is_some()
+    {
+        return Ok(CompileOutput {
+            code: client_stubs(scan, options, filename),
+            map: None,
+            warnings,
+            labels: Vec::new(),
+            ownership: None,
+            addresses: None,
+            server_fns: options
+                .server_fns
+                .then(|| server_fn_json(Some(scan), &module_id(options, filename))),
+        });
+    }
+
     let mut module = Module::for_source(&allocator, source_text);
     // A dialect that cannot express JSX compiles to no units at all, so there is
     // nothing for P0 to classify and the symbol table is pure cost.
@@ -313,6 +355,26 @@ fn compile_on_this_stack(
     lower::lower(&allocator, source_text, options, &mut module);
 
     let mut warnings = warnings;
+    if let Some(scan) = server_fns.as_ref()
+        && scan.mixed()
+        && let Some(span) = analysis::server_fn::first_other(scan)
+    {
+        let names: Vec<&str> = scan.others().map(|export| export.name.as_str()).collect();
+        warnings.push(located(
+            Code::Barq012.default_level(),
+            Code::Barq012,
+            format!(
+                "this module exports {} server function(s) and also {}; move the server functions \
+                 into a module of their own, so the client half can be synthesized rather than \
+                 pruned",
+                scan.server_fns().count(),
+                names.join(", ")
+            ),
+            span,
+            filename,
+            &mut lines,
+        ));
+    }
     for name in &options.unknown_passes {
         warnings.push(Diagnostic::at(
             Severity::Warning,
@@ -364,7 +426,8 @@ fn compile_on_this_stack(
     });
 
     let warnings = resolve_diagnostics(warnings, &mut suppressions, filename, &mut lines, options);
-    Ok(CompileOutput { code, map, warnings, labels, ownership, addresses })
+    let server_fns = options.server_fns.then(|| server_fn_json(server_fns.as_ref(), filename));
+    Ok(CompileOutput { code, map, warnings, labels, ownership, addresses, server_fns })
 }
 
 /// Suppression, severity resolution and ordering, in one place — the compiler,
@@ -376,6 +439,89 @@ fn compile_on_this_stack(
 /// produced the output. A `barq-ignore` that changed what the compiler emitted
 /// is facebook/react#34261, where the mere presence of an `eslint-disable`
 /// deoptimised a perfectly memoizable component.
+/// The module's export surface, as JSON. `serverFn: false` rows are carried
+/// too: a reviewer reading the mounted surface wants to see that the module has
+/// other exports as much as which ones are mounted.
+/// The module half of a server-function id.
+///
+/// Relative to `root` when one is given, so an id carries no absolute path.
+/// RedwoodSDK ships `/src/path.ts#name` verbatim in its client bundle, which
+/// hands a reader the source tree layout for free; Next.js hashes with a
+/// per-build salt, which hides the path and rotates every id whenever the salt
+/// does. A stable project-relative path is neither.
+fn module_id(options: &ResolvedOptions, filename: &str) -> String {
+    let path = match options.root.as_deref() {
+        Some(root) => filename.strip_prefix(root).unwrap_or(filename),
+        None => filename,
+    };
+    path.trim_start_matches(['/', '\\']).replace('\\', "/")
+}
+
+/// The client module: one `clientRpc` per exported server function, and nothing
+/// else.
+///
+/// The id is `<project-relative module>#<export name>`. Name-derived on
+/// purpose: SolidStart derives ids POSITIONALLY (`hash(path)-<index>`, with the
+/// name stripped in production), so appending one function renumbers its
+/// siblings and an in-flight client calling for `listUsers` invokes
+/// `deleteUser`. A name-derived id degrades to a clean 404 instead.
+fn client_stubs(
+    scan: &analysis::server_fn::Scan,
+    options: &ResolvedOptions,
+    filename: &str,
+) -> String {
+    let module = module_id(options, filename);
+    let mut out = String::new();
+    out.push_str("import { clientRpc } from \"");
+    out.push_str(&options.start_source);
+    out.push_str("\";\n");
+    for export in scan.server_fns() {
+        out.push_str("export const ");
+        out.push_str(&export.name);
+        out.push_str(" = /* @__PURE__ */ clientRpc(");
+        push_json_string(&mut out, &format!("{module}#{}", export.name));
+        out.push_str(");\n");
+    }
+    out
+}
+
+fn server_fn_json(scan: Option<&analysis::server_fn::Scan>, filename: &str) -> String {
+    let mut out = String::from("{\"version\":1,\"module\":");
+    push_json_string(&mut out, filename);
+    out.push_str(",\"exports\":[");
+    if let Some(scan) = scan {
+        for (index, export) in scan.exports.iter().enumerate() {
+            if index > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"name\":");
+            push_json_string(&mut out, &export.name);
+            out.push_str(",\"serverFn\":");
+            out.push_str(if export.server_fn { "true" } else { "false" });
+            out.push_str(",\"start\":");
+            out.push_str(&export.span.start.to_string());
+            out.push_str(",\"end\":");
+            out.push_str(&export.span.end.to_string());
+            out.push('}');
+        }
+    }
+    out.push_str("]}");
+    out
+}
+
+fn push_json_string(out: &mut String, value: &str) {
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
 fn resolve_diagnostics(
     raw: Vec<Diagnostic>,
     suppressions: &mut Suppressions,
@@ -771,6 +917,88 @@ mod tests {
     fn compile_ok(source: &str, filename: &str) -> CompileOutput {
         compile(source, &ResolvedOptions::with_filename(filename))
             .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)))
+    }
+
+    // ---------------------------------------------------------------------
+    // Server functions — the client half is synthesized, never pruned
+    // ---------------------------------------------------------------------
+
+    const SERVER_MODULE: &str = "import { createServerFn } from '@barqjs/start';\n\
+         import { db } from './db';\n\
+         import './telemetry';\n\
+         const SECRET = process.env.API_KEY;\n\
+         export const getUser = createServerFn().handler(async (id) => db.query(id, SECRET));\n\
+         const internal = createServerFn().handler(async () => 1);\n\
+         export const listUsers = createServerFn().handler(async () => db.all());\n";
+
+    fn client_of(source: &str) -> String {
+        let options = ResolvedOptions {
+            env: crate::options::Env::Client,
+            root: Some("/home/me/app".to_string()),
+            ..ResolvedOptions::with_filename("/home/me/app/server/users.ts")
+        };
+        compile(source, &options)
+            .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)))
+            .code
+    }
+
+    /// The claim the whole design rests on. Nothing consults the module, so a
+    /// handler body, a secret and — the case that defeats dead-code elimination
+    /// — a BARE side-effect import are absent by construction rather than by
+    /// analysis. `import './telemetry'` declares no binding, so no pruning pass
+    /// can ever call it unreferenced.
+    #[test]
+    fn the_client_half_carries_only_stubs() {
+        let code = client_of(SERVER_MODULE);
+        for absent in ["db.query", "telemetry", "API_KEY", "SECRET", "./db"] {
+            assert!(!code.contains(absent), "`{absent}` reached the client half:\n{code}");
+        }
+        assert!(code.contains("clientRpc"));
+    }
+
+    /// Export-ness decides the surface, so an internal server function has no
+    /// stub and therefore no id and no endpoint.
+    #[test]
+    fn only_exported_server_functions_get_a_stub() {
+        let code = client_of(SERVER_MODULE);
+        assert!(code.contains("getUser"));
+        assert!(code.contains("listUsers"));
+        assert!(!code.contains("internal"));
+    }
+
+    /// Ids are project-relative: an absolute path in a client bundle hands a
+    /// reader the source tree layout, which is what RedwoodSDK ships.
+    #[test]
+    fn an_id_is_project_relative_and_named() {
+        let code = client_of(SERVER_MODULE);
+        assert!(code.contains("\"server/users.ts#getUser\""), "{code}");
+        assert!(!code.contains("/home/me"), "{code}");
+    }
+
+    /// A module the compiler cannot replace wholesale is refused rather than
+    /// half-replaced — otherwise synthesis would delete the component.
+    #[test]
+    fn a_mixed_module_is_refused_rather_than_synthesized() {
+        let source = "import { createServerFn } from '@barqjs/start';\n\
+             export const save = createServerFn().handler(async () => 1);\n\
+             export function Widget() { return null; }\n";
+        let options = ResolvedOptions {
+            env: crate::options::Env::Client,
+            ..ResolvedOptions::with_filename("mixed.tsx")
+        };
+        let output = compile(source, &options).expect("BARQ012 is a diagnostic, not a hard error");
+        assert!(output.warnings.iter().any(|d| d.code == Some(Code::Barq012)));
+        // Not synthesized: the component is still there, which is why the
+        // diagnostic has to be an error rather than advice.
+        assert!(output.code.contains("Widget"));
+    }
+
+    /// The server half is untouched by the axis: it is the module, compiled.
+    #[test]
+    fn the_server_half_keeps_the_body() {
+        let output = compile_ok(SERVER_MODULE, "server/users.ts");
+        assert!(output.code.contains("db.query"));
+        assert!(output.code.contains("./telemetry"));
     }
 
     // ---------------------------------------------------------------------

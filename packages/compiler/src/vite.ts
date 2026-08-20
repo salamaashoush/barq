@@ -58,6 +58,36 @@ export interface BarqCompilerOptions {
   serverSource?: string;
 
   /**
+   * Module source for `createServerFn`. Resolution is by symbol, so this is the
+   * specifier an import must name rather than a text the source must contain.
+   * @default "@barqjs/start"
+   */
+  startSource?: string;
+
+  /**
+   * Emit each module's export surface and which exports are server functions.
+   * The build reads it to know what to mount; a reviewer reads it to see what
+   * is public.
+   * @default false
+   */
+  serverFns?: boolean;
+
+  /**
+   * `"client"` or `"server"` — which half of the program a module is compiled
+   * for. A different question from `ssr`, which picks a backend: under
+   * `"client"` a module whose exports are all server functions is replaced by
+   * stubs rather than compiled, so no handler body reaches a browser bundle.
+   * @default "server"
+   */
+  env?: "client" | "server";
+
+  /**
+   * Project root. Server-function ids are derived relative to it, so an id
+   * carries no absolute path into the client bundle.
+   */
+  root?: string;
+
+  /**
    * Development mode: compile-time diagnostics about runtime behaviour
    * (BARQ004, BARQ006, BARQ007) plus the dev-mode template labels. Derived from
    * Vite's own mode when left unset.
@@ -165,6 +195,10 @@ export type BarqOptimisation =
 interface NativeTransformOptions {
   moduleSource?: string;
   serverSource?: string;
+  startSource?: string;
+  serverFns?: boolean;
+  env?: string;
+  root?: string;
   dev?: boolean;
   templates?: boolean;
   diagnostics?: boolean;
@@ -373,6 +407,10 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         result = compiler.transform(code, {
           moduleSource: compilerOptions.moduleSource,
           serverSource: compilerOptions.serverSource,
+          startSource: compilerOptions.startSource,
+          serverFns: compilerOptions.serverFns,
+          env: compilerOptions.env,
+          root: compilerOptions.root,
           templates: compilerOptions.templates,
           diagnostics: compilerOptions.diagnostics,
           checks: checkPairs(compilerOptions.checks),

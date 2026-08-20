@@ -17,7 +17,9 @@ fn main() {
     // both as the source of truth for its own.
     let runtime = |package: &str, name: &str| {
         manifest.join("..").join(package).join("src").join(name).canonicalize().unwrap_or_else(
-            |error| panic!("packages/{package}/src/{name} is a source of the runtime tables: {error}"),
+            |error| {
+                panic!("packages/{package}/src/{name} is a source of the runtime tables: {error}")
+            },
         )
     };
     let dom_ts = runtime("core", "dom.ts");

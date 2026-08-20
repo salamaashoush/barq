@@ -97,6 +97,7 @@ codes! {
     Barq009 = "BARQ009", Warning, "a `barq-ignore-next-line` could not be parsed";
     Barq010 = "BARQ010", Warning, "a Block is forwarded into a slot the callee reads as a Cell, where it throws";
     Barq011 = "BARQ011", Note, "`keyed={false}` binds the row's DOM state to the position, and this row holds some";
+    Barq012 = "BARQ012", Error, "a module mixes server functions with other exports, so no client half can be synthesized for it";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel
