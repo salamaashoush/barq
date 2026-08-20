@@ -25,6 +25,7 @@ import {
   getHydrationData,
   setAsyncSession,
   settle,
+  settleStep,
 } from "./signals.ts";
 
 /**
@@ -164,7 +165,29 @@ interface Continuation {
   id: number;
   body: Block<unknown>;
   scope: Scope | null;
+  /** When it parked, so its own deadline is measured from there. */
+  at: number;
 }
+
+export interface StreamOptions {
+  /** Stops the render. The stream closes and parked boundaries keep their fallbacks. */
+  signal?: AbortSignal;
+  /**
+   * How long one boundary may stay parked before it is abandoned to its
+   * fallback, in ms. Remix ships 5000 and React Router 4950 for the same knob.
+   */
+  timeout?: number;
+}
+
+const BOUNDARY_TIMEOUT = 5_000;
+
+/**
+ * How long the whole stream outlives a boundary deadline. Separate on purpose:
+ * a boundary rejected at its deadline still has to reach the wire, and a
+ * resumed boundary may park boundaries of its own, so the stream needs its own
+ * backstop rather than inheriting the per-boundary one.
+ */
+const STREAM_GRACE = 1_000;
 
 /**
  * The client half of a swap: replace the range between `<!--[b:n-->` and its
@@ -233,7 +256,10 @@ const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
  * flushed before any deferred boundary has resolved, which is the only thing
  * that makes streaming worth doing.
  */
-export function renderToStream(fn: () => JSXElement): ReadableStream<Uint8Array> {
+export function renderToStream(
+  fn: () => JSXElement,
+  options?: StreamOptions,
+): ReadableStream<Uint8Array> {
   const session = Symbol("stream-session");
   const encoder = new TextEncoder();
   const parked: Continuation[] = [];
@@ -241,9 +267,40 @@ export function renderToStream(fn: () => JSXElement): ReadableStream<Uint8Array>
   const sink: StreamSink = {
     defer(body: Block<unknown>, scope: Scope | null): number {
       const id = next++;
-      parked.push({ id, body, scope });
+      parked.push({ id, body, scope, at: Date.now() });
       return id;
     },
+  };
+
+  // One resolve, called from every path that stops the render: the consumer
+  // cancelling, the caller's signal, or the deadline. The loop races it against
+  // `settleStep`, which is the only reason a boundary whose promise never
+  // settles cannot hold the render open for good.
+  let stop!: () => void;
+  const stopped = new Promise<"stopped">((resolve) => {
+    stop = () => resolve("stopped");
+  });
+  let ended = false;
+  // Distinct from `ended`: the consumer tearing the stream down has already
+  // closed it, so `controller.close()` would throw. Our own deadline and the
+  // caller's signal both still want the response terminated.
+  let consumerCancelled = false;
+  const end = (): void => {
+    ended = true;
+    stop();
+  };
+
+  const deadline = options?.timeout ?? BOUNDARY_TIMEOUT;
+  const timer = setTimeout(end, deadline + STREAM_GRACE);
+  // A pending timer must not be what keeps a server process alive.
+  (timer as { unref?: () => void }).unref?.();
+
+  const signal = options?.signal;
+  if (signal?.aborted) end();
+  signal?.addEventListener("abort", end, { once: true });
+  const release = (): void => {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", end);
   };
 
   let dispose!: () => void;
@@ -264,33 +321,54 @@ export function renderToStream(fn: () => JSXElement): ReadableStream<Uint8Array>
   }
 
   return new ReadableStream<Uint8Array>({
+    // A consumer that goes away stops the work. Without this the render runs to
+    // completion against a socket nobody is reading — which on AWS Lambda is
+    // billed for the full function duration, because a streamed response is not
+    // interrupted when the invoking client connection breaks.
+    cancel(): void {
+      consumerCancelled = true;
+      end();
+    },
     async start(controller): Promise<void> {
       try {
         controller.enqueue(encoder.encode(shell));
         if (parked.length > 0) {
           controller.enqueue(encoder.encode(`<script>${SWAP_SNIPPET}</script>`));
         }
-        // A resumed boundary may park boundaries of its own, so the queue is
-        // drained rather than iterated once.
-        while (parked.length > 0) {
-          const batch = parked.splice(0, parked.length);
-          await settle(session);
-          for (const record of batch) {
+        // One round per settled promise, not one round per session. `settle`
+        // here would hold every boundary until the slowest one in the session
+        // resolved, which is not streaming — it is the shell followed by
+        // everything at once. A resumed boundary may park boundaries of its
+        // own, so the queue is drained rather than iterated once.
+        while (parked.length > 0 && !ended) {
+          const round = parked.splice(0, parked.length);
+          const again: Continuation[] = [];
+          for (const record of round) {
+            if (ended) {
+              again.push(record);
+              continue;
+            }
             const restore = setAsyncSession(session);
             const outerSink = setStreamSink(sink);
-            let markup: string;
+            let markup: string | null;
             try {
               markup = resumeDeferred(record.body, record.scope);
             } catch (error) {
-              // A boundary that still cannot resolve keeps the fallback the
-              // shell already flushed. Recovery is the point, not perfection.
-              markup = "";
               if (!(error instanceof NotReadyError)) throw error;
+              // Still unready, so it goes back on the queue. Dropping it here
+              // is what left a boundary showing its fallback for good once the
+              // batch barrier stopped guaranteeing readiness.
+              markup = null;
             } finally {
               setStreamSink(outerSink);
               setAsyncSession(restore);
             }
-            if (markup === "") continue;
+            if (markup === null) {
+              // Past its own deadline it is abandoned rather than requeued, and
+              // the fallback the shell already flushed stands.
+              if (Date.now() - record.at < deadline) again.push(record);
+              continue;
+            }
             controller.enqueue(
               encoder.encode(
                 `<template data-barq="${record.id}">${markup}</template>` +
@@ -298,11 +376,24 @@ export function renderToStream(fn: () => JSXElement): ReadableStream<Uint8Array>
               ),
             );
           }
+          // Boundaries parked BY this round are already in `parked`; the ones
+          // that merely stayed unready go in front of them.
+          if (again.length > 0) parked.unshift(...again);
+          if (parked.length === 0) break;
+          // Nothing left in flight and something still parked: those boundaries
+          // keep the fallback the shell flushed. Recovery is the point.
+          //
+          // The race is what bounds this loop. `settleStep` alone waits on a
+          // promise that a caller is free never to settle, and a resumed
+          // boundary may park boundaries of its own, so neither the queue nor
+          // any single await is bounded without it.
+          if ((await Promise.race([settleStep(session), stopped])) !== true) break;
         }
-        controller.close();
+        if (!consumerCancelled) controller.close();
       } catch (error) {
-        controller.error(error);
+        if (!consumerCancelled) controller.error(error);
       } finally {
+        release();
         dispose();
       }
     },

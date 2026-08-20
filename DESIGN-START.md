@@ -1,0 +1,320 @@
+# barq start — server functions, streaming, and the router
+
+A cross-package program document. The per-package designs stay where they are: `packages/compiler-rs/CODESIGN.md`
+is still the compiler↔runtime contract, `packages/core/DESIGN-SSR.md` is still the SSR design. This file records
+what is being built on top of them, in what order, and — at least as importantly — **which of its own claims
+have already been falsified and must not be revived**.
+
+Written 2026-08-20, after four parallel investigations: an oxc feasibility spike against this crate, an
+adversarial review of the first draft of this design, a survey of seven shipping server-function
+implementations, and a serialization/streaming survey. Every number below was measured or read from a
+primary source; where a claim is inherited rather than verified here, it says so.
+
+---
+
+## 0. The short version
+
+Three findings reorder everything.
+
+1. **barq's streaming does not stream.** `renderToStream` awaits *every* in-flight promise before emitting
+   *any* parked boundary. Measured with boundaries resolving at 20/40/900/60/80 ms, all five become visible at
+   900 ms. This is a runtime defect in one loop, and fixing it is the highest-value change in the program.
+2. **"Prove the client/server split with a better DCE" is the losing strategy**, and the field has the scars to
+   prove it. The winning strategy is to *synthesize* the client module rather than prune it, which means the
+   DCE pass this design originally called for never needs to be written.
+3. **The compiler's role is smaller than the first draft claimed.** Three of four proposed compiler
+   differentiators died on contact with the crate. What survives is real but modest, plus one large item
+   (§6) that is gated on the router existing.
+
+---
+
+## 1. What died, and why it stays dead
+
+Recorded so it is not relitigated. Each row was killed by evidence, not by preference.
+
+| Claim | Killed by |
+|---|---|
+| Server-function ids are compile-time addresses `(module, unit, position)` | Addresses are minted only for **dynamic props and slots inside JSX** (`ir/address.rs:140`). Probed directly: a `.ts` module holding `export const getUser = createServerFn().handler(...)` returns `positions: []`. A `.tsx` module whose JSX is static returns `positions: []` too. There is nothing to hang an id on. |
+| …and they would be more stable than filename+name | Inverted. `position` is a patch position, so an edit above a call site renumbers everything after it. SolidStart ships this failure mode: `hash(path)-<index>` with the name stripped in production, so appending one function renumbers its siblings and an in-flight client calling `441a1dd0-1` for `listUsers` **invokes `deleteUser`**. Name-derived ids degrade to a clean 404; position-derived ids degrade to executing the wrong function. |
+| The compiler can *prove* no server code reaches the client | Module-local reachability is not bundle-level reachability. Bare side-effect imports declare no binding, barrel files, transitive chains, computed `import()`, and `/* @__PURE__ */` are all outside what a single-module pass can see. Survives only as a **report**, never as a proof. |
+| Security-grade DCE over `Scoping` is the differentiator | Wrong strategy entirely (§3). Also: it does not exist in the crate. `codegen/prune.rs:22` calls itself *"the only pass that deletes user code"* and is name-based over-approximation gated to `const` + plain binding + literal initialiser — not `SymbolId` reachability. |
+| Hydration seeds keyed by address beat the owner-tree counter | Regression. `reserveChildSlot` (`signals.ts:2725`) is **per-owner**; each `For` row is its own owner, so 100 rows produce 100 distinct seeds. An address is per call-*site* and is identical for all 100. |
+| Two emits from one parse is cheaper than a double parse | Moot, and the cost argument is forbidden. Vite already calls `transform()` twice per module — `packages/compiler/src/vite.ts:332`: *"`ssr` is per-module, not per-plugin: Vite transforms the same file twice."* And CODESIGN §5.4: *"Compile time is the cheapest resource in this system by roughly 40x and must not be treated as a constraint on the design."* |
+| `<form action={fn}>` already gives progressive enhancement | It does not. `ssr.ts:449`: *"Progressive enhancement would need a server-generated endpoint per action, which is a routing feature and not this file's."* `formAttr` returns `""` for a function. With JS off the form has no `action`, the submit is a same-document GET, and the payload is lost. This is P5, not a thing that exists. |
+
+One more, parked rather than dead: **folding `isServer` to a constant** breaks H5's address stability
+(`SEMANTICS.md:2978` — `-O0` addresses a superset of `-Ox`) and would make the cross-backend address diff
+invalid. It needs a decision (fold only outside JSX, or accept a per-env address space) before it is
+attempted.
+
+---
+
+## 2. Streaming — the defect, and what beating the field looks like
+
+### 2.1 The head-of-line barrier
+
+`server.ts` `renderToStream`:
+
+```ts
+while (parked.length > 0) {
+  const batch = parked.splice(0, parked.length);
+  await settle(session);          // Promise.allSettled over EVERY in-flight promise
+  for (const record of batch) { …emit <template> + swap… }
+}
+```
+
+`settle()` (`signals.ts:2957`) loops `Promise.allSettled(waiting)` until nothing is in flight. So no boundary
+emits until the slowest one in the session has settled.
+
+```
+boundaries settling at 20 / 40 / 900 / 60 / 80 ms
+
+today            every boundary visible at 900 ms
+per-settle       20ms · 41ms · 61ms · 81ms · 905ms
+```
+
+The first fast boundary is held 880 ms by its slowest sibling. Astro's entire server-islands feature exists to
+route around exactly this, and pays a second HTTP round trip for it; barq does not need that trade, because
+fixing the loop gets out-of-order delivery without leaving the stream.
+
+### 2.2 A second bug the barrier hides
+
+A resumed boundary that still throws `NotReadyError` sets `markup = ""` and is skipped by
+`if (markup === "") continue`. It is **dropped and never retried**. Under the batch barrier this is
+near-unreachable; under per-settle flushing it is the common case, so the retry queue is a prerequisite, not
+a nicety.
+
+### 2.3 No abort path
+
+`grep -n "cancel\|abort" packages/core/src/server.ts` → nothing. The `ReadableStream` has `start()` and no
+`cancel()`, there is no per-boundary or total timeout, and `while (parked.length > 0)` is unbounded because a
+resumed boundary may park boundaries of its own.
+
+barq is not an outlier — SvelteKit 2.70.3 has the same shape, and Solid's `renderToStream` exposes no abort or
+timeout at all. But the norm is measurably wasteful: on AWS Lambda *"streamed responses are not interrupted or
+stopped when the invoking client connection is broken. Customers are billed for the full function duration."*
+
+Two independent wirings are required, not one. React auto-aborts via `destination.on('close')`, and that is
+defeated by an intermediate `PassThrough` (measured: `pipe(res)` aborts; `pipe(new PassThrough())` renders
+forever). So: `cancel()` on the stream **and** an `AbortController` on the request.
+
+### 2.4 The unhandled-rejection interaction — investigated, does not apply
+
+The survey warned that `settle()`'s `Promise.allSettled(waiting)` is what attaches a rejection handler to every
+parked promise, so per-settle flushing would expose late rejections and, in Node, kill the process.
+
+**False for this codebase.** Both registration sites attach a *two-argument* `.then` at the moment the promise
+enters `inFlight` — `signals.ts:1697` (`awaited.then(settled, failed)`) and `signals.ts:2884` (the async-iterator
+pump). The handler is on `awaited` itself and does not depend on `settle` ever being called. Verified
+empirically: an async `computed` that rejects and is never settled produces zero `unhandledRejection` events.
+
+No park-time `.catch()` is needed. Recorded because the reasoning is not obvious from the call site and the
+next reader will otherwise re-derive it.
+
+### 2.5 Where barq can beat the closest prior art
+
+Nobody streams general RPC results inside SSR HTML, and the stated reasons are sound for genuinely imperative
+calls — an imperative RPC is post-hydration, the server cannot know what the client will call, and an inlined
+result inherits the document's cacheability.
+
+None of that applies to a value the server *already started resolving during render*. SvelteKit's own source
+comment on that case:
+
+> *If the promise is still pending (e.g. the query was rendered in its loading state during SSR), omit it from
+> the payload entirely so that the client fetches it itself — an entry without `v`/`e` would hydrate as
+> `undefined`.*
+
+SvelteKit drops the value and refetches. With seroval, **a pending promise is representable in the seed**, so
+nothing has to be dropped. That is a real win over the nearest comparable system and it requires no compiler
+work.
+
+---
+
+## 3. Server functions — synthesize, never prune
+
+### 3.1 The evidence
+
+Every surveyed system that **synthesizes** the client module from scratch (Next.js, SvelteKit, Waku,
+RedwoodSDK) is structurally immune to server-code leakage. Every system that **prunes** (React Router;
+SolidStart's function-level path) leaks bare side-effect imports silently. The defect in
+`babel-dead-code-elimination`, which React Router uses and which TanStack's pipeline shares the shape of:
+
+```js
+for (let specifier of path.get("specifiers")) { … removals++ }
+if (removals > removalsBefore && path.node.specifiers.length === 0) path.remove()
+```
+
+`import './db'` has zero specifiers, so `removals` never increments, so the guard is false, so the declaration
+is never removed. React Router's docs concede the general point — *"tree-shaking alone is insufficient"* — and
+their fix is opt-in `.server.ts` naming, where `import './db.server'` hard-errors and `import './db'` ships.
+
+Pedro Cattori, who maintains the pruning implementation, in the repo he built to escape it:
+
+> *"In general, it's a bad idea to rely on optimizations for correctness."*
+
+### 3.2 The structural payoff
+
+If the client output is synthesized from an export list, **the client build never compiles the module at
+all** — no harvest, no lowering, no codegen, no IR:
+
+| env | compiler does |
+|---|---|
+| `server` | compile normally, plus registration |
+| `client` | emit a stub module from the export list; never parses past classification |
+
+This is why the CODESIGN §5 amendment is small. `options.rs:113` says *"lowering takes no `Program` and codegen
+only splices at the sites harvest recorded"*, and the new pass does not violate it in the emitting path: it
+**classifies** a module and may **refuse** it. It does not rewrite non-JSX statements on the way to codegen.
+
+### 3.3 The rule
+
+| module shape | compiler does |
+|---|---|
+| every export is a server fn | wholesale-replace the client module with synthesized stubs |
+| mixes server fns and components | **refuse to compile** — diagnostic with a code frame naming the split |
+
+SvelteKit enforces the same rule keyed on the *filename* (a `.remote.ts` may export nothing else). barq keys on
+*content*, so the guarantee costs no file-naming convention. This is CODESIGN §7.1's own method: make the
+broken shape unrepresentable rather than prove it safe.
+
+The cost is real and is accepted: **a server function cannot live in a route file next to its component.**
+
+### 3.4 The rest of the surface, each with its source
+
+- **Ids from name**, never position, and never coupled to a secret. Next.js couples them — `serverReferenceHashSalt: encryptionKey` — so rotating the AES key to fix a decryption problem invalidates every action id in the app.
+- **Mounting decided by export-ness.** SvelteKit's model: a non-exported server fn gets no id and no endpoint but is callable from siblings. That is a genuine internal-function notion, obtained without reachability analysis. Contrast Next.js, whose own release notes concede: *"Even if a Server Action or utility function is not imported elsewhere in your code, it's still a publicly accessible HTTP endpoint."*
+- **Fail-closed input.** SvelteKit's three-state arity discriminator: no schema → *any* wire argument is a 400; opening the channel requires typing a schema or the literal `'unchecked'`. Next.js, Waku, SolidStart, RedwoodSDK and React Router all pass raw deserialized values straight into the handler.
+- **CSRF on by default**, Waku's post-CVE shape: POST-only, `origin: 'null'` rejected, and `sec-fetch-site: cross-site` rejected when `Origin` is absent. That last clause is stricter than Next.js, which warns and proceeds on a missing `Origin`.
+- **No client→server context channel.** TanStack merges a client-supplied `context` object into the server middleware chain; that is an attacker-controlled object crossing the trust boundary by design.
+- **No closure capture.** Removes the entire AES-GCM apparatus and its key-distribution problem. Qwik shows the failure mode: captured scope taken verbatim from the request body with zero integrity.
+- **Response shape by URL, not header.** RedwoodSDK emits correct `$ACTION_ID_*` hidden fields and never reads them, so a no-JS submit is a silent 200 no-op.
+- **`hasOwnProperty` against a build-time manifest** for any client-supplied name. CVE-2025-55182 was CVSS 10.0: request `constructor`, obtain `Function`, execute.
+
+---
+
+## 4. Serialization
+
+**seroval**, hardened. Only seroval and turbo-stream can carry an incrementally-flushed value, which §2.5
+requires. seroval costs 0 client bytes in JS mode (3.8 kB gz for the cross-JSON decoder) and measures 292 µs
+encode / 217 µs decode on 200 rows against `JSON.stringify`'s 52 µs.
+
+Configuration is not optional:
+
+- `Feature.RegExp` **disabled**. seroval escapes `<` at the string level but emits RegExp as a *literal* with unescaped source, so `serialize({p: new RegExp('[</script>]')})` emits a raw `</script>` and breaks out of the script element. There is no consumer-side fix, because seroval's JS output inlines helpers containing `<` as a real operator. Disabling throws before serialization and fails closed; with the `Serializer` class the throw routes to per-key `onError`, so one bad key drops alone. The JSON channel is unaffected. **Report privately upstream; do not file publicly.**
+- `Feature.ErrorPrototypeStack` **disabled** — serialized by default, and it leaks server paths.
+- Per-request `scopeId`; collisions across concurrent renders silently clobber `$R`.
+
+Context for the choice: every serializer in this space shipped a critical deserialization CVE within nine
+months — React Flight 10.0 (RCE), seroval 9.8 and 7.5, turbo-stream 8.1, devalue prototype pollution.
+Expressiveness *is* the attack surface. The mitigation is disabling features, not switching vendors.
+
+### 4.1 Script escaping — already correct
+
+`escapeScriptPayload` escapes `<`, `>`, U+2028, U+2029. Escaping `<` unconditionally neutralises `</script`,
+`<!--` and `<script` at once. Seven of seven surveyed implementations escape either `<` or `<script`; zero
+escape `/`. `neutralizeRawText` (`ssr.ts:268`) is minimal-correct, and `server.test.ts` already asserts
+`SWAP_SNIPPET` contains no `<` — an invariant enforced by a test rather than a comment.
+
+Two gaps, neither in the escape table:
+
+1. **No CSP nonce anywhere.** barq emits ≥3 inline scripts per streamed page and every one of them requires `script-src 'unsafe-inline'` today. Solid, SvelteKit and TanStack all thread a nonce.
+2. **`&` is not escaped.** Only matters under `application/xhtml+xml`, where a raw `&` in a script is a fatal XML error.
+
+Limits, from shipped defaults rather than invention:
+
+| limit | value | source |
+|---|---|---|
+| inline seed warn | 128 kB | Next.js `largePageDataBytes: 128 * 1000` |
+| per-boundary reject | 5 s | Remix 5000 / React Router 4950 |
+| stream abort | per-boundary + 1 s | React Router's documented decoupling rule |
+| concurrent boundaries | 6, if Cloudflare is a target | CF caps connections awaiting response headers |
+| idle stream | periodic heartbeat bytes | HTTP/1.1 has no PING frame |
+
+---
+
+## 5. What the compiler actually contributes
+
+Stated plainly, because §1 deleted most of the first draft's answer.
+
+| contribution | size |
+|---|---|
+| **Refusing the mixed-module shape** (§3.3) with a code frame — what makes synthesis sound | small, high value |
+| **Synthesizing the client stub** from the export list | small |
+| **`SymbolId` recognition** of `createServerFn` instead of name/regex matching — kills TanStack's `\.\s*handler\s*\(` false-positive class | small |
+| **The route-action manifest** (§6) | large, gated on the router |
+
+The compiler is a **gate and a manifest generator, not a prover**. That is a smaller role than the first draft
+sold, and it is also cheaper: the DCE pass that would have had to be written *and then defended as a security
+boundary* does not need to exist.
+
+---
+
+## 6. The one large compiler item
+
+Every surveyed framework documents the same hole instead of fixing it: **RPC calls escape route middleware.**
+
+> *"A page-level authentication check does not extend to the Server Actions defined within it. Always re-verify
+> inside the action… the Server Action is a separate entry point."* — Next.js
+
+Qwik, SolidStart and RedwoodSDK all ship versions of the same warning. `@vitejs/plugin-rsc` is the only
+implementation closing it: a build-time route→action-id manifest computed across both graphs, where an
+unreachable id 404s, a mis-routed action is redispatched through the owning route's middleware, and a
+progressive-enhancement form is validated against the current route *before* the action may resolve.
+
+Nobody has shipped this in a mainstream framework. It is the single strongest thing barq could build, it is
+exactly what semantic analysis buys, and it presupposes routes — so the router is on the critical path for it,
+not a parallel track.
+
+---
+
+## 7. Order
+
+**P0 — streaming, `packages/core`. DONE.** No dependency on any open question.
+
+1. ~~no-op `.catch()` at park time~~ — investigated, not needed (§2.4).
+2. **Per-settle flush with a retry queue** (§2.1, §2.2). `settleStep(session)` races the session's in-flight
+   promises instead of awaiting all of them; the stream loop attempts every parked record per round and
+   requeues the ones still unready. Measured on the two-boundary probe: the 20 ms boundary moved from 301 ms
+   to 21 ms. Re-invoking a not-ready Block does **not** re-fetch — the keyed value the session recorded is
+   reused, verified by fetch counts.
+3. **`cancel()` + `AbortSignal`** (§2.3), both wired, plus a `stopped` promise raced against `settleStep` —
+   which is what actually bounds the loop, since `settleStep` alone waits on a promise a caller is free never
+   to settle.
+4. **Per-boundary deadline** measured from when each record parked (`Continuation.at`), default 5 s, with the
+   stream's own backstop at +1 s. A boundary past its deadline is abandoned to the fallback rather than
+   requeued.
+
+Gate: `bun test` 990 pass / 0 fail (985 baseline + 5 new), `bun run ci` EXIT=0. The head-of-line test is
+gate-shaped rather than clock-shaped — the slow boundary cannot settle until the fast template has been
+observed, so a batch barrier deadlocks it. Confirmed to bite by temporarily weakening `settleStep` to
+`Promise.all`.
+
+**P1 — serialization, `packages/core`.** seroval hardened per §4, replacing `JSON.stringify` in
+`hydrationScriptFor`; CSP nonce threading; `&` escaping; the 128 kB warn. Enables seeding streamed values and
+§2.5's pending-promise seed.
+
+**P2 — the compiler pass.** `env: "client" | "server"` on `TransformOptions` (plus `OPTION_KEYS` and the
+completeness test that already guards it); `SymbolId` recognition; module classification; the mixed-module
+diagnostic; a `serverFns` side artifact carried the way `ownership` and `addresses` already are.
+
+**P3 — `@barqjs/start` runtime.** The builder, the handler, the manifest lookup, CSRF, limits.
+
+**P4 — Vite plugin.** Two environments, manifest virtual module, dev SSR middleware.
+
+**P5 — `<form action>` progressive enhancement.** Needs render-time URL minting, so it waits on the router.
+
+**P6 — route-action manifest** (§6). Needs the router.
+
+---
+
+## 8. Oracle work this implies, unspecified as yet
+
+L3's invariant is *"`-O0` vs `-Ox` byte-identical rendered DOM."* Client and server emits **deliberately
+differ**, so there is no equality to assert across environments and L3 does not extend. The correct invariant is
+relational — *the client emit and the server emit agree on the set of function ids and their arities* — and
+that is a **new oracle channel**, not an extension of an existing one.
+
+CODESIGN §6's stated blind spot applies with full force here: *"A defect in the specification itself… `-O0` and
+`-Ox` will agree on it."* A wrong separation rule is wrong in both emits simultaneously. That is the failure
+shape this oracle exists to prevent, now pointed at a security property, and it is the reason §3.3 refuses a
+shape rather than analysing one.

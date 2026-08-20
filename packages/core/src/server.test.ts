@@ -369,6 +369,141 @@ describe("renderToStream", () => {
     }
   });
 
+  /**
+   * A boundary is flushed when ITS promises settle, not when the session's
+   * slowest one does. The barrier this replaced awaited every in-flight promise
+   * before emitting any parked boundary, which made a stream into a shell
+   * followed by everything at once: measured at 281 ms of delay on a 20 ms
+   * boundary sharing a session with a 300 ms one.
+   *
+   * The gate makes the claim without a clock. `slow` cannot settle until the
+   * fast template has been observed, so under a batch barrier the stream never
+   * produces that template and this test hangs rather than failing an
+   * inequality — a timeout here is the regression, not flake.
+   */
+  test("a fast boundary is not held by a slow sibling", async () => {
+    let releaseSlow!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+
+    const fast = computed(async () => {
+      await tick();
+      return "fast";
+    });
+    const slow = computed(async () => {
+      await gate;
+      return "slow";
+    });
+
+    const defer = (value: () => unknown): string =>
+      esc(
+        ssrLoading(null, {
+          fallback: () => ssrHtml("<i>…</i>"),
+          children: () => ssrHtml(`<b>${esc(value())}</b>`),
+        }),
+      );
+    const page = (): unknown => ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
+
+    const reader = renderToStream(page as never).getReader();
+    const decoder = new TextDecoder();
+    let sawFast = false;
+    let sawSlow = false;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      if (chunk.includes("<b>fast</b>")) {
+        expect(sawSlow, "the slow boundary was flushed before the fast one").toBe(false);
+        sawFast = true;
+        releaseSlow();
+      }
+      if (chunk.includes("<b>slow</b>")) sawSlow = true;
+    }
+    expect(sawFast).toBe(true);
+    expect(sawSlow).toBe(true);
+  });
+
+  /**
+   * The first round attempts every parked boundary before anything has settled,
+   * so every one of them is unready and goes back on the queue. That requeue is
+   * load-bearing: the code this replaced set `markup = ""` on `NotReadyError`
+   * and `continue`d, which under per-settle stepping drops a boundary to its
+   * fallback for good.
+   */
+  test("a boundary unready on its first resume attempt is retried, not dropped", async () => {
+    let fetches = 0;
+    const late = computed(async () => {
+      fetches++;
+      await tick();
+      return "Ada";
+    });
+    const page = (): unknown =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>loading</i>"),
+            children: () => ssrHtml(`<b>${esc(late())}</b>`),
+          }),
+        )}</main>`,
+      );
+
+    const html = (await collect(renderToStream(page as never))).join("");
+    expect(html).toContain("<b>Ada</b>");
+    // Re-invoking the content Block reads the keyed value the session already
+    // recorded, so a retried round costs no second fetch.
+    expect(fetches).toBe(1);
+  });
+
+  /**
+   * A promise nobody settles used to hold the render open for good: the loop
+   * awaited it, and neither the queue nor any single await was bounded. Both
+   * exits below are the same race — what differs is who resolves it.
+   */
+  describe("bounded", () => {
+    const neverSettles = (): unknown =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>loading</i>"),
+            children: () =>
+              ssrHtml(`<b>${esc(computed(() => new Promise<string>(() => {}))())}</b>`),
+          }),
+        )}</main>`,
+      );
+
+    test("the caller's signal ends a render whose boundary never settles", async () => {
+      const controller = new AbortController();
+      const stream = renderToStream(neverSettles as never, { signal: controller.signal });
+      const reader = stream.getReader();
+
+      const shell = await reader.read();
+      expect(new TextDecoder().decode(shell.value)).toContain("<i>loading</i>");
+      controller.abort();
+
+      // Drains rather than hanging: the abort resolves the race the loop is
+      // parked on, so the stream terminates with the fallback standing.
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    });
+
+    test("a boundary past its timeout is abandoned to its fallback", async () => {
+      const html = (await collect(renderToStream(neverSettles as never, { timeout: 20 }))).join("");
+      expect(html).toContain("<i>loading</i>");
+      expect(html).not.toContain("<template");
+    });
+
+    test("cancelling the consumer stops the render", async () => {
+      const reader = renderToStream(neverSettles as never, { timeout: 50 }).getReader();
+      await reader.read();
+      // The throw this would produce if `start` closed an already-cancelled
+      // controller is the regression; `cancel` resolving is the assertion.
+      await reader.cancel();
+    });
+  });
+
   test("a page with nothing to defer streams one chunk and no swap machinery", async () => {
     const parts = await collect(renderToStream((() => ssrHtml("<p>flat</p>")) as never));
     expect(parts).toEqual(["<p>flat</p>"]);

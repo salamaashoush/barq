@@ -2955,32 +2955,57 @@ export function setAsyncSession(session: symbol | null): symbol | null {
  * attributed automatically.
  */
 export async function settle(session?: symbol): Promise<void> {
-  const flushInSession = () => {
-    if (session === undefined) {
-      flushSync();
-      return;
-    }
-    const prev = activeAsyncSession;
-    activeAsyncSession = session;
-    try {
-      flushSync();
-    } finally {
-      activeAsyncSession = prev;
-    }
-  };
-
-  flushInSession();
+  flushIn(session);
   while (true) {
-    const waiting: PromiseLike<unknown>[] = [];
-    for (const [promise, owner] of inFlight) {
-      if (session === undefined || owner === session) {
-        waiting.push(promise);
-      }
-    }
+    const waiting = inFlightOf(session);
     if (waiting.length === 0) break;
     await Promise.allSettled(waiting);
-    flushInSession();
+    flushIn(session);
   }
+}
+
+function flushIn(session: symbol | undefined): void {
+  if (session === undefined) {
+    flushSync();
+    return;
+  }
+  const prev = activeAsyncSession;
+  activeAsyncSession = session;
+  try {
+    flushSync();
+  } finally {
+    activeAsyncSession = prev;
+  }
+}
+
+function inFlightOf(session: symbol | undefined): PromiseLike<unknown>[] {
+  const waiting: PromiseLike<unknown>[] = [];
+  for (const [promise, owner] of inFlight) {
+    if (session === undefined || owner === session) waiting.push(promise);
+  }
+  return waiting;
+}
+
+const IGNORE = (): void => {};
+
+/**
+ * One step of `settle`: wait for the FIRST of this session's in-flight promises,
+ * then flush. `false` when nothing was in flight.
+ *
+ * Streaming needs the step and not the fixpoint. `settle` returns only once
+ * every promise in the session has settled, so a stream driven by it holds every
+ * parked boundary until the SLOWEST one resolves — measured at 281 ms of
+ * head-of-line delay on a 20 ms boundary sharing a session with a 300 ms one.
+ */
+export async function settleStep(session?: symbol): Promise<boolean> {
+  flushIn(session);
+  const waiting = inFlightOf(session);
+  if (waiting.length === 0) return false;
+  // The registration `.then(settled, failed)` already handles rejection on each
+  // of these; the derived promises exist so the race itself cannot reject.
+  await Promise.race(waiting.map((promise) => promise.then(IGNORE, IGNORE)));
+  flushIn(session);
+  return true;
 }
 
 /**
