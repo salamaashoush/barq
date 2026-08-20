@@ -341,6 +341,28 @@ the seed is what would beat SvelteKit here, and it needs a client-side registry 
 
 Gate: server 84 pass (78 + 6 new), core 912, `bun run ci` EXIT=0.
 
+**P3 — `@barqjs/start` runtime. DONE, and taken BEFORE P2.** The compiler's job here is to emit calls into a
+contract — `serverRpc(meta, built)` on the server, `clientRpc(id)` on the client — so the contract has to exist
+and be tested before anything emits into it. It is also how TanStack is arranged, with `start-client-core` as
+the stable surface and the plugin generating wiring into it. Building the pass first would have meant emitting
+calls into nothing.
+
+What landed, each row an answer to something the survey found broken somewhere:
+
+| | |
+|---|---|
+| **Fail-closed input** | A function with no validator refuses *any* argument with a 400. Opening the channel costs a schema or the literal `'unchecked'`. Every surveyed system except SvelteKit passes raw deserialized input into the handler. |
+| **`InputError` base** | Both input failures answer 400. The first cut caught only `ValidationError`, so `UncheckedInputError` escaped as a 500 — the test caught it, and one base is why the handler cannot answer one correctly and mis-answer the other. |
+| **POST only** | RedwoodSDK shipped GET-invocable server functions (CVE-2026-39371, CVSS 8.1): a plain link became a one-click mutation carrying `SameSite=Lax` cookies. |
+| **Origin, then `Sec-Fetch-Site`** | Waku's post-CVE shape. `Origin: null` is refused rather than treated as absent (CVE-2026-27978), and a missing `Origin` with no `Sec-Fetch-Site` is refused — Next.js warns and proceeds. |
+| **`Map` registry** | The id comes off the wire, and an object's prototype is reachable through one. CVE-2025-55182 was CVSS 10.0 and was exactly that. Structural rather than a `hasOwnProperty` call someone can forget; pinned by a test over `constructor`, `__proto__`, `toString`, `hasOwnProperty`. |
+| **Export-ness mounts** | A non-exported server function is never registered, has no id and no endpoint, and is still callable from its siblings. `mounted()` returns the surface for a build to record and a reviewer to read. |
+
+Known gaps, deliberate: the RPC wire is still `JSON.stringify`/`response.json()` rather than the §4 serializer,
+so an RPC argument or result cannot yet carry a Date or a Map the way a seed can. No middleware, no `form`
+kind, no progressive enhancement — that last one is P5 and needs the router. Gate: 14 pass, `bun run ci`
+EXIT=0.
+
 **P2 — the compiler pass.** `env: "client" | "server"` on `TransformOptions` (plus `OPTION_KEYS` and the
 completeness test that already guards it); `SymbolId` recognition; module classification; the mixed-module
 diagnostic; a `serverFns` side artifact carried the way `ownership` and `addresses` already are.
