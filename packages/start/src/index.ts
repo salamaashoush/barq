@@ -12,10 +12,28 @@
  * `clientRpc`. `./server` is where the request handler lives.
  */
 
+import { decodeWire, encodeWire } from "@barqjs/server/codec";
+
+export { getRequest, peekRequest, withRequest } from "./context.ts";
+
 export const SERVER_FN = Symbol.for("barq.server-fn");
 
-/** Where mounted server functions answer. One path, one shape. */
+/** Where mounted server functions answer. */
 export const RPC_PREFIX = "/_barq/fn/";
+
+/**
+ * What distinguishes an RPC call from a form submission: the URL, not a header.
+ *
+ * `/_barq/fn/<id>` is what `<form action={fn}>` writes, takes `FormData`, and
+ * answers with a redirect a browser can follow with JS disabled.
+ * `/_barq/fn/<id>.data` is the JSON channel and answers with a value.
+ *
+ * React Router's `.data` suffix, and the reason is its reason: a header decides
+ * the response shape invisibly, and a form cannot set one. RedwoodSDK shows the
+ * failure — it emits the right hidden fields for a no-JS submit and never reads
+ * them, so the form posts, returns 200, and nothing happens.
+ */
+export const DATA_SUFFIX = ".data";
 
 /**
  * A validator in the Standard Schema shape, which zod, valibot and arktype all
@@ -83,8 +101,22 @@ export type ServerFn<In, Out> = ((input: In) => Promise<Out>) & {
   readonly meta: ServerFnMeta;
 };
 
+/**
+ * A middleware runs before the handler and decides whether there is going to be
+ * one. Rejecting is `throw new Response(...)`, which the request handler returns
+ * as it stands.
+ *
+ * Per FUNCTION, not per route. Every framework in the survey documents the same
+ * hole instead of closing it — Next.js: "A page-level authentication check does
+ * not extend to the Server Actions defined within it… the Server Action is a
+ * separate entry point." A middleware attached here cannot be escaped by
+ * reaching the function from somewhere else, because there is nowhere else.
+ */
+export type Middleware = (next: () => Promise<unknown>) => Promise<unknown>;
+
 interface Built<In, Out> {
   validator: Validator<In> | null;
+  middleware: readonly Middleware[];
   handler: (input: In) => Out | Promise<Out>;
 }
 
@@ -107,6 +139,7 @@ export async function checkInput<In>(built: Built<In, unknown>, raw: unknown): P
 }
 
 export interface ServerFnBuilder<In, Out> {
+  middleware(chain: readonly Middleware[]): ServerFnBuilder<In, Out>;
   validator<T>(schema: Validator<T>): ServerFnBuilder<T, Out>;
   handler<R>(fn: (input: In) => R | Promise<R>): ServerFn<In, Awaited<R>>;
 }
@@ -117,9 +150,17 @@ export interface ServerFnBuilder<In, Out> {
  * uncompiled-development path: it runs the handler in-process.
  */
 export function createServerFn(): ServerFnBuilder<undefined, unknown> {
-  const built: Built<unknown, unknown> = { validator: null, handler: () => undefined };
+  const built: Built<unknown, unknown> = {
+    validator: null,
+    middleware: [],
+    handler: () => undefined,
+  };
 
   const builder: ServerFnBuilder<unknown, unknown> = {
+    middleware(chain) {
+      built.middleware = chain;
+      return builder;
+    },
     validator(schema) {
       built.validator = schema as Validator<unknown>;
       return builder as never;
@@ -137,7 +178,21 @@ export function createServerFn(): ServerFnBuilder<undefined, unknown> {
  * with the real handler and the id it assigned.
  */
 export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): ServerFn<In, Out> {
-  const call = async (input: In): Promise<Out> => built.handler(await checkInput(built, input));
+  // Middleware runs BEFORE validation. An unauthenticated caller should be
+  // refused without the server parsing its payload first, and a rejection that
+  // depended on the payload being well-formed would be one an attacker could
+  // skip by sending a malformed one.
+  const run = async (input: In): Promise<Out> => built.handler(await checkInput(built, input));
+
+  const call = async (input: In): Promise<Out> => {
+    let index = 0;
+    const next = async (): Promise<unknown> => {
+      const step = built.middleware[index++];
+      return step === undefined ? run(input) : step(next);
+    };
+    return (await next()) as Out;
+  };
+
   return Object.assign(call, { [SERVER_FN]: true as const, meta, built }) as ServerFn<In, Out>;
 }
 
@@ -148,14 +203,25 @@ export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): S
  */
 export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
   const call = async (input: In): Promise<Out> => {
-    const response = await fetch(RPC_PREFIX + encodeURIComponent(id), {
+    // FormData goes as FormData. Routing it through the value codec would hand
+    // the handler a plain OBJECT here and a real `FormData` on the no-JS path —
+    // the same function seeing two input types depending on whether JS ran,
+    // which is the divergence progressive enhancement exists to avoid. It also
+    // keeps files, which no value codec in this class carries.
+    const form = input instanceof FormData;
+    const response = await fetch(RPC_PREFIX + encodeURIComponent(id) + DATA_SUFFIX, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input }),
+      // No content-type for the form case: the browser sets the multipart
+      // boundary, and setting it by hand produces a body nothing can parse.
+      headers: form ? undefined : { "content-type": "application/json" },
+      // Otherwise seroval's JSON channel, so an argument carries a Date, a Map
+      // or a cycle the same way a hydration seed does — and reconstructs
+      // through `fromJSON`, which evaluates nothing.
+      body: form ? (input as FormData) : JSON.stringify({ input: encodeWire(input) }),
       credentials: "same-origin",
     });
     if (!response.ok) throw new Error(`server function ${id} failed: ${response.status}`);
-    return (await response.json()) as Out;
+    return decodeWire<Out>(await response.json());
   };
   return Object.assign(call, { [SERVER_FN]: true as const, meta: { id } }) as ServerFn<In, Out>;
 }

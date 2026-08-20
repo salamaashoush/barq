@@ -2232,6 +2232,16 @@ export function computed<T>(
         node._serializeKey = id;
         const seed = getSeed(id);
         if (seed.found) return seed.value as T;
+        // Missing is not the same as absent while a stream is still running:
+        // the server may be about to send it. Refetching here is what made a
+        // streamed page fetch twice — once on the server, once on the client —
+        // and land the server's answer with nobody waiting on it.
+        const later = seedLater(id);
+        if (later !== null) {
+          return later.then((arrived) =>
+            arrived.found ? (arrived.value as T) : (fn(prev) as T | PromiseLike<T>),
+          ) as T;
+        }
       }
     }
     return fn(prev) as T;
@@ -3051,6 +3061,35 @@ function getSeed(key: string): { found: boolean; value?: unknown } {
     return { found: true, value };
   }
   return { found: false };
+}
+
+/**
+ * The seed channel `@barqjs/server` opens for a streamed page.
+ *
+ * `open` is 1 until the stream ends. `wait` parks a callback against a key the
+ * server has not sent yet; the flush that carries the key calls it, and closing
+ * the channel calls whatever is left so those reads fetch for real.
+ */
+interface SeedChannel {
+  open: number;
+  wait(key: string, fn: () => void): void;
+}
+
+/**
+ * A promise for a key that has not arrived yet, or `null` when nothing is
+ * coming — no channel at all (an ordinary page), or one already closed.
+ *
+ * `{ found: false }` rather than a rejection when the stream ends without the
+ * key: the read then falls back to fetching, which is what a non-streamed page
+ * does, and a rejection would surface a boundary error for a value that is
+ * merely absent.
+ */
+export function seedLater(key: string): Promise<{ found: boolean; value?: unknown }> | null {
+  const channel = (globalThis as { __BARQ_SEED__?: SeedChannel }).__BARQ_SEED__;
+  if (channel === undefined || channel.open !== 1) return null;
+  return new Promise((resolve) => {
+    channel.wait(key, () => resolve(getSeed(key)));
+  });
 }
 
 /**

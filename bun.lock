@@ -130,16 +130,15 @@
     "packages/start": {
       "name": "@barqjs/start",
       "version": "0.1.0",
-      "dependencies": {
-        "seroval": "^1.6.2",
-      },
       "devDependencies": {
         "@barqjs/core": "workspace:*",
+        "@barqjs/server": "workspace:*",
         "@types/bun": "^1.3.3",
         "typescript": "^5.9.3",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/server": ">=0.1.0",
       },
     },
     "packages/testing": {

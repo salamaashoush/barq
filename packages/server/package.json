@@ -26,6 +26,11 @@
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./codec": {
+      "types": "./dist/codec.d.ts",
+      "bun": "./src/codec.ts",
+      "import": "./dist/codec.js"
     }
   },
   "files": [

@@ -15,7 +15,7 @@ import {
   settle,
   signal,
 } from "@barqjs/core";
-import { setAsyncSession } from "@barqjs/core/internal";
+import { seedLater, setAsyncSession } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
@@ -28,7 +28,7 @@ import {
   swapDeferredRange,
 } from "./server.ts";
 import { esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
-import { encodeSeed } from "./serialize.ts";
+import { encodeSeed } from "./codec.ts";
 
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
   const reader = stream.getReader();
@@ -43,6 +43,22 @@ async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
 }
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Run every inline seed script in document order, as a browser would.
+ *
+ * All of them, not the assignment alone: the cross-reference header is its own
+ * statement and the payload refers to a bare `$R`, so evaluating a payload
+ * without its header fails with `$R is not defined`. That is precisely the
+ * mistake a regex over `__BARQ_DATA__=` makes.
+ */
+function runSeedScripts(html: string): Record<string, unknown> {
+  const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)]
+    .map((m) => m[1] ?? "")
+    .filter((source) => source.includes("__BARQ_DATA__"));
+  (0, eval)(scripts.join(";"));
+  return (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ ?? {};
+}
 
 afterEach(() => {
   clearRenderData();
@@ -256,15 +272,147 @@ describe("the seed encoder", () => {
     expect(html).toContain("streamed-user");
 
     // Seeded once, not once per round: a key already on the wire is skipped.
-    expect(html.match(/streamed-user/g)?.length).toBe(1);
+    // Counted over PAYLOADS, because the key also appears in the wake list the
+    // flush sends alongside it.
+    const payloads = [
+      ...html.matchAll(/Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);window/g),
+    ]
+      .map((m) => m[1] ?? "")
+      .filter((payload) => payload.includes("streamed-user"));
+    expect(payloads).toHaveLength(1);
 
-    // And the payload rebuilds to the value the server resolved.
-    const assign = html.match(/window\.__BARQ_DATA__=Object\.assign\([^<]*\)/)?.[0] ?? "";
-    const data = (0, eval)(`(window=>{${assign};return window.__BARQ_DATA__})({})`) as Record<
-      string,
-      unknown
-    >;
-    expect(data["streamed-user"]).toBe("Ada");
+    // And the payload rebuilds to the value the server resolved, run the way a
+    // browser runs it: every seed script, in document order.
+    expect(runSeedScripts(html)["streamed-user"]).toBe("Ada");
+  });
+
+  /**
+   * A streamed page seeds more than once, and `serialize` per flush would make
+   * each self-contained — correct within a flush and wrong across them. An
+   * object reachable from two keys settled in different rounds would arrive as
+   * two objects, so `a === b` on the server would be `a !== b` on the client.
+   */
+  test("one object seeded across two rounds is one object on the client", async () => {
+    const shared = { id: 7 };
+    const fast = computed(
+      async () => {
+        await tick();
+        return { via: "fast", shared };
+      },
+      { key: "k-fast" },
+    );
+    let releaseSlow!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const slow = computed(
+      async () => {
+        await gate;
+        return { via: "slow", shared };
+      },
+      { key: "k-slow" },
+    );
+
+    const defer = (value: () => unknown): string =>
+      esc(
+        ssrLoading(null, {
+          fallback: () => ssrHtml("<i>…</i>"),
+          children: () => ssrHtml(`<b>${esc((value() as { via: string }).via)}</b>`),
+        }),
+      );
+    const page = (): unknown => ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
+
+    const reader = renderToStream(page as never).getReader();
+    const decoder = new TextDecoder();
+    let html = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value);
+      // Release only once the fast value is on the wire, so the two values are
+      // guaranteed to be seeded in different rounds.
+      if (html.includes("k-fast")) releaseSlow();
+    }
+
+    const data = runSeedScripts(html) as Record<string, { shared: unknown }>;
+    expect(data["k-fast"]?.shared).toBeDefined();
+    expect(data["k-fast"]?.shared).toBe(data["k-slow"]?.shared);
+  });
+
+  /**
+   * The gap this closes: a streamed page used to seed nothing, and once it did,
+   * a client read that ran before its value arrived still refetched — so the
+   * server's answer landed with nobody waiting on it. SvelteKit drops a pending
+   * value from its payload for exactly this reason and lets the client fetch it.
+   */
+  test("a read that misses while the stream is open waits for the value", async () => {
+    let releaseSlow!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const slow = computed(
+      async () => {
+        await gate;
+        return "arrived";
+      },
+      { key: "late-key" },
+    );
+    const page = (): unknown =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>…</i>"),
+            children: () => ssrHtml(`<b>${esc(slow())}</b>`),
+          }),
+        )}</main>`,
+      );
+
+    // Each script runs exactly once, the way a browser runs them. Re-running
+    // the channel snippet would build a fresh registry and drop the waiter.
+    let ran = 0;
+    const runNewScripts = (html: string): void => {
+      const all = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
+      const fresh = all.slice(ran);
+      ran = all.length;
+      const relevant = fresh.filter(
+        (s) => s.includes("__BARQ_SEED__") || s.includes("__BARQ_DATA__"),
+      );
+      if (relevant.length > 0) (0, eval)(relevant.join(";"));
+    };
+
+    const reader = renderToStream(page as never).getReader();
+    const decoder = new TextDecoder();
+    let html = "";
+    while (!html.includes("__BARQ_SEED__")) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      html += decoder.decode(chunk.value);
+    }
+    // The channel is open and the value is still gated: exactly the window in
+    // which a client read would otherwise refetch what the server is sending.
+    expect(html, "the value must not have landed yet").not.toContain("arrived");
+    runNewScripts(html);
+
+    let resolved: unknown;
+    const waiter = seedLater("late-key");
+    expect(waiter, "the channel should be open").not.toBeNull();
+    void waiter?.then((r) => {
+      resolved = r;
+    });
+
+    releaseSlow();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value);
+      runNewScripts(html);
+    }
+    await tick();
+
+    // The waiter was woken by the flush that carried the key — not by a refetch.
+    expect(resolved).toEqual({ found: true, value: "arrived" });
+    // And the stream closed the channel, so a later miss fetches for real.
+    expect(html).toContain("__BARQ_SEED__.done()");
   });
 
   test("escapes a script-closing string and the line separators", () => {
@@ -451,9 +599,15 @@ describe("renderToStream", () => {
     // so there is no entity to escape a `<` with and a `<` is the first byte of
     // the only sequence that can leave the element early. The shipped function
     // therefore contains none, and this is where that stays true.
-    const snippet = parts.join("").match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
-    expect(snippet).toContain("__BARQ_SWAP__=");
-    expect(snippet, "the swap snippet grew a `<`").not.toContain("<");
+    // EVERY shipped snippet, not just the first: the page now carries the seed
+    // channel too, and one `<` in any of them ends the script element early.
+    const snippets = [...parts.join("").matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(
+      (m) => m[1] ?? "",
+    );
+    expect(snippets.some((s) => s.includes("__BARQ_SWAP__="))).toBe(true);
+    for (const snippet of snippets) {
+      expect(snippet, "a shipped snippet grew a `<`").not.toContain("<");
+    }
   });
 
   test("the swap replaces exactly the deferred range", async () => {

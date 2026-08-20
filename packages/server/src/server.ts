@@ -31,7 +31,7 @@ import {
   settleStep,
 } from "@barqjs/core/internal";
 import { type StreamSink, esc, escapeAttribute, resumeDeferred, setStreamSink } from "./ssr.ts";
-import { encodeSeed } from "./serialize.ts";
+import { createSeedEncoder, encodeSeed } from "./codec.ts";
 
 /**
  * Render synchronously to an HTML string. Pending async values render
@@ -257,6 +257,53 @@ export function swapDeferredRange(n: number): void {
 const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
 
 /**
+ * The seed channel: what tells a client read that its value is still coming.
+ *
+ * Without it a streamed page is worse than a static one. The shell arrives, the
+ * bundle hydrates, a keyed read misses because its boundary has not settled yet,
+ * and the client refetches something the server is already sending — the value
+ * then lands in `__BARQ_DATA__` with nobody waiting on it.
+ *
+ * So the shell declares the channel OPEN, every seed flush wakes whatever was
+ * waiting on the keys it carried, and the end of the stream closes it and
+ * releases the rest to fetch for real. A read that misses while the channel is
+ * open waits; a read that misses after it closes refetches, which is what a
+ * non-streamed page has always done.
+ *
+ * Same three constraints as `swapDeferredRange`, for the same reason — it ships
+ * by `toString()`: it closes over nothing, it contains no `<`, and it is the
+ * function the tests drive rather than a paraphrase of one.
+ */
+export function seedChannel(): void {
+  const waiting: Record<string, Array<() => void>> = {};
+  const wake = (keys: string[] | null): void => {
+    const list = keys === null ? Object.keys(waiting) : keys;
+    for (let i = list.length; i--; ) {
+      const k = list[i];
+      const fns = waiting[k];
+      if (!fns) continue;
+      delete waiting[k];
+      for (let j = fns.length; j--; ) fns[j]();
+    }
+  };
+  (window as unknown as { __BARQ_SEED__: unknown }).__BARQ_SEED__ = {
+    open: 1,
+    wait(key: string, fn: () => void): void {
+      (waiting[key] = waiting[key] ?? []).push(fn);
+    },
+    tell(keys: string[]): void {
+      wake(keys);
+    },
+    done(): void {
+      (window as unknown as { __BARQ_SEED__: { open: number } }).__BARQ_SEED__.open = 0;
+      wake(null);
+    },
+  };
+}
+
+const SEED_CHANNEL_SNIPPET = `(${seedChannel.toString()})();`;
+
+/**
  * Render to a stream: the shell first, then one `<template>` per boundary as
  * its promises settle.
  *
@@ -308,6 +355,11 @@ export function renderToStream(
   // is — it is flushed incrementally, and each flush carries only what the
   // previous ones did not.
   const sent = new Set<string>();
+  // One encoder for the whole render, so a value reachable from two keys seeded
+  // in different rounds is ONE object on the client.
+  const seeds = createSeedEncoder();
+  let seededHeader = false;
+  let seededChannel = false;
   const seedScript = (): string => {
     const fresh: Record<string, unknown> = {};
     let any = false;
@@ -318,9 +370,15 @@ export function renderToStream(
       any = true;
     }
     if (!any) return "";
+    const header = seededHeader ? "" : `${seeds.header};`;
+    seededHeader = true;
+    const keys = Object.keys(fresh);
     return (
       `<script${nonceAttr(options?.nonce)}>` +
-      `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${encodeSeed(fresh)})` +
+      `${header}window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(fresh)});` +
+      // Wake whatever was waiting on exactly these keys. A read that missed
+      // while the channel was open is parked, not refetching.
+      `window.__BARQ_SEED__&&window.__BARQ_SEED__.tell(${JSON.stringify(keys)})` +
       "</script>"
     );
   };
@@ -362,6 +420,14 @@ export function renderToStream(
     async start(controller): Promise<void> {
       try {
         controller.enqueue(encoder.encode(shell));
+        // Opened before the first seed and before the bundle can run, so a read
+        // that misses knows its value may still be coming.
+        if (parked.length > 0) {
+          seededChannel = true;
+          controller.enqueue(
+            encoder.encode(`<script${nonceAttr(options?.nonce)}>${SEED_CHANNEL_SNIPPET}</script>`),
+          );
+        }
         // Whatever the shell already resolved. Without this a streamed page
         // seeded nothing at all and the client refetched every value the server
         // had just awaited.
@@ -427,6 +493,15 @@ export function renderToStream(
           // boundary may park boundaries of its own, so neither the queue nor
           // any single await is bounded without it.
           if ((await Promise.race([settleStep(session), stopped])) !== true) break;
+        }
+        // Nothing more is coming: release every read still parked on a key, so
+        // it fetches for real rather than waiting for a stream that has ended.
+        if (!consumerCancelled && seededChannel) {
+          controller.enqueue(
+            encoder.encode(
+              `<script${nonceAttr(options?.nonce)}>window.__BARQ_SEED__&&window.__BARQ_SEED__.done()</script>`,
+            ),
+          );
         }
         if (!consumerCancelled) controller.close();
       } catch (error) {

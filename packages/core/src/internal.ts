@@ -30,6 +30,7 @@ export {
   disposeScope,
   getHydrationData,
   provideOn,
+  seedLater,
   setAsyncSession,
   settleStep,
   unclaimedSeeds,

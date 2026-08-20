@@ -11,7 +11,17 @@
  * ambiguous payload to reason about.
  */
 
-import { Feature, type Plugin, type PluginInfo, createPlugin, serialize } from "seroval";
+import {
+  Feature,
+  type Plugin,
+  type PluginInfo,
+  createPlugin,
+  crossSerialize,
+  fromJSON,
+  getCrossReferenceHeader,
+  serialize,
+  toJSON,
+} from "seroval";
 
 /**
  * `RegExp`: seroval escapes `<` at the STRING level, but emits a regular
@@ -82,14 +92,86 @@ const redactError: Plugin<Error, ErrorInfo> = createPlugin<Error, ErrorInfo>({
  */
 export const SEED_WARN_BYTES = 128_000;
 
+// ── the wire ────────────────────────────────────────────────────────────────
+//
+// The seed and the RPC wire take DIFFERENT seroval modes, and the difference is
+// not a detail.
+//
+// A seed is inlined in a `<script>` the browser is going to parse as JS anyway,
+// so JS mode costs nothing and ships no decoder. An RPC response is bytes off
+// the network, and evaluating those as JS is remote code execution — no amount
+// of escaping makes `eval` safe on attacker-reachable input. So the wire uses
+// the JSON channel, which reconstructs through `fromJSON` and never evaluates.
+//
+// The hardening is shared: the same disabled features and the same Error
+// redaction, so a value that cannot leave through one channel cannot leave
+// through the other.
+
+/** Encode a value for the wire: JSON-safe, no evaluation on the far side. */
+export function encodeWire(value: unknown): unknown {
+  return toJSON(value, { disabledFeatures: DISABLED, plugins: [redactError] });
+}
+
+/**
+ * Decode a wire payload. Reconstructs Dates, Maps, Sets, BigInts and cycles
+ * without evaluating anything.
+ */
+export function decodeWire<T>(payload: unknown): T {
+  return fromJSON<T>(payload as never, { plugins: [redactError] });
+}
+
 /** Encode one render's resolved values as the JS expression that rebuilds them. */
 export function encodeSeed(data: Record<string, unknown>): string {
   const payload = serialize(data, { disabledFeatures: DISABLED, plugins: [redactError] });
-  if (payload.length > SEED_WARN_BYTES) {
-    console.warn(
-      `[barq] hydration seed is ${payload.length} bytes (over ${SEED_WARN_BYTES}). ` +
-        "It is inlined in every response and hydration blocks on parsing it.",
-    );
-  }
+  warnIfLarge(payload.length);
   return payload;
+}
+
+function warnIfLarge(bytes: number): void {
+  if (bytes <= SEED_WARN_BYTES) return;
+  console.warn(
+    `[barq] hydration seed is ${bytes} bytes (over ${SEED_WARN_BYTES}). ` +
+      "It is inlined in every response and hydration blocks on parsing it.",
+  );
+}
+
+let scopes = 0;
+
+export interface SeedEncoder {
+  /** Emitted once, before the first payload. Defines the reference table. */
+  readonly header: string;
+  encode(data: Record<string, unknown>): string;
+}
+
+/**
+ * A seed encoder for ONE render, whose flushes share references.
+ *
+ * A streamed page seeds more than once — once after the shell, once per settled
+ * round — and `serialize` per flush makes each one self-contained. That is
+ * correct within a flush and wrong across them: an object reachable from two
+ * keys seeded in different rounds arrives as two objects, so `a === b` on the
+ * server is `a !== b` on the client. Threading one `refs` map through
+ * `crossSerialize` is what preserves it; a later flush emits `$R[1]` where an
+ * earlier one defined it.
+ *
+ * The scope id is per render and not a constant, because two independent renders
+ * embedded in one document would otherwise index into one `$R` bucket with two
+ * different ref maps and overwrite each other's entries.
+ */
+export function createSeedEncoder(): SeedEncoder {
+  const scopeId = `b${scopes++}`;
+  const refs = new Map<unknown, number>();
+  return {
+    header: getCrossReferenceHeader(scopeId),
+    encode(data) {
+      const payload = crossSerialize(data, {
+        scopeId,
+        refs,
+        disabledFeatures: DISABLED,
+        plugins: [redactError],
+      });
+      warnIfLarge(payload.length);
+      return payload;
+    },
+  };
 }

@@ -40,7 +40,7 @@ Recorded so it is not relitigated. Each row was killed by evidence, not by prefe
 | Security-grade DCE over `Scoping` is the differentiator | Wrong strategy entirely (§3). Also: it does not exist in the crate. `codegen/prune.rs:22` calls itself *"the only pass that deletes user code"* and is name-based over-approximation gated to `const` + plain binding + literal initialiser — not `SymbolId` reachability. |
 | Hydration seeds keyed by address beat the owner-tree counter | Regression. `reserveChildSlot` (`signals.ts:2725`) is **per-owner**; each `For` row is its own owner, so 100 rows produce 100 distinct seeds. An address is per call-*site* and is identical for all 100. |
 | Two emits from one parse is cheaper than a double parse | Moot, and the cost argument is forbidden. Vite already calls `transform()` twice per module — `packages/compiler/src/vite.ts:332`: *"`ssr` is per-module, not per-plugin: Vite transforms the same file twice."* And CODESIGN §5.4: *"Compile time is the cheapest resource in this system by roughly 40x and must not be treated as a constraint on the design."* |
-| `<form action={fn}>` already gives progressive enhancement | It does not. `ssr.ts:449`: *"Progressive enhancement would need a server-generated endpoint per action, which is a routing feature and not this file's."* `formAttr` returns `""` for a function. With JS off the form has no `action`, the submit is a same-document GET, and the payload is lost. This is P5, not a thing that exists. |
+| `<form action={fn}>` already gives progressive enhancement | It did not, and the reason it now does is not the reason the claim gave. `ssr.ts:449` said PE *"would need a server-generated endpoint per action, which is a routing feature and not this file's"* — true until server functions existed. `@barqjs/start` mounts each one at `/_barq/fn/<id>`, which exists before the page renders, so **no router is involved**. `formAttr` writes that URL and `method="post"` together. The claim was wrong when made and the blocker it named was removed by P3, not by P5. |
 
 One more, parked rather than dead: **folding `isServer` to a constant** breaks H5's address stability
 (`SEMANTICS.md:2978` — `-O0` addresses a superset of `-Ox`) and would make the cross-backend address diff
@@ -214,12 +214,22 @@ Configuration is not optional:
 - `Feature.RegExp` **disabled**. seroval escapes `<` at the string level but emits RegExp as a *literal* with unescaped source, so `serialize({p: new RegExp('[</script>]')})` emits a raw `</script>` and breaks out of the script element. There is no consumer-side fix, because seroval's JS output inlines helpers containing `<` as a real operator. Disabling throws before serialization and fails closed; with the `Serializer` class the throw routes to per-key `onError`, so one bad key drops alone. The JSON channel is unaffected. **Report privately upstream; do not file publicly.**
 - `Feature.ErrorPrototypeStack` **disabled** — necessary, not sufficient; see above.
 
-**Identity holds within a flush, not across flushes.** The implementation uses plain `serialize`, so each seed
-script is self-contained: a cycle or a repeated reference inside one payload is preserved (pinned by a test),
-but the same object appearing in two different rounds deserializes to two distinct objects. Fixing that means
-`crossSerialize` with a per-request `scopeId` and `getCrossReferenceHeader()` emitted ahead of the first flush,
-which also introduces a failure mode worth respecting — `scopeId` collisions across concurrent renders
-silently clobber `$R`. Not attempted; recorded so the limitation is a decision rather than a surprise.
+**Identity holds across flushes.** `createSeedEncoder()` threads one `refs` map and one `scopeId` through
+`crossSerialize` for the whole render, and emits `getCrossReferenceHeader()` once ahead of the first payload,
+so a later flush writes `$R[1]` where an earlier one defined it. Without it each flush was self-contained and
+an object reachable from two keys settled in different rounds arrived as two objects — `a === b` on the server
+and `a !== b` on the client. Pinned by a test that gates the second value so the two are guaranteed to land in
+different rounds.
+
+The `scopeId` is per render rather than a constant, because two independent renders embedded in one document
+would otherwise index into one `$R` bucket with two ref maps and overwrite each other.
+
+**The wire and the seed take different modes, and that is deliberate.** A seed is inlined in a `<script>` the
+browser parses as JS anyway, so JS mode costs nothing and ships no decoder. An RPC response is bytes off the
+network, and evaluating those is remote code execution no amount of escaping fixes — so `encodeWire` /
+`decodeWire` use seroval's JSON channel and reconstruct through `fromJSON`, which evaluates nothing. Same
+disabled features and same `Error` redaction on both, so a value that cannot leave through one cannot leave
+through the other.
 
 Context for the choice: every serializer in this space shipped a critical deserialization CVE within nine
 months — React Flight 10.0 (RCE), seroval 9.8 and 7.5, turbo-stream 8.1, devalue prototype pollution.
@@ -335,9 +345,14 @@ nothing and the client refetched every value the server had just awaited — `re
 whole page a second time) has no equivalent once the shell is on the wire. Seeds are flushed incrementally
 instead: once after the shell, once per round, each flush carrying only the keys the previous ones did not.
 
-Not done: **§2.5's pending-promise seed.** A value that settles after the client bundle has begun hydrating
-still arrives late — `__BARQ_DATA__` receives it, but nothing is waiting on it. Carrying a *pending* promise in
-the seed is what would beat SvelteKit here, and it needs a client-side registry that does not exist yet.
+**§2.5 is closed.** A read that misses while the stream is open now *waits* instead of refetching. The shell
+opens a seed channel before the bundle can run, every flush wakes whatever was waiting on the keys it carried,
+and the end of the stream closes the channel and releases the rest to fetch for real. `seedLater()` in
+`signals.ts` is the client half; a miss with no channel, or a closed one, refetches exactly as a non-streamed
+page always has.
+
+This is the piece SvelteKit declines: its own source comment says a still-pending query is *"omitted from the
+payload entirely so that the client fetches it itself."* barq carries it.
 
 Gate: server 84 pass (78 + 6 new), core 912, `bun run ci` EXIT=0.
 
@@ -358,10 +373,22 @@ What landed, each row an answer to something the survey found broken somewhere:
 | **`Map` registry** | The id comes off the wire, and an object's prototype is reachable through one. CVE-2025-55182 was CVSS 10.0 and was exactly that. Structural rather than a `hasOwnProperty` call someone can forget; pinned by a test over `constructor`, `__proto__`, `toString`, `hasOwnProperty`. |
 | **Export-ness mounts** | A non-exported server function is never registered, has no id and no endpoint, and is still callable from its siblings. `mounted()` returns the surface for a build to record and a reviewer to read. |
 
-Known gaps, deliberate: the RPC wire is still `JSON.stringify`/`response.json()` rather than the §4 serializer,
-so an RPC argument or result cannot yet carry a Date or a Map the way a seed can. No middleware, no `form`
-kind, no progressive enhancement — that last one is P5 and needs the router. Gate: 14 pass, `bun run ci`
-EXIT=0.
+Then closed in the same pass, because none of them were actually blocked:
+
+| | |
+|---|---|
+| **The wire** | `encodeWire`/`decodeWire` over seroval's JSON channel, so an argument or a result carries a Date, a Map, a Set, a BigInt or a cycle exactly as a seed does — and reconstructs without evaluating anything. |
+| **Middleware** | Per FUNCTION, which is the hole every surveyed framework documents instead of closing. It runs **before** validation: an unauthenticated caller is refused without the server parsing its payload, and a rejection that needed a well-formed payload would be one an attacker skips by sending a malformed one. Rejecting is `throw new Response(...)`. |
+| **Request context** | `getRequest()` over `AsyncLocalStorage`, not a module-level variable — that shape hands one caller's session to another under load, which is GHSA-hgv7-v322-mmgr. A test interleaves two requests across an await to say so. |
+| **`form` + progressive enhancement** | `/_barq/fn/<id>` takes `FormData` and answers 303 back to a same-origin `Referer`; `/_barq/fn/<id>.data` is the JSON channel. React Router's `.data` suffix, and for its reason: a header decides the shape invisibly and a form cannot set one. RedwoodSDK emits the right hidden fields and never reads them, so its no-JS submit is a silent 200 no-op. |
+
+One divergence found while closing it, worth recording because it was live rather than hypothetical: seroval
+encodes `FormData` and decodes it to a **plain object**, so routing an enhanced submission through the value
+codec would have handed the handler an object where the no-JS path hands a real `FormData` — the same function
+seeing two input types depending on whether JS ran. `FormData` now goes as `FormData` on both paths, which also
+keeps files. Pinned by a test that drives both and compares.
+
+Gate: 28 pass, `bun run ci` EXIT=0.
 
 **P2 — the compiler pass.** `env: "client" | "server"` on `TransformOptions` (plus `OPTION_KEYS` and the
 completeness test that already guards it); `SymbolId` recognition; module classification; the mixed-module

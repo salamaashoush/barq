@@ -24,6 +24,7 @@ import {
   esc,
   escapeAttribute,
   escapeText,
+  formAttr,
   html,
   isSsrHtml,
   raw,
@@ -784,5 +785,39 @@ describe("raw text has no escaping, so the close sequence is neutralised", () =>
     host.innerHTML = `<script class="probe">${rawText('</script><img src=x onerror="alert(1)">', "script")}</script>`;
     expect(host.children.length).toBe(1);
     expect(host.querySelectorAll("img").length).toBe(0);
+  });
+});
+
+/**
+ * `<form action={fn}>` on the wire. The note this replaced said progressive
+ * enhancement "would need a server-generated endpoint per action, which is a
+ * routing feature and not this file's" — server functions are that endpoint,
+ * and it exists before the page renders.
+ */
+describe("a form action", () => {
+  const SERVER_FN = Symbol.for("barq.server-fn");
+  const serverFn = (id: string): unknown =>
+    Object.assign(() => undefined, { [SERVER_FN]: true, meta: { id } });
+
+  test("a server function becomes the endpoint, with the method it requires", () => {
+    // POST is not decoration: the endpoint refuses GET, because a GET-invocable
+    // mutation is CVE-2026-39371.
+    expect(formAttr(serverFn("todos/add"))).toBe(' action="/_barq/fn/todos%2Fadd" method="post"');
+  });
+
+  test("an id needing escaping is escaped once, as a URL and as an attribute", () => {
+    const written = formAttr(serverFn('a"b'));
+    expect(written).not.toContain('"b"');
+    expect(written).toContain("a%22b");
+  });
+
+  test("a plain client handler still writes nothing", () => {
+    expect(formAttr(() => undefined)).toBe("");
+    // Not branded: a bare function is client behaviour, and no byte means it.
+    expect(formAttr(Object.assign(() => undefined, { meta: { id: "x" } }))).toBe("");
+  });
+
+  test("a string action is still just an action", () => {
+    expect(formAttr("/search")).toBe(' action="/search"');
   });
 });

@@ -8,7 +8,10 @@
  * Each is cheap to close and expensive to retrofit.
  */
 
-import { InputError, RPC_PREFIX, type ServerFn, isServerFn } from "./index.ts";
+import { decodeWire, encodeWire } from "@barqjs/server/codec";
+
+import { withRequest } from "./context.ts";
+import { DATA_SUFFIX, InputError, RPC_PREFIX, type ServerFn, isServerFn } from "./index.ts";
 
 /**
  * id → function, and the ONLY way an id becomes callable.
@@ -101,27 +104,85 @@ export async function handleServerFn(
   }
   if (!originAllowed(request, options)) return new Response("forbidden", { status: 403 });
 
-  const id = decodeURIComponent(url.pathname.slice(RPC_PREFIX.length));
+  // The URL decides the shape, so a form and an RPC call cannot be confused for
+  // one another by a header either of them can set.
+  const path = url.pathname.slice(RPC_PREFIX.length);
+  const isData = path.endsWith(DATA_SUFFIX);
+  const id = decodeURIComponent(isData ? path.slice(0, -DATA_SUFFIX.length) : path);
+
   const fn = REGISTRY.get(id);
   if (fn === undefined) return new Response("not found", { status: 404 });
 
   let input: unknown;
-  try {
-    const body = (await request.json()) as { input?: unknown };
-    input = body?.input;
-  } catch {
-    return new Response("bad request", { status: 400 });
+  if (isData && !isFormBody(request)) {
+    try {
+      const body = (await request.json()) as { input?: unknown };
+      input = body?.input === undefined ? undefined : decodeWire(body.input);
+    } catch {
+      return new Response("bad request", { status: 400 });
+    }
+  } else {
+    try {
+      input = await request.formData();
+    } catch {
+      return new Response("bad request", { status: 400 });
+    }
   }
 
   try {
-    return Response.json(await fn(input));
+    const result = await withRequest(request, () => fn(input));
+    if (isData) return Response.json(encodeWire(result));
+    // A handler may answer a form submission itself — a redirect elsewhere, a
+    // rendered page. Otherwise the browser goes back where it came from, which
+    // is what makes the no-JS path a round trip rather than a dead end.
+    if (result instanceof Response) return result;
+    return seeOther(request);
   } catch (error) {
+    // A middleware rejects by throwing a Response — `throw new Response("", {
+    // status: 401 })` — and it is returned as it stands.
+    if (error instanceof Response) return error;
     // A validation failure is the caller's fault and says so. Anything else is
     // reported without a body: a handler's message can name a table, a column
     // or a path, and none of that is the caller's business.
     if (error instanceof InputError) {
-      return Response.json({ error: "invalid input" }, { status: 400 });
+      return isData
+        ? Response.json({ error: "invalid input" }, { status: 400 })
+        : new Response("invalid input", { status: 400 });
     }
     throw error;
   }
+}
+
+/**
+ * Whether the body is a form rather than a value. The enhanced path posts
+ * `FormData` to the data channel so that a handler sees the SAME input type
+ * whether or not JS ran.
+ */
+function isFormBody(request: Request): boolean {
+  const type = request.headers.get("content-type") ?? "";
+  return type.includes("multipart/form-data") || type.includes("application/x-www-form-urlencoded");
+}
+
+/**
+ * Back where the form was. 303 and not 302, so the browser re-issues as GET and
+ * a reload does not repost — the POST/redirect/GET the no-JS path exists for.
+ *
+ * `Referer` is used only as a destination and never as a decision. SvelteKit's
+ * docs make the distinction for the same reason: values derived from the
+ * request are fine to navigate to and never fine to authorize with.
+ */
+function seeOther(request: Request): Response {
+  const referer = request.headers.get("referer");
+  const origin = new URL(request.url).origin;
+  let location = "/";
+  if (referer !== null) {
+    try {
+      const target = new URL(referer);
+      // An off-site Referer would make this an open redirect.
+      if (target.origin === origin) location = target.pathname + target.search;
+    } catch {
+      // A malformed Referer is not a destination.
+    }
+  }
+  return new Response(null, { status: 303, headers: { location } });
 }

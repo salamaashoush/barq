@@ -453,19 +453,40 @@ const ATTR_INTERCEPTED: Record<string, 1> = {
  * read like one call with two implementations, which is what `SHARED_ABI` means
  * and this is not.
  *
- * A URL is written. A HANDLER is not: it is client behaviour and there is no
- * byte on the wire that means it. Stated rather than hidden, because it has a
- * consequence — a form submitted before hydration performs the browser's own
- * default submit, which for a form with no `action` is a same-document GET.
- * Progressive enhancement would need a server-generated endpoint per action,
- * which is a routing feature and not this file's.
+ * A URL is written. So is a SERVER FUNCTION, which has one: `@barqjs/start`
+ * mounts each exported server function at a path derived from its id, and that
+ * path exists before the page is rendered. This is what closes the progressive
+ * enhancement hole the previous note here described as "a routing feature and
+ * not this file's" — it needed a server-generated endpoint per action, and
+ * there is now one.
  *
- * What this does buy is the thing the DOM half exists for: the function is
- * never `toString`ed into the target. Before M10 it reached `attr` and the
- * server wrote the source text of the action as the form's URL.
+ * `method="post"` rides along because the endpoint refuses anything else: a
+ * form defaults to GET, and a GET-invocable mutation is CVE-2026-39371. The two
+ * attributes are one decision, which is why one function writes both — the same
+ * shape SvelteKit's `{...form}` spread has.
+ *
+ * The brand is read through `Symbol.for` rather than imported. `@barqjs/start`
+ * depends on this package, so importing it back would be a cycle; the symbol is
+ * a public name and reading it here is an independent reading rather than a
+ * dependency.
+ *
+ * An ordinary client HANDLER still writes nothing: it is client behaviour and
+ * no byte on the wire means it. What both cases buy is the thing the DOM half
+ * exists for — the function is never `toString`ed into the target. Before M10
+ * it reached `attr` and the server wrote the action's source text as the URL.
  */
+const SERVER_FN_BRAND = Symbol.for("barq.server-fn");
+
+/** Kept beside the brand: `@barqjs/start`'s `RPC_PREFIX`, read the same way. */
+const RPC_PREFIX = "/_barq/fn/";
+
 export function formAttr(value: unknown): string {
-  return typeof value === "function" ? "" : attr("action", value);
+  if (typeof value !== "function") return attr("action", value);
+  const fn = value as unknown as Record<symbol, unknown> & { meta?: { id?: unknown } };
+  if (fn[SERVER_FN_BRAND] !== true) return "";
+  const id = fn.meta?.id;
+  if (typeof id !== "string" || id === "") return "";
+  return ` action="${escapeAttribute(RPC_PREFIX + encodeURIComponent(id))}" method="post"`;
 }
 
 export function attrLit(name: string, value: unknown): string {
