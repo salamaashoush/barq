@@ -486,7 +486,12 @@ an endpoint, and that failure is a mutation quietly answered with HTML.
 
 Gate: 36 pass in `@barqjs/start`, six of them through a real Vite dev server on a real socket.
 
-**P5 — `<form action>` progressive enhancement.** Needs render-time URL minting, so it waits on the router.
+**P5 — the router.** Handed to a fresh session; the brief is `DESIGN-ROUTER.md`, which carries the verified
+state, the constraints, what to take from `packages/extra/src/router.ts` and what to replace, and the four
+decisions to take early. A new `@barqjs/router` package — the existing one stays as the no-build option.
+
+**~~P5 — `<form action>` progressive enhancement.~~ Done early, in P3.** It was never blocked: it needed a
+server-generated endpoint per action, and server functions are one. Needs render-time URL minting, so it waits on the router.
 
 **P6 — route-action manifest** (§6). Needs the router.
 
