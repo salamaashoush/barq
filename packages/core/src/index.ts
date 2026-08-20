@@ -120,6 +120,8 @@ export type {
 } from "./config.ts";
 
 // Store - fine-grained nested reactivity
+export { isClient, isServer } from "./env.ts";
+
 export { store, produce, reconcile, unwrap, snapshot, projection, deep } from "./store.ts";
 export type { Part, StorePathRange } from "./store.ts";
 

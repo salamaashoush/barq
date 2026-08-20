@@ -65,6 +65,7 @@
         "csstype": "^3.2.3",
       },
       "devDependencies": {
+        "@barqjs/compiler-rs": "workspace:*",
         "@biomejs/biome": "^2.5.9",
         "@happy-dom/global-registrator": "^20.11.6",
         "@types/bun": "^1.4.0",

@@ -42,10 +42,22 @@ Recorded so it is not relitigated. Each row was killed by evidence, not by prefe
 | Two emits from one parse is cheaper than a double parse | Moot, and the cost argument is forbidden. Vite already calls `transform()` twice per module — `packages/compiler/src/vite.ts:332`: *"`ssr` is per-module, not per-plugin: Vite transforms the same file twice."* And CODESIGN §5.4: *"Compile time is the cheapest resource in this system by roughly 40x and must not be treated as a constraint on the design."* |
 | `<form action={fn}>` already gives progressive enhancement | It did not, and the reason it now does is not the reason the claim gave. `ssr.ts:449` said PE *"would need a server-generated endpoint per action, which is a routing feature and not this file's"* — true until server functions existed. `@barqjs/start` mounts each one at `/_barq/fn/<id>`, which exists before the page renders, so **no router is involved**. `formAttr` writes that URL and `method="post"` together. The claim was wrong when made and the blocker it named was removed by P3, not by P5. |
 
-One more, parked rather than dead: **folding `isServer` to a constant** breaks H5's address stability
-(`SEMANTICS.md:2978` — `-O0` addresses a superset of `-Ox`) and would make the cross-backend address diff
-invalid. It needs a decision (fold only outside JSX, or accept a per-env address space) before it is
-attempted.
+One more, and the parking reason turned out to be wrong: **folding `isServer`**. The concern was real —
+`SEMANTICS.md` H5 makes the address table "stable for one build's flags, not across them", so a folded
+`isServer` would move the same source's addresses between the client and server builds and §3.11's
+diffable-address-set claim would stop being checkable.
+
+But the risk only exists if the COMPILER is asked to fold it, and nothing asks. `isServer` ships as an ordinary
+exported constant in `env.ts`, and `bind.rs` proves constants only for a local `const` with a literal
+initialiser — an imported binding is never one, so the fold pass has nothing to fold. The property holds by
+construction rather than by a rule someone has to remember, and a test asserts it on the compiler's actual
+output for both backends rather than on the reasoning.
+
+What it costs: a client bundle keeps both arms of `isServer ? a : b`. That is the right trade for user code,
+and it is **not** how server code is kept out of a browser bundle — §3's synthesis is, by never putting the
+module in the client graph at all. Replacing this with a build-time `define` would reintroduce the H5 problem
+exactly, because `define` rewrites source text before the compiler reads it, so the compiler would then see a
+literal inside JSX. That is the decision to take first if it is ever wanted.
 
 ---
 
