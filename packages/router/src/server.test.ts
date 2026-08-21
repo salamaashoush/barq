@@ -11,7 +11,7 @@ import { createServerFn, getRequest } from "@barqjs/start";
 import { computed } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { createPageHandler, notFound, redirect, renderRoutes } from "./server.ts";
+import { createPageHandler, notFound, preloadTags, redirect, renderRoutes } from "./server.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -535,5 +535,72 @@ describe("errorComponent and notFoundComponent", () => {
     // The layout itself still rendered — one depth failing does not take the
     // chain above it.
     expect(body).toContain("<div>");
+  });
+});
+
+/**
+ * §3.5 — `<link rel="modulepreload">` for the matched chain.
+ *
+ * The channel that stops a code-split route flashing its `pending` fallback on
+ * first hydration. `lazy()` cannot report its own module URL — the specifier
+ * lives inside its closure and the returned function carries only `preload` —
+ * so the map comes from the build, keyed by the `src` the compiler now emits.
+ */
+describe("modulepreload for the matched chain", () => {
+  const assets = {
+    layout: ["/assets/layout-a1.js", "/assets/shared-b2.js"],
+    leaf: ["/assets/leaf-c3.js", "/assets/shared-b2.js"],
+  };
+  const nested = [
+    {
+      id: "layout",
+      path: "/app",
+      component: (_s: unknown, props: { children: unknown }) =>
+        ssrHtml(`<div>${esc((props.children as () => unknown)())}</div>`),
+      children: [{ id: "leaf", path: "$id", component: () => ssrHtml("<main>x</main>") }],
+    },
+  ] as never;
+
+  test("outermost first, deduplicated, and escaped", () => {
+    const chain = [
+      { id: "layout", fullPath: "/app", definition: {} },
+      { id: "leaf", fullPath: "/app/$id", definition: {} },
+    ] as never;
+    expect(preloadTags(chain, assets)).toBe(
+      '<link rel="modulepreload" href="/assets/layout-a1.js">' +
+        '<link rel="modulepreload" href="/assets/shared-b2.js">' +
+        '<link rel="modulepreload" href="/assets/leaf-c3.js">',
+    );
+    // A shared chunk appears in two routes' lists by construction and is
+    // emitted once.
+    expect(preloadTags(chain, assets).match(/shared-b2/g)).toHaveLength(1);
+  });
+
+  test("no map means no tags, rather than a broken href", () => {
+    expect(preloadTags([{ id: "layout" }] as never, undefined)).toBe("");
+  });
+
+  test("an attribute cannot be escaped out of", () => {
+    expect(preloadTags([{ id: "x" }] as never, { x: ['" onload="alert(1)'] })).toBe(
+      '<link rel="modulepreload" href="&quot; onload=&quot;alert(1)">',
+    );
+  });
+
+  test("the tags reach the document BEFORE the body, in both modes", async () => {
+    for (const stream of [false, true]) {
+      const handler = createPageHandler({
+        routes: nested,
+        stream,
+        routeAssets: assets,
+        app: (state) => renderRoutes(state),
+        document: ({ body, seed, preload }) =>
+          `<!doctype html><html><head>${preload}</head><body>${body}${seed}</body></html>`,
+      });
+      const text = await (await handler(get("/app/7"))).text();
+      expect(text).toContain('<link rel="modulepreload" href="/assets/leaf-c3.js">');
+      // Ahead of the markup that needs them, which is the only moment a
+      // preload is worth anything.
+      expect(text.indexOf("modulepreload")).toBeLessThan(text.indexOf("<main>"));
+    }
   });
 });

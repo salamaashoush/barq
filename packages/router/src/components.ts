@@ -254,9 +254,25 @@ function RouterImpl(scope: Scope | null, props: Incoming<RouterProps>): unknown 
   );
 }
 
+/**
+ * When a link warms the cache for where it points.
+ *
+ * `"intent"` is hover, focus or touch; `"viewport"` is an `IntersectionObserver`;
+ * `"render"` fires once when the link is built. `false` is the default, because
+ * a preload is a request the user did not ask for.
+ */
+export type PreloadStrategy = "intent" | "viewport" | "render" | false;
+
+/** Hover before it counts as intent. TanStack's default, and it is a good one. */
+const PRELOAD_DELAY = 50;
+/** How early a viewport link counts as visible. TanStack's `rootMargin`. */
+const VIEWPORT_MARGIN = "100px";
+
 export interface LinkProps {
   /** A path, or a route id when `params` is given. */
   readonly to: string;
+  /** Warm the cache for this link's target. Default `false`. */
+  readonly preload?: PreloadStrategy;
   readonly params?: Record<string, string>;
   readonly search?: string | Record<string, string>;
   readonly replace?: boolean;
@@ -311,6 +327,68 @@ function anchorElement(
   bindProp(scope, element, setAttr, "href", target);
   if (props.class !== undefined) {
     bindProp(scope, element, setClass, "class", () => readSlot(props.class, "Link.class"));
+  }
+
+  // The strategy is read WHEN A LISTENER FIRES, so a link whose prop moves acts
+  // on what it now says — but the OBSERVER is constructed only for `viewport`.
+  // The old router built an `IntersectionObserver` for every link regardless,
+  // checked the strategy inside the callback, and therefore never disconnected
+  // one for a link that was not `viewport`: a list of 500 default links kept 500
+  // live observers doing layout work for nothing.
+  const strategy = (): PreloadStrategy =>
+    props.preload === undefined
+      ? false
+      : ((readSlot(props.preload, "Link.preload") as PreloadStrategy) ?? false);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const warm = (): void => {
+    const to = target();
+    if (leavesTheApp(to)) return;
+    void state.preload(to);
+  };
+  const cancel = (): void => {
+    clearTimeout(timer);
+    timer = undefined;
+  };
+  // Cleared on UNMOUNT as well as on leave. The old router cleared only on
+  // `mouseleave`, so unmounting inside the hover window still fired a preload
+  // against a disposed scope.
+  onCleanup(cancel);
+
+  const onIntent = (): void => {
+    if (strategy() !== "intent" || timer !== undefined) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      warm();
+    }, PRELOAD_DELAY);
+  };
+
+  listen(scope, element, "mouseenter", onIntent);
+  listen(scope, element, "mouseleave", cancel);
+  // Keyboard and touch users preloaded not at all in the old router, which had
+  // `mouseenter` and nothing else. A touch fires immediately: there is no hover
+  // before a tap, so a delay is just latency.
+  listen(scope, element, "focusin", onIntent);
+  listen(scope, element, "blur", cancel);
+  listen(scope, element, "touchstart", () => {
+    if (strategy() !== "intent") return;
+    cancel();
+    warm();
+  });
+
+  if (untrack(strategy) === "render") {
+    warm();
+  } else if (untrack(strategy) === "viewport" && typeof IntersectionObserver !== "undefined") {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[entries.length - 1]?.isIntersecting) return;
+        observer.disconnect();
+        warm();
+      },
+      { rootMargin: VIEWPORT_MARGIN },
+    );
+    observer.observe(element);
+    onCleanup(() => observer.disconnect());
   }
 
   listen(scope, element, "click", ((event: MouseEvent) => {

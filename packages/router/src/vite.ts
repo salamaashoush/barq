@@ -47,6 +47,21 @@ export {
 export const ROUTES_ID = "virtual:barq-routes";
 const RESOLVED_ROUTES_ID = `\0${ROUTES_ID}`;
 
+/**
+ * Route id -> the client assets a page must preload to render that route.
+ *
+ * Resolved in every environment, like the route table and unlike the
+ * server-function manifest: what it imports is nothing at all — it is a plain
+ * object literal — so there is no graph to drag anywhere.
+ *
+ * EMPTY in dev, and that is correct rather than unfinished. There are no chunks
+ * in dev; Vite serves modules, and the browser's own module graph does the work
+ * a preload tag would. The map is a `vite build` artefact for the same reason
+ * the route-action manifest is.
+ */
+export const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
+const RESOLVED_ROUTE_ASSETS_ID = `\0${ROUTE_ASSETS_ID}`;
+
 /** What `compiler-rs` answers with. */
 export interface RouteTree {
   /** The module `virtual:barq-routes` resolves to. */
@@ -126,6 +141,8 @@ export interface BarqRouterOptions {
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const routesDir = options.routesDir ?? "src/routes";
   let root = process.cwd();
+  let base = "/";
+  let routeAssets: Record<string, string[]> = {};
   let tree: RouteTree = { module: "", types: "", files: [], patterns: [], entries: [] };
 
   const rescan = (): void => {
@@ -201,14 +218,49 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
 
     configResolved(config) {
       root = config.root;
+      base = config.base ?? "/";
       rescan();
     },
 
+    /**
+     * Route id -> chunk plus its static imports, read off the real bundle.
+     *
+     * `chunk.imports` is Rollup's already-flattened static import set for the
+     * chunk, so the transitive closure is not this plugin's to compute. A route
+     * is matched to its chunk through `facadeModuleId`/`moduleIds` and the
+     * compiler's `src`, which is the whole reason that field exists.
+     */
+    generateBundle(_output, bundle) {
+      if ((this as { environment?: { name?: string } }).environment?.name === "ssr") return;
+      const byFile = new Map<string, string[]>();
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== "chunk") continue;
+        const assets = [chunk.fileName, ...chunk.imports];
+        for (const moduleId of Object.keys(chunk.modules)) {
+          byFile.set(moduleId, assets);
+        }
+      }
+      const next: Record<string, string[]> = {};
+      for (const entry of tree.entries) {
+        for (const [moduleId, assets] of byFile) {
+          if (moduleId.endsWith(entry.file)) {
+            next[entry.id] = assets.map((file) => `${base}${file}`);
+            break;
+          }
+        }
+      }
+      routeAssets = next;
+    },
+
     resolveId(id) {
-      return id === ROUTES_ID ? RESOLVED_ROUTES_ID : null;
+      if (id === ROUTES_ID) return RESOLVED_ROUTES_ID;
+      return id === ROUTE_ASSETS_ID ? RESOLVED_ROUTE_ASSETS_ID : null;
     },
 
     load(id) {
+      if (id === RESOLVED_ROUTE_ASSETS_ID) {
+        return `export const routeAssets = ${JSON.stringify(routeAssets)};\nexport default routeAssets;\n`;
+      }
       if (id !== RESOLVED_ROUTES_ID) return null;
       // Watched here rather than in `configResolved`, so the dependency is
       // recorded against the module that actually uses it.

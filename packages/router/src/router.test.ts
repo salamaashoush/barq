@@ -1296,6 +1296,191 @@ describe("Link", () => {
   });
 });
 
+describe("Link preload", () => {
+  /**
+   * Eight bugs the deleted `packages/extra/src/router.ts` had here, each one
+   * confirmed against `git show 1991691:` before this was written. Every test
+   * below is one of them.
+   */
+  const table = (calls: string[]): AnyRouteDefinition[] =>
+    [
+      { path: "/", component: page("home") },
+      {
+        path: "/users/$id",
+        loader: async ({ params }: { params: { id: string } }) => {
+          calls.push(params.id);
+          await tick();
+          return `user ${params.id}`;
+        },
+        pending: page("l"),
+        component: page("user"),
+      },
+      {
+        path: "/list",
+        loader: async ({ search }: { search: URLSearchParams }) => {
+          calls.push(`page=${search.get("page") ?? "?"}`);
+          await tick();
+          return "list";
+        },
+        pending: page("l"),
+        component: page("list"),
+      },
+    ] as never;
+
+  /** The link is rendered as the home route's component, so it is UNDER the provider. */
+  const link = (
+    props: Record<string, unknown>,
+    calls: string[],
+  ): { state: RouterState; element: HTMLElement; dispose: () => void } => {
+    const history = memoryHistory({ initial: ["/"] });
+    const routes = table(calls);
+    (routes[0] as { component: unknown }).component = (scope: Scope | null) =>
+      (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
+        to: () => props.to,
+        preload: () => props.preload,
+        children: () => "go",
+      });
+    const state = createRouter({ routes, history });
+    const { host, dispose } = mountState(state);
+    return { state, element: host.querySelector("a") as HTMLElement, dispose };
+  };
+
+  test("preload is OFF by default: a hover fetches nothing", async () => {
+    const calls: string[] = [];
+    const { element, dispose } = link({ to: "/users/7" }, calls);
+    element.dispatchEvent(new Event("mouseenter"));
+    await tick();
+    await tick();
+    expect(calls).toEqual([]);
+    dispose();
+  });
+
+  test("a path that fails to match is not poisoned for the router's lifetime", async () => {
+    // The old router added the path to a `prefetched` Set BEFORE testing
+    // whether it matched, and never evicted — so one hover over a broken link
+    // disabled preload for it forever.
+    const calls: string[] = [];
+    const { state, dispose } = link({ to: "/nope" }, calls);
+    await state.preload("/nope");
+    await state.preload("/users/7");
+    await settle();
+    expect(calls).toEqual(["7"]);
+    dispose();
+  });
+
+  test("preload uses the SAME search as a navigation would", async () => {
+    // The old router preloaded with an EMPTY `URLSearchParams` while its cache
+    // key included the search, so every slot it filled was one no navigation
+    // could read — and the loader saw the wrong query too.
+    const calls: string[] = [];
+    const { state, dispose } = link({ to: "/list?page=2" }, calls);
+    await state.preload("/list?page=2");
+    await settle();
+    expect(calls).toEqual(["page=2"]);
+    dispose();
+  });
+
+  test("a preloaded route is a cache HIT when the navigation arrives", async () => {
+    const calls: string[] = [];
+    const { state, dispose } = link({ to: "/users/7", preload: "render" }, calls);
+    await state.preload("/users/7");
+    await settle();
+    expect(calls).toEqual(["7"]);
+
+    // `preloadStaleTime` defaults to 30s, so arriving immediately reuses it.
+    await state.navigate("/users/7");
+    flush();
+    await settle();
+    flush();
+    expect(calls).toEqual(["7"]);
+    dispose();
+  });
+
+  test("a query on the href still matches: it is resolved before the matcher sees it", async () => {
+    // The old router handed the raw href to the matcher, so `/about?x=1`
+    // matched nothing and `/users/7?tab=a` matched with `id = "7?tab=a"`.
+    const calls: string[] = [];
+    const { state, dispose } = link({ to: "/users/7?tab=a" }, calls);
+    await state.preload("/users/7?tab=a");
+    await settle();
+    expect(calls).toEqual(["7"]);
+    dispose();
+  });
+
+  test("an IntersectionObserver is built for `viewport`, for nothing else, and warms on sight", async () => {
+    const seen: string[] = [];
+    let fire: ((entries: { isIntersecting: boolean }[]) => void) | null = null;
+    let disconnected = 0;
+    const real = globalThis.IntersectionObserver;
+    class Spy {
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+        seen.push("constructed");
+        fire = callback;
+      }
+      observe(): void {}
+      disconnect(): void {
+        disconnected++;
+      }
+    }
+    (globalThis as { IntersectionObserver: unknown }).IntersectionObserver = Spy;
+    try {
+      const calls: string[] = [];
+      const off = link({ to: "/users/7" }, calls);
+      expect(seen).toEqual([]);
+      off.dispose();
+
+      const on = link({ to: "/users/7", preload: "viewport" }, calls);
+      expect(seen).toEqual(["constructed"]);
+
+      // Not visible yet: nothing is warmed, and the observer stays.
+      (fire as unknown as (e: { isIntersecting: boolean }[]) => void)([{ isIntersecting: false }]);
+      await tick();
+      expect(calls).toEqual([]);
+      expect(disconnected).toBe(0);
+
+      // Visible: warmed once, and it stops watching.
+      (fire as unknown as (e: { isIntersecting: boolean }[]) => void)([{ isIntersecting: true }]);
+      await tick();
+      await settle();
+      expect(calls).toEqual(["7"]);
+      expect(disconnected).toBe(1);
+      on.dispose();
+    } finally {
+      (globalThis as { IntersectionObserver: unknown }).IntersectionObserver = real;
+    }
+  });
+
+  test("focus counts as intent, so a keyboard user preloads too", async () => {
+    const calls: string[] = [];
+    const { element, dispose } = link({ to: "/users/7", preload: "intent" }, calls);
+    element.dispatchEvent(new Event("focusin"));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await settle();
+    expect(calls).toEqual(["7"]);
+    dispose();
+  });
+
+  test("leaving before the delay cancels it", async () => {
+    const calls: string[] = [];
+    const { element, dispose } = link({ to: "/users/7", preload: "intent" }, calls);
+    element.dispatchEvent(new Event("mouseenter"));
+    element.dispatchEvent(new Event("mouseleave"));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(calls).toEqual([]);
+    dispose();
+  });
+
+  test("unmounting inside the hover window fires nothing", async () => {
+    // The old router cleared its timer on `mouseleave` only.
+    const calls: string[] = [];
+    const { element, dispose } = link({ to: "/users/7", preload: "intent" }, calls);
+    element.dispatchEvent(new Event("mouseenter"));
+    dispose();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("NavLink", () => {
   test("is active on a segment prefix, and `end` makes it exact", () => {
     const history = memoryHistory({ initial: ["/user/7"] });

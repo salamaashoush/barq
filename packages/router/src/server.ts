@@ -133,6 +133,20 @@ export interface DocumentParts {
   readonly seed: string;
   /** The matched chain, for a title or meta tags. `null` when nothing matched. */
   readonly chain: readonly Route[] | null;
+  /**
+   * `<link rel="modulepreload">` tags for the matched chain, ready to place in
+   * the head.
+   *
+   * Empty unless `routeAssets` was supplied. This is the channel that stops a
+   * code-split route flashing its `pending` fallback on first hydration: without
+   * it the browser does not learn the route's chunk exists until the entry
+   * module has parsed and asked for it, which is one round trip after the
+   * markup it is already showing.
+   *
+   * A STRING rather than a list, because the document function places it and
+   * the escaping is this module's job, not the application's.
+   */
+  readonly preload: string;
   readonly url: URL;
 }
 
@@ -155,6 +169,15 @@ export interface PageHandlerOptions {
   readonly document: (parts: DocumentParts) => string;
   readonly beforeEach?: readonly Guard[];
   readonly base?: string;
+  /**
+   * Route id -> the client assets that route needs, from
+   * `virtual:barq-route-assets`.
+   *
+   * The build produces it; nothing at runtime can. `lazy()` cannot report its
+   * own module URL, so without this map the matched chain's chunks are
+   * unknowable to the server.
+   */
+  readonly routeAssets?: Readonly<Record<string, readonly string[]>>;
   /** Streamed by default. A crawler or a test may want the whole thing at once. */
   readonly stream?: boolean;
   readonly nonce?: string;
@@ -281,6 +304,7 @@ export function createPageHandler(
                 body: page.html,
                 seed: page.script,
                 chain: match?.route.chain ?? null,
+                preload: preloadTags(match?.route.chain ?? null, options.routeAssets),
                 url,
               }),
               // A rendered 404 rather than a bare one. In STREAM mode the status
@@ -360,6 +384,40 @@ function redirectScript(answer: Response | null): string {
   );
 }
 
+/**
+ * The modulepreload tags for one matched chain, deduplicated in chain order.
+ *
+ * Outermost first, because that is the order the browser will need them in: a
+ * layout's chunk is parsed before the route it wraps. Duplicates are dropped
+ * rather than emitted twice — a shared chunk appears in several routes' asset
+ * lists by construction.
+ */
+export function preloadTags(
+  chain: readonly Route[] | null,
+  assets: Readonly<Record<string, readonly string[]>> | undefined,
+): string {
+  if (chain === null || assets === undefined) return "";
+  const seen = new Set<string>();
+  let out = "";
+  for (const route of chain) {
+    for (const file of assets[route.id] ?? []) {
+      if (seen.has(file)) continue;
+      seen.add(file);
+      out += `<link rel="modulepreload" href="${escapeAttribute(file)}">`;
+    }
+  }
+  return out;
+}
+
+/** Enough for a URL in an attribute: the four that can end it or open a tag. */
+function escapeAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 function html(body: string, status: number): Response {
   return new Response(body, {
     status,
@@ -386,7 +444,15 @@ function wrapStream(
   /** What a loader threw, read AFTER the render — see `redirectScript`. */
   answer: () => Response | null,
 ): ReadableStream<Uint8Array> {
-  const document = options.document({ body: BODY_MARKER, seed: "", chain, url });
+  const document = options.document({
+    body: BODY_MARKER,
+    seed: "",
+    chain,
+    // Before the shell flushes, which is the only moment it is worth anything:
+    // the tags have to reach the browser ahead of the markup that needs them.
+    preload: preloadTags(chain, options.routeAssets),
+    url,
+  });
   const cut = document.indexOf(BODY_MARKER);
   if (cut === -1) {
     throw new Error(

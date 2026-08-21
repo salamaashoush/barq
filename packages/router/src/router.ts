@@ -297,6 +297,20 @@ export interface RouterState {
    * theirs has exactly one call site too.
    */
   buildSearch(to: string): string;
+  /**
+   * Warm the cache for a path the user has not gone to yet.
+   *
+   * Runs `beforeLoad` — the loader is handed the context its ancestors build,
+   * so skipping it would fetch with a different context than the navigation
+   * will. TanStack's preload runs its `beforeLoad`s too.
+   *
+   * Nothing is remembered about a FAILURE. The old router kept a `prefetched`
+   * Set, filled it BEFORE testing whether the path matched, and never evicted
+   * from it — so one hover over a broken link disabled prefetch for that path
+   * for the router's lifetime, and after the cache TTL expired the whole app
+   * stopped prefetching. The entry cache is the dedupe here, and it expires.
+   */
+  preload(to: string): Promise<void>;
   /** Drop every cached loader result and re-read the current location. */
   invalidate(): void;
   dispose(): void;
@@ -421,6 +435,14 @@ export function createRouter(config: RouterConfig): RouterState {
     seedKey: string,
     deps: unknown,
     cause: LoadCause,
+    /**
+     * The context this entry's loader is handed.
+     *
+     * A PRELOAD's target chain is not the committed one, so `contextAt` — which
+     * reads the committed chain — would hand it the context of the page the
+     * user is still on. Passing it explicitly is the only correct answer.
+     */
+    forContext?: Record<string, unknown>,
   ): Entry => {
     const loader = route.definition.loader;
     let entry!: Entry;
@@ -461,7 +483,7 @@ export function createRouter(config: RouterConfig): RouterState {
                         : undefined) as never,
                       deps: deps as never,
                       cause: entry.cause,
-                      context: contextAt(route),
+                      context: forContext ?? contextAt(route),
                       signal: own.signal,
                     });
                     if (controller === own) controller = null;
@@ -964,6 +986,53 @@ export function createRouter(config: RouterConfig): RouterState {
     },
     runBeforeLoad,
     prime: primeChain,
+    async preload(to) {
+      if (leavesTheApp(to)) return;
+      // RESOLVED, parsed and base-stripped, exactly as `navigate` does it. The
+      // old router handed the raw href straight to the matcher, so
+      // `/about?x=1` matched nothing and `/users/7?tab=a` matched with
+      // `id = "7?tab=a"` — a garbage param, cached under a key no navigation
+      // would ever read.
+      const intended = buildSearch(to);
+      const cut = intended.search(/[?#]/);
+      const pathPart = cut === -1 ? intended : intended.slice(0, cut);
+      const rest = cut === -1 ? "" : intended.slice(cut);
+      const resolved = resolvePath(
+        pathPart === "" ? untrack(location).pathname : pathPart,
+        untrack(location).pathname,
+      );
+      const target = parseLocation(resolved + rest, null);
+      const candidate = matcher.match(target.pathname);
+      if (candidate === null) return;
+
+      let produced: readonly Record<string, unknown>[];
+      try {
+        produced = await runBeforeLoad(target, candidate);
+      } catch {
+        // A preload that would have been refused simply does not warm anything.
+        return;
+      }
+
+      // The SAME key path a navigation takes, including the search — the old
+      // router preloaded with an EMPTY search while its cache key included one,
+      // so every slot it filled was one no navigation could read, and the
+      // loader was handed the wrong query as well.
+      const forSearch = new URLSearchParams(target.search);
+      const forParams = candidate.params;
+      for (const [depth, route] of candidate.route.chain.entries()) {
+        if (route.definition.loader === undefined) continue;
+        const { seedKey, deps } = keyOf(route, forParams, forSearch);
+        const existing = entries.get(seedKey);
+        const entry =
+          existing ??
+          mint(route, forParams, forSearch, seedKey, deps, "preload", produced[depth] ?? {});
+        try {
+          entry.cell();
+        } catch {
+          /* pending or failed; both are states the cache now holds */
+        }
+      }
+    },
     /**
      * Ask every cached loader again.
      *

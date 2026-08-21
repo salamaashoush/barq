@@ -88,6 +88,7 @@ export {
 export {
   type LinkProps,
   type NavLinkProps,
+  type PreloadStrategy,
   type RedirectProps,
   type RouterProps,
   Link,
