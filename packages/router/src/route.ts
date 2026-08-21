@@ -236,6 +236,22 @@ export interface RouteDefinition<
   /** Shown while this route's loader is unsettled. Without one the boundary shows nothing. */
   readonly pending?: RouteComponent<never, never>;
   /**
+   * Wait this long before showing `pending`. Default 0.
+   *
+   * A loader that answers in 40 ms does not want a skeleton — the flash of one
+   * is worse than the wait. TanStack's default is 1000; barq's is 0, so nothing
+   * is delayed unless it is asked for.
+   */
+  readonly pendingMs?: number;
+  /**
+   * Once `pending` IS showing, keep it at least this long. Default 0.
+   *
+   * The other half of the same problem: a skeleton that appears and vanishes
+   * two frames later reads as a glitch. Only ever applies after `pendingMs` has
+   * elapsed, so a fast loader never triggers it.
+   */
+  readonly pendingMinMs?: number;
+  /**
    * Shown when this route's loader — or anything it renders — throws.
    *
    * One error boundary per route depth, and it is not decoration: a loader that

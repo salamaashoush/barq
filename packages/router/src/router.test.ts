@@ -58,6 +58,23 @@ function mountState(state: RouterState): { host: HTMLElement; dispose: () => voi
   return { host, dispose };
 }
 
+/**
+ * What a user would SEE, which `textContent` is not.
+ *
+ * `textContent` includes a subtree hidden with `display: none`, and `pendingMs`
+ * hides its fallback rather than removing it — the boundary places its output
+ * once, so nodes added later fall outside the range it tears down.
+ */
+function visibleText(node: Node): string {
+  if (node.nodeType === 3) return node.textContent ?? "";
+  if (node.nodeType !== 1) return "";
+  const element = node as HTMLElement;
+  if (element.style.display === "none") return "";
+  let out = "";
+  for (const child of element.childNodes) out += visibleText(child);
+  return out;
+}
+
 const text = (value: string) => (): Node => document.createTextNode(value);
 
 const page =
@@ -1795,6 +1812,115 @@ describe("the smaller surface", () => {
     expect(state.isNavigating()).toBe(false);
     dispose();
   });
+
+  test("pendingMs delays the fallback, so a fast loader never flashes one", async () => {
+    const history = memoryHistory({ initial: ["/x"] });
+    const state = createRouter({
+      routes: [
+        { path: "/x", component: page("x") },
+        {
+          path: "/slow",
+          pendingMs: 40,
+          loader: async () => {
+            await tick();
+            return "data";
+          },
+          pending: page("SKELETON"),
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("span");
+            insert(scope, node, () => String(props.data()));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+
+    await state.navigate("/slow");
+    flush();
+    // Inside the delay: nothing VISIBLE, rather than a skeleton that is about to
+    // vanish.
+    expect(visibleText(host)).toBe("");
+    await settle();
+    flush();
+    expect(visibleText(host)).toBe("data");
+    dispose();
+  });
+
+  test("pendingMs shows the fallback once the delay has elapsed", async () => {
+    const history = memoryHistory({ initial: ["/x"] });
+    const state = createRouter({
+      routes: [
+        { path: "/x", component: page("x") },
+        {
+          path: "/slow",
+          pendingMs: 10,
+          loader: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 60));
+            return "data";
+          },
+          pending: page("SKELETON"),
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("span");
+            insert(scope, node, () => String(props.data()));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+
+    await state.navigate("/slow");
+    flush();
+    expect(visibleText(host)).toBe("");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    flush();
+    expect(visibleText(host)).toBe("SKELETON");
+    await settle();
+    flush();
+    expect(visibleText(host)).toBe("data");
+    dispose();
+  });
+
+  test("pendingMinMs keeps a fallback that HAS appeared from vanishing two frames later", async () => {
+    const history = memoryHistory({ initial: ["/x"] });
+    const state = createRouter({
+      routes: [
+        { path: "/x", component: page("x") },
+        {
+          path: "/slow",
+          pendingMs: 5,
+          pendingMinMs: 120,
+          loader: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 15));
+            return "data";
+          },
+          pending: page("SKELETON"),
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("span");
+            insert(scope, node, () => String(props.data()));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+
+    await state.navigate("/slow");
+    flush();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    flush();
+    // The loader settled at ~15 ms; the skeleton appeared at ~5 and is held.
+    expect(visibleText(host)).toBe("SKELETON");
+
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    flush();
+    expect(visibleText(host)).toBe("data");
+    dispose();
+  }, 10_000);
 
   test("a mask shows one url and renders another", async () => {
     // A photo over a feed: the address bar reads `/feed` so closing it is a back

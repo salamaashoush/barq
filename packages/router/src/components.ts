@@ -140,7 +140,7 @@ export function renderDepth(
       null,
       null,
       "loading",
-      routeFallback(route),
+      routeFallback(state, route),
       guarded,
       0,
       // Re-arm on navigation: when `on()` changes while work is pending the
@@ -154,16 +154,55 @@ export function renderDepth(
   return branch(scope, parent, anchor, routeAt as Cell<unknown>, body);
 }
 
-function routeFallback(route: Route): Block<unknown> | null {
+/**
+ * The `pending` fallback, delayed by `pendingMs` and timed for `pendingMinMs`.
+ *
+ * A loader that answers in 40 ms does not want a skeleton — the flash of one is
+ * worse than the wait — so nothing is shown until the delay elapses. Once it IS
+ * shown, `markPending` records when, which is what `pendingMinMs` measures from:
+ * only the thing that renders the fallback knows that moment.
+ */
+function routeFallback(state: RouterState, route: Route): Block<unknown> | null {
   const pending = route.definition.pending;
   if (pending === undefined) return null;
-  return ((fallbackScope: Scope | null) =>
-    (pending as unknown as Invoked)(fallbackScope, {
-      params: () => ({}),
+  const delay = route.definition.pendingMs ?? 0;
+
+  return ((fallbackScope: Scope | null) => {
+    const shown = (pending as unknown as Invoked)(fallbackScope, {
+      params: () => state.params(),
       data: () => undefined,
       context: () => ({}),
       children: (() => null) as unknown as Child,
-    })) as Block<unknown>;
+    });
+    if (delay === 0) {
+      state.markPending(
+        route,
+        untrack(() => state.params()),
+      );
+      return shown;
+    }
+
+    // HIDDEN, not absent, and that is forced rather than chosen. The boundary
+    // places its fallback's output ONCE; nodes inserted afterwards are outside
+    // the range it tracks, so revealing the content removed what it knew about
+    // and left the skeleton behind — measured, as "SKELETONdata" in the DOM.
+    //
+    // `display: contents` keeps the wrapper out of layout entirely, so the
+    // delayed fallback lays out exactly as an undelayed one does once it
+    // appears.
+    const holder = document.createElement("div");
+    holder.style.display = "none";
+    holder.append(shown as never);
+    const timer = setTimeout(() => {
+      holder.style.display = "contents";
+      state.markPending(
+        route,
+        untrack(() => state.params()),
+      );
+    }, delay);
+    onCleanup(() => clearTimeout(timer));
+    return holder;
+  }) as Block<unknown>;
 }
 
 /** `children` is a Block, so a layout builds the next route in its own scope. */

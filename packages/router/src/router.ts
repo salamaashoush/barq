@@ -16,6 +16,7 @@
 
 import {
   type Cell,
+  NotReadyError,
   computed,
   flush,
   latest,
@@ -125,6 +126,16 @@ interface Entry {
   cause: LoadCause;
   /** What `loaderDeps` selected for this entry, so `shouldReload` can see it. */
   readonly deps: unknown;
+  /**
+   * Bumped to make a held read re-evaluate — see `pendingMinMs`.
+   *
+   * A signal rather than a timer the reader owns, because the READ is what has
+   * to notice: the value may have settled while the fallback was still being
+   * held, and nothing else would wake the boundary.
+   */
+  readonly hold: ReturnType<typeof signal<number>>;
+  /** When this entry's `pending` fallback was first shown. `0` if it never was. */
+  shownAt: number;
   /** Whether this entry was born of a preload, which picks the stale budget. */
   preload: boolean;
   /** Aborts the run in flight, if any. */
@@ -304,6 +315,13 @@ export interface RouterState {
   readonly matcher: Matcher<Route>;
   readonly config: RouterConfig;
   readonly history: History;
+  /**
+   * Tell the router this depth's `pending` fallback is on screen.
+   *
+   * `pendingMinMs` needs a start time, and only the thing that RENDERS the
+   * fallback knows when that was.
+   */
+  markPending(route: Route, params: Readonly<Record<string, string>>): void;
   /** The loader cell for one route at one set of params, created once per key. */
   dataFor(
     route: Route,
@@ -623,6 +641,8 @@ export function createRouter(config: RouterConfig): RouterState {
           error: undefined,
           cause,
           deps,
+          hold: signal(0),
+          shownAt: 0,
           preload: cause === "preload",
           abort,
           inFlight: false,
@@ -752,8 +772,26 @@ export function createRouter(config: RouterConfig): RouterState {
    */
   const readerFor = (entry: Entry, blocking: boolean): Cell<unknown> => {
     const mode = entry.route.definition.staleReloadMode ?? "background";
-    if (blocking || mode === "blocking") return entry.cell;
+    const held = (): boolean => {
+      const minimum = entry.route.definition.pendingMinMs ?? 0;
+      if (minimum === 0 || entry.shownAt === 0) return false;
+      // Read the signal so this re-evaluates when the hold expires.
+      entry.hold();
+      const remaining = entry.shownAt + minimum - now();
+      if (remaining <= 0) return false;
+      setTimeout(() => entry.hold.set(untrack(entry.hold) + 1), remaining);
+      return true;
+    };
+    const plain: Cell<unknown> = () => {
+      // A settled value that arrived while the fallback was still being held
+      // keeps throwing until the hold expires, so a skeleton that appeared does
+      // not vanish two frames later.
+      if (held()) throw new NotReadyError({ _flags: 0 });
+      return entry.cell();
+    };
+    if (blocking || mode === "blocking") return plain;
     return () => {
+      if (held()) throw new NotReadyError({ _flags: 0 });
       try {
         return latest(entry.cell);
       } catch (error) {
@@ -1179,6 +1217,11 @@ export function createRouter(config: RouterConfig): RouterState {
       primeChain();
     },
     runBeforeLoad,
+    markPending(route, forParams) {
+      const { seedKey } = keyOf(route, forParams, untrack(search));
+      const entry = entries.get(seedKey);
+      if (entry !== undefined && entry.shownAt === 0) entry.shownAt = now();
+    },
     prime: primeChain,
     block(blocker) {
       blockers.add(blocker);
