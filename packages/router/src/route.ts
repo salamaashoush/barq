@@ -224,11 +224,23 @@ export interface RouteDefinition<
    * scheduled: they run during `navigate()` and loaders run on read, after the
    * commit.
    *
-   * COST, stated: on hydration the client runs these once for the initial
-   * location, duplicating what the server already did. The loader results are
-   * seeded and these are not — TanStack carries them over the wire under a
-   * `__beforeLoadContext` key and barq does not yet. Keep them cheap; anything
-   * expensive belongs in a loader, which IS seeded.
+   * CARRIED ACROSS HYDRATION, so it does NOT run twice on a first page load.
+   * The server's return value travels in the document — `DocumentParts.context`
+   * — and the client merges it instead of calling this again. Only the
+   * `beforeLoad` RETURN travels; the synchronous `context()` beside it re-runs,
+   * because it takes no I/O and re-running it is cheaper than serializing it.
+   * TanStack splits it the same way, as `__beforeLoadContext` under the wire
+   * key `b`.
+   *
+   * The handoff is taken ONCE and only for the url the server rendered, so a
+   * client that has already navigated does not adopt a context built for
+   * somewhere else, and a later navigation runs this for real.
+   *
+   * WHAT IT EXPOSES: the return value reaches the browser. That is very nearly
+   * not a change, because this is isomorphic and already runs in the browser on
+   * every navigation after the first. The delta is the first location, where
+   * the server's run may have read something a browser cannot. Authorization
+   * does not belong here regardless — see `middleware`.
    */
   readonly beforeLoad?: (
     options: BeforeLoadContext<Params>,

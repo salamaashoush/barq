@@ -182,6 +182,43 @@ export interface NavigateOptions {
   readonly mask?: string;
 }
 
+/**
+ * What `runBeforeLoad` answers with.
+ *
+ * `contexts` is the merged context per depth, which is what everything reads.
+ * `produced` is each `beforeLoad`'s OWN return, which is the only part worth
+ * carrying across hydration — the merge is reproducible from it and the
+ * synchronous `context()`s.
+ */
+export interface BeforeLoadResult {
+  readonly contexts: readonly Record<string, unknown>[];
+  readonly produced: readonly (Record<string, unknown> | undefined)[];
+}
+
+/**
+ * The hydration handoff, as it goes on the wire.
+ *
+ * `href` is what the SERVER rendered. A client that has already navigated —
+ * D9's server-matched-A/client-matched-B divergence — must not adopt a context
+ * built for a different location, so the href is checked before it is used.
+ *
+ * WHAT THIS EXPOSES, stated rather than left to be discovered: a `beforeLoad`'s
+ * return value reaches the browser. That is very nearly not a change —
+ * `beforeLoad` is isomorphic and already runs in the browser on every
+ * navigation after the first, so its output is client-visible either way. The
+ * delta is the FIRST location, where the server's run may have read something a
+ * browser cannot, such as a cookie. Authorization must not live here regardless:
+ * `beforeEnter` and `beforeLoad` are UX, and the boundary is a server function's
+ * middleware, which the route-action manifest verifies.
+ */
+export interface BeforeLoadSeed {
+  readonly href: string;
+  readonly produced: readonly (Record<string, unknown> | undefined)[];
+}
+
+/** Where the hydration handoff is left for the client router to find. */
+export const ROUTE_CONTEXT_GLOBAL = "__BARQ_ROUTE_CONTEXT__";
+
 /** Where the real target hides while the URL shows something else. */
 const MASK = "__barqMask";
 
@@ -871,9 +908,10 @@ export function createRouter(config: RouterConfig): RouterState {
     to: Location,
     candidate: Match<Route> | null,
     options?: { readonly server?: boolean },
-  ): Promise<readonly Record<string, unknown>[]> => {
+  ): Promise<BeforeLoadResult> => {
     const modes = resolveSsr(candidate?.route.chain ?? []);
     const out: Record<string, unknown>[] = [];
+    const produced: (Record<string, unknown> | undefined)[] = [];
     // Parent-to-child by SPREAD, child wins on a collision — TanStack's rule
     // (`load-client.ts:391-395`, `:455-458`) and its type-level `Assign` agrees.
     let merged: Record<string, unknown> = {};
@@ -884,19 +922,63 @@ export function createRouter(config: RouterConfig): RouterState {
       // `ssr: false` means nothing of this route runs here — the client does it.
       if (options?.server === true && modes[depth] === false) {
         out.push(merged);
+        produced.push(undefined);
         continue;
       }
       const given = { params: forParams, search: forSearch, location: to, context: merged };
       const sync = route.definition.context?.(given as never);
       if (sync !== undefined) merged = { ...merged, ...sync };
-      const produced = await route.definition.beforeLoad?.({
+      const own = (await route.definition.beforeLoad?.({
         ...given,
         context: merged,
-      } as never);
-      if (produced !== undefined && produced !== null) merged = { ...merged, ...produced };
+      } as never)) as Record<string, unknown> | undefined | null;
+      if (own !== undefined && own !== null) merged = { ...merged, ...own };
+      out.push(merged);
+      produced.push(own ?? undefined);
+    }
+    return { contexts: out, produced };
+  };
+
+  /**
+   * The same merge as `runBeforeLoad`, with the async half replaced by what the
+   * server already answered.
+   *
+   * `context()` re-runs; `beforeLoad` does not. Nothing here awaits, which is
+   * the point: on hydration the context is available in the same tick the
+   * router mounts, so the first render sees it rather than an empty object.
+   */
+  const hydrateContexts = (to: Location, produced: BeforeLoadSeed["produced"]): void => {
+    const candidate = matcher.match(unmask(to));
+    const out: Record<string, unknown>[] = [];
+    let merged: Record<string, unknown> = {};
+    const forParams = candidate?.params ?? {};
+    const forSearch = new URLSearchParams(to.search);
+
+    for (const [depth, route] of (candidate?.route.chain ?? []).entries()) {
+      const given = { params: forParams, search: forSearch, location: to, context: merged };
+      const sync = route.definition.context?.(given as never);
+      if (sync !== undefined) merged = { ...merged, ...sync };
+      const own = produced[depth];
+      if (own !== undefined) merged = { ...merged, ...own };
       out.push(merged);
     }
-    return out;
+    settleContexts(out);
+  };
+
+  /**
+   * The server's handoff, taken ONCE.
+   *
+   * Consumed on read so a later `invalidate()` or a navigation back to the same
+   * url runs `beforeLoad` for real rather than replaying a context built for a
+   * request that is over. TanStack's handoff is hydration-only for the same
+   * reason.
+   */
+  const takeContextSeed = (): BeforeLoadSeed | null => {
+    const holder = globalThis as Record<string, unknown>;
+    const seed = holder[ROUTE_CONTEXT_GLOBAL] as BeforeLoadSeed | undefined;
+    if (seed === undefined) return null;
+    delete holder[ROUTE_CONTEXT_GLOBAL];
+    return seed;
   };
 
   const buildSearch = (to: string): string => {
@@ -1146,7 +1228,7 @@ export function createRouter(config: RouterConfig): RouterState {
     const candidate = matcher.match(target.pathname);
     let produced: readonly Record<string, unknown>[];
     try {
-      produced = await runBeforeLoad(target, candidate);
+      produced = (await runBeforeLoad(target, candidate)).contexts;
     } catch (error) {
       if (error instanceof Redirect) {
         if (hops++ >= MAX_REDIRECTS) {
@@ -1205,8 +1287,18 @@ export function createRouter(config: RouterConfig): RouterState {
       const here = untrack(location);
       const candidate = matcher.match(here.pathname);
       if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
+      // The server's `beforeLoad`s, if this is the page it rendered. A client
+      // that has already navigated must not adopt a context built for a
+      // different location — D9's server-matched-A/client-matched-B divergence
+      // — so the href is checked rather than assumed.
+      const seed = takeContextSeed();
+      if (seed !== null && seed.href === href(here)) {
+        hydrateContexts(here, seed.produced);
+        primeChain();
+        return;
+      }
       try {
-        settleContexts(await runBeforeLoad(here, candidate));
+        settleContexts((await runBeforeLoad(here, candidate)).contexts);
       } catch {
         /* the boundary shows it; there is no navigation to refuse at mount */
         releaseContexts();
@@ -1217,6 +1309,7 @@ export function createRouter(config: RouterConfig): RouterState {
       primeChain();
     },
     runBeforeLoad,
+    hydrateContexts,
     markPending(route, forParams) {
       const { seedKey } = keyOf(route, forParams, untrack(search));
       const entry = entries.get(seedKey);
@@ -1251,7 +1344,7 @@ export function createRouter(config: RouterConfig): RouterState {
 
       let produced: readonly Record<string, unknown>[];
       try {
-        produced = await runBeforeLoad(target, candidate);
+        produced = (await runBeforeLoad(target, candidate)).contexts;
       } catch {
         // A preload that would have been refused simply does not warm anything.
         return;

@@ -994,6 +994,136 @@ describe("beforeLoad and route context", () => {
     dispose();
   });
 
+  test("hydration adopts the server's beforeLoad instead of re-running it", async () => {
+    // The whole point: `beforeLoad` used to run once on the server and AGAIN
+    // when the client router mounted, because loader results are seeded and
+    // context was not.
+    const ran: string[] = [];
+    const holder = globalThis as Record<string, unknown>;
+    holder.__BARQ_ROUTE_CONTEXT__ = {
+      href: "/app/7",
+      produced: [{ token: "from-server" }],
+    };
+    try {
+      const history = memoryHistory({ initial: ["/app/7"] });
+      const { host, dispose } = mount({
+        routes: [
+          {
+            path: "/app/$id",
+            context: () => {
+              ran.push("context");
+              return { tenant: "acme" };
+            },
+            beforeLoad: () => {
+              ran.push("beforeLoad");
+              return { token: "from-client" };
+            },
+            component: (scope: Scope | null, props: RouteProps) => {
+              const node = document.createElement("span");
+              insert(scope, node, () => JSON.stringify(props.context()));
+              return node;
+            },
+          },
+        ] as never,
+        history,
+      });
+
+      await tick();
+      await settle();
+      flush();
+
+      // The synchronous half re-runs — it is free and deterministic. The async
+      // half does not.
+      expect(ran).toEqual(["context"]);
+      expect(JSON.parse(host.textContent ?? "{}")).toEqual({
+        tenant: "acme",
+        token: "from-server",
+      });
+      dispose();
+    } finally {
+      delete holder.__BARQ_ROUTE_CONTEXT__;
+    }
+  });
+
+  test("a handoff for a DIFFERENT url is refused", async () => {
+    // D9's server-matched-A/client-matched-B divergence: a client that has
+    // already navigated must not adopt a context built for somewhere else.
+    const ran: string[] = [];
+    const holder = globalThis as Record<string, unknown>;
+    holder.__BARQ_ROUTE_CONTEXT__ = { href: "/somewhere/else", produced: [{ token: "stale" }] };
+    try {
+      const history = memoryHistory({ initial: ["/app/7"] });
+      const { host, dispose } = mount({
+        routes: [
+          {
+            path: "/app/$id",
+            beforeLoad: () => {
+              ran.push("beforeLoad");
+              return { token: "fresh" };
+            },
+            component: (scope: Scope | null, props: RouteProps) => {
+              const node = document.createElement("span");
+              insert(scope, node, () => JSON.stringify(props.context()));
+              return node;
+            },
+          },
+        ] as never,
+        history,
+      });
+
+      await tick();
+      await settle();
+      flush();
+      expect(ran).toEqual(["beforeLoad"]);
+      expect(JSON.parse(host.textContent ?? "{}")).toEqual({ token: "fresh" });
+      dispose();
+    } finally {
+      delete holder.__BARQ_ROUTE_CONTEXT__;
+    }
+  });
+
+  test("the handoff is taken ONCE, so a later navigation runs beforeLoad for real", async () => {
+    const ran: string[] = [];
+    const holder = globalThis as Record<string, unknown>;
+    holder.__BARQ_ROUTE_CONTEXT__ = { href: "/app/7", produced: [{ token: "from-server" }] };
+    try {
+      const history = memoryHistory({ initial: ["/app/7"] });
+      const state = createRouter({
+        routes: [
+          {
+            path: "/app/$id",
+            beforeLoad: () => {
+              ran.push("beforeLoad");
+              return { token: "fresh" };
+            },
+            component: (scope: Scope | null, props: RouteProps) => {
+              const node = document.createElement("span");
+              insert(scope, node, () => JSON.stringify(props.context()));
+              return node;
+            },
+          },
+        ] as never,
+        history,
+      });
+      const { host, dispose } = mountState(state);
+      await tick();
+      await settle();
+      flush();
+      expect(ran).toEqual([]);
+
+      await state.navigate("/app/9");
+      flush();
+      await settle();
+      flush();
+      // A request that is over must not keep answering for a page it never saw.
+      expect(ran).toEqual(["beforeLoad"]);
+      expect(JSON.parse(host.textContent ?? "{}")).toEqual({ token: "fresh" });
+      dispose();
+    } finally {
+      delete holder.__BARQ_ROUTE_CONTEXT__;
+    }
+  });
+
   test("beforeLoad is handed params, search and location, not just context", async () => {
     // It was handed the wrong object entirely for one commit: a rename reached
     // the declaration and not the two uses, so `beforeLoad` received the

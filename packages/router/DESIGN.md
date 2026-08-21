@@ -658,10 +658,6 @@ running them.
 
 ## P6-7 — known limits, stated rather than left to be discovered
 
-- **`beforeLoad` re-runs once on hydration.** Loader results are seeded; context
-  is not. TanStack carries it over the wire under a `__beforeLoadContext` key.
-  The docs say to keep `beforeLoad` cheap and put expensive work in a loader,
-  which IS seeded. Seeding the context is the named follow-up.
 - **A loader's redirect cannot be a 302** once the shell is on the wire. It
   becomes a client-side redirect plus a `<noscript>` meta-refresh; a redirect
   that must be a status belongs in `beforeEach` or `beforeLoad`.
@@ -680,7 +676,47 @@ running them.
   `compile()`, and the oracle exists for the compiler↔runtime contract. Recorded
   as a decision, not an oversight.
 
-## P6-8 — a stale row in the table above
+## P6-8 — the hydration handoff, which closes P6-7's first limit
+
+`beforeLoad` ran TWICE on a first page load — once on the server, once again
+when the client router mounted — because loader results are seeded and context
+was not. It does not any more, and the shape is TanStack's.
+
+Only the `beforeLoad` RETURN travels. The synchronous `context()` beside it
+re-runs on the client, because it takes no I/O, it is deterministic, and
+re-running it is cheaper than serializing it. That is exactly their split: they
+carry `__beforeLoadContext` under the wire key `b` (`ssr-server.ts:36-59`) and
+recompute `_ctx` beside it at `load-client.ts:2419-2423`.
+
+It rides in the DOCUMENT rather than the value seed, which is also their
+placement — `DocumentParts.context`, for the `<head>`, because the client router
+reads it when it mounts and a script after the body may not have arrived by then
+on a streamed page. A document that does not place it degrades to exactly the old
+behaviour, which is a safe default rather than a silent one. `encodeSeed` does
+the serializing, so the context carries a `Date`, a `Map` or a cycle the way the
+hydration seed does, and escapes its own script-breaking content.
+
+Two guards, both tested by mutation: the payload carries the HREF the server
+rendered and is refused if the client has already navigated — D9's
+server-matched-A/client-matched-B divergence — and it is consumed ONCE, so a
+later `invalidate()` or a navigation back to the same url runs `beforeLoad` for
+real rather than replaying a request that is over.
+
+**What it exposes, stated rather than left to be found.** A `beforeLoad`'s return
+value now reaches the browser. That is very nearly not a change: `beforeLoad` is
+isomorphic and already runs in the browser on every navigation after the first,
+so its output is client-visible either way. The delta is the FIRST location,
+where the server's run may have read something a browser cannot — a cookie.
+Authorization does not belong there regardless, and never did: `beforeEnter` and
+`beforeLoad` are UX, and the boundary is a server function's middleware, which
+the route-action manifest verifies.
+
+The two halves are tested apart AND together: one test takes the script the
+server actually emitted, evaluates it the way a browser would, mounts a client
+router on the other side, and asserts `beforeLoad` ran exactly once with a `Date`
+surviving the trip.
+
+## P6-9 — a stale row in the table above
 
 The falsified table's first row says the crate does "ZERO filesystem reads
 outside `build.rs` and `#[cfg(test)]`". That was true when written and was

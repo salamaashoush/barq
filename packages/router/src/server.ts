@@ -27,13 +27,21 @@ import {
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
+import { encodeSeed } from "@barqjs/server/codec";
 import { withRequest } from "@barqjs/start";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
 import { memoryHistory } from "./history.ts";
 import { createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
-import { type Guard, type RouterConfig, type RouterState, createRouter } from "./router.ts";
+import {
+  type BeforeLoadResult,
+  type Guard,
+  type RouterConfig,
+  type RouterState,
+  ROUTE_CONTEXT_GLOBAL,
+  createRouter,
+} from "./router.ts";
 import { routePropsFor } from "./components.ts";
 
 /**
@@ -162,6 +170,19 @@ export interface DocumentParts {
    * the escaping is this module's job, not the application's.
    */
   readonly preload: string;
+  /**
+   * The route context the server built, as a `<script>`, for the caller to
+   * place in the `<head>`.
+   *
+   * Empty when no route on the page declares a `beforeLoad`, so a document that
+   * places it pays nothing for it.
+   *
+   * WHY IT BELONGS IN THE HEAD: the client router reads it when it mounts, and
+   * a script after the body may not have arrived by then on a streamed page.
+   * Placing it later is not wrong — the router falls back to running
+   * `beforeLoad` itself — it just costs the duplicate run this exists to avoid.
+   */
+  readonly context: string;
   readonly url: URL;
 }
 
@@ -267,9 +288,9 @@ export function createPageHandler(
         // separate phase from the loader: here the status is still open, so a
         // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
         // real 404. The same throw from a LOADER cannot — see `redirectScript`.
-        let contexts: readonly Record<string, unknown>[];
+        let before: BeforeLoadResult;
         try {
-          contexts = await state.runBeforeLoad(
+          before = await state.runBeforeLoad(
             {
               pathname: url.pathname,
               search: url.search,
@@ -287,7 +308,8 @@ export function createPageHandler(
           if (early !== null) return early;
           throw error;
         }
-        state.setContexts(contexts);
+        state.setContexts(before.contexts);
+        const context = contextScript(url, before.produced, options.nonce);
         // A streamed response is not finished when this function returns it:
         // `renderToStream` hands back the `ReadableStream` before a byte of the
         // body exists, and the boundaries resume against this state afterwards.
@@ -321,6 +343,7 @@ export function createPageHandler(
                 seed: page.script,
                 chain: match?.route.chain ?? null,
                 preload: preloadTags(match?.route.chain ?? null, options.routeAssets),
+                context,
                 url,
               }),
               // A rendered 404 rather than a bare one. In STREAM mode the status
@@ -335,7 +358,15 @@ export function createPageHandler(
             nonce: options.nonce,
           });
           return new Response(
-            wrapStream(stream, options, match?.route.chain ?? null, url, dispose, () => answer),
+            wrapStream(
+              stream,
+              options,
+              match?.route.chain ?? null,
+              url,
+              dispose,
+              () => answer,
+              context,
+            ),
             {
               status,
               headers: { "content-type": "text/html; charset=utf-8" },
@@ -434,6 +465,32 @@ function escapeAttribute(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+/**
+ * The hydration handoff for the route context.
+ *
+ * Only the `beforeLoad` RETURNS travel. The synchronous `context()`s re-run on
+ * the client, because they take no I/O and re-running one is cheaper than
+ * serializing it — which is TanStack's split too: they carry `__beforeLoadContext`
+ * under the wire key `b` and recompute `_ctx` beside it.
+ *
+ * `encodeSeed` rather than `JSON.stringify`, so the context carries what the
+ * hydration seed carries — a `Date`, a `Map`, a cycle — and escapes its own
+ * script-breaking content.
+ */
+export function contextScript(
+  url: URL,
+  produced: readonly (Record<string, unknown> | undefined)[],
+  nonce?: string,
+): string {
+  if (!produced.some((entry) => entry !== undefined)) return "";
+  const payload = encodeSeed({
+    href: url.pathname + url.search + url.hash,
+    produced: produced as unknown as Record<string, unknown>,
+  });
+  const attr = nonce === undefined ? "" : ` nonce="${nonce}"`;
+  return `<script${attr}>window.${ROUTE_CONTEXT_GLOBAL}=${payload}</script>`;
+}
+
 function html(body: string, status: number): Response {
   return new Response(body, {
     status,
@@ -459,6 +516,8 @@ function wrapStream(
   done: () => void,
   /** What a loader threw, read AFTER the render — see `redirectScript`. */
   answer: () => Response | null,
+  /** The route-context handoff, which goes in the head like the preloads. */
+  context: string,
 ): ReadableStream<Uint8Array> {
   const document = options.document({
     body: BODY_MARKER,
@@ -467,6 +526,7 @@ function wrapStream(
     // Before the shell flushes, which is the only moment it is worth anything:
     // the tags have to reach the browser ahead of the markup that needs them.
     preload: preloadTags(chain, options.routeAssets),
+    context,
     url,
   });
   const cut = document.indexOf(BODY_MARKER);

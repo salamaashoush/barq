@@ -11,6 +11,8 @@ import { createServerFn, getRequest } from "@barqjs/start";
 import { computed } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
+import { memoryHistory } from "./history.ts";
+import { createRouter } from "./router.ts";
 import { createPageHandler, notFound, preloadTags, redirect, renderRoutes } from "./server.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
@@ -761,5 +763,165 @@ describe("deferred loader data", () => {
     const body = await render(false);
     expect(body).toContain("<main>ready now</main>");
     expect(body).toContain("the slow part");
+  });
+});
+
+/**
+ * The hydration handoff for the route context.
+ *
+ * `beforeLoad` used to run TWICE on a first page load — once on the server, once
+ * again when the client router mounted — because loader results are seeded and
+ * context was not. TanStack carries the `beforeLoad` return over the wire as
+ * `__beforeLoadContext` under the key `b`; this is barq's.
+ */
+describe("beforeLoad does not run twice on hydration", () => {
+  let seq = 0;
+  const table = (ran: string[]): AnyRouteDefinition[] => {
+    const id = `h${seq++}`;
+    return [
+      {
+        id: `${id}-layout`,
+        path: "/app",
+        context: () => {
+          ran.push("context");
+          return { sync: true };
+        },
+        beforeLoad: async () => {
+          ran.push("beforeLoad");
+          await tick();
+          return { token: "abc" };
+        },
+        component: (_s: unknown, props: { context: () => Record<string, unknown> }) =>
+          ssrHtml(`<main>${esc(JSON.stringify(props.context()))}</main>`),
+      },
+    ] as never;
+  };
+
+  const render = async (
+    ran: string[],
+    stream: boolean,
+  ): Promise<{ body: string; context: string }> => {
+    let context = "";
+    const handler = createPageHandler({
+      routes: table(ran),
+      stream,
+      app: (s) => renderRoutes(s),
+      document: (parts) => {
+        context = parts.context;
+        return `<!doctype html><html><head>${parts.context}</head><body>${parts.body}${parts.seed}</body></html>`;
+      },
+    });
+    const body = await (await handler(get("/app"))).text();
+    return { body, context };
+  };
+
+  test("the server's beforeLoad result reaches the document, in both modes", async () => {
+    for (const stream of [false, true]) {
+      const ran: string[] = [];
+      const { body, context } = await render(ran, stream);
+      expect(ran).toEqual(["context", "beforeLoad"]);
+      expect(context).toContain("__BARQ_ROUTE_CONTEXT__");
+      expect(context).toContain("abc");
+      // The href is carried so a client that already navigated does not adopt
+      // a context built for somewhere else.
+      expect(context).toContain("/app");
+      expect(body).toContain("abc");
+    }
+  });
+
+  test("only the beforeLoad RETURN travels, not the merged context", async () => {
+    // `context()` is synchronous, deterministic and free to re-run, so it is
+    // recomputed on the client rather than serialized — TanStack's split.
+    const ran: string[] = [];
+    const { context } = await render(ran, false);
+    expect(context).toContain("token");
+    expect(context).not.toContain("sync");
+  });
+
+  test("a page with no beforeLoad pays nothing", async () => {
+    let context = "unset";
+    const handler = createPageHandler({
+      routes: [
+        { id: `n${seq++}`, path: "/plain", component: () => ssrHtml("<main>x</main>") },
+      ] as never,
+      stream: false,
+      app: (s) => renderRoutes(s),
+      document: (parts) => {
+        context = parts.context;
+        return `<html><head>${parts.context}</head><body>${parts.body}${parts.seed}</body></html>`;
+      },
+    });
+    await (await handler(get("/plain"))).text();
+    expect(context).toBe("");
+  });
+});
+
+/**
+ * The round trip, end to end.
+ *
+ * The two halves above are tested apart, which proves each and not the pair:
+ * this takes the script the server actually emitted, evaluates it the way a
+ * browser would, and mounts a client router on the other side.
+ */
+describe("the context handoff, server to client", () => {
+  test("the client adopts it and beforeLoad runs exactly once", async () => {
+    const ran: string[] = [];
+    const routes = [
+      {
+        id: "e2e",
+        path: "/app/$id",
+        context: () => ({ tenant: "acme" }),
+        beforeLoad: async () => {
+          ran.push("server");
+          await tick();
+          // A Date, to prove the codec carries what the hydration seed carries
+          // rather than what `JSON.stringify` would.
+          return { token: "abc", at: new Date(0) };
+        },
+        component: (_s: unknown, props: { context: () => Record<string, unknown> }) =>
+          ssrHtml(`<main>${esc(String((props.context() as { token: string }).token))}</main>`),
+      },
+    ] as never;
+
+    let script = "";
+    const handler = createPageHandler({
+      routes,
+      stream: false,
+      app: (s) => renderRoutes(s),
+      document: (parts) => {
+        script = parts.context;
+        return `<html><head>${parts.context}</head><body>${parts.body}${parts.seed}</body></html>`;
+      },
+    });
+    expect(await (await handler(get("/app/7"))).text()).toContain("<main>abc</main>");
+    expect(ran).toEqual(["server"]);
+
+    // What a browser does with that script tag.
+    const holder = globalThis as Record<string, unknown>;
+    const source = script.replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
+    try {
+      // oxlint-disable-next-line no-eval
+      (0, eval)(source.replace(/^window\./, "globalThis."));
+      expect(holder.__BARQ_ROUTE_CONTEXT__).toBeDefined();
+
+      const state = createRouter({
+        routes,
+        history: memoryHistory({ initial: ["/app/7"] }),
+      });
+      await state.start();
+      // The server's value, carried — and `beforeLoad` did not run again.
+      const leaf = state.contexts()[state.contexts().length - 1] as {
+        tenant: string;
+        token: string;
+        at: Date;
+      };
+      expect(ran).toEqual(["server"]);
+      expect(leaf.tenant).toBe("acme");
+      expect(leaf.token).toBe("abc");
+      expect(leaf.at).toBeInstanceOf(Date);
+      state.dispose();
+    } finally {
+      delete holder.__BARQ_ROUTE_CONTEXT__;
+    }
   });
 });

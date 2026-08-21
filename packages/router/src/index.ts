@@ -129,6 +129,8 @@ export {
 } from "./hooks.ts";
 
 export {
+  type BeforeLoadResult,
+  type BeforeLoadSeed,
   type Blocker,
   type Guard,
   type LoadCause,
@@ -136,6 +138,7 @@ export {
   type RouterConfig,
   type RouterState,
   type SsrMode,
+  ROUTE_CONTEXT_GLOBAL,
   createRouter,
   depsKey,
   unmask,
