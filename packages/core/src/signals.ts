@@ -2230,6 +2230,22 @@ export function computed<T>(
       const id = key();
       if (id !== undefined) {
         node._serializeKey = id;
+        // A string render runs the page TWICE — `renderPage` has no later frame
+        // to swap a settled value into, so it re-invokes `fn` after `settle` —
+        // and the second pass builds fresh nodes. This session already resolved
+        // this key on the first pass, so answer from what it recorded.
+        //
+        // Without it the second pass misses, calls the fetcher again, throws
+        // `NotReadyError` and the boundary emits its FALLBACK: measured, a
+        // non-streamed page shipped a spinner and ran every loader twice while
+        // the correct value sat in the seed nobody read.
+        //
+        // Session-scoped, and deliberately never the `null` bucket: on the
+        // client `activeAsyncSession` is null and a hit here would let one
+        // keyed read answer another's, defeating the consume-on-read that makes
+        // `refresh()` refetch for real.
+        const settledHere = recordedInSession(id);
+        if (settledHere.found) return settledHere.value as T;
         const seed = getSeed(id);
         if (seed.found) return seed.value as T;
         // Missing is not the same as absent while a stream is still running:
@@ -2932,6 +2948,21 @@ function pumpAsyncIterator(
 
 /** Resolved values of keyed async computeds, bucketed by session (SSR) */
 const hydrationData = new Map<symbol | null, Map<string, unknown>>();
+
+/**
+ * What THIS render already resolved for a key, for the second pass of a string
+ * render to read back.
+ *
+ * Not a cache: it is the same session's own recorded output, and it is not
+ * consumed, because `getHydrationData` still has to emit it. Returns nothing
+ * outside a render session, which is what keeps it off the client entirely.
+ */
+function recordedInSession(key: string): { found: boolean; value?: unknown } {
+  if (activeAsyncSession === null) return { found: false };
+  const bucket = hydrationData.get(activeAsyncSession);
+  if (bucket === undefined || !bucket.has(key)) return { found: false };
+  return { found: true, value: bucket.get(key) };
+}
 
 function recordHydrationValue(session: symbol | null, key: string, value: unknown): void {
   let bucket = hydrationData.get(session);

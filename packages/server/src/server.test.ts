@@ -27,6 +27,7 @@ import {
   clearRenderData,
   generateHydrationScript,
   getRenderData,
+  renderPage,
   renderToStream,
   renderToString,
   renderToStringAsync,
@@ -159,6 +160,45 @@ describe("renderToStringAsync", () => {
     const data = getRenderData();
     expect(data.a).toBe(1);
     expect(data.b).toBe(2);
+  });
+
+  test("the string render's second pass reads what the first one resolved", async () => {
+    // `renderPage` re-invokes the page after `settle` because a string boundary
+    // has no later frame to swap into. The second pass builds FRESH nodes, so
+    // whether it sees the settled value is a question about the seed lookup,
+    // and the lookup used to consult only the client's `__BARQ_DATA__` — unset
+    // on a server. The failure was silent and total: every loader ran twice and
+    // every boundary emitted its fallback, with the right value sitting in the
+    // seed beside it.
+    let calls = 0;
+    const page = (): unknown => {
+      const user = computed(
+        async () => {
+          calls++;
+          await tick();
+          return "Ada";
+        },
+        { key: "r:/users/$id|{id:7}" },
+      );
+      return ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>loading</i>"),
+            children: () => ssrHtml(`<b>${esc(user())}</b>`),
+          }),
+        )}</main>`,
+      );
+    };
+
+    const out = await renderPage(page as never);
+
+    expect(out.html).toBe("<main><b>Ada</b></main>");
+    expect(out.html).not.toContain("loading");
+    // Once, not twice: the second pass must not re-run the fetcher. A loader
+    // that hits a database or charges for a call cannot be run per render pass.
+    expect(calls).toBe(1);
+    // And the value still reaches the client.
+    expect(out.data["r:/users/$id|{id:7}"]).toBe("Ada");
   });
 
   test("generateHydrationScript escapes script-breaking content", async () => {

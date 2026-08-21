@@ -127,8 +127,16 @@ export async function renderPage(
 
   if (stringMode) {
     // A string boundary has no later frame to swap content into, so the settled
-    // values are read by rendering a second time. Keyed `computed` results
-    // are cached against the session, so nothing is fetched twice.
+    // values are read by rendering a second time. The second pass builds fresh
+    // nodes and answers each keyed `computed` from what THIS session recorded
+    // on the first pass, so nothing is fetched twice.
+    //
+    // That was asserted here before it was true. The lookup consulted only the
+    // client's `__BARQ_DATA__`, which is unset on a server, so the second pass
+    // missed, refetched, threw `NotReadyError`, and every boundary emitted its
+    // FALLBACK — a non-streamed page shipped a spinner with the correct value
+    // sitting unread in the seed beside it.
+    //
     // `renderToStream` is the other answer: it parks the content Block instead
     // of re-running the page.
     const restore = setAsyncSession(session);
