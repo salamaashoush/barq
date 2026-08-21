@@ -4,9 +4,11 @@ Written across the sessions that built it. This file records what was decided, w
 MEASURED, and — as importantly — **which of its own claims were falsified and must not be
 revived**. `DESIGN-START.md` §1 is the model for that last part.
 
-Status: BUILT. Path, matcher, history, components, loaders, guards, the SSR page handler,
-`lazy()` in core, the file-based generator, `BARQ013` and the route-action manifest all landed,
-and `packages/extra/src/router.ts` is deleted.
+Status: BUILT, and at PARITY with TanStack Router as of P6 — see the `P6` section at the end
+for what that took, what it cost, and the five live defects it turned up on the way. Path,
+matcher, history, components, loaders, guards, the SSR page handler, `lazy()` in core, the
+file-based generator, `BARQ013` and the route-action manifest all landed, and
+`packages/extra/src/router.ts` is deleted.
 
 ---
 
@@ -484,3 +486,204 @@ TanStack's users actually complain about; instantiation count plausibly matters 
 where the budget is per-keystroke. My parser is also simpler than TanStack's shipped one. So
 this measurement kills the stated justification without settling the editor question, and the
 design says so rather than borrowing authority from a column that never had any.
+
+---
+
+# P6 — parity with TanStack Router, and what it cost
+
+Written after the work, in the same shape as everything above it: what was
+decided, what was MEASURED, and which of the design's own claims were falsified
+before they shipped. The working record is `scratch/p6/FINDINGS.md` (probes) and
+`scratch/p6/DESIGN-P6.md` (the design, with a red team's verdicts appended in
+full rather than edited away).
+
+The one-line summary: most of §3.1 turned out to be already in `packages/core`,
+the parity gap was smaller than the handover thought — and there were **five
+live bugs underneath it**, one of which silently dropped half of every nested
+page.
+
+## P6-0 — the five defects, found by probe before any feature was written
+
+Each was on a shipped path and each had nothing in 141 green tests that would
+have caught it.
+
+|        | what                                                                                                                          | fixed in  |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------- | --------- |
+| **B1** | a search-dependent loader answered with the FIRST search forever — `/posts?page=2` rendered page 1, one loader call, no error | `ac8c51d` |
+| **B2** | `stream:false` with loaders at two depths dropped the child's markup AND its seed. Three deep: one depth of three             | `fa6d9a9` |
+| **B3** | `throw redirect()` from a loader answered **200 with a body that errors mid-read** on the DEFAULT path                        | `2bc4966` |
+| **B4** | the generated `pending` is a `lazy`, activated outside `ssr.ts`'s try/catch — the request produced NOTHING, in both modes     | `84cfc09` |
+| **B5** | the router state was disposed before a streamed page had rendered                                                             | `27b598a` |
+
+B1 is the one that decided how §3.1 was framed: `loaderDeps` is not a cache
+nicety, it is the fix for a route that renders page 1 when the URL says page 2.
+
+## P6-1 — MEASURED: the read path, and why the correctness fix needed it
+
+**Instrument.** `packages/benchmark/src/loader-cache-head-to-head.ts`. Bun
+1.4.0-canary.1, 41 trials x 20 000 iterations, warmup 50 000. Comparand is
+`legacy-loader-cache.ts` — the shape this package shipped before, preserved
+verbatim the way `legacy-matcher.ts` preserves the old matcher. Denominator is
+M2's compiled 20-row `renderToString`, 1 199.6 ns.
+
+|                            |     median |
+| -------------------------- | ---------: |
+| legacy: key + `Map.get`    |   142.0 ns |
+| **memoised: full read**    | **7.8 ns** |
+| legacy: key + 3-key search |   424.4 ns |
+
+18.2x, and the third row is the one that decides it. Putting the search in the
+key is a CORRECTNESS requirement (B1), and on the old shape it would have cost
+424 ns per read per depth — **35% of a whole page render**. The key is built once
+per MATCH now instead of once per read, which is what makes the fix affordable
+rather than a regression. `props([{...}])` returns a single plain record
+unchanged (`props.ts:168-174`), which is why nothing memoised it before.
+
+**CANNOT DECIDE.** A Bun microbenchmark bounds per-call CPU on one synthetic
+route. It cannot see how many times a real page reads `props.data()` per render,
+which is the multiplier that turns ns into a percentage. Tier 1, PROVISIONAL per
+CODESIGN §0.7.
+
+## P6-2 — MEASURED: priming, and the claim that was overstated
+
+Priming the matched chain fixes B2 and starts every loader at once. Three-deep
+chain, same-mode comparison (an earlier version of this table compared
+`stream:true` unprimed against `stream:false` primed, which is two different
+modes and was corrected):
+
+| delays a/b/c | unprimed `stream:true` | primed `stream:true` |
+| ------------ | ---------------------: | -------------------: |
+| 40/40/40     |                 121 ms |                41 ms |
+| 10/100/10    |                 121 ms |               100 ms |
+| 100/10/10    |                 121 ms |               101 ms |
+
+**The honest statement is sum → max**, bounded by chain depth, collapsing toward
+1.0x as one loader dominates. The correctness half (B2) is unaffected by the
+framing.
+
+And the client does NOT waterfall the way the string backend did: each dynamic
+hole is its own tracked effect, so a layout whose data has parked still
+constructs its children. On the client the win is the head start — loaders are in
+flight from the commit rather than from the next flush — and the test says so in
+its name.
+
+## P6-3 — what was built
+
+§3.1 `loaderDeps`, `staleTime`/`preloadStaleTime`, `gcTime`/`preloadGcTime`,
+`shouldReload`, `staleReloadMode`, `cause`, a real AbortController.
+§3.2 `context`, `beforeLoad`, `useRouteContext`.
+§3.3 `validateSearch` (Standard Schema, `.parse`, function), search middlewares,
+typed `search` and `loaderData` in the generated `.d.ts`.
+§3.4 `errorComponent`, `notFoundComponent`, `notFound()`, `pendingMs`,
+`pendingMinMs`.
+§3.5 `<link rel=modulepreload>` for the matched chain, `preload` on links.
+§3.6 `ssr: boolean | 'data-only'`.
+§3.7 deferred loader data, on both delivery paths.
+§3.8 `useMatch`, `useRouterState`, `useBlocker`, `useCanGoBack`, route masking,
+`activeProps`/`inactiveProps`, hash history, `resetScroll`, `viewTransition`,
+scroll restoration, devtools.
+§3.9 the route-action manifest's build hook, and BARQ013's route table reaching
+an app.
+
+Compiler: `src` per route node, `entries` (id → file, layouts included), and a
+`.d.ts` that types `search` and `loaderData` without reading a route file.
+
+## P6-4 — deliberate divergences from TanStack, each with a reason
+
+1. **`staleTime` means staleness.** Theirs additionally requires `sameHref ||
+cause === 'enter' || a same-route-different-id in the lane`
+   (`load-client.ts:794-806`), so a `stay` match navigating to a different href
+   is never revalidated on staleness alone.
+2. **`staleReloadMode` is a route option.** Theirs is declared only on the
+   loader-OBJECT form (`route.ts:321-346`), so `loader: fn` can never set it.
+3. **`cause: 'preload'` is stored.** Theirs synthesizes it into ephemeral
+   context and never writes it to the match, so `match.cause` is only ever
+   `enter` or `stay` despite the type.
+4. **gc DISPOSES**, which aborts what is in flight. Theirs is an unbounded `Map`
+   swept on commit; nothing is collected if the app stops navigating.
+5. **The deps hash is key-sorted, and the match key is delimited.** Theirs is a
+   plain `JSON.stringify` (`{a,b}` and `{b,a}` are two generations) concatenated
+   with no separator.
+6. **The search codec is a FIXPOINT.** Theirs decodes `?k=a&k=b` to an array and
+   re-encodes it as one JSON string, so decode∘encode is not identity.
+7. **`search` leaves the loader context when a route declares `loaderDeps`.** A
+   narrow key with a broad read is B1 in a smaller box; removing the field makes
+   it unrepresentable. TanStack's `LoaderFnContext` has no `search` either — the
+   divergence was barq's, and this is it being closed.
+8. **`isLoading` still does not exist.** `useRouterState` reports
+   `isNavigating`, which is a fact about the router. Loading is a boundary per
+   depth, as §D-above says.
+
+## P6-5 — falsified, and why each stays dead
+
+A red-team pass was run against the P6 design with one instruction: kill it, do
+not improve it. Five claims died. They are recorded here for the same reason the
+table above them is.
+
+| Claim                                                                                       | Killed by                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The loader cell becomes a `resource`, whose A1/A2 supply the AbortController                | A SEEDED resource can never be reloaded. A seeded first run never enters `compute`, so `bump` never becomes a dependency and `refetch()` invalidates nothing — 0 fetches after a seed, against 1 for a keyed `computed` plus `refresh()`. Every SSR'd route is seeded, so `staleTime`, `shouldReload` and `invalidate()` would have been silent no-ops on first load. The cell stays a keyed `computed`; the router owns its own controller.                                                                                   |
+| `latest()` IS `staleReloadMode: background` — "nothing to build but the switch"             | True on the DOM backend only. The string backend invokes a Block with no observer, so `latest()` short-circuits on `currentObserver === null` and returns `undefined` for a cold cell: a `background` route SSR'd as literal `<b>undefined</b>` with an EMPTY seed, because nothing parked and the seed channel never opened. The backend passes `blocking` explicitly; sniffing `typeof document` is wrong, because happy-dom defines it in the very process that renders the string backend.                                 |
+| The three-row cold/warm/refreshing table is the whole of `staleReloadMode`                  | No ERROR row, which is the only case where the two modes should differ interestingly. Core's `latest()` THROWS for an errored cell, which would replace the page with an error boundary; `Resource.latest()` swallows it forever; `isPending()` throws rather than answering. TanStack keeps the page renderable (`load-client.ts:694-700`). `Entry.settled` remembers the last good value, and the test fails without that one line.                                                                                          |
+| A detached `root()` beats `runWithOwner(null, …)`                                           | `createOwnerScope` still does `makeScope(getCurrentOwner())`, which copies `ctx` and `catcher` and keeps the parent as a field — so an entry minted during a render PINNED that render's scope, DOM range included, read its context forever, and routed throws to whichever boundary was above the first reader. `runWithOwner(null, () => root(…))` is both properties and neither cost.                                                                                                                                     |
+| gc disposing an entry is safe                                                               | Disposing one a boundary is parked on aborts the fetch, the promise never settles into the graph, the boundary never re-arms, and NOTHING surfaces: a permanent spinner. Reachable without any sweep, via `cacheSize`'s insertion-order eviction. An entry is collectable only if it has SETTLED and is not in the current chain.                                                                                                                                                                                              |
+| The generated `.d.ts` types `search` and `loaderData`                                       | It did — and it FAILED OPEN. A Standard Schema and a `.parse` object both resolved to `Record<string, string>`, silently, so a route whose runtime validated to a precise record was typed "any string map" and `{ literally: "anything" }` compiled clean. Every arm resolves to `never` now. And the specifiers were root-absolute, which is the FILESYSTEM root to TypeScript — the whole emit resolved to `any`, and it announced itself as `TS2578: Unused '@ts-expect-error' directive` rather than as anything failing. |
+| BARQ014 — "a loader that reads `search` with no `loaderDeps`" is a clean single-module fact | Dropped. TanStack's loader has no `search` at all, so B1 existed because barq DIVERGED from the shape §3.1 otherwise copies. Spending the project's next diagnostic code — permanent, per `docs/README.md:29-33` — on a hazard that can be made unrepresentable is the wrong trade, and the rule is imprecise in both directions besides. `search` now leaves the loader context when `loaderDeps` is declared.                                                                                                                |
+
+## P6-6 — what the gates caught that review did not
+
+Kept because the handover asks for it, and because the list is the argument for
+running them.
+
+- **`bun run build` in `kitchen-sink`** caught `Duplicated export 'Redirect'` —
+  the error class collided with the `<Redirect>` component. 154 tests passed:
+  Bun's resolver tolerates a duplicate re-export. `exports.test.ts` has a guard
+  for it now.
+- **`oxlint --type-aware`** caught `Redirect` being used in `navigate` without
+  being imported — a `ReferenceError` on the first `beforeLoad` that redirected.
+- **`oxlint`** caught a rename that reached a declaration and not its two uses,
+  so `context()` and `beforeLoad()` were handed the router's internal `{ server }`
+  flag; on the client that is `undefined`, so `params`, `search` and `location`
+  were MISSING from every call. 217 tests passed, because each read `context`
+  and nothing else.
+- **`oxlint`** caught `String(value)` on an `unknown` search value, which would
+  have written `[object Object]` into a URL.
+- **The codec's own cycles test** caught the deferred-data resolver rebuilding
+  every object and turning a cyclic seed into an eight-deep tree.
+- **The `staleReloadMode: "blocking"` test** caught the view-transition callback
+  snapshotting a HALF-COMMITTED page.
+- **A test measuring the wrong thing** — `textContent` includes a subtree hidden
+  with `display: none`, so the first `pendingMs` test reported a skeleton no user
+  could see.
+
+## P6-7 — known limits, stated rather than left to be discovered
+
+- **`beforeLoad` re-runs once on hydration.** Loader results are seeded; context
+  is not. TanStack carries it over the wire under a `__beforeLoadContext` key.
+  The docs say to keep `beforeLoad` cheap and put expensive work in a loader,
+  which IS seeded. Seeding the context is the named follow-up.
+- **A loader's redirect cannot be a 302** once the shell is on the wire. It
+  becomes a client-side redirect plus a `<noscript>` meta-refresh; a redirect
+  that must be a status belongs in `beforeEach` or `beforeLoad`.
+- **`pendingMs` hides its fallback rather than omitting it**, because the
+  boundary places its output once and later insertions escape the range it tears
+  down.
+- **The typed `.d.ts` costs ~10x tsc check time when the new fields are READ**
+  (~216 instantiations per route against M3's 8), and nothing when they are not.
+  M3's table never had to price this, because it measured `path` and `params`.
+- **`BARQ013` assumes one route table per project.** `kitchen-sink` has two
+  code-based ones and no file-based routes, so it declares the union itself. A
+  project that passes half its routes gets a warning on every link into the
+  other half.
+- **`route_tree` still discharges none of CODESIGN §6's oracle layers.** It was
+  extended anyway, deliberately: it is a disjoint napi entry sharing nothing with
+  `compile()`, and the oracle exists for the compiler↔runtime contract. Recorded
+  as a decision, not an oversight.
+
+## P6-8 — a stale row in the table above
+
+The falsified table's first row says the crate does "ZERO filesystem reads
+outside `build.rs` and `#[cfg(test)]`". That was true when written and was
+deliberately overturned at `e441950`: `routes.rs:87` is a `std::fs::read_dir` in
+`src/`, and its own doc comment argues the reversal. The `transform` path still
+does no I/O; `route_tree` is a second, disjoint entry.
