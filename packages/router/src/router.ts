@@ -17,6 +17,7 @@
 import {
   type Cell,
   computed,
+  flush,
   latest,
   refresh,
   root,
@@ -30,6 +31,7 @@ import { type History, type Location, href, memoryHistory, parseLocation } from 
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
 import { leavesTheApp, resolvePath } from "./path.ts";
+import { type ScrollRestoration, scrollRestoration, withViewTransition } from "./scroll.ts";
 import {
   type SearchMiddleware,
   SearchParamError,
@@ -149,6 +151,14 @@ export function depsKey(value: unknown): string {
 export interface NavigateOptions {
   readonly replace?: boolean;
   readonly state?: unknown;
+  /**
+   * Go to the top instead of wherever this location was left.
+   *
+   * A filter change is not a place you return to, so `useSearchParams` sets it.
+   */
+  readonly resetScroll?: boolean;
+  /** Wrap this navigation's commit in a view transition. */
+  readonly viewTransition?: boolean;
 }
 
 /**
@@ -192,6 +202,13 @@ export interface RouterConfig {
   readonly beforeEach?: readonly Guard[];
   readonly afterEach?: readonly ((location: Location) => void)[];
   readonly cacheSize?: number;
+  /**
+   * Remember and restore scroll positions across navigations. Default ON in a
+   * browser, and a no-op without a DOM.
+   */
+  readonly scrollRestoration?: boolean;
+  /** Wrap every commit in a view transition unless a navigation says otherwise. */
+  readonly viewTransition?: boolean;
   /**
    * Told about every loader rejection, before it propagates.
    *
@@ -902,35 +919,66 @@ export function createRouter(config: RouterConfig): RouterState {
   let pendingContexts: readonly Record<string, unknown>[] | null = null;
 
   const unsubscribe = history.subscribe((next) => {
+    const asked = pendingNavigate;
+    pendingNavigate = undefined;
     const before = untrack(chain);
-    location.set(next);
-    // A popstate has no `navigate` to have run `beforeLoad`, so the context for
-    // the entry it lands on is rebuilt asynchronously and the render sees the
-    // ancestors' contribution as soon as it settles.
-    if (pendingContexts !== null) {
-      settleContexts(pendingContexts);
-      pendingContexts = null;
-    } else {
-      const candidate = matcher.match(next.pathname);
-      contexts.set([]);
-      if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
-      void runBeforeLoad(next, candidate).then(
-        (produced) => settleContexts(produced),
-        () => {
-          /* a guard's answer on a back button has nowhere to go; the boundary shows it */
-          releaseContexts();
-        },
-      );
-    }
-    previous = before;
-    revalidate();
-    // Start every loader in the new chain at once. Without this the client
-    // waterfalls exactly as the string backend did before `prime` existed: a
-    // child's boundary is built inside its parent's content, so each depth's
-    // loader waits for the one above it to resolve. `prime` had a single call
-    // site — `renderRoutes` — so this was SSR-only.
-    primeChain();
-    sweep();
+
+    /**
+     * Everything a commit IS, in one closure, because a view transition
+     * snapshots the DOM as it stands when this returns.
+     *
+     * An earlier version set the location here and left the revalidate and the
+     * prime outside — so the snapshot caught a half-committed page, and a
+     * `blocking` reload rendered its OLD data instead of its fallback. The test
+     * for `staleReloadMode: "blocking"` is what said so.
+     */
+    const commit = (): void => {
+      location.set(next);
+
+      // A popstate has no `navigate` to have run `beforeLoad`, so the context
+      // for the entry it lands on is rebuilt asynchronously and the render sees
+      // the ancestors' contribution as soon as it settles.
+      if (pendingContexts !== null) {
+        settleContexts(pendingContexts);
+        pendingContexts = null;
+      } else {
+        const candidate = matcher.match(next.pathname);
+        contexts.set([]);
+        if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
+        void runBeforeLoad(next, candidate).then(
+          (produced) => settleContexts(produced),
+          () => {
+            /* a guard's answer on a back button has nowhere to go; the boundary shows it */
+            releaseContexts();
+          },
+        );
+      }
+
+      previous = before;
+      revalidate();
+      // Start every loader in the new chain at once, so the client does not
+      // wait for each depth's parent to resolve before beginning the next.
+      primeChain();
+      sweep();
+
+      // LAST, and synchronously: propagation here is microtask-scheduled, so
+      // without this a transition animates old-to-old. The deleted router had
+      // this line and it is the one thing about its transitions worth keeping.
+      flush();
+    };
+
+    // AFTER the commit and not after the animation: `withViewTransition` awaits
+    // `updateCallbackDone`, so this runs once the DOM is written rather than
+    // once it has finished animating. Awaiting `finished` is what made the old
+    // router's page visibly jump when the animation had already played.
+    const restoreScroll = async (): Promise<void> => {
+      await withViewTransition(commit, {
+        enabled: asked?.viewTransition ?? config.viewTransition ?? false,
+      });
+      scroll.restore(next, { reset: asked?.resetScroll });
+    };
+    void restoreScroll();
+
     for (const hook of config.afterEach ?? []) hook(next);
   });
 
@@ -956,6 +1004,13 @@ export function createRouter(config: RouterConfig): RouterState {
 
   const blockers = new Set<Blocker>();
   const navigating = signal(0);
+  const scroll: ScrollRestoration =
+    config.scrollRestoration === false
+      ? { save: () => {}, restore: () => {}, dispose: () => {} }
+      : scrollRestoration();
+  // Set by `navigate` and read by the subscription, because the COMMIT is where
+  // both of these apply and only the caller knows what it asked for.
+  let pendingNavigate: NavigateOptions | undefined;
 
   let hops = 0;
   const MAX_REDIRECTS = 10;
@@ -1043,6 +1098,9 @@ export function createRouter(config: RouterConfig): RouterState {
       throw error;
     }
     pendingContexts = produced;
+    pendingNavigate = options;
+    // Where the page being LEFT is, recorded before it stops being current.
+    scroll.save(untrack(location));
     history.push(href(target), { replace: options?.replace, state: options?.state });
   };
 
@@ -1157,6 +1215,7 @@ export function createRouter(config: RouterConfig): RouterState {
     },
     dispose() {
       unsubscribe();
+      scroll.dispose();
       for (const entry of entries.values()) entry.dispose();
       entries.clear();
       memo.clear();

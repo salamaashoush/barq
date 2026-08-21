@@ -358,6 +358,7 @@ describe("the convention, from the other side", () => {
       "path.ts": "path.test.ts",
       "route.ts": "matcher.test.ts",
       "router.ts": "router.test.ts",
+      "scroll.ts": "scroll.test.ts",
       "search.ts": "search.test.ts",
       "server.ts": "server.test.ts",
       "vite.ts": "vite.test.ts",

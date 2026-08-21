@@ -32,6 +32,15 @@ export {
 export { type FlatRoute, type Match, type Matcher, createMatcher } from "./matcher.ts";
 
 export {
+  type ScrollRestoration,
+  type ViewTransitionOptions,
+  SCROLL_ID_ATTRIBUTE,
+  scrollKey,
+  scrollRestoration,
+  withViewTransition,
+} from "./scroll.ts";
+
+export {
   type SearchMiddleware,
   type SearchMiddlewareContext,
   type SearchValidator,

@@ -158,8 +158,15 @@ export function useSearchParams(): [
     }
     const query = kept.toString();
     const { pathname, hash } = state.location();
-    // `replace`, because a filter is not a place you navigate BACK through.
-    void state.navigate(`${pathname}${query === "" ? "" : `?${query}`}${hash}`, { replace: true });
+    // `replace`, because a filter is not a place you navigate BACK through —
+    // and `resetScroll`, for the same reason. The old router's setter replaced
+    // without resetting, so every keystroke in a filter box saved a scroll
+    // position under the OLD query and restored `(0,0)` for the new one: the
+    // list jumped to the top as you typed.
+    void state.navigate(`${pathname}${query === "" ? "" : `?${query}`}${hash}`, {
+      replace: true,
+      resetScroll: true,
+    });
   };
   return [state.search, set];
 }
