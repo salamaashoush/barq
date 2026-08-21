@@ -70,13 +70,42 @@ export interface RouterConfig {
   readonly onLoaderError?: (error: unknown) => void;
 }
 
-/** What a loader cell is keyed by, and what the seed carries. */
-export function loaderKey(routeId: string, params: Readonly<Record<string, string>>): string {
+/**
+ * What a loader cell is keyed by, and what the seed carries.
+ *
+ * `deps` is the third field because a loader is HANDED the search and was not
+ * KEYED by it: `/posts?page=1` then `/posts?page=2` reused the first cell and
+ * answered with page 1 forever, with one loader invocation and no error. The
+ * fix is coarse on purpose — the whole search, so a route that reads any of it
+ * is correct — and `loaderDeps` narrows it to the part a route actually uses,
+ * which is what stops an unrelated `?ref=` busting every cache on the page.
+ *
+ * Delimited, unlike TanStack, whose match id is `route.id + interpolatedPath +
+ * JSON.stringify(loaderDeps)` with no separator (`router.ts:1623-1629`).
+ */
+export function loaderKey(
+  routeId: string,
+  params: Readonly<Record<string, string>>,
+  deps = "",
+): string {
   // Sorted, so two renders of the same match agree byte for byte regardless of
   // the order the matcher happened to fill `params` in.
   const names = Object.keys(params).toSorted();
   const pairs = names.map((name) => `${name}=${params[name]}`).join("&");
-  return `r:${routeId}|${pairs}`;
+  return deps === "" ? `r:${routeId}|${pairs}` : `r:${routeId}|${pairs}|${deps}`;
+}
+
+/**
+ * The search, in a form two renders of the same URL agree on byte for byte.
+ *
+ * Sorted by name and then by value, because `?b=2&a=1` and `?a=1&b=2` are the
+ * same request and a key that says otherwise refetches for nothing. Repeated
+ * keys are kept — `?tag=a&tag=b` is not `?tag=b`.
+ */
+export function searchKey(search: URLSearchParams): string {
+  const pairs: string[] = [];
+  for (const [name, value] of search) pairs.push(`${name}=${value}`);
+  return pairs.toSorted().join("&");
 }
 
 export interface RouterState {
@@ -148,7 +177,13 @@ export function createRouter(config: RouterConfig): RouterState {
 
   const dataFor = (route: Route, forParams: Readonly<Record<string, string>>): Cell<unknown> => {
     const loader = route.definition.loader;
-    const key = `${loaderKey(route.id, forParams)}#${untrack(generation)}`;
+    // The search the cell is built for, captured HERE. Reading it inside the
+    // loader body instead is what made the cache answer with a stale query: the
+    // body runs once, so `untrack(search)` froze the search of whichever
+    // navigation happened to create the cell.
+    const forSearch = untrack(search);
+    const seedKey = loaderKey(route.id, forParams, searchKey(forSearch));
+    const key = `${seedKey}#${untrack(generation)}`;
     const existing = cells.get(key);
     if (existing !== undefined) return existing;
 
@@ -161,7 +196,7 @@ export function createRouter(config: RouterConfig): RouterState {
               try {
                 return await loader({
                   params: forParams as never,
-                  search: untrack(search),
+                  search: forSearch,
                   signal: controller.signal,
                 });
               } catch (error) {
@@ -172,7 +207,7 @@ export function createRouter(config: RouterConfig): RouterState {
             // The generation is NOT in the seed key: the server always renders
             // at generation 0 and a client that has invalidated since would
             // otherwise look for a key the server never wrote.
-            { key: loaderKey(route.id, forParams) },
+            { key: seedKey },
           );
 
     const cell = runWithOwner(null, build);

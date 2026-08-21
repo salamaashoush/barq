@@ -88,6 +88,7 @@ export {
   type RouterState,
   createRouter,
   loaderKey,
+  searchKey,
 } from "./router.ts";
 
 export {

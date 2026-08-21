@@ -186,6 +186,93 @@ describe("loaders", () => {
     dispose();
   });
 
+  test("B1 — a search-dependent loader re-runs when the search changes", async () => {
+    // The loader was HANDED the search and was not KEYED by it, so
+    // `/posts?page=2` reused the cell built for `?page=1` and answered with
+    // page 1 forever — one loader invocation, no error, wrong page. Nothing in
+    // this suite had a route whose loader read `search`.
+    const seen: string[] = [];
+    const history = memoryHistory({ initial: ["/posts?page=1"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/posts",
+          loader: async ({ search }: { search: URLSearchParams }) => {
+            const page_ = search.get("page") ?? "0";
+            seen.push(page_);
+            await tick();
+            return `page ${page_}`;
+          },
+          pending: page("loading"),
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("span");
+            insert(scope, node, () => String(props.data()));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+
+    await settle();
+    flush();
+    expect(host.textContent).toBe("page 1");
+
+    history.push("/posts?page=2");
+    flush();
+    await settle();
+    flush();
+    expect(host.textContent).toBe("page 2");
+    expect(seen).toEqual(["1", "2"]);
+
+    // …and going back is a cache HIT, not a third fetch.
+    history.push("/posts?page=1");
+    flush();
+    await settle();
+    flush();
+    expect(host.textContent).toBe("page 1");
+    expect(seen).toEqual(["1", "2"]);
+
+    dispose();
+  });
+
+  test("B1 — key order in the query does not mint a second cell", async () => {
+    // `?b=2&a=1` and `?a=1&b=2` are the same request; a key that says otherwise
+    // refetches for nothing.
+    let calls = 0;
+    const history = memoryHistory({ initial: ["/s?a=1&b=2"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/s",
+          loader: async () => {
+            calls++;
+            await tick();
+            return "once";
+          },
+          pending: page("loading"),
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("span");
+            insert(scope, node, () => String(props.data()));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+
+    await settle();
+    flush();
+    history.push("/s?b=2&a=1");
+    flush();
+    await settle();
+    flush();
+
+    expect(host.textContent).toBe("once");
+    expect(calls).toBe(1);
+    dispose();
+  });
+
   test("a route with no loader hands its component undefined rather than hanging", () => {
     const history = memoryHistory();
     const { host, dispose } = mount({
