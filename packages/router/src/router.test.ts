@@ -614,6 +614,66 @@ describe("loaderDeps and the reload policy", () => {
     dispose();
   });
 
+  test("a navigation starts the chain's loaders before the render runs", async () => {
+    // Priming starts the chain's loaders AT THE NAVIGATION, before the render
+    // runs at all — which is what this asserts, by checking before `flush()`.
+    //
+    // Worth stating precisely, because the first version of this test passed
+    // WITHOUT priming and therefore proved nothing: the DOM backend does not
+    // waterfall the way the string backend did. Each dynamic hole is its own
+    // tracked effect, so a layout whose data has parked still constructs its
+    // children, and the child's loader starts anyway. The string backend has no
+    // such split — its content is one expression — which is why `prime` was
+    // written there first. On the client the win is the head start, not the
+    // parallelism.
+    const started: string[] = [];
+    const history = memoryHistory({ initial: ["/other"] });
+    const layout = (scope: Scope | null, props: RouteProps): Node => {
+      const node = document.createElement("div");
+      insert(scope, node, () => String(props.data()));
+      insert(scope, node, () => props.children);
+      return node;
+    };
+    const { dispose } = mount({
+      routes: [
+        { path: "/other", component: page("other") },
+        {
+          path: "/app",
+          loader: async () => {
+            started.push("layout");
+            await tick();
+            return "L";
+          },
+          pending: page("l"),
+          component: layout,
+          children: [
+            {
+              path: "$id",
+              loader: async () => {
+                started.push("leaf");
+                await tick();
+                return "F";
+              },
+              pending: page("l"),
+              component: span,
+            },
+          ],
+        },
+      ] as never,
+      history,
+    });
+
+    history.push("/app/7");
+    // No `flush()`: nothing has rendered yet. Both loaders are already in
+    // flight because the navigation primed them.
+    expect(started.toSorted()).toEqual(["layout", "leaf"]);
+
+    flush();
+    await settle();
+    flush();
+    dispose();
+  });
+
   test("invalidate() re-runs in place, keeping the cell's identity", async () => {
     let n = 0;
     const history = memoryHistory({ initial: ["/p"] });

@@ -547,6 +547,24 @@ export function createRouter(config: RouterConfig): RouterState {
     return reader;
   };
 
+  const primeChain = (): void => {
+    const forParams = untrack(params);
+    for (const route of untrack(chain)) {
+      if (route.definition.loader === undefined) continue;
+      try {
+        // Blocking, always: priming exists to START the fetch, and a `latest()`
+        // read of a cold cell on the string backend answers `undefined` instead
+        // of parking, so nothing would start at all.
+        dataFor(route, forParams, true)();
+      } catch {
+        // `NotReadyError` is the point — the fetch is now in flight. A cell that
+        // has already FAILED throws its error here too, and swallowing it is
+        // correct: the read inside the boundary throws it again with a boundary
+        // to catch it, and `onLoaderError` has already fired.
+      }
+    }
+  };
+
   /** `enter` the first time a route appears in the chain, `stay` while it stays. */
   let previous: readonly Route[] = [];
   const causeFor = (route: Route): LoadCause => (previous.includes(route) ? "stay" : "enter");
@@ -578,6 +596,12 @@ export function createRouter(config: RouterConfig): RouterState {
     location.set(next);
     previous = before;
     revalidate();
+    // Start every loader in the new chain at once. Without this the client
+    // waterfalls exactly as the string backend did before `prime` existed: a
+    // child's boundary is built inside its parent's content, so each depth's
+    // loader waits for the one above it to resolve. `prime` had a single call
+    // site — `renderRoutes` — so this was SSR-only.
+    primeChain();
     sweep();
     for (const hook of config.afterEach ?? []) hook(next);
   });
@@ -653,23 +677,7 @@ export function createRouter(config: RouterConfig): RouterState {
     history,
     dataFor,
     navigate,
-    prime() {
-      const forParams = untrack(params);
-      for (const route of untrack(chain)) {
-        if (route.definition.loader === undefined) continue;
-        try {
-          // Blocking, always: priming exists to START the fetch, and a
-          // `latest()` read of a cold cell on the string backend answers
-          // `undefined` instead of parking, so nothing would start at all.
-          dataFor(route, forParams, true)();
-        } catch {
-          // `NotReadyError` is the point — the fetch is now in flight. A cell
-          // that has already FAILED throws its error here too, and swallowing
-          // it is correct: the read inside the boundary throws it again with a
-          // boundary to catch it, and `onLoaderError` has already fired.
-        }
-      }
-    },
+    prime: primeChain,
     /**
      * Ask every cached loader again.
      *
