@@ -343,6 +343,7 @@ describe("the convention, from the other side", () => {
     // added — which is the property the row this replaces had.
     const coveredBy: Record<string, string> = {
       "components.ts": "router.test.ts",
+      "errors.ts": "server.test.ts",
       "history.ts": "history.test.ts",
       "hooks.ts": "router.test.ts",
       "manifest.ts": "manifest.test.ts",

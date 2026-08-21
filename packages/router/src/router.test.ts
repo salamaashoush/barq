@@ -11,6 +11,7 @@ import { type Scope, flush, getOwner, insert, isDisposed, render, settle } from 
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { Link, NavLink, Router } from "./components.ts";
+import { notFound } from "./errors.ts";
 import { memoryHistory } from "./history.ts";
 import { useLocation, useNavigate, useParams, useSearchParams } from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
@@ -289,6 +290,83 @@ describe("loaders", () => {
       history,
     });
     expect(host.textContent).toBe("undefined");
+    dispose();
+  });
+});
+
+describe("errorComponent on the DOM backend", () => {
+  test("a loader that rejects after hydration is caught, not thrown out of the render", async () => {
+    // The DOM path installed only a `"loading"` boundary, so every client-side
+    // loader rejection had nothing to catch it and walked out of the render.
+    // The string backend grew an `Errored` per depth when a rejected loader
+    // stopped tearing the response; this is the same boundary on the other side.
+    const history = memoryHistory({ initial: ["/boom"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/boom",
+          loader: async () => {
+            await tick();
+            throw new Error("loader said no");
+          },
+          pending: page("loading"),
+          errorComponent: (scope: Scope | null, props: { error: () => Error }) => {
+            const node = document.createElement("p");
+            insert(scope, node, () => props.error().message);
+            return node;
+          },
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("span");
+            insert(scope, node, () => String(props.data()));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+
+    await settle();
+    flush();
+    expect(host.textContent).toBe("loader said no");
+
+    dispose();
+  });
+
+  test("notFound() reaches notFoundComponent on the client too", async () => {
+    const history = memoryHistory({ initial: ["/missing"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/missing",
+          loader: async () => {
+            await tick();
+            notFound("no row 7");
+          },
+          pending: page("loading"),
+          errorComponent: (scope: Scope | null) => {
+            const node = document.createElement("p");
+            insert(scope, node, () => "generic");
+            return node;
+          },
+          notFoundComponent: (scope: Scope | null, props: { error: () => Error }) => {
+            const node = document.createElement("p");
+            insert(scope, node, () => props.error().message);
+            return node;
+          },
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("span");
+            insert(scope, node, () => String(props.data()));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+
+    await settle();
+    flush();
+    expect(host.textContent).toBe("no row 7");
+
     dispose();
   });
 });

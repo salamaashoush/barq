@@ -82,3 +82,36 @@ describe("published entry points", () => {
     }
   });
 });
+
+/**
+ * Two names, one binding.
+ *
+ * `errors.ts` grew a `Redirect` class while `components.ts` already exported a
+ * `Redirect` component, and NOTHING in this suite noticed: Bun's resolver
+ * tolerates a duplicate re-export and answers with one of them. Rolldown does
+ * not — `bun run build` in `packages/kitchen-sink` failed with
+ * `Duplicated export 'Redirect'`, which is the gate that caught it and is a
+ * slower loop than a test.
+ */
+describe("the index re-exports nothing twice", () => {
+  test("every exported name in index.ts is unique", () => {
+    const source = readFileSync(join(ROOT, "packages", "router", "src", "index.ts"), "utf8");
+    const names: string[] = [];
+    for (const block of source.matchAll(/export\s*\{([^}]*)\}\s*from/g)) {
+      for (const raw of (block[1] as string).split(",")) {
+        const name = raw
+          .trim()
+          .replace(/^type\s+/, "")
+          .split(/\s+as\s+/)
+          .at(-1);
+        if (name !== undefined && name !== "") names.push(name);
+      }
+    }
+    const seen = new Set<string>();
+    const twice = names.filter((name) => (seen.has(name) ? true : (seen.add(name), false)));
+    expect(twice).toEqual([]);
+    // …and the scan found something, so an index that stops matching the
+    // pattern fails loudly rather than passing vacuously.
+    expect(names.length).toBeGreaterThan(30);
+  });
+});

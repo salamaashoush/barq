@@ -29,6 +29,7 @@ import {
 } from "@barqjs/server";
 import { withRequest } from "@barqjs/start";
 
+import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
 import { memoryHistory } from "./history.ts";
 import { createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
@@ -92,29 +93,27 @@ export function renderRoutes(state: RouterState): unknown {
               null,
               routePropsFor(state, depth, route, (() => ssrHtml("")) as never),
             ),
-      children: () => ssrErrored(null, { fallback: () => ssrHtml(""), children: content }),
+      children: () =>
+        ssrErrored(null, {
+          // The string backend hands an error fallback `(error, reset)`
+          // positionally, exactly as `flow.ts`'s does.
+          fallback: (fallbackScope: unknown, error: () => Error, reset: () => void) => {
+            const shown = errorFallbackFor(chain, depth, () => state.params())(
+              fallbackScope,
+              error,
+              reset,
+            );
+            return shown === null || shown === undefined ? ssrHtml("") : shown;
+          },
+          children: content,
+        }),
     });
   };
 
   return at(0);
 }
 
-/** Thrown by a loader or a guard to send the browser somewhere else. */
-export class Redirect extends Error {
-  readonly to: string;
-  readonly status: number;
-  constructor(to: string, status = 302) {
-    super(`redirect to ${to}`);
-    this.name = "Redirect";
-    this.to = to;
-    this.status = status;
-  }
-}
-
-/** `throw redirect("/login")`. Carried over the wire by the codec as an Error. */
-export function redirect(to: string, status = 302): never {
-  throw new Redirect(to, status);
-}
+export { NotFound, Redirect, errorFallbackFor, notFound, redirect } from "./errors.ts";
 
 export interface DocumentParts {
   /** The application's markup. */
@@ -201,11 +200,17 @@ export function createPageHandler(
     // Request-scoped, so the answer a loader throws cannot reach another
     // request. A module-level "current answer" is GHSA-hgv7-v322-mmgr.
     let answer: Response | null = null;
+    // `notFound()` is an ANSWER, not a failure: the page still renders (its
+    // `notFoundComponent` does), and what changes is the status. Tracked
+    // separately from `answer` for that reason — turning it into a `Response`
+    // here would discard the markup the render just produced.
+    let missing = false;
     const config: RouterConfig = {
       routes: options.routes,
       beforeEach: options.beforeEach,
       history: memoryHistory({ initial: [url.pathname + url.search] }),
       onLoaderError(error) {
+        if (error instanceof NotFound) missing = true;
         answer ??= asResponse(error);
       },
     };
@@ -249,7 +254,11 @@ export function createPageHandler(
                 chain: match?.route.chain ?? null,
                 url,
               }),
-              status,
+              // A rendered 404 rather than a bare one. In STREAM mode the status
+              // is already on the wire by the time a loader can say this, so a
+              // `notFound()` that must set the status belongs where the status
+              // is still open — the same rule redirects follow.
+              missing ? 404 : status,
             );
           }
           const stream = renderToStream(() => options.app(state) as never, {

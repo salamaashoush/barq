@@ -43,9 +43,24 @@ export {
   splitPath,
 } from "./path.ts";
 
+/**
+ * A loader is isomorphic, so what a loader THROWS has to be importable from the
+ * isomorphic entry. `@barqjs/router/server` re-exports the same bindings for
+ * code that already imports the page handler.
+ *
+ * The `Redirect` CLASS is deliberately not re-exported here: `components.ts`
+ * already exports a `Redirect` COMPONENT and the two collide. Bun's resolver
+ * tolerated it; Rolldown refused the build, which is the gate that caught it.
+ * `isRedirect` is the predicate a consumer actually wants, and
+ * `@barqjs/router/server` still exports the class for code that needs it.
+ */
+export { NotFound, isNotFound, isRedirect, notFound, redirect } from "./errors.ts";
+
 export {
   type Loader,
   type AnyRouteDefinition,
+  type ErrorComponent,
+  type ErrorProps,
   type InvokedRouteComponent,
   type Route,
   type RouteComponent,

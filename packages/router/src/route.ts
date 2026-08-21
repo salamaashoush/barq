@@ -49,6 +49,23 @@ export type RouteComponent<Data = unknown, Params = Record<string, string>> = (
   props: RouteProps<Data, Params>,
 ) => unknown;
 
+/**
+ * What an `errorComponent` is handed.
+ *
+ * `reset` re-enters the content arm with a fresh scope — core's error boundary
+ * models recovery as a branch key flip, so a reset is a rebuild rather than an
+ * in-place retry, and a loader that failed is asked again.
+ */
+export interface ErrorProps<Params = Record<string, string>> {
+  readonly error: () => Error;
+  readonly reset: () => void;
+  readonly params: () => Params;
+}
+
+export type ErrorComponent<Params = Record<string, string>> = (
+  props: ErrorProps<Params>,
+) => unknown;
+
 /** The invoked form: what the router actually calls. */
 export type InvokedRouteComponent<Data = unknown, Params = Record<string, string>> = Component<
   RouteProps<Data, Params>
@@ -108,6 +125,28 @@ export interface RouteDefinition<Data = unknown, Params = Record<string, string>
   readonly beforeEnter?: import("./router.ts").Guard;
   /** Shown while this route's loader is unsettled. Without one the boundary shows nothing. */
   readonly pending?: RouteComponent<never, never>;
+  /**
+   * Shown when this route's loader — or anything it renders — throws.
+   *
+   * One error boundary per route depth, and it is not decoration: a loader that
+   * rejects after the shell has flushed used to reach `controller.error` and
+   * tear the response mid-document. Without an `errorComponent` the boundary
+   * still catches, and renders nothing, which is a silently truncated page —
+   * so declaring one is how a failure becomes visible rather than invisible.
+   *
+   * The nearest ANCESTOR's is used when a route declares none, which is what
+   * makes one at the layout cover everything under it.
+   */
+  readonly errorComponent?: ErrorComponent<Params>;
+  /**
+   * Shown when a loader throws `notFound()`.
+   *
+   * Separate from `errorComponent` because "this row does not exist" is an
+   * answer and not a failure: it wants different markup, and on the server it
+   * wants a different status. Falls back to `errorComponent`, then to the
+   * nearest ancestor's, so a single one at the root is enough.
+   */
+  readonly notFoundComponent?: ErrorComponent<Params>;
   readonly loader?: Loader<Data, Params>;
   readonly children?: readonly AnyRouteDefinition[];
 }

@@ -42,6 +42,7 @@ import {
 
 import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
+import { errorFallbackFor } from "./errors.ts";
 import { interpolate, isUnder, leavesTheApp, resolvePath } from "./path.ts";
 
 /** The real ABI. `RouteComponent` is declared props-first for TypeScript's sake. */
@@ -97,6 +98,32 @@ export function renderDepth(
           : (component as unknown as Invoked)(contentScope, routeProps(state, depth, route)),
       );
 
+    // An `Errored` per depth, INSIDE the `Loading`, matching what the string
+    // backend emits. Without it a loader that rejects on the client after
+    // hydration has nothing to catch it at all — the DOM path installed only
+    // `"loading"`, so the throw walked out of the render.
+    //
+    // Inside rather than outside, for the reason the string side records: what
+    // is re-entered after a park is the loading boundary's own content, so a
+    // catcher outside it is not in the path on the retry.
+    const guarded: Block<unknown> = (contentScope: Scope | null): unknown =>
+      boundary(
+        contentScope,
+        null,
+        null,
+        "error",
+        ((fallbackScope: Scope | null, error: () => Error, reset: () => void) => {
+          const shown = errorFallbackFor(
+            untrack(() => state.chain()),
+            depth,
+            () => state.params(),
+          )(fallbackScope, error, reset);
+          return shown === null || shown === undefined ? null : shown;
+        }) as Block<unknown>,
+        content as Block<unknown>,
+        0,
+      );
+
     // One `Loading` per depth, by construction rather than by asking the author
     // for one. It is not a convenience: `renderToStream` opens the seed channel
     // only `if (parked.length > 0)`, and a boundary parking is the only thing
@@ -109,7 +136,7 @@ export function renderDepth(
       null,
       "loading",
       routeFallback(route),
-      content,
+      guarded,
       0,
       // Re-arm on navigation: when `on()` changes while work is pending the
       // fallback comes back instead of holding the previous route's content.

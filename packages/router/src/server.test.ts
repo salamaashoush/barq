@@ -11,7 +11,7 @@ import { createServerFn, getRequest } from "@barqjs/start";
 import { computed } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { createPageHandler, redirect, renderRoutes } from "./server.ts";
+import { createPageHandler, notFound, redirect, renderRoutes } from "./server.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -399,5 +399,141 @@ describe("P6 defects", () => {
     // resuming against it, so disposal comes after the last loader settles —
     // not when the `Response` object was handed back.
     expect(order.indexOf("dispose")).toBeGreaterThan(order.indexOf("loader settled"));
+  });
+});
+
+/**
+ * §3.4 — an error boundary per route depth, on the STRING backend.
+ *
+ * The B3 fix stopped a rejected loader tearing the response, and traded a torn
+ * body for a silently truncated one: status 200, content missing, nothing in the
+ * markup to say so. `errorComponent` is what makes the failure visible, and
+ * `notFoundComponent` is what makes "the row is missing" a different answer from
+ * "the page is broken".
+ */
+describe("errorComponent and notFoundComponent", () => {
+  let seq = 0;
+  const table = (
+    id: string,
+    thrown: () => never,
+    extra: Record<string, unknown>,
+  ): AnyRouteDefinition[] =>
+    [
+      {
+        id,
+        path: "/thing/$id",
+        loader: async () => {
+          await tick();
+          thrown();
+        },
+        component: (_s: unknown, props: { data: () => unknown }) =>
+          ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+        ...extra,
+      },
+    ] as never;
+
+  const render = async (routes: AnyRouteDefinition[], stream: boolean): Promise<string> => {
+    const handler = createPageHandler({ routes, stream, app: (s) => renderRoutes(s), document });
+    return (await handler(get("/thing/7"))).text();
+  };
+
+  test("a rejected loader renders the route's errorComponent, in both modes", async () => {
+    for (const stream of [false, true]) {
+      const id = `e${seq++}`;
+      const body = await render(
+        table(
+          id,
+          () => {
+            throw new Error("the database is on fire");
+          },
+          {
+            errorComponent: (_s: unknown, props: { error: () => Error }) =>
+              ssrHtml(`<p class="boom">${esc(props.error().message)}</p>`),
+          },
+        ),
+        stream,
+      );
+      expect(body).toContain('<p class="boom">the database is on fire</p>');
+    }
+  });
+
+  test("notFound() reaches notFoundComponent and not errorComponent", async () => {
+    const id = `n${seq++}`;
+    const body = await render(
+      table(id, () => notFound("no such thing"), {
+        errorComponent: () => ssrHtml("<p>generic failure</p>"),
+        notFoundComponent: (_s: unknown, props: { error: () => Error }) =>
+          ssrHtml(`<p class="missing">${esc(props.error().message)}</p>`),
+      }),
+      false,
+    );
+    expect(body).toContain('<p class="missing">no such thing</p>');
+    expect(body).not.toContain("generic failure");
+  });
+
+  test("notFound() falls through to errorComponent when there is no notFoundComponent", async () => {
+    const id = `f${seq++}`;
+    const body = await render(
+      table(id, () => notFound(), {
+        errorComponent: () => ssrHtml("<p>generic failure</p>"),
+      }),
+      false,
+    );
+    expect(body).toContain("<p>generic failure</p>");
+  });
+
+  test("notFound() answers 404 when the status is still open", async () => {
+    const id = `s${seq++}`;
+    const routes = table(id, () => notFound("gone"), {
+      notFoundComponent: (_s: unknown, props: { error: () => Error }) =>
+        ssrHtml(`<p>${esc(props.error().message)}</p>`),
+    });
+    const handler = createPageHandler({
+      routes,
+      stream: false,
+      app: (s) => renderRoutes(s),
+      document,
+    });
+    const response = await handler(get("/thing/7"));
+    expect(response.status).toBe(404);
+    // …and the page it rendered is still the body, not a bare status.
+    expect(await response.text()).toContain("<p>gone</p>");
+  });
+
+  test("a layout's errorComponent covers a child that declares none", async () => {
+    const id = `l${seq++}`;
+    const routes = [
+      {
+        id: `${id}-layout`,
+        path: "/app",
+        errorComponent: (_s: unknown, props: { error: () => Error }) =>
+          ssrHtml(`<p class="layout-caught">${esc(props.error().message)}</p>`),
+        component: (_s: unknown, props: { children: unknown }) =>
+          ssrHtml(`<div>${esc((props.children as () => unknown)())}</div>`),
+        children: [
+          {
+            id: `${id}-leaf`,
+            path: "$id",
+            loader: async () => {
+              await tick();
+              throw new Error("leaf failed");
+            },
+            component: (_s: unknown, props: { data: () => unknown }) =>
+              ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+          },
+        ],
+      },
+    ] as never;
+    const handler = createPageHandler({
+      routes,
+      stream: false,
+      app: (s) => renderRoutes(s),
+      document,
+    });
+    const body = await (await handler(get("/app/7"))).text();
+    expect(body).toContain('<p class="layout-caught">leaf failed</p>');
+    // The layout itself still rendered — one depth failing does not take the
+    // chain above it.
+    expect(body).toContain("<div>");
   });
 });
