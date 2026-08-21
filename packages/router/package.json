@@ -29,6 +29,11 @@
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "bun": "./src/server.ts",
+      "import": "./dist/server.js"
     }
   },
   "scripts": {
@@ -41,12 +46,24 @@
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/start": "workspace:*",
     "@happy-dom/global-registrator": "^20.11.6",
     "@types/bun": "^1.4.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.1.0"
+    "@barqjs/core": ">=0.1.0",
+    "@barqjs/server": ">=0.1.0",
+    "@barqjs/start": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@barqjs/server": {
+      "optional": true
+    },
+    "@barqjs/start": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"

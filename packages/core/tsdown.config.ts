@@ -6,6 +6,8 @@ export default defineConfig([
   {
     entry: ["./src/index.ts"],
     format: ["esm"],
+    // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
+    outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
     dts: true,
     clean: true,
     external: ["csstype"],
@@ -17,6 +19,8 @@ export default defineConfig([
   {
     entry: ["./src/jsx-runtime.ts"],
     format: ["esm"],
+    // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
+    outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
     dts: true,
     clean: false, // Don't clean on second build
     external: ["csstype"],
@@ -28,6 +32,8 @@ export default defineConfig([
   {
     entry: ["./src/interp.ts"],
     format: ["esm"],
+    // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
+    outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
     dts: true,
     clean: false,
     external: ["csstype"],
@@ -39,6 +45,8 @@ export default defineConfig([
   {
     entry: ["./src/internal.ts"],
     format: ["esm"],
+    // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
+    outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
     dts: true,
     clean: false,
     external: ["csstype"],
