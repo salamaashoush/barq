@@ -195,6 +195,19 @@ export function createPageHandler(
     try {
       return await withRequest(request, async () => {
         const state = createRouter(config);
+        // A streamed response is not finished when this function returns it:
+        // `renderToStream` hands back the `ReadableStream` before a byte of the
+        // body exists, and the boundaries resume against this state afterwards.
+        // Disposing in a `finally` therefore cleared the loader cache and
+        // unsubscribed history MID-RENDER, and every entry was re-minted on
+        // resume — masked today only because a re-minted cell for a settled key
+        // answers from the session bucket instead of refetching.
+        let disposed = false;
+        const dispose = (): void => {
+          if (disposed) return;
+          disposed = true;
+          state.dispose();
+        };
         try {
           if (options.stream === false) {
             // `renderPage`, not `renderToString`: the sync one does not await an
@@ -207,6 +220,7 @@ export function createPageHandler(
             });
             // A loader that threw a `Response` or a `Redirect` decided this
             // page, even though the render completed around it.
+            dispose();
             if (answer !== null) return answer;
             return html(
               options.document({
@@ -222,12 +236,17 @@ export function createPageHandler(
             signal: request.signal,
             nonce: options.nonce,
           });
-          return new Response(wrapStream(stream, options, match?.route.chain ?? null, url), {
-            status,
-            headers: { "content-type": "text/html; charset=utf-8" },
-          });
-        } finally {
-          state.dispose();
+          return new Response(
+            wrapStream(stream, options, match?.route.chain ?? null, url, dispose),
+            {
+              status,
+              headers: { "content-type": "text/html; charset=utf-8" },
+            },
+          );
+        } catch (error) {
+          // The stream was never handed over, so nothing else will dispose it.
+          dispose();
+          throw error;
         }
       });
     } catch (error) {
@@ -274,6 +293,8 @@ function wrapStream(
   options: PageHandlerOptions,
   chain: readonly Route[] | null,
   url: URL,
+  /** Runs when the body is finished or abandoned — never before. */
+  done: () => void,
 ): ReadableStream<Uint8Array> {
   const document = options.document({ body: BODY_MARKER, seed: "", chain, url });
   const cut = document.indexOf(BODY_MARKER);
@@ -301,12 +322,14 @@ function wrapStream(
       }
       controller.enqueue(encoder.encode(tail));
       controller.close();
+      done();
     },
     cancel(reason) {
       // The client went away. Cancelling the inner stream is what stops the
       // render doing work nobody will read — on Lambda a stream that is not
       // cancelled is billed for its full duration.
       void stream.cancel(reason);
+      done();
     },
   });
 }

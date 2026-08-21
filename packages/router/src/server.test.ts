@@ -232,3 +232,70 @@ describe("the document", () => {
     expect(handler(get("/"))).rejects.toThrow(/must place its `body` argument/);
   });
 });
+
+/**
+ * Five defects found by probe at the start of P6, each on a shipped path and
+ * each with nothing in this suite that would have caught it. They are written
+ * here before the fixes so the commits that follow have something to turn
+ * green — `packages/router/DESIGN.md`'s P-A/P-B/P-C are the model.
+ */
+describe("P6 defects", () => {
+  /** Distinct ids per test: a dropped loader keeps running after its response. */
+  let seq = 0;
+  const fresh = (): string => `p6-${seq++}`;
+
+  test("B5 — the router state outlives the stream that is still using it", async () => {
+    // `createPageHandler` runs `finally { state.dispose() }` inside the
+    // `withRequest` callback, and for a streamed response that callback returns
+    // as soon as `renderToStream` hands back the ReadableStream — before one
+    // byte of the body exists. So the loader cache is cleared and history is
+    // unsubscribed WHILE the boundaries are still resuming, and every entry is
+    // re-minted on resume.
+    //
+    // Today the damage is masked: a re-minted cell for an already-settled key
+    // answers from the session bucket rather than refetching, so the loader
+    // count looks right. It stops being masked the moment the chain is primed
+    // — measured, one extra fetch and 40 ms — so the ordering is what this
+    // asserts, not the symptom.
+    const id = fresh();
+    const order: string[] = [];
+    const table = [
+      {
+        id,
+        path: "/app",
+        loader: async () => {
+          await tick();
+          await tick();
+          order.push("loader settled");
+          return "LATE";
+        },
+        component: (_s: unknown, props: { data: () => unknown }) =>
+          ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+      },
+    ] as never;
+
+    const handler = createPageHandler({
+      routes: table,
+      app: (state) => {
+        const dispose = state.dispose.bind(state);
+        (state as unknown as { dispose: () => void }).dispose = () => {
+          order.push("dispose");
+          dispose();
+        };
+        return renderRoutes(state);
+      },
+      document,
+    });
+
+    const response = await handler(get("/app"));
+    order.push("response returned");
+    const body = await response.text();
+    order.push("body read");
+
+    expect(body).toContain("<main>LATE</main>");
+    // The state must not be torn down while the boundaries it owns are still
+    // resuming against it, so disposal comes after the last loader settles —
+    // not when the `Response` object was handed back.
+    expect(order.indexOf("dispose")).toBeGreaterThan(order.indexOf("loader settled"));
+  });
+});
