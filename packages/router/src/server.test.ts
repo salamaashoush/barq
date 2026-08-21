@@ -244,6 +244,62 @@ describe("P6 defects", () => {
   let seq = 0;
   const fresh = (): string => `p6-${seq++}`;
 
+  test("B2 — a non-streamed page renders EVERY depth's loader, not just the first", async () => {
+    // `renderPage` renders the page twice in string mode. Pass 1 the layout
+    // parks, so `props.children()` is never called and the leaf's cell is never
+    // created; pass 2 is the leaf's FIRST read, which throws, and there is no
+    // pass 3. Depth N needs N passes and there are two.
+    //
+    // Measured before the fix: `<body><header>LAYOUT</header></body>` — no
+    // leaf markup and no leaf seed — while both loaders had run.
+    const id = fresh();
+    const table = [
+      {
+        id: `${id}-layout`,
+        path: "/app",
+        loader: async () => {
+          await tick();
+          return "LAYOUT";
+        },
+        component: (_s: unknown, props: { data: () => unknown; children: unknown }) =>
+          ssrHtml(
+            // `esc` passes an `SsrHtml` through unescaped; `String()`-ing it
+            // first turns the child's markup into text.
+            `<header>${esc(String(props.data()))}</header>${esc(
+              (props.children as () => unknown)(),
+            )}`,
+          ),
+        children: [
+          {
+            id: `${id}-leaf`,
+            path: "$id",
+            loader: async () => {
+              await tick();
+              return "LEAF";
+            },
+            component: (_s: unknown, props: { data: () => unknown }) =>
+              ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+          },
+        ],
+      },
+    ] as never;
+
+    const handler = createPageHandler({
+      routes: table,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const body = await (await handler(get("/app/7"))).text();
+
+    expect(body).toContain("<header>LAYOUT</header>");
+    expect(body).toContain("<main>LEAF</main>");
+    // …and both values reach the client, or hydration refetches what the
+    // server already paid for.
+    expect(body).toContain(`r:${id}-layout|`);
+    expect(body).toContain(`r:${id}-leaf|`);
+  });
+
   test("B5 — the router state outlives the stream that is still using it", async () => {
     // `createPageHandler` runs `finally { state.dispose() }` inside the
     // `withRequest` callback, and for a streamed response that callback returns

@@ -46,6 +46,11 @@ export function renderRoutes(state: RouterState): unknown {
   const chain = state.chain();
   if (chain.length === 0) return ssrHtml("");
 
+  // Before depth 0 is built, and from HERE rather than from the page handler:
+  // this runs inside the render session, and a value first read outside one is
+  // seeded into nobody. See `RouterState.prime`.
+  state.prime();
+
   const at = (depth: number): unknown => {
     const route = chain[depth];
     if (route === undefined) return ssrHtml("");

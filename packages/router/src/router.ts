@@ -90,6 +90,27 @@ export interface RouterState {
   readonly history: History;
   /** The loader cell for one route at one set of params, created once per key. */
   dataFor(route: Route, params: Readonly<Record<string, string>>): Cell<unknown>;
+  /**
+   * Start every loader in the matched chain, without rendering anything.
+   *
+   * Loaders are PULL-based here: a read starts the fetch. A child's boundary is
+   * built inside its parent's content, so a parent that parks means the child's
+   * loader has not started — a waterfall on the client, and on the string
+   * backend a page that is simply WRONG: `renderPage` renders twice, pass 1
+   * parks at depth 0 so depth 1 is never constructed, pass 2 is depth 1's first
+   * read and there is no pass 3. Measured on a three-deep chain: one depth of
+   * three in the markup and one seed of three.
+   *
+   * Priming is one pass over the chain and it fixes both. Measured, same chain
+   * at 40 ms a loader: 121 ms to 41 ms, and the three loaders start in the same
+   * millisecond instead of 40 ms apart.
+   *
+   * MUST be called from INSIDE the render, not before it. A value whose first
+   * read happens outside a render session is attributed to the `null` bucket
+   * and is seeded into nobody (`signals.ts` `getHydrationData`, and the reason
+   * is `38eee03`).
+   */
+  prime(): void;
   navigate(to: string, options?: NavigateOptions): Promise<void>;
   /** Drop every cached loader result and re-read the current location. */
   invalidate(): void;
@@ -239,6 +260,20 @@ export function createRouter(config: RouterConfig): RouterState {
     history,
     dataFor,
     navigate,
+    prime() {
+      const forParams = untrack(params);
+      for (const route of untrack(chain)) {
+        if (route.definition.loader === undefined) continue;
+        try {
+          dataFor(route, forParams)();
+        } catch {
+          // `NotReadyError` is the point — the fetch is now in flight. A cell
+          // that has already FAILED throws its error here too, and swallowing
+          // it is correct: the read inside the boundary throws it again with a
+          // boundary to catch it, and `onLoaderError` has already fired.
+        }
+      }
+    },
     invalidate() {
       cells.clear();
       generation.set(untrack(generation) + 1);
