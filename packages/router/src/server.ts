@@ -20,13 +20,64 @@
  *     and `Portal` writes nothing on the server so it is not an escape hatch.
  */
 
-import { renderToStream, renderToString } from "@barqjs/server";
+import { html as ssrHtml, renderPage, renderToStream, ssrLoading } from "@barqjs/server";
 import { withRequest } from "@barqjs/start";
 
 import { memoryHistory } from "./history.ts";
 import { createMatcher } from "./matcher.ts";
 import { type Route, type RouteDefinition, flattenRoutes } from "./route.ts";
-import { type Guard, type RouterConfig, createRouter } from "./router.ts";
+import { type Guard, type RouterConfig, type RouterState, createRouter } from "./router.ts";
+import { routePropsFor } from "./components.ts";
+
+/**
+ * Render the matched chain through the STRING backend.
+ *
+ * `renderDepth` in `components.ts` is the DOM one — it calls `branch` and
+ * `boundary`, which build nodes. The string backend has its own implementations
+ * of the same constructs (`ssrLoading`), and CODESIGN §3.11's "one ABI means no
+ * fallback cliff" is what makes a userland component drivable by both: every
+ * component is `(s, props) -> Out` and `Out` is a string here.
+ *
+ * There is no `branch` on this side and none is needed. A string render has no
+ * later frame to re-key into, so the chain is walked once, outermost first,
+ * with each depth's `children` a Block the layout may place where it likes.
+ */
+export function renderRoutes(state: RouterState): unknown {
+  const chain = state.chain();
+  if (chain.length === 0) return ssrHtml("");
+
+  const at = (depth: number): unknown => {
+    const route = chain[depth];
+    if (route === undefined) return ssrHtml("");
+
+    const children = ((): unknown => at(depth + 1)) as never;
+    const component = route.definition.component;
+    const content = (): unknown =>
+      component === undefined
+        ? at(depth + 1)
+        : (component as unknown as (s: null, p: unknown) => unknown)(
+            null,
+            routePropsFor(state, depth, route, children),
+          );
+
+    // One boundary per depth, exactly as the DOM path emits — and on this side
+    // it is what puts a record in `parked`, which is the ONLY thing that opens
+    // the seed channel for a streamed page.
+    const pending = route.definition.pending;
+    return ssrLoading(null, {
+      fallback: () =>
+        pending === undefined
+          ? ssrHtml("")
+          : (pending as unknown as (s: null, p: unknown) => unknown)(
+              null,
+              routePropsFor(state, depth, route, (() => ssrHtml("")) as never),
+            ),
+      children: content,
+    });
+  };
+
+  return at(0);
+}
 
 /** Thrown by a loader or a guard to send the browser somewhere else. */
 export class Redirect extends Error {
@@ -48,6 +99,14 @@ export function redirect(to: string, status = 302): never {
 export interface DocumentParts {
   /** The application's markup. */
   readonly body: string;
+  /**
+   * The hydration seed, as a `<script>`, for the caller to place.
+   *
+   * Non-empty only when `stream` is false. A streamed page emits its own seed
+   * scripts inline as each boundary settles — including values that settle
+   * AFTER the shell — so there is nothing here to place.
+   */
+  readonly seed: string;
   /** The matched chain, for a title or meta tags. `null` when nothing matched. */
   readonly chain: readonly Route[] | null;
   readonly url: URL;
@@ -56,11 +115,15 @@ export interface DocumentParts {
 export interface PageHandlerOptions {
   readonly routes: readonly RouteDefinition<never, never>[];
   /**
-   * The application, as the string backend wants it: a zero-argument thunk
-   * whose return value is `SsrHtml`. It is invoked inside the render, inside
-   * `withRequest`, with the router already provided.
+   * The application, as the string backend wants it: returns `SsrHtml`.
+   *
+   * It is handed the request's router state and should render it with
+   * `<RouterProvider state>` rather than building a second one. The handler owns
+   * the state because it needs to give it an `onLoaderError` and read the answer
+   * back — a loader's `throw redirect(...)` does not otherwise unwind out of the
+   * render.
    */
-  readonly app: () => unknown;
+  readonly app: (state: RouterState) => unknown;
   /**
    * Wraps the app's markup in a document. Given the matched chain so a route
    * can decide the title.
@@ -115,10 +178,16 @@ export function createPageHandler(
 
     const status = match === null ? 404 : 200;
 
+    // Request-scoped, so the answer a loader throws cannot reach another
+    // request. A module-level "current answer" is GHSA-hgv7-v322-mmgr.
+    let answer: Response | null = null;
     const config: RouterConfig = {
       routes: options.routes,
       beforeEach: options.beforeEach,
       history: memoryHistory({ initial: [url.pathname + url.search] }),
+      onLoaderError(error) {
+        answer ??= asResponse(error);
+      },
     };
 
     // Rule 2. The whole render, including every loader and every server
@@ -128,10 +197,28 @@ export function createPageHandler(
         const state = createRouter(config);
         try {
           if (options.stream === false) {
-            const body = renderToString(options.app as never);
-            return html(options.document({ body, chain: match?.route.chain ?? null, url }), status);
+            // `renderPage`, not `renderToString`: the sync one does not await an
+            // async value, so every loader on the page would render as its
+            // fallback and the seed would be empty. Measured on exactly that
+            // mistake — a server function's result stringified as
+            // "[object Promise]" and its handler ran detached from the render.
+            const page = await renderPage(() => options.app(state) as never, {
+              nonce: options.nonce,
+            });
+            // A loader that threw a `Response` or a `Redirect` decided this
+            // page, even though the render completed around it.
+            if (answer !== null) return answer;
+            return html(
+              options.document({
+                body: page.html,
+                seed: page.script,
+                chain: match?.route.chain ?? null,
+                url,
+              }),
+              status,
+            );
           }
-          const stream = renderToStream(options.app as never, {
+          const stream = renderToStream(() => options.app(state) as never, {
             signal: request.signal,
             nonce: options.nonce,
           });
@@ -188,7 +275,7 @@ function wrapStream(
   chain: readonly Route[] | null,
   url: URL,
 ): ReadableStream<Uint8Array> {
-  const document = options.document({ body: BODY_MARKER, chain, url });
+  const document = options.document({ body: BODY_MARKER, seed: "", chain, url });
   const cut = document.indexOf(BODY_MARKER);
   if (cut === -1) {
     throw new Error(

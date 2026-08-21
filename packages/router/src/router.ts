@@ -14,7 +14,7 @@
  * call". A client-side navigation before hydration is exactly that divergence.
  */
 
-import { type Cell, computed, signal, untrack } from "@barqjs/core";
+import { type Cell, computed, runWithOwner, signal, untrack } from "@barqjs/core";
 
 import { type History, type Location, href, memoryHistory, parseLocation } from "./history.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
@@ -53,6 +53,21 @@ export interface RouterConfig {
   readonly beforeEach?: readonly Guard[];
   readonly afterEach?: readonly ((location: Location) => void)[];
   readonly cacheSize?: number;
+  /**
+   * Told about every loader rejection, before it propagates.
+   *
+   * A loader that throws during SSR does NOT otherwise reach the page handler:
+   * the value is an async `computed`, `settle` awaits it with `allSettled`, and
+   * a rejection lands on an error boundary rather than unwinding out of
+   * `renderPage`. So a `throw redirect(...)` or a middleware's
+   * `throw new Response(401)` rendered as an error and answered 200.
+   *
+   * A callback rather than an ambient store, because it must be request-scoped
+   * and a module-level "current answer" is GHSA-hgv7-v322-mmgr — one request's
+   * answer handed to another under load. The router state is already
+   * request-scoped on the server, so the callback rides it.
+   */
+  readonly onLoaderError?: (error: unknown) => void;
 }
 
 /** What a loader cell is keyed by, and what the seed carries. */
@@ -98,23 +113,40 @@ export function createRouter(config: RouterConfig): RouterState {
   const cells = new Map<string, Cell<unknown>>();
   const limit = config.cacheSize ?? DEFAULT_CACHE_SIZE;
 
+  // A `computed` captures `currentOwner` at CREATION, and a loader's first read
+  // happens wherever the route is being built — inside the loading boundary's
+  // content. On a string render that content is DISCARDED when the boundary
+  // parks (`ssr.ts`: `if (SINK === null) return html(shown)`), taking the scope
+  // the cell was created under with it. `renderPage`'s second pass then read a
+  // dead node and got `undefined`: every SSR'd route rendered its data as
+  // `undefined` and seeded nothing, silently.
+  //
+  // The cells are a per-ROUTER cache, not a per-position value, so they are
+  // created with NO owner and this map is their lifetime. `dispose()` clears
+  // it; nothing else may.
+
   const dataFor = (route: Route, forParams: Readonly<Record<string, string>>): Cell<unknown> => {
     const loader = route.definition.loader;
     const key = `${loaderKey(route.id, forParams)}#${untrack(generation)}`;
     const existing = cells.get(key);
     if (existing !== undefined) return existing;
 
-    const cell: Cell<unknown> =
+    const build = (): Cell<unknown> =>
       loader === undefined
         ? () => undefined
         : computed(
             async () => {
               const controller = new AbortController();
-              return loader({
-                params: forParams as never,
-                search: untrack(search),
-                signal: controller.signal,
-              });
+              try {
+                return await loader({
+                  params: forParams as never,
+                  search: untrack(search),
+                  signal: controller.signal,
+                });
+              } catch (error) {
+                config.onLoaderError?.(error);
+                throw error;
+              }
             },
             // The generation is NOT in the seed key: the server always renders
             // at generation 0 and a client that has invalidated since would
@@ -122,6 +154,7 @@ export function createRouter(config: RouterConfig): RouterState {
             { key: loaderKey(route.id, forParams) },
           );
 
+    const cell = runWithOwner(null, build);
     cells.set(key, cell);
     if (cells.size > limit) {
       const oldest = cells.keys().next();

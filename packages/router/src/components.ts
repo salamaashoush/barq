@@ -132,6 +132,21 @@ function routeFallback(route: Route): Block<unknown> | null {
 }
 
 /** `children` is a Block, so a layout builds the next route in its own scope. */
+export function routePropsFor(
+  state: RouterState,
+  depth: number,
+  route: Route | null,
+  children: Block<unknown>,
+): RouteProps {
+  return sources([
+    {
+      params: () => state.params(),
+      data: () => (route === null ? undefined : state.dataFor(route, state.params())()),
+      children,
+    },
+  ]) as unknown as RouteProps;
+}
+
 function routeProps(state: RouterState, depth: number, route: Route | null): RouteProps {
   return sources([
     {
@@ -154,6 +169,20 @@ export interface RouterProps {
   readonly notFound?: RouterState["config"]["notFound"];
   readonly beforeEach?: RouterState["config"]["beforeEach"];
   readonly afterEach?: RouterState["config"]["afterEach"];
+}
+
+/**
+ * Render an ALREADY-BUILT router state.
+ *
+ * The server needs this: the page handler creates the state so it can hand it an
+ * `onLoaderError` and read the answer back, and the app renders that state
+ * rather than making a second one.
+ */
+function RouterProviderImpl(scope: Scope | null, props: Incoming<{ state: RouterState }>): unknown {
+  const state = readSlot(props.state, "RouterProvider.state") as RouterState;
+  return provide(scope as Scope, RouterContext, cell(state), (inner: Scope | null) =>
+    renderDepth(inner, state, 0, null, null),
+  );
 }
 
 function RouterImpl(scope: Scope | null, props: Incoming<RouterProps>): unknown {
@@ -320,6 +349,9 @@ function RedirectImpl(_scope: Scope | null, props: Incoming<RedirectProps>): nul
 type Authored<P> = (props: P) => unknown;
 
 export const Router = block(RouterImpl) as unknown as Authored<RouterProps>;
+export const RouterProvider = block(RouterProviderImpl) as unknown as Authored<{
+  state: RouterState;
+}>;
 export const Link = block(LinkImpl) as unknown as Authored<LinkProps>;
 export const NavLink = block(NavLinkImpl) as unknown as Authored<NavLinkProps>;
 export const Redirect = block(RedirectImpl) as unknown as Authored<RedirectProps>;

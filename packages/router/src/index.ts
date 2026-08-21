@@ -64,6 +64,7 @@ export {
   Redirect,
   Router,
   RouterContext,
+  RouterProvider,
   renderDepth,
   useRouter,
 } from "./components.ts";
