@@ -241,12 +241,12 @@ pub struct RouteTreeResult {
 /// invalidates; it does not read the directory, derive a route from a filename,
 /// or build a string — so a route table cannot mean two things.
 #[napi]
-pub fn route_tree(root: String, dir: String) -> RouteTreeResult {
+pub fn route_tree(root: String, dir: String, types_dir: Option<String>) -> RouteTreeResult {
     let files = routes::scan(std::path::Path::new(&root), &dir);
     let tree = routes::build_tree(&files);
     RouteTreeResult {
         module: routes::generate_module(&tree),
-        types: routes::generate_types(&tree),
+        types: routes::generate_types(&tree, types_dir.as_deref().unwrap_or("")),
         files: files.into_iter().map(|file| file.file).collect(),
         patterns: routes::patterns(&tree),
         entries: routes::entries(&tree)

@@ -136,6 +136,30 @@ describe("the plugin", () => {
  * verified against a real Vite 8 / rolldown graph before it was written, and a
  * mock that agrees with the implementation proves only that they agree.
  */
+describe("the generated .d.ts resolves", () => {
+  test("type references are relative to where the file is written", () => {
+    // A root-absolute `typeof import("/src/...")` is the FILESYSTEM root to
+    // TypeScript, so it resolved to `any` and every generated type became
+    // permissive — caught because the `@ts-expect-error` directives in the
+    // check file went UNUSED rather than because anything failed.
+    const root = project({ "src/routes/users.$id.tsx": "export const Component = () => null;" });
+    expect(routeTree(root, "src/routes", "src").types).toContain(
+      'import("../src/routes/users.$id.tsx")',
+    );
+    expect(routeTree(root, "src/routes", "").types).toContain(
+      'import("./src/routes/users.$id.tsx")',
+    );
+  });
+
+  test("the plugin derives it from where it writes", () => {
+    const root = project({ "src/routes/index.tsx": "export const Component = () => null;" });
+    const plugin = barqRouter({ types: "src/generated/routes.d.ts" });
+    hooks(plugin).configResolved({ root });
+    const written = readFileSync(join(root, "src/generated/routes.d.ts"), "utf8");
+    expect(written).toContain('import("../../src/routes/index.tsx")');
+  });
+});
+
 describe("the build-time route-action check", () => {
   test("a route's reachable server functions are found through the real module graph", async () => {
     const root = project({

@@ -18,9 +18,9 @@
  * would leave the client with no routes at all.
  */
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 import type { Plugin } from "vite";
 
@@ -77,14 +77,21 @@ export interface RouteTree {
 }
 
 interface Native {
-  routeTree(root: string, dir: string): RouteTree;
+  routeTree(root: string, dir: string, typesDir?: string): RouteTree;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
 
-/** Scan and generate. Exported so a build script can do it without a dev server. */
-export function routeTree(root: string, dir: string): RouteTree {
-  return native.routeTree(root, dir);
+/**
+ * Scan and generate. Exported so a build script can do it without a dev server.
+ *
+ * `typesDir` is where the `.d.ts` will be written, project-relative, and it is
+ * not cosmetic: the type references the generator emits are relative to that
+ * file, because a root-absolute `typeof import("/src/...")` is the FILESYSTEM
+ * root to TypeScript and silently resolves to `any`.
+ */
+export function routeTree(root: string, dir: string, typesDir = ""): RouteTree {
+  return native.routeTree(root, dir, typesDir);
 }
 
 /**
@@ -145,12 +152,18 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   let routeAssets: Record<string, string[]> = {};
   let tree: RouteTree = { module: "", types: "", files: [], patterns: [], entries: [] };
 
+  const typesFile = options.types === false ? null : (options.types ?? "src/routes.gen.d.ts");
+
   const rescan = (): void => {
-    tree = routeTree(root, routesDir);
+    tree = routeTree(root, routesDir, typesFile === null ? "" : dirname(typesFile));
     options.onRoutes?.(tree.patterns);
-    if (options.types === false) return;
+    if (typesFile === null) return;
     try {
-      writeFileSync(join(root, options.types ?? "src/routes.gen.d.ts"), tree.types);
+      // The directory first: `types` may name a path that does not exist yet,
+      // and the catch below would have swallowed the `ENOENT` — so the file
+      // silently was not written and the project typechecked against nothing.
+      mkdirSync(dirname(join(root, typesFile)), { recursive: true });
+      writeFileSync(join(root, typesFile), tree.types);
     } catch {
       // A read-only checkout still builds; the types are a convenience.
     }
