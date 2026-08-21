@@ -3058,20 +3058,31 @@ export async function settleStep(session?: symbol): Promise<boolean> {
  */
 export function getHydrationData(session?: symbol): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  const nullBucket = hydrationData.get(null);
-  if (nullBucket) {
-    for (const [key, value] of nullBucket) result[key] = value;
-  }
   if (session !== undefined) {
+    // This render's values, and ONLY this render's.
+    //
+    // The unattributed bucket used to be merged in here too. A promise is
+    // attributed at its first READ (`activeAsyncSession` at the moment it
+    // enters `inFlight`), so anything first read outside a render — a prefetch,
+    // a module-level fetch, a warm-up — lands under `null`, and merging that
+    // put it in every subsequent render's seed. Nothing cleared it, so one such
+    // value was served to every user for the process's lifetime. Measured: a
+    // value from render A appeared in render B's seed and survived
+    // `clearHydrationData(B)` into a third render.
+    //
+    // A value that cannot be shown to belong to this render is not seeded into
+    // it. The way to have a preloaded value seeded is to read it inside the
+    // render, which attributes it.
     const bucket = hydrationData.get(session);
     if (bucket) {
       for (const [key, value] of bucket) result[key] = value;
     }
-  } else {
-    for (const [bucketSession, bucket] of hydrationData) {
-      if (bucketSession === null) continue;
-      for (const [key, value] of bucket) result[key] = value;
-    }
+    return result;
+  }
+  // No session named: the sync `renderToString` path, which sets none, so its
+  // own values are under `null` and belong in the answer.
+  for (const [, bucket] of hydrationData) {
+    for (const [key, value] of bucket) result[key] = value;
   }
   return result;
 }
@@ -3080,6 +3091,10 @@ export function getHydrationData(session?: symbol): Record<string, unknown> {
 export function clearHydrationData(session?: symbol): void {
   if (session !== undefined) {
     hydrationData.delete(session);
+    // And the unattributed bucket, which is nobody's and which nothing else
+    // ever clears — a long-lived server otherwise accumulates every value ever
+    // resolved outside a render.
+    hydrationData.delete(null);
   } else {
     hydrationData.clear();
   }

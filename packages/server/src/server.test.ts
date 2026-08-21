@@ -20,7 +20,7 @@ import {
   settle,
   signal,
 } from "@barqjs/core";
-import { seedLater, setAsyncSession } from "@barqjs/core/internal";
+import { getHydrationData, seedLater, setAsyncSession } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
@@ -557,6 +557,49 @@ describe("concurrent server renders", () => {
 
     expect(fastHtml).toContain("got:fast");
     expect(slowHtml).toContain("got:slow");
+  });
+
+  test("a value resolved outside any render is not seeded into one", async () => {
+    // A promise is attributed at its first READ — `activeAsyncSession` at the
+    // moment it enters `inFlight` — so anything first read outside a render
+    // lands in the unattributed bucket. That bucket used to be merged into
+    // every session's data and was cleared by nothing, so one such value was
+    // served to every user for the life of the process. A prefetch that warms a
+    // loader before the render is exactly this shape.
+    const leaked = computed(async () => "RENDER-A-SECRET-user7", { key: "acct" });
+
+    // First read with no session: unattributed.
+    setAsyncSession(null);
+    try {
+      leaked();
+    } catch {
+      // NotReady on the first read is the point; the promise is now in flight.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Self-check before the assertion that matters: the value really was
+    // recorded, and unattributed. Without this the test would also pass if the
+    // fetcher had simply never run, which proves nothing.
+    expect(
+      getHydrationData().acct,
+      "the probe did not record anything, so it cannot show a leak",
+    ).toBe("RENDER-A-SECRET-user7");
+
+    // An unrelated later render, for a different user.
+    const mine = computed(async () => "B-own-user9", { key: "home" });
+    const out = await renderPage(() =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>...</i>"),
+            children: () => ssrHtml(`<b>${esc(mine())}</b>`),
+          }),
+        )}</main>`,
+      ),
+    );
+
+    expect(out.data.home).toBe("B-own-user9");
+    expect(out.data.acct, "another render's value reached this seed").toBeUndefined();
   });
 });
 
