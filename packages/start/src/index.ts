@@ -226,6 +226,23 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
   return Object.assign(call, { [SERVER_FN]: true as const, meta: { id } }) as ServerFn<In, Out>;
 }
 
+/**
+ * The middleware chain a server function carries, by REFERENCE.
+ *
+ * `serverRpc` attaches `built` to the function object, so the chain is the real
+ * array of closures rather than something re-derived. That matters: a build
+ * cannot read a chain out of source. `.middleware([m])`, `.middleware([...c])`
+ * and `.middleware(c.filter(Boolean))` are all runtime expressions, and
+ * `Middleware` is an anonymous closure with no build-visible identity — so the
+ * only sound comparison is `===` against the same closure the route declared.
+ *
+ * Empty for a client stub, which carries no chain because it carries no handler.
+ */
+export function middlewareOf(fn: ServerFn<unknown, unknown>): readonly Middleware[] {
+  const built = (fn as unknown as { built?: Built<unknown, unknown> }).built;
+  return built?.middleware ?? [];
+}
+
 /** Whether a value is a server function, by brand rather than by shape. */
 export function isServerFn(value: unknown): value is ServerFn<unknown, unknown> {
   return (

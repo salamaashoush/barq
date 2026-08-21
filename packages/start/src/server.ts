@@ -64,6 +64,27 @@ export interface HandlerOptions {
    * allowed; this widens it.
    */
   allowedOrigins?: readonly string[];
+  /**
+   * Whether some route in this application can reach this id.
+   *
+   * The narrow half of the route-action manifest. Export-ness already decides
+   * what is MOUNTED, and that is deliberately generous — a server function
+   * exported for a sibling to import is mounted whether or not any page calls
+   * it. Next.js concedes the consequence in its own release notes: "Even if a
+   * Server Action or utility function is not imported elsewhere in your code,
+   * it's still a publicly accessible HTTP endpoint."
+   *
+   * This closes that: an id no route reaches answers the 404 an unknown id
+   * already answers, so the two are indistinguishable from outside.
+   *
+   * It takes NO route from the caller, deliberately. A client-supplied route
+   * selecting a policy lets the caller pick the weakest one that reaches the
+   * action, and this file's own rule says why that is not allowed — values
+   * derived from the request are fine to navigate to and never fine to
+   * authorize with. Which CHAIN runs is decided at build time by
+   * `@barqjs/router`, not here and not per request.
+   */
+  reachable?: (id: string) => boolean;
 }
 
 /**
@@ -118,6 +139,9 @@ export async function handleServerFn(
 
   const fn = REGISTRY.get(id);
   if (fn === undefined) return new Response("not found", { status: 404 });
+  // Same answer as an unknown id, so a caller cannot tell a function that
+  // exists but is unrouted from one that does not exist.
+  if (options?.reachable?.(id) === false) return new Response("not found", { status: 404 });
 
   let input: unknown;
   if (isData && !isFormBody(request)) {

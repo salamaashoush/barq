@@ -86,3 +86,14 @@ export {
   createRouter,
   loaderKey,
 } from "./router.ts";
+
+export {
+  type Reachability,
+  type VerifyOptions,
+  type Violation,
+  chainOf,
+  describe as describeViolations,
+  idsInStub,
+  reachabilityFrom,
+  verifyRouteChains,
+} from "./manifest.ts";

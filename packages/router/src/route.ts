@@ -57,6 +57,17 @@ export interface RouteDefinition<Data = unknown, Params = Record<string, string>
   /** Overrides the derived id. Name-derived and stable; never positional. */
   readonly id?: string;
   readonly component?: RouteComponent<Data, Params>;
+  /**
+   * What every server function reachable from this route must carry.
+   *
+   * NOT a guard, and not run by the router. A route cannot enforce anything on
+   * a server function at request time — the function is its own endpoint and a
+   * client-supplied route deciding its policy would let a caller pick the
+   * weakest one. This is a BUILD-time claim, verified by `verifyRouteChains`
+   * against the chain each function actually carries, and inherited by children
+   * so declaring it on a layout covers everything under it.
+   */
+  readonly middleware?: readonly import("@barqjs/start").Middleware[];
   /** Shown while this route's loader is unsettled. Without one the boundary shows nothing. */
   readonly pending?: RouteComponent<never, never>;
   readonly loader?: Loader<Data, Params>;
