@@ -121,13 +121,16 @@ export {
   searchKey,
 } from "./router.ts";
 
-export {
-  type Reachability,
-  type VerifyOptions,
-  type Violation,
-  chainOf,
-  describe as describeViolations,
-  idsInStub,
-  reachabilityFrom,
-  verifyRouteChains,
-} from "./manifest.ts";
+/**
+ * The route-action manifest is NOT exported here.
+ *
+ * `manifest.ts` imports `middlewareOf` from `@barqjs/start`, which reaches
+ * `context.ts` and `node:async_hooks` — so re-exporting it from the isomorphic
+ * entry put the whole server runtime in the CLIENT graph. Measured on
+ * `packages/kitchen-sink`: removing this export removes the
+ * "node:async_hooks has been externalized for browser compatibility" warning and
+ * 12 modules with it.
+ *
+ * These are BUILD-time helpers with no runtime caller, so they live on
+ * `@barqjs/router/vite`, beside the hook that uses them.
+ */

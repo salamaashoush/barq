@@ -24,6 +24,26 @@ import { join, relative } from "node:path";
 
 import type { Plugin } from "vite";
 
+import { type Reachability, idsInStub, reachabilityFrom } from "./manifest.ts";
+
+/**
+ * The route-action manifest, on the BUILD entry rather than the isomorphic one.
+ *
+ * `manifest.ts` reaches `@barqjs/start` and therefore `node:async_hooks`;
+ * exporting it from `index.ts` put that in the client bundle. Nothing about
+ * these runs at runtime.
+ */
+export {
+  type Reachability,
+  type VerifyOptions as ChainVerifyOptions,
+  type Violation,
+  chainOf,
+  describe as describeViolations,
+  idsInStub,
+  reachabilityFrom,
+  verifyRouteChains,
+} from "./manifest.ts";
+
 export const ROUTES_ID = "virtual:barq-routes";
 const RESOLVED_ROUTES_ID = `\0${ROUTES_ID}`;
 
@@ -37,6 +57,8 @@ export interface RouteTree {
   readonly files: string[];
   /** Every leaf pattern, which is what `BARQ013` checks a `<Link to>` against. */
   readonly patterns: string[];
+  /** Route id to source file, layouts included — the build-time checks' input. */
+  readonly entries: { id: string; file: string }[];
 }
 
 interface Native {
@@ -48,6 +70,31 @@ const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
 /** Scan and generate. Exported so a build script can do it without a dev server. */
 export function routeTree(root: string, dir: string): RouteTree {
   return native.routeTree(root, dir);
+}
+
+/**
+ * How a route's server-function reachability is verified against its declared
+ * middleware, and where the answer comes from.
+ *
+ * The walk and the verifier have existed and been tested since `83c81d4`;
+ * nothing called them from a build. This is the call.
+ */
+export interface VerifyOptions {
+  /**
+   * Given route -> reachable server-fn ids, answer with a report or `""`.
+   *
+   * A CALLBACK rather than a route table, because the check needs two things
+   * this plugin cannot have: the application's route definitions with their
+   * `middleware` closures, and the server-side `REGISTRY` those ids resolve
+   * against. Both live in the ssr environment and are reached through
+   * `environment.runner.import` — `packages/start/src/vite.ts` does exactly that
+   * for the server-function manifest. Handing the caller the graph fact and
+   * letting it supply the rest keeps this plugin out of the business of
+   * importing an application.
+   */
+  readonly check: (reachability: Reachability) => string | Promise<string>;
+  /** What to do when a route reaches an action that does not carry its chain. */
+  readonly onViolation?: "error" | "warn";
 }
 
 export interface BarqRouterOptions {
@@ -63,12 +110,23 @@ export interface BarqRouterOptions {
    * from or the check is against a different project than the one that shipped.
    */
   readonly onRoutes?: (patterns: readonly string[]) => void;
+  /**
+   * Verify at BUILD time that every server function a route can reach carries
+   * that route's declared middleware.
+   *
+   * DEV DIVERGENCE, and it is stated rather than papered over: the dev module
+   * graph is one level deep until each module is itself requested, so a
+   * whole-graph walk in dev finds nothing. This is a `vite build` artefact.
+   * Arming a gate in dev against a manifest dev never produces would fail every
+   * cold start.
+   */
+  readonly verify?: VerifyOptions;
 }
 
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const routesDir = options.routesDir ?? "src/routes";
   let root = process.cwd();
-  let tree: RouteTree = { module: "", types: "", files: [], patterns: [] };
+  let tree: RouteTree = { module: "", types: "", files: [], patterns: [], entries: [] };
 
   const rescan = (): void => {
     tree = routeTree(root, routesDir);
@@ -83,6 +141,63 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
 
   return {
     name: "barq-router",
+
+    /**
+     * The route-action manifest, computed from the REAL client module graph.
+     *
+     * `this.getModuleIds()` plus `getModuleInfo(id).importedIds` is the static
+     * import graph, which is exactly `reachabilityFrom`'s `importsOf`. Verified
+     * against a real Vite 8 / rolldown build before this was written: a route
+     * module's `importedIds` carries the data module it imports, and the
+     * synthesized client stub's `clientRpc("<id>")` literals are readable out
+     * of the transformed source.
+     *
+     * `buildEnd` and not `generateBundle`: the graph is complete here and the
+     * answer is about MODULES, not chunks.
+     */
+    async buildEnd(this: unknown) {
+      const verify = options.verify;
+      if (verify === undefined) return;
+      const context = this as {
+        getModuleIds: () => Iterable<string>;
+        getModuleInfo: (id: string) => { importedIds: readonly string[]; code?: string } | null;
+        environment?: { name?: string };
+        error: (message: string) => never;
+        warn: (message: string) => void;
+      };
+      // The CLIENT graph only. The ssr environment holds the server halves,
+      // where every function is present by construction and reachability means
+      // nothing.
+      if ((context.environment?.name ?? "client") !== "client") return;
+
+      // Route id -> the module id the bundler knows it by. `tree.entries` is the
+      // compiler's map, and it is matched by SUFFIX because Rollup ids are
+      // absolute while the generator's paths are project-relative.
+      const byId = new Map<string, string>();
+      const ids = [...context.getModuleIds()];
+      for (const entry of tree.entries) {
+        const found = ids.find((id) => id.endsWith(entry.file));
+        if (found !== undefined) byId.set(entry.id, found);
+      }
+      if (byId.size === 0) return;
+
+      const reachability = reachabilityFrom(
+        byId,
+        (id) => context.getModuleInfo(id)?.importedIds ?? [],
+        (id) => {
+          const code = context.getModuleInfo(id)?.code;
+          return code === undefined ? [] : idsInStub(code);
+        },
+      );
+
+      const answer = await verify.check(reachability);
+      if (answer === "") return;
+      if (verify.onViolation === "warn") {
+        context.warn(answer);
+        return;
+      }
+      context.error(answer);
+    },
 
     configResolved(config) {
       root = config.root;

@@ -153,6 +153,17 @@ export interface RouteDefinition<
   readonly id?: string;
   readonly component?: RouteComponent<Data, Params>;
   /**
+   * The route module's source path, as the generator emitted it.
+   *
+   * Present only on a generated table, and it exists because nothing at runtime
+   * can recover it: `lazy()` keeps its specifier inside a closure and the
+   * function it returns carries only `preload`. A bundler manifest is keyed by
+   * exactly this string, which is what lets the build map a route to its chunk
+   * for `<link rel="modulepreload">` and walk the module graph from a route for
+   * the route-action manifest.
+   */
+  readonly src?: string;
+  /**
    * What every server function reachable from this route must carry.
    *
    * NOT a guard, and not run by the router. A route cannot enforce anything on

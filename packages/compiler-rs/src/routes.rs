@@ -304,6 +304,13 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
     parts.push(format!("id: {}", json_string(&node.id)));
     if let Some(file) = &node.file {
         let specifier = json_string(&format!("/{file}"));
+        // The SOURCE path, emitted beside the lazy component because nothing at
+        // runtime can recover it: `lazy()` keeps the specifier inside its
+        // closure and the returned function carries only `preload`. Without it
+        // there is no way to ask a bundler manifest which chunk a route is in,
+        // which is what `<link rel="modulepreload">` needs and what the
+        // route-action manifest needs to walk the graph from a route.
+        parts.push(format!("src: {specifier}"));
         parts.push(format!("component: lazy(() => import({specifier}))"));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
         parts.push(format!("pending: lazy(() => import({specifier}), (m) => m.Pending ?? Empty)"));
@@ -322,6 +329,27 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         out.push(']');
     }
     out.push_str(" }");
+}
+
+/// Route id to source file, for EVERY node including layouts.
+///
+/// Layouts are included on purpose, unlike `patterns` and the `.d.ts` rows: a
+/// modulepreload set is the whole matched CHAIN, and the route-action manifest
+/// walks from every module a route renders, not only from its leaf.
+pub fn entries(tree: &[RouteNode]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    fn walk(node: &RouteNode, out: &mut Vec<(String, String)>) {
+        if let Some(file) = &node.file {
+            out.push((node.id.clone(), file.clone()));
+        }
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    for node in tree {
+        walk(node, &mut out);
+    }
+    out
 }
 
 /// The `.d.ts`: one plain interface member per LEAF route.
@@ -505,6 +533,14 @@ mod tests {
         );
         assert!(module.contains("lazy(() => import(\"/src/routes/users.$id.tsx\"))"));
 
+        // The SOURCE path rides beside the lazy component. Nothing at runtime
+        // can recover it — `lazy()` keeps the specifier inside its closure —
+        // and a bundler manifest is keyed by exactly this string, so
+        // modulepreload and the route-action manifest both start here.
+        assert!(module.contains("src: \"/src/routes/users.$id.tsx\""));
+        // A layout gets one too, so a chain can be walked whole.
+        assert!(module.contains("src: \"/src/routes/users.route.tsx\""));
+
         // A generated module nothing parses is how `export const default =` — a
         // syntax error — shipped in the client stubs. Parse it for real.
         let allocator = oxc::allocator::Allocator::new();
@@ -522,6 +558,21 @@ mod tests {
         assert!(types.contains("\"_splat\": string"));
         // A layout is not addressable on its own, so it is not a member.
         assert!(!types.contains("\"/users\": {"));
+    }
+
+    #[test]
+    fn entries_map_every_route_id_to_its_file_including_layouts() {
+        let tree = build_tree(&files(&[
+            "index.tsx",
+            "users.route.tsx",
+            "users.index.tsx",
+            "users.$id.tsx",
+        ]));
+        let map = entries(&tree);
+        assert!(map.contains(&("/users/$id".to_string(), "src/routes/users.$id.tsx".to_string())));
+        // The LAYOUT is here even though it is not addressable on its own: a
+        // modulepreload set is the whole chain.
+        assert!(map.contains(&("/users".to_string(), "src/routes/users.route.tsx".to_string())));
     }
 
     #[test]

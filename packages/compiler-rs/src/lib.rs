@@ -204,6 +204,20 @@ pub fn diagnostic_codes() -> Vec<JsCode> {
         .collect()
 }
 
+/// One route's id and the source file it came from.
+///
+/// The route table itself carries `src` per node, but a build wants the mapping
+/// WITHOUT parsing the module it just generated — a second reader of our own
+/// emit is a second thing to keep in step. `<link rel="modulepreload">` and the
+/// route-action manifest both start from this.
+#[napi(object)]
+pub struct RouteEntry {
+    /// The route id, as `RouteMap` keys it.
+    pub id: String,
+    /// Project-relative source path, without the leading slash the module uses.
+    pub file: String,
+}
+
 /// The generated route table, its types, and what produced them.
 #[napi(object)]
 pub struct RouteTreeResult {
@@ -217,6 +231,8 @@ pub struct RouteTreeResult {
     pub files: Vec<String>,
     /// Every leaf pattern, which is what `routes` wants for `BARQ013`.
     pub patterns: Vec<String>,
+    /// Route id to source file, layouts included, for the build-time checks.
+    pub entries: Vec<RouteEntry>,
 }
 
 /// Scan a directory of route files and emit the table and its types.
@@ -233,5 +249,9 @@ pub fn route_tree(root: String, dir: String) -> RouteTreeResult {
         types: routes::generate_types(&tree),
         files: files.into_iter().map(|file| file.file).collect(),
         patterns: routes::patterns(&tree),
+        entries: routes::entries(&tree)
+            .into_iter()
+            .map(|(id, file)| RouteEntry { id, file })
+            .collect(),
     }
 }
