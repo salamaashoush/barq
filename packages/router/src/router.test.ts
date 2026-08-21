@@ -977,6 +977,42 @@ describe("beforeLoad and route context", () => {
     dispose();
   });
 
+  test("beforeLoad is handed params, search and location, not just context", async () => {
+    // It was handed the wrong object entirely for one commit: a rename reached
+    // the declaration and not the two uses, so `beforeLoad` received the
+    // internal `{ server }` flag. Every existing test read only `context`, so
+    // all of them passed; `oxlint` reported the unused variable.
+    let seen: Record<string, unknown> | null = null;
+    const history = memoryHistory({ initial: ["/app/7?q=hi"] });
+    const { dispose } = mount({
+      routes: [
+        {
+          path: "/app/$id",
+          beforeLoad: (given: Record<string, unknown>) => {
+            seen = given;
+            return {};
+          },
+          component: page("app"),
+        },
+      ] as never,
+      history,
+    });
+    await tick();
+    await settle();
+    flush();
+    const given = seen as unknown as {
+      params: Record<string, string>;
+      search: URLSearchParams;
+      location: { pathname: string };
+      context: Record<string, unknown>;
+    };
+    expect(given.params).toEqual({ id: "7" });
+    expect(given.search.get("q")).toBe("hi");
+    expect(given.location.pathname).toBe("/app/7");
+    expect(given.context).toEqual({});
+    dispose();
+  });
+
   test("beforeLoad can throw redirect(), and it never commits the refused location", async () => {
     // The branch that handles this referenced `Redirect` without importing it,
     // so it would have thrown a ReferenceError the first time a `beforeLoad`

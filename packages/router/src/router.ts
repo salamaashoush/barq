@@ -65,6 +65,31 @@ const DEFAULT_PRELOAD_GC_TIME = 300_000;
  */
 export type LoadCause = "preload" | "enter" | "stay";
 
+/** What of a route runs on the server. See `RouteDefinition.ssr`. */
+export type SsrMode = boolean | "data-only";
+
+/**
+ * The effective `ssr` for each depth of a chain, after inheritance.
+ *
+ * TanStack's rule, and the asymmetry is the whole of it: `false` is absorbing
+ * downward, `"data-only"` clamps a child's `true`, and a child may always
+ * declare `false` for itself.
+ */
+export function resolveSsr(chain: readonly Route[]): readonly SsrMode[] {
+  const out: SsrMode[] = [];
+  let parent: SsrMode = true;
+  for (const route of chain) {
+    const own = route.definition.ssr ?? true;
+    let mode: SsrMode;
+    if (parent === false) mode = false;
+    else if (own === true && parent === "data-only") mode = "data-only";
+    else mode = own;
+    out.push(mode);
+    parent = mode;
+  }
+  return out;
+}
+
 /** One cached loader result, and everything the reload policy reads. */
 interface Entry {
   readonly key: string;
@@ -725,7 +750,9 @@ export function createRouter(config: RouterConfig): RouterState {
   const runBeforeLoad = async (
     to: Location,
     candidate: Match<Route> | null,
+    options?: { readonly server?: boolean },
   ): Promise<readonly Record<string, unknown>[]> => {
+    const modes = resolveSsr(candidate?.route.chain ?? []);
     const out: Record<string, unknown>[] = [];
     // Parent-to-child by SPREAD, child wins on a collision — TanStack's rule
     // (`load-client.ts:391-395`, `:455-458`) and its type-level `Assign` agrees.
@@ -733,12 +760,17 @@ export function createRouter(config: RouterConfig): RouterState {
     const forParams = candidate?.params ?? {};
     const forSearch = new URLSearchParams(to.search);
 
-    for (const route of candidate?.route.chain ?? []) {
-      const options = { params: forParams, search: forSearch, location: to, context: merged };
-      const sync = route.definition.context?.(options as never);
+    for (const [depth, route] of (candidate?.route.chain ?? []).entries()) {
+      // `ssr: false` means nothing of this route runs here — the client does it.
+      if (options?.server === true && modes[depth] === false) {
+        out.push(merged);
+        continue;
+      }
+      const given = { params: forParams, search: forSearch, location: to, context: merged };
+      const sync = route.definition.context?.(given as never);
       if (sync !== undefined) merged = { ...merged, ...sync };
       const produced = await route.definition.beforeLoad?.({
-        ...options,
+        ...given,
         context: merged,
       } as never);
       if (produced !== undefined && produced !== null) merged = { ...merged, ...produced };
@@ -771,10 +803,14 @@ export function createRouter(config: RouterConfig): RouterState {
     return `${pathPart}${toSearchString(built)}${hash}`;
   };
 
-  const primeChain = (): void => {
+  const primeChain = (server = false): void => {
     const forParams = untrack(params);
-    for (const route of untrack(chain)) {
+    const modes = resolveSsr(untrack(chain));
+    for (const [depth, route] of untrack(chain).entries()) {
       if (route.definition.loader === undefined) continue;
+      // On the server a route that opted out runs nothing, so priming it would
+      // be the one fetch `ssr: false` exists to prevent.
+      if (server && modes[depth] === false) continue;
       try {
         // Blocking, always: priming exists to START the fetch, and a `latest()`
         // read of a cold cell on the string backend answers `undefined` instead
@@ -986,6 +1022,7 @@ export function createRouter(config: RouterConfig): RouterState {
     },
     runBeforeLoad,
     prime: primeChain,
+    ssrModes: (() => resolveSsr(chain())) as Cell<readonly SsrMode[]>,
     async preload(to) {
       if (leavesTheApp(to)) return;
       // RESOLVED, parsed and base-stripped, exactly as `navigate` does it. The

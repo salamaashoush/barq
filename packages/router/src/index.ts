@@ -114,11 +114,15 @@ export {
 
 export {
   type Guard,
+  type LoadCause,
   type NavigateOptions,
   type RouterConfig,
   type RouterState,
+  type SsrMode,
   createRouter,
+  depsKey,
   loaderKey,
+  resolveSsr,
   searchKey,
 } from "./router.ts";
 

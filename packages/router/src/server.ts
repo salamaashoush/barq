@@ -56,7 +56,9 @@ export function renderRoutes(state: RouterState): unknown {
   // Before depth 0 is built, and from HERE rather than from the page handler:
   // this runs inside the render session, and a value first read outside one is
   // seeded into nobody. See `RouterState.prime`.
-  state.prime();
+  state.prime(true);
+
+  const modes = state.ssrModes();
 
   const at = (depth: number): unknown => {
     const route = chain[depth];
@@ -64,11 +66,25 @@ export function renderRoutes(state: RouterState): unknown {
 
     const children = ((): unknown => at(depth + 1)) as never;
     const component = route.definition.component;
+    const pending = route.definition.pending;
     const content = (): unknown => {
       // As on the DOM path: a refused validator throws inside this depth's
       // error boundary rather than out of the render.
       const refused = state.searchErrorAt(depth);
       if (refused !== null) throw refused;
+      // `ssr: false` and `"data-only"` both mean the COMPONENT does not render
+      // here. The difference is upstream: `"data-only"` still ran its loader,
+      // so its value is seeded and the client's first read consumes it rather
+      // than refetching. What goes on the wire is this depth's `pending`
+      // fallback, which is what the client will replace.
+      if (modes[depth] !== true) {
+        return pending === undefined
+          ? ssrHtml("")
+          : (pending as unknown as (s: null, p: unknown) => unknown)(
+              null,
+              routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
+            );
+      }
       return component === undefined
         ? at(depth + 1)
         : (component as unknown as (s: null, p: unknown) => unknown)(
@@ -89,7 +105,6 @@ export function renderRoutes(state: RouterState): unknown {
     // the loading boundary's own content Block, so the catch has to be in
     // there. `Errored` re-throws `NotReadyError` on both backends, so parking
     // still works through it.
-    const pending = route.definition.pending;
     return ssrLoading(null, {
       fallback: () =>
         pending === undefined
@@ -263,6 +278,7 @@ export function createPageHandler(
               key: "",
             },
             match,
+            { server: true },
           );
         } catch (error) {
           state.dispose();

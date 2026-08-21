@@ -308,6 +308,25 @@ export interface RouteDefinition<
    * ship literal `undefined` and seed nothing.
    */
   readonly staleReloadMode?: "background" | "blocking";
+  /**
+   * What of this route runs on the SERVER. Default `true`.
+   *
+   *  - `true` — `beforeLoad`, the loader and the component, as ever.
+   *  - `"data-only"` — `beforeLoad` and the loader run and their results are
+   *    seeded, but the component is NOT rendered into the HTML. For a route
+   *    whose markup depends on something only a browser has.
+   *  - `false` — nothing runs. `beforeLoad` and the loader move to the client,
+   *    which is where a route that must not touch the server at render time
+   *    belongs.
+   *
+   * INHERITANCE IS ASYMMETRIC, and it is TanStack's rule
+   * (`load-server.ts:161-181`) rather than an invention: a parent's `false`
+   * forces every descendant to `false`, because there is no rendered parent to
+   * put them in; a parent's `"data-only"` CLAMPS a child's `true` down to
+   * `"data-only"` for the same reason; but a child may still declare `false`
+   * under either, because opting further out is always allowed.
+   */
+  readonly ssr?: boolean | "data-only";
   readonly children?: readonly AnyRouteDefinition[];
 }
 

@@ -604,3 +604,116 @@ describe("modulepreload for the matched chain", () => {
     }
   });
 });
+
+/**
+ * §3.6 — selective SSR.
+ *
+ * The inheritance is TanStack's and it is ASYMMETRIC, which is the part worth
+ * testing rather than assuming.
+ */
+describe("ssr: boolean | 'data-only'", () => {
+  let seq = 0;
+  const build = (
+    layoutSsr: boolean | "data-only" | undefined,
+    leafSsr: boolean | "data-only" | undefined,
+    ran: string[],
+  ): AnyRouteDefinition[] => {
+    const id = `s${seq++}`;
+    return [
+      {
+        id: `${id}-layout`,
+        path: "/app",
+        ssr: layoutSsr,
+        loader: async () => {
+          ran.push("layout");
+          await tick();
+          return "LAYOUT";
+        },
+        pending: () => ssrHtml("<i>layout-skeleton</i>"),
+        component: (_s: unknown, props: { data: () => unknown; children: unknown }) =>
+          ssrHtml(
+            `<header>${esc(String(props.data()))}</header>${esc((props.children as () => unknown)())}`,
+          ),
+        children: [
+          {
+            id: `${id}-leaf`,
+            path: "$id",
+            ssr: leafSsr,
+            loader: async () => {
+              ran.push("leaf");
+              await tick();
+              return "LEAF";
+            },
+            pending: () => ssrHtml("<i>leaf-skeleton</i>"),
+            component: (_s: unknown, props: { data: () => unknown }) =>
+              ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+          },
+        ],
+      },
+    ] as never;
+  };
+
+  const render = async (
+    layoutSsr: boolean | "data-only" | undefined,
+    leafSsr: boolean | "data-only" | undefined,
+  ): Promise<{ body: string; ran: string[] }> => {
+    const ran: string[] = [];
+    const handler = createPageHandler({
+      routes: build(layoutSsr, leafSsr, ran),
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const body = await (await handler(get("/app/7"))).text();
+    return { body, ran };
+  };
+
+  test("the default renders everything", async () => {
+    const { body, ran } = await render(undefined, undefined);
+    expect(body).toContain("<header>LAYOUT</header>");
+    expect(body).toContain("<main>LEAF</main>");
+    expect(ran.toSorted()).toEqual(["layout", "leaf"]);
+  });
+
+  test("'data-only' runs the loader and SEEDS it, but renders the fallback", async () => {
+    const { body, ran } = await render(undefined, "data-only");
+    expect(ran.toSorted()).toEqual(["layout", "leaf"]);
+    expect(body).toContain("<header>LAYOUT</header>");
+    // The component did not render…
+    expect(body).not.toContain("<main>LEAF</main>");
+    expect(body).toContain("<i>leaf-skeleton</i>");
+    // …but its value is on the wire, so the client's first read consumes it
+    // rather than refetching what the server already paid for.
+    expect(body).toContain('"LEAF"');
+  });
+
+  test("`false` runs NOTHING and seeds nothing", async () => {
+    const { body, ran } = await render(undefined, false);
+    expect(ran).toEqual(["layout"]);
+    expect(body).toContain("<header>LAYOUT</header>");
+    expect(body).toContain("<i>leaf-skeleton</i>");
+    expect(body).not.toContain('"LEAF"');
+  });
+
+  test("a parent's `false` is absorbing: the child cannot opt back in", async () => {
+    const { body, ran } = await render(false, true);
+    expect(ran).toEqual([]);
+    expect(body).not.toContain("<header>");
+    expect(body).toContain("<i>layout-skeleton</i>");
+  });
+
+  test("a parent's 'data-only' CLAMPS a child's `true` down to 'data-only'", async () => {
+    const { body, ran } = await render("data-only", true);
+    // Both loaders still run — that is what data-only means…
+    expect(ran.toSorted()).toEqual(["layout", "leaf"]);
+    // …and neither component renders, because the child was clamped.
+    expect(body).not.toContain("<header>");
+    expect(body).not.toContain("<main>");
+    expect(body).toContain('"LAYOUT"');
+  });
+
+  test("…but a child may still declare `false` under a 'data-only' parent", async () => {
+    const { ran } = await render("data-only", false);
+    expect(ran).toEqual(["layout"]);
+  });
+});
