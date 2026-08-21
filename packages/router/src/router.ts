@@ -1,0 +1,204 @@
+/**
+ * Router state: the location, the match, and the loader cells.
+ *
+ * A loader's result is a KEYED async `computed`, not a promise stored in a
+ * signal. That one decision is what makes SSR work with no second mechanism:
+ * the server reads it during the render and the seed channel records it under
+ * its key, and the client's first read of the same key consumes the seed
+ * instead of fetching. `signals.ts` already does all of it — the router's whole
+ * contribution is choosing a key that is stable across the two sides.
+ *
+ * The key is EXPLICIT and never the positional auto-key. A position is not an
+ * identity: "if the client tree diverges from the server's, the ids after the
+ * divergence shift, and a read can claim the value recorded for a DIFFERENT
+ * call". A client-side navigation before hydration is exactly that divergence.
+ */
+
+import { type Cell, computed, signal, untrack } from "@barqjs/core";
+
+import { type History, type Location, href, memoryHistory, parseLocation } from "./history.ts";
+import { type Match, type Matcher, createMatcher } from "./matcher.ts";
+import { type Route, type RouteDefinition, flattenRoutes } from "./route.ts";
+import { leavesTheApp, resolvePath } from "./path.ts";
+
+/** How many resolved loader cells to keep. Beyond this the oldest go. */
+const DEFAULT_CACHE_SIZE = 100;
+
+export interface NavigateOptions {
+  readonly replace?: boolean;
+  readonly state?: unknown;
+}
+
+/**
+ * A guard runs before the location commits.
+ *
+ * `false` refuses, a string redirects, anything else allows. It is UX, not
+ * authorization: it runs on the client on every navigation after the first, and
+ * the server function a loader calls is reachable without it. TanStack's docs
+ * say the same about theirs — "A route guard is not a data authorization
+ * boundary" — and the difference here is that `@barqjs/start` gives the place
+ * where the check does belong.
+ */
+export type Guard = (context: {
+  readonly from: Location;
+  readonly to: Location;
+  readonly params: Record<string, string>;
+}) => boolean | string | Promise<boolean | string>;
+
+export interface RouterConfig {
+  readonly routes: readonly RouteDefinition<never, never>[];
+  readonly history?: History;
+  /** Rendered at depth 0 when nothing matched. */
+  readonly notFound?: RouteDefinition<never, never>["component"];
+  readonly beforeEach?: readonly Guard[];
+  readonly afterEach?: readonly ((location: Location) => void)[];
+  readonly cacheSize?: number;
+}
+
+/** What a loader cell is keyed by, and what the seed carries. */
+export function loaderKey(routeId: string, params: Readonly<Record<string, string>>): string {
+  // Sorted, so two renders of the same match agree byte for byte regardless of
+  // the order the matcher happened to fill `params` in.
+  const names = Object.keys(params).toSorted();
+  const pairs = names.map((name) => `${name}=${params[name]}`).join("&");
+  return `r:${routeId}|${pairs}`;
+}
+
+export interface RouterState {
+  readonly location: Cell<Location>;
+  readonly match: Cell<Match<Route> | null>;
+  readonly params: Cell<Record<string, string>>;
+  readonly search: Cell<URLSearchParams>;
+  readonly chain: Cell<readonly Route[]>;
+  readonly matcher: Matcher<Route>;
+  readonly config: RouterConfig;
+  readonly history: History;
+  /** The loader cell for one route at one set of params, created once per key. */
+  dataFor(route: Route, params: Readonly<Record<string, string>>): Cell<unknown>;
+  navigate(to: string, options?: NavigateOptions): Promise<void>;
+  /** Drop every cached loader result and re-read the current location. */
+  invalidate(): void;
+  dispose(): void;
+}
+
+export function createRouter(config: RouterConfig): RouterState {
+  const history = config.history ?? memoryHistory();
+  const matcher = createMatcher(flattenRoutes(config.routes));
+
+  const location = signal<Location>(history.current());
+  // Bumped by `invalidate`, and read by every loader cell, so invalidating is a
+  // reactive fact rather than a cache the router has to reach into.
+  const generation = signal(0);
+
+  const match = computed<Match<Route> | null>(() => matcher.match(location().pathname));
+  const params = computed<Record<string, string>>(() => match()?.params ?? {});
+  const search = computed(() => new URLSearchParams(location().search));
+  const chain = computed<readonly Route[]>(() => match()?.route.chain ?? []);
+
+  const cells = new Map<string, Cell<unknown>>();
+  const limit = config.cacheSize ?? DEFAULT_CACHE_SIZE;
+
+  const dataFor = (route: Route, forParams: Readonly<Record<string, string>>): Cell<unknown> => {
+    const loader = route.definition.loader;
+    const key = `${loaderKey(route.id, forParams)}#${untrack(generation)}`;
+    const existing = cells.get(key);
+    if (existing !== undefined) return existing;
+
+    const cell: Cell<unknown> =
+      loader === undefined
+        ? () => undefined
+        : computed(
+            async () => {
+              const controller = new AbortController();
+              return loader({
+                params: forParams as never,
+                search: untrack(search),
+                signal: controller.signal,
+              });
+            },
+            // The generation is NOT in the seed key: the server always renders
+            // at generation 0 and a client that has invalidated since would
+            // otherwise look for a key the server never wrote.
+            { key: loaderKey(route.id, forParams) },
+          );
+
+    cells.set(key, cell);
+    if (cells.size > limit) {
+      const oldest = cells.keys().next();
+      if (!oldest.done) cells.delete(oldest.value);
+    }
+    return cell;
+  };
+
+  const unsubscribe = history.subscribe((next) => {
+    location.set(next);
+    for (const hook of config.afterEach ?? []) hook(next);
+  });
+
+  const runGuards = async (to: Location): Promise<boolean | string> => {
+    const guards = config.beforeEach;
+    if (guards === undefined || guards.length === 0) return true;
+    const from = untrack(location);
+    const candidate = matcher.match(to.pathname);
+    for (const guard of guards) {
+      const verdict = await guard({ from, to, params: candidate?.params ?? {} });
+      if (verdict !== true && verdict !== undefined) return verdict;
+    }
+    return true;
+  };
+
+  let hops = 0;
+  const MAX_REDIRECTS = 10;
+
+  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
+    if (leavesTheApp(to)) {
+      if (typeof window !== "undefined") window.location.assign(to);
+      return;
+    }
+    const resolved = resolvePath(to, untrack(location).pathname);
+    const target = parseLocation(
+      resolved + (to.includes("?") ? to.slice(to.indexOf("?")) : ""),
+      options?.state ?? null,
+    );
+
+    const verdict = await runGuards(target);
+    if (verdict === false) return;
+    if (typeof verdict === "string") {
+      if (hops++ >= MAX_REDIRECTS) {
+        hops = 0;
+        console.error(
+          `[barq/router] more than ${MAX_REDIRECTS} redirects; giving up at ${verdict}`,
+        );
+        return;
+      }
+      // A refused route must not be left in the URL bar, so a guard's redirect
+      // always replaces rather than pushing.
+      await navigate(verdict, { replace: true });
+      hops = 0;
+      return;
+    }
+    hops = 0;
+    history.push(href(target), { replace: options?.replace, state: options?.state });
+  };
+
+  return {
+    location,
+    match,
+    params,
+    search,
+    chain,
+    matcher,
+    config,
+    history,
+    dataFor,
+    navigate,
+    invalidate() {
+      cells.clear();
+      generation.set(untrack(generation) + 1);
+    },
+    dispose() {
+      unsubscribe();
+      cells.clear();
+    },
+  };
+}

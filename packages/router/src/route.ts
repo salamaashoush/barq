@@ -57,6 +57,8 @@ export interface RouteDefinition<Data = unknown, Params = Record<string, string>
   /** Overrides the derived id. Name-derived and stable; never positional. */
   readonly id?: string;
   readonly component?: RouteComponent<Data, Params>;
+  /** Shown while this route's loader is unsettled. Without one the boundary shows nothing. */
+  readonly pending?: RouteComponent<never, never>;
   readonly loader?: Loader<Data, Params>;
   readonly children?: readonly RouteDefinition<never, never>[];
 }

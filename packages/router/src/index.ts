@@ -53,3 +53,35 @@ export {
   pathOf,
   route,
 } from "./route.ts";
+
+export {
+  type LinkProps,
+  type NavLinkProps,
+  type RedirectProps,
+  type RouterProps,
+  Link,
+  NavLink,
+  Redirect,
+  Router,
+  RouterContext,
+  renderDepth,
+  useRouter,
+} from "./components.ts";
+
+export {
+  useInvalidate,
+  useLocation,
+  useMatches,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "./hooks.ts";
+
+export {
+  type Guard,
+  type NavigateOptions,
+  type RouterConfig,
+  type RouterState,
+  createRouter,
+  loaderKey,
+} from "./router.ts";
