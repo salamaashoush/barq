@@ -300,6 +300,52 @@ describe("P6 defects", () => {
     expect(body).toContain(`r:${id}-leaf|`);
   });
 
+  test("B3 — a loader's redirect answers 302 on the STREAMED path too", async () => {
+    // The existing `redirect() from a loader` test passes `stream: false`,
+    // which is why this survived. On the default path `onLoaderError` records
+    // into `answer` and `answer` is read only on the non-streamed branch, so
+    // the throw escapes the stream's round loop — which swallows only
+    // `NotReadyError` — and reaches `controller.error`.
+    //
+    // Measured before the fix: status 200, no Location, and reading the body
+    // threw `Redirect: redirect to /login`.
+    const id = fresh();
+    const table = [
+      {
+        id,
+        path: "/secret",
+        loader: async () => {
+          await tick();
+          redirect("/login");
+        },
+        component: (_s: unknown, props: { data: () => unknown }) =>
+          ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+      },
+    ] as never;
+
+    const handler = createPageHandler({
+      routes: table,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const response = await handler(get("/secret"));
+    const body = await response.text();
+
+    // Either a real 302, or — once the shell is already on the wire — a
+    // client-side redirect carrying the same destination. What must NOT happen
+    // is a 200 whose body tears on read.
+    if (response.status === 302) {
+      expect(response.headers.get("location")).toBe("/login");
+    } else {
+      // The shell was already on the wire, so the redirect rides the stream.
+      expect(body).toContain('location.replace("/login")');
+      expect(body).toContain('<meta http-equiv="refresh" content="0;url=/login">');
+    }
+    // What must never happen is the body tearing on read, which is what
+    // `controller.error` did before there was a boundary to catch the throw.
+    expect(body).toContain("</html>");
+  });
+
   test("B5 — the router state outlives the stream that is still using it", async () => {
     // `createPageHandler` runs `finally { state.dispose() }` inside the
     // `withRequest` callback, and for a streamed response that callback returns

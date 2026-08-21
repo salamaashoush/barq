@@ -20,7 +20,13 @@
  *     and `Portal` writes nothing on the server so it is not an escape hatch.
  */
 
-import { html as ssrHtml, renderPage, renderToStream, ssrLoading } from "@barqjs/server";
+import {
+  html as ssrHtml,
+  renderPage,
+  renderToStream,
+  ssrErrored,
+  ssrLoading,
+} from "@barqjs/server";
 import { withRequest } from "@barqjs/start";
 
 import { memoryHistory } from "./history.ts";
@@ -65,9 +71,18 @@ export function renderRoutes(state: RouterState): unknown {
             routePropsFor(state, depth, route, children),
           );
 
-    // One boundary per depth, exactly as the DOM path emits — and on this side
-    // it is what puts a record in `parked`, which is the ONLY thing that opens
-    // the seed channel for a streamed page.
+    // An error boundary INSIDE the loading one, and the nesting is the whole
+    // point rather than a style choice.
+    //
+    // A loader that rejects after the shell has flushed throws on RESUME, and
+    // the stream's round loop swallows only `NotReadyError`
+    // (`packages/server/src/server.ts`) — anything else reaches
+    // `controller.error` and tears the body mid-document. An error boundary
+    // placed OUTSIDE the loading one cannot help: by resume time `ssrErrored`
+    // has already returned, so its `try` is gone. What the stream re-invokes is
+    // the loading boundary's own content Block, so the catch has to be in
+    // there. `Errored` re-throws `NotReadyError` on both backends, so parking
+    // still works through it.
     const pending = route.definition.pending;
     return ssrLoading(null, {
       fallback: () =>
@@ -77,7 +92,7 @@ export function renderRoutes(state: RouterState): unknown {
               null,
               routePropsFor(state, depth, route, (() => ssrHtml("")) as never),
             ),
-      children: content,
+      children: () => ssrErrored(null, { fallback: () => ssrHtml(""), children: content }),
     });
   };
 
@@ -242,7 +257,7 @@ export function createPageHandler(
             nonce: options.nonce,
           });
           return new Response(
-            wrapStream(stream, options, match?.route.chain ?? null, url, dispose),
+            wrapStream(stream, options, match?.route.chain ?? null, url, dispose, () => answer),
             {
               status,
               headers: { "content-type": "text/html; charset=utf-8" },
@@ -277,6 +292,36 @@ function redirectResponse(to: string, status: number): Response {
   return new Response(null, { status, headers: { location: to } });
 }
 
+/**
+ * A redirect a LOADER threw, once the shell is already on the wire.
+ *
+ * Rule 1 says the status is decided before the shell flushes, and
+ * `renderToStream` emits the shell synchronously — so this redirect cannot be a
+ * 302 and pretending otherwise would mean awaiting the whole chain before the
+ * first byte, which is streaming that does not stream. It becomes a client-side
+ * redirect instead, with a `<noscript>` fallback so a scripting-disabled client
+ * still arrives.
+ *
+ * A redirect that MUST be a 302 belongs in `beforeEach`, which runs before the
+ * render and gets one. A non-redirect answer — a middleware's `throw new
+ * Response(401)` — cannot be honoured here at all: the route's error boundary
+ * has already replaced the content with its fallback, and that is the whole of
+ * what a stream can do about it. Authorization belongs before the shell.
+ */
+function redirectScript(answer: Response | null): string {
+  if (answer === null || answer.status < 300 || answer.status >= 400) return "";
+  const to = answer.headers.get("location");
+  if (to === null || to === "") return "";
+  // `JSON.stringify` handles quotes and backslashes; `<` is escaped separately
+  // because `</script>` inside a string literal still ends the element.
+  const js = JSON.stringify(to).replaceAll("<", "\\u003c");
+  const attr = to.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+  return (
+    `<script>location.replace(${js})</script>` +
+    `<noscript><meta http-equiv="refresh" content="0;url=${attr}"></noscript>`
+  );
+}
+
 function html(body: string, status: number): Response {
   return new Response(body, {
     status,
@@ -300,6 +345,8 @@ function wrapStream(
   url: URL,
   /** Runs when the body is finished or abandoned — never before. */
   done: () => void,
+  /** What a loader threw, read AFTER the render — see `redirectScript`. */
+  answer: () => Response | null,
 ): ReadableStream<Uint8Array> {
   const document = options.document({ body: BODY_MARKER, seed: "", chain, url });
   const cut = document.indexOf(BODY_MARKER);
@@ -325,6 +372,8 @@ function wrapStream(
       } finally {
         reader.releaseLock();
       }
+      const late = redirectScript(answer());
+      if (late !== "") controller.enqueue(encoder.encode(late));
       controller.enqueue(encoder.encode(tail));
       controller.close();
       done();
