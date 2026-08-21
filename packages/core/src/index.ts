@@ -231,6 +231,11 @@ export {
   Portal,
   Dynamic,
 } from "./components.ts";
+// Not one of the ten. `lazy` is a `computed` over an import — a reactivity
+// primitive that happens to return a component — and it is here rather than in
+// a router because every mechanism it rides is private to `signals.ts` and
+// `flow.ts`.
+export { lazy } from "./components.ts";
 export type {
   ShowProps,
   ForProps,

@@ -71,7 +71,7 @@ import { dynamic } from "./dom.ts";
 import { COUNT, boundary, branch, each, portal, reveal } from "./flow.ts";
 import type { Block, Cell, Scope, Slot } from "./scope.ts";
 import { omit } from "./props.ts";
-import { computed, readSlot, untrack } from "./signals.ts";
+import { computed, readSlot, resolve, runWithOwner, untrack } from "./signals.ts";
 
 /**
  * Show props — discriminated on `keyed` so children params infer:
@@ -398,4 +398,53 @@ export function Reveal(
     () => readValue(props.collapsed, "Reveal.collapsed") === true,
     props.children as Block<unknown>,
   ) as unknown as JSXElement;
+}
+
+/**
+ * A component whose module is fetched on first render.
+ *
+ * The whole of it is a `computed` over the import, and every mechanism it needs
+ * already exists: a compute returning a Promise leaves the node pending, a read
+ * before it settles throws `NotReadyError`, an effect that throws one registers
+ * with the nearest `Loading` boundary, and a suspended body is retried TRACKED
+ * so the module landing wakes it. `Errored` re-throws `NotReadyError` rather
+ * than catching it, so a boundary between the two does not swallow the wait.
+ *
+ * It lives here rather than in a router because all four of those are private
+ * to `signals.ts` and `flow.ts`. What a router owns is the other half —
+ * `preload()` on a route's chunk, and the `<link rel=modulepreload>` that
+ * shortens the wait — because that is bundler and route-tree knowledge this
+ * package has none of.
+ *
+ * NO OWNER and NO SEED KEY, deliberately. The cell is module-scoped and must
+ * outlive whatever position happened to read it first — a cell owned by a
+ * boundary's content dies when that content is discarded, which is a real
+ * failure mode and not a hypothetical one. And a module is not a value to seed:
+ * the client fetches its own chunk, so a key here would claim a seed slot for
+ * something the server cannot send.
+ *
+ * Named `default` because that is what a route module exports; pass a `pick` to
+ * take something else.
+ */
+export function lazy<P>(
+  load: () => Promise<Record<string, unknown>>,
+  pick: (module: Record<string, unknown>) => unknown = (module) => module.default,
+): ((s: Scope | null, props: P) => JSXElement) & { preload: () => Promise<void> } {
+  let cell: Cell<unknown> | null = null;
+  const resolved = (): Cell<unknown> =>
+    (cell ??= runWithOwner(null, () => computed(async () => pick(await load()))));
+
+  const component = (s: Scope | null, props: P): JSXElement => {
+    const Loaded = resolved()() as (s: Scope | null, props: P) => JSXElement;
+    return Loaded(s, props);
+  };
+
+  // Warms the SAME cell. `resolve` awaits the cell's first settled value rather
+  // than calling `load()` again — a second call is a second fetch on any loader
+  // that is not itself memoised, and it made `preload()` import twice.
+  component.preload = async (): Promise<void> => {
+    await resolve(resolved());
+  };
+
+  return component;
 }
