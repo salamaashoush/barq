@@ -167,6 +167,23 @@ export type Guard = (context: {
   readonly params: Record<string, string>;
 }) => boolean | string | Promise<boolean | string>;
 
+/**
+ * Asked before a navigation commits. Return `true` to BLOCK it.
+ *
+ * The sense is "should block" rather than "may proceed", and that is a safety
+ * choice rather than a style one: a blocker that forgets to return answers
+ * `undefined`, and the falsy default has to be the one that lets the user keep
+ * navigating. The other way round, one missing `return` makes an application
+ * impossible to leave. TanStack's `shouldBlockFn` reads the same way.
+ *
+ * UX, like `beforeEnter` and unlike `middleware`: it runs on the client only,
+ * and nothing about it reaches a server function.
+ */
+export type Blocker = (context: {
+  readonly from: Location;
+  readonly to: Location;
+}) => boolean | void | Promise<boolean | void>;
+
 export interface RouterConfig {
   readonly routes: readonly AnyRouteDefinition[];
   readonly history?: History;
@@ -336,6 +353,29 @@ export interface RouterState {
    * stopped prefetching. The entry cache is the dedupe here, and it expires.
    */
   preload(to: string): Promise<void>;
+  /**
+   * Refuse a navigation before it happens.
+   *
+   * Returns an unregister. A blocker that answers `true` stops the navigation
+   * dead; anything falsy lets it through. Every registered blocker is asked, in
+   * registration order, and the FIRST refusal ends it, so a form with unsaved
+   * changes does not have to know about any other.
+   *
+   * It runs before `beforeLoad`, because a navigation nobody is going to make
+   * should not be building context for it.
+   */
+  block(blocker: Blocker): () => void;
+  /** Whether there is anything to go back TO. See `History.depth`. */
+  canGoBack(): boolean;
+  /**
+   * A navigation has been asked for and has not committed.
+   *
+   * Not a loading counter — `packages/router/DESIGN.md` rules that out, because
+   * loading is a boundary per route depth. This is the gap between `navigate`
+   * being called and the location changing, which is where blockers, guards and
+   * `beforeLoad` run.
+   */
+  readonly isNavigating: Cell<boolean>;
   /** Drop every cached loader result and re-read the current location. */
   invalidate(): void;
   dispose(): void;
@@ -914,10 +954,22 @@ export function createRouter(config: RouterConfig): RouterState {
     return true;
   };
 
+  const blockers = new Set<Blocker>();
+  const navigating = signal(0);
+
   let hops = 0;
   const MAX_REDIRECTS = 10;
 
   const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
+    navigating.set(untrack(navigating) + 1);
+    try {
+      return await attemptNavigate(to, options);
+    } finally {
+      navigating.set(untrack(navigating) - 1);
+    }
+  };
+
+  const attemptNavigate = async (to: string, options?: NavigateOptions): Promise<void> => {
     if (leavesTheApp(to)) {
       if (typeof window !== "undefined") window.location.assign(to);
       return;
@@ -937,6 +989,19 @@ export function createRouter(config: RouterConfig): RouterState {
       untrack(location).pathname,
     );
     const target = parseLocation(resolved + rest, options?.state ?? null);
+
+    // Blockers first: a navigation nobody is going to make should not be
+    // running guards, building context or warming a cache for itself.
+    if (blockers.size > 0) {
+      const from = untrack(location);
+      // A snapshot, not the live Set: a blocker that unregisters another while
+      // it is being asked must not break the iteration — the same reason
+      // `history.ts` snapshots its listeners.
+      // oxlint-disable-next-line unicorn/no-useless-spread
+      for (const blocker of [...blockers]) {
+        if (await blocker({ from, to: target })) return;
+      }
+    }
 
     const verdict = await runGuards(target);
     if (verdict === false) return;
@@ -1022,6 +1087,12 @@ export function createRouter(config: RouterConfig): RouterState {
     },
     runBeforeLoad,
     prime: primeChain,
+    block(blocker) {
+      blockers.add(blocker);
+      return () => blockers.delete(blocker);
+    },
+    canGoBack: () => (history.depth?.() ?? 0) > 0,
+    isNavigating: (() => navigating() > 0) as Cell<boolean>,
     ssrModes: (() => resolveSsr(chain())) as Cell<readonly SsrMode[]>,
     async preload(to) {
       if (leavesTheApp(to)) return;

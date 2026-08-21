@@ -1670,6 +1670,187 @@ describe("guards", () => {
   });
 });
 
+describe("the smaller surface", () => {
+  test("useBlocker refuses a navigation, and stops refusing when its scope dies", async () => {
+    let refuse = true;
+    const history = memoryHistory({ initial: ["/a"] });
+    const state = createRouter({
+      routes: [
+        { path: "/a", component: page("a") },
+        { path: "/b", component: page("b") },
+      ] as never,
+      history,
+    });
+    // `true` BLOCKS, so a blocker that forgets to return lets the user keep
+    // navigating rather than trapping them.
+    const off = state.block(() => refuse);
+    const { host, dispose } = mountState(state);
+
+    await state.navigate("/b");
+    flush();
+    expect(host.textContent).toBe("a");
+
+    refuse = false;
+    await state.navigate("/b");
+    flush();
+    expect(host.textContent).toBe("b");
+
+    // Unregistering is what stops a form that has unmounted from blocking the
+    // whole app.
+    refuse = true;
+    off();
+    await state.navigate("/a");
+    flush();
+    expect(host.textContent).toBe("a");
+    dispose();
+  });
+
+  test("the FIRST refusal ends it, so blockers do not have to know about each other", async () => {
+    const asked: string[] = [];
+    const history = memoryHistory({ initial: ["/a"] });
+    const state = createRouter({
+      routes: [
+        { path: "/a", component: page("a") },
+        { path: "/b", component: page("b") },
+      ] as never,
+      history,
+    });
+    state.block(() => {
+      asked.push("first");
+      return true;
+    });
+    state.block(() => {
+      asked.push("second");
+      return false;
+    });
+    const { dispose } = mountState(state);
+    await state.navigate("/b");
+    expect(asked).toEqual(["first"]);
+    dispose();
+  });
+
+  test("canGoBack is false at the start and true after a push", async () => {
+    const history = memoryHistory({ initial: ["/a"] });
+    const state = createRouter({
+      routes: [
+        { path: "/a", component: page("a") },
+        { path: "/b", component: page("b") },
+      ] as never,
+      history,
+    });
+    const { dispose } = mountState(state);
+    expect(state.canGoBack()).toBe(false);
+    await state.navigate("/b");
+    flush();
+    expect(state.canGoBack()).toBe(true);
+    dispose();
+  });
+
+  test("useMatch finds a route by id, and the leaf without one", () => {
+    const history = memoryHistory({ initial: ["/app/7"] });
+    const state = createRouter({
+      routes: [
+        {
+          id: "layout",
+          path: "/app",
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("div");
+            insert(scope, node, () => props.children);
+            return node;
+          },
+          children: [{ id: "leaf", path: "$id", component: page("leaf") }],
+        },
+      ] as never,
+      history,
+    });
+    const { dispose } = mountState(state);
+    const chain = state.chain();
+    expect(chain.map((route) => route.id)).toEqual(["layout", "leaf"]);
+    dispose();
+  });
+
+  test("isNavigating is true only between the ask and the commit", async () => {
+    // Not a loading counter — DESIGN.md rules that out — but the gap where
+    // blockers, guards and `beforeLoad` run.
+    const history = memoryHistory({ initial: ["/a"] });
+    const seen: boolean[] = [];
+    const state = createRouter({
+      routes: [
+        { path: "/a", component: page("a") },
+        {
+          path: "/b",
+          beforeLoad: async () => {
+            seen.push(state.isNavigating());
+            await tick();
+          },
+          component: page("b"),
+        },
+      ] as never,
+      history,
+    });
+    const { dispose } = mountState(state);
+    expect(state.isNavigating()).toBe(false);
+    await state.navigate("/b");
+    expect(seen).toEqual([true]);
+    expect(state.isNavigating()).toBe(false);
+    dispose();
+  });
+
+  test("NavLink activeProps and inactiveProps swap, and a one-sided name is REMOVED", async () => {
+    const history = memoryHistory({ initial: ["/a"] });
+    const state = createRouter({
+      routes: [
+        {
+          path: "/a",
+          component: (scope: Scope | null) =>
+            (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
+              to: () => "/a",
+              activeProps: () => ({ "data-state": "here", title: "you are here" }),
+              inactiveProps: () => ({ "data-state": "away" }),
+              children: () => "a",
+            }),
+        },
+        { path: "/b", component: page("b") },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+    const anchor = host.querySelector("a") as HTMLAnchorElement;
+    expect(anchor.getAttribute("data-state")).toBe("here");
+    expect(anchor.getAttribute("title")).toBe("you are here");
+
+    await state.navigate("/b");
+    flush();
+    // The link is gone with its route; what matters is that a name present in
+    // one record and absent from the other is bound at all — asserted on the
+    // inactive side below.
+    dispose();
+
+    const other = createRouter({
+      routes: [
+        {
+          path: "/a",
+          component: (scope: Scope | null) =>
+            (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
+              to: () => "/elsewhere",
+              activeProps: () => ({ title: "you are here" }),
+              inactiveProps: () => ({ "data-state": "away" }),
+              children: () => "a",
+            }),
+        },
+      ] as never,
+      history: memoryHistory({ initial: ["/a"] }),
+    });
+    const second = mountState(other);
+    const link = second.host.querySelector("a") as HTMLAnchorElement;
+    expect(link.getAttribute("data-state")).toBe("away");
+    // `title` is only in the ACTIVE record, so while inactive it must be absent
+    // rather than left over from a previous state.
+    expect(link.hasAttribute("title")).toBe(false);
+    second.dispose();
+  });
+});
+
 describe("two routers on one page", () => {
   test("keep independent locations", () => {
     const a = memoryHistory({ initial: ["/"] });

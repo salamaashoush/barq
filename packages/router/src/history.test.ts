@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   addBase,
   browserHistory,
+  hashHistory,
   href,
   memoryHistory,
   normalizeBase,
@@ -152,5 +153,59 @@ describe("browserHistory", () => {
     controller.abort();
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(count).toBe(0);
+  });
+});
+
+describe("hashHistory", () => {
+  const at = (hash: string): void => {
+    window.history.replaceState(null, "", `/${hash}`);
+  };
+
+  test("reads the route out of the hash, and an empty hash is the root", () => {
+    at("");
+    expect(hashHistory().current().pathname).toBe("/");
+    at("#/users/7?tab=a");
+    const history = hashHistory();
+    expect(history.current().pathname).toBe("/users/7");
+    expect(history.current().search).toBe("?tab=a");
+  });
+
+  test("a push writes the hash and tells its listeners", () => {
+    at("#/");
+    const history = hashHistory();
+    const seen: string[] = [];
+    history.subscribe((location, action) => seen.push(`${action} ${location.pathname}`));
+    history.push("/users/7");
+    expect(window.location.hash).toBe("#/users/7");
+    expect(seen).toEqual(["push /users/7"]);
+    expect(history.current().pathname).toBe("/users/7");
+  });
+
+  test("a replace does not deepen the stack", () => {
+    at("#/");
+    const history = hashHistory();
+    expect(history.depth?.()).toBe(0);
+    history.push("/a");
+    expect(history.depth?.()).toBe(1);
+    history.push("/b", { replace: true });
+    expect(history.depth?.()).toBe(1);
+  });
+});
+
+describe("depth, which is what `useCanGoBack` reads", () => {
+  test("memoryHistory knows exactly", () => {
+    const history = memoryHistory({ initial: ["/a", "/b", "/c"], index: 2 });
+    expect(history.depth?.()).toBe(2);
+    history.go(-1);
+    expect(history.depth?.()).toBe(1);
+    history.go(-1);
+    expect(history.depth?.()).toBe(0);
+    // Past the start it refuses rather than going negative.
+    history.go(-1);
+    expect(history.depth?.()).toBe(0);
+  });
+
+  test("a fresh memory history has nothing behind it", () => {
+    expect(memoryHistory().depth?.()).toBe(0);
   });
 });

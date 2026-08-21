@@ -31,6 +31,17 @@ export type NavigationAction = "push" | "replace" | "pop";
 export interface History {
   current(): Location;
   go(delta: number): void;
+  /**
+   * How many entries this history has BEHIND the current one, when it knows.
+   *
+   * `memoryHistory` knows exactly. `browserHistory` cannot — `history.length`
+   * counts the whole session including entries from other origins, and there is
+   * no API for "can I go back" — so it reports what it has SEEN: the number of
+   * pushes since the page loaded. `useCanGoBack` is therefore honest about
+   * in-app navigation and says nothing about the entry the user arrived on,
+   * which is the only answer a browser makes available.
+   */
+  depth?(): number;
   push(to: string, options?: { replace?: boolean; state?: unknown }): void;
   /** Returns an unsubscribe. */
   subscribe(listener: (location: Location, action: NavigationAction) => void): () => void;
@@ -96,6 +107,7 @@ export function memoryHistory(options: MemoryHistoryOptions = {}): History {
 
   return {
     current: () => stack[index] as Location,
+    depth: () => index,
     go(delta) {
       const target = index + delta;
       if (target < 0 || target >= stack.length) return;
@@ -148,6 +160,10 @@ export function browserHistory(options: BrowserHistoryOptions = {}): History {
     );
 
   let current = read();
+  // Pushes SINCE THIS PAGE LOADED, which is the only "can I go back" a browser
+  // makes available: `history.length` counts the whole session, including
+  // entries from other origins, and there is no API for the real question.
+  let seen = 0;
 
   const emit = (location: Location, action: NavigationAction): void => {
     current = location;
@@ -167,15 +183,21 @@ export function browserHistory(options: BrowserHistoryOptions = {}): History {
 
   return {
     current: () => current,
+    depth: () => seen,
     go(delta) {
+      seen = Math.max(0, seen + delta);
       window.history.go(delta);
     },
     push(to, pushOptions) {
       const location = parseLocation(to, pushOptions?.state ?? null);
       const url = addBase(location.pathname, base) + location.search + location.hash;
       const replace = pushOptions?.replace === true;
-      if (replace) window.history.replaceState(location.state, "", url);
-      else window.history.pushState(location.state, "", url);
+      if (replace) {
+        window.history.replaceState(location.state, "", url);
+      } else {
+        window.history.pushState(location.state, "", url);
+        seen++;
+      }
       emit(location, replace ? "replace" : "push");
     },
     subscribe(listener) {
@@ -190,4 +212,75 @@ export function normalizeBase(base: string): string {
   const trimmed = base.replace(/\/+$/, "");
   if (trimmed === "") return "";
   return trimmed.charCodeAt(0) === 47 ? trimmed : `/${trimmed}`;
+}
+
+export interface HashHistoryOptions {
+  /** Told to stop listening. */
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * The route lives in `location.hash`, so the server never sees it.
+ *
+ * For a page served from somewhere that cannot be told to rewrite every path to
+ * one document — a static host, a file:// bundle, an app embedded under a path
+ * it does not control. Nothing else in the router changes: the matcher, the
+ * loaders and the guards see the same `Location` shape, because the difference
+ * is entirely in how it is read and written.
+ *
+ * `#/users/7?tab=a` — the leading `/` is kept so a hash route and a path route
+ * are the same string, which is what lets `<Link to="/users/7">` work unchanged
+ * under either.
+ */
+export function hashHistory(options: HashHistoryOptions = {}): History {
+  const listeners = new Set<(location: Location, action: NavigationAction) => void>();
+
+  const read = (): Location => {
+    const raw = window.location.hash.slice(1);
+    return parseLocation(raw === "" ? "/" : raw, window.history.state);
+  };
+
+  let current = read();
+  let seen = 0;
+
+  const emit = (location: Location, action: NavigationAction): void => {
+    current = location;
+    // oxlint-disable-next-line unicorn/no-useless-spread
+    for (const listener of [...listeners]) listener(location, action);
+  };
+
+  // `hashchange` and not `popstate`: a hash edit in the address bar fires only
+  // the first, and a page whose route is its hash has to answer to it.
+  window.addEventListener(
+    "hashchange",
+    () => {
+      emit(read(), "pop");
+    },
+    { signal: options.signal },
+  );
+
+  return {
+    current: () => current,
+    depth: () => seen,
+    go(delta) {
+      seen = Math.max(0, seen + delta);
+      window.history.go(delta);
+    },
+    push(to, pushOptions) {
+      const location = parseLocation(to, pushOptions?.state ?? null);
+      const url = `#${href(location)}`;
+      if (pushOptions?.replace === true) {
+        window.history.replaceState(location.state, "", url);
+        emit(location, "replace");
+        return;
+      }
+      window.history.pushState(location.state, "", url);
+      seen++;
+      emit(location, "push");
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
 }

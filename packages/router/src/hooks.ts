@@ -6,12 +6,12 @@
  * one page work and what makes a router die with the scope that made it.
  */
 
-import type { Cell } from "@barqjs/core";
+import { type Cell, onCleanup } from "@barqjs/core";
 
 import { useRouter } from "./components.ts";
 import type { Location } from "./history.ts";
 import type { Route } from "./route.ts";
-import type { NavigateOptions } from "./router.ts";
+import type { Blocker, NavigateOptions } from "./router.ts";
 
 export function useLocation(): Cell<Location> {
   return useRouter().location;
@@ -53,6 +53,70 @@ export function useRouteContext<
     const all = state.contexts();
     return (all[all.length - 1] ?? {}) as C;
   }) as Cell<C>;
+}
+
+/**
+ * One matched route by id, or the LEAF when no id is given.
+ *
+ * `null` when that route is not in the current chain, so a component can ask
+ * "am I under /admin" without knowing where it sits.
+ */
+export function useMatch(routeId?: string): Cell<Route | null> {
+  const state = useRouter();
+  return (() => {
+    const chain = state.chain();
+    if (routeId === undefined) return chain[chain.length - 1] ?? null;
+    return chain.find((route) => route.id === routeId) ?? null;
+  }) as Cell<Route | null>;
+}
+
+/**
+ * The router's state as ONE reactive value, for a component that wants several
+ * pieces of it without subscribing to each separately.
+ *
+ * `isLoading` is deliberately NOT a router-wide counter — that is the thing
+ * `packages/router/DESIGN.md` says should not exist, because loading is a
+ * `Loading` boundary per route depth and a global spinner is how a page ends up
+ * with two of them disagreeing. What is here is `isNavigating`: a navigation
+ * has been asked for and has not committed, which is a fact about the ROUTER
+ * rather than about any route's data.
+ */
+export function useRouterState(): Cell<{
+  readonly location: Location;
+  readonly matches: readonly Route[];
+  readonly params: Record<string, string>;
+  readonly isNavigating: boolean;
+}> {
+  const state = useRouter();
+  return () => ({
+    location: state.location(),
+    matches: state.chain(),
+    params: state.params(),
+    isNavigating: state.isNavigating(),
+  });
+}
+
+/**
+ * Refuse or confirm navigations while this scope is alive.
+ *
+ * Unregisters on cleanup, so a form that unmounts stops blocking — the failure
+ * mode of a blocker that outlives its form being an app nobody can navigate.
+ */
+export function useBlocker(blocker: Blocker): () => void {
+  const state = useRouter();
+  const off = state.block(blocker);
+  onCleanup(off);
+  return off;
+}
+
+/** Whether there is an in-app entry to go back to. See `History.depth`. */
+export function useCanGoBack(): Cell<boolean> {
+  const state = useRouter();
+  return (() => {
+    // Read the location so this re-evaluates when one commits.
+    state.location();
+    return state.canGoBack();
+  }) as Cell<boolean>;
 }
 
 /** The matched chain, outermost first. */

@@ -21,6 +21,7 @@ export {
   type NavigationAction,
   addBase,
   browserHistory,
+  hashHistory,
   href,
   memoryHistory,
   normalizeBase,
@@ -102,9 +103,13 @@ export {
 } from "./components.ts";
 
 export {
+  useBlocker,
+  useCanGoBack,
   useInvalidate,
   useLocation,
+  useMatch,
   useRouteContext,
+  useRouterState,
   useMatches,
   useNavigate,
   useParams,
@@ -113,6 +118,7 @@ export {
 } from "./hooks.ts";
 
 export {
+  type Blocker,
   type Guard,
   type LoadCause,
   type NavigateOptions,

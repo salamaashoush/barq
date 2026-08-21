@@ -423,6 +423,17 @@ export interface NavLinkProps extends LinkProps {
   readonly activeClass?: string;
   /** Exact match instead of the default segment-prefix match. */
   readonly end?: boolean;
+  /**
+   * Attributes applied while this link points at where you are.
+   *
+   * A record rather than a second class name, because "active" is not only ever
+   * a class: `aria-current` is set for you, but a nav may also want
+   * `data-state`, a `title`, or `tabindex="-1"` on the link to the page it is
+   * already on.
+   */
+  readonly activeProps?: Record<string, string | null>;
+  /** Attributes applied while it does not. */
+  readonly inactiveProps?: Record<string, string | null>;
 }
 
 function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
@@ -439,6 +450,33 @@ function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
         ? "active"
         : (readSlot(props.activeClass, "NavLink.activeClass") as string)) as string;
     bindProp(scope, element, setAttr, "aria-current", () => (active() ? "page" : null));
+
+    // Every name from BOTH records gets a binding, so a name present in one and
+    // absent from the other is REMOVED when the state flips rather than left
+    // behind — which is what a naive "apply the active record" does.
+    const activeProps = (): Record<string, string | null> =>
+      props.activeProps === undefined
+        ? {}
+        : ((readSlot(props.activeProps, "NavLink.activeProps") ?? {}) as Record<
+            string,
+            string | null
+          >);
+    const inactiveProps = (): Record<string, string | null> =>
+      props.inactiveProps === undefined
+        ? {}
+        : ((readSlot(props.inactiveProps, "NavLink.inactiveProps") ?? {}) as Record<
+            string,
+            string | null
+          >);
+    const names = new Set([
+      ...Object.keys(untrack(activeProps)),
+      ...Object.keys(untrack(inactiveProps)),
+    ]);
+    for (const name of names) {
+      bindProp(scope, element, setAttr, name, () =>
+        active() ? (activeProps()[name] ?? null) : (inactiveProps()[name] ?? null),
+      );
+    }
     bindProp(scope, element, setClass, "class", () => {
       const base = props.class === undefined ? "" : (readSlot(props.class, "Link.class") as string);
       return active() ? `${base} ${activeClass()}`.trim() : base;
