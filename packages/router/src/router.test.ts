@@ -1796,6 +1796,45 @@ describe("the smaller surface", () => {
     dispose();
   });
 
+  test("a mask shows one url and renders another", async () => {
+    // A photo over a feed: the address bar reads `/feed` so closing it is a back
+    // button and copying the link shares the feed, while what renders is the
+    // photo.
+    const history = memoryHistory({ initial: ["/feed"] });
+    const state = createRouter({
+      routes: [
+        { path: "/feed", component: page("feed") },
+        { path: "/photos/$id", component: page("photo") },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+    expect(host.textContent).toBe("feed");
+
+    await state.navigate("/photos/5", { mask: "/feed" });
+    flush();
+    // Rendered: the photo. Shown: the feed.
+    expect(host.textContent).toBe("photo");
+    expect(state.location().pathname).toBe("/feed");
+    dispose();
+  });
+
+  test("a masked url pasted somewhere else renders the MASK", () => {
+    // The real target rides in `history.state`, which does not survive being
+    // copied out of the address bar — and that is the point of choosing a mask.
+    const history = memoryHistory({ initial: ["/feed"] });
+    const state = createRouter({
+      routes: [
+        { path: "/feed", component: page("feed") },
+        { path: "/photos/$id", component: page("photo") },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+    expect(host.textContent).toBe("feed");
+    dispose();
+  });
+
   test("NavLink activeProps and inactiveProps swap, and a one-sided name is REMOVED", async () => {
     const history = memoryHistory({ initial: ["/a"] });
     const state = createRouter({

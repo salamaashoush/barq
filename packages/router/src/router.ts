@@ -159,6 +159,27 @@ export interface NavigateOptions {
   readonly resetScroll?: boolean;
   /** Wrap this navigation's commit in a view transition. */
   readonly viewTransition?: boolean;
+  /**
+   * Show a DIFFERENT url than the one being rendered.
+   *
+   * A photo opened over a feed renders `/photos/5` while the address bar reads
+   * `/feed` — so closing it is a back button and copying the link shares the
+   * feed. The real target rides in `history.state`, which survives a reload in
+   * the same tab and does NOT survive being pasted somewhere else: a shared
+   * masked URL renders the MASK, which is the whole point of choosing it.
+   */
+  readonly mask?: string;
+}
+
+/** Where the real target hides while the URL shows something else. */
+const MASK = "__barqMask";
+
+/** The path a location actually matches, which is not always the one it shows. */
+export function unmask(location: Location): string {
+  const state = location.state;
+  if (state === null || typeof state !== "object") return location.pathname;
+  const masked = (state as Record<string, unknown>)[MASK];
+  return typeof masked === "string" ? masked : location.pathname;
 }
 
 /**
@@ -407,7 +428,11 @@ export function createRouter(config: RouterConfig): RouterState {
   // reactive fact rather than a cache the router has to reach into.
   const generation = signal(0);
 
-  const match = computed<Match<Route> | null>(() => matcher.match(location().pathname));
+  // MATCHED against the unmasked path, and displayed as `location()`. A mask is
+  // the one place those differ, and keeping the split here means nothing else in
+  // the router has to know about it: links stay active against what the user
+  // sees, and the chain is built from what is actually being rendered.
+  const match = computed<Match<Route> | null>(() => matcher.match(unmask(location())));
   const params = computed<Record<string, string>>(() => match()?.params ?? {});
   const search = computed(() => new URLSearchParams(location().search));
 
@@ -942,7 +967,7 @@ export function createRouter(config: RouterConfig): RouterState {
         settleContexts(pendingContexts);
         pendingContexts = null;
       } else {
-        const candidate = matcher.match(next.pathname);
+        const candidate = matcher.match(unmask(next));
         contexts.set([]);
         if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
         void runBeforeLoad(next, candidate).then(
@@ -984,7 +1009,7 @@ export function createRouter(config: RouterConfig): RouterState {
 
   const runGuards = async (to: Location): Promise<boolean | string> => {
     const from = untrack(location);
-    const candidate = matcher.match(to.pathname);
+    const candidate = matcher.match(unmask(to));
     const context = { from, to, params: candidate?.params ?? {} };
 
     // Global first, then the matched chain outermost-in — so a layout's guard
@@ -1099,9 +1124,19 @@ export function createRouter(config: RouterConfig): RouterState {
     }
     pendingContexts = produced;
     pendingNavigate = options;
+    const mask = options?.mask;
     // Where the page being LEFT is, recorded before it stops being current.
     scroll.save(untrack(location));
-    history.push(href(target), { replace: options?.replace, state: options?.state });
+    if (mask === undefined) {
+      history.push(href(target), { replace: options?.replace, state: options?.state });
+      return;
+    }
+    // The mask goes in the URL; the real target goes in the state the URL
+    // carries, so a reload in this tab still renders what was open.
+    history.push(mask, {
+      replace: options?.replace,
+      state: { ...(options?.state as object | null), [MASK]: href(target) },
+    });
   };
 
   return {

@@ -139,7 +139,12 @@ describe("the nine workarounds are deletions", () => {
   // effect hasn't run yet". Replaced by: matches DERIVED from location, so the
   // first render is already right and there is nothing to duplicate.
   test("6. the match chain is derived from the location, never assigned", () => {
-    expect(ROUTER).toContain("matcher.match(location().pathname)");
+    // The literal used to be `matcher.match(location().pathname)`. Route masking
+    // changed the ARGUMENT — a masked location matches `unmask(location())`,
+    // which is the one place the URL shown and the route rendered differ — and
+    // the rule is about the derivation, not the spelling: still a `computed`
+    // over `location()`, still nothing assigning a chain from outside.
+    expect(ROUTER).toContain("matcher.match(unmask(location()))");
     expect(ROUTER).not.toMatch(/setMatchedRoutes|effect\(renderRoute\)/);
   });
 
@@ -350,6 +355,7 @@ describe("the convention, from the other side", () => {
     // added — which is the property the row this replaces had.
     const coveredBy: Record<string, string> = {
       "components.ts": "router.test.ts",
+      "devtools.ts": "devtools.test.ts",
       "errors.ts": "server.test.ts",
       "history.ts": "history.test.ts",
       "hooks.ts": "router.test.ts",

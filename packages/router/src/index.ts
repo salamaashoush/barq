@@ -111,6 +111,8 @@ export {
   useRouter,
 } from "./components.ts";
 
+export { type RouterDevtoolsProps, RouterDevtools } from "./devtools.ts";
+
 export {
   useBlocker,
   useCanGoBack,
@@ -136,6 +138,7 @@ export {
   type SsrMode,
   createRouter,
   depsKey,
+  unmask,
   loaderKey,
   resolveSsr,
   searchKey,
