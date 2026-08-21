@@ -16,6 +16,7 @@ import {
   element,
   flush,
   hydrate,
+  runWithOwner,
   scope,
   settle,
   signal,
@@ -872,5 +873,58 @@ describe("renderToStream", () => {
   test("a page with nothing to defer streams one chunk and no swap machinery", async () => {
     const parts = await collect(renderToStream((() => ssrHtml("<p>flat</p>")) as never));
     expect(parts).toEqual(["<p>flat</p>"]);
+  });
+});
+
+describe("a Loading fallback that is itself not ready", () => {
+  /**
+   * `@barqjs/router`'s generated route table emits
+   * `pending: lazy(() => import(...), (m) => m.Pending ?? Empty)` for EVERY
+   * route, so a route whose loader parks on the first render activates a
+   * fallback whose chunk has not arrived yet. That activation used to sit
+   * outside `loadingBoundary`'s try/catch, so the `NotReadyError` escaped
+   * `renderPage` and `renderToStream` alike and the request produced NOTHING —
+   * measured, in both modes.
+   *
+   * The cells are created with no owner, which is how the router creates loader
+   * cells and is not incidental: a cell created inside the boundary's content
+   * closure dies with that scope when the boundary parks on a string render.
+   */
+  const build = (label: string): { page: () => unknown } => {
+    const data = runWithOwner(null, () =>
+      computed(
+        async () => {
+          await tick();
+          return "content";
+        },
+        { key: `${label}:content` },
+      ),
+    );
+    const skeleton = runWithOwner(null, () =>
+      computed(
+        async () => {
+          await tick();
+          return "skeleton";
+        },
+        { key: `${label}:fallback` },
+      ),
+    );
+    return {
+      page: () =>
+        ssrLoading(null, {
+          fallback: () => ssrHtml(`<i>${esc(skeleton())}</i>`),
+          children: () => ssrHtml(`<b>${esc(data())}</b>`),
+        }),
+    };
+  };
+
+  test("renderPage answers with the content instead of throwing", async () => {
+    const out = await renderPage(build("rp").page as never);
+    expect(out.html).toBe("<b>content</b>");
+  });
+
+  test("renderToStream emits a shell instead of producing nothing", async () => {
+    const parts = await collect(renderToStream(build("rs").page as never));
+    expect(parts.join("")).toContain("<b>content</b>");
   });
 });

@@ -934,7 +934,25 @@ function loadingBoundary(
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
   }
-  const shown = activate(given, fallback, NO_ARGS, 0, "branch");
+  // The FALLBACK can be async too, and until this was guarded it took the whole
+  // page with it. `@barqjs/router`'s generated table emits
+  // `pending: lazy(() => import(...))` for every route, so a route whose loader
+  // parks on the very first render activated a fallback whose chunk had not
+  // arrived — from a position with no `try` around it. Measured: a
+  // `NotReadyError` escaped `renderPage` AND `renderToStream`, and the request
+  // produced nothing at all.
+  //
+  // A fallback that is not ready cannot be shown, and there is nothing else to
+  // show, so the shell emits empty and the content still defers: the resume is
+  // what puts the real markup in. This is the one place a swallowed
+  // `NotReadyError` is the honest answer rather than a hidden failure.
+  let shown: unknown;
+  try {
+    shown = activate(given, fallback, NO_ARGS, 0, "branch");
+  } catch (error) {
+    if (!(error instanceof NotReadyError)) throw error;
+    shown = "";
+  }
   // §3.11's streaming form: the fallback goes out now, and the pair
   // `(content Block, this scope)` goes to the sink so the same Block can be
   // re-invoked when its promises settle. There is no second rendering path —
