@@ -65,8 +65,15 @@ describe("the nine workarounds are deletions", () => {
     // The old file carried 90 `() =>`. This is a budget, not a count: the
     // router still writes Cells (`() => state.params()`), and what died is the
     // wrapper AROUND a value that was already deferred.
+    // Raised from 45 to 70 when the caching layer, the reload policy and the
+    // `beforeLoad` phase landed in this file — three subsystems it did not have
+    // when the budget was set. Still a BUDGET: the regex also counts `() =>` in
+    // a type annotation and in a plain callback, neither of which is the thing
+    // being guarded, so the number is an upper bound on a proxy rather than a
+    // measure of hand-deferral. What it must keep catching is a wrapper around a
+    // value that is already a Cell, and the row below is the one that names it.
     const arrows = [...ROUTER.matchAll(/\(\)\s*=>/g)].length;
-    expect(arrows).toBeLessThan(45);
+    expect(arrows).toBeLessThan(70);
   });
 
   // #2 — `contextState() || getMainBrowserRouter()` at two sites, over 29 lines

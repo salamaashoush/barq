@@ -11,7 +11,7 @@ import { type Scope, flush, getOwner, insert, isDisposed, render, settle } from 
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { Link, NavLink, Router, RouterProvider } from "./components.ts";
-import { notFound } from "./errors.ts";
+import { notFound, redirect } from "./errors.ts";
 import { memoryHistory } from "./history.ts";
 import { useLocation, useNavigate, useParams, useSearchParams } from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
@@ -702,6 +702,211 @@ describe("loaderDeps and the reload policy", () => {
     await settle();
     flush();
     expect(host.textContent).toBe("v2");
+    dispose();
+  });
+});
+
+describe("beforeLoad and route context", () => {
+  const span = (scope: Scope | null, props: RouteProps): Node => {
+    const node = document.createElement("span");
+    insert(scope, node, () => JSON.stringify(props.context()));
+    return node;
+  };
+
+  test("context merges parent to child, and the child wins a collision", async () => {
+    const history = memoryHistory({ initial: ["/app/7"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/app",
+          context: () => ({ tenant: "acme", role: "guest" }),
+          beforeLoad: async () => ({ level: "layout" }),
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("div");
+            insert(scope, node, () => props.children);
+            return node;
+          },
+          children: [
+            {
+              path: "$id",
+              // Collides on `role`, which the child must win.
+              beforeLoad: () => ({ role: "admin" }),
+              component: span,
+            },
+          ],
+        },
+      ] as never,
+      history,
+    });
+
+    await tick();
+    await settle();
+    flush();
+    expect(JSON.parse(host.textContent ?? "{}")).toEqual({
+      tenant: "acme",
+      role: "admin",
+      level: "layout",
+    });
+    dispose();
+  });
+
+  test("beforeLoad runs outermost-first and each one sees the ones above it", async () => {
+    const order: string[] = [];
+    const history = memoryHistory({ initial: ["/a/b/c"] });
+    const wrap = (scope: Scope | null, props: RouteProps): Node => {
+      const node = document.createElement("div");
+      insert(scope, node, () => props.children);
+      return node;
+    };
+    const { dispose } = mount({
+      routes: [
+        {
+          path: "/a",
+          beforeLoad: async ({ context }: { context: Record<string, unknown> }) => {
+            order.push(`a saw ${JSON.stringify(context)}`);
+            return { a: 1 };
+          },
+          component: wrap,
+          children: [
+            {
+              path: "b",
+              beforeLoad: async ({ context }: { context: Record<string, unknown> }) => {
+                order.push(`b saw ${JSON.stringify(context)}`);
+                return { b: 2 };
+              },
+              component: wrap,
+              children: [
+                {
+                  path: "c",
+                  beforeLoad: ({ context }: { context: Record<string, unknown> }) => {
+                    order.push(`c saw ${JSON.stringify(context)}`);
+                  },
+                  component: span,
+                },
+              ],
+            },
+          ],
+        },
+      ] as never,
+      history,
+    });
+
+    await tick();
+    await settle();
+    flush();
+    expect(order).toEqual(["a saw {}", 'b saw {"a":1}', 'c saw {"a":1,"b":2}']);
+    dispose();
+  });
+
+  test("every beforeLoad completes before any loader starts", async () => {
+    const order: string[] = [];
+    const history = memoryHistory({ initial: ["/x"] });
+    // Built directly, because this needs a real `navigate()` — a raw
+    // `history.push` is the popstate path, which has no navigation to gate.
+    const state = createRouter({
+      routes: [
+        { path: "/x", component: page("x") },
+        {
+          path: "/y",
+          beforeLoad: async () => {
+            await tick();
+            order.push("beforeLoad");
+          },
+          loader: async () => {
+            order.push("loader");
+            await tick();
+            return "d";
+          },
+          pending: page("l"),
+          component: span,
+        },
+      ] as never,
+      history,
+    });
+    const { dispose } = mountState(state);
+
+    await settle();
+    flush();
+    await state.navigate("/y");
+    flush();
+    await settle();
+    flush();
+    // Structural rather than scheduled: `beforeLoad` runs during `navigate` and
+    // loaders run on read, which is after the commit.
+    expect(order).toEqual(["beforeLoad", "loader"]);
+    dispose();
+  });
+
+  test("beforeLoad can throw redirect(), and it never commits the refused location", async () => {
+    // The branch that handles this referenced `Redirect` without importing it,
+    // so it would have thrown a ReferenceError the first time a `beforeLoad`
+    // redirected. 167 tests were green; `oxlint --type-aware` is what found it,
+    // reporting `error.to` as error-typed.
+    const history = memoryHistory({ initial: ["/home"] });
+    const state = createRouter({
+      routes: [
+        { path: "/home", component: page("home") },
+        { path: "/login", component: page("login") },
+        {
+          path: "/private",
+          beforeLoad: () => {
+            redirect("/login");
+          },
+          component: page("secret"),
+        },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+
+    await state.navigate("/private");
+    flush();
+    await settle();
+    flush();
+
+    expect(host.textContent).toBe("login");
+    expect(state.location().pathname).toBe("/login");
+    dispose();
+  });
+
+  test("a loader is handed the context its ancestors built", async () => {
+    let seen: unknown;
+    const history = memoryHistory({ initial: ["/app/7"] });
+    const { dispose } = mount({
+      routes: [
+        {
+          path: "/app",
+          beforeLoad: () => ({ token: "abc" }),
+          component: (scope: Scope | null, props: RouteProps) => {
+            const node = document.createElement("div");
+            insert(scope, node, () => props.children);
+            return node;
+          },
+          children: [
+            {
+              path: "$id",
+              loader: async ({ context }: { context: Record<string, unknown> }) => {
+                seen = context;
+                await tick();
+                return "ok";
+              },
+              pending: page("l"),
+              component: (scope: Scope | null, props: RouteProps) => {
+                const node = document.createElement("b");
+                insert(scope, node, () => String(props.data()));
+                return node;
+              },
+            },
+          ],
+        },
+      ] as never,
+      history,
+    });
+
+    await tick();
+    await settle();
+    flush();
+    expect(seen).toEqual({ token: "abc" });
     dispose();
   });
 });

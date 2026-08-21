@@ -220,6 +220,30 @@ export function createPageHandler(
     try {
       return await withRequest(request, async () => {
         const state = createRouter(config);
+        // `beforeLoad` runs BEFORE the shell, which is the whole reason it is a
+        // separate phase from the loader: here the status is still open, so a
+        // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
+        // real 404. The same throw from a LOADER cannot — see `redirectScript`.
+        let contexts: readonly Record<string, unknown>[];
+        try {
+          contexts = await state.runBeforeLoad(
+            {
+              pathname: url.pathname,
+              search: url.search,
+              hash: url.hash,
+              state: null,
+              key: "",
+            },
+            match,
+          );
+        } catch (error) {
+          state.dispose();
+          if (error instanceof NotFound) return html("not found", 404);
+          const early = asResponse(error);
+          if (early !== null) return early;
+          throw error;
+        }
+        state.setContexts(contexts);
         // A streamed response is not finished when this function returns it:
         // `renderToStream` hands back the `ReadableStream` before a byte of the
         // body exists, and the boundaries resume against this state afterwards.

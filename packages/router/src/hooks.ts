@@ -31,6 +31,23 @@ export function useNavigate(): (to: string, options?: NavigateOptions) => Promis
   return (to, options) => state.navigate(to, options);
 }
 
+/**
+ * The merged route context for the DEEPEST matched route.
+ *
+ * A component that wants its own depth's slice reads `props.context()`, which is
+ * what a route is handed; this is the whole-chain answer, which is what a
+ * component further down the tree — a button, a widget — actually wants.
+ */
+export function useRouteContext<
+  C extends Record<string, unknown> = Record<string, unknown>,
+>(): Cell<C> {
+  const state = useRouter();
+  return (() => {
+    const all = state.contexts();
+    return (all[all.length - 1] ?? {}) as C;
+  }) as Cell<C>;
+}
+
 /** The matched chain, outermost first. */
 export function useMatches(): Cell<readonly Route[]> {
   return useRouter().chain;

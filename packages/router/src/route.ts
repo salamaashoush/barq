@@ -14,9 +14,15 @@ import type { FlatRoute } from "./matcher.ts";
 import { type Segment, joinPattern, normalize, parsePattern } from "./path.ts";
 
 /** What a route component is handed. */
-export interface RouteProps<Data = unknown, Params = Record<string, string>> {
+export interface RouteProps<
+  Data = unknown,
+  Params = Record<string, string>,
+  Context = Record<string, unknown>,
+> {
   readonly params: () => Params;
   readonly data: () => Data;
+  /** Everything this route's ancestors and its own `beforeLoad` contributed. */
+  readonly context: () => Context;
   /**
    * The next route down, as a BLOCK — so a layout constructs it inside its own
    * scope, and a provider or boundary the layout installs is visible to the
@@ -109,8 +115,19 @@ export type Loader<Data = unknown, Params = Record<string, string>, Deps = undef
   readonly deps: Deps;
   /** Why this load is happening. `preload` never commits a navigation. */
   readonly cause: import("./router.ts").LoadCause;
+  /** The merged route context, parent-to-child, as of this route's depth. */
+  readonly context: Record<string, unknown>;
   readonly signal: AbortSignal;
 }) => Data | Promise<Data>;
+
+/** What `beforeLoad` and `context` are handed. */
+export interface BeforeLoadContext<Params = Record<string, string>> {
+  readonly params: Params;
+  readonly search: URLSearchParams;
+  readonly location: import("./history.ts").Location;
+  /** Everything the routes ABOVE this one contributed. */
+  readonly context: Record<string, unknown>;
+}
 
 /** What `shouldReload` is told about a cached entry it may or may not refresh. */
 export interface ReloadContext<Params = Record<string, string>, Deps = undefined> {
@@ -154,6 +171,37 @@ export interface RouteDefinition<
    * check that IS a boundary is `middleware`, above, verified at build time.
    */
   readonly beforeEnter?: import("./router.ts").Guard;
+  /**
+   * A synchronous contribution to the route context, merged parent-to-child.
+   *
+   * Free to re-run: it takes no I/O and is called on both sides, so nothing has
+   * to be carried across hydration for it. Put derivation here and gating in
+   * `beforeLoad`.
+   */
+  readonly context?: (options: BeforeLoadContext<Params>) => Record<string, unknown>;
+  /**
+   * Runs before the location commits, outermost first, and contributes to the
+   * route context.
+   *
+   * `beforeEnter` returns a VERDICT — `false` refuses, a string redirects. This
+   * returns a VALUE, and refuses by throwing: `redirect(...)`, `notFound()`, or
+   * a `Response`. Two hooks because they answer different questions, and
+   * because a verdict that is also a value is how TanStack's ends up typed
+   * `any`.
+   *
+   * ALL of these run before ANY loader, which here is structural rather than
+   * scheduled: they run during `navigate()` and loaders run on read, after the
+   * commit.
+   *
+   * COST, stated: on hydration the client runs these once for the initial
+   * location, duplicating what the server already did. The loader results are
+   * seeded and these are not — TanStack carries them over the wire under a
+   * `__beforeLoadContext` key and barq does not yet. Keep them cheap; anything
+   * expensive belongs in a loader, which IS seeded.
+   */
+  readonly beforeLoad?: (
+    options: BeforeLoadContext<Params>,
+  ) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>;
   /** Shown while this route's loader is unsettled. Without one the boundary shows nothing. */
   readonly pending?: RouteComponent<never, never>;
   /**

@@ -59,6 +59,7 @@ export { NotFound, isNotFound, isRedirect, notFound, redirect } from "./errors.t
 export {
   type Loader,
   type AnyRouteDefinition,
+  type BeforeLoadContext,
   type ErrorComponent,
   type ErrorProps,
   type InvokedRouteComponent,
@@ -89,6 +90,7 @@ export {
 export {
   useInvalidate,
   useLocation,
+  useRouteContext,
   useMatches,
   useNavigate,
   useParams,

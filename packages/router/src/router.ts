@@ -25,10 +25,13 @@ import {
   untrack,
 } from "@barqjs/core";
 
+import { Redirect } from "./errors.ts";
 import { type History, type Location, href, memoryHistory, parseLocation } from "./history.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
 import { leavesTheApp, resolvePath } from "./path.ts";
+
+const NOOP = (): void => {};
 
 /** How many resolved loader cells to keep. Beyond this the oldest go. */
 const DEFAULT_CACHE_SIZE = 100;
@@ -232,6 +235,41 @@ export interface RouterState {
    */
   prime(): void;
   navigate(to: string, options?: NavigateOptions): Promise<void>;
+  /**
+   * The merged route context, one entry per depth, outermost first.
+   *
+   * Empty until `runBeforeLoad` has produced one for the current location —
+   * which `navigate` does before it commits, and which the page handler does
+   * before the shell.
+   */
+  readonly contexts: Cell<readonly Record<string, unknown>[]>;
+  /** Install a context array computed elsewhere — the page handler does this. */
+  setContexts(next: readonly Record<string, unknown>[]): void;
+  /**
+   * Produce the context for the CURRENT location, if nothing has yet.
+   *
+   * Idempotent, and called by whichever component mounts the router. On the
+   * server the page handler has already installed one, so this is a no-op
+   * there; on the client it is what gives `useRouteContext()` an answer before
+   * the first navigation. It duplicates the server's run — the cost stated on
+   * `RouteDefinition.beforeLoad`.
+   *
+   * Returns the promise so a caller that needs the context settled — a test, a
+   * server-side driver — can await it. The mount components do not.
+   */
+  start(): Promise<void>;
+  /**
+   * Run every `context` and `beforeLoad` in a candidate chain, outermost first.
+   *
+   * Serial by construction, because each one is handed everything the routes
+   * above it contributed. Throws whatever a `beforeLoad` threw — a `Redirect`,
+   * a `NotFound` or a `Response` — so the caller decides the answer while it
+   * still can.
+   */
+  runBeforeLoad(
+    to: Location,
+    candidate: Match<Route> | null,
+  ): Promise<readonly Record<string, unknown>[]>;
   /** Drop every cached loader result and re-read the current location. */
   invalidate(): void;
   dispose(): void;
@@ -335,6 +373,9 @@ export function createRouter(config: RouterConfig): RouterState {
                   const own = new AbortController();
                   controller = own;
                   entry.inFlight = true;
+                  // `null` when nothing is pending, so the common case does not
+                  // pay even a microtask.
+                  if (contextsReady !== null) await contextsReady;
                   try {
                     const value = await loader({
                       params: forParams as never,
@@ -343,6 +384,7 @@ export function createRouter(config: RouterConfig): RouterState {
                         : undefined) as never,
                       deps: deps as never,
                       cause: entry.cause,
+                      context: contextAt(route),
                       signal: own.signal,
                     });
                     if (controller === own) controller = null;
@@ -547,6 +589,65 @@ export function createRouter(config: RouterConfig): RouterState {
     return reader;
   };
 
+  const contexts = signal<readonly Record<string, unknown>[]>([]);
+
+  /**
+   * Resolves once a context exists for the current location.
+   *
+   * A loader is handed the context its ancestors built, and on the client the
+   * RENDER is synchronous while `beforeLoad` is not — so the first read minted
+   * a cell and ran the loader with an empty context before `start()` had
+   * finished. The loader body is async anyway, so awaiting one microtask here
+   * costs nothing and removes the race.
+   *
+   * Armed only when the matched chain actually declares a `context` or a
+   * `beforeLoad`: otherwise there is nothing to wait for, and a router driven
+   * without ever being mounted — a test, a probe — would wait forever.
+   */
+  let releaseContexts = NOOP;
+  let contextsReady: Promise<void> | null = null;
+  const armContexts = (): void => {
+    contextsReady = new Promise<void>((resolve) => {
+      releaseContexts = resolve;
+    });
+  };
+  const settleContexts = (next: readonly Record<string, unknown>[]): void => {
+    contexts.set(next);
+    releaseContexts();
+    releaseContexts = NOOP;
+    contextsReady = null;
+  };
+  const chainNeedsContext = (routes: readonly Route[]): boolean =>
+    routes.some(
+      (route) =>
+        route.definition.beforeLoad !== undefined || route.definition.context !== undefined,
+    );
+
+  const runBeforeLoad = async (
+    to: Location,
+    candidate: Match<Route> | null,
+  ): Promise<readonly Record<string, unknown>[]> => {
+    const out: Record<string, unknown>[] = [];
+    // Parent-to-child by SPREAD, child wins on a collision — TanStack's rule
+    // (`load-client.ts:391-395`, `:455-458`) and its type-level `Assign` agrees.
+    let merged: Record<string, unknown> = {};
+    const forParams = candidate?.params ?? {};
+    const forSearch = new URLSearchParams(to.search);
+
+    for (const route of candidate?.route.chain ?? []) {
+      const options = { params: forParams, search: forSearch, location: to, context: merged };
+      const sync = route.definition.context?.(options as never);
+      if (sync !== undefined) merged = { ...merged, ...sync };
+      const produced = await route.definition.beforeLoad?.({
+        ...options,
+        context: merged,
+      } as never);
+      if (produced !== undefined && produced !== null) merged = { ...merged, ...produced };
+      out.push(merged);
+    }
+    return out;
+  };
+
   const primeChain = (): void => {
     const forParams = untrack(params);
     for (const route of untrack(chain)) {
@@ -563,6 +664,12 @@ export function createRouter(config: RouterConfig): RouterState {
         // to catch it, and `onLoaderError` has already fired.
       }
     }
+  };
+
+  /** The merged context as of one route's depth in the current chain. */
+  const contextAt = (route: Route): Record<string, unknown> => {
+    const at = untrack(chain).indexOf(route);
+    return untrack(contexts)[at] ?? {};
   };
 
   /** `enter` the first time a route appears in the chain, `stay` while it stays. */
@@ -591,9 +698,31 @@ export function createRouter(config: RouterConfig): RouterState {
     previous = untrack(chain);
   };
 
+  // Handed from `navigate` to the subscription, because the location is what
+  // commits and the context has to land with it rather than after it.
+  let pendingContexts: readonly Record<string, unknown>[] | null = null;
+
   const unsubscribe = history.subscribe((next) => {
     const before = untrack(chain);
     location.set(next);
+    // A popstate has no `navigate` to have run `beforeLoad`, so the context for
+    // the entry it lands on is rebuilt asynchronously and the render sees the
+    // ancestors' contribution as soon as it settles.
+    if (pendingContexts !== null) {
+      settleContexts(pendingContexts);
+      pendingContexts = null;
+    } else {
+      const candidate = matcher.match(next.pathname);
+      contexts.set([]);
+      if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
+      void runBeforeLoad(next, candidate).then(
+        (produced) => settleContexts(produced),
+        () => {
+          /* a guard's answer on a back button has nowhere to go; the boundary shows it */
+          releaseContexts();
+        },
+      );
+    }
     previous = before;
     revalidate();
     // Start every loader in the new chain at once. Without this the client
@@ -663,6 +792,29 @@ export function createRouter(config: RouterConfig): RouterState {
       return;
     }
     hops = 0;
+
+    // `beforeLoad` runs BEFORE the commit, so a `throw redirect(...)` from one
+    // never leaves a refused location in the URL bar. Its result is the context
+    // the new location renders under, set in the same breath as the location so
+    // no frame sees one without the other.
+    const candidate = matcher.match(target.pathname);
+    let produced: readonly Record<string, unknown>[];
+    try {
+      produced = await runBeforeLoad(target, candidate);
+    } catch (error) {
+      if (error instanceof Redirect) {
+        if (hops++ >= MAX_REDIRECTS) {
+          hops = 0;
+          console.error(`[barq/router] more than ${MAX_REDIRECTS} redirects; giving up`);
+          return;
+        }
+        await navigate(error.to, { replace: true });
+        hops = 0;
+        return;
+      }
+      throw error;
+    }
+    pendingContexts = produced;
     history.push(href(target), { replace: options?.replace, state: options?.state });
   };
 
@@ -677,6 +829,27 @@ export function createRouter(config: RouterConfig): RouterState {
     history,
     dataFor,
     navigate,
+    contexts,
+    setContexts(next) {
+      settleContexts(next);
+    },
+    async start() {
+      if (untrack(contexts).length > 0) return;
+      const here = untrack(location);
+      const candidate = matcher.match(here.pathname);
+      if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
+      try {
+        settleContexts(await runBeforeLoad(here, candidate));
+      } catch {
+        /* the boundary shows it; there is no navigation to refuse at mount */
+        releaseContexts();
+        return;
+      }
+      // AFTER the context lands, never before: a loader is handed the context
+      // its ancestors built, and priming it first would hand it an empty one.
+      primeChain();
+    },
+    runBeforeLoad,
     prime: primeChain,
     /**
      * Ask every cached loader again.

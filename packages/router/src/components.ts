@@ -156,6 +156,7 @@ function routeFallback(route: Route): Block<unknown> | null {
     (pending as unknown as Invoked)(fallbackScope, {
       params: () => ({}),
       data: () => undefined,
+      context: () => ({}),
       children: (() => null) as unknown as Child,
     })) as Block<unknown>;
 }
@@ -173,6 +174,7 @@ export function routePropsFor(
     {
       params: () => state.params(),
       data: () => (route === null ? undefined : state.dataFor(route, state.params(), blocking)()),
+      context: () => state.contexts()[depth] ?? {},
       children,
     },
   ]) as unknown as RouteProps;
@@ -183,6 +185,7 @@ function routeProps(state: RouterState, depth: number, route: Route | null): Rou
     {
       params: () => state.params(),
       data: () => (route === null ? undefined : state.dataFor(route, state.params())()),
+      context: () => state.contexts()[depth] ?? {},
       // A Block, which is what `RouteProps.children` documents itself as
       // carrying even though it is typed `Child` so `{props.children}` compiles.
       children: block((childScope: Scope | null) =>
@@ -213,6 +216,7 @@ export interface RouterProps {
  */
 function RouterProviderImpl(scope: Scope | null, props: Incoming<{ state: RouterState }>): unknown {
   const state = readSlot(props.state, "RouterProvider.state") as RouterState;
+  void state.start();
   return provide(scope as Scope, RouterContext, cell(state), (inner: Scope | null) =>
     renderDepth(inner, state, 0, null, null),
   );
@@ -239,6 +243,7 @@ function RouterImpl(scope: Scope | null, props: Incoming<RouterProps>): unknown 
         : (readSlot(props.afterEach, "Router.afterEach") as RouterProps["afterEach"]),
   });
   onCleanup(() => state.dispose());
+  void state.start();
   return provide(scope as Scope, RouterContext, cell(state), (inner: Scope | null) =>
     renderDepth(inner, state, 0, null, null),
   );
