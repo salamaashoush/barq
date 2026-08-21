@@ -717,3 +717,49 @@ describe("ssr: boolean | 'data-only'", () => {
     expect(ran).toEqual(["layout"]);
   });
 });
+
+/**
+ * §3.7 — a loader returning a value with a promise still inside it.
+ *
+ * `DESIGN-START.md` §2.5 is the record: seroval can represent a pending promise
+ * in the seed, so barq does not have to DROP the value and refetch the way
+ * SvelteKit does. What it could not do until now was survive a non-streamed
+ * render, where there is no later chunk to resolve into.
+ */
+describe("deferred loader data", () => {
+  const routes = [
+    {
+      id: "deferred",
+      path: "/report",
+      loader: async () => ({
+        summary: "ready now",
+        // Deliberately not awaited.
+        rows: new Promise((resolve) => setTimeout(() => resolve("the slow part"), 10)),
+      }),
+      component: (_s: unknown, props: { data: () => { summary: string } }) =>
+        ssrHtml(`<main>${esc(props.data().summary)}</main>`),
+    },
+  ] as never;
+
+  const render = async (stream: boolean): Promise<string> => {
+    const handler = createPageHandler({ routes, stream, app: (s) => renderRoutes(s), document });
+    return (await handler(get("/report"))).text();
+  };
+
+  test("streamed: the page renders without waiting, and the slow part follows", async () => {
+    const body = await render(true);
+    expect(body).toContain("<main>ready now</main>");
+    expect(body).toContain("the slow part");
+    expect(body.indexOf("the slow part")).toBeGreaterThan(body.indexOf("ready now"));
+  });
+
+  test("non-streamed: it is awaited rather than crashing the request", async () => {
+    // `serialize` throws `SerovalUnsupportedNodeError` on a promise
+    // constructor, so this used to die with a seroval stack and no mention of
+    // the route. `stream: false` means the whole thing at once, so awaiting is
+    // the only answer available — and the right one.
+    const body = await render(false);
+    expect(body).toContain("<main>ready now</main>");
+    expect(body).toContain("the slow part");
+  });
+});

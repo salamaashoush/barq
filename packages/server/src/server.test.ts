@@ -928,3 +928,84 @@ describe("a Loading fallback that is itself not ready", () => {
     expect(parts.join("")).toContain("<b>content</b>");
   });
 });
+
+/**
+ * Deferred data: a value that is still a PROMISE when its key is seeded.
+ *
+ * A loader returning `{ rows, total: countRows() }` is exactly this shape, and
+ * it used to kill the request: `crossSerialize` and `serialize` both refuse a
+ * promise constructor, so the response died with a `SerovalUnsupportedNodeError`
+ * stack and no mention of what caused it.
+ */
+describe("a pending promise inside a seeded value", () => {
+  const late = <T>(value: T, ms = 5): Promise<T> =>
+    new Promise((resolve) => setTimeout(() => resolve(value), ms));
+
+  test("renderPage AWAITS it, because it has no later chunk to put it in", async () => {
+    const cell = runWithOwner(null, () =>
+      computed(
+        async () => {
+          await tick();
+          return { now: "here", later: late("arrived") };
+        },
+        { key: "d:page" },
+      ),
+    );
+    const out = await renderPage((() =>
+      ssrLoading(null, {
+        fallback: () => ssrHtml("<i>l</i>"),
+        children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
+      })) as never);
+    expect(out.html).toBe("<b>here</b>");
+    // Resolved, not a promise: the seed carries the value.
+    expect(out.script).toContain("arrived");
+  });
+
+  test("a cyclic value still round-trips, because the walk copies nothing it need not", async () => {
+    // The first version of the resolver rebuilt every object and turned a cycle
+    // into an eight-deep tree.
+    const cyclic: Record<string, unknown> = { name: "root" };
+    cyclic.self = cyclic;
+    const cell = runWithOwner(null, () =>
+      computed(
+        async () => {
+          await tick();
+          return cyclic;
+        },
+        { key: "d:cycle" },
+      ),
+    );
+    const out = await renderPage((() =>
+      ssrLoading(null, {
+        fallback: () => ssrHtml("<i>l</i>"),
+        children: () => ssrHtml(`<b>${esc((cell() as { name: string }).name)}</b>`),
+      })) as never);
+    expect(out.data["d:cycle"]).toBe(cyclic);
+    expect((out.data["d:cycle"] as { self: unknown }).self).toBe(cyclic);
+  });
+
+  test("renderToStream DEFERS it and resolves it in a later chunk", async () => {
+    const cell = runWithOwner(null, () =>
+      computed(
+        async () => {
+          await tick();
+          return { now: "here", later: late("arrived", 15) };
+        },
+        { key: "d:stream" },
+      ),
+    );
+    const parts = await collect(
+      renderToStream((() =>
+        ssrLoading(null, {
+          fallback: () => ssrHtml("<i>l</i>"),
+          children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
+        })) as never),
+    );
+    const whole = parts.join("");
+    expect(whole).toContain("<b>here</b>");
+    // The deferred half arrives, and it arrives AFTER the markup that did not
+    // need it — which is the entire point of deferring.
+    expect(whole).toContain("arrived");
+    expect(whole.indexOf("arrived")).toBeGreaterThan(whole.indexOf("<b>here</b>"));
+  });
+});

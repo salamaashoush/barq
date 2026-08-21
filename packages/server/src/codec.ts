@@ -17,6 +17,7 @@ import {
   type PluginInfo,
   createPlugin,
   crossSerialize,
+  crossSerializeStream,
   fromJSON,
   getCrossReferenceHeader,
   serialize,
@@ -141,6 +142,44 @@ export interface SeedEncoder {
   /** Emitted once, before the first payload. Defines the reference table. */
   readonly header: string;
   encode(data: Record<string, unknown>): string;
+  /**
+   * The DEFERRED form: the payload now, the rest when it resolves.
+   *
+   * `crossSerialize` refuses a pending promise outright — `serialize` throws
+   * `SerovalUnsupportedNodeError`, and a loader returning `{ rows, total:
+   * countRows() }` is exactly that shape — so a value that carries one goes
+   * through `crossSerializeStream` instead. The initial payload is returned
+   * synchronously; every later resolution arrives at `onLater` as a complete
+   * statement, and `onDone` fires when there is nothing left outstanding.
+   *
+   * Same `refs` map as `encode`, so a deferred value and an ordinary one that
+   * share an object still share it on the client.
+   */
+  encodeDeferred(
+    data: Record<string, unknown>,
+    onLater: (statement: string) => void,
+    onDone: () => void,
+  ): string;
+  /** Whether a value contains a promise, and therefore needs the deferred form. */
+  readonly hasPending: (value: unknown) => boolean;
+}
+
+/**
+ * Does this value carry a promise anywhere the encoder will walk?
+ *
+ * Cheap and conservative: plain objects and arrays only, bounded, and a cycle
+ * stops the walk rather than hanging it. A false NEGATIVE would reach
+ * `crossSerialize` and throw, which is the failure this exists to prevent, so
+ * the walk covers exactly what `settleNested` on the other side covers.
+ */
+function carriesPending(value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
+  if (value === null || typeof value !== "object") return false;
+  if (typeof (value as { then?: unknown }).then === "function") return true;
+  if (seen.has(value as object)) return false;
+  seen.add(value as object);
+  if (Array.isArray(value)) return value.some((item) => carriesPending(item, seen));
+  if (Object.getPrototypeOf(value) !== Object.prototype) return false;
+  return Object.values(value as Record<string, unknown>).some((item) => carriesPending(item, seen));
 }
 
 /**
@@ -163,6 +202,7 @@ export function createSeedEncoder(): SeedEncoder {
   const refs = new Map<unknown, number>();
   return {
     header: getCrossReferenceHeader(scopeId),
+    hasPending: (value) => carriesPending(value),
     encode(data) {
       const payload = crossSerialize(data, {
         scopeId,
@@ -172,6 +212,30 @@ export function createSeedEncoder(): SeedEncoder {
       });
       warnIfLarge(payload.length);
       return payload;
+    },
+    encodeDeferred(data, onLater, onDone) {
+      let initial = "";
+      crossSerializeStream(data, {
+        scopeId,
+        refs,
+        disabledFeatures: DISABLED,
+        plugins: [redactError],
+        onSerialize(payload, isInitial) {
+          if (isInitial) initial = payload;
+          else onLater(payload);
+        },
+        onDone,
+        onError(error) {
+          // A rejection after the shell has flushed cannot become a status, and
+          // tearing the body over it is worse than the value simply never
+          // arriving: the client's read falls through to a fetch when the
+          // channel closes.
+          onLater(`/* seed serialization failed: ${JSON.stringify(String(error))} */`);
+          onDone();
+        },
+      });
+      warnIfLarge(initial.length);
+      return initial;
     },
   };
 }

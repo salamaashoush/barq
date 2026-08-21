@@ -155,12 +155,73 @@ export async function renderPage(
   }
 
   const html = stringMode ? markup : ((container as HTMLElement | null)?.innerHTML ?? "");
-  const data = getHydrationData(session);
+  const data = await settleNested(getHydrationData(session));
   clearHydrationData(session);
   lastRenderData = data;
   dispose();
 
   return { html, data, script: hydrationScriptFor(data, options?.nonce) };
+}
+
+/**
+ * Resolve promises NESTED inside settled values, before they reach the encoder.
+ *
+ * `settle` resolves what the reactive graph knows about. A promise sitting in a
+ * property of an already-resolved value was never registered with it — a loader
+ * that returns `{ rows, total: countRows() }` is exactly that shape — and the
+ * seed encoder cannot represent one: `serialize` throws
+ * `SerovalUnsupportedNodeError` on a promise constructor, so the whole request
+ * died with a seroval stack and no mention of the route that caused it.
+ *
+ * A non-streamed render is "the whole thing at once" by definition — there is no
+ * later chunk to resolve into — so awaiting is the only answer available here,
+ * and it is the right one. `renderToStream` does NOT do this: deferring is what
+ * a stream is for.
+ *
+ * Bounded, because a cyclic structure must not become an infinite walk. Plain
+ * objects and arrays only: anything else is handed to the encoder as it stands,
+ * which is what keeps a `Map`, a `Date` or a class instance behaving as it did.
+ */
+async function settleNested<T>(value: T, seen: WeakSet<object> = new WeakSet()): Promise<T> {
+  if (value === null || typeof value !== "object") return value;
+  if (typeof (value as { then?: unknown }).then === "function") {
+    // Cast at the await, not around it: `T` is not known to be thenable, and the
+    // runtime check above is the only thing that establishes it.
+    return settleNested((await (value as unknown as PromiseLike<unknown>)) as T, seen);
+  }
+  // A cycle is left EXACTLY as it stands. Rebuilding one truncates it, and the
+  // encoder carries cycles on purpose — a first version of this walk copied
+  // every object and turned a cyclic seed into an eight-deep tree, which the
+  // codec's own test caught.
+  if (seen.has(value as object)) return value;
+
+  if (Array.isArray(value)) {
+    seen.add(value as object);
+    let moved = false;
+    const out = await Promise.all(
+      value.map(async (item: unknown) => {
+        const next = await settleNested(item, seen);
+        if (next !== item) moved = true;
+        return next;
+      }),
+    );
+    return moved ? (out as T) : value;
+  }
+
+  // Plain objects only: a `Map`, a `Date` or a class instance is handed over as
+  // it stands, so nothing this walk touches changes how the encoder sees it.
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+  seen.add(value as object);
+  let moved = false;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    const next = await settleNested(item, seen);
+    if (next !== item) moved = true;
+    out[key] = next;
+  }
+  // The ORIGINAL when nothing moved, so identity and cycles survive the common
+  // case untouched: only a subtree that actually held a promise is rebuilt.
+  return moved ? (out as T) : value;
 }
 
 // ── streaming (CODESIGN.md §3.11) ────────────────────────────────────────
@@ -368,6 +429,13 @@ export function renderToStream(
   const seeds = createSeedEncoder();
   let seededHeader = false;
   let seededChannel = false;
+  // Deferred values still being serialized. The stream stays open until this
+  // reaches zero: closing on top of one drops it, and the client would wait for
+  // a value that never comes rather than fetching it.
+  let outstanding = 0;
+  let drained: (() => void) | null = null;
+  const later: string[] = [];
+
   const seedScript = (): string => {
     const fresh: Record<string, unknown> = {};
     let any = false;
@@ -381,9 +449,27 @@ export function renderToStream(
     const header = seededHeader ? "" : `${seeds.header};`;
     seededHeader = true;
     const keys = Object.keys(fresh);
+    // A loader may return a value with a promise still inside it — deferred
+    // data. `crossSerialize` refuses one outright, so a payload that carries one
+    // goes through the streaming encoder and its resolutions are enqueued as
+    // they land. THIS is what a stream is for; `renderPage` awaits them instead,
+    // because it has no later chunk to put them in.
+    const payload = seeds.hasPending(fresh)
+      ? ((): string => {
+          outstanding++;
+          return seeds.encodeDeferred(
+            fresh,
+            (statement) => later.push(statement),
+            () => {
+              outstanding--;
+              if (outstanding === 0 && drained !== null) drained();
+            },
+          );
+        })()
+      : seeds.encode(fresh);
     return (
       `<script${nonceAttr(options?.nonce)}>` +
-      `${header}window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(fresh)});` +
+      `${header}window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${payload});` +
       // Wake whatever was waiting on exactly these keys. A read that missed
       // while the channel was open is parked, not refetching.
       `window.__BARQ_SEED__&&window.__BARQ_SEED__.tell(${JSON.stringify(keys)})` +
@@ -426,6 +512,18 @@ export function renderToStream(
       end();
     },
     async start(controller): Promise<void> {
+      const flushLater = (target: ReadableStreamDefaultController<Uint8Array>): void => {
+        if (later.length === 0 || consumerCancelled) return;
+        const statements = later.splice(0, later.length).join(";");
+        target.enqueue(
+          encoder.encode(
+            `<script${nonceAttr(options?.nonce)}>${statements};` +
+              // The value has landed in `$R`, so anything parked on its key can
+              // stop waiting.
+              `window.__BARQ_SEED__&&window.__BARQ_SEED__.tell(null)</script>`,
+          ),
+        );
+      };
       try {
         controller.enqueue(encoder.encode(shell));
         // Opened before the first seed and before the bundle can run, so a read
@@ -489,6 +587,8 @@ export function renderToStream(
           }
           const roundSeed = seedScript();
           if (roundSeed !== "") controller.enqueue(encoder.encode(roundSeed));
+          // Anything a deferred value resolved into since the last round.
+          flushLater(controller);
           // Boundaries parked BY this round are already in `parked`; the ones
           // that merely stayed unready go in front of them.
           if (again.length > 0) parked.unshift(...again);
@@ -502,6 +602,20 @@ export function renderToStream(
           // any single await is bounded without it.
           if ((await Promise.race([settleStep(session), stopped])) !== true) break;
         }
+        // Deferred values, if any are still in flight. Closing on top of one
+        // drops it, and a client waiting on that key would wait for a value
+        // that never comes instead of fetching it — so the stream is held open,
+        // bounded by the same `stopped` promise everything else here is.
+        if (outstanding > 0) {
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              drained = resolve;
+            }),
+            stopped,
+          ]);
+        }
+        flushLater(controller);
+
         // Nothing more is coming: release every read still parked on a key, so
         // it fetches for real rather than waiting for a stream that has ended.
         if (!consumerCancelled && seededChannel) {
