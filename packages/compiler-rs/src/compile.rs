@@ -476,9 +476,16 @@ fn client_stubs(
     out.push_str(&options.start_source);
     out.push_str("\";\n");
     for export in scan.server_fns() {
-        out.push_str("export const ");
-        out.push_str(&export.name);
-        out.push_str(" = /* @__PURE__ */ clientRpc(");
+        // `export const default = …` is a syntax error, so the default export
+        // takes the statement form. Its id still spells `#default`, which is
+        // what the manifest mounts and what `alias.default` reaches.
+        if export.name == "default" {
+            out.push_str("export default /* @__PURE__ */ clientRpc(");
+        } else {
+            out.push_str("export const ");
+            out.push_str(&export.name);
+            out.push_str(" = /* @__PURE__ */ clientRpc(");
+        }
         push_json_string(&mut out, &format!("{module}#{}", export.name));
         out.push_str(");\n");
     }
@@ -964,6 +971,45 @@ mod tests {
         assert!(code.contains("getUser"));
         assert!(code.contains("listUsers"));
         assert!(!code.contains("internal"));
+    }
+
+    /// The synthesized module is emitted SOURCE, and nothing else in the suite
+    /// ever parses it — no harness test mentions `clientRpc` at all. So it is
+    /// parsed here, for every export shape that reaches it.
+    ///
+    /// This is not hypothetical hardening. When default and indirect exports
+    /// started being recognised as server functions, the emitter's one form —
+    /// `export const <name> = …` — produced `export const default = …`, which
+    /// is a syntax error, and every existing test still passed because they all
+    /// assert on substrings of a string.
+    #[test]
+    fn every_synthesized_client_module_parses() {
+        let sources = [
+            SERVER_MODULE,
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             export default createServerFn().handler(async () => 1);",
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             const inner = createServerFn().handler(async () => 1);\n\
+             export { inner as save };\n\
+             export default inner;",
+        ];
+        let parses = |code: &str| {
+            let allocator = Allocator::new();
+            Parser::new(&allocator, code, SourceType::mjs()).parse().diagnostics.is_empty()
+        };
+
+        // L6: the self-check first. A gate that cannot fail is not a gate, and
+        // this one is only worth having if it rejects the exact shape the
+        // emitter used to produce.
+        assert!(
+            !parses("export const default = 1;\n"),
+            "the parser accepts `export const default`, so this test could not have caught it",
+        );
+
+        for source in sources {
+            let code = client_of(source);
+            assert!(parses(&code), "the synthesized client module does not parse:\n{code}");
+        }
     }
 
     /// Ids are project-relative: an absolute path in a client bundle hands a
