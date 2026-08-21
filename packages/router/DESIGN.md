@@ -4,8 +4,9 @@ Written across the sessions that built it. This file records what was decided, w
 MEASURED, and — as importantly — **which of its own claims were falsified and must not be
 revived**. `DESIGN-START.md` §1 is the model for that last part.
 
-Status at the time of writing: the path/matcher/history layer is built. The components, the SSR
-page handler, `lazy()`, the Vite plugin, `BARQ013` and the route-action manifest are not.
+Status: BUILT. Path, matcher, history, components, loaders, guards, the SSR page handler,
+`lazy()` in core, the file-based generator, `BARQ013` and the route-action manifest all landed,
+and `packages/extra/src/router.ts` is deleted.
 
 ---
 
@@ -283,16 +284,25 @@ a history that records nothing. Those areas are new work, not ports.
 
 ## Order
 
-1. ~~P-A, P-B, P-C~~ — **DONE**: `3c379a4`, `8a3f730`, `38eee03`.
-2. `@barqjs/router`: **path, matcher and history DONE** (48 tests). Route table, components, the
-   `(scope, props)` shapes and guards remain.
-3. SSR: the page handler inside `withRequest`, the document shell, status-before-shell, `Loading`
-   per depth, seed keys.
-4. `lazy()` in core, then route-chunk preload in the router.
-5. The Vite plugin: file discovery, `virtual:barq-routes`, the `.d.ts`, `applyToEnvironment`.
-6. D6 BARQ013.
-7. D8 the route→action manifest.
-8. Migrate kitchen-sink, delete `packages/extra/src/router.ts` + its test, prune `extra/index.ts`.
+All done, in this order:
+
+1. ~~P-A, P-B, P-C~~ — `3c379a4`, `8a3f730`, `38eee03`.
+2. ~~Path, matcher, history~~ — `34a5f7d`.
+3. ~~Components, loaders as keyed cells, guards, links~~ — `4699610`.
+4. ~~The repo-wide `exports`/`tsdown` fix~~ — `12c04ff`. Not planned; `@barqjs/start` had no
+   tsdown config at all, so its subpaths were never built and the router could not import them.
+5. ~~SSR: status before the shell, the request ambient, the string-backend walk~~ — `4440abd`.
+6. ~~`lazy()` in core~~ — `4e9660b`.
+7. ~~The file-based generator and the Vite plugin~~ — `c64fcff`, then moved into the compiler at
+   `e441950` along with BARQ013.
+8. ~~The route-action manifest~~ — `83c81d4`.
+9. ~~Delete the old router, migrate kitchen-sink~~ — `56ecd63`.
+
+**What is NOT built**, stated rather than left to be discovered: route-chunk preloading (`lazy()`
+exists, the `<link rel=modulepreload>` that shortens its first paint does not), the plugin wiring
+that computes reachability from a real Rollup graph in `buildEnd` (the walk and the verifier exist
+and are tested; nothing calls them from a build yet), prefetch, scroll restoration and view
+transitions.
 
 ---
 
