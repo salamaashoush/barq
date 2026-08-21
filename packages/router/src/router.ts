@@ -14,7 +14,16 @@
  * call". A client-side navigation before hydration is exactly that divergence.
  */
 
-import { type Cell, computed, runWithOwner, signal, untrack } from "@barqjs/core";
+import {
+  type Cell,
+  computed,
+  latest,
+  refresh,
+  root,
+  runWithOwner,
+  signal,
+  untrack,
+} from "@barqjs/core";
 
 import { type History, type Location, href, memoryHistory, parseLocation } from "./history.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
@@ -23,6 +32,83 @@ import { leavesTheApp, resolvePath } from "./path.ts";
 
 /** How many resolved loader cells to keep. Beyond this the oldest go. */
 const DEFAULT_CACHE_SIZE = 100;
+
+/**
+ * TanStack's defaults, and they are the right ones: a navigation revalidates by
+ * default, a preload does not re-preload for half a minute, and nothing is
+ * collected for five.
+ */
+const DEFAULT_STALE_TIME = 0;
+const DEFAULT_PRELOAD_STALE_TIME = 30_000;
+const DEFAULT_GC_TIME = 300_000;
+const DEFAULT_PRELOAD_GC_TIME = 300_000;
+
+/**
+ * Why a route's loader is being asked for data.
+ *
+ * `preload` is STORED on the entry, unlike TanStack's, which synthesizes it into
+ * an ephemeral context and never writes it to the match (`load-client.ts:374`,
+ * `:588`) — so `match.cause` there is only ever `enter` or `stay` despite the
+ * type saying otherwise. Storing it is what lets `shouldReload` see it and what
+ * decides which stale budget applies.
+ */
+export type LoadCause = "preload" | "enter" | "stay";
+
+/** One cached loader result, and everything the reload policy reads. */
+interface Entry {
+  readonly key: string;
+  readonly route: Route;
+  /** The keyed async `computed`. Reloaded with `refresh`, never replaced. */
+  readonly cell: Cell<unknown>;
+  /**
+   * Disposes the entry's own scope, which ABORTS whatever is in flight.
+   *
+   * Only ever called on an entry that has SETTLED and is not in the current
+   * chain — see `sweep`. Disposing one a boundary is parked on aborts the fetch,
+   * the promise never settles into the graph, the boundary never re-arms and
+   * nothing surfaces: a permanent spinner, silently. Measured.
+   */
+  readonly dispose: () => void;
+  /** When the loader last settled. `0` until it has. */
+  updatedAt: number;
+  /**
+   * The last value this entry settled on, remembered so a FAILED reload can
+   * keep showing it.
+   *
+   * Core's `latest()` throws the error for an errored cell rather than reading
+   * through it, which would destroy exactly the stale content `background`
+   * exists to preserve. TanStack keeps the page: a background reload runs on a
+   * clone and a non-success leaves the old match renderable
+   * (`load-client.ts:694-700`).
+   */
+  settled: { value: unknown } | null;
+  /** The error from the most recent failed load, if the last one failed. */
+  error: unknown;
+  cause: LoadCause;
+  /** What `loaderDeps` selected for this entry, so `shouldReload` can see it. */
+  readonly deps: unknown;
+  /** Whether this entry was born of a preload, which picks the stale budget. */
+  preload: boolean;
+  /** Aborts the run in flight, if any. */
+  abort: (reason: string) => void;
+  inFlight: boolean;
+}
+
+/**
+ * A key for anything a `loaderDeps` may return, stable under key order.
+ *
+ * TanStack uses a plain `JSON.stringify` here (`router.ts:1605`), so `{a,b}` and
+ * `{b,a}` are two generations of the same data. `loaderKey` already sorts params
+ * for that reason and deps get the same treatment.
+ */
+export function depsKey(value: unknown): string {
+  if (value === undefined) return "";
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "";
+  if (Array.isArray(value)) return `[${value.map(depsKey).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  const names = Object.keys(record).toSorted();
+  return `{${names.map((name) => `${JSON.stringify(name)}:${depsKey(record[name])}`).join(",")}}`;
+}
 
 export interface NavigateOptions {
   readonly replace?: boolean;
@@ -118,7 +204,12 @@ export interface RouterState {
   readonly config: RouterConfig;
   readonly history: History;
   /** The loader cell for one route at one set of params, created once per key. */
-  dataFor(route: Route, params: Readonly<Record<string, string>>): Cell<unknown>;
+  dataFor(
+    route: Route,
+    params: Readonly<Record<string, string>>,
+    /** The string backend passes `true`: see `readerFor`. */
+    blocking?: boolean,
+  ): Cell<unknown>;
   /**
    * Start every loader in the matched chain, without rendering anything.
    *
@@ -160,67 +251,334 @@ export function createRouter(config: RouterConfig): RouterState {
   const search = computed(() => new URLSearchParams(location().search));
   const chain = computed<readonly Route[]>(() => match()?.route.chain ?? []);
 
-  const cells = new Map<string, Cell<unknown>>();
+  const entries = new Map<string, Entry>();
   const limit = config.cacheSize ?? DEFAULT_CACHE_SIZE;
+  const now = (): number => Date.now();
 
-  // A `computed` captures `currentOwner` at CREATION, and a loader's first read
-  // happens wherever the route is being built — inside the loading boundary's
-  // content. On a string render that content is DISCARDED when the boundary
-  // parks (`ssr.ts`: `if (SINK === null) return html(shown)`), taking the scope
-  // the cell was created under with it. `renderPage`'s second pass then read a
-  // dead node and got `undefined`: every SSR'd route rendered its data as
-  // `undefined` and seeded nothing, silently.
-  //
-  // The cells are a per-ROUTER cache, not a per-position value, so they are
-  // created with NO owner and this map is their lifetime. `dispose()` clears
-  // it; nothing else may.
-
-  const dataFor = (route: Route, forParams: Readonly<Record<string, string>>): Cell<unknown> => {
-    const loader = route.definition.loader;
-    // The search the cell is built for, captured HERE. Reading it inside the
-    // loader body instead is what made the cache answer with a stale query: the
-    // body runs once, so `untrack(search)` froze the search of whichever
-    // navigation happened to create the cell.
-    const forSearch = untrack(search);
-    const seedKey = loaderKey(route.id, forParams, searchKey(forSearch));
-    const key = `${seedKey}#${untrack(generation)}`;
-    const existing = cells.get(key);
-    if (existing !== undefined) return existing;
-
-    const build = (): Cell<unknown> =>
-      loader === undefined
-        ? () => undefined
-        : computed(
-            async () => {
-              const controller = new AbortController();
-              try {
-                return await loader({
-                  params: forParams as never,
-                  search: forSearch,
-                  signal: controller.signal,
-                });
-              } catch (error) {
-                config.onLoaderError?.(error);
-                throw error;
-              }
-            },
-            // The generation is NOT in the seed key: the server always renders
-            // at generation 0 and a client that has invalidated since would
-            // otherwise look for a key the server never wrote.
-            { key: seedKey },
-          );
-
-    const cell = runWithOwner(null, build);
-    cells.set(key, cell);
-    if (cells.size > limit) {
-      const oldest = cells.keys().next();
-      if (!oldest.done) cells.delete(oldest.value);
+  /**
+   * The key an entry is filed under, and the key its value is SEEDED under.
+   *
+   * `loaderDeps` narrows it; without one the whole search goes in, so a route
+   * that reads any of it is correct by default. The generation is not in the
+   * seed key — the server always renders at generation 0 and a client that has
+   * invalidated since would look for a key the server never wrote.
+   */
+  const keyOf = (
+    route: Route,
+    forParams: Readonly<Record<string, string>>,
+    forSearch: URLSearchParams,
+  ): { seedKey: string; deps: unknown } => {
+    const project = route.definition.loaderDeps;
+    if (project === undefined) {
+      return { seedKey: loaderKey(route.id, forParams, searchKey(forSearch)), deps: undefined };
     }
-    return cell;
+    const deps = project({ search: forSearch });
+    return { seedKey: loaderKey(route.id, forParams, depsKey(deps)), deps };
+  };
+
+  /**
+   * Build one entry.
+   *
+   * `runWithOwner(null, () => root(...))` and BOTH halves are load-bearing.
+   *
+   * `root` alone is not enough: a detached scope still does
+   * `makeScope(getCurrentOwner())`, which copies `ctx` and `catcher` and keeps
+   * the parent as a field. An entry minted during a render would then pin that
+   * render's scope — including its DOM range — for its whole life, read that
+   * render's context forever, and route its throws to whichever error boundary
+   * happened to be above the FIRST reader. Measured: `entry.parent is null?
+   * false`, and a cached entry kept answering with the tenant of the render that
+   * created it.
+   *
+   * `runWithOwner(null, ...)` alone is not enough either: an owner-less pure
+   * computed is in neither `owner.kids` nor `orphans`, `disposeNode` is not
+   * exported, and dropping it from the Map leaks its dependency links and leaves
+   * an unsettled promise in the module-global `inFlight` that `settle()` waits
+   * on forever.
+   *
+   * Together: no inherited context, no pinned parent, and a `dispose` the router
+   * owns.
+   */
+  const mint = (
+    route: Route,
+    forParams: Readonly<Record<string, string>>,
+    forSearch: URLSearchParams,
+    seedKey: string,
+    deps: unknown,
+    cause: LoadCause,
+  ): Entry => {
+    const loader = route.definition.loader;
+    let entry!: Entry;
+
+    const cell = runWithOwner(null, () =>
+      root<Cell<unknown>>((disposeScope) => {
+        let controller: AbortController | null = null;
+        const abort = (reason: string): void => {
+          const live = controller;
+          controller = null;
+          if (live !== null) live.abort(reason);
+        };
+
+        const built: Cell<unknown> =
+          loader === undefined
+            ? () => undefined
+            : computed(
+                async () => {
+                  // One controller per RUN, aborted when a newer run supersedes
+                  // it and when the entry is disposed. `resource` has exactly
+                  // this (its A1/A2) and cannot be used: a SEEDED resource can
+                  // never be reloaded, because a seeded first run never enters
+                  // `compute`, so `bump` never becomes a dependency and
+                  // `refetch()` invalidates nothing. Measured — 0 fetches after
+                  // a seed, against 1 for a keyed `computed` plus `refresh()`.
+                  abort("a newer request was issued");
+                  const own = new AbortController();
+                  controller = own;
+                  entry.inFlight = true;
+                  try {
+                    const value = await loader({
+                      params: forParams as never,
+                      search: (route.definition.loaderDeps === undefined
+                        ? forSearch
+                        : undefined) as never,
+                      deps: deps as never,
+                      cause: entry.cause,
+                      signal: own.signal,
+                    });
+                    if (controller === own) controller = null;
+                    entry.inFlight = false;
+                    entry.updatedAt = now();
+                    entry.settled = { value };
+                    entry.error = undefined;
+                    return value;
+                  } catch (error) {
+                    if (controller === own) controller = null;
+                    entry.inFlight = false;
+                    entry.error = error;
+                    config.onLoaderError?.(error);
+                    throw error;
+                  }
+                },
+                { key: seedKey },
+              );
+
+        entry = {
+          key: seedKey,
+          route,
+          cell: built,
+          dispose: () => {
+            abort("the router collected this cache entry");
+            disposeScope();
+          },
+          updatedAt: 0,
+          settled: null,
+          error: undefined,
+          cause,
+          deps,
+          preload: cause === "preload",
+          abort,
+          inFlight: false,
+        };
+        return built;
+      }),
+    );
+    void cell;
+
+    entries.set(seedKey, entry);
+    evict();
+    return entry;
+  };
+
+  /**
+   * The ceiling, which is not the sweep.
+   *
+   * Only a SETTLED entry outside the current chain may go, for `Entry.dispose`'s
+   * reason — and the oldest such, so this stays insertion-ordered. An entry
+   * nothing can drop keeps the map above `limit`, which is correct: a bound that
+   * hangs the page is not a bound worth having.
+   */
+  const evict = (): void => {
+    if (entries.size <= limit) return;
+    const live = liveKeys();
+    for (const [key, entry] of entries) {
+      if (entries.size <= limit) return;
+      if (live.has(key) || entry.inFlight) continue;
+      entry.dispose();
+      entries.delete(key);
+    }
+  };
+
+  const liveKeys = (): Set<string> => {
+    const keys = new Set<string>();
+    const forParams = untrack(params);
+    const forSearch = untrack(search);
+    for (const route of untrack(chain)) keys.add(keyOf(route, forParams, forSearch).seedKey);
+    return keys;
+  };
+
+  /**
+   * Collect on navigation, which is TanStack's shape and the right one — a
+   * timer per entry buys nothing a commit-time pass does not.
+   *
+   * Unlike theirs, the sweep DISPOSES, which aborts what is in flight and is
+   * what makes `gcTime` mean something rather than decorate a Map that grows
+   * forever. That is only safe under the settled-and-unmatched rule.
+   */
+  const sweep = (): void => {
+    const live = liveKeys();
+    const at = now();
+    for (const [key, entry] of entries) {
+      if (live.has(key) || entry.inFlight || entry.updatedAt === 0) continue;
+      const definition = entry.route.definition;
+      const budget = entry.preload
+        ? (definition.preloadGcTime ?? DEFAULT_PRELOAD_GC_TIME)
+        : (definition.gcTime ?? DEFAULT_GC_TIME);
+      if (at - entry.updatedAt < budget) continue;
+      entry.dispose();
+      entries.delete(key);
+    }
+  };
+
+  /** Whether a cached entry should be asked again, and the three-way that decides. */
+  const shouldReload = (entry: Entry, forParams: Readonly<Record<string, string>>): boolean => {
+    if (entry.inFlight) return false;
+    if (entry.updatedAt === 0) return false;
+    const definition = entry.route.definition;
+    const configured =
+      typeof definition.shouldReload === "function"
+        ? definition.shouldReload({
+            params: forParams as never,
+            deps: entry.deps as never,
+            cause: entry.cause,
+            updatedAt: entry.updatedAt,
+          })
+        : definition.shouldReload;
+    if (configured !== undefined) return Boolean(configured);
+    const budget = entry.preload
+      ? (definition.preloadStaleTime ?? DEFAULT_PRELOAD_STALE_TIME)
+      : (definition.staleTime ?? DEFAULT_STALE_TIME);
+    return now() - entry.updatedAt >= budget;
+  };
+
+  const acquire = (
+    route: Route,
+    forParams: Readonly<Record<string, string>>,
+    cause: LoadCause,
+  ): Entry => {
+    const forSearch = untrack(search);
+    const { seedKey, deps } = keyOf(route, forParams, forSearch);
+    const existing = entries.get(seedKey);
+    if (existing === undefined) {
+      return mint(route, forParams, forSearch, seedKey, deps, cause);
+    }
+    // A `stay` never downgrades an `enter`, and a real navigation upgrades a
+    // preload — which is what moves the entry off the preload budget.
+    if (cause !== "preload" && existing.preload) {
+      existing.preload = false;
+      existing.cause = cause;
+    }
+    return existing;
+  };
+
+  /**
+   * The read one route depth gets, and the mode is a property of the READ.
+   *
+   * `blocking` is the plain read: a refreshing cell throws `NotReadyError` and
+   * the boundary puts the fallback back. `background` reads through it with
+   * `latest`, so the previous value stays on screen.
+   *
+   * On the SERVER both are the plain read, and `blocking` is passed by the
+   * CALL SITE rather than sniffed. The string backend invokes a Block with no
+   * observer, and `latest()` short-circuits on `currentObserver === null` and
+   * hands back `node._value` — `undefined` for a cold cell. Measured: a
+   * `background` route SSR'd as literal `<b>undefined</b>` with an empty seed,
+   * because nothing parked so the seed channel never opened.
+   *
+   * Sniffing the environment was tried and is wrong: `typeof document` is not
+   * the question, and answering it that way made the router's own SSR tests
+   * take the client path, because happy-dom defines `document` in exactly the
+   * process that renders the string backend. Each backend knows which it is.
+   *
+   * It is not a patch either: `staleReloadMode` governs a RELOAD of a settled
+   * value, and on the server every value is cold.
+   */
+  const readerFor = (entry: Entry, blocking: boolean): Cell<unknown> => {
+    const mode = entry.route.definition.staleReloadMode ?? "background";
+    if (blocking || mode === "blocking") return entry.cell;
+    return () => {
+      try {
+        return latest(entry.cell);
+      } catch (error) {
+        // A FAILED reload keeps the last good value rather than replacing the
+        // page with an error boundary — TanStack's behaviour, and the reason
+        // `Entry.settled` is remembered. A cold failure has nothing to show and
+        // goes to the boundary, which is where it belongs.
+        if (entry.settled !== null) return entry.settled.value;
+        throw error;
+      }
+    };
+  };
+
+  /**
+   * Memoised per MATCH rather than rebuilt per read.
+   *
+   * `props([{...}])` returns a single plain record UNCHANGED, so nothing
+   * memoises `props.data`: every read used to run `Object.keys().toSorted()`, a
+   * `.map`, a `.join` and a template before the Map lookup. Measured at 152 ns
+   * against 4.3 ns for a settled read over a memoised key.
+   *
+   * `params` is a `computed`, so its identity is stable for as long as the match
+   * is — which makes an identity compare the whole of the invalidation rule.
+   */
+  const memo = new Map<Route, { params: unknown; blocking: boolean; reader: Cell<unknown> }>();
+
+  const dataFor = (
+    route: Route,
+    forParams: Readonly<Record<string, string>>,
+    blocking = false,
+  ): Cell<unknown> => {
+    const hit = memo.get(route);
+    if (hit !== undefined && hit.params === forParams && hit.blocking === blocking) {
+      return hit.reader;
+    }
+    const entry = acquire(route, forParams, causeFor(route));
+    const reader = readerFor(entry, blocking);
+    memo.set(route, { params: forParams, blocking, reader });
+    return reader;
+  };
+
+  /** `enter` the first time a route appears in the chain, `stay` while it stays. */
+  let previous: readonly Route[] = [];
+  const causeFor = (route: Route): LoadCause => (previous.includes(route) ? "stay" : "enter");
+
+  /**
+   * The reload decision happens ONCE PER NAVIGATION, not once per read.
+   *
+   * Putting it in `dataFor` was wrong in a way the tests caught immediately:
+   * the memo is keyed on the identity of the `params` computed, which changes on
+   * every location change including a HASH change, so `staleTime: 0` refetched
+   * the whole chain when the fragment moved. TanStack reaches the same
+   * conclusion from the other end — its reload decision lives in the load lane,
+   * which a navigation enters and a render does not.
+   */
+  const revalidate = (): void => {
+    const forParams = untrack(params);
+    const forSearch = untrack(search);
+    for (const route of untrack(chain)) {
+      const { seedKey } = keyOf(route, forParams, forSearch);
+      const entry = entries.get(seedKey);
+      if (entry === undefined) continue;
+      if (shouldReload(entry, forParams)) refresh(entry.cell);
+    }
+    previous = untrack(chain);
   };
 
   const unsubscribe = history.subscribe((next) => {
+    const before = untrack(chain);
     location.set(next);
+    previous = before;
+    revalidate();
+    sweep();
     for (const hook of config.afterEach ?? []) hook(next);
   });
 
@@ -300,7 +658,10 @@ export function createRouter(config: RouterConfig): RouterState {
       for (const route of untrack(chain)) {
         if (route.definition.loader === undefined) continue;
         try {
-          dataFor(route, forParams)();
+          // Blocking, always: priming exists to START the fetch, and a
+          // `latest()` read of a cold cell on the string backend answers
+          // `undefined` instead of parking, so nothing would start at all.
+          dataFor(route, forParams, true)();
         } catch {
           // `NotReadyError` is the point — the fetch is now in flight. A cell
           // that has already FAILED throws its error here too, and swallowing
@@ -309,13 +670,25 @@ export function createRouter(config: RouterConfig): RouterState {
         }
       }
     },
+    /**
+     * Ask every cached loader again.
+     *
+     * `refresh` rather than dropping the map, which is the change R2 forced and
+     * is better anyway: the cell keeps its identity, so a route already on
+     * screen revalidates in place instead of remounting, and its seed key
+     * survives. Dropping the map used to mean a new cell under the same seed
+     * key, which on the client would have re-consumed a seed that is gone and on
+     * the server would have re-read the session bucket.
+     */
     invalidate() {
-      cells.clear();
+      for (const entry of entries.values()) refresh(entry.cell);
       generation.set(untrack(generation) + 1);
     },
     dispose() {
       unsubscribe();
-      cells.clear();
+      for (const entry of entries.values()) entry.dispose();
+      entries.clear();
+      memo.clear();
     },
   };
 }

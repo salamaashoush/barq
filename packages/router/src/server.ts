@@ -69,7 +69,7 @@ export function renderRoutes(state: RouterState): unknown {
         ? at(depth + 1)
         : (component as unknown as (s: null, p: unknown) => unknown)(
             null,
-            routePropsFor(state, depth, route, children),
+            routePropsFor(state, depth, route, children, true),
           );
 
     // An error boundary INSIDE the loading one, and the nesting is the whole
@@ -91,7 +91,7 @@ export function renderRoutes(state: RouterState): unknown {
           ? ssrHtml("")
           : (pending as unknown as (s: null, p: unknown) => unknown)(
               null,
-              routePropsFor(state, depth, route, (() => ssrHtml("")) as never),
+              routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
             ),
       children: () =>
         ssrErrored(null, {

@@ -88,13 +88,44 @@ export type InvokedRouteComponent<Data = unknown, Params = Record<string, string
  * the hole every surveyed framework documents instead of closing, TanStack
  * included: "A route guard is not a data authorization boundary."
  */
-export type Loader<Data = unknown, Params = Record<string, string>> = (context: {
+export type Loader<Data = unknown, Params = Record<string, string>, Deps = undefined> = (context: {
   readonly params: Params;
-  readonly search: URLSearchParams;
+  /**
+   * The query, and it is ABSENT when the route declares `loaderDeps`.
+   *
+   * Declaring `loaderDeps` narrows the cache key to the part of the search a
+   * route says it uses. A loader that then reads some OTHER part is keyed by a
+   * value it does not depend on and answers with a stale one — which is the
+   * defect `ac8c51d` fixed in its broad form, reappearing in a narrow one.
+   *
+   * Removing `search` from the context in that case makes it unrepresentable
+   * rather than warned about, which is why the compiler diagnostic first
+   * proposed for this is not being built. TanStack reaches the same place from
+   * the other side: their `LoaderFnContext` has no `search` at all, only
+   * `deps`.
+   */
+  readonly search: Deps extends undefined ? URLSearchParams : undefined;
+  /** What `loaderDeps` selected, and what the cache key is built from. */
+  readonly deps: Deps;
+  /** Why this load is happening. `preload` never commits a navigation. */
+  readonly cause: import("./router.ts").LoadCause;
   readonly signal: AbortSignal;
 }) => Data | Promise<Data>;
 
-export interface RouteDefinition<Data = unknown, Params = Record<string, string>> {
+/** What `shouldReload` is told about a cached entry it may or may not refresh. */
+export interface ReloadContext<Params = Record<string, string>, Deps = undefined> {
+  readonly params: Params;
+  readonly deps: Deps;
+  readonly cause: import("./router.ts").LoadCause;
+  /** When the value last settled, as a millisecond timestamp. */
+  readonly updatedAt: number;
+}
+
+export interface RouteDefinition<
+  Data = unknown,
+  Params = Record<string, string>,
+  Deps = undefined,
+> {
   /**
    * This route's pattern, relative to its parent. Omitted makes the route
    * PATHLESS: it renders and provides context but contributes no segment, which
@@ -147,7 +178,57 @@ export interface RouteDefinition<Data = unknown, Params = Record<string, string>
    * nearest ancestor's, so a single one at the root is enough.
    */
   readonly notFoundComponent?: ErrorComponent<Params>;
-  readonly loader?: Loader<Data, Params>;
+  readonly loader?: Loader<Data, Params, Deps>;
+  /**
+   * Projects the validated search into the cache key.
+   *
+   * Search is otherwise in the key WHOLE, so a route that reads any of it is
+   * correct by default and an unrelated `?ref=` busts every entry on the page.
+   * Declaring this narrows the key to what the route says it uses — and, in
+   * exchange, `search` leaves the loader's context, because a narrow key with a
+   * broad read is the same bug in a smaller box.
+   */
+  readonly loaderDeps?: (options: { readonly search: URLSearchParams }) => Deps;
+  /**
+   * How long a cached result stays fresh, in milliseconds. Default 0 — a
+   * navigation revalidates.
+   *
+   * It means what it says here, unlike TanStack's, whose staleness clause also
+   * requires `forceStaleReload || cause === 'enter' || a same-route-different-id
+   * in the committed lane` (`load-client.ts:794-806`), so a `stay` match
+   * navigating to a different href is never revalidated on staleness alone.
+   */
+  readonly staleTime?: number;
+  /** As `staleTime`, for an entry a preload created. Default 30_000. */
+  readonly preloadStaleTime?: number;
+  /** How long an unused entry survives before the sweep takes it. Default 300_000. */
+  readonly gcTime?: number;
+  /** As `gcTime`, for an entry a preload created. Default 300_000. */
+  readonly preloadGcTime?: number;
+  /**
+   * Overrides `staleTime`, in BOTH directions, and the three-way is the whole
+   * of it:
+   *
+   *  - truthy — reload even if fresh, and `staleTime` is never consulted;
+   *  - `undefined` — fall through to `staleTime`;
+   *  - any other falsy — suppress the `staleTime` clause entirely.
+   *
+   * Spelled out because TanStack types theirs `any` (`route.ts:992`) and a
+   * function that forgets to return means "use staleTime", not "do not reload".
+   */
+  readonly shouldReload?: boolean | ((context: ReloadContext<Params, Deps>) => unknown);
+  /**
+   * What a STALE-but-successful entry shows while it revalidates. Default
+   * `"background"` — the previous data stays on screen.
+   *
+   * `"blocking"` puts the `pending` fallback back instead. On the SERVER this
+   * option does nothing, and that is not a limitation: it governs a reload of an
+   * already-settled value, and on the server every value is cold. Measured, too
+   * — the string backend invokes a Block with no observer, so a `latest()` read
+   * there answers `undefined` for a cold cell rather than parking, which would
+   * ship literal `undefined` and seed nothing.
+   */
+  readonly staleReloadMode?: "background" | "blocking";
   readonly children?: readonly AnyRouteDefinition[];
 }
 
@@ -168,7 +249,7 @@ export interface RouteDefinition<Data = unknown, Params = Record<string, string>
  * `loaderData` read.
  */
 // oxlint-disable-next-line typescript/no-explicit-any
-export type AnyRouteDefinition = RouteDefinition<any, any>;
+export type AnyRouteDefinition = RouteDefinition<any, any, any>;
 
 /** A route after flattening: its own definition plus everything the matcher needs. */
 export interface Route {
@@ -178,9 +259,9 @@ export interface Route {
 }
 
 /** Identity, plus a place to hang inference later. */
-export function route<Data, Params>(
-  definition: RouteDefinition<Data, Params>,
-): RouteDefinition<Data, Params> {
+export function route<Data, Params, Deps = undefined>(
+  definition: RouteDefinition<Data, Params, Deps>,
+): RouteDefinition<Data, Params, Deps> {
   return definition;
 }
 

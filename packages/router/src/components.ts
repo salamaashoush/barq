@@ -166,11 +166,13 @@ export function routePropsFor(
   depth: number,
   route: Route | null,
   children: Block<unknown>,
+  /** The string backend passes `true` — see `RouterState.dataFor`. */
+  blocking = false,
 ): RouteProps {
   return sources([
     {
       params: () => state.params(),
-      data: () => (route === null ? undefined : state.dataFor(route, state.params())()),
+      data: () => (route === null ? undefined : state.dataFor(route, state.params(), blocking)()),
       children,
     },
   ]) as unknown as RouteProps;

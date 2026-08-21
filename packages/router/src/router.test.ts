@@ -10,11 +10,12 @@
 import { type Scope, flush, getOwner, insert, isDisposed, render, settle } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { Link, NavLink, Router } from "./components.ts";
+import { Link, NavLink, Router, RouterProvider } from "./components.ts";
 import { notFound } from "./errors.ts";
 import { memoryHistory } from "./history.ts";
 import { useLocation, useNavigate, useParams, useSearchParams } from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
+import { type RouterState, createRouter } from "./router.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -34,6 +35,21 @@ function mount(props: Parameters<typeof Router>[0]): { host: HTMLElement; dispos
         notFound: () => props.notFound,
         beforeEach: () => props.beforeEach,
         afterEach: () => props.afterEach,
+      })) as never,
+    host,
+  );
+  flush();
+  return { host, dispose };
+}
+
+/** Mount an already-built state, for tests that need to drive it directly. */
+function mountState(state: RouterState): { host: HTMLElement; dispose: () => void } {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const dispose = render(
+    ((scope: Scope | null) =>
+      (RouterProvider as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+        state: () => state,
       })) as never,
     host,
   );
@@ -226,26 +242,31 @@ describe("loaders", () => {
     expect(host.textContent).toBe("page 2");
     expect(seen).toEqual(["1", "2"]);
 
-    // …and going back is a cache HIT, not a third fetch.
+    // Going back re-runs, because `staleTime` defaults to 0 and a navigation
+    // revalidates. The CACHE-hit property is asserted separately, under a
+    // `staleTime` that says the data is still fresh — mixing the two here is
+    // what made this assertion wrong when the reload policy landed.
     history.push("/posts?page=1");
     flush();
     await settle();
     flush();
     expect(host.textContent).toBe("page 1");
-    expect(seen).toEqual(["1", "2"]);
+    expect(seen).toEqual(["1", "2", "1"]);
 
     dispose();
   });
 
   test("B1 — key order in the query does not mint a second cell", async () => {
     // `?b=2&a=1` and `?a=1&b=2` are the same request; a key that says otherwise
-    // refetches for nothing.
+    // refetches for nothing. `staleTime: Infinity` takes the reload policy out
+    // of the question so this measures the KEY and nothing else.
     let calls = 0;
     const history = memoryHistory({ initial: ["/s?a=1&b=2"] });
     const { host, dispose } = mount({
       routes: [
         {
           path: "/s",
+          staleTime: Number.POSITIVE_INFINITY,
           loader: async () => {
             calls++;
             await tick();
@@ -290,6 +311,337 @@ describe("loaders", () => {
       history,
     });
     expect(host.textContent).toBe("undefined");
+    dispose();
+  });
+});
+
+describe("loaderDeps and the reload policy", () => {
+  /** The compiled shape: the read goes in `insert`, which is a tracked effect. */
+  const span = (scope: Scope | null, props: RouteProps): Node => {
+    const node = document.createElement("span");
+    insert(scope, node, () => String(props.data()));
+    return node;
+  };
+
+  test("loaderDeps narrows the key: an unrelated param does not refetch", async () => {
+    // Without `loaderDeps` the WHOLE search is the key, so `?ref=` busts it.
+    // With one, only what the route says it uses counts.
+    const seen: string[] = [];
+    const history = memoryHistory({ initial: ["/list?page=1&ref=twitter"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/list",
+          staleTime: Number.POSITIVE_INFINITY,
+          loaderDeps: ({ search }: { search: URLSearchParams }) => ({
+            page: search.get("page") ?? "1",
+          }),
+          loader: async ({ deps }: { deps: { page: string } }) => {
+            seen.push(deps.page);
+            await tick();
+            return `page ${deps.page}`;
+          },
+          pending: page("loading"),
+          component: span,
+        },
+      ] as never,
+      history,
+    });
+
+    await settle();
+    flush();
+    expect(host.textContent).toBe("page 1");
+
+    // A param the route did not select: same key, no fetch.
+    history.push("/list?page=1&ref=hn");
+    flush();
+    await settle();
+    flush();
+    expect(seen).toEqual(["1"]);
+
+    // One it did: new key, new fetch.
+    history.push("/list?page=2&ref=hn");
+    flush();
+    await settle();
+    flush();
+    expect(host.textContent).toBe("page 2");
+    expect(seen).toEqual(["1", "2"]);
+
+    dispose();
+  });
+
+  test("staleTime holds a navigation back, and 0 revalidates it", async () => {
+    for (const [staleTime, expected] of [
+      [Number.POSITIVE_INFINITY, 2],
+      [0, 3],
+    ] as const) {
+      let calls = 0;
+      const history = memoryHistory({ initial: ["/a"] });
+      const { dispose } = mount({
+        routes: [
+          {
+            path: "/a",
+            staleTime,
+            loader: async () => {
+              calls++;
+              await tick();
+              return "a";
+            },
+            pending: page("l"),
+            component: span,
+          },
+          {
+            path: "/b",
+            loader: async () => {
+              await tick();
+              return "b";
+            },
+            pending: page("l"),
+            component: span,
+          },
+        ] as never,
+        history,
+      });
+      await settle();
+      flush();
+      history.push("/b");
+      flush();
+      await settle();
+      flush();
+      history.push("/a");
+      flush();
+      await settle();
+      flush();
+      // 1 for the first visit, 1 for /b, and the third is /a again — cached
+      // under an infinite staleTime, refetched under 0.
+      expect(calls + 1).toBe(expected);
+      dispose();
+    }
+  });
+
+  test("shouldReload overrides staleTime in BOTH directions", async () => {
+    const run = async (shouldReload: unknown): Promise<number> => {
+      let calls = 0;
+      const history = memoryHistory({ initial: ["/x"] });
+      const { dispose } = mount({
+        routes: [
+          {
+            path: "/x",
+            staleTime: Number.POSITIVE_INFINITY,
+            shouldReload,
+            loader: async () => {
+              calls++;
+              await tick();
+              return "x";
+            },
+            pending: page("l"),
+            component: span,
+          },
+          { path: "/y", component: span },
+        ] as never,
+        history,
+      });
+      await settle();
+      flush();
+      history.push("/y");
+      flush();
+      history.push("/x");
+      flush();
+      await settle();
+      flush();
+      dispose();
+      return calls;
+    };
+
+    // Fresh forever, and `true` reloads anyway.
+    expect(await run(true)).toBe(2);
+    // `undefined` falls through to `staleTime`, which says fresh.
+    expect(await run(undefined)).toBe(1);
+    // Any other falsy suppresses the staleTime clause — also fresh here, but it
+    // is the arm that matters when staleTime would have said stale.
+    expect(await run(false)).toBe(1);
+  });
+
+  test("shouldReload: false suppresses a staleTime that would have reloaded", async () => {
+    let calls = 0;
+    const history = memoryHistory({ initial: ["/x"] });
+    const { dispose } = mount({
+      routes: [
+        {
+          path: "/x",
+          staleTime: 0,
+          shouldReload: false,
+          loader: async () => {
+            calls++;
+            await tick();
+            return "x";
+          },
+          pending: page("l"),
+          component: span,
+        },
+        { path: "/y", component: span },
+      ] as never,
+      history,
+    });
+    await settle();
+    flush();
+    history.push("/y");
+    flush();
+    history.push("/x");
+    flush();
+    await settle();
+    flush();
+    expect(calls).toBe(1);
+    dispose();
+  });
+
+  test("staleReloadMode: background keeps the old data on screen while it reloads", async () => {
+    const seen: string[] = [];
+    let n = 0;
+    const history = memoryHistory({ initial: ["/p"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/p",
+          staleTime: 0,
+          loader: async () => {
+            const mine = ++n;
+            await tick();
+            return `v${mine}`;
+          },
+          pending: page("SKELETON"),
+          component: span,
+        },
+        { path: "/q", component: span },
+      ] as never,
+      history,
+    });
+    await settle();
+    flush();
+    expect(host.textContent).toBe("v1");
+
+    history.push("/q");
+    flush();
+    history.push("/p");
+    flush();
+    // Mid-reload: the previous value is still on screen, not the skeleton.
+    seen.push(host.textContent ?? "");
+    await settle();
+    flush();
+    seen.push(host.textContent ?? "");
+
+    expect(seen).toEqual(["v1", "v2"]);
+    dispose();
+  });
+
+  test("staleReloadMode: blocking puts the pending fallback back", async () => {
+    let n = 0;
+    const history = memoryHistory({ initial: ["/p"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/p",
+          staleTime: 0,
+          staleReloadMode: "blocking",
+          loader: async () => {
+            const mine = ++n;
+            await tick();
+            return `v${mine}`;
+          },
+          pending: page("SKELETON"),
+          component: span,
+        },
+        { path: "/q", component: span },
+      ] as never,
+      history,
+    });
+    await settle();
+    flush();
+    expect(host.textContent).toBe("v1");
+
+    history.push("/q");
+    flush();
+    history.push("/p");
+    flush();
+    expect(host.textContent).toBe("SKELETON");
+    await settle();
+    flush();
+    expect(host.textContent).toBe("v2");
+    dispose();
+  });
+
+  test("a failed background reload keeps the last good value", async () => {
+    // Core's `latest()` THROWS for an errored cell rather than reading through
+    // it, which would replace the page with an error boundary. TanStack keeps
+    // the page; so does this, and `Entry.settled` is what remembers it.
+    let n = 0;
+    const history = memoryHistory({ initial: ["/p"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/p",
+          staleTime: 0,
+          loader: async () => {
+            n++;
+            await tick();
+            if (n > 1) throw new Error("reload failed");
+            return "good";
+          },
+          pending: page("SKELETON"),
+          errorComponent: (scope: Scope | null) => {
+            const node = document.createElement("b");
+            insert(scope, node, () => "ERROR");
+            return node;
+          },
+          component: span,
+        },
+        { path: "/q", component: span },
+      ] as never,
+      history,
+    });
+    await settle();
+    flush();
+    expect(host.textContent).toBe("good");
+
+    history.push("/q");
+    flush();
+    history.push("/p");
+    flush();
+    await settle();
+    flush();
+    expect(host.textContent).toBe("good");
+    expect(n).toBe(2);
+    dispose();
+  });
+
+  test("invalidate() re-runs in place, keeping the cell's identity", async () => {
+    let n = 0;
+    const history = memoryHistory({ initial: ["/p"] });
+    const state = createRouter({
+      routes: [
+        {
+          path: "/p",
+          staleTime: Number.POSITIVE_INFINITY,
+          loader: async () => {
+            const mine = ++n;
+            await tick();
+            return `v${mine}`;
+          },
+          pending: page("l"),
+          component: span,
+        },
+      ] as never,
+      history,
+    });
+    const { host, dispose } = mountState(state);
+    await settle();
+    flush();
+    expect(host.textContent).toBe("v1");
+    state.invalidate();
+    flush();
+    await settle();
+    flush();
+    expect(host.textContent).toBe("v2");
     dispose();
   });
 });
