@@ -203,7 +203,8 @@ describe("the diagnostic engine", () => {
    * a rule without deleting its variant is a red test rather than a ghost.
    */
   it("every advertised code is reachable from some input", () => {
-    const reachable: Record<string, string> = {
+    type Reachable = string | { source: string; options: Record<string, unknown> };
+    const reachable: Record<string, Reachable> = {
       BARQ001:
         `import { signal } from "@barqjs/core";\n` +
         `const count = signal(0);\n` +
@@ -237,6 +238,15 @@ describe("the diagnostic engine", () => {
         `import { createServerFn } from "@barqjs/start";\n` +
         "export const save = createServerFn().handler(async () => 1);\n" +
         "export const V = () => <p>ok</p>;\n",
+      // The only code so far that needs an OPTION to be reachable at all: the
+      // route set is a whole-project fact, and absent it the check is off by
+      // design so a project without a table is never warned.
+      BARQ013: {
+        source:
+          `import { Link } from "@barqjs/router";\n` +
+          `export const V = () => <Link to="/user/7">go</Link>;\n`,
+        options: { routes: ["/", "/users/$id"] },
+      },
     };
 
     const advertised = native.diagnosticCodes().map((entry) => entry.code).sort();
@@ -250,8 +260,10 @@ describe("the diagnostic engine", () => {
     ).toEqual([]);
 
     for (const code of advertised) {
-      const source = reachable[code]!;
-      expect(codes(diagnose(source)), `${code} is unreachable`).toContain(code);
+      const entry = reachable[code]!;
+      const source = typeof entry === "string" ? entry : entry.source;
+      const options = typeof entry === "string" ? {} : entry.options;
+      expect(codes(diagnose(source, options)), `${code} is unreachable`).toContain(code);
     }
   });
 
@@ -363,5 +375,77 @@ describe("the diagnostic engine", () => {
         .join("\n")
         .trim(),
     ).toBe(diagnose(COERCED).code.trim());
+  });
+});
+
+/**
+ * BARQ013's precision, which is the whole of whether it is usable.
+ *
+ * A link check that guesses is a link check people turn off, so every case it
+ * declines is as load-bearing as the one it fires on — and each is here rather
+ * than described in the docs page alone.
+ */
+describe("BARQ013 — `<Link to>` against the route table", () => {
+  const routes = ["/", "/users/$id", "/files/$"];
+  const link = (to: string, from = "@barqjs/router", name = "Link") =>
+    `import { ${name} } from "${from}";\n` +
+    `export const V = () => <${name} to=${to}>go</${name}>;\n`;
+
+  const fires = (source: string, options: Record<string, unknown> = { routes }) =>
+    codes(diagnose(source, options)).includes("BARQ013");
+
+  it("fires on a literal no route matches", () => {
+    expect(fires(link('"/user/7"'))).toBe(true);
+  });
+
+  it("is quiet on one that matches, including the pattern itself", () => {
+    // `<Link to="/users/$id" params={{ id }}>` is the checked form, so the
+    // pattern has to match itself or the good shape warns.
+    expect(fires(link('"/users/7"'))).toBe(false);
+    expect(fires(link('"/users/$id"'))).toBe(false);
+    expect(fires(link('"/files/a/b"'))).toBe(false);
+  });
+
+  it("checks NavLink, and an aliased import", () => {
+    expect(fires(link('"/nope"', "@barqjs/router", "NavLink"))).toBe(true);
+    expect(
+      fires(
+        `import { Link as Anchor } from "@barqjs/router";\n` +
+          `export const V = () => <Anchor to="/nope">go</Anchor>;\n`,
+      ),
+    ).toBe(true);
+  });
+
+  it("does NOT check someone else's component named Link", () => {
+    // Resolution is by `SymbolId` against `routerSource`, not by name.
+    expect(fires(link('"/nope"', "./my-link.ts"))).toBe(false);
+  });
+
+  it("declines what it cannot know", () => {
+    // A value, a relative path, something that leaves the app.
+    expect(
+      fires(
+        `import { Link } from "@barqjs/router";\n` +
+          `const p = "/nope";\n` +
+          `export const V = () => <Link to={p}>go</Link>;\n`,
+      ),
+    ).toBe(false);
+    expect(fires(link('"edit"'))).toBe(false);
+    expect(fires(link('"https://x.com/nope"'))).toBe(false);
+    expect(fires(link('"#top"'))).toBe(false);
+  });
+
+  it("is off entirely without a route table", () => {
+    // A project with a hand-written table and no build integration must never
+    // be warned about every link it writes.
+    expect(fires(link('"/nope"'), {})).toBe(false);
+  });
+
+  it("runs without `dev`, so it can fail a build", () => {
+    // `bind`'s rules are gated on `diagnostics`, which defaults to `dev`. This
+    // one is raised from the driver precisely so CI sees it.
+    expect(codes(compileSourceRaw(link('"/nope"'), "App.tsx", { routes }) as never)).toContain(
+      "BARQ013",
+    );
   });
 });

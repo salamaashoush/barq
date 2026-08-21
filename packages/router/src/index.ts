@@ -86,12 +86,3 @@ export {
   createRouter,
   loaderKey,
 } from "./router.ts";
-
-export {
-  type GeneratedRoute,
-  type RouteFile,
-  buildTree,
-  generateModule,
-  generateTypes,
-  nameOf,
-} from "./generate.ts";

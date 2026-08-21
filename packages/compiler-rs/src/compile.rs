@@ -304,6 +304,22 @@ fn compile_on_this_stack(
     // harvest is about to replace JSX inside some of them. Gated on the cheap
     // question first: a module that never mentions the name cannot import it,
     // and a symbol table built to discover that is pure cost.
+    // BARQ013, gathered BEFORE harvest. `harvest::run` moves every JSX root out
+    // of the program and leaves a placeholder identifier behind, so a visitor
+    // running after it sees no `JSXElement` at all and the check silently found
+    // nothing.
+    //
+    // Raised from the driver rather than from `bind`'s rule set for BARQ012's
+    // reason: `bind`'s rules are gated on `options.diagnostics`, which defaults
+    // to `dev`, and a link check that only runs in development is one that never
+    // fails a build.
+    let unknown_links = match options.routes.as_ref() {
+        Some(routes) if analysis::link::mentions(source_text) => {
+            analysis::link::scan(&program, &options.router_source, routes)
+        }
+        _ => Vec::new(),
+    };
+
     let server_fns = (options.server_fns || analysis::server_fn::mentions(source_text))
         .then(|| analysis::server_fn::scan(&program, &options.start_source))
         .filter(|scan| !scan.exports.is_empty());
@@ -375,6 +391,17 @@ fn compile_on_this_stack(
             &mut lines,
         ));
     }
+    for unknown in &unknown_links {
+        warnings.push(located(
+            Code::Barq013.default_level(),
+            Code::Barq013,
+            format!("`<Link to=\"{}\">` matches no route in this project", unknown.to),
+            unknown.span,
+            filename,
+            &mut lines,
+        ));
+    }
+
     for name in &options.unknown_passes {
         warnings.push(Diagnostic::at(
             Severity::Warning,

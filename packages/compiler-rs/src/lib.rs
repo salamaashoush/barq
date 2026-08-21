@@ -12,6 +12,7 @@ pub mod lower;
 pub mod options;
 pub mod ownership;
 pub mod passes;
+pub mod routes;
 pub mod scope;
 pub mod tables;
 
@@ -201,4 +202,36 @@ pub fn diagnostic_codes() -> Vec<JsCode> {
             docs: code.docs(),
         })
         .collect()
+}
+
+/// The generated route table, its types, and what produced them.
+#[napi(object)]
+pub struct RouteTreeResult {
+    /// The module `virtual:barq-routes` resolves to.
+    pub module: String,
+    /// The `.d.ts` a project writes beside its source.
+    pub types: String,
+    /// Every route file found, project-relative. The caller registers these
+    /// with its watcher — file EVENTS are the one part of this that cannot move
+    /// into the compiler, because the bundler owns them.
+    pub files: Vec<String>,
+    /// Every leaf pattern, which is what `routes` wants for `BARQ013`.
+    pub patterns: Vec<String>,
+}
+
+/// Scan a directory of route files and emit the table and its types.
+///
+/// The whole of file-based routing, in one call. The plugin asks and
+/// invalidates; it does not read the directory, derive a route from a filename,
+/// or build a string — so a route table cannot mean two things.
+#[napi]
+pub fn route_tree(root: String, dir: String) -> RouteTreeResult {
+    let files = routes::scan(std::path::Path::new(&root), &dir);
+    let tree = routes::build_tree(&files);
+    RouteTreeResult {
+        module: routes::generate_module(&tree),
+        types: routes::generate_types(&tree),
+        files: files.into_iter().map(|file| file.file).collect(),
+        patterns: routes::patterns(&tree),
+    }
 }

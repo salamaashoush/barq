@@ -1,92 +1,81 @@
 /**
- * The build half: discover route files, emit the table, write the types.
+ * The build half: ask the compiler for the route table, serve it, invalidate it.
+ *
+ * The scan, the naming rules, the tree and both emits all live in
+ * `compiler-rs`'s `routes.rs`. This file reads no directory, derives no route
+ * from a filename and builds no string — so a route table cannot mean two
+ * things, and there is no second implementation to drift.
+ *
+ * What stays here is the WATCHER, which is the one part that cannot move: Vite
+ * owns file events, so `routeTree` returns the file list and this registers it.
  *
  * `virtual:barq-routes` is resolved in EVERY environment, unlike
- * `@barqjs/start`'s server-function manifest which is `applyToEnvironment`-
- * scoped away from the client. The difference is what each one imports: the
- * manifest pulls in every server-function module, so resolving it client-side
- * would drag all of them into the browser graph, while the route table pulls in
- * route components, which the browser is exactly where they belong. Scoping this
- * one would leave the client with no routes at all.
- *
- * The generated module imports nothing eagerly — every route is a `lazy()` over
- * a dynamic `import()`, so a route is its own chunk by construction rather than
- * by a bundler heuristic.
+ * `@barqjs/start`'s server-function manifest, which is `applyToEnvironment`-
+ * scoped away from the client. The difference is what each imports: the manifest
+ * pulls in every server-function module, so resolving it client-side would drag
+ * all of them into the browser graph, while the route table pulls in route
+ * COMPONENTS, which is exactly where the browser wants them. Scoping this one
+ * would leave the client with no routes at all.
  */
 
-import { readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, posix, relative, sep } from "node:path";
+import { writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join, relative } from "node:path";
 
 import type { Plugin } from "vite";
 
-import { type RouteFile, buildTree, generateModule, generateTypes, nameOf } from "./generate.ts";
-
 export const ROUTES_ID = "virtual:barq-routes";
 const RESOLVED_ROUTES_ID = `\0${ROUTES_ID}`;
+
+/** What `compiler-rs` answers with. */
+export interface RouteTree {
+  /** The module `virtual:barq-routes` resolves to. */
+  readonly module: string;
+  /** The `.d.ts` to write beside the source. */
+  readonly types: string;
+  /** Every route file found, project-relative — for the watcher. */
+  readonly files: string[];
+  /** Every leaf pattern, which is what `BARQ013` checks a `<Link to>` against. */
+  readonly patterns: string[];
+}
+
+interface Native {
+  routeTree(root: string, dir: string): RouteTree;
+}
+
+const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
+
+/** Scan and generate. Exported so a build script can do it without a dev server. */
+export function routeTree(root: string, dir: string): RouteTree {
+  return native.routeTree(root, dir);
+}
 
 export interface BarqRouterOptions {
   /** Where route files live, relative to the Vite root. */
   readonly routesDir?: string;
   /** Where to write the generated `.d.ts`. `false` writes none. */
   readonly types?: string | false;
-  readonly extensions?: readonly string[];
-}
-
-const DEFAULT_EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"];
-
-/** Every route file under `dir`, project-relative and POSIX-separated. */
-export function discover(
-  root: string,
-  dir: string,
-  extensions: readonly string[] = DEFAULT_EXTENSIONS,
-): RouteFile[] {
-  const absolute = join(root, dir);
-  const out: RouteFile[] = [];
-
-  const walk = (current: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(current);
-    } catch {
-      // A project with no routes directory yet is not an error: the generated
-      // module is an empty table and the dev server still starts.
-      return;
-    }
-    for (const entry of entries.toSorted()) {
-      const path = join(current, entry);
-      if (statSync(path).isDirectory()) {
-        walk(path);
-        continue;
-      }
-      if (!extensions.some((extension) => entry.endsWith(extension))) continue;
-      // A test or a story beside a route is not a route.
-      if (/\.(test|spec|stories)\./.test(entry)) continue;
-
-      const fromRoot = relative(root, path).split(sep).join(posix.sep);
-      const fromDir = relative(absolute, path).split(sep).join(posix.sep);
-      out.push({ file: fromRoot, name: nameOf(fromDir) });
-    }
-  };
-
-  walk(absolute);
-  return out;
+  /**
+   * Told the leaf patterns after every scan.
+   *
+   * This is how `BARQ013` gets its route set: the compiler plugin needs it as a
+   * `routes` option, and it must come from the SAME scan the table was built
+   * from or the check is against a different project than the one that shipped.
+   */
+  readonly onRoutes?: (patterns: readonly string[]) => void;
 }
 
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const routesDir = options.routesDir ?? "src/routes";
-  const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
   let root = process.cwd();
-  let files: RouteFile[] = [];
+  let tree: RouteTree = { module: "", types: "", files: [], patterns: [] };
 
   const rescan = (): void => {
-    files = discover(root, routesDir, extensions);
-  };
-
-  const writeTypes = (): void => {
+    tree = routeTree(root, routesDir);
+    options.onRoutes?.(tree.patterns);
     if (options.types === false) return;
-    const target = join(root, options.types ?? "src/routes.gen.d.ts");
     try {
-      writeFileSync(target, generateTypes(buildTree(files)));
+      writeFileSync(join(root, options.types ?? "src/routes.gen.d.ts"), tree.types);
     } catch {
       // A read-only checkout still builds; the types are a convenience.
     }
@@ -94,13 +83,10 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
 
   return {
     name: "barq-router",
-    // NOT `applyToEnvironment`-scoped. See the header: the route table belongs
-    // in the browser graph, unlike the server-function manifest.
 
     configResolved(config) {
       root = config.root;
       rescan();
-      writeTypes();
     },
 
     resolveId(id) {
@@ -111,20 +97,18 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       if (id !== RESOLVED_ROUTES_ID) return null;
       // Watched here rather than in `configResolved`, so the dependency is
       // recorded against the module that actually uses it.
-      for (const file of files) this.addWatchFile(join(root, file.file));
-      return generateModule(buildTree(files), "@barqjs/router");
+      for (const file of tree.files) this.addWatchFile(join(root, file));
+      return tree.module;
     },
 
     configureServer(server) {
       const changed = (path: string): void => {
-        const inside = relative(join(root, routesDir), path);
-        if (inside.startsWith("..")) return;
+        if (relative(join(root, routesDir), path).startsWith("..")) return;
         rescan();
-        writeTypes();
         // A route file appearing or vanishing changes the TABLE, and the table
-        // is a different module from the file — without this the dev server
-        // keeps serving yesterday's routes. `@barqjs/start`'s manifest does the
-        // same thing for the same reason.
+        // is a different module from the file that changed — without this the
+        // dev server keeps serving yesterday's routes. `@barqjs/start`'s
+        // manifest does the same thing for the same reason.
         for (const environment of Object.values(server.environments)) {
           const module = environment.moduleGraph.getModuleById(RESOLVED_ROUTES_ID);
           if (module !== undefined && module !== null) {

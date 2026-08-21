@@ -14,14 +14,19 @@
   "bugs": {
     "url": "https://github.com/salamaashoush/barq/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/salamaashoush/barq.git",
     "directory": "packages/compiler"
   },
-  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -34,11 +39,6 @@
       "import": "./dist/vite.js"
     }
   },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist",
-    "src"
-  ],
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",

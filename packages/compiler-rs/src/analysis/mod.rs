@@ -1,4 +1,5 @@
 mod bind;
+pub mod link;
 pub mod server_fn;
 
 use oxc::allocator::Allocator;

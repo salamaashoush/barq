@@ -12,6 +12,7 @@ pub const DEFAULT_SERVER_SOURCE: &str = "@barqjs/server";
 /// Where `createServerFn` is imported from. Resolution is by `SymbolId`, so this
 /// is the specifier the import must name and not a text the source must contain.
 pub const DEFAULT_START_SOURCE: &str = "@barqjs/start";
+const DEFAULT_ROUTER_SOURCE: &str = "@barqjs/router";
 
 /// Which half of the program is being compiled.
 ///
@@ -160,6 +161,16 @@ pub struct TransformOptions {
     /// Module source for `createServerFn`.
     /// @default `@barqjs/start`
     pub start_source: Option<String>,
+    /// Module source for `Link` and `NavLink`.
+    /// @default `@barqjs/router`
+    pub router_source: Option<String>,
+    /// Every route pattern in the project, for `BARQ013` to check `<Link to>`
+    /// against. The compiler sees ONE module; the route set is a whole-project
+    /// fact, so it arrives as an option rather than being discovered.
+    ///
+    /// Absent (rather than empty) turns the check off, so a project without a
+    /// route table does not get a warning on every link it writes.
+    pub routes: Option<Vec<String>>,
     /// `"client"` or `"server"`. Picks which half of the program this module is
     /// being compiled for, which is a different question from `ssr`'s backend.
     /// @default `"server"`
@@ -263,6 +274,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "hydratable",
     "optimize",
     "passes",
+    "routerSource",
+    "routes",
 ];
 
 /// The message for an option this compiler does not have. Names the nearest
@@ -287,6 +300,8 @@ pub struct ResolvedOptions {
     pub module_source: String,
     pub server_source: String,
     pub start_source: String,
+    pub router_source: String,
+    pub routes: Option<Vec<String>>,
     pub env: Env,
     pub root: Option<String>,
     pub server_fns: bool,
@@ -314,6 +329,8 @@ impl Default for ResolvedOptions {
             module_source: DEFAULT_MODULE_SOURCE.to_string(),
             server_source: DEFAULT_SERVER_SOURCE.to_string(),
             start_source: DEFAULT_START_SOURCE.to_string(),
+            router_source: DEFAULT_ROUTER_SOURCE.to_string(),
+            routes: None,
             env: Env::Server,
             root: None,
             server_fns: false,
@@ -371,6 +388,8 @@ impl TransformOptions {
             module_source: self.module_source.unwrap_or_else(|| DEFAULT_MODULE_SOURCE.to_string()),
             server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
             start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),
+            router_source: self.router_source.unwrap_or_else(|| DEFAULT_ROUTER_SOURCE.to_string()),
+            routes: self.routes,
             env: self.env.as_deref().and_then(Env::parse).unwrap_or(Env::Server),
             root: self.root,
             server_fns: self.server_fns.unwrap_or(false),

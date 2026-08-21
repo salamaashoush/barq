@@ -98,6 +98,25 @@ export interface BarqCompilerOptions {
   onServerFns?: (id: string, artifact: string) => void;
 
   /**
+   * Module source for `Link` and `NavLink`, for BARQ013.
+   * @default "@barqjs/router"
+   */
+  routerSource?: string;
+
+  /**
+   * Every route pattern in the project, which is what BARQ013 checks a
+   * `<Link to>` against.
+   *
+   * Absent turns the check off: the compiler sees one module and the route set
+   * is a whole-project fact, so a project with a hand-written table and no
+   * build integration must never be warned about every link it writes.
+   * `@barqjs/router/vite` reports it from the same scan it built the table
+   * from — a check against a different scan is a check against a different
+   * project.
+   */
+  routes?: readonly string[];
+
+  /**
    * Development mode: compile-time diagnostics about runtime behaviour
    * (BARQ004, BARQ006, BARQ007) plus the dev-mode template labels. Derived from
    * Vite's own mode when left unset.
@@ -203,6 +222,8 @@ export type BarqOptimisation =
   | "flow";
 
 interface NativeTransformOptions {
+  routerSource?: string;
+  routes?: readonly string[];
   moduleSource?: string;
   serverSource?: string;
   startSource?: string;
@@ -445,6 +466,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           moduleSource: compilerOptions.moduleSource,
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,
+          routerSource: compilerOptions.routerSource,
+          routes: compilerOptions.routes,
           serverFns: compilerOptions.serverFns,
           // Derived from the same argument that already decides the backend,
           // because it is the same fact: the client transform is the client
