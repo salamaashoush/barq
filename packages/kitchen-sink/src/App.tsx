@@ -8,18 +8,15 @@ import {
   globalCss,
 } from "./styles";
 import {
+  type AnyAnyRouteDefinition,
+  type Guard,
   NavLink,
-  type NavigationGuard,
-  type RouteDefinition,
   Router,
   route,
-  setRouterDebugMode,
-  useIsLoading,
   useLocation,
-} from "@barqjs/extra";
+} from "@barqjs/router";
 
 // Enable router debug mode
-setRouterDebugMode(true);
 
 import { AsyncDemo } from "./demos/AsyncDemo";
 import { ComponentsDemo } from "./demos/ComponentsDemo";
@@ -44,7 +41,7 @@ const sections = [
 ] as const;
 
 // Navigation guard - logs all navigations
-const logGuard: NavigationGuard = (ctx) => {
+const logGuard: Guard = (ctx) => {
   console.log(`[Router] Navigation: ${ctx.from.pathname} → ${ctx.to.pathname}`);
   return true;
 };
@@ -59,7 +56,7 @@ const testLoader = async () => {
 };
 
 // Build routes from sections
-const routes: RouteDefinition[] = [
+const routes: AnyRouteDefinition[] = [
   route({
     path: "/",
     component: Layout,
@@ -74,7 +71,7 @@ const routes: RouteDefinition[] = [
           loader: section.id === "store" || section.id === "query" ? testLoader : undefined,
         }),
       ),
-    ] as RouteDefinition[],
+    ] as AnyRouteDefinition[],
   }),
 ];
 
@@ -118,11 +115,14 @@ globalCss`
 `;
 
 // Global Loading Indicator
+//
+// There is no router-wide `useIsLoading()` any more, and deliberately: loading
+// is a `Loading` boundary per route depth, so "is anything loading" is a
+// question about the boundary tree rather than a counter the router keeps. A
+// route that wants a skeleton declares `pending`.
 function GlobalLoadingIndicator() {
-  const isLoading = useIsLoading();
-
   return (
-    <Show when={isLoading()}>
+    <Show when={false}>
       <div class={globalLoadingStyle}>
         <div class={loadingBarStyle} />
       </div>
@@ -158,7 +158,7 @@ export function Layout(props: { children: unknown }) {
 
         <For each={sections}>
           {(section) => (
-            <NavLink href={`/${section.id}`} class={navItemStyle} activeClass={navItemActiveStyle}>
+            <NavLink to={`/${section.id}`} class={navItemStyle} activeClass={navItemActiveStyle}>
               {section.label}
             </NavLink>
           )}
@@ -179,25 +179,9 @@ export function Layout(props: { children: unknown }) {
 export function App() {
   return (
     <Router
-      config={{
-        routes,
-        // Disable loader caching to demo loading bar
-        cache: { ttl: 0 },
-        // View transitions for smooth page changes
-        viewTransitions: {
-          enabled: true,
-          onTransitionStart: () => console.log("[Router] View transition starting"),
-          onTransitionEnd: () => console.log("[Router] View transition complete"),
-        },
-        // Navigation guards
-        beforeEach: [logGuard],
-        afterEach: [(ctx) => console.log(`[Router] Navigation complete: ${ctx.to.pathname}`)],
-        // Scroll restoration
-        scrollRestoration: {
-          enabled: true,
-          behavior: "smooth",
-        },
-      }}
+      routes={routes}
+      beforeEach={[logGuard]}
+      afterEach={[(location) => console.log(`[Router] Navigation complete: ${location.pathname}`)]}
     />
   );
 }

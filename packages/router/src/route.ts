@@ -8,19 +8,49 @@
  * emitted calls had nothing to land in.
  */
 
-import type { Block, Component, Scope } from "@barqjs/core";
+import type { Child, Component, Scope } from "@barqjs/core";
 
 import type { FlatRoute } from "./matcher.ts";
 import { type Segment, joinPattern, normalize, parsePattern } from "./path.ts";
 
-/** What a route component is handed. `children` is a Block, so a layout builds the next route in its own scope. */
+/** What a route component is handed. */
 export interface RouteProps<Data = unknown, Params = Record<string, string>> {
   readonly params: () => Params;
   readonly data: () => Data;
-  readonly children: Block<unknown>;
+  /**
+   * The next route down, as a BLOCK — so a layout constructs it inside its own
+   * scope, and a provider or boundary the layout installs is visible to the
+   * route it wraps. That is the thing an outlet cannot do.
+   *
+   * Typed as `Child` rather than `Block<unknown>` because `{props.children}` is
+   * the entire layout pattern and has to typecheck. The runtime value IS a
+   * Block; the compiler lowers that hole to `insert($s, el, props.children)`,
+   * and `insert` calls a Block with the scope it is holding. `Child` does not
+   * admit a Block — a Block declares a parameter and a `Cell` is
+   * arity-TOLERANT, which is the whole asymmetry of §3.0's rules 1 and 2 — so
+   * the two cannot be reconciled in the type. `packages/extra/src/router.ts`
+   * declared it the same way.
+   */
+  readonly children: Child;
 }
 
-export type RouteComponent<Data = unknown, Params = Record<string, string>> = Component<
+/**
+ * Declared PROPS-FIRST, which is not the ABI.
+ *
+ * The real calling convention is `(scope, props)` and the router invokes it that
+ * way. But C1 rewrites the DECLARATION of every function containing JSX to that
+ * signature, so an authored route component is written props-first and has to
+ * typecheck props-first — `packages/extra/src/router.ts` declared it the same
+ * way for the same reason. The router casts at the call site, where the cast is
+ * one line and is commented, rather than making every application write a scope
+ * parameter it never uses.
+ */
+export type RouteComponent<Data = unknown, Params = Record<string, string>> = (
+  props: RouteProps<Data, Params>,
+) => unknown;
+
+/** The invoked form: what the router actually calls. */
+export type InvokedRouteComponent<Data = unknown, Params = Record<string, string>> = Component<
   RouteProps<Data, Params>
 >;
 
@@ -68,17 +98,44 @@ export interface RouteDefinition<Data = unknown, Params = Record<string, string>
    * so declaring it on a layout covers everything under it.
    */
   readonly middleware?: readonly import("@barqjs/start").Middleware[];
+  /**
+   * Runs before this route commits, outermost first, after the global chain.
+   *
+   * UX, not authorization — it runs on the client on every navigation after the
+   * first, and the server function a loader calls is reachable without it. The
+   * check that IS a boundary is `middleware`, above, verified at build time.
+   */
+  readonly beforeEnter?: import("./router.ts").Guard;
   /** Shown while this route's loader is unsettled. Without one the boundary shows nothing. */
   readonly pending?: RouteComponent<never, never>;
   readonly loader?: Loader<Data, Params>;
-  readonly children?: readonly RouteDefinition<never, never>[];
+  readonly children?: readonly AnyRouteDefinition[];
 }
+
+/**
+ * A route definition in a COLLECTION, with its data and params erased.
+ *
+ * `any` and not `never` or `unknown`, and the reason is variance rather than
+ * laziness. `RouteProps<Data>` carries `data: () => Data`, and a component
+ * takes those props as a PARAMETER — contravariant under
+ * `strictFunctionTypes` — so `RouteDefinition<UsersData>` is assignable to
+ * neither `RouteDefinition<unknown>` nor `RouteDefinition<never>`, in either
+ * direction. A table of differently-typed routes is exactly what a route table
+ * is, so the element type has to be the one that admits them. TanStack reaches
+ * the same conclusion with its own `AnyRoute`.
+ *
+ * The precision this gives up is recovered where it is wanted: the generated
+ * `.d.ts` types each route id individually, which is what `<Link to>` and
+ * `loaderData` read.
+ */
+// oxlint-disable-next-line typescript/no-explicit-any
+export type AnyRouteDefinition = RouteDefinition<any, any>;
 
 /** A route after flattening: its own definition plus everything the matcher needs. */
 export interface Route {
   readonly id: string;
   readonly fullPath: string;
-  readonly definition: RouteDefinition<never, never>;
+  readonly definition: AnyRouteDefinition;
 }
 
 /** Identity, plus a place to hang inference later. */
@@ -95,12 +152,12 @@ export function route<Data, Params>(
  * children is reachable through them and never on its own. A layout that should
  * also be addressable declares an index child, which is `path: ""`.
  */
-export function flattenRoutes(table: readonly RouteDefinition<never, never>[]): FlatRoute<Route>[] {
+export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<Route>[] {
   const out: FlatRoute<Route>[] = [];
   const seen = new Set<string>();
 
   const visit = (
-    definitions: readonly RouteDefinition<never, never>[],
+    definitions: readonly AnyRouteDefinition[],
     parentPath: string,
     parentChain: readonly Route[],
   ): void => {

@@ -46,3 +46,32 @@ export function useInvalidate(): () => void {
   const state = useRouter();
   return () => state.invalidate();
 }
+
+/**
+ * The query string, and a setter that navigates.
+ *
+ * The setter REPLACES the whole query rather than merging, which is what makes
+ * "clear the filters" one call; pass a function to merge from the current one.
+ * A value of `""` or `undefined` drops its key instead of writing `?q=`.
+ */
+export function useSearchParams(): [
+  Cell<URLSearchParams>,
+  (next: Record<string, string> | ((current: URLSearchParams) => Record<string, string>)) => void,
+] {
+  const state = useRouter();
+  const set = (
+    next: Record<string, string> | ((current: URLSearchParams) => Record<string, string>),
+  ): void => {
+    const current = state.search();
+    const record = typeof next === "function" ? next(current) : next;
+    const kept = new URLSearchParams();
+    for (const [key, value] of Object.entries(record)) {
+      if (value !== "" && value !== undefined) kept.set(key, value);
+    }
+    const query = kept.toString();
+    const { pathname, hash } = state.location();
+    // `replace`, because a filter is not a place you navigate BACK through.
+    void state.navigate(`${pathname}${query === "" ? "" : `?${query}`}${hash}`, { replace: true });
+  };
+  return [state.search, set];
+}

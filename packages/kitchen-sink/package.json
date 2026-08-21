@@ -13,7 +13,8 @@
     "@barqjs/core": "workspace:*",
     "@barqjs/extra": "workspace:*",
     "@tanstack/query-core": "^5.101.4",
-    "goober": "^2.1.19"
+    "goober": "^2.1.19",
+    "@barqjs/router": "workspace:*"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",

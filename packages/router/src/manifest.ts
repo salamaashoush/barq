@@ -39,7 +39,7 @@
 
 import { type Middleware, middlewareOf } from "@barqjs/start";
 
-import type { Route, RouteDefinition } from "./route.ts";
+import type { AnyRouteDefinition, Route } from "./route.ts";
 import { flattenRoutes } from "./route.ts";
 
 /** Which server-function ids each route can reach, from the client module graph. */
@@ -53,7 +53,7 @@ export interface Violation {
 }
 
 export interface VerifyOptions {
-  readonly routes: readonly RouteDefinition<never, never>[];
+  readonly routes: readonly AnyRouteDefinition[];
   /** route id -> server-fn ids reachable from that route's module graph. */
   readonly reachability: Reachability;
   /** id -> the mounted function, normally `REGISTRY.get`. */

@@ -18,7 +18,7 @@ import { type Cell, computed, runWithOwner, signal, untrack } from "@barqjs/core
 
 import { type History, type Location, href, memoryHistory, parseLocation } from "./history.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
-import { type Route, type RouteDefinition, flattenRoutes } from "./route.ts";
+import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
 import { leavesTheApp, resolvePath } from "./path.ts";
 
 /** How many resolved loader cells to keep. Beyond this the oldest go. */
@@ -46,10 +46,10 @@ export type Guard = (context: {
 }) => boolean | string | Promise<boolean | string>;
 
 export interface RouterConfig {
-  readonly routes: readonly RouteDefinition<never, never>[];
+  readonly routes: readonly AnyRouteDefinition[];
   readonly history?: History;
   /** Rendered at depth 0 when nothing matched. */
-  readonly notFound?: RouteDefinition<never, never>["component"];
+  readonly notFound?: AnyRouteDefinition["component"];
   readonly beforeEach?: readonly Guard[];
   readonly afterEach?: readonly ((location: Location) => void)[];
   readonly cacheSize?: number;
@@ -169,12 +169,20 @@ export function createRouter(config: RouterConfig): RouterState {
   });
 
   const runGuards = async (to: Location): Promise<boolean | string> => {
-    const guards = config.beforeEach;
-    if (guards === undefined || guards.length === 0) return true;
     const from = untrack(location);
     const candidate = matcher.match(to.pathname);
+    const context = { from, to, params: candidate?.params ?? {} };
+
+    // Global first, then the matched chain outermost-in — so a layout's guard
+    // decides before the route it wraps gets a say.
+    const guards: Guard[] = [...(config.beforeEach ?? [])];
+    for (const route of candidate?.route.chain ?? []) {
+      const own = route.definition.beforeEnter;
+      if (own !== undefined) guards.push(own);
+    }
+
     for (const guard of guards) {
-      const verdict = await guard({ from, to, params: candidate?.params ?? {} });
+      const verdict = await guard(context);
       if (verdict !== true && verdict !== undefined) return verdict;
     }
     return true;
@@ -188,11 +196,17 @@ export function createRouter(config: RouterConfig): RouterState {
       if (typeof window !== "undefined") window.location.assign(to);
       return;
     }
-    const resolved = resolvePath(to, untrack(location).pathname);
-    const target = parseLocation(
-      resolved + (to.includes("?") ? to.slice(to.indexOf("?")) : ""),
-      options?.state ?? null,
+    // Split the query and hash off BEFORE resolving. `resolvePath` works on
+    // segments and treats `?role=user` as one, so resolving the whole string
+    // and then re-appending the query wrote it twice — `/?role=user?role=user`.
+    const cut = to.search(/[?#]/);
+    const pathPart = cut === -1 ? to : to.slice(0, cut);
+    const rest = cut === -1 ? "" : to.slice(cut);
+    const resolved = resolvePath(
+      pathPart === "" ? untrack(location).pathname : pathPart,
+      untrack(location).pathname,
     );
+    const target = parseLocation(resolved + rest, options?.state ?? null);
 
     const verdict = await runGuards(target);
     if (verdict === false) return;

@@ -100,6 +100,7 @@
       "dependencies": {
         "@barqjs/core": "workspace:*",
         "@barqjs/extra": "workspace:*",
+        "@barqjs/router": "workspace:*",
         "@tanstack/query-core": "^5.101.4",
         "goober": "^2.1.19",
       },
@@ -116,13 +117,24 @@
       "devDependencies": {
         "@barqjs/compiler-rs": "workspace:*",
         "@barqjs/core": "workspace:*",
+        "@barqjs/server": "workspace:*",
+        "@barqjs/start": "workspace:*",
         "@happy-dom/global-registrator": "^20.11.6",
         "@types/bun": "^1.4.0",
         "typescript": "^7.0.2",
+        "vite": "^8.2.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/server": ">=0.1.0",
+        "@barqjs/start": ">=0.1.0",
+        "vite": ">=8.0.0",
       },
+      "optionalPeers": [
+        "@barqjs/server",
+        "@barqjs/start",
+        "vite",
+      ],
     },
     "packages/server": {
       "name": "@barqjs/server",

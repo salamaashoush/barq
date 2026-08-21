@@ -3,7 +3,7 @@
  * Tests: Router, params, search params, loaders, layouts, navigation, guards
  *
  * Note: View transitions and scroll restoration work with the main app Router.
- * This demo uses MemoryRouter for isolated nested route demos.
+ * This demo drives a `memoryHistory`, so its navigation is isolated from the page.
  */
 
 import { For, Show, signal } from "@barqjs/core";
@@ -13,17 +13,17 @@ import {
 } from "../styles";
 import type { Cell } from "@barqjs/core";
 import {
+  type Guard,
   Link,
-  type LoaderContext,
-  MemoryRouter,
   NavLink,
-  type NavigationGuard,
   type RouteDefinition,
+  Router,
+  memoryHistory,
   route,
   useLocation,
   useNavigate,
   useSearchParams,
-} from "@barqjs/extra";
+} from "@barqjs/router";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 // Simulated data
@@ -52,7 +52,7 @@ let userRole = "admin";
 // ============================================================================
 
 // Auth guard - redirects to login if not authenticated
-const authGuard: NavigationGuard = async () => {
+const authGuard: Guard = async () => {
   if (!isAuthenticated) {
     return "/demo/dashboard/login";
   }
@@ -60,7 +60,7 @@ const authGuard: NavigationGuard = async () => {
 };
 
 // Admin guard - only allows admin users
-const adminGuard: NavigationGuard = async () => {
+const adminGuard: Guard = async () => {
   if (userRole !== "admin") {
     return "/demo/dashboard";
   }
@@ -99,16 +99,16 @@ export function DashboardLayout(props: { children: unknown }) {
   return (
     <div class={dashboardLayoutStyle}>
       <nav class={dashboardNavStyle}>
-        <NavLink href="/demo/dashboard" activeClass={activeNavStyle} exact>
+        <NavLink to="/demo/dashboard" activeClass={activeNavStyle} end>
           Overview
         </NavLink>
-        <NavLink href="/demo/dashboard/users" activeClass={activeNavStyle}>
+        <NavLink to="/demo/dashboard/users" activeClass={activeNavStyle}>
           Users
         </NavLink>
-        <NavLink href="/demo/dashboard/posts" activeClass={activeNavStyle}>
+        <NavLink to="/demo/dashboard/posts" activeClass={activeNavStyle}>
           Posts
         </NavLink>
-        <NavLink href="/demo/dashboard/admin" activeClass={activeNavStyle}>
+        <NavLink to="/demo/dashboard/admin" activeClass={activeNavStyle}>
           Admin
         </NavLink>
 
@@ -217,7 +217,7 @@ export function UsersList(props: { data: Cell<UsersData | undefined> }) {
         <For each={filteredUsers}>
           {(user) => (
             <li class={listItemStyle}>
-              <Link href={`/demo/dashboard/users/${user.id}`}>
+              <Link to={`/demo/dashboard/users/${user.id}`}>
                 <strong>{user.name}</strong>
                 <span class={tagStyle}>{user.role}</span>
               </Link>
@@ -247,7 +247,7 @@ export function UserDetail(props: { data: Cell<UserDetailData | undefined> }) {
       {(found) => (
         <div>
           <div class={breadcrumbStyle}>
-            <Link href="/demo/dashboard/users">Users</Link>
+            <Link to="/demo/dashboard/users">Users</Link>
             <span>/</span>
             <span>{found().name}</span>
           </div>
@@ -269,7 +269,7 @@ export function UserDetail(props: { data: Cell<UserDetailData | undefined> }) {
               <For each={userPosts}>
                 {(post) => (
                   <li class={listItemStyle}>
-                    <Link href={`/demo/dashboard/posts/${post.id}`}>{post.title}</Link>
+                    <Link to={`/demo/dashboard/posts/${post.id}`}>{post.title}</Link>
                   </li>
                 )}
               </For>
@@ -326,7 +326,7 @@ export function PostsList(props: { data: Cell<PostsData | undefined> }) {
         <For each={filteredPosts}>
           {(post) => (
             <li class={listItemStyle}>
-              <Link href={`/demo/dashboard/posts/${post.id}`}>
+              <Link to={`/demo/dashboard/posts/${post.id}`}>
                 <strong>{post.title}</strong>
                 <span class={categoryTagStyle}>{post.category}</span>
               </Link>
@@ -354,7 +354,7 @@ export function PostDetail(props: { data: Cell<PostDetailData | undefined> }) {
       {(found) => (
         <div>
           <div class={breadcrumbStyle}>
-            <Link href="/demo/dashboard/posts">Posts</Link>
+            <Link to="/demo/dashboard/posts">Posts</Link>
             <span>/</span>
             <span>{found().title}</span>
           </div>
@@ -368,7 +368,7 @@ export function PostDetail(props: { data: Cell<PostDetailData | undefined> }) {
             <p>
               <strong>Author:</strong>{" "}
               <Show when={author} fallback={<span>Unknown</span>}>
-                {(auth) => <Link href={`/demo/dashboard/users/${auth().id}`}>{auth().name}</Link>}
+                {(auth) => <Link to={`/demo/dashboard/users/${auth().id}`}>{auth().name}</Link>}
               </Show>
             </p>
           </div>
@@ -404,7 +404,7 @@ export function NotFound() {
     <div class={notFoundStyle}>
       <h2>404 - Page Not Found</h2>
       <p>The path "{() => location().pathname}" does not exist.</p>
-      <Link href="/demo/dashboard">Go to Dashboard</Link>
+      <Link to="/demo/dashboard">Go to Dashboard</Link>
     </div>
   );
 }
@@ -418,7 +418,7 @@ async function usersLoader() {
   return { users, total: users.length };
 }
 
-async function userDetailLoader(ctx: LoaderContext) {
+async function userDetailLoader(ctx: { params: Record<string, string>; search: URLSearchParams }) {
   await delay(100);
   const user = users.find((u) => u.id === ctx.params.id);
   const userPosts = posts.filter((p) => p.author === ctx.params.id);
@@ -430,7 +430,7 @@ async function postsLoader() {
   return { posts, total: posts.length };
 }
 
-async function postDetailLoader(ctx: LoaderContext) {
+async function postDetailLoader(ctx: { params: Record<string, string>; search: URLSearchParams }) {
   await delay(100);
   const post = posts.find((p) => p.id === ctx.params.id);
   const author = post ? users.find((u) => u.id === post.author) : undefined;
@@ -453,9 +453,9 @@ const routes: RouteDefinition[] = [
     children: [
       route({ path: "/", component: DashboardOverview }),
       route({ path: "/users", component: UsersList, loader: usersLoader }),
-      route({ path: "/users/:id", component: UserDetail, loader: userDetailLoader }),
+      route({ path: "/users/$id", component: UserDetail, loader: userDetailLoader }),
       route({ path: "/posts", component: PostsList, loader: postsLoader }),
-      route({ path: "/posts/:id", component: PostDetail, loader: postDetailLoader }),
+      route({ path: "/posts/$id", component: PostDetail, loader: postDetailLoader }),
       route({ path: "/admin", component: AdminPage, beforeEnter: adminGuard }),
     ] as RouteDefinition[],
   }),
@@ -506,20 +506,17 @@ export function RoutingDemo() {
         </div>
       </DemoCard>
 
-      <DemoCard title="Nested Routes Demo (MemoryRouter)">
+      <DemoCard title="Nested Routes Demo (memory history)">
         <p class={introStyle}>
           This isolated demo shows nested routes, params, search params, loaders, and guards. Use
           the auth/role toggles to test guard behavior.
         </p>
 
         <div class={routerContainerStyle}>
-          <MemoryRouter
-            initialPath="/demo/dashboard"
-            config={{
-              routes,
-              fallback: NotFound,
-              cache: { ttl: 5000, maxSize: 20 },
-            }}
+          <Router
+            history={memoryHistory({ initial: ["/demo/dashboard"] })}
+            routes={routes}
+            notFound={NotFound}
           />
         </div>
       </DemoCard>

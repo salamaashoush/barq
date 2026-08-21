@@ -45,6 +45,8 @@ export {
 
 export {
   type Loader,
+  type AnyRouteDefinition,
+  type InvokedRouteComponent,
   type Route,
   type RouteComponent,
   type RouteDefinition,
@@ -76,6 +78,7 @@ export {
   useNavigate,
   useParams,
   useSearch,
+  useSearchParams,
 } from "./hooks.ts";
 
 export {

@@ -1,5 +1,13 @@
 /**
- * barq-extra — the router, the query adapter, and utility hooks.
+ * barq-extra — the query adapter and utility hooks.
+ *
+ * The router that used to live here is gone; `@barqjs/router` replaces it. It
+ * was the no-build option and it is not missed: the new one is a plain code-based
+ * table that works with no build step either, and keeping a second
+ * implementation of matching, history and navigation meant two answers to every
+ * question. Its behaviour survives as the new package's test corpus and its
+ * matcher survives as `packages/benchmark/src/legacy-matcher.ts`, the comparand
+ * the measurement that replaced it is against.
  *
  * CSS-in-JS is GONE from this package. `CODESIGN.md` §4.1 indicts the goober
  * wrapper for re-implementing element creation a fifth time in its JSX pragma,
@@ -27,64 +35,6 @@ export {
   useInterval,
   useTimeout,
 } from "./hooks.ts";
-
-// Router
-export type {
-  Location,
-  Params,
-  SearchParams,
-  LoaderContext,
-  Loader,
-  RouteDefinition,
-  RouteComponentProps,
-  RouteComponent,
-  RouterConfig,
-  NavigateOptions,
-  ExtractRouteParams,
-  PathParams,
-  NavigationGuard,
-  NavigationGuardContext,
-  CacheConfig,
-  ScrollRestorationConfig,
-  ViewTransitionConfig,
-  PrefetchConfig,
-  ErrorBoundaryProps,
-  ErrorComponent,
-  LinkProps,
-  NavLinkProps,
-  RouterProps,
-  MemoryRouterProps,
-  RedirectProps,
-  MatchedRoute,
-} from "./router.ts";
-export {
-  // Components
-  Router,
-  MemoryRouter,
-  Link,
-  NavLink,
-  Redirect,
-  // Hooks — the only way to reach a router. There is no module-global
-  // `navigate()` and no `prefetch()` beside it: a router is reached through the
-  // scope chain that provided it, which is what makes two on one page possible.
-  useLocation,
-  useParams,
-  useSearchParams,
-  useNavigate,
-  useIsLoading,
-  useMatchedRoutes,
-  // Route builders
-  route,
-  defineRoute,
-  defineRoutes,
-  // Path utilities
-  resolvePath,
-  compilePath,
-  matchPath,
-  matchRoutes,
-  clearPathCache,
-  setRouterDebugMode,
-} from "./router.ts";
 
 // TanStack Query adapter
 export { QueryClient } from "@tanstack/query-core";

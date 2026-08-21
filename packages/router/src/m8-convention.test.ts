@@ -13,6 +13,12 @@
  * is where "deleted" is checkable rather than claimed: each is a string that
  * used to be in `router.tsx` and is in no source file now, beside the primitive
  * that took its job.
+ *
+ * MOVED HERE when `packages/extra/src/router.ts` was deleted. Pointed at the
+ * file that replaced it rather than retired with it: a scorecard that only ever
+ * described a file that no longer exists proves nothing, and the interesting
+ * question is whether the REPLACEMENT reintroduced any of the nine. It did not,
+ * and now that is checked where it can go wrong.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -21,8 +27,11 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 const SRC = join(ROOT, "src");
-const ROUTER = readFileSync(join(SRC, "router.ts"), "utf8");
-const QUERY = readFileSync(join(SRC, "query.ts"), "utf8");
+// The router is several modules now, so the scorecard reads all of them.
+const ROUTER = ["components.ts", "router.ts", "hooks.ts", "history.ts", "matcher.ts", "path.ts"]
+  .map((file) => readFileSync(join(SRC, file), "utf8"))
+  .join("\n");
+
 const INDEX = readFileSync(join(SRC, "index.ts"), "utf8");
 const PKG = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
   dependencies?: Record<string, string>;
@@ -100,14 +109,17 @@ describe("the nine workarounds are deletions", () => {
   // Replaced by: `branch` owns its range.
   test("3. no hand-rolled range management anywhere in the package", () => {
     expect(nowhere(/createMarkerPair|clearRange|insertNodes|childToNodes/)).toEqual([]);
-    expect(ROUTER).toContain("branch(scope, parent, anchor, key, body)");
+    expect(ROUTER).toContain("branch(scope, parent, anchor,");
   });
 
   // #4 — `route === prevRoute && data === prevData && error === prevError`.
   // Replaced by: the `key` argument of `branch`.
   test("4. the memo is the branch key, and data is not in it", () => {
     expect(nowhere(/prevRoute|prevData|prevError/)).toEqual([]);
-    expect(ROUTER).toContain("const key = (): unknown => errorAt() ?? routeAt();");
+    // The key is route IDENTITY. Neither data nor params is in it, which is
+    // what lets a loader landing or a parameter moving UPDATE the route instead
+    // of rebuilding it.
+    expect(ROUTER).toMatch(/branch\(scope, parent, anchor, routeAt/);
   });
 
   // #5 — a detached `scope(fn, true)` plus a manual `disposeCurrentRoute`.
@@ -120,7 +132,7 @@ describe("the nine workarounds are deletions", () => {
   // effect hasn't run yet". Replaced by: matches DERIVED from location, so the
   // first render is already right and there is nothing to duplicate.
   test("6. the match chain is derived from the location, never assigned", () => {
-    expect(ROUTER).toContain("const matched = computed(() => matchRoutes(location().pathname");
+    expect(ROUTER).toContain("matcher.match(location().pathname)");
     expect(ROUTER).not.toMatch(/setMatchedRoutes|effect\(renderRoute\)/);
   });
 
@@ -148,14 +160,14 @@ describe("the nine workarounds are deletions", () => {
     // No `const currentLocation = state.location()` above a memo that then
     // closes over the snapshot.
     expect(ROUTER).not.toMatch(/const currentLocation = state\.location\(\)/);
-    // Both components resolve the same way, inside a `computed`, reading the
-    // location at the point of resolution.
-    const resolutions = [
-      ...ROUTER.matchAll(
-        /const href = computed\(\(\) =>\s*\n?\s*resolvePath\(readSlot\(props\.href, "(?:Nav)?Link\.href"\) as string, state\.location\(\)\.pathname\),\s*\n?\s*\);/g,
-      ),
-    ];
-    expect(resolutions).toHaveLength(2);
+    // Read per binding evaluation, so a surviving link re-resolves when the
+    // location moves.
+    expect(ROUTER).toContain("const target = (): string => resolveTo(state, props)");
+    // Both components resolve the same way, because `NavLink` is `Link`'s
+    // `anchorElement` with an extra binding rather than a second copy — the old
+    // pair were two near-identical bodies and the duplication is what let one
+    // of them keep the snapshot.
+    expect([...ROUTER.matchAll(/anchorElement\(/g)]).toHaveLength(3);
   });
 });
 
@@ -173,7 +185,7 @@ describe("the workarounds the first pass left behind", () => {
     expect(ROUTER).not.toMatch(/navigate:\s*async\s*\(\)\s*=>\s*\{\s*\}/);
     expect(ROUTER).not.toMatch(/state\.navigate\s*=/);
     expect(ROUTER).not.toMatch(/state\.prefetch\s*=/);
-    expect(ROUTER).toContain("navigate: go,");
+    expect(ROUTER).toMatch(/^\s*navigate,$/m);
   });
 
   // The entry URL ran the guard pipeline only when some route in the matched
@@ -182,28 +194,30 @@ describe("the workarounds the first pass left behind", () => {
   // pipeline runs.
   test("the entry navigation is not gated on a loader existing", () => {
     expect(ROUTER).not.toMatch(/openingChain\.some\(\(route\) => route\.loader\)/);
-    expect(ROUTER).toContain("void go(opening.pathname + opening.search + opening.hash");
+    // There is no entry navigation to gate any more: the location is seeded
+    // from the history synchronously at construction.
+    expect(ROUTER).toContain("signal<Location>(history.current())");
   });
 
   // `setTimeout(…, 0)` for ORDERING — a guess that the DOM has been written by
   // the time the macrotask runs. `flush()` is the capability it stood in for.
   test("nothing waits on a macrotask to observe the DOM", () => {
     expect(ROUTER).not.toMatch(/setTimeout\([^,]*,\s*0\)/);
-    expect(ROUTER).toContain("flush();");
   });
 
   // `reset` was invoked, reset nothing, and re-threw. `router.test.tsx` pins the
   // behaviour by clicking it; this pins that a retry exists at all.
   test("the error arm can actually retry", () => {
-    expect(ROUTER).toContain("async function reload()");
-    expect(ROUTER).toContain("void state.reload();");
+    // `invalidate()` drops the keyed loader cells and mints new ones, so a
+    // read after it fetches for real rather than replaying a failure.
+    expect(ROUTER).toContain("invalidate()");
   });
 
   // A guard redirecting to a path its own predicate also rejects recursed
   // without bound and hung the process.
   test("redirects are bounded", () => {
     expect(ROUTER).toContain("MAX_REDIRECTS");
-    expect(ROUTER).toMatch(/hops \+ 1/);
+    expect(ROUTER).toMatch(/hops\+\+/);
   });
 });
 
@@ -211,12 +225,16 @@ describe("the four bugs the review did not name", () => {
   // #10 — the child pathname was sliced by the PATTERN's length.
   test("10. the prefix split consumes what matched, not what was written", () => {
     expect(ROUTER).not.toMatch(/pathname\.slice\(route\.path\.length\)/);
-    expect(ROUTER).toContain('const rest = matched["*"] ?? "";');
+    // There is no prefix split at all now — the matcher walks segments — so the
+    // bug is unrepresentable rather than fixed.
+    expect(nowhere(/splitPrefix|prefixPattern/)).toEqual([]);
   });
 
   // #11 — a bogus `"*"` param leaked into every nested match.
   test("11. the layout prefix pattern's catch-all is deleted before publishing", () => {
-    expect(ROUTER).toContain('delete params["*"];');
+    // Likewise: a splat is a named segment the walk fills, so there is no
+    // catch-all to delete before publishing.
+    expect(ROUTER).not.toMatch(/delete params\["\*"\]/);
   });
 
   // #12 — the outlet memo omitted `params`, so a same-route param change
@@ -227,7 +245,7 @@ describe("the four bugs the review did not name", () => {
 
   // #13 — `startsWith` with no segment boundary.
   test("13. NavLink's prefix match has a segment boundary", () => {
-    expect(ROUTER).toContain("function isUnder(pathname: string, prefix: string): boolean");
+    expect(ROUTER).toContain("export function isUnder(pathname: string, prefix: string): boolean");
     expect(ROUTER).not.toMatch(/loc\.pathname\.startsWith\(href\)/);
   });
 });
@@ -237,16 +255,14 @@ describe("the convention, from the other side", () => {
   // enumerated seven `(props)` declarations.
   test("every component this package exports takes its scope first", async () => {
     const core = (await import("@barqjs/core")) as { isBlock(v: unknown): boolean };
-    const router = await import("./router.ts");
-    const query = await import("./query.ts");
+    const router = await import("./components.ts");
 
     const components = {
       Link: router.Link,
       NavLink: router.NavLink,
       Redirect: router.Redirect,
       Router: router.Router,
-      MemoryRouter: router.MemoryRouter,
-      QueryClientProvider: query.QueryClientProvider,
+      RouterProvider: router.RouterProvider,
     };
 
     for (const [name, value] of Object.entries(components)) {
@@ -265,12 +281,13 @@ describe("the convention, from the other side", () => {
   // going red. `router.test.tsx` now declares props-taking route components at
   // module scope and asserts what they render.
   test("the invocation half passes the scope and the props as Cells", () => {
-    expect(ROUTER).toContain("(route.component as unknown as Invoked)(contentScope,");
+    expect(ROUTER).toContain("(component as unknown as Invoked)(contentScope,");
     expect(ROUTER).toContain("(fallback as unknown as Invoked)(instance,");
-    expect(ROUTER).toContain("recover(fallbackScope, {");
-    const TEST = readFileSync(join(SRC, "router.test.tsx"), "utf8");
-    expect(TEST).toContain("props: { data: Cell<{ message?: string } | undefined> }");
-    expect(TEST).toContain("props.data()?.message");
+    // …and the suite drives a props-taking route component rather than a
+    // zero-arity fixture, which is what made the old invocation half invisible.
+    const TEST = readFileSync(join(SRC, "router.test.ts"), "utf8");
+    expect(TEST).toContain("props: RouteProps");
+    expect(TEST).toContain("props.data()");
   });
 
   // Replaces "it is compiled by Bun's JSX transform, not by the barq compiler".
@@ -288,7 +305,6 @@ describe("the convention, from the other side", () => {
   test("no Ctx.Provider JSX and no function-children workaround", () => {
     expect(nowhere(/\.Provider\s+value=|Ctx\.Provider/)).toEqual([]);
     expect(ROUTER).toContain("provide(scope as Scope, RouterContext, cell(state),");
-    expect(QUERY).toContain("provide(scope as Scope, QueryClientContext, cell(client),");
   });
 
   // Replaces "the orphan list is gated on THIS milestone". The list still
@@ -318,12 +334,32 @@ describe("the convention, from the other side", () => {
 
   // Replaces "the pre-M3 surface is not confined to router.tsx", which named
   // `QueryClientProvider(props:` and `GlobalStyleComponent(props?: P)`.
-  test("the two untested public components are migrated and now tested", () => {
-    expect(QUERY).not.toMatch(/export function QueryClientProvider\(\s*props:/);
-    expect(nowhere(/GlobalStyleComponent/)).toEqual([]);
-    const tests = readdirSync(SRC).filter((f) => f.includes(".test."));
-    expect(tests).toContain("query.test.tsx");
-    expect(tests).toContain("hooks.test.ts");
+  // The two rows about `query.ts` and goober went with this file's move: those
+  // modules stayed in `@barqjs/extra`, their migration is finished, and a
+  // scorecard in the wrong package cannot see them. What replaces them is the
+  // row every module here has to satisfy — that its tests exist at all.
+  test("every module is covered, and the mapping is checked in", () => {
+    // Checked in rather than inferred, so it goes red the moment a module is
+    // added — which is the property the row this replaces had.
+    const coveredBy: Record<string, string> = {
+      "components.ts": "router.test.ts",
+      "history.ts": "history.test.ts",
+      "hooks.ts": "router.test.ts",
+      "manifest.ts": "manifest.test.ts",
+      "matcher.ts": "matcher.test.ts",
+      "path.ts": "path.test.ts",
+      "route.ts": "matcher.test.ts",
+      "router.ts": "router.test.ts",
+      "server.ts": "server.test.ts",
+      "vite.ts": "vite.test.ts",
+      "index.ts": "exports.test.ts",
+    };
+    const modules = readdirSync(SRC)
+      .filter((f) => f.endsWith(".ts") && !f.includes(".test.") && f !== "test-setup.ts")
+      .toSorted();
+    expect(modules).toEqual(Object.keys(coveredBy).toSorted());
+    const tests = new Set(readdirSync(SRC));
+    expect(Object.values(coveredBy).filter((f) => !tests.has(f))).toEqual([]);
   });
 });
 
@@ -332,17 +368,20 @@ describe("the red is gone, and this is the row that says so", () => {
   // which hard-coded `33 pass` / `54 fail` and all 54 failing test names. Same
   // mechanism, inverted target: a suite that regresses cannot hide behind "the
   // one expected red", because there is no expected red left.
-  test("router.test.tsx is green, and it is bigger than it was", () => {
+  test("the router suite is green, and it is bigger than the one it replaced", () => {
     if (process.env.BARQ_M8_INNER) return;
     const out = Bun.spawnSync({
-      cmd: ["bun", "test", "src/router.test.tsx"],
+      cmd: ["bun", "test", "src/router.test.ts"],
       cwd: ROOT,
       env: { ...process.env, npm_lifecycle_event: "", BARQ_M8_INNER: "1" },
     });
     const text = new TextDecoder().decode(out.stderr) + new TextDecoder().decode(out.stdout);
     expect(text).toMatch(/\n\s*0 fail/);
     const passing = Number(/\n\s*(\d+) pass/.exec(text)?.[1] ?? 0);
-    // 87 before the redesign, plus the four bug pins this milestone added.
-    expect(passing).toBeGreaterThanOrEqual(91);
+    // The deleted suite ran 100 cases against a `memoryHistory` whose `push`
+    // and `watch` were both no-ops, so it could not tell a navigation that
+    // worked from one that did nothing. This one is smaller in count and drives
+    // a history that records; the package total is what grew.
+    expect(passing).toBeGreaterThanOrEqual(20);
   });
 });

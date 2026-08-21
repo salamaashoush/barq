@@ -12,8 +12,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { Link, NavLink, Router } from "./components.ts";
 import { memoryHistory } from "./history.ts";
-import { useLocation, useNavigate, useParams } from "./hooks.ts";
-import type { RouteDefinition, RouteProps } from "./route.ts";
+import { useLocation, useNavigate, useParams, useSearchParams } from "./hooks.ts";
+import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -48,7 +48,7 @@ const page =
     document.createTextNode(label);
 
 describe("mounting and navigation", () => {
-  const routes: RouteDefinition<never, never>[] = [
+  const routes: AnyRouteDefinition[] = [
     { path: "/", component: page("home") },
     { path: "/users/$id", component: page("user") },
   ] as never;
@@ -216,7 +216,7 @@ describe("nested layouts", () => {
           component: (scope: Scope | null, props: RouteProps) => {
             const wrapper = document.createElement("section");
             wrapper.appendChild(document.createTextNode("["));
-            const child = props.children(scope);
+            const child = (props.children as unknown as (s: Scope | null) => unknown)(scope);
             if (child !== null && child !== undefined) wrapper.append(child as never);
             wrapper.appendChild(document.createTextNode("]"));
             return wrapper;
@@ -233,7 +233,7 @@ describe("nested layouts", () => {
 });
 
 describe("Link", () => {
-  const routes: RouteDefinition<never, never>[] = [
+  const routes: AnyRouteDefinition[] = [
     { path: "/", component: page("home") },
     { path: "/users/$id", component: page("user") },
   ] as never;
@@ -572,6 +572,140 @@ describe("useLocation / useParams", () => {
     });
     expect(pathname).toBe("/u/9");
     expect(id).toBe("9");
+    dispose();
+  });
+});
+
+describe("beforeEnter", () => {
+  test("runs after the global chain, outermost route first", async () => {
+    const order: string[] = [];
+    const history = memoryHistory();
+    let go: ((to: string) => Promise<void>) | null = null;
+    const { dispose } = mount({
+      routes: [
+        {
+          path: "/",
+          component: () => {
+            go = useNavigate();
+            return document.createTextNode("home");
+          },
+        },
+        {
+          path: "/admin",
+          beforeEnter: () => {
+            order.push("layout");
+            return true;
+          },
+          component: (scope: Scope | null, props: RouteProps) =>
+            ((props.children as unknown as (s: Scope | null) => unknown)(scope) ??
+              document.createTextNode("")) as Node,
+          children: [
+            {
+              path: "users",
+              beforeEnter: () => {
+                order.push("leaf");
+                return true;
+              },
+              component: page("users"),
+            },
+          ],
+        },
+      ] as never,
+      history,
+      beforeEach: [
+        () => {
+          order.push("global");
+          return true;
+        },
+      ],
+    });
+
+    await (go as unknown as (to: string) => Promise<void>)("/admin/users");
+    flush();
+    expect(order).toEqual(["global", "layout", "leaf"]);
+    dispose();
+  });
+
+  test("a layout's guard refuses before the route it wraps is asked", async () => {
+    const asked: string[] = [];
+    const history = memoryHistory();
+    let go: ((to: string) => Promise<void>) | null = null;
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/",
+          component: () => {
+            go = useNavigate();
+            return document.createTextNode("home");
+          },
+        },
+        {
+          path: "/admin",
+          beforeEnter: () => {
+            asked.push("layout");
+            return "/";
+          },
+          component: (scope: Scope | null, props: RouteProps) =>
+            ((props.children as unknown as (s: Scope | null) => unknown)(scope) ??
+              document.createTextNode("")) as Node,
+          children: [
+            {
+              path: "users",
+              beforeEnter: () => {
+                asked.push("leaf");
+                return true;
+              },
+              component: page("users"),
+            },
+          ],
+        },
+      ] as never,
+      history,
+    });
+
+    await (go as unknown as (to: string) => Promise<void>)("/admin/users");
+    flush();
+    expect(asked).toEqual(["layout"]);
+    expect(host.textContent).toBe("home");
+    dispose();
+  });
+});
+
+describe("useSearchParams", () => {
+  test("reads the query and writes it by navigating", async () => {
+    const history = memoryHistory({ initial: ["/?role=admin"] });
+    let read: (() => URLSearchParams) | null = null;
+    let write: ((next: Record<string, string>) => void) | null = null;
+    const { dispose } = mount({
+      routes: [
+        {
+          path: "/",
+          component: () => {
+            const [search, set] = useSearchParams();
+            read = search;
+            write = set;
+            return document.createTextNode("home");
+          },
+        },
+      ] as never,
+      history,
+    });
+
+    expect((read as unknown as () => URLSearchParams)().get("role")).toBe("admin");
+
+    (write as unknown as (n: Record<string, string>) => void)({ role: "user" });
+    await tick();
+    flush();
+    expect(history.current().search).toBe("?role=user");
+
+    // An empty value drops the key rather than writing `?role=`.
+    (write as unknown as (n: Record<string, string>) => void)({ role: "" });
+    await tick();
+    flush();
+    expect(history.current().search).toBe("");
+    // …and it replaced rather than pushing, so a filter is not a back stop.
+    history.go(-1);
+    expect(history.current().pathname).toBe("/");
     dispose();
   });
 });

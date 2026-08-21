@@ -15,9 +15,15 @@
  *    goober depends on goober; the three exports that needed the pragma
  *    (`setupCss`, `styled`, `createGlobalStyle`) went with the indictment.
  *  - `query.ts` and `hooks.ts` were TESTED — `query.test.tsx`, `hooks.test.ts`.
- *  - `router.tsx` became `router.ts`. The router is a runtime library on the
- *    primitive ABI, not an authored module, so it contains no JSX and there is
- *    one implementation of it rather than one per toolchain.
+ *  - `router.ts` is GONE, and `@barqjs/router` replaces it. Keeping a second
+ *    implementation of matching, history and navigation meant two answers to
+ *    every routing question; its behaviour survives as the new package's test
+ *    corpus and its matcher as `packages/benchmark/src/legacy-matcher.ts`, the
+ *    comparand the measurement that replaced it is against.
+ *  - `m8-convention.test.ts` went with it, to `packages/router`. It scored the
+ *    nine workarounds as DELETIONS, and every row was a string from the file
+ *    that is now gone — so it is pointed at the implementation that replaced it,
+ *    where the interesting question is whether any of the nine came back.
  *
  * The row keeps its original property: it goes red the moment a module is added
  * or a test file appears, which forces the next pass to say what it covered.
@@ -33,9 +39,7 @@ describe("M8 acceptance surface", () => {
 
     expect(modules.filter((f) => f.includes(".test.")).toSorted()).toEqual([
       "hooks.test.ts",
-      "m8-convention.test.ts",
       "query.test.tsx",
-      "router.test.tsx",
       "untested-surface.test.ts",
     ]);
 
@@ -43,7 +47,6 @@ describe("M8 acceptance surface", () => {
       "hooks.ts",
       "index.ts",
       "query.ts",
-      "router.ts",
       "test-setup.ts",
     ]);
   });
@@ -56,7 +59,8 @@ describe("M8 acceptance surface", () => {
     expect(missing).toEqual([]);
     // The barrel is the package. A row that only counted modules could not see
     // an export that survived a deletion by name only.
-    expect(Object.keys(surface).length).toBeGreaterThan(25);
+    // 23 after the router left; it was 40-odd with it.
+    expect(Object.keys(surface).length).toBeGreaterThan(20);
   });
 });
 

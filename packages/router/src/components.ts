@@ -17,6 +17,8 @@
 
 import {
   type Block,
+  type Child,
+  type JSXElement,
   type Cell,
   type Scope,
   type StrictAccessor,
@@ -127,7 +129,7 @@ function routeFallback(route: Route): Block<unknown> | null {
     (pending as unknown as Invoked)(fallbackScope, {
       params: () => ({}),
       data: () => undefined,
-      children: (() => null) as Block<unknown>,
+      children: (() => null) as unknown as Child,
     })) as Block<unknown>;
 }
 
@@ -152,9 +154,11 @@ function routeProps(state: RouterState, depth: number, route: Route | null): Rou
     {
       params: () => state.params(),
       data: () => (route === null ? undefined : state.dataFor(route, state.params())()),
+      // A Block, which is what `RouteProps.children` documents itself as
+      // carrying even though it is typed `Child` so `{props.children}` compiles.
       children: block((childScope: Scope | null) =>
         renderDepth(childScope, state, depth + 1, null, null),
-      ),
+      ) as unknown as Child,
     },
   ]) as unknown as RouteProps;
 }
@@ -346,7 +350,7 @@ function RedirectImpl(_scope: Scope | null, props: Incoming<RedirectProps>): nul
  * This module is not compiled, so C1's rewrite of the declaration does not
  * happen to it. A generated route module needs neither.
  */
-type Authored<P> = (props: P) => unknown;
+type Authored<P> = (props: P) => JSXElement;
 
 export const Router = block(RouterImpl) as unknown as Authored<RouterProps>;
 export const RouterProvider = block(RouterProviderImpl) as unknown as Authored<{

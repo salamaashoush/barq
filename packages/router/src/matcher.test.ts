@@ -9,16 +9,16 @@
 import { describe, expect, test } from "bun:test";
 
 import { createMatcher } from "./matcher.ts";
-import { type RouteDefinition, flattenRoutes } from "./route.ts";
+import { type AnyRouteDefinition, flattenRoutes } from "./route.ts";
 
 const noop = (): null => null;
 
-function matcherFor(table: readonly RouteDefinition<never, never>[]) {
+function matcherFor(table: readonly AnyRouteDefinition[]) {
   return createMatcher(flattenRoutes(table));
 }
 
-const leaf = (path: string): RouteDefinition<never, never> =>
-  ({ path, component: noop as never }) as RouteDefinition<never, never>;
+const leaf = (path: string): AnyRouteDefinition =>
+  ({ path, component: noop as never }) as AnyRouteDefinition;
 
 describe("matching", () => {
   test("static, parameter and splat", () => {
@@ -86,7 +86,7 @@ describe("ranking", () => {
 });
 
 describe("nesting", () => {
-  const table: RouteDefinition<never, never>[] = [
+  const table: AnyRouteDefinition[] = [
     {
       path: "/",
       component: noop as never,
@@ -101,7 +101,7 @@ describe("nesting", () => {
           ],
         },
       ],
-    } as RouteDefinition<never, never>,
+    } as AnyRouteDefinition,
   ];
 
   test("an index child is the layout's own path", () => {
@@ -130,7 +130,7 @@ describe("nesting", () => {
         path: "/u/$id",
         component: noop as never,
         children: [{ path: "edit", component: noop as never }],
-      } as RouteDefinition<never, never>,
+      } as AnyRouteDefinition,
     ]);
     for (const id of ["7", "42", "abcdef", "550e8400-e29b-41d4-a716-446655440000"]) {
       expect(m.match(`/u/${id}/edit`)).toMatchObject({ params: { id } });
@@ -143,7 +143,7 @@ describe("nesting", () => {
         path: "/u/$id",
         component: noop as never,
         children: [{ path: "edit", component: noop as never }],
-      } as RouteDefinition<never, never>,
+      } as AnyRouteDefinition,
     ]);
     expect(m.match("/u/42/edit")?.params).toEqual({ id: "42" });
   });
@@ -154,7 +154,7 @@ describe("nesting", () => {
         id: "shell",
         component: noop as never,
         children: [{ path: "/dashboard", component: noop as never }],
-      } as RouteDefinition<never, never>,
+      } as AnyRouteDefinition,
     ]);
     const match = m.match("/dashboard");
     expect(match?.route.fullPath).toBe("/dashboard");
@@ -167,7 +167,7 @@ describe("nesting", () => {
         path: "/settings",
         component: noop as never,
         children: [{ path: "/logout", component: noop as never }],
-      } as RouteDefinition<never, never>,
+      } as AnyRouteDefinition,
     ]);
     expect(m.match("/logout")?.route.chain.map((r) => r.fullPath)).toEqual([
       "/settings",
@@ -184,8 +184,8 @@ describe("conflicts are refused, not resolved by declaration order", () => {
   test("…and on the path itself when their ids were given by hand", () => {
     expect(() =>
       matcherFor([
-        { id: "one", path: "/a", component: noop as never } as RouteDefinition<never, never>,
-        { id: "two", path: "/a", component: noop as never } as RouteDefinition<never, never>,
+        { id: "one", path: "/a", component: noop as never } as AnyRouteDefinition,
+        { id: "two", path: "/a", component: noop as never } as AnyRouteDefinition,
       ]),
     ).toThrow(/two routes match the same path/);
   });
@@ -202,8 +202,8 @@ describe("conflicts are refused, not resolved by declaration order", () => {
   test("two routes claiming the same id", () => {
     expect(() =>
       matcherFor([
-        { id: "same", path: "/a", component: noop as never } as RouteDefinition<never, never>,
-        { id: "same", path: "/b", component: noop as never } as RouteDefinition<never, never>,
+        { id: "same", path: "/a", component: noop as never } as AnyRouteDefinition,
+        { id: "same", path: "/b", component: noop as never } as AnyRouteDefinition,
       ]),
     ).toThrow(/claim the id/);
   });
@@ -211,7 +211,7 @@ describe("conflicts are refused, not resolved by declaration order", () => {
 
 describe("cost", () => {
   test("a miss returns null and position does not decide cost", () => {
-    const many: RouteDefinition<never, never>[] = [];
+    const many: AnyRouteDefinition[] = [];
     const pathOfIndex = (i: number) => `/s${i % 37}/u${i}`;
     for (let i = 0; i < 500; i++) many.push(leaf(`${pathOfIndex(i)}/$a/$b`));
     const m = matcherFor(many);

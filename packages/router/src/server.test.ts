@@ -12,14 +12,14 @@ import { computed } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
 import { createPageHandler, redirect, renderRoutes } from "./server.ts";
-import type { RouteDefinition } from "./route.ts";
+import type { AnyRouteDefinition } from "./route.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 const document = ({ body, seed }: { body: string; seed: string }): string =>
   `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
 
-const routes: RouteDefinition<never, never>[] = [
+const routes: AnyRouteDefinition[] = [
   { path: "/", component: (() => null) as never },
   { path: "/users/$id", component: (() => null) as never },
 ] as never;

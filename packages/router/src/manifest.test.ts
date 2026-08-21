@@ -8,7 +8,7 @@ import {
   reachabilityFrom,
   verifyRouteChains,
 } from "./manifest.ts";
-import { flattenRoutes, type RouteDefinition } from "./route.ts";
+import { type AnyRouteDefinition, flattenRoutes } from "./route.ts";
 
 const requireUser: Middleware = async (next) => next();
 const requireAdmin: Middleware = async (next) => next();
@@ -29,7 +29,7 @@ const lookup = (id: string) =>
   ({ "fn#guarded": guarded, "fn#bare": bare, "fn#both": both })[id] as never;
 
 group("verifyRouteChains", () => {
-  const routes: RouteDefinition<never, never>[] = [
+  const routes: AnyRouteDefinition[] = [
     {
       path: "/admin",
       middleware: [requireUser],

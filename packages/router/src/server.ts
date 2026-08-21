@@ -25,7 +25,7 @@ import { withRequest } from "@barqjs/start";
 
 import { memoryHistory } from "./history.ts";
 import { createMatcher } from "./matcher.ts";
-import { type Route, type RouteDefinition, flattenRoutes } from "./route.ts";
+import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
 import { type Guard, type RouterConfig, type RouterState, createRouter } from "./router.ts";
 import { routePropsFor } from "./components.ts";
 
@@ -113,7 +113,7 @@ export interface DocumentParts {
 }
 
 export interface PageHandlerOptions {
-  readonly routes: readonly RouteDefinition<never, never>[];
+  readonly routes: readonly AnyRouteDefinition[];
   /**
    * The application, as the string backend wants it: returns `SsrHtml`.
    *
