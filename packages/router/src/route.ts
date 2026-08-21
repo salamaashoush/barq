@@ -172,6 +172,26 @@ export interface RouteDefinition<
    */
   readonly beforeEnter?: import("./router.ts").Guard;
   /**
+   * Validates and types this route's slice of the search.
+   *
+   * A Standard Schema, a `.parse` object, or a plain function — probed in that
+   * order, because a zod v4 schema has both `~standard` and `parse` and the
+   * Standard Schema path is the one that reports issues instead of throwing a
+   * vendor error.
+   *
+   * The validator is handed the raw search with every ANCESTOR's validated
+   * output layered over it, so unknown keys survive the chain — TanStack's rule
+   * (`router.ts:1567-1574`). A failure becomes a `SearchParamError` on this
+   * route's error boundary.
+   */
+  readonly validateSearch?: import("./search.ts").SearchValidator;
+  /**
+   * Runs when a location is BUILT — a `<Link>` href, a `navigate` — and never
+   * on the way in. That is TanStack's placement (`router.ts:2006`, one call
+   * site) and it is the right one: an inbound URL is a fact, not an intent.
+   */
+  readonly searchMiddlewares?: readonly import("./search.ts").SearchMiddleware[];
+  /**
    * A synchronous contribution to the route context, merged parent-to-child.
    *
    * Free to re-run: it takes no I/O and is called on both sides, so nothing has

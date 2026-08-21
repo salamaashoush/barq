@@ -10,10 +10,11 @@
 import { type Scope, flush, getOwner, insert, isDisposed, render, settle } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { Link, NavLink, Router, RouterProvider } from "./components.ts";
+import { Link, NavLink, Router, RouterProvider, useRouter } from "./components.ts";
 import { notFound, redirect } from "./errors.ts";
+import { retainSearchParams } from "./search.ts";
 import { memoryHistory } from "./history.ts";
-import { useLocation, useNavigate, useParams, useSearchParams } from "./hooks.ts";
+import { useLocation, useNavigate, useParams, useSearch, useSearchParams } from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouterState, createRouter } from "./router.ts";
 
@@ -702,6 +703,145 @@ describe("loaderDeps and the reload policy", () => {
     await settle();
     flush();
     expect(host.textContent).toBe("v2");
+    dispose();
+  });
+});
+
+describe("validateSearch", () => {
+  const showSearch = (scope: Scope | null, props: RouteProps): Node => {
+    const node = document.createElement("span");
+    const state = useRouter();
+    void props;
+    insert(scope, node, () => JSON.stringify(state.validSearch()));
+    return node;
+  };
+
+  test("a validator types its own slice and unknown keys survive", async () => {
+    const history = memoryHistory({ initial: ["/list?page=3&ref=hn"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/list",
+          validateSearch: (input: Record<string, unknown>) => ({ page: Number(input.page ?? 1) }),
+          component: showSearch,
+        },
+      ] as never,
+      history,
+    });
+    flush();
+    // `page` is a NUMBER now, and `ref` — which nothing declared — is still there.
+    expect(JSON.parse(host.textContent ?? "{}")).toEqual({ page: 3, ref: "hn" });
+    dispose();
+  });
+
+  test("a child's validator sees its ancestors' validated output", async () => {
+    const history = memoryHistory({ initial: ["/app/x?page=2"] });
+    const wrap = (scope: Scope | null, props: RouteProps): Node => {
+      const node = document.createElement("div");
+      insert(scope, node, () => props.children);
+      return node;
+    };
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/app",
+          validateSearch: (input: Record<string, unknown>) => ({ page: Number(input.page ?? 1) }),
+          component: wrap,
+          children: [
+            {
+              path: "x",
+              validateSearch: (input: Record<string, unknown>) => ({
+                // Reads the PARENT's already-coerced number.
+                next: (input.page as number) + 1,
+              }),
+              component: showSearch,
+            },
+          ],
+        },
+      ] as never,
+      history,
+    });
+    flush();
+    expect(JSON.parse(host.textContent ?? "{}")).toEqual({ page: 2, next: 3 });
+    dispose();
+  });
+
+  test("a refused search renders THAT route's errorComponent, not a blank page", async () => {
+    const history = memoryHistory({ initial: ["/list?page=banana"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/list",
+          validateSearch: (input: Record<string, unknown>) => {
+            if (Number.isNaN(Number(input.page))) throw new Error("page must be a number");
+            return { page: Number(input.page) };
+          },
+          errorComponent: (scope: Scope | null, props: { error: () => Error }) => {
+            const node = document.createElement("b");
+            insert(scope, node, () => props.error().message);
+            return node;
+          },
+          component: showSearch,
+        },
+      ] as never,
+      history,
+    });
+    flush();
+    expect(host.textContent).toBe("page must be a number");
+    dispose();
+  });
+
+  test("useSearch answers with the validated record", async () => {
+    const history = memoryHistory({ initial: ["/u?n=41"] });
+    const { host, dispose } = mount({
+      routes: [
+        {
+          path: "/u",
+          validateSearch: (input: Record<string, unknown>) => ({ n: Number(input.n) + 1 }),
+          component: (scope: Scope | null) => {
+            const node = document.createElement("span");
+            const s = useSearch<{ n: number }>();
+            insert(scope, node, () => String(s().n));
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+    flush();
+    expect(host.textContent).toBe("42");
+    dispose();
+  });
+
+  test("searchMiddlewares run when a location is BUILT, not on the way in", async () => {
+    const history = memoryHistory({ initial: ["/a?theme=dark"] });
+    const state = createRouter({
+      routes: [
+        {
+          path: "/a",
+          searchMiddlewares: [retainSearchParams(["theme"])],
+          component: page("a"),
+        },
+        {
+          path: "/b",
+          searchMiddlewares: [retainSearchParams(["theme"])],
+          component: page("b"),
+        },
+      ] as never,
+      history,
+    });
+    const { dispose } = mountState(state);
+    flush();
+
+    // An INBOUND url keeps whatever it says — it is a fact, not an intent.
+    expect(state.location().search).toBe("?theme=dark");
+
+    // A BUILT one carries the retained key even though the caller did not.
+    await state.navigate("/b?page=2");
+    flush();
+    const search = new URLSearchParams(state.location().search);
+    expect(search.get("page")).toBe("2");
+    expect(search.get("theme")).toBe("dark");
     dispose();
   });
 });

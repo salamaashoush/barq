@@ -64,13 +64,18 @@ export function renderRoutes(state: RouterState): unknown {
 
     const children = ((): unknown => at(depth + 1)) as never;
     const component = route.definition.component;
-    const content = (): unknown =>
-      component === undefined
+    const content = (): unknown => {
+      // As on the DOM path: a refused validator throws inside this depth's
+      // error boundary rather than out of the render.
+      const refused = state.searchErrorAt(depth);
+      if (refused !== null) throw refused;
+      return component === undefined
         ? at(depth + 1)
         : (component as unknown as (s: null, p: unknown) => unknown)(
             null,
             routePropsFor(state, depth, route, children, true),
           );
+    };
 
     // An error boundary INSIDE the loading one, and the nesting is the whole
     // point rather than a style choice.

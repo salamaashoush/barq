@@ -92,11 +92,16 @@ export function renderDepth(
     // and rebuild the whole route on a parameter change — measured: two builds
     // for one navigation within the same route.
     const content = (contentScope: Scope | null): unknown =>
-      untrack(() =>
-        component === undefined
+      untrack(() => {
+        // A validator that refused throws HERE, inside this depth's error
+        // boundary, so a bad `?page=banana` renders that route's
+        // `errorComponent` rather than taking the whole page down.
+        const refused = state.searchErrorAt(depth);
+        if (refused !== null) throw refused;
+        return component === undefined
           ? renderDepth(contentScope, state, depth + 1, null, null)
-          : (component as unknown as Invoked)(contentScope, routeProps(state, depth, route)),
-      );
+          : (component as unknown as Invoked)(contentScope, routeProps(state, depth, route));
+      });
 
     // An `Errored` per depth, INSIDE the `Loading`, matching what the string
     // backend emits. Without it a loader that rejects on the client after

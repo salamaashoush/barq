@@ -21,9 +21,16 @@ export function useParams<P extends Record<string, string> = Record<string, stri
   return useRouter().params as unknown as Cell<P>;
 }
 
-/** The query string, reparsed per location. Reactive, like everything else here. */
-export function useSearch(): Cell<URLSearchParams> {
-  return useRouter().search;
+/**
+ * The VALIDATED search for the deepest matched route.
+ *
+ * A breaking change from the `URLSearchParams` this used to answer with, and the
+ * point of `validateSearch`: a route that declares one gets its own types, and a
+ * route that declares none gets the raw record. The `URLSearchParams` is still
+ * one `location().search` away, and `useSearchParams` is unchanged.
+ */
+export function useSearch<S extends Record<string, unknown> = Record<string, unknown>>(): Cell<S> {
+  return useRouter().validSearch as unknown as Cell<S>;
 }
 
 export function useNavigate(): (to: string, options?: NavigateOptions) => Promise<void> {

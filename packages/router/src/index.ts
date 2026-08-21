@@ -31,6 +31,19 @@ export {
 export { type FlatRoute, type Match, type Matcher, createMatcher } from "./matcher.ts";
 
 export {
+  type SearchMiddleware,
+  type SearchMiddlewareContext,
+  type SearchValidator,
+  SearchParamError,
+  applySearchMiddleware,
+  retainSearchParams,
+  searchRecord,
+  stripSearchParams,
+  toSearchString,
+  validateSearch,
+} from "./search.ts";
+
+export {
   type Segment,
   SPLAT_KEY,
   interpolate,

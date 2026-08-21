@@ -30,6 +30,14 @@ import { type History, type Location, href, memoryHistory, parseLocation } from 
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
 import { leavesTheApp, resolvePath } from "./path.ts";
+import {
+  type SearchMiddleware,
+  SearchParamError,
+  applySearchMiddleware,
+  searchRecord,
+  toSearchString,
+  validateSearch,
+} from "./search.ts";
 
 const NOOP = (): void => {};
 
@@ -203,6 +211,16 @@ export interface RouterState {
   readonly params: Cell<Record<string, string>>;
   readonly search: Cell<URLSearchParams>;
   readonly chain: Cell<readonly Route[]>;
+  /** The VALIDATED search for the deepest matched route. Raw when nothing validates. */
+  readonly validSearch: Cell<Record<string, unknown>>;
+  /**
+   * The validation failure at one depth, if that route's validator refused.
+   *
+   * Read from inside the route's own boundary and re-thrown there, so a bad
+   * `?page=banana` renders that route's `errorComponent` rather than taking the
+   * whole page down.
+   */
+  searchErrorAt(depth: number): SearchParamError | null;
   readonly matcher: Matcher<Route>;
   readonly config: RouterConfig;
   readonly history: History;
@@ -270,6 +288,15 @@ export interface RouterState {
     to: Location,
     candidate: Match<Route> | null,
   ): Promise<readonly Record<string, unknown>[]>;
+  /**
+   * Apply the matched chain's search middlewares to a location being BUILT.
+   *
+   * `Link` and `navigate` both go through this; an inbound URL does not. An
+   * inbound URL is a fact and a built one is an intent, and only an intent can
+   * be edited — which is TanStack's placement (`router.ts:2006`) and the reason
+   * theirs has exactly one call site too.
+   */
+  buildSearch(to: string): string;
   /** Drop every cached loader result and re-read the current location. */
   invalidate(): void;
   dispose(): void;
@@ -287,6 +314,56 @@ export function createRouter(config: RouterConfig): RouterState {
   const match = computed<Match<Route> | null>(() => matcher.match(location().pathname));
   const params = computed<Record<string, string>>(() => match()?.params ?? {});
   const search = computed(() => new URLSearchParams(location().search));
+
+  /**
+   * The validated search, one entry per depth, and the LAST one is what
+   * `useSearch()` answers with.
+   *
+   * A route's validator sees the raw search with every ancestor's validated
+   * output layered over it, so unknown keys survive; `_defaults` records what a
+   * validator ADDED, which is how `stripSearchParams` tells a schema default
+   * from a value the caller asked for.
+   *
+   * A failure does NOT throw here. `computed` is read during a render, and a
+   * throw would take the page rather than the route: the error is stored and
+   * re-thrown by `searchErrorAt`, from inside the route's own boundary.
+   */
+  const validated = computed<{
+    readonly slices: readonly Record<string, unknown>[];
+    readonly defaults: ReadonlyMap<string, unknown>;
+    readonly failures: readonly (SearchParamError | null)[];
+  }>(() => {
+    const raw = searchRecord(search());
+    const slices: Record<string, unknown>[] = [];
+    const failures: (SearchParamError | null)[] = [];
+    const defaults = new Map<string, unknown>();
+    let merged: Record<string, unknown> = raw;
+    for (const route of chain()) {
+      const validator = route.definition.validateSearch;
+      if (validator === undefined) {
+        slices.push(merged);
+        failures.push(null);
+        continue;
+      }
+      try {
+        const slice = validateSearch(validator, { ...merged });
+        for (const [key, value] of Object.entries(slice)) {
+          if (!(key in raw)) defaults.set(key, value);
+        }
+        merged = { ...merged, ...slice };
+        slices.push(merged);
+        failures.push(null);
+      } catch (error) {
+        failures.push(
+          error instanceof SearchParamError
+            ? error
+            : new SearchParamError((error as Error).message ?? "search did not validate"),
+        );
+        slices.push(merged);
+      }
+    }
+    return { slices, defaults, failures };
+  });
   const chain = computed<readonly Route[]>(() => match()?.route.chain ?? []);
 
   const entries = new Map<string, Entry>();
@@ -648,6 +725,30 @@ export function createRouter(config: RouterConfig): RouterState {
     return out;
   };
 
+  const buildSearch = (to: string): string => {
+    const cut = to.search(/[?#]/);
+    const pathPart = cut === -1 ? to : to.slice(0, cut);
+    const rest = cut === -1 ? "" : to.slice(cut);
+    const hashAt = rest.indexOf("#");
+    const query = hashAt === -1 ? rest : rest.slice(0, hashAt);
+    const hash = hashAt === -1 ? "" : rest.slice(hashAt);
+
+    const candidate = matcher.match(pathPart === "" ? untrack(location).pathname : pathPart);
+    const middlewares: SearchMiddleware[] = [];
+    for (const route of candidate?.route.chain ?? []) {
+      for (const step of route.definition.searchMiddlewares ?? []) middlewares.push(step);
+    }
+    if (middlewares.length === 0) return to;
+
+    const built = applySearchMiddleware(
+      middlewares,
+      searchRecord(untrack(search)),
+      searchRecord(new URLSearchParams(query)),
+      untrack(validated).defaults,
+    );
+    return `${pathPart}${toSearchString(built)}${hash}`;
+  };
+
   const primeChain = (): void => {
     const forParams = untrack(params);
     for (const route of untrack(chain)) {
@@ -766,9 +867,13 @@ export function createRouter(config: RouterConfig): RouterState {
     // Split the query and hash off BEFORE resolving. `resolvePath` works on
     // segments and treats `?role=user` as one, so resolving the whole string
     // and then re-appending the query wrote it twice — `/?role=user?role=user`.
-    const cut = to.search(/[?#]/);
-    const pathPart = cut === -1 ? to : to.slice(0, cut);
-    const rest = cut === -1 ? "" : to.slice(cut);
+    // Middlewares run on the way OUT, before the path is resolved, so a
+    // retained key is present when the location is built rather than patched
+    // onto it afterwards.
+    const intended = buildSearch(to);
+    const cut = intended.search(/[?#]/);
+    const pathPart = cut === -1 ? intended : intended.slice(0, cut);
+    const rest = cut === -1 ? "" : intended.slice(cut);
     const resolved = resolvePath(
       pathPart === "" ? untrack(location).pathname : pathPart,
       untrack(location).pathname,
@@ -829,6 +934,14 @@ export function createRouter(config: RouterConfig): RouterState {
     history,
     dataFor,
     navigate,
+    buildSearch,
+    validSearch: (() => {
+      const { slices } = validated();
+      return slices[slices.length - 1] ?? searchRecord(search());
+    }) as Cell<Record<string, unknown>>,
+    searchErrorAt(depth) {
+      return untrack(validated).failures[depth] ?? null;
+    },
     contexts,
     setContexts(next) {
       settleContexts(next);
