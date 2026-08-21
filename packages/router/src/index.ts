@@ -1,0 +1,55 @@
+/**
+ * `@barqjs/router` — routing for barq, with SSR, streaming and server-function
+ * loaders.
+ *
+ * The design record is `DESIGN.md` beside this file. Two things a reader should
+ * know before anything else:
+ *
+ *  - **A loader is an ordinary isomorphic function, not a server function.** It
+ *    runs on the server for the first request and on the client for every
+ *    navigation after it, and its body ships to the browser. Anything that must
+ *    not ship lives behind a `createServerFn()` the loader calls.
+ *  - **A route guard is not an authorization boundary.** The server function a
+ *    loader calls is a separately reachable endpoint, so the check belongs on
+ *    that function's middleware. Every framework surveyed documents this hole;
+ *    closing it is what the route-action manifest is for.
+ */
+
+export {
+  type Location,
+  type History,
+  type NavigationAction,
+  addBase,
+  browserHistory,
+  href,
+  memoryHistory,
+  normalizeBase,
+  parseLocation,
+  stripBase,
+} from "./history.ts";
+
+export { type FlatRoute, type Match, type Matcher, createMatcher } from "./matcher.ts";
+
+export {
+  type Segment,
+  SPLAT_KEY,
+  interpolate,
+  isUnder,
+  joinPattern,
+  leavesTheApp,
+  normalize,
+  parsePattern,
+  resolvePath,
+  splitPath,
+} from "./path.ts";
+
+export {
+  type Loader,
+  type Route,
+  type RouteComponent,
+  type RouteDefinition,
+  type RouteProps,
+  flattenRoutes,
+  pathOf,
+  route,
+} from "./route.ts";

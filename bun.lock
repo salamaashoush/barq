@@ -110,6 +110,20 @@
         "vite": "^8.2.2",
       },
     },
+    "packages/router": {
+      "name": "@barqjs/router",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/core": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
+      },
+    },
     "packages/server": {
       "name": "@barqjs/server",
       "version": "0.1.0",
@@ -220,6 +234,8 @@
     "@barqjs/extra": ["@barqjs/extra@workspace:packages/extra"],
 
     "@barqjs/kitchen-sink": ["@barqjs/kitchen-sink@workspace:packages/kitchen-sink"],
+
+    "@barqjs/router": ["@barqjs/router@workspace:packages/router"],
 
     "@barqjs/server": ["@barqjs/server@workspace:packages/server"],
 

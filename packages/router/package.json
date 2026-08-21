@@ -1,0 +1,54 @@
+{
+  "name": "@barqjs/router",
+  "version": "0.1.0",
+  "description": "Barq routing: a compiler-aware router with SSR, streaming, and server-function loaders.",
+  "keywords": [
+    "barq",
+    "router",
+    "routing",
+    "ssr"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/router"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@happy-dom/global-registrator": "^20.11.6",
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
