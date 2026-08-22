@@ -8,8 +8,10 @@
 
 import { esc, html as ssrHtml, ssrLoading } from "@barqjs/server";
 import { createServerFn, getRequest } from "@barqjs/start";
-import { computed } from "@barqjs/core";
+import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
+
+import { RouterProvider } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
@@ -923,5 +925,137 @@ describe("the context handoff, server to client", () => {
     } finally {
       delete holder.__BARQ_ROUTE_CONTEXT__;
     }
+  });
+});
+
+/**
+ * The seam the front door sits on: SSR through the page handler, then hydrate
+ * the markup it produced with a client router over the same table.
+ *
+ * Nothing in this repo did this before — `hydrate()` and `createRouter` had no
+ * common call site — and the first thing that did found the two walks
+ * disagreeing. `renderRoutes` wrote its per-depth boundaries with no flags, so
+ * the string backend emitted no range while `renderDepth` claimed three per
+ * depth; and `loadingBoundary` released whatever claim it was handed and
+ * rebuilt into a detached fragment. Measured against a real dev server before
+ * the fix: `claimed: 0`, `recovered: true`, the seed unconsumed, the loader
+ * refetched, and on a prerendered file a PERMANENT `pending` fallback.
+ *
+ * The components are hand-written in the shape the compiler emits for
+ * `<div>shell:{props.children}</div>` and `<b>{() => props.data()?.name}</b>`,
+ * verified against a real `transform()` of both backends — this package's test
+ * plugin compiles `.tsx` for ONE backend, and a hydration test needs both.
+ *
+ * The assertions are on `hydrate.report` and on NODE IDENTITY, because a cold
+ * rebuild produces the same text. That is L5's own rule.
+ */
+describe("hydration", () => {
+  const shellTemplate = template("<div>shell:</div>");
+  const boldTemplate = template("<b></b>");
+
+  interface Kids {
+    children: unknown;
+  }
+  interface Data {
+    data: () => { name: string } | undefined;
+  }
+
+  const table = (ssr: boolean, ran: { calls: number }): AnyRouteDefinition[] => {
+    const Root = (scope: never, props: Kids): unknown =>
+      ssr
+        ? ssrHtml(`<div>shell:<!--[-->${esc(props.children)}<!--]--></div>`)
+        : ((): unknown => {
+            const node = shellTemplate();
+            insert(scope, node, props.children as never);
+            return node;
+          })();
+
+    const Leaf = (scope: never, props: Data): unknown =>
+      ssr
+        ? ssrHtml(`<b>${esc(() => props.data()?.name)}</b>`)
+        : ((): unknown => {
+            const node = boldTemplate();
+            insert(
+              scope,
+              node,
+              hole(node, null, () => () => props.data()?.name, 16) as never,
+              null,
+              16,
+            );
+            return node;
+          })();
+
+    return [
+      {
+        path: "/",
+        component: Root as never,
+        children: [
+          {
+            path: "users/$id",
+            component: Leaf as never,
+            loader: async ({ params }: { params: { id: string } }) => {
+              ran.calls++;
+              await tick();
+              return { name: `Ada ${params.id}` };
+            },
+          },
+        ],
+      },
+    ] as never;
+  };
+
+  test("a page the handler rendered is CLAIMED by the client router", async () => {
+    const ran = { calls: 0 };
+    let seed = "";
+    const handler = createPageHandler({
+      routes: table(true, ran),
+      stream: false,
+      app: (state) => renderRoutes(state),
+      // Sentinels rather than a wrapper element, so the extraction below cannot
+      // cut on a `</div>` the app itself wrote.
+      document: (parts) => {
+        seed = parts.seed;
+        return `<!doctype html><html><head></head><body>[APP[${parts.body}]APP]${parts.seed}</body></html>`;
+      },
+    });
+
+    const html = await (await handler(get("/users/7"))).text();
+    expect(html).toContain("<b>Ada 7</b>");
+    expect(ran.calls).toBe(1);
+
+    // What a browser does with the seed script the handler emitted.
+    const payload = seed.replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
+    // oxlint-disable-next-line no-eval
+    (0, eval)(payload.replaceAll("window.", "globalThis."));
+
+    const container = globalThis.document.createElement("div");
+    globalThis.document.body.appendChild(container);
+    container.innerHTML = html.slice(html.indexOf("[APP[") + 5, html.indexOf("]APP]"));
+    const served = container.querySelector("b");
+    expect(served?.textContent).toBe("Ada 7");
+
+    const state = createRouter({
+      routes: table(false, ran),
+      history: memoryHistory({ initial: ["/users/7"] }),
+    });
+    // `(scope, props)`, which is the real calling convention behind the
+    // props-first type — the same cast `router.test.ts`'s `mountState` uses.
+    const provider = RouterProvider as never as (s: unknown, p: unknown) => unknown;
+    hydrate(((s: unknown) => provider(s, { state: () => state })) as never, container);
+    flush();
+
+    expect(hydrate.report.recovered).toBe(false);
+    expect(hydrate.report.mismatches).toEqual([]);
+    expect(hydrate.report.claimed).toBeGreaterThan(0);
+    // The server's own <b>, still in the document — which is what claiming buys
+    // over a rebuild that produces identical markup.
+    expect(container.querySelector("b")).toBe(served);
+    expect(container.textContent).toBe("shell:Ada 7");
+    // Seeded, so the client did not run the loader a second time.
+    await tick();
+    flush();
+    expect(ran.calls).toBe(1);
+    state.dispose();
+    container.remove();
   });
 });

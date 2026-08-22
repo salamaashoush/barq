@@ -21,12 +21,14 @@
  */
 
 import {
+  branch as ssrBranch,
   html as ssrHtml,
   renderPage,
   renderToStream,
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
+import { HYDRATE } from "@barqjs/core";
 import { encodeSeed } from "@barqjs/server/codec";
 import { withRequest } from "@barqjs/start";
 
@@ -68,7 +70,27 @@ export function renderRoutes(state: RouterState): unknown {
 
   const modes = state.ssrModes();
 
-  const at = (depth: number): unknown => {
+  // One `branch` per depth, then a `loading`, then an `error` — the same three
+  // ranges `renderDepth` claims, in the same order. The walk itself is still
+  // one pass outermost-first, and there is still no re-keying on this side;
+  // what the branch buys is that the two halves write and claim the same shape.
+  // Without it the DOM side claimed a range the string side never wrote, and
+  // the mismatch surfaced as `not-hydratable` on every page.
+  const at = (depth: number): unknown =>
+    ssrBranch(
+      null,
+      null,
+      null,
+      () => chain[depth] ?? null,
+      () => bodyAt(depth),
+      HYDRATE,
+    );
+
+  // A depth past the end of the chain is still a RANGE, because `renderDepth`
+  // builds one there too — a leaf's `children` Block is invoked by any layout
+  // that places it, and on that side the empty answer comes from inside the
+  // branch rather than instead of it.
+  const bodyAt = (depth: number): unknown => {
     const route = chain[depth];
     if (route === undefined) return ssrHtml("");
 
@@ -113,29 +135,37 @@ export function renderRoutes(state: RouterState): unknown {
     // the loading boundary's own content Block, so the catch has to be in
     // there. `Errored` re-throws `NotReadyError` on both backends, so parking
     // still works through it.
-    return ssrLoading(null, {
-      fallback: () =>
-        pending === undefined
-          ? ssrHtml("")
-          : (pending as unknown as (s: null, p: unknown) => unknown)(
-              null,
-              routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
-            ),
-      children: () =>
-        ssrErrored(null, {
-          // The string backend hands an error fallback `(error, reset)`
-          // positionally, exactly as `flow.ts`'s does.
-          fallback: (fallbackScope: unknown, error: () => Error, reset: () => void) => {
-            const shown = errorFallbackFor(chain, depth, () => state.params())(
-              fallbackScope,
-              error,
-              reset,
-            );
-            return shown === null || shown === undefined ? ssrHtml("") : shown;
-          },
-          children: content,
-        }),
-    });
+    return ssrLoading(
+      null,
+      {
+        fallback: () =>
+          pending === undefined
+            ? ssrHtml("")
+            : (pending as unknown as (s: null, p: unknown) => unknown)(
+                null,
+                routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
+              ),
+        children: () =>
+          ssrErrored(
+            null,
+            {
+              // The string backend hands an error fallback `(error, reset)`
+              // positionally, exactly as `flow.ts`'s does.
+              fallback: (fallbackScope: unknown, error: () => Error, reset: () => void) => {
+                const shown = errorFallbackFor(chain, depth, () => state.params())(
+                  fallbackScope,
+                  error,
+                  reset,
+                );
+                return shown === null || shown === undefined ? ssrHtml("") : shown;
+              },
+              children: content,
+            },
+            HYDRATE,
+          ),
+      },
+      HYDRATE,
+    );
   };
 
   return at(0);

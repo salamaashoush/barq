@@ -385,8 +385,10 @@ export interface RouterState {
    * read happens outside a render session is attributed to the `null` bucket
    * and is seeded into nobody (`signals.ts` `getHydrationData`, and the reason
    * is `38eee03`).
+   *
+   * `server` skips the depths `resolveSsr` says do not run there.
    */
-  prime(): void;
+  prime(server?: boolean): void;
   navigate(to: string, options?: NavigateOptions): Promise<void>;
   /**
    * The merged route context, one entry per depth, outermost first.
@@ -422,7 +424,18 @@ export interface RouterState {
   runBeforeLoad(
     to: Location,
     candidate: Match<Route> | null,
-  ): Promise<readonly Record<string, unknown>[]>;
+    options?: { readonly server?: boolean },
+  ): Promise<BeforeLoadResult>;
+  /**
+   * Adopt a context the SERVER already produced, without re-running `beforeLoad`.
+   *
+   * The synchronous `context()`s re-run here — they take no I/O and re-running
+   * one is cheaper than serializing it — and each depth's `produced` entry is
+   * merged in on top.
+   */
+  hydrateContexts(to: Location, produced: BeforeLoadSeed["produced"]): void;
+  /** What of each matched depth runs on the server, outermost first. */
+  readonly ssrModes: Cell<readonly SsrMode[]>;
   /**
    * Apply the matched chain's search middlewares to a location being BUILT.
    *
@@ -1091,7 +1104,7 @@ export function createRouter(config: RouterConfig): RouterState {
         contexts.set([]);
         if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
         void runBeforeLoad(next, candidate).then(
-          (produced) => settleContexts(produced),
+          (result) => settleContexts(result.contexts),
           () => {
             /* a guard's answer on a back button has nowhere to go; the boundary shows it */
             releaseContexts();

@@ -35,7 +35,6 @@ import {
   releaseRange,
   report,
   WHOLE,
-  withRange,
   withoutClaim,
   type Cursor,
   type Range,
@@ -223,6 +222,52 @@ function claimSite(
   site.parent = range.close?.parentNode ?? range.parent;
 }
 
+/**
+ * The two open comments the string backend writes for a boundary that did NOT
+ * settle: `b:<id>` for one the stream will swap, `f:` for one nothing will.
+ *
+ * `ssr.ts`'s `SAFE_KEY` excludes `:` so that no DEV branch key can spell either,
+ * which is what makes the test below a discrimination rather than a guess.
+ */
+const UNSETTLED_KEYS = ["b:", "f:"];
+
+/**
+ * Take this site's claim if the server SETTLED it, leaving a deferred one alone.
+ *
+ * Consuming it here is what stops `boundary`'s strand-and-release running
+ * afterwards: "the first activation claims" is a property of the position, and
+ * a loading boundary that took the claim has spent it.
+ */
+function takeSettledClaim(site: Site): Range | null {
+  const claim = site.claim;
+  if (claim === undefined || claim === null) return null;
+  const wire = rangeKey(claim);
+  if (wire !== null && UNSETTLED_KEYS.some((key) => wire.startsWith(key))) return null;
+  site.claim = null;
+  return claim;
+}
+
+/**
+ * The node a caller inserts, once the site is known.
+ *
+ * K7 synthesises an anchor in a detached fragment when a region has no
+ * `(parent, anchor)` of its own, and the caller inserts that fragment. A
+ * CLAIMED site is not that case: `claimSite` redirected it into the document,
+ * so the content is already where it belongs and the fragment holds nothing but
+ * its own empty text node.
+ *
+ * Returning the fragment there does two kinds of damage, and the second is the
+ * one that took a browser to see. The stray text node is cosmetic. But the
+ * fragment is also what `build` reports as the nodes this body PRODUCED, so
+ * `evictUnclaimed` compares the server's whole claimed range against a single
+ * empty text node and removes every node in it — measured on a router page as
+ * `"5 server node(s) at a range the client rebuilt"` and an empty document.
+ */
+function outFor(site: Site, out: Node | null): Node | null {
+  if (out === null) return null;
+  return site.anchor !== null && site.anchor.parentNode === out ? out : null;
+}
+
 function hostOf(site: Site): Node | null {
   return site.anchor !== null ? site.anchor.parentNode : site.parent;
 }
@@ -354,12 +399,19 @@ function attempt(
   // from a cursor that is now pointing at the failed attempt's nodes — that is
   // the shape that turned an error boundary's recovery into "the markup ran
   // out". `withoutClaim` costs nothing when nothing is hydrating.
-  const under = <T>(work: () => T): T =>
-    claim !== null ? withRange(claim, work) : withoutClaim(work);
+  //
+  // The cursor is kept so `evictUnclaimed` can ask it what the body did NOT
+  // consume, which is the same question `each` asks its row cursor.
+  let cursor: Cursor | null = null;
+  const under = <T>(work: () => T): T => {
+    if (claim === null) return withoutClaim(work);
+    cursor = openCursor(claim);
+    return atCursor(cursor, work);
+  };
 
   if ((flags & NO_SCOPE) !== 0) {
     const nodes = under(() => build(given, body, args));
-    evictUnclaimed(claim, nodes);
+    evictUnclaimed(claim, cursor);
     insertAt(site, nodes);
     return { scope: null, nodes };
   }
@@ -385,7 +437,7 @@ function attempt(
     removeNodes(instance.nodes);
     instance.nodes = EMPTY;
   });
-  evictUnclaimed(claim, nodes);
+  evictUnclaimed(claim, cursor);
   insertAt(site, nodes);
   return instance;
 }
@@ -393,27 +445,29 @@ function attempt(
 /**
  * The server's nodes at a claimed position that the body did NOT take.
  *
- * A body that claimed everything produces exactly the nodes it claimed and this
- * removes nothing. A body that could not — a construct the flow pass refused,
- * reached through an adapter with no flags to forward, or an arm that built cold
- * after its first attempt threw — produces its own nodes, and the server's have
- * to go or the page shows both. That was measurable as a DUPLICATED fallback,
+ * A body that claimed everything leaves the cursor at the end and this removes
+ * nothing. A body that could not — a construct the flow pass refused, reached
+ * through an adapter with no flags to forward, or an arm that built cold after
+ * its first attempt threw — leaves a tail, and the server's nodes there have to
+ * go or the page shows both. That was measurable as a DUPLICATED fallback,
  * which is the failure a markup comparison catches and a reuse percentage does
  * not.
+ *
+ * ASK THE CURSOR, not the produced node list, and the difference is not a
+ * refactor. A NESTED region claims in place and hands its caller nothing to
+ * insert — there is no synthesised node once the site is claimed — so the outer
+ * body's produced list is empty while the server's nodes are all correctly
+ * taken. Comparing lists evicted the whole page. `each` has always asked its
+ * row cursor this way (`cursorAtEnd`/`cursorRest`); this is the same question.
  */
-function evictUnclaimed(claim: Range | null, produced: readonly Node[]): void {
-  if (claim === null || claim.nodes.length === 0) return;
-  const kept = new Set<Node>(produced);
-  let evicted = 0;
-  for (const node of claim.nodes) {
-    if (kept.has(node)) continue;
-    node.parentNode?.removeChild(node);
-    evicted++;
-  }
-  if (evicted > 0) {
-    report("structure", `${evicted} server node(s) at a range the client rebuilt`);
-  }
+function evictUnclaimed(claim: Range | null, cursor: Cursor | null): void {
+  if (claim === null || cursor === null) return;
   claim.nodes = [];
+  if (cursorAtEnd(cursor)) return;
+  const stranded = cursorRest(cursor);
+  if (stranded.length === 0) return;
+  for (const node of stranded) node.parentNode?.removeChild(node);
+  report("structure", `${stranded.length} server node(s) at a range the client rebuilt`);
 }
 
 /** A Cell ignores every argument (§3.0 rule 1), so one spelling serves both. */
@@ -683,7 +737,7 @@ export function branch<K>(
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "branch");
   underScope(given, "branch", () => region(given, site, key, bodies, flags, EMPTY_ARGS, null));
-  return out;
+  return outFor(site, out);
 }
 
 const EMPTY_ARGS: readonly unknown[] = [];
@@ -826,7 +880,7 @@ export function each<T>(
       for (const node of stranded) node.parentNode?.removeChild(node);
     }
     site.claim = null;
-    return out;
+    return outFor(site, out);
   });
 }
 
@@ -1007,13 +1061,14 @@ export function boundary(
   } else {
     loadingBoundary(given, site, fallback, body, on);
   }
-  // A claim nobody spent. `loadingBoundary` does not go through `activate`: it
-  // PARKS its content in a detached fragment and moves it in when the reveal
-  // coordinator says so, and a claimed node cannot be parked without leaving the
-  // document — which is a removal, and removals are what claiming exists to
-  // avoid. So a loading boundary rebuilds its range, and the server's nodes go
-  // rather than standing beside the rebuilt ones. Reported, and local to this
-  // range: without it the page showed the fallback TWICE.
+  // A claim nobody spent — which after M13 means a boundary that DECLINED one,
+  // not every loading boundary. `loadingBoundary` takes a settled range and
+  // builds into the document under it; it leaves a deferred `<!--[b:N-->` range
+  // alone, because the stream has not swapped that one yet and its nodes are
+  // still the fallback. `errorBoundary` goes through `activate` and has always
+  // claimed. What reaches here is the declined case, and the server's nodes go
+  // rather than standing beside the rebuilt ones — without it the page showed
+  // the fallback TWICE.
   if (site.claim !== undefined && site.claim !== null) {
     const stranded = site.claim;
     site.claim = null;
@@ -1022,7 +1077,7 @@ export function boundary(
       releaseRange(stranded);
     }
   }
-  return out;
+  return outFor(site, out);
 }
 
 function errorBoundary(
@@ -1106,7 +1161,26 @@ function loadingBoundary(
 
   const own = enter(given, "branch");
   const park: Site = { parent: document.createDocumentFragment(), anchor: null };
-  let live: Site = park;
+  // The server's nodes at this position, when the server actually SETTLED here.
+  //
+  // This is the whole of H4's loading case and it was missing until M13. A
+  // loading boundary parks its content so that an unready body never sits in
+  // the document — but on the FIRST build of a hydration there is nothing to
+  // protect: the server already ran the body to completion and its markup is at
+  // `site`, so parking means building a second copy beside markup that is
+  // already correct and then throwing the server's away. Measured on the router,
+  // whose every route depth is one of these: `claimed: 0` on every page, the
+  // seed unconsumed, and the loader refetched.
+  //
+  // A DEFERRED range is the one case where parking is still right. `<!--[b:N-->`
+  // means the shell flushed before the body was ready and the stream will swap
+  // the content in later; until it does, those nodes are the FALLBACK, and
+  // claiming them would claim the wrong markup. `swapDeferredRange` rewrites the
+  // open comment to the plain `[` once the content lands, so a swapped range
+  // reads as settled here — which it is.
+  const settled = takeSettledClaim(site);
+  let live: Site = settled === null ? park : site;
+  let firstClaim: Range | null = settled;
   let instance: Instance = NOTHING;
   let shown: readonly Node[] = EMPTY;
 
@@ -1149,7 +1223,21 @@ function loadingBoundary(
     // "revalidation keeps stale content" means. Clearing first and rebuilding
     // second showed a blank frame for every refresh.
     renderEffect(() => {
-      const next = attempt(own, live, body, EMPTY_ARGS, 0, "branch", null);
+      const claim = firstClaim;
+      firstClaim = null;
+      let next: Instance;
+      try {
+        next = attempt(own, live, body, EMPTY_ARGS, 0, "branch", claim);
+      } catch (error) {
+        // The server settled this range and the client could not — a seed that
+        // never arrived, or a value only a browser can read. `attempt` has
+        // already released the claim and disposed the scope it opened, so from
+        // here this boundary is an ordinary cold one, and an ordinary cold one
+        // parks. Without this line the retry would build the ready content
+        // straight into the document while `mode()` still says fallback.
+        if (claim !== null) live = park;
+        throw error;
+      }
       if (instance !== NOTHING) teardown(instance);
       instance = next;
     });

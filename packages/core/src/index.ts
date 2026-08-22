@@ -210,7 +210,24 @@ export { writeLive, coerceLive, holdsLive, captureCaret, restoreCaret } from "./
 // The four control-flow primitives — CODESIGN §3.4, SEMANTICS K and E.
 // Everything under `Components` below is an adapter over these; compiled code
 // reaches them directly.
-export { branch, each, boundary, portal, reveal, COUNT, STATIC_KEY, NO_SCOPE } from "./flow.ts";
+/**
+ * `HYDRATE` is public because a hand-written construct has to be able to pass
+ * it. The compiler sets it on every range it emits, but `@barqjs/router` builds
+ * its per-depth `branch` and `boundary` by hand — it is not compiled — and
+ * without the flag the client claims nothing while the string backend still
+ * writes the range, which is a page that silently re-renders itself cold.
+ */
+export {
+  branch,
+  each,
+  boundary,
+  portal,
+  reveal,
+  COUNT,
+  STATIC_KEY,
+  NO_SCOPE,
+  HYDRATE,
+} from "./flow.ts";
 export type { BoundaryKind } from "./flow.ts";
 
 // The flow components — the adapters `passes::flow` falls back to when it

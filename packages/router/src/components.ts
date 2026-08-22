@@ -22,6 +22,7 @@ import {
   type Cell,
   type Scope,
   type StrictAccessor,
+  HYDRATE,
   bindProp,
   block,
   boundary,
@@ -126,7 +127,7 @@ export function renderDepth(
           return shown === null || shown === undefined ? null : shown;
         }) as Block<unknown>,
         content as Block<unknown>,
-        0,
+        HYDRATE,
       );
 
     // One `Loading` per depth, by construction rather than by asking the author
@@ -142,7 +143,7 @@ export function renderDepth(
       "loading",
       routeFallback(state, route),
       guarded,
-      0,
+      HYDRATE,
       // Re-arm on navigation: when `on()` changes while work is pending the
       // fallback comes back instead of holding the previous route's content.
       // This is the whole of "show the skeleton again on navigation" and it
@@ -151,7 +152,12 @@ export function renderDepth(
     );
   };
 
-  return branch(scope, parent, anchor, routeAt as Cell<unknown>, body);
+  // HYDRATE on all three, and `renderRoutes` writes the same three ranges in
+  // the same order. Without it the string backend still wrote its boundary
+  // ranges while this side claimed none of them, and every SSR'd page threw its
+  // markup away and re-rendered cold — measured as `claimed: 0, recovered: true`
+  // against a real dev server before this line existed.
+  return branch(scope, parent, anchor, routeAt as Cell<unknown>, body, HYDRATE);
 }
 
 /**

@@ -318,7 +318,13 @@ export function swapDeferredRange(n: number): void {
   }
   for (let i = dead.length; i--;) dead[i].parentNode?.removeChild(dead[i]);
   open.parentNode?.insertBefore(t.content, node);
-  open.data = "[0";
+  // Back to the PLAIN open comment, not `[0`. Once the content is in, this
+  // range is indistinguishable from one the shell settled, and it has to read
+  // that way to both readers: `loadingBoundary` claims a settled range and
+  // parks a `b:` one, and `reconcileKey` compares whatever key is here against
+  // the client's own — `[0` announced a branch key of "0" that no client would
+  // ever match.
+  open.data = "[";
   t.parentNode?.removeChild(t);
 }
 
@@ -526,6 +532,21 @@ export function renderToStream(
       };
       try {
         controller.enqueue(encoder.encode(shell));
+        // Pre-hydration input capture, on the STREAMED path too.
+        //
+        // `hydrationScriptFor` installs it for `renderPage`, and nothing
+        // installed it here — so the DEFAULT page (`createPageHandler` streams
+        // unless told otherwise) dropped every click and keystroke made before
+        // hydration, and `SEMANTICS.md` H6's whole claim-based replay was
+        // unreachable on the path most pages take. Counted in the emitted bytes:
+        // 1 occurrence on a non-streamed page, 0 on a streamed one.
+        //
+        // Right after the shell, which is the earliest a stream can manage —
+        // the shell is one synchronous render and there is no byte before it to
+        // hang a listener from.
+        controller.enqueue(
+          encoder.encode(`<script${nonceAttr(options?.nonce)}>${EVENT_CAPTURE_SNIPPET}</script>`),
+        );
         // Opened before the first seed and before the bundle can run, so a read
         // that misses knows its value may still be coming.
         if (parked.length > 0) {

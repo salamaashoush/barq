@@ -9,14 +9,17 @@
  */
 
 import {
+  HYDRATE,
   Loading,
   NotReadyError,
+  boundary,
   computed,
   effect,
   element,
   flush,
   hydrate,
   runWithOwner,
+  template,
   scope,
   settle,
   signal,
@@ -34,7 +37,7 @@ import {
   renderToStringAsync,
   swapDeferredRange,
 } from "./server.ts";
-import { esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
+import { boundary as ssrBoundary, esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
 import { encodeSeed } from "./codec.ts";
 
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
@@ -507,6 +510,78 @@ describe("hydrate", () => {
     expect(fetches).toBe(1); // seeded: client never refetched
   });
 
+  /**
+   * A `Loading` boundary that SETTLED on the server has to be claimed, not
+   * rebuilt.
+   *
+   * This is the shape `@barqjs/router` renders every route depth in, and until
+   * this test existed nothing in the repo rendered through the string backend
+   * and then hydrated the result. Measured before the fix: `claimed: 0`,
+   * `recovered: true`, and `"1 server node(s) at a boundary that parks"` —
+   * `loadingBoundary` released the claim `boundary` had just taken and rebuilt
+   * into a detached fragment, so every route depth of every SSR'd page threw the
+   * server's markup away.
+   *
+   * The assertion is on `hydrate.report`, not on `textContent`: a cold rebuild
+   * produces the same text, which is why the two tests below pass without
+   * claiming anything.
+   */
+  test("a settled Loading boundary is CLAIMED, not rebuilt", async () => {
+    let fetches = 0;
+    const makeApp = (ssr: boolean) => {
+      const user = computed(
+        async () => {
+          fetches++;
+          await tick();
+          return "Ada";
+        },
+        { key: "who" },
+      );
+      // `template()` on the client, which is what the compiler emits and what
+      // CLAIMS. `element()` builds a fresh node by construction, so a test
+      // written with it can never observe hydration at all.
+      const bold = template("<b>x</b>");
+      const italic = template("<i>loading</i>");
+      const content = () => {
+        if (!ssr) {
+          const node = bold() as HTMLElement;
+          node.textContent = String(user());
+          return node;
+        }
+        return ssrHtml(`<b>${esc(String(user()))}</b>`);
+      };
+      const fallback = () => (ssr ? ssrHtml("<i>loading</i>") : italic());
+      return ssr
+        ? () =>
+            ssrBoundary(null, null, null, "loading", fallback as never, content as never, HYDRATE)
+        : () => boundary(null, null, null, "loading", fallback as never, content as never, HYDRATE);
+    };
+
+    const serverHtml = await renderToStringAsync(makeApp(true) as never);
+    expect(serverHtml).toContain("<b>Ada</b>");
+    expect(serverHtml).toContain("<!--[-->");
+    const data = getRenderData();
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = serverHtml;
+    const served = container.querySelector("b");
+
+    hydrate(makeApp(false) as never, container, { data });
+    flush();
+
+    expect(hydrate.report.recovered).toBe(false);
+    expect(hydrate.report.mismatches).toEqual([]);
+    expect(hydrate.report.claimed).toBeGreaterThan(0);
+    // The very node the server wrote, still in the document — which is what
+    // claiming buys over a rebuild that produces identical markup.
+    expect(container.querySelector("b")).toBe(served);
+    expect(container.textContent).toBe("Ada");
+    await tick();
+    flush();
+    expect(fetches).toBe(1);
+  });
+
   test("hydrated app is interactive (delegated events)", async () => {
     const makeApp = () => {
       const count = signal(0);
@@ -870,9 +945,17 @@ describe("renderToStream", () => {
     });
   });
 
-  test("a page with nothing to defer streams one chunk and no swap machinery", async () => {
+  test("a page with nothing to defer streams the shell, the capture, and no swap machinery", async () => {
     const parts = await collect(renderToStream((() => ssrHtml("<p>flat</p>")) as never));
-    expect(parts).toEqual(["<p>flat</p>"]);
+    expect(parts[0]).toBe("<p>flat</p>");
+    // The capture goes out even with nothing deferred: a user can click before
+    // the bundle arrives on any page, deferred or not.
+    expect(parts[1]).toContain("__BARQ_EVTS__");
+    expect(parts).toHaveLength(2);
+    const html = parts.join("");
+    expect(html).not.toContain("<template");
+    expect(html).not.toContain("__BARQ_SWAP__");
+    expect(html).not.toContain("__BARQ_SEED__");
   });
 });
 

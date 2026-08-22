@@ -296,6 +296,24 @@ export function withRange<T>(range: Range, body: () => T): T {
 }
 
 /**
+ * `withRange`, plus the nodes the body actually TOOK.
+ *
+ * A caller that reconciles what the body produced against what the server sent
+ * needs this, because "produced nothing" and "claimed everything in place" look
+ * identical from the outside: a nested region claims at its own site and hands
+ * its caller no node to insert. Comparing produced-lists removes the page;
+ * asking the cursor does not. `flow.ts`'s `attempt` asks the same question.
+ */
+export function withRangeTaken<T>(range: Range, body: () => T): { value: T; taken: Node[] } {
+  if (SESSION === null) return { value: body(), taken: [] };
+  const all = range.nodes.slice();
+  const cursor = openCursor(range);
+  const value = atCursor(cursor, body);
+  const rest = new Set<Node>(cursorRest(cursor));
+  return { value, taken: all.filter((node) => !rest.has(node)) };
+}
+
+/**
  * Claim the next node at the cursor, which is what `template()` calls instead
  * of cloning.
  *

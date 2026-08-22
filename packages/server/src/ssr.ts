@@ -649,7 +649,12 @@ const DETECT = 1 << 3;
 const WHOLE = 1 << 4;
 
 /** The key spellings that survive a comment. Anything else claims positionally. */
-const SAFE_KEY = /^[\w.:+-]{0,32}$/;
+// `:` is excluded because `deferredRange` reserves `b:<id>`: a DEV branch keyed
+// `"b:1"` would otherwise write the same open comment a parked boundary does,
+// and the client would read a settled range as one the stream still owes it. A
+// key with a colon degrades to the opaque `?`, which `reconcileKey` already
+// treats as "no key on the wire".
+const SAFE_KEY = /^[\w.+-]{0,32}$/;
 
 /**
  * `<!--[-->` … `<!--]-->` around one range, and `<!--[k-->` where the build
@@ -680,6 +685,23 @@ function range(inner: string, flags: number, key?: unknown): string {
  */
 function deferredRange(id: number, inner: string): string {
   return `${OPEN}b:${id}-->${inner}${CLOSE}`;
+}
+
+/**
+ * A boundary that showed its FALLBACK with no stream to finish it.
+ *
+ * `renderToString`/`renderToStringAsync` have no sink, so a body that never
+ * settles emits the fallback and that is the whole answer. The range still has
+ * to SAY so: the client's `loadingBoundary` claims a settled range in place,
+ * and claiming this one would claim the fallback's markup as the content's.
+ * Caught by L5 — `control-flow-await-suspense` went to 0% reuse and a full
+ * recovery before this marker existed.
+ *
+ * `f:` rather than a bare `f`, for the reason `b:` has a colon: `SAFE_KEY`
+ * excludes `:`, so no DEV branch key can spell either of them.
+ */
+function parkedRange(inner: string): string {
+  return `${OPEN}f:-->${inner}${CLOSE}`;
 }
 
 /**
@@ -875,11 +897,18 @@ export function boundary(
   const inner =
     kind === "error"
       ? errorBoundary(given, fallback, body, flags)
-      : loadingBoundary(given, fallback, body);
-  // A DEFERRED boundary has already written its own range — `<!--[b:N-->`, the
-  // one the stream will swap — so wrapping it again would nest a range the
-  // client would claim as this boundary's content.
-  if ((flags & HYDRATE) === 0 || inner.t.startsWith(`${OPEN}b:`)) return inner;
+      : loadingBoundary(given, fallback, body, flags);
+  // A boundary that did not settle has already written its own range —
+  // `<!--[b:N-->` for one the stream will swap, `<!--[f:-->` for one nothing
+  // will — so wrapping it again would nest a range the client would claim as
+  // this boundary's content.
+  if (
+    (flags & HYDRATE) === 0 ||
+    inner.t.startsWith(`${OPEN}b:`) ||
+    inner.t.startsWith(`${OPEN}f:`)
+  ) {
+    return inner;
+  }
   return html(range(inner.t, flags));
 }
 
@@ -922,6 +951,7 @@ function loadingBoundary(
   given: Scope | null,
   fallback: Block<unknown> | null | undefined,
   body: Block<unknown>,
+  flags: number,
 ): SsrHtml {
   const pending = createPendingCollector();
   const content: Block<unknown> = (scope: Scope | null): unknown => {
@@ -957,7 +987,14 @@ function loadingBoundary(
   // `(content Block, this scope)` goes to the sink so the same Block can be
   // re-invoked when its promises settle. There is no second rendering path —
   // the continuation IS the Block the shell already refused to wait for.
-  if (SINK === null) return html(shown);
+  // GATED on the flag, like every other range this file writes. `b:` is not —
+  // the stream needs it to find what to swap whether or not the page hydrates —
+  // but `f:` says nothing to anyone except a claiming client, and emitting it
+  // unconditionally made the string backend's -O0 and -Ox output diverge, which
+  // `ssr.test.ts`'s byte-identical channel caught.
+  if (SINK === null) {
+    return html((flags & HYDRATE) === 0 ? String(shown) : parkedRange(String(shown)));
+  }
   return html(deferredRange(SINK.defer(content, given), shown));
 }
 
@@ -1163,9 +1200,20 @@ export function ssrSwitch(
   return branch(s, null, null, key, body);
 }
 
+/**
+ * `flags` is a parameter and not a constant because a HAND-WRITTEN caller has to
+ * be able to say `HYDRATE`. The compiler never reaches these two — it emits
+ * `boundary(..., 4)` directly on both backends — but `@barqjs/router` walks its
+ * matched chain by hand, and with `0` here the string backend writes no range
+ * while the DOM half claims one, which is a page that hydrates nothing.
+ *
+ * `0` stays the default: an uncompiled caller with no `hydratable` client half
+ * is the case these adapters were written for.
+ */
 export function ssrLoading(
   s: Scope | null,
   props: { fallback?: unknown; on?: unknown; children: unknown },
+  flags = 0,
 ): SsrHtml {
   return boundary(
     s,
@@ -1174,7 +1222,7 @@ export function ssrLoading(
     "loading",
     slotBlock(props.fallback),
     props.children as Block<unknown>,
-    0,
+    flags,
     props.on === undefined ? undefined : (): unknown => readValue(props.on, "Loading.on"),
   );
 }
@@ -1182,6 +1230,7 @@ export function ssrLoading(
 export function ssrErrored(
   s: Scope | null,
   props: { fallback: unknown; children: unknown },
+  flags = 0,
 ): SsrHtml {
   return boundary(
     s,
@@ -1190,6 +1239,7 @@ export function ssrErrored(
     "error",
     props.fallback as Block<unknown>,
     props.children as Block<unknown>,
+    flags,
   );
 }
 

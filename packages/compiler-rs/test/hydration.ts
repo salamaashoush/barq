@@ -304,9 +304,9 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   "control-flow-await-suspense": {
     kinds: ["structure"],
     recovered: false,
-    reuse: 43,
+    reuse: 60,
     shape: null,
-    why: "M10 stopped the loading boundary rebuilding its body into one scope by hand and routed it through `attempt`, so the claim is spent by the thing that owns it and the page no longer degrades — recovered true → false, reuse 0% → 43%. What remains is the built subtree the inner boundary produces at a ROOT position, which has no counterpart on the wire to claim: the range is claimed, its content rebuilt, and the server's nodes reconciled away",
+    why: "M13 took the second half: a loading boundary now CLAIMS a settled range in place instead of parking into a detached fragment, and the string backend marks an unsettled one `<!--[f:-->` so this fixture — whose resource never settles at wire time — still parks correctly. 43% → 60%. What remains is the fallback subtree the server wrote for a body the client cannot settle either, which has no counterpart to claim",
   },
 
   // ── a boundary that parks, and a boundary that recovers ────────────────
@@ -315,7 +315,7 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     recovered: false,
     reuse: 94,
     shape: null,
-    why: "a Loading boundary parks its content in a detached fragment before revealing it, and a claimed node cannot be parked without leaving the document; its one range rebuilds",
+    why: "a settled Loading boundary claims in place since M13; what the remaining 6% is, is the eta-forwarded prop's own position",
   },
   "control-flow-error-boundary": {
     kinds: [],
@@ -325,11 +325,11 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     why: "the body throws on the client exactly as it did on the server, so the claim is spent by the attempt that failed and the fallback is built cold — E3's `try` and the claim are the same activation",
   },
   "control-flow-errored-loading": {
-    kinds: ["structure"],
+    kinds: [],
     recovered: false,
-    reuse: 33,
+    reuse: 67,
     shape: null,
-    why: "the same M10 move as `control-flow-await-suspense`, and the same improvement — recovered true → false, reuse 0% → 33%. A Loading boundary wrapping an Errored boundary whose body throws now spends its claim through `attempt` rather than through a hand-rolled rebuild; what is left is the fallback subtree, built cold because a body that threw has no server nodes worth claiming",
+    why: "M13. The loading boundary claims its settled range in place rather than parking it, so the structure mismatch it used to report is gone and reuse doubled — 33% → 67%. What is left is the error fallback, built cold because a body that threw on both sides has no server nodes worth claiming",
   },
 
   // ── raw text, where the tokenizer eats a newline nobody can see ────────

@@ -52,7 +52,7 @@ import {
   hydrating,
   report,
   wireIsMarked,
-  withRange,
+  withRangeTaken,
   withoutClaim,
   type HydrationReport,
   type Range,
@@ -1673,12 +1673,26 @@ export function insert(
         // throws does not leave the cursor open over a range nobody owns.
         const claiming = first;
         first = null;
-        const produced =
-          claiming === null
-            ? (value as (s: unknown) => Child)(owner)
-            : withRange(claiming, () => (value as (s: unknown) => Child)(owner));
-        if (claiming !== null) detectTextDrift(current, produced);
-        current = applyInsert(parent, produced, current, anchor, given);
+        let produced: Child;
+        let taken: Node[] | null = null;
+        if (claiming === null) {
+          produced = (value as (s: unknown) => Child)(owner);
+        } else {
+          const run = withRangeTaken(claiming, () => (value as (s: unknown) => Child)(owner));
+          produced = run.value;
+          taken = run.taken;
+        }
+        // A value that CLAIMED the server's nodes and handed nothing back — a
+        // nested region does exactly that, since a claimed site needs no
+        // synthesised anchor to insert. Reconciling `null` against the claim
+        // would remove the whole subtree the region just adopted; measured on a
+        // router page as a `<div>shell:` with its route emptied out of it.
+        if (taken !== null && taken.length > 0 && (produced === null || produced === undefined)) {
+          current = taken;
+        } else {
+          if (claiming !== null) detectTextDrift(current, produced);
+          current = applyInsert(parent, produced, current, anchor, given);
+        }
         if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
       });
     });
