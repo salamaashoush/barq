@@ -92,6 +92,7 @@ export {
   type RouteProps,
   flattenRoutes,
   pathOf,
+  preloadMatched,
   route,
 } from "./route.ts";
 

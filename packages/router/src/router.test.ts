@@ -7,7 +7,16 @@
  * that did nothing.
  */
 
-import { type Scope, flush, getOwner, insert, isDisposed, render, settle } from "@barqjs/core";
+import {
+  type Scope,
+  flush,
+  getOwner,
+  insert,
+  isDisposed,
+  lazy,
+  render,
+  settle,
+} from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { Link, NavLink, Router, RouterProvider, useRouter } from "./components.ts";
@@ -18,7 +27,7 @@ import { useLocation, useNavigate, useParams, useSearch, useSearchParams } from 
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouterState, createRouter } from "./router.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -2330,3 +2339,69 @@ describe("useSearchParams", () => {
 });
 
 void text;
+
+/**
+ * Navigating to a CODE-SPLIT route.
+ *
+ * Every route a file-based table generates is `lazy()`, and this never worked:
+ * the destination showed its fallback forever and a second navigation was
+ * stuck behind it. `renderDepth` invokes a route component inside `untrack` —
+ * on purpose, per CODESIGN §3.9, so a body reading `props.params()` does not
+ * resubscribe its whole subtree — and a `lazy()` cell read there subscribes to
+ * nothing, so the `NotReadyError` parked this depth's boundary and the module
+ * landing could never wake it.
+ *
+ * The fix is a TRACKED probe outside the untrack: `lazy()` exposes `ready()`,
+ * and `renderDepth` calls it before invoking the body.
+ *
+ * Reproduced first against `bc36100` in a worktree, so the record says this is
+ * a defect the front door FOUND rather than one it introduced.
+ */
+test("navigating to a lazy() route reveals it once the module lands", async () => {
+  const Home = () => {
+    const n = document.createElement("p");
+    n.textContent = "home";
+    return n;
+  };
+  let landed!: (m: { default: unknown }) => void;
+  const Later = lazy(() => new Promise<{ default: unknown }>((r) => (landed = r)));
+
+  const routes: AnyRouteDefinition[] = [
+    { path: "/", id: "/", component: Home as never },
+    { path: "/later", id: "/later", component: Later as never },
+  ] as never;
+
+  const state = createRouter({ routes, history: memoryHistory({ initial: ["/"] }) });
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const dispose = render(
+    ((s: unknown) =>
+      (RouterProvider as never as (s: unknown, p: unknown) => unknown)(s, {
+        state: () => state,
+      })) as never,
+    host,
+  );
+  flush();
+  expect(host.textContent).toBe("home");
+
+  await state.navigate("/later");
+  flush();
+  await tick(5);
+  flush();
+
+  landed({
+    default: () => {
+      const n = document.createElement("b");
+      n.textContent = "later";
+      return n;
+    },
+  });
+  await tick(10);
+  flush();
+  await tick(10);
+  flush();
+
+  expect(host.textContent).toBe("later");
+  dispose();
+  host.remove();
+});

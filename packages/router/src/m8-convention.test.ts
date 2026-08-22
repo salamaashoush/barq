@@ -112,8 +112,10 @@ describe("the nine workarounds are deletions", () => {
     // The application-default setter that carried it is gone with it, and the
     // reference application now reaches its client the way the design says.
     expect(nowhere(/setQueryClient/)).toEqual([]);
-    const MAIN = readFileSync(join(ROOT, "..", "kitchen-sink", "src", "main.tsx"), "utf8");
-    expect(MAIN).toContain("<QueryClientProvider client={queryClient}>");
+    // The reference application's CLIENT ENTRY, since it became an SSR app and
+    // `src/main.tsx` went with the `index.html` it mounted into.
+    const ENTRY = readFileSync(join(ROOT, "..", "kitchen-sink", "src", "entry-client.tsx"), "utf8");
+    expect(ENTRY).toContain("<QueryClientProvider client={queryClient}>");
   });
 
   // #3 — 14 uses of createMarkerPair / clearRange / insertNodes / childToNodes.

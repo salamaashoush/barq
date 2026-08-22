@@ -79,7 +79,7 @@ function findEntry(root: string, srcDir: string, half: "client" | "server"): str
 function defaultClientEntry(): string {
   return [
     `import { hydrate } from "@barqjs/core";`,
-    `import { RouterProvider, browserHistory, createRouter } from "@barqjs/router";`,
+    `import { RouterProvider, browserHistory, createRouter, preloadMatched } from "@barqjs/router";`,
     `import { routes } from "virtual:barq-routes";`,
     ``,
     `const container = document.getElementById("app");`,
@@ -89,6 +89,10 @@ function defaultClientEntry(): string {
     ``,
     `const state = createRouter({ routes, history: browserHistory() });`,
     `await state.start();`,
+    `// The matched chain's CHUNKS, before the walk. A route module that has not`,
+    `// arrived throws \`NotReadyError\`, which parks the depth's boundary and`,
+    `// makes it rebuild — discarding exactly the markup hydration exists to keep.`,
+    `await preloadMatched(state.chain());`,
     `hydrate((s) => RouterProvider(s, { state: () => state }), container);`,
     ``,
   ].join("\n");

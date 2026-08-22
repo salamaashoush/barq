@@ -429,7 +429,10 @@ export function Reveal(
 export function lazy<P>(
   load: () => Promise<Record<string, unknown>>,
   pick: (module: Record<string, unknown>) => unknown = (module) => module.default,
-): ((s: Scope | null, props: P) => JSXElement) & { preload: () => Promise<void> } {
+): ((s: Scope | null, props: P) => JSXElement) & {
+  preload: () => Promise<void>;
+  ready: () => void;
+} {
   let cell: Cell<unknown> | null = null;
   const resolved = (): Cell<unknown> =>
     (cell ??= runWithOwner(null, () => computed(async () => pick(await load()))));
@@ -444,6 +447,25 @@ export function lazy<P>(
   // that is not itself memoised, and it made `preload()` import twice.
   component.preload = async (): Promise<void> => {
     await resolve(resolved());
+  };
+
+  /**
+   * A TRACKED read of the module, for a caller that must subscribe to it.
+   *
+   * Invoking the component reads the cell too, but a caller that invokes it
+   * inside `untrack` establishes no dependency — so the `NotReadyError` parks a
+   * boundary that the module landing can never wake. `@barqjs/router` is exactly
+   * that caller: `CODESIGN.md` §3.9 makes component bodies run untracked on
+   * purpose, so a route reading `props.params()` does not resubscribe its whole
+   * subtree. Measured before this existed: navigating to a code-split route
+   * showed its fallback forever, and every route a file-based table generates is
+   * code-split.
+   *
+   * Throws `NotReadyError` until the module is here, which is what a boundary
+   * above it is for.
+   */
+  component.ready = (): void => {
+    resolved()();
   };
 
   return component;

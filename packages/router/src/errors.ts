@@ -97,6 +97,27 @@ export function errorFallbackFor(
         });
       }
     }
+    // No `errorComponent` anywhere up the chain, so the boundary shows nothing
+    // — and shows nothing SILENTLY, which is the shape that made an SSR'd page
+    // render as an empty `<div id="app">` with no clue why. A route that has
+    // not said what to do with an error still deserves to have the error said
+    // out loud once.
+    if (!missing) reportUnhandled(chain[depth]?.id ?? `depth ${depth}`, error());
     return null;
   };
+}
+
+/**
+ * An error a boundary caught that nothing was written to display.
+ *
+ * `console.error` rather than a rethrow: rethrowing here tears the document
+ * mid-body on the streamed path, which is strictly worse than an empty region.
+ * What was missing was not a different recovery — it was any evidence at all.
+ */
+function reportUnhandled(route: string, error: Error): void {
+  console.error(
+    `[barq-router] ${route} threw and no route in its chain declares an ` +
+      `\`errorComponent\`, so the boundary rendered nothing:\n`,
+    error,
+  );
 }

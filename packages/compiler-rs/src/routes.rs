@@ -35,6 +35,85 @@ pub struct RouteFile {
     pub file: String,
     /// The dotted name with its extension removed: `users.$id`.
     pub name: String,
+    /// What the file says about itself, lifted from its own source.
+    pub config: RouteConfig,
+}
+
+/// The two declarations a route makes that the TABLE has to carry.
+///
+/// Both are needed BEFORE the module loads, and the module is `lazy()` — so a
+/// runtime read is not available at the moment either one is wanted. `ssr`
+/// decides what the string backend renders for that depth, which the page
+/// handler asks before it builds anything; `prerender` decides whether the
+/// build writes the route out, which happens with no runtime at all.
+///
+/// LIFTED FROM SOURCE, and only from a literal. Astro requires exactly
+/// `export const prerender = true` and says why in its own error: "Mutable
+/// values declared at runtime are not supported." SvelteKit reaches the same
+/// answer through a second forked pass that IMPORTS every node and reads its
+/// exports, which is not available here — `routeTree` is a synchronous napi
+/// call with no module loader.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RouteConfig {
+    /// `export const ssr = false` / `= "data-only"`.
+    pub ssr: Option<String>,
+    /// `export const prerender = true`.
+    pub prerender: Option<bool>,
+    /// A declaration that is present but not a literal, for the caller to report.
+    pub refused: Vec<String>,
+}
+
+/// Read `export const ssr` / `export const prerender` out of a route file.
+///
+/// A scan rather than a parse, and deliberately: the values it accepts are
+/// `true`, `false` and one quoted string, so a regex-free character walk over
+/// the two declarations is exact for everything it accepts and refuses
+/// everything else. Anything more expressive would be a value the client and
+/// the server could disagree about.
+pub fn read_config(source: &str) -> RouteConfig {
+    let mut config = RouteConfig::default();
+    for (name, is_ssr) in [("ssr", true), ("prerender", false)] {
+        let Some(raw) = declaration(source, name) else { continue };
+        let value = raw.trim();
+        if is_ssr {
+            match value {
+                "true" => config.ssr = Some("true".to_owned()),
+                "false" => config.ssr = Some("false".to_owned()),
+                "\"data-only\"" | "'data-only'" => config.ssr = Some("\"data-only\"".to_owned()),
+                _ => config.refused.push(format!("ssr = {value}")),
+            }
+        } else {
+            match value {
+                "true" => config.prerender = Some(true),
+                "false" => config.prerender = Some(false),
+                _ => config.refused.push(format!("prerender = {value}")),
+            }
+        }
+    }
+    config
+}
+
+/// The initialiser of a top-level `export const <name> = …`, up to `;` or a newline.
+fn declaration<'a>(source: &'a str, name: &str) -> Option<&'a str> {
+    let needle = format!("export const {name}");
+    let mut from = 0usize;
+    while let Some(offset) = source[from..].find(&needle) {
+        let start = from + offset;
+        // Top level only: a match indented or inside a larger identifier is not
+        // the declaration this is looking for.
+        let at_line_start = start == 0 || source.as_bytes()[start - 1] == b'\n';
+        let after = &source[start + needle.len()..];
+        let boundary =
+            after.chars().next().is_none_or(|c| c == ' ' || c == '=' || c == '\t' || c == ':');
+        if at_line_start && boundary {
+            let equals = after.find('=')?;
+            let rest = &after[equals + 1..];
+            let end = rest.find([';', '\n']).unwrap_or(rest.len());
+            return Some(&rest[..end]);
+        }
+        from = start + needle.len();
+    }
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -45,10 +124,16 @@ pub struct RouteNode {
     pub file: Option<String>,
     pub children: Vec<RouteNode>,
     pub pathless: bool,
+    /// What the file declared about itself. Empty for a node with no file.
+    pub config: RouteConfig,
 }
 
 const EXTENSIONS: [&str; 4] = [".tsx", ".jsx", ".ts", ".js"];
 const ROUTE_SUFFIX: &str = ".route";
+/// The layout for the empty prefix: `src/routes/route.tsx`.
+const ROOT_LAYOUT: &str = "route";
+/// Its id, which cannot be `/` because the root index is.
+const ROOT_ID: &str = "__root__";
 const INDEX: &str = "index";
 
 /// Strip the extension; a directory separator is the same thing as a dot.
@@ -98,9 +183,16 @@ fn walk(current: &Path, base: &Path, root: &Path, out: &mut Vec<RouteFile>) {
         }
         let Ok(from_root) = path.strip_prefix(root) else { continue };
         let Ok(from_base) = path.strip_prefix(base) else { continue };
+        // The FIRST read of a route file's contents in this crate, and the
+        // reason is `emit_node`: `ssr` and `prerender` have to be in the table,
+        // the table is built before anything runs, and the module is `lazy()`
+        // so nothing can ask it later without defeating the split.
+        let config =
+            std::fs::read_to_string(&path).map(|text| read_config(&text)).unwrap_or_default();
         out.push(RouteFile {
             file: from_root.to_string_lossy().replace('\\', "/"),
             name: name_of(&from_base.to_string_lossy().replace('\\', "/")),
+            config,
         });
     }
 }
@@ -134,12 +226,22 @@ fn parent_prefix(prefix: &str, known: &[String]) -> String {
 pub fn build_tree(files: &[RouteFile]) -> Vec<RouteNode> {
     let mut layout_prefixes: Vec<String> = Vec::new();
     let mut layout_files: Vec<(String, String)> = Vec::new();
+    let mut layout_configs: Vec<(String, RouteConfig)> = Vec::new();
     let mut leaves: Vec<&RouteFile> = Vec::new();
 
     for file in files {
-        if let Some(prefix) = file.name.strip_suffix(ROUTE_SUFFIX) {
+        // `route.tsx` at the top of the directory is the layout for the EMPTY
+        // prefix — the one every route is under. `<prefix>.route` needs a prefix
+        // by construction, so without this there was no way to write a layout
+        // that wraps the whole app, and a file named `route.tsx` became a route
+        // at `/route` — which is not what anyone naming it that means, and the
+        // `.route` suffix is already reserved by the convention.
+        let prefix =
+            if file.name == ROOT_LAYOUT { Some("") } else { file.name.strip_suffix(ROUTE_SUFFIX) };
+        if let Some(prefix) = prefix {
             layout_prefixes.push(prefix.to_string());
             layout_files.push((prefix.to_string(), file.file.clone()));
+            layout_configs.push((prefix.to_string(), file.config.clone()));
         } else {
             leaves.push(file);
         }
@@ -153,28 +255,47 @@ pub fn build_tree(files: &[RouteFile]) -> Vec<RouteNode> {
 
     for prefix in &layout_prefixes {
         let pathless = prefix.split('.').next_back().is_some_and(|last| last.starts_with('_'));
-        let file = layout_files
+        let file =
+            layout_files.iter().find(|(candidate, _)| candidate == prefix).map(|(_, f)| f.clone());
+        let config = layout_configs
             .iter()
             .find(|(candidate, _)| candidate == prefix)
-            .map(|(_, file)| file.clone());
+            .map_or_else(RouteConfig::default, |(_, c)| c.clone());
         let known: Vec<String> = located.iter().map(|(p, _)| p.clone()).collect();
         let parent = parent_prefix(prefix, &known);
 
         let own =
             if parent.is_empty() { prefix.clone() } else { prefix[parent.len() + 1..].to_string() };
         let node = RouteNode {
+            // `__root__` rather than `/`, which the root INDEX already claims.
+            // A route id is a key — the loader cache, `routeAssets` and the
+            // route-action manifest all address by it — so two routes cannot
+            // share one. TanStack spells the root route the same way.
             id: if prefix.is_empty() {
-                "/".to_string()
+                ROOT_ID.to_owned()
             } else {
                 format!("/{}", prefix.replace('.', "/"))
             },
-            path: if pathless { None } else { Some(segments_of(&own)) },
+            // The ROOT layout spans everything, so it takes `/`; `segments_of`
+            // answers "" for the empty prefix, which would be a route with no
+            // path at all.
+            path: if pathless {
+                None
+            } else if prefix.is_empty() {
+                Some("/".to_owned())
+            } else {
+                Some(segments_of(&own))
+            },
             file,
             children: Vec::new(),
             pathless,
+            config,
         };
 
-        let route = if parent.is_empty() {
+        // `parent.is_empty()` is not the same question as "has no parent" once a
+        // ROOT layout exists: `route.tsx` claims the empty prefix, so the
+        // sentinel and a real key collide. Ask `located` instead.
+        let route = if !located.iter().any(|(p, _)| *p == parent) {
             roots.push(node);
             vec![roots.len() - 1]
         } else {
@@ -233,16 +354,23 @@ pub fn build_tree(files: &[RouteFile]) -> Vec<RouteNode> {
             // An index child's path is empty: it IS its parent's path. A root
             // index has no parent to inherit from, so it names the root.
             path: Some(if is_index {
-                if parent_key.is_empty() { "/".to_string() } else { String::new() }
+                // An index under a layout IS its parent's path. Only an index
+                // with no layout above it has to name the root itself.
+                if located.iter().any(|(p, _)| *p == parent_key) {
+                    String::new()
+                } else {
+                    "/".to_string()
+                }
             } else {
                 segments_of(&own)
             }),
             file: Some(leaf.file.clone()),
             children: Vec::new(),
             pathless: false,
+            config: leaf.config.clone(),
         };
 
-        if parent_key.is_empty() {
+        if !located.iter().any(|(p, _)| *p == parent_key) {
             roots.push(node);
         } else {
             let parent_route = located
@@ -314,6 +442,14 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         parts.push(format!("component: lazy(() => import({specifier}))"));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
         parts.push(format!("pending: lazy(() => import({specifier}), (m) => m.Pending ?? Empty)"));
+        // LIFTED, not imported. Both are wanted before the module loads, and the
+        // module is `lazy()`.
+        if let Some(ssr) = &node.config.ssr {
+            parts.push(format!("ssr: {ssr}"));
+        }
+        if let Some(prerender) = node.config.prerender {
+            parts.push(format!("prerender: {prerender}"));
+        }
     }
     out.push_str(&parts.join(", "));
     if !node.children.is_empty() {
@@ -445,7 +581,14 @@ pub fn generate_types(tree: &[RouteNode], types_dir: &str) -> String {
         "  export type SearchFor<Id extends keyof RouteData> = RouteData[Id][\"search\"];\n",
     );
     out.push_str("  export type DataFor<Id extends keyof RouteData> = RouteData[Id][\"data\"];\n");
-    out.push_str("  export const routes: unknown[];\n  export default routes;\n}\n");
+    // `AnyRouteDefinition[]`, not `unknown[]`. The table is handed straight to
+    // `createRouter` and `createPageHandler`, both of which take that type, so
+    // `unknown[]` made every entry point in every app a type error the author
+    // had to cast away — which is the "resolves to any" failure D5 already
+    // recorded once, in a different spelling.
+    out.push_str(
+        "  export const routes: import(\"@barqjs/router\").AnyRouteDefinition[];\n  export default routes;\n}\n",
+    );
     out
 }
 
@@ -506,6 +649,26 @@ fn join_for_types(parent: &str, path: Option<&str>) -> String {
     }
 }
 
+/// Every declaration a route made that is present but not a literal.
+///
+/// Reported rather than ignored, and rather than guessed at. A `prerender` the
+/// scan cannot read is the difference between a page that exists on the CDN and
+/// one that 404s, so answering "false, probably" would be the silent failure
+/// this whole channel exists to avoid.
+pub fn refusals(files: &[RouteFile]) -> Vec<String> {
+    let mut out = Vec::new();
+    for file in files {
+        for refused in &file.config.refused {
+            out.push(format!(
+                "{}: `export const {refused}` is not a literal, so the route table cannot carry \
+                 it — write `true`, `false` or (for `ssr`) \"data-only\"",
+                file.file
+            ));
+        }
+    }
+    out
+}
+
 /// Every LEAF pattern, which is what `BARQ013` checks a `<Link to>` against.
 pub fn patterns(tree: &[RouteNode]) -> Vec<String> {
     let mut out = Vec::new();
@@ -547,7 +710,11 @@ mod tests {
     fn files(names: &[&str]) -> Vec<RouteFile> {
         names
             .iter()
-            .map(|name| RouteFile { file: format!("src/routes/{name}"), name: name_of(name) })
+            .map(|name| RouteFile {
+                file: format!("src/routes/{name}"),
+                name: name_of(name),
+                config: RouteConfig::default(),
+            })
             .collect()
     }
 
@@ -720,5 +887,70 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         // `docs/` holds only markdown, so the extension filter is doing its job.
         assert!(scan(root, "docs").is_empty());
+    }
+
+    #[test]
+    fn a_route_declares_its_own_render_mode_and_the_table_carries_it() {
+        // Both are wanted BEFORE the module loads and the module is `lazy()`, so
+        // a runtime read is not available at the moment either is asked for.
+        let config = read_config("export const ssr = false\nexport default function P() {}\n");
+        assert_eq!(config.ssr.as_deref(), Some("false"));
+        assert_eq!(config.prerender, None);
+
+        let config =
+            read_config("export const ssr = \"data-only\";\nexport const prerender = true;\n");
+        assert_eq!(config.ssr.as_deref(), Some("\"data-only\""));
+        assert_eq!(config.prerender, Some(true));
+    }
+
+    #[test]
+    fn a_non_literal_declaration_is_refused_rather_than_guessed_at() {
+        // Astro's rule, and its reason: "Mutable values declared at runtime are
+        // not supported." A `prerender` the scan cannot read decides whether a
+        // page exists on the CDN, so answering "false, probably" is the silent
+        // failure this channel exists to avoid.
+        let config = read_config("export const prerender = shouldPrerender();\n");
+        assert_eq!(config.prerender, None);
+        assert_eq!(config.refused, vec!["prerender = shouldPrerender()".to_owned()]);
+
+        let config = read_config("export const ssr = MODE;\n");
+        assert_eq!(config.ssr, None);
+        assert_eq!(config.refused, vec!["ssr = MODE".to_owned()]);
+    }
+
+    #[test]
+    fn only_a_top_level_export_counts() {
+        // An indented match is inside something, and a longer identifier is a
+        // different declaration entirely.
+        assert_eq!(read_config("  export const ssr = false\n"), RouteConfig::default());
+        assert_eq!(read_config("export const ssrMode = false\n"), RouteConfig::default());
+    }
+
+    #[test]
+    fn the_emitted_table_carries_the_declarations() {
+        let files = vec![
+            RouteFile {
+                file: "src/routes/about.tsx".to_owned(),
+                name: "about".to_owned(),
+                config: RouteConfig {
+                    ssr: Some("false".to_owned()),
+                    prerender: Some(true),
+                    refused: Vec::new(),
+                },
+            },
+            RouteFile {
+                file: "src/routes/live.tsx".to_owned(),
+                name: "live".to_owned(),
+                config: RouteConfig::default(),
+            },
+        ];
+        let module = generate_module(&build_tree(&files));
+        assert!(module.contains("ssr: false"), "{module}");
+        assert!(module.contains("prerender: true"), "{module}");
+        // A route that declares nothing emits nothing, so the runtime default
+        // stays the runtime's to decide.
+        let live = module.lines().find(|line| line.contains("/live")).unwrap_or_default();
+        assert!(!live.contains("ssr:"), "{live}");
+        assert!(!live.contains("prerender:"), "{live}");
     }
 }

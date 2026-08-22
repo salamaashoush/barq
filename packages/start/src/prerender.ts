@@ -125,6 +125,15 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     nonce: undefined,
   });
 
+  /**
+   * The header the page handler answers with when it was built for a prerender.
+   *
+   * `"0"` means the matched route did not declare `prerender`, so a path the
+   * CRAWL found is rendered and discarded rather than written. A path the config
+   * named is always written — naming it is the declaration.
+   */
+  const PRERENDER_HEADER = "x-barq-prerender";
+
   const seen = new Set<string>();
   const queue: string[] = [];
   const pages: PrerenderedPage[] = [];
@@ -137,13 +146,26 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     queue.push(key);
   };
 
-  for (const route of run.routes.length > 0 ? run.routes : ["/"]) enqueue(route);
+  const named = new Set<string>();
+  for (const route of run.routes.length > 0 ? run.routes : ["/"]) {
+    const key = normalize(route);
+    if (key !== null) named.add(key);
+    enqueue(route);
+  }
 
   const one = async (path: string): Promise<void> => {
     const response = await fetchPage(new Request(`http://prerender.localhost${path}`));
     const html = await response.text();
     if (response.status >= 400) {
       failures.push(`${path} answered ${response.status}`);
+      return;
+    }
+    const crawledOnly = !named.has(path);
+    const declined = response.headers.get(PRERENDER_HEADER) === "0";
+    if (crawledOnly && declined) {
+      // Rendered to find its links, not to be written. A route that has not said
+      // `prerender` is a route the build has no business freezing.
+      if (run.crawl) followLinks(html);
       return;
     }
     const file = fileFor(path, run.outDir, run.subfolderIndex);
@@ -158,7 +180,10 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
       headers: Object.fromEntries(response.headers),
     });
     run.log?.(`${path} -> ${file}`);
-    if (!run.crawl) return;
+    if (run.crawl) followLinks(html);
+  };
+
+  const followLinks = (html: string): void => {
     for (const href of linksIn(html)) {
       if (!href.startsWith("/")) continue;
       const inside = run.base === "/" || href.startsWith(run.base);

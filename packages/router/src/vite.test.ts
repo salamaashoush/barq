@@ -264,3 +264,47 @@ console.log(routes.length);
     });
   });
 });
+
+/**
+ * A route declares its own render mode, and the table carries it.
+ *
+ * `RouteDefinition.ssr` has existed since the router landed and the generator
+ * never emitted it — and could not ask for it, because the route module is
+ * `lazy()` and both `ssr` and `prerender` are wanted before it loads. So a
+ * file-based route could not say either one, which is the gap gap-5's
+ * "per-route render mode" fell into.
+ */
+describe("a route's own declarations", () => {
+  test("a literal `ssr` and `prerender` reach the emitted table", () => {
+    const root = project({
+      "src/routes/index.tsx": "export default function Home() { return null }\n",
+      "src/routes/about.tsx":
+        'export const ssr = "data-only";\nexport const prerender = true;\n' +
+        "export default function About() { return null }\n",
+    });
+    const tree = routeTree(root, "src/routes", "");
+    const about = tree.module.split("\n").find((line) => line.includes('"/about"')) ?? "";
+    expect(about).toContain('ssr: "data-only"');
+    expect(about).toContain("prerender: true");
+    // A route that declares nothing emits nothing, so the runtime default stays
+    // the runtime's to decide rather than the generator's.
+    const home = tree.module.split("\n").find((line) => line.includes('"/"')) ?? "";
+    expect(home).not.toContain("ssr:");
+    expect(home).not.toContain("prerender:");
+    expect(tree.warnings).toEqual([]);
+  });
+
+  test("a declaration that is not a literal is REPORTED, not guessed at", () => {
+    const root = project({
+      "src/routes/feed.tsx":
+        "export const prerender = shouldPrerender();\n" +
+        "export default function Feed() { return null }\n",
+    });
+    const tree = routeTree(root, "src/routes", "");
+    const feed = tree.module.split("\n").find((line) => line.includes('"/feed"')) ?? "";
+    expect(feed).not.toContain("prerender:");
+    expect(tree.warnings).toHaveLength(1);
+    expect(tree.warnings[0]).toContain("feed.tsx");
+    expect(tree.warnings[0]).toContain("not a literal");
+  });
+});

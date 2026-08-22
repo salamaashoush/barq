@@ -19,7 +19,42 @@
  * `token` — that never touched goober or the DOM in the first place.
  */
 
-import { css as gooberCss, keyframes } from "goober";
+import { extractCss, css as gooberCss, keyframes } from "goober";
+
+/**
+ * The global rules, as a function rather than a top-level side effect.
+ *
+ * Both entries call it. On the server that has to happen before the document is
+ * built, because `collectStyles` drains goober's sheet and a rule registered
+ * after the drain is a rule the first paint does not have.
+ */
+export function baseStyles(): void {
+  globalCss`
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-family: "Fira Code", monospace; }
+    pre { background: #1e293b; padding: 16px; border-radius: 8px; overflow-x: auto; }
+    button { cursor: pointer; font-family: inherit; }
+    input, select, textarea { font-family: inherit; }
+  `;
+}
+
+/**
+ * Every rule goober has registered so far, for the server to inline.
+ *
+ * Without it an SSR'd page arrives unstyled and repaints once the bundle runs,
+ * which is the flash a server render exists to remove.
+ */
+export function collectStyles(): string {
+  return extractCss();
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

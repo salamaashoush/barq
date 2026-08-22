@@ -22,20 +22,22 @@
 
 import {
   branch as ssrBranch,
+  esc,
+  escapeAttribute as escapeSsrAttribute,
   html as ssrHtml,
   renderPage,
   renderToStream,
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
-import { HYDRATE } from "@barqjs/core";
+import { HYDRATE, type Scope, cell, getOwner, provide } from "@barqjs/core";
 import { encodeSeed } from "@barqjs/server/codec";
 import { withRequest } from "@barqjs/start";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
 import { memoryHistory } from "./history.ts";
 import { createMatcher } from "./matcher.ts";
-import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
+import { type AnyRouteDefinition, type Route, flattenRoutes, preloadMatched } from "./route.ts";
 import {
   type BeforeLoadResult,
   type Guard,
@@ -44,7 +46,7 @@ import {
   ROUTE_CONTEXT_GLOBAL,
   createRouter,
 } from "./router.ts";
-import { routePropsFor } from "./components.ts";
+import { LinkBackendContext, RouterContext, routePropsFor } from "./components.ts";
 
 /**
  * Render the matched chain through the STRING backend.
@@ -59,6 +61,32 @@ import { routePropsFor } from "./components.ts";
  * later frame to re-key into, so the chain is walked once, outermost first,
  * with each depth's `children` a Block the layout may place where it likes.
  */
+type Invoked = (s: Scope | null, props: unknown) => unknown;
+
+/**
+ * `<Link>` and `<NavLink>`, as bytes.
+ *
+ * `components.ts` builds DOM — `template()` and `bindProp` — so before this
+ * existed no SSR'd page could contain a link at all. It lives here rather than
+ * there because it needs `@barqjs/server`, and `components.ts` is the
+ * isomorphic entry: importing the server runtime from it would put the whole
+ * thing in the browser bundle, which is the mistake `index.ts` already records
+ * for `manifest.ts`.
+ *
+ * No `onClick`, and none is wanted. A server-rendered anchor is an ordinary
+ * anchor; the client's own `<Link>` claims this element on hydration and binds
+ * the interception then. What has to be right in the meantime is the `href`,
+ * which is what makes the page work with no JavaScript at all.
+ */
+const linkBackend = {
+  link: (href: string, className: string, children: unknown): unknown => {
+    const attributes =
+      `href="${escapeSsrAttribute(href)}"` +
+      (className === "" ? "" : ` class="${escapeSsrAttribute(className)}"`);
+    return ssrHtml(`<a ${attributes}>${esc(children)}</a>`);
+  },
+};
+
 export function renderRoutes(state: RouterState): unknown {
   const chain = state.chain();
   if (chain.length === 0) return ssrHtml("");
@@ -78,11 +106,29 @@ export function renderRoutes(state: RouterState): unknown {
   // the mismatch surfaced as `not-hydratable` on every page.
   const at = (depth: number): unknown =>
     ssrBranch(
-      null,
+      getOwner(),
       null,
       null,
       () => chain[depth] ?? null,
-      () => bodyAt(depth),
+      (): unknown => {
+        if (depth !== 0) return bodyAt(depth);
+        // `RouterContext`, provided ONCE at the outermost depth — which is what
+        // `RouterProvider` does on the DOM side and what this side never did.
+        // Without it every route component calling `useLocation`, `useParams`
+        // or `useRouter` threw `NoOwnerError` INSIDE its own error boundary, so
+        // the page rendered EMPTY and nothing said why. Found by the first
+        // application whose layout has a nav in it.
+        //
+        // `getOwner()` rather than a scope parameter: this body is not a
+        // `block()`, so `invokeBlock` reads it as a Cell and calls it with no
+        // arguments. `activate` has already entered the scope, so the ambient
+        // owner IS the one to provide on.
+        const owner = getOwner();
+        if (owner === null) return bodyAt(depth);
+        return provide(owner, RouterContext, cell(state), (inner) =>
+          provide(inner as Scope, LinkBackendContext, cell(linkBackend), () => bodyAt(depth)),
+        );
+      },
       HYDRATE,
     );
 
@@ -110,15 +156,15 @@ export function renderRoutes(state: RouterState): unknown {
       if (modes[depth] !== true) {
         return pending === undefined
           ? ssrHtml("")
-          : (pending as unknown as (s: null, p: unknown) => unknown)(
-              null,
+          : (pending as unknown as Invoked)(
+              getOwner(),
               routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
             );
       }
       return component === undefined
         ? at(depth + 1)
-        : (component as unknown as (s: null, p: unknown) => unknown)(
-            null,
+        : (component as unknown as Invoked)(
+            getOwner(),
             routePropsFor(state, depth, route, children, true),
           );
     };
@@ -135,19 +181,24 @@ export function renderRoutes(state: RouterState): unknown {
     // the loading boundary's own content Block, so the catch has to be in
     // there. `Errored` re-throws `NotReadyError` on both backends, so parking
     // still works through it.
+    // `getOwner()`, not `null`. `requireScope(null)` answers `null`, and
+    // `enter(null)` then builds a scope with NO PARENT — so every construct this
+    // walk created was detached, and a context provided above it could never be
+    // found below it. That is why `useLocation` in a route component threw on
+    // the server and the page rendered empty inside its own error boundary.
     return ssrLoading(
-      null,
+      getOwner(),
       {
         fallback: () =>
           pending === undefined
             ? ssrHtml("")
-            : (pending as unknown as (s: null, p: unknown) => unknown)(
-                null,
+            : (pending as unknown as Invoked)(
+                getOwner(),
                 routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
               ),
         children: () =>
           ssrErrored(
-            null,
+            getOwner(),
             {
               // The string backend hands an error fallback `(error, reset)`
               // positionally, exactly as `flow.ts`'s does.
@@ -327,6 +378,20 @@ export function createPageHandler(
 
     const status = match === null ? 404 : 200;
 
+    // What the matched route says about being written to disk, for a
+    // PRERENDERER to read off the response.
+    //
+    // A header rather than a second entry point: the prerenderer lives in
+    // `@barqjs/start`, which must not depend on the router, and "is this path
+    // prerenderable" is a fact about the route table. It is emitted only for the
+    // handler a prerender built — a live response carries nothing extra.
+    const prerenderable =
+      options.refuseRequest === undefined
+        ? null
+        : (match?.route.chain ?? []).at(-1)?.definition.prerender === true
+          ? "1"
+          : "0";
+
     // Request-scoped, so the answer a loader throws cannot reach another
     // request. A module-level "current answer" is GHSA-hgv7-v322-mmgr.
     let answer: Response | null = null;
@@ -377,6 +442,16 @@ export function createPageHandler(
             throw error;
           }
           state.setContexts(before.contexts);
+          // The matched chain's MODULES, before the render.
+          //
+          // Every route a file-based table generates is `lazy()`, and a cold cell
+          // throws `NotReadyError` — which the depth's boundary parks on. The
+          // non-streamed arm renders exactly TWICE, so a chain two deep resolves
+          // its layout on the second pass and its leaf on a third that never
+          // happens: measured on the reference application as a prerendered page
+          // with a nav and no content. Awaiting here costs the same imports the
+          // render would have done, in one round instead of one per depth.
+          await preloadMatched(match?.route.chain ?? []);
           const context = contextScript(url, before.produced, options.nonce);
           // A streamed response is not finished when this function returns it:
           // `renderToStream` hands back the `ReadableStream` before a byte of the
@@ -416,12 +491,14 @@ export function createPageHandler(
                     context,
                     url,
                   }),
+                  url,
                 ),
                 // A rendered 404 rather than a bare one. In STREAM mode the status
                 // is already on the wire by the time a loader can say this, so a
                 // `notFound()` that must set the status belongs where the status
                 // is still open — the same rule redirects follow.
                 missing ? 404 : status,
+                prerenderable === null ? undefined : { [PRERENDER_HEADER]: prerenderable },
               );
             }
             const stream = renderToStream(() => options.app(state) as never, {
@@ -576,12 +653,15 @@ async function shellOf(options: PageHandlerOptions, shell: string, url: URL): Pr
   return options.transformShell === undefined ? shell : await options.transformShell(shell, url);
 }
 
-function html(body: string, status: number): Response {
+function html(body: string, status: number, extra?: Record<string, string>): Response {
   return new Response(body, {
     status,
-    headers: { "content-type": "text/html; charset=utf-8" },
+    headers: { "content-type": "text/html; charset=utf-8", ...extra },
   });
 }
+
+/** The header a prerenderer reads to decide whether to keep a crawled page. */
+export const PRERENDER_HEADER = "x-barq-prerender";
 
 /**
  * Split the document around the app's markup and stream the middle.

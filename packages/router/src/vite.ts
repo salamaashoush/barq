@@ -74,6 +74,14 @@ export interface RouteTree {
   readonly patterns: string[];
   /** Route id to source file, layouts included — the build-time checks' input. */
   readonly entries: { id: string; file: string }[];
+  /**
+   * Declarations a route made that are not literals, for this plugin to report.
+   *
+   * `export const prerender = shouldPrerender()` decides whether a page exists
+   * on a CDN, so a table that guessed at it would be the silent failure the
+   * whole generator exists to avoid.
+   */
+  readonly warnings: string[];
 }
 
 interface Native {
@@ -150,12 +158,20 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   let root = process.cwd();
   let base = "/";
   let routeAssets: Record<string, string[]> = {};
-  let tree: RouteTree = { module: "", types: "", files: [], patterns: [], entries: [] };
+  let tree: RouteTree = {
+    module: "",
+    types: "",
+    files: [],
+    patterns: [],
+    entries: [],
+    warnings: [],
+  };
 
   const typesFile = options.types === false ? null : (options.types ?? "src/routes.gen.d.ts");
 
-  const rescan = (): void => {
+  const rescan = (warn?: (message: string) => void): void => {
     tree = routeTree(root, routesDir, typesFile === null ? "" : dirname(typesFile));
+    for (const warning of tree.warnings ?? []) warn?.(`[barq-router] ${warning}`);
     options.onRoutes?.(tree.patterns);
     if (typesFile === null) return;
     try {
@@ -232,7 +248,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     configResolved(config) {
       root = config.root;
       base = config.base ?? "/";
-      rescan();
+      rescan((message) => config.logger.warn(message));
     },
 
     /**
@@ -284,7 +300,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     configureServer(server) {
       const changed = (path: string): void => {
         if (relative(join(root, routesDir), path).startsWith("..")) return;
-        rescan();
+        rescan((message) => server.config.logger.warn(message));
         // A route file appearing or vanishing changes the TABLE, and the table
         // is a different module from the file that changed — without this the
         // dev server keeps serving yesterday's routes. `@barqjs/start`'s
@@ -299,6 +315,11 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       };
       server.watcher.on("add", changed);
       server.watcher.on("unlink", changed);
+      // CHANGE too, since `e441950`'s generator started reading a route file's
+      // CONTENTS: `export const ssr = false` edited inside an existing file
+      // moves the table, and with only add/unlink registered the dev server kept
+      // serving the mode the file had when it appeared.
+      server.watcher.on("change", changed);
     },
   };
 }

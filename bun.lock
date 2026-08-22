@@ -101,6 +101,8 @@
         "@barqjs/core": "workspace:*",
         "@barqjs/extra": "workspace:*",
         "@barqjs/router": "workspace:*",
+        "@barqjs/server": "workspace:*",
+        "@barqjs/start": "workspace:*",
         "@tanstack/query-core": "^5.101.4",
         "goober": "^2.1.19",
       },

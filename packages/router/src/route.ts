@@ -355,6 +355,16 @@ export interface RouteDefinition<
    * under either, because opting further out is always allowed.
    */
   readonly ssr?: boolean | "data-only";
+  /**
+   * Write this route to disk at build time.
+   *
+   * Lifted out of a file-based route's own source by the generator, which is
+   * the only place it can come from: a build has no runtime to ask, and the
+   * route module is `lazy()`. A crawled path is kept only when the route it
+   * matched says this; a path named in the prerender config is always kept,
+   * because naming it IS the declaration.
+   */
+  readonly prerender?: boolean;
   readonly children?: readonly AnyRouteDefinition[];
 }
 
@@ -451,3 +461,30 @@ export function pathOf(routes: readonly FlatRoute<Route>[], id: string): string 
 }
 
 export type { Scope };
+
+/**
+ * Load every code-split module the matched chain needs, before hydrating.
+ *
+ * `lazy()` makes a route its own chunk, and a chunk that has not arrived throws
+ * `NotReadyError` when the component is read. During HYDRATION that is fatal
+ * rather than merely slow: the depth's `Loading` boundary parks, and a parked
+ * boundary rebuilds its range — so the server's markup is thrown away and the
+ * page goes back to its fallback. Measured on the reference application: a full
+ * SSR'd document hydrated to an empty `<div id="app">`.
+ *
+ * So the client waits. The `<link rel="modulepreload">` tags `preloadTags`
+ * writes are what make the wait short; this is what makes it correct.
+ */
+export async function preloadMatched(chain: readonly Route[]): Promise<void> {
+  const loads: Promise<void>[] = [];
+  for (const route of chain) {
+    for (const candidate of [route.definition.component, route.definition.pending]) {
+      const preload = (candidate as { preload?: () => Promise<void> } | undefined)?.preload;
+      if (typeof preload === "function") loads.push(preload());
+    }
+  }
+  // `allSettled`: a chunk that fails to load is the route's own error to report
+  // when it renders, and refusing to hydrate the whole page over it would turn
+  // one broken route into a blank document.
+  await Promise.allSettled(loads);
+}

@@ -51,12 +51,69 @@ type Invoked = (scope: Scope | null, props: RouteProps) => unknown;
 
 const RouterContext = context<RouterState>(undefined, "barq-router");
 
+/**
+ * The string backend's own `Link` and `NavLink`, installed by `renderRoutes`.
+ *
+ * This module builds DOM: `anchorElement` calls `template()` and `bindProp`,
+ * which need a `document`. So until this existed, **no SSR'd page could contain
+ * a link** — `<NavLink>` in a layout threw inside its own error boundary and the
+ * page rendered empty. Every real application's layout has navigation in it,
+ * which is how it was found: the first one.
+ *
+ * A CONTEXT rather than a `typeof document` test, because that test is wrong
+ * here and the repo has already paid for learning it — happy-dom defines
+ * `document` in exactly the process that renders the string backend
+ * (`DESIGN.md` P6-5). Each backend knows which it is and says so, which is the
+ * same rule `routePropsFor`'s `blocking` follows.
+ *
+ * It lives in `server.ts` because building the markup needs `@barqjs/server`,
+ * and this module is the ISOMORPHIC entry — importing it here would put the
+ * server runtime in the browser bundle.
+ */
+export interface LinkBackend {
+  readonly link: (href: string, className: string, children: unknown) => unknown;
+}
+
+// `null` is the DEFAULT, not `undefined`: a context created with `undefined`
+// has no default at all, and reading one nobody provided THROWS. The DOM path
+// provides nothing here, so the default is the answer it gets.
+export const LinkBackendContext = context<LinkBackend | null>(null, "barq-router-link");
+
+/** `null` on the DOM path, which is every path but a string render. */
+function linkBackend(): LinkBackend | null {
+  return read(LinkBackendContext)() as LinkBackend | null;
+}
+
+/** The resolved href a `<Link>` points at, for either backend. */
+export function linkHref(state: RouterState, props: Incoming<LinkProps>): string {
+  return resolveTo(state, props);
+}
+
+/** Whether a `<NavLink>` points at where you are, for either backend. */
+export function linkIsActive(state: RouterState, href: string, end: boolean): boolean {
+  const to = href.split("?")[0] as string;
+  const here = state.location().pathname;
+  return end ? here === to : isUnder(here, to);
+}
+
 /** The router this subtree is under. Resolved through the SCOPE chain, so a portalled `<Link>` still finds it. */
 export function useRouter(): RouterState {
   return read(RouterContext)();
 }
 
 const NOT_FOUND = "404 - Not Found";
+
+/**
+ * A code-split component's tracked readiness probe, when it has one.
+ *
+ * `lazy()` gives its component a `ready()`; an eagerly imported component has
+ * none and needs none. Calling it establishes the dependency that lets the
+ * module landing wake the boundary that parked on it.
+ */
+function readyOf(component: unknown): void {
+  const ready = (component as { ready?: () => void } | undefined)?.ready;
+  if (typeof ready === "function") ready();
+}
 
 /**
  * One `branch` per depth, keyed on the route's identity.
@@ -92,8 +149,14 @@ export function renderDepth(
     // `props.params()` directly would otherwise subscribe the enclosing block
     // and rebuild the whole route on a parameter change — measured: two builds
     // for one navigation within the same route.
-    const content = (contentScope: Scope | null): unknown =>
-      untrack(() => {
+    const content = (contentScope: Scope | null): unknown => {
+      // TRACKED, and outside the `untrack` below on purpose. A code-split route
+      // is a `lazy()`, and reading its cell inside `untrack` subscribes to
+      // nothing — so the `NotReadyError` parks this depth's boundary and the
+      // module landing never wakes it. Measured: navigating to any route a
+      // file-based table generated showed its fallback forever.
+      readyOf(component);
+      return untrack(() => {
         // A validator that refused throws HERE, inside this depth's error
         // boundary, so a bad `?page=banana` renders that route's
         // `errorComponent` rather than taking the whole page down.
@@ -103,6 +166,7 @@ export function renderDepth(
           ? renderDepth(contentScope, state, depth + 1, null, null)
           : (component as unknown as Invoked)(contentScope, routeProps(state, depth, route));
       });
+    };
 
     // An `Errored` per depth, INSIDE the `Loading`, matching what the string
     // backend emits. Without it a loader that rejects on the client after
@@ -211,6 +275,18 @@ function routeFallback(state: RouterState, route: Route): Block<unknown> | null 
   }) as Block<unknown>;
 }
 
+/**
+ * A prop whose value is a COMPONENT, read without `readSlot`'s Block refusal.
+ *
+ * The compiler wraps a JSX attribute in a thunk, so the prop arrives as an
+ * accessor whose result is the component — which is a Block, and a Block in a
+ * Cell slot is exactly what `readSlot` exists to catch. Here it is the point.
+ */
+function componentSlot(slot: unknown): unknown {
+  if (slot === undefined) return undefined;
+  return typeof slot === "function" ? untrack(() => (slot as () => unknown)()) : slot;
+}
+
 /** `children` is a Block, so a layout builds the next route in its own scope. */
 export function routePropsFor(
   state: RouterState,
@@ -279,10 +355,13 @@ function RouterImpl(scope: Scope | null, props: Incoming<RouterProps>): unknown 
       props.history === undefined
         ? undefined
         : (readSlot(props.history, "Router.history") as RouterProps["history"]),
-    notFound:
-      props.notFound === undefined
-        ? undefined
-        : (readSlot(props.notFound, "Router.notFound") as RouterProps["notFound"]),
+    // NOT `readSlot`. A component IS a Block, and `readSlot` refuses a Block
+    // yielded by a Cell — C5.1, and rightly, because a Block reaching a VALUE
+    // slot is a bug. This slot does not hold a value: it holds the component to
+    // render when nothing matched. Reading it through `readSlot` threw
+    // `ScopeMissingError: Router.notFound (a Cell yielded a Block)` for every
+    // caller that passed one, which is every caller that used the prop.
+    notFound: componentSlot(props.notFound) as RouterProps["notFound"],
     beforeEach:
       props.beforeEach === undefined
         ? undefined
@@ -461,6 +540,12 @@ function anchorElement(
 }
 
 function LinkImpl(scope: Scope | null, props: Incoming<LinkProps>): Node {
+  const backend = linkBackend();
+  if (backend !== null) {
+    const className =
+      props.class === undefined ? "" : (readSlot(props.class, "Link.class") as string);
+    return backend.link(linkHref(useRouter(), props), className, props.children) as never;
+  }
   return anchorElement(scope, props, () => {});
 }
 
@@ -483,6 +568,20 @@ export interface NavLinkProps extends LinkProps {
 
 function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
   const state = useRouter();
+  const backend = linkBackend();
+  if (backend !== null) {
+    const href = linkHref(state, props as Incoming<LinkProps>);
+    const end = props.end === undefined ? false : Boolean(readSlot(props.end, "NavLink.end"));
+    const base =
+      props.class === undefined ? "" : (readSlot(props.class, "NavLink.class") as string);
+    const activeClass =
+      props.activeClass === undefined
+        ? ""
+        : (readSlot(props.activeClass, "NavLink.activeClass") as string);
+    const active = linkIsActive(state, href, end);
+    const className = active ? `${base} ${activeClass}`.trim() : base;
+    return backend.link(href, className, props.children) as never;
+  }
   return anchorElement(scope, props as Incoming<LinkProps>, (element, target) => {
     const active = (): boolean => {
       const to = target().split("?")[0] as string;

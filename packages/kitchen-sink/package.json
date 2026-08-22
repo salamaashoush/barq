@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "node ./preview.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,7 +14,9 @@
     "@barqjs/extra": "workspace:*",
     "@tanstack/query-core": "^5.101.4",
     "goober": "^2.1.19",
-    "@barqjs/router": "workspace:*"
+    "@barqjs/router": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/start": "workspace:*"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",

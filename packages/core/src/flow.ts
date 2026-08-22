@@ -1098,7 +1098,7 @@ function errorBoundary(
   // only writes a signal cannot recover during the flush it was called from.
   const install = (scope: Scope): void => {
     provideOn(scope, ERROR_BOUNDARY, (err: unknown) => {
-      if (err instanceof NotReadyError) throw err;
+      if (err instanceof NotReadyError || err instanceof HydrationMismatch) throw err;
       collector.capture(err);
       refresh();
     });
@@ -1119,7 +1119,14 @@ function errorBoundary(
   // flip back to 0 — a fresh scope and a fresh build, by K6.
   const key = (): number => (collector.failed() ? 1 : 0);
   const recover = (error: unknown): number | null => {
-    if (error instanceof NotReadyError) return null;
+    // A `HydrationMismatch` is not the application's error and this is not the
+    // thing that recovers from it. `hydrate` does — by throwing the whole
+    // attempt away and rendering the page cold — and it can only do that if the
+    // throw reaches it. Caught here instead, the boundary showed its fallback
+    // (or nothing) and the page stayed broken with the recovery never run:
+    // measured on a route whose two halves disagreed, as an empty region and one
+    // console line. `NotReadyError` is re-thrown for the same reason a level up.
+    if (error instanceof NotReadyError || error instanceof HydrationMismatch) return null;
     collector.capture(error);
     return 1;
   };

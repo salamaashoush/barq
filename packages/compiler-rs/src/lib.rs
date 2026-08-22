@@ -233,6 +233,9 @@ pub struct RouteTreeResult {
     pub patterns: Vec<String>,
     /// Route id to source file, layouts included, for the build-time checks.
     pub entries: Vec<RouteEntry>,
+    /// Declarations a route made that are present but not literals. The caller
+    /// reports these; the table cannot carry them and will not guess.
+    pub warnings: Vec<String>,
 }
 
 /// Scan a directory of route files and emit the table and its types.
@@ -243,8 +246,10 @@ pub struct RouteTreeResult {
 #[napi]
 pub fn route_tree(root: String, dir: String, types_dir: Option<String>) -> RouteTreeResult {
     let files = routes::scan(std::path::Path::new(&root), &dir);
+    let warnings = routes::refusals(&files);
     let tree = routes::build_tree(&files);
     RouteTreeResult {
+        warnings,
         module: routes::generate_module(&tree),
         types: routes::generate_types(&tree, types_dir.as_deref().unwrap_or("")),
         files: files.into_iter().map(|file| file.file).collect(),
