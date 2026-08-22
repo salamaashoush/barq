@@ -265,6 +265,42 @@ export interface BarqStartOptions {
    * project with its own `index.html` wants.
    */
   pages?: boolean;
+  /**
+   * Fail the build when a route reaches a server function that does not carry
+   * that route's declared middleware.
+   *
+   * THE HOLE THIS CLOSES is the one every framework surveyed documents instead.
+   * Next.js: "A page-level authentication check does not extend to the Server
+   * Actions defined within it… the Server Action is a separate entry point."
+   * TanStack says it three times in their own docs. A server function is its own
+   * HTTP endpoint; a guard on the route that renders it does not run when the
+   * function is called directly.
+   *
+   * VALIDATE AND REJECT, never redispatch. `@vitejs/plugin-rsc` re-runs a
+   * mis-routed action through the owning route's middleware; Next.js is REMOVING
+   * action forwarding (#96951) because the action then executes under a
+   * different request context, and the deeper reason is this repo's own rule —
+   * a client-supplied route selecting a middleware chain lets the caller pick
+   * the weakest chain that reaches the action.
+   *
+   * Runs in `buildApp`, after the ssr build, against the bundle imported there:
+   * it needs the route definitions' middleware CLOSURES and the mounted
+   * registry, and both exist only inside that bundle.
+   */
+  verify?: {
+    /**
+     * Route -> the server-fn ids reachable from it, from `barqRouter`.
+     *
+     * A getter rather than a value, because the answer is produced by the
+     * CLIENT build's `buildEnd` and read after the SSR build — two different
+     * moments, in two plugins that cannot share a closure across environments.
+     * `barqRouter({ onReachability })` is the other half, the same way
+     * `onRoutes` feeds the compiler's route table.
+     */
+    reachability: () => ReadonlyMap<string, ReadonlySet<string>> | undefined;
+    /** `"error"` fails the build. Default `"error"`. */
+    onViolation?: "error" | "warn";
+  };
 }
 
 /**
@@ -560,7 +596,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       if (!ssr.isBuilt) await builder.build(ssr);
 
       const wanted = options.prerender;
-      if (wanted === undefined) return;
+      if (wanted === undefined && options.verify === undefined) return;
 
       /**
        * IN-PROCESS, against the bundle that was just written.
@@ -580,6 +616,40 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         resolve(environment.config.root, environment.config.build.outDir);
       const file = join(outDirOf(ssr), serverFile);
       const entry = (await import(pathToFileURL(file).href)) as ServerEntryModule;
+
+      // The chain check, BEFORE anything is written. A build that is going to
+      // fail should not leave half a site on disk first.
+      const verify = options.verify;
+      if (verify !== undefined) {
+        const check = entry.verifyChains;
+        const reachability = verify.reachability();
+        if (typeof check !== "function") {
+          throw new TypeError(
+            "[barq-start] `verify` needs the server entry to export " +
+              "`verifyChains` — `export const verifyChains = chainVerifier(options.routes)` " +
+              "from `@barqjs/router/server`. The check runs inside the built bundle because " +
+              "that is where the route middleware and the mounted registry both are.",
+          );
+        }
+        if (reachability === undefined) {
+          throw new TypeError(
+            "[barq-start] `verify.reachability()` answered nothing, so no route reaches any " +
+              "server function as far as this build can tell. Wire " +
+              "`barqRouter({ onReachability })` to the same variable — without it the check " +
+              "would pass by knowing nothing.",
+          );
+        }
+        const report = await check(reachability);
+        if (report !== "") {
+          if ((verify.onViolation ?? "error") === "warn") {
+            builder.config.logger.warn(`[barq-start] ${report}`);
+          } else {
+            throw new Error(`[barq-start] ${report}`);
+          }
+        }
+      }
+
+      if (wanted === undefined) return;
       const result = await prerender({
         entry,
         outDir: outDirOf(client),

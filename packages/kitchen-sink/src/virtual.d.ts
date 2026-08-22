@@ -21,3 +21,11 @@ declare module "virtual:barq-client-assets" {
   export { clientAssets };
   export default clientAssets;
 }
+
+/**
+ * Side-effect only: importing it MOUNTS every server function the build found,
+ * which is what gives each one its `/_barq/fn/<id>` URL. A server entry that
+ * omits the import ships an app whose every server function 404s — and whose
+ * route-action check has an empty registry to ask.
+ */
+declare module "virtual:barq-server-fns" {}

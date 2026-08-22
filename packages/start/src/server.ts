@@ -53,6 +53,20 @@ export function mounted(): string[] {
   return [...REGISTRY.keys()].toSorted();
 }
 
+/**
+ * The function mounted at an id, or `undefined`.
+ *
+ * Exported for the BUILD's chain check, which has to ask each reachable id what
+ * middleware it actually carries. It reads the registry inside whichever bundle
+ * it is called from, which is why the check runs through the server entry
+ * rather than from the Vite plugin: `resolve.noExternal` compiles `@barqjs/*`
+ * INTO the ssr bundle, so a plugin importing this module would be asking a
+ * second, empty registry.
+ */
+export function mountedFn(id: string): ServerFn<unknown, unknown> | undefined {
+  return REGISTRY.get(id);
+}
+
 /** Test seam. Not for application use. */
 export function unmountAll(): void {
   REGISTRY.clear();

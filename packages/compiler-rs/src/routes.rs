@@ -415,7 +415,12 @@ pub fn generate_module(tree: &[RouteNode]) -> String {
     out.push_str("const lazyHead = (load) => async (context) => {\n");
     out.push_str("  const { head } = await load();\n");
     out.push_str("  return typeof head === \"function\" ? head(context) : head;\n");
-    out.push_str("};\n\nexport const routes = [\n");
+    out.push_str("};\n\n");
+    out.push_str(
+        "/** `middleware` is a BUILD-time claim, checked by identity — so it is a thunk. */\n",
+    );
+    out.push_str("const lazyMiddleware = (load) => async () => (await load()).middleware;\n");
+    out.push_str("\nexport const routes = [\n");
 
     for (index, node) in tree.iter().enumerate() {
         emit_node(&mut out, node, 1);
@@ -449,6 +454,7 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         parts.push(format!("component: lazy(() => import({specifier}))"));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
         parts.push(format!("head: lazyHead(() => import({specifier}))"));
+        parts.push(format!("middleware: lazyMiddleware(() => import({specifier}))"));
         parts.push(format!("pending: lazy(() => import({specifier}), (m) => m.Pending ?? Empty)"));
         // LIFTED, not imported. Both are wanted before the module loads, and the
         // module is `lazy()`.
@@ -820,6 +826,13 @@ mod tests {
         assert_eq!(module.matches("head: lazyHead(() => import(").count(), 2, "{module}");
         // A descriptor OR a function of the context, decided at the call.
         assert!(module.contains("typeof head === \"function\" ? head(context) : head"), "{module}");
+        // `middleware` is compared by IDENTITY, so it cannot be lifted as a
+        // literal the way `ssr` and `prerender` are — it is a thunk too.
+        assert_eq!(
+            module.matches("middleware: lazyMiddleware(() => import(").count(),
+            2,
+            "{module}"
+        );
     }
 
     #[test]

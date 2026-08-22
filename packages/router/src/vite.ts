@@ -107,20 +107,27 @@ export function routeTree(root: string, dir: string, typesDir = ""): RouteTree {
  * middleware, and where the answer comes from.
  *
  * The walk and the verifier have existed and been tested since `83c81d4`;
- * nothing called them from a build. This is the call.
+ * nothing called them from a build.
+ *
+ * THE FIRST DESIGN OF THIS WAS UNIMPLEMENTABLE and the comment it replaces said
+ * so confidently: it claimed the check could run app code through
+ * `environment.runner.import`, "which `packages/start/src/vite.ts` already
+ * does". It does — in `configureServer`. `runner` belongs to a
+ * `DevEnvironment`; a `vite build` has `BuildEnvironment`s and there is no
+ * runner to import through. And the client `buildEnd`, where the module-graph
+ * fact IS available, runs before the ssr bundle exists at all.
+ *
+ * So the halves are split at the only seam that works. This plugin REPORTS the
+ * graph fact and nothing else; `@barqjs/start` runs the check in `buildApp`,
+ * after the ssr build, against the bundle it imports there anyway — which is
+ * where `chainVerifier` on the server entry is called from.
  */
 export interface VerifyOptions {
   /**
    * Given route -> reachable server-fn ids, answer with a report or `""`.
    *
-   * A CALLBACK rather than a route table, because the check needs two things
-   * this plugin cannot have: the application's route definitions with their
-   * `middleware` closures, and the server-side `REGISTRY` those ids resolve
-   * against. Both live in the ssr environment and are reached through
-   * `environment.runner.import` — `packages/start/src/vite.ts` does exactly that
-   * for the server-function manifest. Handing the caller the graph fact and
-   * letting it supply the rest keeps this plugin out of the business of
-   * importing an application.
+   * Called in the CLIENT `buildEnd`, so a caller that needs the server bundle
+   * cannot answer here. Prefer `onReachability` plus `barqStart({ verify })`.
    */
   readonly check: (reachability: Reachability) => string | Promise<string>;
   /** What to do when a route reaches an action that does not carry its chain. */
@@ -151,6 +158,16 @@ export interface BarqRouterOptions {
    * cold start.
    */
   readonly verify?: VerifyOptions;
+  /**
+   * Told which server-function ids each route can reach, after the CLIENT build.
+   *
+   * The same shape as `onRoutes`, and for the same reason: this plugin holds a
+   * fact only the client module graph has, and the consumer of that fact —
+   * `barqStart`, which alone can import the built server — is a different
+   * plugin. Never called in dev: the dev module graph is one level deep until
+   * each module is itself requested, so a whole-graph walk there finds nothing.
+   */
+  readonly onReachability?: (reachability: Reachability) => void;
 }
 
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
@@ -187,6 +204,24 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
 
   return {
     name: "barq-router",
+    /**
+     * SHARED, like every plugin `barqStart()` returns, and for a reason that was
+     * measured rather than assumed.
+     *
+     * With `sharedConfigBuild` false — the default — Vite re-resolves the whole
+     * config per environment, and re-resolving means RE-IMPORTING `vite.config.ts`
+     * with a cache-busting query. So an application that routes a fact from the
+     * client build to the ssr build through a module-scope variable in its own
+     * config is writing to one module instance and reading from another.
+     * Measured on exactly that: `onReachability` fired with 14 routes and
+     * `verify.reachability()` answered `undefined`.
+     *
+     * Sharing this one is what puts the root instance in every environment, so
+     * `onRoutes` and `onReachability` reach the same closure `buildApp` reads
+     * from. DESIGN-FRONTDOOR §3.3 records the other half of the same lesson:
+     * sharing SOME is worse than sharing none.
+     */
+    sharedDuringBuild: true,
 
     /**
      * The route-action manifest, computed from the REAL client module graph.
@@ -203,7 +238,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      */
     async buildEnd(this: unknown) {
       const verify = options.verify;
-      if (verify === undefined) return;
+      if (verify === undefined && options.onReachability === undefined) return;
       const context = this as {
         getModuleIds: () => Iterable<string>;
         getModuleInfo: (id: string) => { importedIds: readonly string[]; code?: string } | null;
@@ -236,6 +271,8 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
         },
       );
 
+      options.onReachability?.(reachability);
+      if (verify === undefined) return;
       const answer = await verify.check(reachability);
       if (answer === "") return;
       if (verify.onViolation === "warn") {

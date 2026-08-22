@@ -25,6 +25,17 @@ const NESTED_DEMO_ROUTES = [
 
 let fileRoutes: readonly string[] = [];
 
+/**
+ * Route -> the server-fn ids that route's CLIENT module graph reaches.
+ *
+ * Produced by `barqRouter`'s `buildEnd` in the client environment and consumed
+ * by `barqStart`'s `buildApp` after the ssr build — two moments, two plugins,
+ * and no closure they can share, because `builder.sharedConfigBuild` is false
+ * and each environment re-resolves the config. A module-scope variable is the
+ * channel, exactly as `fileRoutes` above is for the compiler's route table.
+ */
+let reachability: ReadonlyMap<string, ReadonlySet<string>> | undefined;
+
 // The demos fetch these. In production they are prerendered away or client-only,
 // so this is a dev convenience rather than part of the app.
 function mockApiPlugin(): Plugin {
@@ -111,7 +122,10 @@ export default defineConfig({
   resolve: { conditions: CONDITIONS },
   environments: { ssr: { resolve: { conditions: CONDITIONS } } },
   plugins: [
-    barqRouter({ onRoutes: (patterns) => (fileRoutes = patterns) }),
+    barqRouter({
+      onRoutes: (patterns) => (fileRoutes = patterns),
+      onReachability: (found) => (reachability = found),
+    }),
     barqStart({
       compiler: {
         hydratable: true,
@@ -123,6 +137,17 @@ export default defineConfig({
         // `/` seeds it; `/about` is found by crawling the layout's own nav.
         routes: ["/"],
       },
+      /**
+       * The route-action chain check, ARMED — the thing DESIGN-START §6 calls
+       * "the single strongest thing barq could build" and that nobody has
+       * shipped in a mainstream framework.
+       *
+       * `/admin` declares `middleware: [requireSession]`, and both server
+       * functions in `admin.data.ts` carry the same closure. Delete
+       * `.middleware([requireSession])` from either and this build fails naming
+       * the route, the function and how many of the chain it is missing.
+       */
+      verify: { reachability: () => reachability },
     }),
     mockApiPlugin(),
   ],

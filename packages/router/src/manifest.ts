@@ -73,12 +73,12 @@ export interface VerifyOptions {
  * alternative is picking one route's policy for a call that could have come
  * through either.
  */
-export function verifyRouteChains(options: VerifyOptions): Violation[] {
+export async function verifyRouteChains(options: VerifyOptions): Promise<Violation[]> {
   const flat = flattenRoutes(options.routes);
   const violations: Violation[] = [];
 
   for (const route of flat) {
-    const expected = chainOf(route.chain);
+    const expected = await chainOf(route.chain);
     if (expected.length === 0) continue;
 
     const ids = options.reachability.get(route.id);
@@ -96,11 +96,21 @@ export function verifyRouteChains(options: VerifyOptions): Violation[] {
   return violations;
 }
 
-/** A route's own middleware plus every ancestor's, outermost first, deduplicated. */
-export function chainOf(chain: readonly Route[]): readonly Middleware[] {
+/**
+ * A route's own middleware plus every ancestor's, outermost first, deduplicated.
+ *
+ * ASYNC because a file-based table declares `middleware` as a thunk over the
+ * route module's own dynamic import: a middleware is an anonymous closure
+ * compared by `===`, so unlike `ssr` and `prerender` it cannot be lifted out of
+ * the file as a literal. A code-based table hands over the array directly and
+ * the `await` is free.
+ */
+export async function chainOf(chain: readonly Route[]): Promise<readonly Middleware[]> {
   const out: Middleware[] = [];
   for (const route of chain) {
-    for (const step of route.definition.middleware ?? []) {
+    const declared = route.definition.middleware;
+    const steps = typeof declared === "function" ? await declared() : declared;
+    for (const step of steps ?? []) {
       if (!out.includes(step)) out.push(step);
     }
   }

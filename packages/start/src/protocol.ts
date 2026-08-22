@@ -35,4 +35,16 @@ export interface ServerEntryModule {
   readonly createFetch?: (
     extra: Record<string, unknown>,
   ) => (request: Request) => Promise<Response>;
+  /**
+   * The route-action chain check, from `chainVerifier(options.routes)`.
+   *
+   * Optional, and it lives HERE rather than in the plugin because it is the
+   * only place that can see both halves: `resolve.noExternal` compiles
+   * `@barqjs/*` into the ssr bundle, so the registry a plugin would import is a
+   * different, empty one, and the route definitions' `middleware` are closures
+   * that exist nowhere else.
+   */
+  readonly verifyChains?: (
+    reachability: ReadonlyMap<string, ReadonlySet<string>>,
+  ) => string | Promise<string>;
 }

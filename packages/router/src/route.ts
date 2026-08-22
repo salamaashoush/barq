@@ -173,7 +173,14 @@ export interface RouteDefinition<
    * against the chain each function actually carries, and inherited by children
    * so declaring it on a layout covers everything under it.
    */
-  readonly middleware?: readonly import("@barqjs/start").Middleware[];
+  readonly middleware?:
+    | readonly import("@barqjs/start").Middleware[]
+    // A THUNK, for a file-based table. A middleware is an anonymous closure
+    // compared by `===`, so it cannot be lifted out of the route file as a
+    // literal the way `ssr` and `prerender` are — the generator reaches it
+    // through the same lazy import `loader` uses. The router never calls this,
+    // so paying an `await` for a build-time claim costs nothing at runtime.
+    | (() => Promise<readonly import("@barqjs/start").Middleware[] | undefined>);
   /**
    * Runs before this route commits, outermost first, after the global chain.
    *

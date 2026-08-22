@@ -7,7 +7,8 @@
  */
 
 import { esc, html as ssrHtml, ssrLoading } from "@barqjs/server";
-import { createServerFn, getRequest } from "@barqjs/start";
+import { type Middleware, createServerFn, getRequest } from "@barqjs/start";
+import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
@@ -15,7 +16,14 @@ import { RouterProvider } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
-import { createPageHandler, notFound, preloadTags, redirect, renderRoutes } from "./server.ts";
+import {
+  chainVerifier,
+  createPageHandler,
+  notFound,
+  preloadTags,
+  redirect,
+  renderRoutes,
+} from "./server.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -1057,5 +1065,49 @@ describe("hydration", () => {
     expect(ran.calls).toBe(1);
     state.dispose();
     container.remove();
+  });
+});
+
+/**
+ * `chainVerifier`, which is what a server entry exports for the build to call.
+ *
+ * The verifier's own logic is `manifest.test.ts`; what this adds is the seam —
+ * that it reaches the REAL registry through `mountedFn`, so an id the build
+ * found in the client graph resolves to the function that was actually mounted.
+ */
+describe("chainVerifier", () => {
+  const gate: Middleware = async (next) => next();
+
+  const table = [
+    {
+      path: "/admin",
+      middleware: [gate],
+      component: (() => ssrHtml("")) as never,
+      children: [{ path: "", component: (() => ssrHtml("")) as never }],
+    },
+  ] as never as AnyRouteDefinition[];
+
+  test("an action that carries the route's chain passes", async () => {
+    unmountAll();
+    mount(
+      "guarded",
+      createServerFn()
+        .middleware([gate])
+        .handler(async () => "ok") as never,
+    );
+    expect(await chainVerifier(table)(new Map([["/admin", new Set(["guarded"])]]))).toBe("");
+  });
+
+  test("one that does not is reported, naming both", async () => {
+    unmountAll();
+    mount("bare", createServerFn().handler(async () => "ok") as never);
+    const report = await chainVerifier(table)(new Map([["/admin", new Set(["bare"])]]));
+    expect(report).toContain("bare is reachable from /admin");
+    expect(report).toContain("separate HTTP endpoint");
+  });
+
+  test("an id nothing mounted is not a violation — it is not an endpoint", async () => {
+    unmountAll();
+    expect(await chainVerifier(table)(new Map([["/admin", new Set(["ghost"])]]))).toBe("");
   });
 });

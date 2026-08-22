@@ -33,10 +33,16 @@ import {
 import { HYDRATE, type Scope, cell, getOwner, provide } from "@barqjs/core";
 import { encodeSeed } from "@barqjs/server/codec";
 import { withRequest } from "@barqjs/start";
+import { mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
 import { headOf, renderHead } from "./head.ts";
+import {
+  type Reachability,
+  describe as describeViolations,
+  verifyRouteChains,
+} from "./manifest.ts";
 import { memoryHistory } from "./history.ts";
 import { createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes, preloadMatched } from "./route.ts";
@@ -775,4 +781,29 @@ function wrapStream(
       done();
     },
   });
+}
+
+/**
+ * The route→action chain check, as the SERVER ENTRY exposes it to the build.
+ *
+ * WHY IT LIVES ON THE ENTRY. The check needs two things at once: the route
+ * definitions with their `middleware` CLOSURES, and the registry those reachable
+ * ids resolve against. Both exist only inside the built ssr bundle —
+ * `resolve.noExternal` compiles `@barqjs/*` into it, so a Vite plugin importing
+ * `@barqjs/start/server` would be asking a second, empty registry — and
+ * `environment.runner` is a DEV environment's API, so `buildEnd` cannot run app
+ * code either. What the build CAN do is import the bundle it just wrote, which
+ * is what the prerenderer already does. So the entry exports this, and the build
+ * calls it with the module-graph fact only the build has.
+ *
+ * Returns a report, or `""` when every reachable action carries its route's
+ * chain. The caller decides whether that fails the build.
+ */
+export function chainVerifier(
+  routes: readonly AnyRouteDefinition[],
+): (reachability: Reachability) => Promise<string> {
+  return async (reachability) => {
+    const violations = await verifyRouteChains({ routes, reachability, lookup: mountedFn });
+    return violations.length === 0 ? "" : describeViolations(violations);
+  };
 }

@@ -13,6 +13,7 @@ declare module "virtual:barq-routes" {
 
   export interface RouteMap {
     "/about": { path: "/about"; params: {  } };
+    "/admin": { path: "/admin"; params: {  } };
     "/async": { path: "/async"; params: {  } };
     "/components": { path: "/components"; params: {  } };
     "/css": { path: "/css"; params: {  } };
@@ -28,6 +29,7 @@ declare module "virtual:barq-routes" {
   export interface RouteData {
     "__root__": { search: SearchOf<typeof import("../src/routes/route.tsx")>; data: DataOf<typeof import("../src/routes/route.tsx")> };
     "/about": { search: SearchOf<typeof import("../src/routes/about.tsx")>; data: DataOf<typeof import("../src/routes/about.tsx")> };
+    "/admin": { search: SearchOf<typeof import("../src/routes/admin.tsx")>; data: DataOf<typeof import("../src/routes/admin.tsx")> };
     "/async": { search: SearchOf<typeof import("../src/routes/async.tsx")>; data: DataOf<typeof import("../src/routes/async.tsx")> };
     "/components": { search: SearchOf<typeof import("../src/routes/components.tsx")>; data: DataOf<typeof import("../src/routes/components.tsx")> };
     "/css": { search: SearchOf<typeof import("../src/routes/css.tsx")>; data: DataOf<typeof import("../src/routes/css.tsx")> };
