@@ -115,23 +115,6 @@ export {
 export { type RouterDevtoolsProps, RouterDevtools } from "./devtools.ts";
 
 export {
-  type Head,
-  type HeadAttrs,
-  type HeadContent,
-  type HeadContext,
-  type HeadDescriptor,
-  type ResolvedHead,
-  type ResolvedTag,
-  HEAD_OWNER,
-  applyHead,
-  captureHead,
-  headOf,
-  identityOf,
-  installHead,
-  resolveHead,
-} from "./head.ts";
-
-export {
   useBlocker,
   useCanGoBack,
   useInvalidate,

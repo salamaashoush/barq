@@ -12,24 +12,6 @@ import { NavLink, useLocation } from "@barqjs/router";
 
 import { css, globalCss } from "../styles";
 
-/**
- * The site-wide head, merged outermost-first with every route below.
- *
- * A layout declares what a page does not: the description here is the default
- * and any route that declares its own REPLACES it, because both resolve to the
- * identity `meta:name:description`. The two `og:image`s coexist because they are
- * in one group; a route that declares one of its own gets exactly its own.
- */
-export const head = {
-  title: "Barq Kitchen Sink",
-  meta: [
-    { name: "description", content: "Every barq feature, in one application." },
-    { property: "og:site_name", content: "Barq" },
-    { property: "og:type", content: "website" },
-  ],
-  link: [{ rel: "canonical", href: "https://barq.example/" }],
-};
-
 export const sections = [
   { id: "signals", label: "Signals & State" },
   { id: "components", label: "Components" },

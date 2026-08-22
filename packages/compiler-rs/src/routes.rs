@@ -410,13 +410,6 @@ pub fn generate_module(tree: &[RouteNode]) -> String {
     out.push_str("  return module.loader === undefined ? undefined : module.loader(context);\n");
     out.push_str("};\n\n");
     out.push_str(
-        "/** Same shape for `head`, which is resolved before the shell and may be a function. */\n",
-    );
-    out.push_str("const lazyHead = (load) => async (context) => {\n");
-    out.push_str("  const { head } = await load();\n");
-    out.push_str("  return typeof head === \"function\" ? head(context) : head;\n");
-    out.push_str("};\n\n");
-    out.push_str(
         "/** `middleware` is a BUILD-time claim, checked by identity — so it is a thunk. */\n",
     );
     out.push_str("const lazyMiddleware = (load) => async () => (await load()).middleware;\n");
@@ -453,7 +446,6 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         parts.push(format!("src: {specifier}"));
         parts.push(format!("component: lazy(() => import({specifier}))"));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
-        parts.push(format!("head: lazyHead(() => import({specifier}))"));
         parts.push(format!("middleware: lazyMiddleware(() => import({specifier}))"));
         parts.push(format!("pending: lazy(() => import({specifier}), (m) => m.Pending ?? Empty)"));
         // LIFTED, not imported. Both are wanted before the module loads, and the
@@ -817,17 +809,17 @@ mod tests {
     }
 
     #[test]
-    fn every_route_reaches_its_head_without_loading_the_module() {
-        // `head` is resolved BEFORE the shell flushes, and the route module is
-        // `lazy()` — so it goes through the same wrapper `loader` does rather
-        // than a static import, which would defeat the code splitting.
+    fn middleware_is_a_thunk_because_it_is_compared_by_identity() {
+        // `ssr` and `prerender` are lifted as LITERALS; `middleware` cannot be —
+        // it is an anonymous closure the build compares with `===`, so it goes
+        // through the same lazy import `loader` uses.
         let module = generate_module(&build_tree(&files(&["index.tsx", "about.tsx"])));
-        assert!(module.contains("const lazyHead = (load) => async (context) => {"), "{module}");
-        assert_eq!(module.matches("head: lazyHead(() => import(").count(), 2, "{module}");
-        // A descriptor OR a function of the context, decided at the call.
-        assert!(module.contains("typeof head === \"function\" ? head(context) : head"), "{module}");
-        // `middleware` is compared by IDENTITY, so it cannot be lifted as a
-        // literal the way `ssr` and `prerender` are — it is a thunk too.
+        assert!(
+            module.contains(
+                "const lazyMiddleware = (load) => async () => (await load()).middleware;"
+            ),
+            "{module}"
+        );
         assert_eq!(
             module.matches("middleware: lazyMiddleware(() => import(").count(),
             2,

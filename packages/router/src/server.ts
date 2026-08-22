@@ -37,7 +37,6 @@ import { mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
-import { headOf, renderHead } from "./head.ts";
 import {
   type Reachability,
   describe as describeViolations,
@@ -231,15 +230,6 @@ export function renderRoutes(state: RouterState): unknown {
 }
 
 export { NotFound, Redirect, errorFallbackFor, notFound, redirect } from "./errors.ts";
-export {
-  type Head,
-  type HeadDescriptor,
-  type ResolvedHead,
-  HEAD_OWNER,
-  headOf,
-  renderHead,
-  resolveHead,
-} from "./head.ts";
 
 export interface DocumentParts {
   /** The application's markup. */
@@ -268,15 +258,6 @@ export interface DocumentParts {
    * the escaping is this module's job, not the application's.
    */
   readonly preload: string;
-  /**
-   * The matched chain's head tags, merged and rendered, for the `<head>`.
-   *
-   * Empty when no route on the page declares one. Every element carries
-   * `data-barq-head`, which is what lets a client navigation REPLACE what the
-   * server wrote rather than append beside it — and what stops it touching a
-   * tag an extension or an analytics snippet put there.
-   */
-  readonly head: string;
   /**
    * The route context the server built, as a `<script>`, for the caller to
    * place in the `<head>`.
@@ -478,19 +459,6 @@ export function createPageHandler(
           // with a nav and no content. Awaiting here costs the same imports the
           // render would have done, in one round instead of one per depth.
           await preloadMatched(match?.route.chain ?? []);
-          // The head, in the same pre-shell phase and for the same reason as
-          // `beforeLoad`: what a crawler reads has to be in the shell bytes, and
-          // the shell is flushed before the first loader settles. Every module
-          // it needs was just imported by `preloadMatched`.
-          const head = renderHead(
-            await headOf(match?.route.chain ?? null, {
-              params: match?.params ?? {},
-              search: url.searchParams,
-              contexts: before.contexts,
-              url,
-            }),
-            options.nonce,
-          );
           const context = contextScript(url, before.produced, options.nonce);
           // A streamed response is not finished when this function returns it:
           // `renderToStream` hands back the `ReadableStream` before a byte of the
@@ -525,7 +493,6 @@ export function createPageHandler(
                   options.document({
                     body: page.html,
                     seed: page.script,
-                    head,
                     chain: match?.route.chain ?? null,
                     preload: preloadTags(match?.route.chain ?? null, options.routeAssets),
                     context,
@@ -554,7 +521,6 @@ export function createPageHandler(
                 dispose,
                 () => answer,
                 context,
-                head,
               ),
               {
                 status,
@@ -730,13 +696,10 @@ function wrapStream(
   answer: () => Response | null,
   /** The route-context handoff, which goes in the head like the preloads. */
   context: string,
-  /** The merged head tags, resolved before the shell — see `head.ts`. */
-  head: string,
 ): ReadableStream<Uint8Array> {
   const document = options.document({
     body: BODY_MARKER,
     seed: "",
-    head,
     chain,
     // Before the shell flushes, which is the only moment it is worth anything:
     // the tags have to reach the browser ahead of the markup that needs them.
@@ -750,13 +713,13 @@ function wrapStream(
       "the document function must place its `body` argument in the markup it returns",
     );
   }
-  const shell = document.slice(0, cut);
+  const head = document.slice(0, cut);
   const tail = document.slice(cut + BODY_MARKER.length);
 
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(encoder.encode(await shellOf(options, shell, url)));
+      controller.enqueue(encoder.encode(await shellOf(options, head, url)));
       const reader = stream.getReader();
       try {
         for (;;) {

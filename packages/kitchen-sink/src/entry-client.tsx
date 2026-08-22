@@ -1,7 +1,7 @@
 import { hydrate } from "@barqjs/core";
 import { QueryClient } from "@tanstack/query-core";
 import { QueryClientProvider } from "@barqjs/extra";
-import { RouterProvider, browserHistory, createRouter, installHead, preloadMatched } from "@barqjs/router";
+import { RouterProvider, browserHistory, createRouter, preloadMatched } from "@barqjs/router";
 import { routes } from "virtual:barq-routes";
 
 import { baseStyles } from "./styles";
@@ -24,12 +24,6 @@ const state = createRouter({ routes, history: browserHistory() });
 // discards exactly the markup hydration exists to keep.
 await state.start();
 await preloadMatched(state.chain());
-
-// `document.head` follows the router from here on. The SERVER wrote this page's
-// head into the shell and every tag carries `data-barq-head`, so the first
-// navigation replaces what it owns and leaves everything else — an analytics
-// snippet, an extension's tag — alone.
-installHead(state);
 
 hydrate(
   () => (

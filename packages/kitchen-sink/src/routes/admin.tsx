@@ -18,15 +18,6 @@ import { type AdminStats, adminStats } from "../data/admin.ts";
 
 export const middleware = [requireSession];
 
-export const head = {
-  title: "Admin — Barq Kitchen Sink",
-  meta: [
-    { name: "description", content: "The route-action chain check, armed." },
-    // A page behind a session is not for an index, whatever the crawler thinks.
-    { name: "robots", content: "noindex,nofollow" },
-  ],
-};
-
 export const loader = async (): Promise<AdminStats> => adminStats(undefined);
 
 export const Pending = (): unknown => <p>Loading admin…</p>;

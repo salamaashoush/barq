@@ -292,20 +292,6 @@ export interface RouteDefinition<
    * nearest ancestor's, so a single one at the root is enough.
    */
   readonly notFoundComponent?: ErrorComponent<Params>;
-  /**
-   * This route's contribution to the document head.
-   *
-   * Resolved in the PRE-SHELL phase, beside `beforeLoad`, from
-   * `{ params, search, context, url }` — never from loader data. A `<title>` in
-   * the body does not win (`document.title` is the first title in tree order)
-   * and body `<meta>`/`<link>` are not hoisted at all, so head content that has
-   * to reach a crawler has to be in the shell, and the shell flushes before any
-   * loader has settled. `head.ts` carries the measurement.
-   *
-   * Merged outermost-first: within one route same-identity tags coexist, and a
-   * deeper route replaces a shallower one's whole set for an identity.
-   */
-  readonly head?: import("./head.ts").Head<Params>;
   readonly loader?: Loader<Data, Params, Deps>;
   /**
    * Projects the validated search into the cache key.

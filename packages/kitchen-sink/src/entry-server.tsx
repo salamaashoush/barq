@@ -20,16 +20,10 @@ export const options: PageHandlerOptions = {
   routes,
   routeAssets,
   app: (state) => renderRoutes(state),
-  document: ({ body, seed, head, preload, context }) =>
+  document: ({ body, seed, preload, context }) =>
     `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    // The route chain's own head, merged. NO fallback `<title>` here, and the
-    // root layout declares one instead: measured in Chrome, `document.title` is
-    // the FIRST title in tree order, so a document that ships its own ahead of
-    // this makes every route's title inert — and shipping one after it leaves
-    // two `<title>` elements, which is invalid and which a crawler taking the
-    // last would read the wrong way round.
-    `${head}` +
+    `<title>Barq Kitchen Sink</title>` +
     `<style id="_goober">${collectStyles()}</style>` +
     `${clientAssets.css.map((href: string) => `<link rel="stylesheet" href="${href}">`).join("")}` +
     `${preload}${context}</head><body><div id="app">${body}</div>${seed}` +
