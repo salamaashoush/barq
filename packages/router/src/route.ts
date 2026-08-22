@@ -292,6 +292,33 @@ export interface RouteDefinition<
    * nearest ancestor's, so a single one at the root is enough.
    */
   readonly notFoundComponent?: ErrorComponent<Params>;
+  /**
+   * This route's contribution to the document head — TanStack Start's `head`.
+   *
+   * ```ts
+   * export const head = ({ params, loaderData }) => ({
+   *   meta: [{ title: loaderData.post.title }, { name: "description", content: "…" }],
+   *   links: [{ rel: "canonical", href: `https://x/${params.id}` }],
+   *   scripts: [{ type: "application/ld+json", children: JSON.stringify(ld) }],
+   * });
+   * ```
+   *
+   * `title` lives inside `meta`; `links` and `scripts` are plural; `scripts`
+   * here are HEAD scripts. `head.ts` carries the merge and the three places
+   * barq's dedup identity differs from theirs.
+   *
+   * A plain OBJECT is accepted where they take only a function, because a file
+   * route already declares `ssr` and `prerender` as plain module exports and a
+   * static head has nothing to compute.
+   */
+  readonly head?: import("./head.ts").Head<Params, Data> | import("./head.ts").HeadResult;
+  /**
+   * BODY scripts — TanStack's separate `scripts` option, rendered by `<Scripts />`.
+   *
+   * Separate from `head.scripts` because the two land in different places and a
+   * body script that moves into the head changes when it runs.
+   */
+  readonly scripts?: import("./head.ts").BodyScripts<Params, Data>;
   readonly loader?: Loader<Data, Params, Deps>;
   /**
    * Projects the validated search into the cache key.

@@ -409,6 +409,11 @@ pub fn generate_module(tree: &[RouteNode]) -> String {
     out.push_str("  const module = await load();\n");
     out.push_str("  return module.loader === undefined ? undefined : module.loader(context);\n");
     out.push_str("};\n\n");
+    out.push_str("/** `head` and `scripts`, reached the same way and accepting an object. */\n");
+    out.push_str("const lazyAsset = (load, pick) => async (context) => {\n");
+    out.push_str("  const declared = (await load())[pick];\n");
+    out.push_str("  return typeof declared === \"function\" ? declared(context) : declared;\n");
+    out.push_str("};\n\n");
     out.push_str(
         "/** `middleware` is a BUILD-time claim, checked by identity — so it is a thunk. */\n",
     );
@@ -446,6 +451,8 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         parts.push(format!("src: {specifier}"));
         parts.push(format!("component: lazy(() => import({specifier}))"));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
+        parts.push(format!("head: lazyAsset(() => import({specifier}), \"head\")"));
+        parts.push(format!("scripts: lazyAsset(() => import({specifier}), \"scripts\")"));
         parts.push(format!("middleware: lazyMiddleware(() => import({specifier}))"));
         parts.push(format!("pending: lazy(() => import({specifier}), (m) => m.Pending ?? Empty)"));
         // LIFTED, not imported. Both are wanted before the module loads, and the
@@ -806,6 +813,25 @@ mod tests {
         let parsed =
             oxc::parser::Parser::new(&allocator, &module, oxc::span::SourceType::mjs()).parse();
         assert!(parsed.diagnostics.is_empty(), "{module}\n{:?}", parsed.diagnostics);
+    }
+
+    #[test]
+    fn head_and_scripts_are_reached_without_loading_the_module() {
+        // Both are wanted before the shell and the route module is `lazy()`, so
+        // they go through the same wrapper `loader` does. `lazyAsset` accepts a
+        // function OR a plain object, which is what lets a static head be an
+        // ordinary module export.
+        let module = generate_module(&build_tree(&files(&["index.tsx", "about.tsx"])));
+        assert!(
+            module.contains("const lazyAsset = (load, pick) => async (context) => {"),
+            "{module}"
+        );
+        assert_eq!(module.matches("head: lazyAsset(() => import(").count(), 2, "{module}");
+        assert_eq!(module.matches("scripts: lazyAsset(() => import(").count(), 2, "{module}");
+        assert!(
+            module.contains("typeof declared === \"function\" ? declared(context) : declared"),
+            "{module}"
+        );
     }
 
     #[test]

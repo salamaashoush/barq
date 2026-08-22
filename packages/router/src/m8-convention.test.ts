@@ -364,6 +364,7 @@ describe("the convention, from the other side", () => {
       "devtools.ts": "devtools.test.ts",
       "errors.ts": "server.test.ts",
       "history.ts": "history.test.ts",
+      "head.ts": "head.test.ts",
       "hooks.ts": "router.test.ts",
       "manifest.ts": "manifest.test.ts",
       "matcher.ts": "matcher.test.ts",

@@ -115,6 +115,24 @@ export {
 export { type RouterDevtoolsProps, RouterDevtools } from "./devtools.ts";
 
 export {
+  type BodyScripts,
+  type Head,
+  type HeadContentTag,
+  type HeadContext,
+  type HeadMeta,
+  type HeadResult,
+  type HeadTag,
+  type ManagedTag,
+  type MatchAssets,
+  OWNED as HEAD_OWNER,
+  projectHead,
+  renderTag,
+  renderTags,
+  resolveHead,
+  resolveScripts,
+} from "./head.ts";
+
+export {
   useBlocker,
   useCanGoBack,
   useInvalidate,
