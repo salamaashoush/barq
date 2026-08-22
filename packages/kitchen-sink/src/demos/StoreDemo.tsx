@@ -7,9 +7,7 @@
  */
 
 import { For, Show, produce, reconcile, unwrap, effect, signal, store } from "@barqjs/core";
-import {
-  css,
-} from "../styles";
+import { css } from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface Todo {
@@ -250,7 +248,7 @@ function TodoStoreDemo() {
       >
         <ul class={todoListStyle}>
           <For each={filteredTodos}>
-            {(todo) => (
+            {(todo: Todo) => (
               <li class={todoItemStyle}>
                 <label class={todo.completed ? completedStyle : ""}>
                   <input
@@ -305,7 +303,7 @@ function ProduceDemo() {
     <DemoCard title="produce - Immutable Updates">
       <ul class={userListStyle}>
         <For each={state.users}>
-          {(user) => (
+          {(user: { id: number; name: string; score: number }) => (
             <li class={userItemStyle}>
               <span>
                 {user.name}: <strong>{user.score}</strong> points
@@ -353,7 +351,7 @@ function ReconcileDemo() {
     <DemoCard title="reconcile - Efficient Diffing">
       <ul class={userListStyle}>
         <For each={state.items}>
-          {(item) => (
+          {(item: { id: number; value: string }) => (
             <li class={userItemStyle}>
               ID: {item.id}, Value: <strong>{item.value}</strong>
             </li>

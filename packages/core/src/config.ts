@@ -89,6 +89,30 @@ export type Accessor<T> = () => T;
 export type StrictAccessor<T> = IsCompilerMode extends true ? T | Accessor<T> : Accessor<T>;
 
 /**
+ * What a component BODY sees, given the props its CALLER declares.
+ *
+ * The two directions are not the same type and conflating them is why an app
+ * with `COMPILER_MODE` on cannot annotate a component at all. `StrictAccessor`
+ * is the OUTGOING side — what a JSX call site may write, which the compiler
+ * widens to `T | Accessor<T>` because it wraps a bare value in a thunk for you.
+ * Incoming is the CALLEE side, and there the compiler has already done that: a
+ * prop that is present is a Cell and is called at the use site (CODESIGN
+ * §3.1), in every mode. So this is `Accessor` unconditionally.
+ *
+ * Optionality is preserved rather than stripped, because it is load-bearing:
+ * a prop the caller omitted is not an own property, so the read is `?.()` and
+ * the default lives beside it.
+ *
+ * @example
+ * ```tsx
+ * export function Button(props: Incoming<{ variant?: "primary" | "danger" }>) {
+ *   const variant = () => props.variant?.() ?? "primary";
+ * }
+ * ```
+ */
+export type Incoming<P> = { [K in keyof P]: Accessor<P[K]> };
+
+/**
  * Strict array accessor type for list iteration props.
  *
  * - In strict mode (default): requires `() => T[]` (accessor returning array)

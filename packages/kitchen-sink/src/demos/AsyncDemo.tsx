@@ -19,10 +19,9 @@ import {
   optimistic,
   resource,
   signal,
+  type Incoming,
 } from "@barqjs/core";
-import {
-  css,
-} from "../styles";
+import { css } from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {
@@ -111,9 +110,9 @@ function OptimisticLaneDemo() {
 
   const rename = action(function* (next: string) {
     title.set(next); // the guess, in the override buffer
-    const saved = (yield fetch(`/api/staggered?name=${next}&delay=1200`).then((r) =>
-      r.json(),
-    )) as { name: string };
+    const saved = (yield fetch(`/api/staggered?name=${next}&delay=1200`).then((r) => r.json())) as {
+      name: string;
+    };
     // The answer, written UNDERNEATH the override. Without `commit` this is a
     // lane write and reverts when the lane retires (A5 (e)).
     commit(() => title.set(`${saved.name} (saved)`));
@@ -154,16 +153,19 @@ function OptimisticLaneDemo() {
  * registered second, which is the only arrangement under which the three orders
  * are distinguishable from one another.
  */
+/** The three `Reveal` orders, named once so the group and its buttons agree. */
+type RevealOrder = "sequential" | "together" | "natural";
+
 function RevealOrderDemo() {
   const run = signal(0);
-  const order = signal<"sequential" | "together" | "natural">("sequential");
+  const order = signal<RevealOrder>("sequential");
 
   return (
     <DemoCard title="Reveal - nested ordering">
       <div class={controlsStyle}>
         <Button onClick={() => run.update((n) => n + 1)}>Load</Button>
-        <For each={() => ["sequential", "together", "natural"] as const}>
-          {(mode) => (
+        <For each={() => ["sequential", "together", "natural"] as RevealOrder[]}>
+          {(mode: RevealOrder) => (
             <Button
               onClick={() => {
                 order.set(mode);
@@ -210,7 +212,7 @@ function RevealOrderDemo() {
   );
 }
 
-function Slot(props: { name: string; delay: number; run: number }) {
+function Slot(props: Incoming<{ name: string; delay: number; run: number }>) {
   const data = resource(
     () => `${props.name()}:${props.run()}`,
     async () => {
@@ -228,8 +230,7 @@ function Slot(props: { name: string; delay: number; run: number }) {
     <Loading
       fallback={
         <div class={loadingStyle} data-slot={props.name} data-state="pending">
-          {props.name}
-          …
+          {props.name}…
         </div>
       }
     >
@@ -346,7 +347,11 @@ function LoadingBoundaryDemo() {
 
       <div class={resultBoxStyle}>
         <Loading fallback={<div class={loadingStyle}>Waiting for slow response...</div>}>
-          <Errored fallback={(err) => <div class={errorStyle}>Error: {() => err().message}</div>}>
+          <Errored
+            fallback={(err: () => Error) => (
+              <div class={errorStyle}>Error: {() => err().message}</div>
+            )}
+          >
             <Show when={() => slowData() !== null} fallback={<p>Click button to fetch</p>}>
               <div class={successStyle}>Response: {() => JSON.stringify(slowData())}</div>
             </Show>

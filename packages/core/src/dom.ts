@@ -2156,6 +2156,15 @@ function insertRendered(scope: Scope | null, element: JSXElement, container: HTM
 interface CapturedEvent {
   /** A DOM event type, or `@state` — a value/caret/focus record, not an event. */
   type: string;
+  /**
+   * The element the user actually acted on, held by reference.
+   *
+   * The queue never leaves the document it was recorded in, so a node costs
+   * nothing to carry and answers the one question a path cannot: whether this
+   * element is still the one at that place. Absent only for a record written by
+   * an older snippet.
+   */
+  node?: Node;
   /** Child indices from `document.body`. Stable only because nodes are claimed. */
   path: number[];
   x?: number;
@@ -2198,7 +2207,7 @@ function atPath(path: readonly number[]): Node | null {
  * Order matters and is the recorded order: state first (so a handler that reads
  * `event.target.value` sees what the user typed), then the events.
  */
-function replayCapturedEvents(): void {
+function replayCapturedEvents(recovered: boolean): void {
   const g = globalThis as {
     __BARQ_EVTS__?: CapturedEvent[];
     __BARQ_EVTS_STOP__?: () => void;
@@ -2210,8 +2219,8 @@ function replayCapturedEvents(): void {
   if (!queue || queue.length === 0) return;
 
   for (const rec of queue) {
-    if (rec.type !== "@state" || rec.path === undefined) continue;
-    const target = atPath(rec.path) as HTMLInputElement | null;
+    if (rec.type !== "@state") continue;
+    const target = stateTargetOf(rec, recovered) as HTMLInputElement | null;
     if (target === null) continue;
     if (rec.value !== undefined) target.value = rec.value;
     if (rec.checked !== undefined) target.checked = rec.checked;
@@ -2228,15 +2237,51 @@ function replayCapturedEvents(): void {
 
   for (const rec of queue) {
     if (rec.type === "@state") continue;
-    // A record with no path came from an older snippet — or from a page whose
-    // hydration was RECOVERED, where a path resolves to a node the client built
-    // and the coordinates are the only honest target left.
-    const path = rec.path;
-    const target = (path !== undefined && path.length > 0 ? atPath(path) : null) ?? pointAt(rec);
+    const target = targetOf(rec, recovered);
     if (target === null) continue;
     target.dispatchEvent(eventFor(rec));
   }
   flush();
+}
+
+/** Still in the document, and therefore still the node the user acted on. */
+function live(node: Node | undefined): Node | null {
+  return node !== undefined && node.isConnected ? node : null;
+}
+
+/**
+ * Where to aim a replayed event, in the order the answers are trustworthy.
+ *
+ * The captured node wins whenever it is still in the document — it IS the
+ * element the user hit, whatever else moved around it.
+ *
+ * A detached one means the region it lived in was replaced, and the two ways
+ * that happens want opposite answers. A RECOVERED hydration rebuilt the same
+ * markup cold, so every node is new and equivalent: the path and then the
+ * coordinates find the element that stands where the old one did. A swap
+ * replaced a `pending` fallback with different content, so both of those now
+ * address a control the user never saw — and dispatching a click into it is a
+ * phantom press on a live button. Nothing is the right answer there.
+ */
+function targetOf(rec: CapturedEvent, recovered: boolean): Node | null {
+  const node = live(rec.node);
+  if (node !== null) return node;
+  if (rec.node !== undefined && !recovered) return null;
+  const path = rec.path;
+  return (path !== undefined && path.length > 0 ? atPath(path) : null) ?? pointAt(rec);
+}
+
+/**
+ * Where to put back a value the user typed.
+ *
+ * Coordinates are never an answer here — a value belongs in the input it was
+ * typed into, and `elementFromPoint` can hand back a `<div>`.
+ */
+function stateTargetOf(rec: CapturedEvent, recovered: boolean): Node | null {
+  const node = live(rec.node);
+  if (node !== null) return node;
+  if (rec.node !== undefined && !recovered) return null;
+  return rec.path === undefined ? null : atPath(rec.path);
 }
 
 function pointAt(rec: CapturedEvent): Node | null {
@@ -2375,7 +2420,7 @@ export function hydrate(
   // that the client tree is not the server's; the read that drifted has
   // already resolved by now.
   unclaimedSeeds();
-  replayCapturedEvents();
+  replayCapturedEvents(hydrate.report.recovered);
   return clear ?? ((): void => {});
 }
 

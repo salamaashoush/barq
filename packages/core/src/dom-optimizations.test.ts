@@ -254,3 +254,110 @@ describe("pre-hydration event replay", () => {
     expect(g.__BARQ_EVTS__).toBeUndefined();
   });
 });
+
+/**
+ * `__BARQ_SWAP__` runs between capture and replay on every streamed page, so a
+ * record's target has to survive a region being replaced under it. A child-index
+ * path does not: the fallback the user clicked and the content that replaced it
+ * sit at the same index.
+ */
+describe("pre-hydration replay across a swap", () => {
+  const record = (over: Record<string, unknown>): Record<string, unknown> => ({
+    type: "click",
+    x: 10,
+    y: 10,
+    button: 0,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...over,
+  });
+
+  /** Hydration of an empty container: nothing claimed, nothing recovered. */
+  const replayInto = (queue: unknown[]): void => {
+    const g = globalThis as Record<string, unknown>;
+    g.__BARQ_EVTS__ = queue;
+    g.__BARQ_EVTS_STOP__ = (): void => {};
+    hydrate(() => element(null, "i", { children: "" }), container as HTMLElement);
+  };
+
+  /** Where a body-relative child-index path lands, for a node already in place. */
+  const pathTo = (node: Node): number[] => {
+    const path: number[] = [];
+    let current: Node | null = node;
+    while (current !== null && current !== document.body) {
+      let index = 0;
+      let sibling: Node | null = current;
+      while ((sibling = sibling.previousSibling) !== null) index++;
+      path.unshift(index);
+      current = current.parentNode;
+    }
+    return path;
+  };
+
+  test("the captured node is the target even when its path has shifted", () => {
+    let clicks = 0;
+    const survivor = document.createElement("button");
+    survivor.addEventListener("click", () => clicks++);
+    document.body.appendChild(survivor);
+    const path = pathTo(survivor);
+    // Something else lands in front of it, so the recorded path now addresses a
+    // different node — which is what an unrelated boundary settling does.
+    document.body.insertBefore(document.createElement("span"), document.body.firstChild);
+
+    replayInto([record({ node: survivor, path })]);
+
+    expect(clicks).toBe(1);
+  });
+
+  test("a click on a fallback that was swapped away does not land on its replacement", () => {
+    let victimClicks = 0;
+    const victim = document.createElement("button");
+    victim.addEventListener("click", () => victimClicks++);
+
+    // The `pending` fallback the user actually clicked, replaced by the swap —
+    // which is exactly a same-index substitution, so the recorded path now
+    // addresses the content rather than the placeholder.
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const fallback = document.createElement("p");
+    host.appendChild(fallback);
+    const path = pathTo(fallback);
+    host.replaceChild(victim, fallback);
+
+    expect(pathTo(victim)).toEqual(path);
+
+    const original = document.elementFromPoint;
+    document.elementFromPoint = (): Element => victim;
+    try {
+      replayInto([record({ node: fallback, path })]);
+    } finally {
+      document.elementFromPoint = original;
+    }
+
+    expect(victimClicks).toBe(0);
+  });
+
+  test("a typed value goes back into the input it was typed into", () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const path = pathTo(input);
+    document.body.insertBefore(document.createElement("span"), document.body.firstChild);
+
+    replayInto([
+      {
+        type: "@state",
+        node: input,
+        path,
+        value: "typed before the bundle arrived",
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      },
+    ]);
+
+    expect(input.value).toBe("typed before the bundle arrived");
+  });
+});

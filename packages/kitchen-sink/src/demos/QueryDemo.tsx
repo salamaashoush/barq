@@ -12,9 +12,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@barqjs/extra";
-import {
-  css,
-} from "../styles";
+import { css } from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {
@@ -83,7 +81,7 @@ function BasicQueryDemo() {
       <Show when={() => query().isSuccess}>
         <ul class={listStyle}>
           <For each={() => query().data || []}>
-            {(user) => (
+            {(user: User) => (
               <li class={listItemStyle}>
                 <strong>{user.name}</strong>
                 <span>{user.email}</span>
@@ -195,7 +193,7 @@ function MutationDemo() {
       </Show>
 
       <div class={logBoxStyle}>
-        <For each={logs}>{(log) => <div class={logLineStyle}>{log}</div>}</For>
+        <For each={logs}>{(log: string) => <div class={logLineStyle}>{log}</div>}</For>
       </div>
     </DemoCard>
   );
@@ -238,7 +236,7 @@ function InfiniteQueryDemo() {
       <Show when={() => allPosts().length > 0}>
         <ul class={postListStyle}>
           <For each={allPosts}>
-            {(post) => (
+            {(post: Post) => (
               <li class={postItemStyle}>
                 <strong>#{post.id}</strong> {post.title}
               </li>
@@ -450,8 +448,12 @@ const globalLoadingStyle = css`
   margin-bottom: 12px;
 
   @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
   }
 `;
 

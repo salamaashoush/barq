@@ -216,6 +216,31 @@ export function Show<T>(
   return branch(_s, null, null, key, content) as JSXElement;
 }
 
+/**
+ * MEASURED AND ABANDONED: `<For>`'s callback cannot infer its item type.
+ *
+ * Not for want of a props type. Three were built and each failed for its own
+ * reason, and the third failure is structural rather than fixable:
+ *
+ * 1. A union mirroring `ForProps`'s three arms — TypeScript gives a callback NO
+ *    contextual type when the contextual type is a union of differing
+ *    signatures, so every callback stayed an implicit `any`.
+ * 2. One object with `children` conditional on a `keyed` type parameter — the
+ *    callback is contextually typed now, and typed with `unknown`, because
+ *    inferring the item through `StrictArrayAccessor`'s six-member union
+ *    resolves to `unknown`.
+ * 3. `each` inferred WHOLE with the item read back out of it — same answer, and
+ *    this is where it stops. `LibraryManagedAttributes` reaches barq's props
+ *    through `C extends (scope, props: infer Q) => any`, and `infer Q` against a
+ *    GENERIC signature instantiates its parameters at their constraints. Type
+ *    arguments are inferred from a component's FIRST parameter, which under
+ *    §3.2's calling convention is the scope. So no generic barq component can
+ *    infer anything from its JSX attributes, whatever its props type says.
+ *
+ * The props stay permissive, which is what `Show` and `Repeat` also do, and a
+ * call site that wants the type annotates its callback —
+ * `{(row: Row) => …}` — which is what `routes/route.tsx` already did.
+ */
 export function For<T>(
   _s: Scope | null,
   props: { each: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
@@ -256,8 +281,19 @@ export function Repeat(
   ) as JSXElement;
 }
 
-/** C8-adjacent: `Match` is an identity function — `Switch` reads its props. */
-export function Match<T>(_s: Scope | null, props: T): JSXElement {
+/**
+ * C8-adjacent: `Match` is an identity function — `Switch` reads its props.
+ *
+ * The parameter is a concrete shape and not a bare `T`, which is what `Show`
+ * already does: `LibraryManagedAttributes` picks the props off the SECOND
+ * parameter with `infer Q`, and an unresolved generic infers `unknown` there
+ * and falls back to the first — so `<Match when={…}>` checked its attributes
+ * against `Scope` and reported every one of them missing.
+ */
+export function Match(
+  _s: Scope | null,
+  props: { when: unknown; keyed?: unknown; children: unknown },
+): JSXElement {
   return props as unknown as JSXElement;
 }
 

@@ -14,6 +14,7 @@ export default defineConfig({
     "./src/serve.ts",
     "./src/vite.ts",
     "./src/prerender.ts",
+    "./src/protocol.ts",
   ],
   format: ["esm"],
   dts: true,

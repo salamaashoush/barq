@@ -114,6 +114,7 @@ export type { Store } from "./store.ts";
 export type {
   BarqConfig,
   IsCompilerMode,
+  Incoming,
   StrictAccessor,
   StrictArrayAccessor,
   StrictChild,

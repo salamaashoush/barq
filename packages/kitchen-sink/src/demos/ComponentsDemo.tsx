@@ -7,18 +7,8 @@
  * - Children: direct JSX instead of `{() => <div>...</div>}`
  */
 
-import {
-  Errored,
-  For,
-  Match,
-  Portal,
-  Show,
-  Switch,
-  signal,
-} from "@barqjs/core";
-import {
-  css,
-} from "../styles";
+import { Errored, For, Match, Portal, Show, Switch, signal } from "@barqjs/core";
+import { css } from "../styles";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 export function ComponentsDemo() {
@@ -66,8 +56,14 @@ function ShowDemo() {
 }
 
 // For component - keyed list
+/** One row of the keyed list, named so the callback can say what it takes. */
+interface Fruit {
+  id: number;
+  name: string;
+}
+
 function ForDemo() {
-  const items = signal([
+  const items = signal<Fruit[]>([
     { id: 1, name: "Apple" },
     { id: 2, name: "Banana" },
     { id: 3, name: "Cherry" },
@@ -101,7 +97,7 @@ function ForDemo() {
 
       <ul class={listStyle}>
         <For each={items}>
-          {(item, index) => (
+          {(item: Fruit, index: () => number) => (
             <li class={listItemStyle}>
               <span>
                 {index() + 1}. {item.name} (id: {item.id})
@@ -150,7 +146,7 @@ function IndexDemo() {
 
       <div class={gridStyle}>
         <For each={values} keyed={false}>
-          {(value, index) => (
+          {(value: () => string, index: number) => (
             <input
               class={indexInputStyle}
               type="text"
@@ -163,8 +159,8 @@ function IndexDemo() {
       </div>
 
       <p class={noteStyle}>
-        The positional mode keeps nodes stable - only values update when items change, and the
-        text you type stays with the SLOT rather than with the item (BARQ011).
+        The positional mode keeps nodes stable - only values update when items change, and the text
+        you type stays with the SLOT rather than with the item (BARQ011).
       </p>
     </DemoCard>
   );
@@ -256,7 +252,7 @@ function ErroredDemo() {
 
       <div class={boundaryBoxStyle}>
         <Errored
-          fallback={(error, reset) => (
+          fallback={(error: () => Error, reset: () => void) => (
             <div class={errorBoxStyle}>
               <strong>Caught Error:</strong>
               <p>{() => error().message}</p>
@@ -300,7 +296,7 @@ function FragmentDemo() {
 
       <div class={fragmentContainerStyle}>
         <>
-          <For each={items}>{(item) => <span class={fragmentItemStyle}>{item}</span>}</For>
+          <For each={items}>{(item: string) => <span class={fragmentItemStyle}>{item}</span>}</For>
         </>
       </div>
 

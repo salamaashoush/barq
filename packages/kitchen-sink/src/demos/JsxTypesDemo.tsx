@@ -9,6 +9,7 @@ import {
   type FlowProps,
   For,
   type FunctionMaybe,
+  type Incoming,
   type ParentProps,
   type PropsWithChildren,
   type Ref,
@@ -17,10 +18,7 @@ import {
   type VoidProps,
   signal,
 } from "@barqjs/core";
-import {
-  clsx,
-  css,
-} from "../styles";
+import { clsx, css } from "../styles";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 // ============================================================================
@@ -82,13 +80,11 @@ function Wrapper(props: FlowProps<WrapperProps>) {
 
 // Test Accessor and FunctionMaybe types
 interface ReactiveDisplayProps {
-  // Can be static or reactive
-  value: FunctionMaybe<string>;
-  // Must be reactive
-  count: Accessor<number>;
+  value: string;
+  count: number;
 }
 
-function ReactiveDisplay(props: ReactiveDisplayProps) {
+function ReactiveDisplay(props: Incoming<ReactiveDisplayProps>) {
   // No `FunctionMaybe` resolution: every prop is a Cell, so there is one shape
   // to read and nothing to discriminate.
   return (
@@ -104,8 +100,10 @@ interface RefDemoProps {
   inputRef?: Ref<HTMLInputElement>;
 }
 
-function RefInput(props: RefDemoProps) {
-  return <input type="text" ref={props.inputRef?.()} class={inputStyle} placeholder="Type here..." />;
+function RefInput(props: Incoming<RefDemoProps>) {
+  return (
+    <input type="text" ref={props.inputRef?.()} class={inputStyle} placeholder="Type here..." />
+  );
 }
 
 // ============================================================================
@@ -520,7 +518,9 @@ function AriaAndDataDemo() {
           min="0"
           max="100"
           value={progress()}
-          onInput={(e: Event) => progress.set(Number.parseInt((e.target as HTMLInputElement).value))}
+          onInput={(e: Event) =>
+            progress.set(Number.parseInt((e.target as HTMLInputElement).value))
+          }
         />
       </div>
 

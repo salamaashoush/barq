@@ -2,19 +2,16 @@
  * Shared components for demos
  */
 
-import { type Child, For } from "@barqjs/core";
-import {
-  clsx,
-  css,
-} from "../styles";
+import { type Child, For, type Incoming } from "@barqjs/core";
+import { clsx, css } from "../styles";
 
 // Demo section container
-export function DemoSection(props: { children: Child }) {
+export function DemoSection(props: Incoming<{ children: Child }>) {
   return <div class={sectionStyle}>{props.children}</div>;
 }
 
 // Demo card
-export function DemoCard(props: { title: string; children: Child }) {
+export function DemoCard(props: Incoming<{ title: string; children: Child }>) {
   return (
     <div class={cardStyle}>
       <h3 class={cardTitleStyle}>{props.title}</h3>
@@ -24,12 +21,14 @@ export function DemoCard(props: { title: string; children: Child }) {
 }
 
 // Button component
-export function Button(props: {
-  children: Child;
-  onClick?: (e: MouseEvent) => void;
-  disabled?: boolean;
-  variant?: "primary" | "secondary" | "danger";
-}) {
+export function Button(
+  props: Incoming<{
+    children: Child;
+    onClick?: (e: MouseEvent) => void;
+    disabled?: boolean;
+    variant?: "primary" | "secondary" | "danger";
+  }>,
+) {
   // Every prop that is PRESENT is a Cell and is CALLED at the use site (C3.1).
   // An optional prop the caller omitted is not an own property at all, so the
   // read is optional and the default lives beside it. The value-or-accessor
@@ -58,21 +57,23 @@ export function Button(props: {
 }
 
 // Log display
-export function Log(props: { logs: string[] }) {
+export function Log(props: Incoming<{ logs: string[] }>) {
   return (
     <div class={logContainerStyle}>
-      <For each={props.logs()}>{(log) => <div class={logLineStyle}>{log}</div>}</For>
+      <For each={props.logs()}>{(log: string) => <div class={logLineStyle}>{log}</div>}</For>
     </div>
   );
 }
 
 // Input component
-export function Input(props: {
-  value: string;
-  onInput: (value: string) => void;
-  placeholder?: string;
-  type?: string;
-}) {
+export function Input(
+  props: Incoming<{
+    value: string;
+    onInput: (value: string) => void;
+    placeholder?: string;
+    type?: string;
+  }>,
+) {
   return (
     <input
       type={props.type?.() || "text"}

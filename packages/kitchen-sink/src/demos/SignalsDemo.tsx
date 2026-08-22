@@ -21,9 +21,7 @@ import {
   effect,
   signal,
 } from "@barqjs/core";
-import {
-  css,
-} from "../styles";
+import { css } from "../styles";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function SignalsDemo() {
@@ -336,7 +334,7 @@ function RefDemo() {
   };
 
   const selectAll = () => {
-    inputRef.current?.select();
+    inputRef?.select();
   };
 
   return (

@@ -21,7 +21,7 @@ import {
   type JSXElement,
   type Cell,
   type Scope,
-  type StrictAccessor,
+  type Incoming,
   HYDRATE,
   bindProp,
   block,
@@ -322,8 +322,6 @@ function routeProps(state: RouterState, depth: number, route: Route | null): Rou
 }
 
 // ---------------------------------------------------------------- components
-
-type Incoming<P> = { [K in keyof P]-?: StrictAccessor<P[K]> };
 
 export interface RouterProps {
   readonly routes: RouterState["config"]["routes"];

@@ -686,13 +686,18 @@ export function escapeScriptPayload(json: string): string {
  * input events at all, for the same reason: a keystroke has no coordinates and
  * a typed value has nowhere to go once its input has been thrown away.
  *
- * Claiming preserves the node, so the target is recorded as a PATH of child
- * indices and resolves to the same element after hydration. That is what puts
- * `keydown` and the typed value and the caret position in the queue at all;
- * `SEMANTICS.md` H6 is the rule it exists for. The coordinates are still
- * recorded, as the fallback for the recovered case — a page that had to be
- * re-rendered cold has no stable path, and a pointer event can still find its
- * way by `elementFromPoint`.
+ * Claiming preserves the node, so the target is recorded as the NODE ITSELF.
+ * That is what puts `keydown` and the typed value and the caret position in the
+ * queue at all; `SEMANTICS.md` H6 is the rule it exists for.
+ *
+ * A node reference and not a child-index path, and the difference is a bug this
+ * shipped with: `__BARQ_SWAP__` replaces a settled boundary's fallback between
+ * capture and replay, so a path recorded against a spinner resolves after the
+ * swap to whatever the real content put at that index — a click on a `pending`
+ * placeholder replayed onto a live control. A reference to a swapped-away node
+ * is merely detached, which is answerable; a path is confidently wrong. The
+ * path is still recorded for the RECOVERED case, where every node was replaced
+ * and neither a reference nor a path survives, and the coordinates behind it.
  *
  * A `@state` record is not an event. It is the value, the checked flag, the
  * selection and the focus of an element the user was editing, sampled on every
@@ -705,11 +710,11 @@ const EVENT_CAPTURE_SNIPPET =
   'var ts=["click","dblclick","pointerdown","pointerup","mousedown","mouseup","touchstart","touchend","contextmenu","keydown","keyup","keypress","input","change","focusin"];' +
   "var p=function(n){var a=[];while(n&&n!==document.body){var i=0;var s=n;while((s=s.previousSibling))i++;a.unshift(i);n=n.parentNode}return n?a:[]};" +
   "var st=function(t){if(!t||t.value===undefined)return;" +
-  "q.push({type:'@state',path:p(t),value:t.value,checked:t.checked,start:t.selectionStart===null?undefined:t.selectionStart,end:t.selectionEnd===null?undefined:t.selectionEnd,focus:document.activeElement===t,ctrlKey:false,metaKey:false,shiftKey:false,altKey:false})};" +
+  "q.push({type:'@state',node:t,path:p(t),value:t.value,checked:t.checked,start:t.selectionStart===null?undefined:t.selectionStart,end:t.selectionEnd===null?undefined:t.selectionEnd,focus:document.activeElement===t,ctrlKey:false,metaKey:false,shiftKey:false,altKey:false})};" +
   "var h=function(e){var t=e.target;" +
   "if(e.type==='input'||e.type==='change'||e.type==='focusin')st(t);" +
   "if(e.type==='focusin')return;" +
-  "q.push({type:e.type,path:p(t),x:e.clientX,y:e.clientY,button:e.button,key:e.key,code:e.code,ctrlKey:!!e.ctrlKey,metaKey:!!e.metaKey,shiftKey:!!e.shiftKey,altKey:!!e.altKey})};" +
+  "q.push({type:e.type,node:t,path:p(t),x:e.clientX,y:e.clientY,button:e.button,key:e.key,code:e.code,ctrlKey:!!e.ctrlKey,metaKey:!!e.metaKey,shiftKey:!!e.shiftKey,altKey:!!e.altKey})};" +
   "ts.forEach(function(t){document.addEventListener(t,h,true)});" +
   "return function(){ts.forEach(function(t){document.removeEventListener(t,h,true)})}})();";
 

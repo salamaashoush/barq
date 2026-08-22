@@ -24,13 +24,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-/** What the built server entry has to export for any of this to work. */
-export interface ServerEntryModule {
-  readonly default?: { readonly fetch?: (request: Request) => Promise<Response> };
-  readonly createFetch?: (
-    extra: Record<string, unknown>,
-  ) => (request: Request) => Promise<Response>;
-}
+import { PRERENDER_HEADER, type ServerEntryModule } from "./protocol.ts";
+
+export type { ServerEntryModule };
 
 export interface PrerenderRun {
   readonly entry: ServerEntryModule;
@@ -124,15 +120,6 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     // prerender outright and React ships the same note on its static entry.
     nonce: undefined,
   });
-
-  /**
-   * The header the page handler answers with when it was built for a prerender.
-   *
-   * `"0"` means the matched route did not declare `prerender`, so a path the
-   * CRAWL found is rendered and discarded rather than written. A path the config
-   * named is always written — naming it is the declaration.
-   */
-  const PRERENDER_HEADER = "x-barq-prerender";
 
   const seen = new Set<string>();
   const queue: string[] = [];

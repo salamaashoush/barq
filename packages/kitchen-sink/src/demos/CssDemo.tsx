@@ -3,7 +3,7 @@
  * Tests: css, styled, keyframe, globalCss, clsx, variants, createTheme, token, cssVar, defineVars
  */
 
-import { For, signal } from "@barqjs/core";
+import { For, type Incoming, signal } from "@barqjs/core";
 import {
   type DesignTokens,
   clsx,
@@ -81,24 +81,24 @@ function StyledDemo() {
   // Note: styled() requires goober's createElement integration
   // For now we'll show the css`` approach which works reliably
 
-  const Card = (props: { variant: "primary" | "secondary"; children: string }) => {
+  const Card = (props: Incoming<{ variant: "primary" | "secondary"; children: string }>) => {
     const cardStyle = () =>
       css`
-      padding: 20px;
-      border-radius: 12px;
-      font-weight: 500;
-      ${
-        props.variant() === "primary"
-          ? `
+        padding: 20px;
+        border-radius: 12px;
+        font-weight: 500;
+        ${
+          props.variant() === "primary"
+            ? `
           background: #3b82f6;
           color: white;
         `
-          : `
+            : `
           background: #475569;
           color: #e2e8f0;
         `
-      }
-    `;
+        }
+      `;
 
     return <div class={cardStyle()}>{props.children}</div>;
   };
@@ -278,17 +278,23 @@ function VariantsDemo() {
         primary: css`
           background: #3b82f6;
           color: white;
-          &:hover { background: #2563eb; }
+          &:hover {
+            background: #2563eb;
+          }
         `,
         secondary: css`
           background: #475569;
           color: #e2e8f0;
-          &:hover { background: #64748b; }
+          &:hover {
+            background: #64748b;
+          }
         `,
         danger: css`
           background: #ef4444;
           color: white;
-          &:hover { background: #dc2626; }
+          &:hover {
+            background: #dc2626;
+          }
         `,
       },
       size: {

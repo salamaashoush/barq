@@ -33,6 +33,7 @@ import {
 import { HYDRATE, type Scope, cell, getOwner, provide } from "@barqjs/core";
 import { encodeSeed } from "@barqjs/server/codec";
 import { withRequest } from "@barqjs/start";
+import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
 import { memoryHistory } from "./history.ts";
@@ -660,8 +661,14 @@ function html(body: string, status: number, extra?: Record<string, string>): Res
   });
 }
 
-/** The header a prerenderer reads to decide whether to keep a crawled page. */
-export const PRERENDER_HEADER = "x-barq-prerender";
+/**
+ * The header a prerenderer reads to decide whether to keep a crawled page.
+ *
+ * Re-exported rather than declared: `@barqjs/start/protocol` owns it, because
+ * the prerenderer is the party that READS it and a second literal here is the
+ * shape where the two halves drift apart in silence.
+ */
+export { PRERENDER_HEADER };
 
 /**
  * Split the document around the app's markup and stream the middle.

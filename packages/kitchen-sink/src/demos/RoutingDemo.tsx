@@ -7,16 +7,14 @@
  */
 
 import { For, Show, signal } from "@barqjs/core";
-import {
-  clsx,
-  css,
-} from "../styles";
+import { clsx, css } from "../styles";
 import type { Cell } from "@barqjs/core";
 import {
   type Guard,
   Link,
   NavLink,
   type RouteDefinition,
+  type RouteProps,
   Router,
   memoryHistory,
   route,
@@ -81,7 +79,7 @@ const adminGuard: Guard = async () => {
 // renders its child by placing `props.children`.
 
 // Dashboard Layout - wraps all dashboard routes
-export function DashboardLayout(props: { children: unknown }) {
+export function DashboardLayout(props: RouteProps) {
   const authState = signal(true);
   const roleState = signal("admin");
 
@@ -181,7 +179,7 @@ interface UsersData {
   total: number;
 }
 
-export function UsersList(props: { data: Cell<UsersData | undefined> }) {
+export function UsersList(props: RouteProps<UsersData | undefined>) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentFilter = () => searchParams().get("role") || "all";
@@ -215,7 +213,7 @@ export function UsersList(props: { data: Cell<UsersData | undefined> }) {
 
       <ul class={listStyle}>
         <For each={filteredUsers}>
-          {(user) => (
+          {(user: (typeof users)[number]) => (
             <li class={listItemStyle}>
               <Link to={`/demo/dashboard/users/${user.id}`}>
                 <strong>{user.name}</strong>
@@ -235,7 +233,7 @@ interface UserDetailData {
   posts: typeof posts;
 }
 
-export function UserDetail(props: { data: Cell<UserDetailData | undefined> }) {
+export function UserDetail(props: RouteProps<UserDetailData | undefined>) {
   // Destructuring at the top would snapshot the loader's answer; the reads stay
   // where they are used, which is what keeps the route alive across a parameter
   // change instead of remounting it.
@@ -244,7 +242,7 @@ export function UserDetail(props: { data: Cell<UserDetailData | undefined> }) {
 
   return (
     <Show when={user} fallback={<div class={errorStyle}>User not found</div>}>
-      {(found) => (
+      {(found: () => (typeof users)[number]) => (
         <div>
           <div class={breadcrumbStyle}>
             <Link to="/demo/dashboard/users">Users</Link>
@@ -264,10 +262,13 @@ export function UserDetail(props: { data: Cell<UserDetailData | undefined> }) {
           </div>
 
           <h4 class={subTitleStyle}>Posts by {found().name}</h4>
-          <Show when={() => userPosts().length > 0} fallback={<p class={emptyStyle}>No posts yet</p>}>
+          <Show
+            when={() => userPosts().length > 0}
+            fallback={<p class={emptyStyle}>No posts yet</p>}
+          >
             <ul class={listStyle}>
               <For each={userPosts}>
-                {(post) => (
+                {(post: (typeof posts)[number]) => (
                   <li class={listItemStyle}>
                     <Link to={`/demo/dashboard/posts/${post.id}`}>{post.title}</Link>
                   </li>
@@ -286,7 +287,7 @@ interface PostsData {
   posts: typeof posts;
 }
 
-export function PostsList(props: { data: Cell<PostsData | undefined> }) {
+export function PostsList(props: RouteProps<PostsData | undefined>) {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentCategory = () => searchParams().get("category") || "all";
 
@@ -324,7 +325,7 @@ export function PostsList(props: { data: Cell<PostsData | undefined> }) {
 
       <ul class={listStyle}>
         <For each={filteredPosts}>
-          {(post) => (
+          {(post: (typeof posts)[number]) => (
             <li class={listItemStyle}>
               <Link to={`/demo/dashboard/posts/${post.id}`}>
                 <strong>{post.title}</strong>
@@ -344,14 +345,14 @@ interface PostDetailData {
   author: (typeof users)[0] | undefined;
 }
 
-export function PostDetail(props: { data: Cell<PostDetailData | undefined> }) {
+export function PostDetail(props: RouteProps<PostDetailData | undefined>) {
   const nav = useNavigate();
   const post = () => props.data()?.post;
   const author = () => props.data()?.author;
 
   return (
     <Show when={post} fallback={<div class={errorStyle}>Post not found</div>}>
-      {(found) => (
+      {(found: () => (typeof posts)[number]) => (
         <div>
           <div class={breadcrumbStyle}>
             <Link to="/demo/dashboard/posts">Posts</Link>
@@ -368,7 +369,9 @@ export function PostDetail(props: { data: Cell<PostDetailData | undefined> }) {
             <p>
               <strong>Author:</strong>{" "}
               <Show when={author} fallback={<span>Unknown</span>}>
-                {(auth) => <Link to={`/demo/dashboard/users/${auth().id}`}>{auth().name}</Link>}
+                {(auth: () => (typeof users)[number]) => (
+                  <Link to={`/demo/dashboard/users/${auth().id}`}>{auth().name}</Link>
+                )}
               </Show>
             </p>
           </div>
@@ -780,7 +783,9 @@ const breadcrumbStyle = css`
   a {
     color: #60a5fa;
     text-decoration: none;
-    &:hover { text-decoration: underline; }
+    &:hover {
+      text-decoration: underline;
+    }
   }
 `;
 
@@ -803,7 +808,9 @@ const adminPanelStyle = css`
   color: #e2e8f0;
   font-size: 13px;
 
-  p { margin: 6px 0; }
+  p {
+    margin: 6px 0;
+  }
 `;
 
 const loginPageStyle = css`

@@ -15,6 +15,7 @@
 import type * as CSS from "csstype";
 import { Fragment } from "./components.ts";
 import type { ArrayElement, Child, Component, JSXElement, Props } from "./dom.ts";
+import type { Incoming, StrictAccessor } from "./config.ts";
 
 export { Fragment };
 
@@ -49,10 +50,18 @@ export type FunctionMaybe<T> = T | Accessor<T>;
 export type MaybeAccessor<T> = FunctionMaybe<T>;
 
 /**
- * PropsWithChildren - adds children prop to any props type
- * Commonly used when defining component props
+ * The four shapes a component declares, as its BODY receives them.
+ *
+ * Every one of these is `Incoming`, and that is not decoration: a prop that is
+ * present is a Cell and is called at the use site, so `P & { children?: Child }`
+ * described a shape no barq component has ever been handed. A component
+ * annotated with the old definition read `props.title()` and was told `string`
+ * is not callable — which was 21 of `kitchen-sink`'s errors, in the demo whose
+ * whole subject is these types.
+ *
+ * The call site is unaffected: `LibraryManagedAttributes` widens back to values.
  */
-export type PropsWithChildren<P = Record<string, never>> = P & { children?: Child };
+export type PropsWithChildren<P = Record<string, never>> = Incoming<P & { children?: Child }>;
 
 /**
  * ParentProps - alias for PropsWithChildren (SolidJS naming)
@@ -62,12 +71,12 @@ export type ParentProps<P = Record<string, never>> = PropsWithChildren<P>;
 /**
  * VoidProps - props for components that don't accept children
  */
-export type VoidProps<P = Record<string, never>> = P & { children?: never };
+export type VoidProps<P = Record<string, never>> = Incoming<P> & { children?: never };
 
 /**
  * FlowProps - props for components that must have children
  */
-export type FlowProps<P = Record<string, never>, C = Child> = P & { children: C };
+export type FlowProps<P = Record<string, never>, C = Child> = Incoming<P & { children: C }>;
 
 /**
  * ComponentProps - extract props type from a component
@@ -114,6 +123,19 @@ export namespace JSX {
    * parameters at all — which is most of them, since the compiler is what adds
    * the scope — infers `unknown` there and falls back, because a fallback that
    * accepts no attributes is right for a component that declares none.
+   *
+   * The FALLBACK arm widens and the `Q` arm does not, and the asymmetry is the
+   * whole of it. A component written as `function Card(props)` is a
+   * ONE-parameter function, which is assignable to the two-parameter pattern
+   * with `Q` inferring `unknown` — so the fallback is the arm every hand-written
+   * component takes, and it is the arm that needs `Outgoing`, because a
+   * component whose props are annotated honestly (`Incoming`) declares
+   * accessors and its call sites write values.
+   *
+   * The `Q` arm is what `For`, `Show` and `Match` take, and it must stay
+   * untouched: their declarations are generic, and a mapped type over an
+   * inferred type parameter is not invertible — widening there costs `<For>`
+   * the item type its callback infers, which is worse than what it buys.
    */
   export type LibraryManagedAttributes<C, P> = C extends (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,9 +144,36 @@ export namespace JSX {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ) => any
     ? unknown extends Q
-      ? P
+      ? Outgoing<P>
       : Q
-    : P;
+    : Outgoing<P>;
+
+  /**
+   * The callee's props, as the CALL SITE is allowed to write them.
+   *
+   * A component body sees every present prop as a Cell (`Incoming`), so a
+   * component annotated honestly declares `Accessor<T>` — and without this,
+   * annotating one made every call site of it a type error, because JSX checked
+   * the attributes against the callee shape and demanded `title={() => "x"}`
+   * where the compiler is what adds the thunk. Widening here is the inverse of
+   * `Incoming`, and it is where the widening belongs: `StrictAccessor` already
+   * decides, per mode, whether a bare value is allowed.
+   *
+   * `NonNullable` first, because optionality is carried in the VALUE: an
+   * optional prop is `Accessor<T> | undefined`, which does not extend
+   * `() => R`, so without it every optional prop fell through unwidened — and
+   * the mapped type puts the `?` back on its own.
+   *
+   * A zero-argument prop is an accessor and is unwrapped. A prop that declares
+   * parameters is a SLOT — `<For>`'s `(item, index) => …`, a `ref` callback, an
+   * event handler the caller writes inline — and is left exactly as declared,
+   * because a slot is called with arguments and unwrapping it would erase the
+   * inference the declaration exists for. TypeScript separates the two for
+   * free: a function with a required parameter is not assignable to `() => R`.
+   */
+  type Outgoing<Q> = {
+    [K in keyof Q]: NonNullable<Q[K]> extends () => infer R ? StrictAccessor<R> : Q[K];
+  };
 
   // Core utility types (following SolidJS patterns)
 

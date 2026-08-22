@@ -48,6 +48,11 @@
       "types": "./dist/prerender.d.ts",
       "bun": "./src/prerender.ts",
       "import": "./dist/prerender.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "bun": "./src/protocol.ts",
+      "import": "./dist/protocol.js"
     }
   },
   "scripts": {
