@@ -43,6 +43,11 @@
       "types": "./dist/serve.d.ts",
       "bun": "./src/serve.ts",
       "import": "./dist/serve.js"
+    },
+    "./prerender": {
+      "types": "./dist/prerender.d.ts",
+      "bun": "./src/prerender.ts",
+      "import": "./dist/prerender.js"
     }
   },
   "scripts": {

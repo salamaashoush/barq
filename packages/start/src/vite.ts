@@ -17,11 +17,16 @@
  * through `environment.runner.import` rather than the legacy `ssrLoadModule`.
  */
 
+import { existsSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { type BarqCompilerOptions, barqVitePlugin } from "@barqjs/compiler/vite";
 import { NodeRequest, sendNodeResponse } from "srvx/node";
 import { type Plugin, type ViteDevServer, isRunnableDevEnvironment } from "vite";
 
 import { RPC_PREFIX } from "./index.ts";
+import { type ServerEntryModule, prerender } from "./prerender.ts";
 
 /**
  * Vite's own environment names. `ssr` for the server one rather than something
@@ -34,6 +39,197 @@ export const ENVIRONMENTS = { client: "client", server: "ssr" } as const;
 /** The module a server entry imports to mount everything the build found. */
 export const MANIFEST_ID = "virtual:barq-server-fns";
 const RESOLVED_MANIFEST_ID = `\0${MANIFEST_ID}`;
+
+/**
+ * The two entries, as module ids rather than as paths.
+ *
+ * Resolved to `src/entry-client.*` / `src/entry-server.*` when the project has
+ * one, and to a generated default when it does not — TanStack's split, and for
+ * their reason: one stable specifier that the config, the dev middleware and
+ * the build all name, so "the user did not write an entry" costs nothing
+ * anywhere else.
+ *
+ * A virtual id IS a valid per-environment build input; measured on Vite 8.2.2,
+ * `{ index: "virtual:barq-entry-client" }` and `{ server: … }` both bundle. The
+ * ssr output filename comes from the input KEY, which is why they are named.
+ */
+export const CLIENT_ENTRY_ID = "virtual:barq-entry-client";
+export const SERVER_ENTRY_ID = "virtual:barq-entry-server";
+const RESOLVED_CLIENT_ENTRY_ID = `\0${CLIENT_ENTRY_ID}`;
+const RESOLVED_SERVER_ENTRY_ID = `\0${SERVER_ENTRY_ID}`;
+
+/** Tried in order, against `<root>/<srcDir>/entry-{client,server}`. */
+const ENTRY_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
+
+function findEntry(root: string, srcDir: string, half: "client" | "server"): string | null {
+  for (const extension of ENTRY_EXTENSIONS) {
+    const file = join(root, srcDir, `entry-${half}${extension}`);
+    if (existsSync(file)) return file;
+  }
+  return null;
+}
+
+/**
+ * The client half, when the project has not written one.
+ *
+ * `start()` before `hydrate()`, and that ordering is the whole of it: the walk
+ * claims per route depth, so a chain that is still empty when `hydrate` runs
+ * claims ranges for nothing and the server's markup is evicted under it.
+ */
+function defaultClientEntry(): string {
+  return [
+    `import { hydrate } from "@barqjs/core";`,
+    `import { RouterProvider, browserHistory, createRouter } from "@barqjs/router";`,
+    `import { routes } from "virtual:barq-routes";`,
+    ``,
+    `const container = document.getElementById("app");`,
+    `if (container === null) {`,
+    `  throw new Error("[barq] the document has no #app to hydrate into");`,
+    `}`,
+    ``,
+    `const state = createRouter({ routes, history: browserHistory() });`,
+    `await state.start();`,
+    `hydrate((s) => RouterProvider(s, { state: () => state }), container);`,
+    ``,
+  ].join("\n");
+}
+
+/**
+ * The server half, when the project has not written one.
+ *
+ * It exports `options` beside `fetch` because `stream` is fixed when the
+ * handler is built, and the prerenderer needs a non-streaming twin of the SAME
+ * declaration rather than a second one to keep in step.
+ */
+function defaultServerEntry(): string {
+  return [
+    `import { createPageHandler, renderRoutes } from "@barqjs/router/server";`,
+    `import { routeAssets } from "virtual:barq-route-assets";`,
+    `import { routes } from "virtual:barq-routes";`,
+    `import { clientAssets } from "${CLIENT_ASSETS_ID}";`,
+    `import "${MANIFEST_ID}";`,
+    ``,
+    `export const options = {`,
+    `  routes,`,
+    `  routeAssets,`,
+    `  app: (state) => renderRoutes(state),`,
+    `  document: ({ body, seed, preload, context }) =>`,
+    '    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +',
+    '    `<meta name="viewport" content="width=device-width, initial-scale=1">` +',
+    '    `${clientAssets.css.map((href) => `<link rel="stylesheet" href="${href}">`).join("")}` +',
+    '    `${preload}${context}</head><body><div id="app">${body}</div>${seed}` +',
+    '    `${clientAssets.scripts.map((src) => `<script type="module" src="${src}"></script>`).join("")}` +',
+    "    `</body></html>`,",
+    `};`,
+    ``,
+    `/**`,
+    ` * Build a handler with something overridden.`,
+    ` *`,
+    ` * The dev server adds \`transformShell\` so Vite can inject its client into a`,
+    ` * document it has no file for, and the prerenderer sets \`stream: false\` and`,
+    ` * \`refuseRequest\` — both from THIS declaration, so there is no second one to`,
+    ` * keep in step.`,
+    ` */`,
+    `export const createFetch = (extra) => createPageHandler({ ...options, ...extra });`,
+    ``,
+    `export default { fetch: createFetch({}) };`,
+    ``,
+  ].join("\n");
+}
+
+/**
+ * What the client build emitted, for the server half to place in the document.
+ *
+ * In dev it is the entry's own module id, which Vite serves; in a build it is
+ * the hashed chunk plus its CSS, captured from the client `generateBundle`.
+ */
+export const CLIENT_ASSETS_ID = "virtual:barq-client-assets";
+const RESOLVED_CLIENT_ASSETS_ID = `\0${CLIENT_ASSETS_ID}`;
+
+interface ClientAssets {
+  scripts: string[];
+  css: string[];
+}
+
+export interface PrerenderOptions {
+  /**
+   * Where to start. `"/"` when nothing is given, because a site with nothing
+   * prerendered does not ask for a prerenderer.
+   */
+  readonly routes?: readonly string[];
+  /**
+   * Follow same-origin `href`s out of the HTML each page produced.
+   *
+   * On by default, which is SvelteKit's choice rather than Nitro's. A route
+   * marked prerenderable that quietly was not prerendered is the failure that
+   * costs a deploy; a crawl that finds too much costs a build a few seconds.
+   */
+  readonly crawl?: boolean;
+  /** How many pages at once. */
+  readonly concurrency?: number;
+  /**
+   * `/about` -> `about/index.html` rather than `about.html`.
+   *
+   * On by default: a directory index is what every static host serves for a
+   * clean URL without configuration.
+   */
+  readonly subfolderIndex?: boolean;
+  /**
+   * Told what was written, with each page's response HEADERS.
+   *
+   * A static host cannot recover a header from a file, and this is where an
+   * adapter turns them into whatever its platform reads. Every framework that
+   * drops them instead has an open issue about it.
+   */
+  readonly onPages?: (pages: readonly PrerenderedPage[]) => void;
+}
+
+/** One prerendered page, as the build records it. */
+export interface PrerenderedPage {
+  readonly path: string;
+  readonly file: string;
+  readonly status: number;
+  /**
+   * The response's own headers.
+   *
+   * Kept because a static host cannot recover them from a file, and every
+   * framework that drops them has an open issue about it — SvelteKit rescues
+   * `cache-control` alone into a `<meta http-equiv>` and carries a TODO for the
+   * rest, Nitro loses `content-type` on a generated feed.
+   */
+  readonly headers: Record<string, string>;
+}
+
+/**
+ * Vite's HTML transforms, run over the bytes that go out before the app.
+ *
+ * Streaming is why this is not simply `transformIndexHtml`. What we hold is the
+ * head, the opening `<body>` and the mount element — no `</body>` to aim at —
+ * so every hook asking for `injectTo: "body"` takes Vite's fallback and appends
+ * at the END of the string, which is INSIDE the mount element. Measured: the
+ * compiler's own overlay script landed between `<div id="app">` and the app's
+ * first range comment, and the newline in front of it became a text node the
+ * hydration walk tripped over — `expected <!--[--> at a root region, found the
+ * text "\n"`, and the whole page re-rendered cold.
+ *
+ * So the shell is transformed with a sentinel standing in for the rest of the
+ * document, and whatever lands past it is moved into the head. A tag that asked
+ * for the end of the body gets the end of the head instead — earlier than it
+ * asked for, which is the direction that cannot break anything — and the mount
+ * element keeps the app's markup as its first child.
+ */
+const SHELL_END = "<!--barq-shell-end-->";
+
+async function transformShell(server: ViteDevServer, shell: string, url: URL): Promise<string> {
+  const out = await server.transformIndexHtml(url.pathname + url.search, shell + SHELL_END);
+  const cut = out.indexOf(SHELL_END);
+  if (cut === -1) return out;
+  const head = out.slice(0, cut);
+  const trailing = out.slice(cut + SHELL_END.length);
+  if (trailing.trim() === "") return head;
+  const close = head.lastIndexOf("</head>");
+  return close === -1 ? trailing + head : head.slice(0, close) + trailing + head.slice(close);
+}
 
 interface Discovered {
   /** Absolute module id, as Vite spells it. */
@@ -50,6 +246,20 @@ export interface BarqStartOptions {
   allowedOrigins?: readonly string[];
   /** Forwarded to the compiler plugin this one configures. */
   compiler?: Omit<BarqCompilerOptions, "serverFns" | "onServerFns" | "root">;
+  /** Where `entry-client.*` and `entry-server.*` are looked for. */
+  srcDirectory?: string;
+  /** Write static HTML for some paths after the build. */
+  prerender?: PrerenderOptions;
+  /** `dist/client` and `dist/server` under it. */
+  outputDirectory?: string;
+  /**
+   * Answer pages in dev.
+   *
+   * On by default. Off leaves `barqStart()` as the server-function half alone,
+   * which is a legitimate deployment — an SPA that calls RPC — and is what a
+   * project with its own `index.html` wants.
+   */
+  pages?: boolean;
 }
 
 /**
@@ -89,6 +299,19 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
   const found = new Map<string, Discovered>();
   let root = process.cwd();
   let server: ViteDevServer | null = null;
+  let base = "/";
+  const srcDirectory = options.srcDirectory ?? "src";
+  const outputDirectory = options.outputDirectory ?? "dist";
+  const serving = options.pages ?? true;
+
+  // Populated by the CLIENT build's `generateBundle` and read by the server
+  // environment's `load`. Those are different plugin INSTANCES unless the
+  // plugin opts in: with `sharedConfigBuild` false — the default — Vite resolves
+  // the config once per environment, so each gets its own closure. Measured, the
+  // ssr build read `null` where the client had just written the chunk name.
+  // `sharedDuringBuild: true` on every plugin here is what makes this one map.
+  let clientAssets: ClientAssets = { scripts: [], css: [] };
+  let serverFile = "server.js";
 
   /**
    * `<project-relative module>#<export>`, byte for byte what the compiler put
@@ -114,8 +337,96 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     if (module !== undefined && module !== null) graph?.invalidateModule(module);
   };
 
+  /**
+   * The entry a specifier resolves to, and whether it is the project's own.
+   *
+   * Recomputed per call rather than cached: `configResolved` runs once per
+   * environment under a build, and a `src/entry-client.tsx` added while the dev
+   * server is running should be picked up on the next request rather than on a
+   * restart.
+   */
+  /**
+   * The URL a browser asks for the client entry by, in dev.
+   *
+   * A project file is served at its root-relative path; a generated default has
+   * no file, so it goes through `/@id/`, which is what Vite serves a virtual
+   * module at.
+   */
+  const clientEntryUrl = (): string => {
+    const own = findEntry(root, srcDirectory, "client");
+    if (own === null) return `${base}@id/${CLIENT_ENTRY_ID}`;
+    return base + relative(root, own).replaceAll("\\", "/");
+  };
+
+  const entries: Plugin = {
+    name: "barq-start:entries",
+    sharedDuringBuild: true,
+    /**
+     * A project's own entry resolves to the FILE, not to a re-export of it.
+     *
+     * The shim spelling was tried and is wrong: `export * from` does not
+     * forward a default, so an `entry-server.ts` exporting `default { fetch }`
+     * arrived with no `fetch` and the dev server refused it. Resolving to the
+     * path also keeps the module's own identity in the graph, so HMR and the
+     * watcher see the file the author edits.
+     */
+    resolveId(id) {
+      if (id === CLIENT_ENTRY_ID) {
+        return findEntry(root, srcDirectory, "client") ?? RESOLVED_CLIENT_ENTRY_ID;
+      }
+      if (id === SERVER_ENTRY_ID) {
+        return findEntry(root, srcDirectory, "server") ?? RESOLVED_SERVER_ENTRY_ID;
+      }
+      return id === CLIENT_ASSETS_ID ? RESOLVED_CLIENT_ASSETS_ID : null;
+    },
+    load(id) {
+      if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry();
+      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry();
+      if (id !== RESOLVED_CLIENT_ASSETS_ID) return null;
+      // In dev the entry is a module Vite serves; there are no chunks and no
+      // CSS files, because the browser's own module graph does that work.
+      const assets = server === null ? clientAssets : { scripts: [clientEntryUrl()], css: [] };
+      return `export const clientAssets = ${JSON.stringify(assets)};\nexport default clientAssets;\n`;
+    },
+    /**
+     * The client's own emitted names, for the server half to place.
+     *
+     * Keyed on OUR named input rather than on "an entry chunk": TanStack's
+     * equivalent is `applyToEnvironment(env => env.name === "client")` with no
+     * identity check, and their #7912 is another framework in the same Vite app
+     * owning an environment called `client` and throwing here.
+     */
+    generateBundle(_output, bundle) {
+      const environment = (this as { environment?: { name?: string } }).environment?.name;
+      if (environment === ENVIRONMENTS.server) {
+        // RECORDED, not reconstructed. TanStack's #8118 is a prerender step
+        // rebuilding this name from the input path and dying on any
+        // `entryFileNames`; the build already knows what it wrote.
+        for (const chunk of Object.values(bundle)) {
+          if (chunk.type === "chunk" && chunk.isEntry && chunk.name === "server") {
+            serverFile = chunk.fileName;
+          }
+        }
+        return;
+      }
+      if (environment !== ENVIRONMENTS.client) return;
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== "chunk" || !chunk.isEntry || chunk.name !== "index") continue;
+        const css = [...(chunk.viteMetadata?.importedCss ?? [])];
+        clientAssets = {
+          scripts: [`${base}${chunk.fileName}`],
+          css: css.map((file) => `${base}${file}`),
+        };
+      }
+    },
+  };
+
+  /** What the manifest actually shipped, for `buildEnd` to check against. */
+  let mounted: Set<string> | null = null;
+
   const manifest: Plugin = {
     name: "barq-start:manifest",
+    sharedDuringBuild: true,
     // Server-only by construction rather than by a check inside the hook: the
     // manifest imports every server-function module, so resolving it in the
     // client environment would pull all of them into the browser graph.
@@ -124,26 +435,162 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       return id === MANIFEST_ID ? RESOLVED_MANIFEST_ID : null;
     },
     load(id) {
-      return id === RESOLVED_MANIFEST_ID ? manifestModule(found, idOf) : null;
+      if (id !== RESOLVED_MANIFEST_ID) return null;
+      mounted = new Set(found.keys());
+      return manifestModule(found, idOf);
+    },
+
+    /**
+     * The manifest is a RACE against the graph walk, and this is what stops it
+     * being a silent one.
+     *
+     * `found` is filled by the compiler's `onServerFns`, which fires on
+     * TRANSFORM. The manifest is a static import of the server entry, so
+     * rolldown loads it before it has walked to any server-function module —
+     * measured on a real two-environment build, `load(barq-server-fns)` ran with
+     * `found.size = 0` and `transform(data.ts)` ran after it, so the built
+     * server mounted NOTHING and every RPC 404'd on an app that works in dev.
+     * Dev survives it on the module-graph invalidation at `record`; a build has
+     * no invalidation.
+     *
+     * With `sharedDuringBuild` the client build runs first and fills `found`,
+     * which covers every server function client code can reach — the normal
+     * case, since calling one from the browser is what they are for. What it
+     * cannot cover is a module reachable ONLY from the server entry, and that is
+     * what this refuses. A build error naming the module beats a 404 at runtime,
+     * and it is the same method BARQ012 uses: refuse the shape rather than
+     * analyse around it.
+     */
+    buildEnd(this: unknown) {
+      const context = this as {
+        environment?: { name?: string };
+        error: (message: string) => never;
+      };
+      if ((context.environment?.name ?? "") === ENVIRONMENTS.client) return;
+      if (mounted === null) return;
+      const late = [...found.keys()].filter((file) => !(mounted as Set<string>).has(file));
+      if (late.length === 0) return;
+      context.error(
+        "[barq-start] these modules declare server functions but were discovered after the " +
+          "manifest was generated, so nothing would mount them and every call to them would " +
+          `404:\n  ${late.join("\n  ")}\n` +
+          "Import them from client code — which is what a server function is for — or from a " +
+          "module the client entry reaches, so the client build finds them first.",
+      );
     },
   };
 
   const dev: Plugin = {
     name: "barq-start:dev",
+    sharedDuringBuild: true,
     // `config` rather than `configResolved`: the environments have to exist
     // before Vite resolves them, and `consumer` is what decides whether a
     // module graph is a browser one.
-    config() {
+    config(user) {
+      const inputs = {
+        // NAMED, both of them. The client name is what `generateBundle` above
+        // identifies its own entry chunk by, and the ssr name is the emitted
+        // filename — TanStack's #8118 is a prerender step reconstructing that
+        // name from the input path and breaking on any `entryFileNames`.
+        client: { index: CLIENT_ENTRY_ID },
+        server: { server: SERVER_ENTRY_ID },
+      };
       return {
+        // `?? "custom"`, never a bare assignment: `mergeConfig` lets a plugin's
+        // scalar win, so returning it unconditionally would silently delete a
+        // user's own `index.html` handling. Under `custom` Vite drops
+        // `htmlFallbackMiddleware`, `indexHtmlMiddleware` and `notFoundMiddleware`
+        // — the three that would otherwise answer a page URL before we do.
+        appType: user.appType ?? (serving ? ("custom" as const) : undefined),
+        // Declaring `builder` at all is what makes a plain `vite build` an APP
+        // build; measured, `builder: {}` from a plugin's `config` is enough and
+        // `--app` is not needed. With none declared, `buildApp` still fires but
+        // `builder.environments.ssr` is undefined and the build dies.
+        builder: {},
         environments: {
-          [ENVIRONMENTS.client]: { consumer: "client" as const },
-          [ENVIRONMENTS.server]: { consumer: "server" as const, build: { ssr: true } },
+          [ENVIRONMENTS.client]: {
+            consumer: "client" as const,
+            build: {
+              rollupOptions: { input: inputs.client },
+              outDir: `${outputDirectory}/client`,
+            },
+          },
+          [ENVIRONMENTS.server]: {
+            consumer: "server" as const,
+            // The framework has to be COMPILED here, not externalised. A
+            // `@barqjs/*` in node_modules is resolved by the runtime's own
+            // resolver otherwise, which takes the `import` condition to a built
+            // `dist/` — and a stale one renders a spinner with an empty seed,
+            // which is indistinguishable from a bug the repo had already fixed.
+            resolve: { noExternal: [/@barqjs\//] },
+            build: {
+              ssr: true,
+              rollupOptions: { input: inputs.server },
+              outDir: `${outputDirectory}/server`,
+              copyPublicDir: false,
+            },
+          },
         },
       };
     },
 
+    /**
+     * Client first, then ssr, and the order is not cosmetic: the server half
+     * places the client's hashed chunk in its `<head>`, and that name only
+     * exists once the client build has emitted it.
+     *
+     * Building them here rather than leaving it to Vite's fallback also pins the
+     * order — the fallback iterates `Object.keys(config.environments)`, which is
+     * config-merge order rather than anything declared.
+     */
+    async buildApp(builder) {
+      const client = builder.environments[ENVIRONMENTS.client];
+      const ssr = builder.environments[ENVIRONMENTS.server];
+      if (client === undefined || ssr === undefined) {
+        throw new Error(
+          `[barq-start] expected a \`${ENVIRONMENTS.client}\` and an \`${ENVIRONMENTS.server}\` environment`,
+        );
+      }
+      if (!client.isBuilt) await builder.build(client);
+      if (!ssr.isBuilt) await builder.build(ssr);
+
+      const wanted = options.prerender;
+      if (wanted === undefined) return;
+
+      /**
+       * IN-PROCESS, against the bundle that was just written.
+       *
+       * TanStack spawns `vite.preview()` and fetches over a socket, which costs
+       * them a config re-resolved from disk that loses how the parent was
+       * launched (#7593) and a server filename reconstructed from the input
+       * (#8118). What it does NOT cost them — and what this inherits exactly —
+       * is that a platform-targeted bundle cannot be imported into Node at all
+       * (#7481, #6330). That is a limit of importing a server build, not of the
+       * transport, and it is stated rather than papered over: a project
+       * targeting a non-Node runtime prerenders on that runtime or not at all.
+       */
+      // RESOLVED against the root: `build.outDir` may be relative, and joining a
+      // relative one lands next to the process's cwd rather than the project's.
+      const outDirOf = (environment: { config: { root: string; build: { outDir: string } } }) =>
+        resolve(environment.config.root, environment.config.build.outDir);
+      const file = join(outDirOf(ssr), serverFile);
+      const entry = (await import(pathToFileURL(file).href)) as ServerEntryModule;
+      const result = await prerender({
+        entry,
+        outDir: outDirOf(client),
+        routes: wanted.routes ?? [],
+        crawl: wanted.crawl ?? true,
+        concurrency: wanted.concurrency ?? 4,
+        subfolderIndex: wanted.subfolderIndex ?? true,
+        base,
+        log: (message) => builder.config.logger.info(`[barq] prerender ${message}`),
+      });
+      wanted.onPages?.(result.pages);
+    },
+
     configResolved(config) {
       root = config.root;
+      base = config.base ?? "/";
     },
 
     configureServer(viteServer) {
@@ -156,15 +603,38 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         );
       }
 
+      const report = (error: unknown): void => {
+        try {
+          viteServer.ssrFixStacktrace(error as Error);
+        } catch {
+          // A stack this cannot map is still an error worth reporting.
+        }
+      };
+
+      /**
+       * The URL this request is really for, base stripped.
+       *
+       * Two middlewares rewrite `req.url` before ours and neither restores it.
+       * `baseMiddleware` strips the base — but it is registered AFTER the hooks
+       * that run here, so a pre-hook sees the base-PREFIXED url; and Vite's SPA
+       * fallback rewrites to `/index.html`, which is why `originalUrl` has to be
+       * put back. Without the strip, `RPC_PREFIX` never matched under any
+       * `base` other than `/` and every server function 404'd.
+       */
+      const pathOf = (req: { url?: string; originalUrl?: string }): string => {
+        const raw = req.originalUrl ?? req.url ?? "/";
+        if (base === "/" || !raw.startsWith(base)) return raw;
+        const rest = raw.slice(base.length - 1);
+        return rest.startsWith("/") ? rest : `/${rest}`;
+      };
+
       // Before Vite's own middleware: a server-function URL is not a file and
       // not a page, and letting the SPA fallback answer it turns a 404 into an
       // HTML document a client would then try to parse as a value.
       viteServer.middlewares.use((req, res, next) => {
-        // Vite rewrites `req.url` to `/index.html` on the way through; the
-        // original is the one the id lives in.
-        const original = (req as { originalUrl?: string }).originalUrl;
-        if (original !== undefined) req.url = original;
-        if (!(req.url ?? "").startsWith(RPC_PREFIX)) {
+        const path = pathOf(req as { url?: string; originalUrl?: string });
+        req.url = path;
+        if (!path.startsWith(RPC_PREFIX)) {
           next();
           return;
         }
@@ -184,33 +654,109 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
             }
             await sendNodeResponse(res, response);
           } catch (error) {
-            try {
-              viteServer.ssrFixStacktrace(error as Error);
-            } catch {
-              // A stack this cannot map is still an error worth reporting.
-            }
+            report(error);
             next(error);
           }
         })();
       });
+
+      if (!serving) return;
+
+      /**
+       * The page handler, as a POST hook.
+       *
+       * Returned rather than `use`d, and that is the whole ordering argument.
+       * Vite runs `configureServer` bodies before its own stack and the
+       * FUNCTIONS they return after it, so a returned middleware sits behind
+       * `transformMiddleware`, `serveRawFs`, `serveStatic` and `servePublic` —
+       * `/@vite/client`, `/src/*`, `node_modules` and everything in `public/`
+       * are answered by Vite, and only what nothing claimed reaches SSR. The
+       * RPC handler above is a PRE hook, so "server functions match before the
+       * page" holds by stack position rather than by a comment.
+       */
+      /**
+       * One handler per module INSTANCE, not per request.
+       *
+       * `createFetch` builds a matcher over the whole route table, so calling it
+       * per request would recompile the app on every navigation. The runner
+       * hands back a new module object when the entry or anything under it
+       * changes, so keying on the object is the invalidation.
+       */
+      let built: { from: object; fetch: (request: Request) => Promise<Response> } | null = null;
+
+      type ServerEntry = {
+        default?: { fetch?: (request: Request) => Promise<Response> };
+        createFetch?: (extra: Record<string, unknown>) => (request: Request) => Promise<Response>;
+      };
+
+      const pageFetch = async (): Promise<(request: Request) => Promise<Response>> => {
+        const entry = (await environment.runner.import(SERVER_ENTRY_ID)) as ServerEntry;
+        if (built !== null && built.from === entry) return built.fetch;
+        // `createFetch` is how the dev server gets `/@vite/client` and every
+        // `transformIndexHtml` plugin into a document Vite has no file for.
+        // Reading one chunk off the response and hoping it is the whole head is
+        // an undocumented invariant; this is the contract, and an entry without
+        // it degrades to no injection rather than to a broken page.
+        const fetchPage =
+          typeof entry.createFetch === "function"
+            ? entry.createFetch({
+                transformShell: (shell: string, url: URL) => transformShell(viteServer, shell, url),
+              })
+            : entry.default?.fetch;
+        if (typeof fetchPage !== "function") {
+          throw new Error(
+            `[barq-start] ${SERVER_ENTRY_ID} must export \`createFetch\` or default-export ` +
+              "`{ fetch(request): Response }`",
+          );
+        }
+        built = { from: entry, fetch: fetchPage };
+        return fetchPage;
+      };
+
+      return () => {
+        viteServer.middlewares.use((req, res, next) => {
+          void (async () => {
+            try {
+              req.url = pathOf(req as { url?: string; originalUrl?: string });
+              const response = await (await pageFetch())(new NodeRequest({ req, res }));
+              await sendNodeResponse(res, response);
+            } catch (error) {
+              report(error);
+              next(error);
+            }
+          })();
+        });
+      };
     },
   };
 
   return [
-    barqVitePlugin({
-      // `.ts` and `.js` are in the set because a server-function module is
-      // normally one of them — it holds no JSX, which is exactly why the
-      // compiler's own default (`.tsx`, `.jsx`) does not reach it. Without this
-      // the client half of `users.ts` is never synthesized and its handler
-      // bodies ship, silently, because nothing transformed the module at all.
-      //
-      // A module with no JSX and no server function passes through unchanged,
-      // so the cost is one parse.
-      include: [".tsx", ".jsx", ".ts", ".js"],
-      ...options.compiler,
-      serverFns: true,
-      onServerFns: record,
-    }),
+    {
+      // SHARED with the rest of them, and sharing SOME is worse than sharing
+      // none. `found` lives in this closure and only the compiler plugin's
+      // `onServerFns` fills it; with `sharedConfigBuild` false Vite re-resolves
+      // the whole config per environment, so an unshared compiler plugin belongs
+      // to a DIFFERENT `barqStart()` call than the shared manifest reads from —
+      // and the manifest then generates empty in every environment. Measured on
+      // a real build: the client half was a correct `clientRpc` stub and the
+      // server bundle mounted nothing.
+      sharedDuringBuild: true,
+      ...barqVitePlugin({
+        // `.ts` and `.js` are in the set because a server-function module is
+        // normally one of them — it holds no JSX, which is exactly why the
+        // compiler's own default (`.tsx`, `.jsx`) does not reach it. Without this
+        // the client half of `users.ts` is never synthesized and its handler
+        // bodies ship, silently, because nothing transformed the module at all.
+        //
+        // A module with no JSX and no server function passes through unchanged,
+        // so the cost is one parse.
+        include: [".tsx", ".jsx", ".ts", ".js"],
+        ...options.compiler,
+        serverFns: true,
+        onServerFns: record,
+      }),
+    },
+    entries,
     manifest,
     dev,
   ];

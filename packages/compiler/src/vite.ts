@@ -405,7 +405,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       return [
         {
           tag: "script",
-          attrs: { type: "module", src: `/@id/${RESOLVED_CLIENT_ID}` },
+          // The UNRESOLVED id. `/@id/` takes a module specifier and resolves it;
+          // handing it the already-resolved `\0`-prefixed form emits a literal
+          // NUL in the attribute and 404s, so the overlay never loaded at all.
+          // Measured against a dev server: `/@id/\0virtual:barq-diagnostics` is
+          // 404, `/@id/virtual:barq-diagnostics` is 200.
+          attrs: { type: "module", src: `/@id/${CLIENT_ID}` },
           injectTo: "body",
         },
       ];

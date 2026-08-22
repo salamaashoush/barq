@@ -129,3 +129,60 @@ describe("a server function, end to end through Vite", () => {
     expect(response.status).toBe(403);
   });
 });
+
+/**
+ * The other half of the dev server: pages.
+ *
+ * `barqStart()` answered `/_barq/fn/*` and called `next()` for everything else,
+ * so `vite dev` gave an SPA with working RPC and no SSR at all —
+ * `createPageHandler` had zero non-test call sites in the repo. These drive the
+ * wiring: entry resolution, the module runner, and the middleware ORDER, which
+ * is the part a unit test cannot see.
+ */
+describe("pages in dev", () => {
+  test("a page URL reaches the project's own entry-server", async () => {
+    const response = await fetch(`${origin}/anything/at/all`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    // The fixture's `src/entry-server.ts`, not a generated default: it echoes
+    // the path, which is how we know whose entry answered.
+    expect(await response.text()).toContain("path:/anything/at/all");
+  });
+
+  test("the entry decides its own methods", async () => {
+    const response = await fetch(`${origin}/anything`, { method: "POST" });
+    expect(response.status).toBe(405);
+  });
+
+  /**
+   * ORDER, which is the whole reason the page handler is a POST hook and the
+   * RPC one is not.
+   *
+   * A page handler that also answered an RPC URL would turn a mutation into an
+   * HTML document. Here the RPC middleware is registered inside
+   * `configureServer` and the page one is the function it RETURNS, so Vite's
+   * own stack sits between them and the RPC URL can never reach the page.
+   */
+  test("a server function still wins its URL", async () => {
+    const response = await call("todos.ts#addTodo", "from the page test");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).not.toContain("text/html");
+  });
+
+  test("Vite still serves its own client and the project's modules", async () => {
+    const client = await fetch(`${origin}/@vite/client`);
+    expect(client.status).toBe(200);
+    expect(client.headers.get("content-type")).toContain("javascript");
+
+    const module = await fetch(`${origin}/src/entry-client.ts`);
+    expect(module.status).toBe(200);
+    expect(await module.text()).toContain("booted");
+  });
+
+  test("the client entry resolves to the project's own file, not to a default", async () => {
+    const resolved = await server.environments.client.pluginContainer.resolveId(
+      "virtual:barq-entry-client",
+    );
+    expect(resolved?.id ?? "").toContain("fixture/src/entry-client.ts");
+  });
+});

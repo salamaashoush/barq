@@ -247,6 +247,31 @@ export interface PageHandlerOptions {
   /** Streamed by default. A crawler or a test may want the whole thing at once. */
   readonly stream?: boolean;
   readonly nonce?: string;
+  /**
+   * Last look at the bytes that go out BEFORE the app's markup.
+   *
+   * In stream mode that is the document up to the `body` marker — the head, the
+   * opening `<body>`, and the mount element — flushed in one piece ahead of the
+   * first loader. Otherwise it is the whole document, because there is no
+   * earlier moment.
+   *
+   * It exists for the dev server, which has to get `/@vite/client` and every
+   * `transformIndexHtml` plugin into a document Vite never sees a file for.
+   * Reading one chunk off the returned stream and hoping the first enqueue is
+   * the whole head is an undocumented invariant, not a contract; this is the
+   * contract.
+   */
+  readonly transformShell?: (shell: string, url: URL) => string | Promise<string>;
+  /**
+   * Refuse `getRequest()` inside this render.
+   *
+   * A prerender has no request: the `Request` the handler is holding was minted
+   * by a build, and a loader that reads a header or a cookie from it is reading
+   * a build machine. SvelteKit guards exactly one thing here and lets cookies
+   * and headers silently answer null, which its own issue tracker records as
+   * days of debugging. This throws instead, naming what asked.
+   */
+  readonly refuseRequest?: string;
 }
 
 /**
@@ -262,6 +287,17 @@ export function createPageHandler(
   const matcher = createMatcher(flattenRoutes(options.routes));
 
   return async (request: Request): Promise<Response> => {
+    // A page is a GET. Nothing upstream filters the method — Vite's dev
+    // middlewares check none of them and `serveBarq` matches server functions
+    // and then falls through — so without this a `POST /users/7` ran every
+    // `beforeLoad`, every loader and every server function a loader calls, and
+    // answered with an HTML document.
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response("method not allowed", {
+        status: 405,
+        headers: { allow: "GET, HEAD" },
+      });
+    }
     const url = new URL(request.url);
     const match = matcher.match(url.pathname);
 
@@ -312,102 +348,109 @@ export function createPageHandler(
     // Rule 2. The whole render, including every loader and every server
     // function a loader calls, runs with this request ambient.
     try {
-      return await withRequest(request, async () => {
-        const state = createRouter(config);
-        // `beforeLoad` runs BEFORE the shell, which is the whole reason it is a
-        // separate phase from the loader: here the status is still open, so a
-        // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
-        // real 404. The same throw from a LOADER cannot — see `redirectScript`.
-        let before: BeforeLoadResult;
-        try {
-          before = await state.runBeforeLoad(
-            {
-              pathname: url.pathname,
-              search: url.search,
-              hash: url.hash,
-              state: null,
-              key: "",
-            },
-            match,
-            { server: true },
-          );
-        } catch (error) {
-          state.dispose();
-          if (error instanceof NotFound) return html("not found", 404);
-          const early = asResponse(error);
-          if (early !== null) return early;
-          throw error;
-        }
-        state.setContexts(before.contexts);
-        const context = contextScript(url, before.produced, options.nonce);
-        // A streamed response is not finished when this function returns it:
-        // `renderToStream` hands back the `ReadableStream` before a byte of the
-        // body exists, and the boundaries resume against this state afterwards.
-        // Disposing in a `finally` therefore cleared the loader cache and
-        // unsubscribed history MID-RENDER, and every entry was re-minted on
-        // resume — masked today only because a re-minted cell for a settled key
-        // answers from the session bucket instead of refetching.
-        let disposed = false;
-        const dispose = (): void => {
-          if (disposed) return;
-          disposed = true;
-          state.dispose();
-        };
-        try {
-          if (options.stream === false) {
-            // `renderPage`, not `renderToString`: the sync one does not await an
-            // async value, so every loader on the page would render as its
-            // fallback and the seed would be empty. Measured on exactly that
-            // mistake — a server function's result stringified as
-            // "[object Promise]" and its handler ran detached from the render.
-            const page = await renderPage(() => options.app(state) as never, {
+      return await withRequest(
+        request,
+        async () => {
+          const state = createRouter(config);
+          // `beforeLoad` runs BEFORE the shell, which is the whole reason it is a
+          // separate phase from the loader: here the status is still open, so a
+          // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
+          // real 404. The same throw from a LOADER cannot — see `redirectScript`.
+          let before: BeforeLoadResult;
+          try {
+            before = await state.runBeforeLoad(
+              {
+                pathname: url.pathname,
+                search: url.search,
+                hash: url.hash,
+                state: null,
+                key: "",
+              },
+              match,
+              { server: true },
+            );
+          } catch (error) {
+            state.dispose();
+            if (error instanceof NotFound) return html("not found", 404);
+            const early = asResponse(error);
+            if (early !== null) return early;
+            throw error;
+          }
+          state.setContexts(before.contexts);
+          const context = contextScript(url, before.produced, options.nonce);
+          // A streamed response is not finished when this function returns it:
+          // `renderToStream` hands back the `ReadableStream` before a byte of the
+          // body exists, and the boundaries resume against this state afterwards.
+          // Disposing in a `finally` therefore cleared the loader cache and
+          // unsubscribed history MID-RENDER, and every entry was re-minted on
+          // resume — masked today only because a re-minted cell for a settled key
+          // answers from the session bucket instead of refetching.
+          let disposed = false;
+          const dispose = (): void => {
+            if (disposed) return;
+            disposed = true;
+            state.dispose();
+          };
+          try {
+            if (options.stream === false) {
+              // `renderPage`, not `renderToString`: the sync one does not await an
+              // async value, so every loader on the page would render as its
+              // fallback and the seed would be empty. Measured on exactly that
+              // mistake — a server function's result stringified as
+              // "[object Promise]" and its handler ran detached from the render.
+              const page = await renderPage(() => options.app(state) as never, {
+                nonce: options.nonce,
+              });
+              // A loader that threw a `Response` or a `Redirect` decided this
+              // page, even though the render completed around it.
+              dispose();
+              if (answer !== null) return answer;
+              return html(
+                await shellOf(
+                  options,
+                  options.document({
+                    body: page.html,
+                    seed: page.script,
+                    chain: match?.route.chain ?? null,
+                    preload: preloadTags(match?.route.chain ?? null, options.routeAssets),
+                    context,
+                    url,
+                  }),
+                ),
+                // A rendered 404 rather than a bare one. In STREAM mode the status
+                // is already on the wire by the time a loader can say this, so a
+                // `notFound()` that must set the status belongs where the status
+                // is still open — the same rule redirects follow.
+                missing ? 404 : status,
+              );
+            }
+            const stream = renderToStream(() => options.app(state) as never, {
+              signal: request.signal,
               nonce: options.nonce,
             });
-            // A loader that threw a `Response` or a `Redirect` decided this
-            // page, even though the render completed around it.
-            dispose();
-            if (answer !== null) return answer;
-            return html(
-              options.document({
-                body: page.html,
-                seed: page.script,
-                chain: match?.route.chain ?? null,
-                preload: preloadTags(match?.route.chain ?? null, options.routeAssets),
-                context,
+            return new Response(
+              wrapStream(
+                stream,
+                options,
+                match?.route.chain ?? null,
                 url,
-              }),
-              // A rendered 404 rather than a bare one. In STREAM mode the status
-              // is already on the wire by the time a loader can say this, so a
-              // `notFound()` that must set the status belongs where the status
-              // is still open — the same rule redirects follow.
-              missing ? 404 : status,
+                dispose,
+                () => answer,
+                context,
+              ),
+              {
+                status,
+                headers: { "content-type": "text/html; charset=utf-8" },
+              },
             );
+          } catch (error) {
+            // The stream was never handed over, so nothing else will dispose it.
+            dispose();
+            throw error;
           }
-          const stream = renderToStream(() => options.app(state) as never, {
-            signal: request.signal,
-            nonce: options.nonce,
-          });
-          return new Response(
-            wrapStream(
-              stream,
-              options,
-              match?.route.chain ?? null,
-              url,
-              dispose,
-              () => answer,
-              context,
-            ),
-            {
-              status,
-              headers: { "content-type": "text/html; charset=utf-8" },
-            },
-          );
-        } catch (error) {
-          // The stream was never handed over, so nothing else will dispose it.
-          dispose();
-          throw error;
-        }
-      });
+        },
+        options.refuseRequest,
+      );
     } catch (error) {
       const answer = asResponse(error);
       if (answer !== null) return answer;
@@ -521,6 +564,18 @@ export function contextScript(
   return `<script${attr}>window.${ROUTE_CONTEXT_GLOBAL}=${payload}</script>`;
 }
 
+/**
+ * `transformShell`, or the bytes unchanged.
+ *
+ * The URL is a PARAMETER rather than something the caller reads off an ambient
+ * request, because the dev server needs it and two requests are in flight at
+ * once on any real server. A module-level "current request" is
+ * GHSA-hgv7-v322-mmgr, and it would be that here for the sake of one string.
+ */
+async function shellOf(options: PageHandlerOptions, shell: string, url: URL): Promise<string> {
+  return options.transformShell === undefined ? shell : await options.transformShell(shell, url);
+}
+
 function html(body: string, status: number): Response {
   return new Response(body, {
     status,
@@ -571,7 +626,7 @@ function wrapStream(
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(encoder.encode(head));
+      controller.enqueue(encoder.encode(await shellOf(options, head, url)));
       const reader = stream.getReader();
       try {
         for (;;) {

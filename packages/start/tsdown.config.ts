@@ -8,7 +8,13 @@ import { defineConfig } from "tsdown";
  * resolves to `any`" — and it was already sprung.
  */
 export default defineConfig({
-  entry: ["./src/index.ts", "./src/server.ts", "./src/serve.ts", "./src/vite.ts"],
+  entry: [
+    "./src/index.ts",
+    "./src/server.ts",
+    "./src/serve.ts",
+    "./src/vite.ts",
+    "./src/prerender.ts",
+  ],
   format: ["esm"],
   dts: true,
   clean: true,
