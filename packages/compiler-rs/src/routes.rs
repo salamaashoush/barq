@@ -408,6 +408,13 @@ pub fn generate_module(tree: &[RouteNode]) -> String {
     out.push_str("const lazyLoader = (load) => async (context) => {\n");
     out.push_str("  const module = await load();\n");
     out.push_str("  return module.loader === undefined ? undefined : module.loader(context);\n");
+    out.push_str("};\n\n");
+    out.push_str(
+        "/** Same shape for `head`, which is resolved before the shell and may be a function. */\n",
+    );
+    out.push_str("const lazyHead = (load) => async (context) => {\n");
+    out.push_str("  const { head } = await load();\n");
+    out.push_str("  return typeof head === \"function\" ? head(context) : head;\n");
     out.push_str("};\n\nexport const routes = [\n");
 
     for (index, node) in tree.iter().enumerate() {
@@ -441,6 +448,7 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         parts.push(format!("src: {specifier}"));
         parts.push(format!("component: lazy(() => import({specifier}))"));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
+        parts.push(format!("head: lazyHead(() => import({specifier}))"));
         parts.push(format!("pending: lazy(() => import({specifier}), (m) => m.Pending ?? Empty)"));
         // LIFTED, not imported. Both are wanted before the module loads, and the
         // module is `lazy()`.
@@ -800,6 +808,18 @@ mod tests {
         let parsed =
             oxc::parser::Parser::new(&allocator, &module, oxc::span::SourceType::mjs()).parse();
         assert!(parsed.diagnostics.is_empty(), "{module}\n{:?}", parsed.diagnostics);
+    }
+
+    #[test]
+    fn every_route_reaches_its_head_without_loading_the_module() {
+        // `head` is resolved BEFORE the shell flushes, and the route module is
+        // `lazy()` — so it goes through the same wrapper `loader` does rather
+        // than a static import, which would defeat the code splitting.
+        let module = generate_module(&build_tree(&files(&["index.tsx", "about.tsx"])));
+        assert!(module.contains("const lazyHead = (load) => async (context) => {"), "{module}");
+        assert_eq!(module.matches("head: lazyHead(() => import(").count(), 2, "{module}");
+        // A descriptor OR a function of the context, decided at the call.
+        assert!(module.contains("typeof head === \"function\" ? head(context) : head"), "{module}");
     }
 
     #[test]
