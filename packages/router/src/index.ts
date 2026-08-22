@@ -111,6 +111,7 @@ export {
   renderDepth,
   useRouter,
 } from "./components.ts";
+export { type HeadAssets, useHeadAssets } from "./components.ts";
 
 export { type RouterDevtoolsProps, RouterDevtools } from "./devtools.ts";
 

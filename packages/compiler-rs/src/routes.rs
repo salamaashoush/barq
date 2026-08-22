@@ -451,6 +451,14 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         parts.push(format!("src: {specifier}"));
         parts.push(format!("component: lazy(() => import({specifier}))"));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
+        // The DOCUMENT, and only the root has one: `shellComponent` renders
+        // `<html>` around everything, so a nested route declaring one would be
+        // a second document inside the first.
+        if node.id == ROOT_ID {
+            parts.push(format!(
+                "shellComponent: lazy(() => import({specifier}), (m) => m.shellComponent ?? Empty)"
+            ));
+        }
         parts.push(format!("head: lazyAsset(() => import({specifier}), \"head\")"));
         parts.push(format!("scripts: lazyAsset(() => import({specifier}), \"scripts\")"));
         parts.push(format!("middleware: lazyMiddleware(() => import({specifier}))"));
@@ -832,6 +840,16 @@ mod tests {
             module.contains("typeof declared === \"function\" ? declared(context) : declared"),
             "{module}"
         );
+    }
+
+    #[test]
+    fn only_a_root_route_declares_the_document() {
+        // `shellComponent` renders `<html>` around everything, so a nested route
+        // declaring one would be a second document inside the first.
+        let flat = generate_module(&build_tree(&files(&["index.tsx", "about.tsx"])));
+        assert_eq!(flat.matches("shellComponent: lazy(").count(), 0, "{flat}");
+        let rooted = generate_module(&build_tree(&files(&["route.tsx", "index.tsx", "about.tsx"])));
+        assert_eq!(rooted.matches("shellComponent: lazy(").count(), 1, "{rooted}");
     }
 
     #[test]

@@ -297,7 +297,7 @@ export async function projectHead<Params, Data>(
     readonly params: Params;
     readonly loaderData: Data | undefined;
     readonly definition: {
-      readonly head?: Head<Params, Data>;
+      readonly head?: Head<Params, Data> | HeadResult;
       readonly scripts?: BodyScripts<Params, Data>;
     };
   }[],
@@ -315,7 +315,11 @@ export async function projectHead<Params, Data>(
         ssr: options?.nonce === undefined ? undefined : { nonce: options.nonce },
       };
       try {
-        const [resolved, body] = await Promise.all([head?.(context), scripts?.(context)]);
+        // `head` may be a plain OBJECT as well as a function — a file route
+        // already declares `ssr` and `prerender` as plain module exports and a
+        // static head has nothing to compute. TanStack takes only a function.
+        const declared = typeof head === "function" ? head(context) : head;
+        const [resolved, body] = await Promise.all([declared, scripts?.(context)]);
         return {
           meta: resolved?.meta,
           links: resolved?.links,

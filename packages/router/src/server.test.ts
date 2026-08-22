@@ -17,6 +17,8 @@ import { RouterProvider } from "./components.ts";
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
 import {
+  HeadContent,
+  Scripts,
   chainVerifier,
   createPageHandler,
   notFound,
@@ -1109,5 +1111,156 @@ describe("chainVerifier", () => {
   test("an id nothing mounted is not a violation — it is not an endpoint", async () => {
     unmountAll();
     expect(await chainVerifier(table)(new Map([["/admin", new Set(["ghost"])]]))).toBe("");
+  });
+});
+
+/**
+ * The JSX shell — TanStack's `shellComponent`, with `<HeadContent />` and
+ * `<Scripts />` placing themselves.
+ *
+ * This is what replaces the six-part `document()` template. The trap it removes
+ * is not hypothetical: a template that shipped its own `<title>` ahead of the
+ * route's made every route's title inert, because `document.title` is the first
+ * title in tree order.
+ */
+describe("shellComponent", () => {
+  const table = (head?: unknown, scripts?: unknown): AnyRouteDefinition[] =>
+    [
+      {
+        id: "__root__",
+        path: "/",
+        shellComponent: (_s: unknown, props: { children: unknown }) =>
+          ssrHtml(
+            `<html lang="en"><head>${esc(HeadContent())}</head>` +
+              `<body><div id="app">${esc(props.children)}</div>${esc(Scripts())}</body></html>`,
+          ),
+        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        head: { meta: [{ title: "Site" }, { name: "description", content: "site" }] },
+        children: [
+          {
+            id: "/page",
+            path: "page",
+            component: () => ssrHtml("<main>page</main>"),
+            head,
+            scripts,
+          },
+        ],
+      },
+    ] as never;
+
+  const render = async (routes: AnyRouteDefinition[], extra = {}): Promise<string> => {
+    const handler = createPageHandler({
+      routes,
+      app: (s) => renderRoutes(s),
+      clientAssets: { scripts: ["/entry.js"], css: ["/app.css"] },
+      ...extra,
+    });
+    return (await handler(get("/page"))).text();
+  };
+
+  test("the document is the shell, doctype and all — no `document` needed", async () => {
+    const body = await render(table());
+    expect(body.startsWith('<!doctype html><html lang="en">')).toBe(true);
+    expect(body).toContain("<main>page</main>");
+    expect(body).toContain('<div id="app">');
+  });
+
+  test("`<HeadContent />` renders the merged chain, deepest wins", async () => {
+    const body = await render(
+      table({ meta: [{ title: "Page" }, { name: "description", content: "page" }] }),
+    );
+    expect(body).toContain("<title");
+    expect(body).toContain("Page");
+    expect(body).not.toContain("Site");
+    expect(body).toContain('content="page"');
+    expect(body).not.toContain('content="site"');
+  });
+
+  test("a route with no head still inherits the layout's", async () => {
+    const body = await render(table());
+    expect(body).toContain("Site");
+    expect(body).toContain('content="site"');
+  });
+
+  test("`<Scripts />` places the client entry and the route's body scripts", async () => {
+    const body = await render(table(undefined, () => [{ src: "/route.js" }]));
+    expect(body).toContain('src="/route.js"');
+    expect(body).toContain('src="/entry.js"');
+    // The entry is in the BODY, after the mount element — not in the head.
+    expect(body.indexOf('<div id="app">')).toBeLessThan(body.indexOf('src="/entry.js"'));
+  });
+
+  test("the client CSS goes in the head, where it cannot flash", async () => {
+    const body = await render(table());
+    expect(body.indexOf('href="/app.css"')).toBeLessThan(body.indexOf("</head>"));
+  });
+
+  test("the hydration seed lands INSIDE the body, before `</body>`", async () => {
+    // The one splice left in the framework, and the reason it cannot be a
+    // component: `renderPage` produces the seed BY rendering, so nothing
+    // rendered during that render can emit it.
+    //
+    // BUFFERED only. On the streamed arm the seed is flushed as each boundary
+    // settles, and a boundary that settles after the render has walked past
+    // `</body>` lands after `</html>` — the one thing TanStack's tail-holding
+    // transform does that `shellStream` does not, stated at its definition.
+    const body = await render(table(), { stream: false });
+    const seed = body.indexOf("__BARQ_EVTS__");
+    expect(seed).toBeGreaterThan(-1);
+    expect(seed).toBeLessThan(body.indexOf("</body>"));
+    expect(body.endsWith("</html>")).toBe(true);
+  });
+
+  test("the streamed arm puts late scripts after `</html>`, which is the stated limit", async () => {
+    const body = await render(table());
+    expect(body.indexOf("__BARQ_EVTS__")).toBeGreaterThan(body.indexOf("</body>"));
+  });
+
+  test("a table with neither a shell nor a `document` says so", async () => {
+    const handler = createPageHandler({
+      routes: [{ id: "/x", path: "/x", component: () => ssrHtml("x") }] as never,
+      app: (s) => renderRoutes(s),
+    });
+    expect(handler(get("/x"))).rejects.toThrow(/shellComponent/);
+  });
+});
+
+describe("crawlers are answered with the whole page", () => {
+  const routes = [
+    {
+      id: "__root__",
+      path: "/",
+      shellComponent: (_s: unknown, props: { children: unknown }) =>
+        ssrHtml(
+          `<html><head>${esc(HeadContent())}</head><body>${esc(props.children)}</body></html>`,
+        ),
+      component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+      children: [{ id: "/p", path: "p", component: () => ssrHtml("<main>p</main>") }],
+    },
+  ] as never as AnyRouteDefinition[];
+
+  const fetchAs = async (agent: string, extra = {}): Promise<Response> => {
+    const handler = createPageHandler({ routes, app: (s) => renderRoutes(s), ...extra });
+    return handler(new Request("http://x/p", { headers: { "user-agent": agent } }));
+  };
+
+  test("a bot takes the BUFFERED arm, so nothing is a placeholder", async () => {
+    // TanStack's whole answer to "late head does not reach a crawler" is this
+    // user-agent check — `renderRouterToStream` does
+    // `if (isbot(...)) await waitForReadyOrAbort(...)`. barq needs no transform
+    // for it: `stream: false` is already a renderer that settles first.
+    const body = await (await fetchAs("Googlebot/2.1")).text();
+    expect(body).toContain("<main>p</main>");
+    expect(body).not.toContain("__BARQ_SWAP__");
+  });
+
+  test("a browser still streams", async () => {
+    const body = await (await fetchAs("Mozilla/5.0 (X11; Linux x86_64) Chrome/120")).text();
+    expect(body).toContain("<main>p</main>");
+  });
+
+  test("`bufferForCrawlers: false` turns it off", async () => {
+    const response = await fetchAs("Googlebot/2.1", { bufferForCrawlers: false });
+    expect(await response.text()).toContain("<main>p</main>");
   });
 });

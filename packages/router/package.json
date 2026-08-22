@@ -48,6 +48,9 @@
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
+  "dependencies": {
+    "isbot": "^5.2.1"
+  },
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",

@@ -84,6 +84,43 @@ function linkBackend(): LinkBackend | null {
   return read(LinkBackendContext)();
 }
 
+/**
+ * How `<HeadContent />` and `<Scripts />` reach the resolved tags.
+ *
+ * Provided by `renderShell` AROUND the shell, not by `renderRoutes` inside it:
+ * the shell is what contains `<head>`, so a context provided at route depth 0
+ * is below the component that needs it.
+ *
+ * `null` is the default and it is what the DOM path gets. On the client the
+ * shell is never rendered — barq hydrates `#app`, not the document — so both
+ * components render nothing there and a navigation's head is patched by
+ * `installHead` instead. That is a divergence from TanStack, whose `HeadContent`
+ * lives in the reactive tree and portals into `<head>`; it is recorded in
+ * `DESIGN.md` P6-4 and it falls out of barq hydrating a container.
+ */
+export interface HeadAssets {
+  readonly matches: readonly import("./head.ts").MatchAssets[];
+  readonly nonce?: string;
+  /** What the client build emitted: the entry scripts and its CSS. */
+  readonly clientAssets?: {
+    readonly scripts?: readonly string[];
+    readonly css?: readonly string[];
+  };
+  /** `<link rel="modulepreload">` for the matched chain, already rendered. */
+  readonly preload?: string;
+  /** The route-context handoff, already rendered. */
+  readonly context?: string;
+  /** Whatever the dev server needs in the head — `/@vite/client` and friends. */
+  readonly injected?: string;
+}
+
+export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-head");
+
+/** What the shell was handed, or `null` where there is no shell. */
+export function useHeadAssets(): HeadAssets | null {
+  return read(HeadAssetsContext)();
+}
+
 /** The resolved href a `<Link>` points at, for either backend. */
 export function linkHref(state: RouterState, props: Incoming<LinkProps>): string {
   return resolveTo(state, props);

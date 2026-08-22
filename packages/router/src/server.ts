@@ -32,11 +32,14 @@ import {
 } from "@barqjs/server";
 import { HYDRATE, type Scope, cell, getOwner, provide } from "@barqjs/core";
 import { encodeSeed } from "@barqjs/server/codec";
+import { isbot } from "isbot";
+
 import { withRequest } from "@barqjs/start";
 import { mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
+import { projectHead, renderTags, resolveHead, resolveScripts } from "./head.ts";
 import {
   type Reachability,
   describe as describeViolations,
@@ -53,7 +56,14 @@ import {
   ROUTE_CONTEXT_GLOBAL,
   createRouter,
 } from "./router.ts";
-import { LinkBackendContext, RouterContext, routePropsFor } from "./components.ts";
+import {
+  type HeadAssets,
+  HeadAssetsContext,
+  LinkBackendContext,
+  RouterContext,
+  routePropsFor,
+  useHeadAssets,
+} from "./components.ts";
 
 /**
  * Render the matched chain through the STRING backend.
@@ -289,8 +299,38 @@ export interface PageHandlerOptions {
   /**
    * Wraps the app's markup in a document. Given the matched chain so a route
    * can decide the title.
+   *
+   * SUPERSEDED by the root route's `shellComponent`, which renders `<html>` as
+   * JSX and lets `<HeadContent />` and `<Scripts />` place themselves. This
+   * remains for a table that declares no shell, and for `@barqjs/start`'s own
+   * tests, which have no router.
    */
-  readonly document: (parts: DocumentParts) => string;
+  readonly document?: (parts: DocumentParts) => string;
+  /**
+   * What the client build emitted, for `<Scripts />` and `<HeadContent />`.
+   *
+   * The framework's own tags — the entry module, its CSS — reach the document
+   * through the same components a route's do, rather than through a template
+   * the application has to assemble in the right order.
+   */
+  readonly clientAssets?: {
+    readonly scripts?: readonly string[];
+    readonly css?: readonly string[];
+  };
+  /**
+   * Answer a crawler with the WHOLE page instead of a stream.
+   *
+   * A streamed page's head is the head as of shell time, and a route whose
+   * `head` reads `loaderData` has not run by then. TanStack answers this with a
+   * user-agent check and nothing else — `renderRouterToStream` does
+   * `if (isbot(...)) await waitForReadyOrAbort(...)` — and barq can do it in one
+   * line rather than one transform, because `stream: false` is already a
+   * different renderer that settles the graph before it emits a byte.
+   *
+   * Default: `isbot` on the `user-agent`. `false` disables it; a function
+   * replaces it.
+   */
+  readonly bufferForCrawlers?: boolean | ((request: Request) => boolean);
   readonly beforeEach?: readonly Guard[];
   readonly base?: string;
   /**
@@ -459,7 +499,43 @@ export function createPageHandler(
           // with a nav and no content. Awaiting here costs the same imports the
           // render would have done, in one round instead of one per depth.
           await preloadMatched(match?.route.chain ?? []);
+          // Decided BEFORE the head is projected, because it is what decides
+          // whether `head` sees `loaderData` at all.
+          const buffered = options.stream === false || isCrawler(request, options);
+          const shell = shellComponentOf(options.routes);
+          // `projectLane`, in the same pre-shell phase. Every route's `head` and
+          // `scripts` run here with the params, the context and whatever
+          // `loaderData` has already settled — which on a streamed page is
+          // nothing, and on a buffered one is everything. `preloadMatched` has
+          // just imported every module they live in.
+          const chain = match?.route.chain ?? [];
+          const params = match?.params ?? {};
+          const assets = await projectHead(
+            await Promise.all(
+              chain.map(async (route) => ({
+                params,
+                loaderData: loaderDataFor(),
+                definition: route.definition as never,
+              })),
+            ),
+            // `console.error` and a rendered page, which is what `projectLane`
+            // does with the same failure: a broken `head` costs that route its
+            // tags, never the document.
+            { nonce: options.nonce, onError: (error) => console.error(error) },
+          );
           const context = contextScript(url, before.produced, options.nonce);
+          const preload = preloadTags(match?.route.chain ?? null, options.routeAssets);
+          const headAssets: HeadAssets = {
+            matches: assets,
+            nonce: options.nonce,
+            clientAssets: options.clientAssets,
+            preload,
+            context,
+          };
+          // The whole document when a shell is declared, the app's markup when
+          // it is not — and the `document()` template then wraps it.
+          const root = (): unknown =>
+            shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
           // A streamed response is not finished when this function returns it:
           // `renderToStream` hands back the `ReadableStream` before a byte of the
           // body exists, and the boundaries resume against this state afterwards.
@@ -474,15 +550,13 @@ export function createPageHandler(
             state.dispose();
           };
           try {
-            if (options.stream === false) {
+            if (buffered) {
               // `renderPage`, not `renderToString`: the sync one does not await an
               // async value, so every loader on the page would render as its
               // fallback and the seed would be empty. Measured on exactly that
               // mistake — a server function's result stringified as
               // "[object Promise]" and its handler ran detached from the render.
-              const page = await renderPage(() => options.app(state) as never, {
-                nonce: options.nonce,
-              });
+              const page = await renderPage(() => root() as never, { nonce: options.nonce });
               // A loader that threw a `Response` or a `Redirect` decided this
               // page, even though the render completed around it.
               dispose();
@@ -490,14 +564,16 @@ export function createPageHandler(
               return html(
                 await shellOf(
                   options,
-                  options.document({
-                    body: page.html,
-                    seed: page.script,
-                    chain: match?.route.chain ?? null,
-                    preload: preloadTags(match?.route.chain ?? null, options.routeAssets),
-                    context,
-                    url,
-                  }),
+                  shell === undefined
+                    ? documentOf(options, {
+                        body: page.html,
+                        seed: page.script,
+                        chain: match?.route.chain ?? null,
+                        preload,
+                        context,
+                        url,
+                      })
+                    : DOCTYPE + withSeed(page.html, page.script),
                   url,
                 ),
                 // A rendered 404 rather than a bare one. In STREAM mode the status
@@ -508,20 +584,22 @@ export function createPageHandler(
                 prerenderable === null ? undefined : { [PRERENDER_HEADER]: prerenderable },
               );
             }
-            const stream = renderToStream(() => options.app(state) as never, {
+            const stream = renderToStream(() => root() as never, {
               signal: request.signal,
               nonce: options.nonce,
             });
             return new Response(
-              wrapStream(
-                stream,
-                options,
-                match?.route.chain ?? null,
-                url,
-                dispose,
-                () => answer,
-                context,
-              ),
+              shell === undefined
+                ? wrapStream(
+                    stream,
+                    options,
+                    match?.route.chain ?? null,
+                    url,
+                    dispose,
+                    () => answer,
+                    context,
+                  )
+                : shellStream(stream, options, url, dispose, () => answer),
               {
                 status,
                 headers: { "content-type": "text/html; charset=utf-8" },
@@ -685,6 +763,13 @@ export { PRERENDER_HEADER };
  */
 const BODY_MARKER = "<!--barq-body-->";
 
+/**
+ * A JSX shell cannot emit a doctype — it is not an element — so the handler
+ * prepends it. TanStack does the same thing for the same reason:
+ * `renderRouterToStream` puts `Solid.ssr('<!DOCTYPE html>')` ahead of the tree.
+ */
+const DOCTYPE = "<!doctype html>";
+
 function wrapStream(
   stream: ReadableStream<Uint8Array>,
   options: PageHandlerOptions,
@@ -697,7 +782,7 @@ function wrapStream(
   /** The route-context handoff, which goes in the head like the preloads. */
   context: string,
 ): ReadableStream<Uint8Array> {
-  const document = options.document({
+  const document = documentOf(options, {
     body: BODY_MARKER,
     seed: "",
     chain,
@@ -769,4 +854,213 @@ export function chainVerifier(
     const violations = await verifyRouteChains({ routes, reachability, lookup: mountedFn });
     return violations.length === 0 ? "" : describeViolations(violations);
   };
+}
+
+/**
+ * TanStack's `<HeadContent />`: every managed tag for the matched chain.
+ *
+ * Placed inside `<head>` in the shell. It renders the merged `meta`, `links`,
+ * `styles` and head `scripts` from every route's `head`, plus the three things
+ * the framework itself puts there — the modulepreloads for the matched chunks,
+ * the route-context handoff, and whatever the dev server injected.
+ *
+ * SERVER ONLY, which is where it differs from theirs. `HeadContent` in
+ * TanStack's Solid build lives in the reactive tree and portals into `<head>`
+ * so a client navigation updates it. barq hydrates `#app` rather than the
+ * document, so the shell never runs on the client at all and a navigation's
+ * head is patched by `installHead`. Recorded in `DESIGN.md` P6-4.
+ */
+export function HeadContent(): unknown {
+  const assets = useHeadAssets();
+  if (assets === null) return ssrHtml("");
+  const tags = resolveHead(assets.matches, { nonce: assets.nonce });
+  return ssrHtml(
+    (assets.injected ?? "") +
+      renderTags(tags) +
+      (assets.clientAssets?.css ?? [])
+        .map((href) => `<link rel="stylesheet" href="${escapeAttribute(href)}">`)
+        .join("") +
+      (assets.preload ?? "") +
+      (assets.context ?? ""),
+  );
+}
+
+/**
+ * TanStack's `<Scripts />`: the BODY scripts, plus the client entry.
+ *
+ * Last thing in `<body>`, which is where a module entry belongs — it is
+ * deferred either way, and putting it here keeps it out of the parser's path.
+ * The hydration seed is NOT here: it is produced BY the render, so nothing
+ * rendered during it can emit it, and the handler places it.
+ */
+export function Scripts(): unknown {
+  const assets = useHeadAssets();
+  if (assets === null) return ssrHtml("");
+  const nonce = assets.nonce === undefined ? "" : ` nonce="${escapeAttribute(assets.nonce)}"`;
+  return ssrHtml(
+    renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
+      (assets.clientAssets?.scripts ?? [])
+        .map((src) => `<script type="module"${nonce} src="${escapeAttribute(src)}"></script>`)
+        .join(""),
+  );
+}
+
+/**
+ * Render the document: the root route's `shellComponent` around the matched chain.
+ *
+ * The shell is a component and the document is JSX, which is TanStack's
+ * `shellComponent` and which replaces the string `document()` this had before.
+ * What that buys is not tidiness: a template with six parts to place in the
+ * right order had already grown one ordering trap — a document that shipped its
+ * own `<title>` ahead of the route's made every route's title inert, because
+ * `document.title` is the first title in tree order.
+ */
+export function renderShell(
+  state: RouterState,
+  shell: ((scope: Scope | null, props: { children: unknown }) => unknown) | undefined,
+  assets: HeadAssets,
+): unknown {
+  const body = (): unknown => renderRoutes(state);
+  if (shell === undefined) return body();
+  const owner = getOwner();
+  if (owner === null) return shell(null, { children: body });
+  return provide(owner, HeadAssetsContext, cell(assets), (inner) =>
+    shell(inner as Scope, { children: body }),
+  );
+}
+
+/**
+ * `loaderData` for `head` — NOT YET WIRED, and the reason is measured.
+ *
+ * TanStack's `projectLane` runs after a match's loader resolves, which is what
+ * makes `head: ({ loaderData })` work. Reading a loader HERE does not: the
+ * pre-shell phase is outside the render's async session, and a keyed value first
+ * read outside one is "seeded into nobody" — `RouterState.prime` says so and the
+ * suite proved it, `__BARQ_DATA__=({})` with the deferred value gone and the
+ * client refetching everything the server had already fetched.
+ *
+ * The mechanism that closes it, named so the next pass starts from the design
+ * rather than the symptom: project the head INSIDE the render session — either
+ * by running `projectHead` under `setAsyncSession` with the session `renderPage`
+ * made, or on `renderPage`'s SECOND pass, which already has every value settled
+ * and reads them back from the session bucket rather than refetching.
+ *
+ * Until then `head` is a function of `{ params, matches, match }` and
+ * `loaderData` is `undefined`. Narrower than TanStack's, and said out loud.
+ */
+function loaderDataFor(): undefined {
+  return undefined;
+}
+
+/**
+ * The root route's `shellComponent`, or `undefined` for a table with no shell.
+ *
+ * Only the root's is looked at, and the generator only emits one there:
+ * `shellComponent` renders `<html>`, so a nested route declaring one would be a
+ * second document inside the first.
+ */
+function shellComponentOf(
+  routes: readonly AnyRouteDefinition[],
+): ((scope: Scope | null, props: { children: unknown }) => unknown) | undefined {
+  const declared = (routes[0] as { shellComponent?: unknown } | undefined)?.shellComponent;
+  return typeof declared === "function"
+    ? (declared as (scope: Scope | null, props: { children: unknown }) => unknown)
+    : undefined;
+}
+
+/** `document()`, refused rather than defaulted when a table declares neither. */
+function documentOf(options: PageHandlerOptions, parts: DocumentParts): string {
+  if (options.document !== undefined) return options.document(parts);
+  throw new Error(
+    "[barq-router] this route table declares no `shellComponent` on its root route and no " +
+      "`document` was passed. One of them has to say what the document is — prefer the shell: " +
+      "`export const shellComponent = ({ children }) => <html>…<HeadContent /></html>`.",
+  );
+}
+
+/**
+ * The hydration seed, placed just before `</body>`.
+ *
+ * The ONE splice left, and it is in framework code rather than in a contract an
+ * application has to satisfy. It cannot be a component: `renderPage` produces
+ * the seed BY rendering, so nothing rendered during that render can emit it.
+ * TanStack has the same seam and answers it the same way — their stream
+ * transform holds everything from `</body>` so router scripts land before it.
+ */
+function withSeed(document: string, seed: string): string {
+  if (seed === "") return document;
+  const at = document.lastIndexOf("</body>");
+  return at === -1 ? document + seed : document.slice(0, at) + seed + document.slice(at);
+}
+
+/**
+ * Is this a crawler? `isbot`, which is what TanStack uses for the same decision.
+ *
+ * A bot gets the buffered arm: the whole page, with every loader settled, so a
+ * route whose `head` reads `loaderData` produces the title the crawler indexes.
+ */
+function isCrawler(request: Request, options: PageHandlerOptions): boolean {
+  const decide = options.bufferForCrawlers ?? true;
+  if (decide === false) return false;
+  if (typeof decide === "function") return decide(request);
+  return isbot(request.headers.get("user-agent"));
+}
+
+/**
+ * A streamed document that the SHELL produced, so there is nothing to wrap.
+ *
+ * `wrapStream`'s whole job was to cut a `document()` template in two and put the
+ * body between the halves. A shell renders the document itself, so the stream is
+ * already the response — this only appends what has to come after it.
+ *
+ * KNOWN LIMIT, and it is the one thing TanStack does that this does not: their
+ * transform holds every byte from `</body>` so a boundary's swap script lands
+ * inside the body. Here a swap that resolves after the render has walked past
+ * `</body>` is emitted after `</html>`. Every browser tolerates it — React,
+ * Solid and SvelteKit all ship it — and it is a transform's worth of work to
+ * fix, so it is stated rather than hidden.
+ */
+function shellStream(
+  stream: ReadableStream<Uint8Array>,
+  options: PageHandlerOptions,
+  url: URL,
+  done: () => void,
+  answer: () => Response | null,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  let first = true;
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = stream.getReader();
+      try {
+        for (;;) {
+          const { done: finished, value } = await reader.read();
+          if (finished) break;
+          if (first) {
+            first = false;
+            const head = DOCTYPE + new TextDecoder().decode(value);
+            controller.enqueue(
+              encoder.encode(
+                options.transformShell === undefined
+                  ? head
+                  : await options.transformShell(head, url),
+              ),
+            );
+            continue;
+          }
+          controller.enqueue(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const late = redirectScript(answer());
+      if (late !== "") controller.enqueue(encoder.encode(late));
+      controller.close();
+      done();
+    },
+    cancel(reason) {
+      void stream.cancel(reason);
+      done();
+    },
+  });
 }
