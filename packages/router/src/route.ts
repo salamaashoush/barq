@@ -512,7 +512,17 @@ export type { Scope };
 export async function preloadMatched(chain: readonly Route[]): Promise<void> {
   const loads: Promise<void>[] = [];
   for (const matched of chain) {
-    for (const candidate of [matched.definition.component, matched.definition.pending]) {
+    // `shellComponent` too, and it is not optional: the shell renders `<html>`,
+    // so a cold `lazy()` there throws `NotReadyError` from a position with no
+    // boundary above it and the whole page fails. Measured as
+    // "Async value is not ready yet" on the first prerender after the document
+    // became JSX.
+    const declared = matched.definition as { shellComponent?: unknown };
+    for (const candidate of [
+      matched.definition.component,
+      matched.definition.pending,
+      declared.shellComponent,
+    ]) {
       const preload = (candidate as { preload?: () => Promise<void> } | undefined)?.preload;
       if (typeof preload === "function") loads.push(preload());
     }

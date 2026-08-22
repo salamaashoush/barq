@@ -41,6 +41,7 @@ import {
   untrack,
 } from "@barqjs/core";
 
+import { renderTags, resolveHead, resolveScripts } from "./head.ts";
 import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { errorFallbackFor } from "./errors.ts";
@@ -112,9 +113,83 @@ export interface HeadAssets {
   readonly context?: string;
   /** Whatever the dev server needs in the head — `/@vite/client` and friends. */
   readonly injected?: string;
+  /**
+   * How this backend turns markup into an element.
+   *
+   * The server passes `@barqjs/server`'s `html`; there is no client
+   * implementation because the shell is never rendered on the client.
+   */
+  readonly raw: (markup: string) => unknown;
 }
 
 export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-head");
+
+/**
+ * TanStack's `<HeadContent />`: every managed tag for the matched chain.
+ *
+ * Placed inside `<head>` in the shell. Renders the merged `meta`, `links`,
+ * `styles` and head `scripts` from every route's `head`, plus the three things
+ * the framework itself puts there — the modulepreloads for the matched chunks,
+ * the `beforeLoad` handoff, and whatever the dev server injected.
+ *
+ * IT LIVES HERE, in the ISOMORPHIC entry, and that is not a filing decision. A
+ * shell is declared in the ROOT ROUTE MODULE, and that module ships to the
+ * browser like every other route module — so importing `@barqjs/router/server`
+ * from it drags `node:async_hooks` into the client bundle. Vite answers with
+ * "Module `node:async_hooks` has been externalized for browser compatibility",
+ * the root route throws, and the page renders EMPTY. Measured on the reference
+ * application. `HeadContent` in TanStack is `@tanstack/solid-router`, not their
+ * server entry, for the same reason.
+ *
+ * So the markup builder arrives through the CONTEXT, exactly as `LinkBackend`
+ * does and for the reason `DESIGN.md` P6-5 already paid for: each backend knows
+ * which it is and says so, rather than being sniffed with `typeof document`.
+ *
+ * SERVER ONLY. There are no assets on the client — the shell is never rendered
+ * there, because barq hydrates `#app` rather than the document.
+ */
+export function HeadContent(): JSXElement {
+  const assets = read(HeadAssetsContext)();
+  if (assets === null) return null;
+  return assets.raw(
+    (assets.injected ?? "") +
+      renderTags(resolveHead(assets.matches, { nonce: assets.nonce })) +
+      (assets.clientAssets?.css ?? [])
+        .map((href) => `<link rel="stylesheet" href="${escapeHeadAttribute(href)}">`)
+        .join("") +
+      (assets.preload ?? "") +
+      (assets.context ?? ""),
+  ) as JSXElement;
+}
+
+/**
+ * TanStack's `<Scripts />`: the BODY scripts, plus the client entry.
+ *
+ * Last thing in `<body>`, which is where a module entry belongs — it is
+ * deferred either way, and putting it there keeps it out of the parser's path.
+ * The hydration seed is NOT here: it is produced BY the render, so nothing
+ * rendered during that render can emit it, and the handler places it.
+ */
+export function Scripts(): JSXElement {
+  const assets = read(HeadAssetsContext)();
+  if (assets === null) return null;
+  const nonce = assets.nonce === undefined ? "" : ` nonce="${escapeHeadAttribute(assets.nonce)}"`;
+  return assets.raw(
+    renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
+      (assets.clientAssets?.scripts ?? [])
+        .map((src) => `<script type="module"${nonce} src="${escapeHeadAttribute(src)}"></script>`)
+        .join(""),
+  ) as JSXElement;
+}
+
+/** Enough for a URL in an attribute: the four that can end it or open a tag. */
+function escapeHeadAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
 
 /** What the shell was handed, or `null` where there is no shell. */
 export function useHeadAssets(): HeadAssets | null {

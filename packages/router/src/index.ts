@@ -111,7 +111,7 @@ export {
   renderDepth,
   useRouter,
 } from "./components.ts";
-export { type HeadAssets, useHeadAssets } from "./components.ts";
+export { type HeadAssets, HeadContent, Scripts, useHeadAssets } from "./components.ts";
 
 export { type RouterDevtoolsProps, RouterDevtools } from "./devtools.ts";
 
@@ -126,6 +126,9 @@ export {
   type ManagedTag,
   type MatchAssets,
   OWNED as HEAD_OWNER,
+  applyTags,
+  captureHead,
+  installHead,
   projectHead,
   renderTag,
   renderTags,

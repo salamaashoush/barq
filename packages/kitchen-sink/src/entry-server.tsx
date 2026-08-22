@@ -12,30 +12,27 @@ import { routes } from "virtual:barq-routes";
 // route-action check below has an empty registry to ask.
 import "virtual:barq-server-fns";
 
-import { baseStyles, collectStyles } from "./styles";
+import { baseStyles } from "./styles";
 
 baseStyles();
 
-export const options: PageHandlerOptions = {
-  routes,
-  routeAssets,
-  app: (state) => renderRoutes(state),
-  document: ({ body, seed, preload, context }) =>
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<title>Barq Kitchen Sink</title>` +
-    `<style id="_goober">${collectStyles()}</style>` +
-    `${clientAssets.css.map((href: string) => `<link rel="stylesheet" href="${href}">`).join("")}` +
-    `${preload}${context}</head><body><div id="app">${body}</div>${seed}` +
-    `${clientAssets.scripts.map((src: string) => `<script type="module" src="${src}"></script>`).join("")}` +
-    `</body></html>`,
-};
-
 /**
+ * No `document` template: the document is `shellComponent` on the root route,
+ * and `<HeadContent />` and `<Scripts />` place themselves. The only thing this
+ * still hands over is `clientAssets`, which the build produces and no route can
+ * know about.
+ *
  * The dev server adds `transformShell`; the prerenderer sets `stream: false`
  * and `refuseRequest`. Both build from THIS declaration, so a page rendered at
  * build time comes from the same one as a page rendered for a request.
  */
+export const options: PageHandlerOptions = {
+  routes,
+  routeAssets,
+  clientAssets,
+  app: (state) => renderRoutes(state),
+};
+
 /**
  * The route-action chain check, exposed to the BUILD.
  *

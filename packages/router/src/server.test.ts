@@ -16,9 +16,8 @@ import { RouterProvider } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
+import { HeadContent, Scripts } from "./components.ts";
 import {
-  HeadContent,
-  Scripts,
   chainVerifier,
   createPageHandler,
   notFound,
@@ -1262,5 +1261,61 @@ describe("crawlers are answered with the whole page", () => {
   test("`bufferForCrawlers: false` turns it off", async () => {
     const response = await fetchAs("Googlebot/2.1", { bufferForCrawlers: false });
     expect(await response.text()).toContain("<main>p</main>");
+  });
+});
+
+/**
+ * The SHELL and hydration — the question a JSX document raises and a string
+ * template never did.
+ *
+ * The server renders `shellComponent` around the chain; the client hydrates
+ * `#app` and renders the chain ALONE. So the shell must contribute NOTHING
+ * inside `#app` — if it added a range there, the walk would claim a shape the
+ * client never builds and the server's markup would be evicted.
+ */
+describe("shell and hydration", () => {
+  const leaf = (): unknown => ssrHtml("<b>leaf</b>");
+  const layout = (_s: unknown, props: { children: unknown }): unknown =>
+    ssrHtml(esc(props.children));
+
+  const inside = (document_: string): string =>
+    document_.slice(
+      document_.indexOf('<div id="app">') + '<div id="app">'.length,
+      document_.lastIndexOf("</div>"),
+    );
+
+  const render = async (routes: AnyRouteDefinition[], extra = {}): Promise<string> => {
+    const handler = createPageHandler({
+      routes,
+      stream: false,
+      app: (s) => renderRoutes(s),
+      ...extra,
+    });
+    return (await handler(get("/page"))).text();
+  };
+
+  test("the markup inside #app is byte-identical with and without a shell", async () => {
+    const children = [{ id: "/page", path: "page", component: leaf as never }];
+    const withShell = await render([
+      {
+        id: "__root__",
+        path: "/",
+        shellComponent: (_s: unknown, props: { children: unknown }) =>
+          ssrHtml(
+            `<html><head></head><body><div id="app">${esc(props.children)}</div></body></html>`,
+          ),
+        component: layout as never,
+        children,
+      },
+    ] as never);
+    const withTemplate = await render(
+      [{ id: "__root__", path: "/", component: layout as never, children }] as never,
+      { document: (parts: { body: string }) => `<div id="app">${parts.body}</div>` },
+    );
+
+    // The claim walk sees the same bytes either way, so a shell cannot be what
+    // makes a page fail to hydrate.
+    expect(inside(withShell)).toBe(inside(withTemplate));
+    expect(inside(withShell)).toContain("<b>leaf</b>");
   });
 });

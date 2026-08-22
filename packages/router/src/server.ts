@@ -39,7 +39,7 @@ import { mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
-import { projectHead, renderTags, resolveHead, resolveScripts } from "./head.ts";
+import { projectHead } from "./head.ts";
 import {
   type Reachability,
   describe as describeViolations,
@@ -62,7 +62,6 @@ import {
   LinkBackendContext,
   RouterContext,
   routePropsFor,
-  useHeadAssets,
 } from "./components.ts";
 
 /**
@@ -531,6 +530,14 @@ export function createPageHandler(
             clientAssets: options.clientAssets,
             preload,
             context,
+            // The string backend's own renderer, handed over the way
+            // `LinkBackend` is: `HeadContent` and `Scripts` live in the
+            // ISOMORPHIC entry because the ROOT ROUTE MODULE — which is where a
+            // shell is declared — ships to the browser. Importing
+            // `@barqjs/router/server` from it drags `node:async_hooks` into the
+            // client bundle, and Vite answers that with "Module has been
+            // externalized for browser compatibility" and an empty page.
+            raw: (markup: string) => ssrHtml(markup),
           };
           // The whole document when a shell is declared, the app's markup when
           // it is not — and the `document()` template then wraps it.
@@ -754,6 +761,9 @@ function html(body: string, status: number, extra?: Record<string, string>): Res
  */
 export { PRERENDER_HEADER };
 
+/** Re-exported so a server entry need not reach into the isomorphic one. */
+export { HeadContent, Scripts } from "./components.ts";
+
 /**
  * Split the document around the app's markup and stream the middle.
  *
@@ -854,55 +864,6 @@ export function chainVerifier(
     const violations = await verifyRouteChains({ routes, reachability, lookup: mountedFn });
     return violations.length === 0 ? "" : describeViolations(violations);
   };
-}
-
-/**
- * TanStack's `<HeadContent />`: every managed tag for the matched chain.
- *
- * Placed inside `<head>` in the shell. It renders the merged `meta`, `links`,
- * `styles` and head `scripts` from every route's `head`, plus the three things
- * the framework itself puts there — the modulepreloads for the matched chunks,
- * the route-context handoff, and whatever the dev server injected.
- *
- * SERVER ONLY, which is where it differs from theirs. `HeadContent` in
- * TanStack's Solid build lives in the reactive tree and portals into `<head>`
- * so a client navigation updates it. barq hydrates `#app` rather than the
- * document, so the shell never runs on the client at all and a navigation's
- * head is patched by `installHead`. Recorded in `DESIGN.md` P6-4.
- */
-export function HeadContent(): unknown {
-  const assets = useHeadAssets();
-  if (assets === null) return ssrHtml("");
-  const tags = resolveHead(assets.matches, { nonce: assets.nonce });
-  return ssrHtml(
-    (assets.injected ?? "") +
-      renderTags(tags) +
-      (assets.clientAssets?.css ?? [])
-        .map((href) => `<link rel="stylesheet" href="${escapeAttribute(href)}">`)
-        .join("") +
-      (assets.preload ?? "") +
-      (assets.context ?? ""),
-  );
-}
-
-/**
- * TanStack's `<Scripts />`: the BODY scripts, plus the client entry.
- *
- * Last thing in `<body>`, which is where a module entry belongs — it is
- * deferred either way, and putting it here keeps it out of the parser's path.
- * The hydration seed is NOT here: it is produced BY the render, so nothing
- * rendered during it can emit it, and the handler places it.
- */
-export function Scripts(): unknown {
-  const assets = useHeadAssets();
-  if (assets === null) return ssrHtml("");
-  const nonce = assets.nonce === undefined ? "" : ` nonce="${escapeAttribute(assets.nonce)}"`;
-  return ssrHtml(
-    renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
-      (assets.clientAssets?.scripts ?? [])
-        .map((src) => `<script type="module"${nonce} src="${escapeAttribute(src)}"></script>`)
-        .join(""),
-  );
 }
 
 /**

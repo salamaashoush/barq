@@ -244,7 +244,7 @@ export namespace JSX {
     aside: HTMLAttributes<HTMLElement>;
     audio: HTMLAttributes<HTMLAudioElement>;
     b: HTMLAttributes<HTMLElement>;
-    base: HTMLAttributes<HTMLBaseElement>;
+    base: BaseHTMLAttributes<HTMLBaseElement>;
     bdi: HTMLAttributes<HTMLElement>;
     bdo: HTMLAttributes<HTMLElement>;
     blockquote: HTMLAttributes<HTMLQuoteElement>;
@@ -284,7 +284,7 @@ export namespace JSX {
     header: HTMLAttributes<HTMLElement>;
     hgroup: HTMLAttributes<HTMLElement>;
     hr: HTMLAttributes<HTMLHRElement>;
-    html: HTMLAttributes<HTMLHtmlElement>;
+    html: HtmlHTMLAttributes<HTMLHtmlElement>;
     i: HTMLAttributes<HTMLElement>;
     iframe: HTMLAttributes<HTMLIFrameElement>;
     img: HTMLAttributes<HTMLImageElement>;
@@ -294,12 +294,12 @@ export namespace JSX {
     label: HTMLAttributes<HTMLLabelElement>;
     legend: HTMLAttributes<HTMLLegendElement>;
     li: HTMLAttributes<HTMLLIElement>;
-    link: HTMLAttributes<HTMLLinkElement>;
+    link: LinkHTMLAttributes<HTMLLinkElement>;
     main: HTMLAttributes<HTMLElement>;
     map: HTMLAttributes<HTMLMapElement>;
     mark: HTMLAttributes<HTMLElement>;
     menu: HTMLAttributes<HTMLMenuElement>;
-    meta: HTMLAttributes<HTMLMetaElement>;
+    meta: MetaHTMLAttributes<HTMLMetaElement>;
     meter: HTMLAttributes<HTMLMeterElement>;
     nav: HTMLAttributes<HTMLElement>;
     noscript: HTMLAttributes<HTMLElement>;
@@ -318,7 +318,7 @@ export namespace JSX {
     ruby: HTMLAttributes<HTMLElement>;
     s: HTMLAttributes<HTMLElement>;
     samp: HTMLAttributes<HTMLElement>;
-    script: HTMLAttributes<HTMLScriptElement>;
+    script: ScriptHTMLAttributes<HTMLScriptElement>;
     section: HTMLAttributes<HTMLElement>;
     select: HTMLAttributes<HTMLSelectElement>;
     slot: HTMLAttributes<HTMLSlotElement>;
@@ -326,7 +326,7 @@ export namespace JSX {
     source: HTMLAttributes<HTMLSourceElement>;
     span: HTMLAttributes<HTMLSpanElement>;
     strong: HTMLAttributes<HTMLElement>;
-    style: HTMLAttributes<HTMLStyleElement>;
+    style: StyleHTMLAttributes<HTMLStyleElement>;
     sub: HTMLAttributes<HTMLElement>;
     summary: HTMLAttributes<HTMLElement>;
     sup: HTMLAttributes<HTMLElement>;
@@ -557,6 +557,74 @@ export namespace JSX {
   }
 
   // Base HTML attributes
+
+  /**
+   * `<meta>`'s own attributes.
+   *
+   * These existed nowhere until the document became JSX: barq rendered the
+   * `<body>` and a string template held the head, so `charset` and `content`
+   * had never been written in TSX and nothing said they were missing.
+   */
+  interface MetaHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    charset?: FunctionMaybe<string>;
+    charSet?: FunctionMaybe<string>;
+    content?: FunctionMaybe<string>;
+    name?: FunctionMaybe<string>;
+    property?: FunctionMaybe<string>;
+    "http-equiv"?: FunctionMaybe<string>;
+    media?: FunctionMaybe<string>;
+    itemprop?: FunctionMaybe<string>;
+  }
+
+  interface LinkHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    rel?: FunctionMaybe<string>;
+    href?: FunctionMaybe<string>;
+    hreflang?: FunctionMaybe<string>;
+    type?: FunctionMaybe<string>;
+    sizes?: FunctionMaybe<string>;
+    media?: FunctionMaybe<string>;
+    as?: FunctionMaybe<string>;
+    crossorigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
+    crossOrigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
+    integrity?: FunctionMaybe<string>;
+    referrerpolicy?: FunctionMaybe<string>;
+    imagesrcset?: FunctionMaybe<string>;
+    imagesizes?: FunctionMaybe<string>;
+    color?: FunctionMaybe<string>;
+    disabled?: FunctionMaybe<boolean>;
+    fetchpriority?: FunctionMaybe<"high" | "low" | "auto">;
+  }
+
+  interface ScriptHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    src?: FunctionMaybe<string>;
+    type?: FunctionMaybe<string>;
+    async?: FunctionMaybe<boolean>;
+    defer?: FunctionMaybe<boolean>;
+    nomodule?: FunctionMaybe<boolean>;
+    nonce?: FunctionMaybe<string>;
+    integrity?: FunctionMaybe<string>;
+    crossorigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
+    crossOrigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
+    referrerpolicy?: FunctionMaybe<string>;
+    fetchpriority?: FunctionMaybe<"high" | "low" | "auto">;
+  }
+
+  interface StyleHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    media?: FunctionMaybe<string>;
+    nonce?: FunctionMaybe<string>;
+    type?: FunctionMaybe<string>;
+  }
+
+  interface BaseHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    href?: FunctionMaybe<string>;
+    target?: FunctionMaybe<string>;
+  }
+
+  interface HtmlHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    manifest?: FunctionMaybe<string>;
+    xmlns?: FunctionMaybe<string>;
+  }
+
   interface HTMLAttributes<T extends HTMLElement>
     extends DOMEventHandlers<T>, DOMEventHandlersLowerCase<T> {
     // Core attributes - all support reactive accessors

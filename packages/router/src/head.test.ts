@@ -68,7 +68,9 @@ describe("meta", () => {
 
   test("charset is a singleton whatever spelling it arrives in", () => {
     const out = html([{ meta: [{ charset: "utf-8" }] }, { meta: [{ charSet: "iso-8859-1" }] }]);
-    expect(out.match(/charset|charSet/gi)).toHaveLength(1);
+    // The ATTRIBUTE, not the ownership identity — which is also "charset".
+    expect(out.match(/\scharset=|\scharSet=/g)).toHaveLength(1);
+    expect(out).toContain("iso-8859-1");
   });
 
   test("`script:ld+json` becomes a script, and two routes' both survive", () => {
