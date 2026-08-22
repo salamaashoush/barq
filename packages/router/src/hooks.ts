@@ -49,10 +49,10 @@ export function useRouteContext<
   C extends Record<string, unknown> = Record<string, unknown>,
 >(): Cell<C> {
   const state = useRouter();
-  return (() => {
+  return () => {
     const all = state.contexts();
     return (all[all.length - 1] ?? {}) as C;
-  }) as Cell<C>;
+  };
 }
 
 /**
@@ -63,11 +63,11 @@ export function useRouteContext<
  */
 export function useMatch(routeId?: string): Cell<Route | null> {
   const state = useRouter();
-  return (() => {
+  return () => {
     const chain = state.chain();
     if (routeId === undefined) return chain[chain.length - 1] ?? null;
     return chain.find((route) => route.id === routeId) ?? null;
-  }) as Cell<Route | null>;
+  };
 }
 
 /**
@@ -112,11 +112,11 @@ export function useBlocker(blocker: Blocker): () => void {
 /** Whether there is an in-app entry to go back to. See `History.depth`. */
 export function useCanGoBack(): Cell<boolean> {
   const state = useRouter();
-  return (() => {
+  return () => {
     // Read the location so this re-evaluates when one commits.
     state.location();
     return state.canGoBack();
-  }) as Cell<boolean>;
+  };
 }
 
 /** The matched chain, outermost first. */

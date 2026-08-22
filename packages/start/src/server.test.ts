@@ -50,9 +50,9 @@ const define = <In, Out>(
   serverRpc<In, Out>(
     { id },
     {
-      validator: (schema ?? null) as never,
+      validator: schema ?? null,
       middleware: [],
-      handler: fn as never,
+      handler: fn,
     },
   );
 
@@ -63,14 +63,14 @@ describe("input is fail-closed", () => {
    * the channel costs a schema or the literal 'unchecked'.
    */
   test("a function with no validator refuses any argument", async () => {
-    mountOf(define("no-validator", (input: unknown) => ({ saw: input })) as never);
+    mountOf(define("no-validator", (input: unknown) => ({ saw: input })));
 
     const response = await handleServerFn(post("no-validator", { evil: true }));
     expect(response?.status).toBe(400);
   });
 
   test("…and still accepts a call with no argument", async () => {
-    mountOf(define("nullary", () => "ok") as never);
+    mountOf(define("nullary", () => "ok"));
 
     const response = await handleServerFn(post("nullary", undefined));
     expect(response?.status).toBe(200);
@@ -78,7 +78,7 @@ describe("input is fail-closed", () => {
   });
 
   test("a schema rejects bad input with 400 and no detail", async () => {
-    mountOf(define("checked", (n: number) => n * 2, positiveInt) as never);
+    mountOf(define("checked", (n: number) => n * 2, positiveInt));
 
     const bad = await handleServerFn(post("checked", -1));
     expect(bad?.status).toBe(400);
@@ -97,7 +97,7 @@ describe("input is fail-closed", () => {
         handler: (input) => ({ saw: input }),
       },
     );
-    mountOf(fn as never);
+    mountOf(fn);
 
     const response = await handleServerFn(post("raw", { anything: 1 }));
     expect(decodeWire<unknown>(await response?.json())).toEqual({ saw: { anything: 1 } });
@@ -133,7 +133,7 @@ describe("the wire", () => {
             return out;
           },
         },
-      ) as never,
+      ),
     );
 
     const response = await handleServerFn(
@@ -164,7 +164,7 @@ describe("the wire", () => {
 
 describe("the request is checked before the handler runs", () => {
   test("GET is refused: a mutation must not be reachable by navigation", async () => {
-    mountOf(define("m", () => "ran") as never);
+    mountOf(define("m", () => "ran"));
     const response = await handleServerFn(
       new Request(`${ORIGIN}${RPC_PREFIX}m`, { method: "GET", headers: { origin: ORIGIN } }),
     );
@@ -173,7 +173,7 @@ describe("the request is checked before the handler runs", () => {
   });
 
   test("a cross-origin call is refused", async () => {
-    mountOf(define("m", () => "ran") as never);
+    mountOf(define("m", () => "ran"));
     const response = await handleServerFn(post("m", undefined, { origin: "https://evil.test" }));
     expect(response?.status).toBe(403);
   });
@@ -213,7 +213,7 @@ describe("the request is checked before the handler runs", () => {
 
 describe("middleware and request context", () => {
   const withChain = <In, Out>(id: string, chain: Middleware[], fn: (input: In) => Out) =>
-    serverRpc<In, Out>({ id }, { validator: "unchecked", middleware: chain, handler: fn as never });
+    serverRpc<In, Out>({ id }, { validator: "unchecked", middleware: chain, handler: fn });
 
   /**
    * The hole every surveyed framework documents instead of closing. Next.js:
@@ -230,7 +230,7 @@ describe("middleware and request context", () => {
       withChain("guarded", [deny], () => {
         ran = true;
         return "secret";
-      }) as never,
+      }),
     );
 
     const response = await handleServerFn(post("guarded", undefined));
@@ -252,7 +252,7 @@ describe("middleware and request context", () => {
       withChain("ordered", [tag("a"), tag("b")], () => {
         order.push("handler");
         return null;
-      }) as never,
+      }),
     );
 
     await handleServerFn(post("ordered", undefined));
@@ -272,8 +272,8 @@ describe("middleware and request context", () => {
     mountOf(
       serverRpc<number, string>(
         { id: "guarded-checked" },
-        { validator: positiveInt as never, middleware: [deny], handler: () => "secret" },
-      ) as never,
+        { validator: positiveInt, middleware: [deny], handler: () => "secret" },
+      ),
     );
 
     const response = await handleServerFn(post("guarded-checked", -999));
@@ -281,7 +281,7 @@ describe("middleware and request context", () => {
   });
 
   test("getRequest() reaches the handler", async () => {
-    mountOf(withChain("who", [], () => getRequest().headers.get("x-probe")) as never);
+    mountOf(withChain("who", [], () => getRequest().headers.get("x-probe")));
     const response = await handleServerFn(post("who", undefined, { "x-probe": "here" }));
     expect(decodeWire<string>(await response?.json())).toBe("here");
   });
@@ -301,7 +301,7 @@ describe("middleware and request context", () => {
         // Read again after the await: if the context were module-level, the
         // other request would have overwritten it by now.
         return [first, getRequest().headers.get("x-probe")];
-      }) as never,
+      }),
     );
 
     const [a, b] = await Promise.all([
@@ -347,10 +347,10 @@ describe("progressive enhancement", () => {
           validator: "unchecked",
           middleware: [],
           handler: (form) => {
-            saw = form.get("title") as string;
+            saw = form.get("title");
           },
         },
-      ) as never,
+      ),
     );
 
     const response = await handleServerFn(submit("add-todo", { title: "buy milk" }));
@@ -369,7 +369,7 @@ describe("progressive enhancement", () => {
           middleware: [],
           handler: () => new Response(null, { status: 303, headers: { location: "/done" } }),
         },
-      ) as never,
+      ),
     );
 
     const response = await handleServerFn(submit("custom", {}));
@@ -382,7 +382,7 @@ describe("progressive enhancement", () => {
       serverRpc<FormData, void>(
         { id: "offsite" },
         { validator: "unchecked", middleware: [], handler: () => undefined },
-      ) as never,
+      ),
     );
 
     const response = await handleServerFn(
@@ -414,7 +414,7 @@ describe("progressive enhancement", () => {
             });
           },
         },
-      ) as never,
+      ),
     );
 
     // No JS: the browser posts to the form endpoint.
@@ -440,7 +440,7 @@ describe("progressive enhancement", () => {
   });
 
   test("the form path is fail-closed on input too", async () => {
-    mountOf(define("strict-form", () => "ran") as never);
+    mountOf(define("strict-form", () => "ran"));
     const response = await handleServerFn(submit("strict-form", { anything: "1" }));
     expect(response?.status).toBe(400);
   });
@@ -451,7 +451,7 @@ describe("progressive enhancement", () => {
       serverRpc<FormData, void>(
         { id: "guarded-form" },
         { validator: "unchecked", middleware: [], handler: () => undefined },
-      ) as never,
+      ),
     );
     const response = await handleServerFn(
       submit("guarded-form", {}, { origin: "https://evil.test" }),
@@ -467,7 +467,7 @@ describe("the registry", () => {
    * chain to reach into.
    */
   test("a prototype name is not callable", async () => {
-    mountOf(define("real", () => "ran") as never);
+    mountOf(define("real", () => "ran"));
     for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
       const response = await handleServerFn(post(name, undefined));
       expect(response?.status, name).toBe(404);
@@ -475,8 +475,8 @@ describe("the registry", () => {
   });
 
   test("export-ness decides the surface, and it is reviewable", () => {
-    mountOf(define("a", () => 1) as never);
-    mountOf(define("b", () => 2) as never);
+    mountOf(define("a", () => 1));
+    mountOf(define("b", () => 2));
     // A server function that is never mounted has no id on the wire, and is
     // still callable in-process by its siblings.
     const internal = define("c", () => 3);
@@ -485,7 +485,7 @@ describe("the registry", () => {
   });
 
   test("two functions cannot claim one id", () => {
-    mountOf(define("dup", () => 1) as never);
+    mountOf(define("dup", () => 1));
     expect(() => mountOf(define("dup", () => 2) as never)).toThrow(/claim the id/);
   });
 
@@ -502,7 +502,10 @@ describe("the registry", () => {
  */
 describe("the fetch handler", () => {
   test("answers a server function and delegates everything else", async () => {
-    mount("greet", define("greet", () => "hi") as never);
+    mount(
+      "greet",
+      define("greet", () => "hi"),
+    );
     const page = createFetchHandler({
       fetch: () => new Response("a page", { status: 200 }),
     });
@@ -520,7 +523,10 @@ describe("the fetch handler", () => {
    * quietly answered with HTML.
    */
   test("a page handler cannot shadow a server function", async () => {
-    mount("shadowed", define("shadowed", () => "real") as never);
+    mount(
+      "shadowed",
+      define("shadowed", () => "real"),
+    );
     const page = createFetchHandler({ fetch: () => new Response("<html>", { status: 200 }) });
 
     const response = await page(post("shadowed", undefined));

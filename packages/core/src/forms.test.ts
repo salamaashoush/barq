@@ -9,7 +9,7 @@ import { captureCaret, coerceLive, holdsLive, restoreCaret, writeLive } from "./
  * on the cases a fixture would need a whole component to reach.
  */
 
-function attach<T extends HTMLElement>(html: string): T {
+function attach(html: string): HTMLElement {
   const host = document.createElement("div");
   host.innerHTML = html;
   document.body.appendChild(host);

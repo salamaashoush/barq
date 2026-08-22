@@ -66,7 +66,7 @@ import {
   type Channel,
 } from "./dom.ts";
 import { boundary, branch, each, portal } from "./flow.ts";
-import type { Block, Cell, Scope } from "./scope.ts";
+import type { Cell, Scope } from "./scope.ts";
 
 export type Slot = () => unknown;
 
@@ -194,10 +194,10 @@ export function interp(s: Scope | null, unit: Unit, slots: readonly Slot[]): Nod
   return nodes[0];
 }
 
-function walk(nodes: readonly Node[], ref: Ref): Node {
-  const [kind, base, hops] = ref;
+function walk(nodes: readonly Node[], step: Ref): Node {
+  const [kind, base, hops] = step;
   if (kind === "root" || base === null) {
-    throw new Error(`barq interp: ref ${kind} has no base to walk from`);
+    throw new Error(`barq interp: step ${kind} has no base to walk from`);
   }
   let node: Node | null = nodes[base];
   if (kind === "firstChild") node = node.firstChild;
@@ -313,12 +313,7 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
           boundary(s, parent, anchor, op[3], at(op[7]), at(op[5]), flags, at(op[8]));
           return;
         default:
-          insert(
-            s,
-            parent,
-            portal(s, at(op[4]), at(op[5]) as Block<unknown>, flags) as never,
-            anchor ?? undefined,
-          );
+          insert(s, parent, portal(s, at(op[4]), at(op[5]), flags), anchor ?? undefined);
           return;
       }
     }

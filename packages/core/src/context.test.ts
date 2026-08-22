@@ -113,14 +113,14 @@ describe("scope (detached mode = root)", () => {
     let effectRuns = 0;
     let cleanupRuns = 0;
 
-    const dispose = root((dispose) => {
+    const dispose = root((disposeRoot) => {
       effect(() => {
         effectRuns++;
         onCleanup(() => {
           cleanupRuns++;
         });
       });
-      return dispose;
+      return disposeRoot;
     });
 
     expect(effectRuns).toBe(1);
@@ -133,8 +133,8 @@ describe("scope (detached mode = root)", () => {
   });
 
   test("should return result", () => {
-    const result = root((dispose) => {
-      dispose();
+    const result = root((disposeRoot) => {
+      disposeRoot();
       return 10;
     });
 
@@ -171,9 +171,9 @@ describe("scope (detached mode = root)", () => {
 
   test("should not throw if dispose called during active disposal process", () => {
     expect(() => {
-      root((dispose) => {
-        onCleanup(() => dispose());
-        dispose();
+      root((disposeRoot) => {
+        onCleanup(() => disposeRoot());
+        disposeRoot();
       });
     }).not.toThrow();
   });
@@ -183,7 +183,7 @@ describe("scope (attached mode)", () => {
   test("should auto-dispose when parent disposes", () => {
     let childDisposed = false;
 
-    const dispose = scope((dispose) => {
+    const dispose = scope((disposeRoot) => {
       // Child scope (attached by default)
       scope(() => {
         onCleanup(() => {
@@ -191,7 +191,7 @@ describe("scope (attached mode)", () => {
         });
       });
 
-      return dispose;
+      return disposeRoot;
     }, true); // Parent is detached
 
     expect(childDisposed).toBe(false);
@@ -203,7 +203,7 @@ describe("scope (attached mode)", () => {
     let childDisposed = false;
     let childDisposeRef: (() => void) | null = null;
 
-    const dispose = scope((dispose) => {
+    const dispose = scope((disposeRoot) => {
       // Child scope (detached)
       scope((childDispose) => {
         childDisposeRef = childDispose;
@@ -212,7 +212,7 @@ describe("scope (attached mode)", () => {
         });
       }, true); // detached
 
-      return dispose;
+      return disposeRoot;
     }, true);
 
     expect(childDisposed).toBe(false);
@@ -230,13 +230,13 @@ describe("cleanup order (LIFO)", () => {
   test("should clean up in reverse order", () => {
     const disposals: string[] = [];
 
-    const dispose = root((dispose) => {
+    const dispose = root((disposeRoot) => {
       effect(() => {
         onCleanup(() => disposals.push("A"));
         onCleanup(() => disposals.push("B"));
         onCleanup(() => disposals.push("C"));
       });
-      return dispose;
+      return disposeRoot;
     });
 
     dispose();
@@ -248,7 +248,7 @@ describe("cleanup order (LIFO)", () => {
   test("should dispose children before parent", () => {
     const disposals: string[] = [];
 
-    const dispose = root((dispose) => {
+    const dispose = root((disposeRoot) => {
       onCleanup(() => disposals.push("ROOT"));
 
       scope(() => {
@@ -265,7 +265,7 @@ describe("cleanup order (LIFO)", () => {
         });
       });
 
-      return dispose;
+      return disposeRoot;
     });
 
     dispose();
@@ -278,13 +278,13 @@ describe("cleanup order (LIFO)", () => {
   test("should run onCleanup in reverse registration order within effect", () => {
     const order: number[] = [];
 
-    const dispose = root((dispose) => {
+    const dispose = root((disposeRoot) => {
       effect(() => {
         onCleanup(() => order.push(1));
         onCleanup(() => order.push(2));
         onCleanup(() => order.push(3));
       });
-      return dispose;
+      return disposeRoot;
     });
 
     dispose();

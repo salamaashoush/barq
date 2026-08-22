@@ -19,7 +19,7 @@
 
 /** What `element[name] = value` would coerce to, for a DOMString property. */
 function stringify(value: unknown): string {
-  return typeof value === "string" ? value : String(value as string);
+  return typeof value === "string" ? value : String(value);
 }
 
 /** The property's value as the DOM would hold it after `element[name] = value`. */

@@ -91,7 +91,7 @@ test("and the shape that DOES orphan it is a fragment handed over as a parent", 
       () => document.createTextNode("A"),
       () => document.createTextNode("B"),
     ]);
-    return frag as unknown as Node;
+    return frag;
   });
 
   resolve("ok");

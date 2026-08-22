@@ -238,12 +238,12 @@ describe("useFetch", () => {
     const seen: string[] = [];
     const original = globalThis.fetch;
     globalThis.fetch = (async (url: string) => {
-      seen.push(String(url));
+      seen.push(url);
       return {
         ok: true,
         status: 200,
         statusText: "OK",
-        json: async () => ({ url: String(url) }),
+        json: async () => ({ url }),
       } as unknown as Response;
     }) as typeof fetch;
 

@@ -340,10 +340,7 @@ function delegatedEventHandler(e: Event): void {
         }
         if (e.cancelBubble) return;
       }
-      node =
-        (node.parentNode as Node | null) ??
-        ((node as Partial<ShadowRoot>).host as Node | undefined) ??
-        null;
+      node = node.parentNode ?? ((node as Partial<ShadowRoot>).host as Node | undefined) ?? null;
     }
   } finally {
     // The override outlives the walk otherwise, so anything reading
@@ -726,13 +723,13 @@ function applyRefs(element: Element, value: unknown): (() => void)[] {
   const one = (target: unknown): void => {
     refuseBlock(target, "ref");
     if (isRefCallback(target)) {
-      const back = (target as (el: Element) => unknown)(element);
+      const back = target(element);
       // The LAUNDERED shape: an un-compiled caller wrapping a forwarded prop in
       // `() => x` carries no brand, so the test above walks past it and the
       // Block arrives here as the "cleanup" the callback returned. Registering
       // it as a cleanup would run a Block at disposal with no arguments at all.
       refuseBlock(back, "ref");
-      if (typeof back === "function") undo.push(back as () => void);
+      if (typeof back === "function") undo.push(back);
     } else if (isObject(target) && "current" in target) {
       setProperty(target, "current", element);
     }
@@ -812,9 +809,7 @@ export function formAction(s: Scope | null, form: HTMLFormElement, value: unknow
     // and dropping it would make every submitter look alike.
     const submitter = (event as SubmitEvent).submitter;
     const data =
-      submitter instanceof HTMLElement
-        ? new FormData(form, submitter as HTMLButtonElement)
-        : new FormData(form);
+      submitter instanceof HTMLElement ? new FormData(form, submitter) : new FormData(form);
     (handler as (data: FormData, event: Event) => unknown)(data, event);
   });
 }
@@ -1035,7 +1030,7 @@ export function bindValue(
     writeLive(element, name, next);
   };
 
-  const edits = isSignalGetter(value) ? editsOf(value as unknown as object) : null;
+  const edits = isSignalGetter(value) ? editsOf(value) : null;
   if (edits !== null) {
     ownedBy(given, "bind", () => {
       renderEffect(() => {
@@ -1096,7 +1091,7 @@ function channelOf(key: string, isSvg: boolean, tag: string): Channel {
   if (key === "dangerouslySetInnerHTML") return setHtml;
   // §3.10.1 before the plain property channel: these are properties too, and
   // what separates them is who else writes them.
-  if (!isSvg && isUserMutable(tag, key)) return setLive as Channel;
+  if (!isSvg && isUserMutable(tag, key)) return setLive;
   // Form-field exceptions stay properties (value, checked, selected, ...). The
   // runtime takes that branch only outside the SVG namespace.
   if (!isSvg && key in DOM_PROPS) return setDomProp;
@@ -1132,6 +1127,10 @@ function diffStyleObjects(
   next: Record<string, unknown>,
   prev: StyleMap | null,
 ): StyleMap {
+  // The rule is WRONG here and `tsc` says so: `defineProperty<T>(o: T)`
+  // returns `T`, so without the annotation `applied` is `{}` and every
+  // write below is TS7053. `oxlint --fix` removed it and broke the build.
+  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion
   const applied = Object.defineProperty({} as StyleMap, STYLE_MAP, { value: true });
 
   for (const prop in next) {
@@ -1141,7 +1140,7 @@ function diffStyleObjects(
     // Per-property reactive values keep their own effect (static object case)
     if (isSignalGetter(raw)) {
       renderEffect(() => {
-        setStylePropDirect(style, cssProp, (raw as () => unknown)());
+        setStylePropDirect(style, cssProp, raw());
       });
       continue;
     }
@@ -1187,6 +1186,10 @@ function diffClassList(
   next: Record<string, unknown> | null,
   prev: ClassMap | null,
 ): ClassMap {
+  // The rule is WRONG here and `tsc` says so: `defineProperty<T>(o: T)`
+  // returns `T`, so without the annotation `applied` is `{}` and every
+  // write below is TS7053. `oxlint --fix` removed it and broke the build.
+  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion
   const applied = Object.defineProperty({} as ClassMap, CLASS_MAP, { value: true });
   const tokens = element.classList;
 
@@ -1196,7 +1199,7 @@ function diffClassList(
     // Per-key reactive values keep their own effect (static object case)
     if (isSignalGetter(raw)) {
       renderEffect(() => {
-        toggleClassTokens(tokens, key, Boolean((raw as () => unknown)()));
+        toggleClassTokens(tokens, key, Boolean(raw()));
       });
       continue;
     }
@@ -1254,7 +1257,7 @@ export function styleToString(value: unknown): string | null {
   let css = "";
   for (const prop in value) {
     let raw: unknown = value[prop];
-    if (isSignalGetter(raw)) raw = (raw as () => unknown)();
+    if (isSignalGetter(raw)) raw = raw();
     if (raw === null || raw === undefined || raw === false) continue;
     const cssProp = toKebabCase(prop);
     const cssValue =
@@ -1356,8 +1359,8 @@ function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Nod
       return;
     }
 
-    if (isSsrHtml(child as unknown)) {
-      for (const node of ssrHtmlNodes(child as unknown as { readonly t: string })) out.push(node);
+    if (isSsrHtml(child)) {
+      for (const node of ssrHtmlNodes(child)) out.push(node);
       return;
     }
 
@@ -1623,7 +1626,7 @@ export function insert(
   // the moment one of them re-renders from empty it lands after its siblings
   // instead of between them. That is the interleaving `Anchor::Marker` is
   // mandatory for (DESIGN P5 rule 2), and a single range has no way to hit it.
-  if (isArray(value) && (value as Child[]).some(holdsAFunction)) {
+  if (isArray(value) && value.some(holdsAFunction)) {
     insert(s, parent, () => value as Child, marker, mode);
     return;
   }
@@ -1708,15 +1711,15 @@ export function insert(
   // A static hole under a claim: the same reconcile, seeded with the server's
   // nodes, so a value that matches costs no write at all.
   if (claim !== null) {
-    detectTextDrift(claim.nodes, value as Child);
-    applyInsert(parent, value as Child, claim.nodes, anchor, given);
+    detectTextDrift(claim.nodes, value);
+    applyInsert(parent, value, claim.nodes, anchor, given);
     return;
   }
 
   if (value instanceof Node) {
     parent.insertBefore(value, anchor);
-  } else if (isSsrHtml(value as unknown)) {
-    for (const node of ssrHtmlNodes(value as unknown as { readonly t: string })) {
+  } else if (isSsrHtml(value)) {
+    for (const node of ssrHtmlNodes(value)) {
       parent.insertBefore(node, anchor);
     }
   } else if (Array.isArray(value)) {
@@ -1935,7 +1938,7 @@ export function spread(
     // FUNCTION in the style key, and `setStyle` returns `prev` for one. A Cell
     // there applied nothing at all and a Block landed in the one Cell slot on
     // this surface that neither threw nor rendered.
-    const resolved = isSignalGetter(value) ? (value as () => unknown)() : value;
+    const resolved = isSignalGetter(value) ? value() : value;
     applied[key] = channelOf(key, isSvg, element.tagName)(
       element,
       attrNameOf(key, isSvg),
@@ -1980,7 +1983,7 @@ export function spread(
  */
 function holdsAFunction(child: Child): boolean {
   if (typeof child === "function") return true;
-  return isArray(child) && (child as Child[]).some(holdsAFunction);
+  return isArray(child) && child.some(holdsAFunction);
 }
 
 export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[] {
@@ -1996,8 +1999,8 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
     return [child];
   }
 
-  if (isSsrHtml(child as unknown)) {
-    return ssrHtmlNodes(child as unknown as { readonly t: string });
+  if (isSsrHtml(child)) {
+    return ssrHtmlNodes(child);
   }
 
   // §3.0 rules 1-2: a Cell ignores the argument, a Block needs it, and one
@@ -2088,8 +2091,7 @@ export function render(
   }
   let element: JSXElement;
   try {
-    element =
-      typeof block === "function" ? (block as (s: Scope | null) => JSXElement)(root) : block;
+    element = typeof block === "function" ? block(root) : block;
     insertRendered(root, element, container);
   } finally {
     exit(root);
@@ -2119,11 +2121,11 @@ function insertRendered(scope: Scope | null, element: JSXElement, container: HTM
   // `Out` admits `Cell<Out>` (§3.0). A mount whose block returned one is a live
   // hole at the root, so it is inserted as one rather than stringified.
   if (typeof element === "function") {
-    insert(scope, container, element as unknown as () => Child);
+    insert(scope, container, element);
     return;
   }
-  if (isSsrHtml(element as unknown)) {
-    for (const node of ssrHtmlNodes(element as unknown as { readonly t: string })) {
+  if (isSsrHtml(element)) {
+    for (const node of ssrHtmlNodes(element)) {
       container.appendChild(node);
     }
     return;
@@ -2438,6 +2440,10 @@ export interface HydrationOutcome extends HydrationReport {
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export declare namespace hydrate {
   // eslint-disable-next-line no-var
+  // `hydrate.report` is the public name and the module-level `report` is the
+  // mismatch reporter; the collision is between an API and an internal, and
+  // only one of them is free to move.
+  // oxlint-disable-next-line no-shadow
   export let report: HydrationOutcome;
 }
 hydrate.report = {

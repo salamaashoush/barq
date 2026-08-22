@@ -150,7 +150,7 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
       return null;
     }
 
-    const segment = segments[index] as string;
+    const segment = segments[index];
 
     // Static first. A literal is more specific than anything that could also
     // match it, and taking this edge first is the whole of the ranking rule.

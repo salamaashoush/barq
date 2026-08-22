@@ -128,7 +128,7 @@ group("verifyRouteChains", () => {
     const violations = verifyRouteChains({
       routes,
       reachability: new Map([["/admin", new Set(["x"])]]),
-      lookup: (id) => (id === "x" ? (withLookalike as never) : undefined),
+      lookup: (id) => (id === "x" ? withLookalike : undefined),
     });
     expect(violations).toEqual([{ routeId: "/admin", serverFnId: "x", missing: 1 }]);
   });

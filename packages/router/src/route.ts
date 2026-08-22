@@ -11,7 +11,7 @@
 import type { Child, Component, Scope } from "@barqjs/core";
 
 import type { FlatRoute } from "./matcher.ts";
-import { type Segment, joinPattern, normalize, parsePattern } from "./path.ts";
+import { joinPattern, normalize, parsePattern } from "./path.ts";
 
 /** What a route component is handed. */
 export interface RouteProps<
@@ -442,7 +442,7 @@ export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<R
       out.push({
         id,
         fullPath,
-        segments: parsePattern(fullPath) as Segment[],
+        segments: parsePattern(fullPath),
         chain,
       });
     }
@@ -454,8 +454,8 @@ export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<R
 
 /** The pattern a route id addresses, for `<Link to>` and for interpolation. */
 export function pathOf(routes: readonly FlatRoute<Route>[], id: string): string | null {
-  for (const route of routes) {
-    if (route.id === id) return normalize(route.fullPath);
+  for (const entry of routes) {
+    if (entry.id === id) return normalize(entry.fullPath);
   }
   return null;
 }
@@ -477,13 +477,13 @@ export type { Scope };
  */
 export async function preloadMatched(chain: readonly Route[]): Promise<void> {
   const loads: Promise<void>[] = [];
-  for (const route of chain) {
-    for (const candidate of [route.definition.component, route.definition.pending]) {
+  for (const matched of chain) {
+    for (const candidate of [matched.definition.component, matched.definition.pending]) {
       const preload = (candidate as { preload?: () => Promise<void> } | undefined)?.preload;
       if (typeof preload === "function") loads.push(preload());
     }
   }
-  // `allSettled`: a chunk that fails to load is the route's own error to report
+  // `allSettled`: a chunk that fails to load is the matched's own error to report
   // when it renders, and refusing to hydrate the whole page over it would turn
   // one broken route into a blank document.
   await Promise.allSettled(loads);

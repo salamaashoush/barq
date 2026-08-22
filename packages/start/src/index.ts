@@ -162,11 +162,11 @@ export function createServerFn(): ServerFnBuilder<undefined, unknown> {
       return builder;
     },
     validator(schema) {
-      built.validator = schema as Validator<unknown>;
+      built.validator = schema;
       return builder as never;
     },
     handler(fn) {
-      built.handler = fn as (input: unknown) => unknown;
+      built.handler = fn;
       return serverRpc({ id: "" }, built) as never;
     },
   };
@@ -193,7 +193,7 @@ export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): S
     return (await next()) as Out;
   };
 
-  return Object.assign(call, { [SERVER_FN]: true as const, meta, built }) as ServerFn<In, Out>;
+  return Object.assign(call, { [SERVER_FN]: true as const, meta, built });
 }
 
 /**
@@ -223,7 +223,7 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
     if (!response.ok) throw new Error(`server function ${id} failed: ${response.status}`);
     return decodeWire<Out>(await response.json());
   };
-  return Object.assign(call, { [SERVER_FN]: true as const, meta: { id } }) as ServerFn<In, Out>;
+  return Object.assign(call, { [SERVER_FN]: true as const, meta: { id } });
 }
 
 /**

@@ -238,12 +238,12 @@ describe("Loading component", () => {
     container.appendChild(node as Node);
 
     // Should show loading initially
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((wake) => setTimeout(wake, 10));
     expect(container.textContent).toContain("Loading");
 
     // Resolve the promise
     resolvePromise("Data loaded");
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((wake) => setTimeout(wake, 50));
     expect(container.textContent).toContain("Data loaded");
   });
 });
@@ -319,7 +319,7 @@ describe("Portal component", () => {
 
       container.appendChild(node as Node);
 
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((wake) => setTimeout(wake, 10));
 
       expect(target.textContent).toContain("Portal content");
     } finally {
@@ -352,12 +352,12 @@ describe("Portal component", () => {
         container.appendChild(node as Node);
       });
 
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((wake) => setTimeout(wake, 10));
       expect(target.textContent).toContain("Content");
 
       // Dispose the scope - this should clean up the portal
       disposeScope();
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((wake) => setTimeout(wake, 10));
 
       // Portal content should be cleaned up
       expect(target.textContent).toBe("");

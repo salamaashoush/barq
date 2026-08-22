@@ -11,6 +11,7 @@ import {
   computed,
   scope,
   enterRoot,
+  exit,
   flush,
   signal,
   type Scope,
@@ -90,7 +91,7 @@ describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
 
   test("component receives children prop", () => {
     const Wrapper = (_s: unknown, props: { children: unknown }) => {
-      return element(null, "div", { class: "wrapper", children: props.children as string });
+      return element(null, "div", { class: "wrapper", children: props.children });
     };
 
     const el = Wrapper(null, { children: "content" }) as HTMLDivElement;
@@ -177,8 +178,8 @@ describe("Ref handling", () => {
   test("ref callback is called with element", () => {
     let refEl: Element | null = null;
     const el = element(null, "div", {
-      ref: (el: Element) => {
-        refEl = el;
+      ref: (node: Element) => {
+        refEl = node;
       },
     }) as HTMLDivElement;
 
@@ -622,12 +623,12 @@ describe("render function", () => {
   });
 
   test("renders string directly", () => {
-    render("hello" as unknown as Node, container);
+    render("hello", container);
     expect(container.textContent).toBe("hello");
   });
 
   test("renders number directly", () => {
-    render(42 as unknown as Node, container);
+    render(42, container);
     expect(container.textContent).toBe("42");
   });
 
@@ -742,7 +743,7 @@ describe("Memory and cleanup", () => {
       };
 
       const el = element(null, "div", { children: trackedText });
-      container.appendChild(el as Node);
+      container.appendChild(el);
     });
 
     expect(effectRuns).toBe(1);
@@ -773,7 +774,7 @@ describe("Memory and cleanup", () => {
       };
 
       const el = element(null, "div", { style: { color: trackedColor } });
-      container.appendChild(el as Node);
+      container.appendChild(el);
     });
 
     expect(effectRuns).toBe(1);
@@ -887,7 +888,7 @@ describe("BUG: textNode stale reference", () => {
     expect(el.textContent).toContain("initial");
 
     // Change to a node
-    content.set(element(null, "span", { children: "node" }) as Node);
+    content.set(element(null, "span", { children: "node" }));
     flush();
     expect(el.querySelector("span")).not.toBeNull();
 
@@ -899,9 +900,9 @@ describe("BUG: textNode stale reference", () => {
 
     // Rapid changes
     content.set("text1");
-    content.set(element(null, "div", { children: "div" }) as Node);
+    content.set(element(null, "div", { children: "div" }));
     content.set("text2");
-    content.set(element(null, "span", { children: "span" }) as Node);
+    content.set(element(null, "span", { children: "span" }));
     content.set("final");
     flush();
 
@@ -1063,10 +1064,19 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     // And the refusal that goes with it: `style` was the one key on this
     // surface where a Block neither threw nor rendered.
     const leaf = block(() => document.createTextNode("built"));
-    expect(() => {
-      const el = document.createElement("i");
-      spread(enterRoot(), el, () => ({ style: leaf }));
-    }).toThrow(ScopeMissingError);
+    // `exit`ed in a `finally`: `enterRoot` sets `CURRENT` and the throw below
+    // walks past the restore, so without this the root stays current for every
+    // test file that runs after this one — which is how `context.test.ts`'s two
+    // "outside owner" cases came to pass only by file order.
+    const root = enterRoot();
+    try {
+      expect(() => {
+        const target = document.createElement("i");
+        spread(root, target, () => ({ style: leaf }));
+      }).toThrow(ScopeMissingError);
+    } finally {
+      exit(root);
+    }
   });
 
   test("E2.2: a throw out of a spread-bound handler reaches the enclosing boundary", () => {

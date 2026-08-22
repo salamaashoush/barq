@@ -23,11 +23,11 @@ function mountWithFallback(component: (s: Scope | null, p: unknown) => unknown) 
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
-    ((s: Scope | null) =>
+    (s: Scope | null) =>
       Loading(s, {
         fallback: () => document.createTextNode("loading"),
         children: (inner: Scope | null) => component(inner, {}),
-      })) as never,
+      }),
     host,
   );
   flush();
@@ -43,7 +43,7 @@ describe("lazy", () => {
       return { default: () => document.createTextNode("arrived") };
     });
 
-    const { host, dispose } = mountWithFallback(Late as never);
+    const { host, dispose } = mountWithFallback(Late);
     expect(host.textContent).toBe("loading");
 
     await settled();
@@ -64,7 +64,7 @@ describe("lazy", () => {
     expect(loads).toBe(1);
 
     // Already settled, so the fallback is never shown.
-    const { host, dispose } = mountWithFallback(Late as never);
+    const { host, dispose } = mountWithFallback(Late);
     expect(host.textContent).toBe("arrived");
     expect(loads).toBe(1);
     dispose();
@@ -76,7 +76,7 @@ describe("lazy", () => {
       (module) => module.Page,
     );
     await Late.preload();
-    const { host, dispose } = mountWithFallback(Late as never);
+    const { host, dispose } = mountWithFallback(Late);
     expect(host.textContent).toBe("named");
     dispose();
   });
@@ -92,13 +92,13 @@ describe("lazy", () => {
       return { default: () => document.createTextNode("arrived") };
     });
 
-    const first = mountWithFallback(Late as never);
+    const first = mountWithFallback(Late);
     expect(first.host.textContent).toBe("loading");
     first.dispose();
 
     await settled();
 
-    const second = mountWithFallback(Late as never);
+    const second = mountWithFallback(Late);
     flush();
     expect(second.host.textContent).toBe("arrived");
     expect(loads).toBe(1);

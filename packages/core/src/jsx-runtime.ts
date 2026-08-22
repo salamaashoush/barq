@@ -180,12 +180,14 @@ export namespace JSX {
   /**
    * Accessor type - a function that returns a value reactively
    */
+  // oxlint-disable-next-line no-shadow
   export type Accessor<T> = () => T;
 
   /**
    * FunctionMaybe - value can be static or a reactive accessor
    * This is the core pattern for reactive attributes
    */
+  // oxlint-disable-next-line no-shadow
   export type FunctionMaybe<T> = T | Accessor<T>;
 
   /**

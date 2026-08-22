@@ -193,7 +193,7 @@ async function settleNested<T>(value: T, seen: WeakSet<object> = new WeakSet()):
   // encoder carries cycles on purpose — a first version of this walk copied
   // every object and turned a cyclic seed into an eight-deep tree, which the
   // codec's own test caught.
-  if (seen.has(value as object)) return value;
+  if (seen.has(value)) return value;
 
   if (Array.isArray(value)) {
     seen.add(value as object);
@@ -211,7 +211,7 @@ async function settleNested<T>(value: T, seen: WeakSet<object> = new WeakSet()):
   // Plain objects only: a `Map`, a `Date` or a class instance is handed over as
   // it stands, so nothing this walk touches changes how the encoder sees it.
   if (Object.getPrototypeOf(value) !== Object.prototype) return value;
-  seen.add(value as object);
+  seen.add(value);
   let moved = false;
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
@@ -570,6 +570,11 @@ export function renderToStream(
         // resolved, which is not streaming — it is the shell followed by
         // everything at once. A resumed boundary may park boundaries of its
         // own, so the queue is drained rather than iterated once.
+        // `ended` is set by `end()` — the deadline timer and the caller's
+        // `AbortSignal` — and this loop awaits, so it flips BETWEEN rounds and
+        // never inside one. The rule cannot see that; the alternative it is
+        // warning about is exactly the unbounded loop this condition bounds.
+        // oxlint-disable-next-line no-unmodified-loop-condition
         while (parked.length > 0 && !ended) {
           const round = parked.splice(0, parked.length);
           const again: Continuation[] = [];

@@ -114,7 +114,7 @@ export function action<Args extends unknown[], R>(
 
       const value = await result;
       completeAction(ctx);
-      return value as R;
+      return value;
     } catch (err) {
       completeAction(ctx);
       throw err;
@@ -272,20 +272,23 @@ export function optimisticStore<T extends object>(seed: T): Store<T> {
   const buffer = (): Record<PropertyKey, unknown> =>
     (readingLatest() ? base : view) as Record<PropertyKey, unknown>;
 
-  const routed = new Proxy({} as object, {
-    get(_ignored, key) {
-      if (probingPending() && layers().length > 0) notePendingLane();
-      return buffer()[key];
+  const routed = new Proxy(
+    {},
+    {
+      get(_ignored, key) {
+        if (probingPending() && layers().length > 0) notePendingLane();
+        return buffer()[key];
+      },
+      has: (_ignored, key) => key in buffer(),
+      ownKeys: () => Reflect.ownKeys(unwrap(buffer() as object)),
+      getOwnPropertyDescriptor: (_ignored, key) => {
+        if (!Object.hasOwn(unwrap(buffer() as object), key)) return undefined;
+        return { configurable: true, enumerable: true, writable: false, value: buffer()[key] };
+      },
+      set: () => false,
+      deleteProperty: () => false,
     },
-    has: (_ignored, key) => key in buffer(),
-    ownKeys: () => Reflect.ownKeys(unwrap(buffer() as object)),
-    getOwnPropertyDescriptor: (_ignored, key) => {
-      if (!Object.hasOwn(unwrap(buffer() as object), key)) return undefined;
-      return { configurable: true, enumerable: true, writable: false, value: buffer()[key] };
-    },
-    set: () => false,
-    deleteProperty: () => false,
-  }) as Store<T>[0];
+  ) as Store<T>[0];
 
   const derive = (): void => {
     const next = structuredClone(unwrap(base as unknown as T)) as unknown as Record<
@@ -303,7 +306,7 @@ export function optimisticStore<T extends object>(seed: T): Store<T> {
   };
 
   const optimisticSet = ((...args: unknown[]) => {
-    const layer = claimLayer(layers, owned, () => ({ calls: [] }) as StoreLayer, derive);
+    const layer = claimLayer(layers, owned, () => ({ calls: [] }), derive);
     if (layer === null) {
       (setBase as (...a: unknown[]) => void)(...args);
     } else {

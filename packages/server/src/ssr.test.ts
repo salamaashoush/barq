@@ -46,10 +46,7 @@ import {
  * failure, and one that under-escapes is an XSS hole.
  */
 function oracleText(value: unknown): string {
-  return renderToString(() => element(null, "p", { children: value as never })).replace(
-    /^<p>|<\/p>$/g,
-    "",
-  );
+  return renderToString(() => element(null, "p", { children: value })).replace(/^<p>|<\/p>$/g, "");
 }
 
 function oracleAttr(value: unknown): string {
@@ -279,7 +276,7 @@ describe("attributes", () => {
       ["option", "selected", true],
       ["option", "value", "hi"],
     ] as Array<[string, string, unknown]>) {
-      const oracle = renderToString(() => element(null, tag, { [name]: value }) as never);
+      const oracle = renderToString(() => element(null, tag, { [name]: value }));
       expect(oracle, `${tag}.${name}`).toBe(
         `<${tag}${attr(name, value, tag)}></${tag}>`.replace("></input>", ">"),
       );
@@ -363,7 +360,7 @@ describe("attributes", () => {
         undefined,
         0,
       ] as unknown[]) {
-        const oracle = renderToString(() => element(null, "div", { [name]: value }) as never);
+        const oracle = renderToString(() => element(null, "div", { [name]: value }));
         const string = `<div${attr(name, value, "div")}></div>`;
         if (oracle !== string) {
           wrong.push(`${name}=${JSON.stringify(value)}: DOM ${oracle} vs string ${string}`);
@@ -374,15 +371,9 @@ describe("attributes", () => {
 
     // Both answers are really reached, so neither clause is vacuous — and the
     // empty one is the one that regressed.
-    expect(renderToString(() => element(null, "div", { class: "" }) as never)).toBe(
-      '<div class=""></div>',
-    );
-    expect(renderToString(() => element(null, "div", { class: null }) as never)).toBe(
-      "<div></div>",
-    );
-    expect(renderToString(() => element(null, "div", { classList: {} }) as never)).toBe(
-      "<div></div>",
-    );
+    expect(renderToString(() => element(null, "div", { class: "" }))).toBe('<div class=""></div>');
+    expect(renderToString(() => element(null, "div", { class: null }))).toBe("<div></div>");
+    expect(renderToString(() => element(null, "div", { classList: {} }))).toBe("<div></div>");
   });
 
   test("spreadAttrs writes the object in its own key order", () => {
@@ -422,16 +413,14 @@ describe("the six string-inlinable flow components", () => {
     const boxed = ssrFor(null, {
       each: rows,
       keyed: cell((item: { n: string }) => item.n),
-      children: ((_s: unknown, item: () => { n: string }) =>
-        html(`<li>${esc(item().n)}</li>`)) as never,
+      children: (_s: unknown, item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
     });
     expect(boxed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
     // `keyed: false` is the positional mode, whose row item is an accessor.
     const unkeyed = ssrFor(null, {
       each: rows,
       keyed: false,
-      children: ((_s: unknown, item: () => { n: string }) =>
-        html(`<li>${esc(item().n)}</li>`)) as never,
+      children: (_s: unknown, item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
     });
     expect(unkeyed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
   });
@@ -456,8 +445,7 @@ describe("the six string-inlinable flow components", () => {
       { each: rows },
       { keyed },
       {
-        children: ((_s: unknown, item: () => { n: string }) =>
-          html(`<li>${esc(item().n)}</li>`)) as never,
+        children: (_s: unknown, item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
       },
     ]) as never;
 
@@ -478,10 +466,10 @@ describe("the six string-inlinable flow components", () => {
     const out = ssrFor(null, {
       each: ["a", "b"],
       keyed: false,
-      children: ((_s: unknown, item: () => string, index: number) => {
+      children: (_s: unknown, item: () => string, index: number) => {
         seen.push(index);
         return html(`<i>${esc(item())}</i>`);
-      }) as never,
+      },
     });
     expect(out.toString()).toBe("<i>a</i><i>b</i>");
     expect(seen).toEqual([0, 1]);
@@ -537,8 +525,8 @@ describe("the six string-inlinable flow components", () => {
       ssrSwitch(null, { children: [ssrMatch(null, { when: 0, children: "a" })] }).toString(),
     ).toBe("");
     // Identity, exactly as the client component is.
-    const props = { when: 1, children: "x" };
-    expect(ssrMatch(null, props)).toBe(props);
+    const identity = { when: 1, children: "x" };
+    expect(ssrMatch(null, identity)).toBe(identity);
   });
 
   /**
@@ -566,8 +554,8 @@ describe("the six string-inlinable flow components", () => {
         ssrFor(null, {
           each: rows,
           keyed: false,
-          children: ((_s: unknown, item: () => { n: string }, index: number) =>
-            html(`<li>${index}: ${esc(item().n)}</li>`)) as never,
+          children: (_s: unknown, item: () => { n: string }, index: number) =>
+            html(`<li>${index}: ${esc(item().n)}</li>`),
         }).toString(),
         () =>
           For<{ n: string }, JSXElement>(null, {
@@ -623,17 +611,14 @@ describe("the two SSR strategies compose", () => {
     // The direction the brand exists for: a fallback module builds real nodes
     // and one of its children is markup a string-compiled module produced.
     const container = document.createElement("div");
-    render(
-      element(null, "section", { children: html('<b class="x">bold</b>') as never }),
-      container,
-    );
+    render(element(null, "section", { children: html('<b class="x">bold</b>') }), container);
     expect(container.innerHTML).toBe('<section><b class="x">bold</b></section>');
     expect(container.querySelector("b")?.className).toBe("x");
   });
 
   test("and it is not inserted as escaped text", () => {
     const container = document.createElement("div");
-    render(element(null, "section", { children: "<b>bold</b>" }) as never, container);
+    render(element(null, "section", { children: "<b>bold</b>" }), container);
     expect(container.innerHTML).toBe("<section>&lt;b&gt;bold&lt;/b&gt;</section>");
   });
 });
@@ -662,7 +647,7 @@ describe("the brand cannot be forged", () => {
     // Before the brand was a registered symbol this rendered a live
     // `<img onerror>`; an unbranded object is now what it always was —
     // a value with no node meaning, stringified into a text node.
-    const markup = renderToString(() => element(null, "div", { children: forged as never }));
+    const markup = renderToString(() => element(null, "div", { children: forged }));
     expect(markup).not.toContain("<img");
     expect(markup).toBe("<div>[object Object]</div>");
   });

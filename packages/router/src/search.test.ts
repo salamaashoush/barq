@@ -62,7 +62,7 @@ describe("validateSearch", () => {
     };
     expect(() => validateSearch(schema as never, {})).toThrow(SearchParamError);
     try {
-      validateSearch(schema as never, {});
+      validateSearch(schema, {});
     } catch (error) {
       expect((error as SearchParamError).issues).toEqual([{ message: "page must be a number" }]);
     }

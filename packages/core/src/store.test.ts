@@ -789,7 +789,7 @@ describe("Improved produce (proxy-based)", () => {
 
   test("handles delete operations", () => {
     const [state, setState] = store({
-      data: { a: 1, b: 2, c: 3 } as Record<string, number>,
+      data: { a: 1, b: 2, c: 3 },
     });
 
     setState(

@@ -81,7 +81,7 @@ export const LinkBackendContext = context<LinkBackend | null>(null, "barq-router
 
 /** `null` on the DOM path, which is every path but a string render. */
 function linkBackend(): LinkBackend | null {
-  return read(LinkBackendContext)() as LinkBackend | null;
+  return read(LinkBackendContext)();
 }
 
 /** The resolved href a `<Link>` points at, for either backend. */
@@ -91,7 +91,7 @@ export function linkHref(state: RouterState, props: Incoming<LinkProps>): string
 
 /** Whether a `<NavLink>` points at where you are, for either backend. */
 export function linkIsActive(state: RouterState, href: string, end: boolean): boolean {
-  const to = href.split("?")[0] as string;
+  const to = href.split("?")[0];
   const here = state.location().pathname;
   return end ? here === to : isUnder(here, to);
 }
@@ -190,7 +190,7 @@ export function renderDepth(
           )(fallbackScope, error, reset);
           return shown === null || shown === undefined ? null : shown;
         }) as Block<unknown>,
-        content as Block<unknown>,
+        content,
         HYDRATE,
       );
 
@@ -237,12 +237,12 @@ function routeFallback(state: RouterState, route: Route): Block<unknown> | null 
   if (pending === undefined) return null;
   const delay = route.definition.pendingMs ?? 0;
 
-  return ((fallbackScope: Scope | null) => {
+  return (fallbackScope: Scope | null) => {
     const shown = (pending as unknown as Invoked)(fallbackScope, {
       params: () => state.params(),
       data: () => undefined,
       context: () => ({}),
-      children: (() => null) as unknown as Child,
+      children: () => null,
     });
     if (delay === 0) {
       state.markPending(
@@ -272,7 +272,7 @@ function routeFallback(state: RouterState, route: Route): Block<unknown> | null 
     }, delay);
     onCleanup(() => clearTimeout(timer));
     return holder;
-  }) as Block<unknown>;
+  };
 }
 
 /**
@@ -568,7 +568,7 @@ function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
   const state = useRouter();
   const backend = linkBackend();
   if (backend !== null) {
-    const href = linkHref(state, props as Incoming<LinkProps>);
+    const href = linkHref(state, props);
     const end = props.end === undefined ? false : Boolean(readSlot(props.end, "NavLink.end"));
     const base =
       props.class === undefined ? "" : (readSlot(props.class, "NavLink.class") as string);
@@ -580,17 +580,17 @@ function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
     const className = active ? `${base} ${activeClass}`.trim() : base;
     return backend.link(href, className, props.children) as never;
   }
-  return anchorElement(scope, props as Incoming<LinkProps>, (element, target) => {
+  return anchorElement(scope, props, (element, target) => {
     const active = (): boolean => {
-      const to = target().split("?")[0] as string;
+      const to = target().split("?")[0];
       const here = state.location().pathname;
       const end = props.end === undefined ? false : Boolean(readSlot(props.end, "NavLink.end"));
       return end ? here === to : isUnder(here, to);
     };
     const activeClass = (): string =>
-      (props.activeClass === undefined
+      props.activeClass === undefined
         ? "active"
-        : (readSlot(props.activeClass, "NavLink.activeClass") as string)) as string;
+        : (readSlot(props.activeClass, "NavLink.activeClass") as string);
     bindProp(scope, element, setAttr, "aria-current", () => (active() ? "page" : null));
 
     // Every name from BOTH records gets a binding, so a name present in one and

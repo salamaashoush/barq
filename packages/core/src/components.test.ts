@@ -38,21 +38,21 @@ describe("Fragment — an ARRAY of its parts (C8)", () => {
       ],
     });
 
-    insert(null, container, frag as Child);
+    insert(null, container, frag);
     expect(container.textContent).toBe("hello world");
   });
 
   test("handles null and undefined children", () => {
     const frag = Fragment(null, { children: [null, "text", undefined, 42] as Child[] });
 
-    insert(null, container, frag as Child);
+    insert(null, container, frag);
     expect(container.textContent).toBe("text42");
   });
 
   test("handles boolean children (should be ignored)", () => {
     const frag = Fragment(null, { children: [true, "visible", false] as Child[] });
 
-    insert(null, container, frag as Child);
+    insert(null, container, frag);
     expect(container.textContent).toBe("visible");
   });
 });

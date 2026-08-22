@@ -117,6 +117,9 @@ export function encodeWire(value: unknown): unknown {
  * Decode a wire payload. Reconstructs Dates, Maps, Sets, BigInts and cycles
  * without evaluating anything.
  */
+// Used once BY CONSTRUCTION: the parameter is the caller's declaration of
+// what comes back, which is this function's whole interface.
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 export function decodeWire<T>(payload: unknown): T {
   return fromJSON<T>(payload as never, { plugins: [redactError] });
 }
@@ -175,8 +178,8 @@ export interface SeedEncoder {
 function carriesPending(value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
   if (value === null || typeof value !== "object") return false;
   if (typeof (value as { then?: unknown }).then === "function") return true;
-  if (seen.has(value as object)) return false;
-  seen.add(value as object);
+  if (seen.has(value)) return false;
+  seen.add(value);
   if (Array.isArray(value)) return value.some((item) => carriesPending(item, seen));
   if (Object.getPrototypeOf(value) !== Object.prototype) return false;
   return Object.values(value as Record<string, unknown>).some((item) => carriesPending(item, seen));

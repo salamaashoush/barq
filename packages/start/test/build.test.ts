@@ -81,7 +81,7 @@ describe("a production build", () => {
     expect(assets).toHaveLength(1);
     // Not a reconstruction of the input name — TanStack's #8118 is exactly that
     // — but the name the client build actually emitted.
-    expect(server).toContain(assets[0] as string);
+    expect(server).toContain(assets[0]);
   });
 });
 

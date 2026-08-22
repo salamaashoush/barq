@@ -26,7 +26,6 @@ import {
 } from "./signals.ts";
 import { provide } from "./scope.ts";
 import type { Scope } from "./scope.ts";
-import type { Child } from "./dom.ts";
 import { insert, setProp } from "./dom.ts";
 
 function chain(s: Scope | null, names: Map<Scope, string>): string {
@@ -48,7 +47,7 @@ describe("O2: a construct runs under the scope it is GIVEN", () => {
       (s: Scope | null, kid: (s: Scope | null) => Node) =>
         For(s, {
           each: () => [1],
-          children: (_i: unknown, _n: unknown) => kid(getOwner() as Scope),
+          children: (_i: unknown, _n: unknown) => kid(getOwner()),
         }),
     ],
     [
@@ -65,7 +64,7 @@ describe("O2: a construct runs under the scope it is GIVEN", () => {
         scope((_d2, B) => {
           names.set(B, "B(ambient)");
           const kid = (_s: Scope | null): Node => {
-            seen = getOwner() as Scope;
+            seen = getOwner();
             return document.createTextNode("k");
           };
           const el = run(A, kid);
@@ -138,7 +137,7 @@ describe("C8: a fragment is an array, and `insert` owns what it places", () => {
       scope((_d2, B) => {
         names.set(B, "B(ambient)");
         const kid = (): Node => {
-          seen = getOwner() as Scope;
+          seen = getOwner();
           return document.createTextNode("k");
         };
         insert(A, document.createElement("div"), kid);
@@ -164,10 +163,10 @@ describe("C8: a fragment is an array, and `insert` owns what it places", () => {
       scope((_d2, B) => {
         names.set(B, "B(ambient)");
         const kid = (): Node => {
-          seen = getOwner() as Scope;
+          seen = getOwner();
           return document.createTextNode("k");
         };
-        insert(A, document.createElement("div"), Fragment(A, { children: kid }) as Child);
+        insert(A, document.createElement("div"), Fragment(A, { children: kid }));
         flush();
       });
     });
@@ -192,10 +191,10 @@ describe("O4.5: an explicit scope argument beats an ambient pin", () => {
             host,
             Fragment(X, {
               children: (): Node => {
-                seen = getOwner() as Scope;
+                seen = getOwner();
                 return document.createTextNode("k");
               },
-            }) as Child,
+            }),
           );
         })();
       });
@@ -220,11 +219,11 @@ describe("X1/O2: a Provider provides on the scope it was GIVEN", () => {
           value: "PROVIDED",
           children: (s: Scope): Node => {
             seenValue = getContext(Ctx, getOwner());
-            seenChain = chain(getOwner() as Scope, names);
+            seenChain = chain(getOwner(), names);
             expect(s).toBe(getOwner() as Scope);
             return document.createTextNode("k");
           },
-        } as never);
+        });
       });
     });
 
@@ -248,7 +247,7 @@ describe("X1/O2: a Provider provides on the scope it was GIVEN", () => {
           Ctx,
           () => "V",
           (): Node => {
-            seenChain = chain(getOwner() as Scope, names);
+            seenChain = chain(getOwner(), names);
             return document.createTextNode("k");
           },
         );

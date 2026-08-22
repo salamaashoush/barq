@@ -98,7 +98,7 @@ export function memoryHistory(options: MemoryHistoryOptions = {}): History {
   const listeners = new Set<(location: Location, action: NavigationAction) => void>();
 
   const emit = (action: NavigationAction): void => {
-    const location = stack[index] as Location;
+    const location = stack[index];
     // A snapshot, not the live Set: a listener that subscribes another during
     // an emit must not have it called in the same emit.
     // oxlint-disable-next-line unicorn/no-useless-spread
@@ -106,7 +106,7 @@ export function memoryHistory(options: MemoryHistoryOptions = {}): History {
   };
 
   return {
-    current: () => stack[index] as Location,
+    current: () => stack[index],
     depth: () => index,
     go(delta) {
       const target = index + delta;

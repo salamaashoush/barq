@@ -38,22 +38,19 @@ function mount(state: RouterState, open = true): { host: HTMLElement; dispose: (
   );
   const panelHost = document.createElement("div");
   document.body.append(panelHost);
-  const disposePanel = render(
-    ((scope: Scope | null) => {
-      const node = document.createElement("div");
-      insert(
-        scope,
-        node,
-        () =>
-          (RouterDevtools as never as (s: Scope | null, p: unknown) => unknown)(scope, {
-            state: () => state,
-            open: () => open,
-          }) as never,
-      );
-      return node;
-    }) as never,
-    panelHost,
-  );
+  const disposePanel = render((scope: Scope | null) => {
+    const node = document.createElement("div");
+    insert(
+      scope,
+      node,
+      () =>
+        (RouterDevtools as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+          state: () => state,
+          open: () => open,
+        }) as never,
+    );
+    return node;
+  }, panelHost);
   flush();
   return {
     host: panelHost,

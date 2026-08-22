@@ -244,7 +244,7 @@ describe("pre-hydration event replay", () => {
     document.elementFromPoint = () => container.querySelector("button");
 
     try {
-      hydrate(makeApp(), container as HTMLElement);
+      hydrate(makeApp(), container);
     } finally {
       document.elementFromPoint = origFromPoint;
     }
@@ -279,7 +279,7 @@ describe("pre-hydration replay across a swap", () => {
     const g = globalThis as Record<string, unknown>;
     g.__BARQ_EVTS__ = queue;
     g.__BARQ_EVTS_STOP__ = (): void => {};
-    hydrate(() => element(null, "i", { children: "" }), container as HTMLElement);
+    hydrate(() => element(null, "i", { children: "" }), container);
   };
 
   /** Where a body-relative child-index path lands, for a node already in place. */

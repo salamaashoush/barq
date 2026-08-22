@@ -182,7 +182,7 @@ console.log(routes.length);
     });
 
     let seen: Map<string, ReadonlySet<string>> | null = null;
-    const { build } = (await import("vite")) as typeof import("vite");
+    const { build } = await import("vite");
     await build({
       root,
       logLevel: "silent",
@@ -230,7 +230,7 @@ console.log(routes.length);
 `,
     });
 
-    const { build } = (await import("vite")) as typeof import("vite");
+    const { build } = await import("vite");
     const run = (onViolation: "error" | "warn"): Promise<unknown> =>
       build({
         root,

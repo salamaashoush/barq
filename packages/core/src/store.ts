@@ -109,7 +109,7 @@ interface StoreTarget {
   [$DRAFT]?: object;
 }
 
-function setHidden<K extends PropertyKey>(target: object, key: K, value: unknown): void {
+function setHidden(target: object, key: PropertyKey, value: unknown): void {
   Object.defineProperty(target, key, {
     value,
     enumerable: false,
@@ -347,7 +347,7 @@ export function store<T extends object>(initialState: T): Store<T> {
           const current = initialState[key];
           if (!tryProduceInPlace(value, current)) {
             const newValue = (value as (prev: T[keyof T]) => T[keyof T])(current);
-            writeProperty(initialState, key as PropertyKey, newValue);
+            writeProperty(initialState, key, newValue);
           }
         } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
           // setState(key, partialUpdate) - merge into nested object
@@ -355,11 +355,11 @@ export function store<T extends object>(initialState: T): Store<T> {
           if (typeof current === "object" && current !== null) {
             applyUpdates(current as object, value);
           } else {
-            writeProperty(initialState, key as PropertyKey, value);
+            writeProperty(initialState, key, value);
           }
         } else {
           // setState(key, value)
-          writeProperty(initialState, key as PropertyKey, value);
+          writeProperty(initialState, key, value);
         }
       } else {
         // Path-based setter: setState(k1, k2, ..., value)
@@ -622,8 +622,8 @@ function ensureCopy(
  * a plain (non-proxied) copy. Use when a consumer genuinely depends on the
  * whole subtree; prefer reading the specific properties otherwise.
  */
-export function deep<T extends object>(store: T): T {
-  return deepRead(store, new Map()) as T;
+export function deep<T extends object>(source: T): T {
+  return deepRead(source, new Map()) as T;
 }
 
 function deepRead(value: unknown, seen: Map<object, unknown>): unknown {
@@ -738,7 +738,7 @@ export const storePath: StorePathFn = Object.assign(
       const parts = pathAndValue.slice(0, -1);
       if (parts.length === 0) {
         if (value !== null && typeof value === "object") {
-          Object.assign(state as object, value);
+          Object.assign(state, value);
         }
         return;
       }

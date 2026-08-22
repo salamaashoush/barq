@@ -475,7 +475,7 @@ function build(scope: Scope | null, body: Block<unknown>, args: readonly unknown
   // An already-built value in a renderable slot. Compiled code never produces
   // one — C6 makes children a Block — but the un-compiled surface `packages/extra`
   // is still on does, and `Out` admits a `Node` in its own right.
-  if (typeof body !== "function") return childToNodes(body as Child, scope);
+  if (typeof body !== "function") return childToNodes(body, scope);
   return childToNodes(invoke(scope, body, args) as Child, scope);
 }
 
@@ -893,13 +893,13 @@ export function each<T>(
  * their nodes. It is still reported, because "nothing was reported" has to mean
  * the list was the list.
  */
-function inRow(cursor: Cursor | null, build: () => Node[]): Node[] {
-  if (cursor === null) return build();
+function inRow(cursor: Cursor | null, make: () => Node[]): Node[] {
+  if (cursor === null) return make();
   if (cursorAtEnd(cursor)) {
     report("structure", "a row the server did not write");
-    return withoutClaim(build);
+    return withoutClaim(make);
   }
-  return atCursor(cursor, build);
+  return atCursor(cursor, make);
 }
 
 /**

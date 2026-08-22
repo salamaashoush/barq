@@ -8,8 +8,13 @@
   },
   "rules": {
     "no-underscore-dangle": "off",
-    "no-shadow": "off",
-    "no-unmodified-loop-condition": "off",
+    // `scope`, `owner`, `element` and `context` are this codebase's DOMAIN
+    // nouns and also the names of four exported functions in the same modules,
+    // so 65 of the rule's 125 hits were a correct parameter name colliding with
+    // an API name. Renaming those parameters would make §3.2's calling
+    // convention unreadable to keep a lint quiet. Everything else is fixed.
+    "no-shadow": ["error", { "allow": ["scope", "owner", "element", "context"] }],
+    "no-unmodified-loop-condition": "error",
 
     "no-unused-vars": "error",
     "no-console": "off",
@@ -43,11 +48,10 @@
     // action bodies) are legitimately `async` with no `await` inside - the
     // keyword is the return-type guarantee, not dead syntax.
     "@typescript-eslint/require-await": "off",
-    // TODO(lint-1.79), with the rest: see TODO.md.
-    "@typescript-eslint/no-unnecessary-type-assertion": "off",
-    "@typescript-eslint/no-unnecessary-type-parameters": "off",
-    "@typescript-eslint/no-unnecessary-type-conversion": "off",
-    "@typescript-eslint/consistent-return": "off",
+    "@typescript-eslint/no-unnecessary-type-assertion": "error",
+    "@typescript-eslint/no-unnecessary-type-parameters": "error",
+    "@typescript-eslint/no-unnecessary-type-conversion": "error",
+    "@typescript-eslint/consistent-return": "error",
     "@typescript-eslint/no-unsafe-type-assertion": "off",
     "@typescript-eslint/no-unsafe-argument": "warn",
 

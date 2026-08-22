@@ -98,7 +98,7 @@ describe("the index re-exports nothing twice", () => {
     const source = readFileSync(join(ROOT, "packages", "router", "src", "index.ts"), "utf8");
     const names: string[] = [];
     for (const block of source.matchAll(/export\s*\{([^}]*)\}\s*from/g)) {
-      for (const raw of (block[1] as string).split(",")) {
+      for (const raw of block[1].split(",")) {
         const name = raw
           .trim()
           .replace(/^type\s+/, "")

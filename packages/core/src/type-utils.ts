@@ -28,7 +28,7 @@ export function isRefCallback(value: unknown): value is (el: Element) => void {
   return typeof value === "function";
 }
 
-export function isSignalGetter<T = unknown>(value: unknown): value is () => T {
+export function isSignalGetter(value: unknown): value is () => unknown {
   return typeof value === "function";
 }
 
@@ -119,6 +119,9 @@ export function asNode(value: unknown): Node | null {
 /**
  * Safely get a property from an object
  */
+// Used once BY CONSTRUCTION: the parameter is the caller's declaration of
+// what comes back, which is this function's whole interface.
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 export function getProperty<T>(obj: unknown, key: string | number | symbol): T | undefined {
   if (isObject(obj) && key in obj) {
     return obj[key as string] as T;
@@ -164,6 +167,9 @@ export function asEventListener(value: unknown): EventListener | null {
  * Use this only when you've already done runtime checks
  * Prefer type guards where possible
  */
+// Used once BY CONSTRUCTION: the parameter is the caller's declaration of
+// what comes back, which is this function's whole interface.
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 export function assert<T>(value: unknown): T {
   return value as T;
 }

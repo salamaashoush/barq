@@ -159,7 +159,7 @@ export function renderRoutes(state: RouterState): unknown {
           ? ssrHtml("")
           : (pending as unknown as Invoked)(
               getOwner(),
-              routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
+              routePropsFor(state, depth, route, () => ssrHtml(""), true),
             );
       }
       return component === undefined
@@ -195,7 +195,7 @@ export function renderRoutes(state: RouterState): unknown {
             ? ssrHtml("")
             : (pending as unknown as Invoked)(
                 getOwner(),
-                routePropsFor(state, depth, route, (() => ssrHtml("")) as never, true),
+                routePropsFor(state, depth, route, () => ssrHtml(""), true),
               ),
         children: () =>
           ssrErrored(
@@ -530,8 +530,8 @@ export function createPageHandler(
         options.refuseRequest,
       );
     } catch (error) {
-      const answer = asResponse(error);
-      if (answer !== null) return answer;
+      const thrown = asResponse(error);
+      if (thrown !== null) return thrown;
       throw error;
     }
   };
@@ -636,7 +636,7 @@ export function contextScript(
   if (!produced.some((entry) => entry !== undefined)) return "";
   const payload = encodeSeed({
     href: url.pathname + url.search + url.hash,
-    produced: produced as unknown as Record<string, unknown>,
+    produced,
   });
   const attr = nonce === undefined ? "" : ` nonce="${nonce}"`;
   return `<script${attr}>window.${ROUTE_CONTEXT_GLOBAL}=${payload}</script>`;
@@ -717,8 +717,8 @@ function wrapStream(
       const reader = stream.getReader();
       try {
         for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
+          const { done: finished, value } = await reader.read();
+          if (finished) break;
           controller.enqueue(value);
         }
       } finally {

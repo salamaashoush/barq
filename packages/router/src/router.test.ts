@@ -136,7 +136,7 @@ describe("mounting and navigation", () => {
         {
           path: "/",
           component: () => {
-            inner = getOwner() as Scope | null;
+            inner = getOwner();
             return document.createTextNode("home");
           },
         },
@@ -169,7 +169,7 @@ describe("params", () => {
             // A render effect would be the compiled form; reading once per
             // build plus once per change is enough to show the identity.
             const update = () => {
-              const id = (props.params() as Record<string, string>).id as string;
+              const id = props.params().id;
               seen.push(id);
               node.textContent = id;
             };
@@ -1464,7 +1464,7 @@ describe("Link", () => {
               (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
                 to: () => "..",
                 children: () => "up",
-              }) as never,
+              }),
             );
             return wrapper;
           },
@@ -1686,16 +1686,16 @@ describe("NavLink", () => {
               (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
                 to: () => "/user",
                 children: () => "prefix",
-              }) as never,
+              }),
               (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
                 to: () => "/user",
                 end: () => true,
                 children: () => "exact",
-              }) as never,
+              }),
               (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
                 to: () => "/user-settings",
                 children: () => "sibling",
-              }) as never,
+              }),
             );
             return wrapper;
           },
@@ -2191,7 +2191,7 @@ describe("useLocation / useParams", () => {
           path: "/u/$id",
           component: () => {
             pathname = useLocation()().pathname;
-            id = (useParams()() as Record<string, string>).id as string;
+            id = useParams()().id;
             return document.createTextNode("x");
           },
         },

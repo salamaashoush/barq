@@ -545,16 +545,15 @@ describe("hydrate", () => {
       const content = () => {
         if (!ssr) {
           const node = bold() as HTMLElement;
-          node.textContent = String(user());
+          node.textContent = user();
           return node;
         }
-        return ssrHtml(`<b>${esc(String(user()))}</b>`);
+        return ssrHtml(`<b>${esc(user())}</b>`);
       };
       const fallback = () => (ssr ? ssrHtml("<i>loading</i>") : italic());
       return ssr
-        ? () =>
-            ssrBoundary(null, null, null, "loading", fallback as never, content as never, HYDRATE)
-        : () => boundary(null, null, null, "loading", fallback as never, content as never, HYDRATE);
+        ? () => ssrBoundary(null, null, null, "loading", fallback, content, HYDRATE)
+        : () => boundary(null, null, null, "loading", fallback, content, HYDRATE);
     };
 
     const serverHtml = await renderToStringAsync(makeApp(true) as never);

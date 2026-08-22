@@ -6,7 +6,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { For, Repeat, Show } from "./components.ts";
 import { cell } from "./props.ts";
-import type { JSXElement } from "./dom.ts";
 import { dynamic, element, render } from "./dom.ts";
 import { branch } from "./flow.ts";
 import type { Scope } from "./scope.ts";
@@ -194,7 +193,7 @@ describe("dynamic — a tag chosen at run time (§3.13 item 4)", () => {
 
     scope((_dispose, scope) => {
       const el = branch(scope, null, null, which, (s: Scope | null) => dynamic(s, which, props));
-      render(el as JSXElement, container);
+      render(el, container);
     });
     flush();
     expect(container.querySelector("div.x")?.textContent).toBe("hi");

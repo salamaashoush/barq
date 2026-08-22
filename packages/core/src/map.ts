@@ -181,7 +181,7 @@ export function mapArray<Item, MappedItem>(
         : byIndex
           ? // Positional rows: identity is the slot, so keys are the indices
             items.map((_, i) => i)
-          : (items.slice() as unknown[]);
+          : items.slice();
 
       const oldLen = rows.length;
       const nextRows: Row<Item, MappedItem>[] = new Array(newLen);

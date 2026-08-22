@@ -323,8 +323,8 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
    * the two strings rather than the two rules.
    */
   const idOf = (file: string, name: string): string => {
-    const relative = file.startsWith(root) ? file.slice(root.length) : file;
-    return `${relative.replace(/^[/\\]+/, "").replaceAll("\\", "/")}#${name}`;
+    const rel = file.startsWith(root) ? file.slice(root.length) : file;
+    return `${rel.replace(/^[/\\]+/, "").replaceAll("\\", "/")}#${name}`;
   };
 
   const record = (id: string, artifact: string): void => {
@@ -636,7 +636,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // not a page, and letting the SPA fallback answer it turns a 404 into an
       // HTML document a client would then try to parse as a value.
       viteServer.middlewares.use((req, res, next) => {
-        const path = pathOf(req as { url?: string; originalUrl?: string });
+        const path = pathOf(req);
         req.url = path;
         if (!path.startsWith(RPC_PREFIX)) {
           next();
@@ -664,7 +664,10 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         })();
       });
 
-      if (!serving) return;
+      // `undefined` and not a bare `return`: this hook's other arm returns the
+      // POST hook, and a function that returns a value on one path and nothing
+      // on another is what `consistent-return` is for.
+      if (!serving) return undefined;
 
       /**
        * The page handler, as a POST hook.
@@ -721,7 +724,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         viteServer.middlewares.use((req, res, next) => {
           void (async () => {
             try {
-              req.url = pathOf(req as { url?: string; originalUrl?: string });
+              req.url = pathOf(req);
               const response = await (await pageFetch())(new NodeRequest({ req, res }));
               await sendNodeResponse(res, response);
             } catch (error) {

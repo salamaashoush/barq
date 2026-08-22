@@ -653,9 +653,7 @@ export function createRouter(config: RouterConfig): RouterState {
                   try {
                     const value = await loader({
                       params: forParams as never,
-                      search: (route.definition.loaderDeps === undefined
-                        ? forSearch
-                        : undefined) as never,
+                      search: route.definition.loaderDeps === undefined ? forSearch : undefined,
                       deps: deps as never,
                       cause: entry.cause,
                       context: forContext ?? contextAt(route),
@@ -1284,10 +1282,10 @@ export function createRouter(config: RouterConfig): RouterState {
     dataFor,
     navigate,
     buildSearch,
-    validSearch: (() => {
+    validSearch: () => {
       const { slices } = validated();
       return slices[slices.length - 1] ?? searchRecord(search());
-    }) as Cell<Record<string, unknown>>,
+    },
     searchErrorAt(depth) {
       return untrack(validated).failures[depth] ?? null;
     },
@@ -1334,8 +1332,8 @@ export function createRouter(config: RouterConfig): RouterState {
       return () => blockers.delete(blocker);
     },
     canGoBack: () => (history.depth?.() ?? 0) > 0,
-    isNavigating: (() => navigating() > 0) as Cell<boolean>,
-    ssrModes: (() => resolveSsr(chain())) as Cell<readonly SsrMode[]>,
+    isNavigating: () => navigating() > 0,
+    ssrModes: () => resolveSsr(chain()),
     async preload(to) {
       if (leavesTheApp(to)) return;
       // RESOLVED, parsed and base-stripped, exactly as `navigate` does it. The

@@ -23,7 +23,7 @@ const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const document = ({ body, seed }: { body: string; seed: string }): string =>
   `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
 
-const routes: AnyRouteDefinition[] = [
+const baseTable: AnyRouteDefinition[] = [
   { path: "/", component: (() => null) as never },
   { path: "/users/$id", component: (() => null) as never },
 ] as never;
@@ -37,7 +37,7 @@ describe("status is decided before the shell", () => {
     // `renderToStream` emits the shell synchronously, so a status discovered
     // mid-render would land after the headers. The match runs first.
     const handler = createPageHandler({
-      routes,
+      routes: baseTable,
       app: () => ssrHtml("<main>ok</main>"),
       document,
     });
@@ -48,7 +48,7 @@ describe("status is decided before the shell", () => {
 
   test("a 404 still renders a document rather than a bare status", async () => {
     const handler = createPageHandler({
-      routes,
+      routes: baseTable,
       app: () => ssrHtml("<main>not found</main>"),
       document,
     });
@@ -62,7 +62,7 @@ describe("guards", () => {
   test("a redirect answers 302 with a Location and never renders", async () => {
     let rendered = false;
     const handler = createPageHandler({
-      routes,
+      routes: baseTable,
       app: () => {
         rendered = true;
         return ssrHtml("<main>secret</main>");
@@ -79,7 +79,7 @@ describe("guards", () => {
 
   test("a refusal is 403", async () => {
     const handler = createPageHandler({
-      routes,
+      routes: baseTable,
       app: () => ssrHtml("<main>x</main>"),
       document,
       beforeEach: [() => false],
@@ -169,7 +169,7 @@ describe("the request is ambient for the whole render", () => {
 describe("redirect() from a loader", () => {
   test("becomes a 302 rather than a 500", async () => {
     const handler = createPageHandler({
-      routes,
+      routes: baseTable,
       app: () => {
         redirect("/login");
       },
@@ -193,7 +193,7 @@ describe("the document", () => {
     );
 
     const handler = createPageHandler({
-      routes,
+      routes: baseTable,
       app: () =>
         ssrHtml(
           `<main>${esc(
@@ -229,7 +229,7 @@ describe("the document", () => {
 
   test("a document that drops its body argument is an error, not silent loss", async () => {
     const handler = createPageHandler({
-      routes,
+      routes: baseTable,
       app: () => ssrHtml("<main>x</main>"),
       document: () => "<html><body>oops</body></html>",
     });
@@ -881,7 +881,7 @@ describe("the context handoff, server to client", () => {
           return { token: "abc", at: new Date(0) };
         },
         component: (_s: unknown, props: { context: () => Record<string, unknown> }) =>
-          ssrHtml(`<main>${esc(String((props.context() as { token: string }).token))}</main>`),
+          ssrHtml(`<main>${esc((props.context() as { token: string }).token)}</main>`),
       },
     ] as never;
 
@@ -978,7 +978,7 @@ describe("hydration", () => {
             insert(
               scope,
               node,
-              hole(node, null, () => () => props.data()?.name, 16) as never,
+              hole(node, null, () => () => props.data()?.name, 16),
               null,
               16,
             );

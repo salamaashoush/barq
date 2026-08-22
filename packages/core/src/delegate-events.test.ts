@@ -296,7 +296,7 @@ describe("a delegated handler runs under the scope stapled to its element", () =
       return scope;
     }, true);
 
-    delegate(root as never, el, "click", () => {
+    delegate(root, el, "click", () => {
       sawOwner = getOwner();
       onCleanup(() => cleanups.push(1));
     });

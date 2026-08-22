@@ -137,7 +137,7 @@ export function useMediaQuery(query: string): () => boolean {
   const matches = signal(false);
 
   effect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return undefined;
 
     const mediaQuery = window.matchMedia(query);
     matches.set(mediaQuery.matches);
@@ -159,7 +159,7 @@ export function useWindowSize(): { width: () => number; height: () => number } {
   const height = signal(typeof window !== "undefined" ? window.innerHeight : 0);
 
   effect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return undefined;
 
     const handler = () => {
       width.set(window.innerWidth);
@@ -192,7 +192,7 @@ export function useIntersection(
     mounted();
 
     const element = typeof ref === "function" ? ref() : ref.current;
-    if (!element) return;
+    if (!element) return undefined;
 
     observer = new IntersectionObserver(([entry]) => {
       isIntersecting.set(entry.isIntersecting);
@@ -288,7 +288,7 @@ export function useInterval(
 
   effect(() => {
     const d = typeof delay === "function" ? delay() : delay;
-    if (d === null) return;
+    if (d === null) return undefined;
 
     const id = setInterval(() => savedCallback(), d);
     return () => clearInterval(id);
@@ -311,7 +311,7 @@ export function useTimeout(
 
   effect(() => {
     const d = typeof delay === "function" ? delay() : delay;
-    if (d === null) return;
+    if (d === null) return undefined;
 
     const id = setTimeout(() => savedCallback(), d);
     return () => clearTimeout(id);

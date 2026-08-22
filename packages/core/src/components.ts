@@ -189,11 +189,11 @@ export function Fragment(_s: Scope | null, props: { children?: Child | Child[] }
   return (Array.isArray(kids) ? kids : [kids]) as unknown as JSXElement;
 }
 
-export function Show<T>(
+export function Show(
   _s: Scope | null,
   props: { when: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
 ): JSXElement {
-  const value = computed(() => readValue(props.when, "Show.when") as T | undefined | null | false);
+  const value = computed(() => readValue(props.when, "Show.when"));
   const keyed = readValue(props.keyed, "Show.keyed") === true;
   // The KEY decides a rebuild, so it carries exactly what the mode says it
   // should. The DEFAULT is non-keyed (Solid 2.0): content re-renders only when
@@ -213,7 +213,7 @@ export function Show<T>(
       ? callSlot(props.children, scope, keyed ? current : value)
       : callSlot(props.fallback, scope);
   };
-  return branch(_s, null, null, key, content) as JSXElement;
+  return branch(_s, null, null, key, content);
 }
 
 /**
@@ -241,7 +241,7 @@ export function Show<T>(
  * call site that wants the type annotates its callback —
  * `{(row: Row) => …}` — which is what `routes/route.tsx` already did.
  */
-export function For<T>(
+export function For(
   _s: Scope | null,
   props: { each: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
 ): JSXElement {
@@ -253,12 +253,12 @@ export function For<T>(
     _s,
     null,
     null,
-    props.each as Cell<readonly T[]>,
+    props.each as Cell<readonly unknown[]>,
     props.keyed as Cell<unknown>,
     props.children as Block<unknown, never[]>,
     0,
     slotBlock(props.fallback),
-  ) as JSXElement;
+  );
 }
 
 export function Repeat(
@@ -278,7 +278,7 @@ export function Repeat(
     shifted as Block<unknown, never[]>,
     0,
     slotBlock(props.fallback),
-  ) as JSXElement;
+  );
 }
 
 /**
@@ -351,7 +351,7 @@ export function Switch(
     return callSlot(found.match.children, scope, keyed ? found.value : narrowed);
   };
 
-  return branch(_s, null, null, key, body) as JSXElement;
+  return branch(_s, null, null, key, body);
 }
 
 const UNSEEN: unique symbol = Symbol("unseen");
@@ -369,7 +369,7 @@ export function Loading(
     props.children as Block<unknown>,
     0,
     props.on === undefined ? undefined : () => readValue(props.on, "Loading.on"),
-  ) as JSXElement;
+  );
 }
 
 export function Errored(
@@ -383,7 +383,7 @@ export function Errored(
     "error",
     props.fallback as Block<unknown>,
     props.children as Block<unknown>,
-  ) as JSXElement;
+  );
 }
 
 export function Portal(
@@ -394,7 +394,7 @@ export function Portal(
     _s,
     () => readValue(props.mount, "Portal.mount") as Node | string | undefined,
     props.children as Block<unknown>,
-  ) as unknown as JSXElement;
+  );
 }
 
 /**
@@ -411,7 +411,7 @@ export function Dynamic(
   const rest = omit(props, "component");
   return branch(_s, null, null, component, (scope: Scope | null) =>
     dynamic(scope, component as unknown as Cell<never>, rest),
-  ) as JSXElement;
+  );
 }
 
 /**
@@ -433,7 +433,7 @@ export function Reveal(
         | undefined) ?? "sequential",
     () => readValue(props.collapsed, "Reveal.collapsed") === true,
     props.children as Block<unknown>,
-  ) as unknown as JSXElement;
+  );
 }
 
 /**
@@ -462,7 +462,10 @@ export function Reveal(
  * Named `default` because that is what a route module exports; pass a `pick` to
  * take something else.
  */
-export function lazy<P>(
+// `P` is the props type of the component this RETURNS, which is the only
+// thing a caller can say about a module it has not loaded yet.
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
+export function lazy<P = unknown>(
   load: () => Promise<Record<string, unknown>>,
   pick: (module: Record<string, unknown>) => unknown = (module) => module.default,
 ): ((s: Scope | null, props: P) => JSXElement) & {

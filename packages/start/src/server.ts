@@ -44,7 +44,7 @@ export function mount(id: string, fn: ServerFn<unknown, unknown>): void {
   // two meet. `formAttr` reads it back off the function to write a form's
   // action, so a function that is mounted has a URL and one that is not has
   // neither an id nor an endpoint.
-  (fn.meta as { id: string }).id = id;
+  fn.meta.id = id;
   REGISTRY.set(id, fn);
 }
 

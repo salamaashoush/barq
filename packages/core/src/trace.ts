@@ -136,10 +136,10 @@ interface Owned {
  * minting one here would invent a scope that no `enter` event ever declared,
  * and the tree would silently gain a node.
  */
-function scopeOf(owner: object | null | undefined): number {
-  let at = owner as Owned | null | undefined;
+function scopeOf(owner: Owned | null | undefined): number {
+  let at: Owned | null | undefined = owner;
   while (at) {
-    const id = ids.get(at as object);
+    const id = ids.get(at);
     if (id !== undefined) return id;
     at = at.parent !== undefined ? at.parent : at._owner;
   }

@@ -52,14 +52,7 @@ function drive(): { manifest: string; stubs: string } {
 
   // Vite hands the compiler a plugin context; only `warn` is reached here.
   const context = { warn: () => {} };
-  const client = (
-    compiler.transform as unknown as (
-      this: unknown,
-      code: string,
-      id: string,
-      options?: { ssr?: boolean },
-    ) => { code: string } | null
-  ).call(context, SOURCE, FILE, { ssr: false });
+  const client = compiler.transform.call(context, SOURCE, FILE, { ssr: false });
 
   const resolved = manifest.resolveId(MANIFEST_ID) as string;
   return { manifest: manifest.load(resolved) as string, stubs: client?.code ?? "" };

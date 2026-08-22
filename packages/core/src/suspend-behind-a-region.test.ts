@@ -42,7 +42,7 @@ describe("suspend behind a region", () => {
       const host = document.createElement("div");
       document.body.appendChild(host);
       const { settled, value } = mk();
-      const leaf = block(() => document.createTextNode(String(value())));
+      const leaf = block(() => document.createTextNode(value()));
       scope(() => {
         render(
           block((s: Scope | null) =>
@@ -60,7 +60,7 @@ describe("suspend behind a region", () => {
                       )
                     : block((s2: Scope | null) => Show(s2, { when: () => true, children: leaf })),
             }),
-          ) as never,
+          ),
           host,
         );
       });
@@ -70,7 +70,7 @@ describe("suspend behind a region", () => {
       await tick();
       await tick();
       await tick();
-      console.log(name.padEnd(26), "mount:", String(atMount).padEnd(6), "after:", host.textContent);
+      console.log(name.padEnd(26), "mount:", atMount.padEnd(6), "after:", host.textContent);
       expect(atMount).toBe("BUSY");
       expect(host.textContent).toBe("READY");
     });

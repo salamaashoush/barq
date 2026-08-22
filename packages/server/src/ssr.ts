@@ -533,9 +533,9 @@ export function clsList(value: unknown): string | null {
   if (!isObject(resolved)) return null;
   let out = "";
   for (const key in resolved) {
-    let raw: unknown = resolved[key];
-    if (typeof raw === "function") raw = (raw as () => unknown)();
-    if (raw) out += (out ? " " : "") + key;
+    let slot: unknown = resolved[key];
+    if (typeof slot === "function") slot = (slot as () => unknown)();
+    if (slot) out += (out ? " " : "") + key;
   }
   return out === "" ? null : out;
 }
@@ -672,10 +672,20 @@ function range(inner: string, flags: number, key?: unknown): string {
   // Only a PRIMITIVE has a spelling. An object key stringifies to
   // `[object Object]`, which is neither safe nor informative, so it takes the
   // opaque form with everything else the pattern refuses.
+  // POSITIVE narrowing, not a negative guard plus an assertion. A negative
+  // `typeof` does not narrow `unknown`, so the old shape needed
+  // `key as string | number | …` to satisfy `no-base-to-string` — and
+  // `no-unnecessary-type-assertion` then called that assertion unnecessary.
+  // Asking what the key IS answers both, and reads better.
   const spelled =
-    key === undefined || key === null || typeof key === "object" || typeof key === "function"
-      ? ""
-      : String(key as string | number | boolean | symbol | bigint);
+    typeof key === "string"
+      ? key
+      : typeof key === "number" ||
+          typeof key === "boolean" ||
+          typeof key === "bigint" ||
+          typeof key === "symbol"
+        ? String(key)
+        : "";
   return `${OPEN}${SAFE_KEY.test(spelled) ? spelled : "?"}-->${inner}${CLOSE}`;
 }
 
@@ -925,7 +935,7 @@ function errorBoundary(
   // E2.1: the catcher is on the INSTANCE scope and is installed before the
   // body runs, so a throw routed to `s.catcher` from anywhere below reaches
   // this collector rather than the scope above the boundary.
-  const content: Block<unknown> = (scope: Scope | null): unknown => {
+  const arm: Block<unknown> = (scope: Scope | null): unknown => {
     provideOn(scope as Scope, ERROR_BOUNDARY, (err: unknown) => {
       if (err instanceof NotReadyError) throw err;
       collector.capture(err);
@@ -934,7 +944,7 @@ function errorBoundary(
   };
 
   try {
-    const inner = activate(given, content, NO_ARGS, flags, "branch");
+    const inner = activate(given, arm, NO_ARGS, flags, "branch");
     if (!collector.failed()) return html(inner);
   } catch (error) {
     // E2.3: a `NotReadyError` belongs to the nearest loading boundary and is
@@ -954,12 +964,12 @@ function loadingBoundary(
   flags: number,
 ): SsrHtml {
   const pending = createPendingCollector();
-  const content: Block<unknown> = (scope: Scope | null): unknown => {
+  const arm: Block<unknown> = (scope: Scope | null): unknown => {
     pending.install(scope as Scope);
     return invokeBlock(scope, body, NO_ARGS);
   };
   try {
-    const inner = activate(given, content, NO_ARGS, 0, "branch");
+    const inner = activate(given, arm, NO_ARGS, 0, "branch");
     if (pending.count() === 0) return html(inner);
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
@@ -984,7 +994,7 @@ function loadingBoundary(
     shown = "";
   }
   // §3.11's streaming form: the fallback goes out now, and the pair
-  // `(content Block, this scope)` goes to the sink so the same Block can be
+  // `(arm Block, this scope)` goes to the sink so the same Block can be
   // re-invoked when its promises settle. There is no second rendering path —
   // the continuation IS the Block the shell already refused to wait for.
   // GATED on the flag, like every other range this file writes. `b:` is not —
@@ -995,7 +1005,7 @@ function loadingBoundary(
   if (SINK === null) {
     return html((flags & HYDRATE) === 0 ? String(shown) : parkedRange(String(shown)));
   }
-  return html(deferredRange(SINK.defer(content, given), shown));
+  return html(deferredRange(SINK.defer(arm, given), shown));
 }
 
 /**
@@ -1077,7 +1087,7 @@ function slotBlock(slot: unknown): Block<unknown> | null {
   return slot === null || slot === undefined ? null : (slot as Block<unknown>);
 }
 
-export function ssrShow<T>(
+export function ssrShow(
   s: Scope | null,
   props: {
     when?: unknown;
@@ -1086,7 +1096,7 @@ export function ssrShow<T>(
     children?: unknown;
   },
 ): SsrHtml {
-  const value = (): T => readValue(props.when, "Show.when") as T;
+  const value = (): unknown => readValue(props.when, "Show.when");
   const keyed = readValue(props.keyed, "Show.keyed") === true;
   const key: Cell<unknown> = keyed
     ? (): unknown => value() || false
@@ -1095,16 +1105,16 @@ export function ssrShow<T>(
   // value is read at ACTIVATION time, which is why the branch takes no slot
   // argument of its own. The DEFAULT is non-keyed, so children get the narrowed
   // accessor; `keyed` hands over the raw value.
-  const content: Block<unknown> = (scope: Scope | null): unknown => {
+  const arm: Block<unknown> = (scope: Scope | null): unknown => {
     const current = untrack(value);
     return current
       ? invokeBlock(scope, props.children, [keyed ? current : value])
       : invokeBlock(scope, props.fallback, NO_ARGS);
   };
-  return branch(s, null, null, key, content);
+  return branch(s, null, null, key, arm);
 }
 
-export function ssrFor<T>(
+export function ssrFor(
   s: Scope | null,
   props: {
     each?: unknown;
@@ -1115,22 +1125,25 @@ export function ssrFor<T>(
 ): SsrHtml {
   // §3.0 rule 1 is `each`'s own (`flow.ts`'s `keyMode`), so the carrier crosses
   // unresolved and both backends reach one implementation of it.
-  return eachOf<T>(s, props.each, props.keyed as Cell<unknown>, props, "For");
+  return eachOf(s, props.each, props.keyed as Cell<unknown>, props, "For");
 }
 
-function eachOf<T>(
+function eachOf(
   s: Scope | null,
   source: unknown,
-  keyOf: ((item: T) => unknown) | false | null | Cell<unknown>,
+  keyOf: ((item: never) => unknown) | false | null | Cell<unknown>,
   props: { children: unknown; fallback?: unknown },
   origin: string,
 ): SsrHtml {
-  const list = (): readonly T[] => readValue(source, `${origin}.each`) as readonly T[];
+  const list = (): readonly unknown[] => readValue(source, `${origin}.each`) as readonly unknown[];
   return each(
     s,
     null,
     null,
-    list,
+    // `each` declares its source as `Cell<readonly never[]>` — the element type
+    // is unresolved there by design — so the cast is at the boundary rather
+    // than carried by a type parameter that appears nowhere in the signature.
+    list as Cell<readonly never[]>,
     keyOf,
     props.children as Block<unknown, never[]>,
     0,

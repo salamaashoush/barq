@@ -133,9 +133,7 @@ function blockOrigin(fn: unknown): string {
 
 /** Whether `value` is a Block that declared it needs the scope it is handed. */
 export function isBlock(value: unknown): boolean {
-  return (
-    typeof value === "function" && Boolean((value as unknown as Record<symbol, boolean>)[BLOCK])
-  );
+  return typeof value === "function" && (value as unknown as Record<symbol, boolean>)[BLOCK];
 }
 
 /**
@@ -1186,9 +1184,9 @@ function unlinkSubs(linkNode: Link): Link | null {
 }
 
 function cleanupDeps(sub: ComputedNode<unknown>): void {
-  let link = sub._deps;
-  while (link !== null) {
-    link = unlinkSubs(link);
+  let dep = sub._deps;
+  while (dep !== null) {
+    dep = unlinkSubs(dep);
   }
   sub._deps = null;
   sub._depsTail = null;
@@ -1724,10 +1722,7 @@ function recompute(node: ComputedNode<unknown>): void {
 
   const first = (node._flags & REACTIVE_UNINITIALIZED) !== 0;
   const valueChanged =
-    first ||
-    wasPending ||
-    node._equals === false ||
-    !node._equals(node._value as never, newValue as never);
+    first || wasPending || node._equals === false || !node._equals(node._value, newValue);
 
   if (valueChanged) {
     node._value = newValue;
@@ -2153,7 +2148,7 @@ function computedRead<T>(node: ComputedNode<T>): T {
     if (latestDepth > 0 && (currentObserver === null || !(node._flags & REACTIVE_UNINITIALIZED))) {
       return node._value;
     }
-    throw new NotReadyError(node as { _flags: number });
+    throw new NotReadyError(node);
   }
 
   return node._value;
@@ -2306,8 +2301,7 @@ function writableComputed<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Sig
     if (node._flags & REACTIVE_UNINITIALIZED) {
       computedPeek(node);
     }
-    const valueChanged =
-      node._equals === false || !node._equals(node._value as never, newValue as never);
+    const valueChanged = node._equals === false || !node._equals(node._value, newValue);
     if (!valueChanged) return;
     node._value = newValue;
     if (node._subs !== null) {
@@ -2425,7 +2419,7 @@ export function reaction(onInvalidate: () => void | (() => void)): (tracking: ()
     });
   }
 
-  return (tracking: () => void): void => {
+  return (body: () => void): void => {
     // Replacing an arm must dispose the old one, otherwise its sources stay
     // live and a superseded dependency still fires the callback
     disposeArm?.();
@@ -2439,7 +2433,7 @@ export function reaction(onInvalidate: () => void | (() => void)): (tracking: ()
       let disposeSelf: (() => void) | undefined;
       const dispose = createEffectNode(
         () => {
-          tracking();
+          body();
         },
         () => {
           // The arming run itself is not an invalidation
@@ -2492,7 +2486,7 @@ export function resolve<T>(fn: () => T): Promise<T> {
     });
     runInOwner(owner, () => {
       createEffectNode(
-        fn as (prev?: unknown) => unknown,
+        fn,
         (value) => {
           if (settled) return;
           finish();
@@ -3136,8 +3130,8 @@ interface SeedChannel {
 export function seedLater(key: string): Promise<{ found: boolean; value?: unknown }> | null {
   const channel = (globalThis as { __BARQ_SEED__?: SeedChannel }).__BARQ_SEED__;
   if (channel === undefined || channel.open !== 1) return null;
-  return new Promise((resolve) => {
-    channel.wait(key, () => resolve(getSeed(key)));
+  return new Promise((deliver) => {
+    channel.wait(key, () => deliver(getSeed(key)));
   });
 }
 
@@ -3434,7 +3428,7 @@ export function authoritative<T>(target: () => T): T {
 }
 
 /** True while any lane is overriding `target`. */
-export function overridden<T>(target: () => T): boolean {
+export function overridden(target: () => unknown): boolean {
   return overridableNode(target)._override !== null;
 }
 

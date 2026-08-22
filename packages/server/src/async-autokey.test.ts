@@ -317,7 +317,7 @@ describe("createAsync auto-keying", () => {
     let read!: () => unknown;
     scope((d) => {
       dispose = d;
-      read = b() as () => unknown;
+      read = b();
     }, true);
     expect(read()).toBe("A-VALUE"); // the hazard, in one line
     // A's value was claimed by B, so B's is stranded — which is the evidence.
@@ -368,7 +368,7 @@ describe("createAsync auto-keying", () => {
     let read!: () => unknown;
     scope((d) => {
       dispose = d;
-      read = b() as () => unknown;
+      read = b();
     }, true);
     // A miss, not A's value. `isPending` reports STALENESS and this value has
     // never held one, so the honest probe is the read itself: it throws, which
