@@ -697,13 +697,20 @@ export function createPageHandler(
             state.setContexts(before.contexts);
             // The matched chain's MODULES, before the render.
             //
-            // Every route a file-based table generates is `lazy()`, and a cold cell
-            // throws `NotReadyError` — which the depth's boundary parks on. The
-            // non-streamed arm renders exactly TWICE, so a chain two deep resolves
-            // its layout on the second pass and its leaf on a third that never
-            // happens: measured on the reference application as a prerendered page
-            // with a nav and no content. Awaiting here costs the same imports the
-            // render would have done, in one round instead of one per depth.
+            // Every route a file-based table generates is `lazy()`, and a cold
+            // cell throws `NotReadyError` — which the depth's boundary parks on.
+            // Parking resumes once the import lands, and only THEN is the next
+            // depth constructed, so a chain of N costs N import round trips one
+            // after another. Awaiting here costs the same imports in ONE round.
+            //
+            // THE REASON THIS COMMENT USED TO GIVE IS STALE, and the measurement
+            // it carried belongs to it: the non-streamed arm rendered exactly
+            // TWICE, so a two-deep chain resolved its layout on the second pass
+            // and its leaf on a third that never came — measured on the reference
+            // application as a prerendered page with a nav and no content. That
+            // pass is gone (`@barqjs/server`'s `renderPage` parks and resumes
+            // like the stream), so the cost is now latency rather than a
+            // truncated page. Preloading is right either way.
             await preloadMatched(match?.route.chain ?? []);
             // Decided BEFORE the head is projected, because it is what decides
             // whether `head` sees `loaderData` at all.
@@ -1227,11 +1234,34 @@ export function renderShell(
  * suite proved it, `__BARQ_DATA__=({})` with the deferred value gone and the
  * client refetching everything the server had already fetched.
  *
- * The mechanism that closes it, named so the next pass starts from the design
- * rather than the symptom: project the head INSIDE the render session — either
- * by running `projectHead` under `setAsyncSession` with the session `renderPage`
- * made, or on `renderPage`'s SECOND pass, which already has every value settled
- * and reads them back from the session bucket rather than refetching.
+ * ONE MECHANISM CLOSES IT, and this comment used to name two. The dead one was
+ * "`renderPage`'s SECOND pass, which already has every value settled" — that
+ * pass no longer exists, having been replaced by the same park-and-resume the
+ * stream uses (`@barqjs/server`'s `renderPage`), so anyone starting from that
+ * sentence would have started from a mechanism that is not there.
+ *
+ * What is left: project the head INSIDE the render's session, by creating the
+ * session in this handler, running `projectHead` under `setAsyncSession`, and
+ * handing the same session to `renderPage`/`renderToStream` — which today each
+ * mint their own.
+ *
+ * WHAT IT WOULD COST, so the next pass weighs it rather than discovering it.
+ * Awaiting a loader before the shell gives up the thing barq's stream does
+ * better than TanStack's: measured on a 300 ms loader with a render-blocking
+ * stylesheet, first contentful paint is 172 ms streamed against 468 ms
+ * buffered, because the shell puts the stylesheet in front of the browser at
+ * 5 ms and the asset fetch overlaps the data fetch instead of queueing behind
+ * it. Waiting only for the loaders of routes whose `head` IS A FUNCTION keeps
+ * that for every page that does not ask — theirs waits for the whole matched
+ * chain on every page (`start-server-core/src/createStartHandler.ts:688`,
+ * `await routerInstance.load(...)` before the handler callback runs).
+ *
+ * AND ONE CONSEQUENCE TO DECIDE. A redirect thrown by a LOADER is a real 302 on
+ * the buffered path and a client-side `location.replace` on the streamed one,
+ * because the status is spent once the shell is on the wire. Awaiting a loader
+ * for the head would make that route's loader-thrown redirect a real 302 on the
+ * streamed path too — strictly better, and still a difference between two routes
+ * that differ only in whether their `head` is a function.
  *
  * Until then `head` is a function of `{ params, matches, match }` and
  * `loaderData` is `undefined`. Narrower than TanStack's, and said out loud.

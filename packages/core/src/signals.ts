@@ -3059,8 +3059,14 @@ export function abandonPendingSeeds(session?: symbol): void {
 }
 
 /**
- * What THIS render already resolved for a key, for the second pass of a string
- * render to read back.
+ * What THIS render already resolved for a key, so a second read of it inside the
+ * same render answers rather than fetching again.
+ *
+ * IT USED TO SERVE THE STRING RENDER'S SECOND PASS, which re-invoked the whole
+ * page after `settle` because there was no later frame to swap a value into.
+ * That pass is gone — the buffered arm parks and resumes exactly as the stream
+ * does — so what is left is the ordinary case, and the call site at `getKeyed`
+ * says the same thing. This comment did not, which is how the drift showed.
  *
  * Not a cache: it is the same session's own recorded output, and it is not
  * consumed, because `getHydrationData` still has to emit it. Returns nothing

@@ -379,11 +379,17 @@ export interface RouterState {
    *
    * Loaders are PULL-based here: a read starts the fetch. A child's boundary is
    * built inside its parent's content, so a parent that parks means the child's
-   * loader has not started — a waterfall on the client, and on the string
-   * backend a page that is simply WRONG: `renderPage` renders twice, pass 1
-   * parks at depth 0 so depth 1 is never constructed, pass 2 is depth 1's first
-   * read and there is no pass 3. Measured on a three-deep chain: one depth of
-   * three in the markup and one seed of three.
+   * loader has NOT STARTED — and that is a waterfall on both backends: depth 1
+   * begins only once depth 0 has settled and been resumed, so a chain of N costs
+   * N round trips end to end instead of one.
+   *
+   * THE REASON THIS COMMENT USED TO GIVE IS STALE and is recorded because the
+   * numbers below were measured against it: `renderPage` rendered TWICE, so
+   * pass 1 parked at depth 0, pass 2 was depth 1's first read, and there was no
+   * pass 3 — which made a deep chain not merely slow but WRONG, one depth of
+   * three in the markup and one seed of three. That pass is gone; the buffered
+   * arm parks and resumes like the stream, so the failure is now latency rather
+   * than truncation. The fix is the same one either way.
    *
    * Priming is one pass over the chain and it fixes both. Measured, same chain
    * at 40 ms a loader: 121 ms to 41 ms, and the three loaders start in the same
