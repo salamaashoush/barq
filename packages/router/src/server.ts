@@ -56,6 +56,9 @@ import {
 } from "./manifest.ts";
 import { memoryHistory } from "./history.ts";
 import { type Match, createMatcher } from "./matcher.ts";
+import { settle } from "@barqjs/core";
+import { setAsyncSession } from "@barqjs/core/internal";
+
 import { isNavigable } from "./path.ts";
 import {
   type AnyRouteDefinition,
@@ -734,17 +737,44 @@ export function createPageHandler(
             //
             // Mapping the whole chain, which is what this did, shipped a head
             // describing markup the document does not contain.
+            // ONE session for the whole request, minted here rather than inside
+            // the renderer, so that a loader awaited to give `head` its
+            // `loaderData` is attributed to the SAME bucket the render seeds
+            // from. A value first read under a different session is seeded into
+            // nobody — measured previously as `__BARQ_DATA__=({})` with the
+            // client refetching everything the server had already fetched.
+            const session = Symbol("page-session");
+            const restore = setAsyncSession(session);
             const modes = resolveSsr(chain);
-            const projected: Route[] = [];
+            const projected: { route: Route; ssr: boolean }[] = [];
             for (const [depth, route] of chain.entries()) {
-              projected.push(route);
+              // `ssr: false` means NOTHING of this route runs on the server, so
+              // its head runs (theirs does too) but its loader must not be
+              // awaited for one — awaiting it is the single fetch `ssr: false`
+              // exists to prevent, and it would seed a value the client is
+              // supposed to fetch for itself. Caught by falsifying the fast-path
+              // gate, which turned three `ssr` tests red at the same time.
+              projected.push({ route, ssr: modes[depth] !== false });
               if (modes[depth] === false) break;
             }
             const assets = await projectHead(
               await Promise.all(
-                projected.map(async (route) => ({
+                projected.map(async ({ route, ssr }) => ({
                   params,
-                  loaderData: loaderDataFor(),
+                  // A FUNCTION head is the signal that this route's loader must
+                  // settle before the head is serialized — and the ONLY signal,
+                  // because a `head` written as a plain object cannot read data
+                  // and so must never cost a wait.
+                  //
+                  // MEASURED, on a 300 ms loader: an object head streams its
+                  // first byte at 5 ms, a function head at 301 ms. Theirs waits
+                  // for the whole matched chain on every page
+                  // (`start-server-core/src/createStartHandler.ts:688`), so a
+                  // static title pays there and does not here.
+                  loaderData:
+                    ssr && typeof route.definition.head === "function"
+                      ? await settleLoader(state, route, params, session)
+                      : undefined,
                   definition: route.definition as never,
                 })),
               ),
@@ -753,6 +783,7 @@ export function createPageHandler(
               // tags, never the document.
               { nonce: options.nonce, onError: (error) => console.error(error) },
             );
+            setAsyncSession(restore);
             const context = contextScript(url, before.produced, options.nonce);
             const preloads = preloadFiles(match?.route.chain ?? null, options.routeAssets);
             const preload = preloadTags(match?.route.chain ?? null, options.routeAssets);
@@ -808,7 +839,10 @@ export function createPageHandler(
               // fallback and the seed would be empty. Measured on exactly that
               // mistake — a server function's result stringified as
               // "[object Promise]" and its handler ran detached from the render.
-              const page = await renderPage(() => root() as never, { nonce: options.nonce });
+              const page = await renderPage(() => root() as never, {
+                nonce: options.nonce,
+                session,
+              });
               // A loader that threw a `Response` or a `Redirect` decided this
               // page, even though the render completed around it.
               dispose();
@@ -839,6 +873,7 @@ export function createPageHandler(
             const stream = renderToStream(() => root() as never, {
               signal: request.signal,
               nonce: options.nonce,
+              session,
             });
             return new Response(
               shell === undefined
@@ -1225,49 +1260,41 @@ export function renderShell(
 }
 
 /**
- * `loaderData` for `head` — NOT YET WIRED, and the reason is measured.
+ * Settle one route's loader, inside the session the render will use.
  *
- * TanStack's `projectLane` runs after a match's loader resolves, which is what
- * makes `head: ({ loaderData })` work. Reading a loader HERE does not: the
- * pre-shell phase is outside the render's async session, and a keyed value first
- * read outside one is "seeded into nobody" — `RouterState.prime` says so and the
- * suite proved it, `__BARQ_DATA__=({})` with the deferred value gone and the
- * client refetching everything the server had already fetched.
+ * `settle(session)` is the primitive and the session argument is the whole
+ * reason this works: it waits for the fetches attributed to THIS request and
+ * not for whatever else the process has in flight. A poll loop was the first
+ * spelling and it was wrong twice over — it burns wall clock in 5 ms steps, and
+ * it cannot tell "still loading" from "settled to undefined".
  *
- * ONE MECHANISM CLOSES IT, and this comment used to name two. The dead one was
- * "`renderPage`'s SECOND pass, which already has every value settled" — that
- * pass no longer exists, having been replaced by the same park-and-resume the
- * stream uses (`@barqjs/server`'s `renderPage`), so anyone starting from that
- * sentence would have started from a mechanism that is not there.
- *
- * What is left: project the head INSIDE the render's session, by creating the
- * session in this handler, running `projectHead` under `setAsyncSession`, and
- * handing the same session to `renderPage`/`renderToStream` — which today each
- * mint their own.
- *
- * WHAT IT WOULD COST, so the next pass weighs it rather than discovering it.
- * Awaiting a loader before the shell gives up the thing barq's stream does
- * better than TanStack's: measured on a 300 ms loader with a render-blocking
- * stylesheet, first contentful paint is 172 ms streamed against 468 ms
- * buffered, because the shell puts the stylesheet in front of the browser at
- * 5 ms and the asset fetch overlaps the data fetch instead of queueing behind
- * it. Waiting only for the loaders of routes whose `head` IS A FUNCTION keeps
- * that for every page that does not ask — theirs waits for the whole matched
- * chain on every page (`start-server-core/src/createStartHandler.ts:688`,
- * `await routerInstance.load(...)` before the handler callback runs).
- *
- * AND ONE CONSEQUENCE TO DECIDE. A redirect thrown by a LOADER is a real 302 on
- * the buffered path and a client-side `location.replace` on the streamed one,
- * because the status is spent once the shell is on the wire. Awaiting a loader
- * for the head would make that route's loader-thrown redirect a real 302 on the
- * streamed path too — strictly better, and still a difference between two routes
- * that differ only in whether their `head` is a function.
- *
- * Until then `head` is a function of `{ params, matches, match }` and
- * `loaderData` is `undefined`. Narrower than TanStack's, and said out loud.
+ * The read is BLOCKING (`dataFor(…, true)`): on the string backend a `latest()`
+ * read of a cold cell answers `undefined` rather than parking, so a non-blocking
+ * read would start nothing and settle nothing.
  */
-function loaderDataFor(): undefined {
-  return undefined;
+async function settleLoader(
+  state: RouterState,
+  route: Route,
+  params: Readonly<Record<string, string>>,
+  session: symbol,
+): Promise<unknown> {
+  const loaded = state.dataFor(route, params, true);
+  try {
+    loaded();
+  } catch {
+    // `NotReadyError` is the point: the read STARTED the fetch. Anything else a
+    // cold cell throws is the loader's own failure, which the render will throw
+    // again with a boundary to catch it — swallowing it here is what keeps this
+    // from turning a route error into a request error.
+  }
+  await settle(session);
+  try {
+    return loaded();
+  } catch {
+    // Still not ready, or failed. The head goes without it rather than the
+    // request failing over a title.
+    return undefined;
+  }
 }
 
 /**

@@ -94,9 +94,21 @@ let lastRenderData: Record<string, unknown> = {};
  */
 export async function renderPage(
   fn: () => JSXElement,
-  options?: { nonce?: string },
+  options?: {
+    nonce?: string;
+    /**
+     * The async session to attribute this render's keyed reads to.
+     *
+     * Minted here when absent, which is every caller but one. `@barqjs/router`'s
+     * page handler passes its own so that work done BEFORE the render — a loader
+     * awaited to give `head` its `loaderData` — lands in the same bucket the
+     * seed is written from. A value first read under a different session is
+     * "seeded into nobody" and the client refetches everything.
+     */
+    session?: symbol;
+  },
 ): Promise<{ html: string; data: Record<string, unknown>; script: string }> {
-  const session = Symbol("render-session");
+  const session = options?.session ?? Symbol("render-session");
   let dispose!: () => void;
   let container: HTMLElement | null = null;
   let stringMode = false;
@@ -301,6 +313,11 @@ interface Continuation {
 }
 
 export interface StreamOptions {
+  /**
+   * The async session to attribute this render's keyed reads to. See
+   * `renderPage`'s own option — the reason is the same and so is the default.
+   */
+  session?: symbol;
   /** Stops the render. The stream closes and parked boundaries keep their fallbacks. */
   signal?: AbortSignal;
   /** CSP nonce, applied to every inline script this render emits. */
@@ -473,7 +490,7 @@ export function renderToStream(
   fn: () => JSXElement,
   options?: StreamOptions,
 ): ReadableStream<Uint8Array> {
-  const session = Symbol("stream-session");
+  const session = options?.session ?? Symbol("stream-session");
   const encoder = new TextEncoder();
   const parked: Continuation[] = [];
   let next = 0;

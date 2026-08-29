@@ -2050,3 +2050,169 @@ describe("a redirect target has to be navigable", () => {
     }
   });
 });
+
+/**
+ * `head: ({ loaderData })` — and the wait it costs, which is the point.
+ *
+ * A `head` written as an OBJECT cannot read data, so it must never cost a wait.
+ * A `head` written as a FUNCTION is asking for the match, so its route's loader
+ * settles before the head is serialized — and only its route's.
+ *
+ * Theirs waits for the whole matched chain on every page
+ * (`start-server-core/src/createStartHandler.ts:688`, `await
+ * routerInstance.load()` before the handler callback runs), so a static title
+ * pays there and does not here.
+ */
+describe("loaderData in head", () => {
+  const LOADER_MS = 60;
+  const table = (head: unknown) =>
+    [
+      {
+        id: "__root__",
+        path: "/",
+        shellComponent: (scope: unknown, props: { children: unknown }) =>
+          ssrHtml(
+            `<html><head>${esc(HeadContent(scope as never))}</head>` +
+              `<body>${esc(props.children)}</body></html>`,
+          ),
+        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        children: [
+          {
+            id: "/post",
+            path: "post",
+            loader: async () => {
+              await new Promise((resolve) => setTimeout(resolve, LOADER_MS));
+              return { title: "FROM THE LOADER" };
+            },
+            head,
+            component: (_s: unknown, props: { data: () => unknown }) =>
+              ssrHtml(`<main>${esc((props.data() as { title: string })?.title)}</main>`),
+          },
+        ],
+      },
+    ] as never;
+
+  const render = async (head: unknown, stream: boolean) => {
+    const handler = createPageHandler({
+      routeTree: table(head),
+      stream,
+      app: (state) => renderRoutes(state),
+    });
+    const started = Date.now();
+    const response = await handler(get("/post"));
+    const headersAt = Date.now() - started;
+    const body = await response.text();
+    return { body, headersAt, title: /<title[^>]*>([^<]*)<\/title>/.exec(body)?.[1] ?? "NONE" };
+  };
+
+  const fnHead = ({ loaderData }: { loaderData: { title?: string } | undefined }) => ({
+    meta: [{ title: loaderData?.title ?? "MISSING" }],
+  });
+
+  for (const stream of [false, true]) {
+    test(`a function head reads the loader (stream=${stream})`, async () => {
+      const { title, body } = await render(fnHead, stream);
+      expect(title).toBe("FROM THE LOADER");
+      // …and the page still renders, and still SEEDS, which is the thing that
+      // breaks if the loader is read under a different async session.
+      expect(body).toContain("<main>FROM THE LOADER</main>");
+      expect(body).toContain("__BARQ_DATA__");
+    });
+
+    test(`an object head costs no wait (stream=${stream})`, async () => {
+      const { title } = await render({ meta: [{ title: "STATIC" }] }, stream);
+      expect(title).toBe("STATIC");
+    });
+  }
+
+  /**
+   * The whole reason the signal is the SHAPE of `head` rather than a flag: a
+   * static title must keep the fast path. Measured rather than asserted, because
+   * this is the property the design exists for.
+   */
+  test("a static head streams its first byte before the loader settles", async () => {
+    const handler = createPageHandler({
+      routeTree: table({ meta: [{ title: "STATIC" }] }),
+      stream: true,
+      app: (state) => renderRoutes(state),
+    });
+    const started = Date.now();
+    const response = await handler(get("/post"));
+    const reader = response.body!.getReader();
+    await reader.read();
+    const firstByteAt = Date.now() - started;
+    // DRAINED, not cancelled: cancelling delegates to the inner stream, which
+    // this reader has locked, and `Cannot cancel a locked ReadableStream` reads
+    // like a bug in the handler rather than in the test.
+    while (!(await reader.read()).done) {
+      /* drain */
+    }
+    // Comfortably inside the loader's own time, so this cannot pass by accident.
+    expect(firstByteAt).toBeLessThan(LOADER_MS / 2);
+  });
+
+  /**
+   * `ssr: false` means NOTHING of the route runs on the server. Its head still
+   * runs — theirs does too, and the lane breaks after it — but awaiting its
+   * loader would be the single fetch `ssr: false` exists to prevent, and would
+   * seed a value the client is supposed to fetch itself.
+   *
+   * Found by falsifying the fast-path gate above: forcing every head to wait
+   * turned three `ssr` tests red at the same time, which is what pointed at it.
+   */
+  test("an `ssr: false` route does NOT have its loader awaited for its head", async () => {
+    let ran = false;
+    const handler = createPageHandler({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          shellComponent: (scope: unknown, props: { children: unknown }) =>
+            ssrHtml(
+              `<html><head>${esc(HeadContent(scope as never))}</head>` +
+                `<body>${esc(props.children)}</body></html>`,
+            ),
+          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          children: [
+            {
+              id: "/x",
+              path: "x",
+              ssr: false,
+              loader: async () => {
+                ran = true;
+                return { title: "LEAKED" };
+              },
+              head: ({ loaderData }: { loaderData: { title?: string } | undefined }) => ({
+                meta: [{ title: loaderData?.title ?? "none" }],
+              }),
+              component: () => ssrHtml("<main>x</main>"),
+            },
+          ],
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+    });
+    const body = await (await handler(get("/x"))).text();
+    expect(ran).toBe(false);
+    // The head still runs, with nothing in it — which is theirs.
+    expect(/<title[^>]*>([^<]*)<\/title>/.exec(body)?.[1]).toBe("none");
+  });
+
+  test("a function head waits, and that is the trade", async () => {
+    const handler = createPageHandler({
+      routeTree: table(fnHead),
+      stream: true,
+      app: (state) => renderRoutes(state),
+    });
+    const started = Date.now();
+    const response = await handler(get("/post"));
+    const reader = response.body!.getReader();
+    await reader.read();
+    const firstByteAt = Date.now() - started;
+    while (!(await reader.read()).done) {
+      /* drain */
+    }
+    expect(firstByteAt).toBeGreaterThanOrEqual(LOADER_MS - 10);
+  });
+});

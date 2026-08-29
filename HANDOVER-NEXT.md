@@ -28,7 +28,7 @@ Paste this as the opening prompt. Everything below was verified, not remembered.
 ## State — verified
 
 ```
-core 921 · router 362 · server 104 · start 135 · extra 26 · testing 16 · compiler 22
+core 921 · router 369 · server 104 · start 135 · extra 26 · testing 16 · compiler 22
 compiler-rs: cargo 372 pass · bun 3644 pass / 17 todo / 1 fail
   (the 1 fail is `the self-check needs one failing and one holding claim; the
    corpus has both` — it fires BECAUSE nothing fails. Do not chase it. Confirmed
@@ -114,6 +114,16 @@ building HEAD in a worktree, and it got worse the moment the table became static
 - **Sessions are a sealed cookie on WebCrypto AES-GCM**, no dependency. The
   interface is theirs; the sealing is not, and the file says so.
 
+**`head: ({ loaderData })` works**, and only pages that ask for it pay. A `head`
+written as an OBJECT streams its first byte at 5 ms; one written as a FUNCTION
+waits for that route's loader — 301 ms on a 300 ms loader — and only that route's.
+Theirs waits for the whole matched chain on every page
+(`createStartHandler.ts:688`). The mechanism is one async session per request,
+minted in the page handler and handed to `renderPage`/`renderToStream`, so a
+loader awaited before the render seeds into the same bucket the render reads.
+An `ssr: false` route's loader is NOT awaited — its head still runs, with
+nothing in it, which is theirs.
+
 **Then an optimisation-and-security pass over exactly that**, which found two
 things worth knowing about:
 
@@ -137,21 +147,7 @@ page render     0.0152 ms    65,000/s        session unseal  0.013 ms  77,500/s
 
 ## Still open, in the order I would take them
 
-### 1. `loaderData` in `head` is still a stub
-
-`packages/router/src/server.ts`'s `loaderDataFor()` returns `undefined`, with the
-reasoning above it. TanStack's `projectLane` runs after a match's loader
-resolves, which is what makes `head: ({ loaderData })` work. Reading a loader in
-barq's pre-shell phase does not: it is outside the render's async session, and a
-keyed value first read outside one is seeded into nobody — measured,
-`__BARQ_DATA__=({})` with the client refetching everything. Two mechanisms are
-named at the function; pick one before building.
-
-**This is also what would make the hoisted dispose guard observable.** Right now
-nothing between `setContexts` and the render can reject, so the guard is
-defensive; a real `loaderData` projection can.
-
-### 2. The production server and a deployable output
+### 1. The production server and a deployable output
 
 `serveBarq` (`packages/start/src/serve.ts:56`) still has ZERO callers. There is
 no `dist/barq.json`, no adapter, and `vite build` emits no `.vite/manifest.json`.
@@ -162,19 +158,19 @@ generalise. Research worth reusing: SvelteKit's `Adapter`/`builder` contract,
 Nitro's presets and `.output/nitro.json`, what `srvx` does and does not give.
 `vite preview` will never do SSR (vitejs #14836, #14837).
 
-### 3. `packages/testing` cannot test what barq now does
+### 2. `packages/testing` cannot test what barq now does
 
 `grep -c hydrate packages/testing/src/index.ts` is `0`. No SSR helper, no
 hydration helper, no seed installer. `packages/router/src/server.test.ts`'s
 `hydration` describe is the model.
 
-### 4. Documentation
+### 3. Documentation
 
 No `packages/start/README.md`, no getting-started, nothing on `routeTree.gen.ts`,
 the render modes, prerendering, `shellComponent`/`head`, code splitting, or the
 server-entry contract.
 
-### 5. The server surface, what is NOT there
+### 4. The server surface, what is NOT there
 
 Against `request-response.ts`, still missing: `getValidatedQuery` (they mark it
 "not public API (yet)") and the typed-header maps they get from `fetchdts`.
@@ -215,7 +211,7 @@ Neither is load-bearing. What IS worth deciding:
   CSP. Deliberate for now (TanStack sets none either), but it is a default worth
   arguing about rather than inheriting.
 
-### 6. The client story for a mutation
+### 5. The client story for a mutation
 
 `<form action={serverFn}>` works with JS disabled. Nothing exists for pending
 state, optimistic updates or error display on the JS path. Decide whether that is
