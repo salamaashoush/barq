@@ -934,10 +934,33 @@ export function renderShell(
   const body = (): unknown => renderRoutes(state);
   if (shell === undefined) return body();
   const owner = getOwner();
-  if (owner === null) return shell(null, { children: body });
-  return provide(owner, HeadAssetsContext, cell(assets), (inner) =>
-    shell(inner as Scope, { children: body }),
-  );
+  // THE CHILDREN ARE BUILT FIRST, and the shell is wrapped around the result.
+  //
+  // `<head>` comes before `<body>` in the shell's own markup, so a shell that
+  // built its head first serialised it before the routes had rendered — and
+  // anything the routes REGISTER while rendering was therefore missing from it.
+  // Measured on the reference application: `<style id="_goober">` shipped one
+  // of the twenty-one classes the body used and none of the global rules, so
+  // the first paint was unstyled and the page flashed white until the client
+  // regenerated the sheet. A runtime CSS-in-JS sheet is the case that makes
+  // this visible; it is true of anything a route registers during construction.
+  //
+  // React's server integrations invert the same way and for the same reason:
+  // render the app, then build the document around what it produced.
+  //
+  // WHAT THIS COSTS is the one thing worth naming: a context the SHELL provides
+  // no longer wraps the routes, because they are constructed before it runs.
+  // `renderShell` provides `HeadAssetsContext` itself, outside the shell, so
+  // `<HeadContent />` is unaffected; the router's own context is provided at
+  // depth 0 inside `renderRoutes`. A shell that wants to provide something to
+  // the routes has to do it in the ROOT ROUTE's component, which is where a
+  // layout's providers belong anyway.
+  const build = (inner: Scope | null): unknown => {
+    const rendered = body();
+    return shell(inner, { children: () => rendered });
+  };
+  if (owner === null) return build(null);
+  return provide(owner, HeadAssetsContext, cell(assets), (inner) => build(inner as Scope));
 }
 
 /**
