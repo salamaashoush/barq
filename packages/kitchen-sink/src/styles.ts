@@ -51,9 +51,57 @@ export function baseStyles(): void {
  *
  * Without it an SSR'd page arrives unstyled and repaints once the bundle runs,
  * which is the flash a server render exists to remove.
+ *
+ * ACCUMULATED, because `extractCss` DRAINS. goober's sheet is a module-level
+ * global and `extractCss` empties it, which is right for a process that renders
+ * once and exits and wrong for a server that renders forever: the first request
+ * took every rule and every request after it got only what had re-registered
+ * since. Measured on the reference application — request one inlined 2481 bytes
+ * and request two inlined 120, one of the twenty-one classes its own markup
+ * used, so every page after the first flashed white.
+ *
+ * DEDUPED by rule, because appending alone leaks. A rule built inside a
+ * component body is re-registered on every render and `extractCss` hands it
+ * back as new each time — measured as the inlined sheet growing 120 bytes per
+ * request, forever. A class name is a hash of its content, so the same rule is
+ * the same bytes and a set is enough.
+ *
+ * A page therefore also carries the rules for routes it has not navigated to
+ * yet, which is what keeps a client-side navigation from flashing too.
  */
+const rules = new Set<string>();
+
+/**
+ * Split a stylesheet into top-level rules.
+ *
+ * Brace-aware rather than a split on `}`: `@media` and `@keyframes` nest, and
+ * cutting them at the first close would emit two fragments that are each
+ * invalid CSS.
+ */
+function splitRules(css: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < css.length; i++) {
+    const character = css[i];
+    if (character === "{") depth++;
+    else if (character === "}") {
+      depth--;
+      if (depth === 0) {
+        const rule = css.slice(start, i + 1).trim();
+        if (rule !== "") out.push(rule);
+        start = i + 1;
+      }
+    }
+  }
+  return out;
+}
+
 export function collectStyles(): string {
-  return extractCss();
+  for (const rule of splitRules(extractCss())) rules.add(rule);
+  // Globals FIRST, so a component class still wins on specificity ties, and
+  // because `body { background }` is the rule whose absence is a white page.
+  return globalRules.join("") + [...rules].join("");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -125,6 +173,15 @@ export function keyframe(strings: TemplateStringsArray, ...values: (string | num
 // Track injected global CSS to avoid duplicates
 const injectedGlobalCss = new Set<string>();
 
+/**
+ * The global rules, in declaration order, for `collectStyles` to inline.
+ *
+ * These do NOT go through goober's sheet — `globalCss` writes them to the
+ * document itself — so `extractCss` never sees them and the server had no way
+ * to send them.
+ */
+const globalRules: string[] = [];
+
 export function globalCss(strings: TemplateStringsArray, ...values: (string | number)[]): void {
   // Build the CSS string from template literal
   let cssText = strings[0];
@@ -136,6 +193,14 @@ export function globalCss(strings: TemplateStringsArray, ...values: (string | nu
   const trimmed = cssText.trim();
   if (injectedGlobalCss.has(trimmed)) return;
   injectedGlobalCss.add(trimmed);
+
+  // RECORDED for the server, not only written to the DOM. This function used to
+  // do nothing at all under `typeof document === "undefined"`, so the global
+  // rules never reached the server's inlined sheet — `body { background }`
+  // among them, which is why an SSR'd page painted white until the bundle ran
+  // and re-registered them. goober's own `css` goes through `extractCss`; these
+  // do not, so they are kept here.
+  globalRules.push(cssText);
 
   // Inject directly into goober's style sheet (append, don't replace)
   // This fixes goober's glob behavior which replaces previous global CSS
@@ -151,8 +216,11 @@ export function globalCss(strings: TemplateStringsArray, ...values: (string | nu
       document.head.appendChild(styleEl);
     }
 
-    // Append our global CSS to the existing content
-    styleEl.textContent = (styleEl.textContent || "") + cssText;
+    // Only if the server did not already inline it. The client calls
+    // `baseStyles()` too, and appending a second copy of every global rule to a
+    // sheet the server already sent is bytes and parse time for no change.
+    const current = styleEl.textContent ?? "";
+    if (!current.includes(trimmed)) styleEl.textContent = current + cssText;
   }
 }
 
@@ -354,4 +422,3 @@ export function token(tokens: DesignTokens, path: string): string {
 
   return String(value);
 }
-
