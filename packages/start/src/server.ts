@@ -10,7 +10,7 @@
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
-import { withRequest } from "./context.ts";
+import { applyResponseDraft, createResponseDraft, draftedStatus, withRequest } from "./context.ts";
 import { DATA_SUFFIX, InputError, RPC_PREFIX, type ServerFn, isServerFn } from "./index.ts";
 
 /**
@@ -173,30 +173,54 @@ export async function handleServerFn(
     }
   }
 
+  // The draft the handler writes to through `setCookie` / `setResponseHeader`,
+  // held HERE because the response is built after the handler has returned.
+  const draft = createResponseDraft();
   try {
     // `{ data }` on the value channel; a bare `FormData` on the form one, which
     // is the shape `<form action={fn}>` hands the function on the enhanced path
     // — so a handler sees the same input type whether or not JS ran.
-    const result = await withRequest(request, () =>
-      input instanceof FormData ? fn(input) : fn({ data: input }),
+    const result = await withRequest(
+      request,
+      () => (input instanceof FormData ? fn(input) : fn({ data: input })),
+      { response: draft },
     );
-    if (isData) return Response.json(encodeWire(result));
-    // A handler may answer a form submission itself — a redirect elsewhere, a
-    // rendered page. Otherwise the browser goes back where it came from, which
-    // is what makes the no-JS path a round trip rather than a dead end.
-    if (result instanceof Response) return result;
-    return seeOther(request);
+    // A RETURNED RESPONSE IS HONOURED ON BOTH CHANNELS, and it did not used to
+    // be: the value channel handed it to `encodeWire`, which answered
+    // `Seroval Error (step: 1)` and a 500 with nothing in it. So a function that
+    // set a cookie by returning a response worked with JS disabled and crashed
+    // with JS enabled — the one divergence the form path exists to prevent.
+    if (result instanceof Response) return applyResponseDraft(result, draft);
+    if (isData) {
+      // `draftedStatus` here and NOT inside `applyResponseDraft`, because the
+      // two answer different questions: this response is the framework's to
+      // build, so `setResponseStatus(201)` decides it — where a response the
+      // handler RETURNED has already decided for itself.
+      return applyResponseDraft(
+        Response.json(encodeWire(result), draftedStatus(draft, 200)),
+        draft,
+      );
+    }
+    // Otherwise the browser goes back where it came from, which is what makes
+    // the no-JS path a round trip rather than a dead end.
+    return applyResponseDraft(seeOther(request), draft);
   } catch (error) {
     // A middleware rejects by throwing a Response — `throw new Response("", {
     // status: 401 })` — and it is returned as it stands.
-    if (error instanceof Response) return error;
+    // The draft rides an error out as well. A middleware that rotated a session
+    // cookie and THEN refused must not lose the rotation — the browser would
+    // keep replaying a token the server has already retired.
+    if (error instanceof Response) return applyResponseDraft(error, draft);
     // A validation failure is the caller's fault and says so. Anything else is
     // reported without a body: a handler's message can name a table, a column
     // or a path, and none of that is the caller's business.
     if (error instanceof InputError) {
-      return isData
-        ? Response.json({ error: "invalid input" }, { status: 400 })
-        : new Response("invalid input", { status: 400 });
+      return applyResponseDraft(
+        isData
+          ? Response.json({ error: "invalid input" }, { status: 400 })
+          : new Response("invalid input", { status: 400 }),
+        draft,
+      );
     }
     throw error;
   }

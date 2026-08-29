@@ -36,7 +36,13 @@ import { HYDRATE, type Block, type Scope, cell, getOwner, provide } from "@barqj
 import { encodeSeed } from "@barqjs/server/codec";
 import { isbot } from "isbot";
 
-import { withRequest } from "@barqjs/start";
+import {
+  applyResponseDraft,
+  createResponseDraft,
+  draftedStatus,
+  peekResponseDraft,
+  withRequest,
+} from "@barqjs/start";
 import { mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
@@ -479,6 +485,12 @@ export function createPageHandler(
 
     // Rule 2. The whole render, including every loader and every server
     // function a loader calls, runs with this request ambient.
+    // The draft a loader, a `beforeLoad` or a route handler writes to through
+    // `setCookie` / `setResponseHeader`. Held here, outside the render, because
+    // the response is built after all of them have run — and because a STREAMED
+    // response is handed back before its body exists, so the draft has to be
+    // read at the moment the `Response` is constructed and not later.
+    const draft = createResponseDraft();
     try {
       return await withRequest(
         request,
@@ -521,7 +533,12 @@ export function createPageHandler(
             dispose();
             if (error instanceof NotFound) return html("not found", 404);
             const early = asResponse(error);
-            if (early !== null) return early;
+            // THE DRAFT RIDES THE EARLY RETURN, and this is the login shape:
+            // a `beforeLoad` that authenticates seats the session cookie and
+            // THEN redirects. Returning the redirect bare dropped the cookie and
+            // sent a user who is somehow still signed out — with the redirect
+            // making it look as though it had worked.
+            if (early !== null) return applyResponseDraft(early, draft);
             throw error;
           }
           // THE GUARD STARTS HERE, not at the render. Everything from this
@@ -695,11 +712,15 @@ export function createPageHandler(
             throw error;
           }
         },
-        options.refuseRequest,
+        { refuse: options.refuseRequest, response: draft },
       );
     } catch (error) {
       const thrown = asResponse(error);
-      if (thrown !== null) return thrown;
+      // A `beforeLoad` that sets a cookie and THEN redirects keeps the cookie —
+      // which is the whole shape of a login: authenticate, seat the session,
+      // send the browser on. Dropping it would redirect a user who is somehow
+      // still signed out.
+      if (thrown !== null) return applyResponseDraft(thrown, draft);
       throw error;
     }
   };
@@ -841,11 +862,24 @@ async function shellOf(options: PageHandlerOptions, shell: string, url: URL): Pr
   return options.transformShell === undefined ? shell : await options.transformShell(shell, url);
 }
 
+/**
+ * A page response, carrying whatever the request drafted.
+ *
+ * ONE place, because every page answer this handler builds goes through it —
+ * the rendered document, the 404, the buffered arm. A merge at each of those
+ * would be three places to forget.
+ *
+ * `status` here is a FALLBACK: `setResponseStatus(403)` from a `beforeLoad` on
+ * a page that renders fine is the deliberate case, and the caller's `missing
+ * ? 404 : status` still wins when nothing drafted one.
+ */
 function html(body: string, status: number, extra?: Record<string, string>): Response {
-  return new Response(body, {
-    status,
+  const draft = peekResponseDraft();
+  const response = new Response(body, {
+    ...draftedStatus(draft, status),
     headers: { "content-type": "text/html; charset=utf-8", ...extra },
   });
+  return applyResponseDraft(response, draft);
 }
 
 /**

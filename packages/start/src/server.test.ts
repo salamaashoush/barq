@@ -7,7 +7,12 @@ import {
   type StandardSchema,
   UncheckedInputError,
   createServerFn,
+  getCookie,
   getRequest,
+  peekRequest,
+  setCookie,
+  setResponseHeader,
+  setResponseStatus,
   isServerFn,
   serverRpc,
 } from "./index.ts";
@@ -315,8 +320,18 @@ describe("middleware and request context", () => {
     expect(decodeWire<string[]>(await b?.json())).toEqual(["B", "B"]);
   });
 
-  test("getRequest() outside a server function throws rather than returning undefined", () => {
-    expect(() => getRequest()).toThrow(/only available inside a server function/);
+  test("the request helpers outside a request throw rather than returning undefined", () => {
+    // A handler reading cookies off `undefined` is a bug that should surface
+    // where it happens, not resolve to "no session" and let the request through.
+    // The message names every place there IS one, because "server function" was
+    // only half the answer once route handlers and loaders could ask too.
+    expect(() => getRequest()).toThrow(/only available inside a request/);
+    expect(() => getCookie("sid")).toThrow(/only available inside a request/);
+    expect(() => setCookie("sid", "x")).toThrow(/only available inside a request/);
+    expect(() => setResponseHeader("x-a", "b")).toThrow(/only available inside a request/);
+    // …and `peekRequest` is the spelling for code that legitimately runs both
+    // ways, which still answers rather than throwing.
+    expect(peekRequest()).toBeUndefined();
   });
 });
 
@@ -614,5 +629,187 @@ describe("the call convention", () => {
     // The one value barq does implement is accepted, so stating the intent is
     // not itself an error.
     expect(() => createServerFn({ method: "POST" })).not.toThrow();
+  });
+});
+
+/**
+ * The response a handler builds without returning one.
+ *
+ * MEASURED BEFORE THIS EXISTED: a server function could not set a cookie at all
+ * on the JS path. `handleServerFn` answered the `.data` channel with
+ * `Response.json(encodeWire(result))`, so a returned `Response` went into the
+ * value codec and came back `Seroval Error (step: 1)` — a 500 with nothing in
+ * it. The no-JS form path returned it correctly, so the same function behaved
+ * differently depending on whether JS had run.
+ */
+describe("the ambient response", () => {
+  const call = (id: string, data = true) =>
+    handleServerFn(
+      new Request(`http://x/_barq/fn/${id}${data ? ".data" : ""}`, {
+        method: "POST",
+        headers: { origin: "http://x", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+
+  test("`setCookie` reaches the response on the DATA channel", async () => {
+    mountOf(
+      serverRpc<undefined, unknown>(
+        { id: "login" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => {
+            setCookie("sid", "abc", { httpOnly: true, path: "/", sameSite: "lax" });
+            setResponseHeader("x-ran", "yes");
+            return { ok: true };
+          },
+        },
+      ),
+    );
+    const response = await call("login");
+    expect(response?.headers.get("set-cookie")).toBe("sid=abc; Path=/; HttpOnly; SameSite=Lax");
+    expect(response?.headers.get("x-ran")).toBe("yes");
+    // …and the VALUE still comes back, which is the whole point of not having
+    // to return a `Response` to set a header.
+    expect(decodeWire<unknown>(await response?.json())).toEqual({ ok: true });
+  });
+
+  test("TWO cookies are two lines, not one overwriting the other", async () => {
+    mountOf(
+      serverRpc<undefined, unknown>(
+        { id: "two" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => {
+            setCookie("a", "1");
+            setCookie("b", "2");
+            return null;
+          },
+        },
+      ),
+    );
+    const response = await call("two");
+    expect(response?.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
+  });
+
+  test("a RETURNED Response works on the data channel, and used to crash", async () => {
+    mountOf(
+      serverRpc<undefined, unknown>(
+        { id: "raw" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => new Response("hi", { status: 201, headers: { "x-raw": "1" } }),
+        },
+      ),
+    );
+    const response = await call("raw");
+    expect(response?.status).toBe(201);
+    expect(response?.headers.get("x-raw")).toBe("1");
+    expect(await response?.text()).toBe("hi");
+  });
+
+  test("a returned Response WINS on a header it sets, and cookies are additive", async () => {
+    mountOf(
+      serverRpc<undefined, unknown>(
+        { id: "both" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => {
+            setCookie("from-helper", "1");
+            setResponseHeader("x-who", "helper");
+            return new Response(null, {
+              headers: { "x-who": "returned", "set-cookie": "from-response=1" },
+            });
+          },
+        },
+      ),
+    );
+    const response = await call("both");
+    // The handler that built a whole response has said what it wants.
+    expect(response?.headers.get("x-who")).toBe("returned");
+    // …except for cookies, where dropping either is a bug neither can see.
+    expect(response?.headers.getSetCookie().toSorted()).toEqual([
+      "from-helper=1",
+      "from-response=1",
+    ]);
+  });
+
+  test("a middleware that rotates a cookie and THEN refuses keeps the rotation", async () => {
+    // Otherwise the browser keeps replaying a token the server has retired.
+    const rotate: Middleware = async (next) => {
+      setCookie("sid", "rotated");
+      throw new Response("nope", { status: 401 });
+      // oxlint-disable-next-line no-unreachable -- the shape is the point
+      return next();
+    };
+    mountOf(
+      serverRpc<undefined, unknown>(
+        { id: "rotates" },
+        { validator: null, middleware: [rotate], handler: () => "unreachable" },
+      ),
+    );
+    const response = await call("rotates");
+    expect(response?.status).toBe(401);
+    expect(response?.headers.get("set-cookie")).toBe("sid=rotated");
+  });
+
+  /**
+   * Here and NOT in the router's suite, and the reason is worth recording:
+   * `Cookie` is a FORBIDDEN request header name, so `new Request(url, { headers:
+   * { cookie } })` drops it — under happy-dom, which the router registers, and
+   * per the fetch spec. A server never constructs a request; it receives one off
+   * the wire, where the header arrives intact. This package registers no DOM, so
+   * it is the only place the real shape can be tested.
+   */
+  test("`getCookie` reads what the REQUEST carried", async () => {
+    let saw: string | undefined;
+    mountOf(
+      serverRpc<undefined, unknown>(
+        { id: "reads" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => {
+            saw = getCookie("sid");
+            return null;
+          },
+        },
+      ),
+    );
+    await handleServerFn(
+      new Request("http://x/_barq/fn/reads.data", {
+        method: "POST",
+        headers: {
+          origin: "http://x",
+          "content-type": "application/json",
+          cookie: "sid=from-the-browser",
+        },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(saw).toBe("from-the-browser");
+  });
+
+  test("`setResponseStatus` decides a framework-built response", async () => {
+    mountOf(
+      serverRpc<undefined, unknown>(
+        { id: "created" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => {
+            setResponseStatus(201);
+            return { id: 7 };
+          },
+        },
+      ),
+    );
+    const response = await call("created");
+    expect(response?.status).toBe(201);
+    expect(decodeWire<unknown>(await response?.json())).toEqual({ id: 7 });
   });
 });

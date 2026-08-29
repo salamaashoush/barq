@@ -7,7 +7,14 @@
  */
 
 import { esc, html as ssrHtml, ssrLoading } from "@barqjs/server";
-import { type Middleware, createServerFn, getRequest } from "@barqjs/start";
+import {
+  type Middleware,
+  createServerFn,
+  getRequest,
+  setCookie,
+  setResponseHeader,
+  setResponseStatus,
+} from "@barqjs/start";
 import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
@@ -1519,5 +1526,111 @@ describe("a failure before the render, and what the handler does with it", () =>
     // `projectLane` does with the same failure.
     expect(body).toContain("<main>x</main>");
     expect(body).toContain('name="root"');
+  });
+});
+
+/**
+ * A loader and a `beforeLoad` can write to the response.
+ *
+ * This is where the ambient draft earns its keep beyond server functions: a
+ * `beforeLoad` that authenticates seats the session and redirects in one step,
+ * and a loader that knows the page is cacheable says so where it knows it —
+ * neither of which can be expressed by a return value, since one returns a
+ * verdict and the other returns data.
+ */
+describe("the response a page render drafts", () => {
+  const page = (definition: Partial<AnyRouteDefinition>) =>
+    createPageHandler({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          children: [
+            {
+              id: "/x",
+              path: "x",
+              // READS `data`, because a loader runs on read — a component that
+              // ignores it never triggers one, and the test would be asserting
+              // against a loader that had not run.
+              component: (_s: unknown, props: { data: () => unknown }) =>
+                ssrHtml(`<main>${esc(String(props.data() ?? "x"))}</main>`),
+              ...definition,
+            },
+          ],
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+
+  test("a loader's `setCookie` and `setResponseHeader` reach the document", async () => {
+    const handler = page({
+      loader: () => {
+        setCookie("seen", "1", { path: "/" });
+        setResponseHeader("cache-control", "private, max-age=60");
+        return "data";
+      },
+    });
+    const response = await handler(get("/x"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBe("seen=1; Path=/");
+    expect(response.headers.get("cache-control")).toBe("private, max-age=60");
+    // …and the page still rendered, which is the point: the header is a side
+    // note, not the answer.
+    expect(await response.text()).toContain("<main>data</main>");
+    // The content type the framework sets is not clobbered by the merge.
+    expect(response.headers.get("content-type")).toContain("text/html");
+  });
+
+  test("a `beforeLoad` that seats a session and THEN redirects keeps the cookie", async () => {
+    // The whole shape of a login. Dropping the cookie would redirect a user who
+    // is somehow still signed out — and the redirect makes it look like it
+    // worked.
+    const handler = page({
+      beforeLoad: () => {
+        setCookie("sid", "abc", { httpOnly: true, path: "/" });
+        throw redirect("/dashboard");
+      },
+    });
+    const response = await handler(get("/x"));
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/dashboard");
+    expect(response.headers.get("set-cookie")).toBe("sid=abc; Path=/; HttpOnly");
+  });
+
+  test("`setResponseStatus` decides the page's status", async () => {
+    const handler = page({
+      beforeLoad: () => {
+        setResponseStatus(403);
+      },
+    });
+    const response = await handler(get("/x"));
+    expect(response.status).toBe(403);
+    // A rendered 403 — the page is the point, the status is the correction.
+    expect(await response.text()).toContain("<main>x</main>");
+  });
+
+  /**
+   * The REQUEST reaches a loader, which is the other half of the draft.
+   *
+   * It reads `authorization` and not `cookie`, for the reason this file already
+   * records one describe up: `Cookie` is a FORBIDDEN request header name, so the
+   * `Request` constructor drops it — in happy-dom, which this suite registers,
+   * and in the spec. A server receives one off the wire and never constructs
+   * one, so `getCookie` reading a real request is covered in
+   * `packages/start`'s suite, which registers no DOM.
+   */
+  test("the ambient request reaches a loader", async () => {
+    let saw: string | null | undefined;
+    const handler = page({
+      loader: () => {
+        saw = getRequest().headers.get("authorization");
+        return null;
+      },
+    });
+    await handler(new Request("http://localhost/x", { headers: { authorization: "Bearer t" } }));
+    expect(saw).toBe("Bearer t");
   });
 });

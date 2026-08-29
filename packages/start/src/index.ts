@@ -12,7 +12,37 @@
  * `clientRpc`. `./server` is where the request handler lives.
  */
 
-export { getRequest, peekRequest, withRequest } from "./context.ts";
+export {
+  type RequestContext,
+  type ResponseDraft,
+  applyResponseDraft,
+  clearResponseHeaders,
+  createResponseDraft,
+  deleteCookie,
+  draftedStatus,
+  getCookie,
+  getCookies,
+  getRequest,
+  getRequestHeader,
+  getRequestHeaders,
+  getRequestHost,
+  getRequestIP,
+  getRequestProtocol,
+  getRequestUrl,
+  getResponseHeader,
+  getResponseHeaders,
+  getResponseStatus,
+  peekRequest,
+  peekResponseDraft,
+  removeResponseHeader,
+  setCookie,
+  setResponseHeader,
+  setResponseHeaders,
+  setResponseStatus,
+  withRequest,
+} from "./context.ts";
+
+export { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
 
 /**
  * The client half lives in `./client.ts` and is re-exported here.
