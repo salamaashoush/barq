@@ -7,13 +7,32 @@
  */
 
 import { type Child, For } from "@barqjs/core";
+import { QueryClient } from "@tanstack/query-core";
+import { QueryClientProvider } from "@barqjs/extra";
 // The ISOMORPHIC entry, not `/server`: this module is the ROOT ROUTE and ships
 // to the browser like every other route module. `@barqjs/router/server` reaches
 // `node:async_hooks`, and importing it here made Vite externalise that for the
 // browser, throw inside the root route, and render an empty page.
-import { HeadContent, NavLink, Outlet, Scripts, createRootRoute, useLocation } from "@barqjs/router";
+import {
+  HeadContent,
+  NavLink,
+  Outlet,
+  Scripts,
+  createRootRoute,
+  useLocation,
+} from "@barqjs/router";
 
-import { collectStyles, css, globalCss } from "../styles";
+import { baseStyles, collectStyles, css, globalCss } from "../styles";
+
+// The global rules and the query client live HERE, not in an entry. A root
+// route's component wraps every route on BOTH backends, where an entry wraps
+// only the one it is the entry for — which is TanStack's arrangement too: their
+// providers go in `__root.tsx` and their entries carry nothing but the boot.
+baseStyles();
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 5000, retry: 1 } },
+});
 
 /**
  * The DOCUMENT, and only a root route may declare one.
@@ -109,7 +128,9 @@ function Layout() {
         <header class={headerStyle}>
           <h1 class={titleStyle}>{() => title()}</h1>
         </header>
-        <Outlet />
+        <QueryClientProvider client={queryClient}>
+          <Outlet />
+        </QueryClientProvider>
       </main>
     </div>
   );
@@ -147,7 +168,10 @@ const navItemStyle = css`
   padding: 10px 24px;
   color: #cbd5e1;
   font-size: 14px;
-  &:hover { background: #334155; text-decoration: none; }
+  &:hover {
+    background: #334155;
+    text-decoration: none;
+  }
 `;
 
 const navItemActiveStyle = css`

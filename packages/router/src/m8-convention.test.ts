@@ -112,10 +112,16 @@ describe("the nine workarounds are deletions", () => {
     // The application-default setter that carried it is gone with it, and the
     // reference application now reaches its client the way the design says.
     expect(nowhere(/setQueryClient/)).toEqual([]);
-    // The reference application's CLIENT ENTRY, since it became an SSR app and
-    // `src/main.tsx` went with the `index.html` it mounted into.
-    const ENTRY = readFileSync(join(ROOT, "..", "kitchen-sink", "src", "entry-client.tsx"), "utf8");
-    expect(ENTRY).toContain("<QueryClientProvider client={queryClient}>");
+    // The reference application's ROOT ROUTE, which is where a provider belongs.
+    // It used to be the client entry, and the entry is the wrong place twice
+    // over: it wraps only the client's tree, and it makes every application
+    // hand-write a boot the framework owns. `__root.tsx`'s component wraps every
+    // route on BOTH backends, which is where TanStack puts theirs too.
+    const ROOT_ROUTE = readFileSync(
+      join(ROOT, "..", "kitchen-sink", "src", "routes", "__root.tsx"),
+      "utf8",
+    );
+    expect(ROOT_ROUTE).toContain("<QueryClientProvider client={queryClient}>");
   });
 
   // #3 — 14 uses of createMarkerPair / clearRange / insertNodes / childToNodes.
@@ -420,6 +426,7 @@ describe("the convention, from the other side", () => {
     // Checked in rather than inferred, so it goes red the moment a module is
     // added — which is the property the row this replaces had.
     const coveredBy: Record<string, string> = {
+      "client.ts": "client.test.ts",
       "components.ts": "router.test.ts",
       "devtools.ts": "devtools.test.ts",
       "errors.ts": "server.test.ts",

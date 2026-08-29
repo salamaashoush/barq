@@ -30,6 +30,11 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "bun": "./src/client.ts",
+      "import": "./dist/client.js"
+    },
     "./server": {
       "types": "./dist/server.d.ts",
       "bun": "./src/server.ts",
