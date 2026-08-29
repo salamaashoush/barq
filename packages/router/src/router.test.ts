@@ -40,7 +40,7 @@ function mount(props: Parameters<typeof Router>[0]): { host: HTMLElement; dispos
   const dispose = render(
     ((scope: Scope | null) =>
       (Router as never as (s: Scope | null, p: unknown) => unknown)(scope, {
-        routes: () => props.routes,
+        routeTree: () => props.routeTree,
         history: () => props.history,
         notFound: () => props.notFound,
         beforeEach: () => props.beforeEach,
@@ -99,7 +99,7 @@ describe("mounting and navigation", () => {
 
   test("renders the matched route and moves when the history does", () => {
     const history = memoryHistory();
-    const { host, dispose } = mount({ routes, history });
+    const { host, dispose } = mount({ routeTree: routes, history });
 
     expect(host.textContent).toBe("home");
 
@@ -116,14 +116,18 @@ describe("mounting and navigation", () => {
 
   test("an unmatched path renders the 404", () => {
     const history = memoryHistory({ initial: ["/nowhere"] });
-    const { host, dispose } = mount({ routes, history });
+    const { host, dispose } = mount({ routeTree: routes, history });
     expect(host.textContent).toBe("404 - Not Found");
     dispose();
   });
 
   test("a custom notFound wins over it", () => {
     const history = memoryHistory({ initial: ["/nowhere"] });
-    const { host, dispose } = mount({ routes, history, notFound: page("nope") as never });
+    const { host, dispose } = mount({
+      routeTree: routes,
+      history,
+      notFound: page("nope") as never,
+    });
     expect(host.textContent).toBe("nope");
     dispose();
   });
@@ -132,7 +136,7 @@ describe("mounting and navigation", () => {
     let inner: Scope | null = null;
     const history = memoryHistory();
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: () => {
@@ -160,7 +164,7 @@ describe("params", () => {
     const seen: string[] = [];
     const history = memoryHistory({ initial: ["/u/1"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/u/$id",
           component: (_s: Scope | null, props: RouteProps) => {
@@ -196,7 +200,7 @@ describe("loaders", () => {
     let calls = 0;
     const history = memoryHistory({ initial: ["/u/1"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/u/$id",
           loader: async ({ params }: { params: { id: string } }) => {
@@ -238,7 +242,7 @@ describe("loaders", () => {
     const seen: string[] = [];
     const history = memoryHistory({ initial: ["/posts?page=1"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/posts",
           loader: async ({ search }: { search: URLSearchParams }) => {
@@ -290,7 +294,7 @@ describe("loaders", () => {
     let calls = 0;
     const history = memoryHistory({ initial: ["/s?a=1&b=2"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/s",
           staleTime: Number.POSITIVE_INFINITY,
@@ -325,7 +329,7 @@ describe("loaders", () => {
   test("a route with no loader hands its component undefined rather than hanging", () => {
     const history = memoryHistory();
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: (scope: Scope | null, props: RouteProps) => {
@@ -356,7 +360,7 @@ describe("loaderDeps and the reload policy", () => {
     const seen: string[] = [];
     const history = memoryHistory({ initial: ["/list?page=1&ref=twitter"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/list",
           staleTime: Number.POSITIVE_INFINITY,
@@ -405,7 +409,7 @@ describe("loaderDeps and the reload policy", () => {
       let calls = 0;
       const history = memoryHistory({ initial: ["/a"] });
       const { dispose } = mount({
-        routes: [
+        routeTree: [
           {
             path: "/a",
             staleTime,
@@ -451,7 +455,7 @@ describe("loaderDeps and the reload policy", () => {
       let calls = 0;
       const history = memoryHistory({ initial: ["/x"] });
       const { dispose } = mount({
-        routes: [
+        routeTree: [
           {
             path: "/x",
             staleTime: Number.POSITIVE_INFINITY,
@@ -493,7 +497,7 @@ describe("loaderDeps and the reload policy", () => {
     let calls = 0;
     const history = memoryHistory({ initial: ["/x"] });
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/x",
           staleTime: 0,
@@ -527,7 +531,7 @@ describe("loaderDeps and the reload policy", () => {
     let n = 0;
     const history = memoryHistory({ initial: ["/p"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/p",
           staleTime: 0,
@@ -565,7 +569,7 @@ describe("loaderDeps and the reload policy", () => {
     let n = 0;
     const history = memoryHistory({ initial: ["/p"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/p",
           staleTime: 0,
@@ -604,7 +608,7 @@ describe("loaderDeps and the reload policy", () => {
     let n = 0;
     const history = memoryHistory({ initial: ["/p"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/p",
           staleTime: 0,
@@ -662,7 +666,7 @@ describe("loaderDeps and the reload policy", () => {
       return node;
     };
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         { path: "/other", component: page("other") },
         {
           path: "/app",
@@ -705,7 +709,7 @@ describe("loaderDeps and the reload policy", () => {
     let n = 0;
     const history = memoryHistory({ initial: ["/p"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         {
           path: "/p",
           staleTime: Number.POSITIVE_INFINITY,
@@ -745,7 +749,7 @@ describe("validateSearch", () => {
   test("a validator types its own slice and unknown keys survive", async () => {
     const history = memoryHistory({ initial: ["/list?page=3&ref=hn"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/list",
           validateSearch: (input: Record<string, unknown>) => ({ page: Number(input.page ?? 1) }),
@@ -768,7 +772,7 @@ describe("validateSearch", () => {
       return node;
     };
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/app",
           validateSearch: (input: Record<string, unknown>) => ({ page: Number(input.page ?? 1) }),
@@ -795,7 +799,7 @@ describe("validateSearch", () => {
   test("a refused search renders THAT route's errorComponent, not a blank page", async () => {
     const history = memoryHistory({ initial: ["/list?page=banana"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/list",
           validateSearch: (input: Record<string, unknown>) => {
@@ -820,7 +824,7 @@ describe("validateSearch", () => {
   test("useSearch answers with the validated record", async () => {
     const history = memoryHistory({ initial: ["/u?n=41"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/u",
           validateSearch: (input: Record<string, unknown>) => ({ n: Number(input.n) + 1 }),
@@ -842,7 +846,7 @@ describe("validateSearch", () => {
   test("search.middlewares run when a location is BUILT, not on the way in", async () => {
     const history = memoryHistory({ initial: ["/a?theme=dark"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         {
           path: "/a",
           search: { middlewares: [retainSearchParams(["theme"])] },
@@ -882,7 +886,7 @@ describe("beforeLoad and route context", () => {
   test("context merges parent to child, and the child wins a collision", async () => {
     const history = memoryHistory({ initial: ["/app/7"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/app",
           context: () => ({ tenant: "acme", role: "guest" }),
@@ -925,7 +929,7 @@ describe("beforeLoad and route context", () => {
       return node;
     };
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/a",
           beforeLoad: async ({ context }: { context: Record<string, unknown> }) => {
@@ -970,7 +974,7 @@ describe("beforeLoad and route context", () => {
     // Built directly, because this needs a real `navigate()` — a raw
     // `history.push` is the popstate path, which has no navigation to gate.
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/x", component: page("x") },
         {
           path: "/y",
@@ -1016,7 +1020,7 @@ describe("beforeLoad and route context", () => {
     try {
       const history = memoryHistory({ initial: ["/app/7"] });
       const { host, dispose } = mount({
-        routes: [
+        routeTree: [
           {
             path: "/app/$id",
             context: () => {
@@ -1063,7 +1067,7 @@ describe("beforeLoad and route context", () => {
     try {
       const history = memoryHistory({ initial: ["/app/7"] });
       const { host, dispose } = mount({
-        routes: [
+        routeTree: [
           {
             path: "/app/$id",
             beforeLoad: () => {
@@ -1098,7 +1102,7 @@ describe("beforeLoad and route context", () => {
     try {
       const history = memoryHistory({ initial: ["/app/7"] });
       const state = createRouter({
-        routes: [
+        routeTree: [
           {
             path: "/app/$id",
             beforeLoad: () => {
@@ -1141,7 +1145,7 @@ describe("beforeLoad and route context", () => {
     let seen: Record<string, unknown> | null = null;
     const history = memoryHistory({ initial: ["/app/7?q=hi"] });
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/app/$id",
           beforeLoad: (given: Record<string, unknown>) => {
@@ -1176,7 +1180,7 @@ describe("beforeLoad and route context", () => {
     // reporting `error.to` as error-typed.
     const history = memoryHistory({ initial: ["/home"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/home", component: page("home") },
         { path: "/login", component: page("login") },
         {
@@ -1205,7 +1209,7 @@ describe("beforeLoad and route context", () => {
     let seen: unknown;
     const history = memoryHistory({ initial: ["/app/7"] });
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/app",
           beforeLoad: () => ({ token: "abc" }),
@@ -1251,7 +1255,7 @@ describe("errorComponent on the DOM backend", () => {
     // stopped tearing the response; this is the same boundary on the other side.
     const history = memoryHistory({ initial: ["/boom"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/boom",
           loader: async () => {
@@ -1284,7 +1288,7 @@ describe("errorComponent on the DOM backend", () => {
   test("notFound() reaches notFoundComponent on the client too", async () => {
     const history = memoryHistory({ initial: ["/missing"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/missing",
           loader: async () => {
@@ -1324,7 +1328,7 @@ describe("nested layouts", () => {
   test("a layout builds the child in its own scope, through children-as-a-Block", () => {
     const history = memoryHistory({ initial: ["/users/7"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/users",
           component: (scope: Scope | null, props: RouteProps) => {
@@ -1355,7 +1359,7 @@ describe("Link", () => {
   test("renders an href and navigates on click", async () => {
     const history = memoryHistory();
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: (scope: Scope | null) =>
@@ -1385,7 +1389,7 @@ describe("Link", () => {
   test("builds an href from a route id plus params", () => {
     const history = memoryHistory();
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: (scope: Scope | null) =>
@@ -1406,7 +1410,7 @@ describe("Link", () => {
   test("an external href renders verbatim and is not intercepted", () => {
     const history = memoryHistory();
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: (scope: Scope | null) =>
@@ -1429,7 +1433,7 @@ describe("Link", () => {
   test("a modified click is left to the browser", () => {
     const history = memoryHistory();
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: (scope: Scope | null) =>
@@ -1455,7 +1459,7 @@ describe("Link", () => {
     // branch key is route identity and excludes params.
     const history = memoryHistory({ initial: ["/u/1/edit"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/u/$id",
           component: (scope: Scope | null) => {
@@ -1532,7 +1536,7 @@ describe("Link preload", () => {
         preload: () => props.preload,
         children: () => "go",
       });
-    const state = createRouter({ routes, history });
+    const state = createRouter({ routeTree: routes, history });
     const { host, dispose } = mountState(state);
     return { state, element: host.querySelector("a") as HTMLElement, dispose };
   };
@@ -1677,7 +1681,7 @@ describe("NavLink", () => {
   test("is active on a segment prefix, and `end` makes it exact", () => {
     const history = memoryHistory({ initial: ["/user/7"] });
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/user/$id",
           component: (scope: Scope | null) => {
@@ -1717,7 +1721,7 @@ describe("guards", () => {
   test("a redirect from beforeEach lands, and the refused route never shows", async () => {
     const history = memoryHistory();
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         { path: "/", component: page("home") },
         { path: "/private", component: page("secret") },
         { path: "/login", component: page("login") },
@@ -1747,7 +1751,7 @@ describe("guards", () => {
     const history = memoryHistory();
     let go: ((to: string) => Promise<void>) | null = null;
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: () => {
@@ -1774,7 +1778,7 @@ describe("guards", () => {
     const history = memoryHistory();
     let go: ((to: string) => Promise<void>) | null = null;
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: () => {
@@ -1803,7 +1807,7 @@ describe("guards", () => {
     console.error = (...args: unknown[]) => errors.push(args.join(" "));
     try {
       const { dispose } = mount({
-        routes: [
+        routeTree: [
           {
             path: "/",
             component: () => {
@@ -1831,7 +1835,7 @@ describe("the smaller surface", () => {
     let refuse = true;
     const history = memoryHistory({ initial: ["/a"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/a", component: page("a") },
         { path: "/b", component: page("b") },
       ] as never,
@@ -1865,7 +1869,7 @@ describe("the smaller surface", () => {
     const asked: string[] = [];
     const history = memoryHistory({ initial: ["/a"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/a", component: page("a") },
         { path: "/b", component: page("b") },
       ] as never,
@@ -1888,7 +1892,7 @@ describe("the smaller surface", () => {
   test("canGoBack is false at the start and true after a push", async () => {
     const history = memoryHistory({ initial: ["/a"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/a", component: page("a") },
         { path: "/b", component: page("b") },
       ] as never,
@@ -1905,7 +1909,7 @@ describe("the smaller surface", () => {
   test("useMatch finds a route by id, and the leaf without one", () => {
     const history = memoryHistory({ initial: ["/app/7"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         {
           id: "layout",
           path: "/app",
@@ -1931,7 +1935,7 @@ describe("the smaller surface", () => {
     const history = memoryHistory({ initial: ["/a"] });
     const seen: boolean[] = [];
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/a", component: page("a") },
         {
           path: "/b",
@@ -1955,7 +1959,7 @@ describe("the smaller surface", () => {
   test("pendingMs delays the fallback, so a fast loader never flashes one", async () => {
     const history = memoryHistory({ initial: ["/x"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/x", component: page("x") },
         {
           path: "/slow",
@@ -1990,7 +1994,7 @@ describe("the smaller surface", () => {
   test("pendingMs shows the fallback once the delay has elapsed", async () => {
     const history = memoryHistory({ initial: ["/x"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/x", component: page("x") },
         {
           path: "/slow",
@@ -2026,7 +2030,7 @@ describe("the smaller surface", () => {
   test("pendingMinMs keeps a fallback that HAS appeared from vanishing two frames later", async () => {
     const history = memoryHistory({ initial: ["/x"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/x", component: page("x") },
         {
           path: "/slow",
@@ -2067,7 +2071,7 @@ describe("the smaller surface", () => {
     // photo.
     const history = memoryHistory({ initial: ["/feed"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/feed", component: page("feed") },
         { path: "/photos/$id", component: page("photo") },
       ] as never,
@@ -2089,7 +2093,7 @@ describe("the smaller surface", () => {
     // copied out of the address bar — and that is the point of choosing a mask.
     const history = memoryHistory({ initial: ["/feed"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         { path: "/feed", component: page("feed") },
         { path: "/photos/$id", component: page("photo") },
       ] as never,
@@ -2103,7 +2107,7 @@ describe("the smaller surface", () => {
   test("NavLink activeProps and inactiveProps swap, and a one-sided name is REMOVED", async () => {
     const history = memoryHistory({ initial: ["/a"] });
     const state = createRouter({
-      routes: [
+      routeTree: [
         {
           path: "/a",
           component: (scope: Scope | null) =>
@@ -2131,7 +2135,7 @@ describe("the smaller surface", () => {
     dispose();
 
     const other = createRouter({
-      routes: [
+      routeTree: [
         {
           path: "/a",
           component: (scope: Scope | null) =>
@@ -2164,8 +2168,8 @@ describe("two routers on one page", () => {
       { path: "/other", component: page("B-other") },
     ] as never;
 
-    const first = mount({ routes, history: a });
-    const second = mount({ routes, history: b });
+    const first = mount({ routeTree: routes, history: a });
+    const second = mount({ routeTree: routes, history: b });
 
     expect(first.host.textContent).toBe("A-home");
     expect(second.host.textContent).toBe("B-other");
@@ -2186,7 +2190,7 @@ describe("useLocation / useParams", () => {
     let pathname = "";
     let id = "";
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/u/$id",
           component: () => {
@@ -2210,7 +2214,7 @@ describe("beforeEnter", () => {
     const history = memoryHistory();
     let go: ((to: string) => Promise<void>) | null = null;
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: () => {
@@ -2259,7 +2263,7 @@ describe("beforeEnter", () => {
     const history = memoryHistory();
     let go: ((to: string) => Promise<void>) | null = null;
     const { host, dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: () => {
@@ -2305,7 +2309,7 @@ describe("useSearchParams", () => {
     let read: (() => URLSearchParams) | null = null;
     let write: ((next: Record<string, string>) => void) | null = null;
     const { dispose } = mount({
-      routes: [
+      routeTree: [
         {
           path: "/",
           component: () => {
@@ -2371,7 +2375,7 @@ test("navigating to a lazy() route reveals it once the module lands", async () =
     { path: "/later", id: "/later", component: Later as never },
   ] as never;
 
-  const state = createRouter({ routes, history: memoryHistory({ initial: ["/"] }) });
+  const state = createRouter({ routeTree: routes, history: memoryHistory({ initial: ["/"] }) });
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(

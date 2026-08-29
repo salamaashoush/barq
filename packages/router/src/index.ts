@@ -116,6 +116,15 @@ export {
 } from "./components.ts";
 
 export {
+  type FileRoutesById,
+  type Register,
+  type RegisteredRouteTree,
+  type RouteId,
+  type RoutePath,
+  type ToPath,
+} from "./register.ts";
+
+export {
   type FileRoute,
   type RootRouteOptions,
   ROOT_ROUTE_ID,

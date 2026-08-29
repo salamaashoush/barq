@@ -24,8 +24,8 @@ import { type RouterState, createRouter } from "./router.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
 export interface StartClientOptions {
-  /** The generated table, from `virtual:barq-routes`. */
-  readonly routes: readonly AnyRouteDefinition[];
+  /** The generated table, from `./routeTree.gen`. */
+  readonly routeTree: readonly AnyRouteDefinition[];
   /** Defaults to `browserHistory()`; a test may hand over its own. */
   readonly history?: RouterState["history"];
   /** Defaults to the whole document — the shell is part of the tree. */
@@ -50,7 +50,7 @@ export interface StartClientOptions {
  */
 export async function startClient(options: StartClientOptions): Promise<RouterState> {
   const state = createRouter({
-    routes: options.routes,
+    routeTree: options.routeTree,
     history: options.history ?? browserHistory(),
   });
 

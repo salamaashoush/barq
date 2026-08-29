@@ -6,8 +6,9 @@
  * exist, so declaring these beside `barq.d.ts`'s `declare global` block made
  * every one of them "cannot find module".
  *
- * `virtual:barq-routes` is NOT here — `src/routes.gen.d.ts` declares it, and the
- * generator owns that file.
+ * THE ROUTE TABLE IS NOT HERE. It is `src/routeTree.gen.ts`, a real module the
+ * application imports by path — so it needs no ambient declaration, and it
+ * carries its own types rather than a `.d.ts` beside it.
  */
 
 declare module "virtual:barq-route-assets" {

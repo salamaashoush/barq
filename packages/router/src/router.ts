@@ -264,7 +264,15 @@ export type Blocker = (context: {
 }) => boolean | void | Promise<boolean | void>;
 
 export interface RouterConfig {
-  readonly routes: readonly AnyRouteDefinition[];
+  /**
+   * The route table, as `routeTree.gen.ts` exports it.
+   *
+   * Named for what it IS rather than for what it holds, which is TanStack's
+   * name (`createRouter({ routeTree })`, `examples/react/start-basic/src/
+   * router.tsx:7`) and worth matching: an application arriving from theirs
+   * writes one word differently in one place, or none at all.
+   */
+  readonly routeTree: readonly AnyRouteDefinition[];
   readonly history?: History;
   /** Rendered at depth 0 when nothing matched. */
   readonly notFound?: AnyRouteDefinition["component"];
@@ -489,7 +497,7 @@ export interface RouterState {
 
 export function createRouter(config: RouterConfig): RouterState {
   const history = config.history ?? memoryHistory();
-  const matcher = createMatcher(flattenRoutes(config.routes));
+  const matcher = createMatcher(flattenRoutes(config.routeTree));
 
   const location = signal<Location>(history.current());
   // Bumped by `invalidate`, and read by every loader cell, so invalidating is a

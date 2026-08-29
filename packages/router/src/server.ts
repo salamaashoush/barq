@@ -303,7 +303,8 @@ export interface DocumentParts {
 }
 
 export interface PageHandlerOptions {
-  readonly routes: readonly AnyRouteDefinition[];
+  /** The route table, as `routeTree.gen.ts` exports it. */
+  readonly routeTree: readonly AnyRouteDefinition[];
   /**
    * The application, as the string backend wants it: returns `SsrHtml`.
    *
@@ -400,7 +401,7 @@ export interface PageHandlerOptions {
 export function createPageHandler(
   options: PageHandlerOptions,
 ): (request: Request) => Promise<Response> {
-  const matcher = createMatcher(flattenRoutes(options.routes));
+  const matcher = createMatcher(flattenRoutes(options.routeTree));
 
   return async (request: Request): Promise<Response> => {
     // A page is a GET. Nothing upstream filters the method — Vite's dev
@@ -466,7 +467,7 @@ export function createPageHandler(
     // here would discard the markup the render just produced.
     let missing = false;
     const config: RouterConfig = {
-      routes: options.routes,
+      routeTree: options.routeTree,
       beforeEach: options.beforeEach,
       history: memoryHistory({ initial: [url.pathname + url.search] }),
       onLoaderError(error) {
@@ -520,7 +521,7 @@ export function createPageHandler(
           // Decided BEFORE the head is projected, because it is what decides
           // whether `head` sees `loaderData` at all.
           const buffered = options.stream === false || isCrawler(request, options);
-          const shell = shellComponentOf(options.routes);
+          const shell = shellComponentOf(options.routeTree);
           // `projectLane`, in the same pre-shell phase. Every route's `head` and
           // `scripts` run here with the params, the context and whatever
           // `loaderData` has already settled — which on a streamed page is
@@ -917,10 +918,10 @@ function wrapStream(
  * chain. The caller decides whether that fails the build.
  */
 export function chainVerifier(
-  routes: readonly AnyRouteDefinition[],
+  routeTree: readonly AnyRouteDefinition[],
 ): (reachability: Reachability) => Promise<string> {
   return async (reachability) => {
-    const violations = await verifyRouteChains({ routes, reachability, lookup: mountedFn });
+    const violations = await verifyRouteChains({ routeTree, reachability, lookup: mountedFn });
     return violations.length === 0 ? "" : describeViolations(violations);
   };
 }

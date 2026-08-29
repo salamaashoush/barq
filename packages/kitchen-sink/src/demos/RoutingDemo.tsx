@@ -518,7 +518,7 @@ export function RoutingDemo() {
         <div class={routerContainerStyle}>
           <Router
             history={memoryHistory({ initial: ["/demo/dashboard"] })}
-            routes={routes}
+            routeTree={routes}
             notFound={NotFound}
           />
         </div>

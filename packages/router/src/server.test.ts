@@ -46,7 +46,7 @@ describe("status is decided before the shell", () => {
     // `renderToStream` emits the shell synchronously, so a status discovered
     // mid-render would land after the headers. The match runs first.
     const handler = createPageHandler({
-      routes: baseTable,
+      routeTree: baseTable,
       app: () => ssrHtml("<main>ok</main>"),
       document,
     });
@@ -57,7 +57,7 @@ describe("status is decided before the shell", () => {
 
   test("a 404 still renders a document rather than a bare status", async () => {
     const handler = createPageHandler({
-      routes: baseTable,
+      routeTree: baseTable,
       app: () => ssrHtml("<main>not found</main>"),
       document,
     });
@@ -71,7 +71,7 @@ describe("guards", () => {
   test("a redirect answers 302 with a Location and never renders", async () => {
     let rendered = false;
     const handler = createPageHandler({
-      routes: baseTable,
+      routeTree: baseTable,
       app: () => {
         rendered = true;
         return ssrHtml("<main>secret</main>");
@@ -88,7 +88,7 @@ describe("guards", () => {
 
   test("a refusal is 403", async () => {
     const handler = createPageHandler({
-      routes: baseTable,
+      routeTree: baseTable,
       app: () => ssrHtml("<main>x</main>"),
       document,
       beforeEach: [() => false],
@@ -115,7 +115,7 @@ describe("the request is ambient for the whole render", () => {
       });
 
     const handler = createPageHandler({
-      routes: [
+      routeTree: [
         {
           path: "/",
           loader: () => whoami(undefined),
@@ -161,7 +161,7 @@ describe("the request is ambient for the whole render", () => {
     ] as never;
 
     const handler = createPageHandler({
-      routes: routesWithGuard,
+      routeTree: routesWithGuard,
       app: (state) => ssrHtml(`<main>${esc(renderRoutes(state))}</main>`),
       document,
       stream: false,
@@ -178,7 +178,7 @@ describe("the request is ambient for the whole render", () => {
 describe("redirect() from a loader", () => {
   test("becomes a 302 rather than a 500", async () => {
     const handler = createPageHandler({
-      routes: baseTable,
+      routeTree: baseTable,
       app: () => {
         redirect("/login");
       },
@@ -202,7 +202,7 @@ describe("the document", () => {
     );
 
     const handler = createPageHandler({
-      routes: baseTable,
+      routeTree: baseTable,
       app: () =>
         ssrHtml(
           `<main>${esc(
@@ -238,7 +238,7 @@ describe("the document", () => {
 
   test("a document that drops its body argument is an error, not silent loss", async () => {
     const handler = createPageHandler({
-      routes: baseTable,
+      routeTree: baseTable,
       app: () => ssrHtml("<main>x</main>"),
       document: () => "<html><body>oops</body></html>",
     });
@@ -298,7 +298,7 @@ describe("P6 defects", () => {
     ] as never;
 
     const handler = createPageHandler({
-      routes: table,
+      routeTree: table,
       stream: false,
       app: (state) => renderRoutes(state),
       document,
@@ -337,7 +337,7 @@ describe("P6 defects", () => {
     ] as never;
 
     const handler = createPageHandler({
-      routes: table,
+      routeTree: table,
       app: (state) => renderRoutes(state),
       document,
     });
@@ -390,7 +390,7 @@ describe("P6 defects", () => {
     ] as never;
 
     const handler = createPageHandler({
-      routes: table,
+      routeTree: table,
       app: (state) => {
         const dispose = state.dispose.bind(state);
         (state as unknown as { dispose: () => void }).dispose = () => {
@@ -446,7 +446,12 @@ describe("errorComponent and notFoundComponent", () => {
     ] as never;
 
   const render = async (routes: AnyRouteDefinition[], stream: boolean): Promise<string> => {
-    const handler = createPageHandler({ routes, stream, app: (s) => renderRoutes(s), document });
+    const handler = createPageHandler({
+      routeTree: routes,
+      stream,
+      app: (s) => renderRoutes(s),
+      document,
+    });
     return (await handler(get("/thing/7"))).text();
   };
 
@@ -502,7 +507,7 @@ describe("errorComponent and notFoundComponent", () => {
         ssrHtml(`<p>${esc(props.error().message)}</p>`),
     });
     const handler = createPageHandler({
-      routes,
+      routeTree: routes,
       stream: false,
       app: (s) => renderRoutes(s),
       document,
@@ -538,7 +543,7 @@ describe("errorComponent and notFoundComponent", () => {
       },
     ] as never;
     const handler = createPageHandler({
-      routes,
+      routeTree: routes,
       stream: false,
       app: (s) => renderRoutes(s),
       document,
@@ -602,7 +607,7 @@ describe("modulepreload for the matched chain", () => {
   test("the tags reach the document BEFORE the body, in both modes", async () => {
     for (const stream of [false, true]) {
       const handler = createPageHandler({
-        routes: nested,
+        routeTree: nested,
         stream,
         routeAssets: assets,
         app: (state) => renderRoutes(state),
@@ -672,7 +677,7 @@ describe("ssr: boolean | 'data-only'", () => {
   ): Promise<{ body: string; ran: string[] }> => {
     const ran: string[] = [];
     const handler = createPageHandler({
-      routes: build(layoutSsr, leafSsr, ran),
+      routeTree: build(layoutSsr, leafSsr, ran),
       stream: false,
       app: (state) => renderRoutes(state),
       document,
@@ -755,7 +760,12 @@ describe("deferred loader data", () => {
   ] as never;
 
   const render = async (stream: boolean): Promise<string> => {
-    const handler = createPageHandler({ routes, stream, app: (s) => renderRoutes(s), document });
+    const handler = createPageHandler({
+      routeTree: routes,
+      stream,
+      app: (s) => renderRoutes(s),
+      document,
+    });
     return (await handler(get("/report"))).text();
   };
 
@@ -814,7 +824,7 @@ describe("beforeLoad does not run twice on hydration", () => {
   ): Promise<{ body: string; context: string }> => {
     let context = "";
     const handler = createPageHandler({
-      routes: table(ran),
+      routeTree: table(ran),
       stream,
       app: (s) => renderRoutes(s),
       document: (parts) => {
@@ -852,7 +862,7 @@ describe("beforeLoad does not run twice on hydration", () => {
   test("a page with no beforeLoad pays nothing", async () => {
     let context = "unset";
     const handler = createPageHandler({
-      routes: [
+      routeTree: [
         { id: `n${seq++}`, path: "/plain", component: () => ssrHtml("<main>x</main>") },
       ] as never,
       stream: false,
@@ -896,7 +906,7 @@ describe("the context handoff, server to client", () => {
 
     let script = "";
     const handler = createPageHandler({
-      routes,
+      routeTree: routes,
       stream: false,
       app: (s) => renderRoutes(s),
       document: (parts) => {
@@ -916,7 +926,7 @@ describe("the context handoff, server to client", () => {
       expect(holder.__BARQ_ROUTE_CONTEXT__).toBeDefined();
 
       const state = createRouter({
-        routes,
+        routeTree: routes,
         history: memoryHistory({ initial: ["/app/7"] }),
       });
       await state.start();
@@ -1017,7 +1027,7 @@ describe("hydration", () => {
     const ran = { calls: 0 };
     let seed = "";
     const handler = createPageHandler({
-      routes: table(true, ran),
+      routeTree: table(true, ran),
       stream: false,
       app: (state) => renderRoutes(state),
       // Sentinels rather than a wrapper element, so the extraction below cannot
@@ -1044,7 +1054,7 @@ describe("hydration", () => {
     expect(served?.textContent).toBe("Ada 7");
 
     const state = createRouter({
-      routes: table(false, ran),
+      routeTree: table(false, ran),
       history: memoryHistory({ initial: ["/users/7"] }),
     });
     // `(scope, props)`, which is the real calling convention behind the
@@ -1149,7 +1159,7 @@ describe("shellComponent", () => {
 
   const render = async (routes: AnyRouteDefinition[], extra = {}): Promise<string> => {
     const handler = createPageHandler({
-      routes,
+      routeTree: routes,
       app: (s) => renderRoutes(s),
       clientAssets: { scripts: ["/entry.js"], css: ["/app.css"] },
       ...extra,
@@ -1230,7 +1240,7 @@ describe("shellComponent", () => {
 
   test("a table with neither a shell nor a `document` says so", async () => {
     const handler = createPageHandler({
-      routes: [{ id: "/x", path: "/x", component: () => ssrHtml("x") }] as never,
+      routeTree: [{ id: "/x", path: "/x", component: () => ssrHtml("x") }] as never,
       app: (s) => renderRoutes(s),
     });
     expect(handler(get("/x"))).rejects.toThrow(/shellComponent/);
@@ -1252,7 +1262,7 @@ describe("crawlers are answered with the whole page", () => {
   ] as never as AnyRouteDefinition[];
 
   const fetchAs = async (agent: string, extra = {}): Promise<Response> => {
-    const handler = createPageHandler({ routes, app: (s) => renderRoutes(s), ...extra });
+    const handler = createPageHandler({ routeTree: routes, app: (s) => renderRoutes(s), ...extra });
     return handler(new Request("http://x/p", { headers: { "user-agent": agent } }));
   };
 
@@ -1299,7 +1309,7 @@ describe("shell and hydration", () => {
 
   const render = async (routes: AnyRouteDefinition[], extra = {}): Promise<string> => {
     const handler = createPageHandler({
-      routes,
+      routeTree: routes,
       stream: false,
       app: (s) => renderRoutes(s),
       ...extra,

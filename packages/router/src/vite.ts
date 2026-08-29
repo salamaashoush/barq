@@ -9,16 +9,17 @@
  * What stays here is the WATCHER, which is the one part that cannot move: Vite
  * owns file events, so `routeTree` returns the file list and this registers it.
  *
- * `virtual:barq-routes` is resolved in EVERY environment, unlike
- * `@barqjs/start`'s server-function manifest, which is `applyToEnvironment`-
- * scoped away from the client. The difference is what each imports: the manifest
- * pulls in every server-function module, so resolving it client-side would drag
- * all of them into the browser graph, while the route table pulls in route
- * COMPONENTS, which is exactly where the browser wants them. Scoping this one
- * would leave the client with no routes at all.
+ * THE TABLE IS A FILE, not a virtual module. `src/routeTree.gen.ts` is written
+ * into the project and imported by path, which is TanStack's arrangement
+ * (`examples/react/start-basic/src/router.tsx:2`) and buys three things a
+ * virtual specifier cannot: the route modules are imported STATICALLY, so a
+ * route's whole option set reaches the router; the types live in the same file
+ * as the values, so they are inferred rather than reconstructed; and a person
+ * can open it. The only virtual module left here is `routeAssets`, which is a
+ * plain object literal the BUNDLE produces and no source file can know.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 
@@ -44,8 +45,8 @@ export {
   verifyRouteChains,
 } from "./manifest.ts";
 
-export const ROUTES_ID = "virtual:barq-routes";
-const RESOLVED_ROUTES_ID = `\0${ROUTES_ID}`;
+/** Where the generated tree is written when nothing says otherwise. */
+export const DEFAULT_ROUTE_TREE = "src/routeTree.gen.ts";
 
 /**
  * Route id -> the client assets a page must preload to render that route.
@@ -64,10 +65,8 @@ const RESOLVED_ROUTE_ASSETS_ID = `\0${ROUTE_ASSETS_ID}`;
 
 /** What `compiler-rs` answers with. */
 export interface RouteTree {
-  /** The module `virtual:barq-routes` resolves to. */
-  readonly module: string;
-  /** The `.d.ts` to write beside the source. */
-  readonly types: string;
+  /** The contents of `routeTree.gen.ts` — the table AND its types. */
+  readonly source: string;
   /** Every route file found, project-relative — for the watcher. */
   readonly files: string[];
   /** Every leaf pattern, which is what `BARQ013` checks a `<Link to>` against. */
@@ -96,7 +95,7 @@ export interface RouteTree {
 }
 
 interface Native {
-  routeTree(root: string, dir: string, typesDir?: string, writeIds?: boolean): RouteTree;
+  routeTree(root: string, dir: string, outFile?: string, writeIds?: boolean): RouteTree;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
@@ -104,18 +103,23 @@ const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
 /**
  * Scan and generate. Exported so a build script can do it without a dev server.
  *
- * `typesDir` is where the `.d.ts` will be written, project-relative, and it is
- * not cosmetic: the type references the generator emits are relative to that
- * file, because a root-absolute `typeof import("/src/...")` is the FILESYSTEM
- * root to TypeScript and silently resolves to `any`.
+ * `outFile` is where the generated file will be written, project-relative, and
+ * it is not cosmetic: every import specifier the generator emits is relative to
+ * that file. A root-absolute `import("/src/...")` is the FILESYSTEM root to
+ * TypeScript and silently resolves to `any`.
  *
  * `writeIds` lets the generator OWN the `createFileRoute` path literal and
  * rewrite it in the source file when a rename makes it wrong — which is what
  * their plugin does (`router-generator/src/transform/transform.ts:133-140`).
  * Off by default, so nothing writes to a project unless a dev server asked.
  */
-export function routeTree(root: string, dir: string, typesDir = "", writeIds = false): RouteTree {
-  return native.routeTree(root, dir, typesDir, writeIds);
+export function routeTree(
+  root: string,
+  dir: string,
+  outFile = DEFAULT_ROUTE_TREE,
+  writeIds = false,
+): RouteTree {
+  return native.routeTree(root, dir, outFile, writeIds);
 }
 
 /**
@@ -153,8 +157,15 @@ export interface VerifyOptions {
 export interface BarqRouterOptions {
   /** Where route files live, relative to the Vite root. */
   readonly routesDir?: string;
-  /** Where to write the generated `.d.ts`. `false` writes none. */
-  readonly types?: string | false;
+  /**
+   * Where to write the generated route tree. `false` writes none.
+   *
+   * Default `src/routeTree.gen.ts`, which is theirs (`generatedRouteTree`,
+   * `router-generator/src/config.ts:50`). The application imports it BY PATH,
+   * so this is a real file in the project rather than a virtual specifier only
+   * the bundler can resolve.
+   */
+  readonly routeTree?: string | false;
   /**
    * Told the leaf patterns after every scan.
    *
@@ -192,8 +203,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   let base = "/";
   let routeAssets: Record<string, string[]> = {};
   let tree: RouteTree = {
-    module: "",
-    types: "",
+    source: "",
     files: [],
     patterns: [],
     entries: [],
@@ -202,7 +212,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     rewritten: [],
   };
 
-  const typesFile = options.types === false ? null : (options.types ?? "src/routes.gen.d.ts");
+  const treeFile = options.routeTree === false ? null : (options.routeTree ?? DEFAULT_ROUTE_TREE);
 
   /**
    * Serving rewrites the id literal; building refuses to.
@@ -214,7 +224,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   let writeIds = false;
 
   const rescan = (warn?: (message: string) => void): void => {
-    tree = routeTree(root, routesDir, typesFile === null ? "" : dirname(typesFile), writeIds);
+    tree = routeTree(root, routesDir, treeFile ?? DEFAULT_ROUTE_TREE, writeIds);
     for (const warning of tree.warnings ?? []) warn?.(`[barq-router] ${warning}`);
     for (const file of tree.rewritten ?? []) {
       warn?.(`[barq-router] ${file}: rewrote its route id to match the filename`);
@@ -233,15 +243,27 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       );
     }
     options.onRoutes?.(tree.patterns);
-    if (typesFile === null) return;
+    if (treeFile === null) return;
+    const target = join(root, treeFile);
     try {
-      // The directory first: `types` may name a path that does not exist yet,
-      // and the catch below would have swallowed the `ENOENT` — so the file
-      // silently was not written and the project typechecked against nothing.
-      mkdirSync(dirname(join(root, typesFile)), { recursive: true });
-      writeFileSync(join(root, typesFile), tree.types);
+      // WRITE ONLY ON CHANGE, and this is not an optimisation. The tree is
+      // regenerated on every route-file event and the watcher watches the
+      // directory this writes into — so rewriting identical bytes is a loop.
+      // It also keeps `vite build` from dirtying a checked-out file, which is
+      // the same reason `writeIds` is off outside `serve`.
+      if (readFileSync(target, "utf8") === tree.source) return;
     } catch {
-      // A read-only checkout still builds; the types are a convenience.
+      // Not there yet, which is the first run. Fall through and write it.
+    }
+    try {
+      // The directory first: `routeTree` may name a path that does not exist
+      // yet, and the catch below would have swallowed the `ENOENT` — so the
+      // file silently was not written and the project typechecked against
+      // nothing.
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, tree.source);
+    } catch {
+      // A read-only checkout still builds off whatever is committed.
     }
   };
 
@@ -363,35 +385,23 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     },
 
     resolveId(id) {
-      if (id === ROUTES_ID) return RESOLVED_ROUTES_ID;
       return id === ROUTE_ASSETS_ID ? RESOLVED_ROUTE_ASSETS_ID : null;
     },
 
     load(id) {
-      if (id === RESOLVED_ROUTE_ASSETS_ID) {
-        return `export const routeAssets = ${JSON.stringify(routeAssets)};\nexport default routeAssets;\n`;
-      }
-      if (id !== RESOLVED_ROUTES_ID) return null;
-      // Watched here rather than in `configResolved`, so the dependency is
-      // recorded against the module that actually uses it.
-      for (const file of tree.files) this.addWatchFile(join(root, file));
-      return tree.module;
+      if (id !== RESOLVED_ROUTE_ASSETS_ID) return null;
+      return `export const routeAssets = ${JSON.stringify(routeAssets)};\nexport default routeAssets;\n`;
     },
 
     configureServer(server) {
       const changed = (path: string): void => {
         if (relative(join(root, routesDir), path).startsWith("..")) return;
         rescan((message) => server.config.logger.warn(message));
-        // A route file appearing or vanishing changes the TABLE, and the table
-        // is a different module from the file that changed — without this the
-        // dev server keeps serving yesterday's routes. `@barqjs/start`'s
-        // manifest does the same thing for the same reason.
-        for (const environment of Object.values(server.environments)) {
-          const module = environment.moduleGraph.getModuleById(RESOLVED_ROUTES_ID);
-          if (module !== undefined && module !== null) {
-            environment.moduleGraph.invalidateModule(module);
-          }
-        }
+        // The table is a REAL FILE now, so Vite's own watcher picks the rewrite
+        // up and invalidates every importer for us — there is no virtual module
+        // left to invalidate by hand. `rescan` writes only on change, which is
+        // what keeps this from being a loop: the file this writes is inside the
+        // directory this watches.
         server.ws.send({ type: "full-reload" });
       };
       server.watcher.on("add", changed);

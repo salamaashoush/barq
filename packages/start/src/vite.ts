@@ -38,6 +38,15 @@ export const ENVIRONMENTS = { client: "client", server: "ssr" } as const;
 
 /** The module a server entry imports to mount everything the build found. */
 export const MANIFEST_ID = "virtual:barq-server-fns";
+
+/**
+ * The route -> client-assets map, which `barqRouter` owns and this only NAMES.
+ *
+ * Re-declared rather than imported from `@barqjs/router/vite` so this module
+ * does not pull the router's build half — and napi with it — into a config that
+ * may only want the server-function halves.
+ */
+const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
 const RESOLVED_MANIFEST_ID = `\0${MANIFEST_ID}`;
 
 /**
@@ -72,28 +81,32 @@ function findEntry(root: string, srcDir: string, half: "client" | "server"): str
 /**
  * The client half, when the project has not written one.
  *
- * `start()` before `hydrate()`, and that ordering is the whole of it: the walk
- * claims per route depth, so a chain that is still empty when `hydrate` runs
- * claims ranges for nothing and the server's markup is evicted under it.
+ * Three lines, and every one of them is the framework's: `startClient` owns the
+ * boot ORDER, which is load-bearing three times over — `start()` before the
+ * walk, because hydration claims one range per route depth and an empty chain
+ * claims ranges for nothing; the matched chunks before the walk, because a cold
+ * `lazy()` throws `NotReadyError` and parks the depth's boundary onto a rebuild,
+ * discarding exactly the markup hydration exists to keep; and the head before
+ * the walk, because `<HeadContent />` is a keyed list.
+ *
+ * PROVIDERS DO NOT BELONG HERE and neither do global styles. Both go in the
+ * ROOT ROUTE's component, where they wrap every route on both backends rather
+ * than only on this one — which is theirs too.
+ *
+ * THIS WAS STALE and it is worth saying what it used to do, because nothing
+ * caught it: it hydrated `RouterProvider` into `document.getElementById("app")`.
+ * Once the document became JSX — `shellComponent` renders `<html>` — that skips
+ * `Document`'s `provide`, so `<HeadContent />` read no assets and rendered
+ * nothing, and hydration still CLAIMED the server's tags, which hid it until the
+ * first navigation reconciled the whole head away. Only `packages/kitchen-sink`
+ * exercised the current design, because only it wrote its own entry.
  */
-function defaultClientEntry(): string {
+function defaultClientEntry(routeTreeImport: string): string {
   return [
-    `import { hydrate } from "@barqjs/core";`,
-    `import { RouterProvider, browserHistory, createRouter, preloadMatched } from "@barqjs/router";`,
-    `import { routes } from "virtual:barq-routes";`,
+    `import { startClient } from "@barqjs/router/client";`,
+    `import { routeTree } from "${routeTreeImport}";`,
     ``,
-    `const container = document.getElementById("app");`,
-    `if (container === null) {`,
-    `  throw new Error("[barq] the document has no #app to hydrate into");`,
-    `}`,
-    ``,
-    `const state = createRouter({ routes, history: browserHistory() });`,
-    `await state.start();`,
-    `// The matched chain's CHUNKS, before the walk. A route module that has not`,
-    `// arrived throws \`NotReadyError\`, which parks the depth's boundary and`,
-    `// makes it rebuild — discarding exactly the markup hydration exists to keep.`,
-    `await preloadMatched(state.chain());`,
-    `hydrate((s) => RouterProvider(s, { state: () => state }), container);`,
+    `await startClient({ routeTree });`,
     ``,
   ].join("\n");
 }
@@ -101,39 +114,46 @@ function defaultClientEntry(): string {
 /**
  * The server half, when the project has not written one.
  *
- * It exports `options` beside `fetch` because `stream` is fixed when the
- * handler is built, and the prerenderer needs a non-streaming twin of the SAME
- * declaration rather than a second one to keep in step.
+ * It exports `options` beside `fetch` because `stream` is fixed when the handler
+ * is built, and the prerenderer needs a non-streaming twin of the SAME
+ * declaration rather than a second one to keep in step. The dev server adds
+ * `transformShell`; the prerenderer sets `stream: false` and `refuseRequest`.
+ *
+ * NO `document` TEMPLATE. The document is `shellComponent` on the root route and
+ * `<HeadContent />` and `<Scripts />` place themselves, so there is no order to
+ * get right here — which is the trap the string template had: it serialised the
+ * head before the body and shipped a page with no styles until the first
+ * navigation. The only thing this still hands over is `clientAssets`, which the
+ * build produces and no route can know about.
  */
-function defaultServerEntry(): string {
+function defaultServerEntry(routeTreeImport: string): string {
   return [
-    `import { createPageHandler, renderRoutes } from "@barqjs/router/server";`,
-    `import { routeAssets } from "virtual:barq-route-assets";`,
-    `import { routes } from "virtual:barq-routes";`,
+    `import { chainVerifier, createPageHandler, renderRoutes } from "@barqjs/router/server";`,
+    `import { routeAssets } from "${ROUTE_ASSETS_ID}";`,
+    `import { routeTree } from "${routeTreeImport}";`,
     `import { clientAssets } from "${CLIENT_ASSETS_ID}";`,
+    `// MOUNTS every server function the build found. Importing it is what gives`,
+    `// each one a URL — without this line \`/_barq/fn/<id>\` 404s for all of them,`,
+    `// and the route-action check below has an empty registry to ask.`,
     `import "${MANIFEST_ID}";`,
     ``,
     `export const options = {`,
-    `  routes,`,
+    `  routeTree,`,
     `  routeAssets,`,
+    `  clientAssets,`,
     `  app: (state) => renderRoutes(state),`,
-    `  document: ({ body, seed, preload, context }) =>`,
-    '    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +',
-    '    `<meta name="viewport" content="width=device-width, initial-scale=1">` +',
-    '    `${clientAssets.css.map((href) => `<link rel="stylesheet" href="${href}">`).join("")}` +',
-    '    `${preload}${context}</head><body><div id="app">${body}</div>${seed}` +',
-    '    `${clientAssets.scripts.map((src) => `<script type="module" src="${src}"></script>`).join("")}` +',
-    "    `</body></html>`,",
     `};`,
     ``,
     `/**`,
-    ` * Build a handler with something overridden.`,
+    ` * The route-action chain check, exposed to the BUILD.`,
     ` *`,
-    ` * The dev server adds \`transformShell\` so Vite can inject its client into a`,
-    ` * document it has no file for, and the prerenderer sets \`stream: false\` and`,
-    ` * \`refuseRequest\` — both from THIS declaration, so there is no second one to`,
-    ` * keep in step.`,
+    ` * Here rather than in a Vite plugin because this is the only place that can`,
+    ` * see both halves: \`resolve.noExternal\` compiles \`@barqjs/*\` into this`,
+    ` * bundle, so a plugin importing the registry would be asking a second, empty`,
+    ` * one — and a route's \`middleware\` are closures that exist nowhere else.`,
     ` */`,
+    `export const verifyChains = chainVerifier(options.routeTree);`,
+    ``,
     `export const createFetch = (extra) => createPageHandler({ ...options, ...extra });`,
     ``,
     `export default { fetch: createFetch({}) };`,
@@ -283,6 +303,16 @@ export interface BarqStartOptions {
   compiler?: Omit<BarqCompilerOptions, "serverFns" | "onServerFns" | "root">;
   /** Where `entry-client.*` and `entry-server.*` are looked for. */
   srcDirectory?: string;
+  /**
+   * Where `barqRouter` writes the generated tree, project-relative.
+   *
+   * Only the DEFAULT entries read this — a project that writes its own imports
+   * the file by path like any other module. It has to be told rather than
+   * guessed because the two plugins are configured independently, and a default
+   * entry that imported a file the router was told to write somewhere else
+   * would fail to resolve with nothing to point at.
+   */
+  routeTree?: string;
   /** Write static HTML for some paths after the build. */
   prerender?: PrerenderOptions;
   /** `dist/client` and `dist/server` under it. */
@@ -451,8 +481,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       return id === CLIENT_ASSETS_ID ? RESOLVED_CLIENT_ASSETS_ID : null;
     },
     load(id) {
-      if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry();
-      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry();
+      // A VIRTUAL module has no directory of its own, so a relative specifier
+      // in it resolves against nothing. The generated entries name the file by
+      // its absolute path, which Vite resolves everywhere.
+      const treeImport = join(root, options.routeTree ?? "src/routeTree.gen.ts").replaceAll(
+        "\\",
+        "/",
+      );
+      if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry(treeImport);
+      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry(treeImport);
       if (id !== RESOLVED_CLIENT_ASSETS_ID) return null;
       // In dev the entry is a module Vite serves; there are no chunks and no
       // CSS files, because the browser's own module graph does that work.

@@ -437,6 +437,7 @@ describe("the convention, from the other side", () => {
       "manifest.ts": "manifest.test.ts",
       "matcher.ts": "matcher.test.ts",
       "path.ts": "path.test.ts",
+      "register.ts": "register.test.ts",
       "route.ts": "matcher.test.ts",
       "router.ts": "router.test.ts",
       "scroll.ts": "scroll.test.ts",

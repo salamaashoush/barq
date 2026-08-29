@@ -53,7 +53,7 @@ export interface Violation {
 }
 
 export interface VerifyOptions {
-  readonly routes: readonly AnyRouteDefinition[];
+  readonly routeTree: readonly AnyRouteDefinition[];
   /** route id -> server-fn ids reachable from that route's module graph. */
   readonly reachability: Reachability;
   /** id -> the mounted function, normally `REGISTRY.get`. */
@@ -74,7 +74,7 @@ export interface VerifyOptions {
  * through either.
  */
 export async function verifyRouteChains(options: VerifyOptions): Promise<Violation[]> {
-  const flat = flattenRoutes(options.routes);
+  const flat = flattenRoutes(options.routeTree);
   const violations: Violation[] = [];
 
   for (const route of flat) {

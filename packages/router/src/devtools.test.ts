@@ -78,7 +78,7 @@ const routes: AnyRouteDefinition[] = [
 describe("RouterDevtools", () => {
   test("reports the url, the chain, the params and the context", async () => {
     const state = createRouter({
-      routes,
+      routeTree: routes,
       history: memoryHistory({ initial: ["/app/7?tab=a"] }),
     });
     const { host, dispose } = mount(state);
@@ -95,7 +95,10 @@ describe("RouterDevtools", () => {
   });
 
   test("it never writes: the location is untouched by rendering it", async () => {
-    const state = createRouter({ routes, history: memoryHistory({ initial: ["/app/7"] }) });
+    const state = createRouter({
+      routeTree: routes,
+      history: memoryHistory({ initial: ["/app/7"] }),
+    });
     const before = state.location();
     const { dispose } = mount(state);
     await tick();
@@ -107,7 +110,10 @@ describe("RouterDevtools", () => {
   });
 
   test("it follows a navigation rather than snapshotting one", async () => {
-    const state = createRouter({ routes, history: memoryHistory({ initial: ["/app/7"] }) });
+    const state = createRouter({
+      routeTree: routes,
+      history: memoryHistory({ initial: ["/app/7"] }),
+    });
     const { host, dispose } = mount(state);
     flush();
     expect(host.textContent).toContain("/app/7");
@@ -119,7 +125,10 @@ describe("RouterDevtools", () => {
   });
 
   test("collapsed by default, so it is not in the way", () => {
-    const state = createRouter({ routes, history: memoryHistory({ initial: ["/app/7"] }) });
+    const state = createRouter({
+      routeTree: routes,
+      history: memoryHistory({ initial: ["/app/7"] }),
+    });
     const { host, dispose } = mount(state, false);
     const panel = host.querySelector("[data-barq-devtools]") as HTMLElement;
     const body = panel.lastChild as HTMLElement;

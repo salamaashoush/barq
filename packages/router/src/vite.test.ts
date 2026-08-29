@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { ROUTES_ID, barqRouter, routeTree } from "./vite.ts";
+import { DEFAULT_ROUTE_TREE, barqRouter, routeTree } from "./vite.ts";
 
 const made: string[] = [];
 
@@ -30,7 +30,7 @@ type Hooks = {
     logger?: { warn(message: string): void };
   }): void;
   resolveId(id: string): string | null;
-  load(this: { addWatchFile(f: string): void }, id: string): string | null;
+  load(id: string): string | null;
 };
 
 const hooks = (plugin: ReturnType<typeof barqRouter>): Hooks => plugin as unknown as Hooks;
@@ -50,10 +50,10 @@ const resolve = (plugin: Hooks, root: string, command = "build"): { warnings: st
 /**
  * `@barqjs/core` and `@barqjs/router`, stubbed.
  *
- * The generated table imports `lazy` from one and `Outlet` from the other, and
- * a temp project outside the workspace cannot resolve either. Stubbing keeps
- * the test hermetic and about the GRAPH, which is what it measures — the real
- * implementations would change nothing here.
+ * The generated table imports `Outlet` from the router for any route that
+ * declares no component of its own, and a temp project outside the workspace
+ * cannot resolve it. Stubbing keeps the test hermetic and about the GRAPH,
+ * which is what it measures — the real implementations would change nothing.
  */
 const STUBS: Record<string, string> = {
   "@barqjs/core": "export const lazy = (load) => load;",
@@ -101,12 +101,14 @@ describe("routeTree, across the napi boundary", () => {
     const root = project({ "src/main.tsx": "" });
     const tree = routeTree(root, "src/routes");
     expect(tree.files).toEqual([]);
-    expect(tree.module).toContain("export const routes");
+    expect(tree.source).toContain("export const routeTree");
   });
 });
 
 describe("the plugin", () => {
-  test("resolves the virtual id and serves the compiler's module", () => {
+  test("writes the tree where it was told, and reports the patterns from the SAME scan", () => {
+    // BARQ013's route set has to come from the scan the table was built from,
+    // or the check runs against a different project than the one that ships.
     const root = project({
       "src/routes/index.tsx":
         'export const Route = createFileRoute("/")({ component: () => null });',
@@ -115,88 +117,86 @@ describe("the plugin", () => {
       "src/routes/users.$id.tsx":
         'export const Route = createFileRoute("/users/$id")({ component: () => null });',
     });
-    const plugin = hooks(barqRouter({ types: false }));
-    resolve(plugin, root);
-
-    expect(plugin.resolveId(ROUTES_ID)).toBe(`\0${ROUTES_ID}`);
-    expect(plugin.resolveId("something-else")).toBeNull();
-
-    const watched: string[] = [];
-    const code = plugin.load.call({ addWatchFile: (f) => watched.push(f) }, `\0${ROUTES_ID}`);
-
-    expect(code).toContain("export const routes");
-    expect(code).toContain('lazy(() => import("/src/routes/users.$id.tsx")');
-    // Every route file is watched, so adding or removing one invalidates the
-    // table — which is a different module from the file that changed.
-    expect(watched).toHaveLength(3);
-  });
-
-  test("writes the types and reports the patterns from the SAME scan", () => {
-    // BARQ013's route set has to come from the scan the table was built from,
-    // or the check runs against a different project than the one that ships.
-    const root = project({
-      "src/routes/users.$id.tsx":
-        'export const Route = createFileRoute("/users/$id")({ component: () => null });',
-    });
     let reported: readonly string[] = [];
-    const plugin = hooks(
-      barqRouter({ types: "src/routes.gen.d.ts", onRoutes: (p) => (reported = p) }),
-    );
+    const plugin = hooks(barqRouter({ onRoutes: (p) => (reported = p) }));
     resolve(plugin, root);
 
-    expect(reported).toEqual(["/users/$id"]);
-    const written = readFileSync(join(root, "src/routes.gen.d.ts"), "utf8");
-    expect(written).toContain('declare module "virtual:barq-routes"');
-    expect(written).toContain('"/users/$id"');
+    expect(reported.toSorted()).toEqual(["/", "/users/$id"]);
+
+    const written = readFileSync(join(root, DEFAULT_ROUTE_TREE), "utf8");
+    // A REAL file the application imports by path, holding the table AND the
+    // types — not a virtual module and not a `.d.ts` beside one.
+    expect(written).toContain("export const routeTree");
+    expect(written).toContain('import { Route as UsersIdRoute } from "./routes/users.$id";');
+    // The whole option set rides through the spread, which is the point of the
+    // static import: `validateSearch`, `beforeLoad` and `errorComponent` are all
+    // read synchronously by the router and a `lazy()` cannot answer for them.
+    expect(written).toContain("...UsersIdRoute.options");
+    expect(written).not.toContain("lazy(");
+    // And the types REGISTER themselves, which is what makes `<Link to>` typed.
+    expect(written).toContain('declare module "@barqjs/router"');
+    expect(written).toContain("routeTree: FileRouteTypes;");
   });
 
-  test("load returns null for anything else", () => {
+  test("`routeTree: false` writes nothing at all", () => {
     const root = project({
       "src/routes/index.tsx":
         'export const Route = createFileRoute("/")({ component: () => null });',
     });
-    const plugin = hooks(barqRouter({ types: false }));
+    const plugin = hooks(barqRouter({ routeTree: false }));
     resolve(plugin, root);
-    expect(plugin.load.call({ addWatchFile: () => {} }, "some-other-id")).toBeNull();
-  });
-});
-
-/**
- * §3.9 — the route-action manifest, computed from a REAL Rollup graph.
- *
- * `reachabilityFrom` and `verifyRouteChains` have existed and been tested since
- * `83c81d4`, and nothing called them from a build. This is the call, and it is
- * driven through `vite build` rather than a mocked plugin context — the walk was
- * verified against a real Vite 8 / rolldown graph before it was written, and a
- * mock that agrees with the implementation proves only that they agree.
- */
-describe("the generated .d.ts resolves", () => {
-  test("type references are relative to where the file is written", () => {
-    // A root-absolute `typeof import("/src/...")` is the FILESYSTEM root to
-    // TypeScript, so it resolved to `any` and every generated type became
-    // permissive — caught because the `@ts-expect-error` directives in the
-    // check file went UNUSED rather than because anything failed.
-    const root = project({
-      "src/routes/users.$id.tsx":
-        'export const Route = createFileRoute("/users/$id")({ component: () => null });',
-    });
-    expect(routeTree(root, "src/routes", "src").types).toContain(
-      'import("../src/routes/users.$id.tsx")',
-    );
-    expect(routeTree(root, "src/routes", "").types).toContain(
-      'import("./src/routes/users.$id.tsx")',
-    );
+    expect(() => readFileSync(join(root, DEFAULT_ROUTE_TREE), "utf8")).toThrow();
   });
 
-  test("the plugin derives it from where it writes", () => {
+  /**
+   * The file this writes lives inside the directory the dev server watches, so
+   * rewriting identical bytes on every scan is a LOOP — not a wasted write.
+   */
+  test("an unchanged tree is not rewritten", () => {
     const root = project({
       "src/routes/index.tsx":
         'export const Route = createFileRoute("/")({ component: () => null });',
     });
-    const plugin = barqRouter({ types: "src/generated/routes.d.ts" });
-    hooks(plugin).configResolved({ root });
-    const written = readFileSync(join(root, "src/generated/routes.d.ts"), "utf8");
-    expect(written).toContain('import("../../src/routes/index.tsx")');
+    const plugin = hooks(barqRouter({}));
+    resolve(plugin, root);
+
+    const target = join(root, DEFAULT_ROUTE_TREE);
+    const first = statSync(target).mtimeMs;
+    // A marker that survives only if nothing writes over it.
+    const contents = readFileSync(target, "utf8");
+    writeFileSync(target, contents);
+    const stamped = statSync(target).mtimeMs;
+
+    resolve(plugin, root);
+    expect(statSync(target).mtimeMs).toBe(stamped);
+    expect(first).toBeLessThanOrEqual(stamped);
+    expect(readFileSync(target, "utf8")).toBe(contents);
+  });
+
+  test("the import specifiers follow where it is written", () => {
+    // A root-absolute specifier is the FILESYSTEM root to TypeScript, so it
+    // resolved to `any` and every generated type became permissive — caught
+    // because the `@ts-expect-error` directives in the check file went UNUSED
+    // rather than because anything failed.
+    const root = project({
+      "src/routes/index.tsx":
+        'export const Route = createFileRoute("/")({ component: () => null });',
+    });
+    const plugin = hooks(barqRouter({ routeTree: "src/generated/tree.gen.ts" }));
+    resolve(plugin, root);
+    const written = readFileSync(join(root, "src/generated/tree.gen.ts"), "utf8");
+    expect(written).toContain('from "../routes/index"');
+  });
+
+  test("load returns null for anything but the route assets", () => {
+    const root = project({
+      "src/routes/index.tsx":
+        'export const Route = createFileRoute("/")({ component: () => null });',
+    });
+    const plugin = hooks(barqRouter({ routeTree: false }));
+    resolve(plugin, root);
+    expect(plugin.resolveId("something-else")).toBeNull();
+    expect(plugin.load("some-other-id")).toBeNull();
   });
 });
 
@@ -211,13 +211,12 @@ export const deleteUser = clientRpc("actions.ts#deleteUser");
 export const listUsers = clientRpc("actions.ts#listUsers");
 `,
       "src/routes/admin.$id.tsx": `import { deleteUser } from "../actions.ts";
-export const loader = async () => deleteUser();
-export const Component = () => "admin";
+export const Route = { options: { loader: async () => deleteUser(), component: () => "admin" } };
 `,
-      "src/routes/index.tsx": `export const Component = () => "home";
+      "src/routes/index.tsx": `export const Route = { options: { component: () => "home" } };
 `,
-      "src/entry.ts": `import { routes } from "virtual:barq-routes";
-console.log(routes.length);
+      "src/entry.ts": `import { routeTree } from "./routeTree.gen.ts";
+console.log(routeTree.length);
 `,
     });
 
@@ -230,7 +229,6 @@ console.log(routes.length);
       plugins: [
         stubCore(),
         barqRouter({
-          types: false,
           verify: {
             check(reachability) {
               seen = reachability as Map<string, ReadonlySet<string>>;
@@ -262,11 +260,10 @@ console.log(routes.length);
 export const wipe = clientRpc("actions.ts#wipe");
 `,
       "src/routes/admin.tsx": `import { wipe } from "../actions.ts";
-export const loader = async () => wipe();
-export const Component = () => "admin";
+export const Route = { options: { loader: async () => wipe(), component: () => "admin" } };
 `,
-      "src/entry.ts": `import { routes } from "virtual:barq-routes";
-console.log(routes.length);
+      "src/entry.ts": `import { routeTree } from "./routeTree.gen.ts";
+console.log(routeTree.length);
 `,
     });
 
@@ -279,7 +276,6 @@ console.log(routes.length);
         plugins: [
           stubCore(),
           barqRouter({
-            types: false,
             verify: { onViolation, check: () => "wipe does not carry /admin's middleware" },
           }),
         ],
@@ -295,7 +291,7 @@ console.log(routes.length);
     // A check that silently verifies nothing is worse than one that says it is
     // not running, so this is opt-in and its absence is a no-op rather than an
     // empty pass.
-    const plugin = barqRouter({ types: false });
+    const plugin = barqRouter({ routeTree: false });
     expect((plugin as unknown as { buildEnd?: unknown }).buildEnd).toBeDefined();
     await (plugin as unknown as { buildEnd: (this: unknown) => Promise<void> }).buildEnd.call({
       getModuleIds: () => {
@@ -325,13 +321,13 @@ describe("a route's own declarations", () => {
       "src/routes/about.tsx":
         'export const Route = createFileRoute("/about")({ ssr: "data-only", prerender: true });',
     });
-    const tree = routeTree(root, "src/routes", "");
-    const about = tree.module.split("\n").find((line) => line.includes('"/about"')) ?? "";
+    const tree = routeTree(root, "src/routes");
+    const about = tree.source.split("\n").find((line) => line.includes('"/about"')) ?? "";
     expect(about).toContain('ssr: "data-only"');
     expect(about).toContain("prerender: true");
     // A route that declares nothing emits nothing, so the runtime default stays
     // the runtime's to decide rather than the generator's.
-    const home = tree.module.split("\n").find((line) => line.includes('"/"')) ?? "";
+    const home = tree.source.split("\n").find((line) => line.includes('"/"')) ?? "";
     expect(home).not.toContain("ssr:");
     expect(home).not.toContain("prerender:");
     expect(tree.warnings).toEqual([]);
@@ -342,8 +338,8 @@ describe("a route's own declarations", () => {
       "src/routes/feed.tsx":
         'export const Route = createFileRoute("/feed")({ prerender: shouldPrerender() });',
     });
-    const tree = routeTree(root, "src/routes", "");
-    const feed = tree.module.split("\n").find((line) => line.includes('"/feed"')) ?? "";
+    const tree = routeTree(root, "src/routes");
+    const feed = tree.source.split("\n").find((line) => line.includes('"/feed"')) ?? "";
     expect(feed).not.toContain("prerender:");
     expect(tree.warnings).toHaveLength(1);
     expect(tree.warnings[0]).toContain("feed.tsx");
@@ -363,8 +359,8 @@ describe("a route's own declarations", () => {
         "export const ssr = false;\n" +
         'export const Route = createFileRoute("/admin")({ component: Admin });',
     });
-    const tree = routeTree(root, "src/routes", "");
-    const admin = tree.module.split("\n").find((line) => line.includes('"/admin"')) ?? "";
+    const tree = routeTree(root, "src/routes");
+    const admin = tree.source.split("\n").find((line) => line.includes('"/admin"')) ?? "";
     expect(admin).not.toContain("ssr:");
     expect(tree.warnings).toHaveLength(1);
     expect(tree.warnings[0]).toContain("`export const ssr` is no longer read");
@@ -380,13 +376,13 @@ describe("a route's own declarations", () => {
         'export const Route = createFileRoute("/posts/$postId")({ component: Post });',
     });
 
-    const stale = routeTree(root, "src/routes", "");
+    const stale = routeTree(root, "src/routes");
     expect(stale.rewritten).toEqual([]);
     expect(stale.mismatches).toEqual([
       { file: "src/routes/posts.$id.tsx", declared: "/posts/$postId", expected: "/posts/$id" },
     ]);
 
-    const rewritten = routeTree(root, "src/routes", "", true);
+    const rewritten = routeTree(root, "src/routes", DEFAULT_ROUTE_TREE, true);
     expect(rewritten.rewritten).toEqual(["src/routes/posts.$id.tsx"]);
     expect(rewritten.mismatches).toEqual([]);
     // A byte splice on the parsed span: the literal changes and nothing else.
@@ -400,7 +396,7 @@ describe("a route's own declarations", () => {
       "src/routes/posts.$id.tsx":
         'export const Route = createFileRoute("/posts/$postId")({ component: Post });',
     });
-    const plugin = hooks(barqRouter({ types: false }));
+    const plugin = hooks(barqRouter({ routeTree: false }));
     expect(() => resolve(plugin, root, "build")).toThrow(/disagree with the id their filename/);
   });
 });

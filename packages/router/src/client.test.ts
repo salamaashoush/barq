@@ -48,7 +48,7 @@ test("the boot starts the router, resolves the head and mounts, in that order", 
   globalThis.document.body.appendChild(container);
 
   const state = await startClient({
-    routes: table(seen),
+    routeTree: table(seen),
     history: memoryHistory({ initial: ["/"] }),
     container,
   });
@@ -75,7 +75,7 @@ test("a table with no shell still boots, and the container is what it mounts int
   globalThis.document.body.appendChild(container);
 
   const state = await startClient({
-    routes: table(seen),
+    routeTree: table(seen),
     history: memoryHistory({ initial: ["/"] }),
     container,
   });

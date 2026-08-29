@@ -44,7 +44,7 @@ group("verifyRouteChains", () => {
 
   test("an action carrying the route's chain is accepted", async () => {
     const violations = await verifyRouteChains({
-      routes,
+      routeTree: routes,
       reachability: new Map([["/admin", new Set(["fn#guarded"])]]),
       lookup,
     });
@@ -53,7 +53,7 @@ group("verifyRouteChains", () => {
 
   test("an action missing it is a violation naming both", async () => {
     const violations = await verifyRouteChains({
-      routes,
+      routeTree: routes,
       reachability: new Map([["/admin", new Set(["fn#bare"])]]),
       lookup,
     });
@@ -64,7 +64,7 @@ group("verifyRouteChains", () => {
     // Declaring middleware on a layout has to cover everything under it, or
     // declaring it there means nothing.
     const violations = await verifyRouteChains({
-      routes,
+      routeTree: routes,
       reachability: new Map([["/admin/users", new Set(["fn#guarded"])]]),
       lookup,
     });
@@ -73,7 +73,7 @@ group("verifyRouteChains", () => {
 
     expect(
       await verifyRouteChains({
-        routes,
+        routeTree: routes,
         reachability: new Map([["/admin/users", new Set(["fn#both"])]]),
         lookup,
       }),
@@ -83,7 +83,7 @@ group("verifyRouteChains", () => {
   test("a route with no chain demands nothing", async () => {
     expect(
       await verifyRouteChains({
-        routes,
+        routeTree: routes,
         reachability: new Map([["/public", new Set(["fn#bare"])]]),
         lookup,
       }),
@@ -94,7 +94,7 @@ group("verifyRouteChains", () => {
     // Over-restricting on purpose: picking one route's policy for a call that
     // could have arrived through either is exactly the unsound thing.
     const violations = await verifyRouteChains({
-      routes,
+      routeTree: routes,
       reachability: new Map([
         ["/admin", new Set(["fn#guarded"])],
         ["/admin/users", new Set(["fn#guarded"])],
@@ -107,7 +107,7 @@ group("verifyRouteChains", () => {
   test("an id nothing mounted is skipped rather than guessed at", async () => {
     expect(
       await verifyRouteChains({
-        routes,
+        routeTree: routes,
         reachability: new Map([["/admin", new Set(["fn#unknown"])]]),
         lookup,
       }),
@@ -126,7 +126,7 @@ group("verifyRouteChains", () => {
       .handler(async () => "ok");
 
     const violations = await verifyRouteChains({
-      routes,
+      routeTree: routes,
       reachability: new Map([["/admin", new Set(["x"])]]),
       lookup: (id) => (id === "x" ? withLookalike : undefined),
     });
@@ -147,7 +147,7 @@ group("verifyRouteChains", () => {
     for (const fn of [spread, filtered]) {
       expect(
         await verifyRouteChains({
-          routes,
+          routeTree: routes,
           reachability: new Map([["/admin", new Set(["x"])]]),
           lookup: (id) => (id === "x" ? (fn as never) : undefined),
         }),
@@ -188,14 +188,14 @@ group("a file-based table's middleware", () => {
     ] as never;
     expect(
       await verifyRouteChains({
-        routes: table,
+        routeTree: table,
         reachability: new Map([["/admin", new Set(["fn#bare"])]]),
         lookup,
       }),
     ).toHaveLength(1);
     expect(
       await verifyRouteChains({
-        routes: table,
+        routeTree: table,
         reachability: new Map([["/admin", new Set(["fn#guarded"])]]),
         lookup,
       }),
@@ -208,7 +208,7 @@ group("a file-based table's middleware", () => {
     ] as never;
     expect(
       await verifyRouteChains({
-        routes: table,
+        routeTree: table,
         reachability: new Map([["/x", new Set(["fn#bare"])]]),
         lookup,
       }),

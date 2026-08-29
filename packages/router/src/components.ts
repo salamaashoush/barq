@@ -54,6 +54,7 @@ import {
   resolveScripts,
   tagProps,
 } from "./head.ts";
+import type { ToPath } from "./register.ts";
 import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { errorFallbackFor } from "./errors.ts";
@@ -392,7 +393,7 @@ export function Document(
   props: { readonly state: unknown; readonly head?: unknown; readonly children: unknown },
 ): JSXElement {
   const state = readSlot(props.state, "Document.state") as RouterState;
-  const shell = shellComponentOf(state.config.routes);
+  const shell = shellComponentOf(state.config.routeTree);
   const assets = clientHeadAssets(state, {
     initial:
       props.head === undefined
@@ -754,7 +755,7 @@ export function Outlet(scope: Scope | null, _props?: Record<string, never>): JSX
 // ---------------------------------------------------------------- components
 
 export interface RouterProps {
-  readonly routes: RouterState["config"]["routes"];
+  readonly routeTree: RouterState["config"]["routeTree"];
   readonly history?: RouterState["history"];
   readonly notFound?: RouterState["config"]["notFound"];
   readonly beforeEach?: RouterState["config"]["beforeEach"];
@@ -778,7 +779,7 @@ function RouterProviderImpl(scope: Scope | null, props: Incoming<{ state: Router
 
 function RouterImpl(scope: Scope | null, props: Incoming<RouterProps>): unknown {
   const state = createRouter({
-    routes: readSlot(props.routes, "Router.routes") as RouterProps["routes"],
+    routeTree: readSlot(props.routeTree, "Router.routeTree") as RouterProps["routeTree"],
     history:
       props.history === undefined
         ? undefined
@@ -821,8 +822,15 @@ const PRELOAD_DELAY = 50;
 const VIEWPORT_MARGIN = "100px";
 
 export interface LinkProps {
-  /** A path, or a route id when `params` is given. */
-  readonly to: string;
+  /**
+   * A path, or a route id when `params` is given.
+   *
+   * Narrowed to the application's own routes once a `routeTree.gen.ts` has
+   * registered them, so an editor offers them and a typo is visible. It still
+   * ADMITS any string — see `ToPath` for why barq stops one step short of
+   * TanStack's strictness, and which checker catches the typo instead.
+   */
+  readonly to: ToPath;
   /** Warm the cache for this link's target. Default `false`. */
   readonly preload?: PreloadStrategy;
   readonly params?: Record<string, string>;

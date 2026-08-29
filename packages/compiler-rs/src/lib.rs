@@ -222,10 +222,13 @@ pub struct RouteEntry {
 /// The generated route table, its types, and what produced them.
 #[napi(object)]
 pub struct RouteTreeResult {
-    /// The module `virtual:barq-routes` resolves to.
-    pub module: String,
-    /// The `.d.ts` a project writes beside its source.
-    pub types: String,
+    /// The contents of `routeTree.gen.ts` — the table AND its types.
+    ///
+    /// One file rather than a virtual module plus a `.d.ts`, which is
+    /// TanStack's arrangement (`generatedRouteTree` defaults to
+    /// `./src/routeTree.gen.ts`, `router-generator/src/config.ts:50`). The
+    /// caller writes it where `out_file` said.
+    pub source: String,
     /// Every route file found, project-relative. The caller registers these
     /// with its watcher — file EVENTS are the one part of this that cannot move
     /// into the compiler, because the bundler owns them.
@@ -260,11 +263,28 @@ pub struct RouteIdMismatch {
     pub expected: String,
 }
 
+/// The directory part of a project-relative path, POSIX, no trailing slash.
+///
+/// The generated file's own directory is what every import specifier in it is
+/// relative to, and a root-absolute specifier is the FILESYSTEM root to
+/// TypeScript — which resolved to `any` and made every generated type
+/// permissive, once, silently.
+fn parent_of(file: &str) -> String {
+    let normalized = file.replace('\\', "/");
+    match normalized.rfind('/') {
+        Some(slash) => normalized[..slash].to_owned(),
+        None => String::new(),
+    }
+}
+
 /// Scan a directory of route files and emit the table and its types.
 ///
 /// The whole of file-based routing, in one call. The plugin asks and
 /// invalidates; it does not read the directory, derive a route from a filename,
 /// or build a string — so a route table cannot mean two things.
+///
+/// `out_file` is where the caller will write `source`, project-relative — the
+/// import specifiers it emits are relative to that file's own directory.
 ///
 /// `write_ids` is the one thing here that TOUCHES the project: a route's id
 /// literal is generator-owned, so a rename makes it wrong, and dev rewrites it
@@ -275,7 +295,7 @@ pub struct RouteIdMismatch {
 pub fn route_tree(
     root: String,
     dir: String,
-    types_dir: Option<String>,
+    out_file: Option<String>,
     write_ids: Option<bool>,
 ) -> RouteTreeResult {
     let root_path = std::path::Path::new(&root);
@@ -310,8 +330,7 @@ pub fn route_tree(
                 expected: mismatch.expected,
             })
             .collect(),
-        module: routes::generate_module(&tree),
-        types: routes::generate_types(&tree, types_dir.as_deref().unwrap_or("")),
+        source: routes::generate_route_tree(&tree, &parent_of(out_file.as_deref().unwrap_or(""))),
         files: files.into_iter().map(|file| file.file).collect(),
         patterns: routes::patterns(&tree),
         entries: routes::entries(&tree)
