@@ -16,6 +16,7 @@
 import {
   type Block,
   type JSXElement,
+  HYDRATE,
   type Scope,
   NotReadyError,
   flush,
@@ -25,8 +26,10 @@ import {
   settle,
 } from "@barqjs/core";
 import {
+  abandonPendingSeeds,
   clearHydrationData,
   getHydrationData,
+  pendingSeedsOf,
   setAsyncSession,
   settleStep,
 } from "@barqjs/core/internal";
@@ -99,7 +102,32 @@ export async function renderPage(
   let stringMode = false;
   let markup = "";
 
+  // The SAME park-and-resume machinery the streamed arm uses. This is the whole
+  // of the unification: a boundary that cannot settle inside the shell parks its
+  // content Block here exactly as it does for a stream, and the loop below
+  // resumes it and patches the settled markup into the bytes.
+  //
+  // What this REPLACED was a second full render of the page, which is a
+  // mechanism neither reference has — Solid's `renderToStringAsync` IS
+  // `renderToStream` awaited (`dom-expressions/src/server.js:63-73`), and
+  // TanStack renders one stream and awaits it for a bot
+  // (`solid-router/src/ssr/renderRouterToStream.tsx:124-129`). It cost two real
+  // defects: the second pass built under a fresh root so every auto-key missed
+  // and crawlers and the prerenderer were served SKELETONS, and one extra pass
+  // settles exactly one level of nesting, so a boundary inside a boundary
+  // shipped a skeleton whatever happened.
+  const parked: Continuation[] = [];
+  let nextId = 0;
+  const sink: StreamSink = {
+    defer(body: Block<unknown>, scope: Scope | null, flags = 0): number {
+      const id = nextId++;
+      parked.push({ id, body, scope, at: Date.now(), hydrate: (flags & HYDRATE) !== 0 });
+      return id;
+    },
+  };
+
   const prev = setAsyncSession(session);
+  const prevSink = setStreamSink(sink);
   try {
     scope((d) => {
       dispose = d;
@@ -119,48 +147,74 @@ export async function renderPage(
     }, true);
     flush();
   } finally {
+    setStreamSink(prevSink);
     setAsyncSession(prev);
   }
 
   // Session-scoped: concurrent renders don't wait on each other's fetches
   await settle(session);
 
-  if (stringMode) {
-    // A string boundary has no later frame to swap content into, so the settled
-    // values are read by rendering a second time. The second pass builds fresh
-    // nodes and answers each keyed `computed` from what THIS session recorded
-    // on the first pass, so nothing is fetched twice.
-    //
-    // That was asserted here before it was true. The lookup consulted only the
-    // client's `__BARQ_DATA__`, which is unset on a server, so the second pass
-    // missed, refetched, threw `NotReadyError`, and every boundary emitted its
-    // FALLBACK — a non-streamed page shipped a spinner with the correct value
-    // sitting unread in the seed beside it.
-    //
-    // `renderToStream` is the other answer: it parks the content Block instead
-    // of re-running the page.
-    const restore = setAsyncSession(session);
-    try {
-      let second!: () => void;
-      scope((d) => {
-        second = d;
-        const settled = fn();
-        markup = isSsrHtml(settled) ? settled.t : typeof settled === "string" ? settled : "";
-      }, true);
-      flush();
-      second();
-    } finally {
-      setAsyncSession(restore);
-    }
-  }
+  if (stringMode) markup = await drainParked(markup, parked, sink, session);
 
   const html = stringMode ? markup : ((container as HTMLElement | null)?.innerHTML ?? "");
   const data = await settleNested(getHydrationData(session));
+  // Anything still in flight is given up on, exactly as the streamed arm does.
+  // A buffered page settles everything it can before this line, so in practice
+  // this releases only what a boundary deadline abandoned — and it is what keeps
+  // the registry from outliving the render.
+  abandonPendingSeeds(session);
   clearHydrationData(session);
   lastRenderData = data;
   dispose();
 
   return { html, data, script: hydrationScriptFor(data, options?.nonce) };
+}
+
+/**
+ * Resume every parked boundary and patch each settled one into the bytes.
+ *
+ * The buffered arm of the same park-and-resume the stream uses, which is what
+ * lets one render serve both. A boundary resumed here may park boundaries of ITS
+ * OWN — that is what nesting is — so the queue is drained rather than iterated
+ * once, and the depth of nesting a page can resolve is not bounded by a pass
+ * count. The two-pass render this replaced could resolve exactly one level.
+ */
+async function drainParked(
+  markup: string,
+  parked: Continuation[],
+  sink: StreamSink,
+  session: symbol,
+): Promise<string> {
+  let out = markup;
+  while (parked.length > 0) {
+    const round = parked.splice(0, parked.length);
+    const again: Continuation[] = [];
+    for (const record of round) {
+      const restore = setAsyncSession(session);
+      const outerSink = setStreamSink(sink);
+      let settled: string | null;
+      try {
+        settled = resumeDeferred(record.body, record.scope);
+      } catch (error) {
+        if (!(error instanceof NotReadyError)) throw error;
+        settled = null;
+      } finally {
+        setStreamSink(outerSink);
+        setAsyncSession(restore);
+      }
+      if (settled === null) {
+        // Past its own deadline it is abandoned to the fallback the shell
+        // already carries, which is the rule the streamed arm applies too.
+        if (Date.now() - record.at < BOUNDARY_TIMEOUT) again.push(record);
+        continue;
+      }
+      out = patchDeferredRange(out, record.id, settled, record.hydrate);
+    }
+    if (again.length > 0) parked.unshift(...again);
+    if (parked.length === 0) break;
+    if (!(await settleStep(session))) break;
+  }
+  return out;
 }
 
 /**
@@ -242,6 +296,8 @@ interface Continuation {
   scope: Scope | null;
   /** When it parked, so its own deadline is measured from there. */
   at: number;
+  /** Whether this boundary's page hydrates — see `StreamSink.defer`. */
+  hydrate: boolean;
 }
 
 export interface StreamOptions {
@@ -254,6 +310,24 @@ export interface StreamOptions {
    * fallback, in ms. Remix ships 5000 and React Router 4950 for the same knob.
    */
   timeout?: number;
+  /**
+   * Every error this render raises after the shell. Defaults to `console.error`,
+   * which is React's default too (`ReactFizzServer.js`'s `defaultErrorHandler`).
+   *
+   * A SHELL failure never reaches here: the shell is rendered before the stream
+   * is constructed, so it throws out of `renderToStream` itself and the caller
+   * still has an open status to answer with.
+   */
+  onError?: (error: unknown) => void;
+  /** The shell is on the wire. Nothing after this can change the status. */
+  onShellReady?: () => void;
+  /** Every boundary has settled or been abandoned, and the stream is closing. */
+  onAllReady?: () => void;
+}
+
+/** React's `defaultErrorHandler`: a server that says nothing is worse than a log. */
+function defaultStreamError(error: unknown): void {
+  console.error(error);
 }
 
 const BOUNDARY_TIMEOUT = 5_000;
@@ -265,6 +339,62 @@ const BOUNDARY_TIMEOUT = 5_000;
  * backstop rather than inheriting the per-boundary one.
  */
 const STREAM_GRACE = 1_000;
+
+/**
+ * The SERVER half of the same swap, on a string that has not been flushed yet.
+ *
+ * This is what makes one renderer serve both arms, which is how Solid and
+ * TanStack do it and what barq did not: Solid's stream replaces a placeholder in
+ * place while `!firstFlushed` (`dom-expressions/src/server.js`'s `replacePlaceholder`)
+ * and only emits `<template>` + `$df` once bytes are gone; TanStack renders one
+ * stream and, for a bot, simply awaits it
+ * (`solid-router/src/ssr/renderRouterToStream.tsx:124-129`).
+ *
+ * barq used to answer the buffered case by RENDERING THE PAGE A SECOND TIME and
+ * hoping every value was cached under the same key. It cost two real defects:
+ * the second pass built under a fresh root so every auto-key missed and the page
+ * shipped skeletons to crawlers and to the prerenderer, and one extra pass
+ * settles exactly ONE level of nesting, so a boundary inside a boundary shipped a
+ * skeleton no matter what.
+ *
+ * The scan is `swapDeferredRange`'s, on bytes instead of nodes: find this
+ * boundary's open comment, count depth so a nested range's `<!--]-->` is not
+ * mistaken for this one's, and leave a PLAIN `<!--[-->` behind so the result is
+ * indistinguishable from a boundary that settled inside the shell.
+ */
+export function patchDeferredRange(
+  html: string,
+  id: number,
+  markup: string,
+  hydrate = true,
+): string {
+  const open = `<!--[b:${id}-->`;
+  const start = html.indexOf(open);
+  if (start === -1) return html;
+  let depth = 0;
+  const comments = /<!--([\s\S]*?)-->/g;
+  comments.lastIndex = start + open.length;
+  for (let m = comments.exec(html); m !== null; m = comments.exec(html)) {
+    const data = m[1] ?? "";
+    if (data.charAt(0) === "[") {
+      depth++;
+      continue;
+    }
+    if (data !== "]") continue;
+    if (depth === 0) {
+      // A hydratable page keeps the range — the client claims it, and after this
+      // the boundary is indistinguishable from one that settled inside the
+      // shell. A page that does not hydrate keeps neither comment: the markers
+      // existed only so this patch could find the range.
+      const close = m.index + (m[0] ?? "").length;
+      return hydrate
+        ? html.slice(0, start) + "<!--[-->" + markup + html.slice(m.index)
+        : html.slice(0, start) + markup + html.slice(close);
+    }
+    depth--;
+  }
+  return html;
+}
 
 /**
  * The client half of a swap: replace the range between `<!--[b:n-->` and its
@@ -332,53 +462,6 @@ export function swapDeferredRange(n: number): void {
 const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
 
 /**
- * The seed channel: what tells a client read that its value is still coming.
- *
- * Without it a streamed page is worse than a static one. The shell arrives, the
- * bundle hydrates, a keyed read misses because its boundary has not settled yet,
- * and the client refetches something the server is already sending — the value
- * then lands in `__BARQ_DATA__` with nobody waiting on it.
- *
- * So the shell declares the channel OPEN, every seed flush wakes whatever was
- * waiting on the keys it carried, and the end of the stream closes it and
- * releases the rest to fetch for real. A read that misses while the channel is
- * open waits; a read that misses after it closes refetches, which is what a
- * non-streamed page has always done.
- *
- * Same three constraints as `swapDeferredRange`, for the same reason — it ships
- * by `toString()`: it closes over nothing, it contains no `<`, and it is the
- * function the tests drive rather than a paraphrase of one.
- */
-export function seedChannel(): void {
-  const waiting: Record<string, Array<() => void>> = {};
-  const wake = (keys: string[] | null): void => {
-    const list = keys === null ? Object.keys(waiting) : keys;
-    for (let i = list.length; i--;) {
-      const k = list[i];
-      const fns = waiting[k];
-      if (!fns) continue;
-      delete waiting[k];
-      for (let j = fns.length; j--;) fns[j]();
-    }
-  };
-  (window as unknown as { __BARQ_SEED__: unknown }).__BARQ_SEED__ = {
-    open: 1,
-    wait(key: string, fn: () => void): void {
-      (waiting[key] = waiting[key] ?? []).push(fn);
-    },
-    tell(keys: string[]): void {
-      wake(keys);
-    },
-    done(): void {
-      (window as unknown as { __BARQ_SEED__: { open: number } }).__BARQ_SEED__.open = 0;
-      wake(null);
-    },
-  };
-}
-
-const SEED_CHANNEL_SNIPPET = `(${seedChannel.toString()})();`;
-
-/**
  * Render to a stream: the shell first, then one `<template>` per boundary as
  * its promises settle.
  *
@@ -395,9 +478,9 @@ export function renderToStream(
   const parked: Continuation[] = [];
   let next = 0;
   const sink: StreamSink = {
-    defer(body: Block<unknown>, scope: Scope | null): number {
+    defer(body: Block<unknown>, scope: Scope | null, flags = 0): number {
       const id = next++;
-      parked.push({ id, body, scope, at: Date.now() });
+      parked.push({ id, body, scope, at: Date.now(), hydrate: (flags & HYDRATE) !== 0 });
       return id;
     },
   };
@@ -430,11 +513,13 @@ export function renderToStream(
   // is — it is flushed incrementally, and each flush carries only what the
   // previous ones did not.
   const sent = new Set<string>();
+  // Keys that went out as PROMISES. They are settled over at the end of the
+  // stream — see `settleSeedScript`.
+  const promised = new Set<string>();
   // One encoder for the whole render, so a value reachable from two keys seeded
   // in different rounds is ONE object on the client.
   const seeds = createSeedEncoder();
   let seededHeader = false;
-  let seededChannel = false;
   // Deferred values still being serialized. The stream stays open until this
   // reaches zero: closing on top of one drops it, and the client would wait for
   // a value that never comes rather than fetching it.
@@ -449,6 +534,21 @@ export function renderToStream(
       if (sent.has(key)) continue;
       sent.add(key);
       fresh[key] = value;
+      any = true;
+    }
+    // …and the keys still IN FLIGHT, as the promises themselves. This is Solid's
+    // `registerFragment`: `serializer.write(key, p)` the moment a boundary parks,
+    // so the client's store holds something to AWAIT rather than a hole
+    // (`dom-expressions/src/server.js`, and `Suspense.ts:144-167` consumes it).
+    //
+    // Sent ONCE, like any other key: the promise is the value, and
+    // `crossSerializeStream` emits its resolution as a later statement, so a
+    // second seed for the settled value would be a second copy of it.
+    for (const [key, promise] of Object.entries(pendingSeedsOf(session))) {
+      if (sent.has(key)) continue;
+      sent.add(key);
+      promised.add(key);
+      fresh[key] = promise;
       any = true;
     }
     if (!any) return "";
@@ -473,12 +573,46 @@ export function renderToStream(
           );
         })()
       : seeds.encode(fresh);
+    void keys;
     return (
       `<script${nonceAttr(options?.nonce)}>` +
       `${header}window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${payload});` +
-      // Wake whatever was waiting on exactly these keys. A read that missed
-      // while the channel was open is parked, not refetching.
-      `window.__BARQ_SEED__&&window.__BARQ_SEED__.tell(${JSON.stringify(keys)})` +
+      "</script>"
+    );
+  };
+
+  /**
+   * Replace every promise still standing in the store with the value it settled
+   * on, once nothing more is coming.
+   *
+   * A key seeded eagerly is a promise on the wire, which is the point: a read
+   * that runs while the stream is open awaits it instead of refetching. But a
+   * client that hydrates AFTER the stream has ended — which is every client
+   * today, because the entry is a deferred module — would find a promise where
+   * a plain value used to be, and `.then` is asynchronous however settled the
+   * promise is. Its boundary would render the FALLBACK and hydration would
+   * mismatch against markup that already holds the content. Measured on the
+   * streaming oracle as `recovered: true` on all three fixtures.
+   *
+   * Solid draws the same line from the other side: `Suspense.ts:147` awaits
+   * `sharedConfig.load(key)` only when it is NOT already resolved.
+   *
+   * Encoded through the same `refs` map, so the value is a reference to what the
+   * resolution statement already built rather than a second copy of it.
+   */
+  const settleSeedScript = (): string => {
+    if (promised.size === 0) return "";
+    const settledValues: Record<string, unknown> = {};
+    let any = false;
+    for (const [key, value] of Object.entries(getHydrationData(session))) {
+      if (!promised.has(key)) continue;
+      settledValues[key] = value;
+      any = true;
+    }
+    if (!any) return "";
+    return (
+      `<script${nonceAttr(options?.nonce)}>` +
+      `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(settledValues)});` +
       "</script>"
     );
   };
@@ -523,15 +657,19 @@ export function renderToStream(
         const statements = later.splice(0, later.length).join(";");
         target.enqueue(
           encoder.encode(
-            `<script${nonceAttr(options?.nonce)}>${statements};` +
-              // The value has landed in `$R`, so anything parked on its key can
-              // stop waiting.
-              `window.__BARQ_SEED__&&window.__BARQ_SEED__.tell(null)</script>`,
+            // The resolutions themselves. A statement here settles a promise the
+            // initial payload already put in `__BARQ_DATA__`, so the read that is
+            // awaiting it wakes with no channel in between.
+            `<script${nonceAttr(options?.nonce)}>${statements}</script>`,
           ),
         );
       };
       try {
         controller.enqueue(encoder.encode(shell));
+        // The status is settled from here: these bytes are gone and nothing
+        // after them can change the response line. React draws the same line
+        // with `onShellReady`.
+        options?.onShellReady?.();
         // Pre-hydration input capture, on the STREAMED path too.
         //
         // `hydrationScriptFor` installs it for `renderPage`, and nothing
@@ -547,14 +685,6 @@ export function renderToStream(
         controller.enqueue(
           encoder.encode(`<script${nonceAttr(options?.nonce)}>${EVENT_CAPTURE_SNIPPET}</script>`),
         );
-        // Opened before the first seed and before the bundle can run, so a read
-        // that misses knows its value may still be coming.
-        if (parked.length > 0) {
-          seededChannel = true;
-          controller.enqueue(
-            encoder.encode(`<script${nonceAttr(options?.nonce)}>${SEED_CHANNEL_SNIPPET}</script>`),
-          );
-        }
         // Whatever the shell already resolved. Without this a streamed page
         // seeded nothing at all and the client refetched every value the server
         // had just awaited.
@@ -640,20 +770,50 @@ export function renderToStream(
             stopped,
           ]);
         }
-        flushLater(controller);
-
-        // Nothing more is coming: release every read still parked on a key, so
-        // it fetches for real rather than waiting for a stream that has ended.
-        if (!consumerCancelled && seededChannel) {
-          controller.enqueue(
-            encoder.encode(
-              `<script${nonceAttr(options?.nonce)}>window.__BARQ_SEED__&&window.__BARQ_SEED__.done()</script>`,
-            ),
-          );
+        // Nothing more is coming. Every key still in flight is REJECTED rather
+        // than left pending, so the client read waiting on it falls back to
+        // fetching instead of waiting for a value that will never arrive — the
+        // job `__BARQ_SEED__.done()` used to do, per key rather than as one
+        // global flag, so only the reads whose keys were abandoned fall back.
+        abandonPendingSeeds(session);
+        if (outstanding > 0) {
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              drained = resolve;
+            }),
+            stopped,
+          ]);
         }
+        flushLater(controller);
+        if (!consumerCancelled) {
+          const settledOver = settleSeedScript();
+          if (settledOver !== "") controller.enqueue(encoder.encode(settledOver));
+        }
+        options?.onAllReady?.();
         if (!consumerCancelled) controller.close();
       } catch (error) {
-        if (!consumerCancelled) controller.error(error);
+        // NEVER `controller.error` here, and that is the whole policy. Anything
+        // thrown in this function is POST-SHELL by construction — the shell is
+        // rendered before the stream exists, so a shell failure propagates out
+        // of `renderToStream` and the caller can still answer with a 500.
+        //
+        // Tearing the body now hands the client a truncated document with no
+        // error UI and no way to recover, when the bytes it already has are a
+        // VALID page showing fallbacks. React errors the boundary rather than
+        // the response for exactly this reason. The boundary that failed keeps
+        // the fallback the shell flushed; the client re-runs it on hydration and
+        // its own error boundary reports it.
+        //
+        // Measured before this existed: a `computed` that rejected after the
+        // shell produced `STREAM REJECTED: Error: late boom` and no page at all.
+        (options?.onError ?? defaultStreamError)(error);
+        if (!consumerCancelled) {
+          try {
+            controller.close();
+          } catch {
+            // Already closed or errored by the consumer; nothing to answer to.
+          }
+        }
       } finally {
         release();
         clearHydrationData(session);

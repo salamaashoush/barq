@@ -1660,6 +1660,11 @@ function recompute(node: ComputedNode<unknown>): void {
     }
     const session = activeAsyncSession ?? node._session ?? null;
     node._session = session;
+    // EAGERLY, before a byte of this value exists: the key goes on the wire as a
+    // pending promise so a client read finds something to await.
+    if (node._serializeKey !== undefined && session !== null) {
+      openPendingSeed(session, node._serializeKey);
+    }
 
     /** The node is superseded, disposed, or was never this run's */
     const stale = (): boolean => (node._flags & REACTIVE_DISPOSED) !== 0 || node._asyncId !== id;
@@ -1672,6 +1677,7 @@ function recompute(node: ComputedNode<unknown>): void {
       node._value = value;
       if (node._serializeKey !== undefined) {
         recordHydrationValue(node._session ?? null, node._serializeKey, value);
+        closePendingSeed(node._session ?? null, node._serializeKey, value);
       }
       propagate(node, REACTIVE_DIRTY);
       schedule();
@@ -1683,6 +1689,11 @@ function recompute(node: ComputedNode<unknown>): void {
       node._loadingWindow = false;
       node._flags = (node._flags & ~STATUS_PENDING) | STATUS_ERROR;
       node._error = err;
+      // The failure travels too. A client that refetched instead would run the
+      // same failing work a second time and report it a beat later.
+      if (node._serializeKey !== undefined) {
+        failPendingSeed(node._session ?? null, node._serializeKey, err);
+      }
       propagate(node, REACTIVE_DIRTY);
       schedule();
     };
@@ -2225,15 +2236,14 @@ export function computed<T>(
       const id = key();
       if (id !== undefined) {
         node._serializeKey = id;
-        // A string render runs the page TWICE — `renderPage` has no later frame
-        // to swap a settled value into, so it re-invokes `fn` after `settle` —
-        // and the second pass builds fresh nodes. This session already resolved
-        // this key on the first pass, so answer from what it recorded.
+        // What THIS session already resolved for this key.
         //
-        // Without it the second pass misses, calls the fetcher again, throws
-        // `NotReadyError` and the boundary emits its FALLBACK: measured, a
-        // non-streamed page shipped a spinner and ran every loader twice while
-        // the correct value sat in the seed nobody read.
+        // It used to carry the string render's SECOND PASS, which re-invoked the
+        // page after `settle` because there was no later frame to swap a value
+        // into. That pass is gone — the buffered arm parks and resumes like the
+        // stream — so what is left is the ordinary case: a key read more than
+        // once inside one render answers from the session rather than fetching
+        // twice.
         //
         // Session-scoped, and deliberately never the `null` bucket: on the
         // client `activeAsyncSession` is null and a hit here would let one
@@ -2242,16 +2252,23 @@ export function computed<T>(
         const settledHere = recordedInSession(id);
         if (settledHere.found) return settledHere.value as T;
         const seed = getSeed(id);
-        if (seed.found) return seed.value as T;
-        // Missing is not the same as absent while a stream is still running:
-        // the server may be about to send it. Refetching here is what made a
-        // streamed page fetch twice — once on the server, once on the client —
-        // and land the server's answer with nobody waiting on it.
-        const later = seedLater(id);
-        if (later !== null) {
-          return later.then((arrived) =>
-            arrived.found ? (arrived.value as T) : (fn(prev) as T | PromiseLike<T>),
-          ) as T;
+        if (seed.found) {
+          const value = seed.value;
+          // A seeded value may be a PROMISE: the server writes a key the moment
+          // its flight starts, so a boundary that had not settled when the shell
+          // flushed is on the wire as something to await rather than as a hole.
+          // Returning it is all that is needed — a `compute` that hands back a
+          // promise is already an async node, which is why this replaced a
+          // waiter channel rather than needing one.
+          if (isThenable(value)) {
+            return (value as PromiseLike<T>).then((arrived: unknown) => {
+              // The server gave up on this key: fetch it, which is what a page
+              // with no seed at all does.
+              if (isAbandonedSeed(arrived)) return fn(prev) as T | PromiseLike<T>;
+              return arrived as T;
+            }) as T;
+          }
+          return value as T;
         }
       }
     }
@@ -2944,6 +2961,104 @@ function pumpAsyncIterator(
 const hydrationData = new Map<symbol | null, Map<string, unknown>>();
 
 /**
+ * A keyed async value this session has STARTED and not yet settled.
+ *
+ * Solid's shape, and the reason it is better than the waiter channel it
+ * replaced. `registerFragment` writes the key into the payload the moment a
+ * boundary parks — `serializer.write(key, p)` with `p` still pending
+ * (`dom-expressions/src/server.js`) — so the client's store holds a PROMISE
+ * rather than a hole, and `sharedConfig.load(id)` returning that promise IS the
+ * wait (`solid/src/render/Suspense.ts:144-167`).
+ *
+ * barq used to emit a seed only once a value SETTLED, so a key still in flight
+ * was simply absent and a second mechanism had to stand in for it. Registering
+ * eagerly removes the need for one: an unsettled key is a promise on the wire,
+ * and the ordinary async path awaits it because a `compute` that returns a
+ * promise is already an async node.
+ */
+interface PendingSeed {
+  readonly promise: Promise<unknown>;
+  resolve(value: unknown): void;
+  reject(error: unknown): void;
+}
+
+const pendingSeeds = new Map<symbol | null, Map<string, PendingSeed>>();
+
+/**
+ * What a pending seed the server gave up on RESOLVES with, so the read that is
+ * waiting fetches rather than failing.
+ *
+ * Resolved and not rejected, which is not a style choice: the promise goes on
+ * the wire through seroval, and on the client nobody is awaiting it until a read
+ * happens to want that key. A rejection with no handler is an unhandled
+ * rejection — a console error in the browser and a process kill on Node.
+ * Measured on exactly that: `SeedAbandoned: [barq] the server did not send a
+ * value for "r00"` thrown out of a page that was otherwise fine.
+ *
+ * Absent is not an error either way: it is what a page with no seed at all
+ * answers with, and the read's job is to fetch.
+ */
+export const SEED_ABANDONED = "__barq_seed_abandoned__";
+
+export function isAbandonedSeed(value: unknown): boolean {
+  return typeof value === "object" && value !== null && SEED_ABANDONED in value;
+}
+
+function openPendingSeed(session: symbol | null, key: string): void {
+  let bucket = pendingSeeds.get(session);
+  if (bucket === undefined) {
+    bucket = new Map();
+    pendingSeeds.set(session, bucket);
+  }
+  if (bucket.has(key)) return;
+  let settleWith!: (value: unknown) => void;
+  let failWith!: (error: unknown) => void;
+  const promise = new Promise<unknown>((res, rej) => {
+    settleWith = res;
+    failWith = rej;
+  });
+  // Nobody may be awaiting this yet — it exists to be SERIALIZED — and an
+  // unhandled rejection would take the process down on Node. A FAILED value is
+  // the one case that still rejects, and it rejects on both sides by design.
+  promise.catch(() => undefined);
+  bucket.set(key, { promise, resolve: settleWith, reject: failWith });
+}
+
+function closePendingSeed(session: symbol | null, key: string, value: unknown): void {
+  pendingSeeds.get(session)?.get(key)?.resolve(value);
+}
+
+function failPendingSeed(session: symbol | null, key: string, error: unknown): void {
+  pendingSeeds.get(session)?.get(key)?.reject(error);
+}
+
+/**
+ * The promises to put on the wire for keys still in flight, so the client waits
+ * on them instead of finding a hole and refetching.
+ */
+export function pendingSeedsOf(session?: symbol): Record<string, Promise<unknown>> {
+  const bucket = pendingSeeds.get(session ?? null);
+  if (bucket === undefined) return {};
+  const out: Record<string, Promise<unknown>> = {};
+  for (const [key, seed] of bucket) out[key] = seed.promise;
+  return out;
+}
+
+/**
+ * Give up on every key this session never sent, so no client read waits for a
+ * value that is not coming. This is what Solid's `_$HY.done` is for; per-key
+ * rather than one global flag, because the read that has to fall back is the
+ * one whose key was abandoned and not every read on the page.
+ */
+export function abandonPendingSeeds(session?: symbol): void {
+  const key = session ?? null;
+  const bucket = pendingSeeds.get(key);
+  if (bucket === undefined) return;
+  for (const [, seed] of bucket) seed.resolve({ [SEED_ABANDONED]: 1 });
+  pendingSeeds.delete(key);
+}
+
+/**
  * What THIS render already resolved for a key, for the second pass of a string
  * render to read back.
  *
@@ -3104,35 +3219,6 @@ function getSeed(key: string): { found: boolean; value?: unknown } {
     return { found: true, value };
   }
   return { found: false };
-}
-
-/**
- * The seed channel `@barqjs/server` opens for a streamed page.
- *
- * `open` is 1 until the stream ends. `wait` parks a callback against a key the
- * server has not sent yet; the flush that carries the key calls it, and closing
- * the channel calls whatever is left so those reads fetch for real.
- */
-interface SeedChannel {
-  open: number;
-  wait(key: string, fn: () => void): void;
-}
-
-/**
- * A promise for a key that has not arrived yet, or `null` when nothing is
- * coming — no channel at all (an ordinary page), or one already closed.
- *
- * `{ found: false }` rather than a rejection when the stream ends without the
- * key: the read then falls back to fetching, which is what a non-streamed page
- * does, and a rejection would surface a boundary error for a value that is
- * merely absent.
- */
-export function seedLater(key: string): Promise<{ found: boolean; value?: unknown }> | null {
-  const channel = (globalThis as { __BARQ_SEED__?: SeedChannel }).__BARQ_SEED__;
-  if (channel === undefined || channel.open !== 1) return null;
-  return new Promise((deliver) => {
-    channel.wait(key, () => deliver(getSeed(key)));
-  });
 }
 
 /**
