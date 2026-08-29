@@ -451,6 +451,30 @@ export function renderTag(tag: ManagedTag, identity?: string): string {
   return `<${tag.tag}${attributes}>${text}</${tag.tag}>`;
 }
 
+/**
+ * A managed tag as the props a `<Dynamic>` takes, so the two backends build one
+ * shape and only the primitive differs.
+ *
+ * The ownership attribute is still written, because the patcher still exists and
+ * a route tag it does not own is a tag a navigation cannot update. It goes with
+ * `installHead`.
+ */
+export function tagProps(tag: ManagedTag, index: number): Record<string, unknown> {
+  const props: Record<string, unknown> = { component: tag.tag };
+  if (tag.unowned !== true) props[OWNED] = tag.identity ?? `${tag.tag}:${index}`;
+  for (const [name, value] of Object.entries(tag.attrs ?? {})) {
+    if (value === undefined || value === false) continue;
+    props[name] = value;
+  }
+  if (tag.children !== undefined) props.children = tag.children;
+  return props;
+}
+
+/** What a keyed list reconciles a managed tag by. Theirs keys on the whole tag. */
+export function tagKey(tag: ManagedTag, index: number): string {
+  return `${tag.identity ?? `${tag.tag}:${index}`}|${JSON.stringify(tag.attrs ?? {})}|${tag.children ?? ""}`;
+}
+
 /** Every managed tag as markup, in order. */
 export function renderTags(tags: readonly ManagedTag[]): string {
   return tags

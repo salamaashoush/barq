@@ -40,7 +40,7 @@ import {
   untrack,
 } from "@barqjs/core";
 
-import { renderTags, resolveHead, resolveScripts } from "./head.ts";
+import { type ManagedTag, renderTags, resolveHead, resolveScripts } from "./head.ts";
 import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { errorFallbackFor } from "./errors.ts";
@@ -124,10 +124,26 @@ export interface HeadAssets {
   /**
    * How this backend turns markup into an element.
    *
-   * The server passes `@barqjs/server`'s `html`; there is no client
-   * implementation because the shell is never rendered on the client.
+   * Still needed for the parts that are opaque strings on both sides — what the
+   * dev server injected, and the `beforeLoad` handoff.
    */
   readonly raw: (markup: string) => unknown;
+  /**
+   * How this backend renders the managed tags as a real, KEYED tree.
+   *
+   * TanStack's `HeadContent` is `tags.map(tag => <Asset {...tag} key={…} />)`
+   * (`react-router/src/HeadContent.tsx:22-26`) — a tree, not a string, which is
+   * what makes a navigation update the head through ordinary reactivity instead
+   * of through a second mechanism that patches `document.head` behind the
+   * render.
+   *
+   * It arrives through the CONTEXT for the reason `LinkBackend` does: this
+   * module is the ISOMORPHIC entry and is hand-written rather than compiled, so
+   * its own `each` would be the DOM one on both sides. The string backend has
+   * `ssrFor`/`ssrDynamic` of its own, and each backend hands over the one that
+   * is its.
+   */
+  readonly tagTree?: (scope: Scope | null, list: () => readonly ManagedTag[]) => unknown;
 }
 
 export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-head");
@@ -156,20 +172,29 @@ export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-h
  * SERVER ONLY. There are no assets on the client — the shell is never rendered
  * there, because barq hydrates `#app` rather than the document.
  */
-export function HeadContent(): JSXElement {
+export function HeadContent(scope: Scope | null): JSXElement {
   const assets = read(HeadAssetsContext)();
   if (assets === null) return null;
-  return assets.raw(
-    (assets.injected ?? "") +
-      renderTags(
-        resolveHead(assets.matches, {
-          nonce: assets.nonce,
-          preloads: assets.preloads,
-          css: assets.clientAssets?.css,
-        }),
-      ) +
-      (assets.context ?? ""),
-  ) as JSXElement;
+  const list = (): readonly ManagedTag[] =>
+    resolveHead(assets.matches, {
+      nonce: assets.nonce,
+      preloads: assets.preloads,
+      css: assets.clientAssets?.css,
+    });
+  // A backend with no tree renderer gets the string it always got. That is the
+  // `document()` template's path, which is markup and has nowhere to put a tree.
+  if (assets.tagTree === undefined) {
+    return assets.raw(
+      (assets.injected ?? "") + renderTags(list()) + (assets.context ?? ""),
+    ) as JSXElement;
+  }
+  // Opaque on both sides, and neither is the router's to manage: what the dev
+  // server injected, and the `beforeLoad` handoff.
+  return [
+    assets.raw(assets.injected ?? "") as JSXElement,
+    assets.tagTree(scope, list) as JSXElement,
+    assets.raw(assets.context ?? "") as JSXElement,
+  ];
 }
 
 /**

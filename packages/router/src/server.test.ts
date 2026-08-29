@@ -1130,7 +1130,7 @@ describe("shellComponent", () => {
         path: "/",
         shellComponent: (_s: unknown, props: { children: unknown }) =>
           ssrHtml(
-            `<html lang="en"><head>${esc(HeadContent())}</head>` +
+            `<html lang="en"><head>${esc(HeadContent(_s as never))}</head>` +
               `<body><div id="app">${esc(props.children)}</div>${esc(Scripts())}</body></html>`,
           ),
         component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
@@ -1244,7 +1244,7 @@ describe("crawlers are answered with the whole page", () => {
       path: "/",
       shellComponent: (_s: unknown, props: { children: unknown }) =>
         ssrHtml(
-          `<html><head>${esc(HeadContent())}</head><body>${esc(props.children)}</body></html>`,
+          `<html><head>${esc(HeadContent(_s as never))}</head><body>${esc(props.children)}</body></html>`,
         ),
       component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
       children: [{ id: "/p", path: "p", component: () => ssrHtml("<main>p</main>") }],

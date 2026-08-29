@@ -27,7 +27,9 @@ import {
   html as ssrHtml,
   renderPage,
   renderToStream,
+  ssrDynamic,
   ssrErrored,
+  ssrFor,
   ssrLoading,
 } from "@barqjs/server";
 import { HYDRATE, type Block, type Scope, cell, getOwner, provide } from "@barqjs/core";
@@ -39,7 +41,7 @@ import { mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
-import { projectHead } from "./head.ts";
+import { type ManagedTag, projectHead, tagKey, tagProps } from "./head.ts";
 import {
   type Reachability,
   describe as describeViolations,
@@ -557,6 +559,16 @@ export function createPageHandler(
             // client bundle, and Vite answers that with "Module has been
             // externalized for browser compatibility" and an empty page.
             raw: (markup: string) => ssrHtml(markup),
+            // The string backend's list primitive, handed over the same way
+            // `raw` is. Keyed, so the two backends reconcile the same way and a
+            // navigation reuses the tag it already has rather than replacing it.
+            tagTree: (scope, list) =>
+              ssrFor(scope, {
+                each: list,
+                keyed: (tag: ManagedTag, index: number) => tagKey(tag, index),
+                children: (rowScope: Scope | null, tag: () => ManagedTag, index: () => number) =>
+                  ssrDynamic(rowScope, tagProps(tag(), index())),
+              }),
           };
           // The whole document when a shell is declared, the app's markup when
           // it is not — and the `document()` template then wraps it.
