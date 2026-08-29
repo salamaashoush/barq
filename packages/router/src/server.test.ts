@@ -118,7 +118,7 @@ describe("the request is ambient for the whole render", () => {
       routeTree: [
         {
           path: "/",
-          loader: () => whoami(undefined),
+          loader: () => whoami(),
           component: (_s: unknown, props: { data: () => unknown }) =>
             ssrHtml(`<b>${esc(String(props.data()))}</b>`),
         },
@@ -154,7 +154,7 @@ describe("the request is ambient for the whole render", () => {
     const routesWithGuard = [
       {
         path: "/",
-        loader: () => load(undefined),
+        loader: () => load(),
         component: (_s: unknown, props: { data: () => unknown }) =>
           ssrHtml(`<b>${esc(String(props.data()))}</b>`),
       },

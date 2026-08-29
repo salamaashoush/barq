@@ -25,6 +25,9 @@ export interface AdminStats {
 
 export const adminStats = createServerFn()
   .middleware([requireSession])
+  // `({ data, context, signal })` is what a handler is handed, which is theirs
+  // (`start-basic/src/utils/posts.tsx:12`). This one takes no input, so it is
+  // called `adminStats()` — the bare convention forced `adminStats(undefined)`.
   .handler((): AdminStats => ({ users: 3, sessions: 7 }));
 
 /**

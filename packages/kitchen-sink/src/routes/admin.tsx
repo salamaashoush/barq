@@ -41,7 +41,7 @@ function Admin() {
 
 export const Route = createFileRoute<AdminStats>("/admin")({
   middleware: [requireSession],
-  loader: async (): Promise<AdminStats> => adminStats(undefined),
+  loader: async (): Promise<AdminStats> => adminStats(),
   component: Admin,
   pendingComponent: () => <p>Loading admin…</p>,
 });

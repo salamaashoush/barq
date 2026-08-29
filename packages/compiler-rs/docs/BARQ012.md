@@ -9,7 +9,7 @@ A module that exports at least one server function **and** at least one other th
 ```ts
 import { createServerFn } from "@barqjs/start";
 
-export const saveTodo = createServerFn().validator(TodoInput).handler(async (todo) => {
+export const saveTodo = createServerFn().validator(TodoInput).handler(async ({ data: todo }) => {
   await db.todos.insert(todo);
 });
 
@@ -54,7 +54,7 @@ Move the server functions into a module of their own.
 // todos.server.ts — every export is a server function
 import { createServerFn } from "@barqjs/start";
 
-export const saveTodo = createServerFn().validator(TodoInput).handler(async (todo) => {
+export const saveTodo = createServerFn().validator(TodoInput).handler(async ({ data: todo }) => {
   await db.todos.insert(todo);
 });
 ```

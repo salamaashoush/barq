@@ -22,5 +22,9 @@ import type { Middleware } from "@barqjs/start";
 export const requireSession: Middleware = async (next) => {
   // A real application reads a cookie here through `getRequest()`. The point of
   // the demo is the BINDING, not the check.
-  return next();
+  //
+  // `next({ context })` is how a middleware hands what it learned down to the
+  // handler, which reads it as `({ context })` — theirs is the same shape. It
+  // needs no module-level store, which is what makes it safe under concurrency.
+  return next({ context: { session: { user: "ada" } } });
 };

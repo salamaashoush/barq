@@ -174,7 +174,12 @@ export async function handleServerFn(
   }
 
   try {
-    const result = await withRequest(request, () => fn(input));
+    // `{ data }` on the value channel; a bare `FormData` on the form one, which
+    // is the shape `<form action={fn}>` hands the function on the enhanced path
+    // — so a handler sees the same input type whether or not JS ran.
+    const result = await withRequest(request, () =>
+      input instanceof FormData ? fn(input) : fn({ data: input }),
+    );
     if (isData) return Response.json(encodeWire(result));
     // A handler may answer a form submission itself — a redirect elsewhere, a
     // rendered page. Otherwise the browser goes back where it came from, which

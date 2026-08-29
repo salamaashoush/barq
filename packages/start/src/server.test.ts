@@ -44,7 +44,7 @@ const positiveInt: StandardSchema<unknown, number> = {
 
 const define = <In, Out>(
   id: string,
-  fn: (input: In) => Out,
+  fn: (context: { data: In }) => Out,
   schema?: StandardSchema<unknown, In>,
 ) =>
   serverRpc<In, Out>(
@@ -78,7 +78,7 @@ describe("input is fail-closed", () => {
   });
 
   test("a schema rejects bad input with 400 and no detail", async () => {
-    mountOf(define("checked", (n: number) => n * 2, positiveInt));
+    mountOf(define("checked", ({ data }: { data: number }) => data * 2, positiveInt));
 
     const bad = await handleServerFn(post("checked", -1));
     expect(bad?.status).toBe(400);
@@ -94,7 +94,7 @@ describe("input is fail-closed", () => {
       {
         validator: "unchecked",
         middleware: [],
-        handler: (input) => ({ saw: input }),
+        handler: ({ data }) => ({ saw: data }),
       },
     );
     mountOf(fn);
@@ -106,7 +106,7 @@ describe("input is fail-closed", () => {
   test("the uncompiled builder enforces the same rule in-process", async () => {
     const fn = createServerFn().handler(() => "ran");
     expect(isServerFn(fn)).toBe(true);
-    await expect(fn("an argument" as never)).rejects.toBeInstanceOf(UncheckedInputError);
+    await expect(fn({ data: "an argument" } as never)).rejects.toBeInstanceOf(UncheckedInputError);
   });
 });
 
@@ -123,10 +123,10 @@ describe("the wire", () => {
         {
           validator: "unchecked",
           middleware: [],
-          handler: (input) => {
+          handler: ({ data }) => {
             const out: Record<string, unknown> = {
-              echoed: input.at,
-              seen: input.tags,
+              echoed: data.at,
+              seen: data.tags,
               counts: new Map([["n", 1n]]),
             };
             out.self = out;
@@ -212,8 +212,11 @@ describe("the request is checked before the handler runs", () => {
 });
 
 describe("middleware and request context", () => {
-  const withChain = <In, Out>(id: string, chain: Middleware[], fn: (input: In) => Out) =>
-    serverRpc<In, Out>({ id }, { validator: "unchecked", middleware: chain, handler: fn });
+  const withChain = <In, Out>(
+    id: string,
+    chain: Middleware[],
+    fn: (context: { data: In }) => Out,
+  ) => serverRpc<In, Out>({ id }, { validator: "unchecked", middleware: chain, handler: fn });
 
   /**
    * The hole every surveyed framework documents instead of closing. Next.js:
@@ -346,7 +349,7 @@ describe("progressive enhancement", () => {
         {
           validator: "unchecked",
           middleware: [],
-          handler: (form) => {
+          handler: ({ data: form }) => {
             saw = form.get("title");
           },
         },
@@ -406,7 +409,7 @@ describe("progressive enhancement", () => {
         {
           validator: "unchecked",
           middleware: [],
-          handler: (form) => {
+          handler: ({ data: form }) => {
             seen.push({
               isFormData: form instanceof FormData,
               title: form.get("title"),
@@ -536,5 +539,80 @@ describe("the fetch handler", () => {
   test("with no page handler, a non-RPC URL is a 404 rather than an error", async () => {
     const page = createFetchHandler();
     expect((await page(new Request(`${ORIGIN}/about`))).status).toBe(404);
+  });
+});
+
+/**
+ * The call convention, and the one thing barq refuses to match.
+ *
+ * `fn({ data })` and `.handler(({ data, context }) => …)` are theirs
+ * (`examples/react/start-basic/src/utils/posts.tsx:10-12`). `method: "GET"` is
+ * theirs too, and it is refused here rather than accepted-and-ignored.
+ */
+describe("the call convention", () => {
+  test("a function with no validator is called with NO argument", async () => {
+    // The uncompiled builder has no id of its own — the compiler assigns one —
+    // so mounting is where the two meet, exactly as `mount` documents.
+    const fn = createServerFn().handler(() => "ran");
+    mount("nullary", fn as never);
+    const response = await handleServerFn(post("nullary", undefined));
+    expect(decodeWire<string>(await response?.json())).toBe("ran");
+    // …and in-process, which is the spelling an application writes. The bare
+    // convention forced `fn(undefined)` on every one of these.
+    expect(await fn()).toBe("ran");
+  });
+
+  test("`data` is what the handler is handed, and `context` is what the chain built", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const stamp: Middleware = async (next) => next({ context: { who: "ada" } });
+    const also: Middleware = async (next) => next({ context: { role: "admin" } });
+    const fn = serverRpc<string, string>(
+      { id: "ctx" },
+      {
+        validator: "unchecked",
+        middleware: [stamp, also],
+        handler: ({ data, context, signal }) => {
+          seen.push({ ...context, aborted: signal.aborted });
+          return `hello ${data}`;
+        },
+      },
+    );
+    mountOf(fn);
+
+    const response = await handleServerFn(post("ctx", "world"));
+    expect(decodeWire<string>(await response?.json())).toBe("hello world");
+    // Merged outermost-first, so every step above the handler is visible to it.
+    expect(seen).toEqual([{ who: "ada", role: "admin", aborted: false }]);
+  });
+
+  test("`next()` with no argument is unchanged, so existing middleware still runs", async () => {
+    const order: string[] = [];
+    const plain: Middleware = async (next) => {
+      order.push("before");
+      const out = await next();
+      order.push("after");
+      return out;
+    };
+    const fn = serverRpc<undefined, string>(
+      { id: "plain" },
+      { validator: null, middleware: [plain], handler: () => "ok" },
+    );
+    mountOf(fn);
+    expect(await fn()).toBe("ok");
+    expect(order).toEqual(["before", "after"]);
+  });
+
+  /**
+   * A server function reachable by navigation is a link that mutates.
+   * RedwoodSDK shipped exactly that — CVE-2026-39371, CVSS 8.1 — where an
+   * `<a href>` became a one-click mutation carrying `SameSite=Lax` cookies. So
+   * the option a TanStack application would copy is REFUSED with the reason
+   * rather than accepted and quietly ignored.
+   */
+  test("`method: 'GET'` is refused, and says why", () => {
+    expect(() => createServerFn({ method: "GET" as never })).toThrow(/POST only|CVE-2026-39371/);
+    // The one value barq does implement is accepted, so stating the intent is
+    // not itself an error.
+    expect(() => createServerFn({ method: "POST" })).not.toThrow();
   });
 });

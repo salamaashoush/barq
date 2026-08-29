@@ -4,4 +4,4 @@ const SECRET = "server-only-secret-must-not-ship";
 
 export const loadUser = createServerFn()
   .validator("unchecked")
-  .handler(async (id: unknown) => ({ id, secret: SECRET }));
+  .handler(async ({ data: id }: { data: unknown }) => ({ id, secret: SECRET }));

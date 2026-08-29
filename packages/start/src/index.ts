@@ -25,6 +25,7 @@ export { getRequest, peekRequest, withRequest } from "./context.ts";
  */
 export {
   type ServerFn,
+  type ServerFnArgs,
   type ServerFnMeta,
   DATA_SUFFIX,
   RPC_PREFIX,
@@ -33,7 +34,7 @@ export {
   isServerFn,
 } from "./client.ts";
 
-import { SERVER_FN, type ServerFn, type ServerFnMeta } from "./client.ts";
+import { SERVER_FN, type ServerFn, type ServerFnMeta, dataOf } from "./client.ts";
 
 /**
  * A validator in the Standard Schema shape, which zod, valibot and arktype all
@@ -102,12 +103,41 @@ export class UncheckedInputError extends InputError {
  * separate entry point." A middleware attached here cannot be escaped by
  * reaching the function from somewhere else, because there is nowhere else.
  */
-export type Middleware = (next: () => Promise<unknown>) => Promise<unknown>;
+export type Middleware = (next: MiddlewareNext) => Promise<unknown>;
+
+/**
+ * What a middleware calls to run the rest of the chain.
+ *
+ * `next({ context })` MERGES into what the handler is handed, which is how a
+ * middleware that authenticates hands the session down without a module-level
+ * store — theirs is `next({ context: { user } })`
+ * (`start-client-core/src/createMiddleware.ts`). `next()` with no argument is
+ * unchanged and is what every existing middleware writes, so nothing had to
+ * move: the chain is still compared by closure identity, which is what the
+ * route-action manifest depends on.
+ */
+export type MiddlewareNext = (options?: {
+  readonly context?: Record<string, unknown>;
+}) => Promise<unknown>;
+
+/**
+ * What a handler is handed — TanStack's shape
+ * (`start-basic/src/utils/posts.tsx:12`, `.handler(async ({ data }) => …)`).
+ *
+ * `context` is what the middleware chain contributed, merged outermost-first.
+ * `signal` aborts with the request, so a handler can hand it to `fetch` and a
+ * client that navigates away stops paying for the work.
+ */
+export interface HandlerContext<In> {
+  readonly data: In;
+  readonly context: Record<string, unknown>;
+  readonly signal: AbortSignal;
+}
 
 interface Built<In, Out> {
   validator: Validator<In> | null;
   middleware: readonly Middleware[];
-  handler: (input: In) => Out | Promise<Out>;
+  handler: (context: HandlerContext<In>) => Out | Promise<Out>;
 }
 
 /**
@@ -131,7 +161,23 @@ export async function checkInput<In>(built: Built<In, unknown>, raw: unknown): P
 export interface ServerFnBuilder<In, Out> {
   middleware(chain: readonly Middleware[]): ServerFnBuilder<In, Out>;
   validator<T>(schema: Validator<T>): ServerFnBuilder<T, Out>;
-  handler<R>(fn: (input: In) => R | Promise<R>): ServerFn<In, Awaited<R>>;
+  handler<R>(fn: (context: HandlerContext<In>) => R | Promise<R>): ServerFn<In, Awaited<R>>;
+}
+
+/**
+ * What `createServerFn` accepts.
+ *
+ * `method` is here so a function copied from a TanStack application is a
+ * TYPE error rather than a silently different program — and `"GET"` is not
+ * assignable, deliberately. A server function reachable by navigation is a link
+ * that mutates: RedwoodSDK shipped exactly that (CVE-2026-39371, CVSS 8.1),
+ * where a `<a href>` became a one-click mutation carrying `SameSite=Lax`
+ * cookies. `server.ts` answers 405 to anything but POST and says so there too.
+ * The option exists to be REFUSED with a reason, which is the only honest thing
+ * to do with an option barq will not implement.
+ */
+export interface ServerFnOptions {
+  readonly method?: "POST";
 }
 
 /**
@@ -139,7 +185,16 @@ export interface ServerFnBuilder<In, Out> {
  * on both sides, so what it does when compiled by nothing is only the
  * uncompiled-development path: it runs the handler in-process.
  */
-export function createServerFn(): ServerFnBuilder<undefined, unknown> {
+export function createServerFn(options: ServerFnOptions = {}): ServerFnBuilder<undefined, unknown> {
+  // A runtime refusal beside the type one, because a JavaScript application has
+  // no type to fail and the reason is worth saying out loud.
+  if (options.method !== undefined && options.method !== "POST") {
+    throw new TypeError(
+      `[barq] createServerFn({ method: ${JSON.stringify(options.method)} }) — a server function ` +
+        "answers POST only. A mutation reachable by navigation is a link that mutates, which is " +
+        "CVE-2026-39371 (CVSS 8.1). Fetch read-only data from a route `loader` instead.",
+    );
+  }
   const built: Built<unknown, unknown> = {
     validator: null,
     middleware: [],
@@ -168,17 +223,30 @@ export function createServerFn(): ServerFnBuilder<undefined, unknown> {
  * with the real handler and the id it assigned.
  */
 export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): ServerFn<In, Out> {
-  // Middleware runs BEFORE validation. An unauthenticated caller should be
-  // refused without the server parsing its payload first, and a rejection that
-  // depended on the payload being well-formed would be one an attacker could
-  // skip by sending a malformed one.
-  const run = async (input: In): Promise<Out> => built.handler(await checkInput(built, input));
+  const call = async (options?: unknown): Promise<Out> => {
+    const input = dataOf(options);
+    // What the chain contributed, merged as it unwinds inward. One object the
+    // chain mutates rather than one per step: `next({ context })` is additive
+    // by definition, and a handler wants the union of everything above it.
+    const context: Record<string, unknown> = {};
+    const controller = new AbortController();
 
-  const call = async (input: In): Promise<Out> => {
+    // Middleware runs BEFORE validation. An unauthenticated caller should be
+    // refused without the server parsing its payload first, and a rejection
+    // that depended on the payload being well-formed would be one an attacker
+    // could skip by sending a malformed one.
+    const run = async (): Promise<Out> =>
+      built.handler({
+        data: await checkInput(built, input),
+        context,
+        signal: controller.signal,
+      });
+
     let index = 0;
-    const next = async (): Promise<unknown> => {
-      const step = built.middleware[index++];
-      return step === undefined ? run(input) : step(next);
+    const next: MiddlewareNext = async (step?: { readonly context?: Record<string, unknown> }) => {
+      if (step?.context !== undefined) Object.assign(context, step.context);
+      const middleware = built.middleware[index++];
+      return middleware === undefined ? run() : middleware(next);
     };
     return (await next()) as Out;
   };

@@ -48,17 +48,43 @@ export interface ServerFnMeta {
 }
 
 /**
+ * How a server function is CALLED: `fn({ data })`, and `fn()` when it takes
+ * none.
+ *
+ * TanStack's convention (`examples/react/start-basic/src/utils/posts.tsx:10-12`,
+ * `fetchPost({ data: postId })`; `routes/deferred.tsx:5-8`), and worth matching
+ * for a reason beyond fidelity: a named field leaves room for the options that
+ * come after it without ever changing the call shape again, and it removes the
+ * `adminStats(undefined)` the bare form forced on every no-argument call.
+ */
+export type ServerFnArgs<In> = [In] extends [undefined]
+  ? // No validator means no input, so the call takes no argument. A rest tuple
+    // with a `void` element does NOT make the parameter optional — `fn()` was a
+    // "Expected 1 arguments, but got 0" until this was written as an optional
+    // element instead.
+    [options?: FormData]
+  : [options: { readonly data: In } | FormData];
+
+/**
  * A server function, from either side.
  *
- * The argument is OPTIONAL, and that is not cosmetic: a function that declares
- * no validator takes no input, and requiring the caller to type `undefined`
- * made `adminStats(undefined)` the spelling in the reference application where
- * theirs is `fetchPosts()`.
+ * A bare `FormData` is accepted BESIDE the options object, and only there. It is
+ * what `<form action={fn}>` hands the function on the enhanced path, and a
+ * `FormData` can never be mistaken for an options object — so the no-JS
+ * submission and the JS one reach the handler identically, which is the whole
+ * point of that path. TanStack has no counterpart to match here.
  */
-export type ServerFn<In, Out> = ((...input: [In] | ([In] & [undefined])) => Promise<Out>) & {
+export type ServerFn<In, Out> = ((...args: ServerFnArgs<In>) => Promise<Out>) & {
   readonly [SERVER_FN]: true;
   readonly meta: ServerFnMeta;
 };
+
+/** The `data` out of a call, whichever of the two shapes it arrived in. */
+export function dataOf(options: unknown): unknown {
+  if (options instanceof FormData) return options;
+  if (options === undefined || options === null) return undefined;
+  return (options as { data?: unknown }).data;
+}
 
 /**
  * The client half. The compiler emits this in a module compiled for the client,
@@ -66,7 +92,8 @@ export type ServerFn<In, Out> = ((...input: [In] | ([In] & [undefined])) => Prom
  * body needed.
  */
 export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
-  const call = async (input?: In): Promise<Out> => {
+  const call = async (options?: unknown): Promise<Out> => {
+    const input = dataOf(options);
     // FormData goes as FormData. Routing it through the value codec would hand
     // the handler a plain OBJECT here and a real `FormData` on the no-JS path —
     // the same function seeing two input types depending on whether JS ran,
@@ -81,7 +108,7 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
       // Otherwise seroval's JSON channel, so an argument carries a Date, a Map
       // or a cycle the same way a hydration seed does — and reconstructs
       // through `fromJSON`, which evaluates nothing.
-      body: form ? (input as FormData) : JSON.stringify({ input: encodeWire(input) }),
+      body: form ? input : JSON.stringify({ input: encodeWire(input) }),
       credentials: "same-origin",
     });
     if (!response.ok) throw new Error(`server function ${id} failed: ${response.status}`);
