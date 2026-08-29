@@ -6,174 +6,225 @@ Paste this as the opening prompt. Everything below was verified, not remembered.
 
 ## How I want you to work
 
-1. **Agree a public API shape with me BEFORE building it.** Put the shape up, wait,
-   then build.
+1. **Agree a public API shape with me BEFORE building it.** Put the shape up,
+   wait, then build.
 2. **Treat every comment, registry row and gate as a CLAIM to verify, not a law.**
    Check it against the reference implementation from SOURCE — clone it, quote
    `file:line`. Never from memory.
 
-   **A gate written by an agent is not evidence.** Four of them were wrong this
-   session and were FIXED rather than worked around; two had been passing by
-   accident and one asserted the defect it existed to catch. When a gate objects
-   to a correct fix, read what it is actually pinning before you believe it. Do
-   not revert a fix because a gate complains — I had to say this twice.
-3. **Measure, then fix.** A probe in `scratch/` is a vibe; a test in the suite is a
-   proof. Every fix lands with the test that would have caught it, and falsify the
-   test before you land it — break the fix and watch it go red.
-4. Do not write design documents. The reasoning goes in a comment beside the thing
-   and in the commit message.
-5. Every gate green before each commit. Do not leave the tree red at a stopping
-   point; if you cannot finish, revert to green and say what is unfinished.
+   **A gate written by an agent is not evidence.** When a gate objects to a
+   correct fix, read what it is actually pinning before you believe it. Do not
+   revert a fix because a gate complains.
+3. **Measure, then fix.** A probe in `scratch/` is a vibe; a test in the suite is
+   a proof. Every fix lands with the test that would have caught it, and falsify
+   the test before you land it — break the fix and watch it go red. **If it does
+   not go red, say so in the comment rather than letting the name imply a gate
+   that is not there.** `server.test.ts`'s "a failure before the render" describe
+   does exactly that, on purpose.
+4. Do not write design documents. The reasoning goes in a comment beside the
+   thing and in the commit message.
+5. Every gate green before each commit.
 
 ## State — verified
 
 ```
-core 921 · router 320 · server 104 · start 59 · extra 26 · testing 16 · compiler 22
-compiler-rs: cargo 363 pass · bun 3656 pass / 0 fail / 17 todo (3673 across 24 files)
-  (the "1 error" is a self-check that fires BECAUSE nothing fails — do not chase it)
-bun run ci (lint + format) clean · cargo clippy 0 · cargo fmt clean
-kitchen-sink: typechecks, builds, prerenders `/` and `/about`
+core 921 · router 333 · server 104 · start 66 · extra 26 · testing 16 · compiler 22
+compiler-rs: cargo 372 pass · bun 3644 pass / 17 todo / 1 fail
+  (the 1 fail is `the self-check needs one failing and one holding claim; the
+   corpus has both` — it fires BECAUSE nothing fails. Do not chase it. Confirmed
+   by name this session.)
+bun run ci clean · cargo clippy 0 · cargo fmt clean
+tsc clean on packages/router, packages/start, packages/kitchen-sink
+kitchen-sink: builds, prerenders `/` and `/about`, `bun run preview` serves both
+  plus the SSR routes and a real 404
 ```
 
 The Rust workspace root is `packages/compiler-rs`, not the repo root.
 
-**The tree is clean and committed.** 18 commits since the last handover, 156 files,
-+12773/−7467. `git log 55a16fd..HEAD`.
+6 commits since the last handover, 48 files, +3341/−1019. `git log 907d915..HEAD`.
 
-## What landed
+## What landed, and why
 
-**`createFileRoute`.** Route modules have ONE export and it is called `Route`.
-All eight TanStack file conventions, ported from their ALGORITHM rather than
-their docs — nesting is a walk up the `/` segments of the absolute route path
-taking the longest registered prefix (`router-generator/src/utils.ts:47-62`),
-which is why `posts_` un-nesting needs no rule of its own. The id literal is
-generator-owned: dev rewrites it in place, a build refuses.
+Four API decisions were put up and agreed before anything was built; all four
+were "match TanStack".
 
-**The head is the render.** `installHead`, `applyTags`, `sameTag`, `elementFor`,
-`captureHead` and the `data-barq-head` attribute are GONE. `hydrate(…, document)`,
-the shell is a component, `<HeadContent />` is a keyed list. Verified in Chrome:
-`mismatches: []`, `claimed: 97`, `built: 0`, and the title lands in the same poll
-as the content (`gapMs: 0` — the patcher was a tick late, so the tab title lagged
-one navigation behind on every link).
+**`routeTree.gen.ts` — the table is a real file and it carries the whole option
+set.** The old emit was one `lazy()` per option, so it could only carry an option
+a dynamic import can answer for. Measured through the real napi binding on a
+route declaring everything: it emitted nine options and DROPPED `validateSearch`,
+`loaderDeps`, `beforeLoad`, `context`, `errorComponent`, `notFoundComponent`,
+`beforeEnter`, `search.middlewares`, `staleTime`, `gcTime`, `shouldReload`,
+`preloadStaleTime`, `staleReloadMode`, `pendingMs`, `pendingMinMs` — every one of
+which the router reads SYNCHRONOUSLY off `route.definition`. Static imports plus
+`...Route.options` fix it. `createRouter`/`createPageHandler`/`startClient`/
+`<Router>` take `routeTree`, not `routes`.
 
-**The client entry is three lines**, like theirs. `startClient` owns the boot
-order; providers moved to `__root.tsx`.
+**The types are load-bearing now.** The old `.d.ts` emitted `RouteMap`,
+`RoutePath`, `SearchFor` and `DataFor` and a grep found NO file referencing any
+of them. `register.ts` declares the empty `Register` the generated file augments;
+`LinkProps.to` reads it. `to` admits any string on purpose — one step short of
+theirs, because BARQ013 sees tables the types cannot (kitchen-sink's second
+router on a `memoryHistory`). Types offer, the compiler refuses.
 
-**Four measured defects fixed:** the white flash (three separate causes — head
-serialised before the body, `extractCss` draining per request, `globalCss` never
-reaching the server at all), every nav link rendering its text twice on hydration
-(`element.append` into a claimed node — CLS 0.0003 → 0), server-rendered fields
-arriving empty, and `<Dynamic component="script">` shipping HTML-escaped
-JavaScript.
+**The compiler splits `component` and `pendingComponent` into their own chunk**
+(`compiler-rs/src/route_split.rs`), which is what pays back the static table.
+266 kB in one chunk → 174 kB across six, of 20. Not `errorComponent` /
+`notFoundComponent`, which theirs splits: those are not in `preloadMatched`, and
+a fallback behind a cold `lazy()` throws `NotReadyError` from inside the boundary
+already handling a failure. A root route is never split. A module-level LOCAL
+both halves reach REFUSES the split and names the binding; an import does not.
+`Route` is pinned and its edges are cut — a component calling
+`Route.useLoaderData()` otherwise moved `export const Route` itself into the
+split chunk.
 
-## THE INITIAL WORK, and it is what to do next
+**Server functions are `fn({ data })` / `.handler(({ data, context, signal }))`,**
+middleware hands context down with `next({ context })`, and `createServerFn({
+method: "GET" })` is REFUSED naming CVE-2026-39371 rather than accepted and
+ignored.
 
-**`routes.gen.ts` — the route table becomes a real, fully typed file.** I do not
-want `virtual:barq-routes`; TanStack generates `routeTree.gen.ts` and the app
-imports it by path (`examples/react/start-basic/src/router.tsx:2`), with no
-virtual specifier anywhere in a Start application.
+**An application writes no entry files.** kitchen-sink's `src/` is routes, data
+and styles. The generated defaults now have three tests; they had none, which is
+why they went stale unnoticed.
 
-A partial attempt is saved and REVERTED — it left the crate not building. Start
-from the design, not the patch, but the patch has the shape:
+**`@barqjs/start/client`** exists because the compiler's stub imported `clientRpc`
+from the package index, which re-exports `context.ts` — `node:async_hooks` — into
+every client bundle that reached one server function. Pre-existing, verified by
+building HEAD in a worktree, and it got worse the moment the table became static.
 
-```
-/tmp/claude-1000/-home-sashoush-Workspace-barq/97e0e475-.../scratchpad/routes-gen-wip.patch
-```
+## Still open, in the order I would take them
 
-What it contains: `generate_module(tree, out_dir)` emitting annotated TypeScript
-(`RouteExports`/`Options`/`Load`, typed `lazyLoader`/`lazyAsset`/`lazyMiddleware`,
-`export const routes: AnyRouteDefinition[]`), `generate_types` with the
-`declare module` wrapper removed so it can live in the same file, and `barqRouter`
-writing it with a `writeOnChange` guard.
+### 1. `loaderData` in `head` is still a stub
 
-TWO THINGS THE PATCH GOT RIGHT AND THE NEXT PASS MUST KEEP:
+`packages/router/src/server.ts`'s `loaderDataFor()` returns `undefined`, with the
+reasoning above it. TanStack's `projectLane` runs after a match's loader
+resolves, which is what makes `head: ({ loaderData })` work. Reading a loader in
+barq's pre-shell phase does not: it is outside the render's async session, and a
+keyed value first read outside one is seeded into nobody — measured,
+`__BARQ_DATA__=({})` with the client refetching everything. Two mechanisms are
+named at the function; pick one before building.
 
-- **The dynamic imports have to become RELATIVE.** They are
-  `import("/src/routes/x.tsx")` today — root-absolute, which is the FILESYSTEM
-  root to TypeScript and silently resolves to `any`. That is the same trap the
-  `.d.ts` already works around with `specifier_from`, and it is the one change
-  that actually buys type safety on a lazy table.
-- **`src:` stays root-absolute.** It is a manifest key the bundler matches on,
-  not an import.
+**This is also what would make the hoisted dispose guard observable.** Right now
+nothing between `setContexts` and the render can reject, so the guard is
+defensive; a real `loaderData` projection can.
 
-`writeOnChange` is not an optimisation: the table is regenerated on every route
-file event and the watcher watches the file it writes, so rewriting identical
-bytes is a loop.
+### 2. The production server and a deployable output
 
-## Still open
+`serveBarq` (`packages/start/src/serve.ts:56`) still has ZERO callers. There is
+no `dist/barq.json`, no adapter, and `vite build` emits no `.vite/manifest.json`.
+`PrerenderedPage{path,file,status,headers}` goes to `onPages` and is never
+persisted. `packages/kitchen-sink/preview.mjs` is now the working shape of what a
+deployment does — static file wins, the rest is rendered — and is the thing to
+generalise. Research worth reusing: SvelteKit's `Adapter`/`builder` contract,
+Nitro's presets and `.output/nitro.json`, what `srvx` does and does not give.
+`vite preview` will never do SSR (vitejs #14836, #14837).
 
-**The server entry is still 49 lines.** The client one is three. Theirs is two
-(`react-start/src/default-entry/server.ts`:
-`createStartHandler(defaultStreamHandler)`). `entry-server.tsx` still carries
-`options`, `createPageHandler`, `chainVerifier` and four virtual-module imports.
+### 3. `packages/testing` cannot test what barq now does
 
-**Applications still ship entry files at all.** TanStack's are DEFAULT ENTRIES the
-app never writes, resolved by `resolveEntry` + a `#tanstack-router-entry` alias,
-with an app override at `src/client.tsx`/`src/server.ts`. That is a Vite-plugin
-change, not a router change.
+`grep -c hydrate packages/testing/src/index.ts` is `0`. No SSR helper, no
+hydration helper, no seed installer. `packages/router/src/server.test.ts`'s
+`hydration` describe is the model.
 
-**Red-team item 1, still true of shipped code** — measurements in
-`scratch/p7/FINDINGS.md`:
+### 4. Documentation
 
-- `ssr: false` ships a head for routes the server never rendered. `projectHead`
-  (`packages/router/src/server.ts:531`) maps the whole chain. TanStack runs the
-  `ssr: false` route's own `head` and then BREAKS the lane
-  (`router-core/src/load-server.ts:651`).
-- A throw between `setContexts` and the render leaks the router state:
-  `projectHead` at `:531` is still above `let disposed` at `:593`. Structural fix —
-  hoist `dispose` and move the `try` up.
-- `bun run preview` is broken: `packages/kitchen-sink/package.json:9` runs
-  `node ./preview.mjs` and the file uses `Bun.serve`.
+No `packages/start/README.md`, no getting-started, nothing on `routeTree.gen.ts`,
+the render modes, prerendering, `shellComponent`/`head`, code splitting, or the
+server-entry contract.
 
-**From `scratch/p9/SSR-GAPS.md`, still open:** runtime scripts are emitted after
-the shell instead of in `<head>` (Solid's `HydrationScript` is a head component);
-no asset hoisting, so a late boundary's `<link>`/`<title>` can never reach
-`<head>`; no bounded stream buffers (TanStack errors at three explicit limits).
+### 5. The client story for a mutation
 
-**`<textarea>`, `<select>` and `<output>` still SSR without their value.** `value`
-is not a content attribute on any of them — a textarea's is its child text and a
-select's is the selected option — so serialising them correctly means emitting
-CHILDREN, which is not a thing an attribute function can do. `attr` says nothing
-there today, which is honest but incomplete.
+`<form action={serverFn}>` works with JS disabled. Nothing exists for pending
+state, optimistic updates or error display on the JS path. Decide whether that is
+barq's job or the application's and write the answer down either way.
+
+### Smaller, already measured
+
+- A boundary settling after the render walks past `</body>` puts its swap script
+  after `</html>` (`shellStream`). TanStack holds the tail with a transform.
+  There is a test pinning the current behaviour.
+- Runtime scripts are emitted after the shell instead of in `<head>`; no asset
+  hoisting, so a late boundary's `<link>`/`<title>` can never reach `<head>`; no
+  bounded stream buffers (TanStack errors at three explicit limits).
+  `scratch/p9/SSR-GAPS.md`.
+- `<textarea>`, `<select>` and `<output>` still SSR without their value —
+  serialising them correctly means emitting CHILDREN, which an attribute function
+  cannot do.
+- `bun run --filter '*' typecheck` is red in `packages/core` (85) and
+  `packages/server` (17), all in TEST files. See `TODO.md`.
+- The split refuses on a shared module-level local instead of extracting it into
+  a third module the way `?tsr-shared` does. No route in kitchen-sink hits it.
 
 ## Traps that cost real time
 
-- **Stale `dist/` bites, and it bit twice.** Type-aware lint and `tsc` resolve
-  workspace types through `dist/*.d.ts`. After editing `packages/core` or
-  `packages/router`, run `bun run build` there before linting anything downstream.
-  After editing `packages/compiler-rs/src`, run `bun run build` there too — it is a
-  napi binary and `cargo test` passing does not mean the `.node` was rebuilt.
-  ADDING AN EXPORT is the same rule: a new `exports` subpath whose `dist` file has
-  not been built resolves under the `bun` condition (which points at `src/`) and
-  fails under `import`, so it works for you and breaks for the app.
-- **`packages/compiler-rs/test/browser-differential.ts` is EMBEDDED into a page.**
-  A backtick in a comment there terminates the template literal and the file stops
-  parsing. Eleven tests silently vanished from the run before I noticed the count.
-- **A hand-written component cannot use `each` for a hydrating list.** `each` claims
-  through `claimAt(parent, anchor, …)` and a component has neither — which is why
-  the compiler emits `_$each(_s$, _el$2, _el$6, …)`. Use `element()`, which claims
-  the next node by TAG.
-- **`readSlot` refuses a Block.** `props.children` crosses BY IDENTITY; reading it
-  through a value slot throws "was invoked without a scope".
-- **`mount` hands your callback the root scope.** Ignoring it and passing `null`
-  skips every `provide` above the tree, and hydration still CLAIMS — so it looks
-  fine until the first update reconciles everything away.
-- **`oxfmt <dir>` rewrites MARKDOWN and would rewrite `fixtures/`.** The root
-  `format` scope names `packages/compiler-rs/src` and `test` explicitly for that
-  reason.
-- **`Helper` discriminants index `IMPORTED`**, and `FIRST_SERVER_HELPER` /
-  `FIRST_INTERP_HELPER` slice that array. Appending a helper at the end files it
-  under `/interp`. A construct needs THREE forms: the region form, a `(s, props)`
-  component form, and `interp`.
-- **Adding a corpus fixture owes six registries** a row. Each failure prints the
-  observed value to paste.
-- `grep -a` under `packages/compiler-rs/test/` — `ssr.test.ts` is classified binary.
+- **THE ONE THAT COST THE MOST THIS SESSION: `git checkout <file>` to undo a
+  falsification reverts every uncommitted change in that file.** I falsified a
+  fix by editing `server.ts`, then `git checkout`ed it — and silently lost two
+  unrelated fixes in the same file. Falsify with a targeted edit and reverse it
+  with a targeted edit.
+- **A `python3` replace that does not `assert` its match is a silent no-op**, and
+  `oxfmt` rewraps lines between edits, so a pattern that matched ten minutes ago
+  does not now. Every scripted edit asserts.
+- **Stale `dist/` bites, and it bit three times.** Type-aware lint and `tsc`
+  resolve workspace types through `dist/*.d.ts`. After editing `packages/core`,
+  `packages/router` or `packages/start`, run `bun run build` there before
+  linting or typechecking anything downstream. After editing
+  `packages/compiler-rs/src`, run `bun run build` there too — it is a napi
+  binary and `cargo test` passing does not mean the `.node` was rebuilt.
+  ADDING AN EXPORT is the same rule, and `@barqjs/start/client` sprung it: a new
+  `exports` subpath whose `dist` file has not been built resolves under the `bun`
+  condition (which points at `src/`) and fails under `import`.
+- **A Vite string alias is a PREFIX replacement.** `"@barqjs/start"` listed
+  before `"@barqjs/start/client"` turns the latter into `…/src/index.ts/client`.
+  The more specific one goes first.
+- **`never` is the empty union AND is assignable to everything.** A conditional
+  over a naked type parameter distributes, so `never` answers `never`; wrapping
+  in a tuple stops that and is not enough, because the true branch is then taken
+  and `infer` produces `never` anyway. Check `[T] extends [never]` FIRST.
+  `bun test` does not typecheck — `tsc` on `packages/router` is the only gate
+  with an empty `Register`, and it is where this was caught.
+- **Do not run the Chrome hydration probe while `packages/compiler-rs`'s suite is
+  running.** Two headless Chromes compete and `browser.test.ts`'s `beforeEach`
+  times out at 600 s, which reads exactly like a real failure.
+- `grep -a` under `packages/compiler-rs/test/` — `ssr.test.ts` is classified
+  binary.
 - **Anything a ROUTE MODULE imports ships to the browser.** `shellComponent` and
   `head` live in route modules, so they may only import `@barqjs/router`, never
   `@barqjs/router/server`.
-- A new diagnostic needs a `docs/BARQ0xx.md`, a `docs/README.md` row and a reachable
-  entry in `test/diagnostics.test.ts`. Next free code is BARQ014; 006 and 007 are
-  tombstones.
+- **`barqRouter`'s transform is `enforce: "pre"`** because it rewrites route
+  SOURCE and `@barqjs/compiler` lowers whatever source it is handed. Reversed,
+  the split would be moving code that no longer looks like what the author wrote.
+- **`@barqjs/compiler` strips the query before matching `include`.** A route's
+  split half is `<file>?barq-split`, which does not end in `.tsx`.
+- **A hand-written component cannot use `each` for a hydrating list.** Use
+  `element()`, which claims the next node by TAG.
+- **`readSlot` refuses a Block.** `props.children` crosses BY IDENTITY.
+- **`mount` hands your callback the root scope.** Passing `null` skips every
+  `provide` above the tree, and hydration still CLAIMS — so it looks fine until
+  the first update reconciles everything away.
+- **`oxfmt <dir>` rewrites MARKDOWN and would rewrite `fixtures/`.** The root
+  `format` scope names `packages/compiler-rs/src` and `test` explicitly.
+- **`Helper` discriminants index `IMPORTED`**, and `FIRST_SERVER_HELPER` /
+  `FIRST_INTERP_HELPER` slice that array.
+- **Adding a corpus fixture owes six registries** a row.
+- A new diagnostic needs a `docs/BARQ0xx.md`, a `docs/README.md` row and a
+  reachable entry in `test/diagnostics.test.ts`. Next free code is BARQ014; 006
+  and 007 are tombstones.
+- **`packages/router`'s `m8-convention.test.ts` requires a test file per source
+  module**, checked in by name. A new module goes red until it has one.
+
+## How to verify hydration
+
+`scratch/split/README.md`. The measure is node IDENTITY, not markup: a component
+behind a cold `lazy()` parks its boundary and REBUILDS, so the page looks right
+precisely because it threw the server's work away. Last measured:
+
+```
+REUSE 98.7% (149/151 server nodes kept), errors []
+navigating to /store fetched exactly 1 new chunk
+the freshly-loaded chunk was live: Count: 0 -> Count: 1 on click
+```
+
+The two nodes not kept are the head's, which `<HeadContent />` reconciles as a
+keyed list.
 
 ## Where the references are
 
@@ -183,8 +234,6 @@ another framework does: TanStack `router`, `solidjs/solid`,
 
 **Solid and TanStack do the head OPPOSITELY, and the difference is settled.**
 `@solidjs/meta` renders `null` for every tag and patches `document.head`
-imperatively (`solid-meta/src/index.tsx:60-64,177,222`) — that was barq's old
-design. TanStack hydrates the document and renders the tags as a tree
-(`react-start/src/default-entry/client.tsx`,
-`react-router/src/HeadContent.tsx:22-26`). **barq follows TanStack.** Do not
-reintroduce the patcher on the strength of Solid's source.
+imperatively; TanStack hydrates the document and renders the tags as a tree.
+**barq follows TanStack.** Do not reintroduce the patcher on the strength of
+Solid's source.
