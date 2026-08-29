@@ -716,6 +716,41 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
     expect(ssrDynamic(null, { component: "br" }).toString()).toBe("<br>");
   });
 
+  /**
+   * RAW TEXT under a tag resolved at RUN TIME.
+   *
+   * The compiled path never reaches this: the compiler knows the tag statically
+   * and emits `rawText` for anything in `ir/intern.rs`'s `RAW_TEXT_TAGS`. Only
+   * `<Dynamic component={t}>` resolves a tag late, and it escaped with `esc` —
+   * so the same tree gave `<script>if (a &amp; b)</script>` from this backend
+   * and `<script>if (a & b)</script>` from the DOM, which writes `textContent`
+   * and escapes nothing. An entity inside a `<script>` is four characters of
+   * JavaScript, so that is corruption rather than a formatting difference.
+   */
+  test("a dynamic script is raw text, and agrees with the DOM backend", () => {
+    expect(
+      ssrDynamic(null, { component: "script", children: 'if (a & b) { x = "<y>"; }' }).toString(),
+    ).toBe('<script>if (a & b) { x = "<y>"; }</script>');
+    expect(
+      ssrDynamic(null, { component: "style", children: "a::after { content: '<' }" }).toString(),
+    ).toBe("<style>a::after { content: '<' }</style>");
+
+    // The escape that DOES apply is the breakout, and it survives: `</script>`
+    // has no entity form, so the close tag is broken instead.
+    expect(
+      ssrDynamic(null, {
+        component: "script",
+        children: "x; </script><img src=x onerror=alert(1)>",
+      }).toString(),
+    ).toBe("<script>x; <\\/script><img src=x onerror=alert(1)></script>");
+
+    // `textarea` and `title` are ESCAPABLE raw text — entities are decoded
+    // there, so they keep the ordinary text escaper.
+    expect(ssrDynamic(null, { component: "title", children: "a & b" }).toString()).toBe(
+      "<title>a &amp; b</title>",
+    );
+  });
+
   test("the accept cache cannot launder a name, and is bounded", () => {
     // Names that pass are remembered so the `Name` production is not re-derived
     // per attribute per row. Only the ACCEPTING answer is cached and the map is

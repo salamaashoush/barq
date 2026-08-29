@@ -1328,12 +1328,44 @@ export function ssrDynamic(
     // `InvalidCharacterError` and writes nothing. Refusing is what makes the two
     // paths agree.
     checkName(resolved, "tag");
-    const inner = rest.children === undefined ? "" : esc(rest.children);
+    // RAW TEXT is escaped by BREAKING the close tag, never by entities: `&amp;`
+    // inside a `<script>` is four characters of JavaScript, and the DOM path
+    // writes `textContent` and so escapes nothing at all. `esc` here made the
+    // two backends disagree on the same tree — measured as
+    // `<script>if (a &amp; b)</script>` from the server against
+    // `<script>if (a & b)</script>` from the DOM. The compiled path never hit
+    // it because the compiler knows the tag statically and emits `rawText`;
+    // only a tag resolved at RUN TIME reaches this line.
+    const inner =
+      rest.children === undefined
+        ? ""
+        : RAW_TEXT_TAGS.has(resolved)
+          ? rawText(rest.children, resolved)
+          : esc(rest.children);
     const open = `<${resolved}${spreadAttrs(omit(rest, "children"), resolved)}`;
     return raw(VOID_TAGS.has(resolved) ? `${open}>` : `${open}>${inner}</${resolved}>`);
   };
   return branch(s, null, null, component, body);
 }
+
+/**
+ * The tags whose content is RAW TEXT, so an entity in them is literal.
+ *
+ * `ir/intern.rs`'s `RAW_TEXT_TAGS` is the same list and is the authority — the
+ * compiler reads it to emit `rawText` for a tag it knows statically, and this
+ * is the runtime half for a tag that is only known when `<Dynamic>` resolves.
+ * `textarea` and `title` are ESCAPABLE raw text: entities ARE decoded there, so
+ * they take the ordinary text escaper and are deliberately absent.
+ */
+const RAW_TEXT_TAGS = new Set([
+  "iframe",
+  "noembed",
+  "noframes",
+  "noscript",
+  "script",
+  "style",
+  "xmp",
+]);
 
 /** The tags a serialiser writes with no end tag. `dom.ts` never needs this — a
  * void element simply has no children to append — and a string does. */
