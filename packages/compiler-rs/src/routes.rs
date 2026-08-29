@@ -3,140 +3,80 @@
 //! All of it is here rather than in the Vite plugin. The plugin's job is to ask
 //! and to invalidate; it does not read the directory, does not derive a route
 //! from a filename, and does not build a string. One implementation, in the
-//! compiler, so a route table cannot mean two things.
+//! compiler, so a route table cannot mean two things. What the plugin keeps is
+//! the WATCHER — Vite owns file events and `scan` returns the file list so the
+//! plugin can register them — which is the one part that genuinely cannot move.
 //!
-//! `DESIGN-ROUTER.md` §3.1 asked for exactly this and an earlier pass argued it
-//! away on the grounds that the crate had never touched a filesystem outside
-//! `build.rs`. That is a fact about the crate's history, not a reason: the
-//! project owns the compiler and can give it a capability it needs. What the
-//! plugin keeps is the WATCHER — Vite owns file events and `scan` returns the
-//! file list so the plugin can register them — which is the one part that
-//! genuinely cannot move.
-//!
-//! Naming is TanStack's flat convention. A dot is a slash, so the file name is
-//! the route and nothing is inferred from directory depth:
+//! Naming is TanStack's, and this is a port of their algorithm rather than a
+//! paraphrase of their docs. Nesting is decided by walking the `/` SEGMENTS of
+//! the absolute route path and taking the longest registered prefix
+//! (`router-generator/src/utils.ts:47-62`, `RoutePrefixMap.findParent`), not by
+//! comparing dotted filenames. That distinction is what makes the `_` suffix
+//! work with no rule of its own — see `build_tree`.
 //!
 //! ```text
-//! index.tsx            ->  /
-//! about.tsx            ->  /about
-//! users.route.tsx      ->  the LAYOUT for /users
-//! users.index.tsx      ->  the index of /users, id `/users/`
-//! users.$id.tsx        ->  /users/$id
-//! files.$.tsx          ->  /files/$   (splat)
-//! _shell.route.tsx     ->  a PATHLESS layout
+//! __root.tsx                ->  the root, `__root__`
+//! index.tsx                 ->  /
+//! posts.tsx                 ->  /posts, and the layout everything below nests in
+//! posts.index.tsx           ->  /posts/
+//! posts.$postId.tsx         ->  /posts/$postId
+//! posts_.$postId.edit.tsx   ->  /posts/$postId/edit, NOT nested in posts.tsx
+//! posts/route.tsx           ->  the same layout as posts.tsx, directory form
+//! files.$.tsx               ->  /files/$   (splat)
+//! _app.tsx                  ->  a PATHLESS layout
+//! (marketing)/about.tsx     ->  /about     (the group is not in the URL)
+//! script[.]js.tsx           ->  /script.js
+//! -helpers.tsx              ->  not a route at all
 //! ```
 
 use std::path::Path;
+
+pub use crate::route_source::{RouteConfig, RouteKind, RouteModule};
 
 /// One discovered file, before it becomes a route.
 #[derive(Debug, Clone)]
 pub struct RouteFile {
     /// Project-relative, POSIX separators. What the emitted module imports.
     pub file: String,
-    /// The dotted name with its extension removed: `users.$id`.
+    /// Relative to the ROUTES directory, extension removed, separators kept:
+    /// `posts.$id`, `posts/$id`, `(marketing)/about`.
     pub name: String,
-    /// What the file says about itself, lifted from its own source.
-    pub config: RouteConfig,
-}
-
-/// The two declarations a route makes that the TABLE has to carry.
-///
-/// Both are needed BEFORE the module loads, and the module is `lazy()` — so a
-/// runtime read is not available at the moment either one is wanted. `ssr`
-/// decides what the string backend renders for that depth, which the page
-/// handler asks before it builds anything; `prerender` decides whether the
-/// build writes the route out, which happens with no runtime at all.
-///
-/// LIFTED FROM SOURCE, and only from a literal. Astro requires exactly
-/// `export const prerender = true` and says why in its own error: "Mutable
-/// values declared at runtime are not supported." SvelteKit reaches the same
-/// answer through a second forked pass that IMPORTS every node and reads its
-/// exports, which is not available here — `routeTree` is a synchronous napi
-/// call with no module loader.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RouteConfig {
-    /// `export const ssr = false` / `= "data-only"`.
-    pub ssr: Option<String>,
-    /// `export const prerender = true`.
-    pub prerender: Option<bool>,
-    /// A declaration that is present but not a literal, for the caller to report.
-    pub refused: Vec<String>,
-}
-
-/// Read `export const ssr` / `export const prerender` out of a route file.
-///
-/// A scan rather than a parse, and deliberately: the values it accepts are
-/// `true`, `false` and one quoted string, so a regex-free character walk over
-/// the two declarations is exact for everything it accepts and refuses
-/// everything else. Anything more expressive would be a value the client and
-/// the server could disagree about.
-pub fn read_config(source: &str) -> RouteConfig {
-    let mut config = RouteConfig::default();
-    for (name, is_ssr) in [("ssr", true), ("prerender", false)] {
-        let Some(raw) = declaration(source, name) else { continue };
-        let value = raw.trim();
-        if is_ssr {
-            match value {
-                "true" => config.ssr = Some("true".to_owned()),
-                "false" => config.ssr = Some("false".to_owned()),
-                "\"data-only\"" | "'data-only'" => config.ssr = Some("\"data-only\"".to_owned()),
-                _ => config.refused.push(format!("ssr = {value}")),
-            }
-        } else {
-            match value {
-                "true" => config.prerender = Some(true),
-                "false" => config.prerender = Some(false),
-                _ => config.refused.push(format!("prerender = {value}")),
-            }
-        }
-    }
-    config
-}
-
-/// The initialiser of a top-level `export const <name> = …`, up to `;` or a newline.
-fn declaration<'a>(source: &'a str, name: &str) -> Option<&'a str> {
-    let needle = format!("export const {name}");
-    let mut from = 0usize;
-    while let Some(offset) = source[from..].find(&needle) {
-        let start = from + offset;
-        // Top level only: a match indented or inside a larger identifier is not
-        // the declaration this is looking for.
-        let at_line_start = start == 0 || source.as_bytes()[start - 1] == b'\n';
-        let after = &source[start + needle.len()..];
-        let boundary =
-            after.chars().next().is_none_or(|c| c == ' ' || c == '=' || c == '\t' || c == ':');
-        if at_line_start && boundary {
-            let equals = after.find('=')?;
-            let rest = &after[equals + 1..];
-            let end = rest.find([';', '\n']).unwrap_or(rest.len());
-            return Some(&rest[..end]);
-        }
-        from = start + needle.len();
-    }
-    None
+    /// What the file says about itself, lifted from its own AST.
+    pub module: RouteModule,
 }
 
 #[derive(Debug, Clone)]
 pub struct RouteNode {
+    /// The ABSOLUTE route path, which is also the key everything addresses by:
+    /// the loader cache, `routeAssets` and the route-action manifest. `__root__`
+    /// for the root, which cannot be `/` because the root INDEX is.
     pub id: String,
-    /// This route's pattern RELATIVE to its parent. `None` is pathless.
+    /// This route's pattern RELATIVE to its parent, with route groups and
+    /// pathless segments removed. `None` is pathless — it contributes no URL,
+    /// which is `path` being omitted entirely in theirs (`generator.ts:703-707`).
     pub path: Option<String>,
     pub file: Option<String>,
     pub children: Vec<RouteNode>,
     pub pathless: bool,
     /// What the file declared about itself. Empty for a node with no file.
     pub config: RouteConfig,
+    /// The option keys the route WROTE, so the emit can leave out a picker for
+    /// one it did not — see `RouteModule::props`.
+    pub declared: Vec<String>,
 }
 
 const EXTENSIONS: [&str; 4] = [".tsx", ".jsx", ".ts", ".js"];
-const ROUTE_SUFFIX: &str = ".route";
-/// The layout for the empty prefix: `src/routes/route.tsx`.
-const ROOT_LAYOUT: &str = "route";
-/// Its id, which cannot be `/` because the root index is.
+/// The layout for a directory: `posts/route.tsx` is `posts.tsx`.
+const ROUTE_TOKEN: &str = "route";
+const INDEX_TOKEN: &str = "index";
+/// The root route's FILE, and its id, which differ because `/` is the root index.
+const ROOT_FILE: &str = "__root";
 const ROOT_ID: &str = "__root__";
-const INDEX: &str = "index";
+/// A file or directory the route tree does not see, so logic can sit beside a
+/// route (`routing-concepts.md:551`). Theirs is `routeFileIgnorePrefix`.
+const IGNORE_PREFIX: char = '-';
 
-/// Strip the extension; a directory separator is the same thing as a dot.
+/// Strip the extension. Separators are left alone — `derive` splits on both.
 pub fn name_of(relative: &str) -> String {
     let mut base = relative;
     for extension in EXTENSIONS {
@@ -145,7 +85,7 @@ pub fn name_of(relative: &str) -> String {
             break;
         }
     }
-    base.replace(['/', '\\'], ".")
+    base.replace('\\', "/")
 }
 
 fn is_route_file(name: &str) -> bool {
@@ -154,6 +94,11 @@ fn is_route_file(name: &str) -> bool {
     }
     // A test or a story beside a route is not a route.
     !(name.contains(".test.") || name.contains(".spec.") || name.contains(".stories."))
+}
+
+/// A name the tree does not see at all: `-helpers.tsx`, `-components/`, dotfiles.
+fn is_ignored(name: &str) -> bool {
+    name.starts_with(IGNORE_PREFIX) || name.starts_with('.')
 }
 
 /// Every route file under `root/dir`, sorted so the emit is deterministic.
@@ -173,216 +118,361 @@ fn walk(current: &Path, base: &Path, root: &Path, out: &mut Vec<RouteFile>) {
     let mut paths: Vec<_> = entries.filter_map(Result::ok).map(|entry| entry.path()).collect();
     paths.sort();
     for path in paths {
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else { continue };
+        // The ignore prefix applies to DIRECTORIES too, which is what makes
+        // `-components/` a place to put things (`getRouteNodes.ts:70-74`).
+        if is_ignored(file_name) {
+            continue;
+        }
         if path.is_dir() {
             walk(&path, base, root, out);
             continue;
         }
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else { continue };
         if !is_route_file(file_name) {
             continue;
         }
         let Ok(from_root) = path.strip_prefix(root) else { continue };
         let Ok(from_base) = path.strip_prefix(base) else { continue };
-        // The FIRST read of a route file's contents in this crate, and the
-        // reason is `emit_node`: `ssr` and `prerender` have to be in the table,
-        // the table is built before anything runs, and the module is `lazy()`
-        // so nothing can ask it later without defeating the split.
-        let config =
-            std::fs::read_to_string(&path).map(|text| read_config(&text)).unwrap_or_default();
+        let file = from_root.to_string_lossy().replace('\\', "/");
+        // `ssr` and `prerender` have to be in the table, the table is built
+        // before anything runs, and the module is `lazy()` — so there is no
+        // later moment to ask. See `route_source`.
+        let module = std::fs::read_to_string(&path)
+            .map(|text| crate::route_source::read_module(&text, &file))
+            .unwrap_or_default();
         out.push(RouteFile {
-            file: from_root.to_string_lossy().replace('\\', "/"),
+            file,
             name: name_of(&from_base.to_string_lossy().replace('\\', "/")),
-            config,
+            module,
         });
     }
 }
 
-/// `users.$id` -> `users/$id`. A segment beginning `_` is pathless and is dropped.
-fn segments_of(prefix: &str) -> String {
-    if prefix.is_empty() {
-        return String::new();
+/// Split a name into route segments.
+///
+/// A `/` is a separator, and so is a `.` — except one written `[.]`, which is a
+/// literal dot in the URL. Their rule is a lookaround pair,
+/// `SPLIT_REGEX = /(?<!\[)\.(?!\])/g` (`utils.ts:168`): a dot is a separator
+/// unless a `[` is immediately before it or a `]` immediately after. Ported as
+/// the same test rather than as bracket NESTING, because that is what theirs
+/// does and the two disagree on `foo[a.b]`.
+fn split_parts(name: &str) -> Vec<&str> {
+    let bytes = name.as_bytes();
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    for (index, character) in name.char_indices() {
+        let separator = match character {
+            '/' => true,
+            '.' => bytes[..index].last() != Some(&b'[') && bytes.get(index + 1) != Some(&b']'),
+            _ => false,
+        };
+        if separator {
+            parts.push(&name[start..index]);
+            start = index + character.len_utf8();
+        }
     }
-    prefix.split('.').filter(|segment| !segment.starts_with('_')).collect::<Vec<_>>().join("/")
+    parts.push(&name[start..]);
+    parts.retain(|part| !part.is_empty());
+    parts
 }
 
-fn parent_prefix(prefix: &str, known: &[String]) -> String {
-    let parts: Vec<&str> = prefix.split('.').collect();
-    let mut take = parts.len().saturating_sub(1);
-    while take > 0 {
-        let candidate = parts[..take].join(".");
-        if known.contains(&candidate) {
-            return candidate;
-        }
-        take -= 1;
+/// `[x]` -> `x`, which is how a segment escapes a character that would
+/// otherwise route (`BRACKET_CONTENT_RE`, `utils.ts:167`).
+fn unbracket(part: &str) -> String {
+    let mut out = String::with_capacity(part.len());
+    let mut rest = part;
+    while let Some(open) = rest.find('[') {
+        let Some(close) = rest[open..].find(']') else { break };
+        out.push_str(&rest[..open]);
+        out.push_str(&rest[open + 1..open + close]);
+        rest = &rest[open + close + 1..];
     }
-    String::new()
+    out.push_str(rest);
+    out
+}
+
+/// Entirely wrapped, with no nesting: `[index]` yes, `foo[.]bar` no.
+fn is_fully_escaped(segment: &str) -> bool {
+    segment.len() >= 2
+        && segment.starts_with('[')
+        && segment.ends_with(']')
+        && !segment[1..segment.len() - 1].contains(['[', ']'])
+}
+
+/// `[_]layout` and `[_1nd3x]` mean a LITERAL leading underscore (`utils.ts:267`).
+fn has_escaped_leading_underscore(original: &str) -> bool {
+    original.starts_with("[_]") || (original.starts_with("[_") && is_fully_escaped(original))
+}
+
+/// `blog[_]` and `[_r0ut3_]` mean a LITERAL trailing underscore (`utils.ts:281`).
+fn has_escaped_trailing_underscore(original: &str) -> bool {
+    original.ends_with("[_]") || (original.ends_with("_]") && is_fully_escaped(original))
+}
+
+/// The inner text of a fully wrapped segment, else the segment.
+fn unwrap_bracket_segment(segment: &str) -> &str {
+    if is_fully_escaped(segment) { &segment[1..segment.len() - 1] } else { segment }
+}
+
+/// A token spelled `[index]` / `[route]` is the WORD, not the token.
+fn is_escaped_token(original: &str, token: &str) -> bool {
+    unwrap_bracket_segment(original) != original && unwrap_bracket_segment(original) == token
+}
+
+/// A segment that contributes no URL: an unescaped leading underscore.
+fn is_segment_pathless(segment: &str, original: &str) -> bool {
+    segment.starts_with('_') && !has_escaped_leading_underscore(original)
+}
+
+/// What a filename says, before anything is nested.
+///
+/// Segments rather than a joined string because the parent's prefix has to be
+/// cut off the child, and the two spellings differ in LENGTH wherever a bracket
+/// was resolved — so the cut can only be by segment count, which they share.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Derived {
+    /// Brackets resolved, underscores and route groups INTACT: nesting keys on
+    /// these, which is theirs `routePath` split up.
+    segments: Vec<String>,
+    /// The same segments, brackets intact, so an escape is still visible.
+    original: Vec<String>,
+    index: bool,
+    pathless: bool,
+    root: bool,
+}
+
+impl Derived {
+    /// The absolute route path. An index's trailing `/` is what keeps it from
+    /// colliding with its own layout: `/posts/` beside `/posts`.
+    fn route_path(&self) -> String {
+        let mut path = format!("/{}", self.segments.join("/"));
+        if self.index && !path.ends_with('/') {
+            path.push('/');
+        }
+        path
+    }
+}
+
+fn derive(name: &str) -> Derived {
+    let parts = split_parts(name);
+    let mut segments: Vec<String> = parts.iter().map(|part| unbracket(part)).collect();
+    let mut original: Vec<String> = parts.into_iter().map(str::to_owned).collect();
+
+    let root = segments.len() == 1 && segments[0] == ROOT_FILE;
+    // BEFORE the tokens are stripped, which is where theirs asks it too
+    // (`getRouteNodes.ts:209`) — `_layout/route.tsx` is a pathless layout, and
+    // that is only visible while `route` is still the last segment.
+    let pathless = is_pathless(&segments, &original);
+
+    // `posts/route.tsx` is the layout at `/posts`, exactly as `posts.tsx` is.
+    if segments.len() > 1
+        && segments.last().is_some_and(|last| last == ROUTE_TOKEN)
+        && !original.last().is_some_and(|last| is_escaped_token(last, ROUTE_TOKEN))
+    {
+        segments.pop();
+        original.pop();
+    }
+
+    // The index of `/posts` is `/posts/`, which cannot collide with `/posts`.
+    let mut index = false;
+    if segments.last().is_some_and(|last| last == INDEX_TOKEN)
+        && !original.last().is_some_and(|last| is_escaped_token(last, INDEX_TOKEN))
+    {
+        segments.pop();
+        original.pop();
+        index = true;
+    }
+
+    Derived { segments, original, index, pathless, root }
+}
+
+/// Ported from `isValidPathlessLayoutRoute` (`getRouteNodes.ts:501-559`).
+fn is_pathless(segments: &[String], original: &[String]) -> bool {
+    let Some(last) = segments.last() else { return false };
+    if last == ROOT_FILE {
+        return false;
+    }
+    // `/foo/_layout/route.tsx` IS `/foo/_layout.tsx`, so the underscore to read
+    // is the one on the segment BEFORE the token.
+    if last == ROUTE_TOKEN && segments.len() >= 2 {
+        let previous = &segments[segments.len() - 2];
+        let previous_original = &original[original.len() - 2];
+        if has_escaped_leading_underscore(previous_original) {
+            return false;
+        }
+        return previous.starts_with('_');
+    }
+    let last_original = original.last().map_or("", String::as_str);
+    if has_escaped_leading_underscore(last_original) {
+        return false;
+    }
+    last != INDEX_TOKEN && last != ROUTE_TOKEN && last.starts_with('_')
+}
+
+/// `(marketing)/about` -> `about`. The group organises files, not URLs
+/// (`possiblyNestedRouteGroupPatternRegex = /\([^/]+\)\/?/g`, `utils.ts:845`).
+fn remove_groups(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    let mut rest = path;
+    while let Some(open) = rest.find('(') {
+        let Some(close) = rest[open..].find(')') else { break };
+        // `[^/]+` — a group never spans a separator, so a `(` that does is text.
+        if rest[open..open + close].contains('/') {
+            out.push_str(&rest[..=open]);
+            rest = &rest[open + 1..];
+            continue;
+        }
+        out.push_str(&rest[..open]);
+        rest = &rest[open + close + 1..];
+        rest = rest.strip_prefix('/').unwrap_or(rest);
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The URL a run of segments contributes.
+///
+/// A pathless segment is DROPPED whole; a segment that merely ends in `_` keeps
+/// its text and loses the underscore. One pass over both spellings, so removing
+/// a segment cannot desync the escape check —
+/// `removeLayoutSegmentsAndUnderscoresWithEscape` (`utils.ts:568-599`).
+fn clean_path(segments: &[String], original: &[String]) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for (index, segment) in segments.iter().enumerate() {
+        let original = original.get(index).map_or("", String::as_str);
+        if is_segment_pathless(segment, original) {
+            continue;
+        }
+        let mut kept = segment.as_str();
+        if kept.ends_with('_') && !has_escaped_trailing_underscore(original) {
+            kept = &kept[..kept.len() - 1];
+        }
+        out.push(kept);
+    }
+    remove_groups(&out.join("/"))
 }
 
 /// Build the nested table.
 ///
-/// A prefix some file declares as `<prefix>.route` becomes a layout and
-/// everything under it becomes its children. A prefix nobody declares stays
-/// flat — there is no invisible layout.
+/// Nesting is a walk up the `/` segments of the absolute route path, longest
+/// registered prefix wins (`RoutePrefixMap.findParent`, `utils.ts:47-62`). The
+/// `_` SUFFIX needs no rule of its own because of it: `posts_.$postId.edit.tsx`
+/// is `/posts_/$postId/edit`, nothing ever registers `/posts_`, so the walk
+/// finds no parent and the route lands at the top — un-nested, which is the
+/// whole point of the suffix. The underscore then leaves through `clean_path`.
 pub fn build_tree(files: &[RouteFile]) -> Vec<RouteNode> {
-    let mut layout_prefixes: Vec<String> = Vec::new();
-    let mut layout_files: Vec<(String, String)> = Vec::new();
-    let mut layout_configs: Vec<(String, RouteConfig)> = Vec::new();
-    let mut leaves: Vec<&RouteFile> = Vec::new();
+    let derived: Vec<(&RouteFile, Derived)> =
+        files.iter().map(|file| (file, derive(&file.name))).collect();
 
-    for file in files {
-        // `route.tsx` at the top of the directory is the layout for the EMPTY
-        // prefix — the one every route is under. `<prefix>.route` needs a prefix
-        // by construction, so without this there was no way to write a layout
-        // that wraps the whole app, and a file named `route.tsx` became a route
-        // at `/route` — which is not what anyone naming it that means, and the
-        // `.route` suffix is already reserved by the convention.
-        let prefix =
-            if file.name == ROOT_LAYOUT { Some("") } else { file.name.strip_suffix(ROUTE_SUFFIX) };
-        if let Some(prefix) = prefix {
-            layout_prefixes.push(prefix.to_string());
-            layout_files.push((prefix.to_string(), file.file.clone()));
-            layout_configs.push((prefix.to_string(), file.config.clone()));
-        } else {
-            leaves.push(file);
-        }
-    }
-    // Shortest first, so a nested layout always finds its parent already built.
-    layout_prefixes.sort_by_key(String::len);
+    // Every route path that can BE a parent. The root is not one: it is the
+    // tree's root and everything is under it, which a prefix walk would not say
+    // (`RoutePrefixMap`'s constructor skips `/${rootPathId}` for the same reason).
+    let registered: Vec<String> =
+        derived.iter().filter(|(_, node)| !node.root).map(|(_, node)| node.route_path()).collect();
 
     let mut roots: Vec<RouteNode> = Vec::new();
-    // Paths into `roots`, by prefix, so a child can be pushed into its parent.
+    // Absolute route path -> the route into `roots`, so a child can be pushed
+    // into its parent. Built shallowest-first, so a parent is always there.
     let mut located: Vec<(String, Vec<usize>)> = Vec::new();
 
-    for prefix in &layout_prefixes {
-        let pathless = prefix.split('.').next_back().is_some_and(|last| last.starts_with('_'));
-        let file =
-            layout_files.iter().find(|(candidate, _)| candidate == prefix).map(|(_, f)| f.clone());
-        let config = layout_configs
-            .iter()
-            .find(|(candidate, _)| candidate == prefix)
-            .map_or_else(RouteConfig::default, |(_, c)| c.clone());
-        let known: Vec<String> = located.iter().map(|(p, _)| p.clone()).collect();
-        let parent = parent_prefix(prefix, &known);
-
-        let own =
-            if parent.is_empty() { prefix.clone() } else { prefix[parent.len() + 1..].to_string() };
-        let node = RouteNode {
-            // `__root__` rather than `/`, which the root INDEX already claims.
-            // A route id is a key — the loader cache, `routeAssets` and the
-            // route-action manifest all address by it — so two routes cannot
-            // share one. TanStack spells the root route the same way.
-            id: if prefix.is_empty() {
-                ROOT_ID.to_owned()
-            } else {
-                format!("/{}", prefix.replace('.', "/"))
-            },
-            // The ROOT layout spans everything, so it takes `/`; `segments_of`
-            // answers "" for the empty prefix, which would be a route with no
-            // path at all.
-            path: if pathless {
-                None
-            } else if prefix.is_empty() {
-                Some("/".to_owned())
-            } else {
-                Some(segments_of(&own))
-            },
-            file,
-            children: Vec::new(),
-            pathless,
-            config,
-        };
-
-        // `parent.is_empty()` is not the same question as "has no parent" once a
-        // ROOT layout exists: `route.tsx` claims the empty prefix, so the
-        // sentinel and a real key collide. Ask `located` instead.
-        let route = if !located.iter().any(|(p, _)| *p == parent) {
-            roots.push(node);
-            vec![roots.len() - 1]
-        } else {
-            let parent_route = located
-                .iter()
-                .find(|(p, _)| *p == parent)
-                .map(|(_, r)| r.clone())
-                .unwrap_or_default();
-            let target = node_at_mut(&mut roots, &parent_route);
-            target.children.push(node);
-            let mut route = parent_route;
-            route.push(target.children.len() - 1);
-            route
-        };
-        located.push((prefix.clone(), route));
-    }
-
-    for leaf in leaves {
-        let is_index = leaf.name == INDEX || leaf.name.ends_with(&format!(".{INDEX}"));
-        let prefix = if is_index {
-            leaf.name[..leaf.name.len() - INDEX.len()].trim_end_matches('.').to_string()
-        } else {
-            leaf.name.clone()
-        };
-
-        // An index's parent is the layout at its OWN prefix — `users.index`
-        // belongs to `users.route`. Looking only at shorter prefixes finds
-        // nothing and makes every index a sibling of its own layout.
-        let known: Vec<String> = located.iter().map(|(p, _)| p.clone()).collect();
-        let parent_key = if is_index && known.contains(&prefix) {
-            prefix.clone()
-        } else {
-            parent_prefix(&prefix, &known)
-        };
-        // An index's parent key IS its prefix, so there is nothing left over.
-        let own = if parent_key.is_empty() {
-            prefix.clone()
-        } else if parent_key.len() >= prefix.len() {
-            String::new()
-        } else {
-            prefix[parent_key.len() + 1..].to_string()
-        };
-
-        let node = RouteNode {
-            // TanStack's convention: the index of `/users` is `/users/`, which
-            // cannot collide with the layout's own `/users`.
-            id: if is_index {
-                if prefix.is_empty() {
-                    "/".to_string()
-                } else {
-                    format!("/{}/", prefix.replace('.', "/"))
-                }
-            } else {
-                format!("/{}", leaf.name.replace('.', "/"))
-            },
-            // An index child's path is empty: it IS its parent's path. A root
-            // index has no parent to inherit from, so it names the root.
-            path: Some(if is_index {
-                // An index under a layout IS its parent's path. Only an index
-                // with no layout above it has to name the root itself.
-                if located.iter().any(|(p, _)| *p == parent_key) {
-                    String::new()
-                } else {
-                    "/".to_string()
-                }
-            } else {
-                segments_of(&own)
-            }),
-            file: Some(leaf.file.clone()),
+    if let Some((file, _)) = derived.iter().find(|(_, node)| node.root) {
+        roots.push(RouteNode {
+            id: ROOT_ID.to_owned(),
+            // The root layout spans everything, so it takes `/`.
+            path: Some("/".to_owned()),
+            file: Some(file.file.clone()),
             children: Vec::new(),
             pathless: false,
-            config: leaf.config.clone(),
+            config: file.module.config.clone(),
+            declared: file.module.props.clone(),
+        });
+        located.push((ROOT_ID.to_owned(), vec![0]));
+    }
+
+    let mut ordered: Vec<&(&RouteFile, Derived)> =
+        derived.iter().filter(|(_, node)| !node.root).collect();
+    // Shallowest first, so a parent is always already located. Ties broken by
+    // path so the emit is deterministic.
+    ordered.sort_by(|a, b| {
+        a.1.segments
+            .len()
+            .cmp(&b.1.segments.len())
+            .then_with(|| a.1.route_path().cmp(&b.1.route_path()))
+    });
+
+    for (file, node) in ordered {
+        let route_path = node.route_path();
+        let parent = find_parent(&registered, &route_path);
+        let taken = parent.map_or(0, |parent| {
+            derived
+                .iter()
+                .find(|(_, candidate)| !candidate.root && candidate.route_path() == parent)
+                .map_or(0, |(_, candidate)| candidate.segments.len())
+        });
+        let cleaned = clean_path(&node.segments[taken..], &node.original[taken..]);
+
+        let parent_route = parent
+            .and_then(|parent| located.iter().find(|(path, _)| path == parent))
+            .or_else(|| located.iter().find(|(path, _)| path == ROOT_ID))
+            .map(|(_, route)| route.clone());
+
+        let child = RouteNode {
+            id: route_path.clone(),
+            path: if node.pathless {
+                None
+            } else if cleaned.is_empty() {
+                // An index under something IS its parent's path. Only one with
+                // nothing above it has to name the root itself.
+                Some(if parent_route.is_some() { String::new() } else { "/".to_owned() })
+            } else {
+                Some(cleaned)
+            },
+            file: Some(file.file.clone()),
+            children: Vec::new(),
+            pathless: node.pathless,
+            config: file.module.config.clone(),
+            declared: file.module.props.clone(),
         };
 
-        if !located.iter().any(|(p, _)| *p == parent_key) {
-            roots.push(node);
-        } else {
-            let parent_route = located
-                .iter()
-                .find(|(p, _)| *p == parent_key)
-                .map(|(_, r)| r.clone())
-                .unwrap_or_default();
-            node_at_mut(&mut roots, &parent_route).children.push(node);
-        }
+        let route = match parent_route {
+            Some(parent_route) => {
+                let target = node_at_mut(&mut roots, &parent_route);
+                target.children.push(child);
+                let mut route = parent_route;
+                route.push(target.children.len() - 1);
+                route
+            }
+            None => {
+                roots.push(child);
+                vec![roots.len() - 1]
+            }
+        };
+        located.push((route_path, route));
     }
 
     roots
+}
+
+/// The longest registered strict prefix, walking up whole segments.
+fn find_parent<'a>(registered: &'a [String], route_path: &str) -> Option<&'a str> {
+    if route_path.is_empty() || route_path == "/" {
+        return None;
+    }
+    let mut search = route_path;
+    while !search.is_empty() {
+        let Some(slash) = search.rfind('/') else { break };
+        if slash == 0 {
+            break;
+        }
+        search = &search[..slash];
+        if let Some(found) = registered
+            .iter()
+            .find(|candidate| candidate.as_str() == search && *candidate != route_path)
+        {
+            return Some(found);
+        }
+    }
+    None
 }
 
 fn node_at_mut<'a>(roots: &'a mut [RouteNode], route: &[usize]) -> &'a mut RouteNode {
@@ -400,24 +490,31 @@ fn node_at_mut<'a>(roots: &'a mut [RouteNode], route: &[usize]) -> &'a mut Route
 /// chunk by construction rather than by a bundler heuristic — the emitted module
 /// has exactly one static import and it is the runtime's.
 pub fn generate_module(tree: &[RouteNode]) -> String {
-    let mut out =
-        String::from("import { lazy } from \"@barqjs/core\";\n\nconst Empty = () => null;\n\n");
+    let mut out = String::from("import { lazy } from \"@barqjs/core\";\n");
+    // `@barqjs/router`, never `@barqjs/router/server`: this module is imported
+    // by the browser, and the server entry reaches `node:async_hooks`.
+    out.push_str("import { Outlet } from \"@barqjs/router\";\n\n");
+    out.push_str("const Empty = () => null;\n\n");
+    out.push_str("/** A route module has ONE export and it is called `Route`. */\n");
+    out.push_str("const optionsOf = (module) => module.Route?.options ?? {};\n\n");
     out.push_str(
         "/** A loader that lives in the route module, reached without loading it eagerly. */\n",
     );
     out.push_str("const lazyLoader = (load) => async (context) => {\n");
-    out.push_str("  const module = await load();\n");
-    out.push_str("  return module.loader === undefined ? undefined : module.loader(context);\n");
+    out.push_str("  const { loader } = optionsOf(await load());\n");
+    out.push_str("  return loader === undefined ? undefined : loader(context);\n");
     out.push_str("};\n\n");
     out.push_str("/** `head` and `scripts`, reached the same way and accepting an object. */\n");
     out.push_str("const lazyAsset = (load, pick) => async (context) => {\n");
-    out.push_str("  const declared = (await load())[pick];\n");
+    out.push_str("  const declared = optionsOf(await load())[pick];\n");
     out.push_str("  return typeof declared === \"function\" ? declared(context) : declared;\n");
     out.push_str("};\n\n");
     out.push_str(
         "/** `middleware` is a BUILD-time claim, checked by identity — so it is a thunk. */\n",
     );
-    out.push_str("const lazyMiddleware = (load) => async () => (await load()).middleware;\n");
+    out.push_str(
+        "const lazyMiddleware = (load) => async () => optionsOf(await load()).middleware;\n",
+    );
     out.push_str("\nexport const routes = [\n");
 
     for (index, node) in tree.iter().enumerate() {
@@ -429,6 +526,10 @@ pub fn generate_module(tree: &[RouteNode]) -> String {
     }
     out.push_str("];\n\nexport default routes;\n");
     out
+}
+
+fn declares(node: &RouteNode, option: &str) -> bool {
+    node.declared.iter().any(|declared| declared == option)
 }
 
 fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
@@ -449,20 +550,35 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize) {
         // which is what `<link rel="modulepreload">` needs and what the
         // route-action manifest needs to walk the graph from a route.
         parts.push(format!("src: {specifier}"));
-        parts.push(format!("component: lazy(() => import({specifier}))"));
+        // A route that declares no component renders its child, not nothing —
+        // `route.options.component ?? defaultComponent` falling through to
+        // `<Outlet />` in theirs (`react-router/src/Match.tsx:211-212`). A layout
+        // that declares only a loader would otherwise swallow its whole subtree.
+        parts.push(format!(
+            "component: lazy(() => import({specifier}), (m) => optionsOf(m).component ?? Outlet)"
+        ));
         parts.push(format!("loader: lazyLoader(() => import({specifier}))"));
         // The DOCUMENT, and only the root has one: `shellComponent` renders
         // `<html>` around everything, so a nested route declaring one would be
         // a second document inside the first.
-        if node.id == ROOT_ID {
+        if node.id == ROOT_ID && declares(node, "shellComponent") {
             parts.push(format!(
-                "shellComponent: lazy(() => import({specifier}), (m) => m.shellComponent ?? Empty)"
+                "shellComponent: lazy(() => import({specifier}), (m) => optionsOf(m).shellComponent ?? Empty)"
             ));
         }
         parts.push(format!("head: lazyAsset(() => import({specifier}), \"head\")"));
         parts.push(format!("scripts: lazyAsset(() => import({specifier}), \"scripts\")"));
         parts.push(format!("middleware: lazyMiddleware(() => import({specifier}))"));
-        parts.push(format!("pending: lazy(() => import({specifier}), (m) => m.Pending ?? Empty)"));
+        // ONLY when the route wrote one. An absent `pendingComponent` means
+        // "this boundary shows nothing" (`router/src/route.ts:257`), and a
+        // `lazy()` resolving to an empty component is a different answer: a cold
+        // `lazy()` throws `NotReadyError`, which PARKS the loading boundary onto
+        // exactly this fallback — so every page rendered empty.
+        if declares(node, "pendingComponent") {
+            parts.push(format!(
+                "pendingComponent: lazy(() => import({specifier}), (m) => optionsOf(m).pendingComponent ?? Empty)"
+            ));
+        }
         // LIFTED, not imported. Both are wanted before the module loads, and the
         // module is `lazy()`.
         if let Some(ssr) = &node.config.ssr {
@@ -571,11 +687,14 @@ pub fn generate_types(tree: &[RouteNode], types_dir: &str) -> String {
     out.push_str("        : never;\n");
     // A Standard Schema is probed FIRST because a zod v4 schema has both
     // `~standard` and `parse`, and the runtime probes it in that order too.
+    // A route module has ONE export and it is called `Route`, so every lookup
+    // goes through its options rather than through the module's own members.
+    out.push_str("  type OptionsOf<M> = M extends { Route: { options: infer O } } ? O : never;\n");
     out.push_str(
-        "  type SearchOf<M> = M extends { validateSearch: infer V } ? ValidatedBy<V> : Record<string, unknown>;\n",
+        "  type SearchOf<M> = OptionsOf<M> extends { validateSearch: infer V } ? ValidatedBy<V> : Record<string, unknown>;\n",
     );
     out.push_str(
-        "  type DataOf<M> = M extends { loader: infer L } ? (L extends (...args: never) => infer R ? Awaited<R> : never) : undefined;\n\n",
+        "  type DataOf<M> = OptionsOf<M> extends { loader: infer L } ? (L extends (...args: never) => infer R ? Awaited<R> : never) : undefined;\n\n",
     );
 
     out.push_str("  export interface RouteMap {\n");
@@ -670,19 +789,102 @@ fn join_for_types(parent: &str, path: Option<&str>) -> String {
     }
 }
 
-/// Every declaration a route made that is present but not a literal.
+/// The id a filename derives, which is what `createFileRoute`'s literal must say.
+pub fn route_id(name: &str) -> String {
+    let derived = derive(name);
+    if derived.root { ROOT_ID.to_owned() } else { derived.route_path() }
+}
+
+/// A route file whose declared id disagrees with the one its NAME derives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdMismatch {
+    /// Project-relative source path.
+    pub file: String,
+    pub declared: String,
+    pub expected: String,
+}
+
+/// Every route file whose id literal is out of date.
+///
+/// The literal is GENERATOR-OWNED. It is derived from the filename, so a rename
+/// makes every one of them wrong at once, and hand-maintaining it is the chore
+/// `createFileRoute` exists to remove — their plugin rewrites it in place
+/// (`transform.ts:133-140`). Only a file route has one: the root's constructor
+/// takes no id.
+pub fn id_mismatches(files: &[RouteFile]) -> Vec<IdMismatch> {
+    let mut out = Vec::new();
+    for file in files {
+        if file.module.kind != Some(RouteKind::File) {
+            continue;
+        }
+        let Some(declared) = &file.module.id else { continue };
+        let expected = route_id(&file.name);
+        if declared.value != expected {
+            out.push(IdMismatch {
+                file: file.file.clone(),
+                declared: declared.value.clone(),
+                expected,
+            });
+        }
+    }
+    out
+}
+
+/// Rewrite one file's id literal on disk, returning whether anything changed.
+///
+/// A byte splice on the parsed span, so comments, formatting and the author's
+/// quote style survive a rename untouched.
+pub fn write_id(root: &Path, file: &RouteFile) -> std::io::Result<bool> {
+    let Some(declared) = &file.module.id else { return Ok(false) };
+    let expected = route_id(&file.name);
+    if declared.value == expected {
+        return Ok(false);
+    }
+    let path = root.join(&file.file);
+    let source = std::fs::read_to_string(&path)?;
+    // Re-read rather than trusting the span against a file that may have been
+    // edited since the scan: a stale offset would splice into the middle of
+    // something else.
+    let fresh = crate::route_source::read_module(&source, &file.file);
+    let Some(declared) = fresh.id else { return Ok(false) };
+    if declared.value == expected {
+        return Ok(false);
+    }
+    std::fs::write(&path, crate::route_source::rewrite_id(&source, &declared, &expected))?;
+    Ok(true)
+}
+
+/// Every declaration a route made that the table cannot carry.
 ///
 /// Reported rather than ignored, and rather than guessed at. A `prerender` the
 /// scan cannot read is the difference between a page that exists on the CDN and
 /// one that 404s, so answering "false, probably" would be the silent failure
-/// this whole channel exists to avoid.
+/// this whole channel exists to avoid — and the same is true of the OLD
+/// spelling, which is why a leftover `export const ssr` is reported here
+/// instead of being quietly dropped.
 pub fn refusals(files: &[RouteFile]) -> Vec<String> {
     let mut out = Vec::new();
     for file in files {
-        for refused in &file.config.refused {
+        for refused in &file.module.config.refused {
             out.push(format!(
-                "{}: `export const {refused}` is not a literal, so the route table cannot carry \
-                 it — write `true`, `false` or (for `ssr`) \"data-only\"",
+                "{}: `{refused}` is not a literal, so the route table cannot carry it — write \
+                 `true`, `false` or (for `ssr`) \"data-only\"",
+                file.file
+            ));
+        }
+        if file.module.kind.is_none() {
+            out.push(format!(
+                "{}: exports no `Route`, so it declares nothing — write \
+                 `export const Route = createFileRoute(\"{}\")({{…}})`, or rename it with a \
+                 leading `-` to keep it out of the route tree",
+                file.file,
+                route_id(&file.name)
+            ));
+        }
+        for legacy in &file.module.legacy {
+            out.push(format!(
+                "{}: `export const {legacy}` is no longer read — move it into the route's \
+                 options, `createFileRoute(id)({{ {legacy}: … }})`",
                 file.file
             ));
         }
@@ -734,32 +936,51 @@ mod tests {
             .map(|name| RouteFile {
                 file: format!("src/routes/{name}"),
                 name: name_of(name),
-                config: RouteConfig::default(),
+                module: RouteModule::default(),
             })
             .collect()
     }
 
+    /// Files that DECLARE options, since the emit now asks what was written.
+    fn declaring(entries: &[(&str, &[&str])]) -> Vec<RouteFile> {
+        entries
+            .iter()
+            .map(|(name, props)| RouteFile {
+                file: format!("src/routes/{name}"),
+                name: name_of(name),
+                module: RouteModule {
+                    props: props.iter().map(|prop| (*prop).to_owned()).collect(),
+                    ..RouteModule::default()
+                },
+            })
+            .collect()
+    }
+
+    fn ids(tree: &[RouteNode]) -> Vec<&str> {
+        tree.iter().map(|node| node.id.as_str()).collect()
+    }
+
     #[test]
     fn a_directory_separator_and_a_dot_name_the_same_route() {
-        assert_eq!(name_of("users.$id.tsx"), "users.$id");
-        assert_eq!(name_of("users/$id.tsx"), "users.$id");
-        assert_eq!(name_of("index.jsx"), "index");
+        assert_eq!(ids(&build_tree(&files(&["users.$id.tsx"]))), ["/users/$id"]);
+        assert_eq!(ids(&build_tree(&files(&["users/$id.tsx"]))), ["/users/$id"]);
     }
 
     #[test]
     fn flat_files_become_flat_routes() {
         let tree = build_tree(&files(&["index.tsx", "about.tsx", "users.$id.tsx"]));
-        let ids: Vec<&str> = tree.iter().map(|n| n.id.as_str()).collect();
-        // Declaration order; only `scan` sorts, and this builds the list by hand.
-        assert_eq!(ids, ["/", "/about", "/users/$id"]);
+        assert_eq!(ids(&tree), ["/", "/about", "/users/$id"]);
         // A root index names the root rather than `/index`.
-        let root = tree.iter().find(|n| n.id == "/").expect("a root index");
+        let root = tree.iter().find(|node| node.id == "/").expect("a root index");
         assert_eq!(root.path.as_deref(), Some("/"));
     }
 
+    /// A BARE name is the layout, which is the convention change: `posts.tsx`
+    /// parents `posts.*` with no `.route` suffix to ask for it
+    /// (`routing-concepts.md:548`).
     #[test]
-    fn a_route_file_becomes_the_layout_its_siblings_nest_under() {
-        let tree = build_tree(&files(&["users.route.tsx", "users.index.tsx", "users.$id.tsx"]));
+    fn a_bare_name_is_the_layout_its_siblings_nest_under() {
+        let tree = build_tree(&files(&["users.tsx", "users.index.tsx", "users.$id.tsx"]));
         assert_eq!(tree.len(), 1);
         assert_eq!(tree[0].path.as_deref(), Some("users"));
         let children: Vec<(&str, Option<&str>)> =
@@ -767,45 +988,143 @@ mod tests {
         assert_eq!(children, [("/users/", Some("")), ("/users/$id", Some("$id"))]);
     }
 
+    /// `posts/route.tsx` and `posts.tsx` are the same route, which is what makes
+    /// a directory a place to put a layout (`routing-concepts.md:412`).
+    #[test]
+    fn the_route_token_is_the_directory_form_of_the_same_layout() {
+        let dotted = build_tree(&files(&["users.tsx", "users.$id.tsx"]));
+        let nested = build_tree(&files(&["users/route.tsx", "users/$id.tsx"]));
+        assert_eq!(ids(&dotted), ids(&nested));
+        assert_eq!(dotted[0].path, nested[0].path);
+        assert_eq!(nested[0].children[0].path.as_deref(), Some("$id"));
+    }
+
     #[test]
     fn a_prefix_nobody_declares_stays_flat() {
         let tree = build_tree(&files(&["users.index.tsx", "users.$id.tsx"]));
         assert_eq!(tree.len(), 2);
-        assert!(tree.iter().all(|n| n.children.is_empty()));
+        assert!(tree.iter().all(|node| node.children.is_empty()));
     }
 
     #[test]
     fn a_leading_underscore_is_a_pathless_layout() {
-        let tree = build_tree(&files(&["_shell.route.tsx", "_shell.dashboard.tsx"]));
+        let tree = build_tree(&files(&["_shell.tsx", "_shell.dashboard.tsx"]));
         assert!(tree[0].pathless);
         assert!(tree[0].path.is_none());
         assert_eq!(tree[0].children[0].path.as_deref(), Some("dashboard"));
     }
 
+    /// `_layout/route.tsx` IS `_layout.tsx`, so the underscore to read is the one
+    /// on the segment BEFORE the token (`getRouteNodes.ts:536-545`).
+    #[test]
+    fn the_directory_form_of_a_pathless_layout_is_also_pathless() {
+        let tree = build_tree(&files(&["_shell/route.tsx", "_shell/dashboard.tsx"]));
+        assert!(tree[0].pathless);
+        assert!(tree[0].path.is_none());
+    }
+
     #[test]
     fn nested_layouts_compose_and_a_child_path_is_relative() {
-        let tree =
-            build_tree(&files(&["users.route.tsx", "users.$id.route.tsx", "users.$id.edit.tsx"]));
+        let tree = build_tree(&files(&["users.tsx", "users.$id.tsx", "users.$id.edit.tsx"]));
         assert_eq!(tree[0].path.as_deref(), Some("users"));
         assert_eq!(tree[0].children[0].path.as_deref(), Some("$id"));
         assert_eq!(tree[0].children[0].children[0].path.as_deref(), Some("edit"));
+    }
+
+    /// The `_` SUFFIX un-nests, and it needs no rule of its own: `/posts_` is
+    /// never registered, so the prefix walk finds no parent
+    /// (`routing-concepts.md:535-548`).
+    #[test]
+    fn a_trailing_underscore_escapes_the_nesting_and_keeps_the_url() {
+        let tree =
+            build_tree(&files(&["posts.tsx", "posts.$postId.tsx", "posts_.$postId.edit.tsx"]));
+        let nested: Vec<&str> = tree
+            .iter()
+            .find(|node| node.id == "/posts")
+            .expect("the layout")
+            .children
+            .iter()
+            .map(|child| child.id.as_str())
+            .collect();
+        assert_eq!(nested, ["/posts/$postId"]);
+
+        // Top level, and the underscore is gone from the URL it contributes.
+        let escaped = tree
+            .iter()
+            .find(|node| node.id == "/posts_/$postId/edit")
+            .expect("the un-nested route");
+        assert_eq!(escaped.path.as_deref(), Some("posts/$postId/edit"));
+    }
+
+    /// A route group organises FILES, not URLs (`routing-concepts.md`, and
+    /// `possiblyNestedRouteGroupPatternRegex` at `utils.ts:845`).
+    #[test]
+    fn a_route_group_is_not_in_the_url() {
+        let tree = build_tree(&files(&["(marketing)/about.tsx", "(marketing)/pricing.tsx"]));
+        let paths: Vec<Option<&str>> = tree.iter().map(|node| node.path.as_deref()).collect();
+        assert_eq!(paths, [Some("about"), Some("pricing")]);
+    }
+
+    /// `script[.]js.tsx` is `/script.js`: the bracket escapes a character that
+    /// would otherwise separate (`SPLIT_REGEX`, `utils.ts:168`).
+    #[test]
+    fn brackets_escape_a_character_that_would_otherwise_route() {
+        let tree = build_tree(&files(&["script[.]js.tsx", "api[.]v1.tsx"]));
+        assert_eq!(ids(&tree), ["/api.v1", "/script.js"]);
+
+        // And a token spelled in brackets is the WORD, not the token: `[index]`
+        // is a route literally at `/index`.
+        let literal = build_tree(&files(&["[index].tsx"]));
+        assert_eq!(ids(&literal), ["/index"]);
+    }
+
+    /// `[_]` is a literal underscore, so the segment is NOT a pathless layout.
+    #[test]
+    fn an_escaped_underscore_is_a_path_segment() {
+        let tree = build_tree(&files(&["[_]private.tsx"]));
+        assert!(!tree[0].pathless);
+        assert_eq!(tree[0].path.as_deref(), Some("_private"));
+    }
+
+    /// `__root.tsx` is the root, and everything is under it.
+    #[test]
+    fn the_root_file_is_the_root_and_parents_everything() {
+        let tree = build_tree(&files(&["__root.tsx", "index.tsx", "about.tsx", "users.$id.tsx"]));
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].id, "__root__");
+        assert_eq!(tree[0].path.as_deref(), Some("/"));
+        let children: Vec<(&str, Option<&str>)> =
+            tree[0].children.iter().map(|c| (c.id.as_str(), c.path.as_deref())).collect();
+        assert_eq!(
+            children,
+            [("/", Some("")), ("/about", Some("about")), ("/users/$id", Some("users/$id"))]
+        );
     }
 
     #[test]
     fn the_emitted_module_imports_nothing_eagerly_and_parses() {
         let tree = build_tree(&files(&[
             "index.tsx",
-            "users.route.tsx",
+            "users.tsx",
             "users.index.tsx",
             "users.$id.tsx",
             "files.$.tsx",
         ]));
         let module = generate_module(&tree);
+        // Two static imports and both are the runtime's — every route module is
+        // reached through `import()`.
         assert_eq!(
             module.matches("\nimport ").count() + usize::from(module.starts_with("import ")),
-            1
+            2,
+            "{module}"
         );
-        assert!(module.contains("lazy(() => import(\"/src/routes/users.$id.tsx\"))"));
+        assert!(module.contains("import { lazy } from \"@barqjs/core\";"), "{module}");
+        // NEVER `@barqjs/router/server`: this module is imported by the browser
+        // and the server entry reaches `node:async_hooks`.
+        assert!(module.contains("import { Outlet } from \"@barqjs/router\";"), "{module}");
+        assert!(!module.contains("@barqjs/router/server"), "{module}");
+
+        assert!(module.contains("lazy(() => import(\"/src/routes/users.$id.tsx\")"), "{module}");
 
         // The SOURCE path rides beside the lazy component. Nothing at runtime
         // can recover it — `lazy()` keeps the specifier inside its closure —
@@ -813,7 +1132,7 @@ mod tests {
         // modulepreload and the route-action manifest both start here.
         assert!(module.contains("src: \"/src/routes/users.$id.tsx\""));
         // A layout gets one too, so a chain can be walked whole.
-        assert!(module.contains("src: \"/src/routes/users.route.tsx\""));
+        assert!(module.contains("src: \"/src/routes/users.tsx\""));
 
         // A generated module nothing parses is how `export const default =` — a
         // syntax error — shipped in the client stubs. Parse it for real.
@@ -823,12 +1142,44 @@ mod tests {
         assert!(parsed.diagnostics.is_empty(), "{module}\n{:?}", parsed.diagnostics);
     }
 
+    /// Every picker reaches through `Route.options`, because a route module has
+    /// ONE export and it is called `Route`.
+    #[test]
+    fn every_picker_reads_the_route_export() {
+        let module = generate_module(&build_tree(&declaring(&[
+            ("__root.tsx", &["shellComponent"]),
+            ("about.tsx", &["component", "pendingComponent"]),
+        ])));
+        assert!(module.contains("const optionsOf = (module) => module.Route?.options ?? {};"));
+        assert!(module.contains("optionsOf(m).component ?? Outlet"), "{module}");
+        assert!(module.contains("optionsOf(m).pendingComponent ?? Empty"), "{module}");
+        assert!(module.contains("optionsOf(m).shellComponent ?? Empty"), "{module}");
+        assert!(module.contains("const { loader } = optionsOf(await load());"), "{module}");
+        assert!(module.contains("const declared = optionsOf(await load())[pick];"), "{module}");
+
+        // The old spellings are gone, not merely unused.
+        assert!(!module.contains("m.Pending"), "{module}");
+        assert!(!module.contains("m.shellComponent"), "{module}");
+        assert!(!module.contains("pending: lazy("), "{module}");
+    }
+
+    /// A route that declares no component renders its CHILD, not nothing —
+    /// `route.options.component ?? defaultComponent` falling through to
+    /// `<Outlet />` (`react-router/src/Match.tsx:211-212`). With `Empty` there, a
+    /// layout that declares only a loader would swallow its whole subtree.
+    #[test]
+    fn a_route_without_a_component_falls_through_to_its_child() {
+        let module = generate_module(&build_tree(&files(&["users.tsx", "users.$id.tsx"])));
+        assert_eq!(module.matches("optionsOf(m).component ?? Outlet").count(), 2, "{module}");
+        assert!(!module.contains("component: lazy(() => import(\"/src/routes/users.tsx\"))"));
+    }
+
     #[test]
     fn head_and_scripts_are_reached_without_loading_the_module() {
         // Both are wanted before the shell and the route module is `lazy()`, so
         // they go through the same wrapper `loader` does. `lazyAsset` accepts a
         // function OR a plain object, which is what lets a static head be an
-        // ordinary module export.
+        // ordinary property of the options.
         let module = generate_module(&build_tree(&files(&["index.tsx", "about.tsx"])));
         assert!(
             module.contains("const lazyAsset = (load, pick) => async (context) => {"),
@@ -846,10 +1197,36 @@ mod tests {
     fn only_a_root_route_declares_the_document() {
         // `shellComponent` renders `<html>` around everything, so a nested route
         // declaring one would be a second document inside the first.
-        let flat = generate_module(&build_tree(&files(&["index.tsx", "about.tsx"])));
+        let flat = generate_module(&build_tree(&declaring(&[
+            ("index.tsx", &["shellComponent"]),
+            ("about.tsx", &["shellComponent"]),
+        ])));
         assert_eq!(flat.matches("shellComponent: lazy(").count(), 0, "{flat}");
-        let rooted = generate_module(&build_tree(&files(&["route.tsx", "index.tsx", "about.tsx"])));
+        let rooted = generate_module(&build_tree(&declaring(&[
+            ("__root.tsx", &["shellComponent"]),
+            ("index.tsx", &[]),
+        ])));
         assert_eq!(rooted.matches("shellComponent: lazy(").count(), 1, "{rooted}");
+    }
+
+    /// A picker for an option the route did not write is not harmless.
+    ///
+    /// The router reads an absent `pendingComponent` as "this boundary shows
+    /// nothing"; a `lazy()` resolving to an empty component is a DIFFERENT
+    /// answer, because a cold `lazy()` throws `NotReadyError` and parks the
+    /// loading boundary onto exactly that fallback. Emitting it unconditionally
+    /// rendered the whole reference application as an empty `<div id="app">`.
+    #[test]
+    fn an_option_the_route_did_not_declare_gets_no_picker() {
+        let bare = generate_module(&build_tree(&declaring(&[("about.tsx", &["component"])])));
+        assert!(!bare.contains("pendingComponent:"), "{bare}");
+        assert!(!bare.contains("shellComponent:"), "{bare}");
+
+        let declared = generate_module(&build_tree(&declaring(&[(
+            "about.tsx",
+            &["component", "pendingComponent"],
+        )])));
+        assert!(declared.contains("pendingComponent:"), "{declared}");
     }
 
     #[test]
@@ -860,7 +1237,7 @@ mod tests {
         let module = generate_module(&build_tree(&files(&["index.tsx", "about.tsx"])));
         assert!(
             module.contains(
-                "const lazyMiddleware = (load) => async () => (await load()).middleware;"
+                "const lazyMiddleware = (load) => async () => optionsOf(await load()).middleware;"
             ),
             "{module}"
         );
@@ -887,8 +1264,7 @@ mod tests {
 
     #[test]
     fn the_types_carry_one_member_per_leaf_with_its_params() {
-        let tree =
-            build_tree(&files(&["index.tsx", "users.route.tsx", "users.$id.tsx", "files.$.tsx"]));
+        let tree = build_tree(&files(&["index.tsx", "users.tsx", "users.$id.tsx", "files.$.tsx"]));
         let types = generate_types(&tree, "src");
         assert!(types.contains("\"/users/$id\": { path: \"/users/$id\"; params: { id: string } }"));
         assert!(types.contains("\"_splat\": string"));
@@ -904,11 +1280,21 @@ mod tests {
         // `/` is the filesystem ROOT to TypeScript, so a root-absolute specifier
         // resolved to `any` and every generated type became permissive.
         assert!(data.contains(
-            "\"/users\": { search: SearchOf<typeof import(\"../src/routes/users.route.tsx\")>"
+            "\"/users\": { search: SearchOf<typeof import(\"../src/routes/users.tsx\")>"
         ));
         assert!(data.contains(
             "\"/users/$id\": { search: SearchOf<typeof import(\"../src/routes/users.$id.tsx\")>"
         ));
+
+        // Every lookup goes through `Route`'s options, since that is the module's
+        // one export.
+        assert!(types.contains(
+            "type OptionsOf<M> = M extends { Route: { options: infer O } } ? O : never;"
+        ));
+        assert!(types.contains("type DataOf<M> = OptionsOf<M> extends { loader: infer L }"));
+        assert!(
+            types.contains("type SearchOf<M> = OptionsOf<M> extends { validateSearch: infer V }")
+        );
 
         // Every arm fails CLOSED: an unreadable validator or loader shape
         // resolves to `never`, not to a permissive record. A wrong type that
@@ -919,27 +1305,19 @@ mod tests {
 
     #[test]
     fn entries_map_every_route_id_to_its_file_including_layouts() {
-        let tree = build_tree(&files(&[
-            "index.tsx",
-            "users.route.tsx",
-            "users.index.tsx",
-            "users.$id.tsx",
-        ]));
+        let tree =
+            build_tree(&files(&["index.tsx", "users.tsx", "users.index.tsx", "users.$id.tsx"]));
         let map = entries(&tree);
         assert!(map.contains(&("/users/$id".to_string(), "src/routes/users.$id.tsx".to_string())));
         // The LAYOUT is here even though it is not addressable on its own: a
         // modulepreload set is the whole chain.
-        assert!(map.contains(&("/users".to_string(), "src/routes/users.route.tsx".to_string())));
+        assert!(map.contains(&("/users".to_string(), "src/routes/users.tsx".to_string())));
     }
 
     #[test]
     fn patterns_are_what_barq013_checks_against() {
-        let tree = build_tree(&files(&[
-            "index.tsx",
-            "users.route.tsx",
-            "users.index.tsx",
-            "users.$id.tsx",
-        ]));
+        let tree =
+            build_tree(&files(&["index.tsx", "users.tsx", "users.index.tsx", "users.$id.tsx"]));
         let mut found = patterns(&tree);
         found.sort();
         assert_eq!(found, ["/", "/users", "/users/$id"]);
@@ -958,61 +1336,47 @@ mod tests {
         assert!(scan(root, "docs").is_empty());
     }
 
+    /// A `-` prefix takes a file OR A DIRECTORY out of the tree, which is what
+    /// makes a route directory a place to colocate its own parts
+    /// (`getRouteNodes.ts:70-74`).
     #[test]
-    fn a_route_declares_its_own_render_mode_and_the_table_carries_it() {
-        // Both are wanted BEFORE the module loads and the module is `lazy()`, so
-        // a runtime read is not available at the moment either is asked for.
-        let config = read_config("export const ssr = false\nexport default function P() {}\n");
-        assert_eq!(config.ssr.as_deref(), Some("false"));
-        assert_eq!(config.prerender, None);
+    fn a_dash_prefix_is_not_a_route_and_hides_a_whole_directory() {
+        let base = std::env::temp_dir().join("barq-routes-ignore-prefix");
+        let routes = base.join("routes");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(routes.join("-components")).expect("a scratch directory");
+        for (path, body) in [
+            ("posts.tsx", "export const Route = createFileRoute('/posts')({});"),
+            ("-posts-table.tsx", "export const PostsTable = () => null;"),
+            ("-components/header.tsx", "export const Header = () => null;"),
+        ] {
+            std::fs::write(routes.join(path), body).expect("a scratch file");
+        }
 
-        let config =
-            read_config("export const ssr = \"data-only\";\nexport const prerender = true;\n");
-        assert_eq!(config.ssr.as_deref(), Some("\"data-only\""));
-        assert_eq!(config.prerender, Some(true));
+        let found: Vec<String> = scan(&base, "routes").into_iter().map(|file| file.name).collect();
+        assert_eq!(found, ["posts"]);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// The scan reads what the module DECLARES, and the table carries it.
     #[test]
-    fn a_non_literal_declaration_is_refused_rather_than_guessed_at() {
-        // Astro's rule, and its reason: "Mutable values declared at runtime are
-        // not supported." A `prerender` the scan cannot read decides whether a
-        // page exists on the CDN, so answering "false, probably" is the silent
-        // failure this channel exists to avoid.
-        let config = read_config("export const prerender = shouldPrerender();\n");
-        assert_eq!(config.prerender, None);
-        assert_eq!(config.refused, vec!["prerender = shouldPrerender()".to_owned()]);
+    fn the_emitted_table_carries_what_the_route_declared() {
+        let base = std::env::temp_dir().join("barq-routes-declarations");
+        let routes = base.join("routes");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&routes).expect("a scratch directory");
+        std::fs::write(
+            routes.join("about.tsx"),
+            "export const Route = createFileRoute('/about')({ ssr: false, prerender: true });",
+        )
+        .expect("a scratch file");
+        std::fs::write(
+            routes.join("live.tsx"),
+            "export const Route = createFileRoute('/live')({ component: Live });",
+        )
+        .expect("a scratch file");
 
-        let config = read_config("export const ssr = MODE;\n");
-        assert_eq!(config.ssr, None);
-        assert_eq!(config.refused, vec!["ssr = MODE".to_owned()]);
-    }
-
-    #[test]
-    fn only_a_top_level_export_counts() {
-        // An indented match is inside something, and a longer identifier is a
-        // different declaration entirely.
-        assert_eq!(read_config("  export const ssr = false\n"), RouteConfig::default());
-        assert_eq!(read_config("export const ssrMode = false\n"), RouteConfig::default());
-    }
-
-    #[test]
-    fn the_emitted_table_carries_the_declarations() {
-        let files = vec![
-            RouteFile {
-                file: "src/routes/about.tsx".to_owned(),
-                name: "about".to_owned(),
-                config: RouteConfig {
-                    ssr: Some("false".to_owned()),
-                    prerender: Some(true),
-                    refused: Vec::new(),
-                },
-            },
-            RouteFile {
-                file: "src/routes/live.tsx".to_owned(),
-                name: "live".to_owned(),
-                config: RouteConfig::default(),
-            },
-        ];
+        let files = scan(&base, "routes");
         let module = generate_module(&build_tree(&files));
         assert!(module.contains("ssr: false"), "{module}");
         assert!(module.contains("prerender: true"), "{module}");
@@ -1021,5 +1385,31 @@ mod tests {
         let live = module.lines().find(|line| line.contains("/live")).unwrap_or_default();
         assert!(!live.contains("ssr:"), "{live}");
         assert!(!live.contains("prerender:"), "{live}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The OLD spelling is reported, not honoured. A half-migrated file that
+    /// silently lost its `ssr: false` is exactly the failure this channel exists
+    /// to prevent.
+    #[test]
+    fn a_top_level_export_is_reported_rather_than_read() {
+        let base = std::env::temp_dir().join("barq-routes-legacy-export");
+        let routes = base.join("routes");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&routes).expect("a scratch directory");
+        std::fs::write(
+            routes.join("admin.tsx"),
+            "export const ssr = false;\nexport const Route = createFileRoute('/admin')({});",
+        )
+        .expect("a scratch file");
+
+        let files = scan(&base, "routes");
+        let reported = refusals(&files);
+        assert_eq!(reported.len(), 1, "{reported:?}");
+        assert!(reported[0].contains("`export const ssr` is no longer read"), "{reported:?}");
+
+        let module = generate_module(&build_tree(&files));
+        assert!(!module.contains("ssr:"), "{module}");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

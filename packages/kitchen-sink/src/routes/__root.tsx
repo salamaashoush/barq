@@ -1,10 +1,9 @@
 /**
- * The layout every page renders inside.
+ * The root route: the document, and the layout every page renders inside.
  *
- * `.route` makes this the LAYOUT for the prefix, and the leading `_` makes it
- * PATHLESS — it wraps every route without contributing a segment. `children` is
- * a Block, so the matched route is constructed inside this scope, which is what
- * barq has instead of an `<Outlet />`.
+ * `__root.tsx` is the root by name, and it is the one route that may declare a
+ * `shellComponent`. `<Outlet />` places the matched route, constructed inside
+ * this scope — so the providers here still wrap what it renders.
  */
 
 import { type Child, For } from "@barqjs/core";
@@ -12,7 +11,7 @@ import { type Child, For } from "@barqjs/core";
 // to the browser like every other route module. `@barqjs/router/server` reaches
 // `node:async_hooks`, and importing it here made Vite externalise that for the
 // browser, throw inside the root route, and render an empty page.
-import { HeadContent, NavLink, Scripts, useLocation } from "@barqjs/router";
+import { HeadContent, NavLink, Outlet, Scripts, createRootRoute, useLocation } from "@barqjs/router";
 
 import { collectStyles, css, globalCss } from "../styles";
 
@@ -25,7 +24,7 @@ import { collectStyles, css, globalCss } from "../styles";
  * is no order to get right and no `<title>` here: the site title is this route's
  * own `head`, which merges with every route below it.
  */
-export const shellComponent = (props: { children: Child }) => (
+const shellComponent = (props: { children: Child }) => (
   <html lang="en">
     <head>
       <meta charset="utf-8" />
@@ -40,7 +39,7 @@ export const shellComponent = (props: { children: Child }) => (
   </html>
 );
 
-export const head = {
+const head = {
   meta: [
     { title: "Barq Kitchen Sink" },
     { name: "description", content: "Every barq feature, in one application." },
@@ -77,7 +76,7 @@ globalCss`
   }
 `;
 
-export default function Layout(props: { children: never }) {
+function Layout() {
   const location = useLocation();
   const title = () => {
     const path = location().pathname;
@@ -110,11 +109,13 @@ export default function Layout(props: { children: never }) {
         <header class={headerStyle}>
           <h1 class={titleStyle}>{() => title()}</h1>
         </header>
-        {props.children}
+        <Outlet />
       </main>
     </div>
   );
 }
+
+export const Route = createRootRoute({ shellComponent, head, component: Layout });
 
 const layoutStyle = css`
   display: grid;

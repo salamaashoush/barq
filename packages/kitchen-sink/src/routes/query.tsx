@@ -3,19 +3,20 @@
  *
  * The loader runs on the server and its value is SEEDED, so the client's first
  * read consumes it rather than refetching; the component is not rendered into
- * the HTML. What goes on the wire is this depth's `pending` fallback, which the
+ * the HTML. What goes on the wire is this depth's `pendingComponent`, which the
  * client replaces with real markup it builds itself.
  */
 
-export const ssr = "data-only";
+import { createFileRoute } from "@barqjs/router";
 
-export { QueryDemo as default } from "../demos/QueryDemo";
+import { QueryDemo } from "../demos/QueryDemo";
 
-export async function loader() {
-  await new Promise((resolve) => setTimeout(resolve, 40));
-  return { renderedOn: typeof document === "undefined" ? "server" : "client" };
-}
-
-export function Pending() {
-  return <p style="color:#94a3b8">Loading query demo…</p>;
-}
+export const Route = createFileRoute("/query")({
+  ssr: "data-only",
+  loader: async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return { renderedOn: typeof document === "undefined" ? "server" : "client" };
+  },
+  component: QueryDemo,
+  pendingComponent: () => <p style="color:#94a3b8">Loading query demo…</p>,
+});

@@ -113,8 +113,14 @@ export interface BarqCompilerOptions {
    * `@barqjs/router/vite` reports it from the same scan it built the table
    * from — a check against a different scan is a check against a different
    * project.
+   *
+   * A THUNK is accepted and is what an integration wants, for the reason
+   * `barqStart`'s `verify.reachability` is one: the scan happens in
+   * `configResolved` and this is read per transform, and every layer between
+   * the two spreads its options — so a plain array is snapshotted while it is
+   * still empty and every link in the project is reported as matching no route.
    */
-  routes?: readonly string[];
+  routes?: readonly string[] | (() => readonly string[] | undefined);
 
   /**
    * Development mode: compile-time diagnostics about runtime behaviour
@@ -472,7 +478,10 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,
           routerSource: compilerOptions.routerSource,
-          routes: compilerOptions.routes,
+          routes:
+            typeof compilerOptions.routes === "function"
+              ? compilerOptions.routes()
+              : compilerOptions.routes,
           serverFns: compilerOptions.serverFns,
           // Derived from the same argument that already decides the backend,
           // because it is the same fact: the client transform is the client

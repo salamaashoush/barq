@@ -8,17 +8,18 @@ declare module "virtual:barq-routes" {
       : V extends (input: never) => infer S
         ? S
         : never;
-  type SearchOf<M> = M extends { validateSearch: infer V } ? ValidatedBy<V> : Record<string, unknown>;
-  type DataOf<M> = M extends { loader: infer L } ? (L extends (...args: never) => infer R ? Awaited<R> : never) : undefined;
+  type OptionsOf<M> = M extends { Route: { options: infer O } } ? O : never;
+  type SearchOf<M> = OptionsOf<M> extends { validateSearch: infer V } ? ValidatedBy<V> : Record<string, unknown>;
+  type DataOf<M> = OptionsOf<M> extends { loader: infer L } ? (L extends (...args: never) => infer R ? Awaited<R> : never) : undefined;
 
   export interface RouteMap {
+    "/": { path: "/"; params: {  } };
     "/about": { path: "/about"; params: {  } };
     "/admin": { path: "/admin"; params: {  } };
     "/async": { path: "/async"; params: {  } };
     "/components": { path: "/components"; params: {  } };
     "/css": { path: "/css"; params: {  } };
     "/hooks": { path: "/hooks"; params: {  } };
-    "/": { path: "/"; params: {  } };
     "/jsx-types": { path: "/jsx-types"; params: {  } };
     "/query": { path: "/query"; params: {  } };
     "/routing": { path: "/routing"; params: {  } };
@@ -27,14 +28,14 @@ declare module "virtual:barq-routes" {
   }
 
   export interface RouteData {
-    "__root__": { search: SearchOf<typeof import("../src/routes/route.tsx")>; data: DataOf<typeof import("../src/routes/route.tsx")> };
+    "__root__": { search: SearchOf<typeof import("../src/routes/__root.tsx")>; data: DataOf<typeof import("../src/routes/__root.tsx")> };
+    "/": { search: SearchOf<typeof import("../src/routes/index.tsx")>; data: DataOf<typeof import("../src/routes/index.tsx")> };
     "/about": { search: SearchOf<typeof import("../src/routes/about.tsx")>; data: DataOf<typeof import("../src/routes/about.tsx")> };
     "/admin": { search: SearchOf<typeof import("../src/routes/admin.tsx")>; data: DataOf<typeof import("../src/routes/admin.tsx")> };
     "/async": { search: SearchOf<typeof import("../src/routes/async.tsx")>; data: DataOf<typeof import("../src/routes/async.tsx")> };
     "/components": { search: SearchOf<typeof import("../src/routes/components.tsx")>; data: DataOf<typeof import("../src/routes/components.tsx")> };
     "/css": { search: SearchOf<typeof import("../src/routes/css.tsx")>; data: DataOf<typeof import("../src/routes/css.tsx")> };
     "/hooks": { search: SearchOf<typeof import("../src/routes/hooks.tsx")>; data: DataOf<typeof import("../src/routes/hooks.tsx")> };
-    "/": { search: SearchOf<typeof import("../src/routes/index.tsx")>; data: DataOf<typeof import("../src/routes/index.tsx")> };
     "/jsx-types": { search: SearchOf<typeof import("../src/routes/jsx-types.tsx")>; data: DataOf<typeof import("../src/routes/jsx-types.tsx")> };
     "/query": { search: SearchOf<typeof import("../src/routes/query.tsx")>; data: DataOf<typeof import("../src/routes/query.tsx")> };
     "/routing": { search: SearchOf<typeof import("../src/routes/routing.tsx")>; data: DataOf<typeof import("../src/routes/routing.tsx")> };

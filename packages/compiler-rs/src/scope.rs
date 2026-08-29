@@ -4,6 +4,7 @@ use oxc::ast::ast::{
     FormalParameterKind, FormalParameters, Function, JSXAttributeItem, JSXAttributeValue, JSXChild,
     JSXElementName, JSXExpression, Program,
 };
+use oxc::ast::ast::{TSType, TSTypeName};
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
 use oxc::ast_visit::walk_mut::{
@@ -73,6 +74,20 @@ pub fn run<'a>(allocator: &'a Allocator, program: &mut Program<'a>, module: &mut
     module.detached_roots = pass.jsx > 0 || pass.unbound;
 }
 
+/// `Scope`, `Scope | null`, `core.Scope` — the annotation a hand-written
+/// component gives the parameter the compiler would otherwise add.
+fn names_scope(kind: &TSType<'_>) -> bool {
+    match kind {
+        TSType::TSTypeReference(reference) => match &reference.type_name {
+            TSTypeName::IdentifierReference(name) => name.name == "Scope",
+            TSTypeName::QualifiedName(qualified) => qualified.right.name == "Scope",
+            TSTypeName::ThisExpression(_) => false,
+        },
+        TSType::TSUnionType(union) => union.types.iter().any(names_scope),
+        _ => false,
+    }
+}
+
 struct Scope<'a> {
     allocator: &'a Allocator,
     ast: AstBuilder<'a>,
@@ -110,10 +125,28 @@ impl<'a> Scope<'a> {
         )
     }
 
+    /// A declaration that ALREADY accepts the scope.
+    ///
+    /// Hand-written runtime code is authored on the emitted ABI directly —
+    /// `packages/testing`'s wrapper is `(scope, props)` because `render` calls
+    /// it that way, and `packages/extra` is on the same convention. Prepending
+    /// a second scope there shifts every later parameter along, so `props`
+    /// arrives where the scope was and `props.children` is the scope's. It
+    /// reads as a component by every other measure, so the only thing that can
+    /// tell the two apart is that the author already wrote the parameter.
+    fn already_takes_scope(params: &FormalParameters<'a>) -> bool {
+        let Some(first) = params.items.first() else { return false };
+        let Some(annotation) = first.type_annotation.as_ref() else { return false };
+        names_scope(&annotation.type_annotation)
+    }
+
     /// Scope FIRST. A component's own parameters keep their order and their
     /// spellings — destructuring, defaults, a rest element — so the only
     /// difference a migration sees is the argument it now has to pass.
     fn take_scope(&mut self, params: &mut FormalParameters<'a>) {
+        if Self::already_takes_scope(params) {
+            return;
+        }
         let span = params.span;
         let taken = std::mem::replace(&mut params.items, ArenaVec::new_in(&self.allocator));
         let mut items = ArenaVec::with_capacity_in(taken.len() + 1, &self.allocator);

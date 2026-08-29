@@ -118,6 +118,7 @@ pub fn classify<'a>(
         candidates: Vec::new(),
         tags: Vec::new(),
         slotted: Vec::new(),
+        valued: Vec::new(),
         root_mounts: Vec::new(),
         exported: Vec::new(),
         rules: options.diagnostics,
@@ -179,6 +180,22 @@ struct Binder<'p, 'a> {
     /// `<For each={rows}>{row}</For>` hands `row` to a callee that invokes it
     /// with a scope, which is the same standing being written as a tag gives.
     slotted: Vec<SymbolId>,
+    /// Every binding this module names as an OBJECT PROPERTY's value.
+    ///
+    /// `createRootRoute({ component: Layout })` is how TanStack's authoring
+    /// surface names a component, and it is the whole of the evidence there:
+    /// nothing writes `<Layout />` and nothing exports it. A component used
+    /// only by the ROUTER is still a component, which is the argument
+    /// [`Binder::exports`] already makes for a component used only by its
+    /// importers.
+    ///
+    /// A PROPERTY value and not a bare argument, deliberately. `rows.map(row)`
+    /// hands a JSX-returning function to a callee that invokes it with
+    /// `(item, index)` — taking that as evidence would give it a scope
+    /// parameter and put the item where the scope goes. The comment above
+    /// [`Binder::props_params`] names that same ambiguity; an object property
+    /// does not have it.
+    valued: Vec<SymbolId>,
     exported: Vec<SymbolId>,
     /// D1 and D3. Off for a build that will not deliver them, so a production
     /// compile pays nothing for advice nobody reads.
@@ -395,7 +412,7 @@ impl<'a> Binder<'_, 'a> {
             let (owner, props) = self.candidates[index];
             let known = match owner {
                 None => true,
-                Some(owner) => self.tags.contains(&owner) || self.exported.contains(&owner),
+                Some(owner) => self.is_component(Some(owner)),
             };
             if known && self.env.kind[props] == SourceKind::Opaque {
                 self.env.kind[props] = SourceKind::PropsParam;
@@ -512,6 +529,7 @@ impl<'a> Binder<'_, 'a> {
                 self.tags.contains(&owner)
                     || self.exported.contains(&owner)
                     || self.slotted.contains(&owner)
+                    || self.valued.contains(&owner)
             }
         }
     }
@@ -1333,6 +1351,22 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
     fn visit_logical_expression(&mut self, it: &LogicalExpression<'a>) {
         self.suspect(Code::Barq002, &it.left, None);
         walk::walk_logical_expression(self, it);
+    }
+
+    /// `{ component: Layout }` — see [`Binder::valued`].
+    fn visit_object_expression(&mut self, it: &oxc::ast::ast::ObjectExpression<'a>) {
+        for property in &it.properties {
+            if let oxc::ast::ast::ObjectPropertyKind::ObjectProperty(property) = property
+                && let Expression::Identifier(identifier) = &property.value
+                && let Some(symbol) = identifier
+                    .reference_id
+                    .get()
+                    .and_then(|id| self.scoping.get_reference(id).symbol_id())
+            {
+                self.valued.push(symbol);
+            }
+        }
+        walk::walk_object_expression(self, it);
     }
 
     fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {

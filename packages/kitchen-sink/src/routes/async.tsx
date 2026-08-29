@@ -1,1 +1,5 @@
-export { AsyncDemo as default } from "../demos/AsyncDemo";
+import { createFileRoute } from "@barqjs/router";
+
+import { AsyncDemo } from "../demos/AsyncDemo";
+
+export const Route = createFileRoute("/async")({ component: AsyncDemo });

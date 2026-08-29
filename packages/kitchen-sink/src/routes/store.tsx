@@ -1,1 +1,5 @@
-export { StoreDemo as default } from "../demos/StoreDemo";
+import { createFileRoute } from "@barqjs/router";
+
+import { StoreDemo } from "../demos/StoreDemo";
+
+export const Route = createFileRoute("/store")({ component: StoreDemo });

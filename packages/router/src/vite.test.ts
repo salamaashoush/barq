@@ -24,7 +24,11 @@ afterEach(() => {
 });
 
 type Hooks = {
-  configResolved(config: { root: string }): void;
+  configResolved(config: {
+    root: string;
+    command?: string;
+    logger?: { warn(message: string): void };
+  }): void;
   resolveId(id: string): string | null;
   load(this: { addWatchFile(f: string): void }, id: string): string | null;
 };
@@ -32,20 +36,38 @@ type Hooks = {
 const hooks = (plugin: ReturnType<typeof barqRouter>): Hooks => plugin as unknown as Hooks;
 
 /**
- * `@barqjs/core`, stubbed.
+ * `configResolved`, with what the plugin actually reads off it.
  *
- * The generated table imports `lazy` from it, and a temp project outside the
- * workspace cannot resolve it. Stubbing keeps the test hermetic and about the
- * GRAPH, which is what it measures — the real `lazy` would change nothing here.
+ * `command` decides whether the generator may rewrite a route's id literal in
+ * the source file, so a test that omits it is testing the BUILD path.
  */
+const resolve = (plugin: Hooks, root: string, command = "build"): { warnings: string[] } => {
+  const warnings: string[] = [];
+  plugin.configResolved({ root, command, logger: { warn: (m) => warnings.push(m) } });
+  return { warnings };
+};
+
+/**
+ * `@barqjs/core` and `@barqjs/router`, stubbed.
+ *
+ * The generated table imports `lazy` from one and `Outlet` from the other, and
+ * a temp project outside the workspace cannot resolve either. Stubbing keeps
+ * the test hermetic and about the GRAPH, which is what it measures — the real
+ * implementations would change nothing here.
+ */
+const STUBS: Record<string, string> = {
+  "@barqjs/core": "export const lazy = (load) => load;",
+  "@barqjs/router": "export const Outlet = () => null;",
+};
+
 const stubCore = (): {
   name: string;
   resolveId(id: string): string | null;
   load(id: string): string | null;
 } => ({
   name: "stub-core",
-  resolveId: (id) => (id === "@barqjs/core" ? "\0stub-core" : null),
-  load: (id) => (id === "\0stub-core" ? "export const lazy = (load) => load;" : null),
+  resolveId: (id) => (id in STUBS ? `\0stub${id}` : null),
+  load: (id) => (id.startsWith("\0stub") ? (STUBS[id.slice("\0stub".length)] ?? null) : null),
 });
 
 /**
@@ -56,9 +78,12 @@ const stubCore = (): {
 describe("routeTree, across the napi boundary", () => {
   test("finds routes in nested directories, skipping tests", () => {
     const root = project({
-      "src/routes/index.tsx": "",
-      "src/routes/about.tsx": "",
-      "src/routes/users/$id.tsx": "",
+      "src/routes/index.tsx":
+        'export const Route = createFileRoute("/")({ component: () => null });',
+      "src/routes/about.tsx":
+        'export const Route = createFileRoute("/about")({ component: () => null });',
+      "src/routes/users/$id.tsx":
+        'export const Route = createFileRoute("/users/$id")({ component: () => null });',
       "src/routes/about.test.tsx": "",
       "src/routes/notes.md": "",
     });
@@ -83,12 +108,15 @@ describe("routeTree, across the napi boundary", () => {
 describe("the plugin", () => {
   test("resolves the virtual id and serves the compiler's module", () => {
     const root = project({
-      "src/routes/index.tsx": "export default () => null;",
-      "src/routes/users.route.tsx": "export default () => null;",
-      "src/routes/users.$id.tsx": "export default () => null;",
+      "src/routes/index.tsx":
+        'export const Route = createFileRoute("/")({ component: () => null });',
+      "src/routes/users.tsx":
+        'export const Route = createFileRoute("/users")({ component: () => null });',
+      "src/routes/users.$id.tsx":
+        'export const Route = createFileRoute("/users/$id")({ component: () => null });',
     });
     const plugin = hooks(barqRouter({ types: false }));
-    plugin.configResolved({ root });
+    resolve(plugin, root);
 
     expect(plugin.resolveId(ROUTES_ID)).toBe(`\0${ROUTES_ID}`);
     expect(plugin.resolveId("something-else")).toBeNull();
@@ -97,7 +125,7 @@ describe("the plugin", () => {
     const code = plugin.load.call({ addWatchFile: (f) => watched.push(f) }, `\0${ROUTES_ID}`);
 
     expect(code).toContain("export const routes");
-    expect(code).toContain('lazy(() => import("/src/routes/users.$id.tsx"))');
+    expect(code).toContain('lazy(() => import("/src/routes/users.$id.tsx")');
     // Every route file is watched, so adding or removing one invalidates the
     // table — which is a different module from the file that changed.
     expect(watched).toHaveLength(3);
@@ -106,12 +134,15 @@ describe("the plugin", () => {
   test("writes the types and reports the patterns from the SAME scan", () => {
     // BARQ013's route set has to come from the scan the table was built from,
     // or the check runs against a different project than the one that ships.
-    const root = project({ "src/routes/users.$id.tsx": "export default () => null;" });
+    const root = project({
+      "src/routes/users.$id.tsx":
+        'export const Route = createFileRoute("/users/$id")({ component: () => null });',
+    });
     let reported: readonly string[] = [];
     const plugin = hooks(
       barqRouter({ types: "src/routes.gen.d.ts", onRoutes: (p) => (reported = p) }),
     );
-    plugin.configResolved({ root });
+    resolve(plugin, root);
 
     expect(reported).toEqual(["/users/$id"]);
     const written = readFileSync(join(root, "src/routes.gen.d.ts"), "utf8");
@@ -120,9 +151,12 @@ describe("the plugin", () => {
   });
 
   test("load returns null for anything else", () => {
-    const root = project({ "src/routes/index.tsx": "" });
+    const root = project({
+      "src/routes/index.tsx":
+        'export const Route = createFileRoute("/")({ component: () => null });',
+    });
     const plugin = hooks(barqRouter({ types: false }));
-    plugin.configResolved({ root });
+    resolve(plugin, root);
     expect(plugin.load.call({ addWatchFile: () => {} }, "some-other-id")).toBeNull();
   });
 });
@@ -142,7 +176,10 @@ describe("the generated .d.ts resolves", () => {
     // TypeScript, so it resolved to `any` and every generated type became
     // permissive — caught because the `@ts-expect-error` directives in the
     // check file went UNUSED rather than because anything failed.
-    const root = project({ "src/routes/users.$id.tsx": "export const Component = () => null;" });
+    const root = project({
+      "src/routes/users.$id.tsx":
+        'export const Route = createFileRoute("/users/$id")({ component: () => null });',
+    });
     expect(routeTree(root, "src/routes", "src").types).toContain(
       'import("../src/routes/users.$id.tsx")',
     );
@@ -152,7 +189,10 @@ describe("the generated .d.ts resolves", () => {
   });
 
   test("the plugin derives it from where it writes", () => {
-    const root = project({ "src/routes/index.tsx": "export const Component = () => null;" });
+    const root = project({
+      "src/routes/index.tsx":
+        'export const Route = createFileRoute("/")({ component: () => null });',
+    });
     const plugin = barqRouter({ types: "src/generated/routes.d.ts" });
     hooks(plugin).configResolved({ root });
     const written = readFileSync(join(root, "src/generated/routes.d.ts"), "utf8");
@@ -273,14 +313,17 @@ console.log(routes.length);
  * `lazy()` and both `ssr` and `prerender` are wanted before it loads. So a
  * file-based route could not say either one, which is the gap gap-5's
  * "per-route render mode" fell into.
+ *
+ * Both are properties of the route's OPTIONS now. A top-level `export const ssr`
+ * is no longer a second way to say it — it is reported, so a half-migrated file
+ * is loud rather than silently server-rendered.
  */
 describe("a route's own declarations", () => {
   test("a literal `ssr` and `prerender` reach the emitted table", () => {
     const root = project({
-      "src/routes/index.tsx": "export default function Home() { return null }\n",
+      "src/routes/index.tsx": 'export const Route = createFileRoute("/")({ component: Home });',
       "src/routes/about.tsx":
-        'export const ssr = "data-only";\nexport const prerender = true;\n' +
-        "export default function About() { return null }\n",
+        'export const Route = createFileRoute("/about")({ ssr: "data-only", prerender: true });',
     });
     const tree = routeTree(root, "src/routes", "");
     const about = tree.module.split("\n").find((line) => line.includes('"/about"')) ?? "";
@@ -297,8 +340,7 @@ describe("a route's own declarations", () => {
   test("a declaration that is not a literal is REPORTED, not guessed at", () => {
     const root = project({
       "src/routes/feed.tsx":
-        "export const prerender = shouldPrerender();\n" +
-        "export default function Feed() { return null }\n",
+        'export const Route = createFileRoute("/feed")({ prerender: shouldPrerender() });',
     });
     const tree = routeTree(root, "src/routes", "");
     const feed = tree.module.split("\n").find((line) => line.includes('"/feed"')) ?? "";
@@ -306,5 +348,59 @@ describe("a route's own declarations", () => {
     expect(tree.warnings).toHaveLength(1);
     expect(tree.warnings[0]).toContain("feed.tsx");
     expect(tree.warnings[0]).toContain("not a literal");
+  });
+
+  /**
+   * The OLD spelling is reported rather than honoured.
+   *
+   * A file that kept `export const ssr = false` through the migration would
+   * otherwise lose it silently and be server-rendered — the exact failure this
+   * channel exists to prevent.
+   */
+  test("a top-level `export const ssr` is reported, not read", () => {
+    const root = project({
+      "src/routes/admin.tsx":
+        "export const ssr = false;\n" +
+        'export const Route = createFileRoute("/admin")({ component: Admin });',
+    });
+    const tree = routeTree(root, "src/routes", "");
+    const admin = tree.module.split("\n").find((line) => line.includes('"/admin"')) ?? "";
+    expect(admin).not.toContain("ssr:");
+    expect(tree.warnings).toHaveLength(1);
+    expect(tree.warnings[0]).toContain("`export const ssr` is no longer read");
+  });
+
+  /**
+   * The id literal is GENERATOR-OWNED: it is derived from the filename, so a
+   * rename makes it wrong. Serving rewrites it in place; building refuses.
+   */
+  test("an id that disagrees with the filename is rewritten when serving", () => {
+    const root = project({
+      "src/routes/posts.$id.tsx":
+        'export const Route = createFileRoute("/posts/$postId")({ component: Post });',
+    });
+
+    const stale = routeTree(root, "src/routes", "");
+    expect(stale.rewritten).toEqual([]);
+    expect(stale.mismatches).toEqual([
+      { file: "src/routes/posts.$id.tsx", declared: "/posts/$postId", expected: "/posts/$id" },
+    ]);
+
+    const rewritten = routeTree(root, "src/routes", "", true);
+    expect(rewritten.rewritten).toEqual(["src/routes/posts.$id.tsx"]);
+    expect(rewritten.mismatches).toEqual([]);
+    // A byte splice on the parsed span: the literal changes and nothing else.
+    expect(readFileSync(join(root, "src/routes/posts.$id.tsx"), "utf8")).toBe(
+      'export const Route = createFileRoute("/posts/$id")({ component: Post });',
+    );
+  });
+
+  test("a build refuses an id it will not rewrite", () => {
+    const root = project({
+      "src/routes/posts.$id.tsx":
+        'export const Route = createFileRoute("/posts/$postId")({ component: Post });',
+    });
+    const plugin = hooks(barqRouter({ types: false }));
+    expect(() => resolve(plugin, root, "build")).toThrow(/disagree with the id their filename/);
   });
 });

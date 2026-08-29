@@ -129,9 +129,11 @@ export default defineConfig({
     barqStart({
       compiler: {
         hydratable: true,
-        get routes() {
-          return [...fileRoutes, ...NESTED_DEMO_ROUTES];
-        },
+        // A thunk, not a value: `onRoutes` fires in `configResolved` and this
+        // is read per transform, and every layer between spreads its options —
+        // so an array here is snapshotted while it is still empty and BARQ013
+        // reports every link in the project as matching no route.
+        routes: () => [...fileRoutes, ...NESTED_DEMO_ROUTES],
       },
       prerender: {
         // `/` seeds it; `/about` is found by crawling the layout's own nav.

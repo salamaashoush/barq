@@ -82,10 +82,21 @@ export interface RouteTree {
    * whole generator exists to avoid.
    */
   readonly warnings: string[];
+  /**
+   * Route files whose `createFileRoute` id literal disagrees with the id their
+   * FILENAME derives, and that were not rewritten.
+   *
+   * The literal is generator-owned, so a rename makes it wrong. Dev rewrites it
+   * in place; a build refuses, because CI must not pass on a file the build
+   * silently edited.
+   */
+  readonly mismatches: { file: string; declared: string; expected: string }[];
+  /** Route files whose id literal was rewritten on disk. */
+  readonly rewritten: string[];
 }
 
 interface Native {
-  routeTree(root: string, dir: string, typesDir?: string): RouteTree;
+  routeTree(root: string, dir: string, typesDir?: string, writeIds?: boolean): RouteTree;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
@@ -97,9 +108,14 @@ const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
  * not cosmetic: the type references the generator emits are relative to that
  * file, because a root-absolute `typeof import("/src/...")` is the FILESYSTEM
  * root to TypeScript and silently resolves to `any`.
+ *
+ * `writeIds` lets the generator OWN the `createFileRoute` path literal and
+ * rewrite it in the source file when a rename makes it wrong — which is what
+ * their plugin does (`router-generator/src/transform/transform.ts:133-140`).
+ * Off by default, so nothing writes to a project unless a dev server asked.
  */
-export function routeTree(root: string, dir: string, typesDir = ""): RouteTree {
-  return native.routeTree(root, dir, typesDir);
+export function routeTree(root: string, dir: string, typesDir = "", writeIds = false): RouteTree {
+  return native.routeTree(root, dir, typesDir, writeIds);
 }
 
 /**
@@ -182,13 +198,40 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     patterns: [],
     entries: [],
     warnings: [],
+    mismatches: [],
+    rewritten: [],
   };
 
   const typesFile = options.types === false ? null : (options.types ?? "src/routes.gen.d.ts");
 
+  /**
+   * Serving rewrites the id literal; building refuses to.
+   *
+   * A build that edits checked-out source surprises CI and can dirty a release
+   * commit, so the disagreement is an error there instead — the fix is to run
+   * the dev server once, or to correct the literal by hand.
+   */
+  let writeIds = false;
+
   const rescan = (warn?: (message: string) => void): void => {
-    tree = routeTree(root, routesDir, typesFile === null ? "" : dirname(typesFile));
+    tree = routeTree(root, routesDir, typesFile === null ? "" : dirname(typesFile), writeIds);
     for (const warning of tree.warnings ?? []) warn?.(`[barq-router] ${warning}`);
+    for (const file of tree.rewritten ?? []) {
+      warn?.(`[barq-router] ${file}: rewrote its route id to match the filename`);
+    }
+    // A BUILD refuses rather than warns. The id is what the route table, the
+    // loader cache and the route-action manifest all key by, so shipping a
+    // literal that disagrees with the tree is shipping two names for one route.
+    if ((tree.mismatches ?? []).length > 0) {
+      throw new Error(
+        `[barq-router] a route id literal is generated and these disagree with the id their ` +
+          `filename derives:\n` +
+          tree.mismatches
+            .map(({ file, declared, expected }) => `  ${file}: "${declared}" -> "${expected}"`)
+            .join("\n") +
+          `\nRun the dev server once to rewrite them, or correct them by hand.`,
+      );
+    }
     options.onRoutes?.(tree.patterns);
     if (typesFile === null) return;
     try {
@@ -285,6 +328,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     configResolved(config) {
       root = config.root;
       base = config.base ?? "/";
+      writeIds = config.command === "serve";
       rescan((message) => config.logger.warn(message));
     },
 

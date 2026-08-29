@@ -102,15 +102,27 @@ export {
   type PreloadStrategy,
   type RedirectProps,
   type RouterProps,
+  type RouteMatchInfo,
   Link,
   NavLink,
+  Outlet,
   Redirect,
   Router,
   RouterContext,
   RouterProvider,
   renderDepth,
+  useRouteMatch,
   useRouter,
 } from "./components.ts";
+
+export {
+  type FileRoute,
+  type RootRouteOptions,
+  ROOT_ROUTE_ID,
+  createFileRoute,
+  createRootRoute,
+  createRootRouteWithContext,
+} from "./file-route.ts";
 export { type HeadAssets, HeadContent, Scripts, useHeadAssets } from "./components.ts";
 
 export { type RouterDevtoolsProps, RouterDevtools } from "./devtools.ts";

@@ -12,6 +12,7 @@ pub mod lower;
 pub mod options;
 pub mod ownership;
 pub mod passes;
+pub mod route_source;
 pub mod routes;
 pub mod scope;
 pub mod tables;
@@ -236,6 +237,27 @@ pub struct RouteTreeResult {
     /// Declarations a route made that are present but not literals. The caller
     /// reports these; the table cannot carry them and will not guess.
     pub warnings: Vec<String>,
+    /// Route files whose `createFileRoute` id literal disagrees with the id
+    /// their FILENAME derives, and that were not rewritten. Empty when
+    /// `writeIds` asked for the rewrite and it succeeded.
+    pub mismatches: Vec<RouteIdMismatch>,
+    /// Route files whose id literal was rewritten on disk this call.
+    pub rewritten: Vec<String>,
+}
+
+/// A route file whose id literal is out of date.
+///
+/// The literal is generator-owned: it is derived from the filename, so a rename
+/// makes it wrong and hand-maintaining it is the chore `createFileRoute` exists
+/// to remove.
+#[napi(object)]
+pub struct RouteIdMismatch {
+    /// Project-relative source path.
+    pub file: String,
+    /// What the file says.
+    pub declared: String,
+    /// What its name derives.
+    pub expected: String,
 }
 
 /// Scan a directory of route files and emit the table and its types.
@@ -243,13 +265,51 @@ pub struct RouteTreeResult {
 /// The whole of file-based routing, in one call. The plugin asks and
 /// invalidates; it does not read the directory, derive a route from a filename,
 /// or build a string — so a route table cannot mean two things.
+///
+/// `write_ids` is the one thing here that TOUCHES the project: a route's id
+/// literal is generator-owned, so a rename makes it wrong, and dev rewrites it
+/// in place the way their plugin does (`transform.ts:133-140`). A BUILD does
+/// not — it reports the disagreement instead, so CI cannot pass on a file the
+/// build silently edited.
 #[napi]
-pub fn route_tree(root: String, dir: String, types_dir: Option<String>) -> RouteTreeResult {
-    let files = routes::scan(std::path::Path::new(&root), &dir);
-    let warnings = routes::refusals(&files);
+pub fn route_tree(
+    root: String,
+    dir: String,
+    types_dir: Option<String>,
+    write_ids: Option<bool>,
+) -> RouteTreeResult {
+    let root_path = std::path::Path::new(&root);
+    let mut files = routes::scan(root_path, &dir);
+    let mut warnings = routes::refusals(&files);
+    let mut rewritten = Vec::new();
+    let mut mismatches = routes::id_mismatches(&files);
+
+    if write_ids.unwrap_or(false) && !mismatches.is_empty() {
+        for file in &files {
+            match routes::write_id(root_path, file) {
+                Ok(true) => rewritten.push(file.file.clone()),
+                Ok(false) => {}
+                Err(error) => warnings
+                    .push(format!("{}: could not rewrite the route id — {error}", file.file)),
+            }
+        }
+        // Re-read, so what the table carries is what is now on disk.
+        files = routes::scan(root_path, &dir);
+        mismatches = routes::id_mismatches(&files);
+    }
+
     let tree = routes::build_tree(&files);
     RouteTreeResult {
         warnings,
+        rewritten,
+        mismatches: mismatches
+            .into_iter()
+            .map(|mismatch| RouteIdMismatch {
+                file: mismatch.file,
+                declared: mismatch.declared,
+                expected: mismatch.expected,
+            })
+            .collect(),
         module: routes::generate_module(&tree),
         types: routes::generate_types(&tree, types_dir.as_deref().unwrap_or("")),
         files: files.into_iter().map(|file| file.file).collect(),

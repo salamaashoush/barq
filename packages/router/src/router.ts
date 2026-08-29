@@ -1003,7 +1003,7 @@ export function createRouter(config: RouterConfig): RouterState {
     const candidate = matcher.match(pathPart === "" ? untrack(location).pathname : pathPart);
     const middlewares: SearchMiddleware[] = [];
     for (const route of candidate?.route.chain ?? []) {
-      for (const step of route.definition.searchMiddlewares ?? []) middlewares.push(step);
+      for (const step of route.definition.search?.middlewares ?? []) middlewares.push(step);
     }
     if (middlewares.length === 0) return to;
 

@@ -30,7 +30,7 @@ import {
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
-import { HYDRATE, type Scope, cell, getOwner, provide } from "@barqjs/core";
+import { HYDRATE, type Block, type Scope, cell, getOwner, provide } from "@barqjs/core";
 import { encodeSeed } from "@barqjs/server/codec";
 import { isbot } from "isbot";
 
@@ -60,6 +60,7 @@ import {
   type HeadAssets,
   HeadAssetsContext,
   LinkBackendContext,
+  RouteMatchContext,
   RouterContext,
   routePropsFor,
 } from "./components.ts";
@@ -158,7 +159,17 @@ export function renderRoutes(state: RouterState): unknown {
 
     const children = ((): unknown => at(depth + 1)) as never;
     const component = route.definition.component;
-    const pending = route.definition.pending;
+    const pendingComponent = route.definition.pendingComponent;
+    // The same match the DOM path provides, so `<Outlet />` and the route-scoped
+    // hooks work in a component that is rendered on BOTH sides — which is every
+    // component. Without it a layout using `<Outlet />` rendered its own markup
+    // and then nothing.
+    const inMatch = (fallback: Block<unknown>, body: (inner: Scope | null) => unknown): unknown => {
+      const owner = getOwner();
+      const match = { state, depth, route, children: fallback, blocking: true };
+      if (owner === null) return body(null);
+      return provide(owner, RouteMatchContext, cell(match), body);
+    };
     const content = (): unknown => {
       // As on the DOM path: a refused validator throws inside this depth's
       // error boundary rather than out of the render.
@@ -167,22 +178,25 @@ export function renderRoutes(state: RouterState): unknown {
       // `ssr: false` and `"data-only"` both mean the COMPONENT does not render
       // here. The difference is upstream: `"data-only"` still ran its loader,
       // so its value is seeded and the client's first read consumes it rather
-      // than refetching. What goes on the wire is this depth's `pending`
+      // than refetching. What goes on the wire is this depth's `pendingComponent`
       // fallback, which is what the client will replace.
       if (modes[depth] !== true) {
-        return pending === undefined
-          ? ssrHtml("")
-          : (pending as unknown as Invoked)(
-              getOwner(),
-              routePropsFor(state, depth, route, () => ssrHtml(""), true),
-            );
+        if (pendingComponent === undefined) return ssrHtml("");
+        const empty = (() => ssrHtml("")) as unknown as Block<unknown>;
+        return inMatch(empty, (inner) =>
+          (pendingComponent as unknown as Invoked)(
+            inner,
+            routePropsFor(state, depth, route, empty, true),
+          ),
+        );
       }
-      return component === undefined
-        ? at(depth + 1)
-        : (component as unknown as Invoked)(
-            getOwner(),
-            routePropsFor(state, depth, route, children, true),
-          );
+      if (component === undefined) return at(depth + 1);
+      return inMatch(children, (inner) =>
+        (component as unknown as Invoked)(
+          inner,
+          routePropsFor(state, depth, route, children, true),
+        ),
+      );
     };
 
     // An error boundary INSIDE the loading one, and the nesting is the whole
@@ -205,13 +219,16 @@ export function renderRoutes(state: RouterState): unknown {
     return ssrLoading(
       getOwner(),
       {
-        fallback: () =>
-          pending === undefined
-            ? ssrHtml("")
-            : (pending as unknown as Invoked)(
-                getOwner(),
-                routePropsFor(state, depth, route, () => ssrHtml(""), true),
-              ),
+        fallback: () => {
+          if (pendingComponent === undefined) return ssrHtml("");
+          const empty = (() => ssrHtml("")) as unknown as Block<unknown>;
+          return inMatch(empty, (inner) =>
+            (pendingComponent as unknown as Invoked)(
+              inner,
+              routePropsFor(state, depth, route, empty, true),
+            ),
+          );
+        },
         children: () =>
           ssrErrored(
             getOwner(),
@@ -990,6 +1007,23 @@ function shellStream(
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let first = true;
+  // Everything from `</body>` onward, HELD until the stream is finished.
+  //
+  // The shell is one chunk and it is a whole document, so piping it straight
+  // through put every `<template>`, every swap script and every seed AFTER
+  // `</html>`. Browsers reparent that into the body and it renders, which is why
+  // it survived — but it is not a document, and it is the one thing `wrapStream`
+  // has always got right for the `document()` path: it splits at its body marker
+  // and emits the tail last. This is the same rule for the JSX shell.
+  //
+  // TanStack does it too, and says why:
+  // `router-core/src/ssr/transformStreamWithRouter.ts` — "captured bytes from
+  // `</body>` onward; must stay behind router scripts", and "router HTML would
+  // put scripts after `</body>` or drop them silently".
+  //
+  // Not a growing buffer: what is held is a SUFFIX of the shell — `</body></html>`
+  // and whatever the shell put between them — captured once and never appended to.
+  let tail = "";
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = stream.getReader();
@@ -999,14 +1033,19 @@ function shellStream(
           if (finished) break;
           if (first) {
             first = false;
-            const head = DOCTYPE + new TextDecoder().decode(value);
-            controller.enqueue(
-              encoder.encode(
-                options.transformShell === undefined
-                  ? head
-                  : await options.transformShell(head, url),
-              ),
-            );
+            let head = DOCTYPE + new TextDecoder().decode(value);
+            if (options.transformShell !== undefined) {
+              head = await options.transformShell(head, url);
+            }
+            // The LAST one: a `</body>` inside the page's own text is escaped,
+            // but a shell is free to contain more than one element that ends in
+            // one, and the document's is the final.
+            const cut = head.lastIndexOf("</body>");
+            if (cut !== -1) {
+              tail = head.slice(cut);
+              head = head.slice(0, cut);
+            }
+            controller.enqueue(encoder.encode(head));
             continue;
           }
           controller.enqueue(value);
@@ -1016,6 +1055,7 @@ function shellStream(
       }
       const late = redirectScript(answer());
       if (late !== "") controller.enqueue(encoder.encode(late));
+      if (tail !== "") controller.enqueue(encoder.encode(tail));
       controller.close();
       done();
     },

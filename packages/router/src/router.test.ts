@@ -204,7 +204,7 @@ describe("loaders", () => {
             await tick();
             return `user ${params.id}`;
           },
-          pending: page("loading"),
+          pendingComponent: page("loading"),
           // The COMPILED shape. A component body runs untracked (CODESIGN
           // §3.9), so a bare `props.data()` in the body would read the pending
           // value, throw `NotReadyError` with nothing subscribed, and never
@@ -247,7 +247,7 @@ describe("loaders", () => {
             await tick();
             return `page ${page_}`;
           },
-          pending: page("loading"),
+          pendingComponent: page("loading"),
           component: (scope: Scope | null, props: RouteProps) => {
             const node = document.createElement("span");
             insert(scope, node, () => String(props.data()));
@@ -299,7 +299,7 @@ describe("loaders", () => {
             await tick();
             return "once";
           },
-          pending: page("loading"),
+          pendingComponent: page("loading"),
           component: (scope: Scope | null, props: RouteProps) => {
             const node = document.createElement("span");
             insert(scope, node, () => String(props.data()));
@@ -368,7 +368,7 @@ describe("loaderDeps and the reload policy", () => {
             await tick();
             return `page ${deps.page}`;
           },
-          pending: page("loading"),
+          pendingComponent: page("loading"),
           component: span,
         },
       ] as never,
@@ -414,7 +414,7 @@ describe("loaderDeps and the reload policy", () => {
               await tick();
               return "a";
             },
-            pending: page("l"),
+            pendingComponent: page("l"),
             component: span,
           },
           {
@@ -423,7 +423,7 @@ describe("loaderDeps and the reload policy", () => {
               await tick();
               return "b";
             },
-            pending: page("l"),
+            pendingComponent: page("l"),
             component: span,
           },
         ] as never,
@@ -461,7 +461,7 @@ describe("loaderDeps and the reload policy", () => {
               await tick();
               return "x";
             },
-            pending: page("l"),
+            pendingComponent: page("l"),
             component: span,
           },
           { path: "/y", component: span },
@@ -503,7 +503,7 @@ describe("loaderDeps and the reload policy", () => {
             await tick();
             return "x";
           },
-          pending: page("l"),
+          pendingComponent: page("l"),
           component: span,
         },
         { path: "/y", component: span },
@@ -536,7 +536,7 @@ describe("loaderDeps and the reload policy", () => {
             await tick();
             return `v${mine}`;
           },
-          pending: page("SKELETON"),
+          pendingComponent: page("SKELETON"),
           component: span,
         },
         { path: "/q", component: span },
@@ -575,7 +575,7 @@ describe("loaderDeps and the reload policy", () => {
             await tick();
             return `v${mine}`;
           },
-          pending: page("SKELETON"),
+          pendingComponent: page("SKELETON"),
           component: span,
         },
         { path: "/q", component: span },
@@ -614,7 +614,7 @@ describe("loaderDeps and the reload policy", () => {
             if (n > 1) throw new Error("reload failed");
             return "good";
           },
-          pending: page("SKELETON"),
+          pendingComponent: page("SKELETON"),
           errorComponent: (scope: Scope | null) => {
             const node = document.createElement("b");
             insert(scope, node, () => "ERROR");
@@ -671,7 +671,7 @@ describe("loaderDeps and the reload policy", () => {
             await tick();
             return "L";
           },
-          pending: page("l"),
+          pendingComponent: page("l"),
           component: layout,
           children: [
             {
@@ -681,7 +681,7 @@ describe("loaderDeps and the reload policy", () => {
                 await tick();
                 return "F";
               },
-              pending: page("l"),
+              pendingComponent: page("l"),
               component: span,
             },
           ],
@@ -714,7 +714,7 @@ describe("loaderDeps and the reload policy", () => {
             await tick();
             return `v${mine}`;
           },
-          pending: page("l"),
+          pendingComponent: page("l"),
           component: span,
         },
       ] as never,
@@ -839,18 +839,18 @@ describe("validateSearch", () => {
     dispose();
   });
 
-  test("searchMiddlewares run when a location is BUILT, not on the way in", async () => {
+  test("search.middlewares run when a location is BUILT, not on the way in", async () => {
     const history = memoryHistory({ initial: ["/a?theme=dark"] });
     const state = createRouter({
       routes: [
         {
           path: "/a",
-          searchMiddlewares: [retainSearchParams(["theme"])],
+          search: { middlewares: [retainSearchParams(["theme"])] },
           component: page("a"),
         },
         {
           path: "/b",
-          searchMiddlewares: [retainSearchParams(["theme"])],
+          search: { middlewares: [retainSearchParams(["theme"])] },
           component: page("b"),
         },
       ] as never,
@@ -983,7 +983,7 @@ describe("beforeLoad and route context", () => {
             await tick();
             return "d";
           },
-          pending: page("l"),
+          pendingComponent: page("l"),
           component: span,
         },
       ] as never,
@@ -1222,7 +1222,7 @@ describe("beforeLoad and route context", () => {
                 await tick();
                 return "ok";
               },
-              pending: page("l"),
+              pendingComponent: page("l"),
               component: (scope: Scope | null, props: RouteProps) => {
                 const node = document.createElement("b");
                 insert(scope, node, () => String(props.data()));
@@ -1258,7 +1258,7 @@ describe("errorComponent on the DOM backend", () => {
             await tick();
             throw new Error("loader said no");
           },
-          pending: page("loading"),
+          pendingComponent: page("loading"),
           errorComponent: (scope: Scope | null, props: { error: () => Error }) => {
             const node = document.createElement("p");
             insert(scope, node, () => props.error().message);
@@ -1291,7 +1291,7 @@ describe("errorComponent on the DOM backend", () => {
             await tick();
             notFound("no row 7");
           },
-          pending: page("loading"),
+          pendingComponent: page("loading"),
           errorComponent: (scope: Scope | null) => {
             const node = document.createElement("p");
             insert(scope, node, () => "generic");
@@ -1504,7 +1504,7 @@ describe("Link preload", () => {
           await tick();
           return `user ${params.id}`;
         },
-        pending: page("l"),
+        pendingComponent: page("l"),
         component: page("user"),
       },
       {
@@ -1514,7 +1514,7 @@ describe("Link preload", () => {
           await tick();
           return "list";
         },
-        pending: page("l"),
+        pendingComponent: page("l"),
         component: page("list"),
       },
     ] as never;
@@ -1964,7 +1964,7 @@ describe("the smaller surface", () => {
             await tick();
             return "data";
           },
-          pending: page("SKELETON"),
+          pendingComponent: page("SKELETON"),
           component: (scope: Scope | null, props: RouteProps) => {
             const node = document.createElement("span");
             insert(scope, node, () => String(props.data()));
@@ -1999,7 +1999,7 @@ describe("the smaller surface", () => {
             await new Promise((resolve) => setTimeout(resolve, 60));
             return "data";
           },
-          pending: page("SKELETON"),
+          pendingComponent: page("SKELETON"),
           component: (scope: Scope | null, props: RouteProps) => {
             const node = document.createElement("span");
             insert(scope, node, () => String(props.data()));
@@ -2036,7 +2036,7 @@ describe("the smaller surface", () => {
             await new Promise((resolve) => setTimeout(resolve, 15));
             return "data";
           },
-          pending: page("SKELETON"),
+          pendingComponent: page("SKELETON"),
           component: (scope: Scope | null, props: RouteProps) => {
             const node = document.createElement("span");
             insert(scope, node, () => String(props.data()));

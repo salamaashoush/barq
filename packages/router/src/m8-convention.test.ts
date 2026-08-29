@@ -155,11 +155,24 @@ describe("the nine workarounds are deletions", () => {
   });
 
   // #7 — `OutletLevelContext` depth threading, written at three sites and read
-  // at two. Replaced by: slot parameters — `children` is a Block taking a scope.
-  test("7. there is no outlet and no depth context", () => {
+  // at two. The workaround this row killed was DEPTH THREADING: three writes and
+  // two reads of a level counter, so a component had to be told where it sat.
+  //
+  // `<Outlet />` came BACK, deliberately, when the route surface moved to
+  // TanStack's — theirs is `<Outlet />` and route components take no props
+  // (`examples/react/start-basic/src/routes/posts.tsx:24`). What did not come
+  // back is the thing this row was about: there is still no depth context and
+  // nothing threads a level. `Outlet` places the SAME Block `children` always
+  // was, so the next route is still CONSTRUCTED inside the layout's scope and a
+  // provider the layout installed still wraps it.
+  test("7. there is no depth threading, and Outlet places a Block", () => {
     expect(nowhere(/OutletLevelContext/)).toEqual([]);
-    expect(INDEX).not.toMatch(/^\s*Outlet,$/m);
-    expect(ROUTER).toContain("children: block(");
+    expect(ROUTER).toContain("children = block(");
+    // The outlet returns the Block invoked with the scope it sits in — not a
+    // pre-built tree, which is the version that could not carry the layout's
+    // providers. The trailing cast is type-level and says nothing about which
+    // of those two this is, so the pin is on the CALL.
+    expect(ROUTER).toContain("return match.children(scope)");
   });
 
   // #8 — `return computed(…) as unknown as JSXElement` in `Loading`. Replaced by:
@@ -313,7 +326,13 @@ describe("the convention, from the other side", () => {
   // going red. `router.test.tsx` now declares props-taking route components at
   // module scope and asserts what they render.
   test("the invocation half passes the scope and the props as Cells", () => {
-    expect(ROUTER).toContain("(component as unknown as Invoked)(contentScope,");
+    // `withMatch(contentScope, …)` now wraps the call, because a route component
+    // takes NO props since the move to TanStack's surface — `Route.useLoaderData()`
+    // and `<Outlet />` read the match from a context instead. The scope is still
+    // threaded through, which is what this row is actually about: the inner scope
+    // the provide hands back is what the component is invoked with.
+    expect(ROUTER).toMatch(/withMatch\(\s*contentScope,/);
+    expect(ROUTER).toContain("(component as unknown as Invoked)(inner,");
     expect(ROUTER).toContain("(fallback as unknown as Invoked)(instance,");
     // …and the suite drives a props-taking route component rather than a
     // zero-arity fixture, which is what made the old invocation half invisible.
@@ -377,6 +396,7 @@ describe("the convention, from the other side", () => {
       "components.ts": "router.test.ts",
       "devtools.ts": "devtools.test.ts",
       "errors.ts": "server.test.ts",
+      "file-route.ts": "file-route.test.ts",
       "history.ts": "history.test.ts",
       "head.ts": "head.test.ts",
       "hooks.ts": "router.test.ts",

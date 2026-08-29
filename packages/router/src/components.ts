@@ -17,7 +17,6 @@
 
 import {
   type Block,
-  type Child,
   type JSXElement,
   type Cell,
   type Scope,
@@ -258,9 +257,9 @@ export function renderDepth(
     const component = route.definition.component;
     // UNTRACKED, per CODESIGN §3.9: "component bodies running untracked" is one
     // of the two structural exits from reactivity. A body that reads
-    // `props.params()` directly would otherwise subscribe the enclosing block
-    // and rebuild the whole route on a parameter change — measured: two builds
-    // for one navigation within the same route.
+    // `useParams()` directly would otherwise subscribe the enclosing block and
+    // rebuild the whole route on a parameter change — measured: two builds for
+    // one navigation within the same route.
     const content = (contentScope: Scope | null): unknown => {
       // TRACKED, and outside the `untrack` below on purpose. A code-split route
       // is a `lazy()`, and reading its cell inside `untrack` subscribes to
@@ -274,9 +273,16 @@ export function renderDepth(
         // `errorComponent` rather than taking the whole page down.
         const refused = state.searchErrorAt(depth);
         if (refused !== null) throw refused;
-        return component === undefined
-          ? renderDepth(contentScope, state, depth + 1, null, null)
-          : (component as unknown as Invoked)(contentScope, routeProps(state, depth, route));
+        if (component === undefined) return renderDepth(contentScope, state, depth + 1, null, null);
+        const children = block((childScope: Scope | null) =>
+          renderDepth(childScope, state, depth + 1, null, null),
+        );
+        return withMatch(
+          contentScope,
+          { state, depth, route, children, blocking: false },
+          (inner) =>
+            (component as unknown as Invoked)(inner, routeProps(state, depth, route, children)),
+        );
       });
     };
 
@@ -345,7 +351,7 @@ export function renderDepth(
  * only the thing that renders the fallback knows that moment.
  */
 function routeFallback(state: RouterState, route: Route): Block<unknown> | null {
-  const pending = route.definition.pending;
+  const pending = route.definition.pendingComponent;
   if (pending === undefined) return null;
   const delay = route.definition.pendingMs ?? 0;
 
@@ -418,19 +424,84 @@ export function routePropsFor(
   ]) as unknown as RouteProps;
 }
 
-function routeProps(state: RouterState, depth: number, route: Route | null): RouteProps {
-  return sources([
-    {
-      params: () => state.params(),
-      data: () => (route === null ? undefined : state.dataFor(route, state.params())()),
-      context: () => state.contexts()[depth] ?? {},
-      // A Block, which is what `RouteProps.children` documents itself as
-      // carrying even though it is typed `Child` so `{props.children}` compiles.
-      children: block((childScope: Scope | null) =>
-        renderDepth(childScope, state, depth + 1, null, null),
-      ) as unknown as Child,
-    },
-  ]) as unknown as RouteProps;
+function routeProps(
+  state: RouterState,
+  depth: number,
+  route: Route | null,
+  children: Block<unknown>,
+): RouteProps {
+  return routePropsFor(state, depth, route, children);
+}
+
+/**
+ * The MATCH a component is rendering for, so `<Outlet />` and the route-scoped
+ * hooks can find it without being handed props.
+ *
+ * TanStack's route components take no props at all — data comes from
+ * `Route.useLoaderData()` and the next depth from `<Outlet />`. Both need to know
+ * which depth is being rendered, and a context is the only channel that survives
+ * an arbitrarily deep component tree between the route and the `<Outlet />` that
+ * places its child.
+ */
+export interface RouteMatchInfo {
+  readonly state: RouterState;
+  readonly depth: number;
+  readonly route: Route | null;
+  /** The next depth down, as a Block, so it is CONSTRUCTED where `<Outlet />` sits. */
+  readonly children: Block<unknown>;
+  /** The string backend reads a loader BLOCKING — see `RouterState.dataFor`. */
+  readonly blocking: boolean;
+}
+
+export const RouteMatchContext = context<RouteMatchInfo | null>(null, "barq-router-match");
+
+/**
+ * Run `body` with `match` ambient.
+ *
+ * A null scope means there is nothing to provide ON, which is the case the two
+ * backends reach differently — the DOM path can be handed `null` by a caller
+ * that is not in a scope, and the string path asks `getOwner()`. Neither can
+ * install a context there, and a hook called under one throws `NoOwnerError`
+ * with its own message, which is a better failure than a silently absent match.
+ */
+function withMatch(
+  scope: Scope | null,
+  match: RouteMatchInfo,
+  body: (inner: Scope | null) => unknown,
+): unknown {
+  if (scope === null) return body(null);
+  return provide(scope, RouteMatchContext, cell(match), body);
+}
+
+/**
+ * The match a route-scoped hook is asking about.
+ *
+ * `null` outside a route component — `<Outlet />` answers nothing there and the
+ * hooks say so by name rather than by returning `undefined`.
+ */
+export function useRouteMatch(): RouteMatchInfo | null {
+  return read(RouteMatchContext)();
+}
+
+/**
+ * TanStack's `<Outlet />`: the next matched route, rendered HERE.
+ *
+ * barq's is a Block invoked with the scope `<Outlet />` itself sits in, so the
+ * child is still CONSTRUCTED inside the layout — a provider or a boundary the
+ * layout installed is visible to the route it wraps. That is the property the
+ * old `props.children` had and the reason this file used to say an outlet could
+ * not have it; it can, as long as the outlet places a Block rather than a
+ * pre-built tree.
+ */
+// The props parameter is never read. It is declared because the calling
+// convention is `(scope, props)` and JSX reads the FIRST parameter of a
+// one-argument component as its props — so without it `<Outlet />` type-checks
+// its (absent) attributes against `Scope`. `route.ts` records the same asymmetry
+// for authored components, which C1 rewrites into this shape.
+export function Outlet(scope: Scope | null, _props?: Record<string, never>): JSXElement {
+  const match = read(RouteMatchContext)();
+  if (match === null) return null;
+  return match.children(scope) as JSXElement;
 }
 
 // ---------------------------------------------------------------- components

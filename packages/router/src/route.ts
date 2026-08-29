@@ -208,7 +208,9 @@ export interface RouteDefinition<
    * on the way in. That is TanStack's placement (`router.ts:2006`, one call
    * site) and it is the right one: an inbound URL is a fact, not an intent.
    */
-  readonly searchMiddlewares?: readonly import("./search.ts").SearchMiddleware[];
+  readonly search?: {
+    readonly middlewares?: readonly import("./search.ts").SearchMiddleware[];
+  };
   /**
    * A synchronous contribution to the route context, merged parent-to-child.
    *
@@ -253,7 +255,7 @@ export interface RouteDefinition<
     options: BeforeLoadContext<Params>,
   ) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>;
   /** Shown while this route's loader is unsettled. Without one the boundary shows nothing. */
-  readonly pending?: RouteComponent<never, never>;
+  readonly pendingComponent?: RouteComponent<never, never>;
   /**
    * Wait this long before showing `pending`. Default 0.
    *
@@ -520,7 +522,7 @@ export async function preloadMatched(chain: readonly Route[]): Promise<void> {
     const declared = matched.definition as { shellComponent?: unknown };
     for (const candidate of [
       matched.definition.component,
-      matched.definition.pending,
+      matched.definition.pendingComponent,
       declared.shellComponent,
     ]) {
       const preload = (candidate as { preload?: () => Promise<void> } | undefined)?.preload;

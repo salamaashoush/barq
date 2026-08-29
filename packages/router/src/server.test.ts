@@ -642,7 +642,7 @@ describe("ssr: boolean | 'data-only'", () => {
           await tick();
           return "LAYOUT";
         },
-        pending: () => ssrHtml("<i>layout-skeleton</i>"),
+        pendingComponent: () => ssrHtml("<i>layout-skeleton</i>"),
         component: (_s: unknown, props: { data: () => unknown; children: unknown }) =>
           ssrHtml(
             `<header>${esc(String(props.data()))}</header>${esc((props.children as () => unknown)())}`,
@@ -657,7 +657,7 @@ describe("ssr: boolean | 'data-only'", () => {
               await tick();
               return "LEAF";
             },
-            pending: () => ssrHtml("<i>leaf-skeleton</i>"),
+            pendingComponent: () => ssrHtml("<i>leaf-skeleton</i>"),
             component: (_s: unknown, props: { data: () => unknown }) =>
               ssrHtml(`<main>${esc(String(props.data()))}</main>`),
           },
@@ -1199,10 +1199,9 @@ describe("shellComponent", () => {
     // component: `renderPage` produces the seed BY rendering, so nothing
     // rendered during that render can emit it.
     //
-    // BUFFERED only. On the streamed arm the seed is flushed as each boundary
-    // settles, and a boundary that settles after the render has walked past
-    // `</body>` lands after `</html>` — the one thing TanStack's tail-holding
-    // transform does that `shellStream` does not, stated at its definition.
+    // Both arms now. The streamed one used to be the exception, because
+    // `shellStream` piped the shell straight through and every later chunk
+    // landed after `</html>`; it holds the tail from `</body>` since.
     const body = await render(table(), { stream: false });
     const seed = body.indexOf("__BARQ_EVTS__");
     expect(seed).toBeGreaterThan(-1);
@@ -1210,9 +1209,23 @@ describe("shellComponent", () => {
     expect(body.endsWith("</html>")).toBe(true);
   });
 
-  test("the streamed arm puts late scripts after `</html>`, which is the stated limit", async () => {
+  test("the streamed arm keeps every late script INSIDE the body too", async () => {
+    // INVERTED, and the row it replaces is worth naming: it asserted that late
+    // scripts land after `</html>` and called that "the stated limit". It was a
+    // defect pinned as a contract — `wrapStream` had always held the tail for the
+    // `document()` path, and TanStack holds it for the same reason
+    // (`transformStreamWithRouter.ts`: "router HTML would put scripts after
+    // `</body>` or drop them silently"). The JSX shell simply never did.
     const body = await render(table());
-    expect(body.indexOf("__BARQ_EVTS__")).toBeGreaterThan(body.indexOf("</body>"));
+    const closeBody = body.indexOf("</body>");
+    expect(closeBody).toBeGreaterThan(-1);
+    for (const marker of ["__BARQ_EVTS__", "__BARQ_SWAP__"]) {
+      const at = body.indexOf(marker);
+      if (at === -1) continue;
+      expect(at, `${marker} must land before </body>`).toBeLessThan(closeBody);
+    }
+    // …and the document still ends where a document ends.
+    expect(body.trimEnd().endsWith("</html>")).toBe(true);
   });
 
   test("a table with neither a shell nor a `document` says so", async () => {

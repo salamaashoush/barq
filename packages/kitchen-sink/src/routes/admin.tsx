@@ -11,18 +11,13 @@
  */
 
 import { Loading } from "@barqjs/core";
-import type { RouteProps } from "@barqjs/router";
+import { createFileRoute } from "@barqjs/router";
 
 import { requireSession } from "../auth.ts";
 import { type AdminStats, adminStats } from "../data/admin.ts";
 
-export const middleware = [requireSession];
-
-export const loader = async (): Promise<AdminStats> => adminStats(undefined);
-
-export const Pending = (): unknown => <p>Loading admin…</p>;
-
-export default function Admin(props: RouteProps<AdminStats | undefined>) {
+function Admin() {
+  const stats = Route.useLoaderData();
   return (
     <section>
       <h2>Admin</h2>
@@ -35,11 +30,18 @@ export default function Admin(props: RouteProps<AdminStats | undefined>) {
       <Loading fallback={<p>Loading admin…</p>}>
         <dl>
           <dt>users</dt>
-          <dd>{() => props.data()?.users ?? "—"}</dd>
+          <dd>{() => stats()?.users ?? "—"}</dd>
           <dt>sessions</dt>
-          <dd>{() => props.data()?.sessions ?? "—"}</dd>
+          <dd>{() => stats()?.sessions ?? "—"}</dd>
         </dl>
       </Loading>
     </section>
   );
 }
+
+export const Route = createFileRoute<AdminStats>("/admin")({
+  middleware: [requireSession],
+  loader: async (): Promise<AdminStats> => adminStats(undefined),
+  component: Admin,
+  pendingComponent: () => <p>Loading admin…</p>,
+});
