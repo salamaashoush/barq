@@ -119,13 +119,11 @@ export interface HeadAssets {
   readonly preload?: string;
   /** The route-context handoff, already rendered. */
   readonly context?: string;
-  /** Whatever the dev server needs in the head — `/@vite/client` and friends. */
-  readonly injected?: string;
   /**
    * How this backend turns markup into an element.
    *
    * Still needed for the parts that are opaque strings on both sides — what the
-   * dev server injected, and the `beforeLoad` handoff.
+   * `beforeLoad` handoff, which is a server-produced string on both sides.
    */
   readonly raw: (markup: string) => unknown;
   /**
@@ -154,7 +152,7 @@ export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-h
  * Placed inside `<head>` in the shell. Renders the merged `meta`, `links`,
  * `styles` and head `scripts` from every route's `head`, plus the three things
  * the framework itself puts there — the modulepreloads for the matched chunks,
- * the `beforeLoad` handoff, and whatever the dev server injected.
+ * and the `beforeLoad` handoff.
  *
  * IT LIVES HERE, in the ISOMORPHIC entry, and that is not a filing decision. A
  * shell is declared in the ROOT ROUTE MODULE, and that module ships to the
@@ -184,14 +182,11 @@ export function HeadContent(scope: Scope | null): JSXElement {
   // A backend with no tree renderer gets the string it always got. That is the
   // `document()` template's path, which is markup and has nowhere to put a tree.
   if (assets.tagTree === undefined) {
-    return assets.raw(
-      (assets.injected ?? "") + renderTags(list()) + (assets.context ?? ""),
-    ) as JSXElement;
+    return assets.raw(renderTags(list()) + (assets.context ?? "")) as JSXElement;
   }
-  // Opaque on both sides, and neither is the router's to manage: what the dev
-  // server injected, and the `beforeLoad` handoff.
+  // The handoff stays opaque on both sides — it is a server-produced string and
+  // not the router's to manage.
   return [
-    assets.raw(assets.injected ?? "") as JSXElement,
     assets.tagTree(scope, list) as JSXElement,
     assets.raw(assets.context ?? "") as JSXElement,
   ];
