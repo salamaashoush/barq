@@ -224,15 +224,46 @@ export interface PrerenderedPage {
  */
 const SHELL_END = "<!--barq-shell-end-->";
 
+/**
+ * Vite's HMR client, moved out of `<head>`.
+ *
+ * Vite injects it as the FIRST child of `<head>`, and `<head>` is rendered by
+ * `<HeadContent />` — so under document hydration it is a node the tree did not
+ * produce, and a claimed element takes its children WHOLE and reconciles those
+ * away. Measured: an unowned tag in `<head>` is DELETED on hydration with
+ * `mismatches: []` and nothing reported.
+ *
+ * A module script runs the same wherever it sits, so moving it is free. TanStack
+ * does not have the problem at all because they never let the dev server touch
+ * the HTML: their dev client entry is a manifest entry rendered by the tree
+ * (`start-manifest-plugin/plugin.ts:138-155`), and Vite's client rides in
+ * through the module graph.
+ */
+// The surrounding whitespace goes with it. Vite writes the tag on its own
+// indented line, and the text node that leaves behind is itself a child of
+// `<head>` that the tree does not produce.
+const VITE_CLIENT = /\s*<script\b[^>]*\bsrc="[^"]*@vite\/client"[^>]*>\s*<\/script>\s*/i;
+
+function moveViteClientToBody(markup: string): string {
+  const found = VITE_CLIENT.exec(markup);
+  if (found === null) return markup;
+  const tag = found[0].trim();
+  const without = markup.slice(0, found.index) + markup.slice(found.index + found[0].length);
+  const close = without.lastIndexOf("</body>");
+  return close === -1 ? without + tag : without.slice(0, close) + tag + without.slice(close);
+}
+
 async function transformShell(server: ViteDevServer, shell: string, url: URL): Promise<string> {
   const out = await server.transformIndexHtml(url.pathname + url.search, shell + SHELL_END);
   const cut = out.indexOf(SHELL_END);
-  if (cut === -1) return out;
+  if (cut === -1) return moveViteClientToBody(out);
   const head = out.slice(0, cut);
   const trailing = out.slice(cut + SHELL_END.length);
-  if (trailing.trim() === "") return head;
+  if (trailing.trim() === "") return moveViteClientToBody(head);
   const close = head.lastIndexOf("</head>");
-  return close === -1 ? trailing + head : head.slice(0, close) + trailing + head.slice(close);
+  return moveViteClientToBody(
+    close === -1 ? trailing + head : head.slice(0, close) + trailing + head.slice(close),
+  );
 }
 
 interface Discovered {
