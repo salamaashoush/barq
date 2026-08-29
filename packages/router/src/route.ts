@@ -460,6 +460,27 @@ export interface RouteServer<Params = Record<string, string>> {
    */
   readonly middleware?: readonly import("@barqjs/start").Middleware[];
   readonly handlers?: Partial<Record<RouteMethod, RouteHandler<Params>>>;
+  /**
+   * Refuse a state-changing request a BROWSER made from another origin.
+   * Default `true`.
+   *
+   * ON BY DEFAULT because the alternative was measured: before this existed, a
+   * `POST https://evil.example -> /api/health` with `Sec-Fetch-Site: cross-site`
+   * answered `201`, carrying the visitor's cookies. Every state-changing API
+   * route was a CSRF target and nothing said so.
+   *
+   * It refuses only when a signal is PRESENT and says cross-origin, never on the
+   * absence of one — because an API route exists so that something other than a
+   * browser can call it, and a Stripe webhook or a cron sends neither `Origin`
+   * nor `Sec-Fetch-Site`. A forgery is by definition made by a browser, and a
+   * browser always says. See `crossOriginRefused`.
+   *
+   * `false` for a route that genuinely serves cross-origin browser callers — a
+   * public CORS API — where the check is the application's to make instead.
+   */
+  readonly csrf?: boolean;
+  /** Origins allowed beyond the request's own, when `csrf` is on. */
+  readonly allowedOrigins?: readonly string[];
 }
 
 /**

@@ -47,6 +47,15 @@ export interface RequestContext {
   /** What the handler has asked the response to carry. */
   response: ResponseDraft;
   /**
+   * The request's cookies, parsed ONCE.
+   *
+   * `getCookie` went through `parseCookies` every call, so a middleware that
+   * reads a session, a handler that reads a preference and a loader that reads a
+   * locale re-split the same header three times. The header is immutable for the
+   * life of the request, so the parse is too.
+   */
+  cookies?: Record<string, string>;
+  /**
    * Why this request must not be read, when it must not be.
    *
    * A PRERENDER holds a `Request` a build minted, so `getRequest()` would
@@ -280,9 +289,18 @@ export function setResponseStatus(status: number, statusText?: string): void {
 // Cookies
 // ---------------------------------------------------------------------------
 
-/** Every cookie the REQUEST carried, by name. */
+/**
+ * Every cookie the REQUEST carried, by name.
+ *
+ * Parsed once and memoised on the context: the header cannot change for the life
+ * of the request, and re-splitting it per lookup made three readers three
+ * parses. The object is returned as it stands rather than copied, which is the
+ * point — copying it per call would put the allocation back.
+ */
 export function getCookies(): Record<string, string> {
-  return parseCookies(getRequest().headers.get("cookie"));
+  const found = context();
+  found.cookies ??= parseCookies(found.request.headers.get("cookie"));
+  return found.cookies;
 }
 
 export function getCookie(name: string): string | undefined {

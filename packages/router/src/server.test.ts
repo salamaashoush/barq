@@ -1829,6 +1829,102 @@ describe("a route's own HTTP handlers", () => {
     expect(response.headers.get("set-cookie")).toBe("sid=abc; Path=/");
   });
 
+  /**
+   * MEASURED BEFORE THIS EXISTED, against the built reference application:
+   *
+   *   POST /api/health, Origin: https://evil.example,
+   *                     Sec-Fetch-Site: cross-site      ->  201
+   *
+   * Every state-changing API route was a CSRF target, carrying the visitor's
+   * cookies, and nothing said so.
+   */
+  describe("cross-origin state change", () => {
+    /**
+     * The headers are INJECTED after construction, and they have to be.
+     * `Origin` and every `Sec-` name are FORBIDDEN request headers, so the
+     * `Request` constructor drops them — per the fetch spec, and happy-dom,
+     * which this suite registers, enforces it. A server receives them off the
+     * wire and never constructs them.
+     *
+     * The predicate itself is tested against REAL headers in
+     * `packages/start`, which registers no DOM. What these gate is the WIRING:
+     * that the check is called, that it is called before the handler, and that
+     * the route's own options steer it.
+     */
+    const post = (headers: Record<string, string>) => {
+      const request = new Request("http://localhost/api/users/7", { method: "POST" });
+      Object.defineProperty(request, "headers", { value: new Headers(headers) });
+      return request;
+    };
+    const handler = () => api({ handlers: { POST: () => Response.json({ done: true }) } });
+
+    test("a browser POSTing from another origin is refused, and reaches nothing", async () => {
+      let ran = false;
+      const guarded = api({
+        handlers: {
+          POST: () => {
+            ran = true;
+            return Response.json({ done: true });
+          },
+        },
+      });
+      const response = await guarded(post({ origin: "https://evil.example" }));
+      expect(response.status).toBe(403);
+      // Refusing AFTER a handler has touched a database is a refusal that still
+      // did the attacker's work.
+      expect(ran).toBe(false);
+    });
+
+    test("`Sec-Fetch-Site` alone is enough to refuse", async () => {
+      expect((await handler()(post({ "sec-fetch-site": "cross-site" }))).status).toBe(403);
+      expect((await handler()(post({ "sec-fetch-site": "same-site" }))).status).toBe(403);
+    });
+
+    test("a `null` origin is refused rather than read as absent — CVE-2026-27978", async () => {
+      // A sandboxed iframe sends the literal string.
+      expect((await handler()(post({ origin: "null" }))).status).toBe(403);
+    });
+
+    test("the application's OWN origin passes, however it says so", async () => {
+      expect((await handler()(post({ origin: "http://localhost" }))).status).toBe(200);
+      expect((await handler()(post({ "sec-fetch-site": "same-origin" }))).status).toBe(200);
+      expect((await handler()(post({ "sec-fetch-site": "none" }))).status).toBe(200);
+    });
+
+    /**
+     * THE CASE THAT MAKES THE RULE NARROW. An API route exists so something
+     * other than a browser can call it, and a Stripe webhook or a cron sends
+     * neither header. Refusing on the ABSENCE of a signal would refuse the main
+     * reason API routes exist — and a request with no signal is not a browser,
+     * so it cannot be a forgery.
+     */
+    test("a webhook with no origin signal at all is allowed", async () => {
+      expect((await handler()(post({}))).status).toBe(200);
+    });
+
+    test("a GET is never refused, because it changes nothing", async () => {
+      const read = api({ handlers: { GET: () => Response.json({ ok: true }) } });
+      const response = await read(
+        new Request("http://localhost/api/users/7", {
+          headers: { origin: "https://evil.example" },
+        }),
+      );
+      expect(response.status).toBe(200);
+    });
+
+    test("`allowedOrigins` widens it, and `csrf: false` turns it off", async () => {
+      const widened = api({
+        allowedOrigins: ["https://partner.example"],
+        handlers: { POST: () => Response.json({ ok: true }) },
+      });
+      expect((await widened(post({ origin: "https://partner.example" }))).status).toBe(200);
+      expect((await widened(post({ origin: "https://evil.example" }))).status).toBe(403);
+
+      const off = api({ csrf: false, handlers: { POST: () => Response.json({ ok: true }) } });
+      expect((await off(post({ origin: "https://evil.example" }))).status).toBe(200);
+    });
+  });
+
   test("a route with no `server` is untouched", async () => {
     const handler = api(undefined);
     const page = await send(handler, "GET");

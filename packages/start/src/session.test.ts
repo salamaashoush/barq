@@ -118,8 +118,11 @@ describe("a session round-trips through the cookie", () => {
     const first = await inRequest(async () => {
       await (await useSession<{ a: number }>(CONFIG)).update({ a: 1 });
     });
-    const before = Date.now();
+    // The SLEEP COMES FIRST. Taking the timestamp before it left no gap once
+    // the KDF became 566x faster — the seal and the comparison landed in the
+    // same millisecond and `toBeLessThan` is strict.
     await new Promise((resolve) => setTimeout(resolve, 20));
+    const before = Date.now();
     const second = await inRequest(
       async () => (await getSession<{ a: number }>(CONFIG)).createdAt,
       asRequestCookie(first.setCookie[0] ?? ""),
@@ -220,6 +223,20 @@ describe("the password is a key, not a passphrase", () => {
     await expect(
       sealSession({ password: "short" }, { id: "a", createdAt: 0, data: {} }),
     ).rejects.toThrow(/at least 32 characters/);
+  });
+
+  /**
+   * RFC 6265 §6.1 puts the floor at 4096 bytes per cookie and every browser
+   * treats it as the ceiling. Over it the cookie is DROPPED, silently, which
+   * reads exactly like a user who is not signed in — a session that stops
+   * working once a field grows, with nothing in any log.
+   */
+  test("a session too big for a browser is refused rather than silently dropped", async () => {
+    const big = { id: "a", createdAt: Date.now(), data: { blob: "x".repeat(4096) } };
+    await expect(sealSession(CONFIG, big)).rejects.toThrow(/a browser drops any cookie over 4096/);
+    // …and one that fits still seals.
+    const fits = { id: "a", createdAt: Date.now(), data: { blob: "x".repeat(100) } };
+    expect((await sealSession(CONFIG, fits)).length).toBeLessThan(4096);
   });
 
   test("two seals of the same data differ, because the salt and IV are fresh", async () => {

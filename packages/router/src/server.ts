@@ -44,7 +44,7 @@ import {
   peekResponseDraft,
   withRequest,
 } from "@barqjs/start";
-import { mountedFn } from "@barqjs/start/server";
+import { crossOriginRefused, mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
@@ -470,6 +470,15 @@ async function runRouteHandlers(
       : (handlers[method] ?? handlers.ANY);
   if (handler === undefined) return null;
   const headFallback = method === "HEAD" && handlers.HEAD === undefined;
+
+  // CSRF, BEFORE the middleware and before the body is read. A forged request
+  // must cost nothing and reach nothing — refusing after a middleware has
+  // already touched a database is a refusal that still did work for the
+  // attacker.
+  const server = match.route.chain.at(-1)?.definition.server;
+  if (server?.csrf !== false && crossOriginRefused(request, server?.allowedOrigins)) {
+    return new Response("forbidden", { status: 403 });
+  }
 
   // INHERITED, outermost first: a middleware on `/api` covers everything under
   // it, which is the only way a rate limit or an auth check is declared once.

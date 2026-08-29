@@ -124,6 +124,49 @@ export function originAllowed(request: Request, options?: HandlerOptions): boole
   return site === "same-origin" || site === "none";
 }
 
+/** Methods that cannot change state, so CSRF does not apply to them. */
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Is this a request a BROWSER made from another origin?
+ *
+ * A DIFFERENT QUESTION FROM `originAllowed`, and the difference is the whole
+ * design. `originAllowed` guards `/_barq/fn/*`, which only ever exists to be
+ * called by this application's own pages — so a request with no origin signal at
+ * all is refused there, because there is no legitimate caller that omits one.
+ *
+ * A route handler is the opposite: an API route exists so that something OTHER
+ * than a browser can call it. A Stripe webhook, a GitHub delivery, a cron
+ * hitting it with curl — none of them send `Origin` or `Sec-Fetch-Site`, and
+ * refusing on their absence would refuse the main reason API routes exist.
+ *
+ * So this answers the narrower question, and the narrower question is the one
+ * CSRF actually asks. A cross-site forgery is by definition made BY A BROWSER
+ * with the victim's cookies attached, and a browser making a cross-origin
+ * state-changing request always says so — `Origin` on any cross-origin POST
+ * since forever, `Sec-Fetch-Site` on everything in every current browser. So:
+ * refuse when a signal is present and says cross-origin; allow when there is no
+ * signal, because then it is not a browser and cannot be a forgery.
+ *
+ * `null` origin — a sandboxed iframe, a `data:` URL — is refused rather than read
+ * as absent. Treating it as absent is CVE-2026-27978.
+ */
+export function crossOriginRefused(request: Request, allowedOrigins?: readonly string[]): boolean {
+  if (SAFE_METHODS.has(request.method.toUpperCase())) return false;
+
+  const origin = request.headers.get("origin");
+  if (origin !== null) {
+    if (origin === "null") return true;
+    if (origin === new URL(request.url).origin) return false;
+    return !(allowedOrigins?.includes(origin) ?? false);
+  }
+
+  const site = request.headers.get("sec-fetch-site");
+  // No signal at all: not a browser, so not a forgery.
+  if (site === null) return false;
+  return site !== "same-origin" && site !== "none";
+}
+
 /**
  * Handle one server-function request, or return null if the URL is not one.
  *

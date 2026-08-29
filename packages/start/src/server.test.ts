@@ -19,7 +19,14 @@ import {
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
 import { createFetchHandler } from "./serve.ts";
-import { handleServerFn, mount, mounted, originAllowed, unmountAll } from "./server.ts";
+import {
+  crossOriginRefused,
+  handleServerFn,
+  mount,
+  mounted,
+  originAllowed,
+  unmountAll,
+} from "./server.ts";
 
 /** Mounts under the id the function already carries, which is what the tests mean. */
 const mountOf = (fn: { meta: { id: string } }): void => mount(fn.meta.id, fn as never);
@@ -811,5 +818,76 @@ describe("the ambient response", () => {
     const response = await call("created");
     expect(response?.status).toBe(201);
     expect(decodeWire<unknown>(await response?.json())).toEqual({ id: 7 });
+  });
+});
+
+/**
+ * `crossOriginRefused` — the CSRF rule for ROUTE HANDLERS, against real headers.
+ *
+ * Here rather than in the router's suite because `Origin` and every `Sec-` name
+ * are FORBIDDEN request headers: the constructor drops them under happy-dom and
+ * per the fetch spec. This package registers no DOM, so it is the only place the
+ * real shape can be tested.
+ *
+ * IT IS A DIFFERENT QUESTION FROM `originAllowed`, and the difference is the
+ * design. `/_barq/fn/*` only ever exists to be called by this application's own
+ * pages, so a request with no origin signal is refused there. An API route
+ * exists so something OTHER than a browser can call it, so the absence of a
+ * signal is allowed here — a forgery is by definition made by a browser, and a
+ * browser always says.
+ */
+describe("the CSRF rule for route handlers", () => {
+  const request = (method: string, headers: Record<string, string> = {}) =>
+    new Request("http://localhost/api/x", { method, headers });
+
+  test("a safe method is never refused, because it changes nothing", () => {
+    for (const method of ["GET", "HEAD", "OPTIONS"]) {
+      expect(crossOriginRefused(request(method, { origin: "https://evil.example" }))).toBe(false);
+    }
+  });
+
+  test("a browser saying cross-origin is refused, by either signal", () => {
+    expect(crossOriginRefused(request("POST", { origin: "https://evil.example" }))).toBe(true);
+    expect(crossOriginRefused(request("POST", { "sec-fetch-site": "cross-site" }))).toBe(true);
+    expect(crossOriginRefused(request("POST", { "sec-fetch-site": "same-site" }))).toBe(true);
+    expect(crossOriginRefused(request("DELETE", { origin: "https://evil.example" }))).toBe(true);
+  });
+
+  test("a `null` origin is refused rather than read as absent — CVE-2026-27978", () => {
+    // A sandboxed iframe sends the literal string.
+    expect(crossOriginRefused(request("POST", { origin: "null" }))).toBe(true);
+  });
+
+  test("the application's own origin passes, however it says so", () => {
+    expect(crossOriginRefused(request("POST", { origin: "http://localhost" }))).toBe(false);
+    expect(crossOriginRefused(request("POST", { "sec-fetch-site": "same-origin" }))).toBe(false);
+    expect(crossOriginRefused(request("POST", { "sec-fetch-site": "none" }))).toBe(false);
+  });
+
+  /**
+   * THE CASE THAT MAKES THE RULE NARROW, and the reason it is not
+   * `originAllowed`. A Stripe webhook, a GitHub delivery and a cron send neither
+   * header; refusing on the absence of one would refuse the main reason API
+   * routes exist. A request with no signal is not a browser, so it cannot be a
+   * forgery.
+   */
+  test("no origin signal at all is allowed — that is a webhook, not a browser", () => {
+    expect(crossOriginRefused(request("POST"))).toBe(false);
+  });
+
+  test("`allowedOrigins` widens it and nothing else does", () => {
+    const forged = request("POST", { origin: "https://partner.example" });
+    expect(crossOriginRefused(forged, ["https://partner.example"])).toBe(false);
+    expect(crossOriginRefused(forged, ["https://other.example"])).toBe(true);
+  });
+
+  test("`Origin` WINS over `Sec-Fetch-Site`, so a lie in one cannot excuse the other", () => {
+    // A browser sends both. If they disagree the stricter reading is the honest
+    // one, and `Origin` is the one that names who is asking.
+    expect(
+      crossOriginRefused(
+        request("POST", { origin: "https://evil.example", "sec-fetch-site": "same-origin" }),
+      ),
+    ).toBe(true);
   });
 });
