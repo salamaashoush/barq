@@ -48,6 +48,22 @@ export interface ManagedTag {
    * did not change — re-requesting an icon and re-running a script.
    */
   readonly identity?: string;
+  /**
+   * NOT the patcher's to manage, so it is written without `data-barq-head`.
+   *
+   * The framework's own tags — the matched chain's module preloads and the
+   * build's stylesheets — belong in the one managed list, which is TanStack's
+   * shape and what `<HeadContent />` will render as a tree. They must not be
+   * OWNED yet: the patcher removes an owned tag whose identity is absent from
+   * the next list, and `installHead` cannot rebuild these because the client
+   * has no manifest to rebuild them from — the client bundle cannot contain a
+   * map of its own hashed assets. Marking them here keeps the list right and
+   * the runtime behaviour unchanged.
+   *
+   * This flag goes when the manifest reaches the client and `<HeadContent />`
+   * owns `<head>` outright, which is the same commit that deletes the patcher.
+   */
+  readonly unowned?: true;
 }
 
 /** `{ title }`, `{ "script:ld+json": … }`, or an ordinary meta's attributes. */
@@ -203,7 +219,23 @@ function attrsOf(source: Readonly<Record<string, unknown>>, nonce?: string): Man
  */
 export function resolveHead(
   matches: readonly MatchAssets[],
-  options?: { readonly nonce?: string },
+  options?: {
+    readonly nonce?: string;
+    /**
+     * The matched chain's module preloads, and the client build's stylesheets.
+     *
+     * FRAMEWORK-OWNED and in the SAME list as the route's own tags, which is
+     * TanStack's shape: `buildTagsFromMatches` returns one array holding the
+     * route meta, the manifest's preloads, the route links, the manifest CSS,
+     * the styles and the head scripts
+     * (`react-router/src/headContentUtils.tsx:180-187`). One list is what lets
+     * `<HeadContent />` be the only thing that writes to `<head>` — and that is
+     * what a hydrated document needs, because the claim on an element takes its
+     * children WHOLE and reconciles away anything the tree did not produce.
+     */
+    readonly preloads?: readonly string[];
+    readonly css?: readonly string[];
+  },
 ): ManagedTag[] {
   const nonce = options?.nonce;
   const meta: ManagedTag[] = [];
@@ -275,7 +307,30 @@ export function resolveHead(
       });
     }
   }
-  return [...meta, ...collapse(links), ...collapse(styles), ...collapse(scripts)];
+  // Their order, and it is load-bearing rather than cosmetic: the preloads go
+  // ahead of the route's own links so the browser starts fetching the matched
+  // chunks before it parses anything that can block, and the build's stylesheets
+  // go after a route's `links` so a route can still say something about one.
+  const preloads: ManagedTag[] = (options?.preloads ?? []).map((href) => ({
+    tag: "link",
+    attrs: { rel: "modulepreload", href, nonce },
+    identity: `modulepreload:${href}`,
+    unowned: true,
+  }));
+  const css: ManagedTag[] = (options?.css ?? []).map((href) => ({
+    tag: "link",
+    attrs: { rel: "stylesheet", href, nonce },
+    identity: `stylesheet:${href}`,
+    unowned: true,
+  }));
+  return [
+    ...meta,
+    ...preloads,
+    ...collapse(links),
+    ...css,
+    ...collapse(styles),
+    ...collapse(scripts),
+  ];
 }
 
 /** The BODY scripts, from each match's `scripts`. Never deduplicated — see `Scripts`. */
@@ -398,7 +453,11 @@ export function renderTag(tag: ManagedTag, identity?: string): string {
 
 /** Every managed tag as markup, in order. */
 export function renderTags(tags: readonly ManagedTag[]): string {
-  return tags.map((tag, index) => renderTag(tag, tag.identity ?? `${tag.tag}:${index}`)).join("");
+  return tags
+    .map((tag, index) =>
+      tag.unowned === true ? renderTag(tag) : renderTag(tag, tag.identity ?? `${tag.tag}:${index}`),
+    )
+    .join("");
 }
 
 /**

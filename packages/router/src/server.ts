@@ -540,11 +540,13 @@ export function createPageHandler(
             { nonce: options.nonce, onError: (error) => console.error(error) },
           );
           const context = contextScript(url, before.produced, options.nonce);
+          const preloads = preloadFiles(match?.route.chain ?? null, options.routeAssets);
           const preload = preloadTags(match?.route.chain ?? null, options.routeAssets);
           const headAssets: HeadAssets = {
             matches: assets,
             nonce: options.nonce,
             clientAssets: options.clientAssets,
+            preloads,
             preload,
             context,
             // The string backend's own renderer, handed over the way
@@ -698,19 +700,38 @@ function redirectScript(answer: Response | null): string {
  * rather than emitted twice — a shared chunk appears in several routes' asset
  * lists by construction.
  */
-export function preloadTags(
+export function preloadFiles(
   chain: readonly Route[] | null,
   assets: Readonly<Record<string, readonly string[]>> | undefined,
-): string {
-  if (chain === null || assets === undefined) return "";
+): string[] {
+  if (chain === null || assets === undefined) return [];
   const seen = new Set<string>();
-  let out = "";
+  const out: string[] = [];
   for (const route of chain) {
     for (const file of assets[route.id] ?? []) {
       if (seen.has(file)) continue;
       seen.add(file);
-      out += `<link rel="modulepreload" href="${escapeAttribute(file)}">`;
+      out.push(file);
     }
+  }
+  return out;
+}
+
+/**
+ * The same set, rendered.
+ *
+ * Still a string for the `document()` template, which is markup rather than a
+ * tree and has nowhere to put a tag list. A declared `shellComponent` goes
+ * through `<HeadContent />` instead, where the preloads are ordinary members of
+ * the one managed list.
+ */
+export function preloadTags(
+  chain: readonly Route[] | null,
+  assets: Readonly<Record<string, readonly string[]>> | undefined,
+): string {
+  let out = "";
+  for (const file of preloadFiles(chain, assets)) {
+    out += `<link rel="modulepreload" href="${escapeAttribute(file)}">`;
   }
   return out;
 }

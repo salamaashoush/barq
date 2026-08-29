@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type MatchAssets,
   OWNED,
+  applyTags,
   projectHead,
   renderTags,
   resolveHead,
@@ -277,5 +278,66 @@ describe("projectHead", () => {
       match({ head: async () => ({ meta: [{ title: "late" }] }) }),
     ]);
     expect(renderTags(resolveHead(assets))).toContain("late");
+  });
+});
+
+/**
+ * The framework's own head tags live in the SAME list as the route's.
+ *
+ * TanStack's `buildTagsFromMatches` returns one array holding the route meta,
+ * the manifest's preloads, the route links, the manifest CSS, the styles and
+ * the head scripts (`react-router/src/headContentUtils.tsx:180-187`). One list
+ * is what lets `<HeadContent />` be the only thing that writes to `<head>`,
+ * which is what a hydrated document needs: the claim on an element takes its
+ * children WHOLE and reconciles away whatever the tree did not produce.
+ */
+describe("the framework's own tags", () => {
+  const matches: readonly MatchAssets[] = [
+    { meta: [{ title: "Page" }], links: [{ rel: "icon", href: "/i.png" }] },
+  ];
+
+  test("preloads and stylesheets join the one managed list, in their order", () => {
+    const tags = resolveHead(matches, { preloads: ["/a.js", "/b.js"], css: ["/s.css"] });
+    const order = tags.map((tag) => `${tag.tag}:${String(tag.attrs?.rel ?? tag.tag)}`);
+    // Preloads ahead of the route's own links so the browser starts fetching
+    // the matched chunks first; the build's stylesheets after them, so a route
+    // can still say something about a link.
+    expect(order).toEqual([
+      "title:title",
+      "link:modulepreload",
+      "link:modulepreload",
+      "link:icon",
+      "link:stylesheet",
+    ]);
+    expect(tags.map((tag) => tag.attrs?.href)).toContain("/a.js");
+    expect(tags.map((tag) => tag.attrs?.href)).toContain("/s.css");
+  });
+
+  /**
+   * THE REGRESSION GUARD, and it caught a real one.
+   *
+   * Folding the preloads into the list gave them an identity, which made the
+   * patcher OWN them — and `installHead` rebuilds its list on the client, where
+   * there is no manifest to rebuild a preload from. The first navigation
+   * therefore removed every modulepreload the server wrote.
+   *
+   * They are `unowned` until `<HeadContent />` owns `<head>` outright.
+   */
+  test("a framework tag is not the patcher's, so a navigation leaves it alone", () => {
+    const markup = renderTags(resolveHead(matches, { preloads: ["/a.js"], css: ["/s.css"] }));
+    expect(markup).toContain('rel="modulepreload"');
+    expect(markup).not.toContain(`${OWNED}="modulepreload:/a.js"`);
+    expect(markup).not.toContain(`${OWNED}="stylesheet:/s.css"`);
+    // The route's own tags stay owned — the patcher still manages those.
+    expect(markup).toContain(`${OWNED}="title"`);
+
+    const target = document.implementation.createHTMLDocument("t");
+    target.head.innerHTML = markup;
+    // A navigation whose list has no preloads at all: the unowned tags survive
+    // it, exactly as an analytics snippet or an extension's link does.
+    applyTags(resolveHead([{ meta: [{ title: "Next" }] }]), target);
+    expect(target.head.querySelectorAll('link[rel="modulepreload"]')).toHaveLength(1);
+    expect(target.head.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(1);
+    expect(target.title).toBe("Next");
   });
 });

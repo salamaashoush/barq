@@ -106,7 +106,16 @@ export interface HeadAssets {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
   };
-  /** `<link rel="modulepreload">` for the matched chain, already rendered. */
+  /**
+   * `<link rel="modulepreload">` for the matched chain, as HREFS.
+   *
+   * The tags themselves are built by `resolveHead` into the one managed list,
+   * which is TanStack's shape and the only shape a hydrated `<head>` can have:
+   * the claim takes an element's children WHOLE, so anything `<HeadContent />`
+   * does not produce is reconciled away.
+   */
+  readonly preloads?: readonly string[];
+  /** The same set rendered, for the `document()` template, which has no tree. */
   readonly preload?: string;
   /** The route-context handoff, already rendered. */
   readonly context?: string;
@@ -152,11 +161,13 @@ export function HeadContent(): JSXElement {
   if (assets === null) return null;
   return assets.raw(
     (assets.injected ?? "") +
-      renderTags(resolveHead(assets.matches, { nonce: assets.nonce })) +
-      (assets.clientAssets?.css ?? [])
-        .map((href) => `<link rel="stylesheet" href="${escapeHeadAttribute(href)}">`)
-        .join("") +
-      (assets.preload ?? "") +
+      renderTags(
+        resolveHead(assets.matches, {
+          nonce: assets.nonce,
+          preloads: assets.preloads,
+          css: assets.clientAssets?.css,
+        }),
+      ) +
       (assets.context ?? ""),
   ) as JSXElement;
 }
