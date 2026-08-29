@@ -78,6 +78,19 @@ impl<'a> Emit<'a, '_> {
             let elements = ArenaVec::from_iter_in(elements, &self.allocator);
             Expression::new_array_expression(span, elements, &self.ast)
         };
+        // LAZY when hydratable, and this is the ordering half of `TAGGED`. The
+        // object literal is evaluated BEFORE `element()` is called, so an eager
+        // `children: [ … ]` builds every child at the cursor of the position the
+        // element itself sits in — measured as "the server wrote <html> where the
+        // client builds <head>", the head having tried to claim before `<html>`
+        // was claimed at all. A thunk moves the construction inside `element()`,
+        // which is where `withinElement` has scoped the cursor to the claimed
+        // node's own child list. A single child is already a thunk here.
+        let value = if self.hydratable && !matches!(value, Expression::ArrowFunctionExpression(_)) {
+            self.thunk(value, span)
+        } else {
+            value
+        };
         let property = self.property("children", value, span);
         match props {
             Expression::ObjectExpression(mut object) => {
@@ -91,11 +104,43 @@ impl<'a> Emit<'a, '_> {
         }
     }
 
-    /// `_$hole(null, null, () => …)` — a position the server did not address.
+    /// `() => expr`, so the expression is evaluated by whoever calls the thunk
+    /// rather than where it is written.
+    fn thunk(&mut self, value: Expression<'a>, span: oxc::span::Span) -> Expression<'a> {
+        use oxc::allocator::Vec as ArenaVec;
+        use oxc::ast::ast::{ArrowFunctionBody, FormalParameterKind, FormalParameters};
+        let params = FormalParameters::boxed(
+            span,
+            FormalParameterKind::ArrowFormalParameters,
+            ArenaVec::new_in(&self.allocator),
+            None,
+            &self.ast,
+        );
+        Expression::new_arrow_function_expression(
+            span,
+            false,
+            None,
+            params,
+            None,
+            ArrowFunctionBody::from(value),
+            &self.ast,
+        )
+    }
+
+    /// `_$hole(null, null, () => …, TAGGED)` — a position with no RANGE, whose
+    /// build can still claim.
     ///
     /// The same helper a hole uses, with no address, because that is exactly
-    /// what this is: `null` means "there is no range here", and the runtime's
-    /// answer to that is to build without claiming anything.
+    /// what this is: `null` means "there is no range here". `TAGGED` is the
+    /// second half — the runtime's answer to a null address used to be "build
+    /// without claiming anything", and that made every `<html>`, `<head>` and
+    /// `<body>` unhydratable, since the parser strips those out of a
+    /// `<template>` and they can only be emitted as `element()`.
+    ///
+    /// `element()` claims by TAG NAME and `withinElement` scopes the cursor to
+    /// the claimed node's own child list, which is what answers this file's
+    /// original reason for going cold: "a `template()` inside it takes the node
+    /// belonging to the NEXT position".
     fn cold_call(&mut self, value: Expression<'a>, span: oxc::span::Span) -> Expression<'a> {
         use oxc::allocator::Vec as ArenaVec;
         use oxc::ast::ast::{ArrowFunctionBody, FormalParameterKind, FormalParameters};
@@ -118,9 +163,21 @@ impl<'a> Emit<'a, '_> {
         let callee = self.helper(Helper::Hole, span);
         let null = Expression::new_null_literal(span, &self.ast);
         let null2 = Expression::new_null_literal(span, &self.ast);
+        let tagged = Expression::new_numeric_literal(
+            span,
+            f64::from(crate::ir::TAGGED),
+            None,
+            oxc::ast::ast::NumberBase::Decimal,
+            &self.ast,
+        );
         self.call(
             callee,
-            vec![Argument::from(null), Argument::from(null2), Argument::from(build)],
+            vec![
+                Argument::from(null),
+                Argument::from(null2),
+                Argument::from(build),
+                Argument::from(tagged),
+            ],
             span,
         )
     }

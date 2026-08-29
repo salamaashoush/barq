@@ -87,6 +87,17 @@ export class HydrationMismatch extends Error {
 export const WHOLE = 1 << 4;
 
 /**
+ * The compiler's `TAGGED` (`ir/region.rs`): no range on the wire here, but the
+ * build inside CAN claim — by tag name, because it is an `element()` call.
+ *
+ * A null address used to mean "build cold" unconditionally, which is what made
+ * the whole `<html>`/`<head>`/`<body>` frame unhydratable: the parser strips
+ * those out of a `<template>`, so they compile to `element()` and every one of
+ * them took the cold path.
+ */
+export const TAGGED = 1 << 5;
+
+/**
  * A claimed range and the nodes inside it.
  *
  * `open` and `close` stay in the document when they exist: `close` is the anchor
@@ -156,11 +167,30 @@ export interface HydrationReport {
   built: number;
 }
 
+/**
+ * Where the claim walk starts inside a container.
+ *
+ * A DOCUMENT's first child is its `<!doctype html>`, which is a node the walk
+ * would otherwise count as the position `<html>` occupies — and every index
+ * after that is then off by one, so nothing claims and the render appends a
+ * SECOND `<html>`. Measured before this line existed: "Failed to execute
+ * 'appendChild' on 'Node': Only one element on document allowed."
+ *
+ * An element container has no such node, so this is `firstChild` there.
+ */
+function firstClaimable(container: Node): Node | null {
+  let node = container.firstChild;
+  while (node !== null && node.nodeType === 10 /* DOCUMENT_TYPE_NODE */) {
+    node = node.nextSibling;
+  }
+  return node;
+}
+
 export function beginHydration(container: Node): void {
   SESSION = {
     container,
     marked: hasRanges(container),
-    stack: [{ parent: container, next: container.firstChild, end: null }],
+    stack: [{ parent: container, next: firstClaimable(container), end: null }],
     mismatches: [],
     claimed: 0,
     ranges: 0,
@@ -352,6 +382,58 @@ export function claimNode(template: Node, detect?: boolean): Node | null {
 }
 
 /**
+ * Claim an element the compiler builds through `element()` rather than a template.
+ *
+ * `<html>`, `<head>` and `<body>` are the reason this exists: the parser strips
+ * them out of a `<template>`, so the compiler cannot emit one for them and falls
+ * back to `element()`. Until this function existed `element()` was
+ * unconditionally `withoutClaim`, so a tree rooted at `<html>` claimed NOTHING —
+ * measured as `claimed: 0` and then "Failed to execute 'appendChild' on 'Node':
+ * Only one element on document allowed", the client having built a second
+ * document beside the server's.
+ *
+ * `null` means "not hydrating, or nothing to claim" and the caller builds. A
+ * node that IS there and disagrees is a mismatch, on the same terms as
+ * `claimNode`'s — the walk below this point addresses the server's children, so
+ * a wrong element here puts every binding under it on the wrong node.
+ */
+export function claimElement(tag: string): Element | null {
+  if (SESSION === null) return null;
+  const cursor = SESSION.stack[SESSION.stack.length - 1];
+  if (cursor === undefined) return null;
+  const node = cursor.next;
+  if (node === null || node === cursor.end) return null;
+  const expect = tag.toUpperCase();
+  if (node.nodeType !== ELEMENT) return null;
+  if (node.nodeName !== expect && node.nodeName.toUpperCase() !== expect) {
+    throw new HydrationMismatch(
+      "structure",
+      `the server wrote ${describe(node)} where the client builds <${tag}>`,
+    );
+  }
+  cursor.next = node.nextSibling;
+  SESSION.claimed++;
+  return node as Element;
+}
+
+/**
+ * Run `body` with the cursor moved INSIDE `parent`.
+ *
+ * `claimElement` advances past the element it claimed, which is right for the
+ * caller's own sequence and wrong for its children — they are claimed from
+ * `parent`'s child list, not from the list the element sits in.
+ */
+export function withinElement<T>(parent: Element, body: () => T): T {
+  if (SESSION === null) return body();
+  SESSION.stack.push({ parent, next: parent.firstChild, end: null });
+  try {
+    return body();
+  } finally {
+    SESSION.stack.pop();
+  }
+}
+
+/**
  * THE DETECTION, and it runs only in a build that asked for it.
  *
  * Claiming one node claims everything under it — the walk below is `child`/`sib`
@@ -465,9 +547,13 @@ export function hole<T>(
 ): T {
   if (!hydrating()) return build();
   // `null` is the compiler saying "this position has no address" — the fallback
-  // element path, where the string backend serialised a whole subtree inline as
-  // one value and there is no walk to claim it with.
-  if (parent === null && anchor === null) return withoutClaim(build);
+  // element path. There is no RANGE to claim, but since `TAGGED` the build
+  // itself may still claim: `element()` matches the server's node by tag name and
+  // `withinElement` scopes the cursor to its children, so a `template()` further
+  // down takes a node from the right list rather than the next position's.
+  if (parent === null && anchor === null) {
+    return ((mode ?? 0) & TAGGED) === 0 ? withoutClaim(build) : build();
+  }
   const range = claimRange(parent, anchor, mode);
   // A hole in a tree the client built has nothing to claim, and its contents
   // must not claim either — otherwise the next `template()` inside it would

@@ -46,6 +46,8 @@ import {
   HydrationMismatch,
   beginHydration,
   built as builtNode,
+  WHOLE,
+  claimElement,
   claimNode,
   claimRange,
   endHydration,
@@ -477,6 +479,24 @@ export function dynamic(
  * so, and the enclosing `insert` reconciles the server's nodes away instead.
  */
 export function element(s: Scope | null, tag: string, props: Record<string, unknown>): Element {
+  // CLAIMED when the server wrote one here. `<html>`, `<head>` and `<body>` reach
+  // this function rather than a template — the parser strips them out of
+  // `<template>` — so a document-hydrated page has its whole frame on this path,
+  // and an unconditional `withoutClaim` here meant it claimed nothing at all.
+  const claimed = claimElement(tag);
+  if (claimed !== null) {
+    spread(s, claimed, props);
+    const children = props.children;
+    // `WHOLE`, because that is exactly what this position is: the server wrote
+    // this element's children with no boundary comments, so the claim is every
+    // child of `claimed` read off the document. Without it the range claim looks
+    // for a `<!--]-->` that was never written — measured as "expected <!--]-->
+    // before the end of <html>, found <body>".
+    if (children !== undefined && children !== null) {
+      insert(s, claimed, children as Child, null, WHOLE);
+    }
+    return claimed;
+  }
   return withoutClaim(() => {
     const node =
       tag in SVG_TAGS ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
@@ -1681,7 +1701,22 @@ export function insert(
         if (claiming === null) {
           produced = (value as (s: unknown) => Child)(owner);
         } else {
-          const run = withRangeTaken(claiming, () => (value as (s: unknown) => Child)(owner));
+          const run = withRangeTaken(claiming, () => {
+            const built = (value as (s: unknown) => Child)(owner);
+            // RESOLVED INSIDE THE CURSOR. A thunk in the produced array is
+            // called by `childToNodes` on the way into `applyInsert`, which is
+            // AFTER `withRangeTaken` has closed the cursor — so a `template()`
+            // inside one claimed from the position after this range instead of
+            // from it. Measured on a document-hydrated page as "the server wrote
+            // <body> where the client builds <meta>": `<head>`'s children were
+            // resolved once `<head>`'s range had already been left.
+            //
+            // Only on the CLAIMING run. Later runs re-call the thunks through
+            // the ordinary path, so nothing about reactivity changes.
+            return isArray(built) && built.some(holdsAFunction)
+              ? childToNodes(built, given)
+              : built;
+          });
           produced = run.value;
           taken = run.taken;
         }
@@ -2107,7 +2142,11 @@ export function render(
   };
 }
 
-function insertRendered(scope: Scope | null, element: JSXElement, container: HTMLElement): void {
+function insertRendered(
+  scope: Scope | null,
+  element: JSXElement,
+  container: HTMLElement | Document,
+): void {
   if (element === null || element === undefined || typeof element === "boolean") {
     return;
   }
@@ -2341,7 +2380,12 @@ function eventFor(rec: CapturedEvent): Event {
  */
 export function hydrate(
   fn: () => JSXElement,
-  container: HTMLElement,
+  /**
+   * `document` hydrates the WHOLE page, which is what a tree rooted at `<html>`
+   * needs — the shell is a component like any other, so the head is reactive and
+   * a navigation updates it without a second mechanism beside the render.
+   */
+  container: HTMLElement | Document,
   options?: { data?: Record<string, unknown> },
 ): () => void {
   hydrate.report = { mismatches: [], claimed: 0, ranges: 0, built: 0, recovered: false };
@@ -2463,12 +2507,28 @@ hydrate.report = {
  * sequence — there is one root, one insertion, one disposer, and the claim path
  * cannot drift from the path everything else is measured on.
  */
+/**
+ * Empty a container.
+ *
+ * `textContent = ""` is a NO-OP on a Document — its `textContent` is null and
+ * the setter is specified to do nothing — so a document-hydrated page would keep
+ * the markup it was told to drop. Removing `documentElement` is the equivalent,
+ * and it is the only child a Document has that is not its doctype.
+ */
+function clearContainer(container: HTMLElement | Document): void {
+  if (container.nodeType === 9 /* DOCUMENT_NODE */) {
+    (container as Document).documentElement?.remove();
+    return;
+  }
+  (container as HTMLElement).textContent = "";
+}
+
 function mount(
   block: (scope: Scope | null) => JSXElement,
-  container: HTMLElement,
+  container: HTMLElement | Document,
   claiming: boolean,
 ): () => void {
-  if (!claiming) container.textContent = "";
+  if (!claiming) clearContainer(container);
   // The Block form only, so there is nothing built before the root exists and
   // nothing to claim — see `render`.
   const root = enterRoot(false);
@@ -2478,7 +2538,7 @@ function mount(
     exit(root);
   }
   ownRange(root, () => {
-    container.textContent = "";
+    clearContainer(container);
   });
   flush();
   return () => {
