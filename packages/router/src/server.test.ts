@@ -1930,7 +1930,7 @@ describe("a route's own HTTP handlers", () => {
     // answer with the build machine's headers and a cookie jar empty for
     // everyone — the same trap the page render already refuses, and a handler is
     // likelier to read a header than a component is.
-    let thrown: string | null = null;
+    let thrown: string | null | undefined;
     const handler = createPageHandler({
       routeTree: [
         {
@@ -1971,5 +1971,82 @@ describe("a route's own HTTP handlers", () => {
     const page = await send(handler, "GET");
     expect(await page.text()).toContain("<main>page</main>");
     expect((await send(handler, "POST")).status).toBe(405);
+  });
+});
+
+/**
+ * A redirect target barq will not send a browser to.
+ *
+ * MEASURED IN CHROME, because the answer is not obvious: a 302 whose `Location`
+ * is `javascript:…` is INERT — no browser follows it — but a streamed redirect
+ * cannot be a 302, and `location.replace("javascript:…")` EXECUTES. So the
+ * ordinary `redirect(searchParams.get("next"))` is an open redirect before the
+ * shell flushes and cross-site scripting after it. The escalation is barq's, so
+ * the refusal is barq's.
+ */
+describe("a redirect target has to be navigable", () => {
+  const table = (to: string, from: "beforeLoad" | "loader") =>
+    [
+      {
+        id: "__root__",
+        path: "/",
+        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        children: [
+          {
+            id: "/x",
+            path: "x",
+            ...(from === "beforeLoad"
+              ? {
+                  beforeLoad: () => {
+                    throw redirect(to);
+                  },
+                }
+              : {
+                  loader: () => {
+                    throw redirect(to);
+                  },
+                }),
+            component: (_s: unknown, props: { data: () => unknown }) =>
+              ssrHtml(`<main>${esc(String(props.data() ?? "x"))}</main>`),
+          },
+        ],
+      },
+    ] as never;
+
+  const render = async (to: string, from: "beforeLoad" | "loader") => {
+    const handler = createPageHandler({
+      routeTree: table(to, from),
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    return handler(get("/x"));
+  };
+
+  test("an ordinary path and an http(s) URL still redirect", async () => {
+    for (const to of ["/dashboard", "//cdn.example/x", "https://auth.example/oauth"]) {
+      const response = await render(to, "beforeLoad");
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(to);
+    }
+  });
+
+  test("a `javascript:` target is refused before the shell, not sent", async () => {
+    const response = await render("javascript:alert(1)", "beforeLoad");
+    expect(response.status).toBe(500);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  test("…and never reaches the script a streamed redirect replays", async () => {
+    // This is the arm that would EXECUTE it.
+    const body = await (await render("javascript:alert(1)", "loader")).text();
+    expect(body).not.toContain("javascript:alert(1)");
+    expect(body).not.toContain("location.replace");
+  });
+
+  test("`data:` and `vbscript:` go the same way", async () => {
+    for (const to of ["data:text/html,<script>alert(1)</script>", "vbscript:msgbox(1)"]) {
+      expect((await render(to, "beforeLoad")).status).toBe(500);
+    }
   });
 });

@@ -246,3 +246,46 @@ describe("the password is a key, not a passphrase", () => {
     expect(await sealSession(CONFIG, payload)).not.toBe(await sealSession(CONFIG, payload));
   });
 });
+
+/**
+ * SESSION FIXATION DOES NOT APPLY, and the reason is structural rather than
+ * lucky — so it is pinned, because the thing that would break it is a plausible
+ * future change.
+ *
+ * Fixation works when the identifier IS the credential and the server looks the
+ * identifier up. Here there is nothing to look up: the sealed VALUE is the
+ * credential, and signing in mints a new one. An attacker who seats a cookie
+ * they minted still holds only what they minted — a session with no `userId` in
+ * it — because the value the victim receives after logging in never reaches
+ * them.
+ *
+ * THE BOUNDARY THIS GUARDS: add a server-side store keyed by `session.id` and
+ * fixation becomes real immediately, because then the id is the credential and
+ * it does NOT change across a login. Anyone adding one has to rotate the id on
+ * privilege change, and this test is where that is written down.
+ */
+describe("session fixation", () => {
+  test("a cookie the attacker seeded does not gain the victim's privileges", async () => {
+    const attackerHeld = await sealSession(CONFIG, {
+      id: "known-id",
+      createdAt: Date.now(),
+      data: {},
+    });
+
+    // The victim arrives with it and signs in.
+    const afterLogin = await inRequest(async () => {
+      await (await useSession<{ userId: number }>(CONFIG)).update({ userId: 7 });
+    }, `barq-session=${attackerHeld}`);
+    const issued = asRequestCookie(afterLogin.setCookie[0] ?? "")
+      .split("=")
+      .slice(1)
+      .join("=");
+
+    // A DIFFERENT value, which is the whole of it.
+    expect(issued).not.toBe(attackerHeld);
+    // The victim's cookie carries the session…
+    expect((await unsealSession(CONFIG, issued))?.data).toEqual({ userId: 7 });
+    // …and the one the attacker still holds does not.
+    expect((await unsealSession(CONFIG, attackerHeld))?.data).toEqual({});
+  });
+});

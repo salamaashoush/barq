@@ -98,6 +98,34 @@ export function leavesTheApp(to: string): boolean {
 }
 
 /**
+ * Is this somewhere a browser may be SENT?
+ *
+ * A path, a relative path, a protocol-relative URL and an `http(s)` URL: yes.
+ * Any other scheme: no. `javascript:` is the one that matters and `data:` is the
+ * one after it.
+ *
+ * MEASURED, in a real browser, because the answer is not obvious: a 302 whose
+ * `Location` is `javascript:…` is INERT — no browser follows it — but barq's
+ * streaming redirect cannot be a 302, and
+ * `<script>location.replace("javascript:…")</script>` EXECUTES. So a route doing
+ * the ordinary `redirect(searchParams.get("next"))` has an open redirect on the
+ * pre-shell path and a cross-site scripting hole on the streamed one. The
+ * severity escalation is barq's, so the refusal is barq's.
+ *
+ * A protocol-relative `//host` and an absolute `https://host` are ALLOWED. They
+ * are an open redirect if an application forwards user input into one, which is
+ * that application's bug and is what every framework's `redirect` does — and
+ * refusing them would break the OAuth hand-off that is the main reason to
+ * redirect off-origin at all.
+ */
+export function isNavigable(to: string): boolean {
+  const scheme = /^([a-zA-Z][a-zA-Z\d+\-.]*):/.exec(to);
+  if (scheme === null) return true;
+  const name = (scheme[1] ?? "").toLowerCase();
+  return name === "http" || name === "https";
+}
+
+/**
  * Resolve `to` against `from`.
  *
  * `from` is treated as a directory, so `resolvePath("child", "/parent")` is

@@ -56,6 +56,7 @@ import {
 } from "./manifest.ts";
 import { memoryHistory } from "./history.ts";
 import { type Match, createMatcher } from "./matcher.ts";
+import { isNavigable } from "./path.ts";
 import {
   type AnyRouteDefinition,
   type Route,
@@ -881,7 +882,30 @@ function asResponse(error: unknown): Response | null {
 }
 
 function redirectResponse(to: string, status: number): Response {
+  if (!isNavigable(to)) {
+    // Inert in a 302, but this is the one place both arms can share a rule, and
+    // a `Location: javascript:…` on the wire is a smell whatever the browser
+    // does with it. See `isNavigable`.
+    reportRefusedRedirect(to);
+    return new Response("bad redirect", { status: 500 });
+  }
   return new Response(null, { status, headers: { location: to } });
+}
+
+/**
+ * A redirect target barq will not send a browser to.
+ *
+ * Reported rather than swallowed: it means an application forwarded something
+ * into `redirect()` that it did not check, and silence there is how it stays
+ * unchecked.
+ */
+function reportRefusedRedirect(to: string): void {
+  console.error(
+    `[barq-router] refused to redirect to ${JSON.stringify(to)}: only a path or an http(s) URL ` +
+      "is navigable. A `javascript:` target EXECUTES when a streamed redirect replays it in the " +
+      "browser, so this is cross-site scripting rather than a broken link — check whatever " +
+      "produced it.",
+  );
 }
 
 /**
@@ -904,6 +928,13 @@ function redirectScript(answer: Response | null): string {
   if (answer === null || answer.status < 300 || answer.status >= 400) return "";
   const to = answer.headers.get("location");
   if (to === null || to === "") return "";
+  // THE ESCALATION THIS PREVENTS: a 302 to `javascript:…` is inert, and
+  // `location.replace("javascript:…")` executes — measured in Chrome. A
+  // streamed redirect has to be the second one, so it has to check.
+  if (!isNavigable(to)) {
+    reportRefusedRedirect(to);
+    return "";
+  }
   // `JSON.stringify` handles quotes and backslashes; `<` is escaped separately
   // because `</script>` inside a string literal still ends the element.
   const js = JSON.stringify(to).replaceAll("<", "\\u003c");

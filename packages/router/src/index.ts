@@ -57,6 +57,7 @@ export {
   type Segment,
   SPLAT_KEY,
   interpolate,
+  isNavigable,
   isUnder,
   joinPattern,
   leavesTheApp,

@@ -28,7 +28,7 @@ Paste this as the opening prompt. Everything below was verified, not remembered.
 ## State — verified
 
 ```
-core 921 · router 358 · server 104 · start 118 · extra 26 · testing 16 · compiler 22
+core 921 · router 362 · server 104 · start 119 · extra 26 · testing 16 · compiler 22
 compiler-rs: cargo 372 pass · bun 3644 pass / 17 todo / 1 fail
   (the 1 fail is `the self-check needs one failing and one holding claim; the
    corpus has both` — it fires BECAUSE nothing fails. Do not chase it. Confirmed
@@ -185,15 +185,26 @@ Neither is load-bearing. What IS worth deciding:
   needs revocation needs a store, and barq offers no seam for one. This is the
   single biggest gap in the session design and it is a DESIGN choice, so change
   it deliberately or not at all.
-- **A session is not rotated on privilege change.** Signing in reuses the
-  session id, so a fixation attack that seats a known id before login still holds
-  it after. `update` could mint a new id when asked to; nothing asks.
+- **Session fixation does NOT apply, and an earlier draft of this file said it
+  did.** Corrected after measuring: the sealed VALUE is the credential, not the
+  id, and signing in mints a new value the attacker never sees — their seeded
+  cookie still decrypts to a session with no `userId`. `session.test.ts` pins it
+  AND names the boundary: add a server-side store keyed by `session.id` and
+  fixation becomes real at once, because then the id is the credential and it
+  does not change across a login.
 - **`server.middleware` is not covered by the route-action manifest.** It uses
   the same `Middleware` type, so the chain comparison COULD reach it, but
   `verifyRouteChains` walks server functions only. A route declaring one chain
   for its handlers and another for its actions is not checked against itself.
 - **Nothing rate-limits anything.** Not the server functions, not the route
   handlers. The middleware seam is there and no middleware fills it.
+- **A redirect target is checked, and this is where the rule lives.** A 302 to
+  `javascript:…` is inert; `location.replace("javascript:…")` EXECUTES — measured
+  in Chrome — and a streamed redirect has to be the second one. So
+  `redirect(searchParams.get("next"))` was an open redirect before the shell and
+  XSS after it. `isNavigable` refuses any scheme but http(s); paths,
+  protocol-relative and absolute http(s) still work, because refusing those would
+  break the OAuth hand-off.
 - **A route handler sets no security headers by default** — no `nosniff`, no
   CSP. Deliberate for now (TanStack sets none either), but it is a default worth
   arguing about rather than inheriting.
