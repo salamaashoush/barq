@@ -45,6 +45,28 @@ export {
 export { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
 
 /**
+ * Sessions: a sealed cookie, with no store behind it.
+ *
+ * The interface is TanStack's (`start-server-core/src/session.ts`); the SEALING
+ * is not — AES-GCM through WebCrypto rather than iron's AES-CBC plus a separate
+ * HMAC, which costs no dependency and has no encrypt-then-MAC composition to get
+ * wrong. A cookie sealed by one does not open in the other, and `session.ts`
+ * says so where it can be read.
+ */
+export {
+  type Session,
+  type SessionConfig,
+  type SessionData,
+  type SessionManager,
+  clearSession,
+  getSession,
+  sealSession,
+  unsealSession,
+  updateSession,
+  useSession,
+} from "./session.ts";
+
+/**
  * The client half lives in `./client.ts` and is re-exported here.
  *
  * SPLIT FOR ONE REASON: the compiler's client stub imports `clientRpc`, and

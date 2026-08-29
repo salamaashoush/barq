@@ -9,7 +9,21 @@
  * Reference identity resolves all of them and needs no compiler work.
  */
 
-import type { Middleware } from "@barqjs/start";
+import { type Middleware, type SessionConfig, useSession } from "@barqjs/start";
+
+/**
+ * The session, sealed into a cookie with no store behind it.
+ *
+ * THE PASSWORD IS IN SOURCE HERE AND MUST NOT BE IN YOURS. A real application
+ * reads it from the environment, because it is a key: anyone holding it can mint
+ * a session for any user. It is inline in the reference application so the demo
+ * runs with no setup, and `secure: false` for the same reason — a `Secure`
+ * cookie is not sent over the plain `http://localhost` this serves on.
+ */
+export const sessionConfig: SessionConfig = {
+  password: "kitchen-sink-demo-key-not-a-real-secret",
+  cookie: { secure: false },
+};
 
 /**
  * Refuses before the handler's input is even parsed.
@@ -20,11 +34,18 @@ import type { Middleware } from "@barqjs/start";
  * sending malformed input.
  */
 export const requireSession: Middleware = async (next) => {
-  // A real application reads a cookie here through `getRequest()`. The point of
-  // the demo is the BINDING, not the check.
-  //
+  const session = await useSession<{ user: string }>(sessionConfig);
+  // A REAL check, against a real sealed cookie — an unsigned visitor is refused
+  // before the handler's input is even parsed. The demo seats a session rather
+  // than 401-ing, so the page works on a first visit; the shape an application
+  // wants is the `throw` beside it.
+  if (session.data.user === undefined) {
+    // throw new Response("sign in first", { status: 401 });
+    await session.update({ user: "ada" });
+  }
+
   // `next({ context })` is how a middleware hands what it learned down to the
   // handler, which reads it as `({ context })` — theirs is the same shape. It
   // needs no module-level store, which is what makes it safe under concurrency.
-  return next({ context: { session: { user: "ada" } } });
+  return next({ context: { session: { user: session.data.user ?? "ada" } } });
 };
