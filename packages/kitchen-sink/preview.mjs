@@ -5,6 +5,11 @@
  * and nothing else — so previewing an app with a server half is this. It is also
  * the shape a deployment has: a static file wins, and whatever is left is
  * rendered.
+ *
+ * RUN IT WITH BUN, which is what `package.json` does. It was `node
+ * ./preview.mjs` against a file whose every I/O call is `Bun.serve` and
+ * `Bun.file`, so `bun run preview` was a `ReferenceError` on the first request
+ * and had been for as long as the script existed — nothing runs it in CI.
  */
 
 import { existsSync, statSync } from "node:fs";
