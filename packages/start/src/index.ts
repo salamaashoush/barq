@@ -12,28 +12,28 @@
  * `clientRpc`. `./server` is where the request handler lives.
  */
 
-import { decodeWire, encodeWire } from "@barqjs/server/codec";
-
 export { getRequest, peekRequest, withRequest } from "./context.ts";
 
-export const SERVER_FN = Symbol.for("barq.server-fn");
-
-/** Where mounted server functions answer. */
-export const RPC_PREFIX = "/_barq/fn/";
-
 /**
- * What distinguishes an RPC call from a form submission: the URL, not a header.
+ * The client half lives in `./client.ts` and is re-exported here.
  *
- * `/_barq/fn/<id>` is what `<form action={fn}>` writes, takes `FormData`, and
- * answers with a redirect a browser can follow with JS disabled.
- * `/_barq/fn/<id>.data` is the JSON channel and answers with a value.
- *
- * React Router's `.data` suffix, and the reason is its reason: a header decides
- * the response shape invisibly, and a form cannot set one. RedwoodSDK shows the
- * failure — it emits the right hidden fields for a no-JS submit and never reads
- * them, so the form posts, returns 200, and nothing happens.
+ * SPLIT FOR ONE REASON: the compiler's client stub imports `clientRpc`, and
+ * importing it from THIS module dragged `context.ts` — `node:async_hooks` — plus
+ * the middleware runner and the validators into every client bundle that
+ * reached one server function. Re-exporting keeps `import { createServerFn }
+ * from "@barqjs/start"` the only thing an application writes.
  */
-export const DATA_SUFFIX = ".data";
+export {
+  type ServerFn,
+  type ServerFnMeta,
+  DATA_SUFFIX,
+  RPC_PREFIX,
+  SERVER_FN,
+  clientRpc,
+  isServerFn,
+} from "./client.ts";
+
+import { SERVER_FN, type ServerFn, type ServerFnMeta } from "./client.ts";
 
 /**
  * A validator in the Standard Schema shape, which zod, valibot and arktype all
@@ -90,16 +90,6 @@ export class UncheckedInputError extends InputError {
     this.name = "UncheckedInputError";
   }
 }
-
-export interface ServerFnMeta {
-  /** Stable across edits and deploys: the module path and the export name. */
-  id: string;
-}
-
-export type ServerFn<In, Out> = ((input: In) => Promise<Out>) & {
-  readonly [SERVER_FN]: true;
-  readonly meta: ServerFnMeta;
-};
 
 /**
  * A middleware runs before the handler and decides whether there is going to be
@@ -197,36 +187,6 @@ export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): S
 }
 
 /**
- * The client half. The compiler emits this in a module compiled for the client,
- * with the id and nothing else — no handler body, no validator, no imports the
- * body needed.
- */
-export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
-  const call = async (input: In): Promise<Out> => {
-    // FormData goes as FormData. Routing it through the value codec would hand
-    // the handler a plain OBJECT here and a real `FormData` on the no-JS path —
-    // the same function seeing two input types depending on whether JS ran,
-    // which is the divergence progressive enhancement exists to avoid. It also
-    // keeps files, which no value codec in this class carries.
-    const form = input instanceof FormData;
-    const response = await fetch(RPC_PREFIX + encodeURIComponent(id) + DATA_SUFFIX, {
-      method: "POST",
-      // No content-type for the form case: the browser sets the multipart
-      // boundary, and setting it by hand produces a body nothing can parse.
-      headers: form ? undefined : { "content-type": "application/json" },
-      // Otherwise seroval's JSON channel, so an argument carries a Date, a Map
-      // or a cycle the same way a hydration seed does — and reconstructs
-      // through `fromJSON`, which evaluates nothing.
-      body: form ? (input as FormData) : JSON.stringify({ input: encodeWire(input) }),
-      credentials: "same-origin",
-    });
-    if (!response.ok) throw new Error(`server function ${id} failed: ${response.status}`);
-    return decodeWire<Out>(await response.json());
-  };
-  return Object.assign(call, { [SERVER_FN]: true as const, meta: { id } });
-}
-
-/**
  * The middleware chain a server function carries, by REFERENCE.
  *
  * `serverRpc` attaches `built` to the function object, so the chain is the real
@@ -241,11 +201,4 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
 export function middlewareOf(fn: ServerFn<unknown, unknown>): readonly Middleware[] {
   const built = (fn as unknown as { built?: Built<unknown, unknown> }).built;
   return built?.middleware ?? [];
-}
-
-/** Whether a value is a server function, by brand rather than by shape. */
-export function isServerFn(value: unknown): value is ServerFn<unknown, unknown> {
-  return (
-    typeof value === "function" && (value as unknown as Record<symbol, unknown>)[SERVER_FN] === true
-  );
 }

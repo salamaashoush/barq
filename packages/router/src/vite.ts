@@ -19,9 +19,9 @@
  * plain object literal the BUNDLE produces and no source file can know.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 
 import type { Plugin } from "vite";
 
@@ -47,6 +47,25 @@ export {
 
 /** Where the generated tree is written when nothing says otherwise. */
 export const DEFAULT_ROUTE_TREE = "src/routeTree.gen.ts";
+
+/**
+ * The query that marks a route's SPLIT half.
+ *
+ * The static tree is what lets a file route declare `validateSearch`,
+ * `beforeLoad`, `errorComponent` and the cache options — every one of them is
+ * read synchronously off `route.definition` and a `lazy()` cannot answer
+ * synchronously. The price is an eager component, and this is where it is paid
+ * back: `compiler-rs`'s `route_split` rewrites the module into the half the
+ * tree imports and the half it `import()`s, which is where TanStack splits too
+ * (`router-plugin/src/core/constants.ts:4-16`).
+ *
+ * A QUERY rather than a second path, so the bundler resolves it against the
+ * same file and a sourcemap still points at the source the author wrote.
+ */
+export const SPLIT_QUERY = "barq-split";
+
+/** What the scan considers a route file, and what the split hook matches. */
+const ROUTE_EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"];
 
 /**
  * Route id -> the client assets a page must preload to render that route.
@@ -94,8 +113,22 @@ export interface RouteTree {
   readonly rewritten: string[];
 }
 
+/** Both halves of a code-split route module. */
+export interface RouteSplit {
+  /** What the generated tree imports. */
+  readonly reference: string;
+  /** What `<file>?barq-split` serves. */
+  readonly split: string;
+  /**
+   * Why the route was not split. Both halves are the original source then, so a
+   * refusal costs bytes and never correctness.
+   */
+  readonly refused?: string;
+}
+
 interface Native {
   routeTree(root: string, dir: string, outFile?: string, writeIds?: boolean): RouteTree;
+  routeSplit(source: string, filename: string, specifier: string): RouteSplit;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
@@ -158,6 +191,16 @@ export interface BarqRouterOptions {
   /** Where route files live, relative to the Vite root. */
   readonly routesDir?: string;
   /**
+   * Move each route's `component` and `pendingComponent` into a chunk of their
+   * own. On by default.
+   *
+   * Off leaves every route module eager, which is smaller to reason about and
+   * larger to download — the whole application's components land in the entry
+   * chunk. Measured on `packages/kitchen-sink`: 5 chunks / ~154 kB on the first
+   * page with the split, 1 chunk / 266 kB without it.
+   */
+  readonly codeSplitting?: boolean;
+  /**
    * Where to write the generated route tree. `false` writes none.
    *
    * Default `src/routeTree.gen.ts`, which is theirs (`generatedRouteTree`,
@@ -199,6 +242,7 @@ export interface BarqRouterOptions {
 
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const routesDir = options.routesDir ?? "src/routes";
+  const codeSplitting = options.codeSplitting ?? true;
   let root = process.cwd();
   let base = "/";
   let routeAssets: Record<string, string[]> = {};
@@ -222,6 +266,23 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
    * the dev server once, or to correct the literal by hand.
    */
   let writeIds = false;
+
+  /** `<file>?barq-split` — the half the reference module `import()`s. */
+  const isSplitId = (id: string): boolean => id.endsWith(`?${SPLIT_QUERY}`);
+  const fileOfSplitId = (id: string): string => id.slice(0, -(SPLIT_QUERY.length + 1));
+
+  /**
+   * Whether a module is one of THIS project's route files.
+   *
+   * By path rather than by content: a module outside the routes directory that
+   * happens to call `createFileRoute` is not in the table, so splitting it would
+   * produce a chunk nothing imports.
+   */
+  const isRouteFile = (file: string): boolean => {
+    if (!ROUTE_EXTENSIONS.some((extension) => file.endsWith(extension))) return false;
+    const inside = relative(join(root, routesDir), file);
+    return inside !== "" && !inside.startsWith("..") && !isAbsolute(inside);
+  };
 
   const rescan = (warn?: (message: string) => void): void => {
     tree = routeTree(root, routesDir, treeFile ?? DEFAULT_ROUTE_TREE, writeIds);
@@ -306,7 +367,11 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       if (verify === undefined && options.onReachability === undefined) return;
       const context = this as {
         getModuleIds: () => Iterable<string>;
-        getModuleInfo: (id: string) => { importedIds: readonly string[]; code?: string } | null;
+        getModuleInfo: (id: string) => {
+          importedIds: readonly string[];
+          dynamicallyImportedIds?: readonly string[];
+          code?: string | null;
+        } | null;
         environment?: { name?: string };
         error: (message: string) => never;
         warn: (message: string) => void;
@@ -329,10 +394,23 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
 
       const reachability = reachabilityFrom(
         byId,
-        (id) => context.getModuleInfo(id)?.importedIds ?? [],
         (id) => {
+          const info = context.getModuleInfo(id);
+          if (info === null) return [];
+          // DYNAMIC edges count, and leaving them out was a silent hole the
+          // moment routes started code-splitting: the reference half reaches its
+          // component through `import("<file>?barq-split")`, which Rollup reports
+          // here and not in `importedIds`. A server function only a component
+          // calls would have gone unseen — and this gate under-reporting is the
+          // one failure mode it must not have.
+          return [...info.importedIds, ...(info.dynamicallyImportedIds ?? [])];
+        },
+        (id) => {
+          // `null` as well as `undefined`: Rollup answers `code: null` for a
+          // module it has not loaded the source of, and only `undefined` was
+          // guarded — so the walk threw once route modules gained a second id.
           const code = context.getModuleInfo(id)?.code;
-          return code === undefined ? [] : idsInStub(code);
+          return code === undefined || code === null ? [] : idsInStub(code);
         },
       );
 
@@ -384,13 +462,54 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       routeAssets = next;
     },
 
+    /**
+     * BEFORE the compiler, and it has to be: this rewrites a route module's
+     * SOURCE, and `@barqjs/compiler` lowers the JSX in whatever source it is
+     * handed. Reversed, the split would be trying to move code that no longer
+     * looks like the code the author wrote.
+     */
+    enforce: "pre",
+
     resolveId(id) {
-      return id === ROUTE_ASSETS_ID ? RESOLVED_ROUTE_ASSETS_ID : null;
+      if (id === ROUTE_ASSETS_ID) return RESOLVED_ROUTE_ASSETS_ID;
+      // Already absolute, and nothing else can resolve it: the query makes the
+      // id ours, and the file it names is the one on disk.
+      return isSplitId(id) ? id : null;
     },
 
     load(id) {
-      if (id !== RESOLVED_ROUTE_ASSETS_ID) return null;
-      return `export const routeAssets = ${JSON.stringify(routeAssets)};\nexport default routeAssets;\n`;
+      if (id === RESOLVED_ROUTE_ASSETS_ID) {
+        return `export const routeAssets = ${JSON.stringify(routeAssets)};\nexport default routeAssets;\n`;
+      }
+      if (!isSplitId(id)) return null;
+      // The ORIGINAL source. `transform` below is what turns it into the split
+      // half, so both halves go through one implementation and cannot drift.
+      const file = fileOfSplitId(id);
+      return existsSync(file) ? readFileSync(file, "utf8") : null;
+    },
+
+    /**
+     * A route module becomes two, and which one depends on the query.
+     *
+     * The refusal is a WARNING and never an error. A route that cannot be split
+     * still works — both halves come back as the original source — so the build
+     * carries on and the message names the one binding to move.
+     */
+    transform(this: { warn(message: string): void }, code, id) {
+      if (!codeSplitting) return null;
+      const wantsSplit = isSplitId(id);
+      const file = wantsSplit ? fileOfSplitId(id) : (id.split("?", 1)[0] ?? id);
+      if (!isRouteFile(file)) return null;
+
+      const relativeFile = relative(root, file).replaceAll("\\", "/");
+      const answer = native.routeSplit(code, relativeFile, `${file}?${SPLIT_QUERY}`);
+      if (answer.refused !== undefined && answer.refused !== null && !wantsSplit) {
+        // Once, not twice: both halves ask the same question and would report
+        // the same answer.
+        this.warn(`[barq-router] ${answer.refused}`);
+      }
+      const out = wantsSplit ? answer.split : answer.reference;
+      return out === code ? null : { code: out, map: null };
     },
 
     configureServer(server) {

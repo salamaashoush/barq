@@ -13,6 +13,7 @@ pub mod options;
 pub mod ownership;
 pub mod passes;
 pub mod route_source;
+pub mod route_split;
 pub mod routes;
 pub mod scope;
 pub mod tables;
@@ -261,6 +262,39 @@ pub struct RouteIdMismatch {
     pub declared: String,
     /// What its name derives.
     pub expected: String,
+}
+
+/// Both halves of a code-split route module.
+#[napi(object)]
+pub struct RouteSplitResult {
+    /// The module the generated tree imports, with each split value replaced by
+    /// a `lazy()` over the other half.
+    pub reference: String,
+    /// The module `<file>?barq-split` serves.
+    pub split: String,
+    /// Why the route was NOT split. Both halves are the original source in that
+    /// case, so a refusal costs bytes and never correctness.
+    pub refused: Option<String>,
+}
+
+/// Split a route module into the half the tree imports and the half it loads.
+///
+/// The static route table is what makes a file route able to declare the whole
+/// option set — the router reads `validateSearch`, `beforeLoad` and the cache
+/// options synchronously — and the price is an eager component. This is where
+/// that price is paid back, and it is where TanStack pays it too
+/// (`router-plugin/src/core/constants.ts:4-16`).
+///
+/// `specifier` is what the reference half will `import()`. The caller owns that
+/// spelling because the BUNDLER decides what a module id looks like, not the
+/// compiler.
+#[napi]
+pub fn route_split(source: String, filename: String, specifier: String) -> RouteSplitResult {
+    if !route_split::mentions(&source) {
+        return RouteSplitResult { reference: source.clone(), split: source, refused: None };
+    }
+    let out = route_split::split(&source, &filename, &specifier);
+    RouteSplitResult { reference: out.reference, split: out.split, refused: out.refused }
 }
 
 /// The directory part of a project-relative path, POSIX, no trailing slash.

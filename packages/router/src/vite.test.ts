@@ -56,8 +56,12 @@ const resolve = (plugin: Hooks, root: string, command = "build"): { warnings: st
  * which is what it measures — the real implementations would change nothing.
  */
 const STUBS: Record<string, string> = {
-  "@barqjs/core": "export const lazy = (load) => load;",
-  "@barqjs/router": "export const Outlet = () => null;",
+  // `lazy` is what the SPLIT rewrite reaches for, so the stub has to offer it —
+  // the shape, not the behaviour, is what these graph tests measure.
+  "@barqjs/core":
+    "export const lazy = (load, pick) => Object.assign(() => null, { preload: load, pick });",
+  "@barqjs/router":
+    "export const Outlet = () => null;\nexport const createFileRoute = (id) => (options) => ({ id, options });",
 };
 
 const stubCore = (): {
@@ -399,4 +403,156 @@ describe("a route's own declarations", () => {
     const plugin = hooks(barqRouter({ routeTree: false }));
     expect(() => resolve(plugin, root, "build")).toThrow(/disagree with the id their filename/);
   });
+});
+
+/**
+ * Automatic code splitting, through a REAL build.
+ *
+ * The split is what pays back the static route table: the tree imports every
+ * route module eagerly so a file route can declare `validateSearch`,
+ * `beforeLoad` and the cache options — all of which the router reads
+ * synchronously — and the component would otherwise be eager with it. Measured
+ * on `packages/kitchen-sink`: 266 kB in one chunk unsplit, 174 kB across six
+ * split.
+ */
+describe("automatic code splitting", () => {
+  test("a component leaves the reference module, and the loader's imports stay", async () => {
+    const root = project({
+      "index.html": `<!doctype html><html><body><script type="module" src="/src/entry.ts"></script></body></html>`,
+      // Markers a minifier cannot rewrite away: a string literal survives, and
+      // `["a"]` did not — rolldown reprints it with backticks and the first
+      // version of this test failed on its own marker rather than on the split.
+      "src/data.ts": `export const fetchPosts = () => "LOADER_MARKER_9f1";\n`,
+      "src/heavy.ts": `export const Heavy = () => "COMPONENT_MARKER_4c2";\n`,
+      "src/routes/posts.tsx": `import { createFileRoute } from "@barqjs/router";
+import { fetchPosts } from "../data.ts";
+import { Heavy } from "../heavy.ts";
+function Posts() { return Heavy(); }
+export const Route = createFileRoute("/posts")({
+  loader: () => fetchPosts(),
+  component: Posts,
+});
+`,
+      "src/entry.ts": `import { routeTree } from "./routeTree.gen.ts";\nconsole.log(routeTree.length);\n`,
+    });
+
+    const chunks: Record<string, string> = {};
+    const { build } = await import("vite");
+    await build({
+      root,
+      logLevel: "silent",
+      build: { write: false },
+      plugins: [
+        stubCore(),
+        barqRouter({}),
+        {
+          name: "capture",
+          generateBundle(
+            _options: unknown,
+            bundle: Record<string, { type: string; code?: string }>,
+          ) {
+            for (const [name, chunk] of Object.entries(bundle)) {
+              if (chunk.type === "chunk" && chunk.code !== undefined) chunks[name] = chunk.code;
+            }
+          },
+        },
+      ],
+    });
+
+    const all = Object.values(chunks);
+    // The component and the loader are in DIFFERENT chunks, which is the whole
+    // claim. Asserted as a partition rather than by chunk name, since a bundler
+    // names them however it likes.
+    const withComponent = all.filter((code) => code.includes("COMPONENT_MARKER_4c2"));
+    const withLoader = all.filter((code) => code.includes("LOADER_MARKER_9f1"));
+    expect(withComponent).not.toHaveLength(0);
+    expect(withLoader).not.toHaveLength(0);
+    expect(withComponent.some((code) => withLoader.includes(code))).toBe(false);
+    // …and the reference half reaches the other one through a DYNAMIC import,
+    // which is what makes them separate chunks at all.
+    expect(withLoader.some((code) => code.includes("import("))).toBe(true);
+  }, 60_000);
+
+  test("`codeSplitting: false` leaves the module whole", async () => {
+    const root = project({
+      "index.html": `<!doctype html><html><body><script type="module" src="/src/entry.ts"></script></body></html>`,
+      "src/heavy.ts": `export const Heavy = () => "heavy";\n`,
+      "src/routes/posts.tsx": `import { createFileRoute } from "@barqjs/router";
+import { Heavy } from "../heavy.ts";
+function Posts() { return Heavy(); }
+export const Route = createFileRoute("/posts")({ component: Posts });
+`,
+      "src/entry.ts": `import { routeTree } from "./routeTree.gen.ts";\nconsole.log(routeTree.length);\n`,
+    });
+
+    const chunks: string[] = [];
+    const { build } = await import("vite");
+    await build({
+      root,
+      logLevel: "silent",
+      build: { write: false },
+      plugins: [
+        stubCore(),
+        barqRouter({ codeSplitting: false }),
+        {
+          name: "capture",
+          generateBundle(
+            _options: unknown,
+            bundle: Record<string, { type: string; code?: string }>,
+          ) {
+            for (const chunk of Object.values(bundle)) {
+              if (chunk.type === "chunk" && chunk.code !== undefined) chunks.push(chunk.code);
+            }
+          },
+        },
+      ],
+    });
+    expect(chunks.some((code) => code.includes("$$barqSplit"))).toBe(false);
+  }, 60_000);
+
+  /**
+   * THE GATE THAT MATTERS MOST HERE, and it is a security-adjacent one.
+   *
+   * Once a component moves into a chunk of its own, the edge to it is a DYNAMIC
+   * import — which Rollup reports on `dynamicallyImportedIds` and not on
+   * `importedIds`. A route-action walk reading only the static edges would stop
+   * finding a server function that only a component calls, and this check
+   * under-reporting is the one failure mode it must not have.
+   */
+  test("a server function only the COMPONENT calls is still reachable from the route", async () => {
+    const root = project({
+      "index.html": `<!doctype html><html><body><script type="module" src="/src/entry.ts"></script></body></html>`,
+      "src/actions.ts": `export const clientRpc = (id) => () => id;
+export const wipe = clientRpc("actions.ts#wipe");
+`,
+      "src/routes/admin.tsx": `import { createFileRoute } from "@barqjs/router";
+import { wipe } from "../actions.ts";
+function Admin() { return wipe(); }
+export const Route = createFileRoute("/admin")({ component: Admin });
+`,
+      "src/entry.ts": `import { routeTree } from "./routeTree.gen.ts";\nconsole.log(routeTree.length);\n`,
+    });
+
+    let seen: Map<string, ReadonlySet<string>> | null = null;
+    const { build } = await import("vite");
+    await build({
+      root,
+      logLevel: "silent",
+      build: { write: false },
+      plugins: [
+        stubCore(),
+        barqRouter({
+          verify: {
+            check(reachability) {
+              seen = reachability as Map<string, ReadonlySet<string>>;
+              return "";
+            },
+          },
+        }),
+      ],
+    });
+
+    const reachability = seen as unknown as Map<string, ReadonlySet<string>>;
+    expect([...(reachability.get("/admin") ?? [])]).toEqual(["actions.ts#wipe"]);
+  }, 60_000);
 });

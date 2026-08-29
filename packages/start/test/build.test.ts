@@ -41,6 +41,10 @@ beforeAll(async () => {
     resolve: {
       alias: {
         "@barqjs/start/server": fileURLToPath(new URL("../src/server.ts", import.meta.url)),
+        // BEFORE the bare specifier: a string alias is a PREFIX replacement, so
+        // `@barqjs/start` listed first turns `@barqjs/start/client` into
+        // `…/src/index.ts/client` and the build cannot resolve it.
+        "@barqjs/start/client": fileURLToPath(new URL("../src/client.ts", import.meta.url)),
         "@barqjs/start": fileURLToPath(new URL("../src/index.ts", import.meta.url)),
       },
     },
@@ -158,6 +162,10 @@ describe("verify, the route-action chain check", () => {
       resolve: {
         alias: {
           "@barqjs/start/server": fileURLToPath(new URL("../src/server.ts", import.meta.url)),
+          // BEFORE the bare specifier: a string alias is a PREFIX replacement, so
+          // `@barqjs/start` listed first turns `@barqjs/start/client` into
+          // `…/src/index.ts/client` and the build cannot resolve it.
+          "@barqjs/start/client": fileURLToPath(new URL("../src/client.ts", import.meta.url)),
           "@barqjs/start": fileURLToPath(new URL("../src/index.ts", import.meta.url)),
         },
       },

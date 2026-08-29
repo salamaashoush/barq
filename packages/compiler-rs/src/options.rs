@@ -12,6 +12,21 @@ pub const DEFAULT_SERVER_SOURCE: &str = "@barqjs/server";
 /// Where `createServerFn` is imported from. Resolution is by `SymbolId`, so this
 /// is the specifier the import must name and not a text the source must contain.
 pub const DEFAULT_START_SOURCE: &str = "@barqjs/start";
+
+/// Where the CLIENT stub imports `clientRpc` from, which is deliberately not
+/// {@link DEFAULT_START_SOURCE}.
+///
+/// `@barqjs/start`'s index re-exports `context.ts`, which is `node:async_hooks`,
+/// plus the middleware runner, the validators and the error classes — none of
+/// which a client stub uses. Importing the index from a stub put all of it in
+/// every client bundle that reached one server function, and Vite said so on
+/// every build. Measured on `packages/kitchen-sink`: 25.7 kB, and once the route
+/// table became a set of STATIC imports that 25.7 kB moved into the set every
+/// page preloads.
+///
+/// The author still writes `import { createServerFn } from "@barqjs/start"` —
+/// this is only where the emitted stub points.
+pub const DEFAULT_CLIENT_SOURCE: &str = "@barqjs/start/client";
 const DEFAULT_ROUTER_SOURCE: &str = "@barqjs/router";
 
 /// Which half of the program is being compiled.
@@ -161,6 +176,10 @@ pub struct TransformOptions {
     /// Module source for `createServerFn`.
     /// @default `@barqjs/start`
     pub start_source: Option<String>,
+    /// Where the emitted CLIENT stub imports `clientRpc` from. Not the same
+    /// module as {@link start_source} — see `DEFAULT_CLIENT_SOURCE`.
+    /// @default `@barqjs/start/client`
+    pub client_source: Option<String>,
     /// Module source for `Link` and `NavLink`.
     /// @default `@barqjs/router`
     pub router_source: Option<String>,
@@ -259,6 +278,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "moduleSource",
     "serverSource",
     "startSource",
+    "clientSource",
     "env",
     "root",
     "serverFns",
@@ -300,6 +320,7 @@ pub struct ResolvedOptions {
     pub module_source: String,
     pub server_source: String,
     pub start_source: String,
+    pub client_source: String,
     pub router_source: String,
     pub routes: Option<Vec<String>>,
     pub env: Env,
@@ -329,6 +350,7 @@ impl Default for ResolvedOptions {
             module_source: DEFAULT_MODULE_SOURCE.to_string(),
             server_source: DEFAULT_SERVER_SOURCE.to_string(),
             start_source: DEFAULT_START_SOURCE.to_string(),
+            client_source: DEFAULT_CLIENT_SOURCE.to_string(),
             router_source: DEFAULT_ROUTER_SOURCE.to_string(),
             routes: None,
             env: Env::Server,
@@ -388,6 +410,7 @@ impl TransformOptions {
             module_source: self.module_source.unwrap_or_else(|| DEFAULT_MODULE_SOURCE.to_string()),
             server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
             start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),
+            client_source: self.client_source.unwrap_or_else(|| DEFAULT_CLIENT_SOURCE.to_string()),
             router_source: self.router_source.unwrap_or_else(|| DEFAULT_ROUTER_SOURCE.to_string()),
             routes: self.routes,
             env: self.env.as_deref().and_then(Env::parse).unwrap_or(Env::Server),
@@ -493,6 +516,9 @@ mod tests {
         assert_eq!(resolved.module_source, "@barqjs/core");
         assert_eq!(resolved.server_source, "@barqjs/server");
         assert_eq!(resolved.start_source, "@barqjs/start");
+        // The stub points at the CLIENT subpath, which is the whole point of it
+        // being a separate option: the index drags `node:async_hooks`.
+        assert_eq!(resolved.client_source, "@barqjs/start/client");
         assert_eq!(resolved.env, Env::Server);
         assert!(!resolved.server_fns);
         assert!(resolved.filename.is_none());

@@ -500,7 +500,9 @@ fn client_stubs(
     let module = module_id(options, filename);
     let mut out = String::new();
     out.push_str("import { clientRpc } from \"");
-    out.push_str(&options.start_source);
+    // The CLIENT subpath, never the index: the index re-exports `context.ts`
+    // and `node:async_hooks` with it. See `DEFAULT_CLIENT_SOURCE`.
+    out.push_str(&options.client_source);
     out.push_str("\";\n");
     for export in scan.server_fns() {
         // `export const default = …` is a syntax error, so the default export

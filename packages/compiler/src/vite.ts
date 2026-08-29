@@ -65,6 +65,17 @@ export interface BarqCompilerOptions {
   startSource?: string;
 
   /**
+   * Module source the emitted CLIENT stub imports `clientRpc` from.
+   *
+   * NOT {@link startSource}, and the separation is the point: `@barqjs/start`'s
+   * index re-exports `context.ts` — `node:async_hooks` — so a stub importing it
+   * put the request-context machinery in every client bundle that reached one
+   * server function.
+   * @default "@barqjs/start/client"
+   */
+  clientSource?: string;
+
+  /**
    * Emit each module's export surface and which exports are server functions.
    * The build reads it to know what to mount; a reviewer reads it to see what
    * is public.
@@ -449,7 +460,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         environment?.name !== undefined
           ? environment.name === "client"
           : (transformOptions?.ssr ?? false) === false;
-      const shouldTransform = include.some((ext) => id.endsWith(ext));
+      // The QUERY comes off first. A module id can carry one — `barqRouter`
+      // serves a route's split half at `<file>?barq-split` — and matching the
+      // extension against the raw id skipped exactly those, so the split half
+      // of every route reached the bundler with its JSX untransformed.
+      const path = id.split("?", 1)[0] ?? id;
+      const shouldTransform = include.some((ext) => path.endsWith(ext));
       if (!shouldTransform) return null;
 
       const isExcluded = exclude.some((pattern) => {
@@ -477,6 +493,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           moduleSource: compilerOptions.moduleSource,
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,
+          clientSource: compilerOptions.clientSource,
           routerSource: compilerOptions.routerSource,
           routes:
             typeof compilerOptions.routes === "function"
