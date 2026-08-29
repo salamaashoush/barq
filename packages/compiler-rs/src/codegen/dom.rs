@@ -562,6 +562,7 @@ pub fn region_call<'a>(
         RegionKind::Branch => Helper::Branch,
         RegionKind::Each => Helper::Each,
         RegionKind::Error | RegionKind::Loading => Helper::Boundary,
+        RegionKind::Island => Helper::Island,
         RegionKind::Portal => unreachable!("handled above"),
     };
     let callee = ctx.helper(helper, span);
@@ -588,6 +589,12 @@ pub fn region_call<'a>(
             let needed = fallback.is_some() || flags & crate::ir::HYDRATE != 0;
             trailing.push(needed.then(|| number(ctx, flags, span)));
             trailing.push(fallback);
+        }
+        // `island(s, parent, anchor, block, flags)` — the body and nothing else.
+        // No key, no fallback: what it decides is who claims the markup.
+        RegionKind::Island => {
+            arguments.push(Argument::from(body));
+            trailing.push((flags != 0).then(|| number(ctx, flags, span)));
         }
         RegionKind::Error | RegionKind::Loading => {
             let name = if kind == RegionKind::Error { "error" } else { "loading" };

@@ -222,6 +222,7 @@ export {
   branch,
   each,
   boundary,
+  island,
   portal,
   reveal,
   COUNT,
@@ -246,6 +247,7 @@ export {
   Loading,
   Reveal,
   Errored,
+  NoHydration,
   Portal,
   Dynamic,
 } from "./components.ts";

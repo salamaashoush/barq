@@ -164,6 +164,7 @@ impl Prim {
             "Reveal" => Prim::Flow(Flow::Reveal),
             "Portal" => Prim::Flow(Flow::Portal),
             "Dynamic" => Prim::Flow(Flow::Dynamic),
+            "NoHydration" => Prim::Flow(Flow::NoHydration),
             _ => return None,
         })
     }
@@ -240,6 +241,12 @@ pub enum Flow {
     Reveal,
     Portal,
     Dynamic,
+    /// NOT control flow, and it sits in this enum only because the lowering
+    /// tables are keyed by it. `NoHydration` renders its children once and
+    /// unconditionally; what it decides is whether the CLIENT claims the markup.
+    /// Solid ships it from `dom-expressions` rather than as one of the ten, and
+    /// the count below is unchanged by it.
+    NoHydration,
 }
 
 // `Suspense`, `Await` and `ErrorBoundary` were here until M10 and are gone.
@@ -271,6 +278,7 @@ impl Flow {
         match self {
             Flow::For => "For",
             Flow::Repeat => "Repeat",
+            Flow::NoHydration => "NoHydration",
             Flow::Show => "Show",
             Flow::Switch => "Switch",
             Flow::Match => "Match",

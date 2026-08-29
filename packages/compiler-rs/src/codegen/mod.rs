@@ -57,17 +57,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 58;
+pub const HELPER_COUNT: usize = 60;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 36;
+pub const FIRST_SERVER_HELPER: usize = 37;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 57;
+pub const FIRST_INTERP_HELPER: usize = 59;
 
 /// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
 /// and `flow.ts`'s four primitives with `each`'s count symbol.
@@ -144,18 +144,27 @@ pub enum Helper {
     Each = 11,
     Boundary = 12,
     Portal = 13,
+    /// `island(s, parent, anchor, block, flags)` — a subtree the client does not
+    /// hydrate.
+    ///
+    /// Inside [`SHARED_ABI`] on purpose: one name, one argument order, two
+    /// implementations, with the TARGET choosing the source. That is what keeps
+    /// `region_call` a single function for it, and it is why the server's half
+    /// takes the insertion pair it has no use for — the emission is identical on
+    /// both sides, which is the property this block exists to hold.
+    Island = 14,
     /// `COUNT` — `each`'s fourth mode, where `src` is a count rather than a list.
-    Count = 14,
+    Count = 15,
     // ── two more names that exist in BOTH halves ──────────────────────────
     /// `_$reveal($s, order, collapsed, body)` — reveal ORDERING, which is a
     /// provide scope rather than a range (O1 lists `provide` separately). Not
     /// one of the four primitives and never was; what M9 removed is the
     /// component around it.
-    Reveal = 15,
+    Reveal = 16,
     /// `_$dynamic($s, component, props)` — §3.13 item 4. The branch that swaps it is
     /// the compiler's; the one question left is whether the resolved value is a
     /// tag or a component, and only the value can answer that.
-    Dynamic = 16,
+    Dynamic = 17,
     /// `_$readSlot(v, "origin")` — §3.0 rule 2's Cell-slot read, at the one
     /// place the compiler cannot perform it itself: a prop that arrived through
     /// a SPREAD, where the source object is the author's own and nothing wrapped
@@ -165,44 +174,44 @@ pub enum Helper {
     ///
     /// It sits inside [`SHARED_ABI`] because the lowering that emits it runs
     /// before the backend is chosen, so both halves must answer to the name.
-    ReadSlot = 17,
+    ReadSlot = 18,
     // ── §3.5's resolved channels ──────────────────────────────────────────
     //
     // One entry point per channel, chosen at compile time. There is no
     // `setProp` on the compiled path: the name never reaches the runtime as a
     // question, only as the argument the channel already knows what to do with.
-    SetAttr = 18,
-    SetDomProp = 19,
+    SetAttr = 19,
+    SetDomProp = 20,
     /// §3.10.1 — the user-mutable channel. Compares against the ELEMENT rather
     /// than against what the framework last applied, and preserves the caret of
     /// whatever the user is inside. Emitted only for the names that need it.
-    SetLive = 20,
-    SetBool = 21,
-    SetClass = 22,
-    SetStyle = 23,
-    SetStyleProp = 24,
-    SetClassList = 25,
-    SetHtml = 26,
+    SetLive = 21,
+    SetBool = 22,
+    SetClass = 23,
+    SetStyle = 24,
+    SetStyleProp = 25,
+    SetClassList = 26,
+    SetHtml = 27,
     /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question §3.13 keeps
     /// at run time: whether the value that arrived is a live Cell. The channel
     /// is the compiler's and is passed in.
-    BindProp = 27,
+    BindProp = 28,
     /// `bind:` — the two-way channel, property and reporting event resolved.
-    BindValue = 28,
+    BindValue = 29,
     /// A scope-owned `ref` registration (B3, E2 #7).
-    Ref = 29,
+    Ref = 30,
     /// `_$formAction($s, el, value)` — §3.8's compiler surface. `action` on a
     /// `<form>` is a URL or a SUBMIT HANDLER, and nothing about the expression
     /// tells them apart: an `action()` is `(...args) => Promise<R>`, so its
     /// arity is 0 and §3.0 rule 1 reads it as a Cell. The SLOT decides, exactly
     /// as it does for `on*`. It takes a scope because the listener it installs
     /// is owned by the position (B4).
-    FormAction = 30,
+    FormAction = 31,
     /// A scope-owned `addEventListener` (B4, E2 #6).
-    Listen = 31,
+    Listen = 32,
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
-    BindEvent = 32,
+    BindEvent = 33,
     // ── the hydration-only walk (`SEMANTICS.md` H3) ───────────────────────
     //
     // `child(n, 3)` is H3's own spelling. Under `hydratable` the template walk
@@ -216,9 +225,9 @@ pub enum Helper {
     // the flag off not one of these appears.
     /// `_$child(base, k)` — the k-th logical child, from the start when `k >= 0`
     /// and from the end when `k < 0` (`-1` is the last).
-    Child = 33,
+    Child = 34,
     /// `_$sib(base, k)` — `k` logical siblings forward, or `-k` backward.
-    Sib = 34,
+    Sib = 35,
     /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
     /// THEN build the value that goes in it.
     ///
@@ -228,34 +237,39 @@ pub enum Helper {
     /// the cursor rather than from its own hole. The compiler knows the position
     /// statically — that is what an address IS — so it says so, instead of the
     /// runtime guessing from the shape of the tree it is walking.
-    Hole = 35,
+    Hole = 36,
     // ── `<server_source>` ─────────────────────────────────────────────────
-    Esc = 36,
-    EscAttr = 37,
-    Attr = 38,
-    Cls = 39,
-    Content = 40,
-    Html = 41,
-    RawText = 42,
-    SpreadAttrs = 43,
-    SsrFor = 44,
-    SsrRepeat = 45,
-    SsrShow = 46,
-    SsrSwitch = 47,
-    SsrMatch = 48,
-    ClsList = 49,
-    AttrLit = 50,
-    SsrLoading = 51,
-    SsrErrored = 52,
-    SsrPortal = 53,
-    SsrDynamic = 54,
-    SsrReveal = 55,
+    Esc = 37,
+    EscAttr = 38,
+    Attr = 39,
+    Cls = 40,
+    Content = 41,
+    Html = 42,
+    RawText = 43,
+    SpreadAttrs = 44,
+    SsrFor = 45,
+    SsrRepeat = 46,
+    SsrShow = 47,
+    SsrSwitch = 48,
+    SsrMatch = 49,
+    ClsList = 50,
+    AttrLit = 51,
+    SsrLoading = 52,
+    SsrErrored = 53,
+    SsrPortal = 54,
+    /// `ssrIsland(s, props)` — the COMPONENT form, for a build whose flow pass
+    /// is off. [`Island`] is the region form and lives in [`SHARED_ABI`]; this is
+    /// the string backend's answer when the construct was never lowered, exactly
+    /// as [`SsrPortal`] is for `Portal`.
+    SsrIsland = 55,
+    SsrDynamic = 56,
+    SsrReveal = 57,
     /// `_$formAttr(value)` — the string half of `formAction`. A URL is written
     /// and a handler is not: there is no byte on the wire that means client
     /// behaviour, and `ssr.ts` states the consequence for a pre-hydration submit.
-    FormAttr = 56,
+    FormAttr = 58,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 57,
+    Interp = 59,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -273,6 +287,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "each",
     "boundary",
     "portal",
+    "island",
     "COUNT",
     "reveal",
     "dynamic",
@@ -313,6 +328,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrLoading",
     "ssrErrored",
     "ssrPortal",
+    "ssrIsland",
     "ssrDynamic",
     "ssrReveal",
     "formAttr",

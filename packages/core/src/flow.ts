@@ -30,6 +30,7 @@ import {
   isScaffolding,
   openCursor,
   probeRange,
+  claimRange,
   hydrating,
   rangeKey,
   releaseRange,
@@ -231,6 +232,9 @@ function claimSite(
  */
 const UNSETTLED_KEYS = ["b:", "f:"];
 
+/** The key an ISLAND is written behind, joining `b:` and `f:` outside `SAFE_KEY`. */
+const ISLAND_KEY = "i:";
+
 /**
  * Take this site's claim if the server SETTLED it, leaving a deferred one alone.
  *
@@ -243,6 +247,33 @@ function takeSettledClaim(site: Site): Range | null {
   if (claim === undefined || claim === null) return null;
   const wire = rangeKey(claim);
   if (wire !== null && UNSETTLED_KEYS.some((key) => wire.startsWith(key))) return null;
+  site.claim = null;
+  return claim;
+}
+
+/**
+ * The other half: take this site's claim precisely BECAUSE the server did not
+ * settle it.
+ *
+ * `b:` and `f:` mean the nodes at this position are the boundary's FALLBACK —
+ * the shell flushed before the body was ready. The client's fallback is the same
+ * markup, so it claims those nodes rather than building a second copy beside
+ * them, and only the CONTENT is parked.
+ *
+ * Without this the range was left unclaimed and the walk went on addressing
+ * positions after it: measured on a page with one never-settling boundary as
+ * "the server's markup ran out where the client expected <span>", `recovered:
+ * true` and 0% reuse — a whole page thrown away for one pending boundary.
+ *
+ * This is the shape React calls a dehydrated boundary: `<!--$?-->` keeps its
+ * fallback hydrated while the content waits
+ * (`ReactDOMFizzInstructionSetShared.js`'s `SUSPENSE_PENDING_START_DATA`).
+ */
+function takeUnsettledClaim(site: Site): Range | null {
+  const claim = site.claim;
+  if (claim === undefined || claim === null) return null;
+  const wire = rangeKey(claim);
+  if (wire === null || !UNSETTLED_KEYS.some((key) => wire.startsWith(key))) return null;
   site.claim = null;
   return claim;
 }
@@ -1186,6 +1217,9 @@ function loadingBoundary(
   // open comment to the plain `[` once the content lands, so a swapped range
   // reads as settled here — which it is.
   const settled = takeSettledClaim(site);
+  // The server's own fallback, when it wrote one. Consumed by the first build of
+  // this boundary's fallback, which is the only thing entitled to it.
+  let fallbackClaim: Range | null = settled === null ? takeUnsettledClaim(site) : null;
   let live: Site = settled === null ? park : site;
   let firstClaim: Range | null = settled;
   let instance: Instance = NOTHING;
@@ -1288,13 +1322,34 @@ function loadingBoundary(
           shown = EMPTY;
         }
         if (next === 0) {
+          // The server's fallback is DEAD once content shows, and it has to go
+          // or it stands beside the content. This is the nested case: an outer
+          // boundary owns the `[f:` range, a boundary INSIDE it absorbs the
+          // pendingness, so the outer renders content and never builds the
+          // fallback its claim was being held for. Measured as a fallback
+          // rendered twice — `<span class="loading">` beside itself.
+          if (fallbackClaim !== null) {
+            removeNodes(fallbackClaim.nodes);
+            fallbackClaim = null;
+          }
           move(site);
           return;
         }
         move(park);
         if (next === 1 && fallback !== null && fallback !== undefined) {
           activation++;
-          shown = build(own, fallback, EMPTY_ARGS);
+          const claim = fallbackClaim;
+          fallbackClaim = null;
+          if (claim === null) {
+            shown = build(own, fallback, EMPTY_ARGS);
+          } else {
+            // HYDRATED, not rebuilt: these are the server's fallback nodes and
+            // this is the same fallback. `place` is a no-op for a node already
+            // in position, so `insertAt` below keeps their identity.
+            const cursor = openCursor(claim);
+            shown = atCursor(cursor, () => build(own, fallback, EMPTY_ARGS));
+            evictUnclaimed(claim, cursor);
+          }
           insertAt(site, shown);
         }
       });
@@ -1324,6 +1379,51 @@ function loadingBoundary(
  * LEXICAL one (§3.4), which is why a portalled modal reads the provider it is
  * WRITTEN under (X4).
  */
+/**
+ * An ISLAND: markup the server rendered that the client must not hydrate.
+ *
+ * Solid's `NoHydration`. The server half renders the subtree as ordinary markup
+ * inside a delimited range; this half claims that range and BUILDS NOTHING, so a
+ * static subtree costs zero claim work and ships no client behaviour.
+ *
+ * This is the fine-grained answer to the goal React reaches for with selective
+ * hydration. React splits an expensive hydration into interruptible units because
+ * it re-executes every component to hydrate (`ReactFiberBeginWork.js:1966-1972`);
+ * a framework whose components run once has no such cost to split, and the win
+ * available to it is not hydrating at all.
+ *
+ * COLD, it is transparent: with no claim to take — a client-only render, or a
+ * position the server never wrote — the children build normally, because an
+ * island is a statement about hydration and not about what the page contains.
+ */
+export function island(
+  s: Scope | null,
+  parent: Node | null,
+  anchor: Node | null,
+  block: Block<unknown>,
+  flags = 0,
+): Node | null {
+  const site: Site = { parent, anchor };
+  if (hydrating()) {
+    // BY ADDRESS, exactly as `hole` claims: inside a compiled template this
+    // position is reached through `child`/`sib` off a claimed root, not through
+    // the walk's cursor — so a cursor-based claim never sees the island at all.
+    // Measured on the first attempt: `built: 1` with the island's body running
+    // and its output appended beside the server's markup.
+    const claim = claimRange(parent, anchor);
+    if (claim !== null && rangeKey(claim) === ISLAND_KEY) {
+      // Nothing is built and nothing is walked. The server's nodes stay exactly
+      // where they are, which is the whole of what an island buys.
+      return claim.nodes.length > 0 ? claim.nodes[0] : null;
+    }
+    // Not an island on the wire — a client-only render, or a position the server
+    // wrote differently. Give the claim back and build cold.
+    if (claim !== null) releaseRange(claim);
+  }
+  const instance = attempt(s, site, block, EMPTY_ARGS, flags, "branch", null);
+  return instance.nodes.length > 0 ? instance.nodes[0] : null;
+}
+
 export function portal(
   s: Scope | null,
   target: Cell<Node | string | null | undefined>,

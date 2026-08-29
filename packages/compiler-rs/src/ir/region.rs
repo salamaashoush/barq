@@ -46,6 +46,23 @@ pub const DETECT: u8 = 1 << 3;
 /// key goes — see [`DETECT`].
 pub const WHOLE: u8 = 1 << 4;
 
+/// `hydration.ts`'s `TAGGED`: this position has NO range on the wire, and the
+/// build inside it can still claim — by TAG NAME, because it is an `element()`
+/// call rather than a template clone.
+///
+/// `<html>`, `<head>` and `<body>` are why it exists. The parser strips them out
+/// of a `<template>`, so the compiler cannot emit one for them and falls back to
+/// `element()`; without this flag every one of those positions built cold, and a
+/// tree rooted at `<html>` therefore claimed NOTHING. Measured as `claimed: 0`
+/// followed by "Only one element on document allowed", the client having built a
+/// second document beside the server's.
+///
+/// The reason the fallback path was cold in the first place — "a `template()`
+/// inside it takes the node belonging to the NEXT position" — is answered by
+/// `withinElement`, which scopes the cursor to the claimed element's own child
+/// list before the subtree builds.
+pub const TAGGED: u8 = 1 << 5;
+
 /// Which of `flow.ts`'s four primitives owns this range. Fourteen constructs
 /// collapse onto these; the row that carries a region names both, because the
 /// primitive decides the emission and the [`Flow`] decides the diagnostic.
@@ -61,6 +78,10 @@ pub enum RegionKind {
     Loading,
     /// `portal(s, target, block, flags)`
     Portal,
+    /// `island(s, parent, anchor, block, flags)` — a subtree the client does not
+    /// hydrate. Not control flow: it renders its children unconditionally and
+    /// exactly once, and what it changes is who CLAIMS the markup.
+    Island,
 }
 
 impl RegionKind {
@@ -71,6 +92,7 @@ impl RegionKind {
             RegionKind::Error => "error",
             RegionKind::Loading => "loading",
             RegionKind::Portal => "portal",
+            RegionKind::Island => "island",
         }
     }
 

@@ -68,7 +68,7 @@
 
 import type { Child, JSXElement } from "./dom.ts";
 import { dynamic } from "./dom.ts";
-import { COUNT, boundary, branch, each, portal, reveal } from "./flow.ts";
+import { COUNT, boundary, branch, each, island, portal, reveal } from "./flow.ts";
 import type { Block, Cell, Scope, Slot } from "./scope.ts";
 import { omit } from "./props.ts";
 import { computed, readSlot, resolve, runWithOwner, untrack } from "./signals.ts";
@@ -384,6 +384,23 @@ export function Errored(
     props.fallback as Block<unknown>,
     props.children as Block<unknown>,
   );
+}
+
+/**
+ * `<NoHydration>` — an ISLAND: markup the server renders that the client never
+ * hydrates.
+ *
+ * The compiler LOWERS this to `island(s, parent, anchor, block, flags)`, so this
+ * function exists for two reasons only: the authoring surface has to typecheck,
+ * and an un-compiled consumer has to get something that works. That is the same
+ * arrangement `Portal` and `Show` are in.
+ *
+ * Solid's is `NoHydration` too (`dom-expressions/src/server.js:569`), and it is
+ * deliberately NOT one of the ten control-flow constructs: it decides who claims
+ * the markup, not what the page contains.
+ */
+export function NoHydration(_s: Scope | null, props: { children: unknown }): JSXElement {
+  return island(_s, null, null, props.children as Block<unknown>);
 }
 
 export function Portal(

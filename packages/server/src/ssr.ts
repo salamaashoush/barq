@@ -723,7 +723,17 @@ function parkedRange(inner: string): string {
  * path". The record is exactly that pair.
  */
 export interface StreamSink {
-  defer(body: Block<unknown>, scope: Scope | null): number;
+  /**
+   * `flags` carries the boundary's own `HYDRATE` bit, and the BUFFERED arm is
+   * what needs it. A parked boundary always writes a `<!--[b:N-->` range because
+   * the resume has to find what to replace — deliberately, whether or not the
+   * page hydrates. Once that range has been patched in place, a hydratable page
+   * keeps a plain `<!--[-->` range (the client claims it) and a non-hydratable
+   * one must be left with the bare markup, exactly as a boundary that settled
+   * inside the shell would have written. Without this the sink's mere presence
+   * added comments to `renderToString` output.
+   */
+  defer(body: Block<unknown>, scope: Scope | null, flags?: number): number;
 }
 
 let SINK: StreamSink | null = null;
@@ -1005,7 +1015,7 @@ function loadingBoundary(
   if (SINK === null) {
     return html((flags & HYDRATE) === 0 ? String(shown) : parkedRange(String(shown)));
   }
-  return html(deferredRange(SINK.defer(arm, given), shown));
+  return html(deferredRange(SINK.defer(arm, given, flags), shown));
 }
 
 /**
@@ -1257,6 +1267,36 @@ export function ssrErrored(
 }
 
 /** The pre-Solid-2.0 spelling, whose fallback takes the error BY VALUE. */
+/**
+ * The SERVER half of an island: ordinary markup, inside a range that says so.
+ *
+ * `i:` joins `b:` and `f:` in the set of keys `SAFE_KEY` cannot spell, so no DEV
+ * branch key can be mistaken for one. The interior is rendered exactly as it
+ * would be anywhere else — what the marker buys is the CLIENT's ability to skip
+ * the whole extent in one step, which a positional walk needs and Solid's
+ * key-based one does not.
+ */
+/** The COMPONENT form, for a build whose flow pass is off. See `island`. */
+export function ssrIsland(s: Scope | null, props: { children: unknown }): SsrHtml {
+  return island(s, null, null, props.children as Block<unknown>);
+}
+
+export function island(
+  s: Scope | null,
+  parent: Node | null,
+  anchor: Node | null,
+  block: Block<unknown>,
+  flags = 0,
+): SsrHtml {
+  // The insertion pair is the SHARED_ABI tax and it is worth paying: one name,
+  // one argument order, two implementations, so `region_call` emits a single
+  // line for both backends. A string has no insertion pair to honour.
+  refuseASite(parent, anchor, "island");
+  void flags;
+  const inner = activate(s, block, NO_ARGS, 0, "branch");
+  return html(`${OPEN}i:-->${inner}${CLOSE}`);
+}
+
 export function ssrPortal(s: Scope | null, props: { mount?: unknown; children: unknown }): SsrHtml {
   return portal(
     s,

@@ -89,6 +89,9 @@ fn recognised(flow: Flow) -> &'static [&'static str] {
         // to, so there is no row to close here: `admits` reads the tag's own
         // props off the list and hands the rest through.
         Flow::Dynamic => &[],
+        // A hydration directive takes nothing: it wraps children and says who
+        // claims them.
+        Flow::NoHydration => &[],
     }
 }
 
@@ -111,6 +114,7 @@ fn kind_of(flow: Flow) -> Option<RegionKind> {
         Flow::Loading => RegionKind::Loading,
         Flow::Errored => RegionKind::Error,
         Flow::Portal => RegionKind::Portal,
+        Flow::NoHydration => RegionKind::Island,
         // `Match` never reaches a primitive of its own: `Switch` folds every arm
         // into ONE branch, which is the shape the adapter produces and the
         // reason `ownership.rs` gives `Match` no node.
@@ -169,6 +173,9 @@ fn admits_spread(flow: Flow) -> bool {
         Flow::For | Flow::Repeat | Flow::Loading | Flow::Errored | Flow::Portal | Flow::Reveal => {
             true
         }
+        // Nothing to spread INTO: it has no props of its own, so a spread could
+        // only be a mistake and refusing says so.
+        Flow::NoHydration => false,
         // Both answers emitted, the test at run time. See [`show`].
         Flow::Show => true,
         // Read only by a `Switch` that folded it, and `Switch` refuses.
@@ -537,6 +544,7 @@ pub(super) fn lower<'a>(
         Flow::Loading | Flow::Errored => boundary(shaper, &mut bag, kids, span),
         Flow::Portal => portal(shaper, &mut bag, kids, span),
         Flow::Dynamic => dynamic(shaper, &mut bag, kids, span),
+        Flow::NoHydration => island(shaper, &mut bag, kids, span),
         Flow::Match | Flow::Reveal => unreachable!("refused by `admits`"),
     };
     region.flow = flow;
@@ -880,6 +888,24 @@ fn boundary<'a>(
 
 /// `Portal` — the one primitive that takes no `(parent, anchor)`: it returns a
 /// marker standing at its LEXICAL position, and the patch inserts that.
+/// `<NoHydration>` — an ISLAND. Children, and nothing else.
+///
+/// No key, no fallback, no reactive prop: it renders its children once and what
+/// it decides is whether the CLIENT claims the markup. The body is the whole of
+/// it, which is why this builder is three lines where `portal`'s is ten.
+fn island<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    bag: &mut Bag<'a>,
+    kids: Vec<Expression<'a>>,
+    span: Span,
+) -> Region<'a> {
+    let body = body_of(shaper, bag, kids, span)
+        .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
+    let mut region = blank(shaper, span);
+    region.body = body;
+    region
+}
+
 fn portal<'a>(
     shaper: &mut Shaper<'a, '_>,
     bag: &mut Bag<'a>,

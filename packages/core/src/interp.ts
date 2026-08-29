@@ -65,7 +65,7 @@ import {
   spread,
   type Channel,
 } from "./dom.ts";
-import { boundary, branch, each, portal } from "./flow.ts";
+import { boundary, branch, each, island, portal } from "./flow.ts";
 import type { Cell, Scope } from "./scope.ts";
 
 export type Slot = () => unknown;
@@ -126,7 +126,7 @@ export type Op =
  * reader, because all of them are already functions or arrays and the
  * primitives take them as they are — a `Cell<K>`, a `Block`, a table of them.
  */
-type RegionKind = "branch" | "each" | "error" | "loading" | "portal";
+type RegionKind = "branch" | "each" | "error" | "loading" | "portal" | "island";
 type Region = readonly [
   "region",
   number,
@@ -311,6 +311,9 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
         case "error":
         case "loading":
           boundary(s, parent, anchor, op[3], at(op[7]), at(op[5]), flags, at(op[8]));
+          return;
+        case "island":
+          island(s, parent, anchor, at(op[5]), flags);
           return;
         default:
           insert(s, parent, portal(s, at(op[4]), at(op[5]), flags), anchor ?? undefined);
