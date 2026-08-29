@@ -332,7 +332,11 @@ window.__barqDifferential = async function () {
         if (spread) continue
         let seenPatched = false
         for (const attribute of line.slice(cut + 2).split(",")) {
-          if (names.has(attribute)) { seenPatched = true; continue }
+          // Lowercased on both sides: patchedAttributeNames normalises the
+          // emitted channel name, and an element lists its attributes
+          // lowercased — readOnly in the code is readonly here. No backticks in
+          // this block: it is source that gets embedded into the page.
+          if (names.has(attribute.toLowerCase())) { seenPatched = true; continue }
           if (!seenPatched) continue
           divergences.push({ fixture: name, kind: "attribute-order", step: i, expected: line.slice(0, cut) + ": baked before patched", actual: line })
           break

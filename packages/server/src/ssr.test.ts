@@ -248,38 +248,60 @@ describe("attributes", () => {
   });
 
   test("DOM_PROPS names reach the wire as the attribute they reflect to", () => {
-    // Written as a PROPERTY on the client, so only what it reflects to survives
-    // as markup — and `value` is the one whose answer depends on the element.
-    expect(attr("value", "hi", "input")).toBe("");
-    expect(attr("value", "hi", "textarea")).toBe("");
-    expect(attr("value", "hi", "option")).toBe(' value="hi"');
-    expect(attr("value", "hi", "button")).toBe(' value="hi"');
+    // A name that reflects writes the attribute it reflects to.
     expect(attr("defaultValue", "hi", "input")).toBe(' value="hi"');
     expect(attr("defaultChecked", true, "input")).toBe(' checked=""');
     expect(attr("readOnly", true, "input")).toBe(' readonly=""');
     expect(attr("disabled", true, "input")).toBe(' disabled=""');
     expect(attr("multiple", true, "select")).toBe(' multiple=""');
-    expect(attr("checked", true, "input")).toBe("");
-    expect(attr("selected", true, "option")).toBe("");
-    expect(attr("indeterminate", true, "input")).toBe("");
+    // `bind:value` on a number field resolves to this property at compile time,
+    // and it is the field's `value` on the wire.
+    expect(attr("valueAsNumber", 2, "input")).toBe(' value="2"');
 
-    // …and each of those answers is what the DOM path actually serialises.
-    for (const [tag, name, value] of [
-      ["input", "value", "hi"],
-      ["input", "checked", true],
-      ["input", "defaultValue", "hi"],
-      ["input", "defaultChecked", true],
-      ["input", "readOnly", true],
-      ["input", "disabled", true],
-      ["input", "indeterminate", true],
-      ["select", "multiple", true],
-      ["option", "selected", true],
-      ["option", "value", "hi"],
-    ] as Array<[string, string, unknown]>) {
-      const oracle = renderToString(() => element(null, tag, { [name]: value }));
-      expect(oracle, `${tag}.${name}`).toBe(
-        `<${tag}${attr(name, value, tag)}></${tag}>`.replace("></input>", ">"),
-      );
+    // THE DIRTY VALUES REACH THE WIRE. The content attribute is what a parser
+    // uses to build the field's DEFAULT, and the default is what the FIRST
+    // PAINT shows; a server that wrote nothing shipped an empty field that
+    // jumped to its value when the client assigned the property. Solid writes
+    // them for the same reason (`dom-expressions/src/server.js:698`).
+    expect(attr("value", "hi", "input")).toBe(' value="hi"');
+    expect(attr("value", "hi", "option")).toBe(' value="hi"');
+    expect(attr("value", "hi", "button")).toBe(' value="hi"');
+    expect(attr("checked", true, "input")).toBe(' checked=""');
+    expect(attr("selected", true, "option")).toBe(' selected=""');
+    // …except where `value` is not a content attribute at all: a textarea's is
+    // its child text and a select's is the selected option.
+    expect(attr("value", "hi", "textarea")).toBe("");
+    expect(attr("value", "hi", "select")).toBe("");
+    // The two with no content attribute in any spelling.
+    expect(attr("indeterminate", true, "input")).toBe("");
+    expect(attr("valueAsDate", new Date(0), "input")).toBe("");
+
+    // The two backends AGREE ON FIELD STATE, which is the thing that has to
+    // agree — not on bytes. `outerHTML` never shows a property, so comparing
+    // the markup strings is what pinned the old behaviour in place: it made
+    // "the DOM serialises nothing here" mean "the server must send nothing",
+    // and every server-rendered field arrived blank because of it.
+    for (const [tag, name, value, read] of [
+      ["input", "value", "hi", "value"],
+      ["input", "checked", true, "checked"],
+      ["input", "defaultValue", "hi", "value"],
+      ["input", "defaultChecked", true, "checked"],
+      ["input", "readOnly", true, "readOnly"],
+      ["input", "disabled", true, "disabled"],
+      ["select", "multiple", true, "multiple"],
+      ["option", "value", "hi", "value"],
+    ] as Array<[string, string, unknown, string]>) {
+      // `valueAsNumber` is deliberately absent from this loop: happy-dom does
+      // not implement its setter, so the live element keeps `.value === ""` and
+      // asserting here would pin the fake DOM's gap rather than the rule. The
+      // direct `attr` assertion above is the one that can be trusted, the same
+      // way the attribute-name check below trusts only what happy-dom does
+      // implement.
+      const live = element(null, tag, { [name]: value }) as unknown as Record<string, unknown>;
+      const host = globalThis.document.createElement("div");
+      host.innerHTML = `<${tag}${attr(name, value, tag)}></${tag}>`;
+      const parsed = host.firstElementChild as unknown as Record<string, unknown>;
+      expect(parsed[read], `${tag}.${name} -> .${read}`).toEqual(live[read]);
     }
   });
 

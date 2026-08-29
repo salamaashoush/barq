@@ -73,63 +73,63 @@ attrs 1: 0/0 p: title"
 `;
 
 exports[`rendered DOM golden bind-family: rendered DOM 1`] = `
-"initial: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="ada" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="2" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="seeded" class="draft" type="text"><b class="echo">ada/2</b></form>
-step 0: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="grace" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="2" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="seeded" class="draft" type="text"><b class="echo">grace/2</b></form>
-step 1: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="grace" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="seeded" class="draft" type="text"><b class="echo">grace/9</b></form>
-step 2: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="grace" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="reseeded" class="draft" type="text"><b class="echo">grace/9</b></form>
-event 0: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="typed" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="reseeded" class="draft" type="text"><b class="echo">typed/9</b></form>
-event 1: <form class="bind-family"><input .checked=false .defaultValue="" .indeterminate=false .value="typed" class="name" type="text"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=true .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="" .indeterminate=false .value="9" class="amount" type="number"><input .checked=false .defaultValue="" .indeterminate=false .value="reseeded" class="draft" type="text"><b class="echo">typed/9</b></form>
+"initial: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="ada" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="2" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="seeded" class="draft" type="text" value="seeded"><b class="echo">ada/2</b></form>
+step 0: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="grace" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="2" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="seeded" class="draft" type="text" value="seeded"><b class="echo">grace/2</b></form>
+step 1: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="grace" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="seeded" class="draft" type="text" value="seeded"><b class="echo">grace/9</b></form>
+step 2: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="grace" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="reseeded" class="draft" type="text" value="seeded"><b class="echo">grace/9</b></form>
+event 0: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="typed" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="reseeded" class="draft" type="text" value="seeded"><b class="echo">typed/9</b></form>
+event 1: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="typed" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=true .defaultValue="" .indeterminate=false .value="on" checked="" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="reseeded" class="draft" type="text" value="seeded"><b class="echo">typed/9</b></form>
 attrs 0: 0 form: class
-attrs 0: 0/0 input: type,class
+attrs 0: 0/0 input: type,class,value
 attrs 0: 0/1 textarea: class
 attrs 0: 0/2 input: type,class
-attrs 0: 0/3 input: type,class
-attrs 0: 0/4 input: type,class
+attrs 0: 0/3 input: type,class,value
+attrs 0: 0/4 input: type,class,value
 attrs 0: 0/5 b: class
 attrs 1: 0 form: class
-attrs 1: 0/0 input: type,class
+attrs 1: 0/0 input: type,class,value
 attrs 1: 0/1 textarea: class
 attrs 1: 0/2 input: type,class
-attrs 1: 0/3 input: type,class
-attrs 1: 0/4 input: type,class
+attrs 1: 0/3 input: type,class,value
+attrs 1: 0/4 input: type,class,value
 attrs 1: 0/5 b: class
 attrs 2: 0 form: class
-attrs 2: 0/0 input: type,class
+attrs 2: 0/0 input: type,class,value
 attrs 2: 0/1 textarea: class
 attrs 2: 0/2 input: type,class
-attrs 2: 0/3 input: type,class
-attrs 2: 0/4 input: type,class
+attrs 2: 0/3 input: type,class,value
+attrs 2: 0/4 input: type,class,value
 attrs 2: 0/5 b: class
 attrs 3: 0 form: class
-attrs 3: 0/0 input: type,class
+attrs 3: 0/0 input: type,class,value
 attrs 3: 0/1 textarea: class
 attrs 3: 0/2 input: type,class
-attrs 3: 0/3 input: type,class
-attrs 3: 0/4 input: type,class
+attrs 3: 0/3 input: type,class,value
+attrs 3: 0/4 input: type,class,value
 attrs 3: 0/5 b: class
 attrs 4: 0 form: class
-attrs 4: 0/0 input: type,class
+attrs 4: 0/0 input: type,class,value
 attrs 4: 0/1 textarea: class
 attrs 4: 0/2 input: type,class
-attrs 4: 0/3 input: type,class
-attrs 4: 0/4 input: type,class
+attrs 4: 0/3 input: type,class,value
+attrs 4: 0/4 input: type,class,value
 attrs 4: 0/5 b: class
 attrs 5: 0 form: class
-attrs 5: 0/0 input: type,class
+attrs 5: 0/0 input: type,class,value
 attrs 5: 0/1 textarea: class
-attrs 5: 0/2 input: type,class
-attrs 5: 0/3 input: type,class
-attrs 5: 0/4 input: type,class
+attrs 5: 0/2 input: type,class,checked
+attrs 5: 0/3 input: type,class,value
+attrs 5: 0/4 input: type,class,value
 attrs 5: 0/5 b: class"
 `;
 
 exports[`rendered DOM golden bind-value-channel: rendered DOM 1`] = `
-"initial: <label><input .checked=false .defaultValue="" .indeterminate=false .value="hi" type="text"><b>hi</b></label>
-step 0: <label><input .checked=false .defaultValue="" .indeterminate=false .value="edited" type="text"><b>edited</b></label>
-event 0: <label><input .checked=false .defaultValue="" .indeterminate=false .value="typed" type="text"><b>typed</b></label>
-attrs 0: 0/0 input: type
-attrs 1: 0/0 input: type
-attrs 2: 0/0 input: type"
+"initial: <label><input .checked=false .defaultValue="hi" .indeterminate=false .value="hi" type="text" value="hi"><b>hi</b></label>
+step 0: <label><input .checked=false .defaultValue="hi" .indeterminate=false .value="edited" type="text" value="hi"><b>edited</b></label>
+event 0: <label><input .checked=false .defaultValue="hi" .indeterminate=false .value="typed" type="text" value="hi"><b>typed</b></label>
+attrs 0: 0/0 input: type,value
+attrs 1: 0/0 input: type,value
+attrs 2: 0/0 input: type,value"
 `;
 
 exports[`rendered DOM golden boolean-and-nullish-props: rendered DOM 1`] = `
@@ -673,34 +673,34 @@ attrs 0: 0 div: class"
 `;
 
 exports[`rendered DOM golden dashboard-composite: rendered DOM 1`] = `
-"initial: <div class="posts"><h1>Hello, John</h1><input .checked=false .defaultValue="" .indeterminate=false .value="" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
-step 0: <div class="posts"><h1>Hello, John</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
-step 1: <div class="posts"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
-step 2: <div class="posts"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
-event 0: <div class="other"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
-event 1: <div class="other"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="typed" class="search"><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
+"initial: <div class="posts"><h1>Hello, John</h1><input .checked=false .defaultValue="" .indeterminate=false .value="" class="search" value=""><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
+step 0: <div class="posts"><h1>Hello, John</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search" value=""><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
+step 1: <div class="posts"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search" value=""><button class="tab" type="button">switch</button><ul class="rows"><li>alpha</li><li>beta</li></ul></div>
+step 2: <div class="posts"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search" value=""><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
+event 0: <div class="other"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="q" class="search" value=""><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
+event 1: <div class="other"><h1>Hello, Ada</h1><input .checked=false .defaultValue="" .indeterminate=false .value="typed" class="search" value=""><button class="tab" type="button">switch</button><ul class="rows"><li>gamma</li></ul></div>
 attrs 0: 0 div: class
-attrs 0: 0/1 input: class
+attrs 0: 0/1 input: class,value
 attrs 0: 0/2 button: type,class
 attrs 0: 0/3 ul: class
 attrs 1: 0 div: class
-attrs 1: 0/1 input: class
+attrs 1: 0/1 input: class,value
 attrs 1: 0/2 button: type,class
 attrs 1: 0/3 ul: class
 attrs 2: 0 div: class
-attrs 2: 0/1 input: class
+attrs 2: 0/1 input: class,value
 attrs 2: 0/2 button: type,class
 attrs 2: 0/3 ul: class
 attrs 3: 0 div: class
-attrs 3: 0/1 input: class
+attrs 3: 0/1 input: class,value
 attrs 3: 0/2 button: type,class
 attrs 3: 0/3 ul: class
 attrs 4: 0 div: class
-attrs 4: 0/1 input: class
+attrs 4: 0/1 input: class,value
 attrs 4: 0/2 button: type,class
 attrs 4: 0/3 ul: class
 attrs 5: 0 div: class
-attrs 5: 0/1 input: class
+attrs 5: 0/1 input: class,value
 attrs 5: 0/2 button: type,class
 attrs 5: 0/3 ul: class"
 `;
@@ -791,10 +791,10 @@ attrs 1: 0/0 p: id"
 `;
 
 exports[`rendered DOM golden dom-prop-static-value: rendered DOM 1`] = `
-"initial: <form class="statics"><input .checked=false .defaultValue="" .indeterminate=false .value="abc" readonly="" type="text"><input .checked=true .defaultValue="" .indeterminate=false .value="on" type="checkbox"></form>
+"initial: <form class="statics"><input .checked=false .defaultValue="abc" .indeterminate=false .value="abc" readonly="" type="text" value="abc"><input .checked=true .defaultValue="" .indeterminate=false .value="on" checked="" type="checkbox"></form>
 attrs 0: 0 form: class
-attrs 0: 0/0 input: type,readonly
-attrs 0: 0/1 input: type"
+attrs 0: 0/0 input: type,value,readonly
+attrs 0: 0/1 input: type,checked"
 `;
 
 exports[`rendered DOM golden dynamic: rendered DOM 1`] = `
@@ -912,15 +912,15 @@ attrs 2: 0/2 li: data-index"
 `;
 
 exports[`rendered DOM golden form-action: rendered DOM 1`] = `
-"initial: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved"></p></form>
-event 0: <form class="editor"><input .checked=false .defaultValue="" .indeterminate=false .value="hello" name="title"><button type="submit">save</button><p class="draft"></p><p class="saved">HELLO</p></form>
+"initial: <form class="editor"><input .checked=false .defaultValue="hello" .indeterminate=false .value="hello" name="title" value="hello"><button type="submit">save</button><p class="draft"></p><p class="saved"></p></form>
+event 0: <form class="editor"><input .checked=false .defaultValue="hello" .indeterminate=false .value="hello" name="title" value="hello"><button type="submit">save</button><p class="draft"></p><p class="saved">HELLO</p></form>
 attrs 0: 0 form: class
-attrs 0: 0/0 input: name
+attrs 0: 0/0 input: name,value
 attrs 0: 0/1 button: type
 attrs 0: 0/2 p: class
 attrs 0: 0/3 p: class
 attrs 1: 0 form: class
-attrs 1: 0/0 input: name
+attrs 1: 0/0 input: name,value
 attrs 1: 0/1 button: type
 attrs 1: 0/2 p: class
 attrs 1: 0/3 p: class"
@@ -1132,6 +1132,15 @@ attrs 0: 0/0 template: id
 attrs 0: 0/0/0 li: class"
 `;
 
+exports[`rendered DOM golden no-hydration-island: rendered DOM 1`] = `
+"initial: <div><p class="static">never hydrated</p><button class="live">0</button></div>
+event 0: <div><p class="static">never hydrated</p><button class="live">1</button></div>
+attrs 0: 0/0 p: class
+attrs 0: 0/1 button: class
+attrs 1: 0/0 p: class
+attrs 1: 0/1 button: class"
+`;
+
 exports[`rendered DOM golden non-delegated-event: rendered DOM 1`] = `
 "initial: <div>out</div>
 step 0: <div>in</div>
@@ -1225,15 +1234,15 @@ attrs 2: 0 div: class,data-on"
 `;
 
 exports[`rendered DOM golden property-attrs: rendered DOM 1`] = `
-"initial: <form><input .checked=false .defaultValue="" .indeterminate=false .value="typed" readonly="" type="text"><input .checked=false .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
-step 0: <form><input .checked=false .defaultValue="" .indeterminate=false .value="typed" readonly="" type="text"><input .checked=true .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
-step 1: <form><input .checked=false .defaultValue="" .indeterminate=false .value="edited" readonly="" type="text"><input .checked=true .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
-attrs 0: 0/0 input: type,readonly
+"initial: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="typed" readonly="" type="text" value="typed"><input .checked=false .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+step 0: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="typed" readonly="" type="text" value="typed"><input .checked=true .defaultValue="" .indeterminate=false .value="on" checked="" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+step 1: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="edited" readonly="" type="text" value="typed"><input .checked=true .defaultValue="" .indeterminate=false .value="on" checked="" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+attrs 0: 0/0 input: type,value,readonly
 attrs 0: 0/1 input: type,disabled
-attrs 1: 0/0 input: type,readonly
-attrs 1: 0/1 input: type,disabled
-attrs 2: 0/0 input: type,readonly
-attrs 2: 0/1 input: type,disabled"
+attrs 1: 0/0 input: type,value,readonly
+attrs 1: 0/1 input: type,disabled,checked
+attrs 2: 0/0 input: type,value,readonly
+attrs 2: 0/1 input: type,disabled,checked"
 `;
 
 exports[`rendered DOM golden props-destructured-body: rendered DOM 1`] = `
@@ -1891,6 +1900,8 @@ exports[`marker channel nested-fragments: anchor layout 1`] = `"<div><span>one</
 
 exports[`marker channel nested-template-element: anchor layout 1`] = `"<div><template><li><span>cell</span></li></template><ul></ul></div>"`;
 
+exports[`marker channel no-hydration-island: anchor layout 1`] = `"<div><p>never hydrated</p><button>0</button></div>"`;
+
 exports[`marker channel non-delegated-event: anchor layout 1`] = `"<div>out</div>"`;
 
 exports[`marker channel numeric-and-boolean-attrs: anchor layout 1`] = `"<div><input><span>s</span></div>"`;
@@ -1996,14 +2007,3 @@ exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><
 exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
 
 exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;
-
-exports[`rendered DOM golden no-hydration-island: rendered DOM 1`] = `
-"initial: <div><p class="static">never hydrated</p><button class="live">0</button></div>
-event 0: <div><p class="static">never hydrated</p><button class="live">1</button></div>
-attrs 0: 0/0 p: class
-attrs 0: 0/1 button: class
-attrs 1: 0/0 p: class
-attrs 1: 0/1 button: class"
-`;
-
-exports[`marker channel no-hydration-island: anchor layout 1`] = `"<div><p>never hydrated</p><button>0</button></div>"`;

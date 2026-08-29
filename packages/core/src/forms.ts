@@ -251,8 +251,63 @@ export function restoreCaret(element: Element, saved: Saved | null): void {
  * the compiled `Chan::Live` channel, `bind:`'s effect, `bind:`'s re-assertion
  * after a reported edit, and `createElement`'s dispatcher.
  */
+/**
+ * The live properties that ALSO have a content attribute, and what it is called.
+ *
+ * `value` is one only on `<input>`: a `<textarea>`'s value is its child text and
+ * a `<select>`'s is the selected option, so there is no attribute to write and
+ * the string backend says nothing there either.
+ */
+const REFLECTS_DEFAULT: Record<string, string> = {
+  value: "value",
+  checked: "checked",
+  // `bind:value` on a number field resolves to this property, and it is the
+  // field's `value` on the wire. `valueAsDate` is deliberately absent: the
+  // string a date field wants depends on its type and `String(date)` is not it.
+  valueAsNumber: "value",
+};
+
+/**
+ * Write the content attribute the FIRST time this property is set, and never
+ * again.
+ *
+ * The attribute is the field's DEFAULT, and the default is what a parser builds
+ * a field from — so it is the only thing that can make a server-rendered field
+ * arrive with its value already in it. The string backend writes it for exactly
+ * that reason; this is the half that keeps the DOM backend saying the same
+ * thing, and both halves are needed or the two trees disagree: a hydrated
+ * document kept the server's `value="hello"` while a cold render had no
+ * attribute at all, which is L5's `hydratedShape === coldShape` failing.
+ *
+ * FIRST WRITE ONLY, which is what React does with `defaultValue` and what the
+ * DOM means: a later write is the DIRTY value and must not move the default, or
+ * `form.reset()` would restore whatever was last assigned rather than what the
+ * field started as. The update path stays free of a second write, so typing
+ * into a bound input costs what it always did.
+ */
+function reflectDefault(element: Element, name: string, next: unknown): void {
+  const attribute = REFLECTS_DEFAULT[name];
+  if (attribute === undefined) return;
+  if (name === "value" && element.nodeName !== "INPUT") return;
+  if (element.hasAttribute(attribute)) return;
+  if (typeof next === "boolean") {
+    if (next) element.setAttribute(attribute, "");
+    return;
+  }
+  // Only what has ONE spelling. `coerceLive` already narrows a live value to a
+  // string or a number for these names; anything else has no unambiguous
+  // attribute form and writing `[object Object]` would be worse than writing
+  // nothing, which is the same line `attr` draws for `valueAsDate`.
+  if (typeof next !== "string" && typeof next !== "number") return;
+  element.setAttribute(attribute, String(next));
+}
+
 export function writeLive(element: Element, name: string, value: unknown): boolean {
   const next = coerceLive(name, value);
+  // Before the equality check: a field whose first value equals the property's
+  // own default still needs the attribute, or the `value=""` the server wrote
+  // has no counterpart on the client.
+  reflectDefault(element, name, next);
   if (holdsLive(element, name, next)) return false;
   const saved = captureCaret(element);
   (element as Element & Record<string, unknown>)[name] = next;

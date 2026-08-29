@@ -292,24 +292,39 @@ const REFLECTS_AS: Record<string, string> = {
   defaultValue: "value",
   defaultChecked: "checked",
   readOnly: "readonly",
+  // `bind:value` on `<input type="number">` resolves to this property at
+  // compile time (§3.10), and it reaches the wire as the field's `value` — a
+  // number has exactly one decimal spelling, so there is nothing to guess.
+  // `valueAsDate` does NOT: the string a date field wants depends on its type
+  // (`yyyy-mm-dd`, `yyyy-Www`, …) and `String(date)` is none of them, so it
+  // writes nothing rather than something a parser will misread.
+  valueAsNumber: "value",
 };
 
 /**
  * Names that write no attribute at all.
  *
- * `checked`, `selected` and `indeterminate` are the form-field DIRTY values:
- * setting the property changes what the field shows without touching the
- * markup, so a server that wrote them would ship a document the client's own
- * render does not produce. `defaultChecked` is the spelling that DOES reach the
- * wire, which is exactly what the DOM says it is for.
+ * `indeterminate` is the only form-field property with NO content attribute —
+ * there is no markup that expresses it, so a server can say nothing about it.
+ *
+ * `checked`, `selected` and `value` USED TO BE HERE, on the argument that they
+ * are dirty values which reflect to nothing. That is true of a live DOM and the
+ * wrong conclusion for a server: the content attribute is what the parser uses
+ * to build the field's DEFAULT, and the default is what the FIRST PAINT shows.
+ * Refusing to write them meant every server-rendered field arrived empty and
+ * unchecked and then jumped to its real state when the client set the property.
+ *
+ * Solid's server takes `value` out of the property branch specifically so it
+ * falls through to the ordinary attribute path
+ * (`dom-expressions/src/server.js:698`) and writes `checked` when truthy on the
+ * line below it.
  */
 const NOT_AN_ATTRIBUTE: Record<string, 1> = {
   children: 1,
   ref: 1,
   key: 1,
-  checked: 1,
-  selected: 1,
   indeterminate: 1,
+  valueAsDate: 1,
   innerHTML: 1,
   innerText: 1,
   textContent: 1,
@@ -317,12 +332,15 @@ const NOT_AN_ATTRIBUTE: Record<string, 1> = {
 };
 
 /**
- * `value` is the one name whose answer depends on the ELEMENT. On these four it
- * is the dirty value and reflects to nothing (`defaultValue` is the content
- * attribute); everywhere else — `<option>`, `<button>`, `<li>`, `<data>`,
- * `<meter>`, `<progress>`, `<param>` — the property IS the attribute.
+ * The elements on which `value` is NOT a content attribute.
+ *
+ * `<input value>` is one and sets the field's default, which is why `input` is
+ * absent here. The other three carry their value somewhere else entirely: a
+ * `<textarea>`'s is its child text, a `<select>`'s is the selected option, an
+ * `<output>`'s is its child text. Writing `value="…"` on any of them is markup
+ * a parser ignores.
  */
-const DIRTY_VALUE: Record<string, 1> = { input: 1, textarea: 1, select: 1, output: 1 };
+const VALUE_IS_NOT_AN_ATTRIBUTE: Record<string, 1> = { textarea: 1, select: 1, output: 1 };
 
 /**
  * The XML `Name` production, which is what `setAttribute` validates a name
@@ -376,7 +394,7 @@ export function attr(name: string, value: unknown, tag?: string): string {
   // client never writes.
   if (key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110) return "";
   if (key in NOT_AN_ATTRIBUTE) return "";
-  if (key === "value" && (tag === undefined || tag in DIRTY_VALUE)) return "";
+  if (key === "value" && tag !== undefined && tag in VALUE_IS_NOT_AN_ATTRIBUTE) return "";
 
   if (key === "class") return classAttr(classToString(unwrap(value)));
   if (key === "classList") return classAttr(clsList(value));
@@ -428,6 +446,11 @@ const ATTR_INTERCEPTED: Record<string, 1> = {
   style: 1,
   value: 1,
   defaultValue: 1,
+  // Both reflect to a name that is not their own, and one of them writes
+  // nothing at all — neither is a fact `attrLit` can have, so the compiler has
+  // to route them through `attr`.
+  valueAsNumber: 1,
+  valueAsDate: 1,
   defaultChecked: 1,
   readOnly: 1,
 };

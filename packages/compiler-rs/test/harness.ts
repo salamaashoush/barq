@@ -1097,6 +1097,26 @@ export function groupTargets(code: string): string[][] {
 const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", className: "class" };
 
 /**
+ * A channel name as the DOM reports it back.
+ *
+ * The emitted code carries the name the AUTHOR wrote, which for a property
+ * channel is the DOM's camelCase spelling — `_$setDomProp(el, "readOnly", …)` —
+ * and an element lists its attributes lowercased, as `readonly`. Comparing the
+ * two directly classified every camelCase property as an attribute the TEMPLATE
+ * baked, which is the opposite of what it is.
+ *
+ * It went unnoticed because the partition below only looks for a baked
+ * attribute AFTER a patched one: `type,readonly` has no patched name in front
+ * of the misclassified one, so the walk ended clean. It surfaced the moment
+ * `value` began reaching the wire and `type,value,readonly` put a real patched
+ * name first. The alias map handles the two that do not merely change case
+ * (`className`/`classList`); lowercasing handles the rest.
+ */
+function reportedAs(name: string): string {
+  return (ATTRIBUTE_ALIASES[name] ?? name).toLowerCase();
+}
+
+/**
  * `CODESIGN.md` §3.5's channel set, as it appears in emitted code:
  * `_$setAttr(el, "id", v)`. `_\$+`, not `_\$`: a fixture whose own source
  * contains `_$` makes the compiler shift every emitted uid to `_$$`, and a
@@ -1118,10 +1138,10 @@ export const BIND_PROP_CALL = /_\$+bindProp\([^,]+,\s*(_el\$+\d+)\s*,[^,]+,\s*"(
 export function patchedAttributeNames(code: string): Set<string> {
   const names = new Set<string>();
   for (const match of code.matchAll(new RegExp(CHANNEL_CALL))) {
-    names.add(ATTRIBUTE_ALIASES[match[3]] ?? match[3]);
+    names.add(reportedAs(match[3]));
   }
   for (const match of code.matchAll(new RegExp(BIND_PROP_CALL))) {
-    names.add(ATTRIBUTE_ALIASES[match[2]] ?? match[2]);
+    names.add(reportedAs(match[2]));
   }
   return names;
 }
@@ -1422,7 +1442,7 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
           const names = line.slice(cut + 2).split(",");
           let seenPatched = false;
           for (const attribute of names) {
-            if (patched.has(attribute)) {
+            if (patched.has(attribute.toLowerCase())) {
               seenPatched = true;
               continue;
             }

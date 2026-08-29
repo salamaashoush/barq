@@ -501,11 +501,16 @@ fn attribute_slot(op: Op) -> Slot {
         Op::FormAction { .. } => Slot::Unnamed,
         // Dropped, and no cut is made: `<button class="btn">Bump` stays one
         // contiguous quasi with no empty `""` slot in it.
-        Op::Delegate { .. }
-        | Op::Listen { .. }
-        | Op::SetEvent { .. }
-        | Op::Ref { .. }
-        | Op::Bind { .. } => Slot::Elsewhere,
+        Op::Delegate { .. } | Op::Listen { .. } | Op::SetEvent { .. } | Op::Ref { .. } => {
+            Slot::Elsewhere
+        }
+        // A bind has TWO halves and only one of them is client-only. The
+        // listener that reports an edit cannot exist on the wire, and §5 drops
+        // it with the rest — but the VALUE is an ordinary attribute, and it is
+        // what makes a server-rendered field arrive with something in it.
+        // Dropping the whole op shipped `<input>` where the DOM backend builds
+        // `<input value="ada">`.
+        Op::Bind { prop, .. } => Slot::Named(prop),
         // Owns the child position (`element_into`), or the slot's own position
         // in the child list (`node_into`), or is a grouping marker with no
         // effects to group. `Region` is a child position like `Insert`.
@@ -732,7 +737,13 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
     /// property's own attribute — and that is M6's hydration work, not this
     /// milestone's; emitting half of it now would put a value on the wire the
     /// client has no claim rule for yet.
-    fn bind(&mut self, _at: At<'_>, _prop: NameId, _event: NameId, _value: ExprId) {}
+    /// The READ half. `attr` decides whether the property has a content
+    /// attribute at all — `value` does on `<input>` and does not on a
+    /// `<textarea>`, whose value is its child text — so the element-dependent
+    /// part stays in one place and this says only which name is written.
+    fn bind(&mut self, at: At<'_>, prop: NameId, _event: NameId, value: ExprId) {
+        self.named(at, prop, value);
+    }
 
     fn effect_group(&mut self, _at: At<'_>, _len: u16) {}
 }
