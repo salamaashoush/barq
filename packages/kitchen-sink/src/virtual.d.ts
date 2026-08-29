@@ -1,5 +1,12 @@
 /**
- * The two build-generated modules that have no types of their own.
+ * The build-generated modules that have no types of their own.
+ *
+ * NOTHING IN HERE IS IMPORTED BY THIS APPLICATION ANY MORE. The entries that
+ * imported them are the framework's — `barqStart` generates both, and this
+ * project writes neither, which is TanStack's arrangement
+ * (`examples/react/start-basic/src` has no entry file). The declarations stay
+ * because an application that DOES override an entry needs them, and a
+ * reference application that leaves no way to look them up is not a reference.
  *
  * A SCRIPT file, not a module: an ambient `declare module` inside a file with a
  * top-level `import`/`export` is an AUGMENTATION of a module that must already
