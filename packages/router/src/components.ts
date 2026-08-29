@@ -17,6 +17,7 @@
 
 import {
   type Block,
+  type Child,
   type JSXElement,
   type Cell,
   type Scope,
@@ -28,6 +29,7 @@ import {
   branch,
   cell,
   context,
+  insert,
   listen,
   onCleanup,
   props as sources,
@@ -170,7 +172,9 @@ export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-h
  * SERVER ONLY. There are no assets on the client — the shell is never rendered
  * there, because barq hydrates `#app` rather than the document.
  */
-export function HeadContent(scope: Scope | null): JSXElement {
+// The props parameter is never read; it is declared so JSX reads the FIRST
+// parameter as the scope. `Outlet` carries the same note and the same reason.
+export function HeadContent(scope: Scope | null, _props?: Record<string, never>): JSXElement {
   const assets = read(HeadAssetsContext)();
   if (assets === null) return null;
   const list = (): readonly ManagedTag[] =>
@@ -743,11 +747,15 @@ function anchorElement(
 
   extra(element, target);
 
+  // `insert`, NEVER `append`. The template CLAIMS the server's `<a>` during
+  // hydration, text and all, so appending the children put a SECOND copy of
+  // them inside it — measured on the reference application as every one of the
+  // ten navigation links reading "AboutAbout" and the sidebar growing by a row,
+  // which is a layout shift on every page that has a link in it. `insert` is
+  // the seam that claims what the server wrote instead of adding to it, and it
+  // takes the slot unresolved so children that change still update.
   const children = props.children;
-  if (children !== undefined) {
-    const value = readSlot(children, "Link.children");
-    if (value !== undefined && value !== null) element.append(value as never);
-  }
+  if (children !== undefined) insert(scope, element, children as Child);
   return element;
 }
 

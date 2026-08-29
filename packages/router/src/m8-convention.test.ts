@@ -197,6 +197,31 @@ describe("the nine workarounds are deletions", () => {
     expect(INDEX).not.toMatch(/^\s*Loading,$/m);
   });
 
+  /**
+   * NOTHING APPENDS INTO AN ELEMENT IT MAY HAVE CLAIMED.
+   *
+   * `anchorElement` built its `<a>` from a template and then called
+   * `element.append(children)`. On a cold render that is correct and on a
+   * HYDRATED one it is not: the template claims the server's anchor, text and
+   * all, so the append leaves a second copy inside it. Measured on the
+   * reference application as every one of the ten navigation links reading its
+   * own name twice, the sidebar a row taller than the server's, and therefore a
+   * layout shift on every page that has a link.
+   *
+   * `hydrate.report` cannot see it. The claim SUCCEEDED and the tree was right
+   * until the component added to it, so there is no mismatch to report — which
+   * is exactly why this is a source gate rather than an assertion on a render.
+   *
+   * `insert` is the seam that claims what the server wrote instead of adding to
+   * it, and it is what every other construct in this package already uses.
+   */
+  test("10. no element built from a template is appended into", () => {
+    const offenders = SOURCES.filter(([, text]) =>
+      /\b(?:element|node|anchor)\.append(?:Child)?\(/.test(text),
+    ).map(([name]) => name);
+    expect(offenders).toEqual([]);
+  });
+
   // #9 — `Link` read `state.location()` at CONSTRUCTION, so a relative href
   // never re-resolved. `router.test.tsx` pins the behaviour by navigating; this
   // pins the SHAPE, because the behavioural test only sees it where the Link
