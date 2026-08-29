@@ -229,6 +229,7 @@ export {
   STATIC_KEY,
   NO_SCOPE,
   HYDRATE,
+  WHOLE,
 } from "./flow.ts";
 export type { BoundaryKind } from "./flow.ts";
 

@@ -48,22 +48,6 @@ export interface ManagedTag {
    * did not change — re-requesting an icon and re-running a script.
    */
   readonly identity?: string;
-  /**
-   * NOT the patcher's to manage, so it is written without `data-barq-head`.
-   *
-   * The framework's own tags — the matched chain's module preloads and the
-   * build's stylesheets — belong in the one managed list, which is TanStack's
-   * shape and what `<HeadContent />` will render as a tree. They must not be
-   * OWNED yet: the patcher removes an owned tag whose identity is absent from
-   * the next list, and `installHead` cannot rebuild these because the client
-   * has no manifest to rebuild them from — the client bundle cannot contain a
-   * map of its own hashed assets. Marking them here keeps the list right and
-   * the runtime behaviour unchanged.
-   *
-   * This flag goes when the manifest reaches the client and `<HeadContent />`
-   * owns `<head>` outright, which is the same commit that deletes the patcher.
-   */
-  readonly unowned?: true;
 }
 
 /** `{ title }`, `{ "script:ld+json": … }`, or an ordinary meta's attributes. */
@@ -315,13 +299,11 @@ export function resolveHead(
     tag: "link",
     attrs: { rel: "modulepreload", href, nonce },
     identity: `modulepreload:${href}`,
-    unowned: true,
   }));
   const css: ManagedTag[] = (options?.css ?? []).map((href) => ({
     tag: "link",
     attrs: { rel: "stylesheet", href, nonce },
     identity: `stylesheet:${href}`,
-    unowned: true,
   }));
   return [
     ...meta,
@@ -429,12 +411,9 @@ function escapeRawText(value: string, tag: string): string {
   return value.replaceAll(new RegExp(`</(?=${tag}\\b)`, "gi"), "<\\/");
 }
 
-/** The attribute the client patcher owns. Never written by an application. */
-export const OWNED = "data-barq-head";
-
 /** One managed tag as markup, for the server. */
-export function renderTag(tag: ManagedTag, identity?: string): string {
-  let attributes = identity === undefined ? "" : ` ${OWNED}="${escapeAttribute(identity)}"`;
+export function renderTag(tag: ManagedTag): string {
+  let attributes = "";
   for (const [name, value] of Object.entries(tag.attrs ?? {})) {
     if (value === undefined || value === false) continue;
     if (!/^[a-zA-Z][\w:.-]*$/.test(name)) continue;
@@ -454,14 +433,10 @@ export function renderTag(tag: ManagedTag, identity?: string): string {
 /**
  * A managed tag as the props a `<Dynamic>` takes, so the two backends build one
  * shape and only the primitive differs.
- *
- * The ownership attribute is still written, because the patcher still exists and
- * a route tag it does not own is a tag a navigation cannot update. It goes with
- * `installHead`.
  */
 export function tagProps(tag: ManagedTag, index: number): Record<string, unknown> {
-  const props: Record<string, unknown> = { component: tag.tag };
-  if (tag.unowned !== true) props[OWNED] = tag.identity ?? `${tag.tag}:${index}`;
+  void index;
+  const props: Record<string, unknown> = {};
   for (const [name, value] of Object.entries(tag.attrs ?? {})) {
     if (value === undefined || value === false) continue;
     props[name] = value;
@@ -477,161 +452,5 @@ export function tagKey(tag: ManagedTag, index: number): string {
 
 /** Every managed tag as markup, in order. */
 export function renderTags(tags: readonly ManagedTag[]): string {
-  return tags
-    .map((tag, index) =>
-      tag.unowned === true ? renderTag(tag) : renderTag(tag, tag.identity ?? `${tag.tag}:${index}`),
-    )
-    .join("");
-}
-
-/**
- * Patch `document.head` to be these tags, on a client navigation.
- *
- * THE RULE, and every shipped failure in this area is a violation of it: only
- * nodes carrying `data-barq-head` are ever removed or rewritten. An analytics
- * snippet, a browser extension's injected `<link>`, a tag the application added
- * by hand — all of them are invisible here.
- *
- * REUSE BEFORE REPLACE, per identity. A `<link rel="icon">` whose href has not
- * changed is left alone rather than removed and re-created, so a navigation
- * between two routes that share most of their head touches almost nothing —
- * which is what stops the favicon re-request and the title flicker that
- * remove-all-then-add-all produces.
- */
-export function applyTags(tags: readonly ManagedTag[], target: Document = document): void {
-  const owned = new Map<string, Element[]>();
-  for (const node of target.head.querySelectorAll(`[${OWNED}]`)) {
-    const identity = node.getAttribute(OWNED) as string;
-    const list = owned.get(identity);
-    if (list === undefined) owned.set(identity, [node]);
-    else list.push(node);
-  }
-
-  const wanted = new Map<string, ManagedTag[]>();
-  for (const [index, tag] of tags.entries()) {
-    const identity = tag.identity ?? `${tag.tag}:${index}`;
-    const list = wanted.get(identity);
-    if (list === undefined) wanted.set(identity, [tag]);
-    else list.push(tag);
-  }
-
-  for (const [identity, nodes] of owned) {
-    if (wanted.has(identity)) continue;
-    for (const node of nodes) node.remove();
-    // Removing the element is not enough for a title: `document.title` falls
-    // back to the next one in tree order, and on a page whose only title was
-    // ours that is the empty string, which shows as the URL in the tab.
-    if (identity === "title") target.title = originalTitle(target);
-  }
-
-  for (const [identity, list] of wanted) {
-    const existing = owned.get(identity) ?? [];
-    for (const tag of list) {
-      const match = existing.find((node) => sameTag(node, tag));
-      if (match !== undefined) {
-        existing.splice(existing.indexOf(match), 1);
-        continue;
-      }
-      target.head.append(elementFor(tag, identity, target));
-    }
-    for (const leftover of existing) leftover.remove();
-    if (identity === "title") target.title = list[list.length - 1]?.children ?? "";
-  }
-}
-
-/**
- * The title the document had before any route claimed one.
- *
- * Captured once, because by the second navigation the original element is gone
- * and there is nothing left to read it from.
- */
-let captured: string | null = null;
-function originalTitle(target: Document): string {
-  captured ??= target.head.querySelector(`title:not([${OWNED}])`)?.textContent ?? "";
-  return captured;
-}
-
-/** Called by the boot, while the document's own title is still there. */
-export function captureHead(target: Document = document): void {
-  originalTitle(target);
-}
-
-function sameTag(node: Element, tag: ManagedTag): boolean {
-  if (node.tagName.toLowerCase() !== tag.tag) return false;
-  const wanted = Object.entries(tag.attrs ?? {}).filter(
-    ([, value]) => value !== undefined && value !== false,
-  );
-  // `+1` for the ownership attribute this function itself wrote.
-  if (node.attributes.length !== wanted.length + 1) return false;
-  for (const [name, value] of wanted) {
-    const found = node.getAttribute(name);
-    if (value === true ? found === null : found !== String(value)) return false;
-  }
-  return (node.textContent ?? "") === (tag.children ?? "");
-}
-
-function elementFor(tag: ManagedTag, identity: string, target: Document): Element {
-  const node = target.createElement(tag.tag);
-  node.setAttribute(OWNED, identity);
-  for (const [name, value] of Object.entries(tag.attrs ?? {})) {
-    if (value === undefined || value === false) continue;
-    if (!/^[a-zA-Z][\w:.-]*$/.test(name)) continue;
-    node.setAttribute(name, value === true ? "" : String(value));
-  }
-  if (tag.children !== undefined) node.textContent = tag.children;
-  return node;
-}
-
-/**
- * Keep `document.head` in step with the router, for the life of the page.
- *
- * Installed by the client boot; the server writes the head into the shell and
- * has no navigation to react to. This is where barq differs from TanStack, whose
- * `HeadContent` lives in the reactive tree and portals into `<head>` — barq
- * hydrates `#app` rather than the document, so the shell never runs on the
- * client at all.
- *
- * THE ORDERING GUARD is the part that is not obvious. `projectHead` awaits each
- * route's module, so two navigations in quick succession resolve on their own
- * schedule and can finish out of order — and the loser writing last leaves the
- * document describing a page nobody is on, which for `rel="canonical"` is a
- * search-index error rather than a cosmetic one. Each run takes a token and
- * writes only if it is still the newest.
- */
-export function installHead(
-  state: {
-    readonly match: () => { readonly route: { readonly chain: readonly unknown[] } } | null;
-    readonly location: () => unknown;
-    readonly contexts: () => readonly Record<string, unknown>[];
-  },
-  effect: (run: () => void) => () => void,
-  target: Document = document,
-): () => void {
-  captureHead(target);
-  let newest = 0;
-  return effect(() => {
-    const match = state.match() as {
-      readonly route: { readonly chain: readonly { definition: unknown }[] };
-      readonly params: Record<string, string>;
-    } | null;
-    // SUBSCRIBED, so a navigation that keeps the same match still re-runs.
-    state.location();
-    state.contexts();
-    const mine = ++newest;
-    const chain = match?.route.chain ?? [];
-    void projectHead(
-      chain.map((route) => ({
-        params: match?.params ?? {},
-        loaderData: undefined,
-        definition: route.definition as never,
-      })),
-    )
-      .then((assets) => {
-        if (mine !== newest) return;
-        applyTags(resolveHead(assets), target);
-      })
-      // A `head` that throws must not become an unhandled rejection that
-      // silently leaves the document describing the previous page.
-      .catch((error: unknown) => console.error(error));
-  });
+  return tags.map((tag) => renderTag(tag)).join("");
 }

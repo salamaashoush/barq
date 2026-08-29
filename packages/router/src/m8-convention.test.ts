@@ -358,7 +358,9 @@ describe("the convention, from the other side", () => {
     // the provide hands back is what the component is invoked with.
     expect(ROUTER).toMatch(/withMatch\(\s*contentScope,/);
     expect(ROUTER).toContain("(component as unknown as Invoked)(inner,");
-    expect(ROUTER).toContain("(fallback as unknown as Invoked)(instance,");
+    // A regex, not a substring: what is pinned is that the scope goes FIRST,
+    // and a call that grew a second argument onto its own line still says that.
+    expect(ROUTER).toMatch(/\(fallback as unknown as Invoked\)\(\s*instance,/);
     // …and the suite drives a props-taking route component rather than a
     // zero-arity fixture, which is what made the old invocation half invisible.
     const TEST = readFileSync(join(SRC, "router.test.ts"), "utf8");

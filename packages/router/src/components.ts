@@ -29,6 +29,8 @@ import {
   branch,
   cell,
   context,
+  effect,
+  element,
   insert,
   listen,
   onCleanup,
@@ -37,12 +39,21 @@ import {
   read,
   readSlot,
   setAttr,
+  signal,
   setClass,
   template,
   untrack,
+  WHOLE,
 } from "@barqjs/core";
 
-import { type ManagedTag, renderTags, resolveHead, resolveScripts } from "./head.ts";
+import {
+  type ManagedTag,
+  projectHead,
+  renderTags,
+  resolveHead,
+  resolveScripts,
+  tagProps,
+} from "./head.ts";
 import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { errorFallbackFor } from "./errors.ts";
@@ -188,12 +199,10 @@ export function HeadContent(scope: Scope | null, _props?: Record<string, never>)
   if (assets.tagTree === undefined) {
     return assets.raw(renderTags(list()) + (assets.context ?? "")) as JSXElement;
   }
-  // The handoff stays opaque on both sides — it is a server-produced string and
-  // not the router's to manage.
-  return [
-    assets.tagTree(scope, list) as JSXElement,
-    assets.raw(assets.context ?? "") as JSXElement,
-  ];
+  // ONLY the managed tags. Everything else that used to be written here is
+  // placed with the seed instead, because `<head>` is hydrated and every node
+  // in it has to be one this tree produces.
+  return assets.tagTree(scope, list) as JSXElement;
 }
 
 /**
@@ -223,6 +232,200 @@ function escapeHeadAttribute(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+/**
+ * The DOM backend's `HeadAssets`, and the reason `installHead` is gone.
+ *
+ * The patcher wrote `document.head` from OUTSIDE the render: an effect ran
+ * `projectHead`, awaited every route module, and then reconciled the document
+ * by hand against an ownership attribute. Everything it did the render already
+ * does — `<HeadContent />` is a keyed list, and a keyed list reuses the node it
+ * already has, which is the whole of "reuse before replace".
+ *
+ * What survives from it is the ORDERING GUARD, because it is not a patcher
+ * concern: `projectHead` awaits each route's module, so two navigations in
+ * quick succession resolve on their own schedule and can finish out of order,
+ * and the loser writing last leaves the document describing a page nobody is on.
+ * Each run takes a token and writes only if it is still the newest.
+ *
+ * The resolved assets land in a SIGNAL, so the head is part of the render and a
+ * navigation updates it in the same frame as the route content. The patcher
+ * could not do that — it applied a tick late, and the tab title lagged one
+ * navigation behind on every link.
+ */
+/**
+ * The framework's own head tags, read back off the document the server sent.
+ *
+ * The client cannot be handed a manifest: the asset map of the client bundle
+ * cannot live INSIDE the client bundle without changing the hashes it is a map
+ * of. TanStack solves it by serialising the manifest into the page; barq does
+ * not have to, because the server already wrote these tags and the parser has
+ * already turned them into elements. Reading them back is the same information
+ * with no second channel to keep in step.
+ *
+ * `getAttribute`, not `.href`: the property is absolutised against the document
+ * and the attribute is what the server wrote, and only the second one round
+ * trips into a tag that claims the node it came from.
+ */
+function assetsFromDocument(): { preloads: string[]; css: string[] } {
+  const preloads: string[] = [];
+  const css: string[] = [];
+  for (const link of document.head.querySelectorAll("link[rel]")) {
+    const href = link.getAttribute("href");
+    if (href === null) continue;
+    const rel = link.getAttribute("rel");
+    if (rel === "modulepreload") preloads.push(href);
+    else if (rel === "stylesheet") css.push(href);
+  }
+  return { preloads, css };
+}
+
+/**
+ * This match's head assets, resolved.
+ *
+ * Exported because the BOOT has to await it before hydrating. The list is keyed,
+ * so a first render with an empty list claims nothing and then replaces every
+ * tag when the promise settles — measured as the server's `<title>` node being
+ * thrown away while every other head node was claimed.
+ */
+export async function resolveHeadFor(
+  state: RouterState,
+): Promise<readonly import("./head.ts").MatchAssets[]> {
+  const match = state.match();
+  const chain = match?.route.chain ?? [];
+  return projectHead(
+    chain.map((route) => ({
+      params: match?.params ?? {},
+      loaderData: undefined,
+      definition: route.definition as never,
+    })),
+  );
+}
+
+export function clientHeadAssets(
+  state: RouterState,
+  options: {
+    readonly clientAssets?: HeadAssets["clientAssets"];
+    readonly preloads?: readonly string[];
+    readonly nonce?: string;
+    /** What the boot already resolved, so the first render claims. */
+    readonly initial?: readonly import("./head.ts").MatchAssets[];
+  } = {},
+): HeadAssets {
+  // Read BEFORE the render, while the document is still exactly what the server
+  // sent: the first thing hydration does is claim these nodes.
+  const served = assetsFromDocument();
+  const resolved = signal<readonly import("./head.ts").MatchAssets[]>(options.initial ?? []);
+  let newest = 0;
+  let first = options.initial !== undefined;
+  effect(() => {
+    // SUBSCRIBED, all three, so a navigation that keeps the same match still
+    // re-runs — the head depends on the params and the contexts too.
+    state.match();
+    state.location();
+    state.contexts();
+    // The boot already resolved this one, and re-resolving it would replace
+    // every tag the render just claimed.
+    if (first) {
+      first = false;
+      return;
+    }
+    const mine = ++newest;
+    void resolveHeadFor(state)
+      .then((assets) => {
+        if (mine === newest) resolved.set(assets);
+      })
+      // A `head` that throws must not become an unhandled rejection that
+      // silently leaves the document describing the previous page.
+      .catch((error: unknown) => console.error(error));
+  });
+
+  return {
+    // A GETTER: `<HeadContent />` reads this inside the list's own effect, so
+    // the head re-renders when a navigation resolves.
+    get matches() {
+      return resolved();
+    },
+    nonce: options.nonce,
+    clientAssets: options.clientAssets ?? { css: served.css },
+    preloads: options.preloads ?? served.preloads,
+    raw: (markup: string) => {
+      const host = document.createElement("template");
+      host.innerHTML = markup;
+      return [...host.content.childNodes];
+    },
+    // An ACCESSOR of elements, not an `each`.
+    //
+    // `each` claims through `claimAt(parent, anchor, …)`, and a hydrating list
+    // therefore needs the element it sits in — which is why the compiler emits
+    // `_$each(_s$, _el$2, _el$6, …)` with both. A hand-written component has
+    // neither: it returns a value and the caller's `insert` decides where it
+    // goes. Calling `each` with nulls claimed nothing and the enclosing WHOLE
+    // claim then reconciled the server's whole head away.
+    //
+    // `element()` needs no position: it claims the next node by TAG, which is
+    // the same path `<html>`, `<head>` and `<body>` already take. Returning a
+    // function makes the caller's `insert` re-run it on a navigation, and
+    // `insert` reconciles the array it produces.
+    tagTree: (_scope, list) => () =>
+      list().map((tag, index) => element(null, tag.tag, tagProps(tag, index))),
+  };
+}
+
+/**
+ * The DOCUMENT, on the client: the root route's shell with the app inside it.
+ *
+ * The server renders the shell through `renderShell`; this is the same tree on
+ * the other backend, and it is what makes `hydrate(…, document)` possible at
+ * all. Without it the client rendered into `#app` and the shell never ran, so
+ * `<head>` had no counterpart in the tree and a second mechanism had to keep it
+ * in step — which is what `installHead` was.
+ *
+ * The shell is `lazy()`, so it must already be loaded when this runs.
+ * `preloadMatched` is what loads it, and the boot awaits that before hydrating
+ * for exactly this reason: a cold `lazy()` here throws `NotReadyError` from a
+ * position with no boundary above it and the whole page fails.
+ */
+export function Document(
+  scope: Scope | null,
+  props: { readonly state: unknown; readonly head?: unknown; readonly children: unknown },
+): JSXElement {
+  const state = readSlot(props.state, "Document.state") as RouterState;
+  const shell = shellComponentOf(state.config.routes);
+  const assets = clientHeadAssets(state, {
+    initial:
+      props.head === undefined
+        ? undefined
+        : (readSlot(props.head, "Document.head") as readonly import("./head.ts").MatchAssets[]),
+  });
+  // `children` crosses BY IDENTITY. It is a Block — the shell places it with
+  // `insert`, which calls it with the scope it is holding — and `readSlot`
+  // refuses a Block in a value slot, which is what "Document.children was
+  // invoked without a scope" was saying.
+  const children = props.children;
+  if (shell === undefined) return children as JSXElement;
+  // A null scope has nothing to provide ON, and `renderShell` makes the same
+  // split for the same reason.
+  if (scope === null) return shell(null, { children }) as JSXElement;
+  return provide(scope, HeadAssetsContext, cell(assets), (inner) =>
+    shell(inner, { children }),
+  ) as JSXElement;
+}
+
+/**
+ * The root route's `shellComponent`, or `undefined` for a table without one.
+ *
+ * `shellComponent` renders `<html>`, so only the root may declare one and the
+ * generated table only ever emits it there.
+ */
+function shellComponentOf(
+  routes: readonly unknown[],
+): ((scope: Scope | null, props: { children: unknown }) => unknown) | undefined {
+  const declared = (routes[0] as { shellComponent?: unknown } | undefined)?.shellComponent;
+  return typeof declared === "function"
+    ? (declared as (scope: Scope | null, props: { children: unknown }) => unknown)
+    : undefined;
 }
 
 /** What the shell was handed, or `null` where there is no shell. */
@@ -284,7 +487,13 @@ export function renderDepth(
       if (depth > 0) return null;
       const fallback = state.config.notFound;
       if (fallback !== undefined) {
-        return (fallback as unknown as Invoked)(instance, routeProps(state, depth, null));
+        // A not-found route has no next depth, so its `children` is the Block
+        // that places nothing. Omitting the argument was a type error the
+        // package's own `typecheck` has been failing on.
+        return (fallback as unknown as Invoked)(
+          instance,
+          routeProps(state, depth, null, EMPTY_CHILDREN),
+        );
       }
       return document.createTextNode(NOT_FOUND);
     }
@@ -458,6 +667,9 @@ export function routePropsFor(
     },
   ]) as unknown as RouteProps;
 }
+
+/** The `children` of a depth that has none: a Block that places nothing. */
+const EMPTY_CHILDREN: Block<unknown> = () => null;
 
 function routeProps(
   state: RouterState,
@@ -754,8 +966,14 @@ function anchorElement(
   // which is a layout shift on every page that has a link in it. `insert` is
   // the seam that claims what the server wrote instead of adding to it, and it
   // takes the slot unresolved so children that change still update.
+  // WHOLE: the string backend writes an anchor's children with no boundary
+  // comments — `backend.link` interpolates them straight into the tag — so the
+  // claim here is every child of the node, not a delimited range. Without it
+  // hydration looked for a `<!--]-->` that was never written and rebuilt the
+  // link, which is `expected <!--]--> before the end of <a>, found the text
+  // "Signals & State"`.
   const children = props.children;
-  if (children !== undefined) insert(scope, element, children as Child);
+  if (children !== undefined) insert(scope, element, children as Child, null, WHOLE);
   return element;
 }
 

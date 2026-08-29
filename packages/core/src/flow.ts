@@ -86,6 +86,17 @@ export const NO_SCOPE = 1 << 1;
  */
 export const HYDRATE = 1 << 2;
 
+/**
+ * `hydration.ts`'s `WHOLE`, re-exported on the flag integer the ABI already
+ * carries.
+ *
+ * A hole marked with it owns its parent's whole child list, so the string
+ * backend wrote it no boundary comments and the claim is every child read off
+ * the document. Anything hand-written that inserts into an element the server
+ * filled needs to say so, the way `element()` does.
+ */
+export { WHOLE };
+
 // `DETECT`, `ir/region.rs`'s `1 << 3`, is deliberately NOT here. It asks the
 // string backend to spell a range's key into its open comment and the compiler
 // sends it to that backend alone: this side reads whatever key is on the wire

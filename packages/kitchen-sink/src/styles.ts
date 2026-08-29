@@ -98,6 +98,16 @@ function splitRules(css: string): string[] {
 }
 
 export function collectStyles(): string {
+  // ON THE CLIENT this is the sheet the SERVER sent, read back off the element
+  // it is already in. The shell renders `<style id="_goober">{collectStyles()}
+  // </style>` on both sides, and the document is hydrated — so the two have to
+  // agree, and only the server's answer is the right one: goober's client sheet
+  // starts empty and fills as components mount, which would replace a complete
+  // stylesheet with a partial one mid-hydration.
+  if (typeof document !== "undefined") {
+    const served = document.getElementById("_goober");
+    if (served !== null) return served.textContent ?? "";
+  }
   for (const rule of splitRules(extractCss())) rules.add(rule);
   // Globals FIRST, so a component class still wins on specificity ties, and
   // because `body { background }` is the rule whose absence is a white page.

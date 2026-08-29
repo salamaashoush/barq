@@ -7,15 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import {
-  type MatchAssets,
-  OWNED,
-  applyTags,
-  projectHead,
-  renderTags,
-  resolveHead,
-  resolveScripts,
-} from "./head.ts";
+import { type MatchAssets, projectHead, renderTags, resolveHead, resolveScripts } from "./head.ts";
 
 const html = (matches: readonly MatchAssets[]): string => renderTags(resolveHead(matches));
 
@@ -181,9 +173,13 @@ describe("links", () => {
 });
 
 describe("render", () => {
-  test("every element carries the ownership attribute", () => {
+  // It used to assert that every element carried `data-barq-head`. There is no
+  // patcher to own them any more, so what is left to check is that both tags
+  // are rendered at all.
+  test("every managed tag is rendered", () => {
     const out = html([{ meta: [{ title: "T" }, { name: "a", content: "b" }] }]);
-    expect(out.match(new RegExp(OWNED, "g"))).toHaveLength(2);
+    expect(out.match(/<(?:title|meta)\b/g)).toHaveLength(2);
+    expect(out).not.toContain("data-barq-head");
   });
 
   test("an attribute value cannot break out of its attribute", () => {
@@ -314,30 +310,18 @@ describe("the framework's own tags", () => {
   });
 
   /**
-   * THE REGRESSION GUARD, and it caught a real one.
+   * The framework's tags carry no ownership attribute, and neither does
+   * anything else now.
    *
-   * Folding the preloads into the list gave them an identity, which made the
-   * patcher OWN them — and `installHead` rebuilds its list on the client, where
-   * there is no manifest to rebuild a preload from. The first navigation
-   * therefore removed every modulepreload the server wrote.
-   *
-   * They are `unowned` until `<HeadContent />` owns `<head>` outright.
+   * `data-barq-head` existed so a patcher could tell which nodes in
+   * `document.head` were its to remove. There is no patcher: `<HeadContent />`
+   * is a keyed list and the list owns its own nodes, so the marker is one less
+   * thing on the wire and one less thing to keep in step.
    */
-  test("a framework tag is not the patcher's, so a navigation leaves it alone", () => {
+  test("nothing on the wire is marked for a patcher", () => {
     const markup = renderTags(resolveHead(matches, { preloads: ["/a.js"], css: ["/s.css"] }));
     expect(markup).toContain('rel="modulepreload"');
-    expect(markup).not.toContain(`${OWNED}="modulepreload:/a.js"`);
-    expect(markup).not.toContain(`${OWNED}="stylesheet:/s.css"`);
-    // The route's own tags stay owned — the patcher still manages those.
-    expect(markup).toContain(`${OWNED}="title"`);
-
-    const target = document.implementation.createHTMLDocument("t");
-    target.head.innerHTML = markup;
-    // A navigation whose list has no preloads at all: the unowned tags survive
-    // it, exactly as an analytics snippet or an extension's link does.
-    applyTags(resolveHead([{ meta: [{ title: "Next" }] }]), target);
-    expect(target.head.querySelectorAll('link[rel="modulepreload"]')).toHaveLength(1);
-    expect(target.head.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(1);
-    expect(target.title).toBe("Next");
+    expect(markup).toContain('rel="stylesheet"');
+    expect(markup).not.toContain("data-barq-head");
   });
 });

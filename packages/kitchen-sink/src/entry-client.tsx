@@ -1,21 +1,19 @@
-import { effect, hydrate } from "@barqjs/core";
+import { hydrate } from "@barqjs/core";
 import { QueryClient } from "@tanstack/query-core";
 import { QueryClientProvider } from "@barqjs/extra";
 import {
+  Document,
   RouterProvider,
   browserHistory,
   createRouter,
-  installHead,
   preloadMatched,
+  resolveHeadFor,
 } from "@barqjs/router";
 import { routes } from "virtual:barq-routes";
 
 import { baseStyles } from "./styles";
 
 baseStyles();
-
-const container = document.getElementById("app");
-if (container === null) throw new Error("[barq] #app is missing, so there is nowhere to hydrate");
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5000, retry: 1 } },
@@ -30,21 +28,22 @@ const state = createRouter({ routes, history: browserHistory() });
 // discards exactly the markup hydration exists to keep.
 await state.start();
 await preloadMatched(state.chain());
+// The head, BEFORE hydrating. `<HeadContent />` is a keyed list, so a first
+// render with nothing in it claims nothing and then replaces every tag the
+// server wrote when the promise settles.
+const head = await resolveHeadFor(state);
 
-// `document.head` follows the router from here. The SERVER wrote this page's
-// head into the shell and every tag carries `data-barq-head`, so the first
-// navigation replaces what it owns and leaves everything else alone — an
-// analytics snippet, an extension's tag.
-//
-// A patcher rather than a reactive `<HeadContent />` in the tree, because barq
-// hydrates `#app` and not the document: the shell never runs on the client.
-installHead(state, (run) => effect(run));
-
+// THE DOCUMENT, not `#app`. The shell is a component like any other, so
+// `<HeadContent />` is in the tree and a navigation updates the head through
+// ordinary reactivity — there is no second mechanism patching `document.head`
+// behind the render, and no ownership attribute for one to key on.
 hydrate(
   () => (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider state={state} />
-    </QueryClientProvider>
+    <Document state={state} head={head}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider state={state} />
+      </QueryClientProvider>
+    </Document>
   ),
-  container,
+  document,
 );

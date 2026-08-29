@@ -27,9 +27,9 @@ import {
   html as ssrHtml,
   renderPage,
   renderToStream,
+  each as ssrEach,
   ssrDynamic,
   ssrErrored,
-  ssrFor,
   ssrLoading,
 } from "@barqjs/server";
 import { HYDRATE, type Block, type Scope, cell, getOwner, provide } from "@barqjs/core";
@@ -550,7 +550,6 @@ export function createPageHandler(
             clientAssets: options.clientAssets,
             preloads,
             preload,
-            context,
             // The string backend's own renderer, handed over the way
             // `LinkBackend` is: `HeadContent` and `Scripts` live in the
             // ISOMORPHIC entry because the ROOT ROUTE MODULE — which is where a
@@ -562,13 +561,23 @@ export function createPageHandler(
             // The string backend's list primitive, handed over the same way
             // `raw` is. Keyed, so the two backends reconcile the same way and a
             // navigation reuses the tag it already has rather than replacing it.
+            // NO range comments. The DOM side builds these with `element()`,
+            // which claims the next node by TAG rather than by a delimited
+            // range — so the wire carries the tags and nothing else, and the
+            // enclosing `<head>` claim walks straight through them.
             tagTree: (scope, list) =>
-              ssrFor(scope, {
-                each: list,
-                keyed: (tag: ManagedTag, index: number) => tagKey(tag, index),
-                children: (rowScope: Scope | null, tag: () => ManagedTag, index: () => number) =>
-                  ssrDynamic(rowScope, tagProps(tag(), index())),
-              }),
+              ssrEach(
+                scope,
+                null,
+                null,
+                list as never,
+                (tag: ManagedTag, index: number) => tagKey(tag, index),
+                (rowScope: Scope | null, tag: () => ManagedTag, index: () => number) =>
+                  ssrDynamic(rowScope, {
+                    component: tag().tag,
+                    ...tagProps(tag(), index()),
+                  }),
+              ),
           };
           // The whole document when a shell is declared, the app's markup when
           // it is not — and the `document()` template then wraps it.
@@ -611,7 +620,7 @@ export function createPageHandler(
                         context,
                         url,
                       })
-                    : DOCTYPE + withSeed(page.html, page.script),
+                    : DOCTYPE + withSeed(page.html, context + page.script),
                   url,
                 ),
                 // A rendered 404 rather than a bare one. In STREAM mode the status
@@ -637,7 +646,7 @@ export function createPageHandler(
                     () => answer,
                     context,
                   )
-                : shellStream(stream, options, url, dispose, () => answer),
+                : shellStream(stream, options, url, dispose, () => answer, context),
               {
                 status,
                 headers: { "content-type": "text/html; charset=utf-8" },
@@ -1060,6 +1069,16 @@ function shellStream(
   url: URL,
   done: () => void,
   answer: () => Response | null,
+  /**
+   * The `beforeLoad` handoff, placed where the seed is rather than in `<head>`.
+   *
+   * `<head>` is rendered by `<HeadContent />` and the document is HYDRATED, so
+   * every node in it has to be one the client's tree produces. The handoff is a
+   * server-computed string with no client counterpart, so it cannot be one —
+   * and it does not need to be: it is read by the boot, which runs at the end of
+   * the body, so anywhere before that will do.
+   */
+  context: string,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let first = true;
@@ -1111,6 +1130,7 @@ function shellStream(
       }
       const late = redirectScript(answer());
       if (late !== "") controller.enqueue(encoder.encode(late));
+      if (context !== "") controller.enqueue(encoder.encode(context));
       if (tail !== "") controller.enqueue(encoder.encode(tail));
       controller.close();
       done();
