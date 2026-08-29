@@ -57,6 +57,7 @@ import {
   type RouterState,
   ROUTE_CONTEXT_GLOBAL,
   createRouter,
+  resolveSsr,
 } from "./router.ts";
 import {
   type HeadAssets,
@@ -483,6 +484,22 @@ export function createPageHandler(
         request,
         async () => {
           const state = createRouter(config);
+          // HOISTED, and the hoist is the fix rather than a tidy-up.
+          //
+          // This used to be declared just above the render, which left
+          // everything between here and there — `runBeforeLoad`,
+          // `preloadMatched`, `projectHead`, `contextScript`, `preloadTags` —
+          // outside any guard. `projectHead` swallows a PER-ROUTE failure
+          // (correct, and what `projectLane` does), but a rejection from the
+          // `Promise.all` itself escaped, and so did a `lazy()` chunk that
+          // failed to import. The request's whole router state leaked with it:
+          // its history subscription, its loader cache, every in-flight cell.
+          let disposed = false;
+          const dispose = (): void => {
+            if (disposed) return;
+            disposed = true;
+            state.dispose();
+          };
           // `beforeLoad` runs BEFORE the shell, which is the whole reason it is a
           // separate phase from the loader: here the status is still open, so a
           // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
@@ -501,103 +518,122 @@ export function createPageHandler(
               { server: true },
             );
           } catch (error) {
-            state.dispose();
+            dispose();
             if (error instanceof NotFound) return html("not found", 404);
             const early = asResponse(error);
             if (early !== null) return early;
             throw error;
           }
-          state.setContexts(before.contexts);
-          // The matched chain's MODULES, before the render.
-          //
-          // Every route a file-based table generates is `lazy()`, and a cold cell
-          // throws `NotReadyError` — which the depth's boundary parks on. The
-          // non-streamed arm renders exactly TWICE, so a chain two deep resolves
-          // its layout on the second pass and its leaf on a third that never
-          // happens: measured on the reference application as a prerendered page
-          // with a nav and no content. Awaiting here costs the same imports the
-          // render would have done, in one round instead of one per depth.
-          await preloadMatched(match?.route.chain ?? []);
-          // Decided BEFORE the head is projected, because it is what decides
-          // whether `head` sees `loaderData` at all.
-          const buffered = options.stream === false || isCrawler(request, options);
-          const shell = shellComponentOf(options.routeTree);
-          // `projectLane`, in the same pre-shell phase. Every route's `head` and
-          // `scripts` run here with the params, the context and whatever
-          // `loaderData` has already settled — which on a streamed page is
-          // nothing, and on a buffered one is everything. `preloadMatched` has
-          // just imported every module they live in.
-          const chain = match?.route.chain ?? [];
-          const params = match?.params ?? {};
-          const assets = await projectHead(
-            await Promise.all(
-              chain.map(async (route) => ({
-                params,
-                loaderData: loaderDataFor(),
-                definition: route.definition as never,
-              })),
-            ),
-            // `console.error` and a rendered page, which is what `projectLane`
-            // does with the same failure: a broken `head` costs that route its
-            // tags, never the document.
-            { nonce: options.nonce, onError: (error) => console.error(error) },
-          );
-          const context = contextScript(url, before.produced, options.nonce);
-          const preloads = preloadFiles(match?.route.chain ?? null, options.routeAssets);
-          const preload = preloadTags(match?.route.chain ?? null, options.routeAssets);
-          const headAssets: HeadAssets = {
-            matches: assets,
-            nonce: options.nonce,
-            clientAssets: options.clientAssets,
-            preloads,
-            preload,
-            // The string backend's own renderer, handed over the way
-            // `LinkBackend` is: `HeadContent` and `Scripts` live in the
-            // ISOMORPHIC entry because the ROOT ROUTE MODULE — which is where a
-            // shell is declared — ships to the browser. Importing
-            // `@barqjs/router/server` from it drags `node:async_hooks` into the
-            // client bundle, and Vite answers that with "Module has been
-            // externalized for browser compatibility" and an empty page.
-            raw: (markup: string) => ssrHtml(markup),
-            // The string backend's list primitive, handed over the same way
-            // `raw` is. Keyed, so the two backends reconcile the same way and a
-            // navigation reuses the tag it already has rather than replacing it.
-            // NO range comments. The DOM side builds these with `element()`,
-            // which claims the next node by TAG rather than by a delimited
-            // range — so the wire carries the tags and nothing else, and the
-            // enclosing `<head>` claim walks straight through them.
-            tagTree: (scope, list) =>
-              ssrEach(
-                scope,
-                null,
-                null,
-                list as never,
-                (tag: ManagedTag, index: number) => tagKey(tag, index),
-                (rowScope: Scope | null, tag: () => ManagedTag, index: () => number) =>
-                  ssrDynamic(rowScope, {
-                    component: tag().tag,
-                    ...tagProps(tag(), index()),
-                  }),
-              ),
-          };
-          // The whole document when a shell is declared, the app's markup when
-          // it is not — and the `document()` template then wraps it.
-          const root = (): unknown =>
-            shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
-          // A streamed response is not finished when this function returns it:
-          // `renderToStream` hands back the `ReadableStream` before a byte of the
-          // body exists, and the boundaries resume against this state afterwards.
-          // Disposing in a `finally` therefore cleared the loader cache and
-          // unsubscribed history MID-RENDER, and every entry was re-minted on
-          // resume — masked today only because a re-minted cell for a settled key
-          // answers from the session bucket instead of refetching.
-          let disposed = false;
-          const dispose = (): void => {
-            if (disposed) return;
-            disposed = true;
-            state.dispose();
-          };
+          // THE GUARD STARTS HERE, not at the render. Everything from this
+          // point to the handover — the chunk imports, the head projection, the
+          // asset tags — can throw, and a throw that skips `dispose` leaks the
+          // request's whole router state.
+          // THE GUARD STARTS HERE, not at the render. Everything from this
+          // point to the handover — the chunk imports, the head projection, the
+          // asset tags — can throw, and a throw that skips `dispose` leaks the
+          // request's whole router state.
           try {
+            state.setContexts(before.contexts);
+            // The matched chain's MODULES, before the render.
+            //
+            // Every route a file-based table generates is `lazy()`, and a cold cell
+            // throws `NotReadyError` — which the depth's boundary parks on. The
+            // non-streamed arm renders exactly TWICE, so a chain two deep resolves
+            // its layout on the second pass and its leaf on a third that never
+            // happens: measured on the reference application as a prerendered page
+            // with a nav and no content. Awaiting here costs the same imports the
+            // render would have done, in one round instead of one per depth.
+            await preloadMatched(match?.route.chain ?? []);
+            // Decided BEFORE the head is projected, because it is what decides
+            // whether `head` sees `loaderData` at all.
+            const buffered = options.stream === false || isCrawler(request, options);
+            const shell = shellComponentOf(options.routeTree);
+            // `projectLane`, in the same pre-shell phase. Every route's `head` and
+            // `scripts` run here with the params, the context and whatever
+            // `loaderData` has already settled — which on a streamed page is
+            // nothing, and on a buffered one is everything. `preloadMatched` has
+            // just imported every module they live in.
+            const chain = match?.route.chain ?? [];
+            const params = match?.params ?? {};
+            // THE LANE BREAKS AT `ssr: false`, and it is theirs rather than an
+            // invention: `projectLane` runs the match's own `head` and THEN
+            // `if (match.ssr === false || …) break`
+            // (`router-core/src/load-server.ts:651-653`). So a route that opts out
+            // still contributes its own tags — with whatever context and
+            // `loaderData` exist, which for it is none, since its `beforeLoad` and
+            // its loader were both skipped — and nothing BELOW it contributes any,
+            // because the server rendered none of those routes.
+            //
+            // Mapping the whole chain, which is what this did, shipped a head
+            // describing markup the document does not contain.
+            const modes = resolveSsr(chain);
+            const projected: Route[] = [];
+            for (const [depth, route] of chain.entries()) {
+              projected.push(route);
+              if (modes[depth] === false) break;
+            }
+            const assets = await projectHead(
+              await Promise.all(
+                projected.map(async (route) => ({
+                  params,
+                  loaderData: loaderDataFor(),
+                  definition: route.definition as never,
+                })),
+              ),
+              // `console.error` and a rendered page, which is what `projectLane`
+              // does with the same failure: a broken `head` costs that route its
+              // tags, never the document.
+              { nonce: options.nonce, onError: (error) => console.error(error) },
+            );
+            const context = contextScript(url, before.produced, options.nonce);
+            const preloads = preloadFiles(match?.route.chain ?? null, options.routeAssets);
+            const preload = preloadTags(match?.route.chain ?? null, options.routeAssets);
+            const headAssets: HeadAssets = {
+              matches: assets,
+              nonce: options.nonce,
+              clientAssets: options.clientAssets,
+              preloads,
+              preload,
+              // The string backend's own renderer, handed over the way
+              // `LinkBackend` is: `HeadContent` and `Scripts` live in the
+              // ISOMORPHIC entry because the ROOT ROUTE MODULE — which is where a
+              // shell is declared — ships to the browser. Importing
+              // `@barqjs/router/server` from it drags `node:async_hooks` into the
+              // client bundle, and Vite answers that with "Module has been
+              // externalized for browser compatibility" and an empty page.
+              raw: (markup: string) => ssrHtml(markup),
+              // The string backend's list primitive, handed over the same way
+              // `raw` is. Keyed, so the two backends reconcile the same way and a
+              // navigation reuses the tag it already has rather than replacing it.
+              // NO range comments. The DOM side builds these with `element()`,
+              // which claims the next node by TAG rather than by a delimited
+              // range — so the wire carries the tags and nothing else, and the
+              // enclosing `<head>` claim walks straight through them.
+              tagTree: (scope, list) =>
+                ssrEach(
+                  scope,
+                  null,
+                  null,
+                  list as never,
+                  (tag: ManagedTag, index: number) => tagKey(tag, index),
+                  (rowScope: Scope | null, tag: () => ManagedTag, index: () => number) =>
+                    ssrDynamic(rowScope, {
+                      component: tag().tag,
+                      ...tagProps(tag(), index()),
+                    }),
+                ),
+            };
+            // The whole document when a shell is declared, the app's markup when
+            // it is not — and the `document()` template then wraps it.
+            const root = (): unknown =>
+              shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
+            // A streamed response is not finished when this function returns it:
+            // `renderToStream` hands back the `ReadableStream` before a byte of the
+            // body exists, and the boundaries resume against this state afterwards.
+            // Disposing in a `finally` therefore cleared the loader cache and
+            // unsubscribed history MID-RENDER, and every entry was re-minted on
+            // resume — masked today only because a re-minted cell for a settled key
+            // answers from the session bucket instead of refetching.
             if (buffered) {
               // `renderPage`, not `renderToString`: the sync one does not await an
               // async value, so every loader on the page would render as its

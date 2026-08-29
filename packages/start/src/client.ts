@@ -57,12 +57,18 @@ export interface ServerFnMeta {
  * come after it without ever changing the call shape again, and it removes the
  * `adminStats(undefined)` the bare form forced on every no-argument call.
  */
-export type ServerFnArgs<In> = [In] extends [undefined]
-  ? // No validator means no input, so the call takes no argument. A rest tuple
-    // with a `void` element does NOT make the parameter optional — `fn()` was a
-    // "Expected 1 arguments, but got 0" until this was written as an optional
-    // element instead.
-    [options?: FormData]
+export type ServerFnArgs<In> = [undefined] extends [In]
+  ? // The argument is OPTIONAL exactly when `undefined` is an acceptable input,
+    // which covers both cases that want it: no validator at all (`In` is
+    // `undefined`), and `.validator("unchecked")`, whose `In` is `unknown` and
+    // which therefore admits `undefined` too. Asking `[In] extends [undefined]`
+    // instead got the first and not the second, so every `unchecked` function
+    // that takes nothing still had to be called with an argument.
+    //
+    // An optional ELEMENT, not a `void` one: a rest tuple with a `void` member
+    // does not make the parameter optional, and `fn()` stayed "Expected 1
+    // arguments, but got 0" until it was written this way.
+    [options?: { readonly data: In } | FormData]
   : [options: { readonly data: In } | FormData];
 
 /**

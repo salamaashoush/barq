@@ -1342,3 +1342,182 @@ describe("shell and hydration", () => {
     expect(inside(withShell)).toContain("<b>leaf</b>");
   });
 });
+
+/**
+ * The head LANE, and where it stops.
+ *
+ * `projectLane` runs the match's own `head` and then breaks:
+ * `if (match.ssr === false || …) break` (`router-core/src/load-server.ts:651`).
+ * barq mapped the whole chain instead, so a document that contains nothing
+ * below an `ssr: false` route still described every route below it — tags for
+ * markup the server never rendered, built from a context those routes never
+ * contributed to.
+ */
+describe("the head lane stops where the render does", () => {
+  const table = (layoutSsr: boolean | undefined): AnyRouteDefinition[] =>
+    [
+      {
+        id: "__root__",
+        path: "/",
+        shellComponent: (_s: unknown, props: { children: unknown }) =>
+          ssrHtml(
+            `<html><head>${esc(HeadContent(_s as never))}</head>` +
+              `<body>${esc(props.children)}</body></html>`,
+          ),
+        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        head: { meta: [{ name: "root", content: "yes" }] },
+        children: [
+          {
+            id: "/app",
+            path: "app",
+            ssr: layoutSsr,
+            head: { meta: [{ name: "layout", content: "yes" }] },
+            component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+            children: [
+              {
+                id: "/app/",
+                path: "",
+                head: { meta: [{ name: "leaf", content: "yes" }] },
+                component: () => ssrHtml("<main>leaf</main>"),
+              },
+            ],
+          },
+        ],
+      },
+    ] as never;
+
+  const headOf = async (layoutSsr: boolean | undefined): Promise<string> => {
+    const handler = createPageHandler({
+      routeTree: table(layoutSsr),
+      stream: false,
+      app: (state) => renderRoutes(state),
+    });
+    return (await handler(get("/app"))).text();
+  };
+
+  test("every route contributes when the whole chain is server-rendered", async () => {
+    const body = await headOf(undefined);
+    expect(body).toContain('name="root"');
+    expect(body).toContain('name="layout"');
+    expect(body).toContain('name="leaf"');
+  });
+
+  test("`ssr: false` contributes its OWN tags and nothing below it does", async () => {
+    const body = await headOf(false);
+    // Everything above it, as ever.
+    expect(body).toContain('name="root"');
+    // Its own, which is theirs: the break is AFTER the match's `head` runs.
+    expect(body).toContain('name="layout"');
+    // …and nothing below, because the server rendered none of it. This is the
+    // assertion that was false before the lane broke, and it is the whole test.
+    expect(body).not.toContain('name="leaf"');
+    // The proof that the markup really is absent too, so the head is describing
+    // the document rather than disagreeing with it.
+    expect(body).not.toContain("<main>leaf</main>");
+  });
+});
+
+/**
+ * What happens when something between `beforeLoad` and the render throws.
+ *
+ * `dispose()` is now declared beside `createRouter` and the `try` starts at
+ * `setContexts`, so the chunk imports, the head projection and the asset tags
+ * are all inside the guard. They were not: `dispose` was declared just above the
+ * render, and a throw in that region escaped `withRequest` with the state still
+ * live — its history subscription, its loader cache, every in-flight cell.
+ *
+ * WHAT THIS DESCRIBE DOES NOT GATE, said plainly rather than implied. Disposal
+ * has no observable effect from outside the handler, and the two tests below
+ * pass with the guard in EITHER position — measured, by moving it back. So the
+ * hoist is reviewed by placement and is not pinned here; putting a seam into
+ * `createPageHandler` to watch a `dispose` would be inventing public API for a
+ * test. What these DO gate is the behaviour either side of it, which is what
+ * broke when the region was first written: a route whose chunk is missing must
+ * not blank the document, and a handler that has thrown once must still answer
+ * the next request.
+ */
+describe("a failure before the render, and what the handler does with it", () => {
+  const handlerFor = (preload: () => unknown) =>
+    createPageHandler({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          children: [
+            {
+              id: "/boom",
+              path: "boom",
+              component: Object.assign(() => ssrHtml("<main>ok</main>"), { preload }),
+            },
+          ],
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+
+  test("a chunk that REJECTS is the route's own problem, and the page still answers", async () => {
+    // `preloadMatched` uses `allSettled` deliberately: refusing to hydrate the
+    // whole page over one failed chunk turns one broken route into a blank
+    // document.
+    const handler = handlerFor(() => Promise.reject(new Error("chunk gone")));
+    const response = await handler(get("/boom"));
+    expect(response.status).toBeLessThan(500);
+  });
+
+  test("a chunk that throws SYNCHRONOUSLY propagates, and the next request is unaffected", async () => {
+    // `preloadMatched` calls `preload()` before collecting it
+    // (`route.ts:519-527`), so a synchronous throw bypasses its own `allSettled`
+    // and leaves through the handler. It must not poison the handler.
+    let fail = true;
+    const handler = handlerFor(() => {
+      if (fail) throw new Error("resolver exploded");
+      return Promise.resolve();
+    });
+    expect(handler(get("/boom"))).rejects.toThrow(/resolver exploded/);
+
+    fail = false;
+    const after = await handler(get("/boom"));
+    expect(after.status).toBe(200);
+    expect(await after.text()).toContain("<main>ok</main>");
+  });
+
+  test("a `head` that throws costs that route its tags and nothing else", async () => {
+    const handler = createPageHandler({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          shellComponent: (_s: unknown, props: { children: unknown }) =>
+            ssrHtml(
+              `<html><head>${esc(HeadContent(_s as never))}</head>` +
+                `<body>${esc(props.children)}</body></html>`,
+            ),
+          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          head: { meta: [{ name: "root", content: "yes" }] },
+          children: [
+            {
+              id: "/x",
+              path: "x",
+              head: () => {
+                throw new Error("head is broken");
+              },
+              component: () => ssrHtml("<main>x</main>"),
+            },
+          ],
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+    });
+
+    const body = await (await handler(get("/x"))).text();
+    // The document renders, the layout's tags survive, the broken route's are
+    // simply absent — `projectHead`'s per-route swallow, which is what
+    // `projectLane` does with the same failure.
+    expect(body).toContain("<main>x</main>");
+    expect(body).toContain('name="root"');
+  });
+});

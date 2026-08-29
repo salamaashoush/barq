@@ -47,11 +47,42 @@ export interface RouteTreeTypes {
  * compilation, so the machinery is exercised through the generic form and the
  * aliases are the trivial application of it.
  */
-export type IdsOf<Tree> = Tree extends { id: infer Id extends string } ? Id : string;
-export type PathsOf<Tree> = Tree extends { fullPaths: infer Path extends string } ? Path : string;
-export type RoutesOf<Tree> = Tree extends { fileRoutesById: infer Routes }
-  ? Routes
-  : Record<string, never>;
+/**
+ * `never` IS CHECKED FIRST, and both halves of that are load-bearing.
+ *
+ * A naked type parameter in a conditional DISTRIBUTES over a union, and `never`
+ * is the empty union — so `Tree extends {…} ? … : string` answered `never`
+ * rather than `string`. Wrapping the check in a tuple stops the distribution and
+ * is not enough on its own, because `never` is assignable to everything: the
+ * true branch is then taken and `infer` produces `never` from it anyway.
+ *
+ * The consequence was that `RoutePath` and `RouteId` were `never` in every
+ * project that has not generated a tree — a library, a hand-written table, and
+ * this package's own suite. `ToPath` hid it, since `never | never | (string &
+ * {})` is still a string. Caught by `tsc` on this package, which is the only
+ * compilation with an empty `Register`; `bun test` does not typecheck and could
+ * never have seen it.
+ */
+type Unregistered<Tree> = [Tree] extends [never] ? true : false;
+
+export type IdsOf<Tree> =
+  Unregistered<Tree> extends true
+    ? string
+    : [Tree] extends [{ id: infer Id extends string }]
+      ? Id
+      : string;
+export type PathsOf<Tree> =
+  Unregistered<Tree> extends true
+    ? string
+    : [Tree] extends [{ fullPaths: infer Path extends string }]
+      ? Path
+      : string;
+export type RoutesOf<Tree> =
+  Unregistered<Tree> extends true
+    ? Record<string, never>
+    : [Tree] extends [{ fileRoutesById: infer Routes }]
+      ? Routes
+      : Record<string, never>;
 /** See `ToPath` for why this admits any string. */
 export type ToPathOf<Tree> = PathsOf<Tree> | IdsOf<Tree> | (string & Record<never, never>);
 
