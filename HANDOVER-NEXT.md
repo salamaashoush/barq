@@ -28,7 +28,7 @@ Paste this as the opening prompt. Everything below was verified, not remembered.
 ## State — verified
 
 ```
-core 921 · router 350 · server 104 · start 110 · extra 26 · testing 16 · compiler 22
+core 921 · router 358 · server 104 · start 118 · extra 26 · testing 16 · compiler 22
 compiler-rs: cargo 372 pass · bun 3644 pass / 17 todo / 1 fail
   (the 1 fail is `the self-check needs one failing and one holding claim; the
    corpus has both` — it fires BECAUSE nothing fails. Do not chase it. Confirmed
@@ -114,6 +114,27 @@ building HEAD in a worktree, and it got worse the moment the table became static
 - **Sessions are a sealed cookie on WebCrypto AES-GCM**, no dependency. The
   interface is theirs; the sealing is not, and the file says so.
 
+**Then an optimisation-and-security pass over exactly that**, which found two
+things worth knowing about:
+
+- **The session KDF was a DoS amplifier.** PBKDF2 at 100k iterations is 7.93 ms
+  per request, and the salt comes out of the COOKIE — so an unauthenticated
+  client chose the CPU cost of each packet. It was also the wrong primitive:
+  PBKDF2 stretches a low-entropy secret and this input is a key. HKDF is
+  0.014 ms. 128 -> 59,600 sessions/s.
+- **A cross-origin POST to an API route returned 201.** Every state-changing
+  route shipped an hour earlier was a CSRF target. `crossOriginRefused` refuses
+  when a browser SIGNAL says cross-origin and allows when there is none — a
+  webhook sends neither header, and a forgery is by definition a browser.
+
+Measured, for anyone changing the request path:
+
+```
+api route GET   0.0021 ms   472,000/s        session seal    0.017 ms  59,600/s
+page render     0.0152 ms    65,000/s        session unseal  0.013 ms  77,500/s
+404             0.0065 ms   154,000/s
+```
+
 ## Still open, in the order I would take them
 
 ### 1. `loaderData` in `head` is still a stub
@@ -156,20 +177,26 @@ server-entry contract.
 ### 5. The server surface, what is NOT there
 
 Against `request-response.ts`, still missing: `getValidatedQuery` (they mark it
-"not public API (yet)"), and the typed-header maps they get from `fetchdts`.
+"not public API (yet)") and the typed-header maps they get from `fetchdts`.
 Neither is load-bearing. What IS worth deciding:
 
 - **A session cannot be revoked**, by construction — nothing on the server is
   consulted to open a sealed cookie. `maxAge` bounds it. An application that
-  needs revocation needs a store, and barq offers no seam for one.
+  needs revocation needs a store, and barq offers no seam for one. This is the
+  single biggest gap in the session design and it is a DESIGN choice, so change
+  it deliberately or not at all.
+- **A session is not rotated on privilege change.** Signing in reuses the
+  session id, so a fixation attack that seats a known id before login still holds
+  it after. `update` could mint a new id when asked to; nothing asks.
 - **`server.middleware` is not covered by the route-action manifest.** It uses
   the same `Middleware` type, so the chain comparison COULD reach it, but
-  `verifyRouteChains` only walks server functions today. A route that declares
-  `middleware` for its own handlers and a different one for its actions is not
-  checked against itself.
-- **Route handlers are not prerendered and cannot be.** `/api/*` under a
-  prerender crawl renders as a page; nothing marks a handler-only route as
-  uncrawlable.
+  `verifyRouteChains` walks server functions only. A route declaring one chain
+  for its handlers and another for its actions is not checked against itself.
+- **Nothing rate-limits anything.** Not the server functions, not the route
+  handlers. The middleware seam is there and no middleware fills it.
+- **A route handler sets no security headers by default** — no `nosniff`, no
+  CSP. Deliberate for now (TanStack sets none either), but it is a default worth
+  arguing about rather than inheriting.
 
 ### 6. The client story for a mutation
 

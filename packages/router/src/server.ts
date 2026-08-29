@@ -455,6 +455,7 @@ async function runRouteHandlers(
   request: Request,
   url: URL,
   match: Match<Route> | null,
+  refuse?: string,
 ): Promise<Response | null> {
   const handlers = handlersOf(match);
   if (handlers === undefined || match === null) return null;
@@ -512,7 +513,12 @@ async function runRouteHandlers(
         };
         return (await next()) as Response | undefined;
       },
-      { response: draft },
+      // The PRERENDER REFUSAL reaches a handler too. A build mints the
+      // `Request`, so `getRequest()` inside one would answer with the build
+      // machine's headers and a cookie jar that is empty for everyone — the
+      // same trap the page render already refuses, and a handler is if anything
+      // likelier to read a header than a component is.
+      { refuse, response: draft },
     );
   } catch (error) {
     // A middleware refuses by throwing a `Response`, exactly as a server
@@ -547,7 +553,7 @@ export function createPageHandler(
 
     // A ROUTE'S OWN HANDLER ANSWERS FIRST, and before the method gate, because
     // the whole point of one is to answer a `POST` that a page never could.
-    const handled = await runRouteHandlers(request, url, match);
+    const handled = await runRouteHandlers(request, url, match, options.refuseRequest);
     if (handled !== null) return handled;
 
     // A page is a GET. Nothing upstream filters the method — Vite's dev

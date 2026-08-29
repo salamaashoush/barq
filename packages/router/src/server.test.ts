@@ -1925,6 +1925,47 @@ describe("a route's own HTTP handlers", () => {
     });
   });
 
+  test("a handler inherits the PRERENDER refusal", async () => {
+    // A build mints the `Request`, so `getRequest()` inside a handler would
+    // answer with the build machine's headers and a cookie jar empty for
+    // everyone — the same trap the page render already refuses, and a handler is
+    // likelier to read a header than a component is.
+    let thrown: string | null = null;
+    const handler = createPageHandler({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          children: [
+            {
+              id: "/api",
+              path: "api",
+              server: {
+                handlers: {
+                  GET: () => {
+                    try {
+                      getRequest();
+                    } catch (error) {
+                      thrown = (error as Error).message;
+                    }
+                    return Response.json({ ok: true });
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+      refuseRequest: "no request during a prerender",
+    });
+    await handler(new Request("http://localhost/api"));
+    expect(thrown).toBe("no request during a prerender");
+  });
+
   test("a route with no `server` is untouched", async () => {
     const handler = api(undefined);
     const page = await send(handler, "GET");
