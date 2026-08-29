@@ -76,6 +76,28 @@ export interface SessionConfig {
    * script is a session cookie an XSS takes.
    */
   readonly cookie?: CookieOptions;
+  /**
+   * Has this session been revoked? Asked on every unseal.
+   *
+   * THE ONE THING A SEALED COOKIE CANNOT DO BY ITSELF. Nothing on the server is
+   * consulted to open one, so "log out everywhere" and "ban this account now"
+   * are otherwise impossible — an issued cookie is valid until it expires, and
+   * that is the trade the whole design makes.
+   *
+   * This is the smallest seam that closes it. The fast path stays stateless:
+   * without the hook there is no lookup, and with it an application keeps only a
+   * set of revoked IDS until they expire, which `maxAge` bounds. That is a much
+   * smaller thing to store than a session per user, and it is only ever written
+   * when somebody signs out or is banned.
+   *
+   * A REVOKED SESSION READS AS ABSENT, like every other reason a cookie will not
+   * open — see `unsealSession`. Throwing here would tell a caller the difference
+   * between "forged" and "revoked", which is an oracle.
+   *
+   * It is asked AFTER the cookie is authenticated, so an unauthenticated client
+   * cannot make the application do a lookup by sending a garbage cookie.
+   */
+  readonly isRevoked?: (id: string) => boolean | Promise<boolean>;
 }
 
 const DEFAULT_NAME = "barq-session";
@@ -220,6 +242,10 @@ export async function unsealSession(config: SessionConfig, sealed: string): Prom
     // it is the one that decides.
     const maxAge = config.maxAge ?? DEFAULT_MAX_AGE;
     if (Date.now() - session.createdAt > maxAge * 1000) return null;
+    // AFTER the tag has verified, never before: asking first would let an
+    // unauthenticated client drive a lookup with a garbage cookie, which is the
+    // same amplifier the KDF used to be.
+    if (config.isRevoked !== undefined && (await config.isRevoked(session.id))) return null;
     return session;
   } catch {
     // AES-GCM's tag failed, or the envelope was not ours. Same answer either way.

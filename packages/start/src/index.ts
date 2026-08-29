@@ -53,6 +53,20 @@ export { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } f
  * wrong. A cookie sealed by one does not open in the other, and `session.ts`
  * says so where it can be read.
  */
+/**
+ * Rate limiting, as a middleware — so one closure guards a server function and a
+ * route handler alike. The STORE has no default on purpose; `rate-limit.ts` says
+ * why at length.
+ */
+export {
+  type RateLimitCount,
+  type RateLimitOptions,
+  type RateLimitStore,
+  byIP,
+  memoryStore,
+  rateLimit,
+} from "./rate-limit.ts";
+
 export {
   type Session,
   type SessionConfig,

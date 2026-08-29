@@ -28,7 +28,7 @@ Paste this as the opening prompt. Everything below was verified, not remembered.
 ## State — verified
 
 ```
-core 921 · router 362 · server 104 · start 119 · extra 26 · testing 16 · compiler 22
+core 921 · router 362 · server 104 · start 135 · extra 26 · testing 16 · compiler 22
 compiler-rs: cargo 372 pass · bun 3644 pass / 17 todo / 1 fail
   (the 1 fail is `the self-check needs one failing and one holding claim; the
    corpus has both` — it fires BECAUSE nothing fails. Do not chase it. Confirmed
@@ -180,11 +180,16 @@ Against `request-response.ts`, still missing: `getValidatedQuery` (they mark it
 "not public API (yet)") and the typed-header maps they get from `fetchdts`.
 Neither is load-bearing. What IS worth deciding:
 
-- **A session cannot be revoked**, by construction — nothing on the server is
-  consulted to open a sealed cookie. `maxAge` bounds it. An application that
-  needs revocation needs a store, and barq offers no seam for one. This is the
-  single biggest gap in the session design and it is a DESIGN choice, so change
-  it deliberately or not at all.
+- **Revocation is an `isRevoked(id)` hook**, agreed and shipped. The fast path
+  stays stateless — no hook, no lookup — and the hook is asked AFTER the tag
+  verifies, so a garbage cookie cannot drive a lookup. What is still not there is
+  a STORE: an application keeps its own set of revoked ids, bounded by `maxAge`.
+- **Rate limiting is `rateLimit({ limit, windowMs, key, store })`**, shipped, and
+  the STORE HAS NO DEFAULT on purpose — an in-memory counter is wrong the moment
+  there are two instances and would pass every test while protecting nothing.
+  `memoryStore()` ships beside it, named for what it is. It fails OPEN when the
+  store throws, which is right for a limiter and wrong for an authorization
+  check.
 - **Session fixation does NOT apply, and an earlier draft of this file said it
   did.** Corrected after measuring: the sealed VALUE is the credential, not the
   id, and signing in mints a new value the attacker never sees — their seeded
@@ -196,8 +201,9 @@ Neither is load-bearing. What IS worth deciding:
   the same `Middleware` type, so the chain comparison COULD reach it, but
   `verifyRouteChains` walks server functions only. A route declaring one chain
   for its handlers and another for its actions is not checked against itself.
-- **Nothing rate-limits anything.** Not the server functions, not the route
-  handlers. The middleware seam is there and no middleware fills it.
+- **Nothing applies the limiter by default.** `/api/health` in the reference app
+  uses it; server functions do not. Whether `createServerFn` should take one is
+  undecided.
 - **A redirect target is checked, and this is where the rule lives.** A 302 to
   `javascript:…` is inert; `location.replace("javascript:…")` EXECUTES — measured
   in Chrome — and a streamed redirect has to be the second one. So

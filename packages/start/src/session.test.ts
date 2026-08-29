@@ -264,6 +264,62 @@ describe("the password is a key, not a passphrase", () => {
  * it does NOT change across a login. Anyone adding one has to rotate the id on
  * privilege change, and this test is where that is written down.
  */
+/**
+ * Revocation — the one thing a sealed cookie cannot do by itself.
+ *
+ * Nothing on the server is consulted to open one, so without this hook an
+ * issued cookie is valid until it expires and "log out everywhere" is
+ * impossible.
+ */
+describe("a revoked session", () => {
+  test("reads as absent, exactly like a forged one", async () => {
+    const revoked = new Set<string>();
+    const config: SessionConfig = { ...CONFIG, isRevoked: (id) => revoked.has(id) };
+
+    const first = await inRequest(async () => {
+      const session = await useSession<{ userId: number }>(config);
+      await session.update({ userId: 7 });
+      return session.id;
+    });
+    const cookie = asRequestCookie(first.setCookie[0] ?? "");
+
+    // It opens, until it does not.
+    expect((await inRequest(async () => (await useSession(config)).data, cookie)).value).toEqual({
+      userId: 7,
+    });
+
+    revoked.add(first.value);
+    const after = await inRequest(async () => (await useSession(config)).data, cookie);
+    // EMPTY, not an error — telling a caller the difference between "forged"
+    // and "revoked" is an oracle.
+    expect(after.value).toEqual({});
+  });
+
+  test("the hook is asked AFTER the tag verifies, never before", async () => {
+    // Otherwise an unauthenticated client drives a lookup per garbage cookie,
+    // which is the same amplifier the KDF used to be.
+    let asked = 0;
+    const config: SessionConfig = {
+      ...CONFIG,
+      isRevoked: () => {
+        asked += 1;
+        return false;
+      },
+    };
+    expect(await unsealSession(config, "b1.forged.forged.forged")).toBeNull();
+    expect(asked).toBe(0);
+
+    const real = await sealSession(config, { id: "a", createdAt: Date.now(), data: {} });
+    expect(await unsealSession(config, real)).not.toBeNull();
+    expect(asked).toBe(1);
+  });
+
+  test("no hook means no lookup at all — the fast path stays stateless", async () => {
+    const sealed = await sealSession(CONFIG, { id: "a", createdAt: Date.now(), data: { a: 1 } });
+    expect((await unsealSession(CONFIG, sealed))?.data).toEqual({ a: 1 });
+  });
+});
+
 describe("session fixation", () => {
   test("a cookie the attacker seeded does not gain the victim's privileges", async () => {
     const attackerHeld = await sealSession(CONFIG, {

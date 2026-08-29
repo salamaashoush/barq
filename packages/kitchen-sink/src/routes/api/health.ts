@@ -15,13 +15,31 @@
  */
 
 import { createFileRoute } from "@barqjs/router";
-import { getRequestHeader, setResponseHeader } from "@barqjs/start";
+import { byIP, getRequestHeader, memoryStore, rateLimit, setResponseHeader } from "@barqjs/start";
 
 /** Proof, for the bundle gate: this string must appear in no client chunk. */
 const SERVER_ONLY = "barq-server-only-marker";
 
+/**
+ * The limiter, built ONCE at module scope rather than per request — the store is
+ * the state, and a fresh one per call would count to one forever.
+ *
+ * `memoryStore()` is named for what it is: correct for a single instance and
+ * wrong behind a load balancer, where three instances permit three times the
+ * limit. The store has no default precisely so that choice is visible here.
+ */
+const limit = rateLimit({
+  limit: 30,
+  windowMs: 60_000,
+  // `xForwardedFor` stays OFF: nothing overwrites it in front of this demo, so
+  // trusting it would let any caller pick their own bucket by sending a header.
+  key: byIP(),
+  store: memoryStore(),
+});
+
 export const Route = createFileRoute("/api/health")({
   server: {
+    middleware: [limit],
     handlers: {
       GET: () => {
         // The ambient response works here exactly as it does in a server
