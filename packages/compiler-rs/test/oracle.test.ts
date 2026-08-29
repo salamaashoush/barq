@@ -1,7 +1,7 @@
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test";
 
 import {
   assertCompiledIsClean,
@@ -15,8 +15,8 @@ import {
   renderViaCompiler,
   stripLiterals,
   templateAnchors,
-} from "./harness.ts"
-import { countAnchors, normalizeDom } from "./normalize.ts"
+} from "./harness.ts";
+import { countAnchors, normalizeDom } from "./normalize.ts";
 
 /**
  * THE ORACLE, after M9 removed its reference implementation.
@@ -63,10 +63,12 @@ import { countAnchors, normalizeDom } from "./normalize.ts"
 function drop(needle: string): (source: string) => string {
   return (source) => {
     if (!source.includes(needle)) {
-      throw new Error(`self-check corruption is stale: ${JSON.stringify(needle)} is not in the fixture`)
+      throw new Error(
+        `self-check corruption is stale: ${JSON.stringify(needle)} is not in the fixture`,
+      );
     }
-    return source.replace(needle, "")
-  }
+    return source.replace(needle, "");
+  };
 }
 
 /**
@@ -75,53 +77,53 @@ function drop(needle: string): (source: string) => string {
  */
 function inTemplates(mutate: (html: string) => string): (code: string) => string {
   return (code) => {
-    let seen = 0
+    let seen = 0;
     const out = code.replace(/(_\$template\(`)([\s\S]*?)(`)/g, (_m, open, html: string, close) => {
-      seen++
-      return open + mutate(html) + close
-    })
+      seen++;
+      return open + mutate(html) + close;
+    });
     if (seen === 0) {
-      throw new Error("self-check corruption is stale: the emitted module has no _$template")
+      throw new Error("self-check corruption is stale: the emitted module has no _$template");
     }
-    return out
-  }
+    return out;
+  };
 }
 
 /** The mutation the harness used to survive: one spurious anchor per text node. */
-const anchorAfterEveryText = inTemplates((html) => html.replace(/>([^<>]+)</g, ">$1<!----><"))
+const anchorAfterEveryText = inTemplates((html) => html.replace(/>([^<>]+)</g, ">$1<!----><"));
 
 /** Reverse the attribute order the templates were emitted with. */
 const reverseBakedAttributes = inTemplates((html) =>
   html.replace(/<([a-zA-Z][\w:-]*)((?:\s+[^\s=>/]+="[^"]*"){2,})/g, (_m, tag, attrs: string) => {
-    const pairs = [...attrs.matchAll(/\s+([^\s=>/]+="[^"]*")/g)].map((p) => p[1])
-    return `<${tag} ${pairs.reverse().join(" ")}`
+    const pairs = [...attrs.matchAll(/\s+([^\s=>/]+="[^"]*")/g)].map((p) => p[1]);
+    return `<${tag} ${pairs.reverse().join(" ")}`;
   }),
-)
+);
 
 /** Reverse the order the patch code applies props in, run by consecutive run. */
 function reverseAppliedProps(code: string): string {
   // A resolved channel write: `_$setAttr(_el$1, "href", v)`.
   const writes =
-    /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyle|setStyleProp|setClassList|setHtml|bindProp)\(/
+    /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyle|setStyleProp|setClassList|setHtml|bindProp)\(/;
   if (!writes.test(code)) {
-    throw new Error("self-check corruption is stale: the emitted module applies no props")
+    throw new Error("self-check corruption is stale: the emitted module applies no props");
   }
 
   /** Reverse every maximal run of consecutive matching units. */
   const flip = (units: string[]): string[] => {
-    const out: string[] = []
-    let run: string[] = []
+    const out: string[] = [];
+    let run: string[] = [];
     for (const unit of units) {
       if (writes.test(unit)) {
-        run.push(unit)
-        continue
+        run.push(unit);
+        continue;
       }
-      out.push(...run.reverse(), unit)
-      run = []
+      out.push(...run.reverse(), unit);
+      run = [];
     }
-    out.push(...run.reverse())
-    return out
-  }
+    out.push(...run.reverse());
+    return out;
+  };
 
   // Two passes, because a write can sit at two levels now. Inside a fused
   // effect the writes are consecutive LINES, and reversing the effect as a
@@ -129,21 +131,21 @@ function reverseAppliedProps(code: string): string {
   // wrapped in the effect the compiler emitted for it, and reversing lines
   // would not touch THAT. A one-level corruption went quietly inert on one of
   // the two shapes, which is the way a self-check stops being one.
-  const lines = flip(code.split("\n"))
+  const lines = flip(code.split("\n"));
 
-  const statements: string[] = []
+  const statements: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (!/_\$+bindEffect\(/.test(lines[i])) {
-      statements.push(lines[i])
-      continue
+      statements.push(lines[i]);
+      continue;
     }
-    const indent = lines[i].length - lines[i].trimStart().length
-    let end = i
-    while (end < lines.length && lines[end].trimEnd() !== `${" ".repeat(indent)}});`) end++
-    statements.push(lines.slice(i, Math.min(end + 1, lines.length)).join("\n"))
-    i = Math.min(end, lines.length - 1)
+    const indent = lines[i].length - lines[i].trimStart().length;
+    let end = i;
+    while (end < lines.length && lines[end].trimEnd() !== `${" ".repeat(indent)}});`) end++;
+    statements.push(lines.slice(i, Math.min(end + 1, lines.length)).join("\n"));
+    i = Math.min(end, lines.length - 1);
   }
-  return flip(statements).join("\n")
+  return flip(statements).join("\n");
 }
 
 /**
@@ -155,32 +157,32 @@ function reverseAppliedProps(code: string): string {
  * the bug it describes is a silent hole. `the parked list has no stale entries`
  * re-runs the audit for every parked name and fails if it now passes.
  */
-const PARKED: Record<string, string> = {}
+const PARKED: Record<string, string> = {};
 
-const fixtures = listFixtures()
+const fixtures = listFixtures();
 
 describe("compiled render integrity", () => {
   it("the corpus is big enough to mean something", () => {
-    expect(fixtures.length).toBeGreaterThanOrEqual(25)
-  })
+    expect(fixtures.length).toBeGreaterThanOrEqual(25);
+  });
 
   for (const name of fixtures) {
-    const parked = PARKED[name]
-    const run = parked ? it.todo : it
+    const parked = PARKED[name];
+    const run = parked ? it.todo : it;
     run(`${name}${parked ? ` — ${parked}` : ""}`, async () => {
-      await assertCompiledIsClean(name)
-    })
+      await assertCompiledIsClean(name);
+    });
   }
 
   it("the parked list has no stale entries", async () => {
     for (const name of Object.keys(PARKED)) {
-      expect(fixtures, `${name} is parked but is not a fixture`).toContain(name)
-      const result = await auditCompiled(name)
+      expect(fixtures, `${name} is parked but is not a fixture`).toContain(name);
+      const result = await auditCompiled(name);
       expect(result.ok, `${name} is parked as divergent but is now clean — delete the park`).toBe(
         false,
-      )
+      );
     }
-  }, 60_000)
+  }, 60_000);
 
   /**
    * Across the whole cycle, not just the first frame. K7 deletes the markers a
@@ -192,12 +194,12 @@ describe("compiled render integrity", () => {
    */
   it("the compiled path produces non-empty DOM for every fixture", async () => {
     for (const name of fixtures) {
-      if (PARKED[name] !== undefined) continue
-      const result = await renderViaCompiler(name)
-      const widest = Math.max(result.html.length, ...result.frames.map((frame) => frame.length))
-      expect(widest, `nothing rendered for ${name}, in any frame`).toBeGreaterThan(0)
+      if (PARKED[name] !== undefined) continue;
+      const result = await renderViaCompiler(name);
+      const widest = Math.max(result.html.length, ...result.frames.map((frame) => frame.length));
+      expect(widest, `nothing rendered for ${name}, in any frame`).toBeGreaterThan(0);
     }
-  }, 60_000)
+  }, 60_000);
 
   /**
    * A fixture whose steps change nothing is a fixture whose step channel is
@@ -214,40 +216,40 @@ describe("compiled render integrity", () => {
    * and the assertion is the flat one.
    */
   it("fixtures declaring steps actually observe a DOM change", async () => {
-    const withSteps: string[] = []
-    const inert: string[] = []
+    const withSteps: string[] = [];
+    const inert: string[] = [];
 
     for (const name of fixtures) {
-      if (PARKED[name] !== undefined) continue
-      if (!/^export const steps\b/m.test(fixtureSource(name))) continue
-      withSteps.push(name)
-      const result = await renderViaCompiler(name)
-      if (!result.frames.some((f) => f !== result.html)) inert.push(name)
+      if (PARKED[name] !== undefined) continue;
+      if (!/^export const steps\b/m.test(fixtureSource(name))) continue;
+      withSteps.push(name);
+      const result = await renderViaCompiler(name);
+      if (!result.frames.some((f) => f !== result.html)) inert.push(name);
     }
 
     // Raised with the shape catalogue: the floor is what says the sweep is
     // still looking at most of the corpus, so it has to move when the corpus does.
-    expect(withSteps.length).toBeGreaterThanOrEqual(40)
-    expect(inert).toEqual([])
-  }, 60_000)
+    expect(withSteps.length).toBeGreaterThanOrEqual(40);
+    expect(inert).toEqual([]);
+  }, 60_000);
 
   it("fixtures declaring events actually observe a DOM change", async () => {
-    const withEvents: string[] = []
+    const withEvents: string[] = [];
 
     for (const name of fixtures) {
-      if (PARKED[name] !== undefined) continue
-      if (!/^export const events\b/m.test(fixtureSource(name))) continue
-      withEvents.push(name)
-      const result = await renderViaCompiler(name)
-      const baseline = result.frames.at(-1) ?? result.html
+      if (PARKED[name] !== undefined) continue;
+      if (!/^export const events\b/m.test(fixtureSource(name))) continue;
+      withEvents.push(name);
+      const result = await renderViaCompiler(name);
+      const baseline = result.frames.at(-1) ?? result.html;
       expect(
         result.eventFrames.some((f) => f !== baseline),
         `${name} dispatches events that change nothing`,
-      ).toBe(true)
+      ).toBe(true);
     }
 
-    expect(withEvents.length).toBeGreaterThanOrEqual(5)
-  }, 60_000)
+    expect(withEvents.length).toBeGreaterThanOrEqual(5);
+  }, 60_000);
 
   it("the marker bound is an equality for every fixture, with nothing excused", async () => {
     // There used to be a degraded bound here, and a list of seven fixtures on
@@ -265,27 +267,31 @@ describe("compiled render integrity", () => {
       "props-destructured-param",
       "props-renamed-and-defaulted",
       "two-components-two-templates",
-    ]
+    ];
     for (const name of wasDegraded) {
-      expect(fixtures, `${name} is no longer a fixture — fix this list`).toContain(name)
-      const result = await renderViaCompiler(name)
+      expect(fixtures, `${name} is no longer a fixture — fix this list`).toContain(name);
+      const result = await renderViaCompiler(name);
       // Each of them really is a module the old predicate gave up on: it calls a
       // component AND bakes an anchor. Without both halves this is a list of
       // fixtures that were never degraded in the first place.
-      expect(templateAnchors(result.code ?? ""), `${name} bakes no anchor`).toBeGreaterThan(0)
+      expect(templateAnchors(result.code ?? ""), `${name} bakes no anchor`).toBeGreaterThan(0);
       // C1 moved the call shape: a component takes its scope first, so the
       // props object is the SECOND argument.
-      const callsComponent = /\b[A-Z][\w$]*\(_s\$,\s*(\{|_\$props\()|\)\s*\(_s\$,\s*(\{|_\$props\()/
-      expect(callsComponent.test(stripLiterals(result.code ?? "")), `${name} calls no component`).toBe(true)
+      const callsComponent =
+        /\b[A-Z][\w$]*\(_s\$,\s*(\{|_\$props\()|\)\s*\(_s\$,\s*(\{|_\$props\()/;
+      expect(
+        callsComponent.test(stripLiterals(result.code ?? "")),
+        `${name} calls no component`,
+      ).toBe(true);
       // And the bound is now live on it: a real number per frame, compared for
       // equality by `auditCompiled`.
-      expect(result.expectedAnchors.length).toBe(result.channels.length)
+      expect(result.expectedAnchors.length).toBe(result.channels.length);
       expect(
         result.channels.map((frame) => frame.anchors),
         `${name} marker layout`,
-      ).toEqual(result.expectedAnchors)
+      ).toEqual(result.expectedAnchors);
     }
-  }, 60_000)
+  }, 60_000);
 
   it("the exact marker bound catches a spurious anchor in a template cloned TWICE", async () => {
     // The mutation the degraded bound could not see. `dedup-identical-markup`
@@ -294,51 +300,55 @@ describe("compiled render integrity", () => {
     // anchor, so it may produce any number of them".
     const result = await auditCompiled("dedup-identical-markup", {
       emitted: (code) => {
-        const out = code.replace("<span>x</span>", "<span>x</span><!---->")
-        if (out === code) throw new Error("self-check corruption is stale")
-        return out
+        const out = code.replace("<span>x</span>", "<span>x</span><!---->");
+        if (out === code) throw new Error("self-check corruption is stale");
+        return out;
       },
-    })
-    expect(result.ok).toBe(false)
-    const marker = result.divergences.filter((d) => d.kind === "marker-count")
-    expect(marker.length).toBeGreaterThan(0)
+    });
+    expect(result.ok).toBe(false);
+    const marker = result.divergences.filter((d) => d.kind === "marker-count");
+    expect(marker.length).toBeGreaterThan(0);
     // TWO anchors baked where ONE is used: the audit is code against code and
     // does not care how often the template is cloned.
-    expect(marker.some((d) => d.actual === "2" && d.expected === "1")).toBe(true)
+    expect(marker.some((d) => d.actual === "2" && d.expected === "1")).toBe(true);
     // And the subject really is a template cloned TWICE, which is the half the
     // old bound could not account for and the reason this fixture is here: the
     // expected anchor count per frame grows by 2 for the one anchor added.
-    const clean = await renderViaCompiler("dedup-identical-markup")
+    const clean = await renderViaCompiler("dedup-identical-markup");
     expect(
       result.render.expectedAnchors[0]! - clean.expectedAnchors[0]!,
       "one baked anchor, two clones",
-    ).toBe(2)
-  })
+    ).toBe(2);
+  });
 
   it("the reactivity tracer is intercepting effect creation", async () => {
     // Without this every effect channel goes inert the moment mock.module stops
     // resolving signals.ts, and `effect-counts.ts` becomes a table of zeroes
     // that agrees with itself.
-    let tracked = 0
+    let tracked = 0;
     for (const name of fixtures) {
-      if (PARKED[name] !== undefined) continue
-      const result = await renderViaCompiler(name)
-      if (result.trace.created > 0) tracked++
+      if (PARKED[name] !== undefined) continue;
+      const result = await renderViaCompiler(name);
+      if (result.trace.created > 0) tracked++;
     }
-    expect(tracked, "the tracer counted nothing — mock.module is no longer intercepting").toBeGreaterThanOrEqual(20)
-  }, 60_000)
+    expect(
+      tracked,
+      "the tracer counted nothing — mock.module is no longer intercepting",
+    ).toBeGreaterThanOrEqual(20);
+  }, 60_000);
 
   it("every fixture creating an effect reports a non-zero run count", async () => {
     for (const name of fixtures) {
-      if (PARKED[name] !== undefined) continue
-      const result = await renderViaCompiler(name)
-      if (result.trace.created === 0) continue
-      expect(result.trace.totalRuns, `${name} created effects that never ran`).toBeGreaterThanOrEqual(
-        result.trace.created,
-      )
+      if (PARKED[name] !== undefined) continue;
+      const result = await renderViaCompiler(name);
+      if (result.trace.created === 0) continue;
+      expect(
+        result.trace.totalRuns,
+        `${name} created effects that never ran`,
+      ).toBeGreaterThanOrEqual(result.trace.created);
     }
-  }, 60_000)
-})
+  }, 60_000);
+});
 
 describe("rendered DOM golden", () => {
   /**
@@ -355,9 +365,9 @@ describe("rendered DOM golden", () => {
    * agree on, which is the thing a review can read.
    */
   for (const name of fixtures) {
-    if (PARKED[name] !== undefined) continue
+    if (PARKED[name] !== undefined) continue;
     it(`${name}: rendered DOM`, async () => {
-      const result = await renderViaCompiler(name)
+      const result = await renderViaCompiler(name);
       const frames = [
         `initial: ${result.html}`,
         ...result.frames.map((frame, i) => `step ${i}: ${frame}`),
@@ -365,23 +375,28 @@ describe("rendered DOM golden", () => {
         ...result.channels.flatMap((frame, i) =>
           frame.attributes.map((line) => `attrs ${i}: ${line}`),
         ),
-      ]
-      expect(frames.join("\n")).toMatchSnapshot()
-    })
+      ];
+      expect(frames.join("\n")).toMatchSnapshot();
+    });
   }
 
   it("records exactly one DOM snapshot per fixture", () => {
-    const recorded = new Set<string>()
-    const text = readFileSync(join(import.meta.dir, "__snapshots__", "oracle.test.ts.snap"), "utf8")
-    for (const [, name] of text.matchAll(/^exports\[`rendered DOM golden (.+): rendered DOM 1`\]/gm)) {
-      recorded.add(name)
+    const recorded = new Set<string>();
+    const text = readFileSync(
+      join(import.meta.dir, "__snapshots__", "oracle.test.ts.snap"),
+      "utf8",
+    );
+    for (const [, name] of text.matchAll(
+      /^exports\[`rendered DOM golden (.+): rendered DOM 1`\]/gm,
+    )) {
+      recorded.add(name);
     }
-    const live = new Set(fixtures.filter((name) => !PARKED[name]))
+    const live = new Set(fixtures.filter((name) => !PARKED[name]));
 
-    expect([...recorded].filter((name) => !live.has(name))).toEqual([])
-    expect([...live].filter((name) => !recorded.has(name))).toEqual([])
-  })
-})
+    expect([...recorded].filter((name) => !live.has(name))).toEqual([]);
+    expect([...live].filter((name) => !recorded.has(name))).toEqual([]);
+  });
+});
 
 describe("marker channel", () => {
   /**
@@ -396,11 +411,11 @@ describe("marker channel", () => {
    * hole shows up as a `bun test` failure on the DOM golden above.
    */
   for (const name of fixtures) {
-    if (PARKED[name] !== undefined) continue
+    if (PARKED[name] !== undefined) continue;
     it(`${name}: anchor layout`, async () => {
-      const compiled = await renderViaCompiler(name)
-      expect(compiled.channels[0].markers).toMatchSnapshot()
-    })
+      const compiled = await renderViaCompiler(name);
+      expect(compiled.channels[0].markers).toMatchSnapshot();
+    });
   }
 
   /**
@@ -415,17 +430,20 @@ describe("marker channel", () => {
    * one is green.
    */
   it("records exactly one marker snapshot per fixture", () => {
-    const recorded = new Set<string>()
-    const text = readFileSync(join(import.meta.dir, "__snapshots__", "oracle.test.ts.snap"), "utf8")
+    const recorded = new Set<string>();
+    const text = readFileSync(
+      join(import.meta.dir, "__snapshots__", "oracle.test.ts.snap"),
+      "utf8",
+    );
     for (const [, name] of text.matchAll(/^exports\[`marker channel (.+): anchor layout 1`\]/gm)) {
-      recorded.add(name)
+      recorded.add(name);
     }
-    const live = new Set(fixtures.filter((name) => !PARKED[name]))
+    const live = new Set(fixtures.filter((name) => !PARKED[name]));
 
-    expect([...recorded].filter((name) => !live.has(name))).toEqual([])
-    expect([...live].filter((name) => !recorded.has(name))).toEqual([])
-  })
-})
+    expect([...recorded].filter((name) => !live.has(name))).toEqual([]);
+    expect([...live].filter((name) => !recorded.has(name))).toEqual([]);
+  });
+});
 
 describe("node-identity self-check", () => {
   // Every other channel is a function of the DOM's SHAPE, so a build that
@@ -447,19 +465,21 @@ describe("node-identity self-check", () => {
       const out = code.replace(
         /([\w$]*block)\(\(_s\$\) => (_tmpl\$\d+)\(\)\)/g,
         "$1((_s$) => ($2.$$n ??= $2()))",
-      )
+      );
       if (out === code) {
-        throw new Error("self-check corruption is stale: no `_$block((_s$) => _tmpl$N())` to memoise")
+        throw new Error(
+          "self-check corruption is stale: no `_$block((_s$) => _tmpl$N())` to memoise",
+        );
       }
-      return out
-    }
-    const result = await compareToClean("control-flow-show-static-body", { emitted: unwrapThunk })
-    expect(result.ok).toBe(false)
-    const kinds = new Set(result.divergences.map((d) => d.kind))
+      return out;
+    };
+    const result = await compareToClean("control-flow-show-static-body", { emitted: unwrapThunk });
+    expect(result.ok).toBe(false);
+    const kinds = new Set(result.divergences.map((d) => d.kind));
     // And by NOTHING else: this is the measurement of how blind the rest of the
     // harness is to node identity.
-    expect([...kinds]).toEqual(["node-identity-differential"])
-  })
+    expect([...kinds]).toEqual(["node-identity-differential"]);
+  });
 
   it("catches a re-render that rebuilds a subtree the clean build kept", async () => {
     // The opposite direction: forcing the body to build a fresh node every time
@@ -468,64 +488,66 @@ describe("node-identity self-check", () => {
     const rebuildEveryFrame = (code: string): string => {
       const out = code.replace(
         /([\w$]*block\()\(_s\$\) => (_tmpl\$\d+)\(\)/g,
-        "$1(_s$) => { const _n = $2(); _n.setAttribute(\"data-x\", \"\"); _n.removeAttribute(\"data-x\"); return _n }",
-      )
-      if (out === code) throw new Error("self-check corruption is stale")
-      return out
-    }
+        '$1(_s$) => { const _n = $2(); _n.setAttribute("data-x", ""); _n.removeAttribute("data-x"); return _n }',
+      );
+      if (out === code) throw new Error("self-check corruption is stale");
+      return out;
+    };
     // Same nodes, same attributes, same everything — the corruption is a no-op
     // for every channel including this one, which is what says the detector
     // above is measuring identity and not merely noticing a rewritten module.
     const result = await compareToClean("control-flow-show-static-body", {
       emitted: rebuildEveryFrame,
-    })
-    expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(true)
-  })
+    });
+    expect(result.ok, formatDivergences("control-flow-show-static-body", result.divergences)).toBe(
+      true,
+    );
+  });
 
   it("the channel is live for the whole corpus, not silently empty", async () => {
-    let elements = 0
+    let elements = 0;
     for (const name of fixtures) {
-      const result = await renderViaCompiler(name)
-      for (const frame of result.channels) elements += frame.identity.length
+      const result = await renderViaCompiler(name);
+      for (const frame of result.channels) elements += frame.identity.length;
     }
-    expect(elements).toBeGreaterThan(400)
-  }, 120_000)
-})
+    expect(elements).toBeGreaterThan(400);
+  }, 120_000);
+});
 
 describe("marker channel self-check", () => {
   it("catches one spurious anchor per text node, across the whole corpus", async () => {
     // The exact mutation the harness used to survive green. Every fixture whose
     // templates carry text has to go red under it.
-    const affected: string[] = []
-    const survived: string[] = []
-    const caughtElsewhere: string[] = []
+    const affected: string[] = [];
+    const survived: string[] = [];
+    const caughtElsewhere: string[] = [];
 
     for (const name of fixtures) {
-      if (PARKED[name] !== undefined) continue
-      const clean = compileFixture(name)
-      if (!clean.includes("_$template(")) continue
-      if (anchorAfterEveryText(clean) === clean) continue
-      affected.push(name)
-      const result = await auditCompiled(name, { emitted: anchorAfterEveryText })
-      if (result.ok) survived.push(name)
-      const kinds = new Set(result.divergences.map((d) => d.kind))
-      if (kinds.size !== 1 || !kinds.has("marker-count")) caughtElsewhere.push(name)
+      if (PARKED[name] !== undefined) continue;
+      const clean = compileFixture(name);
+      if (!clean.includes("_$template(")) continue;
+      if (anchorAfterEveryText(clean) === clean) continue;
+      affected.push(name);
+      const result = await auditCompiled(name, { emitted: anchorAfterEveryText });
+      if (result.ok) survived.push(name);
+      const kinds = new Set(result.divergences.map((d) => d.kind));
+      if (kinds.size !== 1 || !kinds.has("marker-count")) caughtElsewhere.push(name);
     }
 
-    expect(affected.length).toBeGreaterThanOrEqual(20)
-    expect(survived).toEqual([])
+    expect(affected.length).toBeGreaterThanOrEqual(20);
+    expect(survived).toEqual([]);
     // Every one of them is caught by the marker channel and by NOTHING else,
     // which is the measurement of how blind the DOM diff is to an anchor.
-    expect(caughtElsewhere).toEqual([])
-  }, 120_000)
+    expect(caughtElsewhere).toEqual([]);
+  }, 120_000);
 
   it("a spurious anchor is invisible to the DOM diff and caught by the count", async () => {
     const result = await compareToClean("text-hole-trailing", {
       emitted: (code) => code.replace('<div class="counter">', '<div class="counter"><!---->'),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toEqual(["marker-count"])
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toEqual(["marker-count"]);
+  });
 
   it("two anchors in different places keep the same count and DOM, and only the layout shows it", async () => {
     // Target #9 removed the spare anchor this used to move: after elision
@@ -537,29 +559,29 @@ describe("marker channel self-check", () => {
     // the per-fixture snapshot above is guarding, and it is why the snapshot
     // cannot be replaced by a count.
     const before = (code: string) =>
-      code.replace("</div><p>sibling</p>", "</div><!----><p>sibling</p>")
-    const after = (code: string) => code.replace("<p>sibling</p>", "<p>sibling</p><!---->")
+      code.replace("</div><p>sibling</p>", "</div><!----><p>sibling</p>");
+    const after = (code: string) => code.replace("<p>sibling</p>", "<p>sibling</p><!---->");
 
-    const clean = await renderViaCompiler("deep-walk")
-    const first = await renderViaCompiler("deep-walk", { emitted: before })
-    const second = await renderViaCompiler("deep-walk", { emitted: after })
+    const clean = await renderViaCompiler("deep-walk");
+    const first = await renderViaCompiler("deep-walk", { emitted: before });
+    const second = await renderViaCompiler("deep-walk", { emitted: after });
 
-    expect(first.code).not.toBe(clean.code)
-    expect(second.code).not.toBe(first.code)
-    expect(first.html).toBe(clean.html)
-    expect(second.html).toBe(clean.html)
-    expect(countAnchors(first.channels[0].markers)).toBe(1)
-    expect(countAnchors(second.channels[0].markers)).toBe(1)
-    expect(first.channels[0].markers).not.toBe(second.channels[0].markers)
+    expect(first.code).not.toBe(clean.code);
+    expect(second.code).not.toBe(first.code);
+    expect(first.html).toBe(clean.html);
+    expect(second.html).toBe(clean.html);
+    expect(countAnchors(first.channels[0].markers)).toBe(1);
+    expect(countAnchors(second.channels[0].markers)).toBe(1);
+    expect(first.channels[0].markers).not.toBe(second.channels[0].markers);
 
     // And both are anchors nothing inserts before, so the exact bound reports
     // them where the DOM diff and the counts cannot.
     for (const corrupt of [before, after]) {
-      const result = await compareToClean("deep-walk", { emitted: corrupt })
-      expect(result.divergences.map((d) => d.kind)).toEqual(["marker-count"])
+      const result = await compareToClean("deep-walk", { emitted: corrupt });
+      expect(result.divergences.map((d) => d.kind)).toEqual(["marker-count"]);
     }
-  })
-})
+  });
+});
 
 describe("attribute-order channel", () => {
   /**
@@ -581,38 +603,42 @@ describe("attribute-order channel", () => {
    */
   it("reversing the order attributes are baked into the template goes red", async () => {
     for (const name of ["static-only", "svg", "svg-dynamic-class"]) {
-      const result = await compareToClean(name, { emitted: reverseBakedAttributes })
-      expect(result.ok, name).toBe(false)
+      const result = await compareToClean(name, { emitted: reverseBakedAttributes });
+      expect(result.ok, name).toBe(false);
       // Nothing else sees it: the main diff sorts, so this is the only channel.
-      expect([...new Set(result.divergences.map((d) => d.kind))], name).toEqual(["attribute-order"])
+      expect([...new Set(result.divergences.map((d) => d.kind))], name).toEqual([
+        "attribute-order",
+      ]);
     }
-  })
+  });
 
   it("reversing the order the patch code applies props in goes red", async () => {
     for (const name of ["multi-prop-one-element", "reactive-attribute", "svg-dynamic-class"]) {
-      const result = await compareToClean(name, { emitted: reverseAppliedProps })
-      expect(result.ok, name).toBe(false)
-      expect([...new Set(result.divergences.map((d) => d.kind))], name).toEqual(["attribute-order"])
+      const result = await compareToClean(name, { emitted: reverseAppliedProps });
+      expect(result.ok, name).toBe(false);
+      expect([...new Set(result.divergences.map((d) => d.kind))], name).toEqual([
+        "attribute-order",
+      ]);
     }
-  })
+  });
 
   it("a static attribute that merely trails a dynamic one in source is not a divergence", async () => {
     // reactive-attribute is `<a href={…} class={…} data-static="keep">`: the
     // template bakes data-static in first and the patch code sets href and
     // class after. That is the partition, and it must stay green.
-    const result = await auditCompiled("reactive-attribute")
-    expect(result.divergences).toEqual([])
-  })
+    const result = await auditCompiled("reactive-attribute");
+    expect(result.divergences).toEqual([]);
+  });
 
   it("the partition is live for most of the corpus, not silently empty", async () => {
-    let withAttributes = 0
+    let withAttributes = 0;
     for (const name of fixtures) {
-      if (PARKED[name] !== undefined) continue
-      const compiled = await renderViaCompiler(name)
-      if (compiled.channels[0].attributes.length > 0) withAttributes++
+      if (PARKED[name] !== undefined) continue;
+      const compiled = await renderViaCompiler(name);
+      if (compiled.channels[0].attributes.length > 0) withAttributes++;
     }
-    expect(withAttributes).toBeGreaterThanOrEqual(30)
-  }, 60_000)
+    expect(withAttributes).toBeGreaterThanOrEqual(30);
+  }, 60_000);
 
   it("the partition goes red when a baked attribute lands after a patched one", async () => {
     // The partition can only be trusted if a violation of it is reachable. Move
@@ -626,14 +652,14 @@ describe("attribute-order channel", () => {
             /\n(\s*)return (_el\$\d+)/,
             (_m, indent: string, el: string) =>
               `\n${indent}${el}.setAttribute("data-static", "keep");\n${indent}return ${el}`,
-          )
-        if (out === code) throw new Error("self-check corruption is stale")
-        return out
+          );
+        if (out === code) throw new Error("self-check corruption is stale");
+        return out;
       },
-    })
-    expect(result.divergences.map((d) => d.kind)).toContain("attribute-order")
-  })
-})
+    });
+    expect(result.divergences.map((d) => d.kind)).toContain("attribute-order");
+  });
+});
 
 describe("template parse conformance", () => {
   /**
@@ -654,24 +680,24 @@ describe("template parse conformance", () => {
   function templateStrings(code: string): string[] {
     return [...code.matchAll(/_\$template\(`([\s\S]*?)`(?:,\s*(true))?\)/g)].map((m) =>
       m[2] ? `<svg xmlns="http://www.w3.org/2000/svg">${m[1]}</svg>` : m[1],
-    )
+    );
   }
 
   it("every emitted template parses to exactly one root", () => {
-    let checked = 0
+    let checked = 0;
     for (const name of fixtures) {
       for (const html of templateStrings(compileFixture(name))) {
-        const host = document.createElement("template")
-        host.innerHTML = html
+        const host = document.createElement("template");
+        host.innerHTML = html;
         expect(
           host.content.childNodes.length,
           `${name}: \`${html}\` parses to ${host.content.childNodes.length} roots`,
-        ).toBe(1)
-        checked++
+        ).toBe(1);
+        checked++;
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(40)
-  })
+    expect(checked).toBeGreaterThanOrEqual(40);
+  });
 
   it("the shapes the browser reshapes are refused, as far as this parser can tell", () => {
     // Each of these was checked in a real browser. happy-dom agrees on some and
@@ -687,11 +713,11 @@ describe("template parse conformance", () => {
       ["<style>{css}</style>", "<style>."],
       ["<textarea>{value}</textarea>", "<textarea>x"],
       ["<div><style>{`a`}&lt;/style&gt;</style></div>", "</style></style>"],
-    ]
+    ];
     for (const [jsx, forbidden] of cases) {
-      const code = compileSource(`const V = () => ${jsx};\n`, "probe.tsx")
+      const code = compileSource(`const V = () => ${jsx};\n`, "probe.tsx");
       for (const html of templateStrings(code)) {
-        expect(html, jsx).not.toContain(forbidden)
+        expect(html, jsx).not.toContain(forbidden);
       }
     }
 
@@ -701,11 +727,11 @@ describe("template parse conformance", () => {
       ["<style>{css}</style>", "<style></style>"],
       ["<textarea>x {value} y</textarea>", "<textarea></textarea>"],
     ]) {
-      const code = compileSource(`const V = () => ${jsx};\n`, "probe.tsx")
-      expect(templateStrings(code), jsx).toEqual([template])
+      const code = compileSource(`const V = () => ${jsx};\n`, "probe.tsx");
+      expect(templateStrings(code), jsx).toEqual([template]);
     }
-  })
-})
+  });
+});
 
 describe("harness self-check", () => {
   // §6 L6, the layer no other project in the survey has: "would my suite notice
@@ -722,10 +748,10 @@ describe("harness self-check", () => {
   it("detects a changed static attribute value (initial-dom)", async () => {
     const result = await compareToClean("text-hole-trailing", {
       emitted: (code) => code.replace('"counter"', '"corrupted"'),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom");
+  });
 
   it("detects a dropped reactive binding only after a scripted update (step-dom)", async () => {
     // `.peek()` is the runtime's own escape hatch: a read that is deliberately
@@ -734,116 +760,116 @@ describe("harness self-check", () => {
     // live, which is a fix, not a corruption.
     const result = await compareToClean("text-hole-trailing", {
       source: (src) => src.replace("{() => count()}", "{count.peek()}"),
-    })
-    expect(result.ok).toBe(false)
+    });
+    expect(result.ok).toBe(false);
     // The initial render is identical — this is precisely the corruption that a
     // render-only harness cannot see, so driving the steps is what catches it.
-    expect(result.divergences.map((d) => d.kind)).toContain("step-dom")
-    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom")
-  })
+    expect(result.divergences.map((d) => d.kind)).toContain("step-dom");
+    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom");
+  });
 
   it("detects extra reactive work on identical DOM (effect-count)", async () => {
     const result = await compareToClean("static-only", {
       source: (src) => src.replace('class="card"', 'class={() => "card"}'),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("effect-count")
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("effect-count");
     // The DOM is byte-identical; only the effect channel catches this.
-    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom")
-    expect(result.effectDelta).toBeGreaterThan(0)
-  })
+    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom");
+    expect(result.effectDelta).toBeGreaterThan(0);
+  });
 
   it("detects a removed element (initial-dom)", async () => {
     const result = await compareToClean("static-only", {
       source: (src) => src.replace("<li>two</li>", ""),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom");
+  });
 
   it("whitespace normalization does not mask a text-content change", async () => {
     // Rule 3 of normalize.ts drops whitespace-only text that contains a
     // newline. A trailing space INSIDE a text node is not that, and must fail.
     const result = await compareToClean("static-only", {
       source: (src) => src.replace(">Barq<", ">Barq <"),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom");
+  });
 
   it("attribute sorting does not mask a changed attribute value", async () => {
     const result = await compareToClean("static-only", {
       source: (src) => src.replace('data-kind="static"', 'data-kind="dynamic"'),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom");
+  });
 
   it("detects a dropped delegated handler (event-dom)", async () => {
     const result = await compareToClean("delegated-event", {
       source: drop("onClick={() => count.update((n) => n + 1)}"),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("event-dom")
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("event-dom");
     // The handler is invisible until an event is dispatched: neither the
     // initial render nor the scripted signal writes can see it missing.
-    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom")
-    expect(result.divergences.map((d) => d.kind)).not.toContain("step-dom")
-  })
+    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom");
+    expect(result.divergences.map((d) => d.kind)).not.toContain("step-dom");
+  });
 
   it("detects a dropped non-delegated handler (event-dom)", async () => {
     const result = await compareToClean("non-delegated-event", {
       source: drop("onMouseLeave={() => hovered.set(false)}"),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("event-dom")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("event-dom");
+  });
 
   it("detects a dropped tuple handler (event-dom)", async () => {
     const result = await compareToClean("delegated-handler-tuple", {
       source: drop('onClick={[pick, "b"]}'),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("event-dom")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("event-dom");
+  });
 
   it("detects a dropped object ref (step-dom)", async () => {
-    const result = await compareToClean("ref-binding", { source: drop(" ref={box}") })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("step-dom")
-  })
+    const result = await compareToClean("ref-binding", { source: drop(" ref={box}") });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("step-dom");
+  });
 
   it("detects a dropped callback ref (initial-dom)", async () => {
     const result = await compareToClean("ref-binding", {
       source: drop(' ref={(el: HTMLElement) => el.setAttribute("data-reffed", "yes")}'),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("initial-dom");
+  });
 
   it("indentation is dropped in a <div> and kept in a <pre>", () => {
     // Constructed rather than compiled: JSX text cleaning removes indentation on
     // both paths today, so only a hand-built DOM reaches the normalizer's rule.
     // A compiled <pre> that loses its source indentation must not read as equal.
     const build = (tag: string, gap: string): HTMLElement => {
-      const host = document.createElement("div")
-      host.appendChild(document.createElement(tag)).innerHTML = `<b>B</b>${gap}<i>c</i>`
-      return host
-    }
-    expect(normalizeDom(build("div", "\n   "))).toBe(normalizeDom(build("div", "")))
-    expect(normalizeDom(build("pre", "\n   "))).not.toBe(normalizeDom(build("pre", "")))
-    expect(normalizeDom(build("textarea", "\n   "))).not.toBe(normalizeDom(build("textarea", "")))
-  })
+      const host = document.createElement("div");
+      host.appendChild(document.createElement(tag)).innerHTML = `<b>B</b>${gap}<i>c</i>`;
+      return host;
+    };
+    expect(normalizeDom(build("div", "\n   "))).toBe(normalizeDom(build("div", "")));
+    expect(normalizeDom(build("pre", "\n   "))).not.toBe(normalizeDom(build("pre", "")));
+    expect(normalizeDom(build("textarea", "\n   "))).not.toBe(normalizeDom(build("textarea", "")));
+  });
 
   it("detects a spurious template marker (marker-count)", async () => {
     // normalize.ts rule 4 fuses text runs across an empty comment, so no DOM
     // comparison can see this one. The count bound is the only detector.
     const result = await compareToClean("text-hole-trailing", {
       emitted: (code) => code.replace('<div class="counter">', '<div class="counter"><!---->'),
-    })
-    expect(result.ok).toBe(false)
-    expect(result.divergences.map((d) => d.kind)).toContain("marker-count")
-  })
+    });
+    expect(result.ok).toBe(false);
+    expect(result.divergences.map((d) => d.kind)).toContain("marker-count");
+  });
 
   /**
    * The channel that made `goesLive` necessary, stated without it.
@@ -858,23 +884,23 @@ describe("harness self-check", () => {
    */
   it("a hole that goes live costs one effect, re-running once per frame", async () => {
     const goLive = (src: string) =>
-      src.replace('class="counter"', 'class={() => (count(), "counter")}')
+      src.replace('class="counter"', 'class={() => (count(), "counter")}');
 
-    const result = await compareToClean("text-hole-trailing", { source: goLive })
-    expect(result.divergences.map((d) => d.kind)).toContain("effect-count")
-    expect(result.effectDelta).toBe(1)
+    const result = await compareToClean("text-hole-trailing", { source: goLive });
+    expect(result.divergences.map((d) => d.kind)).toContain("effect-count");
+    expect(result.effectDelta).toBe(1);
     // The run delta is per-frame, which is exactly what a flat `+ 1` bound used
     // to get wrong.
-    expect(result.runDelta).toBeGreaterThan(1)
+    expect(result.runDelta).toBeGreaterThan(1);
     // And the DOM is identical throughout: this is reactive work nothing else
     // in the harness can see.
-    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom")
-    expect(result.divergences.map((d) => d.kind)).not.toContain("step-dom")
-  })
+    expect(result.divergences.map((d) => d.kind)).not.toContain("initial-dom");
+    expect(result.divergences.map((d) => d.kind)).not.toContain("step-dom");
+  });
 
   it("an uncorrupted fixture is not reported as divergent", async () => {
-    const result = await compareToClean("text-hole-trailing", {})
-    expect(result.divergences).toEqual([])
-    expect(result.ok).toBe(true)
-  })
-})
+    const result = await compareToClean("text-hole-trailing", {});
+    expect(result.divergences).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+});

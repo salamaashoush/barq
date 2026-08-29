@@ -1996,3 +1996,14 @@ exports[`marker channel void-elements: anchor layout 1`] = `"<div><br><img><hr><
 exports[`marker channel walk-from-the-back: anchor layout 1`] = `"<ul><li>a</li><li>b</li><li>c</li><li>d</li><li>e</li><li>Y</li><li>Z</li></ul>"`;
 
 exports[`marker channel whitespace-only: anchor layout 1`] = `"<p><span>a</span> <span>b</span><i>c</i></p>"`;
+
+exports[`rendered DOM golden no-hydration-island: rendered DOM 1`] = `
+"initial: <div><p class="static">never hydrated</p><button class="live">0</button></div>
+event 0: <div><p class="static">never hydrated</p><button class="live">1</button></div>
+attrs 0: 0/0 p: class
+attrs 0: 0/1 button: class
+attrs 1: 0/0 p: class
+attrs 1: 0/1 button: class"
+`;
+
+exports[`marker channel no-hydration-island: anchor layout 1`] = `"<div><p>never hydrated</p><button>0</button></div>"`;

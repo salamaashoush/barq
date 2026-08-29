@@ -41,25 +41,25 @@
 
 export interface KnownFailure {
   /** A `.tsx` under `fixtures/semantics/`, without the extension. */
-  readonly fixture: string
+  readonly fixture: string;
   /** The `id` of one `Claim` in that fixture's `claims` export. */
-  readonly claim: string
+  readonly claim: string;
   /** The rule from `SEMANTICS.md` the failure must name. */
-  readonly rule: string
+  readonly rule: string;
   /**
    * `VIOLATED` is a bug that shipped. `PLANNED` is a semantic change this
    * design chose on the record in `CODESIGN.md` §11. Both fail at M0; only the
    * first is an indictment, and conflating them is what §0.2 forbids.
    */
-  readonly status: "VIOLATED" | "PLANNED"
+  readonly status: "VIOLATED" | "PLANNED";
   /**
    * The milestone from `CODESIGN.md` §8 after which this row must be deleted.
    * Enforced against `milestone.ts`'s `CURRENT_MILESTONE`: moving it is a diff
    * that has to say why in `reason`.
    */
-  readonly greenAt: string
+  readonly greenAt: string;
   /** Why it fails, in terms of the defect rather than the symptom. */
-  readonly reason: string
+  readonly reason: string;
   /**
    * The digest of the failure message this row was written against
    * (`ratchet.ts`). Any change to what the claim reports — a partial fix, a
@@ -68,7 +68,7 @@ export interface KnownFailure {
    *
    * `BARQ_RATCHET=print bun test` prints the value to put here.
    */
-  readonly observed: string
+  readonly observed: string;
 }
 
 const ROWS: readonly KnownFailure[] = [
@@ -88,7 +88,6 @@ const ROWS: readonly KnownFailure[] = [
   //
   // What is left below is not that class.
   // -------------------------------------------------------------------------
-
   // -------------------------------------------------------------------------
   // sem-own-render-disposer-disposes. `render` opens a root scope, records the
   // container as its range and returns a disposer that disposes the scope (O3)
@@ -194,28 +193,27 @@ const ROWS: readonly KnownFailure[] = [
   // row went 2/12 → 4/18 because the fixture grew eyes, not because anything
   // regressed.
   // -------------------------------------------------------------------------
-]
-
+];
 
 export const KNOWN_FAILURES: readonly KnownFailure[] = Object.freeze(
   ROWS.map((row) => Object.freeze(row)),
-)
+);
 
 /** The rows §15.4 says the gate is really about, addressed by fixture. */
 export const GATE_FIXTURES: readonly string[] = Object.freeze([
   "sem-ctx-provider-direct-child",
   "sem-ctx-provider-wrapper-component",
   "sem-err-construction-throw",
-])
+]);
 
 export function registryKey(fixture: string, claim: string): string {
-  return `${fixture} :: ${claim}`
+  return `${fixture} :: ${claim}`;
 }
 
 export function registryIndex(): Map<string, KnownFailure> {
-  const byKey = new Map<string, KnownFailure>()
-  for (const row of KNOWN_FAILURES) byKey.set(registryKey(row.fixture, row.claim), row)
-  return byKey
+  const byKey = new Map<string, KnownFailure>();
+  for (const row of KNOWN_FAILURES) byKey.set(registryKey(row.fixture, row.claim), row);
+  return byKey;
 }
 
 /**
@@ -224,12 +222,12 @@ export function registryIndex(): Map<string, KnownFailure> {
  * at index time, so the failure names the claim.
  */
 export function duplicateRows(): string[] {
-  const seen = new Set<string>()
-  const twice: string[] = []
+  const seen = new Set<string>();
+  const twice: string[] = [];
   for (const row of KNOWN_FAILURES) {
-    const key = registryKey(row.fixture, row.claim)
-    if (seen.has(key)) twice.push(key)
-    seen.add(key)
+    const key = registryKey(row.fixture, row.claim);
+    if (seen.has(key)) twice.push(key);
+    seen.add(key);
   }
-  return twice
+  return twice;
 }

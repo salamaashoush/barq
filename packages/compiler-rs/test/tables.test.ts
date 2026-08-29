@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test";
 
-import { compileSource, emittedCalls, stripLiterals, templateHtml } from "./harness.ts"
+import { compileSource, emittedCalls, stripLiterals, templateHtml } from "./harness.ts";
 import {
   CSS_NUMBER_PROPS,
   DELEGATED_EVENTS,
@@ -8,7 +8,7 @@ import {
   NON_BUBBLING_EVENTS,
   SVG_TAGS,
   USER_MUTABLE_PROPS,
-} from "./dom-tables.ts"
+} from "./dom-tables.ts";
 
 /**
  * DESIGN §9's drift check, from the side that reaches a user: `dom.ts` as it is
@@ -21,7 +21,7 @@ import {
 
 /** `onclick` for `click`, `onpointerdown` for `pointerdown`. */
 function jsxEventName(type: string): string {
-  return `on${type[0].toUpperCase()}${type.slice(1)}`
+  return `on${type[0].toUpperCase()}${type.slice(1)}`;
 }
 
 // `handler` is declared, not free: a free identifier is unresolvable, and the
@@ -29,44 +29,44 @@ function jsxEventName(type: string): string {
 // a function. Leaving it free made every row below pass for the wrong reason.
 /** `dom.ts`'s own resolution, from the same table: `*` first, then the tag. */
 function userMutableOn(tag: string, prop: string): boolean {
-  return USER_MUTABLE_PROPS.includes(`*:${prop}`) || USER_MUTABLE_PROPS.includes(`${tag}:${prop}`)
+  return USER_MUTABLE_PROPS.includes(`*:${prop}`) || USER_MUTABLE_PROPS.includes(`${tag}:${prop}`);
 }
 
 function compile(jsx: string): string {
   return compileSource(
     `import { signal } from "@barqjs/core";\nconst live = signal("x");\nconst handler = () => {};\nconst Probe = () => ${jsx};\n`,
     "probe.tsx",
-  )
+  );
 }
 
 describe("the compiler's tables against dom.ts as it is on disk", () => {
   it("the extraction found tables, not an empty file", () => {
     // Every row below is a loop, so a table that silently came out empty would
     // turn this whole file into zero assertions.
-    expect(DELEGATED_EVENTS.length).toBeGreaterThanOrEqual(20)
-    expect(NON_BUBBLING_EVENTS.length).toBeGreaterThanOrEqual(10)
-    expect(SVG_TAGS.length).toBeGreaterThanOrEqual(50)
-    expect(DOM_PROPS.length).toBeGreaterThanOrEqual(10)
-    expect(CSS_NUMBER_PROPS.length).toBeGreaterThanOrEqual(10)
-  })
+    expect(DELEGATED_EVENTS.length).toBeGreaterThanOrEqual(20);
+    expect(NON_BUBBLING_EVENTS.length).toBeGreaterThanOrEqual(10);
+    expect(SVG_TAGS.length).toBeGreaterThanOrEqual(50);
+    expect(DOM_PROPS.length).toBeGreaterThanOrEqual(10);
+    expect(CSS_NUMBER_PROPS.length).toBeGreaterThanOrEqual(10);
+  });
 
   it("nothing is both delegated and non-bubbling", () => {
     // A document listener for a non-bubbling type never fires from a
     // descendant, so a name in both tables makes the compiler emit an expando
     // the runtime warns about and that never runs.
-    expect(DELEGATED_EVENTS.filter((event) => NON_BUBBLING_EVENTS.includes(event))).toEqual([])
-  })
+    expect(DELEGATED_EVENTS.filter((event) => NON_BUBBLING_EVENTS.includes(event))).toEqual([]);
+  });
 
   it("every delegated event compiles to an expando write and a registration", () => {
-    const missed: string[] = []
+    const missed: string[] = [];
     for (const event of DELEGATED_EVENTS) {
-      const code = compile(`<div ${jsxEventName(event)}={handler} />`)
-      const expando = new RegExp(`\\$\\$${event}\\s*=`).test(code)
-      const registered = code.includes(`delegateEvents([`) && code.includes(`"${event}"`)
-      if (!expando || !registered) missed.push(event)
+      const code = compile(`<div ${jsxEventName(event)}={handler} />`);
+      const expando = new RegExp(`\\$\\$${event}\\s*=`).test(code);
+      const registered = code.includes(`delegateEvents([`) && code.includes(`"${event}"`);
+      if (!expando || !registered) missed.push(event);
     }
-    expect(missed, "dom.ts delegates these; the loaded compiler does not").toEqual([])
-  })
+    expect(missed, "dom.ts delegates these; the loaded compiler does not").toEqual([]);
+  });
 
   it("no non-bubbling event compiles to an expando write, where a delegated one does", () => {
     // Both clauses below are NEGATIVE, and a compiler that emitted nothing at
@@ -74,31 +74,31 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     // non-bubbling name is compiled BESIDE a delegated one in the same element:
     // the positive half has to hold in the same module that the negative half
     // is asserted on.
-    const wrong: string[] = []
+    const wrong: string[] = [];
     for (const event of NON_BUBBLING_EVENTS) {
-      const code = compile(`<div ${jsxEventName(event)}={handler} onClick={handler} />`)
-      if (new RegExp(`\\$\\$${event}\\b`).test(code)) wrong.push(event)
-      if (!/\$\$click\s*=/.test(code)) wrong.push(`${event} (the compiler emitted nothing)`)
+      const code = compile(`<div ${jsxEventName(event)}={handler} onClick={handler} />`);
+      if (new RegExp(`\\$\\$${event}\\b`).test(code)) wrong.push(event);
+      if (!/\$\$click\s*=/.test(code)) wrong.push(`${event} (the compiler emitted nothing)`);
       if (!/delegateEvents\(\[\s*"click"\s*\]\)/.test(code)) {
-        wrong.push(`${event} (click was not registered)`)
+        wrong.push(`${event} (click was not registered)`);
       }
       if (new RegExp(`delegateEvents\\([^)]*"${event}"`).test(code)) {
-        wrong.push(`${event} (registered)`)
+        wrong.push(`${event} (registered)`);
       }
     }
-    expect(wrong, "dom.ts says these never bubble to document").toEqual([])
-  })
+    expect(wrong, "dom.ts says these never bubble to document").toEqual([]);
+  });
 
   it("every SVG tag compiles to a namespaced template", () => {
-    const missed: string[] = []
+    const missed: string[] = [];
     for (const tag of SVG_TAGS) {
       // `svg` itself is the namespace root and needs no flag; everything else
       // reaches the DOM through createElementNS and must be told so.
-      const code = compile(`<${tag} />`)
-      if (!/_\$+template\(`[^`]*`,\s*true\)/.test(code) && tag !== "svg") missed.push(tag)
+      const code = compile(`<${tag} />`);
+      if (!/_\$+template\(`[^`]*`,\s*true\)/.test(code) && tag !== "svg") missed.push(tag);
     }
-    expect(missed, "dom.ts creates these with createElementNS").toEqual([])
-  })
+    expect(missed, "dom.ts creates these with createElementNS").toEqual([]);
+  });
 
   it("no DOM_PROPS name is folded into the template on an HTML element", () => {
     // The property channel writes these, so baking a literal into the HTML sets
@@ -109,19 +109,20 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     // instead of against the framework's own last write. The split is asserted
     // as a PARTITION rather than as two independent lists: a name on both
     // channels, or on neither, fails here.
-    const folded: string[] = []
+    const folded: string[] = [];
     for (const prop of DOM_PROPS) {
-      const code = compile(`<input ${prop}="x" />`)
-      const live = userMutableOn("input", prop)
-      const wanted = live ? "setLive" : "setDomProp"
-      const other = live ? "setDomProp" : "setLive"
-      if (templateHtml(code).join("").includes(`${prop}=`)) folded.push(prop)
-      if (emittedCalls(code, wanted) === 0) folded.push(`${prop} (not applied by ${wanted})`)
-      if (emittedCalls(code, other) !== 0) folded.push(`${prop} (also went to ${other})`)
-      if (emittedCalls(code, "setAttr") !== 0) folded.push(`${prop} (went to the attribute channel)`)
+      const code = compile(`<input ${prop}="x" />`);
+      const live = userMutableOn("input", prop);
+      const wanted = live ? "setLive" : "setDomProp";
+      const other = live ? "setDomProp" : "setLive";
+      if (templateHtml(code).join("").includes(`${prop}=`)) folded.push(prop);
+      if (emittedCalls(code, wanted) === 0) folded.push(`${prop} (not applied by ${wanted})`);
+      if (emittedCalls(code, other) !== 0) folded.push(`${prop} (also went to ${other})`);
+      if (emittedCalls(code, "setAttr") !== 0)
+        folded.push(`${prop} (went to the attribute channel)`);
     }
-    expect(folded, "dom.ts routes these through the property channel").toEqual([])
-  })
+    expect(folded, "dom.ts routes these through the property channel").toEqual([]);
+  });
 
   /**
    * §3.10.1's own row. `USER_MUTABLE_PROPS` is keyed `tag:property` because the
@@ -135,28 +136,28 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
    * oracle, which writes props before it appends children, writes it.
    */
   it("the user-mutable channel is resolved per tag, not per name", () => {
-    const wrong: string[] = []
+    const wrong: string[] = [];
     for (const key of USER_MUTABLE_PROPS) {
-      const [tag, prop] = key.split(":")
-      const on = tag === "*" ? "div" : tag!
+      const [tag, prop] = key.split(":");
+      const on = tag === "*" ? "div" : tag!;
       // A LIVE value: the compare exists for a write that repeats, and a
       // literal the parser can bake never fights a user for the field.
-      const code = compile(`<${on} ${prop}={live()} />`)
-      if (emittedCalls(code, "setLive") === 0) wrong.push(`${key} (not on the live channel)`)
-      if (emittedCalls(code, "setDomProp") !== 0) wrong.push(`${key} (also on setDomProp)`)
+      const code = compile(`<${on} ${prop}={live()} />`);
+      if (emittedCalls(code, "setLive") === 0) wrong.push(`${key} (not on the live channel)`);
+      if (emittedCalls(code, "setDomProp") !== 0) wrong.push(`${key} (also on setDomProp)`);
       // The same property on a tag the table does NOT name must not reach it.
       if (tag !== "*") {
-        const elsewhere = compile(`<span ${prop}={live()} />`)
-        if (emittedCalls(elsewhere, "setLive") !== 0) wrong.push(`${key} (reached span too)`)
+        const elsewhere = compile(`<span ${prop}={live()} />`);
+        if (emittedCalls(elsewhere, "setLive") !== 0) wrong.push(`${key} (reached span too)`);
       }
     }
     // The negative the table was rewritten for.
-    const option = compile(`<option value={live()}>one</option>`)
+    const option = compile(`<option value={live()}>one</option>`);
     if (emittedCalls(option, "setLive") !== 0) {
-      wrong.push("option:value (an option's value is not the user's)")
+      wrong.push("option:value (an option's value is not the user's)");
     }
-    expect(wrong, "dom.ts resolves the user-mutable channel from the tag AND the name").toEqual([])
-  })
+    expect(wrong, "dom.ts resolves the user-mutable channel from the tag AND the name").toEqual([]);
+  });
 
   /**
    * What "the style object is handed over whole" means, as a predicate over one
@@ -171,7 +172,7 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
    * `it` below does that.
    */
   function styleObjectStaysWhole(code: string, prop: string): string[] {
-    const wrong: string[] = []
+    const wrong: string[] = [];
     // The POSITIVE clause, and it is load-bearing. Every other clause here is a
     // negative, and un-compiled JSX satisfies all of them: it folds nothing into
     // a template it does not have, it contains no `px`, and it contains
@@ -179,12 +180,16 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     // to have reached the runtime's style channel — one `setStyle`, on an
     // element that came out of a template — is what makes this a claim about a
     // compiler at all.
-    if (emittedCalls(code, "setStyle") !== 1) wrong.push(`${prop}: not applied through the style channel`)
-    if (emittedCalls(code, "template") !== 1) wrong.push(`${prop}: the element never reached a template`)
-    if (templateHtml(code).join("").includes("style=")) wrong.push(`${prop}: folded into the template`)
-    if (stripLiterals(code).includes("px")) wrong.push(`${prop}: a px suffix reached the code`)
-    if (!code.includes(`"${prop}": 2`)) wrong.push(`${prop}: the key did not reach the runtime verbatim`)
-    return wrong
+    if (emittedCalls(code, "setStyle") !== 1)
+      wrong.push(`${prop}: not applied through the style channel`);
+    if (emittedCalls(code, "template") !== 1)
+      wrong.push(`${prop}: the element never reached a template`);
+    if (templateHtml(code).join("").includes("style="))
+      wrong.push(`${prop}: folded into the template`);
+    if (stripLiterals(code).includes("px")) wrong.push(`${prop}: a px suffix reached the code`);
+    if (!code.includes(`"${prop}": 2`))
+      wrong.push(`${prop}: the key did not reach the runtime verbatim`);
+    return wrong;
   }
 
   it("a style OBJECT is handed to the runtime whole — CSS_NUMBER_PROPS drift is UNOBSERVABLE on the DOM target", () => {
@@ -208,40 +213,40 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     // that helpfully kebab-cased `zIndex` would flip `z-index` from the px rule
     // to the unitless one, and this is the clause that sees it.
     for (const prop of CSS_NUMBER_PROPS) {
-      expect(styleObjectStaysWhole(compile(`<div style={{ "${prop}": 2 }} />`), prop)).toEqual([])
+      expect(styleObjectStaysWhole(compile(`<div style={{ "${prop}": 2 }} />`), prop)).toEqual([]);
     }
     // The same for a property that is NOT in the table, so the row is not
     // quietly measuring one class only.
-    expect(styleObjectStaysWhole(compile(`<div style={{ "width": 2 }} />`), "width")).toEqual([])
-  })
+    expect(styleObjectStaysWhole(compile(`<div style={{ "width": 2 }} />`), "width")).toEqual([]);
+  });
 
   it("and that claim is a detector, including against a compiler that did nothing at all", () => {
     // The proof the row above is a measurement. Each mutation is a thing a
     // future P3 could plausibly do, applied to a real emitted module.
-    const clean = compile(`<div style={{ "z-index": 2 }} />`)
-    expect(styleObjectStaysWhole(clean, "z-index"), "the clean module must pass").toEqual([])
+    const clean = compile(`<div style={{ "z-index": 2 }} />`);
+    expect(styleObjectStaysWhole(clean, "z-index"), "the clean module must pass").toEqual([]);
 
     // 1. the object folded into the template HTML
-    const folded = clean.replace(/_\$template\(`<div/, '_$template(`<div style="z-index:2"')
-    expect(folded, "mutation 1 is stale").not.toBe(clean)
-    expect(styleObjectStaysWhole(folded, "z-index")).not.toEqual([])
+    const folded = clean.replace(/_\$template\(`<div/, '_$template(`<div style="z-index:2"');
+    expect(folded, "mutation 1 is stale").not.toBe(clean);
+    expect(styleObjectStaysWhole(folded, "z-index")).not.toEqual([]);
 
     // 2. a px suffix applied at compile time to a UNITLESS property
-    const pixels = clean.replace(`"z-index": 2`, `"z-index": "2px"`)
-    expect(pixels, "mutation 2 is stale").not.toBe(clean)
-    expect(styleObjectStaysWhole(pixels, "z-index")).not.toEqual([])
+    const pixels = clean.replace(`"z-index": 2`, `"z-index": "2px"`);
+    expect(pixels, "mutation 2 is stale").not.toBe(clean);
+    expect(styleObjectStaysWhole(pixels, "z-index")).not.toEqual([]);
 
     // 3. the key rewritten, which is what silently moves a property between the
     //    unitless class and the px class at runtime
-    const renamed = clean.replace(`"z-index": 2`, `"zIndex": 2`)
-    expect(renamed, "mutation 3 is stale").not.toBe(clean)
-    expect(styleObjectStaysWhole(renamed, "z-index")).not.toEqual([])
+    const renamed = clean.replace(`"z-index": 2`, `"zIndex": 2`);
+    expect(renamed, "mutation 3 is stale").not.toBe(clean);
+    expect(styleObjectStaysWhole(renamed, "z-index")).not.toEqual([]);
 
     // 4. no compiler at all. The three mutations above are things a future P3
     //    could do; this one is the thing the M1 identity round-trip does, and it
     //    used to satisfy every clause — un-compiled JSX folds nothing, contains
     //    no `px`, and contains `"z-index": 2` because the author wrote it there.
-    const uncompiled = `const Probe = () => <div style={{ "z-index": 2 }} />;\n`
-    expect(styleObjectStaysWhole(uncompiled, "z-index")).not.toEqual([])
-  })
-})
+    const uncompiled = `const Probe = () => <div style={{ "z-index": 2 }} />;\n`;
+    expect(styleObjectStaysWhole(uncompiled, "z-index")).not.toEqual([]);
+  });
+});

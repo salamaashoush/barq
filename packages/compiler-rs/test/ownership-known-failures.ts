@@ -65,26 +65,26 @@
 
 export interface OwnershipKnownFailure {
   /** a fixture in `fixtures/` or in `fixtures/ownership/` */
-  readonly fixture: string
+  readonly fixture: string;
   /**
    * the `id` of one `Finding` — `<kind>@<template>@<the path it was observed
    * at>`. The observed path is part of the identity: one template misplaced at
    * two different wrong paths is two violations, and an id naming only the
    * template would let the second land inside the first's row unseen.
    */
-  readonly finding: string
+  readonly finding: string;
   /** the rule from `SEMANTICS.md` the channel must name */
-  readonly rule: string
+  readonly rule: string;
   /**
    * `VIOLATED` is a bug that shipped. `PLANNED` is a semantic change this
    * design chose on the record. Both fail at M0; only the first is an
    * indictment, and `SEMANTICS.md` §0.2 forbids conflating them.
    */
-  readonly status: "VIOLATED" | "PLANNED"
+  readonly status: "VIOLATED" | "PLANNED";
   /** the milestone from `CODESIGN.md` §8 after which this row must be deleted */
-  readonly greenAt: string
+  readonly greenAt: string;
   /** the slot that was built eagerly, in the source's own words */
-  readonly slot: string
+  readonly slot: string;
   /**
    * The digest of the finding's `detail` this row was written against
    * (`ratchet.ts`). A finding that goes on occurring while its detail changes —
@@ -94,7 +94,7 @@ export interface OwnershipKnownFailure {
    *
    * `BARQ_RATCHET=print bun test` prints the value to put here.
    */
-  readonly observed: string
+  readonly observed: string;
 }
 
 const ROWS: readonly OwnershipKnownFailure[] = [
@@ -136,23 +136,23 @@ const ROWS: readonly OwnershipKnownFailure[] = [
   // coordinator and owns no range, so what it creates is a provide scope; it
   // was a branch only because everything that was not a list or a portal was.
   // ---------------------------------------------------------------------
-]
+];
 
-export const OWNERSHIP_KNOWN_FAILURES: readonly OwnershipKnownFailure[] = Object.freeze(ROWS)
+export const OWNERSHIP_KNOWN_FAILURES: readonly OwnershipKnownFailure[] = Object.freeze(ROWS);
 
 /**
  * The fixture the gate is really about. If it stops failing while the emitted
  * module still passes `children` as an argument, L2b cannot see the bug that
  * prompted this work.
  */
-export const GATE_FIXTURE = "own-provider-direct"
+export const GATE_FIXTURE = "own-provider-direct";
 
 /**
  * The same defect one component away, which is the shape it has in every real
  * application. Stated separately from the row that registers it, so that
  * deleting the row cannot quietly delete the gate with it.
  */
-export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
+export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper";
 
 /**
  * The channel's REACH, pinned — the other half of the ratchet, and the half an
@@ -234,25 +234,25 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper"
  * staying static is what says the fix did not simply wrap every attribute.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 143,
-  scopes: 412,
-  effects: 276,
-  clones: 318,
-  determined: 316,
+  fixtures: 144,
+  scopes: 415,
+  effects: 277,
+  clones: 320,
+  determined: 318,
   unattributed: 1,
   cascades: 1,
-})
+});
 
 export function ownershipKey(fixture: string, finding: string): string {
-  return `${fixture} :: ${finding}`
+  return `${fixture} :: ${finding}`;
 }
 
 export function ownershipIndex(): Map<string, OwnershipKnownFailure> {
-  const byKey = new Map<string, OwnershipKnownFailure>()
+  const byKey = new Map<string, OwnershipKnownFailure>();
   for (const row of OWNERSHIP_KNOWN_FAILURES) {
-    const key = ownershipKey(row.fixture, row.finding)
-    if (byKey.has(key)) throw new Error(`the ownership registry has two rows for ${key}`)
-    byKey.set(key, row)
+    const key = ownershipKey(row.fixture, row.finding);
+    if (byKey.has(key)) throw new Error(`the ownership registry has two rows for ${key}`);
+    byKey.set(key, row);
   }
-  return byKey
+  return byKey;
 }

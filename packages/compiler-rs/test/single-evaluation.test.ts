@@ -28,15 +28,15 @@
  * steps are the no-op writes that must show no additional invocation (K2).
  */
 
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test";
 
-import { channel } from "./graded.ts"
-import { fixtureSource, listFixtures } from "./harness.ts"
-import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts"
+import { channel } from "./graded.ts";
+import { fixtureSource, listFixtures } from "./harness.ts";
+import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts";
 
 interface C7Declaration {
-  readonly why: string
-  readonly log: readonly string[]
+  readonly why: string;
+  readonly log: readonly string[];
 }
 
 /**
@@ -65,47 +65,47 @@ const CONSUMERS: Record<string, string> = {
   portal: "c7-portal",
   provide: "c7-provider",
   "dynamic (Reveal, a construct owning no range)": "c7-reveal",
-}
+};
 
-const CORPUS = listFixtures()
-const L4 = listL4Fixtures()
+const CORPUS = listFixtures();
+const L4 = listL4Fixtures();
 
-const sessions = new Map<string, Session>()
-for (const name of CORPUS) sessions.set(name, await openSession(name, fixtureSource(name)))
-for (const name of L4) sessions.set(name, await openSession(name, l4Source(name)))
+const sessions = new Map<string, Session>();
+for (const name of CORPUS) sessions.set(name, await openSession(name, fixtureSource(name)));
+for (const name of L4) sessions.set(name, await openSession(name, l4Source(name)));
 
 function declarationOf(name: string): C7Declaration | undefined {
-  return sessions.get(name)?.exports.c7 as C7Declaration | undefined
+  return sessions.get(name)?.exports.c7 as C7Declaration | undefined;
 }
 
 function logOf(name: string): readonly string[] | undefined {
-  return sessions.get(name)?.exports.log as readonly string[] | undefined
+  return sessions.get(name)?.exports.log as readonly string[] | undefined;
 }
 
 const twice = [...sessions.values()].flatMap((session) =>
   session.diagnostics
     .filter((event) => event.code === "BLOCK_EVALUATED_TWICE")
     .map((event) => `${session.fixture}: ${event.message}`),
-)
+);
 
 const totalInvocations = [...sessions.values()].reduce(
   (n, session) => n + ((session.exports.log as string[] | undefined)?.length ?? 0),
   0,
-)
+);
 
 console.log(
   `L4 single evaluation: ${Object.keys(CONSUMERS).length} consumers driven with an instrumented ` +
     `Block, ${totalInvocations} recorded invocation(s); ` +
     `${twice.length} BLOCK_EVALUATED_TWICE across ${sessions.size} sessions`,
-)
+);
 
 describe("L4 — C7, single evaluation", () => {
   it("every consumer in the rule has a fixture that drives it", () => {
     const missing = Object.entries(CONSUMERS)
       .filter(([, fixture]) => !L4.includes(fixture))
-      .map(([consumer, fixture]) => `${consumer}: fixtures/l4/${fixture}.tsx does not exist`)
-    expect(missing.join("\n")).toBe("")
-  })
+      .map(([consumer, fixture]) => `${consumer}: fixtures/l4/${fixture}.tsx does not exist`);
+    expect(missing.join("\n")).toBe("");
+  });
 
   it("the four primitives and both non-region consumers are all covered", () => {
     // §3.4's four, plus the two C7 names beyond them. A conformance suite that
@@ -115,43 +115,45 @@ describe("L4 — C7, single evaluation", () => {
       expect(
         Object.keys(CONSUMERS).some((name) => name.startsWith(construct)),
         `no consumer named ${construct} is driven`,
-      ).toBe(true)
+      ).toBe(true);
     }
-  })
+  });
 
   for (const [consumer, fixture] of Object.entries(CONSUMERS)) {
     it(`${consumer} — the Block is invoked exactly once per activation`, () => {
-      const declaration = declarationOf(fixture)
-      const log = logOf(fixture)
-      expect(declaration, `${fixture} declares no \`c7\``).toBeDefined()
-      expect(log, `${fixture} exports no \`log\``).toBeDefined()
-      if (declaration === undefined || log === undefined) return
-      expect(declaration.why.length, `${fixture}: the declaration has no reason`).toBeGreaterThan(20)
-      expect(log, `${fixture} (${declaration.why})`).toEqual([...declaration.log])
-    })
+      const declaration = declarationOf(fixture);
+      const log = logOf(fixture);
+      expect(declaration, `${fixture} declares no \`c7\``).toBeDefined();
+      expect(log, `${fixture} exports no \`log\``).toBeDefined();
+      if (declaration === undefined || log === undefined) return;
+      expect(declaration.why.length, `${fixture}: the declaration has no reason`).toBeGreaterThan(
+        20,
+      );
+      expect(log, `${fixture} (${declaration.why})`).toEqual([...declaration.log]);
+    });
   }
 
   it("A → B → A shows A's Block invoked twice — the rule's own example", () => {
     // Not "at least twice": exactly twice, which is what separates two
     // activations from one activation evaluated twice.
-    const log = logOf("mm-branch-flip")
-    expect(log).toEqual(["open", "open"])
-  })
+    const log = logOf("mm-branch-flip");
+    expect(log).toEqual(["open", "open"]);
+  });
 
   it("a no-op write shows no additional invocation — the rule's other example", () => {
     // Every session applies every step a SECOND time, and the no-op write pass
     // writes every exported signal its own current value before any step runs.
     // `mm-branch-key-stable` writes the body's signal twice and replays both,
     // so the branch's key expression is evaluated five times and its Block once.
-    const log = logOf("mm-branch-key-stable")
-    expect(log).toEqual(["body"])
-    const session = sessions.get("mm-branch-key-stable")
-    expect(session?.frames.filter((f) => f.kind === "replay").length).toBeGreaterThan(0)
-  })
+    const log = logOf("mm-branch-key-stable");
+    expect(log).toEqual(["body"]);
+    const session = sessions.get("mm-branch-key-stable");
+    expect(session?.frames.filter((f) => f.kind === "replay").length).toBeGreaterThan(0);
+  });
 
   it("no Block is evaluated twice anywhere in the corpus", () => {
-    expect(twice.join("\n")).toBe("")
-  })
+    expect(twice.join("\n")).toBe("");
+  });
 
   it("the diagnostics channel every session listens on is armed, not merely quiet", async () => {
     // `flow.ts` gates its C7 counter behind `diagnosticsEnabled()`, which is
@@ -163,21 +165,21 @@ describe("L4 — C7, single evaluation", () => {
     // So the exact mechanism a session uses is driven against a diagnostic the
     // runtime is KNOWN to emit: `render()` handed an already-built subtree while
     // an owner is current warns `RENDER_SUBTREE_NOT_OWNED` (the O5 registry row).
-    const core = await import("@barqjs/core")
-    const host = document.createElement("div")
-    document.body.appendChild(host)
-    const capture = core.DEV.diagnostics.capture()
+    const core = await import("@barqjs/core");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const capture = core.DEV.diagnostics.capture();
     try {
       core.scope((d: () => void) => {
-        core.render(document.createElement("p") as never, host)
-        d()
-      }, true)
+        core.render(document.createElement("p") as never, host);
+        d();
+      }, true);
     } finally {
-      const seen = capture.stop()
-      host.remove()
-      expect(seen.map((event) => event.code)).toContain("RENDER_SUBTREE_NOT_OWNED")
+      const seen = capture.stop();
+      host.remove();
+      expect(seen.map((event) => event.code)).toContain("RENDER_SUBTREE_NOT_OWNED");
     }
-  })
+  });
 
   it("no consumer can reach the counter, which is why a mutant is what arms it", () => {
     // Stated rather than left as an unexplained zero. Every call site of `build`
@@ -188,12 +190,12 @@ describe("L4 — C7, single evaluation", () => {
     // counter cannot be armed from inside the corpus. `runtime-mutants.ts`
     // mutates `build` to invoke its Block twice and reports which channel
     // catches it; this assertion is the record that the zero above is expected.
-    expect(twice).toEqual([])
-    expect(totalInvocations).toBeGreaterThan(20)
-  })
+    expect(twice).toEqual([]);
+    expect(totalInvocations).toBeGreaterThan(20);
+  });
 
   it("the channel takes no exemptions", () => {
-    expect(channel("single-evaluation").exemptions).toEqual([])
-    expect(channel("single-evaluation").grade).toBe("absolute")
-  })
-})
+    expect(channel("single-evaluation").exemptions).toEqual([]);
+    expect(channel("single-evaluation").grade).toBe("absolute");
+  });
+});

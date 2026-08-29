@@ -19,58 +19,58 @@
  *
  *   bun test/classbits.bench.ts
  */
-import { GlobalRegistrator } from "@happy-dom/global-registrator"
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-GlobalRegistrator.register()
+GlobalRegistrator.register();
 
-const { setClass, signal, renderEffect, flush } = await import("@barqjs/core")
+const { setClass, signal, renderEffect, flush } = await import("@barqjs/core");
 
-const ROWS = Number(process.env.BARQ_BENCH_ROWS ?? 200)
-const FRAMES = Number(process.env.BARQ_BENCH_FRAMES ?? 400)
-const REPEATS = Number(process.env.BARQ_BENCH_REPEATS ?? 7)
+const ROWS = Number(process.env.BARQ_BENCH_ROWS ?? 200);
+const FRAMES = Number(process.env.BARQ_BENCH_FRAMES ?? 400);
+const REPEATS = Number(process.env.BARQ_BENCH_REPEATS ?? 7);
 
 /** How often the conditional actually flips. 1 in 8 is the list case. */
-const FLIP_EVERY = 8
+const FLIP_EVERY = 8;
 
-const NAMES = ["row", "row--selected", "row--dirty"] as const
+const NAMES = ["row", "row--selected", "row--dirty"] as const;
 
 function makeRows(): Element[] {
-  const host = document.createElement("div")
-  const out: Element[] = []
+  const host = document.createElement("div");
+  const out: Element[] = [];
   for (let i = 0; i < ROWS; i++) {
-    const el = document.createElement("div")
-    host.appendChild(el)
-    out.push(el)
+    const el = document.createElement("div");
+    host.appendChild(el);
+    out.push(el);
   }
-  return out
+  return out;
 }
 
 /** Arm A — the channel as it stands: an object literal per run, normalised. */
 function objectArm(rows: Element[]): void {
-  const prev: unknown[] = new Array(rows.length).fill(undefined)
+  const prev: unknown[] = new Array(rows.length).fill(undefined);
   for (let frame = 0; frame < FRAMES; frame++) {
-    const selected = Math.floor(frame / FLIP_EVERY) % 2 === 0
-    const dirty = Math.floor(frame / (FLIP_EVERY * 2)) % 2 === 0
+    const selected = Math.floor(frame / FLIP_EVERY) % 2 === 0;
+    const dirty = Math.floor(frame / (FLIP_EVERY * 2)) % 2 === 0;
     for (let i = 0; i < rows.length; i++) {
       prev[i] = setClass(
         rows[i]!,
         "class",
         { row: true, "row--selected": selected, "row--dirty": dirty },
         prev[i],
-      )
+      );
     }
   }
 }
 
 /** Arm B — the same thing as a string the compiler could have built inline. */
 function stringArm(rows: Element[]): void {
-  const prev: unknown[] = new Array(rows.length).fill(undefined)
+  const prev: unknown[] = new Array(rows.length).fill(undefined);
   for (let frame = 0; frame < FRAMES; frame++) {
-    const selected = Math.floor(frame / FLIP_EVERY) % 2 === 0
-    const dirty = Math.floor(frame / (FLIP_EVERY * 2)) % 2 === 0
+    const selected = Math.floor(frame / FLIP_EVERY) % 2 === 0;
+    const dirty = Math.floor(frame / (FLIP_EVERY * 2)) % 2 === 0;
     for (let i = 0; i < rows.length; i++) {
-      const value = `row${selected ? " row--selected" : ""}${dirty ? " row--dirty" : ""}`
-      prev[i] = setClass(rows[i]!, "class", value, prev[i])
+      const value = `row${selected ? " row--selected" : ""}${dirty ? " row--dirty" : ""}`;
+      prev[i] = setClass(rows[i]!, "class", value, prev[i]);
     }
   }
 }
@@ -86,53 +86,55 @@ function setClassBits(
   base: string,
   prev: number,
 ): number {
-  if (bits === prev) return bits
-  let out = base
+  if (bits === prev) return bits;
+  let out = base;
   for (let i = 0; i < names.length; i++) {
-    if (bits & (1 << i)) out += (out === "" ? "" : " ") + names[i]!
+    if (bits & (1 << i)) out += (out === "" ? "" : " ") + names[i]!;
   }
-  ;(element as Element & { className: string }).className = out
-  return bits
+  (element as Element & { className: string }).className = out;
+  return bits;
 }
 
 function bitsArm(rows: Element[]): void {
-  const prev: number[] = new Array(rows.length).fill(-1)
+  const prev: number[] = new Array(rows.length).fill(-1);
   for (let frame = 0; frame < FRAMES; frame++) {
-    const selected = Math.floor(frame / FLIP_EVERY) % 2 === 0
-    const dirty = Math.floor(frame / (FLIP_EVERY * 2)) % 2 === 0
-    const bits = 1 | (selected ? 2 : 0) | (dirty ? 4 : 0)
+    const selected = Math.floor(frame / FLIP_EVERY) % 2 === 0;
+    const dirty = Math.floor(frame / (FLIP_EVERY * 2)) % 2 === 0;
+    const bits = 1 | (selected ? 2 : 0) | (dirty ? 4 : 0);
     for (let i = 0; i < rows.length; i++) {
-      prev[i] = setClassBits(rows[i]!, bits, NAMES, "", prev[i]!)
+      prev[i] = setClassBits(rows[i]!, bits, NAMES, "", prev[i]!);
     }
   }
 }
 
 function time(label: string, arm: (rows: Element[]) => void): number {
-  const samples: number[] = []
+  const samples: number[] = [];
   for (let r = 0; r < REPEATS; r++) {
-    const rows = makeRows()
-    arm(rows) // warm
-    const start = performance.now()
-    arm(rows)
-    samples.push(performance.now() - start)
+    const rows = makeRows();
+    arm(rows); // warm
+    const start = performance.now();
+    arm(rows);
+    samples.push(performance.now() - start);
   }
-  samples.sort((a, b) => a - b)
-  const median = samples[Math.floor(samples.length / 2)]!
-  console.log(`${label.padEnd(26)} ${median.toFixed(2)} ms   [${samples.map((s) => s.toFixed(1)).join(" ")}]`)
-  return median
+  samples.sort((a, b) => a - b);
+  const median = samples[Math.floor(samples.length / 2)]!;
+  console.log(
+    `${label.padEnd(26)} ${median.toFixed(2)} ms   [${samples.map((s) => s.toFixed(1)).join(" ")}]`,
+  );
+  return median;
 }
 
-console.log(`${ROWS} rows x ${FRAMES} frames = ${(ROWS * FRAMES).toLocaleString()} class writes`)
-console.log(`the conditional flips 1 frame in ${FLIP_EVERY}\n`)
+console.log(`${ROWS} rows x ${FRAMES} frames = ${(ROWS * FRAMES).toLocaleString()} class writes`);
+console.log(`the conditional flips 1 frame in ${FLIP_EVERY}\n`);
 
-const object = time("object literal (today)", objectArm)
-const string = time("string (today)", stringArm)
-const bits = time("bitmask (§3.5)", bitsArm)
+const object = time("object literal (today)", objectArm);
+const string = time("string (today)", stringArm);
+const bits = time("bitmask (§3.5)", bitsArm);
 
 console.log(
   `\nbitmask vs object literal: ${(object / bits).toFixed(2)}x` +
     `\nbitmask vs string        : ${(string / bits).toFixed(2)}x`,
-)
+);
 
 // ---------------------------------------------------------------------------
 // The number that actually decides, because §0.4's lesson is that a channel
@@ -143,51 +145,53 @@ console.log(
 // ---------------------------------------------------------------------------
 
 interface Frame {
-  (): void
+  (): void;
 }
 
 function endToEnd(label: string, build: (el: Element, sel: () => boolean) => void): number {
-  const samples: number[] = []
+  const samples: number[] = [];
   for (let r = 0; r < REPEATS; r++) {
-    const selected = signal(false)
-    const rows = makeRows()
-    for (const el of rows) build(el, () => selected())
-    flush()
+    const selected = signal(false);
+    const rows = makeRows();
+    for (const el of rows) build(el, () => selected());
+    flush();
     const drive: Frame = () => {
       for (let frame = 0; frame < FRAMES; frame++) {
-        selected.set(frame % 2 === 0)
-        flush()
+        selected.set(frame % 2 === 0);
+        flush();
       }
-    }
-    drive()
-    const start = performance.now()
-    drive()
-    samples.push(performance.now() - start)
+    };
+    drive();
+    const start = performance.now();
+    drive();
+    samples.push(performance.now() - start);
   }
-  samples.sort((a, b) => a - b)
-  const median = samples[Math.floor(samples.length / 2)]!
-  console.log(`${label.padEnd(26)} ${median.toFixed(2)} ms   [${samples.map((s) => s.toFixed(1)).join(" ")}]`)
-  return median
+  samples.sort((a, b) => a - b);
+  const median = samples[Math.floor(samples.length / 2)]!;
+  console.log(
+    `${label.padEnd(26)} ${median.toFixed(2)} ms   [${samples.map((s) => s.toFixed(1)).join(" ")}]`,
+  );
+  return median;
 }
 
-console.log(`\n--- end to end: ${ROWS} rows, ${FRAMES} frames, one signal driving every row ---\n`)
+console.log(`\n--- end to end: ${ROWS} rows, ${FRAMES} frames, one signal driving every row ---\n`);
 
 const liveObject = endToEnd("emitted today", (el, sel) => {
   renderEffect(
     () => ({ a: { row: true, "row--selected": sel(), "row--dirty": false } }),
     (v: { a: unknown }, p: { a?: unknown } = {}) => {
-      v.a = setClass(el, "class", v.a, p.a)
+      v.a = setClass(el, "class", v.a, p.a);
     },
-  )
-})
+  );
+});
 
 const liveBits = endToEnd("emitted with classBits", (el, sel) => {
   renderEffect(
     () => 1 | (sel() ? 2 : 0),
     (v: number, p: number) => {
-      if (v !== p) setClassBits(el, v, NAMES, "", p)
+      if (v !== p) setClassBits(el, v, NAMES, "", p);
     },
-  )
-})
+  );
+});
 
-console.log(`\nend to end, bitmask vs today: ${(liveObject / liveBits).toFixed(2)}x`)
+console.log(`\nend to end, bitmask vs today: ${(liveObject / liveBits).toFixed(2)}x`);

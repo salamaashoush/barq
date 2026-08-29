@@ -6,16 +6,16 @@ import {
   rmSync,
   statSync,
   writeFileSync,
-} from "node:fs"
-import { join } from "node:path"
-import { createRequire } from "node:module"
+} from "node:fs";
+import { join } from "node:path";
+import { createRequire } from "node:module";
 
 import {
   expectedAttributeOrder,
   normalizeChannels,
   resetIdentity,
   type DomChannels,
-} from "./normalize.ts"
+} from "./normalize.ts";
 import {
   beginTrace,
   endTrace,
@@ -23,12 +23,12 @@ import {
   summarize,
   type Trace,
   type TraceSummary,
-} from "./tracer.ts"
+} from "./tracer.ts";
 
-const require_ = createRequire(import.meta.url)
+const require_ = createRequire(import.meta.url);
 
-export const FIXTURE_DIR = join(import.meta.dir, "..", "fixtures")
-const RUN = process.pid
+export const FIXTURE_DIR = join(import.meta.dir, "..", "fixtures");
+const RUN = process.pid;
 /**
  * One generated-module directory PER PROCESS, and generated names carry the pid
  * inside it. The root `bun run test` starts several test processes over this
@@ -46,32 +46,29 @@ const RUN = process.pid
  * `TMP_DIR` stays ONE level under `test/`, because the L1 fixtures reach their
  * support module by relative path from where the generated file lands.
  */
-export const TMP_DIR = join(import.meta.dir, `.tmp-${RUN}`)
+export const TMP_DIR = join(import.meta.dir, `.tmp-${RUN}`);
 
 /**
  * The oracle path never reaches the compiler, so the JSX it contains has to be
  * lowered by bun. The pragma pins the factory explicitly instead of relying on
  * whichever tsconfig.json happens to be nearest to the temp file.
  */
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n"
+const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
 
 export interface NativeTransformResult {
-  code: string
-  map?: string
-  warnings: string[]
+  code: string;
+  map?: string;
+  warnings: string[];
   /** `CODESIGN.md` §6 L2b, under `ownership: true` only. */
-  ownership?: string | null
+  ownership?: string | null;
   /** `CODESIGN.md` §3.11's compile-time address table, under `addresses: true` only. */
-  addresses?: string | null
+  addresses?: string | null;
 }
 
 interface NativeCompiler {
-  transform(
-    code: string,
-    options?: Record<string, unknown>,
-  ): NativeTransformResult
-  opcodes(): string[]
-  diagnosticCodes(): Array<{ code: string; level: string; summary: string; docs: string }>
+  transform(code: string, options?: Record<string, unknown>): NativeTransformResult;
+  opcodes(): string[];
+  diagnosticCodes(): Array<{ code: string; level: string; summary: string; docs: string }>;
 }
 
 /**
@@ -84,21 +81,21 @@ interface NativeCompiler {
  * committed binding.
  */
 function loadNative(): NativeCompiler {
-  const mutant = process.env.BARQ_NATIVE
-  if (mutant !== undefined && mutant !== "") return require_(mutant) as NativeCompiler
+  const mutant = process.env.BARQ_NATIVE;
+  if (mutant !== undefined && mutant !== "") return require_(mutant) as NativeCompiler;
   try {
-    return require_("../index.js") as NativeCompiler
+    return require_("../index.js") as NativeCompiler;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       "the harness needs the native binding, which is a build artifact and is not in git. " +
         "Run `bun run --cwd packages/compiler-rs build` (needs a Rust toolchain) and try again. " +
         `Underlying error: ${message}`,
-    )
+    );
   }
 }
 
-const native = loadNative()
+const native = loadNative();
 
 /**
  * The ONE resolved binding, exported so nothing has to re-require `../index.js`.
@@ -110,7 +107,7 @@ const native = loadNative()
  * PRISTINE compiler all along. Measured: under an identity-transform stub the
  * L2b ownership banner came out byte-identical to the real build.
  */
-export const nativeCompiler: NativeCompiler = native
+export const nativeCompiler: NativeCompiler = native;
 
 /**
  * What a fixture claims the compiler must eventually do to it. Behaviour is
@@ -119,29 +116,29 @@ export const nativeCompiler: NativeCompiler = native
  */
 export interface OptimalityExpectation {
   /** Which of the ten optimization targets this fixture is the proof of. */
-  target: number
+  target: number;
   /** The milestone that turns it on. `optimality.test.ts` holds the current one. */
-  milestone: number
+  milestone: number;
   /** Effects the compiled render must create. */
-  effects?: number
+  effects?: number;
   /** `_$template()` calls in the emitted module. */
-  templates?: number
+  templates?: number;
   /** `_$insert` + every resolved-channel write + `_$spread`, in the module. */
-  patchCalls?: number
+  patchCalls?: number;
   /** Substrings the emitted module must contain. */
-  emits?: string[]
+  emits?: string[];
   /** Substrings it must not contain. */
-  absent?: string[]
+  absent?: string[];
   /** Pairs `[first, second]` the emitted module must contain, in that order. */
-  ordered?: Array<[string, string]>
+  ordered?: Array<[string, string]>;
 }
 
 export interface FixtureModule {
-  default: () => unknown
-  steps?: Array<() => void>
-  events?: Array<(root: HTMLElement) => void>
+  default: () => unknown;
+  steps?: Array<() => void>;
+  events?: Array<(root: HTMLElement) => void>;
   /** What the compiler must eventually make of this fixture. */
-  optimality?: OptimalityExpectation
+  optimality?: OptimalityExpectation;
   /**
    * A markup difference the SSR backend is REQUIRED to have. DESIGN §5's opcode
    * table drops `Delegate`, `Listen` and `Ref` — a handler and a ref callback
@@ -152,38 +149,38 @@ export interface FixtureModule {
    * `markup` byte for byte, and fails as STALE if the two paths stopped
    * differing at all.
    */
-  ssrDiffers?: SsrDivergence
+  ssrDiffers?: SsrDivergence;
 }
 
 export interface SsrDivergence {
   /** The normalised markup the SSR path must produce. */
-  markup: string
-  why: string
+  markup: string;
+  why: string;
 }
 
 export interface RenderResult {
   /** Normalized DOM after the initial render */
-  html: string
+  html: string;
   /** Normalized DOM after each scripted step, in order */
-  frames: string[]
+  frames: string[];
   /** Normalized DOM after each dispatched event, in order */
-  eventFrames: string[]
+  eventFrames: string[];
   /**
    * The side channels for every frame the render produced, initial render
    * first, then the steps, then the events — the same order the `html`,
    * `frames` and `eventFrames` fields spell out separately.
    */
-  channels: DomChannels[]
+  channels: DomChannels[];
   /**
    * Per frame, the anchors the template clones still attached to the container
    * baked in — the EXACT number of `<!---->` nodes that frame is allowed to
    * hold. Zero for every frame on the oracle path, which never calls
    * `template()` at all.
    */
-  expectedAnchors: number[]
-  trace: TraceSummary
+  expectedAnchors: number[];
+  trace: TraceSummary;
   /** Per-effect run counts, creation-ordered */
-  runs: number[]
+  runs: number[];
   /**
    * Everything this render CONSTRUCTED, not merely everything it left in the
    * container: the whole document at each frame, plus the markup of every
@@ -195,16 +192,16 @@ export interface RenderResult {
    * and torn down inside one step is never in any snapshot, so both would have
    * been called UNREACHED and then mutated.
    */
-  seen: string
+  seen: string;
   /** The emitted module this render came from. */
-  code?: string
+  code?: string;
 }
 
 export interface Corruptions {
   /** Applied to the fixture source before the compiler sees it. */
-  source?: (source: string) => string
+  source?: (source: string) => string;
   /** Applied to the compiler's emitted code. */
-  emitted?: (code: string) => string
+  emitted?: (code: string) => string;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,14 +212,14 @@ export function listFixtures(): string[] {
   return readdirSync(FIXTURE_DIR)
     .filter((f) => f.endsWith(".tsx"))
     .map((f) => f.slice(0, -4))
-    .sort()
+    .sort();
 }
 
 export function fixtureSource(name: string): string {
-  return readFileSync(join(FIXTURE_DIR, `${name}.tsx`), "utf8")
+  return readFileSync(join(FIXTURE_DIR, `${name}.tsx`), "utf8");
 }
 
-export const BROWSER_ONLY_DIR = join(FIXTURE_DIR, "browser-only")
+export const BROWSER_ONLY_DIR = join(FIXTURE_DIR, "browser-only");
 
 /**
  * Fixtures a FAKE DOM is structurally unable to judge, and which therefore
@@ -238,15 +235,15 @@ export function listBrowserOnlyFixtures(): string[] {
   return readdirSync(BROWSER_ONLY_DIR)
     .filter((f) => f.endsWith(".tsx"))
     .map((f) => f.slice(0, -4))
-    .sort()
+    .sort();
 }
 
 export function browserOnlySource(name: string): string {
-  return readFileSync(join(BROWSER_ONLY_DIR, `${name}.tsx`), "utf8")
+  return readFileSync(join(BROWSER_ONLY_DIR, `${name}.tsx`), "utf8");
 }
 
 export function compileBrowserOnly(name: string): string {
-  return compileSource(browserOnlySource(name), `${name}.tsx`)
+  return compileSource(browserOnlySource(name), `${name}.tsx`);
 }
 
 // ---------------------------------------------------------------------------
@@ -255,10 +252,10 @@ export function compileBrowserOnly(name: string): string {
 
 /** Run a fixture through @barqjs/compiler-rs and return the emitted code. */
 export function compileFixture(name: string, options: Record<string, unknown> = {}): string {
-  return compileSource(fixtureSource(name), `${name}.tsx`, options)
+  return compileSource(fixtureSource(name), `${name}.tsx`, options);
 }
 
-const OPTIMALITY_DECLARATION = /\n?export const optimality = \{[\s\S]*?\n\}\n?/
+const OPTIMALITY_DECLARATION = /\n?export const optimality = \{[\s\S]*?\n\}\n?/;
 
 /**
  * The fixture compiled WITHOUT its own optimality declaration. The declaration
@@ -268,12 +265,12 @@ const OPTIMALITY_DECLARATION = /\n?export const optimality = \{[\s\S]*?\n\}\n?/
  * this; the differential harness runs the whole fixture, declaration included.
  */
 export function compileFixtureBody(name: string, options: Record<string, unknown> = {}): string {
-  const source = fixtureSource(name)
-  const body = source.replace(OPTIMALITY_DECLARATION, "\n")
+  const source = fixtureSource(name);
+  const body = source.replace(OPTIMALITY_DECLARATION, "\n");
   if (body === source && source.includes("export const optimality")) {
-    throw new Error(`${name} declares an optimality this regex no longer matches — fix the regex`)
+    throw new Error(`${name} declares an optimality this regex no longer matches — fix the regex`);
   }
-  return compileSource(body, `${name}.tsx`, options)
+  return compileSource(body, `${name}.tsx`, options);
 }
 
 /**
@@ -283,7 +280,7 @@ export function compileFixtureBody(name: string, options: Record<string, unknown
  * reference backend's JS half against it in both directions.
  */
 export function compilerOpcodes(): string[] {
-  return native.opcodes()
+  return native.opcodes();
 }
 
 /** The whole native result — code, sourcemap and warnings. */
@@ -291,7 +288,7 @@ export function compileFixtureRaw(
   name: string,
   options: Record<string, unknown> = {},
 ): NativeTransformResult {
-  return native.transform(fixtureSource(name), { filename: `${name}.tsx`, ...options })
+  return native.transform(fixtureSource(name), { filename: `${name}.tsx`, ...options });
 }
 
 export function compileSource(
@@ -299,7 +296,7 @@ export function compileSource(
   filename: string,
   options: Record<string, unknown> = {},
 ): string {
-  return native.transform(source, { filename, ...options }).code
+  return native.transform(source, { filename, ...options }).code;
 }
 
 /** The same, with the diagnostics — the SSR fallback is announced through them. */
@@ -308,7 +305,7 @@ export function compileSourceRaw(
   filename: string,
   options: Record<string, unknown> = {},
 ): NativeTransformResult {
-  return native.transform(source, { filename, ...options })
+  return native.transform(source, { filename, ...options });
 }
 
 // ---------------------------------------------------------------------------
@@ -322,12 +319,12 @@ export function compileSourceRaw(
  * loading the next one, so a second `resetTmp()` used to run — and delete the
  * modules the first file was still importing — halfway through the first.
  */
-const SHARED = Symbol.for("barq.compiler-rs.harness.tmp")
+const SHARED = Symbol.for("barq.compiler-rs.harness.tmp");
 const shared = ((globalThis as Record<symbol, unknown>)[SHARED] ??= {
   seq: 0,
   prepared: false,
   live: [] as string[],
-}) as { seq: number; prepared: boolean; live: string[] }
+}) as { seq: number; prepared: boolean; live: string[] };
 
 /**
  * How many generated modules stay on disk. Bounded, and the bound is not
@@ -337,14 +334,14 @@ const shared = ((globalThis as Record<symbol, unknown>)[SHARED] ??= {
  * that a stack trace out of a failing fixture still points at a file that
  * exists.
  */
-const KEEP = 512
+const KEEP = 512;
 
 function retire(): void {
   while (shared.live.length > KEEP) {
-    const stale = shared.live.shift()
-    if (stale === undefined) return
+    const stale = shared.live.shift();
+    if (stale === undefined) return;
     try {
-      rmSync(stale, { force: true })
+      rmSync(stale, { force: true });
     } catch {
       // Untidy, never fatal.
     }
@@ -361,20 +358,20 @@ function retire(): void {
  * per-process; it is removed once nothing has touched it for ten minutes.
  */
 function sweepAbandoned(): void {
-  const cutoff = Date.now() - 10 * 60 * 1000
-  const root = import.meta.dir
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  const root = import.meta.dir;
   for (const name of readdirSync(root)) {
-    if (!name.startsWith(".tmp")) continue
-    const path = join(root, name)
-    if (path === TMP_DIR) continue
+    if (!name.startsWith(".tmp")) continue;
+    const path = join(root, name);
+    if (path === TMP_DIR) continue;
     try {
       if (name === ".tmp") {
-        if (statSync(path).mtimeMs < cutoff) rmSync(path, { recursive: true, force: true })
-        continue
+        if (statSync(path).mtimeMs < cutoff) rmSync(path, { recursive: true, force: true });
+        continue;
       }
-      const owner = Number.parseInt(name.slice(".tmp-".length), 10)
-      if (!Number.isNaN(owner) && alive(owner)) continue
-      rmSync(path, { recursive: true, force: true })
+      const owner = Number.parseInt(name.slice(".tmp-".length), 10);
+      if (!Number.isNaN(owner) && alive(owner)) continue;
+      rmSync(path, { recursive: true, force: true });
     } catch {
       // Untidy, never fatal.
     }
@@ -383,25 +380,25 @@ function sweepAbandoned(): void {
 
 function alive(pid: number): boolean {
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 0);
+    return true;
   } catch {
-    return false
+    return false;
   }
 }
 
 function resetTmp(): void {
   // A directory under this pid can only be a dead run's, since pids are reused.
-  rmSync(TMP_DIR, { recursive: true, force: true })
-  mkdirSync(TMP_DIR, { recursive: true })
-  sweepAbandoned()
+  rmSync(TMP_DIR, { recursive: true, force: true });
+  mkdirSync(TMP_DIR, { recursive: true });
+  sweepAbandoned();
   // Without this the generated modules show up as untracked files after any
   // test run. `*` covers the file itself, so the directory reads as empty.
-  writeFileSync(join(TMP_DIR, ".gitignore"), "*\n")
+  writeFileSync(join(TMP_DIR, ".gitignore"), "*\n");
 }
 if (!shared.prepared) {
-  shared.prepared = true
-  resetTmp()
+  shared.prepared = true;
+  resetTmp();
 }
 
 /**
@@ -414,8 +411,8 @@ if (!shared.prepared) {
  */
 export async function loadModule(code: string, tag: string): Promise<FixtureModule> {
   for (let attempt = 0; ; attempt++) {
-    const id = `${RUN}-${tag}-${shared.seq++}`
-    const file = join(TMP_DIR, `${id}.tsx`)
+    const id = `${RUN}-${tag}-${shared.seq++}`;
+    const file = join(TMP_DIR, `${id}.tsx`);
     // bun 1.4.0 keys its in-process transpiled-source cache by a hash of the
     // source and compares by hash ALONE, so two generated modules can be served
     // each other's code — silently, with a plausible namespace object. The stamp
@@ -423,36 +420,36 @@ export async function loadModule(code: string, tag: string): Promise<FixtureModu
     writeFileSync(
       file,
       `${PRAGMA}export const __module = ${JSON.stringify(id)};${" ".repeat(attempt)}\n${code}`,
-    )
-    shared.live.push(file)
-    retire()
+    );
+    shared.live.push(file);
+    retire();
 
-    let mod: (FixtureModule & { __module?: string }) | undefined
+    let mod: (FixtureModule & { __module?: string }) | undefined;
     try {
-      mod = (await import(file)) as FixtureModule & { __module?: string }
+      mod = (await import(file)) as FixtureModule & { __module?: string };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error);
       // bun's resolver can miss a file it has on disk once another process is
       // churning the same directory. A fresh name resolves; the same one does
       // not, so this re-mints rather than retrying the import.
-      if (!message.includes("Cannot find module")) throw error
+      if (!message.includes("Cannot find module")) throw error;
       if (attempt === 4) {
         throw new Error(
           `bun could not resolve ${file} five times over, and the file ` +
             `${existsSync(file) ? "IS" : "is NOT"} on disk (${readdirSync(TMP_DIR).length} entries ` +
             `in the directory). Underlying error: ${message}`,
-        )
+        );
       }
-      continue
+      continue;
     }
 
-    if (mod.__module === id) return mod
+    if (mod.__module === id) return mod;
     if (attempt === 4) {
       throw new Error(
         `bun evaluated ${file} as ${mod.__module ?? "a module carrying no stamp"} five times over: ` +
           "its in-process source cache keys transpiled output by a hash of the source and compares " +
           "by hash alone, so two generated modules are served each other's code.",
-      )
+      );
     }
   }
 }
@@ -466,7 +463,7 @@ export async function loadModule(code: string, tag: string): Promise<FixtureModu
  * rather than assumed away.
  */
 export function writeSibling(name: string, code: string): void {
-  writeFileSync(join(TMP_DIR, name), PRAGMA + code)
+  writeFileSync(join(TMP_DIR, name), PRAGMA + code);
 }
 
 // ---------------------------------------------------------------------------
@@ -474,13 +471,13 @@ export function writeSibling(name: string, code: string): void {
 // ---------------------------------------------------------------------------
 
 export async function settle(): Promise<void> {
-  const core = await import("@barqjs/core")
-  core.flush()
+  const core = await import("@barqjs/core");
+  core.flush();
   // Portal and friends defer their work with queueMicrotask; two turns of the
   // event loop covers a microtask that queues another microtask.
-  await new Promise((r) => setTimeout(r, 0))
-  core.flush()
-  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0));
+  core.flush();
+  await new Promise((r) => setTimeout(r, 0));
 }
 
 /**
@@ -494,69 +491,69 @@ export async function settle(): Promise<void> {
  * frame, and it was still constructed — which is the question EMI is asking.
  */
 function markupOf(node: Node): string {
-  const element = node as { outerHTML?: string }
-  if (typeof element.outerHTML === "string") return element.outerHTML
-  return [...node.childNodes].map((child) => markupOf(child)).join("")
+  const element = node as { outerHTML?: string };
+  if (typeof element.outerHTML === "string") return element.outerHTML;
+  return [...node.childNodes].map((child) => markupOf(child)).join("");
 }
 
 export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
-  const core = await import("@barqjs/core")
+  const core = await import("@barqjs/core");
 
-  const container = document.createElement("div")
-  document.body.appendChild(container)
+  const container = document.createElement("div");
+  document.body.appendChild(container);
 
   // Node identity is stamped on first sight, so the ordinals only line up
   // between the two paths when both renders start their numbering at zero.
-  resetIdentity()
+  resetIdentity();
 
-  const trace: Trace = beginTrace()
-  let dispose: (() => void) | undefined
+  const trace: Trace = beginTrace();
+  let dispose: (() => void) | undefined;
 
-  const channels: DomChannels[] = []
-  const expectedAnchors: number[] = []
-  const seen: string[] = []
+  const channels: DomChannels[] = [];
+  const expectedAnchors: number[] = [];
+  const seen: string[] = [];
   const snapshot = (): string => {
-    const frame = normalizeChannels(container)
-    channels.push(frame)
+    const frame = normalizeChannels(container);
+    channels.push(frame);
     // Read at the same instant as the DOM it is the expectation for: a clone
     // that has since been detached, or one built after this frame, is not part
     // of what this frame is allowed to contain.
-    expectedAnchors.push(liveTemplateAnchors(trace, container))
+    expectedAnchors.push(liveTemplateAnchors(trace, container));
     // The whole document, not the container: a `<Portal>` renders somewhere
     // else entirely and is still very much reached.
-    seen.push(document.body.innerHTML)
-    return frame.html
-  }
+    seen.push(document.body.innerHTML);
+    return frame.html;
+  };
 
   try {
     core.scope((d: () => void) => {
-      dispose = d
+      dispose = d;
       // C1: the default export is a component and takes the scope it runs
       // under, so `render` is handed the BLOCK and opens that scope itself.
       // Calling it here would construct the subtree before any scope existed —
       // the argument form the whole redesign exists to remove.
-      core.render(mod.default as never, container)
-    }, true)
+      core.render(mod.default as never, container);
+    }, true);
 
-    await settle()
-    const html = snapshot()
+    await settle();
+    const html = snapshot();
 
-    const frames: string[] = []
+    const frames: string[] = [];
     for (const step of mod.steps ?? []) {
-      step()
-      await settle()
-      frames.push(snapshot())
+      step();
+      await settle();
+      frames.push(snapshot());
     }
 
     // Events go through the real DOM, so a compiled path that never binds a
     // handler diverges here and nowhere else. The container stays attached to
     // document.body for the whole render because delegated handlers only fire
     // once the event reaches document.
-    const eventFrames: string[] = []
+    const eventFrames: string[] = [];
     for (const dispatch of mod.events ?? []) {
-      dispatch(container)
-      await settle()
-      eventFrames.push(snapshot())
+      dispatch(container);
+      await settle();
+      eventFrames.push(snapshot());
     }
 
     return {
@@ -568,21 +565,21 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
       trace: summarize(trace),
       runs: trace.effects.map((e) => e.runs),
       seen: [...seen, ...trace.templates.map((instance) => markupOf(instance.node))].join("\n"),
-    }
+    };
   } finally {
-    endTrace()
-    dispose?.()
-    container.remove()
+    endTrace();
+    dispose?.();
+    container.remove();
     // Portal targets default to document.body; leaving them attached would leak
     // into the next fixture's snapshot.
-    document.body.innerHTML = ""
+    document.body.innerHTML = "";
     // The runtime's installed-delegated-events set is MODULE state: it outlives
     // every scope and both renders share it. Without this the compiled render
     // free-rides on the listener the oracle's createElement path installed, and
     // dropping the emitted `_$delegateEvents([...])` altogether leaves every
     // behavioural test green — target #7 becomes unfalsifiable. Tearing it down
     // makes each render install what it actually asked for.
-    core.clearDelegatedEvents()
+    core.clearDelegatedEvents();
   }
 }
 
@@ -599,8 +596,8 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
  * the compiled module is the same answer with no un-compiled path involved.
  */
 export async function fixtureOptimality(name: string): Promise<OptimalityExpectation | undefined> {
-  const mod = await loadModule(compileFixture(name), `declaration-${name}`)
-  return mod.optimality
+  const mod = await loadModule(compileFixture(name), `declaration-${name}`);
+  return mod.optimality;
 }
 
 /**
@@ -615,15 +612,15 @@ export async function renderViaCompiler(
   corrupt: Corruptions = {},
   options: Record<string, unknown> = {},
 ): Promise<RenderResult> {
-  const source = corrupt.source ? corrupt.source(fixtureSource(name)) : fixtureSource(name)
-  let code = compileSource(source, `${name}.tsx`, options)
-  if (corrupt.emitted) code = corrupt.emitted(code)
+  const source = corrupt.source ? corrupt.source(fixtureSource(name)) : fixtureSource(name);
+  let code = compileSource(source, `${name}.tsx`, options);
+  if (corrupt.emitted) code = corrupt.emitted(code);
   const tag =
     Object.keys(options).length === 0
       ? "compiled"
-      : `${options.interp ? "interp" : "compiled"}-O${options.optimize ?? "x"}`
-  const mod = await loadModule(code, `${tag}-${name}`)
-  return { ...(await renderModule(mod)), code }
+      : `${options.interp ? "interp" : "compiled"}-O${options.optimize ?? "x"}`;
+  const mod = await loadModule(code, `${tag}-${name}`);
+  return { ...(await renderModule(mod)), code };
 }
 
 /**
@@ -636,12 +633,12 @@ export async function renderViaInterp(
   corrupt: Corruptions = {},
   options: Record<string, unknown> = {},
 ): Promise<RenderResult> {
-  return renderViaCompiler(name, corrupt, { interp: true, ...options })
+  return renderViaCompiler(name, corrupt, { interp: true, ...options });
 }
 
 /** Apply the fixture's scripted signal updates, snapshotting the DOM after each. */
 export async function drive(name: string): Promise<RenderResult> {
-  return renderViaCompiler(name)
+  return renderViaCompiler(name);
 }
 
 // ---------------------------------------------------------------------------
@@ -649,7 +646,7 @@ export async function drive(name: string): Promise<RenderResult> {
 // ---------------------------------------------------------------------------
 
 function countMatches(text: string, pattern: RegExp): number {
-  return text.match(pattern)?.length ?? 0
+  return text.match(pattern)?.length ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -681,8 +678,8 @@ function countMatches(text: string, pattern: RegExp): number {
  * that follows.
  */
 function closesAJsxTag(code: string, at: number, previous: string): boolean {
-  if (code[at - 1] === "<") return true
-  return code[at + 1] === ">" && (previous === "}" || previous === '"' || previous === "'")
+  if (code[at - 1] === "<") return true;
+  return code[at + 1] === ">" && (previous === "}" || previous === '"' || previous === "'");
 }
 
 /**
@@ -690,123 +687,128 @@ function closesAJsxTag(code: string, at: number, previous: string): boolean {
  * scanner still walks every one of them either way, because knowing where a
  * literal ends is what keeps the comment detection in sync.
  */
-export type Strip = "all" | "comments"
+export type Strip = "all" | "comments";
 
 export function stripLiterals(code: string, what: Strip = "all"): string {
-  const out = code.split("")
+  const out = code.split("");
   const blank = (from: number, to: number): void => {
-    for (let i = from; i < to && i < out.length; i++) if (out[i] !== "\n") out[i] = " "
-  }
+    for (let i = from; i < to && i < out.length; i++) if (out[i] !== "\n") out[i] = " ";
+  };
   const blankLiteral = (from: number, to: number): void => {
-    if (what === "all") blank(from, to)
-  }
+    if (what === "all") blank(from, to);
+  };
 
-  let i = 0
-  let inTemplate = false
-  let braces = 0
+  let i = 0;
+  let inTemplate = false;
+  let braces = 0;
   /** Brace depth each open `${` was entered at, so its `}` is identifiable. */
-  const interpolations: number[] = []
+  const interpolations: number[] = [];
   // The last significant character, which is what says whether a `/` opens a
   // regex or divides. Emitted code has no regex literals today; fixture source
   // may, and it reaches the module verbatim.
-  let previous = ""
+  let previous = "";
 
   while (i < code.length) {
-    const ch = code[i]
+    const ch = code[i];
 
     if (inTemplate) {
       if (ch === "\\") {
-        blankLiteral(i, i + 2)
-        i += 2
-        continue
+        blankLiteral(i, i + 2);
+        i += 2;
+        continue;
       }
       if (ch === "`") {
-        inTemplate = false
-        previous = "`"
-        i++
-        continue
+        inTemplate = false;
+        previous = "`";
+        i++;
+        continue;
       }
       if (ch === "$" && code[i + 1] === "{") {
-        interpolations.push(braces)
-        inTemplate = false
-        previous = "{"
-        i += 2
-        continue
+        interpolations.push(braces);
+        inTemplate = false;
+        previous = "{";
+        i += 2;
+        continue;
       }
-      blankLiteral(i, i + 1)
-      i++
-      continue
+      blankLiteral(i, i + 1);
+      i++;
+      continue;
     }
 
     if (ch === "/" && code[i + 1] === "/") {
-      const end = code.indexOf("\n", i)
-      const stop = end === -1 ? code.length : end
-      blank(i, stop)
-      i = stop
-      continue
+      const end = code.indexOf("\n", i);
+      const stop = end === -1 ? code.length : end;
+      blank(i, stop);
+      i = stop;
+      continue;
     }
     if (ch === "/" && code[i + 1] === "*") {
-      const end = code.indexOf("*/", i + 2)
-      const stop = end === -1 ? code.length : end + 2
-      blank(i, stop)
-      i = stop
-      continue
+      const end = code.indexOf("*/", i + 2);
+      const stop = end === -1 ? code.length : end + 2;
+      blank(i, stop);
+      i = stop;
+      continue;
     }
     if (ch === '"' || ch === "'") {
-      let j = i + 1
-      while (j < code.length && code[j] !== ch) j += code[j] === "\\" ? 2 : 1
-      blankLiteral(i + 1, j)
-      i = j + 1
-      previous = ch
-      continue
+      let j = i + 1;
+      while (j < code.length && code[j] !== ch) j += code[j] === "\\" ? 2 : 1;
+      blankLiteral(i + 1, j);
+      i = j + 1;
+      previous = ch;
+      continue;
     }
     if (ch === "`") {
-      inTemplate = true
-      i++
-      continue
+      inTemplate = true;
+      i++;
+      continue;
     }
     if (ch === "{") {
-      braces++
-      previous = ch
-      i++
-      continue
+      braces++;
+      previous = ch;
+      i++;
+      continue;
     }
     if (ch === "}") {
       if (interpolations.length > 0 && braces === interpolations[interpolations.length - 1]) {
-        interpolations.pop()
-        inTemplate = true
-        i++
-        continue
+        interpolations.pop();
+        inTemplate = true;
+        i++;
+        continue;
       }
-      braces--
-      previous = ch
-      i++
-      continue
+      braces--;
+      previous = ch;
+      i++;
+      continue;
     }
-    if (ch === "/" && !closesAJsxTag(code, i, previous) && previous !== "" && !/[\w$)\]]/.test(previous)) {
-      let j = i + 1
-      let inClass = false
+    if (
+      ch === "/" &&
+      !closesAJsxTag(code, i, previous) &&
+      previous !== "" &&
+      !/[\w$)\]]/.test(previous)
+    ) {
+      let j = i + 1;
+      let inClass = false;
       while (j < code.length) {
         if (code[j] === "\\") {
-          j += 2
-          continue
+          j += 2;
+          continue;
         }
-        if (code[j] === "[") inClass = true
-        else if (code[j] === "]") inClass = false
-        else if (code[j] === "/" && !inClass) break
-        j++
+        if (code[j] === "[") inClass = true;
+        else if (code[j] === "]") inClass = false;
+        else if (code[j] === "/" && !inClass) break;
+        j++;
       }
-      blankLiteral(i + 1, j)
-      i = j + 1
-      previous = "/"
-      continue
+      blankLiteral(i + 1, j);
+      i = j + 1;
+      previous = "/";
+      continue;
     }
 
-    if (!/\s/.test(ch)) previous = ch
-    i++
+    if (!/\s/.test(ch)) previous = ch;
+    i++;
   }
 
-  return out.join("")
+  return out.join("");
 }
 
 /**
@@ -818,12 +820,12 @@ export function stripLiterals(code: string, what: Strip = "all"): string {
  * and half the corpus's declarations are claims ABOUT that markup.
  */
 export function stripComments(code: string): string {
-  return stripLiterals(code, "comments")
+  return stripLiterals(code, "comments");
 }
 
 /** Call sites of one emitted helper, counted off the code and nothing else. */
 export function emittedCalls(code: string, name: string): number {
-  return countMatches(stripLiterals(code), new RegExp(`_\\$+${name}\\(`, "g"))
+  return countMatches(stripLiterals(code), new RegExp(`_\\$+${name}\\(`, "g"));
 }
 
 /**
@@ -831,7 +833,7 @@ export function emittedCalls(code: string, name: string): number {
  * whose own source contains `_$` shifts every emitted uid to `_$$`.
  */
 export function templateHtml(code: string): string[] {
-  return [...code.matchAll(/_\$+template\(`([^`]*)`/g)].map((m) => m[1])
+  return [...code.matchAll(/_\$+template\(`([^`]*)`/g)].map((m) => m[1]);
 }
 
 /**
@@ -841,41 +843,41 @@ export function templateHtml(code: string): string[] {
  * between a bound and a coincidence once target #9 starts removing anchors.
  */
 export function countTemplateAnchors(html: string): number {
-  let anchors = 0
-  let i = 0
+  let anchors = 0;
+  let i = 0;
   while (i < html.length) {
     if (html[i] !== "<") {
-      i++
-      continue
+      i++;
+      continue;
     }
     if (html.startsWith("<!--", i)) {
-      const end = html.indexOf("-->", i + 4)
-      const stop = end === -1 ? html.length : end + 3
-      if (html.slice(i, stop) === "<!---->") anchors++
-      i = stop
-      continue
+      const end = html.indexOf("-->", i + 4);
+      const stop = end === -1 ? html.length : end + 3;
+      if (html.slice(i, stop) === "<!---->") anchors++;
+      i = stop;
+      continue;
     }
-    i++
-    let quote = ""
+    i++;
+    let quote = "";
     while (i < html.length) {
-      const ch = html[i]
+      const ch = html[i];
       if (quote !== "") {
-        if (ch === quote) quote = ""
+        if (ch === quote) quote = "";
       } else if (ch === '"' || ch === "'") {
-        quote = ch
+        quote = ch;
       } else if (ch === ">") {
-        i++
-        break
+        i++;
+        break;
       }
-      i++
+      i++;
     }
   }
-  return anchors
+  return anchors;
 }
 
 /** Every anchor the module's templates bake in, across all of them. */
 export function templateAnchors(code: string): number {
-  return templateHtml(code).reduce((n, html) => n + countTemplateAnchors(html), 0)
+  return templateHtml(code).reduce((n, html) => n + countTemplateAnchors(html), 0);
 }
 
 /**
@@ -896,20 +898,20 @@ export function templateAnchors(code: string): number {
  * an `insert` or a `branch` places, so it consumes its parent's anchor and never
  * one of its own.
  */
-const REGION_PRIMITIVES = ["branch", "each", "boundary"] as const
+const REGION_PRIMITIVES = ["branch", "each", "boundary"] as const;
 
 /** Every call site that consumes a baked anchor. `insert` takes it fourth. */
-const ANCHOR_CONSUMERS = ["insert", ...REGION_PRIMITIVES] as const
+const ANCHOR_CONSUMERS = ["insert", ...REGION_PRIMITIVES] as const;
 
 export interface AnchorAudit {
   /** Anchors baked into the emitted templates. */
-  baked: number
+  baked: number;
   /** Of those, the ones an `_$insert` call actually passes as its anchor. */
-  used: number
+  used: number;
   /** Anchors nothing references. Target #9 says this is always zero. */
-  unused: number
+  unused: number;
   /** `_$insert` anchors the walk resolver could not follow — a stale scanner. */
-  unresolved: number
+  unresolved: number;
 }
 
 /**
@@ -930,62 +932,66 @@ export interface AnchorAudit {
  * Needs a DOM, so it runs under `bun test` and not from the CLI scripts.
  */
 export function auditAnchors(code: string): AnchorAudit {
-  if (typeof document === "undefined") throw new Error("auditAnchors needs a DOM")
+  if (typeof document === "undefined") throw new Error("auditAnchors needs a DOM");
 
-  const roots = new Map<string, Node>()
-  for (const match of code.matchAll(/(_tmpl\$+\d+) = [^;]*?_\$+template\(`([^`]*)`(,\s*true)?\)/g)) {
-    const host = document.createElement("template")
+  const roots = new Map<string, Node>();
+  for (const match of code.matchAll(
+    /(_tmpl\$+\d+) = [^;]*?_\$+template\(`([^`]*)`(,\s*true)?\)/g,
+  )) {
+    const host = document.createElement("template");
     host.innerHTML = match[3]
       ? `<svg xmlns="http://www.w3.org/2000/svg">${match[2]}</svg>`
-      : match[2]
-    const root = host.content.firstChild
-    if (root) roots.set(match[1], root)
+      : match[2];
+    const root = host.content.firstChild;
+    if (root) roots.set(match[1], root);
   }
 
   // A module carrying templates that this scanner cannot read is a FAILURE, not
   // a clean bill: every count below would come back zero and the corpus-wide
   // `unused === 0` assertion would pass over a module nobody looked at.
   if (roots.size === 0 && templateHtml(code).length > 0) {
-    throw new Error("auditAnchors could not read this module's templates — the scanner has gone blind")
+    throw new Error(
+      "auditAnchors could not read this module's templates — the scanner has gone blind",
+    );
   }
 
-  const bound = new Map<string, Node>()
-  const stripped = stripLiterals(code)
+  const bound = new Map<string, Node>();
+  const stripped = stripLiterals(code);
   for (const line of stripped.split("\n")) {
-    const fromTemplate = line.match(/(_el\$+\d+) = (_tmpl\$+\d+)\(\)/)
+    const fromTemplate = line.match(/(_el\$+\d+) = (_tmpl\$+\d+)\(\)/);
     if (fromTemplate) {
-      const root = roots.get(fromTemplate[2])
-      if (root) bound.set(fromTemplate[1], root)
-      continue
+      const root = roots.get(fromTemplate[2]);
+      if (root) bound.set(fromTemplate[1], root);
+      continue;
     }
     const walk = line.match(
       /(_el\$+\d+) = (_el\$+\d+)((?:\.(?:firstChild|lastChild|nextSibling|previousSibling))+)/,
-    )
-    if (!walk) continue
-    let node: Node | null | undefined = bound.get(walk[2])
+    );
+    if (!walk) continue;
+    let node: Node | null | undefined = bound.get(walk[2]);
     for (const hop of walk[3].split(".").filter(Boolean)) {
-      if (!node) break
-      node = (node as unknown as Record<string, Node | null>)[hop]
+      if (!node) break;
+      node = (node as unknown as Record<string, Node | null>)[hop];
     }
-    if (node) bound.set(walk[1], node)
+    if (node) bound.set(walk[1], node);
   }
 
-  const used = new Set<Node>()
-  let unresolved = 0
+  const used = new Set<Node>();
+  let unresolved = 0;
   const claim = (name: string): void => {
-    if (!/^_el\$+\d+$/.test(name)) return
-    const node = bound.get(name)
+    if (!/^_el\$+\d+$/.test(name)) return;
+    const node = bound.get(name);
     if (!node) {
-      unresolved++
-      return
+      unresolved++;
+      return;
     }
-    used.add(node)
-  }
+    used.add(node);
+  };
   for (const call of callsTo(stripped, "insert")) {
     // `_$insert($s, parent, value, anchor)` — the scope is first (§3.3 C6), so
     // the anchor is the FOURTH argument.
-    if (call.length < 4) continue
-    claim(call[3].trim())
+    if (call.length < 4) continue;
+    claim(call[3].trim());
   }
   // A REGION consumes an anchor too, and takes it as the THIRD argument:
   // `_$branch($s, parent, anchor, …)`. Since M4b that is where most of the
@@ -993,57 +999,58 @@ export function auditAnchors(code: string): AnchorAudit {
   // report every one of them as baked-and-unused (K5, K7).
   for (const primitive of REGION_PRIMITIVES) {
     for (const call of callsTo(stripped, primitive)) {
-      if (call.length < 3) continue
-      claim(call[2].trim())
+      if (call.length < 3) continue;
+      claim(call[2].trim());
     }
   }
 
-  let baked = 0
-  let usedAnchors = 0
+  let baked = 0;
+  let usedAnchors = 0;
   for (const root of new Set(roots.values())) {
     for (const node of anchorsIn(root)) {
-      baked++
-      if (used.has(node)) usedAnchors++
+      baked++;
+      if (used.has(node)) usedAnchors++;
     }
   }
-  return { baked, used: usedAnchors, unused: baked - usedAnchors, unresolved }
+  return { baked, used: usedAnchors, unused: baked - usedAnchors, unresolved };
 }
 
 function anchorsIn(root: Node): Node[] {
-  const out: Node[] = []
+  const out: Node[] = [];
   const visit = (node: Node): void => {
-    if (node.nodeType === 8 && (node as Comment).data === "") out.push(node)
-    for (const child of Array.from(node.childNodes)) visit(child)
-    const content = (node as HTMLTemplateElement).content
-    if (content instanceof DocumentFragment) for (const child of Array.from(content.childNodes)) visit(child)
-  }
-  visit(root)
-  return out
+    if (node.nodeType === 8 && (node as Comment).data === "") out.push(node);
+    for (const child of Array.from(node.childNodes)) visit(child);
+    const content = (node as HTMLTemplateElement).content;
+    if (content instanceof DocumentFragment)
+      for (const child of Array.from(content.childNodes)) visit(child);
+  };
+  visit(root);
+  return out;
 }
 
 /** The top-level argument text of every `_$insert(...)` call. */
 function callsTo(stripped: string, helper: string): string[][] {
-  const calls: string[][] = []
-  const opener = new RegExp(`_\\$+${helper}\\(`, "g")
+  const calls: string[][] = [];
+  const opener = new RegExp(`_\\$+${helper}\\(`, "g");
   for (let match = opener.exec(stripped); match !== null; match = opener.exec(stripped)) {
-    const args: string[] = []
-    let depth = 1
-    let start = match.index + match[0].length
-    let i = start
+    const args: string[] = [];
+    let depth = 1;
+    let start = match.index + match[0].length;
+    let i = start;
     for (; i < stripped.length && depth > 0; i++) {
-      const ch = stripped[i]
-      if (ch === "(" || ch === "[" || ch === "{") depth++
-      else if (ch === ")" || ch === "]" || ch === "}") depth--
+      const ch = stripped[i];
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "]" || ch === "}") depth--;
       else if (ch === "," && depth === 1) {
-        args.push(stripped.slice(start, i))
-        start = i + 1
-        continue
+        args.push(stripped.slice(start, i));
+        start = i + 1;
+        continue;
       }
-      if (depth === 0) args.push(stripped.slice(start, i))
+      if (depth === 0) args.push(stripped.slice(start, i));
     }
-    calls.push(args)
+    calls.push(args);
   }
-  return calls
+  return calls;
 }
 
 /**
@@ -1053,19 +1060,19 @@ function callsTo(stripped: string, helper: string): string[][] {
  * apart from a module with no groups at all.
  */
 export function bindEffectBodies(code: string): string[] {
-  const bodies: string[] = []
-  const opener = /_\$+bindEffect\(/g
+  const bodies: string[] = [];
+  const opener = /_\$+bindEffect\(/g;
   for (let match = opener.exec(code); match !== null; match = opener.exec(code)) {
-    let depth = 0
-    let end = match.index + match[0].length - 1
+    let depth = 0;
+    let end = match.index + match[0].length - 1;
     do {
-      if (code[end] === "(") depth++
-      else if (code[end] === ")") depth--
-      end++
-    } while (depth > 0 && end < code.length)
-    bodies.push(code.slice(match.index, end))
+      if (code[end] === "(") depth++;
+      else if (code[end] === ")") depth--;
+      end++;
+    } while (depth > 0 && end < code.length);
+    bodies.push(code.slice(match.index, end));
   }
-  return bodies
+  return bodies;
 }
 
 /**
@@ -1078,7 +1085,7 @@ export function groupTargets(code: string): string[][] {
     // A resolved channel takes the ELEMENT first: the scope is not an argument
     // at all, because a channel write is not an effect and opens nothing.
     ...new Set([...body.matchAll(CHANNEL_CALL)].map((m) => m[2])),
-  ])
+  ]);
 }
 
 /**
@@ -1087,7 +1094,7 @@ export function groupTargets(code: string): string[][] {
  * property name can never collide with an attribute name in the channel below
  * because the channel only ever looks at names the DOM actually reported.
  */
-const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", className: "class" }
+const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", className: "class" };
 
 /**
  * `CODESIGN.md` §3.5's channel set, as it appears in emitted code:
@@ -1096,10 +1103,10 @@ const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", classNam
  * scanner pinned to one prefix would silently see no writes at all.
  */
 export const CHANNEL_CALL =
-  /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyleProp|setStyle|setClassList|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g
+  /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyleProp|setStyle|setClassList|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g;
 
 /** `_$bindProp($s, el, _$setAttr, "id", v)` — the channel is the third argument. */
-export const BIND_PROP_CALL = /_\$+bindProp\([^,]+,\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g
+export const BIND_PROP_CALL = /_\$+bindProp\([^,]+,\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g;
 
 /**
  * The props the emitted module applies AFTER the clone, by attribute name.
@@ -1109,14 +1116,14 @@ export const BIND_PROP_CALL = /_\$+bindProp\([^,]+,\s*(_el\$+\d+)\s*,[^,]+,\s*"(
  * time, and shipped into the browser as a list of names.
  */
 export function patchedAttributeNames(code: string): Set<string> {
-  const names = new Set<string>()
+  const names = new Set<string>();
   for (const match of code.matchAll(new RegExp(CHANNEL_CALL))) {
-    names.add(ATTRIBUTE_ALIASES[match[3]] ?? match[3])
+    names.add(ATTRIBUTE_ALIASES[match[3]] ?? match[3]);
   }
   for (const match of code.matchAll(new RegExp(BIND_PROP_CALL))) {
-    names.add(ATTRIBUTE_ALIASES[match[2]] ?? match[2])
+    names.add(ATTRIBUTE_ALIASES[match[2]] ?? match[2]);
   }
-  return names
+  return names;
 }
 
 export interface Divergence {
@@ -1130,28 +1137,27 @@ export interface Divergence {
     | "effect-runs"
     | "marker-count"
     | "attribute-order"
-    | "node-identity-differential"
-  step?: number
-  expected: string
-  actual: string
-  message: string
+    | "node-identity-differential";
+  step?: number;
+  expected: string;
+  actual: string;
+  message: string;
 }
 
 export interface Comparison {
-  ok: boolean
-  divergences: Divergence[]
+  ok: boolean;
+  divergences: Divergence[];
   /** Negative means the subject created fewer effects than the reference. */
-  effectDelta: number
-  runDelta: number
-  reference: RenderResult
-  subject: RenderResult
+  effectDelta: number;
+  runDelta: number;
+  reference: RenderResult;
+  subject: RenderResult;
 }
 
 /** `bindEffect`s covering two or more props, counted off the emitted module. */
 export function countMerges(code: string): number {
-  return bindEffectBodies(code).filter(
-    (body) => countMatches(body, new RegExp(CHANNEL_CALL)) >= 2,
-  ).length
+  return bindEffectBodies(code).filter((body) => countMatches(body, new RegExp(CHANNEL_CALL)) >= 2)
+    .length;
 }
 
 /**
@@ -1161,9 +1167,8 @@ export function countMerges(code: string): number {
  */
 export function propCalls(code: string): number {
   return (
-    countMatches(code, new RegExp(CHANNEL_CALL)) +
-    countMatches(code, new RegExp(BIND_PROP_CALL))
-  )
+    countMatches(code, new RegExp(CHANNEL_CALL)) + countMatches(code, new RegExp(BIND_PROP_CALL))
+  );
 }
 
 /**
@@ -1183,7 +1188,7 @@ export function propCalls(code: string): number {
  * `-O0`/`-Ox` differential in `optimisation.test.ts`.
  */
 export function compareRenders(reference: RenderResult, subject: RenderResult): Comparison {
-  const divergences: Divergence[] = []
+  const divergences: Divergence[] = [];
 
   if (reference.html !== subject.html) {
     divergences.push({
@@ -1191,7 +1196,7 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
       expected: reference.html,
       actual: subject.html,
       message: "initial render DOM differs from the reference render",
-    })
+    });
   }
 
   if (reference.frames.length !== subject.frames.length) {
@@ -1200,19 +1205,19 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
       expected: String(reference.frames.length),
       actual: String(subject.frames.length),
       message: "the two renders ran a different number of scripted steps",
-    })
+    });
   }
 
-  const steps = Math.min(reference.frames.length, subject.frames.length)
+  const steps = Math.min(reference.frames.length, subject.frames.length);
   for (let i = 0; i < steps; i++) {
-    if (reference.frames[i] === subject.frames[i]) continue
+    if (reference.frames[i] === subject.frames[i]) continue;
     divergences.push({
       kind: "step-dom",
       step: i,
       expected: reference.frames[i],
       actual: subject.frames[i],
       message: `DOM differs from the reference render after scripted step ${i}`,
-    })
+    });
   }
 
   if (reference.eventFrames.length !== subject.eventFrames.length) {
@@ -1221,19 +1226,19 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
       expected: String(reference.eventFrames.length),
       actual: String(subject.eventFrames.length),
       message: "the two renders dispatched a different number of events",
-    })
+    });
   }
 
-  const events = Math.min(reference.eventFrames.length, subject.eventFrames.length)
+  const events = Math.min(reference.eventFrames.length, subject.eventFrames.length);
   for (let i = 0; i < events; i++) {
-    if (reference.eventFrames[i] === subject.eventFrames[i]) continue
+    if (reference.eventFrames[i] === subject.eventFrames[i]) continue;
     divergences.push({
       kind: "event-dom",
       step: i,
       expected: reference.eventFrames[i],
       actual: subject.eventFrames[i],
       message: `DOM differs from the reference render after dispatched event ${i}`,
-    })
+    });
   }
 
   // Effects are an EQUALITY between two renders of one fixture, not a bound.
@@ -1247,7 +1252,7 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
       expected: String(reference.trace.created),
       actual: String(subject.trace.created),
       message: "the two renders created a different number of effects",
-    })
+    });
   }
   if (reference.trace.totalRuns !== subject.trace.totalRuns) {
     divergences.push({
@@ -1255,13 +1260,13 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
       expected: String(reference.trace.totalRuns),
       actual: String(subject.trace.totalRuns),
       message: "the two renders ran their effects a different number of times",
-    })
+    });
   }
 
   for (let i = 0; i < Math.min(reference.channels.length, subject.channels.length); i++) {
-    const want = reference.channels[i].identity.join(",")
-    const got = subject.channels[i].identity.join(",")
-    if (want === got) continue
+    const want = reference.channels[i].identity.join(",");
+    const got = subject.channels[i].identity.join(",");
+    if (want === got) continue;
     divergences.push({
       kind: "node-identity-differential",
       step: i,
@@ -1270,21 +1275,21 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
       message:
         "the nodes that survived this update are not the ones the reference render kept — a " +
         "rebuilt node loses focus, selection, scroll offset and any dirty form state living on it",
-    })
+    });
   }
 
   for (let i = 0; i < Math.min(reference.channels.length, subject.channels.length); i++) {
-    const want = reference.channels[i].attributes
-    const got = subject.channels[i].attributes
+    const want = reference.channels[i].attributes;
+    const got = subject.channels[i].attributes;
     for (let j = 0; j < Math.max(want.length, got.length); j++) {
-      if (want[j] === got[j]) continue
+      if (want[j] === got[j]) continue;
       divergences.push({
         kind: "attribute-order",
         step: i,
         expected: want[j] ?? "<missing>",
         actual: got[j] ?? "<missing>",
         message: "attributes reached the DOM in an order the reference render does not explain",
-      })
+      });
     }
   }
 
@@ -1295,13 +1300,13 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
     runDelta: subject.trace.totalRuns - reference.trace.totalRuns,
     reference,
     subject,
-  }
+  };
 }
 
 export interface CompiledAudit {
-  ok: boolean
-  divergences: Divergence[]
-  render: RenderResult
+  ok: boolean;
+  divergences: Divergence[];
+  render: RenderResult;
 }
 
 /**
@@ -1314,14 +1319,14 @@ export async function auditCompiled(
   corrupt: Corruptions = {},
   options: Record<string, unknown> = {},
 ): Promise<CompiledAudit> {
-  const render = await renderViaCompiler(name, corrupt, options)
-  return { ...auditRender(render), render }
+  const render = await renderViaCompiler(name, corrupt, options);
+  return { ...auditRender(render), render };
 }
 
 /** The same audit over a render a caller already has. */
 export function auditRender(render: RenderResult): { ok: boolean; divergences: Divergence[] } {
-  const divergences: Divergence[] = []
-  const code = render.code
+  const divergences: Divergence[] = [];
+  const code = render.code;
 
   if (code !== undefined) {
     // Both sides are read off the module EXACTLY: anchors at text positions
@@ -1337,15 +1342,15 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
     // the retired oracle registry: `flow-prop-eta-boundary` carried
     // `marker-count` among its declared kinds under a row whose stated cause was
     // C1, so a stale bound sat inside an exemption written for something else.
-    const markers = templateAnchors(code)
-    const holes = ANCHOR_CONSUMERS.reduce((n, name) => n + emittedCalls(code, name), 0)
+    const markers = templateAnchors(code);
+    const holes = ANCHOR_CONSUMERS.reduce((n, name) => n + emittedCalls(code, name), 0);
     if (markers > holes) {
       divergences.push({
         kind: "marker-count",
         expected: String(holes),
         actual: String(markers),
         message: "the emitted templates carry more anchors than there are holes to anchor",
-      })
+      });
     }
 
     // The exact one. Target #9 removes every anchor nothing inserts before, so
@@ -1353,14 +1358,14 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
     // satisfies every count above — it reaches the DOM, where rule 4 of
     // normalize.ts makes it invisible. An anchor no `_$insert` names is either
     // an elision the compiler missed or a marker it emitted for nothing.
-    const audit = auditAnchors(code)
+    const audit = auditAnchors(code);
     if (audit.unused > 0) {
       divergences.push({
         kind: "marker-count",
         expected: String(audit.used),
         actual: String(audit.baked),
         message: `${audit.unused} baked anchor(s) that no insert call uses`,
-      })
+      });
     }
     if (audit.unresolved > 0) {
       divergences.push({
@@ -1370,7 +1375,7 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
         message:
           `${audit.unresolved} insert anchor(s) the walk resolver could not follow — the ` +
           "emitted walk shape changed and this bound has gone blind",
-      })
+      });
     }
 
     // The count above is code against code. This one is code against the DOM
@@ -1381,8 +1386,8 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
     // and a `Show` parking its body in a detached fragment are each accounted
     // for exactly and none of them costs any coverage.
     for (const [i, frame] of render.channels.entries()) {
-      const allowed = render.expectedAnchors[i] ?? 0
-      if (frame.anchors === allowed) continue
+      const allowed = render.expectedAnchors[i] ?? 0;
+      if (frame.anchors === allowed) continue;
       divergences.push({
         kind: "marker-count",
         step: i,
@@ -1390,7 +1395,7 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
         actual: String(frame.anchors),
         message:
           "the anchors in the DOM are not the anchors the template clones attached to it bake in",
-      })
+      });
     }
 
     // Attribute ORDER, at the one grade a single render can carry: the props
@@ -1408,35 +1413,36 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
     // wrote. §5.3's M9 note also makes those elements bake nothing at all, so
     // there is no partition on them to check — every attribute is applied, in
     // source order, and the golden is what records it.
-    const patched = patchedAttributeNames(code)
-    if (!code.includes("_$spread(")) for (const [i, frame] of render.channels.entries()) {
-      for (const line of frame.attributes) {
-        const cut = line.indexOf(": ")
-        if (cut < 0) continue
-        const names = line.slice(cut + 2).split(",")
-        let seenPatched = false
-        for (const attribute of names) {
-          if (patched.has(attribute)) {
-            seenPatched = true
-            continue
+    const patched = patchedAttributeNames(code);
+    if (!code.includes("_$spread("))
+      for (const [i, frame] of render.channels.entries()) {
+        for (const line of frame.attributes) {
+          const cut = line.indexOf(": ");
+          if (cut < 0) continue;
+          const names = line.slice(cut + 2).split(",");
+          let seenPatched = false;
+          for (const attribute of names) {
+            if (patched.has(attribute)) {
+              seenPatched = true;
+              continue;
+            }
+            if (!seenPatched) continue;
+            divergences.push({
+              kind: "attribute-order",
+              step: i,
+              expected: `${line.slice(0, cut)}: baked before patched`,
+              actual: line,
+              message:
+                `a baked attribute (${attribute}) reached the element after one the patch code ` +
+                "writes — source order lowers to baked-then-applied on both backends",
+            });
+            break;
           }
-          if (!seenPatched) continue
-          divergences.push({
-            kind: "attribute-order",
-            step: i,
-            expected: `${line.slice(0, cut)}: baked before patched`,
-            actual: line,
-            message:
-              `a baked attribute (${attribute}) reached the element after one the patch code ` +
-              "writes — source order lowers to baked-then-applied on both backends",
-          })
-          break
         }
       }
-    }
   }
 
-  return { ok: divergences.length === 0, divergences }
+  return { ok: divergences.length === 0, divergences };
 }
 
 /**
@@ -1448,24 +1454,24 @@ export async function compareToClean(
   corrupt: Corruptions,
   options: Record<string, unknown> = {},
 ): Promise<Comparison> {
-  const clean = await renderViaCompiler(name, {}, options)
-  const broken = await renderViaCompiler(name, corrupt, options)
-  const comparison = compareRenders(clean, broken)
+  const clean = await renderViaCompiler(name, {}, options);
+  const broken = await renderViaCompiler(name, corrupt, options);
+  const comparison = compareRenders(clean, broken);
   // The marker channels are a property of the broken module alone, and they are
   // the ones no DOM diff can see, so they belong in the same verdict.
-  comparison.divergences.push(...auditRender(broken).divergences)
-  comparison.ok = comparison.divergences.length === 0
-  return comparison
+  comparison.divergences.push(...auditRender(broken).divergences);
+  comparison.ok = comparison.divergences.length === 0;
+  return comparison;
 }
 
 export function formatDivergences(name: string, divergences: Divergence[]): string {
-  const lines = [`fixture "${name}" diverged:`]
+  const lines = [`fixture "${name}" diverged:`];
   for (const d of divergences) {
-    lines.push(`  [${d.kind}${d.step === undefined ? "" : ` step ${d.step}`}] ${d.message}`)
-    lines.push(`    expected: ${d.expected}`)
-    lines.push(`    actual  : ${d.actual}`)
+    lines.push(`  [${d.kind}${d.step === undefined ? "" : ` step ${d.step}`}] ${d.message}`);
+    lines.push(`    expected: ${d.expected}`);
+    lines.push(`    actual  : ${d.actual}`);
   }
-  return lines.join("\n")
+  return lines.join("\n");
 }
 
 /**
@@ -1479,20 +1485,20 @@ export function formatDivergences(name: string, divergences: Divergence[]): stri
  */
 export function assertReallyCompiled(name: string, code: string): void {
   if (code === fixtureSource(name)) {
-    throw new Error(`${name}: the build handed the source back — nothing compiled it`)
+    throw new Error(`${name}: the build handed the source back — nothing compiled it`);
   }
   if (!code.includes("_$")) {
     throw new Error(
       `${name}: the compiled module carries no runtime helper, so this is the un-compiled ` +
         `jsx-runtime path and the check is measuring bun's transform`,
-    )
+    );
   }
 }
 
 /** The compiled render, audited on every channel that needs no second render. */
 export async function assertCompiledIsClean(name: string): Promise<CompiledAudit> {
-  const result = await auditCompiled(name)
-  assertReallyCompiled(name, result.render.code ?? "")
-  if (!result.ok) throw new Error(formatDivergences(name, result.divergences))
-  return result
+  const result = await auditCompiled(name);
+  assertReallyCompiled(name, result.render.code ?? "");
+  if (!result.ok) throw new Error(formatDivergences(name, result.divergences));
+  return result;
 }

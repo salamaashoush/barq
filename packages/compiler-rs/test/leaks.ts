@@ -39,12 +39,12 @@
  * rule exists in `SEMANTICS.md`. There is no wildcard and no opt-out.
  */
 
-import type { Session } from "./session.ts"
+import type { Session } from "./session.ts";
 
-export type LeakKind = "scope" | "effect" | "listener" | "async" | "node"
+export type LeakKind = "scope" | "effect" | "listener" | "async" | "node";
 
 /** Every rule this channel can report. The channel's declared reach, not today's output. */
-export const LEAK_RULES: readonly string[] = Object.freeze(["O3.7", "B4"])
+export const LEAK_RULES: readonly string[] = Object.freeze(["O3.7", "B4"]);
 
 const RULE_OF: Record<LeakKind, string> = {
   scope: "O3.7",
@@ -52,21 +52,21 @@ const RULE_OF: Record<LeakKind, string> = {
   listener: "B4",
   async: "O3.7",
   node: "O3.7",
-}
+};
 
 export interface LeakFinding {
-  fixture: string
-  kind: LeakKind
+  fixture: string;
+  kind: LeakKind;
   /** the rule from `SEMANTICS.md` this probe is a falsification procedure for */
-  rule: string
+  rule: string;
   /**
    * Stable within a fixture: `<kind>@<what>`. The detail is part of the identity
    * because one fixture leaking a `mouseenter` and a `focus` listener is two
    * defects, and an id naming only the kind would let the second land inside the
    * first's registry row unseen.
    */
-  id: string
-  message: string
+  id: string;
+  message: string;
 }
 
 /**
@@ -78,14 +78,20 @@ export interface LeakFinding {
  * of them is the bug.
  */
 function isDelegation(target: string, delegated: boolean): boolean {
-  return delegated || target === "document"
+  return delegated || target === "document";
 }
 
 export function findLeaks(session: Session): LeakFinding[] {
-  const found: LeakFinding[] = []
+  const found: LeakFinding[] = [];
   const say = (kind: LeakKind, id: string, message: string): void => {
-    found.push({ fixture: session.fixture, kind, rule: RULE_OF[kind], id: `${kind}@${id}`, message })
-  }
+    found.push({
+      fixture: session.fixture,
+      kind,
+      rule: RULE_OF[kind],
+      id: `${kind}@${id}`,
+      message,
+    });
+  };
 
   if (session.scopesNeverDisposed.length > 0) {
     say(
@@ -94,7 +100,7 @@ export function findLeaks(session: Session): LeakFinding[] {
       `${session.scopesNeverDisposed.length} of ${session.scopesEntered} scope(s) entered inside ` +
         "the window were never disposed. Disposal is total (O3): a scope the render root cannot " +
         "reach holds its cleanups, its context, its abort signal and its range forever",
-    )
+    );
   }
 
   if (session.effectRunsAfterDispose > 0) {
@@ -104,15 +110,15 @@ export function findLeaks(session: Session): LeakFinding[] {
       `${session.effectRunsAfterDispose} effect run(s) after \`dispose()\` returned, out of ` +
         `${session.effectsCreated} effect(s) created. A disposed scope's effects are unsubscribed, ` +
         "so a run here is a subscription the disposal did not reach",
-    )
+    );
   }
 
-  const outstanding = new Map<string, number>()
+  const outstanding = new Map<string, number>();
   for (const record of session.listeners) {
-    if (!record.outstanding) continue
-    if (isDelegation(record.target, record.delegated)) continue
-    const key = `${record.target}.${record.type}`
-    outstanding.set(key, (outstanding.get(key) ?? 0) + 1)
+    if (!record.outstanding) continue;
+    if (isDelegation(record.target, record.delegated)) continue;
+    const key = `${record.target}.${record.type}`;
+    outstanding.set(key, (outstanding.get(key) ?? 0) + 1);
   }
   for (const [key, count] of [...outstanding.entries()].sort()) {
     say(
@@ -120,7 +126,7 @@ export function findLeaks(session: Session): LeakFinding[] {
       key,
       `${count} \`${key}\` listener(s) still registered after disposal. B4: every listener ` +
         "registers a cleanup on the owning scope, so removal cannot be forgotten",
-    )
+    );
   }
 
   if (session.asyncAfterDispose > 0) {
@@ -130,7 +136,7 @@ export function findLeaks(session: Session): LeakFinding[] {
       `${session.asyncAfterDispose} continuation(s) scheduled before disposal ran after it. An ` +
         "async continuation that fires into a disposed scope leaves no trace in the DOM, the " +
         "scope tree or the effect counts, which is why it needs a probe of its own",
-    )
+    );
   }
 
   // The canonical shape, and the one the ran-after counter cannot see: a timer
@@ -147,7 +153,7 @@ export function findLeaks(session: Session): LeakFinding[] {
         "outstanding when the window closed. O3.7 says every async continuation is RELEASED by " +
         "disposal, and one that never resolves holds its whole closure — the scope it captured, " +
         "the nodes that scope built — for as long as the timer lives",
-    )
+    );
   }
 
   if (session.clonesAttachedAfterDispose > 0) {
@@ -156,7 +162,7 @@ export function findLeaks(session: Session): LeakFinding[] {
       `${session.clonesAttachedAfterDispose}-clones`,
       `${session.clonesAttachedAfterDispose} template clone(s) still attached to the document ` +
         "after disposal",
-    )
+    );
   }
 
   if (session.containerAfterDispose !== "") {
@@ -164,14 +170,12 @@ export function findLeaks(session: Session): LeakFinding[] {
       "node",
       "container",
       `the container still holds ${JSON.stringify(session.containerAfterDispose)} after disposal`,
-    )
+    );
   }
 
-  return found
+  return found;
 }
 
 export function formatLeaks(findings: readonly LeakFinding[]): string {
-  return findings
-    .map((f) => `  [${f.rule} ${f.id} @ ${f.fixture}] ${f.message}`)
-    .join("\n")
+  return findings.map((f) => `  [${f.rule} ${f.id} @ ${f.fixture}] ${f.message}`).join("\n");
 }

@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test";
 
-import { compileSource } from "./harness.ts"
-import { census, compileText, host, reuse, shape, wire } from "./hydration.ts"
+import { compileSource } from "./harness.ts";
+import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
 
 /**
  * L6 pointed at hydration. `CODESIGN.md` §6 L6, §11 Q4.
@@ -43,19 +43,19 @@ export default function Page() {
     </main>
   );
 }
-`
+`;
 
 /**
  * What the page degrades to: `"claim"` — hydration completed with the server's
  * nodes; `"local"` — one range rebuilt, the rest claimed; `"cold"` — the whole
  * page re-rendered on the client, which is exactly today's behaviour.
  */
-type Degradation = "claim" | "local" | "cold"
+type Degradation = "claim" | "local" | "cold";
 
 interface Expected {
   /** `true` when the corruption must be reported or thrown. */
-  detected: boolean
-  degrades: Degradation
+  detected: boolean;
+  degrades: Degradation;
   /**
    * The shape the page ends at when it is NOT the shape a cold client render
    * would have produced — a SURVIVING corruption, written down.
@@ -71,14 +71,14 @@ interface Expected {
    * Recorded exactly rather than tolerated. A row that starts matching the cold
    * render is as stale as one that starts diverging, and both fail.
    */
-  diverges?: string
+  diverges?: string;
 }
 
 interface Mutation {
-  name: string
+  name: string;
   /** What the corruption stands for, in the reader's terms. */
-  about: string
-  apply: (wire: string) => string
+  about: string;
+  apply: (wire: string) => string;
   /**
    * The verdict in a PRODUCTION build, and `null` when the corruption cannot be
    * expressed there at all.
@@ -89,21 +89,21 @@ interface Mutation {
    * sentence a production wire cannot say — and the row that reads it stays
    * here, aimed at the build that can.
    */
-  production: Expected | null
+  production: Expected | null;
   /** The verdict in a DEVELOPMENT build — `dev` plus `hydratable`. */
-  development: Expected
+  development: Expected;
 }
 
 /** The three shapes a PRODUCTION build ends at when the corruption survives. */
 const WRONG_TAG =
   '<main class="page"><h2>alpha</h2><p class="on">on</p><ul><li>one</li><li>two</li>' +
-  "<li>three</li></ul><footer>tail</footer></main>"
+  "<li>three</li></ul><footer>tail</footer></main>";
 const NO_FOOTER =
   '<main class="page"><h1>alpha</h1><p class="on">on</p><ul><li>one</li><li>two</li>' +
-  "<li>three</li></ul></main>"
+  "<li>three</li></ul></main>";
 const EXTRA_ASIDE =
   '<main class="page"><h1>alpha</h1><p class="on">on</p><ul><li>one</li><li>two</li>' +
-  "<li>three</li></ul><aside>x</aside><footer>tail</footer></main>"
+  "<li>three</li></ul><aside>x</aside><footer>tail</footer></main>";
 
 const MUTATIONS: Mutation[] = [
   {
@@ -214,59 +214,59 @@ const MUTATIONS: Mutation[] = [
     production: { detected: true, degrades: "cold" },
     development: { detected: true, degrades: "cold" },
   },
-]
+];
 
 interface Verdict {
-  name: string
-  detected: boolean
-  degraded: Degradation
-  reuse: number
-  kinds: string[]
+  name: string;
+  detected: boolean;
+  degraded: Degradation;
+  reuse: number;
+  kinds: string[];
   /** Whether the corruption changed the wire at all. */
-  bit: boolean
+  bit: boolean;
 }
 
 async function run(mutation: Mutation, dev: boolean): Promise<Verdict> {
-  const tag = `mut-${dev ? "dev" : "prod"}-${mutation.name.replaceAll(/\W+/g, "-")}`
-  const compiled = await compileText(SOURCE, tag, true, dev)
-  const core = await import("@barqjs/core")
+  const tag = `mut-${dev ? "dev" : "prod"}-${mutation.name.replaceAll(/\W+/g, "-")}`;
+  const compiled = await compileText(SOURCE, tag, true, dev);
+  const core = await import("@barqjs/core");
 
-  const clean = wire(compiled.ssr)
-  const corrupted = mutation.apply(clean)
-  const container = host(corrupted)
-  const before = census(container)
-  const dispose = core.hydrate(compiled.dom.default as never, container)
-  const claim = reuse(before, container)
-  const report = core.hydrate.report
-  const hydrated = shape(container)
-  dispose()
-  container.remove()
+  const clean = wire(compiled.ssr);
+  const corrupted = mutation.apply(clean);
+  const container = host(corrupted);
+  const before = census(container);
+  const dispose = core.hydrate(compiled.dom.default as never, container);
+  const claim = reuse(before, container);
+  const report = core.hydrate.report;
+  const hydrated = shape(container);
+  dispose();
+  container.remove();
 
-  const cold = host("")
-  const rendered = core.render(compiled.dom.default as never, cold)
-  const coldShape = shape(cold)
-  rendered()
-  cold.remove()
+  const cold = host("");
+  const rendered = core.render(compiled.dom.default as never, cold);
+  const coldShape = shape(cold);
+  rendered();
+  cold.remove();
 
   // THE point of the whole exercise: whatever the corruption was, the page the
   // user is looking at is the page the client would have built. A mutation that
   // produced a different tree here is the silent-failure bug, found — and the
   // three rows that DO produce one carry the tree they produce, so the bug is
   // named rather than absorbed.
-  const expected = dev ? mutation.development : mutation.production
+  const expected = dev ? mutation.development : mutation.production;
   if (expected?.diverges !== undefined) {
     expect({ mutation: mutation.name, dev, shape: hydrated }).toEqual({
       mutation: mutation.name,
       dev,
       shape: expected.diverges,
-    })
-    expect(hydrated).not.toBe(coldShape)
+    });
+    expect(hydrated).not.toBe(coldShape);
   } else {
     expect({ mutation: mutation.name, dev, shape: hydrated }).toEqual({
       mutation: mutation.name,
       dev,
       shape: coldShape,
-    })
+    });
   }
 
   return {
@@ -276,7 +276,7 @@ async function run(mutation: Mutation, dev: boolean): Promise<Verdict> {
     reuse: Math.round(claim.percent),
     kinds: [...new Set(report.mismatches.map((m) => m.kind))].toSorted(),
     bit: corrupted !== clean,
-  }
+  };
 }
 
 /**
@@ -290,16 +290,16 @@ async function run(mutation: Mutation, dev: boolean): Promise<Verdict> {
  * it really has nothing to bite on rather than that nobody looked.
  */
 for (const dev of [false, true]) {
-  const build = dev ? "development" : "production"
+  const build = dev ? "development" : "production";
 
   describe(`L6 hydration mutations — ${build}`, () => {
-    const verdicts: { mutation: Mutation; verdict: Verdict }[] = []
+    const verdicts: { mutation: Mutation; verdict: Verdict }[] = [];
 
     for (const mutation of MUTATIONS) {
-      const expected = dev ? mutation.development : mutation.production
+      const expected = dev ? mutation.development : mutation.production;
       test(`${mutation.name} — ${expected === null ? "cannot be expressed" : "detected and degraded as declared"}`, async () => {
-        const verdict = await run(mutation, dev)
-        verdicts.push({ mutation, verdict })
+        const verdict = await run(mutation, dev);
+        verdicts.push({ mutation, verdict });
         if (expected === null) {
           // The `null` claim, held to: the corruption left the wire alone, so
           // the page hydrates exactly as the control does. A row that started
@@ -307,12 +307,12 @@ for (const dev of [false, true]) {
           expect({ name: verdict.name, bit: verdict.bit }).toEqual({
             name: mutation.name,
             bit: false,
-          })
+          });
           expect({ name: verdict.name, detected: verdict.detected }).toEqual({
             name: mutation.name,
             detected: false,
-          })
-          return
+          });
+          return;
         }
         // A corruption that is DECLARED to be expressible must actually change
         // the bytes. Every row below is an artefact otherwise, which is exactly
@@ -322,7 +322,7 @@ for (const dev of [false, true]) {
         expect({ name: verdict.name, bit: verdict.bit }).toEqual({
           name: mutation.name,
           bit: mutation !== MUTATIONS[0],
-        })
+        });
         expect({
           name: verdict.name,
           detected: verdict.detected,
@@ -331,8 +331,8 @@ for (const dev of [false, true]) {
           name: mutation.name,
           detected: expected.detected,
           degraded: expected.degrades,
-        })
-      })
+        });
+      });
     }
 
     test("the table", () => {
@@ -345,8 +345,8 @@ for (const dev of [false, true]) {
           ? `  ${v.name.padEnd(52)} ${v.detected ? "DETECTED" : "silent  "}  ` +
             `${v.degraded.padEnd(6)} reuse ${String(v.reuse).padStart(3)}%  ${v.kinds.join(",")}`
           : `  ${v.name.padEnd(52)} n/a       not expressible on this wire`,
-      )
-      console.log(`L6 hydration mutations (${build}):\n${rows.join("\n")}`)
+      );
+      console.log(`L6 hydration mutations (${build}):\n${rows.join("\n")}`);
       // Every mutation that BIT has to be caught, and the ones that are not are
       // named — an EQUALITY, so a new silent row cannot slip in beside them and
       // a declared one that starts being caught fails as stale.
@@ -356,14 +356,16 @@ for (const dev of [false, true]) {
       // and no corruption on this table survives a development build. The
       // production column's three are the price, listed rather than averaged.
       const silent = verdicts
-        .filter(({ mutation, verdict }) => mutation !== MUTATIONS[0] && verdict.bit && !verdict.detected)
-        .map(({ verdict }) => verdict.name)
+        .filter(
+          ({ mutation, verdict }) => mutation !== MUTATIONS[0] && verdict.bit && !verdict.detected,
+        )
+        .map(({ verdict }) => verdict.name);
       const declared = MUTATIONS.filter(
         (m) => (dev ? m.development : m.production)?.diverges !== undefined,
-      ).map((m) => m.name)
-      expect(silent).toEqual(declared)
-    })
-  })
+      ).map((m) => m.name);
+      expect(silent).toEqual(declared);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -379,32 +381,32 @@ describe("hydrating a page the compiler never made hydratable", () => {
    * silently was.
    */
   test("is detected by the claim that never happened, and renders cold", async () => {
-    const compiled = await compileText(SOURCE, "mut-not-hydratable", false)
-    const core = await import("@barqjs/core")
-    const container = host(wire(compiled.ssr))
-    const before = census(container)
-    const dispose = core.hydrate(compiled.dom.default as never, container)
-    const report = core.hydrate.report
-    const hydrated = shape(container)
-    const claim = reuse(before, container)
-    dispose()
-    container.remove()
+    const compiled = await compileText(SOURCE, "mut-not-hydratable", false);
+    const core = await import("@barqjs/core");
+    const container = host(wire(compiled.ssr));
+    const before = census(container);
+    const dispose = core.hydrate(compiled.dom.default as never, container);
+    const report = core.hydrate.report;
+    const hydrated = shape(container);
+    const claim = reuse(before, container);
+    dispose();
+    container.remove();
 
-    const cold = host("")
-    const rendered = core.render(compiled.dom.default as never, cold)
-    const coldShape = shape(cold)
-    rendered()
-    cold.remove()
+    const cold = host("");
+    const rendered = core.render(compiled.dom.default as never, cold);
+    const coldShape = shape(cold);
+    rendered();
+    cold.remove();
 
-    expect(report.recovered).toBe(true)
+    expect(report.recovered).toBe(true);
     // Either detector is acceptable and both are honest: the subtree check
     // reaches it first on a page with any structure — the server's `<main>` has
     // the hole's own nodes where a hydratable render would have a range — and
     // the claimed-nothing check is what catches a page with none.
-    expect(["structure", "not-hydratable"]).toContain(report.mismatches[0]?.kind)
-    expect(hydrated).toBe(coldShape)
-    expect(claim.percent).toBe(0)
-  })
+    expect(["structure", "not-hydratable"]).toContain(report.mismatches[0]?.kind);
+    expect(hydrated).toBe(coldShape);
+    expect(claim.percent).toBe(0);
+  });
 
   /**
    * The other direction, and the one a deployment can actually get wrong: the
@@ -414,22 +416,22 @@ describe("hydrating a page the compiler never made hydratable", () => {
    * of "event handlers attached to the wrong elements". It must not be silent.
    */
   test("a hydratable server paired with a non-hydratable client is caught too", async () => {
-    const core = await import("@barqjs/core")
-    const server = await compileText(SOURCE, "mut-mixed-server", true)
-    const client = await compileText(SOURCE, "mut-mixed-client", false)
+    const core = await import("@barqjs/core");
+    const server = await compileText(SOURCE, "mut-mixed-server", true);
+    const client = await compileText(SOURCE, "mut-mixed-client", false);
 
-    const container = host(wire(server.ssr))
-    const dispose = core.hydrate(client.dom.default as never, container)
-    const report = core.hydrate.report
-    const hydrated = shape(container)
-    dispose()
-    container.remove()
+    const container = host(wire(server.ssr));
+    const dispose = core.hydrate(client.dom.default as never, container);
+    const report = core.hydrate.report;
+    const hydrated = shape(container);
+    dispose();
+    container.remove();
 
-    const cold = host("")
-    const rendered = core.render(client.dom.default as never, cold)
-    const coldShape = shape(cold)
-    rendered()
-    cold.remove()
+    const cold = host("");
+    const rendered = core.render(client.dom.default as never, cold);
+    const coldShape = shape(cold);
+    rendered();
+    cold.remove();
 
     // DETECTED is the requirement; which degradation it takes is a fact about
     // where the client's first native step happens to land. On this page every
@@ -437,9 +439,9 @@ describe("hydrating a page the compiler never made hydratable", () => {
     // its own range, so the answer is `local` rather than `cold` — and the tree
     // is still the tree the client would have built, which is the only thing the
     // user can tell apart.
-    expect(report.recovered || report.mismatches.length > 0).toBe(true)
-    expect(hydrated).toBe(coldShape)
-  })
+    expect(report.recovered || report.mismatches.length > 0).toBe(true);
+    expect(hydrated).toBe(coldShape);
+  });
 
   /**
    * §12's split, stated as three wires over one source.
@@ -452,21 +454,21 @@ describe("hydrating a page the compiler never made hydratable", () => {
    * on the wire.
    */
   test("the three wires: none, recovery, recovery plus detection", async () => {
-    const plain = wire((await compileText(SOURCE, "wire-plain", false)).ssr)
-    const production = wire((await compileText(SOURCE, "wire-prod", true)).ssr)
-    const development = wire((await compileText(SOURCE, "wire-dev", true, true)).ssr)
+    const plain = wire((await compileText(SOURCE, "wire-plain", false)).ssr);
+    const production = wire((await compileText(SOURCE, "wire-prod", true)).ssr);
+    const development = wire((await compileText(SOURCE, "wire-dev", true, true)).ssr);
 
-    expect(plain).not.toContain("<!--")
+    expect(plain).not.toContain("<!--");
 
     // What recovery needs, and the shape of what it does not. The branch has a
     // range; the two holes and the list do not, because each of them owns the
     // element it sits in.
-    expect(production).toContain("<!--[-->")
-    expect(production).toContain("<!--]-->")
-    expect(production).toContain("<h1>alpha</h1>")
-    expect(production).toContain("<li>one</li>")
-    expect(production).toContain("<ul><li>one</li>")
-    expect(production.match(/<!--\[/g)?.length).toBe(1)
+    expect(production).toContain("<!--[-->");
+    expect(production).toContain("<!--]-->");
+    expect(production).toContain("<h1>alpha</h1>");
+    expect(production).toContain("<li>one</li>");
+    expect(production).toContain("<ul><li>one</li>");
+    expect(production.match(/<!--\[/g)?.length).toBe(1);
 
     // Detection adds two things and they are both about the KEY. The branch's
     // open comment gains the branch's key, and the list gets its comments BACK — a range
@@ -476,24 +478,24 @@ describe("hydrating a page the compiler never made hydratable", () => {
     // uniform range shape rather than for information.
     // `1` rather than `true`: the key is the truthiness INDEX since M10 flipped
     // `Show`'s default to non-keyed, where the keyed arm wrote the value itself.
-    expect(development).toContain("<!--[1-->")
-    expect(development).toContain("<ul><!--[--><li>one</li>")
+    expect(development).toContain("<!--[1-->");
+    expect(development).toContain("<ul><!--[--><li>one</li>");
     expect(
       development
         .replace("<!--[1-->", "<!--[-->")
         .replace("<ul><!--[-->", "<ul>")
         .replace("<!--]--></ul>", "</ul>"),
-    ).toBe(production)
+    ).toBe(production);
 
     // And the numbers §12 turns on, on this page: recovery costs one range,
     // detection costs a key and a second range, and a build that hydrates
     // nothing costs neither.
-    expect(production.length - plain.length).toBe("<!--[-->".length + "<!--]-->".length)
+    expect(production.length - plain.length).toBe("<!--[-->".length + "<!--]-->".length);
     // The key is one byte now — the truthiness index — where the keyed default
     // spelled the value and cost four. Detection got CHEAPER on this page by
     // flipping `Show`, which is a side effect of the flip and not its point.
     expect(development.length - production.length).toBe(
       "1".length + "<!--[-->".length + "<!--]-->".length,
-    )
-  })
-})
+    );
+  });
+});

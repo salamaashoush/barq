@@ -6,4 +6,4 @@
  * leaves this list only when the check that can report it is deleted, which is
  * the same contract `ownership.ts`'s `CHANNEL_RULES` states for L2b.
  */
-export const ADDRESS_CHANNEL_RULES: readonly string[] = Object.freeze(["H5"])
+export const ADDRESS_CHANNEL_RULES: readonly string[] = Object.freeze(["H5"]);

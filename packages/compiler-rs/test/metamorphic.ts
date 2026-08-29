@@ -90,9 +90,9 @@
  * the join it wanted lives in MM4 where the declaration makes it sound.
  */
 
-import { FRAME_MARKER, type OwnershipEvent, type Session, type SessionFrame } from "./session.ts"
+import { FRAME_MARKER, type OwnershipEvent, type Session, type SessionFrame } from "./session.ts";
 
-export type StepClass = "preserves" | "permutes" | "rebuilds" | "grows" | "shrinks"
+export type StepClass = "preserves" | "permutes" | "rebuilds" | "grows" | "shrinks";
 
 /**
  * What an `fixtures/l4/` fixture exports as `metamorphic`. `steps` is
@@ -101,32 +101,32 @@ export type StepClass = "preserves" | "permutes" | "rebuilds" | "grows" | "shrin
  */
 export interface MetamorphicDeclaration {
   /** why this fixture exists, in one line — printed with any violation */
-  readonly why: string
-  readonly steps: readonly StepClass[]
-  readonly events?: readonly StepClass[]
+  readonly why: string;
+  readonly steps: readonly StepClass[];
+  readonly events?: readonly StepClass[];
 }
 
 export type PropertyId =
   | "MM1-noop-write"
   | "MM2-step-replay"
   | "MM3-replay-identity"
-  | "MM4-declared"
+  | "MM4-declared";
 
 export interface MetamorphicViolation {
-  fixture: string
-  property: PropertyId
+  fixture: string;
+  property: PropertyId;
   /** the frame the violation was observed at */
-  frame: string
-  message: string
-  before: string
-  after: string
+  frame: string;
+  message: string;
+  before: string;
+  after: string;
 }
 
 export interface MetamorphicReport {
-  fixture: string
-  violations: MetamorphicViolation[]
+  fixture: string;
+  violations: MetamorphicViolation[];
   /** how many times each property found a subject; a zero is reported, not hidden */
-  checks: Record<PropertyId, number>
+  checks: Record<PropertyId, number>;
 }
 
 function emptyChecks(): Record<PropertyId, number> {
@@ -135,14 +135,14 @@ function emptyChecks(): Record<PropertyId, number> {
     "MM2-step-replay": 0,
     "MM3-replay-identity": 0,
     "MM4-declared": 0,
-  }
+  };
 }
 
 export function mergeChecks(
   into: Record<PropertyId, number>,
   from: Record<PropertyId, number>,
 ): void {
-  for (const key of Object.keys(from) as PropertyId[]) into[key] += from[key]
+  for (const key of Object.keys(from) as PropertyId[]) into[key] += from[key];
 }
 
 // ---------------------------------------------------------------------------
@@ -150,24 +150,24 @@ export function mergeChecks(
 // ---------------------------------------------------------------------------
 
 function setOf(ids: readonly number[]): Set<number> {
-  return new Set(ids)
+  return new Set(ids);
 }
 
 function missing(before: readonly number[], after: readonly number[]): number[] {
-  const have = setOf(after)
-  return before.filter((id) => !have.has(id))
+  const have = setOf(after);
+  return before.filter((id) => !have.has(id));
 }
 
 function added(before: readonly number[], after: readonly number[]): number[] {
-  const had = setOf(before)
-  return after.filter((id) => !had.has(id))
+  const had = setOf(before);
+  return after.filter((id) => !had.has(id));
 }
 
 function sameMultiset(a: readonly number[], b: readonly number[]): boolean {
-  if (a.length !== b.length) return false
-  const left = [...a].sort((x, y) => x - y)
-  const right = [...b].sort((x, y) => x - y)
-  return left.every((value, i) => value === right[i])
+  if (a.length !== b.length) return false;
+  const left = [...a].sort((x, y) => x - y);
+  const right = [...b].sort((x, y) => x - y);
+  return left.every((value, i) => value === right[i]);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,36 +183,40 @@ function sameMultiset(a: readonly number[], b: readonly number[]): boolean {
  * cut, not an event in the segment it delimits.
  */
 export function segments(ownership: readonly OwnershipEvent[]): OwnershipEvent[][] {
-  const out: OwnershipEvent[][] = []
-  let current: OwnershipEvent[] = []
-  const markerIds = new Set<number>()
+  const out: OwnershipEvent[][] = [];
+  let current: OwnershipEvent[] = [];
+  const markerIds = new Set<number>();
   for (const event of ownership) {
     if (event.kind === "enter" && event.scopeKind === FRAME_MARKER) {
-      markerIds.add(event.scope)
-      out.push(current)
-      current = []
-      continue
+      markerIds.add(event.scope);
+      out.push(current);
+      current = [];
+      continue;
     }
-    if (markerIds.has(event.scope)) continue
-    current.push(event)
+    if (markerIds.has(event.scope)) continue;
+    current.push(event);
   }
-  out.push(current)
-  return out
+  out.push(current);
+  return out;
 }
 
 function disposalsIn(segment: readonly OwnershipEvent[] | undefined): number {
-  if (segment === undefined) return 0
-  let count = 0
-  for (const event of segment) if (event.kind === "dispose") count++
-  return count
+  if (segment === undefined) return 0;
+  let count = 0;
+  for (const event of segment) if (event.kind === "dispose") count++;
+  return count;
 }
 
 // ---------------------------------------------------------------------------
 // the properties
 // ---------------------------------------------------------------------------
 
-function frameOf(session: Session, kind: SessionFrame["kind"], index: number): SessionFrame | undefined {
-  return session.frames.find((frame) => frame.kind === kind && frame.index === index)
+function frameOf(
+  session: Session,
+  kind: SessionFrame["kind"],
+  index: number,
+): SessionFrame | undefined {
+  return session.frames.find((frame) => frame.kind === kind && frame.index === index);
 }
 
 /**
@@ -225,10 +229,10 @@ function frameOf(session: Session, kind: SessionFrame["kind"], index: number): S
  * the interesting case.
  */
 function mm1(session: Session, report: MetamorphicReport): void {
-  const mount = frameOf(session, "mount", -1)
-  const noop = frameOf(session, "noop", -1)
-  if (mount === undefined || noop === undefined) return
-  report.checks["MM1-noop-write"]++
+  const mount = frameOf(session, "mount", -1);
+  const noop = frameOf(session, "noop", -1);
+  if (mount === undefined || noop === undefined) return;
+  report.checks["MM1-noop-write"]++;
   if (mount.html !== noop.html) {
     report.violations.push({
       fixture: session.fixture,
@@ -237,8 +241,8 @@ function mm1(session: Session, report: MetamorphicReport): void {
       message: "writing every signal the value it already holds changed the markup",
       before: mount.html,
       after: noop.html,
-    })
-    return
+    });
+    return;
   }
   if (mount.identity.join(",") !== noop.identity.join(",")) {
     report.violations.push({
@@ -251,7 +255,7 @@ function mm1(session: Session, report: MetamorphicReport): void {
         "state were all discarded for nothing",
       before: mount.identity.join(","),
       after: noop.identity.join(","),
-    })
+    });
   }
 }
 
@@ -271,17 +275,17 @@ function mm1(session: Session, report: MetamorphicReport): void {
  * so a defect that changes those frames turns the check off.
  */
 export function replayableStep(source: string): boolean {
-  const written = [...source.matchAll(/([A-Za-z_$][\w$]*)\s*\.\s*set\s*\(/g)].map((m) => m[1])
-  if (written.length === 0) return false
+  const written = [...source.matchAll(/([A-Za-z_$][\w$]*)\s*\.\s*set\s*\(/g)].map((m) => m[1]);
+  if (written.length === 0) return false;
   // A functional update reads the previous value by definition.
-  if (/\.\s*set\s*\(\s*(?:\([^)]*\)|[\w$]+)\s*=>/.test(source)) return false
+  if (/\.\s*set\s*\(\s*(?:\([^)]*\)|[\w$]+)\s*=>/.test(source)) return false;
   for (const name of written) {
-    if (new RegExp(`\\b${name}\\s*\\(`).test(source)) return false
+    if (new RegExp(`\\b${name}\\s*\\(`).test(source)) return false;
   }
-  return true
+  return true;
 }
 
-const PRIMITIVE = /^\s*(?:true|false|null|undefined|-?\d+(?:\.\d+)?|"[^"\\]*"|'[^'\\]*')\s*$/
+const PRIMITIVE = /^\s*(?:true|false|null|undefined|-?\d+(?:\.\d+)?|"[^"\\]*"|'[^'\\]*')\s*$/;
 
 /**
  * A replayable step every one of whose writes is a PRIMITIVE LITERAL.
@@ -295,10 +299,10 @@ const PRIMITIVE = /^\s*(?:true|false|null|undefined|-?\d+(?:\.\d+)?|"[^"\\]*"|'[
  * keying strategy not exist.
  */
 export function primitiveReplayStep(source: string): boolean {
-  if (!replayableStep(source)) return false
-  const args = [...source.matchAll(/\.\s*set\s*\(([^()]*)\)/g)].map((m) => m[1])
-  if (args.length === 0) return false
-  return args.every((arg) => PRIMITIVE.test(arg))
+  if (!replayableStep(source)) return false;
+  const args = [...source.matchAll(/\.\s*set\s*\(([^()]*)\)/g)].map((m) => m[1]);
+  if (args.length === 0) return false;
+  return args.every((arg) => PRIMITIVE.test(arg));
 }
 
 /**
@@ -317,13 +321,13 @@ export function primitiveReplayStep(source: string): boolean {
  */
 function mm2(session: Session, report: MetamorphicReport): void {
   for (const frame of session.frames) {
-    if (frame.kind !== "replay") continue
-    const source = session.stepSources[frame.index]
-    if (source === undefined || !replayableStep(source)) continue
-    const first = frameOf(session, "step", frame.index)
-    if (first === undefined) continue
-    report.checks["MM2-step-replay"]++
-    if (first.html === frame.html) continue
+    if (frame.kind !== "replay") continue;
+    const source = session.stepSources[frame.index];
+    if (source === undefined || !replayableStep(source)) continue;
+    const first = frameOf(session, "step", frame.index);
+    if (first === undefined) continue;
+    report.checks["MM2-step-replay"]++;
+    if (first.html === frame.html) continue;
     report.violations.push({
       fixture: session.fixture,
       property: "MM2-step-replay",
@@ -331,7 +335,7 @@ function mm2(session: Session, report: MetamorphicReport): void {
       message: "applying the same scripted step a second time produced different markup",
       before: first.html,
       after: frame.html,
-    })
+    });
   }
 }
 
@@ -350,13 +354,13 @@ function mm2(session: Session, report: MetamorphicReport): void {
  */
 function mm3(session: Session, report: MetamorphicReport): void {
   for (const frame of session.frames) {
-    if (frame.kind !== "replay") continue
-    const source = session.stepSources[frame.index]
-    if (source === undefined || !primitiveReplayStep(source)) continue
-    const first = frameOf(session, "step", frame.index)
-    if (first === undefined) continue
-    report.checks["MM3-replay-identity"]++
-    if (first.identity.join(",") === frame.identity.join(",")) continue
+    if (frame.kind !== "replay") continue;
+    const source = session.stepSources[frame.index];
+    if (source === undefined || !primitiveReplayStep(source)) continue;
+    const first = frameOf(session, "step", frame.index);
+    if (first === undefined) continue;
+    report.checks["MM3-replay-identity"]++;
+    if (first.identity.join(",") === frame.identity.join(",")) continue;
     report.violations.push({
       fixture: session.fixture,
       property: "MM3-replay-identity",
@@ -367,7 +371,7 @@ function mm3(session: Session, report: MetamorphicReport): void {
         "is why no other channel in the repository can see this",
       before: first.identity.join(","),
       after: frame.identity.join(","),
-    })
+    });
   }
 }
 
@@ -384,23 +388,19 @@ function mm4(
   declaration: MetamorphicDeclaration,
   report: MetamorphicReport,
 ): void {
-  const cut = segments(session.ownership)
+  const cut = segments(session.ownership);
   /**
    * Segment `k` holds the events between marker `k - 1` and marker `k`, and
    * frame `i` plants marker `i` right after its own snapshot — so the transition
    * INTO frame `i` is segment `i`.
    */
   const disposalsInto = (frame: SessionFrame): number =>
-    disposalsIn(cut[session.frames.indexOf(frame)])
+    disposalsIn(cut[session.frames.indexOf(frame)]);
 
-  const check = (
-    previous: SessionFrame,
-    frame: SessionFrame,
-    expected: StepClass,
-  ): void => {
-    report.checks["MM4-declared"]++
-    const lost = missing(previous.identity, frame.identity)
-    const fresh = added(previous.identity, frame.identity)
+  const check = (previous: SessionFrame, frame: SessionFrame, expected: StepClass): void => {
+    report.checks["MM4-declared"]++;
+    const lost = missing(previous.identity, frame.identity);
+    const fresh = added(previous.identity, frame.identity);
     const say = (message: string): void => {
       report.violations.push({
         fixture: session.fixture,
@@ -409,8 +409,8 @@ function mm4(
         message: `declared \`${expected}\`: ${message} (${declaration.why})`,
         before: previous.identity.join(","),
         after: frame.identity.join(","),
-      })
-    }
+      });
+    };
 
     // The second, independent observation of the same declaration. Node identity
     // comes off the DOM; disposal comes off the ownership trace; and three of the
@@ -425,71 +425,71 @@ function mm4(
     // it — `mm-nested-branch`'s inner region grows by exactly one element and
     // disposes exactly one scope, and both are correct. Asserting "grows disposes
     // nothing" would be asserting that the empty arm is not an activation.
-    const disposals = disposalsInto(frame)
+    const disposals = disposalsInto(frame);
     if ((expected === "preserves" || expected === "permutes") && disposals > 0) {
-      say(`${disposals} scope(s) came apart in a transition that must dispose none`)
+      say(`${disposals} scope(s) came apart in a transition that must dispose none`);
     }
     if (expected === "rebuilds" && disposals === 0) {
-      say("no scope came apart, so nothing that owned the old range was taken down")
+      say("no scope came apart, so nothing that owned the old range was taken down");
     }
 
     if (expected === "preserves") {
-      if (lost.length > 0) say(`${lost.length} element(s) of the previous frame were destroyed`)
-      if (fresh.length > 0) say(`${fresh.length} element(s) were built where none should be`)
-      return
+      if (lost.length > 0) say(`${lost.length} element(s) of the previous frame were destroyed`);
+      if (fresh.length > 0) say(`${fresh.length} element(s) were built where none should be`);
+      return;
     }
     if (expected === "permutes") {
       if (!sameMultiset(previous.identity, frame.identity)) {
         say(
           `a keyed move must move nodes and build none: ${lost.length} destroyed, ` +
             `${fresh.length} built`,
-        )
-        return
+        );
+        return;
       }
       if (previous.identity.join(",") === frame.identity.join(",")) {
-        say("the elements did not move at all, so this step is not a keyed move")
+        say("the elements did not move at all, so this step is not a keyed move");
       }
-      return
+      return;
     }
     if (expected === "rebuilds") {
-      const survived = previous.identity.filter((id) => setOf(frame.identity).has(id))
+      const survived = previous.identity.filter((id) => setOf(frame.identity).has(id));
       if (survived.length > 0) {
         say(
           `${survived.length} element(s) survived a rebuild: a hide/show cycle must hand back ` +
             "fresh nodes, never the same object (K6)",
-        )
+        );
       }
       if (frame.identity.length === 0 && previous.identity.length === 0) {
-        say("neither frame has an element, so nothing was rebuilt and nothing was proved")
+        say("neither frame has an element, so nothing was rebuilt and nothing was proved");
       }
-      return
+      return;
     }
     if (expected === "grows") {
-      if (lost.length > 0) say(`${lost.length} element(s) were destroyed by a step that only adds`)
-      if (fresh.length === 0) say("nothing was added, so this step does not grow")
-      return
+      if (lost.length > 0) say(`${lost.length} element(s) were destroyed by a step that only adds`);
+      if (fresh.length === 0) say("nothing was added, so this step does not grow");
+      return;
     }
-    if (fresh.length > 0) say(`${fresh.length} element(s) were built by a step that only removes`)
-    if (lost.length === 0) say("nothing was removed, so this step does not shrink")
-  }
+    if (fresh.length > 0) say(`${fresh.length} element(s) were built by a step that only removes`);
+    if (lost.length === 0) say("nothing was removed, so this step does not shrink");
+  };
 
-  let previous = frameOf(session, "noop", -1) ?? frameOf(session, "mount", -1)
-  if (previous === undefined) return
+  let previous = frameOf(session, "noop", -1) ?? frameOf(session, "mount", -1);
+  if (previous === undefined) return;
   for (const frame of session.frames) {
     if (frame.kind === "step") {
-      const expected = declaration.steps[frame.index]
-      if (expected !== undefined) check(previous, frame, expected)
-      previous = frame
-      continue
+      const expected = declaration.steps[frame.index];
+      if (expected !== undefined) check(previous, frame, expected);
+      previous = frame;
+      continue;
     }
     if (frame.kind === "replay") {
       // The replay of a step is an unchanged input by construction, whatever the
       // step's own class is: this is `assertStableRerender` proper, and it is
       // where the L4 corpus buys the identity half MM2 cannot assert generically.
-      report.checks["MM4-declared"]++
-      const lost = missing(previous.identity, frame.identity)
-      const fresh = added(previous.identity, frame.identity)
-      const replayDisposals = disposalsInto(frame)
+      report.checks["MM4-declared"]++;
+      const lost = missing(previous.identity, frame.identity);
+      const fresh = added(previous.identity, frame.identity);
+      const replayDisposals = disposalsInto(frame);
       if (replayDisposals > 0) {
         report.violations.push({
           fixture: session.fixture,
@@ -500,7 +500,7 @@ function mm4(
             `(${declaration.why})`,
           before: previous.identity.join(","),
           after: frame.identity.join(","),
-        })
+        });
       }
       if (lost.length > 0 || fresh.length > 0) {
         report.violations.push({
@@ -513,15 +513,15 @@ function mm4(
             `unchanged input (${declaration.why})`,
           before: previous.identity.join(","),
           after: frame.identity.join(","),
-        })
+        });
       }
-      previous = frame
-      continue
+      previous = frame;
+      continue;
     }
     if (frame.kind === "event") {
-      const expected = declaration.events?.[frame.index]
-      if (expected !== undefined) check(previous, frame, expected)
-      previous = frame
+      const expected = declaration.events?.[frame.index];
+      if (expected !== undefined) check(previous, frame, expected);
+      previous = frame;
     }
   }
 }
@@ -534,12 +534,12 @@ export function checkMetamorphic(
     fixture: session.fixture,
     violations: [],
     checks: emptyChecks(),
-  }
-  mm1(session, report)
-  mm2(session, report)
-  mm3(session, report)
-  if (declaration !== undefined) mm4(session, declaration, report)
-  return report
+  };
+  mm1(session, report);
+  mm2(session, report);
+  mm3(session, report);
+  if (declaration !== undefined) mm4(session, declaration, report);
+  return report;
 }
 
 export function formatViolations(violations: readonly MetamorphicViolation[]): string {
@@ -549,5 +549,5 @@ export function formatViolations(violations: readonly MetamorphicViolation[]): s
         `  [${v.property} @ ${v.fixture} :: ${v.frame}] ${v.message}\n` +
         `    before: ${v.before}\n    after : ${v.after}`,
     )
-    .join("\n")
+    .join("\n");
 }

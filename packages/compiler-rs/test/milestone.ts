@@ -19,11 +19,11 @@
  * contents now; a marker here is only as good as a reader's ability to look up
  * what the milestone IS.
  */
-export const CURRENT_MILESTONE = 11
+export const CURRENT_MILESTONE = 11;
 
 /** `M5` → 5. The format is checked separately by each registry's well-formed test. */
 export function milestoneNumber(greenAt: string): number {
-  return Number(greenAt.slice(1))
+  return Number(greenAt.slice(1));
 }
 
 /**
@@ -38,12 +38,12 @@ export function milestoneNumber(greenAt: string): number {
  * down so the next reader does not have to re-derive which of the two it is.
  */
 export function overdue(greenAt: string): boolean {
-  const n = milestoneNumber(greenAt)
-  return Number.isFinite(n) && n < CURRENT_MILESTONE
+  const n = milestoneNumber(greenAt);
+  return Number.isFinite(n) && n < CURRENT_MILESTONE;
 }
 
 export const OVERDUE_WHY =
   "The stale-row gate fails a row that STOPPED failing. This is the other direction: a row that " +
   "never started passing. Without it a `greenAt` marker rots silently across milestones, and the " +
   "worst available outcome is a row nobody rechecks being deregistered on the strength of a stale " +
-  "marker rather than a measurement. Move `greenAt` and say why in `reason`, or close the row."
+  "marker rather than a measurement. Move `greenAt` and say why in `reason`, or close the row.";

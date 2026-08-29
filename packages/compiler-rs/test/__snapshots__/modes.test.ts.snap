@@ -91,6 +91,7 @@ corpus/multi-prop-one-element  2f7dfbf1fd11 6ccf61ce5c15 fb3fb9dd54bc fb3fb9dd54
 corpus/multi-signal-expression  8a8ac9b1c100 3efdade1bb25 c34ed1cf88ba c34ed1cf88ba c54d0e3b07e1 8d14aeca2a28 c34ed1cf88ba
 corpus/nested-fragments  6a8c9b839950 5430765d5f9a 6ebd1d48e8a2 6ebd1d48e8a2 d822ec40bbe2 6245d832944c 6ebd1d48e8a2
 corpus/nested-template-element  d81a5db701a9 d81a5db701a9 a001fdb82239 a001fdb82239 6acd5fb0f5a9 d81a5db701a9 a001fdb82239
+corpus/no-hydration-island  8b4de9eb8427 3d8354609294 bd7862a6c2ad c174a61b1bb7 b84965e004dc 9f42d4ebc1bc 0752f75e5e9a
 corpus/non-delegated-event  d8640c366485 64a337f2816c 195e4fb1a51a 195e4fb1a51a 1e13f16b673b 8bc4aa32691b 195e4fb1a51a
 corpus/numeric-and-boolean-attrs  e278c6febe81 fbeeb26603e8 1517ace41f56 33e96d4c54f5 1e664f42dd99 c9919b3a8c3f 1517ace41f56
 corpus/optimistic-signal  b220bbb9671c c8f2e82e7c00 24555bb4cdb2 24555bb4cdb2 e625b3a45be9 424fba4042ac 24555bb4cdb2

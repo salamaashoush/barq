@@ -17,7 +17,7 @@
  * quietly testing two modes and calling it three.
  */
 
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test";
 
 import {
   compareRenders,
@@ -28,10 +28,10 @@ import {
   renderSource,
   REFERENCE,
   type Mode,
-} from "./differential.ts"
-import { candidates, mutations, probed, PROBE_ATTRIBUTE, type Candidate } from "./emi.ts"
-import { generate, generateMany } from "./generator.ts"
-import { fixtureSource, listFixtures, type RenderResult } from "./harness.ts"
+} from "./differential.ts";
+import { candidates, mutations, probed, PROBE_ATTRIBUTE, type Candidate } from "./emi.ts";
+import { generate, generateMany } from "./generator.ts";
+import { fixtureSource, listFixtures, type RenderResult } from "./harness.ts";
 
 // ---------------------------------------------------------------------------
 // the mode axis
@@ -39,10 +39,10 @@ import { fixtureSource, listFixtures, type RenderResult } from "./harness.ts"
 
 describe("L3 — the mode axis", () => {
   it("always has a reference build and a subject build", () => {
-    const modes = liveModes()
-    expect(modes).toContain(REFERENCE)
-    expect(modes).toContain("dom-Ox")
-  })
+    const modes = liveModes();
+    expect(modes).toContain(REFERENCE);
+    expect(modes).toContain("dom-Ox");
+  });
 
   /**
    * Detected, never declared — and three-valued, which is the part that matters.
@@ -55,15 +55,15 @@ describe("L3 — the mode axis", () => {
    * This is the assertion that stops that.
    */
   it("never mistakes a broken backend for one that has not landed", () => {
-    expect(interpStatus.state, interpStatus.refusal).not.toBe("broken")
+    expect(interpStatus.state, interpStatus.refusal).not.toBe("broken");
     if (interpStatus.state === "live") {
-      expect(liveModes()).toContain("interp" satisfies Mode)
-      return
+      expect(liveModes()).toContain("interp" satisfies Mode);
+      return;
     }
-    expect(interpStatus.refusal.length).toBeGreaterThan(0)
-    expect(liveModes()).not.toContain("interp" satisfies Mode)
-  })
-})
+    expect(interpStatus.refusal.length).toBeGreaterThan(0);
+    expect(liveModes()).not.toContain("interp" satisfies Mode);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // the attribute-order property
@@ -85,25 +85,25 @@ describe("L3 — attribute order across two levels", () => {
         ["class", "data-k", "data-ev", "title", "style"],
         ["class", "data-k", "title", "data-ev", "style"],
       ),
-    ).toBe(true)
-  })
+    ).toBe(true);
+  });
 
   it("rejects a group emitted backwards, which is what the channel is for", () => {
-    expect(oneSourceOrderExplainsBoth(["a", "b", "c"], ["c", "b", "a"])).toBe(false)
-    expect(oneSourceOrderExplainsBoth(["a", "b", "c", "d"], ["a", "d", "c", "b"])).toBe(false)
-  })
+    expect(oneSourceOrderExplainsBoth(["a", "b", "c"], ["c", "b", "a"])).toBe(false);
+    expect(oneSourceOrderExplainsBoth(["a", "b", "c", "d"], ["a", "d", "c", "b"])).toBe(false);
+  });
 
   it("rejects a missing or extra attribute", () => {
-    expect(oneSourceOrderExplainsBoth(["a", "b"], ["a", "b", "c"])).toBe(false)
-  })
-})
+    expect(oneSourceOrderExplainsBoth(["a", "b"], ["a", "b", "c"])).toBe(false);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // driver 2 — the JSX generator
 // ---------------------------------------------------------------------------
 
-const SEEDS = 150
-const BASE_SEED = 1
+const SEEDS = 150;
+const BASE_SEED = 1;
 
 /**
  * A generator that quietly stopped producing control flow, or components, or
@@ -129,15 +129,15 @@ const REQUIRED_FEATURES = [
   "style object",
   "classList object",
   "reassigned binding",
-]
+];
 
 describe("L3 — the JSX generator", () => {
-  const programs = generateMany(BASE_SEED, SEEDS)
+  const programs = generateMany(BASE_SEED, SEEDS);
 
   it("is deterministic: one seed is one program", () => {
-    expect(generate(BASE_SEED + 7).source).toBe(generate(BASE_SEED + 7).source)
-    expect(generate(BASE_SEED + 7).source).not.toBe(generate(BASE_SEED + 8).source)
-  })
+    expect(generate(BASE_SEED + 7).source).toBe(generate(BASE_SEED + 7).source);
+    expect(generate(BASE_SEED + 7).source).not.toBe(generate(BASE_SEED + 8).source);
+  });
 
   /**
    * The other half of determinism, which the source comparison above does not
@@ -147,29 +147,28 @@ describe("L3 — the JSX generator", () => {
    * global would make every divergence below unattributable.
    */
   it("is deterministic the second way too: one program is one render", async () => {
-    const program = generate(BASE_SEED + 3)
-    const first = await renderSource(program.source, `${program.name}-determinism-a`)
-    const second = await renderSource(program.source, `${program.name}-determinism-b`)
-    expect(compareRenders(first, second, `${program.name} rendered twice`).join("\n")).toBe("")
-    expect(second.runs).toEqual(first.runs)
-  })
+    const program = generate(BASE_SEED + 3);
+    const first = await renderSource(program.source, `${program.name}-determinism-a`);
+    const second = await renderSource(program.source, `${program.name}-determinism-b`);
+    expect(compareRenders(first, second, `${program.name} rendered twice`).join("\n")).toBe("");
+    expect(second.runs).toEqual(first.runs);
+  });
 
   it("covers every shape it claims to express", () => {
-    const seen = new Set(programs.flatMap((program) => program.features))
-    const missing = REQUIRED_FEATURES.filter((feature) => !seen.has(feature))
-    expect(missing, `${SEEDS} seeds produced none of these`).toEqual([])
-  })
+    const seen = new Set(programs.flatMap((program) => program.features));
+    const missing = REQUIRED_FEATURES.filter((feature) => !seen.has(feature));
+    expect(missing, `${SEEDS} seeds produced none of these`).toEqual([]);
+  });
 
   for (const program of programs) {
     it(`seed ${program.seed} renders identically in every mode`, async () => {
-      const divergences = await diffEveryMode(program.source, program.name)
-      expect(
-        divergences.join("\n"),
-        divergences.length === 0 ? "" : `\n${program.source}`,
-      ).toBe("")
-    })
+      const divergences = await diffEveryMode(program.source, program.name);
+      expect(divergences.join("\n"), divergences.length === 0 ? "" : `\n${program.source}`).toBe(
+        "",
+      );
+    });
   }
-})
+});
 
 // ---------------------------------------------------------------------------
 // driver 3 — EMI mutation
@@ -181,18 +180,18 @@ describe("L3 — the JSX generator", () => {
  * cap keeps the whole driver inside a minute while still reaching a mutation in
  * most fixtures that have an unreached subtree at all.
  */
-const CANDIDATES_PER_FIXTURE = 3
+const CANDIDATES_PER_FIXTURE = 3;
 
 interface EmiOutcome {
-  subject: string
+  subject: string;
   /** Candidates found, before liveness was decided. */
-  found: number
+  found: number;
   /** Of those, the ones no frame ever rendered. */
-  unreached: number
+  unreached: number;
   /** Mutations actually compiled and rendered, across every live mode. */
-  applied: number
+  applied: number;
   /** Why the fixture could not be driven at all, if it could not. */
-  refused?: string
+  refused?: string;
 }
 
 /** The channels EMI holds fixed, which are strictly more than the level differential's. */
@@ -201,108 +200,110 @@ function compareUnderMutation(
   mutated: RenderResult,
   label: string,
 ): string[] {
-  const out = compareRenders(baseline, mutated, label)
+  const out = compareRenders(baseline, mutated, label);
   // EMI's claim is byte-identical DOM, node identities AND effect counts. A
   // static rewrite of a subtree nothing renders may not create an effect, so
   // unlike the level differential this channel is an equality here.
   if (baseline.trace.created !== mutated.trace.created) {
     out.push(
       `${label}: effects created — baseline ${baseline.trace.created}, mutant ${mutated.trace.created}`,
-    )
+    );
   }
   if (JSON.stringify(baseline.runs) !== JSON.stringify(mutated.runs)) {
     out.push(
       `${label}: effect runs — baseline ${JSON.stringify(baseline.runs)}, mutant ${JSON.stringify(mutated.runs)}`,
-    )
+    );
   }
-  return out
+  return out;
 }
 
 async function driveEmi(
   subject: string,
   source: string,
 ): Promise<{ outcome: EmiOutcome; divergences: string[] }> {
-  const found = candidates(source)
-  const outcome: EmiOutcome = { subject, found: found.length, unreached: 0, applied: 0 }
-  if (found.length === 0) return { outcome, divergences: [] }
+  const found = candidates(source);
+  const outcome: EmiOutcome = { subject, found: found.length, unreached: 0, applied: 0 };
+  if (found.length === 0) return { outcome, divergences: [] };
 
   // Every candidate probed at once, so deciding liveness costs ONE render
   // rather than one per candidate. The probe is an attribute that reaches the
   // DOM, and the fixture is driven through every step and every event, so a
   // subtree that appears in any frame is classified live.
-  let live: Set<string>
-  const baselines = new Map<Mode, RenderResult>()
+  let live: Set<string>;
+  const baselines = new Map<Mode, RenderResult>();
   try {
-    let marked = source
+    let marked = source;
     // Right to left: an insertion must not move the offsets still to be used.
-    for (let i = found.length - 1; i >= 0; i--) marked = probed(marked, found[i], i)
-    const render = await renderSource(marked, `emi-probe-${subject}`)
+    for (let i = found.length - 1; i >= 0; i--) marked = probed(marked, found[i], i);
+    const render = await renderSource(marked, `emi-probe-${subject}`);
     // `seen`, not the container frames: see `emi.ts` on why the container is the
     // unsound direction for Portal content and for a subtree that lives and dies
     // between two snapshots.
-    const seen = render.seen
+    const seen = render.seen;
     live = new Set(
       [...seen.matchAll(new RegExp(`${PROBE_ATTRIBUTE}="(\\d+)"`, "g"))].map((m) => m[1]),
-    )
+    );
     for (const mode of liveModes()) {
-      baselines.set(mode, await renderSource(source, `emi-base-${subject}-${mode}`, mode))
+      baselines.set(mode, await renderSource(source, `emi-base-${subject}-${mode}`, mode));
     }
   } catch (error) {
-    outcome.refused = error instanceof Error ? error.message : String(error)
-    return { outcome, divergences: [] }
+    outcome.refused = error instanceof Error ? error.message : String(error);
+    return { outcome, divergences: [] };
   }
 
-  const unreached = found.filter((_, index) => !live.has(String(index)))
-  outcome.unreached = unreached.length
+  const unreached = found.filter((_, index) => !live.has(String(index)));
+  outcome.unreached = unreached.length;
 
-  const divergences: string[] = []
-  const chosen: Candidate[] = []
+  const divergences: string[] = [];
+  const chosen: Candidate[] = [];
   // Spread across the fixture rather than taking the first few, which would
   // only ever reach whichever branch happens to be written first.
-  const stride = Math.max(1, Math.floor(unreached.length / CANDIDATES_PER_FIXTURE))
+  const stride = Math.max(1, Math.floor(unreached.length / CANDIDATES_PER_FIXTURE));
   for (let i = 0; i < unreached.length && chosen.length < CANDIDATES_PER_FIXTURE; i += stride) {
-    chosen.push(unreached[i])
+    chosen.push(unreached[i]);
   }
 
   for (const [at, candidate] of chosen.entries()) {
     for (const mutation of mutations(source, candidate)) {
       for (const mode of liveModes()) {
-        const label = `${subject} @ ${mode}: ${mutation.operator} on <${candidate.tag}>`
-        const tag = `emi-${subject}-${at}-${mutation.operator}-${mode}`
-        let mutated: RenderResult
+        const label = `${subject} @ ${mode}: ${mutation.operator} on <${candidate.tag}>`;
+        const tag = `emi-${subject}-${at}-${mutation.operator}-${mode}`;
+        let mutated: RenderResult;
         try {
-          mutated = await renderSource(mutation.source, tag, mode)
+          mutated = await renderSource(mutation.source, tag, mode);
         } catch (error) {
-          divergences.push(`${label}: the mutant did not compile or render — ${error}`)
-          continue
+          divergences.push(`${label}: the mutant did not compile or render — ${error}`);
+          continue;
         }
-        outcome.applied++
-        divergences.push(...compareUnderMutation(baselines.get(mode) as RenderResult, mutated, label))
+        outcome.applied++;
+        divergences.push(
+          ...compareUnderMutation(baselines.get(mode) as RenderResult, mutated, label),
+        );
       }
     }
   }
-  return { outcome, divergences }
+  return { outcome, divergences };
 }
 
 function report(outcomes: EmiOutcome[]): string {
-  const refused = outcomes.filter((o) => o.refused !== undefined)
+  const refused = outcomes.filter((o) => o.refused !== undefined);
   return (
     `${outcomes.filter((o) => o.applied > 0).length}/${outcomes.length} subjects mutated, ` +
     `${outcomes.reduce((n, o) => n + o.unreached, 0)} unreached candidates, ` +
     `${outcomes.reduce((n, o) => n + o.applied, 0)} mutants run, ` +
     `${refused.length} refused: ${refused.map((o) => `${o.subject} (${o.refused})`).join("; ")}`
-  )
+  );
 }
 
 describe("L3 — EMI mutation over the corpus", () => {
-  const outcomes: EmiOutcome[] = []
+  const outcomes: EmiOutcome[] = [];
 
   for (const fixture of listFixtures()) {
     it(`${fixture} is unchanged by rewriting what it never renders`, async () => {
-      const { outcome, divergences } = await driveEmi(fixture, fixtureSource(fixture))
-      outcomes.push(outcome)
-      expect(divergences.join("\n")).toBe("")
-    })
+      const { outcome, divergences } = await driveEmi(fixture, fixtureSource(fixture));
+      outcomes.push(outcome);
+      expect(divergences.join("\n")).toBe("");
+    });
   }
 
   /**
@@ -352,11 +353,17 @@ describe("L3 — EMI mutation over the corpus", () => {
    * unreached because no step happened to select it.
    */
   it("mutates whatever unreached material the corpus has, and refuses none of it", () => {
-    const detail = report(outcomes)
-    expect(outcomes.length, detail).toBe(listFixtures().length)
-    expect(outcomes.reduce((n, o) => n + o.found, 0), detail).toBeGreaterThan(300)
+    const detail = report(outcomes);
+    expect(outcomes.length, detail).toBe(listFixtures().length);
     expect(
-      outcomes.filter((o) => o.unreached > 0).map((o) => o.subject).sort(),
+      outcomes.reduce((n, o) => n + o.found, 0),
+      detail,
+    ).toBeGreaterThan(300);
+    expect(
+      outcomes
+        .filter((o) => o.unreached > 0)
+        .map((o) => o.subject)
+        .sort(),
       detail,
     ).toEqual([
       "control-flow-await-suspense",
@@ -366,13 +373,19 @@ describe("L3 — EMI mutation over the corpus", () => {
       "dashboard-composite",
       "flow-prop-eta-boundary",
       "switch-match-component-bodies",
-    ])
-    expect(outcomes.reduce((n, o) => n + o.applied, 0), detail).toBeGreaterThan(8)
+    ]);
+    expect(
+      outcomes.reduce((n, o) => n + o.applied, 0),
+      detail,
+    ).toBeGreaterThan(8);
     // A subject this driver cannot render is a hole in the DRIVER, not a
     // property of the fixture, and it is named rather than tolerated.
-    expect(outcomes.filter((o) => o.refused !== undefined).map((o) => o.subject), detail).toEqual([])
-  })
-})
+    expect(
+      outcomes.filter((o) => o.refused !== undefined).map((o) => o.subject),
+      detail,
+    ).toEqual([]);
+  });
+});
 
 /**
  * The same driver over generated programs, which is where EMI gets its material:
@@ -382,23 +395,31 @@ describe("L3 — EMI mutation over the corpus", () => {
  * is present by construction rather than by luck.
  */
 describe("L3 — EMI mutation over generated programs", () => {
-  const programs = generateMany(BASE_SEED + 10_000, 40)
-  const outcomes: EmiOutcome[] = []
+  const programs = generateMany(BASE_SEED + 10_000, 40);
+  const outcomes: EmiOutcome[] = [];
 
   for (const program of programs) {
     it(`seed ${program.seed} is unchanged by rewriting what it never renders`, async () => {
-      const { outcome, divergences } = await driveEmi(program.name, program.source)
-      outcomes.push(outcome)
-      expect(divergences.join("\n"), divergences.length === 0 ? "" : `\n${program.source}`).toBe("")
-    })
+      const { outcome, divergences } = await driveEmi(program.name, program.source);
+      outcomes.push(outcome);
+      expect(divergences.join("\n"), divergences.length === 0 ? "" : `\n${program.source}`).toBe(
+        "",
+      );
+    });
   }
 
   it("finds dead material in most generated programs", () => {
-    const detail = report(outcomes)
+    const detail = report(outcomes);
     expect(outcomes.filter((o) => o.unreached > 0).length, detail).toBeGreaterThan(
       programs.length / 2,
-    )
-    expect(outcomes.reduce((n, o) => n + o.applied, 0), detail).toBeGreaterThan(100)
-    expect(outcomes.filter((o) => o.refused !== undefined).map((o) => o.subject), detail).toEqual([])
-  })
-})
+    );
+    expect(
+      outcomes.reduce((n, o) => n + o.applied, 0),
+      detail,
+    ).toBeGreaterThan(100);
+    expect(
+      outcomes.filter((o) => o.refused !== undefined).map((o) => o.subject),
+      detail,
+    ).toEqual([]);
+  });
+});

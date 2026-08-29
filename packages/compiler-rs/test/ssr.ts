@@ -1,7 +1,7 @@
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts"
+import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts";
 
 /**
  * The dual-render conformance seam (DESIGN §5, §10 M6).
@@ -36,23 +36,23 @@ export interface SsrStatus {
    * produce a string backend, which is a BUG and must never be reported as
    * absence.
    */
-  state: "live" | "absent" | "broken"
+  state: "live" | "absent" | "broken";
   /** Whether `ssr: true` compiles at all. */
-  landed: boolean
+  landed: boolean;
   /** The compiler's refusal, while it does not. */
-  refusal: string
+  refusal: string;
   /** The emitted module for a trivial probe, once it does. */
-  probe: string
+  probe: string;
 }
 
-const SSR_PROBE = 'const Probe = () => <section class="p">hi</section>;\nexport default Probe;\n'
+const SSR_PROBE = 'const Probe = () => <section class="p">hi</section>;\nexport default Probe;\n';
 
 function optionExists(name: string): boolean {
   try {
-    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8")
-    return new RegExp(`^\\s*${name}\\?:`, "m").test(types)
+    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8");
+    return new RegExp(`^\\s*${name}\\?:`, "m").test(types);
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -82,19 +82,19 @@ function detect(): SsrStatus {
       landed: false,
       refusal: "this build's option surface has no `ssr` — the string backend is not here yet",
       probe: "",
-    }
+    };
   }
-  let probe: string
+  let probe: string;
   try {
-    probe = compileSource(SSR_PROBE, "ssr-probe.tsx", { ssr: true })
+    probe = compileSource(SSR_PROBE, "ssr-probe.tsx", { ssr: true });
   } catch (error) {
-    const refusal = error instanceof Error ? error.message : String(error)
+    const refusal = error instanceof Error ? error.message : String(error);
     return {
       state: "broken",
       landed: false,
       refusal: `the build has an \`ssr\` option and compiling with it failed: ${refusal}`,
       probe: "",
-    }
+    };
   }
   if (probe === compileSource(SSR_PROBE, "ssr-probe.tsx")) {
     return {
@@ -104,9 +104,9 @@ function detect(): SsrStatus {
         "the build has an `ssr` option and emits the same module with and without it — a backend " +
         "that is ignored, not one that is missing",
       probe,
-    }
+    };
   }
-  return { state: "live", landed: true, refusal: "", probe }
+  return { state: "live", landed: true, refusal: "", probe };
 }
 
 /**
@@ -117,17 +117,17 @@ function detect(): SsrStatus {
  * quietly emitted DOM code for `ssr: true` would make every claim below pass for
  * the wrong reason, and `ssr.test.ts` fails on exactly that.
  */
-export const ssrStatus: SsrStatus = detect()
+export const ssrStatus: SsrStatus = detect();
 
 export function compileFixtureSsr(name: string): string {
-  return compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true })
+  return compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true });
 }
 
 export interface SsrRender {
   /** The markup, exactly as the path produced it. */
-  html: string
+  html: string;
   /** Whether the module's default export returned a string rather than a node. */
-  string: boolean
+  string: boolean;
 }
 
 /**
@@ -146,18 +146,18 @@ export async function renderSsr(mod: FixtureModule): Promise<SsrRender> {
   // the client package put keeping those out of a browser bundle in the
   // bundler's hands. It is the same module every compiled SSR module imports
   // its helpers from.
-  const server = await import("@barqjs/server")
+  const server = await import("@barqjs/server");
   // C1: a compiled module root takes its scope first, and `null` is the value
   // the compiler itself emits for one. `undefined` is what a MISSING argument
   // looks like, and `requireScope` throws on it precisely so a mistimed
   // construction cannot fall back to CURRENT.
-  const value: unknown = (mod.default as unknown as (s: unknown) => unknown)(null)
+  const value: unknown = (mod.default as unknown as (s: unknown) => unknown)(null);
   // A compiled SSR module returns branded markup, not a bare string — the brand
   // is what keeps user data (escaped) apart from compiler output (not), so
   // `typeof value === "string"` would classify every module as a fallback and
   // quietly turn "the string backend does no DOM work" into a claim about
   // nothing. `renderToString` accepts both shapes.
-  return { html: server.renderToString(() => value as never), string: isSsrHtml(value) }
+  return { html: server.renderToString(() => value as never), string: isSsrHtml(value) };
 }
 
 /**
@@ -174,14 +174,14 @@ export async function renderSsr(mod: FixtureModule): Promise<SsrRender> {
  * reading of the brand: a runtime that started trusting a plain property again
  * would still pass a check that just called the runtime's own predicate.
  */
-const SSR_HTML_BRAND = Symbol.for("barq.ssr.html")
+const SSR_HTML_BRAND = Symbol.for("barq.ssr.html");
 
 function isSsrHtml(value: unknown): boolean {
   return (
     typeof value === "object" &&
     value !== null &&
     (value as Record<symbol, unknown>)[SSR_HTML_BRAND] === true
-  )
+  );
 }
 
 /**
@@ -194,25 +194,27 @@ function isSsrHtml(value: unknown): boolean {
  * two sides cannot drift, and neither carries a decision the other does not.
  */
 export async function renderSsrViaDom(name: string): Promise<SsrRender> {
-  const code = compileSource(fixtureSource(name), `${name}.tsx`)
-  return renderSsr(await loadModule(code, `ssr-dom-${name}`))
+  const code = compileSource(fixtureSource(name), `${name}.tsx`);
+  return renderSsr(await loadModule(code, `ssr-dom-${name}`));
 }
 
 export async function renderSsrCompiled(name: string): Promise<SsrRender> {
-  return renderSsr(await loadModule(compileFixtureSsr(name), `ssr-compiled-${name}`))
+  return renderSsr(await loadModule(compileFixtureSsr(name), `ssr-compiled-${name}`));
 }
 
 export async function renderSourceViaDom(source: string, tag: string): Promise<SsrRender> {
-  return renderCode(compileSource(source, `${tag}.tsx`), `ssr-dom-${tag}`)
+  return renderCode(compileSource(source, `${tag}.tsx`), `ssr-dom-${tag}`);
 }
 
 /** An already-emitted module, rendered as it stands — for the corruption checks. */
 export async function renderCode(code: string, tag: string): Promise<SsrRender> {
-  return renderSsr(await loadModule(code, tag))
+  return renderSsr(await loadModule(code, tag));
 }
 
 export async function renderSourceViaSsr(source: string, tag: string): Promise<SsrRender> {
-  return renderSsr(await loadModule(compileSource(source, `${tag}.tsx`, { ssr: true }), `ssr-${tag}`))
+  return renderSsr(
+    await loadModule(compileSource(source, `${tag}.tsx`, { ssr: true }), `ssr-${tag}`),
+  );
 }
 
 /**
@@ -230,56 +232,56 @@ export async function renderSourceViaSsr(source: string, tag: string): Promise<S
  * nothing and a nested template literal inside one is not mistaken for a chunk.
  */
 export function ssrChunks(code: string): string[] {
-  const out: string[] = []
-  const opener = /_\$+html\(/g
+  const out: string[] = [];
+  const opener = /_\$+html\(/g;
   for (let match = opener.exec(code); match !== null; match = opener.exec(code)) {
-    let i = match.index + match[0].length
-    if (code[i] !== "`") continue
-    i++
-    let chunk = ""
+    let i = match.index + match[0].length;
+    if (code[i] !== "`") continue;
+    i++;
+    let chunk = "";
     while (i < code.length) {
-      const ch = code[i]
+      const ch = code[i];
       if (ch === "\\") {
-        chunk += code.slice(i, i + 2)
-        i += 2
-        continue
+        chunk += code.slice(i, i + 2);
+        i += 2;
+        continue;
       }
       if (ch === "`") {
-        out.push(chunk)
-        break
+        out.push(chunk);
+        break;
       }
       if (ch === "$" && code[i + 1] === "{") {
-        out.push(chunk)
-        chunk = ""
-        let depth = 1
-        i += 2
+        out.push(chunk);
+        chunk = "";
+        let depth = 1;
+        i += 2;
         while (i < code.length && depth > 0) {
-          if (code[i] === "{") depth++
-          else if (code[i] === "}") depth--
-          i++
+          if (code[i] === "{") depth++;
+          else if (code[i] === "}") depth--;
+          i++;
         }
-        continue
+        continue;
       }
-      chunk += ch
-      i++
+      chunk += ch;
+      i++;
     }
   }
-  return out
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 // comparison
 // ---------------------------------------------------------------------------
 
-const NODE_ELEMENT = 1
-const NODE_TEXT = 3
-const NODE_COMMENT = 8
+const NODE_ELEMENT = 1;
+const NODE_TEXT = 3;
+const NODE_COMMENT = 8;
 
 export function parseFragment(html: string): DocumentFragment {
-  const host = document.createElement("template")
-  host.innerHTML = html
-  eatTheFirstNewline(host.content)
-  return host.content
+  const host = document.createElement("template");
+  host.innerHTML = html;
+  eatTheFirstNewline(host.content);
+  return host.content;
 }
 
 /**
@@ -297,17 +299,17 @@ export function parseFragment(html: string): DocumentFragment {
  */
 function eatTheFirstNewline(root: DocumentFragment): void {
   for (const element of Array.from(root.querySelectorAll("pre, textarea, listing"))) {
-    const first = element.firstChild
-    if (first === null || first.nodeType !== NODE_TEXT) continue
-    const text = first as Text
-    if (text.data.startsWith("\n")) text.data = text.data.slice(1)
+    const first = element.firstChild;
+    if (first === null || first.nodeType !== NODE_TEXT) continue;
+    const text = first as Text;
+    if (text.data.startsWith("\n")) text.data = text.data.slice(1);
   }
 }
 
 function dropComments(root: Node): void {
   for (const child of Array.from(root.childNodes)) {
-    if (child.nodeType === NODE_COMMENT) root.removeChild(child)
-    else dropComments(child)
+    if (child.nodeType === NODE_COMMENT) root.removeChild(child);
+    else dropComments(child);
   }
 }
 
@@ -326,7 +328,7 @@ const VOID = new Set([
   "source",
   "track",
   "wbr",
-])
+]);
 
 /**
  * Attribute-sorted, text-fused re-serialisation.
@@ -357,40 +359,39 @@ const VOID = new Set([
  * pins the exact byte count instead is `compile.rs`'s two O9 tests over the
  * emitted template and the three Chrome rows behind them.
  */
-const NEWLINE_EATING = new Set(["pre", "textarea", "listing"])
+const NEWLINE_EATING = new Set(["pre", "textarea", "listing"]);
 
 function serialize(root: Node, canonicalizeLeadingNewlines = false): string {
-  let out = ""
-  let text = ""
+  let out = "";
+  let text = "";
   const flush = (): void => {
     // Escaped, and this is not cosmetic. A text node whose DATA is
     // `<img src=x>` and a real `<img>` element are different documents, and
     // emitting the data raw makes them the same string — which would make this
     // whole comparison blind to exactly the under-escaping it exists to catch.
     // The detector in `ssr.test.ts` is what found that.
-    out += text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-    text = ""
-  }
+    out += text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    text = "";
+  };
   for (const [index, node] of Array.from(root.childNodes).entries()) {
     if (node.nodeType === NODE_TEXT) {
-      const data = (node as Text).data
-      text +=
-        index === 0 && canonicalizeLeadingNewlines ? data.replace(/^\n+/, "") : data
-      continue
+      const data = (node as Text).data;
+      text += index === 0 && canonicalizeLeadingNewlines ? data.replace(/^\n+/, "") : data;
+      continue;
     }
-    flush()
-    if (node.nodeType !== NODE_ELEMENT) continue
-    const el = node as Element
-    const tag = el.localName
+    flush();
+    if (node.nodeType !== NODE_ELEMENT) continue;
+    const el = node as Element;
+    const tag = el.localName;
     const attrs = Array.from(el.attributes)
       .map((a) => `${a.name}="${a.value.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"`)
-      .toSorted()
-    out += `<${tag}${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}>`
-    if (VOID.has(tag)) continue
-    out += `${serialize(el, NEWLINE_EATING.has(tag))}</${tag}>`
+      .toSorted();
+    out += `<${tag}${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}>`;
+    if (VOID.has(tag)) continue;
+    out += `${serialize(el, NEWLINE_EATING.has(tag))}</${tag}>`;
   }
-  flush()
-  return out
+  flush();
+  return out;
 }
 
 /**
@@ -406,22 +407,22 @@ function serialize(root: Node, canonicalizeLeadingNewlines = false): string {
  * requires the compiled SSR string to carry no comment at all.
  */
 export function sameTree(html: string): string {
-  const content = parseFragment(html)
-  dropComments(content)
-  return serialize(content)
+  const content = parseFragment(html);
+  dropComments(content);
+  return serialize(content);
 }
 
 /** Comment data in a markup string, in document order. */
 export function comments(html: string): string[] {
-  const out: string[] = []
+  const out: string[] = [];
   const visit = (node: Node): void => {
     for (const child of Array.from(node.childNodes)) {
-      if (child.nodeType === NODE_COMMENT) out.push((child as Comment).data)
-      else visit(child)
+      if (child.nodeType === NODE_COMMENT) out.push((child as Comment).data);
+      else visit(child);
     }
-  }
-  visit(parseFragment(html))
-  return out
+  };
+  visit(parseFragment(html));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,11 +441,11 @@ export function comments(html: string): string[] {
  * to the bug.
  */
 export interface EscapeContext {
-  name: string
+  name: string;
   /** The probe's JSX. `expression` is a JS expression, brace-free. */
-  jsx: (expression: string) => string
+  jsx: (expression: string) => string;
   /** Pull the value back out of the parsed markup. */
-  read: (root: DocumentFragment) => string | null
+  read: (root: DocumentFragment) => string | null;
 }
 
 export const ESCAPE_CONTEXTS: EscapeContext[] = [
@@ -457,12 +458,12 @@ export const ESCAPE_CONTEXTS: EscapeContext[] = [
     name: "text child between element siblings",
     jsx: (e) => `<div class="probe"><b>a</b>{${e}}<b>b</b></div>`,
     read: (root) => {
-      const el = root.querySelector(".probe")
-      if (!el) return null
+      const el = root.querySelector(".probe");
+      if (!el) return null;
       return Array.from(el.childNodes)
         .filter((n) => n.nodeType === NODE_TEXT)
         .map((n) => (n as Text).data)
-        .join("")
+        .join("");
     },
   },
   {
@@ -505,7 +506,7 @@ export const ESCAPE_CONTEXTS: EscapeContext[] = [
     jsx: (e) => `<table><tr><td class="probe" title={${e}}></td></tr></table>`,
     read: (root) => root.querySelector(".probe")?.getAttribute("title") ?? null,
   },
-]
+];
 
 /**
  * The values. Each is a byte sequence that means something to some parser, so a
@@ -528,7 +529,7 @@ export const ESCAPE_VALUES: Array<[label: string, value: string]> = [
   ["astral characters", "\u{1D54F} \u{1F600} \u{20B9E}"],
   ["line and paragraph separators", "a\u2028b\u2029c"],
   ["invisible spacing characters", "a\u00a0b\u200bc\ufeffd"],
-  ["quotes of both kinds", 'he said "hi" and \'bye\''],
+  ["quotes of both kinds", "he said \"hi\" and 'bye'"],
   // Long enough that the runtime escaper probes with `indexOf` before it scans,
   // and hostile only in its last two bytes — so a probe that reported the wrong
   // offset, or a tail the scan forgot to append, shows up here and nowhere else
@@ -538,7 +539,7 @@ export const ESCAPE_VALUES: Array<[label: string, value: string]> = [
     "a long clean run that only turns hostile at the very end",
     `${"the quick brown fox jumps over the lazy dog and keeps going ".repeat(2)}&"<`,
   ],
-]
+];
 
 /**
  * The probe module for one cell, with the value OPAQUE to the compiler.
@@ -557,7 +558,7 @@ export function escapeProbeSource(context: EscapeContext, value: string): string
     "export default function Probe() {\n" +
     `  return <div class="host">${context.jsx("hostile()")}</div>;\n` +
     "}\n"
-  )
+  );
 }
 
 /** The same cell with the value inlined as a literal the compiler can fold. */
@@ -566,7 +567,7 @@ export function escapeStaticProbeSource(context: EscapeContext, value: string): 
     "export default function Probe() {\n" +
     `  return <div class="host">${context.jsx(JSON.stringify(value))}</div>;\n` +
     "}\n"
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -584,7 +585,7 @@ export function escapeStaticProbeSource(context: EscapeContext, value: string): 
  * escapes `<iframe>`/`<noscript>` content where a real browser does not. So
  * these cells are held to the property directly.
  */
-export const RAW_TEXT_TAGS = ["script", "style"] as const
+export const RAW_TEXT_TAGS = ["script", "style"] as const;
 
 /**
  * The shared values plus the two that are only hostile INSIDE this element.
@@ -602,7 +603,7 @@ export function rawTextValues(tag: string): Array<[label: string, value: string]
     ["its own closing tag, then an element", `</${tag}><img src=x onerror="alert(1)">`],
     ["a comment opener, then its own closing tag", `<!--<script></${tag}><img src=y>`],
     ["its closing tag in mixed case", `</${tag.toUpperCase()} ><img src=z>`],
-  ]
+  ];
 }
 
 export function rawTextProbeSource(tag: string, value: string): string {
@@ -612,7 +613,7 @@ export function rawTextProbeSource(tag: string, value: string): string {
     "export default function Probe() {\n" +
     `  return <div class="host"><${tag} class="probe">{hostile()}</${tag}></div>;\n` +
     "}\n"
-  )
+  );
 }
 
 /**
@@ -626,7 +627,7 @@ export function rawTextBakedSource(tag: string, encoded: string): string {
     "export default function Probe() {\n" +
     `  return <div class="host"><${tag} class="probe">${encoded}</${tag}></div>;\n` +
     "}\n"
-  )
+  );
 }
 
 /**
@@ -641,7 +642,7 @@ export function attributeNameProbeSource(name: string): string {
     "export default function Probe() {\n" +
     '  return <div class="host"><div class="probe" {...PROPS}></div></div>;\n' +
     "}\n"
-  )
+  );
 }
 
 /**
@@ -670,10 +671,10 @@ export function attributeNameProbeSource(name: string): string {
  * the value has to still be after the emitted markup is parsed again.
  */
 export interface ReshapedProbe {
-  name: string
-  source: string
-  text: string
-  title: string
+  name: string;
+  source: string;
+  text: string;
+  title: string;
 }
 
 function reshapedSource(title: string, text: string): string {
@@ -681,7 +682,7 @@ function reshapedSource(title: string, text: string): string {
     "export default function Probe() {\n" +
     `  return <div class="host"><table class="probe" title="${title}">${text}</table></div>;\n` +
     "}\n"
-  )
+  );
 }
 
 export const RESHAPED_PROBES: ReshapedProbe[] = [
@@ -709,4 +710,4 @@ export const RESHAPED_PROBES: ReshapedProbe[] = [
     text: "<!-- x --> ]]> </td></tr>",
     title: "<!-- x --> ]]>",
   },
-]
+];

@@ -45,21 +45,21 @@
  * to make comparable and which `addresses.test.ts` already diffs over
  * `fixtures/` alone. Extending that diff to the union is the point of the union.
  */
-import { readFileSync, readdirSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
-import { FIXTURE_DIR } from "./harness.ts"
+import { FIXTURE_DIR } from "./harness.ts";
 
-export type Family = "corpus" | "semantics" | "ownership" | "l4" | "browser-only"
+export type Family = "corpus" | "semantics" | "ownership" | "l4" | "browser-only";
 
 export interface Fixture {
   /** `<family>/<name>`, which is how the matrix addresses a row. */
-  readonly id: string
-  readonly family: Family
-  readonly name: string
+  readonly id: string;
+  readonly family: Family;
+  readonly name: string;
   /** The filename the compiler is told, which reaches diagnostics and the map. */
-  readonly filename: string
-  readonly source: string
+  readonly filename: string;
+  readonly source: string;
 }
 
 const DIRS: Record<Family, string> = {
@@ -68,7 +68,7 @@ const DIRS: Record<Family, string> = {
   ownership: join(FIXTURE_DIR, "ownership"),
   l4: join(FIXTURE_DIR, "l4"),
   "browser-only": join(FIXTURE_DIR, "browser-only"),
-}
+};
 
 /**
  * `.module.tsx` files are the SIBLINGS of an ownership fixture — a second file
@@ -82,11 +82,11 @@ function namesIn(dir: string): string[] {
   return readdirSync(dir)
     .filter((f) => f.endsWith(".tsx") && !f.endsWith(".module.tsx"))
     .map((f) => f.slice(0, -4))
-    .sort()
+    .sort();
 }
 
 export function unionFixtures(): Fixture[] {
-  const out: Fixture[] = []
+  const out: Fixture[] = [];
   for (const family of Object.keys(DIRS) as Family[]) {
     for (const name of namesIn(DIRS[family])) {
       out.push({
@@ -95,10 +95,10 @@ export function unionFixtures(): Fixture[] {
         name,
         filename: `${name}.tsx`,
         source: readFileSync(join(DIRS[family], `${name}.tsx`), "utf8"),
-      })
+      });
     }
   }
-  return out
+  return out;
 }
 
 /**
@@ -117,6 +117,6 @@ export const MODES = [
   { id: "interp", options: { interp: true } },
   { id: "dom-hydratable", options: { hydratable: true } },
   { id: "ssr-hydratable", options: { ssr: true, hydratable: true } },
-] as const
+] as const;
 
-export type ModeId = (typeof MODES)[number]["id"]
+export type ModeId = (typeof MODES)[number]["id"];

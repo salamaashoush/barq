@@ -24,7 +24,7 @@ import {
   settle,
   signal,
 } from "@barqjs/core";
-import { getHydrationData, seedLater, setAsyncSession } from "@barqjs/core/internal";
+import { SEED_ABANDONED, getHydrationData, setAsyncSession } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
@@ -65,7 +65,14 @@ const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 function runSeedScripts(html: string): Record<string, unknown> {
   const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)]
     .map((m) => m[1] ?? "")
-    .filter((source) => source.includes("__BARQ_DATA__"));
+    // THREE kinds, and missing any one of them breaks the rest. The cross-
+    // reference header defines `$R`; the payload assigns `__BARQ_DATA__` and
+    // refers to a bare `$R`; and a RESOLUTION statement settles a promise the
+    // payload already stored, mentioning only `$R`. Filtering on
+    // `__BARQ_DATA__` alone dropped the third and left every eagerly-seeded key
+    // pending for good — which is a harness bug that looks exactly like a
+    // product hang.
+    .filter((source) => source.includes("__BARQ_DATA__") || source.includes("$R"));
   (0, eval)(scripts.join(";"));
   return (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ ?? {};
 }
@@ -320,18 +327,30 @@ describe("the seed encoder", () => {
     expect(html).toContain("__BARQ_DATA__");
     expect(html).toContain("streamed-user");
 
-    // Seeded once, not once per round: a key already on the wire is skipped.
-    // Counted over PAYLOADS, because the key also appears in the wake list the
-    // flush sends alongside it.
+    // A key still in flight is named TWICE now, and the second mention is what
+    // makes hydration cheap rather than what makes it expensive: the first
+    // payload puts a promise in the store so a read during the stream can await
+    // it, and the last one settles the value over that promise so a client
+    // hydrating after the stream — every client today, the entry being a
+    // deferred module — finds a plain value and never flashes a fallback.
+    //
+    // What must NOT happen is the VALUE travelling twice. It does not: one
+    // `refs` map spans every flush, so the settle-over emits `$R[n]` for an
+    // object and only a primitive is ever written out again.
     const payloads = [
-      ...html.matchAll(/Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);window/g),
+      // `);</script>` since the seed script stopped chaining a
+      // `window.__BARQ_SEED__.tell(...)` call after the assignment.
+      ...html.matchAll(/Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);<\/script>/g),
     ]
       .map((m) => m[1] ?? "")
       .filter((payload) => payload.includes("streamed-user"));
-    expect(payloads).toHaveLength(1);
+    expect(payloads).toHaveLength(2);
+    // The settle-over carries no second copy of the fetcher's own work.
+    expect(payloads[1]).not.toContain("Promise");
 
-    // And the payload rebuilds to the value the server resolved, run the way a
-    // browser runs it: every seed script, in document order.
+    // And the store rebuilds to the value the server resolved, run the way a
+    // browser runs it: every seed script, in document order. SYNCHRONOUS,
+    // because the last script replaced the promise with the value.
     expect(runSeedScripts(html)["streamed-user"]).toBe("Ada");
   });
 
@@ -383,18 +402,29 @@ describe("the seed encoder", () => {
       if (html.includes("k-fast")) releaseSlow();
     }
 
-    const data = runSeedScripts(html) as Record<string, { shared: unknown }>;
-    expect(data["k-fast"]?.shared).toBeDefined();
-    expect(data["k-fast"]?.shared).toBe(data["k-slow"]?.shared);
+    // Both keys are promises: each was written when its flight started. Sharing
+    // is asserted on the RESOLVED values, which is where identity has to hold —
+    // one `refs` map across every flush is what preserves it.
+    const store = runSeedScripts(html) as Record<string, Promise<{ shared: unknown }>>;
+    const fastSeed = await store["k-fast"];
+    const slowSeed = await store["k-slow"];
+    expect(fastSeed?.shared).toBeDefined();
+    expect(fastSeed?.shared).toBe(slowSeed?.shared);
   });
 
   /**
    * The gap this closes: a streamed page used to seed nothing, and once it did,
    * a client read that ran before its value arrived still refetched — so the
-   * server's answer landed with nobody waiting on it. SvelteKit drops a pending
-   * value from its payload for exactly this reason and lets the client fetch it.
+   * server's answer landed with nobody waiting on it.
+   *
+   * SOLID'S SHAPE, which replaced a waiter channel: the key goes on the wire the
+   * moment its flight STARTS, as a promise, so a read that misses finds
+   * something to await rather than a hole. `registerFragment` does
+   * `serializer.write(key, p)` with `p` still pending
+   * (`dom-expressions/src/server.js`), and `Suspense.ts:144-167` awaits whatever
+   * `sharedConfig.load(key)` hands back.
    */
-  test("a read that misses while the stream is open waits for the value", async () => {
+  test("a key still in flight is on the wire as a PROMISE, before it settles", async () => {
     let releaseSlow!: () => void;
     const gate = new Promise<void>((resolve) => {
       releaseSlow = resolve;
@@ -416,52 +446,32 @@ describe("the seed encoder", () => {
         )}</main>`,
       );
 
-    // Each script runs exactly once, the way a browser runs them. Re-running
-    // the channel snippet would build a fresh registry and drop the waiter.
-    let ran = 0;
-    const runNewScripts = (html: string): void => {
-      const all = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
-      const fresh = all.slice(ran);
-      ran = all.length;
-      const relevant = fresh.filter(
-        (s) => s.includes("__BARQ_SEED__") || s.includes("__BARQ_DATA__"),
-      );
-      if (relevant.length > 0) (0, eval)(relevant.join(";"));
-    };
-
     const reader = renderToStream(page as never).getReader();
     const decoder = new TextDecoder();
     let html = "";
-    while (!html.includes("__BARQ_SEED__")) {
+    while (!html.includes("__BARQ_DATA__")) {
       const chunk = await reader.read();
       if (chunk.done) break;
       html += decoder.decode(chunk.value);
     }
-    // The channel is open and the value is still gated: exactly the window in
-    // which a client read would otherwise refetch what the server is sending.
+    // The key is already named on the wire, and its VALUE is not — which is the
+    // whole point: a read can await it instead of refetching.
+    expect(html, "the key must be seeded before it settles").toContain("late-key");
     expect(html, "the value must not have landed yet").not.toContain("arrived");
-    runNewScripts(html);
-
-    let resolved: unknown;
-    const waiter = seedLater("late-key");
-    expect(waiter, "the channel should be open").not.toBeNull();
-    void waiter?.then((r) => {
-      resolved = r;
-    });
+    // …and no waiter registry is involved any more.
+    expect(html).not.toContain("__BARQ_SEED__");
 
     releaseSlow();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       html += decoder.decode(value);
-      runNewScripts(html);
     }
     await tick();
 
-    // The waiter was woken by the flush that carried the key — not by a refetch.
-    expect(resolved).toEqual({ found: true, value: "arrived" });
-    // And the stream closed the channel, so a later miss fetches for real.
-    expect(html).toContain("__BARQ_SEED__.done()");
+    // The resolution arrives in a later statement, settling the promise the
+    // initial payload already put in the store.
+    expect(html).toContain("arrived");
   });
 
   test("escapes a script-closing string and the line separators", () => {
@@ -1089,5 +1099,166 @@ describe("a pending promise inside a seeded value", () => {
     // need it — which is the entire point of deferring.
     expect(whole).toContain("arrived");
     expect(whole.indexOf("arrived")).toBeGreaterThan(whole.indexOf("<b>here</b>"));
+  });
+});
+
+/**
+ * The stream's ERROR POLICY and its lifecycle.
+ *
+ * A throw after the shell used to reject the whole `ReadableStream`, which hands
+ * the client a truncated document with no error UI when the bytes it already has
+ * are a valid page showing fallbacks. React never errors the response after the
+ * shell — it errors the BOUNDARY — and these rows pin that barq does not either.
+ */
+describe("a throw after the shell", () => {
+  const pageThatThrowsLate = (): (() => unknown) => {
+    const bad = computed(async () => {
+      await tick();
+      throw new Error("late boom");
+    });
+    return () =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>skel</i>"),
+            children: () => ssrHtml(`<b>${esc(bad())}</b>`),
+          }),
+        )}</main>`,
+      );
+  };
+
+  test("does NOT tear the response: the stream completes and the fallback stands", async () => {
+    const seen: unknown[] = [];
+    const parts = await collect(
+      renderToStream(pageThatThrowsLate(), {
+        timeout: 100,
+        onError: (error) => seen.push(error),
+      }),
+    );
+    // Reading to completion is the assertion: before the policy existed this
+    // rejected with `Error: late boom` and produced no page at all.
+    const html = parts.join("");
+    expect(html).toContain("<main>");
+    expect(html).toContain("skel");
+    // The failure is REPORTED rather than swallowed.
+    expect(seen.map(String)).toEqual(["Error: late boom"]);
+  });
+
+  test("onError defaults to console.error rather than silence", async () => {
+    const original = console.error;
+    const logged: unknown[] = [];
+    console.error = (...args: unknown[]) => logged.push(args[0]);
+    try {
+      await collect(renderToStream(pageThatThrowsLate(), { timeout: 100 }));
+    } finally {
+      console.error = original;
+    }
+    expect(logged.map(String)).toEqual(["Error: late boom"]);
+  });
+});
+
+describe("the stream's lifecycle", () => {
+  test("onShellReady fires before onAllReady, and both fire once", async () => {
+    const order: string[] = [];
+    const late = computed(async () => {
+      await tick();
+      return "LATE";
+    });
+    const page = (): unknown =>
+      ssrHtml(
+        `<main>${esc(
+          ssrLoading(null, {
+            fallback: () => ssrHtml("<i>skel</i>"),
+            children: () => ssrHtml(`<b>${esc(late())}</b>`),
+          }),
+        )}</main>`,
+      );
+
+    const html = (
+      await collect(
+        renderToStream(page as never, {
+          onShellReady: () => order.push("shell"),
+          onAllReady: () => order.push("all"),
+        }),
+      )
+    ).join("");
+
+    expect(order).toEqual(["shell", "all"]);
+    // …and `onAllReady` really means it: the deferred content is on the wire.
+    expect(html).toContain("LATE");
+  });
+});
+
+/**
+ * The CLIENT half of the eager seed, which is the capability the whole change
+ * exists for: a read that runs while its value is still in flight must WAIT on
+ * what the server sent rather than fetch the same thing again.
+ *
+ * Solid's shape — `sharedConfig.load(key)` hands back a promise and Suspense
+ * awaits it (`solid/src/render/Suspense.ts:144-167`). barq needs no boundary
+ * hook for it: a `compute` that returns a promise is already an async node, so
+ * handing the seeded promise back IS the wait.
+ */
+describe("a seeded key that is still in flight", () => {
+  const store = (data: Record<string, unknown> | undefined): void => {
+    const target = globalThis as { __BARQ_DATA__?: Record<string, unknown> };
+    if (data === undefined) delete target.__BARQ_DATA__;
+    else target.__BARQ_DATA__ = data;
+  };
+
+  test("the read AWAITS the server's promise instead of refetching", async () => {
+    let fetches = 0;
+    let deliver!: (value: string) => void;
+    store({ "in-flight": new Promise<string>((resolve) => (deliver = resolve)) });
+
+    const value = computed(
+      async () => {
+        fetches++;
+        return "refetched";
+      },
+      { key: "in-flight" },
+    );
+
+    // Starts the node. It is pending on the SEED, not on a fetch.
+    try {
+      value();
+    } catch {
+      /* NotReadyError: the value has not arrived */
+    }
+    deliver("from-the-server");
+    await settle();
+
+    expect(value()).toBe("from-the-server");
+    expect(fetches, "the fetcher must never run for a key the server sent").toBe(0);
+    store(undefined);
+  });
+
+  test("a key the server ABANDONED falls back to fetching", async () => {
+    let fetches = 0;
+    // What the end of the stream does to every key still in flight, so nothing
+    // waits for a value that is not coming. RESOLVED with a sentinel rather than
+    // rejected: nobody is awaiting this promise until a read wants the key, and
+    // an unhandled rejection is a console error in the browser and a process
+    // kill on Node.
+    store({ gone: Promise.resolve({ [SEED_ABANDONED]: 1 }) });
+
+    const value = computed(
+      async () => {
+        fetches++;
+        return "refetched";
+      },
+      { key: "gone" },
+    );
+
+    try {
+      value();
+    } catch {
+      /* pending */
+    }
+    await settle();
+
+    expect(value()).toBe("refetched");
+    expect(fetches, "abandoned is absent, not failed: it fetches").toBe(1);
+    store(undefined);
   });
 });

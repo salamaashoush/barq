@@ -1,4 +1,4 @@
-import { compileSource } from "./harness.ts"
+import { compileSource } from "./harness.ts";
 
 /**
  * Compile-time measurement, shared by the throughput gate and the target-11
@@ -11,15 +11,15 @@ import { compileSource } from "./harness.ts"
  * mean does, which is what keeps the bound from flaking.
  */
 
-const WARMUP = 50
-const ROUNDS = 7
-const ITERATIONS = 50
+const WARMUP = 50;
+const ROUNDS = 7;
+const ITERATIONS = 50;
 
 export interface Measurement {
-  name: string
-  bytes: number
-  lines: number
-  msPerCompile: number
+  name: string;
+  bytes: number;
+  lines: number;
+  msPerCompile: number;
 }
 
 export function measure(
@@ -27,23 +27,23 @@ export function measure(
   source: string,
   options: Record<string, unknown> = {},
 ): Measurement {
-  const filename = `${name}.tsx`
+  const filename = `${name}.tsx`;
 
   // A compiler that silently emits nothing would post spectacular numbers.
-  const probe = compileSource(source, filename, options)
+  const probe = compileSource(source, filename, options);
   if (probe.trim().length === 0) {
-    throw new Error(`throughput: ${name} compiled to an empty string — the timing is meaningless`)
+    throw new Error(`throughput: ${name} compiled to an empty string — the timing is meaningless`);
   }
 
-  for (let i = 0; i < WARMUP; i++) compileSource(source, filename, options)
-  Bun.gc(true)
+  for (let i = 0; i < WARMUP; i++) compileSource(source, filename, options);
+  Bun.gc(true);
 
-  let best = Number.POSITIVE_INFINITY
+  let best = Number.POSITIVE_INFINITY;
   for (let round = 0; round < ROUNDS; round++) {
-    const start = Bun.nanoseconds()
-    for (let i = 0; i < ITERATIONS; i++) compileSource(source, filename, options)
-    const perOp = (Bun.nanoseconds() - start) / ITERATIONS
-    if (perOp < best) best = perOp
+    const start = Bun.nanoseconds();
+    for (let i = 0; i < ITERATIONS; i++) compileSource(source, filename, options);
+    const perOp = (Bun.nanoseconds() - start) / ITERATIONS;
+    if (perOp < best) best = perOp;
   }
 
   return {
@@ -51,7 +51,7 @@ export function measure(
     bytes: Buffer.byteLength(source),
     lines: source.split("\n").length,
     msPerCompile: best / 1e6,
-  }
+  };
 }
 
 /** Fixtures welded into one compilable module: imports commented out after the
@@ -65,7 +65,7 @@ export function concatFixtures(names: string[], read: (name: string) => string):
         .replace(/^export (const|function) /gm, (_, kind) => `${kind} `)
         .replace(/^(const|function) (\w+)/gm, `$1 $2_${i}`),
     )
-    .join("\n")
+    .join("\n");
 }
 
 /**
@@ -76,5 +76,5 @@ export function typicalComponentFile(read: (name: string) => string): string {
   return concatFixtures(
     ["control-flow-for", "control-flow-switch-match", "component-boundary-props"],
     read,
-  )
+  );
 }

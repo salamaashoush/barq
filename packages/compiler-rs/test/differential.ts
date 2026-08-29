@@ -22,10 +22,10 @@
  *     generator, the mutator and any later mode all diff the same things.
  */
 
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { compileSource, loadModule, renderModule, type RenderResult } from "./harness.ts"
+import { compileSource, loadModule, renderModule, type RenderResult } from "./harness.ts";
 
 /**
  * `dom-Ox` is what ships. `dom-O0` is the reference: same front end, same IR,
@@ -46,13 +46,13 @@ import { compileSource, loadModule, renderModule, type RenderResult } from "./ha
  * asked directly rather than through this axis: `ssr.test.ts`'s "the string
  * backend at -O0 against -Ox" compares all 130 fixtures' markup byte for byte.
  */
-export type Mode = "dom-Ox" | "dom-O0" | "interp"
+export type Mode = "dom-Ox" | "dom-O0" | "interp";
 
 export const OPTIONS: Record<Mode, Record<string, unknown>> = {
   "dom-Ox": {},
   "dom-O0": { optimize: 0 },
   interp: { interp: true },
-}
+};
 
 export interface InterpStatus {
   /**
@@ -60,15 +60,15 @@ export interface InterpStatus {
    * a fact about the milestone. `broken` — the backend is there and does not
    * work, which is a BUG and must never be reported as absence.
    */
-  state: "live" | "absent" | "broken"
+  state: "live" | "absent" | "broken";
   /** Whether this build emits a module the reference backend can run. */
-  landed: boolean
+  landed: boolean;
   /** Why it does not, while it does not. */
-  refusal: string
+  refusal: string;
 }
 
 const INTERP_PROBE =
-  'const Probe = () => <section class="p">{hole()}</section>;\nexport default Probe;\n'
+  'const Probe = () => <section class="p">{hole()}</section>;\nexport default Probe;\n';
 
 /**
  * Detection with a THIRD answer, and the third answer is the point.
@@ -101,10 +101,10 @@ const INTERP_PROBE =
  */
 function optionExists(name: string): boolean {
   try {
-    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8")
-    return new RegExp(`^\\s*${name}\\?:`, "m").test(types)
+    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8");
+    return new RegExp(`^\\s*${name}\\?:`, "m").test(types);
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -113,19 +113,20 @@ function detect(): InterpStatus {
     return {
       state: "absent",
       landed: false,
-      refusal: "this build's option surface has no `interp` — the reference backend is not here yet",
-    }
+      refusal:
+        "this build's option surface has no `interp` — the reference backend is not here yet",
+    };
   }
 
-  let emitted: string
+  let emitted: string;
   try {
-    emitted = compileSource(INTERP_PROBE, "interp-probe.tsx", OPTIONS.interp)
+    emitted = compileSource(INTERP_PROBE, "interp-probe.tsx", OPTIONS.interp);
   } catch (error) {
     return {
       state: "broken",
       landed: false,
       refusal: `the build has an \`interp\` option and compiling with it failed: ${error}`,
-    }
+    };
   }
   if (!emitted.includes("/interp")) {
     return {
@@ -134,27 +135,27 @@ function detect(): InterpStatus {
       refusal:
         "the build has an `interp` option and the module it emits never mentions the reference " +
         "backend — a broken backend, not a missing one",
-    }
+    };
   }
   try {
-    Bun.resolveSync("@barqjs/core/interp", import.meta.dir)
+    Bun.resolveSync("@barqjs/core/interp", import.meta.dir);
   } catch (error) {
     return {
       state: "broken",
       landed: false,
       refusal: `the compiler emits for it, but @barqjs/core/interp does not resolve: ${error}`,
-    }
+    };
   }
-  return { state: "live", landed: true, refusal: "" }
+  return { state: "live", landed: true, refusal: "" };
 }
 
-export const interpStatus: InterpStatus = detect()
+export const interpStatus: InterpStatus = detect();
 
 /** The modes this build can actually run, in the order a report should list them. */
 export function liveModes(): Mode[] {
-  const modes: Mode[] = ["dom-Ox", "dom-O0"]
-  if (interpStatus.landed) modes.push("interp")
-  return modes
+  const modes: Mode[] = ["dom-Ox", "dom-O0"];
+  if (interpStatus.landed) modes.push("interp");
+  return modes;
 }
 
 /**
@@ -168,9 +169,9 @@ export async function renderSource(
   tag: string,
   mode: Mode = "dom-Ox",
 ): Promise<RenderResult> {
-  const code = compileSource(source, `${tag}.tsx`, OPTIONS[mode])
-  const mod = await loadModule(code, tag)
-  return { ...(await renderModule(mod)), code }
+  const code = compileSource(source, `${tag}.tsx`, OPTIONS[mode]);
+  const mod = await loadModule(code, tag);
+  return { ...(await renderModule(mod)), code };
 }
 
 /** Every mode of one source, keyed by mode. */
@@ -178,9 +179,9 @@ export async function renderEveryMode(
   source: string,
   tag: string,
 ): Promise<Map<Mode, RenderResult>> {
-  const out = new Map<Mode, RenderResult>()
-  for (const mode of liveModes()) out.set(mode, await renderSource(source, `${tag}-${mode}`, mode))
-  return out
+  const out = new Map<Mode, RenderResult>();
+  for (const mode of liveModes()) out.set(mode, await renderSource(source, `${tag}-${mode}`, mode));
+  return out;
 }
 
 /**
@@ -209,41 +210,41 @@ export async function renderEveryMode(
  * enumerated and the resulting precedence constraints checked for a cycle.
  */
 function namesOf(line: string): string[] {
-  return line.slice(line.indexOf(": ") + 2).split(",")
+  return line.slice(line.indexOf(": ") + 2).split(",");
 }
 
 function acyclic(edges: Array<[string, string]>, nodes: Set<string>): boolean {
-  const after = new Map<string, string[]>()
-  const indegree = new Map<string, number>()
+  const after = new Map<string, string[]>();
+  const indegree = new Map<string, number>();
   for (const node of nodes) {
-    after.set(node, [])
-    indegree.set(node, 0)
+    after.set(node, []);
+    indegree.set(node, 0);
   }
   for (const [from, to] of edges) {
-    after.get(from)?.push(to)
-    indegree.set(to, (indegree.get(to) ?? 0) + 1)
+    after.get(from)?.push(to);
+    indegree.set(to, (indegree.get(to) ?? 0) + 1);
   }
-  const ready = [...nodes].filter((node) => indegree.get(node) === 0)
-  let seen = 0
+  const ready = [...nodes].filter((node) => indegree.get(node) === 0);
+  let seen = 0;
   while (ready.length > 0) {
-    const node = ready.pop() as string
-    seen++
+    const node = ready.pop() as string;
+    seen++;
     for (const next of after.get(node) ?? []) {
-      const left = (indegree.get(next) ?? 0) - 1
-      indegree.set(next, left)
-      if (left === 0) ready.push(next)
+      const left = (indegree.get(next) ?? 0) - 1;
+      indegree.set(next, left);
+      if (left === 0) ready.push(next);
     }
   }
-  return seen === nodes.size
+  return seen === nodes.size;
 }
 
 function chain(names: string[], into: Array<[string, string]>): void {
-  for (let i = 1; i < names.length; i++) into.push([names[i - 1], names[i]])
+  for (let i = 1; i < names.length; i++) into.push([names[i - 1], names[i]]);
 }
 
 function subset(inner: string[], outer: string[]): boolean {
-  const has = new Set(outer)
-  return inner.every((name) => has.has(name))
+  const has = new Set(outer);
+  return inner.every((name) => has.has(name));
 }
 
 /**
@@ -257,22 +258,22 @@ function subset(inner: string[], outer: string[]): boolean {
  * side may split anywhere).
  */
 export function oneSourceOrderExplainsBoth(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  const nodes = new Set([...a, ...b])
-  if (nodes.size !== a.length) return true // a duplicate name has no source order to recover
+  if (a.length !== b.length) return false;
+  const nodes = new Set([...a, ...b]);
+  if (nodes.size !== a.length) return true; // a duplicate name has no source order to recover
   for (let i = 0; i <= a.length; i++) {
     for (let j = 0; j <= b.length; j++) {
-      const baked = [a.slice(0, i), b.slice(0, j)] as const
-      if (!subset(baked[0], baked[1]) && !subset(baked[1], baked[0])) continue
-      const edges: Array<[string, string]> = []
-      chain(a.slice(0, i), edges)
-      chain(a.slice(i), edges)
-      chain(b.slice(0, j), edges)
-      chain(b.slice(j), edges)
-      if (acyclic(edges, nodes)) return true
+      const baked = [a.slice(0, i), b.slice(0, j)] as const;
+      if (!subset(baked[0], baked[1]) && !subset(baked[1], baked[0])) continue;
+      const edges: Array<[string, string]> = [];
+      chain(a.slice(0, i), edges);
+      chain(a.slice(i), edges);
+      chain(b.slice(0, j), edges);
+      chain(b.slice(j), edges);
+      if (acyclic(edges, nodes)) return true;
     }
   }
-  return false
+  return false;
 }
 
 /**
@@ -299,40 +300,43 @@ export function compareRenders(
   subject: RenderResult,
   label: string,
 ): string[] {
-  const out: string[] = []
+  const out: string[] = [];
   const differ = (what: string, want: unknown, got: unknown): void => {
-    if (JSON.stringify(want) === JSON.stringify(got)) return
+    if (JSON.stringify(want) === JSON.stringify(got)) return;
     out.push(
       `${label}: ${what}\n  reference: ${JSON.stringify(want)}\n  subject  : ${JSON.stringify(got)}`,
-    )
-  }
+    );
+  };
 
-  differ("initial render", reference.html, subject.html)
-  differ("scripted steps", reference.frames, subject.frames)
-  differ("dispatched events", reference.eventFrames, subject.eventFrames)
-  differ("frame count", reference.channels.length, subject.channels.length)
+  differ("initial render", reference.html, subject.html);
+  differ("scripted steps", reference.frames, subject.frames);
+  differ("dispatched events", reference.eventFrames, subject.eventFrames);
+  differ("frame count", reference.channels.length, subject.channels.length);
 
-  const frames = Math.min(reference.channels.length, subject.channels.length)
+  const frames = Math.min(reference.channels.length, subject.channels.length);
   for (let i = 0; i < frames; i++) {
-    const here = reference.channels[i].attributes
-    const there = subject.channels[i].attributes
+    const here = reference.channels[i].attributes;
+    const there = subject.channels[i].attributes;
     differ(
       `frame ${i} elements carrying attributes`,
       here.map((line) => line.slice(0, line.indexOf(": "))),
       there.map((line) => line.slice(0, line.indexOf(": "))),
-    )
+    );
     for (let line = 0; line < Math.min(here.length, there.length); line++) {
-      if (oneSourceOrderExplainsBoth(namesOf(here[line]), namesOf(there[line]))) continue
-      differ(`frame ${i} attribute order on ${here[line].slice(0, here[line].indexOf(": "))}`,
-        here[line], there[line])
+      if (oneSourceOrderExplainsBoth(namesOf(here[line]), namesOf(there[line]))) continue;
+      differ(
+        `frame ${i} attribute order on ${here[line].slice(0, here[line].indexOf(": "))}`,
+        here[line],
+        there[line],
+      );
     }
     differ(
       `frame ${i} element identity`,
       reference.channels[i].identity,
       subject.channels[i].identity,
-    )
+    );
   }
-  return out
+  return out;
 }
 
 /**
@@ -341,16 +345,16 @@ export function compareRenders(
  * build is the subject, the unoptimised build of the same compiler is what it
  * is judged against. Returns the divergence messages; empty is green.
  */
-export const REFERENCE: Mode = "dom-O0"
+export const REFERENCE: Mode = "dom-O0";
 
 export async function diffEveryMode(source: string, tag: string): Promise<string[]> {
-  const renders = await renderEveryMode(source, tag)
-  const reference = renders.get(REFERENCE)
-  if (!reference) throw new Error("the reference build is always live")
-  const out: string[] = []
+  const renders = await renderEveryMode(source, tag);
+  const reference = renders.get(REFERENCE);
+  if (!reference) throw new Error("the reference build is always live");
+  const out: string[] = [];
   for (const [mode, render] of renders) {
-    if (mode === REFERENCE) continue
-    out.push(...compareRenders(reference, render, `${tag} @ ${mode} vs ${REFERENCE}`))
+    if (mode === REFERENCE) continue;
+    out.push(...compareRenders(reference, render, `${tag} @ ${mode} vs ${REFERENCE}`));
   }
-  return out
+  return out;
 }

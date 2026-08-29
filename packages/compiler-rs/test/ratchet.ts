@@ -39,9 +39,9 @@
  * Copying it into the registry is a diff, which is the point: the row's prose
  * is re-read in the same change that moves its digest.
  */
-import { createHash } from "node:crypto"
+import { createHash } from "node:crypto";
 
-const REPO = new URL("../../..", import.meta.url).pathname.replace(/\/$/, "")
+const REPO = new URL("../../..", import.meta.url).pathname.replace(/\/$/, "");
 
 /**
  * The digest of one observation.
@@ -51,40 +51,37 @@ const REPO = new URL("../../..", import.meta.url).pathname.replace(/\/$/, "")
  * retype from a failure message.
  */
 export function digest(observation: string): string {
-  const normalised = observation
-    .replaceAll(REPO, "<repo>")
-    .replace(/\s+/g, " ")
-    .trim()
-  return createHash("sha256").update(normalised).digest("hex").slice(0, 12)
+  const normalised = observation.replaceAll(REPO, "<repo>").replace(/\s+/g, " ").trim();
+  return createHash("sha256").update(normalised).digest("hex").slice(0, 12);
 }
 
 /** Set by `BARQ_RATCHET=print`: collect the regenerated literals and print them. */
-export const PRINTING = process.env.BARQ_RATCHET === "print"
+export const PRINTING = process.env.BARQ_RATCHET === "print";
 
-const PRINTED: string[] = []
+const PRINTED: string[] = [];
 
 export function recordRegeneration(line: string): void {
-  PRINTED.push(line)
+  PRINTED.push(line);
 }
 
 export function regenerationReport(): string {
-  if (PRINTED.length === 0) return ""
+  if (PRINTED.length === 0) return "";
   return (
     "\nBARQ_RATCHET=print — the digests these rows should carry:\n" +
     PRINTED.map((line) => `  ${line}`).join("\n") +
     "\n"
-  )
+  );
 }
 
 export interface RatchetInput {
   /** How the row is addressed, for the failure message. */
-  key: string
+  key: string;
   /** What the registry says the observation is, or `undefined` on an old row. */
-  expected: string | undefined
+  expected: string | undefined;
   /** What the channel just observed. */
-  observed: string
+  observed: string;
   /** The registry file a reader has to open. */
-  file: string
+  file: string;
 }
 
 /**
@@ -95,16 +92,16 @@ export interface RatchetInput {
  * rot, and every row in the three registries carries one.
  */
 export function ratchet({ key, expected, observed, file }: RatchetInput): string | null {
-  const now = digest(observed)
-  if (expected === now) return null
-  if (PRINTING) recordRegeneration(`${key}  observed: "${now}"`)
+  const now = digest(observed);
+  if (expected === now) return null;
+  if (PRINTING) recordRegeneration(`${key}  observed: "${now}"`);
   if (expected === undefined) {
     return (
       `NO RATCHET: ${key} is registered but carries no \`observed\` digest.\n` +
       `  The observation is:\n    ${observed}\n` +
       `  Add \`observed: "${now}"\` to its row in ${file}. A row without one can be fixed ` +
       `halfway\n  and go on reading as if nothing had changed.\n`
-    )
+    );
   }
   return (
     `RATCHET: ${key} still fails, and it fails DIFFERENTLY.\n` +
@@ -115,7 +112,7 @@ export function ratchet({ key, expected, observed, file }: RatchetInput): string
     `point:\n  a row whose text no longer describes what happens is a row nobody can review. ` +
     `Re-read the\n  row in ${file}, rewrite its reason to match, and set ` +
     `\`observed: "${now}"\`.\n`
-  )
+  );
 }
 
 /**
@@ -131,29 +128,28 @@ export function ratchet({ key, expected, observed, file }: RatchetInput): string
  * the channel now covers.
  */
 export interface ReachInput {
-  channel: string
-  expected: Readonly<Record<string, number>>
-  observed: Readonly<Record<string, number>>
-  file: string
+  channel: string;
+  expected: Readonly<Record<string, number>>;
+  observed: Readonly<Record<string, number>>;
+  file: string;
 }
 
 export function reachRatchet({ channel, expected, observed, file }: ReachInput): string | null {
-  const keys = [...new Set([...Object.keys(expected), ...Object.keys(observed)])].sort()
-  const drifted = keys.filter((key) => expected[key] !== observed[key])
-  if (drifted.length === 0) return null
+  const keys = [...new Set([...Object.keys(expected), ...Object.keys(observed)])].sort();
+  const drifted = keys.filter((key) => expected[key] !== observed[key]);
+  if (drifted.length === 0) return null;
   if (PRINTING) {
-    recordRegeneration(
-      `${channel} reach: ${JSON.stringify(observed)}`,
-    )
+    recordRegeneration(`${channel} reach: ${JSON.stringify(observed)}`);
   }
   const lines = drifted.map(
-    (key) => `    ${key}: pinned ${expected[key] ?? "(absent)"} — observed ${observed[key] ?? "(absent)"}`,
-  )
+    (key) =>
+      `    ${key}: pinned ${expected[key] ?? "(absent)"} — observed ${observed[key] ?? "(absent)"}`,
+  );
   return (
     `REACH: the ${channel} channel does not cover what it is pinned to cover.\n` +
     lines.join("\n") +
     `\n  A channel that looks at less reports fewer findings and reads exactly like a fixed ` +
     `codebase.\n  A channel that looks at more has grown coverage nobody has reviewed. Both fail ` +
     `here.\n  Update the pin in ${file} in the same change, and say in its text what moved.\n`
-  )
+  );
 }

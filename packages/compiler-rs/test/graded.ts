@@ -43,7 +43,7 @@
  * asserts it against the code rather than letting it become a comment that drifts.
  */
 
-import { LEAK_RULES } from "./leaks.ts"
+import { LEAK_RULES } from "./leaks.ts";
 
 export type Grade =
   /** two implementations, or two optimisation levels, compared for equality */
@@ -57,37 +57,38 @@ export type Grade =
   /** one fused golden per fixture: a silent drop becomes a visible diff */
   | "golden"
   /** stated, and deliberately unchecked. The one honest answer when nothing can see it */
-  | "ungraded"
+  | "ungraded";
 
 export interface Channel {
-  readonly id: string
-  readonly grade: Grade
+  readonly id: string;
+  readonly grade: Grade;
   /** the property, in the terms the grade is stated in */
-  readonly property: string
+  readonly property: string;
   /**
    * What the property is allowed to assume. For every grade except `ungraded`
    * this must be a fact about the FIXTURE or the emitted module — never a
    * property of the frames being compared, which is what makes a check switch
    * itself off exactly where it is most wanted.
    */
-  readonly premise: string
+  readonly premise: string;
   /** where the check lives */
-  readonly where: readonly string[]
+  readonly where: readonly string[];
   /**
    * Exemptions this channel honours. The point of the regrade is that most of
    * these are empty; a non-empty one is a claim about the channel's weakness,
    * written down rather than discovered.
    */
-  readonly exemptions: readonly string[]
+  readonly exemptions: readonly string[];
   /** rules from `SEMANTICS.md` this channel can report */
-  readonly rules: readonly string[]
+  readonly rules: readonly string[];
 }
 
 export const CHANNELS: readonly Channel[] = Object.freeze([
   {
     id: "rendered-dom",
     grade: "differential",
-    property: "the DOM after every frame is byte-identical at -O0, at -Ox and through the IR interpreter",
+    property:
+      "the DOM after every frame is byte-identical at -O0, at -Ox and through the IR interpreter",
     premise: "the same fixture, compiled three ways from one lowered IR",
     where: ["differential.test.ts", "optimisation.test.ts", "interp.test.ts"],
     exemptions: [],
@@ -187,7 +188,7 @@ export const CHANNELS: readonly Channel[] = Object.freeze([
     exemptions: [],
     rules: [],
   },
-])
+]);
 
 /**
  * Every rule the three L4 channels can report — the channel's declared REACH,
@@ -198,15 +199,21 @@ export const CHANNELS: readonly Channel[] = Object.freeze([
  */
 export const L4_RULES: readonly string[] = Object.freeze([
   ...new Set(
-    CHANNELS.filter((channel) => channel.where.some((file) => file.startsWith("metamorphic") || file.startsWith("leaks") || file.startsWith("single-evaluation")))
-      .flatMap((channel) => channel.rules),
+    CHANNELS.filter((channel) =>
+      channel.where.some(
+        (file) =>
+          file.startsWith("metamorphic") ||
+          file.startsWith("leaks") ||
+          file.startsWith("single-evaluation"),
+      ),
+    ).flatMap((channel) => channel.rules),
   ),
-])
+]);
 
 export function channel(id: string): Channel {
-  const found = CHANNELS.find((c) => c.id === id)
-  if (found === undefined) throw new Error(`no L4 channel called ${id}`)
-  return found
+  const found = CHANNELS.find((c) => c.id === id);
+  if (found === undefined) throw new Error(`no L4 channel called ${id}`);
+  return found;
 }
 
 /**
@@ -215,5 +222,5 @@ export function channel(id: string): Channel {
  * that quietly grew its exemption list has not regraded anything.
  */
 export function exemptionCount(): number {
-  return CHANNELS.reduce((total, c) => total + c.exemptions.length, 0)
+  return CHANNELS.reduce((total, c) => total + c.exemptions.length, 0);
 }

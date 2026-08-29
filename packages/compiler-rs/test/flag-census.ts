@@ -15,7 +15,7 @@
  * the mutation is still a miscompilation. So the census is imported by the L3
  * suite as well, where it is the channel that catches both directions.
  */
-import { compileFixtureBody, listFixtures, stripLiterals } from "./harness.ts"
+import { compileFixtureBody, listFixtures, stripLiterals } from "./harness.ts";
 
 /**
  * `STATIC_KEY` is `1 << 0` and `NO_SCOPE` is `1 << 1`, so the integer names the
@@ -45,7 +45,7 @@ export const FLAG_CENSUS: readonly string[] = Object.freeze([
   "control-flow-show: 2",
   "control-flow-switch-static-key: 1",
   "flow-prop-eta-boundary: 2",
-])
+]);
 
 /**
  * The flags integer is the last argument, and it follows whichever body shape
@@ -54,12 +54,12 @@ export const FLAG_CENSUS: readonly string[] = Object.freeze([
  * `control-flow-switch-static-key` could have shipped a flag no census saw.
  */
 export function emittedFlags(): string[] {
-  const found: string[] = []
+  const found: string[] = [];
   for (const name of listFixtures()) {
-    const code = stripLiterals(compileFixtureBody(name))
+    const code = stripLiterals(compileFixtureBody(name));
     for (const match of code.matchAll(/(?:\}\)|\]), (\d+)\)/g)) {
-      found.push(`${name}: ${match[1]}`)
+      found.push(`${name}: ${match[1]}`);
     }
   }
-  return found.sort()
+  return found.sort();
 }

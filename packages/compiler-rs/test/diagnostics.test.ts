@@ -212,7 +212,7 @@ describe("the diagnostic engine", () => {
       BARQ002:
         `import { signal } from "@barqjs/core";\n` +
         `const on = signal(false);\n` +
-        "export const V = () => <p>{on ? \"y\" : \"n\"}</p>;\n",
+        'export const V = () => <p>{on ? "y" : "n"}</p>;\n',
       BARQ003:
         `import { signal } from "@barqjs/core";\n` +
         `const user = signal({ email: \"a\" });\n` +
@@ -249,13 +249,18 @@ describe("the diagnostic engine", () => {
       },
     };
 
-    const advertised = native.diagnosticCodes().map((entry) => entry.code).sort();
+    const advertised = native
+      .diagnosticCodes()
+      .map((entry) => entry.code)
+      .sort();
     expect(
       advertised.filter((code) => reachable[code] === undefined),
       "an advertised code with no input that produces it",
     ).toEqual([]);
     expect(
-      Object.keys(reachable).filter((code) => !advertised.includes(code)).sort(),
+      Object.keys(reachable)
+        .filter((code) => !advertised.includes(code))
+        .sort(),
       "a source for a code the table no longer advertises",
     ).toEqual([]);
 

@@ -34,13 +34,13 @@
  */
 
 export interface CensusRow {
-  readonly fixture: string
+  readonly fixture: string;
   /** template instantiations attributed to a compiled position */
-  readonly clones: number
+  readonly clones: number;
   /** template instantiations the static tree could not place */
-  readonly unattributed: number
+  readonly unattributed: number;
   /** components the static walk could not follow, so the tree is partial */
-  readonly opaque: readonly string[]
+  readonly opaque: readonly string[];
 }
 
 /**
@@ -154,6 +154,7 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "diagnostic-accessor-coercion", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "dom-prop-static-value", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "dynamic", clones: 1, unattributed: 0, opaque: [] },
+  { fixture: "no-hydration-island", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "equal-liveness", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "escaped-text-and-attribute", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "escaping-adversarial", clones: 1, unattributed: 0, opaque: [] },
@@ -233,17 +234,17 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "own-provider-direct", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "own-provider-thunked", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "own-provider-wrapper", clones: 2, unattributed: 0, opaque: [] },
-]
+];
 
 export const OWNERSHIP_CENSUS: readonly CensusRow[] = Object.freeze(
   ROWS.map((row) => Object.freeze({ ...row, opaque: Object.freeze([...row.opaque]) })),
-)
+);
 
 export function censusIndex(): Map<string, CensusRow> {
-  const byFixture = new Map<string, CensusRow>()
+  const byFixture = new Map<string, CensusRow>();
   for (const row of OWNERSHIP_CENSUS) {
-    if (byFixture.has(row.fixture)) throw new Error(`the census has two rows for ${row.fixture}`)
-    byFixture.set(row.fixture, row)
+    if (byFixture.has(row.fixture)) throw new Error(`the census has two rows for ${row.fixture}`);
+    byFixture.set(row.fixture, row);
   }
-  return byFixture
+  return byFixture;
 }

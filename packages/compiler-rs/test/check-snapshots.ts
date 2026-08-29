@@ -17,14 +17,14 @@
  *
  *   bun test/check-snapshots.ts
  */
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const DIR = join(import.meta.dir, "__snapshots__")
-const KEY = /^exports\[`(.+)`\] = /gm
+const DIR = join(import.meta.dir, "__snapshots__");
+const KEY = /^exports\[`(.+)`\] = /gm;
 
 function keys(text: string): Set<string> {
-  return new Set([...text.matchAll(KEY)].map((match) => match[1]!))
+  return new Set([...text.matchAll(KEY)].map((match) => match[1]!));
 }
 
 async function atHead(path: string): Promise<string> {
@@ -32,37 +32,37 @@ async function atHead(path: string): Promise<string> {
     cwd: join(import.meta.dir, "..", "..", ".."),
     stdout: "pipe",
     stderr: "ignore",
-  })
-  const text = await new Response(proc.stdout).text()
-  await proc.exited
-  return proc.exitCode === 0 ? text : ""
+  });
+  const text = await new Response(proc.stdout).text();
+  await proc.exited;
+  return proc.exitCode === 0 ? text : "";
 }
 
-const lost: string[] = []
-let checked = 0
+const lost: string[] = [];
+let checked = 0;
 for (const file of readdirSync(DIR).filter((name) => name.endsWith(".snap"))) {
-  const before = keys(await atHead(file))
-  const after = keys(readFileSync(join(DIR, file), "utf8"))
-  checked += before.size
-  for (const key of before) if (!after.has(key)) lost.push(`${file}: ${key}`)
+  const before = keys(await atHead(file));
+  const after = keys(readFileSync(join(DIR, file), "utf8"));
+  checked += before.size;
+  for (const key of before) if (!after.has(key)) lost.push(`${file}: ${key}`);
 }
 
 if (checked === 0) {
   console.error(
     "the snapshot gate read no keys at HEAD — the scanner has gone blind, which reports the same " +
       "zero a clean tree does",
-  )
-  process.exit(1)
+  );
+  process.exit(1);
 }
 
 if (lost.length > 0) {
-  console.error(`${lost.length} snapshot key(s) exist at HEAD and not in the working tree:\n`)
-  for (const key of lost) console.error(`  ${key}`)
+  console.error(`${lost.length} snapshot key(s) exist at HEAD and not in the working tree:\n`);
+  for (const key of lost) console.error(`  ${key}`);
   console.error(
     "\nA key that disappears is a fixture that stopped being checked, and " +
       "`--update-snapshots` does not report it.",
-  )
-  process.exit(1)
+  );
+  process.exit(1);
 }
 
-console.log(`snapshots: ${checked} key(s) at HEAD, all still recorded.`)
+console.log(`snapshots: ${checked} key(s) at HEAD, all still recorded.`);

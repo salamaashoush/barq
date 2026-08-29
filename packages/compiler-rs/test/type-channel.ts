@@ -24,4 +24,4 @@
  * offence as adding one to `SEMANTICS.md` with no fixture, and the bidirectional
  * check in `semantics.test.ts` treats it the same way.
  */
-export const TYPE_CHANNEL_RULES: readonly string[] = Object.freeze(["B8", "C4"])
+export const TYPE_CHANNEL_RULES: readonly string[] = Object.freeze(["B8", "C4"]);

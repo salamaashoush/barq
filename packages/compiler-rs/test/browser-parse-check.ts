@@ -28,37 +28,42 @@
  * survives the first-newline rule where a character reference does not.
  */
 
-import { withChrome, type Page } from "./chrome.ts"
-import { compileBrowserOnly, compileFixture, listBrowserOnlyFixtures, listFixtures } from "./harness.ts"
+import { withChrome, type Page } from "./chrome.ts";
+import {
+  compileBrowserOnly,
+  compileFixture,
+  listBrowserOnlyFixtures,
+  listFixtures,
+} from "./harness.ts";
 
 export interface Template {
-  fixture: string
-  html: string
+  fixture: string;
+  html: string;
 }
 
 export interface Failure extends Template {
-  back: string
-  why: string
+  back: string;
+  why: string;
 }
 
 /** `template(html, true)` wraps the markup in <svg xmlns>, so parse it that way. */
 export function templateStrings(code: string): string[] {
   return [...code.matchAll(/_\$template\(`([\s\S]*?)`(?:,\s*(true))?\)/g)].map((m) =>
     m[2] ? `<svg xmlns="http://www.w3.org/2000/svg">${m[1]}</svg>` : m[1],
-  )
+  );
 }
 
 export function corpus(): Template[] {
-  const out: Template[] = []
+  const out: Template[] = [];
   for (const fixture of listFixtures()) {
-    for (const html of templateStrings(compileFixture(fixture))) out.push({ fixture, html })
+    for (const html of templateStrings(compileFixture(fixture))) out.push({ fixture, html });
   }
   for (const fixture of listBrowserOnlyFixtures()) {
     for (const html of templateStrings(compileBrowserOnly(fixture))) {
-      out.push({ fixture: `browser-only/${fixture}`, html })
+      out.push({ fixture: `browser-only/${fixture}`, html });
     }
   }
-  return out
+  return out;
 }
 
 // Runs inside the page. Kept as a string because it is evaluated over CDP.
@@ -107,8 +112,7 @@ const CHECK = `(function (rows) {
     if (why.length) bad.push({ fixture: row.fixture, html: row.html, back, why: why.join("; ") })
   }
   return JSON.stringify({ checked: rows.length, bad })
-})`
-
+})`;
 
 /**
  * Bytes and shapes the compiler refuses to bake, with what a real parser makes
@@ -118,24 +122,59 @@ const CHECK = `(function (rows) {
  * opposite: an exact value the parser must produce.
  */
 const HAZARDS = [
-  { name: "NUL in an attribute value", html: `<div id="a\u0000b"></div>`, read: "attr", not: "97,0,98" },
+  {
+    name: "NUL in an attribute value",
+    html: `<div id="a\u0000b"></div>`,
+    read: "attr",
+    not: "97,0,98",
+  },
   { name: "NUL in text", html: `<div>x\u0000y</div>`, read: "text", not: "120,0,121" },
-  { name: "NUL as a character reference", html: `<div id="a&#0;b"></div>`, read: "attr", not: "97,0,98" },
-  { name: "CR in an attribute value", html: `<div id="a\rb"></div>`, read: "attr", not: "97,13,98" },
+  {
+    name: "NUL as a character reference",
+    html: `<div id="a&#0;b"></div>`,
+    read: "attr",
+    not: "97,0,98",
+  },
+  {
+    name: "CR in an attribute value",
+    html: `<div id="a\rb"></div>`,
+    read: "attr",
+    not: "97,13,98",
+  },
   { name: "CR in text", html: `<div>x\ry</div>`, read: "text", not: "120,13,121" },
   // O9. "in body" ignores ONE U+000A character token after these open tags, and
   // a character reference does NOT escape it — the tokenizer emits the same
   // token either way. Doubling the newline is the only thing that works, and
   // these three rows are why the compiler stopped emitting `&#10;`.
   { name: "pre eats a lone newline", html: `<pre>\na</pre>`, read: "text", is: "97" },
-  { name: "pre eats &#10; exactly the same way", html: `<pre>&#10;a</pre>`, read: "text", is: "97" },
+  {
+    name: "pre eats &#10; exactly the same way",
+    html: `<pre>&#10;a</pre>`,
+    read: "text",
+    is: "97",
+  },
   { name: "pre keeps a DOUBLED newline", html: `<pre>\n\na</pre>`, read: "text", is: "10,97" },
-  { name: "textarea keeps a DOUBLED newline", html: `<textarea>\n\na</textarea>`, read: "text", is: "10,97" },
+  {
+    name: "textarea keeps a DOUBLED newline",
+    html: `<textarea>\n\na</textarea>`,
+    read: "text",
+    is: "10,97",
+  },
   // What made the rule reachable again. A `<!---->` is a token, so the newline
   // after it is not the one the rule ignores — which is why an ELIDED marker in
   // front of a leading newline needs the doubling and a kept one does not.
-  { name: "a marker protects the newline behind it", html: `<pre><!---->\na</pre>`, read: "text", is: "10,97" },
-  { name: "listing eats a lone newline the same way", html: `<listing>\na</listing>`, read: "text", is: "97" },
+  {
+    name: "a marker protects the newline behind it",
+    html: `<pre><!---->\na</pre>`,
+    read: "text",
+    is: "10,97",
+  },
+  {
+    name: "listing eats a lone newline the same way",
+    html: `<listing>\na</listing>`,
+    read: "text",
+    is: "97",
+  },
   // The other half of O9, MEASURED rather than assumed, because it is the whole
   // of the `<pre>` byte divergence between an SSR string and a serialised DOM.
   //
@@ -149,9 +188,19 @@ const HAZARDS = [
   // comparison against `renderToString` therefore shows one extra newline and is
   // right to; a TREE comparison in a real browser shows none. DESIGN §5's
   // amendment states it, and these two rows are the measurement behind it.
-  { name: "pre does NOT serialise the eaten newline back", html: `<pre>\n\na</pre>`, read: "serialize", is: `<pre>\na</pre>` },
-  { name: "a BUILT pre node serialises without doubling either", html: `\na`, read: "build", is: `<pre>\na</pre>` },
-] as const
+  {
+    name: "pre does NOT serialise the eaten newline back",
+    html: `<pre>\n\na</pre>`,
+    read: "serialize",
+    is: `<pre>\na</pre>`,
+  },
+  {
+    name: "a BUILT pre node serialises without doubling either",
+    html: `\na`,
+    read: "build",
+    is: `<pre>\na</pre>`,
+  },
+] as const;
 
 const HAZARD_CHECK = `(function (rows) {
   const bad = []
@@ -187,9 +236,9 @@ const HAZARD_CHECK = `(function (rows) {
     }
   }
   return JSON.stringify({ checked: rows.length, bad })
-})`
+})`;
 
-export const HAZARD_ROWS = HAZARDS.length
+export const HAZARD_ROWS = HAZARDS.length;
 
 /**
  * The tree a template parses to, as one string. Kept as SOURCE so the identical
@@ -213,24 +262,24 @@ const SHAPE = `(function (rows) {
     host.innerHTML = row.html
     return Array.prototype.map.call(host.content.childNodes, sig).join(",")
   }))
-})`
+})`;
 
 export interface ShapeDivergence extends Template {
-  chrome: string
-  fake: string
+  chrome: string;
+  fake: string;
   /**
    * True when the two signatures differ ONLY by the leading newline of a
    * newline-eating element's first text child — the one tree-construction rule
    * happy-dom does not implement, measured directly by the three `<pre>` hazard
    * rows above. Everything else is a real disagreement about the tree.
    */
-  leadingNewlineOnly: boolean
+  leadingNewlineOnly: boolean;
   /**
    * True when they differ only by an EMPTY text node happy-dom creates inside
    * an empty raw-text element and Chrome does not. It materialises nothing and
    * serialises to nothing, so no walk and no comparison downstream can see it.
    */
-  emptyTextOnly: boolean
+  emptyTextOnly: boolean;
 }
 
 /**
@@ -246,12 +295,12 @@ export interface ShapeDivergence extends Template {
  * parsers' bookkeeping rather than the tree.
  */
 function withoutTheLeadingNewline(signature: string): string {
-  return signature.replace(/((?:pre|textarea|listing)\[#t")(?:\\n)+/g, "$1")
+  return signature.replace(/((?:pre|textarea|listing)\[#t")(?:\\n)+/g, "$1");
 }
 
 /** The same signature with happy-dom's empty text nodes dropped. */
 function withoutEmptyText(signature: string): string {
-  return signature.replaceAll('#t""', "")
+  return signature.replaceAll('#t""', "");
 }
 
 /**
@@ -265,16 +314,16 @@ export async function checkParserAgreement(
   page: Page,
   rows: Template[],
 ): Promise<ShapeDivergence[]> {
-  if (typeof document === "undefined") throw new Error("this comparison needs happy-dom")
-  const value = await page.evaluate<string>(`${SHAPE}(${JSON.stringify(rows)})`)
-  const chrome = JSON.parse(value ?? "[]") as string[]
+  if (typeof document === "undefined") throw new Error("this comparison needs happy-dom");
+  const value = await page.evaluate<string>(`${SHAPE}(${JSON.stringify(rows)})`);
+  const chrome = JSON.parse(value ?? "[]") as string[];
   const fake = JSON.parse(
     (new Function(`return ${SHAPE}`)() as (rows: Template[]) => string)(rows),
-  ) as string[]
+  ) as string[];
 
-  const out: ShapeDivergence[] = []
+  const out: ShapeDivergence[] = [];
   for (const [index, row] of rows.entries()) {
-    if (chrome[index] === fake[index]) continue
+    if (chrome[index] === fake[index]) continue;
     out.push({
       ...row,
       chrome: chrome[index],
@@ -282,36 +331,40 @@ export async function checkParserAgreement(
       leadingNewlineOnly:
         withoutTheLeadingNewline(chrome[index]) === withoutTheLeadingNewline(fake[index]),
       emptyTextOnly: withoutEmptyText(chrome[index]) === withoutEmptyText(fake[index]),
-    })
+    });
   }
-  return out
+  return out;
 }
 
 /** Both passes, against an already-open page. Empty means every row held. */
 export async function checkParseConformance(page: Page, rows: Template[]): Promise<Failure[]> {
   const run = async (fn: string, payload: unknown): Promise<Failure[]> => {
-    const value = await page.evaluate<string>(`${fn}(${JSON.stringify(payload)})`)
-    return (JSON.parse(value ?? '{"bad":[]}') as { bad: Failure[] }).bad
-  }
-  return [...(await run(CHECK, rows)), ...(await run(HAZARD_CHECK, HAZARDS))]
+    const value = await page.evaluate<string>(`${fn}(${JSON.stringify(payload)})`);
+    return (JSON.parse(value ?? '{"bad":[]}') as { bad: Failure[] }).bad;
+  };
+  return [...(await run(CHECK, rows)), ...(await run(HAZARD_CHECK, HAZARDS))];
 }
 
 export function reportParseConformance(rows: Template[], failures: Failure[]): void {
-  console.log(`templates checked in a real browser: ${rows.length}, plus ${HAZARDS.length} hazard rows`)
+  console.log(
+    `templates checked in a real browser: ${rows.length}, plus ${HAZARDS.length} hazard rows`,
+  );
   if (failures.length === 0) {
-    console.log("all parse to one root, with no tag moved and no comment lost")
-    console.log("every refused byte is confirmed rewritten by the real parser")
-    return
+    console.log("all parse to one root, with no tag moved and no comment lost");
+    console.log("every refused byte is confirmed rewritten by the real parser");
+    return;
   }
   for (const failure of failures) {
-    console.error(`\n[${failure.why}] ${failure.fixture}\n  in : ${failure.html}\n  out: ${failure.back}`)
+    console.error(
+      `\n[${failure.why}] ${failure.fixture}\n  in : ${failure.html}\n  out: ${failure.back}`,
+    );
   }
-  console.error(`\n${failures.length} template(s) the browser reshapes`)
+  console.error(`\n${failures.length} template(s) the browser reshapes`);
 }
 
 if (import.meta.main) {
-  const rows = corpus()
-  const failures = await withChrome((page) => checkParseConformance(page, rows))
-  reportParseConformance(rows, failures)
-  process.exit(failures.length === 0 ? 0 : 1)
+  const rows = corpus();
+  const failures = await withChrome((page) => checkParseConformance(page, rows));
+  reportParseConformance(rows, failures);
+  process.exit(failures.length === 0 ? 0 : 1);
 }

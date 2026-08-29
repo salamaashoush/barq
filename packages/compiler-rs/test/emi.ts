@@ -43,7 +43,7 @@
  * would look unreached while being rendered — the same unsound direction.
  */
 
-import { stripLiterals } from "./harness.ts"
+import { stripLiterals } from "./harness.ts";
 
 const VOID_ELEMENTS = new Set([
   "area",
@@ -59,7 +59,7 @@ const VOID_ELEMENTS = new Set([
   "source",
   "track",
   "wbr",
-])
+]);
 
 /**
  * Elements whose CHILD positions the HTML parser rewrites. A stray `<i>` or a
@@ -77,19 +77,19 @@ const REPARENTING_TAGS = new Set([
   "colgroup",
   "select",
   "optgroup",
-])
+]);
 
 export interface Candidate {
   /** Offset of the `<`. */
-  at: number
-  tag: string
+  at: number;
+  tag: string;
   /** Offset just past the tag name, where an attribute may be inserted. */
-  afterTag: number
+  afterTag: number;
   /** Offset just past the `>` of the opening tag. */
-  afterOpen: number
-  selfClosing: boolean
+  afterOpen: number;
+  selfClosing: boolean;
   /** Whether an element may be inserted immediately before this one. */
-  siblingPosition: boolean
+  siblingPosition: boolean;
 }
 
 /**
@@ -99,19 +99,19 @@ export interface Candidate {
  * aligned by blanking in place rather than deleting.
  */
 export function candidates(source: string): Candidate[] {
-  const code = stripLiterals(source)
-  const out: Candidate[] = []
+  const code = stripLiterals(source);
+  const out: Candidate[] = [];
   for (let i = 0; i < code.length; i++) {
-    if (code[i] !== "<") continue
-    const name = /^<([a-z][a-z0-9]*)/.exec(code.slice(i, i + 24))
-    if (!name) continue
-    const afterTag = i + name[0].length
+    if (code[i] !== "<") continue;
+    const name = /^<([a-z][a-z0-9]*)/.exec(code.slice(i, i + 24));
+    if (!name) continue;
+    const afterTag = i + name[0].length;
     // A tag name must be followed by whitespace, `>` or `/`; `<a+b` is a
     // comparison, not markup.
-    if (!/[\s/>]/.test(code[afterTag] ?? "")) continue
-    if (!opensAnElement(code, i)) continue
-    const open = openingTagEnd(code, afterTag)
-    if (open === undefined) continue
+    if (!/[\s/>]/.test(code[afterTag] ?? "")) continue;
+    if (!opensAnElement(code, i)) continue;
+    const open = openingTagEnd(code, afterTag);
+    if (open === undefined) continue;
     out.push({
       at: i,
       tag: name[1],
@@ -119,9 +119,9 @@ export function candidates(source: string): Candidate[] {
       afterOpen: open.end,
       selfClosing: open.selfClosing || VOID_ELEMENTS.has(name[1]),
       siblingPosition: precededByChildPosition(code, i),
-    })
+    });
   }
-  return out
+  return out;
 }
 
 /**
@@ -146,17 +146,17 @@ const JSX_MAY_FOLLOW = new Set([
   "delete",
   "new",
   "default",
-])
+]);
 
 function opensAnElement(code: string, at: number): boolean {
-  let i = at - 1
-  while (i >= 0 && /\s/.test(code[i])) i--
-  if (i < 0) return true
-  if (!/[\w$)\]]/.test(code[i])) return true
-  if (code[i] === ")" || code[i] === "]") return false
-  let start = i
-  while (start >= 0 && /[\w$]/.test(code[start])) start--
-  return JSX_MAY_FOLLOW.has(code.slice(start + 1, i + 1))
+  let i = at - 1;
+  while (i >= 0 && /\s/.test(code[i])) i--;
+  if (i < 0) return true;
+  if (!/[\w$)\]]/.test(code[i])) return true;
+  if (code[i] === ")" || code[i] === "]") return false;
+  let start = i;
+  while (start >= 0 && /[\w$]/.test(code[start])) start--;
+  return JSX_MAY_FOLLOW.has(code.slice(start + 1, i + 1));
 }
 
 /**
@@ -167,16 +167,16 @@ function openingTagEnd(
   code: string,
   from: number,
 ): { end: number; selfClosing: boolean } | undefined {
-  let depth = 0
+  let depth = 0;
   for (let i = from; i < code.length; i++) {
-    const ch = code[i]
-    if (ch === "{") depth++
-    else if (ch === "}") depth--
+    const ch = code[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
     else if (depth === 0 && ch === ">") {
-      return { end: i + 1, selfClosing: code[i - 1] === "/" }
-    } else if (depth === 0 && ch === "<") return undefined
+      return { end: i + 1, selfClosing: code[i - 1] === "/" };
+    } else if (depth === 0 && ch === "<") return undefined;
   }
-  return undefined
+  return undefined;
 }
 
 /**
@@ -186,27 +186,27 @@ function openingTagEnd(
  * silently changes one root into two.
  */
 function precededByChildPosition(code: string, at: number): boolean {
-  let i = at - 1
-  while (i >= 0 && /\s/.test(code[i])) i--
-  if (i < 0) return false
+  let i = at - 1;
+  while (i >= 0 && /\s/.test(code[i])) i--;
+  if (i < 0) return false;
   // `=>` also ends in `>`, and the element after one is the arrow's whole body —
   // a second element beside it is "adjacent JSX elements must be wrapped".
-  if (code[i] === ">") return code[i - 1] !== "="
-  return code[i] === "}"
+  if (code[i] === ">") return code[i - 1] !== "=";
+  return code[i] === "}";
 }
 
-export const PROBE_ATTRIBUTE = "data-emi-probe"
+export const PROBE_ATTRIBUTE = "data-emi-probe";
 
 /** The candidate marked so that rendering it anywhere becomes visible. */
 export function probed(source: string, candidate: Candidate, id: number): string {
-  return insert(source, candidate.afterTag, ` ${PROBE_ATTRIBUTE}="${id}"`)
+  return insert(source, candidate.afterTag, ` ${PROBE_ATTRIBUTE}="${id}"`);
 }
 
-export type Operator = "attribute" | "sibling" | "text"
+export type Operator = "attribute" | "sibling" | "text";
 
 export interface Mutation {
-  operator: Operator
-  source: string
+  operator: Operator;
+  source: string;
 }
 
 /**
@@ -231,19 +231,19 @@ export function mutations(source: string, candidate: Candidate): Mutation[] {
       operator: "attribute",
       source: insert(source, candidate.afterTag, ` data-emi="a&amp;b" lang="emi"`),
     },
-  ]
+  ];
   if (candidate.siblingPosition) {
     out.push({
       operator: "sibling",
       source: insert(source, candidate.at, `<i class="emi-sibling">emi</i>`),
-    })
+    });
   }
   if (!candidate.selfClosing) {
-    out.push({ operator: "text", source: insert(source, candidate.afterOpen, "emi-text") })
+    out.push({ operator: "text", source: insert(source, candidate.afterOpen, "emi-text") });
   }
-  return out
+  return out;
 }
 
 function insert(source: string, at: number, text: string): string {
-  return source.slice(0, at) + text + source.slice(at)
+  return source.slice(0, at) + text + source.slice(at);
 }

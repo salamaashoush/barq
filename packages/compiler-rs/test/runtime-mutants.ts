@@ -63,26 +63,26 @@
  *   bun test/runtime-mutants.ts key scope  # only those whose id contains a word
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { basename, dirname, join } from "node:path"
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 
-const CRATE = join(import.meta.dir, "..")
-const CORE_SRC = join(CRATE, "..", "core", "src")
-const FLOW = join(CORE_SRC, "flow.ts")
-const DOM = join(CORE_SRC, "dom.ts")
-const ASYNC = join(CORE_SRC, "async.ts")
-const SCRATCH = process.env.BARQ_RUNTIME_MUTANT_DIR ?? join(tmpdir(), "barq-runtime-mutants")
+const CRATE = join(import.meta.dir, "..");
+const CORE_SRC = join(CRATE, "..", "core", "src");
+const FLOW = join(CORE_SRC, "flow.ts");
+const DOM = join(CORE_SRC, "dom.ts");
+const ASYNC = join(CORE_SRC, "async.ts");
+const SCRATCH = process.env.BARQ_RUNTIME_MUTANT_DIR ?? join(tmpdir(), "barq-runtime-mutants");
 
 interface Mutant {
-  id: string
+  id: string;
   /**
    * The core module the edit is against. `flow.ts` by default, because that is
    * where M4 put the four primitives — but M5 REWROTE `dom.ts` and this table
    * could not express a mutation of it, which is why the two defects M5's
    * repair round found in `spread` had nothing that could have caught them.
    */
-  file?: string
+  file?: string;
   /**
    * An export of `file` that the package index also re-exports, used by the
    * generated preload to assert the scratch copy is the one a fixture would
@@ -90,16 +90,16 @@ interface Mutant {
    * other module has to name its own, or every row against it reports
    * NOT INSTALLED for the wrong reason.
    */
-  probe?: string
+  probe?: string;
   /** the primitive or invariant this edit corrupts */
-  target: string
+  target: string;
   /** what the mutation makes the runtime do wrong, in one line */
-  what: string
+  what: string;
   /** the channel that is EXPECTED to catch it, so a surprise is visible as one */
-  expect: string
+  expect: string;
   /** a source edit against `flow.ts`; empty for the null mutant and for overrides */
-  find: string
-  replace: string
+  find: string;
+  replace: string;
   /**
    * An override installed over the `signals.ts` NAMESPACE instead of a source
    * edit, as one object-literal member. The ownership primitives cannot be
@@ -107,7 +107,7 @@ interface Mutant {
    * and the L2b channel reads its sink — so they are mutated where they are
    * consumed: `real` is the traced namespace and the member shadows one export.
    */
-  override?: string
+  override?: string;
 }
 
 /**
@@ -317,7 +317,7 @@ const MUTANTS: Mutant[] = [
       "was VIOLATED in until M5 — `addEventListener` with nothing that owns the removal",
     expect: "leaks (listener)",
     find:
-      '  if (owner === null) return;\n' +
+      "  if (owner === null) return;\n" +
       '  underScope(owner, "listen", () => {\n' +
       "    onCleanup(() => element.removeEventListener(type, routed, options));\n" +
       "  });",
@@ -428,8 +428,7 @@ const MUTANTS: Mutant[] = [
     // the guard itself were cut in the M7 gate round — a stale continuation may
     // retire neither a `mutate()` overlay nor the LIVE request's controller.
     expect: "semantics (A2, the overlay and the live controller)",
-    find:
-      "      gen === issued && (owner === null || owner.gen === scopeGen) && !controller.signal.aborted;",
+    find: "      gen === issued && (owner === null || owner.gen === scopeGen) && !controller.signal.aborted;",
     replace: "      true;",
   },
   {
@@ -440,9 +439,9 @@ const MUTANTS: Mutant[] = [
     find: "  for (let i = 0; i < nodes.length; i++) nodes[i].parentNode?.removeChild(nodes[i]);",
     replace: "  return;",
   },
-]
+];
 
-const PRE_EXISTING = ["test/oracle.test.ts", "test/ownership.test.ts"]
+const PRE_EXISTING = ["test/oracle.test.ts", "test/ownership.test.ts"];
 const L4 = [
   "test/metamorphic.test.ts",
   "test/leaks.test.ts",
@@ -452,7 +451,7 @@ const L4 = [
   // DOM until something inside a channel reads a signal — so the only channel
   // that can kill it is the absolute one.
   "test/semantics.test.ts",
-]
+];
 
 /**
  * The marker every scratch copy carries, asserted by the generated preload.
@@ -465,42 +464,45 @@ const L4 = [
  * that reports SURVIVED when its mutation was never installed is worse than no
  * runner.
  */
-const MARKER = "__barqMutantId"
+const MARKER = "__barqMutantId";
 
 function prepare(mutant: Mutant): { preload: string; env: Record<string, string> } {
   if (mutant.override !== undefined) {
-    return prepareOverride(mutant as Mutant & { override: string })
+    return prepareOverride(mutant as Mutant & { override: string });
   }
-  const target = mutant.file ?? FLOW
-  const original = readFileSync(target, "utf8")
-  let source = original
+  const target = mutant.file ?? FLOW;
+  const original = readFileSync(target, "utf8");
+  let source = original;
   if (mutant.find !== "") {
     if (!source.includes(mutant.find)) {
       throw new Error(
         `mutant ${mutant.id} is STALE: ${target} no longer contains\n${mutant.find}\n` +
           "A mutation that cannot be applied is a mutation that is not being run, and a table " +
           "of unapplied mutations reports a coverage that does not exist.",
-      )
+      );
     }
-    source = source.replace(mutant.find, mutant.replace)
-    if (source === original) throw new Error(`mutant ${mutant.id} changed nothing`)
+    source = source.replace(mutant.find, mutant.replace);
+    if (source === original) throw new Error(`mutant ${mutant.id} changed nothing`);
   }
-  source += `\nexport const ${MARKER} = ${JSON.stringify(mutant.id)};\n`
+  source += `\nexport const ${MARKER} = ${JSON.stringify(mutant.id)};\n`;
   // Relative imports have to keep resolving to the REAL sibling modules, and to
   // the same file paths the tracer's `mock.module` keys on.
-  source = source.replace(/from "\.\/([\w.-]+)"/g, (_m, file: string) => `from "${join(CORE_SRC, file)}"`)
+  source = source.replace(
+    /from "\.\/([\w.-]+)"/g,
+    (_m, file: string) => `from "${join(CORE_SRC, file)}"`,
+  );
 
-  mkdirSync(SCRATCH, { recursive: true })
-  const file = join(SCRATCH, `${basename(target, ".ts")}-${mutant.id}.ts`)
-  writeFileSync(file, source)
+  mkdirSync(SCRATCH, { recursive: true });
+  const file = join(SCRATCH, `${basename(target, ".ts")}-${mutant.id}.ts`);
+  writeFileSync(file, source);
 
-  const preload = join(SCRATCH, `preload-${mutant.id}.ts`)
+  const preload = join(SCRATCH, `preload-${mutant.id}.ts`);
   // `dom.ts`'s registry entry belongs to the tracer, so a dom mutant is handed
   // to it as the module to WRAP; `flow.ts` has no such owner and is registered
   // here, after the tracer, so the mutant binds the counted effects.
-  const dom = target === DOM
-  const probe = mutant.probe ?? (dom ? "listen" : "branch")
-  const coreIndex = Bun.resolveSync("@barqjs/core", join(CRATE, "test"))
+  const dom = target === DOM;
+  const probe = mutant.probe ?? (dom ? "listen" : "branch");
+  const coreIndex = Bun.resolveSync("@barqjs/core", join(CRATE, "test"));
   writeFileSync(
     preload,
     [
@@ -530,8 +532,8 @@ function prepare(mutant: Mutant): { preload: string; env: Record<string, string>
       `}`,
       ``,
     ].join("\n"),
-  )
-  return { preload, env: dom ? { BARQ_DOM_OVERRIDE: file } : {} }
+  );
+  return { preload, env: dom ? { BARQ_DOM_OVERRIDE: file } : {} };
 }
 
 /**
@@ -539,13 +541,14 @@ function prepare(mutant: Mutant): { preload: string; env: Record<string, string>
  * effect counters and the ownership sink stay installed and only the one export
  * named by the mutant changes.
  */
-function prepareOverride(
-  mutant: Mutant & { override: string },
-): { preload: string; env: Record<string, string> } {
-  const coreIndex = Bun.resolveSync("@barqjs/core", join(CRATE, "test"))
-  const signals = join(dirname(coreIndex), "signals.ts")
-  mkdirSync(SCRATCH, { recursive: true })
-  const preload = join(SCRATCH, `preload-${mutant.id}.ts`)
+function prepareOverride(mutant: Mutant & { override: string }): {
+  preload: string;
+  env: Record<string, string>;
+} {
+  const coreIndex = Bun.resolveSync("@barqjs/core", join(CRATE, "test"));
+  const signals = join(dirname(coreIndex), "signals.ts");
+  mkdirSync(SCRATCH, { recursive: true });
+  const preload = join(SCRATCH, `preload-${mutant.id}.ts`);
   writeFileSync(
     preload,
     [
@@ -563,17 +566,17 @@ function prepareOverride(
       `}`,
       ``,
     ].join("\n"),
-  )
-  return { preload, env: {} }
+  );
+  return { preload, env: {} };
 }
 
 interface Outcome {
-  pass: number
-  fail: number
-  crashed: boolean
+  pass: number;
+  fail: number;
+  crashed: boolean;
   /** the install guard fired: the mutation applied to the text and nothing loaded it */
-  uninstalled: boolean
-  detail: string
+  uninstalled: boolean;
+  detail: string;
 }
 
 async function run(
@@ -585,54 +588,59 @@ async function run(
     stdout: "pipe",
     stderr: "pipe",
     env: { ...process.env, ...prepared.env, BARQ_RUNTIME_MUTANT: "1" },
-  })
+  });
   const [out, err] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
-  ])
-  await proc.exited
-  const text = `${out}\n${err}`
-  const pass = Number(/^\s*(\d+) pass$/m.exec(text)?.[1] ?? "0")
-  const fail = Number(/^\s*(\d+) fail$/m.exec(text)?.[1] ?? "0")
-  const crashed = pass === 0 && fail === 0
-  const uninstalled = text.includes("was NOT INSTALLED")
-  const names = [...text.matchAll(/^\(fail\) (.+?)( \[[\d.]+m?s\])?$/gm)].map((m) => m[1])
+  ]);
+  await proc.exited;
+  const text = `${out}\n${err}`;
+  const pass = Number(/^\s*(\d+) pass$/m.exec(text)?.[1] ?? "0");
+  const fail = Number(/^\s*(\d+) fail$/m.exec(text)?.[1] ?? "0");
+  const crashed = pass === 0 && fail === 0;
+  const uninstalled = text.includes("was NOT INSTALLED");
+  const names = [...text.matchAll(/^\(fail\) (.+?)( \[[\d.]+m?s\])?$/gm)].map((m) => m[1]);
   return {
     pass,
     fail,
     crashed,
     uninstalled,
     detail: crashed
-      ? text.split("\n").filter((line) => line.trim() !== "").slice(-4).join(" / ").slice(0, 240)
+      ? text
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .slice(-4)
+          .join(" / ")
+          .slice(0, 240)
       : [...new Set(names)].slice(0, 4).join(" · "),
-  }
+  };
 }
 
 function verdict(outcome: Outcome): string {
   // Reported apart from KILLED on purpose: a red row here says nothing about
   // the mutation, only that it never reached the runtime.
-  if (outcome.uninstalled) return "NOT INSTALLED"
-  if (outcome.crashed) return "CRASHED"
-  return outcome.fail > 0 ? `KILLED (${outcome.fail})` : "survived"
+  if (outcome.uninstalled) return "NOT INSTALLED";
+  if (outcome.crashed) return "CRASHED";
+  return outcome.fail > 0 ? `KILLED (${outcome.fail})` : "survived";
 }
 
-const filters = process.argv.slice(2)
+const filters = process.argv.slice(2);
 const selected = MUTANTS.filter(
   (m) => m.id === "null" || filters.length === 0 || filters.some((word) => m.id.includes(word)),
-)
+);
 
 console.log(
   `runtime mutants: ${selected.length} of ${MUTANTS.length}, against flow.ts and the ownership primitive\n` +
     `  pre-existing channels: ${PRE_EXISTING.join(" ")}\n` +
     `  L4 channels:           ${L4.join(" ")}\n`,
-)
+);
 
-const rows: string[] = []
+const rows: string[] = [];
 for (const mutant of selected) {
-  const prepared = prepare(mutant)
-  const before = await run(prepared, PRE_EXISTING)
-  const after = await run(prepared, L4)
-  const caught = before.fail + after.fail > 0 || before.crashed || after.crashed
+  const prepared = prepare(mutant);
+  const before = await run(prepared, PRE_EXISTING);
+  const after = await run(prepared, L4);
+  const caught = before.fail + after.fail > 0 || before.crashed || after.crashed;
   console.log(
     `── ${mutant.id}\n` +
       `   target   ${mutant.target}\n` +
@@ -640,7 +648,7 @@ for (const mutant of selected) {
       `   expected ${mutant.expect}\n` +
       `   L1/L2/L3 ${verdict(before)}${before.detail ? ` — ${before.detail}` : ""}\n` +
       `   L4       ${verdict(after)}${after.detail ? ` — ${after.detail}` : ""}\n`,
-  )
+  );
   rows.push(
     [
       mutant.id,
@@ -649,25 +657,25 @@ for (const mutant of selected) {
       verdict(after),
       mutant.id === "null" ? "green, as required" : caught ? "caught" : "SURVIVED EVERYTHING",
     ].join(" | "),
-  )
+  );
 }
 
-console.log("\n| mutant | target | pre-existing | L4 | verdict |")
-console.log("|---|---|---|---|---|")
-for (const row of rows) console.log(`| ${row} |`)
+console.log("\n| mutant | target | pre-existing | L4 | verdict |");
+console.log("|---|---|---|---|---|");
+for (const row of rows) console.log(`| ${row} |`);
 
-if (!process.env.BARQ_KEEP_MUTANTS) rmSync(SCRATCH, { recursive: true, force: true })
+if (!process.env.BARQ_KEEP_MUTANTS) rmSync(SCRATCH, { recursive: true, force: true });
 
-const survived = rows.filter((row) => row.endsWith("| SURVIVED EVERYTHING"))
+const survived = rows.filter((row) => row.endsWith("| SURVIVED EVERYTHING"));
 if (survived.length > 0) {
-  console.log(`\n${survived.length} mutant(s) survived every channel — that is the finding.`)
+  console.log(`\n${survived.length} mutant(s) survived every channel — that is the finding.`);
 }
 if (rows[0] !== undefined && !rows[0].startsWith("null | — | survived | survived")) {
   console.log(
     "\nThe NULL mutant is not green. Every row above is unattributable until it is: a red row " +
       "could be an artefact of the copy or of the preload rather than of any mutation.",
-  )
+  );
 }
 
-export { MUTANTS }
-export const MUTANT_DIR = dirname(SCRATCH)
+export { MUTANTS };
+export const MUTANT_DIR = dirname(SCRATCH);

@@ -110,7 +110,7 @@ export const MATRIX_EXCEPTIONS = {
    * plus the one browser-only exemption above.
    */
   declaredDivergences: 4,
-} as const
+} as const;
 
 /**
  * The matrix's census, pinned in both directions (`ratchet.ts`).
@@ -169,10 +169,15 @@ export const MATRIX_EXCEPTIONS = {
 // fact about the DOM emission and not a conformance verdict. A claim asserting
 // it was written into the semantics fixture first and L3 rejected it, which is
 // the differential doing exactly what it is for.
+// And +1 fixture / +7 cells for `no-hydration-island`: `<NoHydration>` lowered
+// onto the `island` region. It is `renderableOnBoth` because the construct has an
+// implementation on each backend under ONE name — the server's takes the
+// insertion pair it has no use for so that `region_call` stays a single emission,
+// which is what `SHARED_ABI` is for.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 195,
+  fixtures: 196,
   modes: 7,
-  cells: 1365,
-  renderableOnBoth: 163,
+  cells: 1372,
+  renderableOnBoth: 164,
   renderableOnNeither: 32,
-})
+});

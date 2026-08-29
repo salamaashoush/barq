@@ -1,4 +1,4 @@
-import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts"
+import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts";
 
 /**
  * The hydration channel (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4, H6).
@@ -19,13 +19,13 @@ import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./
 
 export interface Compiled {
   /** The DOM module, compiled `hydratable`. */
-  dom: FixtureModule
+  dom: FixtureModule;
   /** The string module, compiled `hydratable`. */
-  ssr: FixtureModule
+  ssr: FixtureModule;
   /** The emitted DOM source, for the H3 emission diff. */
-  domCode: string
+  domCode: string;
   /** The emitted string source. */
-  ssrCode: string
+  ssrCode: string;
 }
 
 /**
@@ -43,7 +43,7 @@ export function compileBoth(
   return [
     compileSource(source, `${tag}.tsx`, { hydratable, dev }),
     compileSource(source, `${tag}.tsx`, { ssr: true, hydratable, dev }),
-  ]
+  ];
 }
 
 export async function compileFixture(
@@ -51,7 +51,7 @@ export async function compileFixture(
   hydratable = true,
   dev = false,
 ): Promise<Compiled> {
-  return compileText(fixtureSource(name), name, hydratable, dev)
+  return compileText(fixtureSource(name), name, hydratable, dev);
 }
 
 export async function compileText(
@@ -60,28 +60,28 @@ export async function compileText(
   hydratable = true,
   dev = false,
 ): Promise<Compiled> {
-  const [domCode, ssrCode] = compileBoth(source, tag, hydratable, dev)
+  const [domCode, ssrCode] = compileBoth(source, tag, hydratable, dev);
   return {
     domCode,
     ssrCode,
     dom: await loadModule(domCode, `hy-dom-${tag}`),
     ssr: await loadModule(ssrCode, `hy-ssr-${tag}`),
-  }
+  };
 }
 
-const SSR_HTML_BRAND = Symbol.for("barq.ssr.html")
+const SSR_HTML_BRAND = Symbol.for("barq.ssr.html");
 
 /** The wire bytes: the string module's own output, with nothing normalised. */
 export function wire(mod: FixtureModule): string {
-  const value: unknown = (mod.default as unknown as (s: unknown) => unknown)(null)
+  const value: unknown = (mod.default as unknown as (s: unknown) => unknown)(null);
   if (
     typeof value === "object" &&
     value !== null &&
     (value as Record<symbol, unknown>)[SSR_HTML_BRAND] === true
   ) {
-    return (value as { t: string }).t
+    return (value as { t: string }).t;
   }
-  return typeof value === "string" ? value : ""
+  return typeof value === "string" ? value : "";
 }
 
 /**
@@ -95,16 +95,14 @@ export function wire(mod: FixtureModule): string {
  * would pin the fake DOM's gap as a hydration divergence, and the exact count is
  * pinned by `compile.rs`'s two O9 tests and the three Chrome rows behind them.
  */
-const NEWLINE_EATING = new Set(["pre", "textarea", "listing"])
+const NEWLINE_EATING = new Set(["pre", "textarea", "listing"]);
 
 export function host(markup = ""): HTMLElement {
-  const element = document.createElement("div")
-  element.innerHTML = markup
-  document.body.appendChild(element)
-  return element
+  const element = document.createElement("div");
+  element.innerHTML = markup;
+  document.body.appendChild(element);
+  return element;
 }
-
-
 
 // ---------------------------------------------------------------------------
 // the node-identity census — M5's metamorphic channel, pointed at hydration
@@ -118,48 +116,48 @@ export function host(markup = ""): HTMLElement {
  * is the before; `reuse` is the comparison.
  */
 export function census(root: Node): Node[] {
-  const out: Node[] = []
+  const out: Node[] = [];
   const walk = (node: Node): void => {
     for (const child of Array.from(node.childNodes)) {
-      out.push(child)
-      walk(child)
+      out.push(child);
+      walk(child);
     }
-  }
-  walk(root)
-  return out
+  };
+  walk(root);
+  return out;
 }
 
 export interface Reuse {
   /** Nodes present before hydration that are still in the tree afterwards. */
-  kept: number
+  kept: number;
   /** Nodes present before hydration that hydration removed or replaced. */
-  lost: number
-  percent: number
+  lost: number;
+  percent: number;
   /** The first lost node, described, so a failure names the position. */
-  firstLost: string | null
+  firstLost: string | null;
 }
 
 export function reuse(before: readonly Node[], root: Node): Reuse {
-  const after = new Set<Node>(census(root))
-  let kept = 0
-  let firstLost: string | null = null
+  const after = new Set<Node>(census(root));
+  let kept = 0;
+  let firstLost: string | null = null;
   for (const node of before) {
-    if (after.has(node)) kept++
-    else if (firstLost === null) firstLost = describe(node)
+    if (after.has(node)) kept++;
+    else if (firstLost === null) firstLost = describe(node);
   }
-  const lost = before.length - kept
+  const lost = before.length - kept;
   return {
     kept,
     lost,
     percent: before.length === 0 ? 100 : (kept / before.length) * 100,
     firstLost,
-  }
+  };
 }
 
 export function describe(node: Node): string {
-  if (node.nodeType === 8) return `<!--${(node as Comment).data}-->`
-  if (node.nodeType === 3) return `text ${JSON.stringify((node as Text).data)}`
-  return `<${node.nodeName.toLowerCase()}>`
+  if (node.nodeType === 8) return `<!--${(node as Comment).data}-->`;
+  if (node.nodeType === 3) return `text ${JSON.stringify((node as Text).data)}`;
+  return `<${node.nodeName.toLowerCase()}>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,23 +173,23 @@ export function describe(node: Node): string {
  * counted separately by `payload`.
  */
 export function shape(root: Node, canonicalizeLeadingNewlines = false): string {
-  let out = ""
-  let first = true
+  let out = "";
+  let first = true;
   for (const node of Array.from(root.childNodes)) {
     if (node.nodeType === 8) {
-      const data = (node as Comment).data
-      if (data === "" || data.charAt(0) === "[" || data === "]") continue
-      out += `<!--${data}-->`
-      continue
+      const data = (node as Comment).data;
+      if (data === "" || data.charAt(0) === "[" || data === "]") continue;
+      out += `<!--${data}-->`;
+      continue;
     }
     if (node.nodeType === 3) {
-      const data = (node as Text).data
-      out += first && canonicalizeLeadingNewlines ? data.replace(/^\n+/, "") : data
-      first = false
-      continue
+      const data = (node as Text).data;
+      out += first && canonicalizeLeadingNewlines ? data.replace(/^\n+/, "") : data;
+      first = false;
+      continue;
     }
-    first = false
-    const element = node as Element
+    first = false;
+    const element = node as Element;
     // `class` is a SET, and the two paths reach it from different directions: a
     // hydrating element already carries the server's tokens and the class
     // channel adds its own to what is there, where a cold render writes them in
@@ -205,17 +203,17 @@ export function shape(root: Node, canonicalizeLeadingNewlines = false): string {
           : `${a.name}="${a.value}"`,
       )
       .toSorted()
-      .join(" ")
-    out += `<${element.localName}${attrs === "" ? "" : ` ${attrs}`}>`
-    out += shape(element, NEWLINE_EATING.has(element.localName))
-    out += `</${element.localName}>`
+      .join(" ");
+    out += `<${element.localName}${attrs === "" ? "" : ` ${attrs}`}>`;
+    out += shape(element, NEWLINE_EATING.has(element.localName));
+    out += `</${element.localName}>`;
   }
-  return out
+  return out;
 }
 
 /** Text runs fuse differently on the two paths; this is the comparison key. */
 export function fused(root: Node): string {
-  return shape(root).replaceAll(/\s+/g, " ")
+  return shape(root).replaceAll(/\s+/g, " ");
 }
 
 // ---------------------------------------------------------------------------
@@ -223,13 +221,13 @@ export function fused(root: Node): string {
 // ---------------------------------------------------------------------------
 
 export interface Outcome {
-  markup: string
-  hydratedShape: string
-  coldShape: string
-  reuse: Reuse
-  recovered: boolean
-  mismatches: string[]
-  effects: { hot: number; cold: number }
+  markup: string;
+  hydratedShape: string;
+  coldShape: string;
+  reuse: Reuse;
+  recovered: boolean;
+  mismatches: string[];
+  effects: { hot: number; cold: number };
 }
 
 /**
@@ -243,14 +241,14 @@ export interface Outcome {
  */
 export interface KnownDivergence {
   /** Every `MismatchKind` the run must report, sorted, and no other. */
-  kinds: string[]
+  kinds: string[];
   /** Whether the whole page had to be re-rendered on the client. */
-  recovered: boolean
+  recovered: boolean;
   /** The exact node-reuse percentage, rounded. Not a floor — an equality. */
-  reuse: number
+  reuse: number;
   /** The hydrated shape, when it is NOT the cold one. `null` when they match. */
-  shape: string | null
-  why: string
+  shape: string | null;
+  why: string;
 }
 
 /**
@@ -277,36 +275,35 @@ export interface KnownDivergence {
  * for.
  */
 export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
-  // ── the fallback element path: built, never claimed ────────────────────
+  // `dynamic` WAS registered here at 33% reuse with a `structure` mismatch, for
+  // "the fallback element path: built, never claimed". It is deleted rather than
+  // re-measured, which is what a registry row is for — it now claims everything
+  // and reports nothing, so it belongs on the green path with every other row.
   //
-  // `createElement` is the shape a template cannot express — a spread, a
-  // reshaping element, a `<template>` whose children live in `.content`, a
-  // foreign namespace. The string backend serialised the whole subtree inline
-  // as one hole's value, so there is no walk to claim it with, and `_$hole(null,
-  // null, …)` says so at the call site. The hole rebuilds; nothing else does.
-
-  // ── a construct the flow pass REFUSED, reaching its primitive through an
-  //    adapter that has no flags to forward ───────────────────────────────
+  // What closed it: `element()` was unconditionally `withoutClaim`, because a
+  // null-addressed hole meant "the server serialised this subtree inline and
+  // there is no walk to claim it with". That was true only because nothing had
+  // taught the fallback path to walk. It now claims by TAG NAME
+  // (`hydration.ts`'s `claimElement`), the compiler marks the position `TAGGED`
+  // (`ir/region.rs`) so the hole stops suspending the cursor, and the element's
+  // children are claimed `WHOLE` — the server writes them no boundary comments,
+  // so the claim is every child of the node.
   //
-  // `components.ts`'s adapters call `branch`/`each` with `flags = 0`, so the
-  // primitive is told nothing about `hydratable` and builds cold inside the
-  // range the enclosing `insert` claimed. Detected, reported, and confined to
-  // that range. Closing it means giving the adapters the flag, which is a
-  // change to the thirteen constructs' own surface (M8's consumers touch the
-  // same seam) rather than to the claim algorithm.
-  dynamic: {
-    kinds: ["structure"],
-    recovered: false,
-    reuse: 33,
-    shape: null,
-    why: "M9 lowers `Dynamic`, so the branch is claimed and the FLAGS are there — but the element its string arm builds is built by tag name, and a built subtree has no counterpart on the wire to claim: the range is claimed, its content rebuilt, and the server's node reconciled away",
-  },
+  // The reason the path was cold — "a `template()` inside it takes the node
+  // belonging to the NEXT position" — is answered by scoping the cursor to the
+  // claimed element's own child list, and by resolving thunk children INSIDE
+  // that cursor rather than on the way into `applyInsert`.
+  //
+  // This is what makes a tree rooted at `<html>` hydratable at all: the parser
+  // strips `<html>`, `<head>` and `<body>` out of a `<template>`, so the whole
+  // document frame can only be emitted as `element()` and every one of those
+  // positions used to build cold.
   "control-flow-await-suspense": {
-    kinds: ["structure"],
+    kinds: [],
     recovered: false,
     reuse: 60,
     shape: null,
-    why: "M13 took the second half: a loading boundary now CLAIMS a settled range in place instead of parking into a detached fragment, and the string backend marks an unsettled one `<!--[f:-->` so this fixture — whose resource never settles at wire time — still parks correctly. 43% → 60%. What remains is the fallback subtree the server wrote for a body the client cannot settle either, which has no counterpart to claim",
+    why: "the STRUCTURE mismatch is gone: an unsettled `<!--[f:-->` range now hands its claim to the boundary's own fallback build (`takeUnsettledClaim`), so the walk no longer runs off the end of markup it declined to claim. What is left is a NESTED case and not a mismatch — the outer boundary owns the range, a boundary inside it absorbs the pendingness, so the outer renders content and its held claim is evicted rather than used. 60% is the server's fallback subtree being rebuilt by the inner boundary, which is the arm that actually shows",
   },
 
   // ── a boundary that parks, and a boundary that recovers ────────────────
@@ -368,8 +365,7 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     kinds: ["text"],
     recovered: false,
     reuse: 57,
-    shape:
-      '<section class="wrap"><div class="raw">replaced</div><span>after</span></section>',
+    shape: '<section class="wrap"><div class="raw">replaced</div><span>after</span></section>',
     why: "`innerHTML` and a child are one claimed run on the wire: the write replaces what the server sent, and the insert then reconciles its claimed nodes over the write's own",
   },
   "attribute-namespaces": {
@@ -380,7 +376,7 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
       '<div><my-grid compact="" label="grid" rows="2"></my-grid><button data-beeps="0" type="button">beep</button></div>',
     why: "a custom element's `rows` resolves to the PROPERTY on the client and to an attribute on the server (there is no prototype chain on a string), so the served attribute survives beside the property — every node is claimed, and the difference is one attribute React leaves too",
   },
-}
+};
 
 /**
  * The hydration channel's declared REACH — `SEMANTICS.md` §11's H family.
@@ -405,4 +401,4 @@ export const HYDRATION_CHANNEL_RULES: readonly string[] = Object.freeze([
   "H3",
   "H4",
   "H6",
-])
+]);

@@ -15,12 +15,12 @@
  *   bun test/browser-svg-class-check.ts [--chrome /path/to/chromium]
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { withChrome, type Page } from "./chrome.ts"
-import { compileFixture } from "./harness.ts"
+import { withChrome, type Page } from "./chrome.ts";
+import { compileFixture } from "./harness.ts";
 
 const PROBE = `
 import Component, { active } from "./fixture.js"
@@ -73,84 +73,87 @@ flush()
 result.fixture.off = circle.getAttribute("class")
 
 window.__barqSvgClass = result
-`
+`;
 
 export interface Probe {
-  classNameHasSetter: boolean
-  classNameIsAnimatedString: boolean
-  classNameAssignment: string
-  setPropClass: string | null
-  setPropClassList: string | null
+  classNameHasSetter: boolean;
+  classNameIsAnimatedString: boolean;
+  classNameAssignment: string;
+  setPropClass: string | null;
+  setPropClassList: string | null;
 }
 
 export interface Fixture {
-  initial: string | null
-  initialStrokeWidth: string | null
-  on: string | null
-  onStrokeWidth: string | null
-  off: string | null
+  initial: string | null;
+  initialStrokeWidth: string | null;
+  on: string | null;
+  onStrokeWidth: string | null;
+  off: string | null;
 }
 
 export interface SvgClassResult {
-  probes: Probe
-  fixture: Fixture
+  probes: Probe;
+  fixture: Fixture;
 }
 
 /** The bundled probe page, on disk. The caller owns `cleanup`. */
 export function buildProbePage(): { pagePath: string; cleanup: () => void } {
   // The page is bundled outside the workspace, so the bare specifier has nothing
   // to resolve against. Point both modules straight at the runtime's entry.
-  const core = JSON.stringify(Bun.resolveSync("@barqjs/core", import.meta.dir))
-  const rewrite = (code: string): string => code.replaceAll('"@barqjs/core"', core)
+  const core = JSON.stringify(Bun.resolveSync("@barqjs/core", import.meta.dir));
+  const rewrite = (code: string): string => code.replaceAll('"@barqjs/core"', core);
 
-  const workdir = mkdtempSync(join(tmpdir(), "barq-svg-class-page-"))
-  writeFileSync(join(workdir, "fixture.js"), rewrite(compileFixture("svg-dynamic-class")))
-  writeFileSync(join(workdir, "probe.js"), rewrite(PROBE))
+  const workdir = mkdtempSync(join(tmpdir(), "barq-svg-class-page-"));
+  writeFileSync(join(workdir, "fixture.js"), rewrite(compileFixture("svg-dynamic-class")));
+  writeFileSync(join(workdir, "probe.js"), rewrite(PROBE));
   return {
     pagePath: join(workdir, "page.html"),
     cleanup: () => rmSync(workdir, { recursive: true, force: true }),
-  }
+  };
 }
 
 async function bundleInto(pagePath: string): Promise<void> {
-  const workdir = pagePath.slice(0, pagePath.lastIndexOf("/"))
+  const workdir = pagePath.slice(0, pagePath.lastIndexOf("/"));
   const built = await Bun.build({
     entrypoints: [join(workdir, "probe.js")],
     target: "browser",
     format: "esm",
-  })
+  });
   if (!built.success) {
-    for (const log of built.logs) console.error(String(log))
-    throw new Error("the probe bundle did not build")
+    for (const log of built.logs) console.error(String(log));
+    throw new Error("the probe bundle did not build");
   }
-  const bundle = await built.outputs[0].text()
+  const bundle = await built.outputs[0].text();
   writeFileSync(
     pagePath,
     `<!doctype html><meta charset="utf-8"><title>barq svg class</title><script type="module">\n${bundle}\n</script>`,
-  )
+  );
 }
 
 /** Drive the probe page in an already-running Chrome. */
 export async function checkSvgClass(page: Page): Promise<SvgClassResult> {
-  const { pagePath, cleanup } = buildProbePage()
+  const { pagePath, cleanup } = buildProbePage();
   try {
-    await bundleInto(pagePath)
-    await page.open(`file://${pagePath}`)
+    await bundleInto(pagePath);
+    await page.open(`file://${pagePath}`);
     for (let attempt = 0; attempt < 200; attempt++) {
       const value = await page.evaluate<string | null>(
         "window.__barqSvgClass ? JSON.stringify(window.__barqSvgClass) : null",
-      )
-      if (value) return JSON.parse(value) as SvgClassResult
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      );
+      if (value) return JSON.parse(value) as SvgClassResult;
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    throw new Error("the page never published a result — check the bundle for a load error")
+    throw new Error("the page never published a result — check the bundle for a load error");
   } finally {
-    cleanup()
+    cleanup();
   }
 }
 
 /** Every O5 claim, as `[why, held]` pairs. */
-export function svgClassClaims({ probes, fixture }: SvgClassResult): Array<[string, boolean, unknown]> {
+export function svgClassClaims({
+  probes,
+  fixture,
+}: SvgClassResult): Array<[string, boolean, unknown]> {
   return [
     [
       "SVGElement.prototype.className has no setter (the bug is real)",
@@ -190,23 +193,23 @@ export function svgClassClaims({ probes, fixture }: SvgClassResult): Array<[stri
       fixture.onStrokeWidth,
     ],
     ["the class goes back", fixture.off === "dot", fixture.off],
-  ]
+  ];
 }
 
 if (import.meta.main) {
-  const result = await withChrome((page) => checkSvgClass(page))
-  const failures: string[] = []
+  const result = await withChrome((page) => checkSvgClass(page));
+  const failures: string[] = [];
 
-  console.log("O5, verified against a real browser\n")
+  console.log("O5, verified against a real browser\n");
   for (const [why, held, got] of svgClassClaims(result)) {
-    console.log(`${held ? "ok  " : "FAIL"}  ${why}${held ? "" : ` — got ${JSON.stringify(got)}`}`)
-    if (!held) failures.push(why)
+    console.log(`${held ? "ok  " : "FAIL"}  ${why}${held ? "" : ` — got ${JSON.stringify(got)}`}`);
+    if (!held) failures.push(why);
   }
 
   if (failures.length === 0) {
-    console.log("\nall checks passed in a real browser")
-    process.exit(0)
+    console.log("\nall checks passed in a real browser");
+    process.exit(0);
   }
-  console.error(`\n${failures.length} check(s) failed`)
-  process.exit(1)
+  console.error(`\n${failures.length} check(s) failed`);
+  process.exit(1);
 }

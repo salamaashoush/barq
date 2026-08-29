@@ -19,35 +19,40 @@
  * itself checked: aim it at an edited copy and the rows that read it fail.
  */
 
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const DOM_TS = process.env.BARQ_DOM_TS ?? join(import.meta.dir, "..", "..", "core", "src", "dom.ts")
-const source = readFileSync(DOM_TS, "utf8")
+const DOM_TS =
+  process.env.BARQ_DOM_TS ?? join(import.meta.dir, "..", "..", "core", "src", "dom.ts");
+const source = readFileSync(DOM_TS, "utf8");
 
-const unquote = (text: string): string => text.trim().replace(/^["']|["']$/g, "").trim()
+const unquote = (text: string): string =>
+  text
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim();
 
 /** `const NAME: Record<string, 1> = { a: 1, "b-c": 1 };` */
 function record(name: string): string[] {
   return entries(`const ${name}: Record<string, 1> = {`, "{", "}", name).map((entry) =>
     unquote(entry.slice(0, entry.lastIndexOf(":"))),
-  )
+  );
 }
 
 /** `const NAME = new Set(["a", "b"]);` */
 function set(name: string): string[] {
-  return entries(`const ${name} = new Set([`, "[", "]", name).map(unquote)
+  return entries(`const ${name} = new Set([`, "[", "]", name).map(unquote);
 }
 
 function entries(header: string, open: string, close: string, name: string): string[] {
-  const at = source.indexOf(header)
-  if (at === -1) throw new Error(`dom.ts no longer declares \`${header}\` — this check is stale`)
-  let depth = 1
-  let end = at + header.length
+  const at = source.indexOf(header);
+  if (at === -1) throw new Error(`dom.ts no longer declares \`${header}\` — this check is stale`);
+  let depth = 1;
+  let end = at + header.length;
   while (end < source.length && depth > 0) {
-    if (source[end] === open) depth++
-    else if (source[end] === close) depth--
-    if (depth > 0) end++
+    if (source[end] === open) depth++;
+    else if (source[end] === close) depth--;
+    if (depth > 0) end++;
   }
   const out = source
     .slice(at + header.length, end)
@@ -56,18 +61,18 @@ function entries(header: string, open: string, close: string, name: string): str
     .join("\n")
     .split(",")
     .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-  if (out.length === 0) throw new Error(`\`${name}\` in dom.ts came out empty — this check is stale`)
-  return out
+    .filter((entry) => entry.length > 0);
+  if (out.length === 0)
+    throw new Error(`\`${name}\` in dom.ts came out empty — this check is stale`);
+  return out;
 }
 
-const DELEGATED_EVENTS = set("DELEGATED_EVENTS")
-const NON_BUBBLING_EVENTS = set("NON_BUBBLING_EVENTS")
-const SVG_TAGS = record("SVG_TAGS")
-const DOM_PROPS = record("DOM_PROPS")
-const USER_MUTABLE_PROPS = record("USER_MUTABLE_PROPS")
-const CSS_NUMBER_PROPS = record("CSS_NUMBER_PROPS")
-
+const DELEGATED_EVENTS = set("DELEGATED_EVENTS");
+const NON_BUBBLING_EVENTS = set("NON_BUBBLING_EVENTS");
+const SVG_TAGS = record("SVG_TAGS");
+const DOM_PROPS = record("DOM_PROPS");
+const USER_MUTABLE_PROPS = record("USER_MUTABLE_PROPS");
+const CSS_NUMBER_PROPS = record("CSS_NUMBER_PROPS");
 
 export {
   DELEGATED_EVENTS,
@@ -76,4 +81,4 @@ export {
   DOM_PROPS,
   USER_MUTABLE_PROPS,
   CSS_NUMBER_PROPS,
-}
+};

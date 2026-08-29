@@ -57,15 +57,15 @@
 
 export interface EffectCount {
   /** A `.tsx` under `fixtures/`, without the extension. */
-  readonly fixture: string
+  readonly fixture: string;
   /** Effects the compiled render creates across every frame. */
-  readonly created: number
+  readonly created: number;
   /** Total effect runs across every frame. */
-  readonly runs: number
+  readonly runs: number;
   /** The busiest single effect's run count. */
-  readonly busiest: number
+  readonly busiest: number;
   /** Initial render plus every scripted step and dispatched event. */
-  readonly frames: number
+  readonly frames: number;
 }
 
 const ROWS: readonly EffectCount[] = [
@@ -134,6 +134,7 @@ const ROWS: readonly EffectCount[] = [
   { fixture: "diagnostic-accessor-coercion", created: 2, runs: 4, busiest: 2, frames: 2 },
   { fixture: "dom-prop-static-value", created: 0, runs: 0, busiest: 0, frames: 1 },
   { fixture: "dynamic", created: 7, runs: 9, busiest: 3, frames: 3 },
+  { fixture: "no-hydration-island", created: 1, runs: 2, busiest: 2, frames: 2 },
   { fixture: "equal-liveness", created: 1, runs: 3, busiest: 3, frames: 3 },
   { fixture: "escaped-text-and-attribute", created: 0, runs: 0, busiest: 0, frames: 1 },
   { fixture: "escaping-adversarial", created: 4, runs: 12, busiest: 3, frames: 5 },
@@ -207,16 +208,16 @@ const ROWS: readonly EffectCount[] = [
   { fixture: "void-elements", created: 0, runs: 0, busiest: 0, frames: 1 },
   { fixture: "walk-from-the-back", created: 2, runs: 4, busiest: 2, frames: 3 },
   { fixture: "whitespace-only", created: 0, runs: 0, busiest: 0, frames: 1 },
-]
+];
 
 export const EFFECT_COUNTS: readonly EffectCount[] = Object.freeze(
   ROWS.map((row) => Object.freeze(row)),
-)
+);
 
 export function effectCounts(): Map<string, EffectCount> {
-  const byFixture = new Map<string, EffectCount>()
-  for (const row of EFFECT_COUNTS) byFixture.set(row.fixture, row)
-  return byFixture
+  const byFixture = new Map<string, EffectCount>();
+  for (const row of EFFECT_COUNTS) byFixture.set(row.fixture, row);
+  return byFixture;
 }
 
 /** The literal a row should carry, in the form the table is written in. */
@@ -224,16 +225,16 @@ export function formatEffectRow(row: EffectCount): string {
   return (
     `  { fixture: ${JSON.stringify(row.fixture)}, created: ${row.created}, ` +
     `runs: ${row.runs}, busiest: ${row.busiest}, frames: ${row.frames} },`
-  )
+  );
 }
 
 /** Two rows for one fixture would make the second unreachable and unreviewed. */
 export function duplicateEffectRows(): string[] {
-  const seen = new Set<string>()
-  const twice: string[] = []
+  const seen = new Set<string>();
+  const twice: string[] = [];
   for (const row of EFFECT_COUNTS) {
-    if (seen.has(row.fixture)) twice.push(row.fixture)
-    seen.add(row.fixture)
+    if (seen.has(row.fixture)) twice.push(row.fixture);
+    seen.add(row.fixture);
   }
-  return twice
+  return twice;
 }

@@ -49,8 +49,8 @@
  * every DOM write wrong passes L2b completely. L3 carries that weight.
  */
 
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   fixtureSource,
@@ -59,48 +59,48 @@ import {
   nativeCompiler as native,
   writeSibling,
   type FixtureModule,
-} from "./harness.ts"
+} from "./harness.ts";
 
-export const OWNERSHIP_DIR = join(import.meta.dir, "..", "fixtures", "ownership")
+export const OWNERSHIP_DIR = join(import.meta.dir, "..", "fixtures", "ownership");
 
 // ---------------------------------------------------------------------------
 // the compiler's side
 // ---------------------------------------------------------------------------
 
 export interface StaticNode {
-  id: number
-  parent: number
-  kind: string
+  id: number;
+  parent: number;
+  kind: string;
   /** whether this construct is in O1's creation set */
-  scope: boolean
-  label: string
-  line: number
-  column: number
+  scope: boolean;
+  label: string;
+  line: number;
+  column: number;
 }
 
 export interface StaticPosition {
-  node: number
+  node: number;
   /** the emitted binding, `_tmpl$1` */
-  template: string
+  template: string;
   /** the template's bytes — what a runtime clone can be recognised by */
-  html: string
+  html: string;
   /** the root node of this position's tree, in `nodes` */
-  rootNode: number
+  rootNode: number;
   /** that root's label, for reading — `rootNode` is what identifies it */
-  root: string
+  root: string;
   /** the scope-creating ancestors, outermost first */
-  path: string[]
-  line: number
-  column: number
+  path: string[];
+  line: number;
+  column: number;
 }
 
 export interface StaticTree {
-  version: number
-  roots: Array<{ name: string; node: number }>
-  nodes: StaticNode[]
-  positions: StaticPosition[]
+  version: number;
+  roots: Array<{ name: string; node: number }>;
+  nodes: StaticNode[];
+  positions: StaticPosition[];
   /** components the walk could not follow, so the tree is known to be partial */
-  opaque: string[]
+  opaque: string[];
 }
 
 export function staticTree(
@@ -108,18 +108,18 @@ export function staticTree(
   filename: string,
   options: Record<string, unknown> = {},
 ): { code: string; tree: StaticTree } {
-  const result = native.transform(source, { filename, ownership: true, ...options })
+  const result = native.transform(source, { filename, ownership: true, ...options });
   if (!result.ownership) {
-    throw new Error(`${filename}: the compiler produced no ownership artefact`)
+    throw new Error(`${filename}: the compiler produced no ownership artefact`);
   }
-  const tree = JSON.parse(result.ownership) as StaticTree
+  const tree = JSON.parse(result.ownership) as StaticTree;
   if (tree.version !== 2) {
     throw new Error(
       `${filename}: ownership artefact version ${tree.version}, this harness reads 2 — ` +
         "the artefact and its reader must be changed together",
-    )
+    );
   }
-  return { code: result.code, tree }
+  return { code: result.code, tree };
 }
 
 /**
@@ -130,20 +130,20 @@ export function staticTree(
  * and a branch position produces one per activation.
  */
 function legalPaths(tree: StaticTree, root: string): Map<string, StaticPosition[]> {
-  const byHtml = new Map<string, StaticPosition[]>()
-  const entry = tree.roots.find((candidate) => candidate.name === root)
-  if (entry === undefined) return byHtml
+  const byHtml = new Map<string, StaticPosition[]>();
+  const entry = tree.roots.find((candidate) => candidate.name === root);
+  if (entry === undefined) return byHtml;
   for (const position of tree.positions) {
-    if (position.rootNode !== entry.node) continue
-    const list = byHtml.get(position.html)
-    if (list === undefined) byHtml.set(position.html, [position])
-    else list.push(position)
+    if (position.rootNode !== entry.node) continue;
+    const list = byHtml.get(position.html);
+    if (list === undefined) byHtml.set(position.html, [position]);
+    else list.push(position);
   }
-  return byHtml
+  return byHtml;
 }
 
 function distinctPaths(positions: readonly StaticPosition[]): Set<string> {
-  return new Set(positions.map((position) => position.path.join("/")))
+  return new Set(positions.map((position) => position.path.join("/")));
 }
 
 /**
@@ -161,10 +161,8 @@ function distinctPaths(positions: readonly StaticPosition[]): Set<string> {
  * is the construct itself is a slot the construct never got to invoke.
  */
 function ruleFor(tree: StaticTree, positions: readonly StaticPosition[]): string {
-  const inComponent = positions.some(
-    (position) => tree.nodes[position.node]?.kind === "component",
-  )
-  return inComponent ? "O2.1" : "O2"
+  const inComponent = positions.some((position) => tree.nodes[position.node]?.kind === "component");
+  return inComponent ? "O2.1" : "O2";
 }
 
 // ---------------------------------------------------------------------------
@@ -172,36 +170,36 @@ function ruleFor(tree: StaticTree, positions: readonly StaticPosition[]): string
 // ---------------------------------------------------------------------------
 
 export interface OwnershipEvent {
-  seq: number
-  kind: "enter" | "exit" | "dispose" | "clone" | "own" | "block-enter" | "block-exit"
+  seq: number;
+  kind: "enter" | "exit" | "dispose" | "clone" | "own" | "block-enter" | "block-exit";
   /** on `block-enter`, the scope the block was GIVEN */
-  scope: number
-  parent: number
-  label: string
-  scopeKind: string
+  scope: number;
+  parent: number;
+  label: string;
+  scopeKind: string;
   /** registered its disposer with the scope recorded as its parent */
-  owned: boolean
+  owned: boolean;
 }
 
 interface RuntimeScope {
-  id: number
-  parent: number
-  kind: string
+  id: number;
+  parent: number;
+  kind: string;
   /** the recorded parent holds this scope's disposer, so O3.2 is about it */
-  owned: boolean
-  enteredAt: number
-  disposedAt: number
+  owned: boolean;
+  enteredAt: number;
+  disposedAt: number;
 }
 
 export interface RuntimeTree {
-  scopes: Map<number, RuntimeScope>
+  scopes: Map<number, RuntimeScope>;
   /** creation order, which is the order `enter` events arrived */
-  order: number[]
+  order: number[];
 }
 
 function runtimeTree(events: readonly OwnershipEvent[]): RuntimeTree {
-  const scopes = new Map<number, RuntimeScope>()
-  const order: number[] = []
+  const scopes = new Map<number, RuntimeScope>();
+  const order: number[] = [];
   for (const event of events) {
     if (event.kind === "enter") {
       if (!scopes.has(event.scope)) {
@@ -212,15 +210,15 @@ function runtimeTree(events: readonly OwnershipEvent[]): RuntimeTree {
           owned: event.owned,
           enteredAt: event.seq,
           disposedAt: -1,
-        })
-        order.push(event.scope)
+        });
+        order.push(event.scope);
       }
     } else if (event.kind === "dispose") {
-      const scope = scopes.get(event.scope)
-      if (scope !== undefined && scope.disposedAt < 0) scope.disposedAt = event.seq
+      const scope = scopes.get(event.scope);
+      if (scope !== undefined && scope.disposedAt < 0) scope.disposedAt = event.seq;
     }
   }
-  return { scopes, order }
+  return { scopes, order };
 }
 
 /**
@@ -229,19 +227,19 @@ function runtimeTree(events: readonly OwnershipEvent[]): RuntimeTree {
  * which is a broken trace rather than a wrong path and is reported as such.
  */
 export function runtimePath(tree: RuntimeTree, id: number): string[] | null {
-  const path: string[] = []
-  const seen = new Set<number>()
-  let at = id
+  const path: string[] = [];
+  const seen = new Set<number>();
+  let at = id;
   while (at !== -1) {
-    if (seen.has(at)) return null
-    seen.add(at)
-    const scope = tree.scopes.get(at)
-    if (scope === undefined) return null
-    path.push(scope.kind)
-    at = scope.parent
+    if (seen.has(at)) return null;
+    seen.add(at);
+    const scope = tree.scopes.get(at);
+    if (scope === undefined) return null;
+    path.push(scope.kind);
+    at = scope.parent;
   }
-  path.reverse()
-  return path
+  path.reverse();
+  return path;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +259,7 @@ export const CHANNEL_RULES: readonly string[] = Object.freeze([
   "O3.2",
   "O3.7",
   "O4.5",
-])
+]);
 
 export interface Finding {
   /**
@@ -271,38 +269,38 @@ export interface Finding {
    * inside an existing row and never be seen; keying it on the message would
    * make every reworded diagnostic a registry diff.
    */
-  id: string
+  id: string;
   /** the `SEMANTICS.md` rule this violation is about */
-  rule: string
-  kind: string
-  detail: string
+  rule: string;
+  kind: string;
+  detail: string;
 }
 
 export interface OwnershipRun {
-  fixture: string
+  fixture: string;
   /** empty when the fixture has no static positions to check against */
-  findings: Finding[]
+  findings: Finding[];
   /** clones whose html the compiler never attributed to a position */
-  unattributed: number
+  unattributed: number;
   /** clones checked against a static path set of exactly one member */
-  determined: number
+  determined: number;
   /** clones checked at all */
-  clones: number
-  scopes: number
+  clones: number;
+  scopes: number;
   /**
    * Reactive nodes the trace saw created. Reported so that "no effect was
    * misplaced" can never be confused with "no effect was recorded" — the state
    * this channel was in before it had an `own` event at all.
    */
-  effects: number
+  effects: number;
   /**
    * Groups of two or more kids a single scope actually disposed itself — the
    * only shape O3.2's reverse-creation-order claim can be tested on. Reported
    * so that a green O3.2 is never confused with an unexercised one.
    */
-  cascades: number
+  cascades: number;
   /** the module never loaded or never rendered; findings carry the reason */
-  crashed: boolean
+  crashed: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,21 +308,21 @@ export interface OwnershipRun {
 // ---------------------------------------------------------------------------
 
 interface CoreLike {
-  flush(): void
-  scope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T
-  render(node: unknown, container: Element): () => void
-  clearDelegatedEvents(): void
-  beginOwnershipTrace(): void
-  endOwnershipTrace(): OwnershipEvent[]
+  flush(): void;
+  scope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T;
+  render(node: unknown, container: Element): () => void;
+  clearDelegatedEvents(): void;
+  beginOwnershipTrace(): void;
+  endOwnershipTrace(): OwnershipEvent[];
 }
 
-let siblingRun = 0
+let siblingRun = 0;
 
 async function settle(core: CoreLike): Promise<void> {
-  core.flush()
-  await new Promise((r) => setTimeout(r, 0))
-  core.flush()
-  await new Promise((r) => setTimeout(r, 0))
+  core.flush();
+  await new Promise((r) => setTimeout(r, 0));
+  core.flush();
+  await new Promise((r) => setTimeout(r, 0));
 }
 
 /**
@@ -339,28 +337,30 @@ export async function trace(
   tag: string,
   siblings: ReadonlyArray<{ name: string; code: string }> = [],
 ): Promise<OwnershipEvent[]> {
-  const core = (await import("@barqjs/core")) as unknown as CoreLike
+  const core = (await import("@barqjs/core")) as unknown as CoreLike;
   // bun caches a module by path permanently, so rewriting a fixed sibling path
   // and re-importing hands back the FIRST compilation. Two calls that differ
   // only in backend would then compare the same sibling twice, and two
   // processes sharing the directory would truncate each other's files. The
   // stamp keeps the depth the fixtures' relative imports need.
-  const stamp = `${process.pid}-${siblingRun++}`
-  const rename = (name: string): string => `${stamp}-${name}`
-  let source = code
-  for (const sibling of siblings) source = source.replaceAll(`./${sibling.name}`, `./${rename(sibling.name)}`)
+  const stamp = `${process.pid}-${siblingRun++}`;
+  const rename = (name: string): string => `${stamp}-${name}`;
+  let source = code;
+  for (const sibling of siblings)
+    source = source.replaceAll(`./${sibling.name}`, `./${rename(sibling.name)}`);
   for (const sibling of siblings) {
-    let text = sibling.code
-    for (const other of siblings) text = text.replaceAll(`./${other.name}`, `./${rename(other.name)}`)
-    writeSibling(rename(sibling.name), text)
+    let text = sibling.code;
+    for (const other of siblings)
+      text = text.replaceAll(`./${other.name}`, `./${rename(other.name)}`);
+    writeSibling(rename(sibling.name), text);
   }
-  const mod = (await loadModule(source, tag)) as FixtureModule
-  const container = document.createElement("div")
-  document.body.appendChild(container)
+  const mod = (await loadModule(source, tag)) as FixtureModule;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
 
-  core.beginOwnershipTrace()
-  let dispose: (() => void) | undefined
-  let clear: (() => void) | undefined
+  core.beginOwnershipTrace();
+  let dispose: (() => void) | undefined;
+  let clear: (() => void) | undefined;
   try {
     // C1: the fixture's default export is a component and takes the scope it
     // runs under. `render` opens that scope, so the mount is handed over as a
@@ -368,41 +368,41 @@ export async function trace(
     // which would construct the whole subtree before any scope existed.
     core.scope(
       (d: () => void) => {
-        dispose = d
-        clear = core.render(mod.default as never, container)
+        dispose = d;
+        clear = core.render(mod.default as never, container);
       },
       true,
       "root",
-    )
-    await settle(core)
+    );
+    await settle(core);
     for (const step of mod.steps ?? []) {
-      step()
-      await settle(core)
+      step();
+      await settle(core);
     }
-    clear?.()
-    dispose?.()
-    await settle(core)
-    return core.endOwnershipTrace()
+    clear?.();
+    dispose?.();
+    await settle(core);
+    return core.endOwnershipTrace();
   } finally {
     // `endOwnershipTrace` is idempotent about the sink, so a throw above still
     // leaves the runtime uninstrumented for whatever runs next.
-    core.endOwnershipTrace()
-    container.remove()
-    document.body.innerHTML = ""
-    core.clearDelegatedEvents()
+    core.endOwnershipTrace();
+    container.remove();
+    document.body.innerHTML = "";
+    core.clearDelegatedEvents();
   }
 }
 
 /** Is `scope` `ancestor`, or below it, in the runtime scope tree? */
 function within(runtime: RuntimeTree, scope: number, ancestor: number): boolean {
-  const seen = new Set<number>()
-  let at = scope
+  const seen = new Set<number>();
+  let at = scope;
   while (at !== -1 && !seen.has(at)) {
-    if (at === ancestor) return true
-    seen.add(at)
-    at = runtime.scopes.get(at)?.parent ?? -1
+    if (at === ancestor) return true;
+    seen.add(at);
+    at = runtime.scopes.get(at)?.parent ?? -1;
   }
-  return false
+  return false;
 }
 
 /**
@@ -426,38 +426,35 @@ function within(runtime: RuntimeTree, scope: number, ancestor: number): boolean 
  * conservative silence there is the cost of not needing a `try/finally` on the
  * insert path.
  */
-function blockFindings(
-  events: readonly OwnershipEvent[],
-  runtime: RuntimeTree,
-): Finding[] {
+function blockFindings(events: readonly OwnershipEvent[], runtime: RuntimeTree): Finding[] {
   interface Span {
-    label: string
-    given: number
-    findings: Finding[]
+    label: string;
+    given: number;
+    findings: Finding[];
   }
-  const open: Span[] = []
-  const out: Finding[] = []
-  const reported = new Set<string>()
+  const open: Span[] = [];
+  const out: Finding[] = [];
+  const reported = new Set<string>();
 
   for (const event of events) {
     if (event.kind === "block-enter") {
-      open.push({ label: event.label, given: event.scope, findings: [] })
-      continue
+      open.push({ label: event.label, given: event.scope, findings: [] });
+      continue;
     }
     if (event.kind === "block-exit") {
       // Resynchronise on the label: a throw inside a block leaves its span
       // open, and everything above the match is that abandoned work.
-      let at = -1
+      let at = -1;
       for (let i = open.length - 1; i >= 0; i--) {
         if (open[i].label === event.label) {
-          at = i
-          break
+          at = i;
+          break;
         }
       }
-      if (at < 0) continue
-      const closed = open.splice(at)
-      out.push(...closed[0].findings)
-      continue
+      if (at < 0) continue;
+      const closed = open.splice(at);
+      out.push(...closed[0].findings);
+      continue;
     }
     // A `clone` is a template instantiation, an `enter` is a scope and an `own`
     // is a reactive node: all three are CONSTRUCTION inside the handed-over
@@ -472,22 +469,22 @@ function blockFindings(
       (event.kind !== "clone" && event.kind !== "enter" && event.kind !== "own") ||
       open.length === 0
     ) {
-      continue
+      continue;
     }
-    const span = open[open.length - 1]
-    const at = event.kind === "enter" ? (event.parent ?? -1) : event.scope
-    if (span.given === -1 || at === -1 || within(runtime, at, span.given)) continue
-    const key = `${span.label}@${span.given}@${at}@${event.label}`
-    if (reported.has(key)) continue
-    reported.add(key)
-    const givenKind = runtime.scopes.get(span.given)?.kind ?? "?"
-    const actual = runtimePath(runtime, at)
+    const span = open[open.length - 1];
+    const at = event.kind === "enter" ? (event.parent ?? -1) : event.scope;
+    if (span.given === -1 || at === -1 || within(runtime, at, span.given)) continue;
+    const key = `${span.label}@${span.given}@${at}@${event.label}`;
+    if (reported.has(key)) continue;
+    reported.add(key);
+    const givenKind = runtime.scopes.get(span.given)?.kind ?? "?";
+    const actual = runtimePath(runtime, at);
     const what =
       event.kind === "enter"
         ? `a ${event.label} scope`
         : event.kind === "own"
           ? `a ${event.label} effect`
-          : event.label
+          : event.label;
     span.findings.push({
       id: `block-ran-under-another-scope@${span.label}`,
       rule: event.kind === "own" ? "O4.5" : "O2",
@@ -496,9 +493,9 @@ function blockFindings(
         `${span.label} was given scope ${span.given} (${givenKind}) and built ${what} ` +
         `under scope ${at} (${actual === null ? "<no chain>" : show(actual.join("/"))}), ` +
         "which is neither that scope nor below it",
-    })
+    });
   }
-  return out
+  return out;
 }
 
 /**
@@ -509,14 +506,14 @@ function blockFindings(
  * construction end.
  */
 function leakFindings(runtime: RuntimeTree): Finding[] {
-  const out: Finding[] = []
-  const seen = new Set<string>()
+  const out: Finding[] = [];
+  const seen = new Set<string>();
   for (const id of runtime.order) {
-    const scope = runtime.scopes.get(id)
-    if (scope === undefined || scope.disposedAt >= 0) continue
-    const key = `scope-never-disposed@${scope.kind}`
-    if (seen.has(key)) continue
-    seen.add(key)
+    const scope = runtime.scopes.get(id);
+    if (scope === undefined || scope.disposedAt >= 0) continue;
+    const key = `scope-never-disposed@${scope.kind}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push({
       id: key,
       rule: "O3.7",
@@ -525,9 +522,9 @@ function leakFindings(runtime: RuntimeTree): Finding[] {
         `scope ${id} (${scope.kind}, entered at ${scope.enteredAt}) was never disposed, although ` +
         "the trace window closes on the render root's own disposal; whatever it owns outlives " +
         "the tree it was built for",
-    })
+    });
   }
-  return out
+  return out;
 }
 
 /**
@@ -544,21 +541,21 @@ export function checkTrace(
   events: readonly OwnershipEvent[],
   runtime: RuntimeTree = runtimeTree(events),
 ): { findings: Finding[]; cascades: number } {
-  const findings: Finding[] = []
-  let cascades = 0
+  const findings: Finding[] = [];
+  let cascades = 0;
 
   // --- runtime-internal invariants -----------------------------------------
   for (const scope of runtime.scopes.values()) {
-    if (scope.parent === -1) continue
-    const parent = runtime.scopes.get(scope.parent)
+    if (scope.parent === -1) continue;
+    const parent = runtime.scopes.get(scope.parent);
     if (parent === undefined) {
       findings.push({
         id: `parent-never-entered@${scope.kind}`,
         rule: "O2",
         kind: "parent-never-entered",
         detail: `scope ${scope.id} (${scope.kind}) names parent ${scope.parent}, which no enter event declared`,
-      })
-      continue
+      });
+      continue;
     }
     if (parent.enteredAt > scope.enteredAt) {
       findings.push({
@@ -566,7 +563,7 @@ export function checkTrace(
         rule: "O2",
         kind: "child-entered-before-parent",
         detail: `scope ${scope.id} (${scope.kind}) entered at ${scope.enteredAt}, before its parent ${parent.id} at ${parent.enteredAt}`,
-      })
+      });
     }
     if (runtimePath(runtime, scope.id) === null) {
       findings.push({
@@ -574,40 +571,40 @@ export function checkTrace(
         rule: "O2",
         kind: "scope-chain-is-not-a-tree",
         detail: `the parent chain above scope ${scope.id} (${scope.kind}) does not reach a root`,
-      })
+      });
     }
   }
 
   // O4.1: `enter` and `exit` are two halves of one primitive and the pairing is
   // what restores `CURRENT`. `exit` events were recorded and never inspected,
   // so making `exit` a complete no-op cost this channel nothing at all.
-  const opened: number[] = []
-  const exited = new Set<number>()
+  const opened: number[] = [];
+  const exited = new Set<number>();
   for (const event of events) {
     if (event.kind === "enter") {
-      opened.push(event.scope)
-      continue
+      opened.push(event.scope);
+      continue;
     }
-    if (event.kind !== "exit") continue
+    if (event.kind !== "exit") continue;
     if (exited.has(event.scope)) {
       findings.push({
         id: "exited-twice",
         rule: "O4.1",
         kind: "exited-twice",
         detail: `scope ${event.scope} raised a second exit at seq ${event.seq}`,
-      })
-      continue
+      });
+      continue;
     }
-    exited.add(event.scope)
-    const at = opened.lastIndexOf(event.scope)
+    exited.add(event.scope);
+    const at = opened.lastIndexOf(event.scope);
     if (at < 0) {
       findings.push({
         id: "exit-without-enter",
         rule: "O4.1",
         kind: "exit-without-enter",
         detail: `scope ${event.scope} exited at seq ${event.seq} but no enter event declared it`,
-      })
-      continue
+      });
+      continue;
     }
     if (at !== opened.length - 1) {
       findings.push({
@@ -618,9 +615,9 @@ export function checkTrace(
           `scope ${event.scope} exited at seq ${event.seq} while ` +
           `${opened.slice(at + 1).join(", ")} were still open above it; ` +
           "an exit that is not the innermost open scope restores CURRENT to the wrong owner",
-      })
+      });
     }
-    opened.splice(at, 1)
+    opened.splice(at, 1);
   }
   // O4.1's other half: `exit` is required on BOTH paths, so a scope still open
   // when the window closes is a `CURRENT` that was never restored. Without this
@@ -633,7 +630,7 @@ export function checkTrace(
       detail:
         `scope ${scope} (${runtime.scopes.get(scope)?.kind ?? "?"}) was entered and never ` +
         "exited, so CURRENT was left pointing at it",
-    })
+    });
   }
 
   for (const event of events) {
@@ -643,12 +640,12 @@ export function checkTrace(
         rule: "O3.1",
         kind: "disposed-twice",
         detail: `scope ${event.scope} raised a second dispose at seq ${event.seq}; dispose must be idempotent and must record once`,
-      })
+      });
     }
   }
 
-  findings.push(...blockFindings(events, runtime))
-  findings.push(...leakFindings(runtime))
+  findings.push(...blockFindings(events, runtime));
+  findings.push(...leakFindings(runtime));
 
   // O3.2: when a scope is disposed, the kids IT owns go in reverse creation
   // order. Two exclusions, both of them substance rather than convenience:
@@ -663,24 +660,24 @@ export function checkTrace(
   //
   // What is left is exactly the claim: the kids the parent still owned when it
   // started unwinding come apart newest-first.
-  const kids = new Map<number, number[]>()
+  const kids = new Map<number, number[]>();
   for (const id of runtime.order) {
-    const scope = runtime.scopes.get(id)
-    if (scope === undefined || scope.parent === -1 || !scope.owned) continue
-    const list = kids.get(scope.parent)
-    if (list === undefined) kids.set(scope.parent, [id])
-    else list.push(id)
+    const scope = runtime.scopes.get(id);
+    if (scope === undefined || scope.parent === -1 || !scope.owned) continue;
+    const list = kids.get(scope.parent);
+    if (list === undefined) kids.set(scope.parent, [id]);
+    else list.push(id);
   }
   for (const [parentId, list] of kids) {
-    const parent = runtime.scopes.get(parentId)
-    if (parent === undefined || parent.disposedAt < 0) continue
+    const parent = runtime.scopes.get(parentId);
+    if (parent === undefined || parent.disposedAt < 0) continue;
     const cascade = list
       .map((id) => runtime.scopes.get(id))
-      .filter((s): s is RuntimeScope => s !== undefined && s.disposedAt >= parent.disposedAt)
-    if (cascade.length > 1) cascades++
+      .filter((s): s is RuntimeScope => s !== undefined && s.disposedAt >= parent.disposedAt);
+    if (cascade.length > 1) cascades++;
     for (let i = 1; i < cascade.length; i++) {
-      const earlier = cascade[i - 1]
-      const later = cascade[i]
+      const earlier = cascade[i - 1];
+      const later = cascade[i];
       if (later.disposedAt > earlier.disposedAt) {
         findings.push({
           id: `kids-disposed-in-creation-order@${parent.kind}`,
@@ -690,12 +687,12 @@ export function checkTrace(
             `disposing scope ${parentId} took kid ${earlier.id} (created ${earlier.enteredAt}) at ` +
             `${earlier.disposedAt} before kid ${later.id} (created ${later.enteredAt}) at ` +
             `${later.disposedAt}; O3.2 requires reverse creation order`,
-        })
+        });
       }
     }
   }
 
-  return { findings, cascades }
+  return { findings, cascades };
 }
 
 /**
@@ -703,18 +700,18 @@ export function checkTrace(
  * `listOwnershipFixtures` excludes them — they exist so that ONE fixture can be
  * shaped like an application rather than like a single file.
  */
-const SIBLING = /from\s+"\.\/([A-Za-z0-9._-]+\.module\.tsx)"/g
+const SIBLING = /from\s+"\.\/([A-Za-z0-9._-]+\.module\.tsx)"/g;
 
 function siblingsOf(
   source: string,
   options: Record<string, unknown> = {},
 ): Array<{ name: string; code: string }> {
-  const out: Array<{ name: string; code: string }> = []
+  const out: Array<{ name: string; code: string }> = [];
   for (const [, name] of source.matchAll(SIBLING)) {
-    const text = readFileSync(join(OWNERSHIP_DIR, name), "utf8")
-    out.push({ name, code: native.transform(text, { filename: name, ...options }).code })
+    const text = readFileSync(join(OWNERSHIP_DIR, name), "utf8");
+    out.push({ name, code: native.transform(text, { filename: name, ...options }).code });
   }
-  return out
+  return out;
 }
 
 /**
@@ -737,52 +734,52 @@ export async function checkOwnership(
    */
   corrupt?: (code: string) => string,
 ): Promise<OwnershipRun> {
-  let code: string
-  let tree: StaticTree
+  let code: string;
+  let tree: StaticTree;
   try {
-    ;({ code, tree } = staticTree(source, filename, options))
-    if (corrupt !== undefined) code = corrupt(code)
+    ({ code, tree } = staticTree(source, filename, options));
+    if (corrupt !== undefined) code = corrupt(code);
   } catch (error) {
-    return crash(fixture, "compile", error)
+    return crash(fixture, "compile", error);
   }
 
-  let events: readonly OwnershipEvent[]
+  let events: readonly OwnershipEvent[];
   try {
-    events = await trace(code, `own-${fixture}`, siblingsOf(source, options))
+    events = await trace(code, `own-${fixture}`, siblingsOf(source, options));
   } catch (error) {
-    return crash(fixture, "render", error)
+    return crash(fixture, "render", error);
   }
 
-  const runtime = runtimeTree(events)
-  const internal = checkTrace(events, runtime)
-  const findings: Finding[] = [...internal.findings]
+  const runtime = runtimeTree(events);
+  const internal = checkTrace(events, runtime);
+  const findings: Finding[] = [...internal.findings];
 
   // --- 2. the static comparison -------------------------------------------
-  const legal = legalPaths(tree, "default")
-  let unattributed = 0
-  let determined = 0
-  let clones = 0
-  const reported = new Set<string>()
+  const legal = legalPaths(tree, "default");
+  let unattributed = 0;
+  let determined = 0;
+  let clones = 0;
+  const reported = new Set<string>();
 
   for (const event of events) {
-    if (event.kind !== "clone") continue
-    const positions = legal.get(event.label)
+    if (event.kind !== "clone") continue;
+    const positions = legal.get(event.label);
     if (positions === undefined) {
-      unattributed++
-      continue
+      unattributed++;
+      continue;
     }
-    const allowed = distinctPaths(positions)
-    clones++
+    const allowed = distinctPaths(positions);
+    clones++;
     // A template the compiler places at exactly one path is one this check can
     // actually falsify. Where a template occurs at several paths the check is
     // weaker by construction, and the count is reported rather than assumed.
-    if (allowed.size === 1) determined++
-    const actual = runtimePath(runtime, event.scope)
-    const rule = ruleFor(tree, positions)
+    if (allowed.size === 1) determined++;
+    const actual = runtimePath(runtime, event.scope);
+    const rule = ruleFor(tree, positions);
     if (actual === null) {
-      const key = `orphan:${event.label}`
+      const key = `orphan:${event.label}`;
       if (!reported.has(key)) {
-        reported.add(key)
+        reported.add(key);
         findings.push({
           id: `clone-outside-every-scope@${positions[0].template}`,
           rule,
@@ -790,15 +787,15 @@ export async function checkOwnership(
           detail:
             `${event.label} was cloned under no scope the trace knows; the compiler places it at ` +
             `${[...allowed].map(show).join(" or ")}`,
-        })
+        });
       }
-      continue
+      continue;
     }
-    const joined = actual.join("/")
-    if (allowed.has(joined)) continue
-    const key = `${event.label}@${joined}`
-    if (reported.has(key)) continue
-    reported.add(key)
+    const joined = actual.join("/");
+    if (allowed.has(joined)) continue;
+    const key = `${event.label}@${joined}`;
+    if (reported.has(key)) continue;
+    reported.add(key);
     findings.push({
       // The observed path is part of the identity, not only of the message.
       // One template misplaced at two different wrong paths is two violations,
@@ -811,7 +808,7 @@ export async function checkOwnership(
       detail:
         `${event.label} was cloned under ${show(joined)}; the compiler places it at ` +
         `${[...allowed].map(show).join(" or ")} and nowhere else`,
-    })
+    });
   }
 
   return {
@@ -824,18 +821,20 @@ export async function checkOwnership(
     effects: events.reduce((n, event) => (event.kind === "own" ? n + 1 : n), 0),
     cascades: internal.cascades,
     crashed: false,
-  }
+  };
 }
 
 function show(path: string): string {
-  return path === "" ? "<no scope>" : path.split("/").join(" > ")
+  return path === "" ? "<no scope>" : path.split("/").join(" > ");
 }
 
 function crash(fixture: string, phase: string, error: unknown): OwnershipRun {
-  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   return {
     fixture,
-    findings: [{ id: `${phase}-crashed`, rule: "<none>", kind: `${phase}-crashed`, detail: message }],
+    findings: [
+      { id: `${phase}-crashed`, rule: "<none>", kind: `${phase}-crashed`, detail: message },
+    ],
     unattributed: 0,
     determined: 0,
     clones: 0,
@@ -843,7 +842,7 @@ function crash(fixture: string, phase: string, error: unknown): OwnershipRun {
     effects: 0,
     cascades: 0,
     crashed: true,
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -861,17 +860,17 @@ export function listOwnershipFixtures(): string[] {
   return readdirSync(OWNERSHIP_DIR)
     .filter((f) => f.endsWith(".tsx") && !f.endsWith(".module.tsx"))
     .map((f) => f.slice(0, -4))
-    .sort()
+    .sort();
 }
 
 export function ownershipSource(name: string): string {
-  return readFileSync(join(OWNERSHIP_DIR, `${name}.tsx`), "utf8")
+  return readFileSync(join(OWNERSHIP_DIR, `${name}.tsx`), "utf8");
 }
 
 export function corpusFixtures(): string[] {
-  return listFixtures()
+  return listFixtures();
 }
 
 export function corpusSource(name: string): string {
-  return fixtureSource(name)
+  return fixtureSource(name);
 }

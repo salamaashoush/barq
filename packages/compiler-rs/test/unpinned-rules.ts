@@ -87,7 +87,7 @@ export const FICTION_PINS: readonly string[] = Object.freeze([
   "M1: sem-mount-order",
   "M2: sem-mount-no-flash",
   "X3: sem-ctx-read-after-install",
-])
+]);
 
 export const UNPINNED_RULES: readonly string[] = Object.freeze([
   // A — M7 struck A1–A4, and M11 struck A5. The reason A5 sat here was that it
@@ -103,12 +103,24 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   // B6 and B7 are M7's and are struck: `sem-form-dom-compare` and
   // `sem-form-selection-preserved` pin them, with the real-browser caret
   // channel beside the second.
-  "B1", "B2", "B3", "B5",
+  "B1",
+  "B2",
+  "B3",
+  "B5",
   // C
-  "C3.1", "C3.2", "C3.3", "C3.4", "C3.5",
-  "C5", "C5.2", "C8", "C9",
+  "C3.1",
+  "C3.2",
+  "C3.3",
+  "C3.4",
+  "C3.5",
+  "C5",
+  "C5.2",
+  "C8",
+  "C9",
   // E
-  "E1", "E3", "E4",
+  "E1",
+  "E3",
+  "E4",
   // H — EMPTY. M6 struck H5 off by building the channel §14.2 named (the
   // corpus-wide address-set diff), and the hydration pass struck the other
   // five: `test/hydration.test.ts` measures node reuse over the whole corpus
@@ -117,18 +129,40 @@ export const UNPINNED_RULES: readonly string[] = Object.freeze([
   // records what each corruption degraded to. `hydration.ts`'s
   // `HYDRATION_CHANNEL_RULES` is that channel's declared reach.
   // K
-  "K4", "K5", "K7", "K8",
+  "K4",
+  "K5",
+  "K7",
+  "K8",
   // M
-  "M1", "M2", "M3", "M4", "M5", "M6",
+  "M1",
+  "M2",
+  "M3",
+  "M4",
+  "M5",
+  "M6",
   // O
-  "O1", "O3", "O3.3", "O3.4", "O3.6", "O4", "O4.1", "O4.2", "O4.3",
+  "O1",
+  "O3",
+  "O3.3",
+  "O3.4",
+  "O3.6",
+  "O4",
+  "O4.1",
+  "O4.2",
+  "O4.3",
   // R — R8 joins R5 on the same terms and for the same reason: it is a
   // statement about the COST of propagation, so its channel is a benchmark and
   // a runtime test (`packages/core/src/signals.test.ts` "propagation cost in
   // graph depth", `eleven-cases.ts`'s twelfth case, the `__jrbDepth` sweep) and
   // there is nothing for a compiler fixture to observe — emission is identical
   // either side of the fix. §14.3 records both.
-  "R3", "R4", "R5", "R6", "R8",
+  "R3",
+  "R4",
+  "R5",
+  "R6",
+  "R8",
   // X
-  "X4", "X5", "X6",
-])
+  "X4",
+  "X5",
+  "X6",
+]);

@@ -48,25 +48,25 @@
  * that matters when a table has no rows.
  */
 
-import { LEAK_RULES } from "./leaks.ts"
+import { LEAK_RULES } from "./leaks.ts";
 
 export interface LeakKnownFailure {
   /** a fixture in `fixtures/`, without the extension */
-  readonly fixture: string
+  readonly fixture: string;
   /** the `id` of one `LeakFinding`: `<kind>@<what>` */
-  readonly leak: string
+  readonly leak: string;
   /** the rule from `SEMANTICS.md` the probe must name */
-  readonly rule: string
+  readonly rule: string;
   /**
    * `VIOLATED` is a bug that shipped. `PLANNED` is a semantic change this design
    * chose on the record. Both fail today; only the first is an indictment, and
    * §0.2 forbids conflating them.
    */
-  readonly status: "VIOLATED" | "PLANNED"
+  readonly status: "VIOLATED" | "PLANNED";
   /** the milestone from `CODESIGN.md` §8 after which this row must be deleted */
-  readonly greenAt: string
+  readonly greenAt: string;
   /** the defect, not the symptom */
-  readonly reason: string
+  readonly reason: string;
   /**
    * The digest of the leak's `detail` this row was written against
    * (`ratchet.ts`). A leak that goes on occurring while what it reports changes
@@ -76,14 +76,14 @@ export interface LeakKnownFailure {
    *
    * `BARQ_RATCHET=print bun test` prints the value to put here.
    */
-  readonly observed: string
+  readonly observed: string;
 }
 
-const ROWS: readonly LeakKnownFailure[] = []
+const ROWS: readonly LeakKnownFailure[] = [];
 
 export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
   ROWS.map((row) => Object.freeze(row)),
-)
+);
 
 /**
  * The probe's REACH, pinned — the half of the ratchet an EMPTY table needs.
@@ -163,37 +163,37 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * every attribute. Survivors stay at zero: a read-mode call creates no owner.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
-  sessions: 157,
-  scopesEntered: 496,
-  effectsCreated: 293,
-  listeners: 31,
-})
+  sessions: 158,
+  scopesEntered: 499,
+  effectsCreated: 294,
+  listeners: 32,
+});
 
 export function leakKey(fixture: string, leak: string): string {
-  return `${fixture} :: ${leak}`
+  return `${fixture} :: ${leak}`;
 }
 
 export function leakIndex(): Map<string, LeakKnownFailure> {
-  const byKey = new Map<string, LeakKnownFailure>()
+  const byKey = new Map<string, LeakKnownFailure>();
   for (const row of LEAK_FAILURES) {
-    const key = leakKey(row.fixture, row.leak)
-    if (byKey.has(key)) throw new Error(`the leak registry has two rows for ${key}`)
-    byKey.set(key, row)
+    const key = leakKey(row.fixture, row.leak);
+    if (byKey.has(key)) throw new Error(`the leak registry has two rows for ${key}`);
+    byKey.set(key, row);
   }
-  return byKey
+  return byKey;
 }
 
 /** Two rows for one leak would make the second unreachable, and unreviewed. */
 export function duplicateLeakRows(): string[] {
-  const seen = new Set<string>()
-  const twice: string[] = []
+  const seen = new Set<string>();
+  const twice: string[] = [];
   for (const row of LEAK_FAILURES) {
-    const key = leakKey(row.fixture, row.leak)
-    if (seen.has(key)) twice.push(key)
-    seen.add(key)
+    const key = leakKey(row.fixture, row.leak);
+    if (seen.has(key)) twice.push(key);
+    seen.add(key);
   }
-  return twice
+  return twice;
 }
 
 /** Rules a row may name: the channel's declared reach and nothing else. */
-export const LEAK_REGISTRY_RULES: readonly string[] = LEAK_RULES
+export const LEAK_REGISTRY_RULES: readonly string[] = LEAK_RULES;

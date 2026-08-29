@@ -15,25 +15,25 @@
   "bugs": {
     "url": "https://github.com/salamaashoush/barq/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/salamaashoush/barq.git",
     "directory": "packages/compiler-rs"
   },
-  "license": "MIT",
+  "files": [
+    "docs",
+    "index.d.ts",
+    "index.js"
+  ],
   "main": "./index.js",
+  "types": "./index.d.ts",
   "exports": {
     ".": {
       "types": "./index.d.ts",
       "default": "./index.js"
     }
   },
-  "types": "./index.d.ts",
-  "files": [
-    "docs",
-    "index.d.ts",
-    "index.js"
-  ],
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",

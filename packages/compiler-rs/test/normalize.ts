@@ -64,9 +64,9 @@ const VOID_ELEMENTS = new Set([
   "source",
   "track",
   "wbr",
-])
+]);
 
-const XHTML_NS = "http://www.w3.org/1999/xhtml"
+const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
 /**
  * Form-field state lives on the PROPERTY, not the attribute — `dom.ts` routes
@@ -74,18 +74,18 @@ const XHTML_NS = "http://www.w3.org/1999/xhtml"
  * serializer would report `<input value={() => text()}>` as unchanged forever,
  * so the live property is projected into the comparison as `.name="value"`.
  */
-const LIVE_PROPS = ["value", "checked", "selected", "indeterminate", "defaultValue"] as const
-const LIVE_PROP_TAGS = new Set(["input", "textarea", "select", "option", "progress", "meter"])
+const LIVE_PROPS = ["value", "checked", "selected", "indeterminate", "defaultValue"] as const;
+const LIVE_PROP_TAGS = new Set(["input", "textarea", "select", "option", "progress", "meter"]);
 
 /** Inside these, a whitespace run containing a newline is rendered content. */
-const WHITESPACE_SIGNIFICANT_TAGS = new Set(["pre", "textarea"])
+const WHITESPACE_SIGNIFICANT_TAGS = new Set(["pre", "textarea"]);
 
 /**
  * The tags whose first U+000A a conforming parser IGNORES. `intern.rs` flags
  * exactly these three `PRESERVE_WS`, which is why the compiler doubles a
  * leading newline (DESIGN O9).
  */
-const NEWLINE_EATING_TAGS = new Set(["pre", "textarea", "listing"])
+const NEWLINE_EATING_TAGS = new Set(["pre", "textarea", "listing"]);
 
 /**
  * Whether the host parser implements that rule.
@@ -107,15 +107,15 @@ const NEWLINE_EATING_TAGS = new Set(["pre", "textarea", "listing"])
  * loads and `document` is not guaranteed at module-evaluation time in either
  * host.
  */
-let eatsLeadingNewline: boolean | undefined
+let eatsLeadingNewline: boolean | undefined;
 
 function parserEatsALeadingNewline(): boolean {
   if (eatsLeadingNewline === undefined) {
-    const host = document.createElement("template")
-    host.innerHTML = "<pre>\n\na</pre>"
-    eatsLeadingNewline = host.content.firstChild?.textContent === "\na"
+    const host = document.createElement("template");
+    host.innerHTML = "<pre>\n\na</pre>";
+    eatsLeadingNewline = host.content.firstChild?.textContent === "\na";
   }
-  return eatsLeadingNewline
+  return eatsLeadingNewline;
 }
 
 /**
@@ -129,26 +129,26 @@ function parserEatsALeadingNewline(): boolean {
  * pins the emitted bytes for it instead.
  */
 function canonicalLeadingNewlines(data: string): string {
-  let cut = 0
-  while (cut < data.length && data.charCodeAt(cut) === 10) cut++
-  return cut === 0 ? data : data.slice(cut)
+  let cut = 0;
+  while (cut < data.length && data.charCodeAt(cut) === 10) cut++;
+  return cut === 0 ? data : data.slice(cut);
 }
 
-const NODE_ELEMENT = 1
-const NODE_TEXT = 3
-const NODE_COMMENT = 8
+const NODE_ELEMENT = 1;
+const NODE_TEXT = 3;
+const NODE_COMMENT = 8;
 
 function canonicalMarker(data: string): string {
-  return data.replace(/:(\d+)$/, ":#")
+  return data.replace(/:(\d+)$/, ":#");
 }
 
 interface Sink {
-  html: string[]
-  markers: string[]
-  attributes: string[]
-  identity: number[]
-  path: number[]
-  anchors: number
+  html: string[];
+  markers: string[];
+  attributes: string[];
+  identity: number[];
+  path: number[];
+  anchors: number;
 }
 
 /**
@@ -167,22 +167,22 @@ interface Sink {
  * about. Anything living on a node that survives (focus, selection, scroll
  * offset, a form field's dirty value, a running transition) survives with it.
  */
-let identityCounter = 0
-let identity = new WeakMap<Node, number>()
+let identityCounter = 0;
+let identity = new WeakMap<Node, number>();
 
 /** Call once per render, before the first frame. Ordinals are render-local. */
 export function resetIdentity(): void {
-  identityCounter = 0
-  identity = new WeakMap<Node, number>()
+  identityCounter = 0;
+  identity = new WeakMap<Node, number>();
 }
 
 function identityOf(node: Node): number {
-  let id = identity.get(node)
+  let id = identity.get(node);
   if (id === undefined) {
-    id = identityCounter++
-    identity.set(node, id)
+    id = identityCounter++;
+    identity.set(node, id);
   }
-  return id
+  return id;
 }
 
 /**
@@ -192,74 +192,73 @@ function identityOf(node: Node): number {
  * anchors are structure, the text is content, and the channel has to be able to
  * say which is which.
  */
-const ANCHOR_IN_TEXT = /<!---->/g
-
+const ANCHOR_IN_TEXT = /<!---->/g;
 
 function tagName(el: Element): string {
-  const ns = el.namespaceURI
-  return ns && ns !== XHTML_NS ? `${nsPrefix(ns)}:${el.localName}` : el.localName
+  const ns = el.namespaceURI;
+  return ns && ns !== XHTML_NS ? `${nsPrefix(ns)}:${el.localName}` : el.localName;
 }
 
 function serializeElement(el: Element, sink: Sink, keepWhitespace: boolean): void {
-  const ns = el.namespaceURI
-  const name = tagName(el)
+  const ns = el.namespaceURI;
+  const name = tagName(el);
 
-  const attrs: string[] = []
-  const order: string[] = []
+  const attrs: string[] = [];
+  const order: string[] = [];
   for (let i = 0; i < el.attributes.length; i++) {
-    const a = el.attributes[i]
-    attrs.push(`${a.name}="${a.value}"`)
-    order.push(a.name)
+    const a = el.attributes[i];
+    attrs.push(`${a.name}="${a.value}"`);
+    order.push(a.name);
   }
 
   if (LIVE_PROP_TAGS.has(el.localName) && (!ns || ns === XHTML_NS)) {
-    const record = el as unknown as Record<string, unknown>
+    const record = el as unknown as Record<string, unknown>;
     // The same missing parser rule, surfacing in a second channel: a
     // `<textarea>`'s value comes from its parsed content, so on a host that
     // does not eat the leading newline the clone's property carries one the
     // oracle's `createTextNode` never put there.
-    const eatsNewline = el.localName === "textarea" && !parserEatsALeadingNewline()
+    const eatsNewline = el.localName === "textarea" && !parserEatsALeadingNewline();
     for (const prop of LIVE_PROPS) {
-      if (!(prop in record)) continue
-      const raw = record[prop] ?? null
-      const value = eatsNewline && typeof raw === "string" ? canonicalLeadingNewlines(raw) : raw
-      attrs.push(`.${prop}=${JSON.stringify(value)}`)
+      if (!(prop in record)) continue;
+      const raw = record[prop] ?? null;
+      const value = eatsNewline && typeof raw === "string" ? canonicalLeadingNewlines(raw) : raw;
+      attrs.push(`.${prop}=${JSON.stringify(value)}`);
     }
   }
 
   // Live properties are deliberately absent from `order`: they are set through
   // a different channel than attributes and carry no document order at all.
   if (order.length > 0) {
-    sink.attributes.push(`${sink.path.join("/")} ${name}: ${order.join(",")}`)
+    sink.attributes.push(`${sink.path.join("/")} ${name}: ${order.join(",")}`);
   }
 
-  attrs.sort()
+  attrs.sort();
 
-  sink.identity.push(identityOf(el))
+  sink.identity.push(identityOf(el));
 
-  sink.html.push(`<${name}${attrs.length ? ` ${attrs.join(" ")}` : ""}>`)
-  sink.markers.push(`<${name}>`)
+  sink.html.push(`<${name}${attrs.length ? ` ${attrs.join(" ")}` : ""}>`);
+  sink.markers.push(`<${name}>`);
 
-  if (VOID_ELEMENTS.has(el.localName) && (!ns || ns === XHTML_NS)) return
+  if (VOID_ELEMENTS.has(el.localName) && (!ns || ns === XHTML_NS)) return;
 
   // A <template>'s children live in its DocumentFragment, not in childNodes.
   // Serializing childNodes only would make every <template> compare equal to
   // every other one, which is the opposite of what that fixture is for.
-  const content = (el as HTMLTemplateElement).content
+  const content = (el as HTMLTemplateElement).content;
   serializeChildren(
     content instanceof DocumentFragment ? content : el,
     sink,
     keepWhitespace || WHITESPACE_SIGNIFICANT_TAGS.has(el.localName),
     NEWLINE_EATING_TAGS.has(el.localName) && !parserEatsALeadingNewline(),
-  )
-  sink.html.push(`</${name}>`)
-  sink.markers.push(`</${name}>`)
+  );
+  sink.html.push(`</${name}>`);
+  sink.markers.push(`</${name}>`);
 }
 
 function nsPrefix(ns: string): string {
-  if (ns === "http://www.w3.org/2000/svg") return "svg"
-  if (ns === "http://www.w3.org/1998/Math/MathML") return "mathml"
-  return ns
+  if (ns === "http://www.w3.org/2000/svg") return "svg";
+  if (ns === "http://www.w3.org/1998/Math/MathML") return "mathml";
+  return ns;
 }
 
 function serializeChildren(
@@ -268,62 +267,62 @@ function serializeChildren(
   keepWhitespace = false,
   canonicalizeLeadingNewlines = false,
 ): void {
-  const children = parent.childNodes
-  let elementIndex = 0
+  const children = parent.childNodes;
+  let elementIndex = 0;
 
   // Two runs, not one. They hold the same characters and are drained at
   // different moments: an empty comment splits the marker run and leaves the
   // html run accumulating, which is what fuses the text either side of an
   // anchor into the single node the oracle produced.
-  let htmlRun = ""
-  let markerRun = ""
+  let htmlRun = "";
+  let markerRun = "";
 
   const flush = (run: string, channel: string[]): void => {
-    if (run === "") return
-    const insignificant = !keepWhitespace && run.trim() === "" && run.includes("\n")
-    if (!insignificant) channel.push(run)
-  }
+    if (run === "") return;
+    const insignificant = !keepWhitespace && run.trim() === "" && run.includes("\n");
+    if (!insignificant) channel.push(run);
+  };
 
   const flushBoth = (): void => {
-    flush(htmlRun, sink.html)
-    flush(markerRun, sink.markers)
-    htmlRun = ""
-    markerRun = ""
-  }
+    flush(htmlRun, sink.html);
+    flush(markerRun, sink.markers);
+    htmlRun = "";
+    markerRun = "";
+  };
 
   for (let i = 0; i < children.length; i++) {
-    const node = children[i]
+    const node = children[i];
     if (node.nodeType === NODE_TEXT) {
       const data =
         i === 0 && canonicalizeLeadingNewlines
           ? canonicalLeadingNewlines((node as Text).data)
-          : (node as Text).data
-      htmlRun += data
-      markerRun += data.replace(ANCHOR_IN_TEXT, "&lt;!----&gt;")
-      continue
+          : (node as Text).data;
+      htmlRun += data;
+      markerRun += data.replace(ANCHOR_IN_TEXT, "&lt;!----&gt;");
+      continue;
     }
     // An empty comment is a compiled insert anchor: invisible to the main
     // string, and it must not split a text run that the oracle produced as one.
     // The marker channel keeps it, in place.
     if (node.nodeType === NODE_COMMENT && (node as Comment).data === "") {
-      flush(markerRun, sink.markers)
-      markerRun = ""
-      sink.markers.push("<!---->")
-      sink.anchors++
-      continue
+      flush(markerRun, sink.markers);
+      markerRun = "";
+      sink.markers.push("<!---->");
+      sink.anchors++;
+      continue;
     }
-    flushBoth()
+    flushBoth();
     if (node.nodeType === NODE_COMMENT) {
-      const text = `<!--${canonicalMarker((node as Comment).data)}-->`
-      sink.html.push(text)
-      sink.markers.push(text)
+      const text = `<!--${canonicalMarker((node as Comment).data)}-->`;
+      sink.html.push(text);
+      sink.markers.push(text);
     } else if (node.nodeType === NODE_ELEMENT) {
-      sink.path.push(elementIndex++)
-      serializeElement(node as Element, sink, keepWhitespace)
-      sink.path.pop()
+      sink.path.push(elementIndex++);
+      serializeElement(node as Element, sink, keepWhitespace);
+      sink.path.pop();
     }
   }
-  flushBoth()
+  flushBoth();
 }
 
 /**
@@ -352,70 +351,67 @@ function serializeChildren(
  * the corpus, not silently empty" in oracle.test.ts, which asserts the channel
  * produces attribute lines at all, NOT that this partition is exact.
  */
-export function expectedAttributeOrder(
-  oracleLine: string,
-  patched: ReadonlySet<string>,
-): string {
-  const cut = oracleLine.indexOf(": ")
-  const head = oracleLine.slice(0, cut)
-  const names = oracleLine.slice(cut + 2).split(",")
-  const baked = names.filter((n) => !patched.has(n))
-  const applied = names.filter((n) => patched.has(n))
-  return `${head}: ${[...baked, ...applied].join(",")}`
+export function expectedAttributeOrder(oracleLine: string, patched: ReadonlySet<string>): string {
+  const cut = oracleLine.indexOf(": ");
+  const head = oracleLine.slice(0, cut);
+  const names = oracleLine.slice(cut + 2).split(",");
+  const baked = names.filter((n) => !patched.has(n));
+  const applied = names.filter((n) => patched.has(n));
+  return `${head}: ${[...baked, ...applied].join(",")}`;
 }
 
 export interface DomChannels {
   /** The main diff: markers dropped, adjacent text fused, attributes sorted. */
-  html: string
+  html: string;
   /**
    * Structure with every insert anchor in place and no text fusion across one.
    * Rule 4 makes a spurious or misplaced `<!---->` invisible to `html`; this is
    * where it is visible. Attribute values are omitted so that an attribute
    * change fails `html` and nothing else.
    */
-  markers: string
+  markers: string;
   /**
    * One line per element carrying attributes, in document order:
    * `0/1 div: id,class`. Rule 2 sorts attributes out of `html`; this is where
    * their order survives.
    */
-  attributes: string[]
+  attributes: string[];
   /**
    * Insert anchors that reached the DOM, counted as NODES during the walk. The
    * `markers` string cannot be counted for this: a text node reading `<!---->`
    * is indistinguishable from an anchor once both are characters.
    */
-  anchors: number
+  anchors: number;
   /**
    * One ordinal per ELEMENT, document order, stamped on first sight within the
    * render. Text nodes are excluded because the two paths legitimately build a
    * different NUMBER of them — a cloned template parses one run where
    * `createElement` appends three — so their identity is not comparable.
    */
-  identity: number[]
+  identity: number[];
 }
 
 function walk(container: Node): Sink {
-  const sink: Sink = { html: [], markers: [], attributes: [], identity: [], path: [], anchors: 0 }
-  serializeChildren(container, sink)
-  return sink
+  const sink: Sink = { html: [], markers: [], attributes: [], identity: [], path: [], anchors: 0 };
+  serializeChildren(container, sink);
+  return sink;
 }
 
 /** Normalized serialization of a container's children. */
 export function normalizeDom(container: Node): string {
-  return walk(container).html.join("")
+  return walk(container).html.join("");
 }
 
 /** The main diff plus the two channels it deliberately throws away. */
 export function normalizeChannels(container: Node): DomChannels {
-  const sink = walk(container)
+  const sink = walk(container);
   return {
     html: sink.html.join(""),
     markers: sink.markers.join(""),
     attributes: sink.attributes,
     anchors: sink.anchors,
     identity: sink.identity,
-  }
+  };
 }
 
 /**
@@ -424,5 +420,5 @@ export function normalizeChannels(container: Node): DomChannels {
  * straight off the nodes and is what the bounds are stated against.
  */
 export function countAnchors(markers: string): number {
-  return markers.split("<!---->").length - 1
+  return markers.split("<!---->").length - 1;
 }

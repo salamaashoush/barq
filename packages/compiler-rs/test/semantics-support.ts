@@ -27,8 +27,8 @@
  */
 
 export interface Thrown {
-  readonly name: string
-  readonly message: string
+  readonly name: string;
+  readonly message: string;
 }
 
 /**
@@ -39,7 +39,7 @@ export interface Thrown {
  */
 export interface Kit {
   /** A fresh container, attached to `document.body`, torn down by the runner. */
-  container(): HTMLElement
+  container(): HTMLElement;
   /**
    * Run `body` and then settle the scheduler, collecting everything either of
    * them throws instead of letting it escape. A construction throw and a throw
@@ -55,18 +55,18 @@ export interface Kit {
    * correct answer to that, so passing nothing would test the harness rather
    * than the rule.
    */
-  attempt(body: (scope: null) => void | Promise<void>): Promise<Thrown[]>
+  attempt(body: (scope: null) => void | Promise<void>): Promise<Thrown[]>;
   /** Flush render effects, user effects and one further microtask turn. */
-  settle(): Promise<void>
+  settle(): Promise<void>;
   /**
    * The emitted module for this fixture, with every string literal, template
    * literal, regex literal and comment blanked to spaces of the same length.
    * A claim that searches the emitted text for `children: Child({})` would
    * otherwise match the sentence it is about to print.
    */
-  readonly emitted: string
+  readonly emitted: string;
   /** Report the claim's rule as violated. Never returns. */
-  fail(observed: string): never
+  fail(observed: string): never;
   /**
    * A positive observation that the construct under test RAN, asserted before
    * anything is concluded from what it did.
@@ -79,7 +79,7 @@ export interface Kit {
    * CRASHES rather than reporting a violation, so §15.2's third assertion
    * catches it as a wrong reason.
    */
-  precondition(ok: boolean, observed: string): void
+  precondition(ok: boolean, observed: string): void;
 }
 
 /**
@@ -88,19 +88,19 @@ export interface Kit {
  */
 export class PreconditionFailed extends Error {
   constructor(observed: string) {
-    super(`precondition not met: ${observed}`)
-    this.name = "PreconditionFailed"
+    super(`precondition not met: ${observed}`);
+    this.name = "PreconditionFailed";
   }
 }
 
 export interface Claim {
   /** Stable within the fixture; the registry addresses rows by it. */
-  readonly id: string
+  readonly id: string;
   /** The rule ID from `SEMANTICS.md` this claim is a falsification procedure for. */
-  readonly rule: string
+  readonly rule: string;
   /** What the rule requires, in one line, phrased as the thing that must be true. */
-  readonly says: string
-  check(kit: Kit): void | Promise<void>
+  readonly says: string;
+  check(kit: Kit): void | Promise<void>;
 }
 
 export class SemanticViolation extends Error {
@@ -108,17 +108,17 @@ export class SemanticViolation extends Error {
     readonly rule: string,
     readonly observed: string,
   ) {
-    super(`${rule} violated: ${observed}`)
-    this.name = "SemanticViolation"
+    super(`${rule} violated: ${observed}`);
+    this.name = "SemanticViolation";
   }
 }
 
 export function describeThrown(error: unknown): Thrown {
-  if (error instanceof Error) return { name: error.name, message: error.message }
-  return { name: "non-Error", message: String(error) }
+  if (error instanceof Error) return { name: error.name, message: error.message };
+  return { name: "non-Error", message: String(error) };
 }
 
 export function formatThrown(errors: readonly Thrown[]): string {
-  if (errors.length === 0) return "nothing thrown"
-  return errors.map((e) => `${e.name}: ${e.message}`).join(" | ")
+  if (errors.length === 0) return "nothing thrown";
+  return errors.map((e) => `${e.name}: ${e.message}`).join(" | ");
 }

@@ -34,10 +34,10 @@
  * seconds. It is not per-fixture, which is what makes it affordable in CI.
  */
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-import type { Page } from "./chrome.ts"
+import type { Page } from "./chrome.ts";
 import {
   browserOnlySource,
   compileBrowserOnly,
@@ -47,9 +47,9 @@ import {
   listFixtures,
   patchedAttributeNames,
   TMP_DIR,
-} from "./harness.ts"
+} from "./harness.ts";
 
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n"
+const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
 
 /**
  * `@barqjs/core` with `template` recording every clone it hands out.
@@ -91,20 +91,20 @@ export function template(html, isSVG) {
     return node
   }
 }
-`
+`;
 
 /** The event types the emitted module registers with `delegateEvents([...])`. */
 function delegatedTypes(code: string): string[] {
-  const call = code.match(/_\$+delegateEvents\(\[([^\]]*)\]\)/)
-  if (!call) return []
+  const call = code.match(/_\$+delegateEvents\(\[([^\]]*)\]\)/);
+  if (!call) return [];
   return call[1]
     .split(",")
     .map((entry) => entry.trim().replace(/^["']|["']$/g, ""))
-    .filter((entry) => entry.length > 0)
+    .filter((entry) => entry.length > 0);
 }
 
 export interface BrowserDivergence {
-  fixture: string
+  fixture: string;
   kind:
     | "initial-dom"
     | "step-dom"
@@ -114,47 +114,47 @@ export interface BrowserDivergence {
     | "node-identity-differential"
     | "step-count"
     | "event-count"
-    | "threw"
-  step?: number
-  expected: string
-  actual: string
+    | "threw";
+  step?: number;
+  expected: string;
+  actual: string;
 }
 
 /** One frame, as `normalize.ts` walks it. */
 export interface BrowserFrame {
-  html: string
-  markers: string
-  attributes: string[]
-  anchors: number
-  identity: number[]
+  html: string;
+  markers: string;
+  attributes: string[];
+  anchors: number;
+  identity: number[];
 }
 
 /** Everything one fixture's compiled module produced, kept for comparison in node. */
 export interface BrowserRender {
-  fixture: string
-  initial: BrowserFrame
-  frames: BrowserFrame[]
-  events: BrowserFrame[]
+  fixture: string;
+  initial: BrowserFrame;
+  frames: BrowserFrame[];
+  events: BrowserFrame[];
 }
 
 export interface DifferentialReport {
-  checked: number
-  frames: number
+  checked: number;
+  frames: number;
   /**
    * Attribute lines the order channel actually saw, summed over frames. A
    * channel that silently stopped producing lines reports zero divergences and
    * is indistinguishable from a clean run; this is the number that tells them
    * apart, and browser.test.ts asserts on it.
    */
-  attributeLines: number
+  attributeLines: number;
   /**
    * The self-check divergences the page itself can report: marker layout
    * against the anchors the clones baked in, the attribute partition, and a
    * fixture that threw. Everything else is a comparison between two RUNS and is
    * computed by `compareRuns` in node.
    */
-  divergences: BrowserDivergence[]
-  renders: BrowserRender[]
+  divergences: BrowserDivergence[];
+  renders: BrowserRender[];
 }
 
 /**
@@ -163,25 +163,25 @@ export interface DifferentialReport {
  * the fake DOM back in the middle of the thing it is supposed to be checking.
  */
 interface PageRow {
-  name: string
-  delegated: string[]
+  name: string;
+  delegated: string[];
   /** Attribute names the patch code applies after the clone — read off the code. */
-  patched: string[]
+  patched: string[];
   /** Whether the module emits `_$spread`, whose names the compiler cannot know. */
-  spread: boolean
+  spread: boolean;
 }
 
 function entrySource(fixtures: PageRow[]): string {
   const imports = fixtures
     .map((_, i) => `import * as compiled${i} from "./compiled-${i}.tsx"`)
-    .join("\n")
+    .join("\n");
   const table = fixtures
     .map(
       ({ name, delegated, patched, spread }, i) =>
         `  [${JSON.stringify(name)}, compiled${i}, ${JSON.stringify(delegated)}, ` +
         `${JSON.stringify(patched)}, ${JSON.stringify(spread)}],`,
     )
-    .join("\n")
+    .join("\n");
 
   return `${PRAGMA}${imports}
 import { normalizeChannels, resetIdentity } from "../../normalize.ts"
@@ -345,7 +345,7 @@ window.__barqDifferential = async function () {
 
   return JSON.stringify({ checked: CORPUS.length, frames, attributeLines, divergences, renders })
 }
-`
+`;
 }
 
 /**
@@ -357,43 +357,47 @@ window.__barqDifferential = async function () {
 export async function buildDifferentialPage(
   corrupt?: (name: string, code: string) => string,
 ): Promise<{
-  pagePath: string
-  fixtures: string[]
-  cleanup: () => void
+  pagePath: string;
+  fixtures: string[];
+  cleanup: () => void;
 }> {
   // Under the per-process directory for the same reason the generated modules
   // are: the recursive delete below otherwise lands between a sibling process's
   // write and its bundle, and the bundle inputs disappear mid-run.
-  const workdir = join(TMP_DIR, "browser")
-  rmSync(workdir, { recursive: true, force: true })
-  mkdirSync(workdir, { recursive: true })
+  const workdir = join(TMP_DIR, "browser");
+  rmSync(workdir, { recursive: true, force: true });
+  mkdirSync(workdir, { recursive: true });
 
   const rows = [
-    ...listFixtures().map((name) => ({ name, source: fixtureSource(name), compile: compileFixture })),
+    ...listFixtures().map((name) => ({
+      name,
+      source: fixtureSource(name),
+      compile: compileFixture,
+    })),
     ...listBrowserOnlyFixtures().map((name) => ({
       name: `browser-only/${name}`,
       source: browserOnlySource(name),
       compile: () => compileBrowserOnly(name),
     })),
-  ]
-  writeFileSync(join(workdir, "core-instrumented.ts"), CORE_SHIM)
+  ];
+  writeFileSync(join(workdir, "core-instrumented.ts"), CORE_SHIM);
 
-  const names = rows.map((row) => row.name)
+  const names = rows.map((row) => row.name);
   const fixtures = rows.map(({ name, compile }, i) => {
-    const clean = compile(name.replace("browser-only/", ""))
-    const code = corrupt ? corrupt(name, clean) : clean
+    const clean = compile(name.replace("browser-only/", ""));
+    const code = corrupt ? corrupt(name, clean) : clean;
     writeFileSync(
       join(workdir, `compiled-${i}.tsx`),
       PRAGMA + code.replaceAll('from "@barqjs/core"', 'from "./core-instrumented.ts"'),
-    )
+    );
     return {
       name,
       delegated: delegatedTypes(code),
       patched: [...patchedAttributeNames(code)],
       spread: code.includes("_$spread("),
-    }
-  })
-  writeFileSync(join(workdir, "entry.tsx"), entrySource(fixtures))
+    };
+  });
+  writeFileSync(join(workdir, "entry.tsx"), entrySource(fixtures));
 
   const built = await Bun.build({
     entrypoints: [join(workdir, "entry.tsx")],
@@ -403,13 +407,13 @@ export async function buildDifferentialPage(
     // packages/core/dist, which is a build artifact that can be stale. `bun`
     // resolves to src/index.ts, which is what `bun test` runs against.
     conditions: ["bun"],
-  })
+  });
   if (!built.success) {
-    for (const log of built.logs) console.error(String(log))
-    throw new Error("the differential bundle did not build")
+    for (const log of built.logs) console.error(String(log));
+    throw new Error("the differential bundle did not build");
   }
 
-  const pagePath = join(workdir, "page.html")
+  const pagePath = join(workdir, "page.html");
   // A module-scope throw in ANY fixture leaves `__barqDifferential` undefined,
   // and every symptom of that is misleading: the readiness poll times out, the
   // call reports "not a function", and `beforeAll` reports a 300-second hook
@@ -429,33 +433,37 @@ export async function buildDifferentialPage(
       // early and the page dies with a bare SyntaxError naming no file.
       // `<\/script` is the same string to a JS parser and invisible to the HTML one.
       `<script type="module">\n${(await built.outputs[0].text()).replace(/<\/script/gi, "<\\/script")}\n</script>`,
-  )
-  return { pagePath, fixtures: names, cleanup: () => rmSync(workdir, { recursive: true, force: true }) }
+  );
+  return {
+    pagePath,
+    fixtures: names,
+    cleanup: () => rmSync(workdir, { recursive: true, force: true }),
+  };
 }
 
 export async function checkDifferential(
   page: Page,
   corrupt?: (name: string, code: string) => string,
 ): Promise<DifferentialReport> {
-  const { pagePath, cleanup } = await buildDifferentialPage(corrupt)
+  const { pagePath, cleanup } = await buildDifferentialPage(corrupt);
   try {
-    await page.open(`file://${pagePath}`)
-    let ready = false
+    await page.open(`file://${pagePath}`);
+    let ready = false;
     for (let attempt = 0; attempt < 400 && !ready; attempt++) {
-      ready = await page.evaluate<boolean>("typeof window.__barqDifferential === 'function'")
-      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50))
+      ready = await page.evaluate<boolean>("typeof window.__barqDifferential === 'function'");
+      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50));
     }
     if (!ready) {
-      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')")
+      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')");
       throw new Error(
         `the differential page never finished loading${reason ? `:\n${reason}` : " and reported no error"}`,
-      )
+      );
     }
-    const value = await page.evaluate<string>("window.__barqDifferential()")
-    if (!value) throw new Error("the page never loaded — check the bundle for a load error")
-    return JSON.parse(value) as DifferentialReport
+    const value = await page.evaluate<string>("window.__barqDifferential()");
+    if (!value) throw new Error("the page never loaded — check the bundle for a load error");
+    return JSON.parse(value) as DifferentialReport;
   } finally {
-    cleanup()
+    cleanup();
   }
 }
 
@@ -474,19 +482,19 @@ export function compareRuns(
   clean: DifferentialReport,
   subject: DifferentialReport,
 ): BrowserDivergence[] {
-  const divergences: BrowserDivergence[] = []
-  const byFixture = new Map(subject.renders.map((render) => [render.fixture, render]))
+  const divergences: BrowserDivergence[] = [];
+  const byFixture = new Map(subject.renders.map((render) => [render.fixture, render]));
 
   for (const want of clean.renders) {
-    const got = byFixture.get(want.fixture)
+    const got = byFixture.get(want.fixture);
     if (got === undefined) {
       divergences.push({
         fixture: want.fixture,
         kind: "threw",
         expected: "a render",
         actual: "the run produced none",
-      })
-      continue
+      });
+      continue;
     }
 
     if (want.initial.html !== got.initial.html) {
@@ -495,7 +503,7 @@ export function compareRuns(
         kind: "initial-dom",
         expected: want.initial.html,
         actual: got.initial.html,
-      })
+      });
     }
 
     // A run that stopped producing frames part-way compared only the prefix and
@@ -507,7 +515,7 @@ export function compareRuns(
         kind: "step-count",
         expected: String(want.frames.length),
         actual: String(got.frames.length),
-      })
+      });
     }
     if (want.events.length !== got.events.length) {
       divergences.push({
@@ -515,89 +523,89 @@ export function compareRuns(
         kind: "event-count",
         expected: String(want.events.length),
         actual: String(got.events.length),
-      })
+      });
     }
 
     for (let i = 0; i < Math.min(want.frames.length, got.frames.length); i++) {
-      if (want.frames[i].html === got.frames[i].html) continue
+      if (want.frames[i].html === got.frames[i].html) continue;
       divergences.push({
         fixture: want.fixture,
         kind: "step-dom",
         step: i,
         expected: want.frames[i].html,
         actual: got.frames[i].html,
-      })
+      });
     }
     for (let i = 0; i < Math.min(want.events.length, got.events.length); i++) {
-      if (want.events[i].html === got.events[i].html) continue
+      if (want.events[i].html === got.events[i].html) continue;
       divergences.push({
         fixture: want.fixture,
         kind: "event-dom",
         step: i,
         expected: want.events[i].html,
         actual: got.events[i].html,
-      })
+      });
     }
 
-    const wantChannels = [want.initial, ...want.frames, ...want.events]
-    const gotChannels = [got.initial, ...got.frames, ...got.events]
+    const wantChannels = [want.initial, ...want.frames, ...want.events];
+    const gotChannels = [got.initial, ...got.frames, ...got.events];
     for (let i = 0; i < Math.min(wantChannels.length, gotChannels.length); i++) {
       // Attribute ORDER, in the real parser. Rule 2 of normalize.ts sorts
       // attributes out of `html`, so this is the only channel that sees a
       // template emitted backwards.
-      const a = wantChannels[i].attributes
-      const b = gotChannels[i].attributes
+      const a = wantChannels[i].attributes;
+      const b = gotChannels[i].attributes;
       for (let j = 0; j < Math.max(a.length, b.length); j++) {
-        if (a[j] === b[j]) continue
+        if (a[j] === b[j]) continue;
         divergences.push({
           fixture: want.fixture,
           kind: "attribute-order",
           step: i,
           expected: a[j] ?? "<missing>",
           actual: b[j] ?? "<missing>",
-        })
+        });
       }
 
       // Node identity. Every other channel is a function of the DOM's shape, so
       // a construct that rebuilt every node on every update is indistinguishable
       // from one that reused them.
-      const wantId = wantChannels[i].identity.join(",")
-      const gotId = gotChannels[i].identity.join(",")
-      if (wantId === gotId) continue
+      const wantId = wantChannels[i].identity.join(",");
+      const gotId = gotChannels[i].identity.join(",");
+      if (wantId === gotId) continue;
       divergences.push({
         fixture: want.fixture,
         kind: "node-identity-differential",
         step: i,
         expected: wantId,
         actual: gotId,
-      })
+      });
     }
   }
 
-  return divergences
+  return divergences;
 }
 
 export function reportDifferential(report: DifferentialReport): number {
   console.log(
     `corpus rendered in a real browser: ${report.checked} fixtures, ${report.frames} frames, ` +
       `${report.attributeLines} attribute lines`,
-  )
+  );
   for (const d of report.divergences) {
     console.error(
       `\n[${d.kind}${d.step === undefined ? "" : ` step ${d.step}`}] ${d.fixture}` +
         `\n  expected: ${d.expected}\n  actual  : ${d.actual}`,
-    )
+    );
   }
   if (report.divergences.length === 0) {
-    console.log("every fixture renders and drives clean in Chrome")
+    console.log("every fixture renders and drives clean in Chrome");
   } else {
-    console.log(`\n${report.divergences.length} divergence(s)`)
+    console.log(`\n${report.divergences.length} divergence(s)`);
   }
-  return report.divergences.length
+  return report.divergences.length;
 }
 
 if (import.meta.main) {
-  const { withChrome } = await import("./chrome.ts")
-  const report = await withChrome((page) => checkDifferential(page))
-  process.exit(reportDifferential(report) === 0 ? 0 : 1)
+  const { withChrome } = await import("./chrome.ts");
+  const report = await withChrome((page) => checkDifferential(page));
+  process.exit(reportDifferential(report) === 0 ? 0 : 1);
 }

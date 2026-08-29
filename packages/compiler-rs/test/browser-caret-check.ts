@@ -24,13 +24,13 @@
  * destroyed. A check that cannot show the failure is not checking for it.
  */
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-import type { Page } from "./chrome.ts"
-import { compileSource, TMP_DIR } from "./harness.ts"
+import type { Page } from "./chrome.ts";
+import { compileSource, TMP_DIR } from "./harness.ts";
 
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n"
+const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
 
 /**
  * The page's own source. A module-level signal, a `bind:value` input, a
@@ -64,7 +64,7 @@ Object.assign(window, {
   __barqRead: (which: string) => (which === "field" ? text() : notes()),
   __barqReady: true,
 })
-`
+`;
 
 /**
  * The MUTATION, applied to the emitted module rather than to the runtime: the
@@ -79,68 +79,68 @@ export function bindValue(s, element, name, type, value) {
   bindEffect(s, () => { element[name] = value() })
   listen(s, element, type, () => { value.set(element[name]) })
 }
-`
+`;
 
 export interface CaretRow {
   /** what was driven */
-  what: string
+  what: string;
   /** what the control held after the browser typed into it */
-  afterTyping: string
+  afterTyping: string;
   /** the control the row is about */
-  target: string
+  target: string;
   /** the caret before the external write */
-  before: string
+  before: string;
   /** the caret after it */
-  after: string
+  after: string;
   /** the value the field held when the row finished */
-  value: string
+  value: string;
   /** whether the field still had the focus */
-  focused: boolean
+  focused: boolean;
   /** the row's own verdict */
-  ok: boolean
+  ok: boolean;
   /** why, when it is not ok */
-  why: string
+  why: string;
 }
 
 export interface CaretReport {
-  rows: CaretRow[]
+  rows: CaretRow[];
   /** The control row, run against the naive channel. It MUST report a loss. */
-  control: CaretRow
+  control: CaretRow;
 }
 
 async function buildPage(naive: boolean): Promise<{ path: string; cleanup: () => void }> {
   // Inside the package: the bundle imports `@barqjs/core`, and a workdir in
   // the system temp has no node_modules above it to resolve it from.
-  const workdir = join(TMP_DIR, `caret-${naive ? "naive" : "real"}`)
-  rmSync(workdir, { recursive: true, force: true })
-  mkdirSync(workdir, { recursive: true })
+  const workdir = join(TMP_DIR, `caret-${naive ? "naive" : "real"}`);
+  rmSync(workdir, { recursive: true, force: true });
+  mkdirSync(workdir, { recursive: true });
 
-  let code = compileSource(FIXTURE, "caret.tsx")
+  let code = compileSource(FIXTURE, "caret.tsx");
   if (naive) {
-    writeFileSync(join(workdir, "core-naive.ts"), NAIVE_SHIM)
-    code = code.replaceAll('from "@barqjs/core"', 'from "./core-naive.ts"')
+    writeFileSync(join(workdir, "core-naive.ts"), NAIVE_SHIM);
+    code = code.replaceAll('from "@barqjs/core"', 'from "./core-naive.ts"');
   }
-  writeFileSync(join(workdir, "entry.tsx"), PRAGMA + code)
+  writeFileSync(join(workdir, "entry.tsx"), PRAGMA + code);
 
   const built = await Bun.build({
     entrypoints: [join(workdir, "entry.tsx")],
     target: "browser",
     format: "esm",
     conditions: ["bun"],
-  })
+  });
   if (!built.success) {
-    for (const log of built.logs) console.error(String(log))
-    throw new Error("the caret page did not build")
+    for (const log of built.logs) console.error(String(log));
+    throw new Error("the caret page did not build");
   }
-  const path = join(workdir, "page.html")
+  const path = join(workdir, "page.html");
   writeFileSync(
     path,
     `<!doctype html><meta charset="utf-8"><title>barq caret</title>` +
       `<script>window.addEventListener("error", (e) => { window.__barqLoadError ??= ` +
       `String((e.error && e.error.stack) || e.message) });</script>` +
       `<script type="module">\n${(await built.outputs[0]!.text()).replace(/<\/script/gi, "<\\/script")}\n</script>`,
-  )
-  return { path, cleanup: () => rmSync(workdir, { recursive: true, force: true }) }
+  );
+  return { path, cleanup: () => rmSync(workdir, { recursive: true, force: true }) };
 }
 
 /** One character, through the browser's own editing code. */
@@ -150,33 +150,33 @@ async function typeChar(page: Page, ch: string): Promise<void> {
     text: ch,
     unmodifiedText: ch,
     key: ch,
-  })
-  await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: ch })
+  });
+  await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
 }
 
 interface Caret {
-  start: number
-  end: number
-  direction: string
-  value: string
-  focused: boolean
+  start: number;
+  end: number;
+  direction: string;
+  value: string;
+  focused: boolean;
 }
 
 function caretOf(id: string): string {
   return `(() => { const el = document.getElementById(${JSON.stringify(id)});
     return JSON.stringify({ start: el.selectionStart, end: el.selectionEnd,
       direction: el.selectionDirection, value: el.value,
-      focused: document.activeElement === el }) })()`
+      focused: document.activeElement === el }) })()`;
 }
 
 async function readCaret(page: Page, id: string): Promise<Caret> {
-  return JSON.parse(await page.evaluate<string>(caretOf(id))) as Caret
+  return JSON.parse(await page.evaluate<string>(caretOf(id))) as Caret;
 }
 
 async function settle(page: Page): Promise<void> {
   await page.evaluate<boolean>(
     "new Promise((r) => { queueMicrotask(() => requestAnimationFrame(() => r(true))) })",
-  )
+  );
 }
 
 /**
@@ -190,27 +190,23 @@ async function driveOne(
   select: [number, number],
   external: string,
 ): Promise<{ before: Caret; after: Caret; typed: boolean }> {
-  await page.evaluate(`document.getElementById(${JSON.stringify(id)}).focus()`)
-  await page.evaluate(
-    `document.getElementById(${JSON.stringify(id)}).setSelectionRange(5, 5)`,
-  )
-  const seeded = (await readCaret(page, id)).value
-  for (const ch of typed) await typeChar(page, ch)
-  await settle(page)
+  await page.evaluate(`document.getElementById(${JSON.stringify(id)}).focus()`);
+  await page.evaluate(`document.getElementById(${JSON.stringify(id)}).setSelectionRange(5, 5)`);
+  const seeded = (await readCaret(page, id)).value;
+  for (const ch of typed) await typeChar(page, ch);
+  await settle(page);
   await page.evaluate(
     `document.getElementById(${JSON.stringify(id)}).setSelectionRange(${select[0]}, ${select[1]}, "backward")`,
-  )
-  const before = await readCaret(page, id)
-  await page.evaluate(
-    `window.__barqWrite(${JSON.stringify(id)}, ${JSON.stringify(external)})`,
-  )
-  await settle(page)
-  const after = await readCaret(page, id)
+  );
+  const before = await readCaret(page, id);
+  await page.evaluate(`window.__barqWrite(${JSON.stringify(id)}, ${JSON.stringify(external)})`);
+  await settle(page);
+  const after = await readCaret(page, id);
   // Whether Chrome's editing code actually ran. Without this the whole check
   // passes on a browser that ignored every keystroke, which is the same green
   // as a happy-dom suite and the reason this file exists.
-  const didType = seeded !== before.value && before.value.includes(typed)
-  return { before, after, typed: didType }
+  const didType = seeded !== before.value && before.value.includes(typed);
+  return { before, after, typed: didType };
 }
 
 function judge(
@@ -221,19 +217,19 @@ function judge(
   wantValue: string,
   typed = true,
 ): CaretRow {
-  const reasons: string[] = []
+  const reasons: string[] = [];
   if (!typed) {
-    reasons.push("the browser typed nothing, so this row observed no keystroke at all")
+    reasons.push("the browser typed nothing, so this row observed no keystroke at all");
   }
   if (after.value !== wantValue) {
-    reasons.push(`the external write never landed: the field reads ${JSON.stringify(after.value)}`)
+    reasons.push(`the external write never landed: the field reads ${JSON.stringify(after.value)}`);
   }
   if (after.start !== before.start || after.end !== before.end) {
     reasons.push(
       `the caret moved from ${before.start}..${before.end} to ${after.start}..${after.end}`,
-    )
+    );
   }
-  if (!after.focused) reasons.push("the field lost focus to the write")
+  if (!after.focused) reasons.push("the field lost focus to the write");
   return {
     what,
     target,
@@ -244,26 +240,26 @@ function judge(
     focused: after.focused,
     ok: reasons.length === 0,
     why: reasons.join("; "),
-  }
+  };
 }
 
 export async function checkCaret(page: Page): Promise<CaretReport> {
-  const rows: CaretRow[] = []
+  const rows: CaretRow[] = [];
 
-  const real = await buildPage(false)
+  const real = await buildPage(false);
   try {
-    await page.open(`file://${real.path}`)
-    let ready = false
+    await page.open(`file://${real.path}`);
+    let ready = false;
     for (let attempt = 0; attempt < 400 && !ready; attempt++) {
-      ready = await page.evaluate<boolean>("window.__barqReady === true")
-      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50))
+      ready = await page.evaluate<boolean>("window.__barqReady === true");
+      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50));
     }
     if (!ready) {
-      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')")
-      throw new Error(`the caret page never loaded${reason ? `:\n${reason}` : ""}`)
+      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')");
+      throw new Error(`the caret page never loaded${reason ? `:\n${reason}` : ""}`);
     }
 
-    const field = await driveOne(page, "field", "XY", [2, 7], "hello there world")
+    const field = await driveOne(page, "field", "XY", [2, 7], "hello there world");
     rows.push(
       judge(
         "type two characters, select 2..7, then write the signal from elsewhere",
@@ -273,9 +269,9 @@ export async function checkCaret(page: Page): Promise<CaretReport> {
         "hello there world",
         field.typed,
       ),
-    )
+    );
 
-    const area = await driveOne(page, "area", "AB", [3, 6], "second line here")
+    const area = await driveOne(page, "area", "AB", [3, 6], "second line here");
     rows.push(
       judge(
         "the same, in a textarea",
@@ -285,15 +281,15 @@ export async function checkCaret(page: Page): Promise<CaretReport> {
         "second line here",
         area.typed,
       ),
-    )
+    );
 
     // The compare's own row: a write of the value the field already holds must
     // not touch the caret at all, because it must not write at all.
-    await page.evaluate(`document.getElementById("field").focus()`)
-    await page.evaluate(`document.getElementById("field").setSelectionRange(3, 8, "backward")`)
-    const same = await readCaret(page, "field")
-    await page.evaluate(`window.__barqWrite("field", ${JSON.stringify(same.value)})`)
-    await settle(page)
+    await page.evaluate(`document.getElementById("field").focus()`);
+    await page.evaluate(`document.getElementById("field").setSelectionRange(3, 8, "backward")`);
+    const same = await readCaret(page, "field");
+    await page.evaluate(`window.__barqWrite("field", ${JSON.stringify(same.value)})`);
+    await settle(page);
     rows.push(
       judge(
         "write the value the field already holds — the DOM-compare must skip it",
@@ -302,33 +298,33 @@ export async function checkCaret(page: Page): Promise<CaretReport> {
         await readCaret(page, "field"),
         same.value,
       ),
-    )
+    );
   } finally {
-    real.cleanup()
+    real.cleanup();
   }
 
   // The control: the same drive, against a channel with neither half.
-  const naive = await buildPage(true)
-  let control: CaretRow
+  const naive = await buildPage(true);
+  let control: CaretRow;
   try {
-    await page.open(`file://${naive.path}`)
-    let ready = false
+    await page.open(`file://${naive.path}`);
+    let ready = false;
     for (let attempt = 0; attempt < 400 && !ready; attempt++) {
-      ready = await page.evaluate<boolean>("window.__barqReady === true")
-      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50))
+      ready = await page.evaluate<boolean>("window.__barqReady === true");
+      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50));
     }
     if (!ready) {
-      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')")
-      throw new Error(`the control page never loaded${reason ? `:\n${reason}` : ""}`)
+      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')");
+      throw new Error(`the control page never loaded${reason ? `:\n${reason}` : ""}`);
     }
-    const field = await driveOne(page, "field", "XY", [2, 7], "hello there world")
+    const field = await driveOne(page, "field", "XY", [2, 7], "hello there world");
     const row = judge(
       "MUTATION: no DOM-compare and no caret restore",
       "input[type=text]",
       field.before,
       field.after,
       "hello there world",
-    )
+    );
     // Inverted: this row is correct when the caret was LOST.
     control = {
       ...row,
@@ -336,22 +332,22 @@ export async function checkCaret(page: Page): Promise<CaretReport> {
       why: row.ok
         ? "the naive channel kept the caret, so this check cannot tell the two apart"
         : row.why,
-    }
+    };
   } finally {
-    naive.cleanup()
+    naive.cleanup();
   }
 
-  return { rows, control }
+  return { rows, control };
 }
 
 export function formatCaret(report: CaretReport): string {
   const line = (row: CaretRow): string =>
     `  ${row.ok ? "OK  " : "LOST"}  ${row.target.padEnd(18)} caret ${row.before} → ${row.after}` +
     `  typed=${JSON.stringify(row.afterTyping)} written=${JSON.stringify(row.value)}` +
-    `${row.why ? `  — ${row.why}` : ""}`
+    `${row.why ? `  — ${row.why}` : ""}`;
   return [
     ...report.rows.map(line),
     `  ${report.control.ok ? "OK  " : "BLIND"}  control (mutated): ${report.control.before} → ` +
       `${report.control.after}${report.control.why ? `  — ${report.control.why}` : ""}`,
-  ].join("\n")
+  ].join("\n");
 }

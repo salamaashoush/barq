@@ -22,11 +22,11 @@
  * nothing.
  */
 
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test";
 
-import { emittedFlags, FLAG_CENSUS } from "./flag-census.ts"
+import { emittedFlags, FLAG_CENSUS } from "./flag-census.ts";
 
-import { liveModes, oneSourceOrderExplainsBoth, renderSource, type Mode } from "./differential.ts"
+import { liveModes, oneSourceOrderExplainsBoth, renderSource, type Mode } from "./differential.ts";
 import {
   compileFixture,
   compileSource,
@@ -37,11 +37,11 @@ import {
   renderViaCompiler,
   stripLiterals,
   templateHtml,
-} from "./harness.ts"
-import { listSemanticFixtures, runSemanticFixture, type FixtureRun } from "./semantics.ts"
-import { renderCode, sameTree, ssrStatus } from "./ssr.ts"
+} from "./harness.ts";
+import { listSemanticFixtures, runSemanticFixture, type FixtureRun } from "./semantics.ts";
+import { renderCode, sameTree, ssrStatus } from "./ssr.ts";
 
-const O0 = { optimize: 0 }
+const O0 = { optimize: 0 };
 
 /**
  * What every differential below ASSUMES, asserted per fixture instead.
@@ -68,25 +68,25 @@ const O0 = { optimize: 0 }
  *    satisfy on any fixture where elision fires.
  */
 function anchors(code: string): number {
-  return templateHtml(code).reduce((n, html) => n + countTemplateAnchors(html), 0)
+  return templateHtml(code).reduce((n, html) => n + countTemplateAnchors(html), 0);
 }
 
 function preconditions(name: string, optimised: string, reference: string): void {
   expect(optimised, `${name}: the build handed the source back — nothing compiled it`).not.toBe(
     fixtureSource(name),
-  )
-  expect(optimised.includes("_$"), `${name}: -Ox emitted no runtime helper at all`).toBe(true)
-  expect(reference.includes("_$"), `${name}: -O0 emitted no runtime helper at all`).toBe(true)
+  );
+  expect(optimised.includes("_$"), `${name}: -Ox emitted no runtime helper at all`).toBe(true);
+  expect(reference.includes("_$"), `${name}: -O0 emitted no runtime helper at all`).toBe(true);
 
-  const blanked = stripLiterals(reference)
-  expect(blanked.includes(".lastChild"), `${name}: -O0 back-walked with \`walk\` off`).toBe(false)
+  const blanked = stripLiterals(reference);
+  expect(blanked.includes(".lastChild"), `${name}: -O0 back-walked with \`walk\` off`).toBe(false);
   expect(blanked.includes(".previousSibling"), `${name}: -O0 back-walked with \`walk\` off`).toBe(
     false,
-  )
+  );
   expect(
     anchors(reference),
     `${name}: -O0 baked FEWER anchors than -Ox, so elision cannot be off`,
-  ).toBeGreaterThanOrEqual(anchors(optimised))
+  ).toBeGreaterThanOrEqual(anchors(optimised));
 }
 
 /**
@@ -99,14 +99,14 @@ function preconditions(name: string, optimised: string, reference: string): void
  * here, the design has gone wrong and the row is the evidence.
  */
 describe("-O0 is a build, not a debug mode", () => {
-  const fixtures = listFixtures()
+  const fixtures = listFixtures();
 
   it("compiles every fixture in the corpus", () => {
     for (const name of fixtures) {
-      const code = compileFixture(name, O0)
-      expect(code.length, name).toBeGreaterThan(0)
+      const code = compileFixture(name, O0);
+      expect(code.length, name).toBeGreaterThan(0);
     }
-  })
+  });
 
   /**
    * The one thing `-O0` may never be: smaller. Every knob it turns off removes
@@ -115,10 +115,10 @@ describe("-O0 is a build, not a debug mode", () => {
    * optimisations are not running at `-Ox`.
    */
   it("differs from -Ox on a substantial share of the corpus", () => {
-    const moved = fixtures.filter((name) => compileFixture(name, O0) !== compileFixture(name))
-    expect(moved.length).toBeGreaterThan(fixtures.length / 2)
-  })
-})
+    const moved = fixtures.filter((name) => compileFixture(name, O0) !== compileFixture(name));
+    expect(moved.length).toBeGreaterThan(fixtures.length / 2);
+  });
+});
 
 /**
  * L3, over the fixture corpus. This is the channel `CODESIGN.md` §6 L4 grades
@@ -129,13 +129,13 @@ describe("-O0 is a build, not a debug mode", () => {
 describe("L3 — the -O0/-Ox differential over the corpus", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically at both levels`, async () => {
-      const optimised = await drive(name)
-      const reference = await renderViaCompiler(name, {}, O0)
-      preconditions(name, optimised.code ?? "", reference.code ?? "")
+      const optimised = await drive(name);
+      const reference = await renderViaCompiler(name, {}, O0);
+      preconditions(name, optimised.code ?? "", reference.code ?? "");
 
-      expect(reference.html, `${name}: initial render`).toBe(optimised.html)
-      expect(reference.frames, `${name}: scripted steps`).toEqual(optimised.frames)
-      expect(reference.eventFrames, `${name}: dispatched events`).toEqual(optimised.eventFrames)
+      expect(reference.html, `${name}: initial render`).toBe(optimised.html);
+      expect(reference.frames, `${name}: scripted steps`).toEqual(optimised.frames);
+      expect(reference.eventFrames, `${name}: dispatched events`).toEqual(optimised.eventFrames);
 
       // The side channels the normaliser reads off each frame. `attributes`
       // carries the order the DOM reports, which rule 2 sorts out of `html`,
@@ -151,10 +151,10 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
       // do nothing. §6 L4 grades that channel self-check rather than
       // differential for exactly this reason, and `oracle.test.ts` already
       // holds each level to its own baked-in count.
-      expect(reference.channels.length, `${name}: frame count`).toBe(optimised.channels.length)
+      expect(reference.channels.length, `${name}: frame count`).toBe(optimised.channels.length);
       for (const [index, frame] of reference.channels.entries()) {
-        const at = `${name}: frame ${index}`
-        const there = optimised.channels[index]!.attributes
+        const at = `${name}: frame ${index}`;
+        const there = optimised.channels[index]!.attributes;
         // Byte equality on the ORDER is the wrong predicate across two levels
         // and the generator proved it on its 21st seed: P3 `fold` migrates a
         // constant attribute into the template AT ITS SOURCE POSITION, so the
@@ -167,21 +167,21 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
         expect(
           frame.attributes.map((line) => line.slice(0, line.indexOf(": "))),
           `${at}: elements carrying attributes`,
-        ).toEqual(there.map((line) => line.slice(0, line.indexOf(": "))))
+        ).toEqual(there.map((line) => line.slice(0, line.indexOf(": "))));
         for (const [line, entry] of frame.attributes.entries()) {
-          const names = (text: string): string[] => text.slice(text.indexOf(": ") + 2).split(",")
+          const names = (text: string): string[] => text.slice(text.indexOf(": ") + 2).split(",");
           expect(
             oneSourceOrderExplainsBoth(names(entry), names(there[line]!)),
             `${at}: attribute order — no one source order explains\n  -O0: ${entry}\n  -Ox: ${there[line]}`,
-          ).toBe(true)
+          ).toBe(true);
         }
         expect(frame.identity, `${at}: element identity`).toEqual(
           optimised.channels[index]!.identity,
-        )
+        );
       }
-    })
+    });
   }
-})
+});
 
 /**
  * THE SAME DIFFERENTIAL, BISECTED TO ONE PASS — M4b.
@@ -205,61 +205,61 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
  *    go quietly green with nothing to compare — it fails on the count.
  */
 describe("L3 — the flow pass alone, bisected", () => {
-  const FLOW_OFF = { passes: [["flow", "off"]] }
+  const FLOW_OFF = { passes: [["flow", "off"]] };
   // `reveal` and `dynamic` join the four: M9 lowers `Reveal` onto a provide-scope
   // call and `Dynamic` onto a branch whose body resolves the component, so both
   // are primitives the flow-off build does not emit.
-  const PRIMITIVES = ["branch", "each", "boundary", "portal", "reveal", "dynamic"]
+  const PRIMITIVES = ["branch", "each", "boundary", "portal", "reveal", "dynamic", "island"];
 
   /** The fixtures the pass actually moves, which is the population under test. */
   const lowered = listFixtures().filter(
     (name) => compileFixture(name) !== compileFixture(name, FLOW_OFF),
-  )
+  );
 
   it("lowers a construct in a substantial share of the corpus", () => {
     // The anti-vacuity clause, and the one M4 could not have satisfied: with the
     // pass unwired this list is EMPTY and every `it` below disappears, so a
     // suite that stopped comparing anything would have reported success.
-    expect(lowered.length, "the flow pass moves no fixture at all").toBeGreaterThan(24)
-  })
+    expect(lowered.length, "the flow pass moves no fixture at all").toBeGreaterThan(24);
+  });
 
   for (const name of lowered) {
     it(`${name} renders identically with the flow pass off`, async () => {
-      const optimised = await renderViaCompiler(name)
-      const reference = await renderViaCompiler(name, {}, FLOW_OFF)
+      const optimised = await renderViaCompiler(name);
+      const reference = await renderViaCompiler(name, {}, FLOW_OFF);
 
       // The precondition, per fixture: the two builds differ in the one way
       // this axis is about. Without it a build that ignored the override would
       // compare a module against itself, which is the failure mode the whole
       // file's `preconditions` helper exists for one level up.
-      const emitted = stripLiterals(optimised.code ?? "")
-      const plain = stripLiterals(reference.code ?? "")
+      const emitted = stripLiterals(optimised.code ?? "");
+      const plain = stripLiterals(reference.code ?? "");
       const primitives = PRIMITIVES.filter(
         (primitive) => emitted.includes(`_$${primitive}(`) && !plain.includes(`_$${primitive}(`),
-      )
+      );
       expect(
         primitives.length,
         `${name}: -Ox emits no primitive that the flow-off build does not`,
-      ).toBeGreaterThan(0)
+      ).toBeGreaterThan(0);
 
-      expect(reference.html, `${name}: initial render`).toBe(optimised.html)
-      expect(reference.frames, `${name}: scripted steps`).toEqual(optimised.frames)
-      expect(reference.eventFrames, `${name}: dispatched events`).toEqual(optimised.eventFrames)
-      expect(reference.channels.length, `${name}: frame count`).toBe(optimised.channels.length)
+      expect(reference.html, `${name}: initial render`).toBe(optimised.html);
+      expect(reference.frames, `${name}: scripted steps`).toEqual(optimised.frames);
+      expect(reference.eventFrames, `${name}: dispatched events`).toEqual(optimised.eventFrames);
+      expect(reference.channels.length, `${name}: frame count`).toBe(optimised.channels.length);
       for (const [index, frame] of reference.channels.entries()) {
         // Node identity is the channel that catches a region rebuilding what the
         // adapter reused, and vice versa — the one divergence that leaves the
         // markup byte-identical.
         expect(frame.identity, `${name}: frame ${index} element identity`).toEqual(
           optimised.channels[index]!.identity,
-        )
+        );
         expect(frame.attributes, `${name}: frame ${index} attributes`).toEqual(
           optimised.channels[index]!.attributes,
-        )
+        );
       }
-    })
+    });
   }
-})
+});
 
 /**
  * The same differential through the second backend. It is a weaker test than
@@ -270,7 +270,7 @@ describe("L3 — the flow pass alone, bisected", () => {
  */
 describe("L3 — the -O0/-Ox differential through the string backend", () => {
   const ssr = (name: string, optimize?: number): string =>
-    compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true, optimize })
+    compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true, optimize });
 
   /**
    * The gate, stated once and asserted rather than assumed.
@@ -285,26 +285,26 @@ describe("L3 — the -O0/-Ox differential through the string backend", () => {
    * early return.
    */
   it("never mistakes a broken string backend for one that has not landed", () => {
-    expect(ssrStatus.state, ssrStatus.refusal).not.toBe("broken")
-    expect(ssrStatus.state === "live" || ssrStatus.refusal.length > 0).toBe(true)
-  })
+    expect(ssrStatus.state, ssrStatus.refusal).not.toBe("broken");
+    expect(ssrStatus.state === "live" || ssrStatus.refusal.length > 0).toBe(true);
+  });
 
   for (const name of listFixtures()) {
     it(`${name} serialises identically at both levels`, async () => {
-      expect(ssrStatus.state, ssrStatus.refusal).not.toBe("broken")
-      if (!ssrStatus.landed) return
-      const optimised = await renderCode(ssr(name), `ssr-Ox-${name}`)
-      const reference = await renderCode(ssr(name, 0), `ssr-O0-${name}`)
+      expect(ssrStatus.state, ssrStatus.refusal).not.toBe("broken");
+      if (!ssrStatus.landed) return;
+      const optimised = await renderCode(ssr(name), `ssr-Ox-${name}`);
+      const reference = await renderCode(ssr(name, 0), `ssr-O0-${name}`);
 
       // An optimisation level may not decide which backend a module gets.
-      expect(reference.string, `${name}: took the same emission path`).toBe(optimised.string)
+      expect(reference.string, `${name}: took the same emission path`).toBe(optimised.string);
 
       if (optimised.string) {
         // A compiled SSR string carries no comment at all — `ssr.test.ts`
         // asserts that separately — so the raw bytes are comparable and are
         // what gets compared.
-        expect(reference.html, name).toBe(optimised.html)
-        return
+        expect(reference.html, name).toBe(optimised.html);
+        return;
       }
       // The module used one of the eight flow components the string backend
       // cannot inline, so it fell back to the DOM backend and was serialised by
@@ -315,10 +315,10 @@ describe("L3 — the -O0/-Ox differential through the string backend", () => {
       // the comments dropped is the same normalisation `ssr.test.ts` uses to
       // compare two rendering strategies, and the DOM differential above
       // already holds these fixtures to the frame-by-frame comparison.
-      expect(sameTree(reference.html), name).toBe(sameTree(optimised.html))
-    })
+      expect(sameTree(reference.html), name).toBe(sameTree(optimised.html));
+    });
   }
-})
+});
 
 /**
  * L3's BLIND SPOT, graded absolutely because a differential cannot grade it at
@@ -397,7 +397,7 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
       'import { signal } from "@barqjs/core"\n' +
       "export const on = signal(true)\n" +
       "export default function P() {\n" +
-      "  return <p data-probe=\"yes\" classList={() => ({ a: on(), b: !on() })} />\n" +
+      '  return <p data-probe="yes" classList={() => ({ a: on(), b: !on() })} />\n' +
       "}\n" +
       "export const steps = [() => on.set(false)]\n",
     before: '<p class="a" data-probe="yes"></p>',
@@ -426,7 +426,7 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
     before: '<p class="probe">1</p>',
     after: '<p class="probe">1</p>',
   },
-]
+];
 
 /**
  * The APPLY half of every `bindEffect(scope, compute, apply)` in a module.
@@ -436,29 +436,29 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
  * rather than a regex, because an apply body contains object literals.
  */
 function applyBodies(code: string): string[] {
-  const out: string[] = []
-  const marker = /_\$+bindEffect\(/g
-  let match: RegExpExecArray | null
+  const out: string[] = [];
+  const marker = /_\$+bindEffect\(/g;
+  let match: RegExpExecArray | null;
   while ((match = marker.exec(code)) !== null) {
-    let depth = 1
-    let commas = 0
-    let start = -1
+    let depth = 1;
+    let commas = 0;
+    let start = -1;
     for (let at = match.index + match[0].length; at < code.length; at++) {
-      const char = code[at]
-      if (char === "(" || char === "{" || char === "[") depth++
+      const char = code[at];
+      if (char === "(" || char === "{" || char === "[") depth++;
       else if (char === ")" || char === "}" || char === "]") {
-        depth--
+        depth--;
         if (depth === 0) {
-          if (start !== -1) out.push(code.slice(start, at))
-          break
+          if (start !== -1) out.push(code.slice(start, at));
+          break;
         }
       } else if (char === "," && depth === 1) {
-        commas++
-        if (commas === 2) start = at + 1
+        commas++;
+        if (commas === 2) start = at + 1;
       }
     }
   }
-  return out
+  return out;
 }
 
 describe("the front end L3 cannot grade, graded absolutely", () => {
@@ -478,8 +478,8 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
    * `optimality.test.ts` — one list, two suites, imported.
    */
   it("every flag the corpus emits is one the compiler proved", () => {
-    expect(emittedFlags()).toEqual([...FLAG_CENSUS])
-  })
+    expect(emittedFlags()).toEqual([...FLAG_CENSUS]);
+  });
 
   /**
    * B2's grouping key, asserted absolutely — the one mutation the whole L3 axis
@@ -501,32 +501,32 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
    * runner reports as `front end (absolute)`.
    */
   it("a fused effect applies to exactly one element", () => {
-    const offenders: string[] = []
+    const offenders: string[] = [];
     for (const name of listFixtures()) {
-      const code = compileFixture(name)
+      const code = compileFixture(name);
       for (const apply of applyBodies(code)) {
-        const elements = new Set(apply.match(/_el\$\d+/g) ?? [])
+        const elements = new Set(apply.match(/_el\$\d+/g) ?? []);
         if (elements.size > 1) {
-          offenders.push(`${name}: ${[...elements].join(" + ")} share one bindEffect`)
+          offenders.push(`${name}: ${[...elements].join(" + ")} share one bindEffect`);
         }
       }
     }
-    expect(offenders).toEqual([])
+    expect(offenders).toEqual([]);
     // The channel is not vacuous: the corpus really does emit fused effects.
-    const applies = listFixtures().flatMap((name) => applyBodies(compileFixture(name)))
-    expect(applies.length, "no fixture emits a bindEffect at all").toBeGreaterThan(10)
-  })
+    const applies = listFixtures().flatMap((name) => applyBodies(compileFixture(name)));
+    expect(applies.length, "no fixture emits a bindEffect at all").toBeGreaterThan(10);
+  });
 
   for (const mode of liveModes()) {
     for (const [index, probe] of REACTIVITY_PROBES.entries()) {
       it(`${mode}: ${probe.what}`, async () => {
-        const render = await renderSource(probe.source, `rx-probe-${index}-${mode}`, mode as Mode)
-        expect(render.html, `${probe.what}: initial render`).toBe(probe.before)
-        expect(render.frames[0], `${probe.what}: after the signal was written`).toBe(probe.after)
-      })
+        const render = await renderSource(probe.source, `rx-probe-${index}-${mode}`, mode as Mode);
+        expect(render.html, `${probe.what}: initial render`).toBe(probe.before);
+        expect(render.frames[0], `${probe.what}: after the signal was written`).toBe(probe.after);
+      });
     }
   }
-})
+});
 
 /**
  * The differential the fixture corpus cannot state: `listFixtures()` does not
@@ -544,16 +544,16 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
  */
 describe("L3 — the -O0/-Ox differential over the L1 conformance corpus", () => {
   const shape = (run: FixtureRun): string[] =>
-    run.outcomes.map((o) => `${o.claim} :: ${o.rule} :: ${o.failure ?? "HELD"}`)
+    run.outcomes.map((o) => `${o.claim} :: ${o.rule} :: ${o.failure ?? "HELD"}`);
 
   for (const name of listSemanticFixtures()) {
     it(`${name} reaches the same verdict at both levels`, async () => {
-      const optimised = await runSemanticFixture(name)
-      const reference = await runSemanticFixture(name, O0)
+      const optimised = await runSemanticFixture(name);
+      const reference = await runSemanticFixture(name, O0);
 
       expect(shape(reference), `${name}: -O0 changed a conformance verdict`).toEqual(
         shape(optimised),
-      )
-    })
+      );
+    });
   }
-})
+});

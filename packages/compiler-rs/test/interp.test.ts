@@ -40,7 +40,7 @@
  * `None` is that, written down once per op.
  */
 
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test";
 
 import {
   compileFixture,
@@ -53,16 +53,16 @@ import {
   stripLiterals,
   templateHtml,
   type RenderResult,
-} from "./harness.ts"
-import { checkOwnership, listOwnershipFixtures, ownershipSource } from "./ownership.ts"
+} from "./harness.ts";
+import { checkOwnership, listOwnershipFixtures, ownershipSource } from "./ownership.ts";
 import {
   listSemanticFixtures,
   runSemanticFixture,
   type FixtureRun as SemanticRun,
-} from "./semantics.ts"
-import { HANDLED, OFF_TEMPLATE } from "@barqjs/core/interp"
+} from "./semantics.ts";
+import { HANDLED, OFF_TEMPLATE } from "@barqjs/core/interp";
 
-const INTERP = { interp: true }
+const INTERP = { interp: true };
 
 // ---------------------------------------------------------------------------
 // the instruction set, checked in both directions
@@ -70,7 +70,7 @@ const INTERP = { interp: true }
 
 /** `SetOnce` → `setOnce`. The one mechanical difference between the two sides. */
 function lowerFirst(name: string): string {
-  return name.charAt(0).toLowerCase() + name.slice(1)
+  return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
 describe("the instruction set cannot drift across the boundary", () => {
@@ -84,15 +84,15 @@ describe("the instruction set cannot drift across the boundary", () => {
    * rot.
    */
   it("every opcode the compiler can emit is either handled or declared unreachable", () => {
-    const compiler = compilerOpcodes().map(lowerFirst).sort()
-    const runtime = [...HANDLED, ...OFF_TEMPLATE].sort()
-    expect(runtime).toEqual(compiler)
-  })
+    const compiler = compilerOpcodes().map(lowerFirst).sort();
+    const runtime = [...HANDLED, ...OFF_TEMPLATE].sort();
+    expect(runtime).toEqual(compiler);
+  });
 
   it("no opcode is both handled and declared unreachable", () => {
-    expect(HANDLED.filter((name) => OFF_TEMPLATE.includes(name))).toEqual([])
-  })
-})
+    expect(HANDLED.filter((name) => OFF_TEMPLATE.includes(name))).toEqual([]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // the emitted shape
@@ -100,17 +100,17 @@ describe("the instruction set cannot drift across the boundary", () => {
 
 /** `const _ir$N = […]` declarations, counted off the code and nothing else. */
 function irDeclarations(code: string): number {
-  return (stripLiterals(code).match(/const _ir\$+\d+ =/g) ?? []).length
+  return (stripLiterals(code).match(/const _ir\$+\d+ =/g) ?? []).length;
 }
 
 describe("Interp is a build, not a debug mode", () => {
-  const fixtures = listFixtures()
+  const fixtures = listFixtures();
 
   it("compiles every fixture in the corpus", () => {
     for (const name of fixtures) {
-      expect(compileFixture(name, INTERP).length, name).toBeGreaterThan(0)
+      expect(compileFixture(name, INTERP).length, name).toBeGreaterThan(0);
     }
-  })
+  });
 
   /**
    * The structural claim, which is what separates a reference backend from a
@@ -121,31 +121,26 @@ describe("Interp is a build, not a debug mode", () => {
    */
   it("emits no walk and no patch call — the template path is data", () => {
     for (const name of fixtures) {
-      const code = stripLiterals(compileFixture(name, INTERP))
-      for (const property of [
-        ".firstChild",
-        ".lastChild",
-        ".nextSibling",
-        ".previousSibling",
-      ]) {
-        expect(code, `${name} walks the DOM in emitted code`).not.toContain(property)
+      const code = stripLiterals(compileFixture(name, INTERP));
+      for (const property of [".firstChild", ".lastChild", ".nextSibling", ".previousSibling"]) {
+        expect(code, `${name} walks the DOM in emitted code`).not.toContain(property);
       }
       for (const helper of ["insert", "setProp", "renderEffect", "bindEffect"]) {
-        expect(emittedCalls(code, helper), `${name} emits _$${helper}`).toBe(0)
+        expect(emittedCalls(code, helper), `${name} emits _$${helper}`).toBe(0);
       }
     }
-  })
+  });
 
   it("hands every serialised unit to the interpreter exactly once", () => {
-    let served = 0
+    let served = 0;
     for (const name of fixtures) {
-      const code = compileFixture(name, INTERP)
-      expect(emittedCalls(code, "interp"), name).toBe(irDeclarations(code))
-      served += irDeclarations(code)
+      const code = compileFixture(name, INTERP);
+      expect(emittedCalls(code, "interp"), name).toBe(irDeclarations(code));
+      served += irDeclarations(code);
     }
     // A corpus that serialised nothing would satisfy every equality above.
-    expect(served).toBeGreaterThan(fixtures.length)
-  })
+    expect(served).toBeGreaterThan(fixtures.length);
+  });
 
   /**
    * The template bytes are P7's, not a second serialisation: the same pass
@@ -156,20 +151,20 @@ describe("Interp is a build, not a debug mode", () => {
     for (const name of listFixtures()) {
       expect(templateHtml(compileFixture(name, INTERP)), name).toEqual(
         templateHtml(compileFixture(name)),
-      )
+      );
     }
-  })
+  });
 
   /**
    * The reference backend's entry point is a third module source, so no
    * production bundle can reach it and no `dev`-only path can leak into one.
    */
   it("imports the interpreter from its own entry point and nowhere else", () => {
-    const code = compileFixture("walk-from-the-back", INTERP)
-    expect(code).toContain('from "@barqjs/core/interp"')
-    expect(compileFixture("walk-from-the-back")).not.toContain("/interp")
-  })
-})
+    const code = compileFixture("walk-from-the-back", INTERP);
+    expect(code).toContain('from "@barqjs/core/interp"');
+    expect(compileFixture("walk-from-the-back")).not.toContain("/interp");
+  });
+});
 
 /**
  * One golden, whitespace-collapsed. Not a snapshot: the serialised form is the
@@ -177,19 +172,19 @@ describe("Interp is a build, not a debug mode", () => {
  * rather than parked in a file nobody opens.
  */
 it("serialises a unit as [clone, refs, ops] with its expressions beside it", () => {
-  const flat = (text: string): string => text.replace(/\s+/g, "")
-  const code = compileFixture("walk-from-the-back", INTERP)
+  const flat = (text: string): string => text.replace(/\s+/g, "");
+  const code = compileFixture("walk-from-the-back", INTERP);
   expect(flat(code)).toContain(
     flat(`const _ir$1 = [
       _tmpl$1,
       [["root", null, 0], ["lastChild", 0, 0], ["prevSibling", 1, 1]],
       [["insert", 2, 0, "live", null], ["insert", 1, 1, "live", null]]
     ];`),
-  )
+  );
   expect(flat(code)).toContain(
     flat(`return _$interp(_s$, _ir$1, [() => penultimate(), () => last()]);`),
-  )
-})
+  );
+});
 
 // ---------------------------------------------------------------------------
 // L2 — the differential
@@ -206,37 +201,37 @@ it("serialises a unit as [clone, refs, ops] with its expressions beside it", () 
  * NOTHING off. It reads the same optimised IR, so it must agree on all of it.
  */
 function divergences(reference: RenderResult, subject: RenderResult): string[] {
-  const out: string[] = []
+  const out: string[] = [];
   const same = (what: string, a: unknown, b: unknown): void => {
     if (JSON.stringify(a) !== JSON.stringify(b)) {
-      out.push(`${what}\n  reference: ${JSON.stringify(a)}\n  interp   : ${JSON.stringify(b)}`)
+      out.push(`${what}\n  reference: ${JSON.stringify(a)}\n  interp   : ${JSON.stringify(b)}`);
     }
-  }
-  same("initial render", reference.html, subject.html)
-  same("scripted steps", reference.frames, subject.frames)
-  same("dispatched events", reference.eventFrames, subject.eventFrames)
-  same("per-effect run counts", reference.runs, subject.runs)
-  same("baked anchors per frame", reference.expectedAnchors, subject.expectedAnchors)
-  same("frame count", reference.channels.length, subject.channels.length)
+  };
+  same("initial render", reference.html, subject.html);
+  same("scripted steps", reference.frames, subject.frames);
+  same("dispatched events", reference.eventFrames, subject.eventFrames);
+  same("per-effect run counts", reference.runs, subject.runs);
+  same("baked anchors per frame", reference.expectedAnchors, subject.expectedAnchors);
+  same("frame count", reference.channels.length, subject.channels.length);
   for (const [index, frame] of reference.channels.entries()) {
-    const at = `frame ${index}`
-    same(`${at}: attribute order`, frame.attributes, subject.channels[index]?.attributes)
-    same(`${at}: element identity`, frame.identity, subject.channels[index]?.identity)
-    same(`${at}: markers`, frame.markers, subject.channels[index]?.markers)
-    same(`${at}: anchors`, frame.anchors, subject.channels[index]?.anchors)
+    const at = `frame ${index}`;
+    same(`${at}: attribute order`, frame.attributes, subject.channels[index]?.attributes);
+    same(`${at}: element identity`, frame.identity, subject.channels[index]?.identity);
+    same(`${at}: markers`, frame.markers, subject.channels[index]?.markers);
+    same(`${at}: anchors`, frame.anchors, subject.channels[index]?.anchors);
   }
-  return out
+  return out;
 }
 
 describe("L2 — the Interp differential over the corpus", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically through the interpreter`, async () => {
-      const compiled = await drive(name)
-      const reference = await renderViaInterp(name)
-      expect(divergences(compiled, reference).join("\n"), name).toBe("")
-    })
+      const compiled = await drive(name);
+      const reference = await renderViaInterp(name);
+      expect(divergences(compiled, reference).join("\n"), name).toBe("");
+    });
   }
-})
+});
 
 /**
  * The optimisation axis, through the third backend. `Interp` reads the passes'
@@ -251,24 +246,24 @@ describe("L2 — the Interp differential over the corpus", () => {
 describe("L3 — the -O0/-Ox differential through the interpreter", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically at both levels`, async () => {
-      const optimised = await renderViaInterp(name)
-      const zero = await renderViaInterp(name, {}, { optimize: 0 })
-      expect(zero.html, `${name}: initial render`).toBe(optimised.html)
-      expect(zero.frames, `${name}: scripted steps`).toEqual(optimised.frames)
-      expect(zero.eventFrames, `${name}: dispatched events`).toEqual(optimised.eventFrames)
-      expect(zero.channels.length, `${name}: frame count`).toBe(optimised.channels.length)
+      const optimised = await renderViaInterp(name);
+      const zero = await renderViaInterp(name, {}, { optimize: 0 });
+      expect(zero.html, `${name}: initial render`).toBe(optimised.html);
+      expect(zero.frames, `${name}: scripted steps`).toEqual(optimised.frames);
+      expect(zero.eventFrames, `${name}: dispatched events`).toEqual(optimised.eventFrames);
+      expect(zero.channels.length, `${name}: frame count`).toBe(optimised.channels.length);
       for (const [index, frame] of zero.channels.entries()) {
-        const at = `${name}: frame ${index}`
+        const at = `${name}: frame ${index}`;
         expect(frame.attributes, `${at}: attribute order`).toEqual(
           optimised.channels[index]!.attributes,
-        )
+        );
         expect(frame.identity, `${at}: element identity`).toEqual(
           optimised.channels[index]!.identity,
-        )
+        );
       }
-    })
+    });
   }
-})
+});
 
 /**
  * L2b, through the third backend. The ownership trace is keyed on `template()`,
@@ -279,7 +274,7 @@ describe("L3 — the -O0/-Ox differential through the interpreter", () => {
  */
 describe("L2b — the ownership trace is unchanged by the backend", () => {
   const digest = (findings: ReadonlyArray<{ rule: string; kind: string }>): string[] =>
-    findings.map((finding) => `${finding.rule}:${finding.kind}`).sort()
+    findings.map((finding) => `${finding.rule}:${finding.kind}`).sort();
 
   // The `fixtures/ownership/` half is included because it holds the one fixture
   // that crosses a module boundary, and a backend swap has to survive a
@@ -287,17 +282,17 @@ describe("L2b — the ownership trace is unchanged by the backend", () => {
   const corpus = [
     ...listFixtures().map((name) => ({ name, source: fixtureSource(name) })),
     ...listOwnershipFixtures().map((name) => ({ name, source: ownershipSource(name) })),
-  ]
+  ];
 
   for (const { name, source } of corpus) {
     it(`${name} produces the same ownership findings`, async () => {
-      const compiled = await checkOwnership(name, source, `${name}.tsx`)
-      const reference = await checkOwnership(name, source, `${name}.tsx`, INTERP)
-      expect(reference.crashed, `${name}: the reference backend crashed`).toBe(compiled.crashed)
-      expect(digest(reference.findings), name).toEqual(digest(compiled.findings))
-    })
+      const compiled = await checkOwnership(name, source, `${name}.tsx`);
+      const reference = await checkOwnership(name, source, `${name}.tsx`, INTERP);
+      expect(reference.crashed, `${name}: the reference backend crashed`).toBe(compiled.crashed);
+      expect(digest(reference.findings), name).toEqual(digest(compiled.findings));
+    });
   }
-})
+});
 
 /**
  * L1, through the reference backend. This file's header argues that all 29
@@ -311,19 +306,19 @@ describe("L2b — the ownership trace is unchanged by the backend", () => {
  */
 describe("L1 — the conformance corpus reaches the same verdict through the interpreter", () => {
   const shape = (run: SemanticRun): string[] =>
-    run.outcomes.map((o) => `${o.claim} :: ${o.rule} :: ${o.failure ?? "HELD"}`)
+    run.outcomes.map((o) => `${o.claim} :: ${o.rule} :: ${o.failure ?? "HELD"}`);
 
   for (const name of listSemanticFixtures()) {
     it(`${name} reaches the same verdict`, async () => {
-      const compiled = await runSemanticFixture(name)
-      const reference = await runSemanticFixture(name, INTERP)
+      const compiled = await runSemanticFixture(name);
+      const reference = await runSemanticFixture(name, INTERP);
       expect(
         shape(reference),
         `${name}: the reference backend changed a conformance verdict`,
-      ).toEqual(shape(compiled))
-    })
+      ).toEqual(shape(compiled));
+    });
   }
-})
+});
 
 // ---------------------------------------------------------------------------
 // L6 — would this suite notice a wrong interpreter?
@@ -344,14 +339,14 @@ function mutator(
   replace: (...groups: string[]) => string,
 ): (code: string) => string {
   return (code) => {
-    let seen = 0
+    let seen = 0;
     const out = code.replace(pattern, (...args: unknown[]) => {
-      seen++
-      return replace(...(args.slice(1, -2) as string[]))
-    })
-    if (seen === 0) throw new Error(`self-check corruption is stale: no ${what} to rewrite`)
-    return out
-  }
+      seen++;
+      return replace(...(args.slice(1, -2) as string[]));
+    });
+    if (seen === 0) throw new Error(`self-check corruption is stale: no ${what} to rewrite`);
+    return out;
+  };
 }
 
 /** Mis-order a walk step: every sibling run grows by one hop. */
@@ -359,10 +354,14 @@ const bumpHops = mutator(
   "ref plan",
   /(\[\s*"(?:firstChild|lastChild|nextSibling|prevSibling)",\s*\d+,\s*)(\d+)(\s*\])/g,
   (head, hops, tail) => head + String(Number(hops) + 1) + tail,
-)
+);
 
 /** Demote every proven-reactive hole to a one-shot read. */
-const demoteLive = mutator("insert plan", /"live",(\s*)(null|\d+)/g, (gap, anchor) => `"once",${gap}${anchor}`)
+const demoteLive = mutator(
+  "insert plan",
+  /"live",(\s*)(null|\d+)/g,
+  (gap, anchor) => `"once",${gap}${anchor}`,
+);
 
 /**
  * Mutants that survive because they are EQUIVALENT, named exactly — a set, not
@@ -376,71 +375,71 @@ const demoteLive = mutator("insert plan", /"live",(\s*)(null|\d+)/g, (gap, ancho
  * sees that the content went to the other side of the comment. A DOM-only
  * comparison lets both of them live, and did.
  */
-const EQUIVALENT_UNDER_BUMPED_HOPS: string[] = []
+const EQUIVALENT_UNDER_BUMPED_HOPS: string[] = [];
 
 describe("harness self-check", () => {
   const survived = async (
     name: string,
     mutate: (code: string) => string,
   ): Promise<boolean | null> => {
-    const clean = await renderViaInterp(name)
+    const clean = await renderViaInterp(name);
     // A fixture this operator has nothing to rewrite in is not a survivor and
     // not a kill; it is out of scope. Staleness of the operator ITSELF is
     // caught by the floor on `applied` below, which a stale regex fails.
-    let mutated: string
+    let mutated: string;
     try {
-      mutated = mutate(clean.code ?? "")
+      mutated = mutate(clean.code ?? "");
     } catch {
-      return null
+      return null;
     }
-    if (mutated === clean.code) return null
-    const reference = await drive(name)
+    if (mutated === clean.code) return null;
+    const reference = await drive(name);
     try {
-      const corrupted = await renderViaInterp(name, { emitted: mutate })
-      return divergences(reference, corrupted).length === 0
+      const corrupted = await renderViaInterp(name, { emitted: mutate });
+      return divergences(reference, corrupted).length === 0;
     } catch {
-      return false
+      return false;
     }
-  }
+  };
 
   it("a mis-ordered walk is caught everywhere it is not an equivalent mutant", async () => {
-    const alive: string[] = []
-    let applied = 0
+    const alive: string[] = [];
+    let applied = 0;
     for (const name of listFixtures()) {
-      const outcome = await survived(name, bumpHops)
-      if (outcome === null) continue
-      applied++
-      if (outcome) alive.push(name)
+      const outcome = await survived(name, bumpHops);
+      if (outcome === null) continue;
+      applied++;
+      if (outcome) alive.push(name);
     }
     // A mutation that applied to nothing kills nothing and proves nothing.
-    expect(applied).toBeGreaterThan(listFixtures().length / 2)
-    expect(alive.sort()).toEqual(EQUIVALENT_UNDER_BUMPED_HOPS)
-  })
+    expect(applied).toBeGreaterThan(listFixtures().length / 2);
+    expect(alive.sort()).toEqual(EQUIVALENT_UNDER_BUMPED_HOPS);
+  });
 
   it("a reactive hole demoted to a one-shot read is caught", async () => {
-    let applied = 0
-    let killed = 0
+    let applied = 0;
+    let killed = 0;
     for (const name of listFixtures()) {
-      const outcome = await survived(name, demoteLive)
-      if (outcome === null) continue
-      applied++
-      if (!outcome) killed++
+      const outcome = await survived(name, demoteLive);
+      if (outcome === null) continue;
+      applied++;
+      if (!outcome) killed++;
     }
-    expect(applied).toBeGreaterThan(listFixtures().length / 4)
+    expect(applied).toBeGreaterThan(listFixtures().length / 4);
     // The survivors are the fixtures that never drive the hole — no step and no
     // event changes it, so a one-shot read is observationally the same run.
     // They are a majority nowhere, which is what this floor says.
-    expect(killed).toBeGreaterThan(applied * 0.9)
-  })
+    expect(killed).toBeGreaterThan(applied * 0.9);
+  });
 
   it("an uncorrupted fixture is not reported as divergent", async () => {
-    const reference = await drive("walk-from-the-back")
-    const subject = await renderViaInterp("walk-from-the-back")
-    expect(divergences(reference, subject)).toEqual([])
-  })
+    const reference = await drive("walk-from-the-back");
+    const subject = await renderViaInterp("walk-from-the-back");
+    expect(divergences(reference, subject)).toEqual([]);
+  });
 
   it("a corruption that matches nothing is a loud failure", () => {
-    expect(() => bumpHops("const x = 1")).toThrow(/self-check corruption is stale/)
-    expect(() => demoteLive("const x = 1")).toThrow(/self-check corruption is stale/)
-  })
-})
+    expect(() => bumpHops("const x = 1")).toThrow(/self-check corruption is stale/);
+    expect(() => demoteLive("const x = 1")).toThrow(/self-check corruption is stale/);
+  });
+});
