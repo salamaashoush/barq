@@ -11,6 +11,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type SessionConfig,
   clearSession,
+  getSession,
   sealSession,
   unsealSession,
   useSession,
@@ -109,6 +110,21 @@ describe("a session round-trips through the cookie", () => {
     const line = cleared.setCookie[0] ?? "";
     expect(line).toContain("Max-Age=0");
     expect(line).toContain("Expires=Thu, 01 Jan 1970");
+  });
+
+  test("`createdAt` is the SEALED time, not the time it was read", async () => {
+    // `Date.now()` here reported every session as brand new, which is exactly
+    // wrong for the one thing the field is for.
+    const first = await inRequest(async () => {
+      await (await useSession<{ a: number }>(CONFIG)).update({ a: 1 });
+    });
+    const before = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = await inRequest(
+      async () => (await getSession<{ a: number }>(CONFIG)).createdAt,
+      asRequestCookie(first.setCookie[0] ?? ""),
+    );
+    expect(second.value).toBeLessThan(before);
   });
 
   test("the id survives an update and changes on a clear", async () => {

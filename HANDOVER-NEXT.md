@@ -28,7 +28,7 @@ Paste this as the opening prompt. Everything below was verified, not remembered.
 ## State — verified
 
 ```
-core 921 · router 333 · server 104 · start 66 · extra 26 · testing 16 · compiler 22
+core 921 · router 350 · server 104 · start 110 · extra 26 · testing 16 · compiler 22
 compiler-rs: cargo 372 pass · bun 3644 pass / 17 todo / 1 fail
   (the 1 fail is `the self-check needs one failing and one holding claim; the
    corpus has both` — it fires BECAUSE nothing fails. Do not chase it. Confirmed
@@ -36,12 +36,12 @@ compiler-rs: cargo 372 pass · bun 3644 pass / 17 todo / 1 fail
 bun run ci clean · cargo clippy 0 · cargo fmt clean
 tsc clean on packages/router, packages/start, packages/kitchen-sink
 kitchen-sink: builds, prerenders `/` and `/about`, `bun run preview` serves both
-  plus the SSR routes and a real 404
+  plus the SSR routes, `/api/health` and a real 404
 ```
 
 The Rust workspace root is `packages/compiler-rs`, not the repo root.
 
-6 commits since the last handover, 48 files, +3341/−1019. `git log 907d915..HEAD`.
+10 commits since the last handover. `git log 907d915..HEAD`.
 
 ## What landed, and why
 
@@ -91,6 +91,29 @@ from the package index, which re-exports `context.ts` — `node:async_hooks` —
 every client bundle that reached one server function. Pre-existing, verified by
 building HEAD in a worktree, and it got worse the moment the table became static.
 
+**The server surface landed too, in three commits.** Audited against
+`start-server-core/src/request-response.ts` and `serverRoute.ts`.
+
+- **A request has an ambient RESPONSE.** Measured first: a server function could
+  not set a cookie at all on the JS path — `Response.json(encodeWire(result))`
+  fed a returned `Response` to the value codec and answered
+  `Seroval Error (step: 1)`, a 500 with nothing in it, while the no-JS form path
+  returned it correctly. `setResponseHeader`/`setResponseStatus`/`setCookie` and
+  the read half now work from a server function, a loader, a `beforeLoad` and a
+  route handler alike. The draft rides every exit including the refusals, so a
+  middleware that rotates a cookie and then 401s keeps the rotation, and a
+  `beforeLoad` that seats a session and then redirects keeps the cookie.
+- **Cookies are written here**, not taken from `cookie-es`: every trap is a rule
+  a browser enforces silently, so each is a THROW (`SameSite=None` without
+  `Secure`, the `__Host-`/`__Secure-` prefixes, a non-integer `Max-Age`, a `;`
+  smuggled through `path`).
+- **API routes are `server: { middleware, handlers }` on an ordinary route** —
+  one tree, one file convention, and a route may be both a page and an endpoint.
+  The compiler DELETES `server` from the client build, gated against a real
+  two-environment build that greps the chunks for a marker.
+- **Sessions are a sealed cookie on WebCrypto AES-GCM**, no dependency. The
+  interface is theirs; the sealing is not, and the file says so.
+
 ## Still open, in the order I would take them
 
 ### 1. `loaderData` in `head` is still a stub
@@ -130,7 +153,25 @@ No `packages/start/README.md`, no getting-started, nothing on `routeTree.gen.ts`
 the render modes, prerendering, `shellComponent`/`head`, code splitting, or the
 server-entry contract.
 
-### 5. The client story for a mutation
+### 5. The server surface, what is NOT there
+
+Against `request-response.ts`, still missing: `getValidatedQuery` (they mark it
+"not public API (yet)"), and the typed-header maps they get from `fetchdts`.
+Neither is load-bearing. What IS worth deciding:
+
+- **A session cannot be revoked**, by construction — nothing on the server is
+  consulted to open a sealed cookie. `maxAge` bounds it. An application that
+  needs revocation needs a store, and barq offers no seam for one.
+- **`server.middleware` is not covered by the route-action manifest.** It uses
+  the same `Middleware` type, so the chain comparison COULD reach it, but
+  `verifyRouteChains` only walks server functions today. A route that declares
+  `middleware` for its own handlers and a different one for its actions is not
+  checked against itself.
+- **Route handlers are not prerendered and cannot be.** `/api/*` under a
+  prerender crawl renders as a page; nothing marks a handler-only route as
+  uncrawlable.
+
+### 6. The client story for a mutation
 
 `<form action={serverFn}>` works with JS disabled. Nothing exists for pending
 state, optimistic updates or error display on the JS path. Decide whether that is
@@ -181,6 +222,16 @@ barq's job or the application's and write the answer down either way.
   and `infer` produces `never` anyway. Check `[T] extends [never]` FIRST.
   `bun test` does not typecheck — `tsc` on `packages/router` is the only gate
   with an empty `Register`, and it is where this was caught.
+- **`new Response(body, { headers })` DROPS every `set-cookie` under happy-dom.**
+  A merge that rebuilds the response passes in `packages/start`, which registers
+  no DOM, and silently produces a cookie-less response in the router's suite.
+  Mutate the response's own headers; rebuild only when the guard is immutable.
+- **`Cookie` is a FORBIDDEN request header name**, so `new Request(url, {
+  headers: { cookie } })` drops it — in happy-dom and per the fetch spec. A
+  server never constructs a request. Cookie-read tests live in `packages/start`.
+- **`bun test src/x.test.ts` from the repo root glob-matches OTHER packages'**
+  files of that name, and their failures look like yours. Run suites from the
+  package directory.
 - **Do not run the Chrome hydration probe while `packages/compiler-rs`'s suite is
   running.** Two headless Chromes compete and `browser.test.ts`'s `beforeEach`
   times out at 600 s, which reads exactly like a real failure.

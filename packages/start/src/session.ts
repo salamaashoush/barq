@@ -40,6 +40,8 @@ export interface Session<T extends SessionData = SessionData> {
 
 export interface SessionManager<T extends SessionData = SessionData> {
   readonly id: string;
+  /** When the session was first sealed, as a millisecond timestamp. */
+  readonly createdAt: number;
   readonly data: Partial<T>;
   /** Merge and re-seal. A function receives the current data. */
   update(
@@ -236,6 +238,7 @@ export async function useSession<T extends SessionData = SessionData>(
 
   const manage = (session: Sealed): SessionManager<T> => ({
     id: session.id,
+    createdAt: session.createdAt,
     data: session.data as Partial<T>,
     async update(patch) {
       const next = typeof patch === "function" ? patch(session.data as Partial<T>) : patch;
@@ -263,7 +266,10 @@ export async function getSession<T extends SessionData = SessionData>(
   config: SessionConfig,
 ): Promise<Session<T>> {
   const manager = await useSession<T>(config);
-  return { id: manager.id, createdAt: Date.now(), data: manager.data };
+  // The SEALED timestamp, not now. `Date.now()` here reported every session as
+  // brand new, which is exactly wrong for the one thing `createdAt` is for —
+  // deciding how old a session is.
+  return { id: manager.id, createdAt: manager.createdAt, data: manager.data };
 }
 
 /** Merge into the session and re-seal it. */
