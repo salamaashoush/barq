@@ -9,6 +9,7 @@
 // whole option set. The components are split out of the route module by the
 // compiler, not by this table.
 
+import { Outlet } from "@barqjs/router";
 import type { AnyRouteDefinition } from "@barqjs/router";
 
 import { Route as rootRoute } from "./routes/__root";
@@ -24,6 +25,7 @@ import { Route as QueryRoute } from "./routes/query";
 import { Route as RoutingRoute } from "./routes/routing";
 import { Route as SignalsRoute } from "./routes/signals";
 import { Route as StoreRoute } from "./routes/store";
+import { Route as ApiHealthRoute } from "./routes/api/health";
 
 /**
  * The table, exactly the shape `createRouter` and `createPageHandler` take.
@@ -45,7 +47,8 @@ export const routeTree: AnyRouteDefinition[] = [
     { ...QueryRoute.options, id: "/query", path: "query", src: "/src/routes/query.tsx", ssr: "data-only" },
     { ...RoutingRoute.options, id: "/routing", path: "routing", src: "/src/routes/routing.tsx", ssr: false },
     { ...SignalsRoute.options, id: "/signals", path: "signals", src: "/src/routes/signals.tsx" },
-    { ...StoreRoute.options, id: "/store", path: "store", src: "/src/routes/store.tsx" }
+    { ...StoreRoute.options, id: "/store", path: "store", src: "/src/routes/store.tsx" },
+    { ...ApiHealthRoute.options, id: "/api/health", path: "api/health", src: "/src/routes/api/health.ts", component: Outlet as never }
   ] }
 ];
 
@@ -65,13 +68,14 @@ export interface FileRoutesById {
   "/routing": typeof RoutingRoute;
   "/signals": typeof SignalsRoute;
   "/store": typeof StoreRoute;
+  "/api/health": typeof ApiHealthRoute;
 }
 
 export interface FileRouteTypes {
   /** Every route id, layouts included — what `useMatch` and `Link`'s `to` address. */
-  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/components" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store";
+  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/components" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store" | "/api/health";
   /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */
-  fullPaths: "/" | "/about" | "/admin" | "/async" | "/components" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store";
+  fullPaths: "/" | "/about" | "/admin" | "/async" | "/components" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store" | "/api/health";
   fileRoutesById: FileRoutesById;
 }
 

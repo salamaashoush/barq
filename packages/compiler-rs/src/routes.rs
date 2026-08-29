@@ -761,7 +761,16 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize, names: &[(String,
         // `<Outlet />` in theirs (`react-router/src/Match.tsx:211-212`). A layout
         // that declares only a loader would otherwise swallow its whole subtree.
         if !declares(node, "component") {
-            parts.push("component: Outlet".to_owned());
+            // `as never` at the ABI seam, for the reason `RouteComponent`'s own
+            // header gives: the real calling convention is `(scope, props)` and
+            // the type is declared PROPS-FIRST so an authored component
+            // typechecks the way it is written. The router casts at every one of
+            // its own call sites; this is the generator's.
+            //
+            // It first fired when an API route landed — `/api/health` declares
+            // handlers and no component, which no route in the project had done
+            // before, so the fallback had never been typechecked.
+            parts.push("component: Outlet as never".to_owned());
         }
         // LIFTED, not read off the module: both are wanted before anything runs
         // — the prerenderer decides whether a page is a file on a CDN, and the
@@ -1280,7 +1289,7 @@ mod tests {
             &build_tree(&declaring(&[("users.tsx", &[]), ("users.$id.tsx", &["component"])])),
             "src",
         );
-        assert_eq!(source.matches("component: Outlet").count(), 1, "{source}");
+        assert_eq!(source.matches("component: Outlet as never").count(), 1, "{source}");
         // …and it is IMPORTED. A generated file that referenced a free
         // identifier would not run, and the emit did exactly that until this
         // test was written.

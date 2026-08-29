@@ -1634,3 +1634,205 @@ describe("the response a page render drafts", () => {
     expect(saw).toBe("Bearer t");
   });
 });
+
+/**
+ * API routes — `server: { handlers }` on an ordinary route.
+ *
+ * Not a second route system, which is TanStack's arrangement
+ * (`examples/react/start-basic/src/routes/api/users.ts:44`): one tree, one file
+ * convention, one generator, and a route may answer BOTH a page and an endpoint.
+ */
+describe("a route's own HTTP handlers", () => {
+  const api = (server: unknown, extra: Partial<AnyRouteDefinition> = {}) =>
+    createPageHandler({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          children: [
+            {
+              id: "/api/users/$id",
+              path: "api/users/$id",
+              server,
+              component: () => ssrHtml("<main>page</main>"),
+              ...extra,
+            },
+          ],
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+
+  const send = (
+    handler: (r: Request) => Promise<Response>,
+    method: string,
+    path = "/api/users/7",
+  ) => handler(new Request(`http://localhost${path}`, { method }));
+
+  test("the method picks the handler, and params are the route's", async () => {
+    const handler = api({
+      handlers: {
+        GET: ({ params }: { params: Record<string, string> }) => Response.json({ id: params.id }),
+        POST: () => new Response("made", { status: 201 }),
+      },
+    });
+    const read = await send(handler, "GET");
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ id: "7" });
+
+    // A POST, which a page handler answers 405 to — the whole reason the
+    // dispatch runs BEFORE the method gate.
+    const written = await send(handler, "POST");
+    expect(written.status).toBe(201);
+    expect(await written.text()).toBe("made");
+  });
+
+  test("`ANY` catches the methods no handler named", async () => {
+    const handler = api({
+      handlers: {
+        GET: () => Response.json("get"),
+        ANY: ({ request }: { request: Request }) => new Response(request.method),
+      },
+    });
+    expect(await (await send(handler, "GET")).json()).toBe("get");
+    expect(await (await send(handler, "DELETE")).text()).toBe("DELETE");
+  });
+
+  /**
+   * RFC 9110 §9.3.2: HEAD answers with the same header fields as GET and no
+   * body. Theirs resolves it in the same order (`createStartHandler.ts:932-937`).
+   */
+  test("HEAD falls back to GET, with the headers and no body", async () => {
+    const handler = api({
+      handlers: {
+        GET: () => new Response("a body", { headers: { "x-from": "get" } }),
+      },
+    });
+    const response = await send(handler, "HEAD");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-from")).toBe("get");
+    expect(await response.text()).toBe("");
+  });
+
+  test("an explicit HEAD wins over the GET fallback", async () => {
+    const handler = api({
+      handlers: {
+        GET: () => new Response("a body"),
+        HEAD: () => new Response(null, { headers: { "x-from": "head" } }),
+      },
+    });
+    expect((await send(handler, "HEAD")).headers.get("x-from")).toBe("head");
+  });
+
+  /**
+   * DECLINING is what lets one route be both. A handler that looks at the
+   * request and returns `undefined` hands the request back to the page render —
+   * TanStack spells the same thing `next()` (`serverRoute.ts:461`).
+   */
+  test("a handler that returns nothing falls through to the page", async () => {
+    const handler = api({
+      handlers: {
+        GET: ({ request }: { request: Request }) =>
+          request.headers.get("accept") === "application/json"
+            ? Response.json({ json: true })
+            : undefined,
+      },
+    });
+    const asJson = await handler(
+      new Request("http://localhost/api/users/7", { headers: { accept: "application/json" } }),
+    );
+    expect(await asJson.json()).toEqual({ json: true });
+
+    const asPage = await send(handler, "GET");
+    expect(asPage.headers.get("content-type")).toContain("text/html");
+    expect(await asPage.text()).toContain("<main>page</main>");
+  });
+
+  test("a route with no handler for the method still 405s, and says what it takes", async () => {
+    const handler = api({ handlers: { POST: () => new Response("ok") } });
+    const response = await send(handler, "DELETE");
+    expect(response.status).toBe(405);
+    // The `Allow` header names what this ROUTE accepts, not the generic pair.
+    expect(response.headers.get("allow")).toContain("POST");
+  });
+
+  test("middleware is inherited, runs outermost first, and can refuse", async () => {
+    const order: string[] = [];
+    const outer: Middleware = async (next) => {
+      order.push("outer");
+      return next({ context: { who: "ada" } });
+    };
+    const inner: Middleware = async (next) => {
+      order.push("inner");
+      return next();
+    };
+    const handler = createPageHandler({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          server: { middleware: [outer] },
+          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          children: [
+            {
+              id: "/api",
+              path: "api",
+              server: {
+                middleware: [inner],
+                handlers: {
+                  GET: ({ context }: { context: Record<string, unknown> }) =>
+                    Response.json(context),
+                },
+              },
+            },
+          ],
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+
+    const response = await handler(new Request("http://localhost/api"));
+    expect(order).toEqual(["outer", "inner"]);
+    // `next({ context })` reaches the handler, which is the same shape a server
+    // function's middleware uses — one convention, one closure for both.
+    expect(await response.json()).toEqual({ who: "ada" });
+  });
+
+  test("a middleware refuses by throwing a Response, as a server function's does", async () => {
+    const guard: Middleware = async () => {
+      throw new Response("nope", { status: 401 });
+    };
+    const handler = api({
+      middleware: [guard],
+      handlers: { GET: () => Response.json("unreachable") },
+    });
+    const response = await send(handler, "GET");
+    expect(response.status).toBe(401);
+    expect(await response.text()).toBe("nope");
+  });
+
+  test("a handler can set cookies through the ambient response", async () => {
+    const handler = api({
+      handlers: {
+        POST: () => {
+          setCookie("sid", "abc", { path: "/" });
+          return Response.json({ ok: true });
+        },
+      },
+    });
+    const response = await send(handler, "POST");
+    expect(response.headers.get("set-cookie")).toBe("sid=abc; Path=/");
+  });
+
+  test("a route with no `server` is untouched", async () => {
+    const handler = api(undefined);
+    const page = await send(handler, "GET");
+    expect(await page.text()).toContain("<main>page</main>");
+    expect((await send(handler, "POST")).status).toBe(405);
+  });
+});

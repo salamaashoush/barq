@@ -401,7 +401,65 @@ export interface RouteDefinition<
    * because naming it IS the declaration.
    */
   readonly prerender?: boolean;
+  /**
+   * What this route answers on the SERVER, by HTTP method.
+   *
+   * An API route is not a second kind of route in barq, and that is TanStack's
+   * arrangement rather than a simplification: `createFileRoute('/api/users')({
+   * server: { handlers: { GET } } })` is an ordinary route file that declares
+   * handlers instead of — or as well as — a component
+   * (`examples/react/start-basic/src/routes/api/users.ts:44`). One tree, one
+   * file convention, one generator, and a route may be BOTH: `/posts` can serve
+   * HTML to a browser and JSON to a `fetch`, from the same path, deciding on the
+   * method.
+   *
+   * NONE OF THIS SHIPS TO THE BROWSER. The compiler deletes `server` from the
+   * client build, which is theirs too (`start-plugin-core/src/vite/
+   * start-router-plugin/plugin.ts:166`, `deleteNodes: ['ssr', 'server',
+   * 'headers']`). Without that a handler's body — and its database import — is
+   * in the client bundle, so the strip is not an optimisation.
+   */
+  readonly server?: RouteServer<Params>;
   readonly children?: readonly AnyRouteDefinition[];
+}
+
+/** The HTTP methods a route may answer. `ANY` is the fallback for the rest. */
+export type RouteMethod = "ANY" | "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD";
+
+/** What a route handler is handed. */
+export interface RouteHandlerContext<Params = Record<string, string>> {
+  readonly request: Request;
+  readonly params: Params;
+  /** The matched pathname, after any base has been stripped. */
+  readonly pathname: string;
+  /** What this route's `server.middleware` contributed. */
+  readonly context: Record<string, unknown>;
+}
+
+/**
+ * One method's answer.
+ *
+ * `undefined` means DECLINED — the request falls through to the page render, so
+ * a route that answers `GET` with JSON only for an `Accept: application/json`
+ * can return nothing for a browser and let the page render. TanStack spells the
+ * same thing as `next()` (`serverRoute.ts:461`).
+ */
+export type RouteHandler<Params = Record<string, string>> = (
+  context: RouteHandlerContext<Params>,
+) => Response | undefined | Promise<Response | undefined>;
+
+export interface RouteServer<Params = Record<string, string>> {
+  /**
+   * Runs before this route's handler, outermost first, and INHERITED — a
+   * middleware on `/api` covers everything under it.
+   *
+   * The same `Middleware` a server function takes, so one closure guards both an
+   * action and an endpoint. That matters more than the reuse: the route-action
+   * manifest compares chains by closure identity, and a second middleware type
+   * would be a second thing it cannot see.
+   */
+  readonly middleware?: readonly import("@barqjs/start").Middleware[];
+  readonly handlers?: Partial<Record<RouteMethod, RouteHandler<Params>>>;
 }
 
 /**

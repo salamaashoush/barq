@@ -63,6 +63,22 @@ pub const SPLIT_KEYS: [&str; 2] = ["component", "pendingComponent"];
 /// the source the author wrote.
 pub const SPLIT_QUERY: &str = "barq-split";
 
+/// Options DELETED from the route module in the CLIENT build.
+///
+/// `server` holds a route's HTTP handlers — its database queries, its secrets,
+/// its `node:` imports. It is reachable from the browser only in the sense that
+/// its BODY would sit in the bundle, which is exactly the leak. Theirs deletes
+/// the same node and two more (`start-plugin-core/src/vite/start-router-plugin/
+/// plugin.ts:166`, `deleteNodes: ['ssr', 'server', 'headers']`); barq's `ssr` is
+/// already LIFTED into the generated table as a literal rather than read off the
+/// module, so deleting it here would take away a value the table has and the
+/// module no longer needs to carry — which it already does not.
+///
+/// Deletion is not the split. There is no second module, so nothing can be
+/// double-initialised and nothing has to be refused: the property goes, and any
+/// top-level declaration ONLY it reached goes with it.
+pub const CLIENT_STRIP_KEYS: [&str; 1] = ["server"];
+
 /// What a route module compiles to, both halves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteSplit {
@@ -90,7 +106,13 @@ pub fn mentions(source: &str) -> bool {
 /// `specifier` is what the reference half will `import()` — the module's own id
 /// with the split query on it. The caller owns that spelling because the
 /// bundler, not the compiler, decides what a module id looks like.
-pub fn split(source: &str, filename: &str, specifier: &str) -> RouteSplit {
+pub fn split(
+    source: &str,
+    filename: &str,
+    specifier: &str,
+    for_client: bool,
+    split_components: bool,
+) -> RouteSplit {
     // What the split half imports `Route` back from: the specifier with the
     // query taken off, which is the reference module's own id.
     let bare = specifier.split('?').next().unwrap_or(specifier);
@@ -117,12 +139,30 @@ pub fn split(source: &str, filename: &str, specifier: &str) -> RouteSplit {
         return unchanged(None);
     }
 
-    let present: Vec<&Property> = route
-        .properties
-        .iter()
-        .filter(|property| SPLIT_KEYS.contains(&property.key.as_str()))
-        .collect();
-    if present.is_empty() {
+    // Splitting is opt-in per call, because the CLIENT strip has to happen even
+    // where a project has turned code splitting off — the strip is what keeps a
+    // handler's database import out of the browser, not a size optimisation.
+    let present: Vec<&Property> = if split_components {
+        route
+            .properties
+            .iter()
+            .filter(|property| SPLIT_KEYS.contains(&property.key.as_str()))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    // What the CLIENT build deletes outright. Empty on the server, where the
+    // handlers are the whole point.
+    let stripped: Vec<&Property> = if for_client {
+        route
+            .properties
+            .iter()
+            .filter(|property| CLIENT_STRIP_KEYS.contains(&property.key.as_str()))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if present.is_empty() && stripped.is_empty() {
         return unchanged(None);
     }
 
@@ -155,9 +195,17 @@ pub fn split(source: &str, filename: &str, specifier: &str) -> RouteSplit {
     for property in &present {
         collect_refs(program, &scoping, property.value, &mut split_roots);
     }
+    let mut strip_roots = FxHashSet::default();
+    for property in &stripped {
+        collect_refs(program, &scoping, property.value, &mut strip_roots);
+    }
     let mut keep_roots = FxHashSet::default();
     for property in &route.properties {
-        if SPLIT_KEYS.contains(&property.key.as_str()) {
+        // Neither the split half's nor the stripped ones': what is left is what
+        // the reference module keeps, and its reachable set is what stays.
+        if SPLIT_KEYS.contains(&property.key.as_str())
+            || CLIENT_STRIP_KEYS.contains(&property.key.as_str()) && for_client
+        {
             continue;
         }
         collect_refs(program, &scoping, property.value, &mut keep_roots);
@@ -173,6 +221,14 @@ pub fn split(source: &str, filename: &str, specifier: &str) -> RouteSplit {
 
     let split_closure = reachable(&split_roots, &graph);
     let keep_closure = reachable(&keep_roots, &graph);
+    // What ONLY the stripped options reach. A declaration the rest of the module
+    // also uses stays — deleting a property never has to delete a binding
+    // something else reads, so unlike the split this needs no refusal.
+    let strip_only: FxHashSet<SymbolId> = reachable(&strip_roots, &graph)
+        .into_iter()
+        .filter(|symbol| !keep_closure.contains(symbol) && !split_closure.contains(symbol))
+        .filter(|symbol| Some(*symbol) != route.symbol)
+        .collect();
 
     // A LOCAL binding both halves reach would be evaluated twice, once per
     // module. An imported one would not — the bundler hands both halves the
@@ -210,6 +266,14 @@ pub fn split(source: &str, filename: &str, specifier: &str) -> RouteSplit {
             split_out.blank(statement.span());
             continue;
         };
+        // Only the stripped options reach it, so it leaves BOTH halves — the
+        // client build is the only caller that asks for a strip, and there the
+        // whole point is that the handler's body and its imports are gone.
+        if symbols.iter().any(|symbol| strip_only.contains(symbol)) {
+            reference.blank(statement.span());
+            split_out.blank(statement.span());
+            continue;
+        }
         let goes_to_split = symbols.iter().any(|symbol| split_closure.contains(symbol));
         if goes_to_split {
             reference.blank(statement.span());
@@ -225,13 +289,18 @@ pub fn split(source: &str, filename: &str, specifier: &str) -> RouteSplit {
     // them in source order made the second write land inside the first's text
     // and the module stopped parsing. Working backwards leaves every span this
     // pass has not reached yet still valid.
-    let mut replacements: Vec<(Span, String)> = present
+    let mut replacements: Vec<(Span, String)> = stripped
         .iter()
-        .map(|property| {
-            // `$$barqLazy`, ALIASED, so a route module that imports its own
-            // `lazy` is not shadowed and one that imports none is not made to.
+        // The PROPERTY goes, not just its value: `server: undefined` would keep
+        // the key on the definition, and `handlersOf` reads truthiness off it.
+        // The property's own span STOPS AT ITS VALUE, so blanking it alone
+        // leaves the separating comma behind and the object stops parsing —
+        // `component: …,` then whitespace then a bare `,`. The comma comes with
+        // it.
+        .map(|property| (with_trailing_comma(source, property.span), String::new()))
+        .chain(present.iter().map(|property| {
             (property.value, format!("$$barqLazy($$barqSplit, (m) => m.{})", property.key))
-        })
+        }))
         .collect();
     replacements.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
     for (span, text) in &replacements {
@@ -271,6 +340,23 @@ pub fn split(source: &str, filename: &str, specifier: &str) -> RouteSplit {
     }
 
     RouteSplit { reference, split: split_source, refused: None }
+}
+
+/// A property's span, extended over the `,` that separates it from the next.
+///
+/// Blanking the property alone leaves the comma, and `{ a: 1,   , }` does not
+/// parse. Trailing whitespace is stepped over first because the comma may not be
+/// adjacent.
+fn with_trailing_comma(source: &str, span: Span) -> Span {
+    let bytes = source.as_bytes();
+    let mut index = span.end as usize;
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    if index < bytes.len() && bytes[index] == b',' {
+        return Span::new(span.start, index as u32 + 1);
+    }
+    span
 }
 
 fn range(span: Span) -> std::ops::Range<usize> {
@@ -339,7 +425,12 @@ impl Blanker {
 /// One option a route declared, by key and by the span of its value.
 struct Property {
     key: String,
+    /// The value's span, which is what the split replaces.
     value: Span,
+    /// The WHOLE `key: value` span, which is what a strip deletes — leaving
+    /// `server: undefined` behind would keep the key, and the dispatch reads
+    /// truthiness off `server.handlers`.
+    span: Span,
 }
 
 struct RouteDeclaration {
@@ -387,7 +478,11 @@ fn find_route(program: &Program<'_>) -> Option<RouteDeclaration> {
                     PropertyKey::StringLiteral(literal) => literal.value.to_string(),
                     _ => continue,
                 };
-                properties.push(Property { key, value: property.value.span() });
+                properties.push(Property {
+                    key,
+                    value: property.value.span(),
+                    span: property.span,
+                });
             }
             return Some(RouteDeclaration {
                 statement: statement.span(),
@@ -600,7 +695,12 @@ mod tests {
     const SPEC: &str = "/src/routes/posts.tsx?barq-split";
 
     fn run(source: &str) -> RouteSplit {
-        split(source, "src/routes/posts.tsx", SPEC)
+        split(source, "src/routes/posts.tsx", SPEC, false, true)
+    }
+
+    /// The CLIENT build, which also deletes `server`.
+    fn client(source: &str) -> RouteSplit {
+        split(source, "src/routes/posts.tsx", SPEC, true, true)
     }
 
     /// The whole point, in one case: the component's imports leave the
@@ -738,7 +838,7 @@ export const Route = createFileRoute("/posts")({
             "import { createRootRoute } from \"@barqjs/router\";\nfunction L() { return <p/>; }\nexport const Route = createRootRoute({ component: L });\n",
             "import { createRootRouteWithContext } from \"@barqjs/router\";\nfunction L() { return <p/>; }\nexport const Route = createRootRouteWithContext<{}>()({ component: L });\n",
         ] {
-            let out = split(source, "src/routes/__root.tsx", SPEC);
+            let out = split(source, "src/routes/__root.tsx", SPEC, false, true);
             assert_eq!(out.refused, None);
             assert_eq!(out.reference, source, "a root route must not be rewritten");
             assert_eq!(out.split, source);
@@ -810,6 +910,103 @@ export const Route = createFileRoute("/admin")({
         assert!(out.reference.contains("requireSession"), "{}", out.reference);
         assert!(!out.split.contains("adminStats"), "{}", out.split);
         assert!(!out.split.contains("requireSession"), "{}", out.split);
+    }
+
+    /// The CLIENT build deletes `server`, so a route's HTTP handlers — and
+    /// whatever they import to reach a database — never sit in the browser
+    /// bundle. Theirs deletes the same node
+    /// (`start-plugin-core/src/vite/start-router-plugin/plugin.ts:166`).
+    #[test]
+    fn the_client_build_deletes_the_server_handlers() {
+        let source = r#"import { createFileRoute } from "@barqjs/router";
+import { db } from "../db";
+import { render } from "../render";
+
+const SECRET = "do-not-ship-me";
+
+function Page() {
+  return render();
+}
+
+export const Route = createFileRoute("/posts")({
+  component: Page,
+  server: {
+    handlers: {
+      GET: async () => Response.json(await db.query(SECRET)),
+    },
+  },
+});
+"#;
+
+        // On the SERVER the handlers are the whole point, so nothing is deleted.
+        let server = run(source);
+        assert!(server.reference.contains("handlers"), "{}", server.reference);
+        assert!(server.reference.contains("SECRET"), "{}", server.reference);
+        assert!(server.reference.contains("db"), "{}", server.reference);
+
+        let out = client(source);
+        assert_eq!(out.refused, None, "{out:#?}");
+        // The option, the handler body, the secret and the import it needed are
+        // all gone from what the browser loads.
+        assert!(!out.reference.contains("handlers"), "{}", out.reference);
+        assert!(!out.reference.contains("db.query"), "{}", out.reference);
+        assert!(!out.reference.contains("SECRET"), "{}", out.reference);
+        assert!(!out.reference.contains("../db"), "{}", out.reference);
+        // …and the route still builds, with its component still split out.
+        assert!(
+            out.reference.contains("export const Route = createFileRoute"),
+            "{}",
+            out.reference
+        );
+        assert!(out.reference.contains("component: $$barqLazy"), "{}", out.reference);
+        assert!(out.split.contains("function Page"), "{}", out.split);
+
+        let allocator = Allocator::new();
+        let parsed = Parser::new(
+            &allocator,
+            &out.reference,
+            crate::compile::source_type_for(Some("src/routes/posts.tsx")),
+        )
+        .parse();
+        assert!(parsed.diagnostics.is_empty(), "{}\n{:?}", out.reference, parsed.diagnostics);
+    }
+
+    /// A binding the handlers share with the rest of the module STAYS. Deleting
+    /// a property never has to delete something else still reads, so unlike the
+    /// split this case needs no refusal — just care.
+    #[test]
+    fn a_binding_the_rest_of_the_module_also_uses_survives_the_strip() {
+        let out = client(
+            r#"import { createFileRoute } from "@barqjs/router";
+import { format } from "../format";
+export const Route = createFileRoute("/posts")({
+  loader: () => format("a"),
+  server: { handlers: { GET: async () => Response.json(format("b")) } },
+});
+"#,
+        );
+        assert_eq!(out.refused, None, "{out:#?}");
+        assert!(!out.reference.contains("handlers"), "{}", out.reference);
+        // The loader still needs it.
+        assert!(out.reference.contains("format"), "{}", out.reference);
+    }
+
+    /// A route with handlers and NO component is still stripped. The early
+    /// return for "nothing to split" skipped it, which shipped every
+    /// handler-only API route's body to the browser.
+    #[test]
+    fn a_route_with_no_component_is_still_stripped() {
+        let out = client(
+            r#"import { createFileRoute } from "@barqjs/router";
+import { db } from "../db";
+export const Route = createFileRoute("/api/users")({
+  server: { handlers: { GET: async () => Response.json(await db.all()) } },
+});
+"#,
+        );
+        assert_eq!(out.refused, None, "{out:#?}");
+        assert!(!out.reference.contains("db"), "{}", out.reference);
+        assert!(!out.reference.contains("handlers"), "{}", out.reference);
     }
 
     /// The cheap question, asked before the expensive one.

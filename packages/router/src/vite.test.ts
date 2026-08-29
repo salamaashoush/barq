@@ -556,3 +556,86 @@ export const Route = createFileRoute("/admin")({ component: Admin });
     expect([...(reachability.get("/admin") ?? [])]).toEqual(["actions.ts#wipe"]);
   }, 60_000);
 });
+
+/**
+ * A route's `server` handlers must not reach the browser.
+ *
+ * The strip is NOT a size optimisation, which is why it runs even with code
+ * splitting off: a handler's body is the route's database query, its secret and
+ * its `node:` imports, and the static route tree pulls the module into the
+ * client graph by construction. Theirs deletes the same node
+ * (`start-plugin-core/src/vite/start-router-plugin/plugin.ts:166`).
+ */
+describe("the server half of a route", () => {
+  const project_ = () =>
+    project({
+      "index.html": `<!doctype html><html><body><script type="module" src="/src/entry.ts"></script></body></html>`,
+      "src/db.ts": `export const db = { all: () => "DB_MARKER_7a3" };\n`,
+      "src/routes/api.users.ts": `import { createFileRoute } from "@barqjs/router";
+import { db } from "../db.ts";
+const SECRET_MARKER_b12 = "shhh";
+export const Route = createFileRoute("/api/users")({
+  server: {
+    handlers: {
+      GET: async () => Response.json({ rows: db.all(), token: SECRET_MARKER_b12 }),
+    },
+  },
+});
+`,
+      "src/routes/index.tsx": `import { createFileRoute } from "@barqjs/router";
+export const Route = createFileRoute("/")({ component: () => "home" });
+`,
+      "src/entry.ts": `import { routeTree } from "./routeTree.gen.ts";\nconsole.log(routeTree.length);\n`,
+    });
+
+  const bundleFor = async (
+    environmentName: "client" | "ssr",
+    options: Parameters<typeof barqRouter>[0] = {},
+  ): Promise<string> => {
+    const root = project_();
+    const chunks: string[] = [];
+    const { build } = await import("vite");
+    await build({
+      root,
+      logLevel: "silent",
+      build: { write: false },
+      ...(environmentName === "ssr" ? { build: { write: false, ssr: "src/entry.ts" } } : {}),
+      plugins: [
+        stubCore(),
+        barqRouter(options),
+        {
+          name: "capture",
+          generateBundle(_o: unknown, bundle: Record<string, { type: string; code?: string }>) {
+            for (const chunk of Object.values(bundle)) {
+              if (chunk.type === "chunk" && chunk.code !== undefined) chunks.push(chunk.code);
+            }
+          },
+        },
+      ],
+    });
+    return chunks.join("\n");
+  };
+
+  test("the handler, its imports and its secrets are absent from the CLIENT bundle", async () => {
+    const client = await bundleFor("client");
+    expect(client).not.toContain("SECRET_MARKER_b12");
+    expect(client).not.toContain("DB_MARKER_7a3");
+    expect(client).not.toContain("handlers");
+    // …and the table still built, so the route is still routable in the browser.
+    expect(client).toContain("/api/users");
+  }, 60_000);
+
+  test("the strip runs even with `codeSplitting: false`", async () => {
+    // It is not a size optimisation. Turning splitting off must not put a
+    // database query back in the browser.
+    const client = await bundleFor("client", { codeSplitting: false });
+    expect(client).not.toContain("SECRET_MARKER_b12");
+    expect(client).not.toContain("DB_MARKER_7a3");
+  }, 60_000);
+
+  test("the SERVER bundle keeps them, because they are the whole point", async () => {
+    const server = await bundleFor("ssr");
+    expect(server).toContain("DB_MARKER_7a3");
+    expect(server).toContain("SECRET_MARKER_b12");
+  }, 60_000);
+});

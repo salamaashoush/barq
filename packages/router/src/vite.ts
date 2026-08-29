@@ -128,7 +128,13 @@ export interface RouteSplit {
 
 interface Native {
   routeTree(root: string, dir: string, outFile?: string, writeIds?: boolean): RouteTree;
-  routeSplit(source: string, filename: string, specifier: string): RouteSplit;
+  routeSplit(
+    source: string,
+    filename: string,
+    specifier: string,
+    forClient?: boolean,
+    splitComponents?: boolean,
+  ): RouteSplit;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
@@ -489,20 +495,33 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     },
 
     /**
-     * A route module becomes two, and which one depends on the query.
+     * A route module becomes two, and which one depends on the query — and on
+     * the CLIENT it also loses its `server` handlers entirely.
      *
      * The refusal is a WARNING and never an error. A route that cannot be split
      * still works — both halves come back as the original source — so the build
      * carries on and the message names the one binding to move.
      */
-    transform(this: { warn(message: string): void }, code, id) {
-      if (!codeSplitting) return null;
+    transform(this: { warn(message: string): void; environment?: { name?: string } }, code, id) {
       const wantsSplit = isSplitId(id);
       const file = wantsSplit ? fileOfSplitId(id) : (id.split("?", 1)[0] ?? id);
       if (!isRouteFile(file)) return null;
 
+      // The CLIENT build also DELETES `server`, which holds the route's HTTP
+      // handlers, and that happens whether or not code splitting is on: it is
+      // not a size optimisation, it is what keeps a handler's body — and the
+      // database import it needed — out of the browser bundle.
+      const forClient = (this.environment?.name ?? "client") === "client";
+      if (!codeSplitting && !forClient) return null;
+
       const relativeFile = relative(root, file).replaceAll("\\", "/");
-      const answer = native.routeSplit(code, relativeFile, `${file}?${SPLIT_QUERY}`);
+      const answer = native.routeSplit(
+        code,
+        relativeFile,
+        `${file}?${SPLIT_QUERY}`,
+        forClient,
+        codeSplitting,
+      );
       if (answer.refused !== undefined && answer.refused !== null && !wantsSplit) {
         // Once, not twice: both halves ask the same question and would report
         // the same answer.

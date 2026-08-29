@@ -288,12 +288,29 @@ pub struct RouteSplitResult {
 /// `specifier` is what the reference half will `import()`. The caller owns that
 /// spelling because the BUNDLER decides what a module id looks like, not the
 /// compiler.
+///
+/// `for_client` also DELETES the `server` option, which holds a route's HTTP
+/// handlers. Without it a handler's body — and whatever it imports to reach a
+/// database — sits in the browser bundle. Theirs deletes the same node
+/// (`start-plugin-core/src/vite/start-router-plugin/plugin.ts:166`).
 #[napi]
-pub fn route_split(source: String, filename: String, specifier: String) -> RouteSplitResult {
+pub fn route_split(
+    source: String,
+    filename: String,
+    specifier: String,
+    for_client: Option<bool>,
+    split_components: Option<bool>,
+) -> RouteSplitResult {
     if !route_split::mentions(&source) {
         return RouteSplitResult { reference: source.clone(), split: source, refused: None };
     }
-    let out = route_split::split(&source, &filename, &specifier);
+    let out = route_split::split(
+        &source,
+        &filename,
+        &specifier,
+        for_client.unwrap_or(false),
+        split_components.unwrap_or(true),
+    );
     RouteSplitResult { reference: out.reference, split: out.split, refused: out.refused }
 }
 

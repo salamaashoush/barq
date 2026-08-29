@@ -36,6 +36,7 @@ import { HYDRATE, type Block, type Scope, cell, getOwner, provide } from "@barqj
 import { encodeSeed } from "@barqjs/server/codec";
 import { isbot } from "isbot";
 
+import type { Middleware } from "@barqjs/start";
 import {
   applyResponseDraft,
   createResponseDraft,
@@ -54,8 +55,15 @@ import {
   verifyRouteChains,
 } from "./manifest.ts";
 import { memoryHistory } from "./history.ts";
-import { createMatcher } from "./matcher.ts";
-import { type AnyRouteDefinition, type Route, flattenRoutes, preloadMatched } from "./route.ts";
+import { type Match, createMatcher } from "./matcher.ts";
+import {
+  type AnyRouteDefinition,
+  type Route,
+  type RouteHandler,
+  type RouteMethod,
+  flattenRoutes,
+  preloadMatched,
+} from "./route.ts";
 import {
   type BeforeLoadResult,
   type Guard,
@@ -405,12 +413,134 @@ export interface PageHandlerOptions {
  * which is deliberate: their URL is reserved, and a page handler that also
  * answered it would turn a mutation into an HTML response.
  */
+/**
+ * A route's own HTTP handlers — barq's API routes.
+ *
+ * Not a second route system: `server.handlers` is an option on an ordinary
+ * route, so `/api/users` is a file under `src/routes` like any other and a
+ * route may serve BOTH a page and an endpoint. TanStack's arrangement
+ * (`examples/react/start-basic/src/routes/api/users.ts:44`) and their dispatch
+ * rules, which are worth having for the reasons each one states.
+ */
+
+/** The `Allow` header for a route, so a 405 says what it WOULD accept. */
+function allowHeader(match: Match<Route> | null): string {
+  const handlers = handlersOf(match);
+  if (handlers === undefined) return "GET, HEAD";
+  const named = Object.keys(handlers).filter((method) => method !== "ANY");
+  // `ANY` accepts everything, so listing the named ones would understate it.
+  if (handlers.ANY !== undefined) return [...new Set([...named, "GET", "HEAD"])].join(", ");
+  const withHead = named.includes("GET") && !named.includes("HEAD") ? [...named, "HEAD"] : named;
+  return withHead.length === 0 ? "GET, HEAD" : withHead.join(", ");
+}
+
+function handlersOf(
+  match: Match<Route> | null,
+): Partial<Record<RouteMethod, RouteHandler>> | undefined {
+  return match?.route.chain.at(-1)?.definition.server?.handlers as
+    | Partial<Record<RouteMethod, RouteHandler>>
+    | undefined;
+}
+
+/**
+ * Run the matched route's handler for this method, or answer `null`.
+ *
+ * `null` means "not mine" and the page render continues — which covers three
+ * cases that must stay distinguishable: no route matched, the route declares no
+ * handler for this method, and the handler ran and DECLINED by returning
+ * `undefined`. The third is what lets one route answer JSON to a `fetch` and
+ * render a page for a browser.
+ */
+async function runRouteHandlers(
+  request: Request,
+  url: URL,
+  match: Match<Route> | null,
+): Promise<Response | null> {
+  const handlers = handlersOf(match);
+  if (handlers === undefined || match === null) return null;
+
+  const method = request.method.toUpperCase() as RouteMethod;
+  // RFC 9110 §9.3.2: HEAD must answer with the same header fields as GET, so a
+  // route with a GET and no HEAD gets one for free — and its body is stripped
+  // below rather than sent. Theirs resolves it in the same order
+  // (`createStartHandler.ts:932-937`).
+  const handler =
+    method === "HEAD"
+      ? (handlers.HEAD ?? handlers.GET ?? handlers.ANY)
+      : (handlers[method] ?? handlers.ANY);
+  if (handler === undefined) return null;
+  const headFallback = method === "HEAD" && handlers.HEAD === undefined;
+
+  // INHERITED, outermost first: a middleware on `/api` covers everything under
+  // it, which is the only way a rate limit or an auth check is declared once.
+  const chain: Middleware[] = [];
+  for (const route of match.route.chain) {
+    for (const one of route.definition.server?.middleware ?? []) chain.push(one);
+  }
+
+  const draft = createResponseDraft();
+  const context: Record<string, unknown> = {};
+  const run = async (): Promise<Response | undefined> =>
+    handler({
+      request,
+      params: match.params,
+      pathname: url.pathname,
+      context,
+    });
+
+  let answered: Response | undefined;
+  try {
+    answered = await withRequest(
+      request,
+      async () => {
+        let index = 0;
+        const next = async (step?: {
+          readonly context?: Record<string, unknown>;
+        }): Promise<unknown> => {
+          if (step?.context !== undefined) Object.assign(context, step.context);
+          const middleware = chain[index++];
+          return middleware === undefined ? run() : middleware(next);
+        };
+        return (await next()) as Response | undefined;
+      },
+      { response: draft },
+    );
+  } catch (error) {
+    // A middleware refuses by throwing a `Response`, exactly as a server
+    // function's does — one convention, because one closure guards both.
+    const thrown = asResponse(error);
+    if (thrown === null) throw error;
+    return applyResponseDraft(thrown, draft);
+  }
+
+  // DECLINED. The handler ran, looked at the request and said "not me", so the
+  // page render is still the answer.
+  if (answered === undefined) return null;
+
+  const merged = applyResponseDraft(answered, draft);
+  if (!headFallback) return merged;
+  // §9.3.2 again: the same headers, no body.
+  return new Response(null, {
+    status: merged.status,
+    statusText: merged.statusText,
+    headers: merged.headers,
+  });
+}
+
 export function createPageHandler(
   options: PageHandlerOptions,
 ): (request: Request) => Promise<Response> {
   const matcher = createMatcher(flattenRoutes(options.routeTree));
 
   return async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    const match = matcher.match(url.pathname);
+
+    // A ROUTE'S OWN HANDLER ANSWERS FIRST, and before the method gate, because
+    // the whole point of one is to answer a `POST` that a page never could.
+    const handled = await runRouteHandlers(request, url, match);
+    if (handled !== null) return handled;
+
     // A page is a GET. Nothing upstream filters the method — Vite's dev
     // middlewares check none of them and `serveBarq` matches server functions
     // and then falls through — so without this a `POST /users/7` ran every
@@ -419,11 +549,9 @@ export function createPageHandler(
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("method not allowed", {
         status: 405,
-        headers: { allow: "GET, HEAD" },
+        headers: { allow: allowHeader(match) },
       });
     }
-    const url = new URL(request.url);
-    const match = matcher.match(url.pathname);
 
     // Rule 1. Everything that can decide a status happens here, before any
     // byte of the shell exists.
