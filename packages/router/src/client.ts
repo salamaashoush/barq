@@ -83,7 +83,7 @@ function installSerializationAdapters(
   };
   if (holder.__BARQ_ADAPTERS__ !== undefined) {
     for (const adapter of adapters) {
-      holder.__BARQ_ADAPTERS__.set(adapter.key, adapter.fromSerializable as never);
+      holder.__BARQ_ADAPTERS__.set(adapter.key, adapter.fromSerializable);
     }
   }
   holder.__BARQ_SEED__?.drain();

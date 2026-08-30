@@ -20,7 +20,15 @@ import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { Await, ClientOnly, Outlet, RouterProvider, linkAttrHref, linkHref } from "./components.ts";
+import {
+  Await,
+  ClientOnly,
+  MatchRoute,
+  Outlet,
+  RouterProvider,
+  linkAttrHref,
+  linkHref,
+} from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
@@ -2437,6 +2445,61 @@ describe("basepath", () => {
 
   test("a miss under the base is still a miss", async () => {
     expect((await handler(get("/app/nope"))).status).toBe(404);
+  });
+});
+
+/**
+ * `<MatchRoute>` on the string backend, which has to write the same two-armed
+ * region the client builds — a bare arm with no region is what a hydration
+ * mismatch looks like.
+ */
+describe("MatchRoute", () => {
+  const table = (to: string, fuzzy?: boolean) =>
+    [
+      {
+        id: "__root__",
+        path: "/",
+        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        children: [
+          {
+            id: "/posts/$id",
+            path: "posts/$id",
+            component: (scope: unknown) =>
+              (MatchRoute as never as (s: unknown, p: unknown) => unknown)(scope, {
+                to,
+                fuzzy,
+                children: (_inner: unknown, params: () => Record<string, string>) =>
+                  ssrHtml(`<b>on ${esc(params().id ?? "?")}</b>`),
+              }),
+          },
+        ],
+      },
+    ] as never;
+
+  const render = async (to: string, fuzzy?: boolean): Promise<string> => {
+    const handler = createPageHandler({
+      routeTree: table(to, fuzzy),
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    return (await handler(get("/posts/7"))).text();
+  };
+
+  test("a match renders its children with the captured params", async () => {
+    expect(await render("/posts/$id")).toContain("<b>on 7</b>");
+  });
+
+  test("a miss renders nothing, and still writes a region", async () => {
+    const body = await render("/");
+    expect(body).not.toContain("<b>on");
+    // The region is there for the client to claim; a bare absence is not.
+    expect(body).toContain("<!--[");
+  });
+
+  test("fuzzy reaches an ancestor", async () => {
+    expect(await render("/posts", true)).toContain("<b>on 7</b>");
+    expect(await render("/posts")).not.toContain("<b>on");
   });
 });
 

@@ -12,7 +12,7 @@ import { useRouter } from "./components.ts";
 import { isRedirect } from "./errors.ts";
 import type { Location } from "./history.ts";
 import type { Route } from "./route.ts";
-import type { Blocker, NavigateOptions } from "./router.ts";
+import type { Blocker, MatchRouteOptions, NavigateOptions } from "./router.ts";
 
 export function useLocation(): Cell<Location> {
   return useRouter().location;
@@ -37,6 +37,21 @@ export function useSearch<S extends Record<string, unknown> = Record<string, unk
 export function useNavigate(): (to: string, options?: NavigateOptions) => Promise<void> {
   const state = useRouter();
   return (to, options) => state.navigate(to, options);
+}
+
+/**
+ * Ask whether the current location matches a route, and what it captured.
+ *
+ * Returns a FUNCTION rather than an answer, because the question is usually
+ * asked more than once per component and with different arguments — a nav bar
+ * asks it per item. The function reads `location()` when called, so calling it
+ * from a hole makes that hole re-run on every navigation; calling it in a body
+ * reads it once, which is the ordinary barq distinction and needs no dependency
+ * array to express.
+ */
+export function useMatchRoute(): (options: MatchRouteOptions) => Record<string, string> | false {
+  const state = useRouter();
+  return (options) => state.matchRoute(options);
 }
 
 /**

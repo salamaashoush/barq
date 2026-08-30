@@ -58,7 +58,7 @@ import {
 } from "./head.ts";
 import type { JSX as CoreJSX } from "@barqjs/core/jsx-runtime";
 import type { ToPath } from "./register.ts";
-import { type RouterState, createRouter } from "./router.ts";
+import { type MatchRouteOptions, type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { NotFound, errorFallbackFor } from "./errors.ts";
 import { addBase } from "./history.ts";
@@ -1136,6 +1136,83 @@ function AwaitImpl<T>(scope: Scope | null, props: Incoming<AwaitProps<T>>): JSXE
 }
 
 export const Await = AwaitImpl as unknown as <T>(props: AwaitProps<T>) => JSXElement;
+
+export interface MatchRouteProps extends MatchRouteOptions {
+  /**
+   * Rendered when the route matches, and handed an ACCESSOR for what it
+   * captured — a cell, as every other block argument in the framework is.
+   *
+   * Plain children work too, for the case that only wants the condition.
+   */
+  readonly children?: unknown;
+}
+
+/**
+ * Render `children` when the current location matches `to`.
+ *
+ * The declarative half of `useMatchRoute`, and the same two-armed region
+ * `<ClientOnly>` builds — so the string backend writes the arm the server
+ * chose and the client claims the range rather than replacing it.
+ */
+function MatchRouteImpl(scope: Scope | null, props: Incoming<MatchRouteProps>): JSXElement {
+  const state = useRouter();
+  const matched = (): Record<string, string> | false =>
+    state.matchRoute({
+      to: readSlot(props.to, "MatchRoute.to") as string,
+      params:
+        props.params === undefined
+          ? undefined
+          : (readSlot(props.params, "MatchRoute.params") as Record<string, string>),
+      search:
+        props.search === undefined
+          ? undefined
+          : (readSlot(props.search, "MatchRoute.search") as Record<string, string>),
+      fuzzy:
+        props.fuzzy === undefined ? undefined : Boolean(readSlot(props.fuzzy, "MatchRoute.fuzzy")),
+      includeSearch:
+        props.includeSearch === undefined
+          ? undefined
+          : Boolean(readSlot(props.includeSearch, "MatchRoute.includeSearch")),
+    });
+
+  const body: Block<unknown> = (inner: Scope | null): unknown => {
+    const found = matched();
+    if (found === false) return null;
+    const children = props.children;
+    if (typeof children !== "function") return children ?? null;
+    return (children as (s: Scope | null, params: Cell<Record<string, string>>) => unknown)(
+      inner,
+      () => {
+        const now = matched();
+        return now === false ? {} : now;
+      },
+    );
+  };
+
+  // An INDEX into the arms, as `ClientOnly` picks: a boolean key selects
+  // `bodies[false]`, which is `undefined`, and the region renders nothing.
+  const arm = (): number => (matched() === false ? 0 : 1);
+  const backend = linkBackend();
+  if (backend?.clientOnly !== undefined) {
+    // The string backend's two-armed region, with the arm the SERVER chose.
+    // Reusing `clientOnly` rather than adding a second hook: the shape is the
+    // same and the name on the backend is about the shape, not the component.
+    return (
+      arm() === 0
+        ? backend.clientOnly(
+            block(() => null),
+            block(body),
+          )
+        : backend.clientOnly(
+            block(body),
+            block(() => null),
+          )
+    ) as JSXElement;
+  }
+  return branch(scope, null, null, arm as Cell<number>, [block(() => null), block(body)]);
+}
+
+export const MatchRoute = MatchRouteImpl as unknown as (props: MatchRouteProps) => JSXElement;
 
 // ---------------------------------------------------------------- components
 

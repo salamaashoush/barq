@@ -25,6 +25,7 @@ import { retainSearchParams } from "./search.ts";
 import { memoryHistory } from "./history.ts";
 import {
   useLocation,
+  useMatchRoute,
   useNavigate,
   useParams,
   useSearch,
@@ -3239,5 +3240,109 @@ describe("router events", () => {
     expect(after).toBe(1);
     expect(errors.some((line) => String(line).includes("onLoad"))).toBe(true);
     state.dispose();
+  });
+});
+
+/**
+ * `matchRoute` / `useMatchRoute` — "am I on the post page, and which post",
+ * answered in one call.
+ */
+describe("matchRoute", () => {
+  const table = [
+    { path: "/", component: (() => null) as never },
+    {
+      path: "/posts",
+      component: (() => null) as never,
+      children: [
+        { path: "", component: (() => null) as never },
+        { path: "$id", component: (() => null) as never },
+      ],
+    },
+  ] as never as AnyRouteDefinition[];
+
+  const at = (initial: string) =>
+    createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+
+  test("a route id matches and hands back what it captured", async () => {
+    const state = at("/posts/7");
+    await state.start();
+    expect(state.matchRoute({ to: "/posts/$id" })).toEqual({ id: "7" });
+    state.dispose();
+  });
+
+  test("a route that is not the current one is false", async () => {
+    const state = at("/posts/7");
+    await state.start();
+    expect(state.matchRoute({ to: "/" })).toBe(false);
+    state.dispose();
+  });
+
+  /**
+   * FUZZY reaches an ancestor, which is what a breadcrumb and a nav highlight
+   * want: `/posts` is true while on `/posts/7` and false exactly.
+   */
+  test("fuzzy matches an ancestor, exact does not", async () => {
+    const state = at("/posts/7");
+    await state.start();
+    expect(state.matchRoute({ to: "/posts" })).toBe(false);
+    expect(state.matchRoute({ to: "/posts", fuzzy: true })).toEqual({ id: "7" });
+    state.dispose();
+  });
+
+  test("a concrete path works too, and compares on a segment boundary", async () => {
+    const state = at("/posts/7");
+    await state.start();
+    expect(state.matchRoute({ to: "/posts/7" })).toEqual({ id: "7" });
+    expect(state.matchRoute({ to: "/posts", fuzzy: true })).toEqual({ id: "7" });
+    // `/postscript` is not under `/posts`.
+    expect(state.matchRoute({ to: "/post", fuzzy: true })).toBe(false);
+    state.dispose();
+  });
+
+  /** PARTIAL: naming one parameter says nothing about the rest. */
+  test("params are compared partially", async () => {
+    const state = at("/posts/7");
+    await state.start();
+    expect(state.matchRoute({ to: "/posts/$id", params: { id: "7" } })).toEqual({ id: "7" });
+    expect(state.matchRoute({ to: "/posts/$id", params: { id: "8" } })).toBe(false);
+    state.dispose();
+  });
+
+  test("search is compared unless told not to", async () => {
+    const state = at("/posts/7?tab=a&page=2");
+    await state.start();
+    expect(state.matchRoute({ to: "/posts/$id", search: { tab: "a" } })).toEqual({ id: "7" });
+    expect(state.matchRoute({ to: "/posts/$id", search: { tab: "b" } })).toBe(false);
+    expect(
+      state.matchRoute({ to: "/posts/$id", search: { tab: "b" }, includeSearch: false }),
+    ).toEqual({ id: "7" });
+    state.dispose();
+  });
+
+  test("it follows a navigation", async () => {
+    const state = at("/");
+    await state.start();
+    expect(state.matchRoute({ to: "/posts/$id" })).toBe(false);
+    await state.navigate("/posts/9");
+    expect(state.matchRoute({ to: "/posts/$id" })).toEqual({ id: "9" });
+    state.dispose();
+  });
+
+  test("useMatchRoute resolves through the scope chain", () => {
+    let seen: unknown;
+    const { dispose } = mount({
+      routeTree: [
+        {
+          path: "/posts/$id",
+          component: () => {
+            seen = useMatchRoute()({ to: "/posts/$id" });
+            return document.createTextNode("x");
+          },
+        },
+      ] as never,
+      history: memoryHistory({ initial: ["/posts/3"] }),
+    });
+    expect(seen).toEqual({ id: "3" });
+    dispose();
   });
 });

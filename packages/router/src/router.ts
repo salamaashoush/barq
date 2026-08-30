@@ -48,10 +48,12 @@ import {
 import {
   applyTrailingSlash,
   interpolate,
+  isUnder,
   leavesTheApp,
   normalize,
   parsePattern,
   resolvePath,
+  withoutTrailingSlash,
 } from "./path.ts";
 import type { TrailingSlash } from "./path.ts";
 import { type ScrollRestoration, scrollRestoration, withViewTransition } from "./scroll.ts";
@@ -329,6 +331,31 @@ export interface RouteMask {
     | ((captured: Record<string, string>) => Record<string, string>);
   /** Overrides the router-wide `unmaskOnReload` for this mask alone. */
   readonly unmaskOnReload?: boolean;
+}
+
+/**
+ * What `matchRoute` is asked.
+ *
+ * `to` is a route ID — a PATTERN, `/posts/$id` — or a concrete path. The
+ * pattern form is the interesting one and the reason this exists beside
+ * `useMatch`: it answers "am I on the post page, and which post" in one call,
+ * where `useMatch(id)` answers only the first half.
+ */
+export interface MatchRouteOptions {
+  readonly to: string;
+  /** Every key given must equal what the location captured. */
+  readonly params?: Record<string, string>;
+  /** Every key given must equal what the current query holds. */
+  readonly search?: Record<string, string>;
+  /**
+   * Match an ANCESTOR too. Default `false`.
+   *
+   * `/posts` fuzzily matches while on `/posts/7`, which is what a breadcrumb
+   * and a nav highlight want and what an exact match cannot give them.
+   */
+  readonly fuzzy?: boolean;
+  /** Whether `search` is compared at all. Default `true`, which is theirs. */
+  readonly includeSearch?: boolean;
 }
 
 /**
@@ -770,6 +797,18 @@ export interface RouterState {
    * to take down the navigation it was watching.
    */
   subscribe(type: RouterEventType, listener: RouterListener): () => void;
+  /**
+   * Whether the current location matches `to`, and what it captured.
+   *
+   * `false` or the params, which is TanStack's return and a better one than a
+   * boolean: the question "am I on the post page" is almost never asked without
+   * "which post", and answering both at once removes the second lookup.
+   *
+   * Built on the SAME matcher a navigation uses. A second comparison written
+   * beside it would drift — which is the whole reason `linkIsActive` and this
+   * share their trailing-slash handling.
+   */
+  matchRoute(options: MatchRouteOptions): Record<string, string> | false;
   /** Whether there is anything to go back TO. See `History.depth`. */
   canGoBack(): boolean;
   /**
@@ -1942,6 +1981,43 @@ export function createRouter(config: RouterConfig): RouterState {
     block(blocker) {
       blockers.add(blocker);
       return () => blockers.delete(blocker);
+    },
+    matchRoute(options) {
+      const here = location();
+      const hit = matcher.match(unmask(here));
+      if (hit === null) return false;
+
+      // A ROUTE ID first, exactly as `<Link to>` resolves one: `/posts/$id`
+      // names a route, and matching it against the pathname as a literal would
+      // compare `$id` to `7`.
+      const named = matcher.routes.find((route) => route.id === options.to);
+      const pattern = named?.fullPath;
+      const reached =
+        pattern === undefined
+          ? // A concrete path. `isUnder` is the fuzzy test `<NavLink>` uses and
+            // it compares on a SEGMENT boundary, so `/postscript` is not under
+            // `/posts`.
+            options.fuzzy === true
+            ? isUnder(withoutTrailingSlash(here.pathname), withoutTrailingSlash(options.to))
+            : withoutTrailingSlash(here.pathname) === withoutTrailingSlash(options.to)
+          : options.fuzzy === true
+            ? hit.route.chain.some((route) => route.fullPath === normalize(pattern))
+            : hit.route.fullPath === normalize(pattern);
+      if (!reached) return false;
+
+      // A PARTIAL comparison, which is theirs: `{ id: "7" }` asks about `id`
+      // and says nothing about the rest, so a route with three parameters can
+      // be asked about one.
+      for (const [key, value] of Object.entries(options.params ?? {})) {
+        if (hit.params[key] !== value) return false;
+      }
+      if (options.includeSearch !== false) {
+        const current = new URLSearchParams(here.search);
+        for (const [key, value] of Object.entries(options.search ?? {})) {
+          if (current.get(key) !== value) return false;
+        }
+      }
+      return hit.params;
     },
     subscribe(type, listener) {
       let set = listeners.get(type);
