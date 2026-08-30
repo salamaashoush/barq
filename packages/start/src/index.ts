@@ -98,6 +98,7 @@ export {
   DATA_SUFFIX,
   NOT_FOUND,
   REDIRECT,
+  RPC_CONTEXT,
   RPC_CONTROL,
   RPC_PREFIX,
   RpcNotFound,
@@ -109,89 +110,65 @@ export {
 } from "./client.ts";
 
 import { SERVER_FN, type ServerFn, type ServerFnMeta, dataOf } from "./client.ts";
+import {
+  type Middleware,
+  type Validator,
+  UncheckedInputError,
+  ValidationError,
+  flattenMiddleware,
+  isBuiltMiddleware,
+  runMiddleware,
+} from "./middleware.ts";
 
 /**
- * A validator in the Standard Schema shape, which zod, valibot and arktype all
- * implement. Taking the interface rather than a library keeps the dependency
- * out and lets an application bring its own.
+ * Middleware and the validator surface it composes, re-exported so an
+ * application still writes one import. `middleware.ts` says why they live apart.
  */
-export interface StandardSchema<In = unknown, Out = In> {
-  "~standard": {
-    version: 1;
-    vendor: string;
-    validate: (
-      value: unknown,
-    ) =>
-      | { value: Out }
-      | { issues: ReadonlyArray<unknown> }
-      | Promise<{ value: Out } | { issues: ReadonlyArray<unknown> }>;
-  };
-}
+export {
+  type BuiltMiddleware,
+  type Middleware,
+  type MiddlewareContext,
+  type MiddlewareFn,
+  type MiddlewareNext,
+  type MiddlewareOptions,
+  type StandardSchema,
+  type Validator,
+  InputError,
+  UncheckedInputError,
+  ValidationError,
+  applyValidator,
+  createMiddleware,
+  flattenMiddleware,
+  isBuiltMiddleware,
+  runMiddleware,
+} from "./middleware.ts";
 
-/**
- * `'unchecked'` is the only way to open the input channel without a schema, and
- * it has to be typed out.
- *
- * The default is the opposite: a server function declared with no validator
- * rejects ANY argument off the wire with a 400. Every system surveyed except
- * SvelteKit passes raw deserialized input straight into the handler, and the
- * cost of not doing so is one word.
- */
-export type Validator<T> = StandardSchema<unknown, T> | "unchecked";
-
-/**
- * The caller's input was not acceptable — a 400 rather than a 500, whichever way
- * it failed. One base so the handler cannot answer one of them correctly and
- * turn the other into a server error, which is exactly what shipped first here.
- */
-export class InputError extends Error {}
-
-export class ValidationError extends InputError {
-  readonly issues: ReadonlyArray<unknown>;
-  constructor(issues: ReadonlyArray<unknown>) {
-    super("server function input failed validation");
-    this.name = "ValidationError";
-    this.issues = issues;
+export async function checkInput<In>(
+  built: Built<In, unknown>,
+  raw: unknown,
+  /**
+   * Whether a MIDDLEWARE in the chain declared a validator.
+   *
+   * The refusal below asks "does anything expect input?", and before middleware
+   * validators existed the function's own was the only thing that could answer.
+   * A chain that validates has opened the channel just as surely, so refusing
+   * here would make `.validator(schema)` on a middleware unusable by any
+   * function that declares none of its own — which is the whole point of
+   * putting one there.
+   */
+  chainValidates = false,
+): Promise<In> {
+  if (built.validator === null) {
+    // `undefined` is what a no-argument call sends, and it is the only input a
+    // function with no validator accepts.
+    if (raw !== undefined && !chainValidates) throw new UncheckedInputError();
+    return raw as In;
   }
+  if (built.validator === "unchecked") return raw as In;
+  const result = await built.validator["~standard"].validate(raw);
+  if ("issues" in result) throw new ValidationError(result.issues);
+  return result.value;
 }
-
-/** Thrown when a call arrives for a function that declared no validator. */
-export class UncheckedInputError extends InputError {
-  constructor() {
-    super(
-      "this server function takes no validated input; declare .validator(schema) to accept arguments, " +
-        "or .validator('unchecked') to accept them unvalidated",
-    );
-    this.name = "UncheckedInputError";
-  }
-}
-
-/**
- * A middleware runs before the handler and decides whether there is going to be
- * one. Rejecting is `throw new Response(...)`, which the request handler returns
- * as it stands.
- *
- * Per FUNCTION, not per route. Every framework in the survey documents the same
- * hole instead of closing it — Next.js: "A page-level authentication check does
- * not extend to the Server Actions defined within it… the Server Action is a
- * separate entry point." A middleware attached here cannot be escaped by
- * reaching the function from somewhere else, because there is nowhere else.
- */
-export type Middleware = (next: MiddlewareNext) => Promise<unknown>;
-
-/**
- * What a middleware calls to run the rest of the chain.
- *
- * `next({ context })` MERGES into what the handler is handed, which is how a
- * middleware that authenticates hands the session down without a module-level
- * store, which is theirs too. `next()` with no argument is
- * unchanged and is what every existing middleware writes, so nothing had to
- * move: the chain is still compared by closure identity, which is what the
- * route-action manifest depends on.
- */
-export type MiddlewareNext = (options?: {
-  readonly context?: Record<string, unknown>;
-}) => Promise<unknown>;
 
 /**
  * What a handler is handed, which is TanStack's shape:
@@ -218,18 +195,6 @@ interface Built<In, Out> {
  * in the survey: no validator means any argument is a 400, and opening the
  * channel costs a schema or the literal `'unchecked'`.
  */
-export async function checkInput<In>(built: Built<In, unknown>, raw: unknown): Promise<In> {
-  if (built.validator === null) {
-    // `undefined` is what a no-argument call sends, and it is the only input a
-    // function with no validator accepts.
-    if (raw !== undefined) throw new UncheckedInputError();
-    return undefined as In;
-  }
-  if (built.validator === "unchecked") return raw as In;
-  const result = await built.validator["~standard"].validate(raw);
-  if ("issues" in result) throw new ValidationError(result.issues);
-  return result.value;
-}
 
 export interface ServerFnBuilder<In, Out> {
   middleware(chain: readonly Middleware[]): ServerFnBuilder<In, Out>;
@@ -295,35 +260,81 @@ export function createServerFn(options: ServerFnOptions = {}): ServerFnBuilder<u
  * with the real handler and the id it assigned.
  */
 export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): ServerFn<In, Out> {
-  const call = async (options?: unknown): Promise<Out> => {
+  const chain = flattenMiddleware(built.middleware);
+  // Asked ONCE, at build of the function rather than per call: the chain is
+  // fixed and this decides whether a bare argument is refused.
+  const chainValidates = chain.some(
+    (step) => isBuiltMiddleware(step) && step.options.validator !== undefined,
+  );
+
+  const call = async (
+    options?: unknown,
+    /**
+     * What the CLIENT's halves sent, and it is UNTRUSTED.
+     *
+     * A second positional rather than a property of `options`, so it is
+     * invisible to the public `ServerFn` signature and cannot be reached by
+     * writing `fn({ data, context })` in application code. The request handler
+     * is the only caller that passes it.
+     *
+     * Seeded UNDER the chain's own output: the server's middlewares run after
+     * this and overwrite anything the wire claimed, so a client cannot forge
+     * the `session` a server middleware sets. TanStack orders it the same way.
+     */
+    clientContext?: Record<string, unknown>,
+  ): Promise<Out> => {
     const input = dataOf(options);
     // What the chain contributed, merged as it unwinds inward. One object the
     // chain mutates rather than one per step: `next({ context })` is additive
     // by definition, and a handler wants the union of everything above it.
-    const context: Record<string, unknown> = {};
+    const context: Record<string, unknown> = { ...clientContext };
+    const sendContext: Record<string, unknown> = {};
     const controller = new AbortController();
 
-    // Middleware runs BEFORE validation. An unauthenticated caller should be
-    // refused without the server parsing its payload first, and a rejection
-    // that depended on the payload being well-formed would be one an attacker
-    // could skip by sending a malformed one.
-    const run = async (): Promise<Out> =>
-      built.handler({
-        data: await checkInput(built, input),
-        context,
-        signal: controller.signal,
-      });
+    // Middleware runs BEFORE the function's own validation. An unauthenticated
+    // caller should be refused without the server parsing its payload first,
+    // and a rejection that depended on the payload being well-formed would be
+    // one an attacker could skip by sending a malformed one. A MIDDLEWARE's own
+    // validator is the exception and has to be: its body is handed `data`.
+    const result = (await runMiddleware(chain, "server", {
+      data: input,
+      signal: controller.signal,
+      context,
+      sendContext,
+      run: async (data) =>
+        built.handler({
+          data: await checkInput(built, data, chainValidates),
+          context,
+          signal: controller.signal,
+        }),
+    })) as Out;
 
-    let index = 0;
-    const next: MiddlewareNext = async (step?: { readonly context?: Record<string, unknown> }) => {
-      if (step?.context !== undefined) Object.assign(context, step.context);
-      const middleware = built.middleware[index++];
-      return middleware === undefined ? run() : middleware(next);
-    };
-    return (await next()) as Out;
+    lastSendContext = sendContext;
+    return result;
   };
 
   return Object.assign(call, { [SERVER_FN]: true as const, meta, built });
+}
+
+/**
+ * What the last call's chain asked to send back, for the request handler to put
+ * on the response.
+ *
+ * A MODULE-LEVEL HANDOFF and it is safe here, unlike the ambient request
+ * context: `serverRpc`'s `call` sets this synchronously with respect to its own
+ * return, and `handleServerFn` reads it in the statement after awaiting that
+ * call. No other await sits between the two, so a second request cannot
+ * interleave. Returning it would have been cleaner and is not available: the
+ * call's return type is the handler's, and a server function invoked
+ * IN-PROCESS by a loader must see that type and nothing wrapped around it.
+ */
+let lastSendContext: Record<string, unknown> = {};
+
+/** Take the pending `sendContext`, leaving nothing behind for the next call. */
+export function takeSendContext(): Record<string, unknown> {
+  const taken = lastSendContext;
+  lastSendContext = {};
+  return taken;
 }
 
 /**

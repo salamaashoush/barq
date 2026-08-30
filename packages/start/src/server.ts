@@ -11,8 +11,15 @@
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
 import { applyResponseDraft, createResponseDraft, draftedStatus, withRequest } from "./context.ts";
-import { NOT_FOUND, REDIRECT, RPC_CONTROL, type RpcControl } from "./client.ts";
-import { DATA_SUFFIX, InputError, RPC_PREFIX, type ServerFn, isServerFn } from "./index.ts";
+import { NOT_FOUND, REDIRECT, RPC_CONTEXT, RPC_CONTROL, type RpcControl } from "./client.ts";
+import {
+  DATA_SUFFIX,
+  InputError,
+  RPC_PREFIX,
+  type ServerFn,
+  isServerFn,
+  takeSendContext,
+} from "./index.ts";
 
 /**
  * id → function, and the ONLY way an id becomes callable.
@@ -213,10 +220,21 @@ export async function handleServerFn(
   if (options?.reachable?.(id) === false) return new Response("not found", { status: 404 });
 
   let input: unknown;
+  let clientContext: Record<string, unknown> | undefined;
   if (isData && !isFormBody(request)) {
     try {
-      const body = (await request.json()) as { input?: unknown };
+      const body = (await request.json()) as { input?: unknown; context?: unknown };
       input = body?.input === undefined ? undefined : decodeWire(body.input);
+      // WHAT THE CLIENT HALVES SENT, and it is UNTRUSTED — a caller writes this
+      // body by hand as readily as the stub does. It is merged UNDER the
+      // server chain's own context, so a server middleware that sets `session`
+      // overwrites anything the wire claimed about it. TanStack orders the
+      // merge the same way and says so: "Merge client context first so trusted
+      // server middleware context wins."
+      clientContext =
+        body?.context === undefined
+          ? undefined
+          : (decodeWire(body.context) as Record<string, unknown>);
     } catch {
       return new Response("bad request", { status: 400 });
     }
@@ -237,9 +255,19 @@ export async function handleServerFn(
     // — so a handler sees the same input type whether or not JS ran.
     const result = await withRequest(
       request,
-      () => (input instanceof FormData ? fn(input) : fn({ data: input })),
+      () =>
+        input instanceof FormData
+          ? fn(input)
+          : (fn as (o: unknown, c?: Record<string, unknown>) => Promise<unknown>)(
+              { data: input },
+              clientContext,
+            ),
       { response: draft },
     );
+    // READ IMMEDIATELY, in the statement after the await that produced it. See
+    // `takeSendContext` for why a module-level handoff is safe at exactly this
+    // distance and nowhere further.
+    const sendContext = takeSendContext();
     // A RETURNED RESPONSE IS HONOURED ON BOTH CHANNELS, and it did not used to
     // be: the value channel handed it to `encodeWire`, which answered
     // `Seroval Error (step: 1)` and a 500 with nothing in it. So a function that
@@ -251,8 +279,18 @@ export async function handleServerFn(
       // two answer different questions: this response is the framework's to
       // build, so `setResponseStatus(201)` decides it — where a response the
       // handler RETURNED has already decided for itself.
+      const answer = draftedStatus(draft, 200);
+      // The ordinary shape is the RESULT and nothing around it. A chain that
+      // sent something back gets the envelope instead, flagged by a header, so
+      // a call that sends nothing pays neither the wrapper nor a second parse.
+      if (Object.keys(sendContext).length === 0) {
+        return applyResponseDraft(Response.json(encodeWire(result), answer), draft);
+      }
       return applyResponseDraft(
-        Response.json(encodeWire(result), draftedStatus(draft, 200)),
+        Response.json(encodeWire({ result, context: sendContext }), {
+          ...answer,
+          headers: { [RPC_CONTEXT]: "1" },
+        }),
         draft,
       );
     }

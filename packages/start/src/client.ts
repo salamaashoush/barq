@@ -22,6 +22,7 @@
  */
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
+import { type Middleware, flattenMiddleware, runMiddleware } from "./middleware.ts";
 
 export const SERVER_FN = Symbol.for("barq.server-fn");
 
@@ -65,6 +66,23 @@ export const NOT_FOUND = Symbol.for("barq.not-found");
  * happens to have a `to` field is never mistaken for a redirect.
  */
 export const RPC_CONTROL = "x-barq-rpc";
+
+/**
+ * Present when a middleware's `sendContext` rides back with the result.
+ *
+ * A HEADER flagging a different body shape, which is what `RPC_CONTROL` already
+ * does and for the same reason: an ordinary call — every call, in almost every
+ * application — must not pay a second parse or a wrapper object to carry
+ * something it does not have. With the flag the body is `{ result, context }`;
+ * without it the body IS the result, byte for byte as before.
+ */
+export const RPC_CONTEXT = "x-barq-ctx";
+
+/** The body shape {@link RPC_CONTEXT} announces. */
+export interface RpcEnvelope {
+  readonly result: unknown;
+  readonly context: unknown;
+}
 
 /** What rides in the body under {@link RPC_CONTROL}. */
 export type RpcControl =
@@ -171,12 +189,30 @@ export function dataOf(options: unknown): unknown {
 
 /**
  * The client half. The compiler emits this in a module compiled for the client,
- * with the id and nothing else — no handler body, no validator, no imports the
- * body needed.
+ * with the id, the chain, and nothing else — no handler body, no validator, no
+ * imports the body needed.
+ *
+ * `chain` is the middlewares the function declared, and it is here so a
+ * `.client()` half can run around the fetch. Only the CLIENT halves survive the
+ * compile: `createMiddleware(...).server(fn)` has its `server` argument deleted
+ * in the client build, so a middleware may hold both without the server body —
+ * or the database import it needed — reaching the browser.
  */
-export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
-  const call = async (options?: unknown): Promise<Out> => {
-    const input = dataOf(options);
+export function clientRpc<In, Out>(
+  id: string,
+  chain: readonly Middleware[] = [],
+): ServerFn<In, Out> {
+  const flattened = flattenMiddleware(chain);
+
+  /**
+   * The fetch, as the INNERMOST step of the chain.
+   *
+   * A client middleware therefore wraps the request the way a server one wraps
+   * the handler: it can read what it is about to send, add to `sendContext`,
+   * and see the result on the way back. TanStack reaches the same arrangement
+   * by appending the server function itself to the chain as a middleware.
+   */
+  const send = async (input: unknown, sendContext: Record<string, unknown>): Promise<Out> => {
     // FormData goes as FormData. Routing it through the value codec would hand
     // the handler a plain OBJECT here and a real `FormData` on the no-JS path —
     // the same function seeing two input types depending on whether JS ran,
@@ -191,7 +227,17 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
       // Otherwise seroval's JSON channel, so an argument carries a Date, a Map
       // or a cycle the same way a hydration seed does — and reconstructs
       // through `fromJSON`, which evaluates nothing.
-      body: form ? input : JSON.stringify({ input: encodeWire(input) }),
+      //
+      // `context` is what the CLIENT halves asked to send. It is absent from the
+      // body when they asked for nothing, so an application with no client
+      // middleware sends exactly the bytes it sent before.
+      body: form
+        ? input
+        : JSON.stringify(
+            Object.keys(sendContext).length === 0
+              ? { input: encodeWire(input) }
+              : { input: encodeWire(input), context: encodeWire(sendContext) },
+          ),
       credentials: "same-origin",
       // `manual` so a handler that answers with its OWN 3xx — a real
       // `new Response(null, { status: 302 })`, not a `throw redirect(...)` —
@@ -206,10 +252,41 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
     const control = response.headers.get(RPC_CONTROL);
     if (control !== null) throw fromControl((await response.json()) as RpcControl);
     if (!response.ok) throw new ServerFnError(id, response.status);
-    return decodeWire<Out>(await response.json());
+    if (response.headers.get(RPC_CONTEXT) === null) return decodeWire<Out>(await response.json());
+    const envelope = decodeWire<RpcEnvelope>(await response.json());
+    // What the SERVER's chain sent back, merged into the same object the client
+    // halves have been writing. A client middleware reads it on the way out
+    // through the `context` it was handed, which is that object.
+    Object.assign(returned, envelope.context as Record<string, unknown>);
+    return envelope.result as Out;
   };
+
+  let returned: Record<string, unknown> = {};
+
+  const call = async (options?: unknown): Promise<Out> => {
+    const input = dataOf(options);
+    // NO CHAIN, NO RUNNER. Every application without a client middleware takes
+    // this line, and it is the line the compiler emitted before any of this
+    // existed — one fetch, no closures built, no objects allocated.
+    if (flattened.length === 0) return send(input, EMPTY_CONTEXT);
+
+    const context: Record<string, unknown> = {};
+    const sendContext: Record<string, unknown> = {};
+    returned = context;
+    return (await runMiddleware(flattened, "client", {
+      data: input,
+      signal: new AbortController().signal,
+      context,
+      sendContext,
+      run: (data) => send(data, sendContext),
+    })) as Out;
+  };
+
   return Object.assign(call, { [SERVER_FN]: true as const, meta: { id } });
 }
+
+/** Shared, because the no-middleware path never writes to it. */
+const EMPTY_CONTEXT: Record<string, unknown> = {};
 
 /**
  * Rebuild the throwable a control answer describes.

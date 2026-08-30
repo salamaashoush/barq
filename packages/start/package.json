@@ -34,6 +34,11 @@
       "bun": "./src/client.ts",
       "import": "./dist/client.js"
     },
+    "./middleware": {
+      "types": "./dist/middleware.d.ts",
+      "bun": "./src/middleware.ts",
+      "import": "./dist/middleware.js"
+    },
     "./server": {
       "types": "./dist/server.d.ts",
       "bun": "./src/server.ts",

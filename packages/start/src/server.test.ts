@@ -3,6 +3,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   type Middleware,
   DATA_SUFFIX,
+  RPC_CONTEXT,
+  createMiddleware,
+  flattenMiddleware,
   RPC_CONTROL,
   RPC_PREFIX,
   type StandardSchema,
@@ -525,7 +528,7 @@ describe("the registry", () => {
    */
   test("re-mounting an id replaces it, because that is what an edit looks like", async () => {
     mountOf(define("dup", () => 1));
-    mountOf(define("dup", () => 2) as never);
+    mountOf(define("dup", () => 2));
     expect(mounted()).toEqual(["dup"]);
     // The newest definition is the one that answers.
     const response = await handleServerFn(post("dup", undefined));
@@ -1047,7 +1050,11 @@ describe("a server function's control-flow throws", () => {
    * navigates — so the refusal has to happen where both channels share it.
    */
   test("a non-navigable target is refused on both channels", async () => {
-    const refused = ["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "vbscript:x"];
+    const refused = [
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "vbscript:x",
+    ];
     for (const [at, to] of refused.entries()) {
       throwing(`evil-${at}`, new Redirected(to));
       const response = await handleServerFn(post(`evil-${at}`, undefined));
@@ -1061,12 +1068,223 @@ describe("a server function's control-flow throws", () => {
     // The pin between the two copies of `isNavigable`. `packages/router`'s own
     // `path.test.ts` runs the same table against its copy, so a change to
     // either that the other does not follow fails on one side or the other.
-    const allowed = ["/login", "login", "./x", "../x", "//host/path", "https://x.test/y", "http://x.test"];
+    const allowed = [
+      "/login",
+      "login",
+      "./x",
+      "../x",
+      "//host/path",
+      "https://x.test/y",
+      "http://x.test",
+    ];
     for (const [at, to] of allowed.entries()) {
       throwing(`ok-${at}`, new Redirected(to));
       const response = await handleServerFn(post(`ok-${at}`, undefined));
       expect(response?.status).toBe(200);
       expect(await response?.json()).toMatchObject({ to });
     }
+  });
+});
+
+/**
+ * `createMiddleware` — the builder, and the three things a bare closure has
+ * nowhere to put: a chain of its own, an input validator, and a client half.
+ */
+describe("createMiddleware", () => {
+  const withChain = <In, Out>(
+    id: string,
+    chain: Middleware[],
+    fn: (context: { data: In; context: Record<string, unknown> }) => Out,
+    validator: "unchecked" | null = "unchecked",
+  ) => serverRpc<In, Out>({ id }, { validator, middleware: chain, handler: fn });
+
+  test("a built middleware is still a callable Middleware", async () => {
+    const seen: string[] = [];
+    const step = createMiddleware().server(async ({ next }) => {
+      seen.push("ran");
+      return next({ context: { who: "ada" } });
+    });
+    // The property the route-action verifier depends on: it is a function, and
+    // it compares by identity like the closure it replaces.
+    expect(typeof step).toBe("function");
+    expect([step].includes(step)).toBe(true);
+
+    mountOf(
+      withChain("built", [step], ({ context }) => {
+        seen.push(String(context.who));
+        return null;
+      }),
+    );
+    await handleServerFn(post("built", undefined));
+    expect(seen).toEqual(["ran", "ada"]);
+  });
+
+  test("a middleware with no server half is transparent", async () => {
+    const clientOnly = createMiddleware().client(async ({ next }) => next());
+    mountOf(withChain("passthrough", [clientOnly], () => "through"));
+    const response = await handleServerFn(post("passthrough", undefined));
+    expect(decodeWire<string>(await response!.json())).toBe("through");
+  });
+
+  describe("nesting", () => {
+    test("a nested chain runs before the middleware that declared it", async () => {
+      const order: string[] = [];
+      const tag = (name: string) =>
+        createMiddleware().server(async ({ next }) => {
+          order.push(name);
+          return next();
+        });
+      const inner = tag("inner");
+      const outer = createMiddleware()
+        .middleware([inner])
+        .server(async ({ next }) => {
+          order.push("outer");
+          return next();
+        });
+      mountOf(
+        withChain("nested", [outer], () => {
+          order.push("handler");
+          return null;
+        }),
+      );
+      await handleServerFn(post("nested", undefined));
+      expect(order).toEqual(["inner", "outer", "handler"]);
+    });
+
+    test("a step reached twice runs once", () => {
+      const shared = createMiddleware().server(async ({ next }) => next());
+      const a = createMiddleware()
+        .middleware([shared])
+        .server(async ({ next }) => next());
+      const b = createMiddleware()
+        .middleware([shared])
+        .server(async ({ next }) => next());
+      // Deduplicated by identity: authenticating twice is the bug this avoids,
+      // and it is also what keeps the route-action verifier honest.
+      expect(flattenMiddleware([a, b])).toEqual([shared, a, b]);
+    });
+
+    test("a chain that contains itself is refused rather than recursed", () => {
+      const options: { middleware: Middleware[] } = { middleware: [] };
+      const loop = createMiddleware(options);
+      options.middleware.push(loop);
+      expect(() => flattenMiddleware([loop])).toThrow(/more than 100 deep/);
+    });
+  });
+
+  describe("input validation", () => {
+    test("a middleware's validator narrows what everything after it sees", async () => {
+      const seen: unknown[] = [];
+      const trim = createMiddleware().validator({
+        "~standard": {
+          version: 1,
+          vendor: "test",
+          validate: (value: unknown) => ({ value: String(value).trim() }),
+        },
+      } as never);
+      const observe = createMiddleware().server(async ({ next, data }) => {
+        seen.push(data);
+        return next();
+      });
+      mountOf(
+        withChain(
+          "validated",
+          [trim, observe],
+          ({ data }) => {
+            seen.push(data);
+            return null;
+          },
+          null,
+        ),
+      );
+      await handleServerFn(post("validated", "  spaced  "));
+      // The middleware after it, and the handler, both see the trimmed value —
+      // and the handler declares no validator of its own.
+      expect(seen).toEqual(["spaced", "spaced"]);
+    });
+
+    test("a middleware's validator opens the input channel", async () => {
+      // Without one, a function declaring no validator refuses ANY argument.
+      // A chain that validates has opened the channel just as surely.
+      mountOf(withChain("closed", [], ({ data }) => data, null));
+      expect((await handleServerFn(post("closed", "x")))?.status).toBe(400);
+    });
+
+    test("a middleware's validator refuses with a 400, not a 500", async () => {
+      const refuse = createMiddleware().validator({
+        "~standard": {
+          version: 1,
+          vendor: "test",
+          validate: () => ({ issues: [{ message: "no" }] }),
+        },
+      } as never);
+      mountOf(withChain("refusing", [refuse], () => null, null));
+      const response = await handleServerFn(post("refusing", "x"));
+      expect(response?.status).toBe(400);
+      // No detail: the issues are the server's, not the caller's.
+      expect(await response!.text()).not.toContain("no");
+    });
+  });
+
+  describe("sendContext", () => {
+    test("a result with no sendContext is the bare value it always was", async () => {
+      mountOf(withChain("bare", [], () => ({ ok: true })));
+      const response = await handleServerFn(post("bare", undefined));
+      expect(response?.headers.get(RPC_CONTEXT)).toBeNull();
+      expect(decodeWire<{ ok: boolean }>(await response!.json())).toEqual({ ok: true });
+    });
+
+    test("sendContext rides back beside the result, under a header", async () => {
+      const tell = createMiddleware().server(async ({ next }) =>
+        next({ sendContext: { user: "ada" } }),
+      );
+      mountOf(withChain("telling", [tell], () => ({ ok: true })));
+      const response = await handleServerFn(post("telling", undefined));
+      expect(response?.headers.get(RPC_CONTEXT)).toBe("1");
+      expect(decodeWire<{ result: unknown; context: unknown }>(await response!.json())).toEqual({
+        result: { ok: true },
+        context: { user: "ada" },
+      });
+    });
+
+    test("it does not leak into the next call", async () => {
+      let announce = true;
+      const sometimes = createMiddleware().server(async ({ next }) =>
+        announce ? next({ sendContext: { once: true } }) : next(),
+      );
+      mountOf(withChain("once", [sometimes], () => "v"));
+      await handleServerFn(post("once", undefined));
+      announce = false;
+      const second = await handleServerFn(post("once", undefined));
+      expect(second?.headers.get(RPC_CONTEXT)).toBeNull();
+    });
+
+    test("the client's context is merged UNDER the server's", async () => {
+      const seen: unknown[] = [];
+      const trusted = createMiddleware().server(async ({ next }) =>
+        next({ context: { role: "user" } }),
+      );
+      mountOf(
+        withChain("trusted", [trusted], ({ context }) => {
+          seen.push(context.role);
+          return null;
+        }),
+      );
+      // A caller writes this body by hand as readily as the stub does, so a
+      // forged `role` must not survive a server middleware that sets one.
+      const forged = new Request(
+        `${ORIGIN}${RPC_PREFIX}${encodeURIComponent("trusted")}${DATA_SUFFIX}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: ORIGIN },
+          body: JSON.stringify({
+            input: encodeWire(undefined),
+            context: encodeWire({ role: "admin" }),
+          }),
+        },
+      );
+      await handleServerFn(forged);
+      expect(seen).toEqual(["user"]);
+    });
   });
 });
