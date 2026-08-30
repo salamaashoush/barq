@@ -90,6 +90,7 @@ export {
   type RedirectLike,
   NOT_FOUND,
   NotFound,
+  PathParamError,
   REDIRECT,
   isNotFound,
   isRedirect,

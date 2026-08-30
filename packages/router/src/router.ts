@@ -27,7 +27,7 @@ import {
   untrack,
 } from "@barqjs/core";
 
-import { isRedirect } from "./errors.ts";
+import { PathParamError, isNotFound, isRedirect } from "./errors.ts";
 import {
   type History,
   type Location,
@@ -453,6 +453,14 @@ export interface RouterState {
    * whole page down.
    */
   searchErrorAt(depth: number): SearchParamError | null;
+  /**
+   * The `params.parse` failure at one depth, if that route's parse refused.
+   *
+   * Read and re-thrown from inside the route's own boundary, exactly as
+   * `searchErrorAt` is, so `/users/abc` where `abc` had to be a number renders
+   * that route's `errorComponent` rather than taking the page down.
+   */
+  paramsErrorAt(depth: number): Error | null;
   readonly matcher: Matcher<Route>;
   readonly config: RouterConfig;
   readonly history: History;
@@ -480,7 +488,7 @@ export interface RouterState {
    * `pendingMinMs` needs a start time, and only the thing that RENDERS the
    * fallback knows when that was.
    */
-  markPending(route: Route, params: Readonly<Record<string, string>>): void;
+  markPending(route: Route): void;
   /** The loader cell for one route at one set of params, created once per key. */
   dataFor(
     route: Route,
@@ -635,8 +643,84 @@ export function createRouter(config: RouterConfig): RouterState {
   // the router has to know about it: links stay active against what the user
   // sees, and the chain is built from what is actually being rendered.
   const match = computed<Match<Route> | null>(() => matcher.match(unmask(location())));
-  const params = computed<Record<string, string>>(() => match()?.params ?? {});
+  /**
+   * The segments the URL gave, as strings, before any route has looked at them.
+   *
+   * SEPARATE from `params` because these are what a loader cache key is built
+   * from. The key is the handshake between the server's seed and the client's
+   * first read, and a raw segment is the one thing both sides are guaranteed to
+   * agree on; `params.parse` output is a user function's return value and would
+   * put it between them. TanStack splits them the same way and for the same
+   * reason (`match.pathname` against `match._strictParams`).
+   */
+  const rawParams = computed<Record<string, string>>(() => match()?.params ?? {});
   const search = computed(() => new URLSearchParams(location().search));
+
+  /**
+   * `params.parse` down a chain, one slice per depth.
+   *
+   * Slice `i` is the raw params with the parse output of depths `0..i` layered
+   * over it, so a child sees what its ancestors made of a shared name — the
+   * same accumulation `validated` does for the search, and TanStack's
+   * `strictParams` (`router.ts:1642`).
+   *
+   * A failure is STORED rather than thrown. This runs inside a `computed` read
+   * during a render, and throwing would take the page rather than the route.
+   */
+  const parseChain = (
+    forChain: readonly Route[],
+    raw: Readonly<Record<string, string>>,
+  ): {
+    readonly slices: readonly Record<string, unknown>[];
+    readonly failures: readonly (PathParamError | null)[];
+  } => {
+    const slices: Record<string, unknown>[] = [];
+    const failures: (PathParamError | null)[] = [];
+    let merged: Record<string, unknown> = raw;
+    for (const route of forChain) {
+      const parse = route.definition.params?.parse;
+      if (parse === undefined) {
+        slices.push(merged);
+        failures.push(null);
+        continue;
+      }
+      try {
+        merged = { ...merged, ...parse(raw) };
+        slices.push(merged);
+        failures.push(null);
+      } catch (error) {
+        // A `redirect` or a `notFound` from a parse is an ANSWER and travels as
+        // itself; `errorFallbackFor` already routes both. Anything else is a
+        // refused parameter and gets the name that says so.
+        failures.push(
+          isRedirect(error) || isNotFound(error)
+            ? (error as unknown as PathParamError)
+            : new PathParamError(
+                error instanceof Error ? error.message : "a path parameter did not parse",
+                { cause: error },
+              ),
+        );
+        slices.push(merged);
+      }
+    }
+    return { slices, failures };
+  };
+
+  const parsedParams = computed(() => parseChain(chain(), rawParams()));
+
+  /**
+   * What every reader gets: the raw params with the whole chain's `parse`
+   * applied, which is `useParams()`, `props.params()` and a loader's `params`.
+   *
+   * The raw record is returned UNCHANGED when no route in the chain parses,
+   * which is nearly every application — `dataFor` memoises on the identity of
+   * this value, so allocating a copy per read would rebuild every reader on
+   * every location change.
+   */
+  const params = computed<Record<string, string>>(() => {
+    const { slices } = parsedParams();
+    return (slices[slices.length - 1] ?? rawParams()) as Record<string, string>;
+  });
 
   /**
    * The validated search, one entry per depth, and the LAST one is what
@@ -746,15 +830,15 @@ export function createRouter(config: RouterConfig): RouterState {
    */
   const keyOf = (
     route: Route,
-    forParams: Readonly<Record<string, string>>,
+    forRaw: Readonly<Record<string, string>>,
     forSearch: URLSearchParams,
   ): { seedKey: string; deps: unknown } => {
     const project = route.definition.loaderDeps;
     if (project === undefined) {
-      return { seedKey: loaderKey(route.id, forParams, searchKey(forSearch)), deps: undefined };
+      return { seedKey: loaderKey(route.id, forRaw, searchKey(forSearch)), deps: undefined };
     }
     const deps = project({ search: forSearch });
-    return { seedKey: loaderKey(route.id, forParams, depsKey(deps)), deps };
+    return { seedKey: loaderKey(route.id, forRaw, depsKey(deps)), deps };
   };
 
   /**
@@ -903,9 +987,9 @@ export function createRouter(config: RouterConfig): RouterState {
 
   const liveKeys = (): Set<string> => {
     const keys = new Set<string>();
-    const forParams = untrack(params);
+    const forRaw = untrack(rawParams);
     const forSearch = untrack(search);
-    for (const route of untrack(chain)) keys.add(keyOf(route, forParams, forSearch).seedKey);
+    for (const route of untrack(chain)) keys.add(keyOf(route, forRaw, forSearch).seedKey);
     return keys;
   };
 
@@ -955,11 +1039,12 @@ export function createRouter(config: RouterConfig): RouterState {
 
   const acquire = (
     route: Route,
+    forRaw: Readonly<Record<string, string>>,
     forParams: Readonly<Record<string, string>>,
     cause: LoadCause,
   ): Entry => {
     const forSearch = untrack(search);
-    const { seedKey, deps } = keyOf(route, forParams, forSearch);
+    const { seedKey, deps } = keyOf(route, forRaw, forSearch);
     const existing = entries.get(seedKey);
     if (existing === undefined) {
       return mint(route, forParams, forSearch, seedKey, deps, cause);
@@ -1052,7 +1137,11 @@ export function createRouter(config: RouterConfig): RouterState {
     if (hit !== undefined && hit.params === forParams && hit.blocking === blocking) {
       return hit.reader;
     }
-    const entry = acquire(route, forParams, causeFor(route));
+    // The KEY comes from the raw segments and the loader's `params` from the
+    // argument, which is what lets `params.parse` change what a loader is handed
+    // without changing what its cached value is filed under. Every caller reads
+    // the current location, so the router's own raw record is the right one.
+    const entry = acquire(route, untrack(rawParams), forParams, causeFor(route));
     const reader = readerFor(entry, blocking);
     memo.set(route, { params: forParams, blocking, reader });
     return reader;
@@ -1105,7 +1194,9 @@ export function createRouter(config: RouterConfig): RouterState {
     // Parent-to-child by SPREAD, child wins on a collision — TanStack's rule
     // (`load-client.ts:391-395`, `:455-458`) and its type-level `Assign` agrees.
     let merged: Record<string, unknown> = {};
-    const forParams = candidate?.params ?? {};
+    // Parsed down the chain, so a `beforeLoad` reads the parameter its own
+    // route asked for rather than the segment the URL happened to carry.
+    const { slices } = parseChain(candidate?.route.chain ?? [], candidate?.params ?? {});
     const forSearch = new URLSearchParams(to.search);
 
     for (const [depth, route] of (candidate?.route.chain ?? []).entries()) {
@@ -1115,6 +1206,7 @@ export function createRouter(config: RouterConfig): RouterState {
         produced.push(undefined);
         continue;
       }
+      const forParams = slices[depth] ?? candidate?.params ?? {};
       const given = { params: forParams, search: forSearch, location: to, context: merged };
       const sync = route.definition.context?.(given as never);
       if (sync !== undefined) merged = { ...merged, ...sync };
@@ -1141,10 +1233,11 @@ export function createRouter(config: RouterConfig): RouterState {
     const candidate = matcher.match(unmask(to));
     const out: Record<string, unknown>[] = [];
     let merged: Record<string, unknown> = {};
-    const forParams = candidate?.params ?? {};
+    const { slices } = parseChain(candidate?.route.chain ?? [], candidate?.params ?? {});
     const forSearch = new URLSearchParams(to.search);
 
     for (const [depth, route] of (candidate?.route.chain ?? []).entries()) {
+      const forParams = slices[depth] ?? candidate?.params ?? {};
       const given = { params: forParams, search: forSearch, location: to, context: merged };
       const sync = route.definition.context?.(given as never);
       if (sync !== undefined) merged = { ...merged, ...sync };
@@ -1267,10 +1360,11 @@ export function createRouter(config: RouterConfig): RouterState {
    * which a navigation enters and a render does not.
    */
   const revalidate = (): void => {
+    const forRaw = untrack(rawParams);
     const forParams = untrack(params);
     const forSearch = untrack(search);
     for (const route of untrack(chain)) {
-      const { seedKey } = keyOf(route, forParams, forSearch);
+      const { seedKey } = keyOf(route, forRaw, forSearch);
       const entry = entries.get(seedKey);
       if (entry === undefined) continue;
       if (shouldReload(entry, forParams)) refresh(entry.cell);
@@ -1407,11 +1501,12 @@ export function createRouter(config: RouterConfig): RouterState {
     const cut = intended.search(/[?#]/);
     const pathPart = cut === -1 ? intended : intended.slice(0, cut);
     const rest = cut === -1 ? "" : intended.slice(cut);
-    const from = untrack(location).pathname;
+    const here = untrack(location).pathname;
+    const asked = pathPart === "" ? here : pathPart;
     const resolved = applyTrailingSlash(
-      resolvePath(pathPart === "" ? from : pathPart, from),
+      resolvePath(asked, here),
       trailingSlash,
-      (pathPart === "" ? from : pathPart).endsWith("/"),
+      asked.endsWith("/"),
     );
     const target = parseLocation(resolved + rest, options?.state ?? null);
 
@@ -1506,6 +1601,9 @@ export function createRouter(config: RouterConfig): RouterState {
     searchErrorAt(depth) {
       return untrack(validated).failures[depth] ?? null;
     },
+    paramsErrorAt(depth) {
+      return untrack(parsedParams).failures[depth] ?? null;
+    },
     contexts,
     setContexts(next) {
       settleContexts(next);
@@ -1558,8 +1656,8 @@ export function createRouter(config: RouterConfig): RouterState {
     },
     runBeforeLoad,
     hydrateContexts,
-    markPending(route, forParams) {
-      const { seedKey } = keyOf(route, forParams, untrack(search));
+    markPending(route) {
+      const { seedKey } = keyOf(route, untrack(rawParams), untrack(search));
       const entry = entries.get(seedKey);
       if (entry !== undefined && entry.shownAt === 0) entry.shownAt = now();
     },
@@ -1603,10 +1701,14 @@ export function createRouter(config: RouterConfig): RouterState {
       // so every slot it filled was one no navigation could read, and the
       // loader was handed the wrong query as well.
       const forSearch = new URLSearchParams(target.search);
-      const forParams = candidate.params;
+      const forRaw = candidate.params;
+      // The TARGET's chain, not the committed one: a preload warms a page the
+      // user is not on yet, so `parsedParams` is answering about the wrong URL.
+      const { slices } = parseChain(candidate.route.chain, forRaw);
       for (const [depth, route] of candidate.route.chain.entries()) {
         if (route.definition.loader === undefined) continue;
-        const { seedKey, deps } = keyOf(route, forParams, forSearch);
+        const forParams = (slices[depth] ?? forRaw) as Record<string, string>;
+        const { seedKey, deps } = keyOf(route, forRaw, forSearch);
         const existing = entries.get(seedKey);
         const entry =
           existing ??

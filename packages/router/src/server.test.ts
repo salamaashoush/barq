@@ -2291,6 +2291,67 @@ describe("basepath", () => {
 });
 
 /**
+ * `params.parse` on the server render, which is the half a router test cannot
+ * see: the component, the loader and the `head` all read the parsed value, and
+ * a refused parse lands on that route's boundary rather than the request.
+ */
+describe("params.parse on the server", () => {
+  const table = [
+    {
+      id: "__root__",
+      path: "/",
+      shellComponent: (scope: unknown, props: { children: unknown }) =>
+        ssrHtml(
+          `<html><head>${esc(HeadContent(scope as never))}</head>` +
+            `<body>${esc(props.children)}</body></html>`,
+        ),
+      component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+      children: [
+        {
+          id: "/posts/$id",
+          path: "posts/$id",
+          params: {
+            parse: (given: Record<string, string>) => {
+              const id = Number(given.id);
+              if (Number.isNaN(id)) throw new Error("id must be a number");
+              return { id };
+            },
+          },
+          head: ({ params }: { params: { id: number } }) => ({
+            meta: [{ title: `post ${params.id * 2}` }],
+          }),
+          loader: ({ params }: { params: { id: number } }) => ({ doubled: params.id * 2 }),
+          component: (_s: unknown, props: { data: () => unknown; params: () => unknown }) =>
+            ssrHtml(
+              `<main>${esc(String((props.data() as { doubled: number })?.doubled))}` +
+                `:${esc(String((props.params() as { id: unknown }).id))}</main>`,
+            ),
+          errorComponent: ((_s: unknown, props: { error: () => Error }) =>
+            ssrHtml(`<p>refused ${esc(props.error().message)}</p>`)) as never,
+        },
+      ],
+    },
+  ] as never;
+
+  const handler = createPageHandler({
+    routeTree: table,
+    app: (state) => renderRoutes(state),
+  });
+
+  test("the component, the loader and the head all read the parsed value", async () => {
+    const body = await (await handler(get("/posts/7"))).text();
+    expect(body).toContain("<main>14:7</main>");
+    expect(body).toContain("post 14");
+  });
+
+  test("a refused parse renders that route's errorComponent, not a 500", async () => {
+    const response = await handler(get("/posts/abc"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("refused id must be a number");
+  });
+});
+
+/**
  * `trailingSlash` has to reach the REQUEST's router, not just the client's.
  *
  * The two halves build the same hrefs from the same code, so a policy the

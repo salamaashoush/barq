@@ -19,7 +19,7 @@ import {
 } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { Link, NavLink, Router, RouterProvider, useRouter } from "./components.ts";
+import { Link, NavLink, Router, RouterProvider, linkHref, useRouter } from "./components.ts";
 import { notFound, redirect } from "./errors.ts";
 import { retainSearchParams } from "./search.ts";
 import { memoryHistory } from "./history.ts";
@@ -2590,5 +2590,220 @@ describe("route lifecycle", () => {
     });
     await state.start();
     expect(seen).toEqual([{ title: "Shop" }]);
+  });
+});
+
+/**
+ * `params.parse` and `params.stringify` — the two directions of a path
+ * parameter a route does not want to work in as a string.
+ */
+describe("params.parse / params.stringify", () => {
+  test("a parsed parameter is what every reader gets", async () => {
+    const seen: unknown[] = [];
+    const table = [
+      {
+        path: "/posts/$id",
+        params: { parse: (p: Record<string, string>) => ({ id: Number(p.id) }) },
+        loader: ({ params }: { params: { id: number } }) => {
+          seen.push(params.id);
+          return params.id * 2;
+        },
+        component: (() => null) as never,
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/posts/7"] }),
+    });
+    await state.start();
+    expect(state.params()).toEqual({ id: 7 } as never);
+    await settle();
+    expect(seen).toEqual([7]);
+    state.dispose();
+  });
+
+  test("parse accumulates down the chain, child over parent", async () => {
+    const table = [
+      {
+        path: "/org/$org",
+        params: { parse: (p: Record<string, string>) => ({ org: p.org?.toUpperCase() }) },
+        component: (() => null) as never,
+        children: [
+          {
+            path: "$team",
+            params: { parse: (p: Record<string, string>) => ({ team: Number(p.team) }) },
+            component: (() => null) as never,
+          },
+        ],
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/org/acme/3"] }),
+    });
+    await state.start();
+    // The parent's parse survives into the child's slice, and the child's own
+    // parameter is a number — TanStack's `strictParams` accumulation.
+    expect(state.params()).toEqual({ org: "ACME", team: 3 } as never);
+    state.dispose();
+  });
+
+  test("a beforeLoad sees its own depth's parse", async () => {
+    const seen: unknown[] = [];
+    const table = [
+      {
+        path: "/posts/$id",
+        params: { parse: (p: Record<string, string>) => ({ id: Number(p.id) }) },
+        beforeLoad: ({ params }: { params: { id: number } }) => {
+          seen.push(params.id);
+          return {};
+        },
+        component: (() => null) as never,
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/posts/7"] }),
+    });
+    await state.start();
+    expect(seen).toEqual([7]);
+    state.dispose();
+  });
+
+  /**
+   * The cache key stays on the RAW segments. A parse returning a fresh object
+   * every call would otherwise key a loader on something the server's seed and
+   * the client's read cannot agree on, and every hydration would refetch.
+   */
+  test("a parse whose output changes does not change the loader's key", async () => {
+    // A parse is a user function and is not obliged to be pure. Keying on its
+    // output would put it between the server's seed and the client's read of
+    // it, so this one is deliberately unstable: the key must not notice.
+    let calls = 0;
+    let runs = 0;
+    const table = [
+      {
+        path: "/posts/$id",
+        params: {
+          parse: (p: Record<string, string>) => ({ id: p.id, nonce: `n${calls++}` }),
+        },
+        loader: () => {
+          runs++;
+          return runs;
+        },
+        component: (() => null) as never,
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/posts/7"] }),
+      defaults: { staleTime: 60_000 },
+    });
+    await state.start();
+    await settle();
+    const chain = state.chain();
+    const route = chain[chain.length - 1];
+    expect(calls).toBeGreaterThan(1);
+    state.dataFor(route, { id: "7", nonce: "n99" }, true)();
+    state.dataFor(route, { id: "7", nonce: "n100" }, true)();
+    await settle();
+    expect(runs).toBe(1);
+    state.dispose();
+  });
+
+  test("a refused parse lands on that route's error boundary", async () => {
+    const table = [
+      {
+        path: "/posts/$id",
+        params: {
+          parse: (p: Record<string, string>) => {
+            const id = Number(p.id);
+            if (Number.isNaN(id)) throw new Error("id must be a number");
+            return { id };
+          },
+        },
+        component: (() => null) as never,
+        errorComponent: ((_scope: unknown, props: { error: () => Error }) =>
+          document.createTextNode(`refused: ${props.error().message}`)) as never,
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/posts/abc"] }),
+    });
+    await state.start();
+    expect(state.paramsErrorAt(0)?.name).toBe("PathParamError");
+    const mounted = mountState(state);
+    expect(mounted.host.textContent).toContain("refused: id must be a number");
+    mounted.dispose();
+    state.dispose();
+  });
+
+  test("stringify writes the url a link addresses", async () => {
+    const table = [
+      { path: "/", component: (() => null) as never },
+      {
+        path: "/posts/$id",
+        params: {
+          parse: (p: Record<string, string>) => ({ id: Number(p.id) }),
+          stringify: (p: Record<string, unknown>) => ({ id: String(p.id) }),
+        },
+        component: (() => null) as never,
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    expect(linkHref(state, { to: "/posts/$id", params: { id: 7 } } as never)).toBe("/posts/7");
+    state.dispose();
+  });
+
+  /**
+   * A `stringify` that throws still renders a link. There is no boundary around
+   * an href and nobody waiting on an answer; the paired `parse` refuses the
+   * same value, with a boundary, if the link is ever followed.
+   */
+  test("a stringify that throws does not take the link down", () => {
+    const table = [
+      { path: "/", component: (() => null) as never },
+      {
+        path: "/posts/$id",
+        params: {
+          stringify: () => {
+            throw new Error("nope");
+          },
+        },
+        component: (() => null) as never,
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    expect(linkHref(state, { to: "/posts/$id", params: { id: "7" } } as never)).toBe("/posts/7");
+    state.dispose();
+  });
+
+  test("a layout's stringify runs for a link to its child", () => {
+    const table = [
+      { path: "/", component: (() => null) as never },
+      {
+        path: "/org/$org",
+        params: {
+          stringify: (p: Record<string, unknown>) => ({ org: String(p.org).toLowerCase() }),
+        },
+        component: (() => null) as never,
+        children: [{ path: "team", component: (() => null) as never }],
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    expect(linkHref(state, { to: "/org/$org/team", params: { org: "ACME" } } as never)).toBe(
+      "/org/acme/team",
+    );
+    state.dispose();
   });
 });

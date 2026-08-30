@@ -255,9 +255,10 @@ export function renderRoutes(state: RouterState): unknown {
       return provide(owner, RouteMatchContext, cell(match), body);
     };
     const content = (): unknown => {
-      // As on the DOM path: a refused validator throws inside this depth's
-      // error boundary rather than out of the render.
-      const refused = state.searchErrorAt(depth);
+      // As on the DOM path: a refused parameter throws inside this depth's
+      // error boundary rather than out of the render, and the path is checked
+      // before the search.
+      const refused = state.paramsErrorAt(depth) ?? state.searchErrorAt(depth);
       if (refused !== null) throw refused;
       // `ssr: false` and `"data-only"` both mean the COMPONENT does not render
       // here. The difference is upstream: `"data-only"` still ran its loader,
@@ -342,6 +343,7 @@ export function renderRoutes(state: RouterState): unknown {
 export {
   NOT_FOUND,
   NotFound,
+  PathParamError,
   REDIRECT,
   Redirect,
   errorFallbackFor,
@@ -897,7 +899,11 @@ export function createPageHandler(
             // nothing, and on a buffered one is everything. `preloadMatched` has
             // just imported every module they live in.
             const chain = match?.route.chain ?? [];
-            const params = match?.params ?? {};
+            // `state.params()`, not the matcher's raw record: a `head` reads the
+            // same parameter its component does, and `dataFor` memoises on this
+            // value's identity — so settling a loader here fills the entry the
+            // render is about to read rather than a second one beside it.
+            const params = state.params();
             // THE LANE BREAKS AT `ssr: false`, and it is theirs rather than an
             // invention: `projectLane` runs the match's own `head` and THEN
             // `if (match.ssr === false || …) break`

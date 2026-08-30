@@ -202,6 +202,34 @@ export interface RouteDefinition<
    */
   readonly validateSearch?: import("./search.ts").SearchValidator;
   /**
+   * The two directions of a path parameter, when a string is not what the route
+   * wants to work in.
+   *
+   * `parse` runs on the way IN, once per matched depth and accumulating down
+   * the chain, so a child sees whatever its ancestors turned their parameters
+   * into. Its output is what a component, a `beforeLoad` and a loader are
+   * handed, and what `useParams()` answers with.
+   *
+   * `stringify` runs on the way OUT, when `<Link>` or `navigate` builds a path
+   * from `params`, so a route working in `Date` still writes a URL.
+   *
+   * The loader CACHE KEY is not affected by either, and that is deliberate:
+   * it is built from the raw segments, which are strings and are the same on
+   * both sides of hydration. Keying on `parse` output would put a user function
+   * between the server's seed and the client's read of it, so a parse returning
+   * a fresh object — or anything JSON cannot round-trip — would silently refetch
+   * the whole chain. TanStack keys on `interpolatedPath` for the same reason.
+   *
+   * A `parse` that throws puts a `PathParamError` on THIS route's error
+   * boundary, exactly as a refused `validateSearch` does. A `stringify` that
+   * throws is swallowed: it happens while a link is being rendered, where there
+   * is no boundary and no user waiting on an answer.
+   */
+  readonly params?: {
+    readonly parse?: (params: Record<string, string>) => Record<string, unknown>;
+    readonly stringify?: (params: Record<string, unknown>) => Record<string, string>;
+  };
+  /**
    * Runs when a location is BUILT — a `<Link>` href, a `navigate` — and never
    * on the way in. That is TanStack's placement (`router.ts:2006`, one call
    * site) and it is the right one: an inbound URL is a fact, not an intent.

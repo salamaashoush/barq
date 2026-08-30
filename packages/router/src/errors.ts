@@ -102,6 +102,21 @@ export function notFound(message?: string): never {
   throw new NotFound(message);
 }
 
+/**
+ * A route's `params.parse` refused the segment the URL gave it.
+ *
+ * The path analogue of `SearchParamError`, and the same shape for the same
+ * reason: `/users/abc` where `abc` had to be a number is a bad REQUEST, not a
+ * bug, so it renders that route's `errorComponent` rather than taking the page.
+ * `cause` carries whatever the parse threw, so a schema's own issues survive.
+ */
+export class PathParamError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PathParamError";
+  }
+}
+
 /** By brand rather than by class, for the reason {@link REDIRECT} gives. */
 export function isNotFound(error: unknown): error is NotFound {
   return (

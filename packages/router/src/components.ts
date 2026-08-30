@@ -719,10 +719,11 @@ export function renderDepth(
       // file-based table generated showed its fallback forever.
       readyOf(component);
       return untrack(() => {
-        // A validator that refused throws HERE, inside this depth's error
-        // boundary, so a bad `?page=banana` renders that route's
-        // `errorComponent` rather than taking the whole page down.
-        const refused = state.searchErrorAt(depth);
+        // A refused parameter throws HERE, inside this depth's error boundary,
+        // so a bad `?page=banana` or a `/users/abc` that had to be a number
+        // renders that route's `errorComponent` rather than taking the whole
+        // page down. The PATH is checked first: it decided which route this is.
+        const refused = state.paramsErrorAt(depth) ?? state.searchErrorAt(depth);
         if (refused !== null) throw refused;
         if (component === undefined) return renderDepth(contentScope, state, depth + 1, null, null);
         const children = block((childScope: Scope | null) =>
@@ -814,10 +815,7 @@ function routeFallback(state: RouterState, route: Route): Block<unknown> | null 
       children: () => null,
     });
     if (delay === 0) {
-      state.markPending(
-        route,
-        untrack(() => state.params()),
-      );
+      state.markPending(route);
       return shown;
     }
 
@@ -834,10 +832,7 @@ function routeFallback(state: RouterState, route: Route): Block<unknown> | null 
     holder.append(shown as never);
     const timer = setTimeout(() => {
       holder.style.display = "contents";
-      state.markPending(
-        route,
-        untrack(() => state.params()),
-      );
+      state.markPending(route);
     }, delay);
     onCleanup(() => clearTimeout(timer));
     return holder;
@@ -1230,8 +1225,13 @@ function resolveTo(state: RouterState, props: Incoming<LinkProps>): string {
   const to = readSlot(props.to, "Link.to") as string;
   if (leavesTheApp(to)) return to;
 
-  const params = props.params === undefined ? undefined : readSlot(props.params, "Link.params");
-  const pattern = state.matcher.routes.find((route) => route.id === to)?.fullPath;
+  const given = props.params === undefined ? undefined : readSlot(props.params, "Link.params");
+  const destination = state.matcher.routes.find((route) => route.id === to);
+  const pattern = destination?.fullPath;
+  const params =
+    given === undefined
+      ? undefined
+      : stringifyParams(destination?.chain, given as Record<string, unknown>);
   // `from` pins what a relative `to` is relative TO. Without it a
   // `<Link to="../edit">` in a shared component means something different
   // depending on which route rendered it.
@@ -1241,9 +1241,9 @@ function resolveTo(state: RouterState, props: Incoming<LinkProps>): string {
       : (readSlot(props.from, "Link.from") as string);
   const built =
     pattern !== undefined
-      ? interpolate(pattern, (params ?? {}) as Record<string, string>)
+      ? interpolate(pattern, params ?? {})
       : params !== undefined
-        ? interpolate(to, params as Record<string, string>)
+        ? interpolate(to, params)
         : resolvePath(to, origin);
   // A `to` that is a route ID carries the pattern's spelling, not the caller's,
   // so `"preserve"` reads the ORIGIN when `to` addressed nowhere new — which is
@@ -1258,6 +1258,37 @@ function resolveTo(state: RouterState, props: Incoming<LinkProps>): string {
   const hash = props.hash === undefined ? "" : (readSlot(props.hash, "Link.hash") as string);
   const fragment = hash === "" ? "" : `#${hash.replace(/^#/, "")}`;
   return (query === "" ? path : `${path}?${query}`) + fragment;
+}
+
+/**
+ * `params.stringify`, for every route on the way to the destination.
+ *
+ * The inverse of the `parse` that produced the value: a route working in `Date`
+ * has to write a URL, and `interpolate` only knows how to encode a string. Runs
+ * outermost first so a leaf can override what a layout wrote for a shared name,
+ * which is the direction every other chain merge in the router goes.
+ *
+ * A THROW IS SWALLOWED, which is TanStack's choice (`router.ts:1943-1952`) and
+ * the right one here: this runs while a link is being rendered, where there is
+ * no boundary to catch it and nobody waiting on an answer. The paired `parse`
+ * refuses the same value on the way back in, with a boundary, if the link is
+ * ever followed.
+ */
+function stringifyParams(
+  chain: readonly Route[] | undefined,
+  given: Record<string, unknown>,
+): Record<string, string> {
+  let out: Record<string, unknown> = given;
+  for (const route of chain ?? []) {
+    const stringify = route.definition.params?.stringify;
+    if (stringify === undefined) continue;
+    try {
+      out = { ...out, ...stringify(out) };
+    } catch {
+      /* see above: a link cannot report this and must still render */
+    }
+  }
+  return out as Record<string, string>;
 }
 
 /**
