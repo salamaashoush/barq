@@ -99,6 +99,54 @@ describe("the manifest", () => {
     expect(stubs).not.toContain("./db");
   });
 
+  /**
+   * Transforming the same module twice is an EDIT, not a collision.
+   *
+   * `record` invalidates the manifest whenever a server-function module is
+   * transformed, and the dev server re-imports it on the next request. That used
+   * to reach `mount`'s duplicate-id refusal — the registry lives in a module
+   * nothing invalidates — so every page answered 500 after the first edit. The
+   * manifest must generate the same single set however many times the module
+   * has been through the compiler.
+   */
+  test("re-transforming a module does not double-mount it", () => {
+    const [compiler, manifest, dev] = byName(barqStart());
+    const config = { root: ROOT, mode: "development" };
+    compiler.configResolved?.(config);
+    dev.configResolved?.(config);
+
+    const context = { warn: () => {} };
+    for (let at = 0; at < 3; at++) {
+      compiler.transform.call(context, SOURCE, FILE, { ssr: false });
+    }
+
+    const code = manifest.load(manifest.resolveId(MANIFEST_ID) as string) as string;
+    const mounted = [...code.matchAll(/mount\("([^"]+)"/g)].map((m) => m[1]);
+    expect(mounted.toSorted()).toEqual(["server/users.ts#getUser", "server/users.ts#listUsers"]);
+  });
+
+  /**
+   * A bundler suffix on the module id is the same module.
+   *
+   * The dependency optimiser hands the client environment `…/users.ts?v=8f1c2a`
+   * while the SSR environment sees the bare path. Keyed by the raw id those were
+   * two entries producing one `mount()` call twice.
+   */
+  test("a query on the module id is not a second module", () => {
+    const [compiler, manifest, dev] = byName(barqStart());
+    const config = { root: ROOT, mode: "development" };
+    compiler.configResolved?.(config);
+    dev.configResolved?.(config);
+
+    const context = { warn: () => {} };
+    compiler.transform.call(context, SOURCE, FILE, { ssr: false });
+    compiler.transform.call(context, SOURCE, `${FILE}?v=8f1c2a`, { ssr: false });
+
+    const code = manifest.load(manifest.resolveId(MANIFEST_ID) as string) as string;
+    const mounted = [...code.matchAll(/mount\("([^"]+)"/g)].map((m) => m[1]);
+    expect(mounted.toSorted()).toEqual(["server/users.ts#getUser", "server/users.ts#listUsers"]);
+  });
+
   /** An app with no server functions still imports this module. */
   test("an empty manifest is a module rather than an error", () => {
     const [, manifest] = byName(barqStart());
@@ -350,7 +398,28 @@ describe("the router entry a project DOES write", () => {
 
   test("without one, the generated default is used and names the tree absolutely", () => {
     const resolved = routerEntry(ROOT);
-    expect(resolved).toBe(`\0${ROUTER_ENTRY_ID}`);
+    expect(resolved).toBe("\0barq-router-entry");
+  });
+
+  /**
+   * The resolved id has to be SERVABLE, and `\0#barq-router-entry` was not.
+   *
+   * Vite serves a virtual module at `/@id/__x00__<rest>`. With a `#` leading
+   * `<rest>` the browser read the URL as a path plus a FRAGMENT, asked for a
+   * module id that does not exist, and got a 404 — so the client entry never
+   * loaded and no route in the application hydrated. The document looked
+   * perfect, because SSR had already written it; only the interactivity was
+   * gone, with one console line to say so.
+   *
+   * The check is on the RESOLVED id rather than on the public specifier, which
+   * keeps its `#` because it is an alias to a real file.
+   */
+  test("the resolved id carries nothing a URL would read as a fragment or a query", () => {
+    const resolved = routerEntry(ROOT) as string;
+    expect(resolved.startsWith("\0")).toBe(true);
+    for (const character of ["#", "?"]) {
+      expect(resolved.includes(character)).toBe(false);
+    }
   });
 });
 

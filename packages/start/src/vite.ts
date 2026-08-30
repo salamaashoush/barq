@@ -106,7 +106,25 @@ function hasIndexHtml(root: string): boolean {
  * bundler can resolve, and never was.
  */
 export const ROUTER_ENTRY_ID = "#barq-router-entry";
-const RESOLVED_ROUTER_ENTRY_ID = `\0${ROUTER_ENTRY_ID}`;
+
+/**
+ * The SYNTHESISED entry's id, and it drops the `#` rather than carrying it.
+ *
+ * `\0#barq-router-entry` is unservable in dev, and silently so. Vite serves a
+ * virtual module at `/@id/__x00__<rest>`, and `<rest>` here began with `#` — so
+ * the browser parsed `/@id/__x00__#barq-router-entry` as the path `/@id/__x00__`
+ * with a FRAGMENT, requested a module id that does not exist, and got a 404.
+ * The document still rendered, because SSR had already produced it, so what it
+ * looked like was a fully correct page on which nothing was interactive:
+ * `Failed to fetch dynamically imported module`, once, in the console, on every
+ * route in the application.
+ *
+ * The PUBLIC specifier is still `#barq-router-entry` — that spelling is
+ * TanStack's and is an alias to the project's own `src/router.ts`. Only the
+ * fallback used when the project has written no such file is renamed, and
+ * nothing outside this module names it.
+ */
+const RESOLVED_ROUTER_ENTRY_ID = "\0barq-router-entry";
 
 function findRouterEntry(root: string, srcDir: string): string | null {
   for (const extension of ENTRY_EXTENSIONS) {
@@ -672,13 +690,32 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     return `${rel.replace(/^[/\\]+/, "").replaceAll("\\", "/")}#${name}`;
   };
 
+  /**
+   * The FILE a module id names, without whatever the bundler appended to it.
+   *
+   * `found` is keyed by this rather than by the raw id, because `idOf` above
+   * derives a server function's public id from the root-relative FILE — so two
+   * module ids for one file (`…/data.ts` and `…/data.ts?v=8f1c2a`, which is
+   * what the dependency optimiser hands the client environment) became two
+   * entries that generated the same `mount()` call twice, and the second threw
+   * `two server functions claim the id src/data/admin.ts#adminStats` from
+   * inside the SSR render. Every page in the application answered 500.
+   *
+   * Stripping the query is safe precisely because a route module may not
+   * declare a server function — `BARQ012` refuses that shape — so the only
+   * suffixed ids that reach here are a bundler's own, and they all name the same
+   * module.
+   */
+  const fileOf = (id: string): string => id.split("?")[0] ?? id;
+
   const record = (id: string, artifact: string): void => {
+    const file = fileOf(id);
     const names = namesOf(artifact);
     if (names === null) {
-      found.delete(id);
+      found.delete(file);
       return;
     }
-    found.set(id, { file: id, names });
+    found.set(file, { file, names });
     // A module that gains or loses a server function has to invalidate the
     // manifest, or the dev server keeps mounting yesterday's set.
     const graph = server?.environments[ENVIRONMENTS.server]?.moduleGraph;
@@ -1213,11 +1250,36 @@ function manifestModule(
 ): string {
   const lines: string[] = [`import { mount } from "@barqjs/start/server";`];
   let index = 0;
+  // WHERE A COLLIDING ID IS CAUGHT, and it is here rather than in `mount`.
+  //
+  // `mount` used to refuse an id already in the registry, which is the right
+  // rule for a build and the wrong one for dev: `record` invalidates this module
+  // whenever a server-function module is transformed, the dev server re-imports
+  // it on the next request, and the REGISTRY it mounts into belongs to
+  // `@barqjs/start/server`, which was never invalidated. So the second
+  // evaluation refused every id the first had claimed and every page in the
+  // application answered 500 — `two server functions claim the id
+  // src/data/admin.ts#adminStats`, from an application containing exactly one.
+  //
+  // Generation is the only place that sees the whole set at once, so it is the
+  // only place that can tell a genuine collision from a re-evaluation. `mount`
+  // is idempotent now and this refuses.
+  const claimed = new Map<string, string>();
   for (const { file, names } of found.values()) {
     const alias = `m${index++}`;
     lines.push(`import * as ${alias} from ${JSON.stringify(file)};`);
     for (const name of names) {
-      lines.push(`mount(${JSON.stringify(idOf(file, name))}, ${alias}.${name});`);
+      const id = idOf(file, name);
+      const previous = claimed.get(id);
+      if (previous !== undefined && previous !== file) {
+        throw new Error(
+          `[barq-start] two modules claim the server-function id ${id}:\n  ${previous}\n  ${file}\n` +
+            "An id is the module's root-relative path plus the export name, so this means two " +
+            "paths normalise to one — a symlink, or a case-insensitive filesystem.",
+        );
+      }
+      claimed.set(id, file);
+      lines.push(`mount(${JSON.stringify(id)}, ${alias}.${name});`);
     }
   }
   // An empty manifest is a module, not an error: an app with no server
