@@ -1431,6 +1431,69 @@ mod tests {
         assert!(!output.code.contains("<div class=\"c\">{"), "{}", output.code);
     }
 
+    /// A component written INLINE in a route's options object takes a scope.
+    ///
+    /// Every other position was already covered — a `function` statement, a
+    /// tagged or exported `const`, an `export default`, and any arrow inside
+    /// JSX. A plain object literal was none of them, and route options are a
+    /// plain object literal, so `notFoundComponent: ({ error }) => …` kept the
+    /// signature the author wrote while the router called it `(scope, props)`.
+    /// The scope landed on `error` and the render died with `error is not a
+    /// function`, at run time, from a file that compiled clean.
+    #[test]
+    fn a_route_option_written_inline_is_compiled_as_a_component() {
+        let source = r#"import { createFileRoute } from "@barqjs/router";
+export const Route = createFileRoute("/x")({
+  notFoundComponent: ({ error }) => <p>{error().message}</p>,
+  errorComponent: function Boom({ error }) { return <p>{error().message}</p>; },
+});
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(
+            output.code.contains("notFoundComponent: _$block((_s$, { error }) =>"),
+            "the inline arrow did not take a scope:\n{}",
+            output.code
+        );
+        assert!(
+            output.code.contains("errorComponent: _$block(function Boom(_s$, { error })"),
+            "the inline function expression did not take a scope:\n{}",
+            output.code
+        );
+    }
+
+    /// The same shape OUTSIDE a route is left alone.
+    ///
+    /// `is_component` refuses to guess about a bare JSX-returning arrow — it is
+    /// indistinguishable from a `<For>` row callback — and this must not widen
+    /// that. The evidence for the case above is the KEY, on a call to the route
+    /// factory, and nothing else.
+    #[test]
+    fn an_arrow_in_an_ordinary_object_is_not_a_component() {
+        let source = r#"const columns = { render: (row) => <td>{row}</td> };
+export { columns };
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(
+            output.code.contains("render: (row) =>"),
+            "an ordinary object property was rewritten:\n{}",
+            output.code
+        );
+        assert!(!output.code.contains("render: _$block("), "{}", output.code);
+    }
+
+    /// A route option that NAMES a declaration needs nothing here: the
+    /// declaration is covered where it is written.
+    #[test]
+    fn a_route_option_naming_a_component_is_unchanged() {
+        let source = r#"import { createFileRoute } from "@barqjs/router";
+function Page(props) { return <p>{props.x}</p>; }
+export const Route = createFileRoute("/x")({ component: Page });
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(output.code.contains("component: Page"), "{}", output.code);
+        assert!(output.code.contains("function Page(_s$, props)"), "{}", output.code);
+    }
+
     #[test]
     fn a_component_is_called_and_a_fragment_is_an_array() {
         let source = "const V = () => <><Foo.Bar {...rest} x={1} />{cond ? <A /> : null}</>;\n";

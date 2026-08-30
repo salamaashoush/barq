@@ -4,9 +4,9 @@ use oxc::ast::ast::{
     DoWhileStatement, ExportDefaultDeclarationKind, Expression, ForStatement, FormalParameters,
     Function, IfStatement, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
     JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, LogicalExpression,
-    ModuleExportName, Program, Statement, StaticMemberExpression, SwitchStatement,
-    TaggedTemplateExpression, TemplateLiteral, UnaryExpression, UnaryOperator, VariableDeclarator,
-    WhileStatement,
+    ModuleExportName, ObjectExpression, ObjectPropertyKind, Program, PropertyKey, Statement,
+    StaticMemberExpression, SwitchStatement, TaggedTemplateExpression, TemplateLiteral,
+    UnaryExpression, UnaryOperator, VariableDeclarator, WhileStatement,
 };
 use oxc::ast_visit::Visit;
 use oxc::ast_visit::walk;
@@ -515,6 +515,79 @@ impl<'a> Binder<'_, 'a> {
                 continue;
             }
             self.env.components.push((span, name));
+        }
+    }
+
+    /// The route options whose value the ROUTER invokes as a component.
+    ///
+    /// These are the keys `errorFallbackFor` and the two backends call
+    /// `(scope, props)`, so a function written at one of them has the same
+    /// calling convention as a component written anywhere else and has to be
+    /// compiled with the same one.
+    const ROUTE_COMPONENT_KEYS: [&'static str; 5] = [
+        "component",
+        "pendingComponent",
+        "errorComponent",
+        "notFoundComponent",
+        "shellComponent",
+    ];
+
+    /// A component written INLINE in a route's options object.
+    ///
+    /// THE HOLE THIS CLOSES. Every other position a component can be written in
+    /// is already covered — a `function` statement, a `const` the module tags or
+    /// exports, an `export default`, and any arrow inside JSX, which `shape`
+    /// lowers itself. A plain OBJECT LITERAL is none of those, and route options
+    /// are a plain object literal. So
+    ///
+    /// ```tsx
+    /// createFileRoute("/x")({ notFoundComponent: ({ error }) => <p>{error().message}</p> })
+    /// ```
+    ///
+    /// kept the `(props)` signature the author wrote while the router called it
+    /// `(scope, props)`. The scope landed on `error`, and the render died with
+    /// `error is not a function` — at run time, on the server, from a route file
+    /// that compiled and type-checked without a word. It went unnoticed for as
+    /// long as it did because the two options an application usually writes
+    /// inline, `component` and `pendingComponent`, mostly take no props and so
+    /// survived being handed one argument too many.
+    ///
+    /// WHY THIS IS NOT THE GENERAL RULE. `is_component` is deliberately strict
+    /// about a bare `const`: a JSX-returning one-parameter arrow is
+    /// indistinguishable from a `<For>` row callback, so it takes a scope only
+    /// once the module tags, exports or slots it. An object property has no such
+    /// ambiguity HERE and only here — the key is one the router itself invokes,
+    /// and the calling convention is therefore known statically rather than
+    /// guessed. Registering every JSX-returning arrow in every object literal
+    /// would re-introduce exactly the ambiguity that rule exists to refuse.
+    fn record_route_options(&mut self, object: &ObjectExpression<'a>) {
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { continue };
+            let PropertyKey::StaticIdentifier(key) = &property.key else { continue };
+            if !Self::ROUTE_COMPONENT_KEYS.contains(&key.name.as_str()) {
+                continue;
+            }
+            let (params, span) = match &property.value {
+                Expression::ArrowFunctionExpression(arrow) if arrow_returns_jsx(arrow) => {
+                    (&arrow.params, arrow.span)
+                }
+                Expression::FunctionExpression(function) if function_returns_jsx(function) => {
+                    (&function.params, function.span)
+                }
+                // A REFERENCE is the ordinary spelling and needs nothing: the
+                // declaration it names is covered where it is written, and
+                // naming it here is what `slotted` already records.
+                _ => continue,
+            };
+            if let Some(props) = props_symbol(params) {
+                self.candidates.push((None, props));
+            }
+            if let Some(pattern) = destructured_props(params) {
+                self.destructured.push((None, pattern));
+            }
+            // `None`, so `is_component` answers yes without further evidence.
+            // The evidence is the key.
+            self.components.push((None, span, key.name.as_str()));
         }
     }
 
@@ -1108,6 +1181,19 @@ fn destructured_props(params: &FormalParameters<'_>) -> Option<Span> {
     }
 }
 
+/// The bare name a callee spells, for the factory match above. A member
+/// expression is deliberately not followed: `x.createFileRoute` is not the
+/// factory and treating it as one would be a guess.
+fn callee_name<'a>(callee: &Expression<'a>) -> Option<&'a str> {
+    match callee {
+        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+        // `createFileRoute<Row>("/x")` parses the type arguments onto the call,
+        // so the callee underneath is still the plain identifier.
+        Expression::ParenthesizedExpression(inner) => callee_name(&inner.expression),
+        _ => None,
+    }
+}
+
 fn function_returns_jsx(function: &Function<'_>) -> bool {
     function.body.as_ref().is_some_and(|body| statements_return_jsx(&body.statements))
 }
@@ -1216,6 +1302,25 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
                 }
                 _ => {}
             }
+        }
+        // A route's options object, in either spelling the factory takes:
+        // `createFileRoute("/x")({ … })`, where the callee is itself a call, and
+        // `createRootRoute({ … })`, where it is not. Matched by NAME rather than
+        // by resolved import, which is what `route_split::mentions` already
+        // does — the factory is never aliased in practice and a false positive
+        // costs one scope parameter on a function that returns JSX under a key
+        // called `component`.
+        let factory = match &it.callee {
+            Expression::CallExpression(inner) => callee_name(&inner.callee),
+            callee => callee_name(callee),
+        };
+        if matches!(
+            factory,
+            Some("createFileRoute" | "createRootRoute" | "createRootRouteWithContext")
+        ) && let Some(first) = it.arguments.first()
+            && let Some(Expression::ObjectExpression(object)) = first.as_expression()
+        {
+            self.record_route_options(object);
         }
         walk::walk_call_expression(self, it);
     }
