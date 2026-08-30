@@ -129,8 +129,18 @@ export function errorFallbackFor(
   depth: number,
   params: () => Record<string, string>,
 ): (scope: unknown, error: () => Error, reset: () => void) => unknown {
+  // ONE report per error OBJECT. The fallback re-renders — a reset, a
+  // re-entered branch — and `onCatch` is a notification, not a render step, so
+  // firing it every time would report one failure many times to a crash
+  // reporter. A `notFound()` is an ANSWER rather than a failure and is not
+  // reported at all.
+  let reported: unknown = null;
   return (scope, error, reset) => {
     const missing = isNotFound(error());
+    if (!missing && reported !== error()) {
+      reported = error();
+      for (let at = depth; at >= 0; at--) chain[at]?.definition.onCatch?.(error());
+    }
     for (let at = depth; at >= 0; at--) {
       const definition = chain[at]?.definition;
       const component = missing

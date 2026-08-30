@@ -99,6 +99,7 @@ export {
   type RouteComponent,
   type RouteDefinition,
   type RouteHandler,
+  type RouteLifecycle,
   type RouteHandlerContext,
   type RouteMethod,
   type RouteProps,

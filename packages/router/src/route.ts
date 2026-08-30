@@ -416,7 +416,48 @@ export interface RouteDefinition<
    * optimisation.
    */
   readonly server?: RouteServer<Params>;
+  /**
+   * Anything this route wants to carry that the router does not interpret.
+   *
+   * Read back off the match — a breadcrumb label, a page title, an icon, a
+   * permission tag. It exists so those do not have to be a second table keyed
+   * by route id, which is what every application writes without it and which
+   * drifts the moment a route is renamed.
+   */
+  readonly staticData?: Record<string, unknown>;
+  /**
+   * Called when this route ENTERS the matched chain, STAYS in it across a
+   * navigation, or LEAVES it.
+   *
+   * TanStack's three (`runRouteLifecycle`, `router.ts:930`), with their rule:
+   * `onLeave` for every route in the old chain that is not in the new one, then
+   * for each route in the new chain either `onStay` — it was in the old one —
+   * or `onEnter`.
+   *
+   * NOT a place to load: the loader is. These are for the effects that hang off
+   * being on a page, which is analytics, a subscription, a timer.
+   */
+  readonly onEnter?: (match: RouteLifecycle<Params>) => void;
+  readonly onStay?: (match: RouteLifecycle<Params>) => void;
+  readonly onLeave?: (match: RouteLifecycle<Params>) => void;
+  /**
+   * Called when this route's error boundary catches, before it renders.
+   *
+   * For REPORTING — the boundary still renders `errorComponent`. A route that
+   * wants to change what is shown changes that component; this is where the
+   * error reaches a crash reporter.
+   */
+  readonly onCatch?: (error: Error) => void;
   readonly children?: readonly AnyRouteDefinition[];
+}
+
+/** What a lifecycle hook is told about the route it concerns. */
+export interface RouteLifecycle<Params = Record<string, string>> {
+  readonly routeId: string;
+  readonly fullPath: string;
+  readonly params: Params;
+  /** The route's own `staticData`, so a hook needs no second lookup. */
+  readonly staticData: Record<string, unknown>;
 }
 
 /** The HTTP methods a route may answer. `ANY` is the fallback for the rest. */

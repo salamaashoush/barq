@@ -16,7 +16,15 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { NOT_FOUND, NotFound, REDIRECT, Redirect, isNotFound, isRedirect } from "./errors.ts";
+import {
+  NOT_FOUND,
+  NotFound,
+  REDIRECT,
+  Redirect,
+  errorFallbackFor,
+  isNotFound,
+  isRedirect,
+} from "./errors.ts";
 import { isNavigable } from "./path.ts";
 
 describe("the brands @barqjs/start agrees to", () => {
@@ -114,5 +122,51 @@ describe("what a redirect may name", () => {
   test("the scheme is not case-sensitive", () => {
     expect(isNavigable("JaVaScRiPt:alert(1)")).toBe(false);
     expect(isNavigable("HTTPS://x.test")).toBe(true);
+  });
+});
+
+/**
+ * `onCatch` — the route's own notification that its boundary caught.
+ *
+ * For REPORTING: the boundary still renders `errorComponent`. A route that
+ * wants different markup changes that component; this is where the error
+ * reaches a crash reporter.
+ */
+describe("onCatch", () => {
+  const chainOf = (...defs: Record<string, unknown>[]) =>
+    defs.map((definition, at) => ({
+      id: `/r${at}`,
+      fullPath: `/r${at}`,
+      definition,
+    })) as never as Parameters<typeof errorFallbackFor>[0];
+
+  test("every route from the failing depth outward is told, once", () => {
+    const seen: string[] = [];
+    const chain = chainOf(
+      { onCatch: (e: Error) => seen.push(`root:${e.message}`) },
+      { onCatch: (e: Error) => seen.push(`leaf:${e.message}`), errorComponent: (() => null) as never },
+    );
+    const fallback = errorFallbackFor(chain, 1, () => ({}));
+    const boom = new Error("boom");
+
+    fallback(null, () => boom, () => {});
+    // A re-render of the SAME error reports nothing further.
+    fallback(null, () => boom, () => {});
+    expect(seen).toEqual(["leaf:boom", "root:boom"]);
+
+    // A different error is a different report.
+    fallback(null, () => new Error("again"), () => {});
+    expect(seen).toEqual(["leaf:boom", "root:boom", "leaf:again", "root:again"]);
+  });
+
+  /** A `notFound()` is an ANSWER, not a failure, and is not reported. */
+  test("a notFound is not a catch", () => {
+    const seen: string[] = [];
+    const chain = chainOf({
+      onCatch: (e: Error) => seen.push(e.message),
+      notFoundComponent: (() => null) as never,
+    });
+    errorFallbackFor(chain, 0, () => ({}))(null, () => new NotFound("gone"), () => {});
+    expect(seen).toEqual([]);
   });
 });

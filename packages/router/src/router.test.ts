@@ -2523,3 +2523,72 @@ describe("start() latches", () => {
     expect(state.match()).toBeNull();
   });
 });
+
+/**
+ * `onEnter` / `onStay` / `onLeave`, and `staticData`.
+ *
+ * TanStack's order and their rule (`runRouteLifecycle`, `router.ts:930`): every
+ * route in the old chain that is not in the new one leaves first, and only then
+ * does each route in the new chain learn whether it arrived or remained.
+ */
+describe("route lifecycle", () => {
+  const log: string[] = [];
+  const hooks = (id: string) => ({
+    onEnter: () => log.push(`enter:${id}`),
+    onStay: () => log.push(`stay:${id}`),
+    onLeave: () => log.push(`leave:${id}`),
+  });
+
+  const tree = (): AnyRouteDefinition[] =>
+    [
+      {
+        path: "/shop",
+        component: (() => null) as never,
+        staticData: { title: "Shop" },
+        ...hooks("shop"),
+        children: [
+          { path: "a", component: (() => null) as never, ...hooks("a") },
+          { path: "b", component: (() => null) as never, ...hooks("b") },
+        ],
+      },
+      { path: "/away", component: (() => null) as never, ...hooks("away") },
+    ] as never;
+
+  test("the first chain enters, a sibling swap keeps the layout", async () => {
+    log.length = 0;
+    const state = createRouter({
+      routeTree: tree(),
+      history: memoryHistory({ initial: ["/shop/a"] }),
+    });
+    await state.start();
+    expect(log).toEqual(["enter:shop", "enter:a"]);
+
+    log.length = 0;
+    await state.navigate("/shop/b");
+    // The layout STAYED; only the leaf changed.
+    expect(log).toEqual(["leave:a", "stay:shop", "enter:b"]);
+
+    log.length = 0;
+    await state.navigate("/away");
+    expect(log).toEqual(["leave:shop", "leave:b", "enter:away"]);
+  });
+
+  test("a hook is told the route's staticData", async () => {
+    const seen: unknown[] = [];
+    const table = [
+      {
+        path: "/shop",
+        component: (() => null) as never,
+        staticData: { title: "Shop" },
+        onEnter: (match: { staticData: unknown; routeId: string }) => seen.push(match.staticData),
+        children: [{ path: "", component: (() => null) as never }],
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/shop"] }),
+    });
+    await state.start();
+    expect(seen).toEqual([{ title: "Shop" }]);
+  });
+});
