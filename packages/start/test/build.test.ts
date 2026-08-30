@@ -81,6 +81,25 @@ describe("a production build", () => {
     expect(client).toContain("src/data.ts#loadUser");
   });
 
+  /**
+   * The isomorphic entry has to survive reaching a browser.
+   *
+   * `src/guard.ts` imports `useSession` from `@barqjs/start` and is referenced
+   * — never called — from client code, which is exactly what a route declaring
+   * `middleware: [requireSession]` does. `context.ts` used to build its
+   * `AsyncLocalStorage` at module scope, and a bundler answers
+   * `node:async_hooks` with an empty stub rather than an error, so the chunk
+   * evaluated in the browser and threw `AsyncLocalStorage is not a constructor`
+   * before any application code ran. Measured on `packages/kitchen-sink`: the
+   * `/admin` route crashed on load.
+   */
+  test("the isomorphic entry reaches the browser without constructing a server primitive", () => {
+    expect(client, "the guard module did not reach the client bundle").toContain(
+      "guard-module-reached-the-client",
+    );
+    expect(client).not.toMatch(/new\s+[\w.$]*AsyncLocalStorage/);
+  });
+
   test("carries the client's own emitted chunk name into the server half", () => {
     const assets = readdirSync(join(OUT, "client", "assets")).filter((n) => n.endsWith(".js"));
     expect(assets).toHaveLength(1);

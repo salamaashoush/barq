@@ -85,6 +85,14 @@ function get(port: number, path: string): Promise<string> {
         res.on("data", (chunk: string) => (body += chunk));
         res.on("end", () => resolve(body));
       });
+      // A DEADLINE, because `error` does not cover the case that hangs. A
+      // refused connection rejects here promptly, but a socket Chrome accepts
+      // and never answers leaves this promise pending forever — and the caller
+      // below counts attempts, not seconds, so its "~30s budget" was
+      // unenforceable: one attempt could absorb the whole run.
+      req.setTimeout(5_000, () => {
+        req.destroy(new Error(`Chrome did not answer ${path} within 5s`));
+      });
       req.on("error", reject);
       req.end();
     }, reject);
@@ -124,24 +132,66 @@ async function connect(port: number): Promise<Connection> {
   ]);
 
   let id = 0;
-  const pending = new Map<number, (value: Record<string, unknown>) => void>();
-  socket.onmessage = (event) => {
-    const message = JSON.parse(String(event.data)) as { id?: number };
-    if (message.id && pending.has(message.id)) {
-      pending.get(message.id)?.(message as Record<string, unknown>);
-      pending.delete(message.id);
+  interface Waiting {
+    resolve: (value: Record<string, unknown>) => void;
+    reject: (error: Error) => void;
+    method: string;
+    timer: ReturnType<typeof setTimeout>;
+  }
+  const pending = new Map<number, Waiting>();
+
+  /**
+   * Every command is answered, or fails saying which one was not.
+   *
+   * A `send` that only ever RESOLVED is what made this suite hang for its full
+   * ten-minute budget with 0.35s of CPU: a command Chrome never answered — or
+   * one in flight when the socket dropped — left its promise pending, and
+   * `beforeAll` waited on it until bun's timeout killed the run. The failure
+   * that reached the log was `(fail) (unnamed) [600000.57ms]`, which names
+   * neither the command nor the browser.
+   */
+  const settle = (mid: number, deliver: (waiting: Waiting) => void): void => {
+    const waiting = pending.get(mid);
+    if (waiting === undefined) return;
+    pending.delete(mid);
+    clearTimeout(waiting.timer);
+    deliver(waiting);
+  };
+
+  const failAll = (reason: string): void => {
+    for (const mid of [...pending.keys()]) {
+      settle(mid, (waiting) =>
+        waiting.reject(new Error(`${reason} (waiting on ${waiting.method})`)),
+      );
     }
   };
+
+  socket.onmessage = (event) => {
+    const message = JSON.parse(String(event.data)) as { id?: number };
+    if (message.id !== undefined) {
+      settle(message.id, (waiting) => waiting.resolve(message as Record<string, unknown>));
+    }
+  };
+  socket.onclose = () => failAll("the CDP socket closed");
+  socket.onerror = () => failAll("the CDP socket errored");
 
   return {
     send(method, params, sessionId) {
       const mid = ++id;
-      return new Promise((resolve) => {
-        pending.set(mid, resolve as never);
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          settle(mid, (waiting) =>
+            waiting.reject(new Error(`Chrome did not answer ${waiting.method} within 60s`)),
+          );
+        }, 60_000);
+        pending.set(mid, { resolve: resolve as never, reject, method, timer });
         socket.send(JSON.stringify({ id: mid, sessionId, method, params }));
       });
     },
-    close: () => socket.close(),
+    close: () => {
+      failAll("the CDP connection was closed");
+      socket.close();
+    },
   };
 }
 

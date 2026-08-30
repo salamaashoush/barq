@@ -2,7 +2,7 @@
  * Barq - Tiny JSX renderer with fine-grained reactivity via signals
  *
  * Core: signals, JSX/DOM rendering, components, async resources, stores
- * For CSS-in-JS and utility hooks, see @barqjs/extra
+ * For scheduling, events, observers and browser APIs, see @barqjs/primitives
  */
 
 // Core reactivity - primitives
@@ -45,6 +45,7 @@ export {
   owner,
   reaction,
   trackedEffect,
+  isTracking,
   getNextChildId,
   isDisposed,
   peekNextChildId,

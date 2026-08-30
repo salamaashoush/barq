@@ -539,11 +539,36 @@ describe("the L1 conformance claims", () => {
 // ---------------------------------------------------------------------------
 
 describe("the gate closes", () => {
-  const failing = OUTCOMES.find((o) => o.failure !== null);
   const holding = OUTCOMES.find((o) => o.failure === null);
-  if (!failing || !holding) {
-    throw new Error("the self-check needs one failing and one holding claim; the corpus has both");
+  if (!holding) {
+    throw new Error(
+      `the self-check needs a claim that HOLDS to drive the passing arms of verdict(); ` +
+        `of ${OUTCOMES.length} claims in the corpus, none do`,
+    );
   }
+
+  /**
+   * A real failing observation where the corpus has one, and a stand-in where
+   * it does not.
+   *
+   * This used to require a real failure and throw without one, which made the
+   * whole file error out the day the corpus went green: all 128 claims held,
+   * so there was nothing for `OUTCOMES.find(o => o.failure !== null)` to
+   * return and none of the assertions below ran at all. A gate that only
+   * closes while the code is broken is not a gate — and the state it refused
+   * to run in is the state the project is trying to reach.
+   *
+   * The stand-in carries the shape a real observation carries: a message that
+   * names its rule, and `crashed: false`. Every arm of `verdict` — the rule
+   * check, the crash check, the ratchet's digest — reads only those, so every
+   * assertion below still discriminates.
+   */
+  const failing: Outcome = OUTCOMES.find((o) => o.failure !== null) ?? {
+    ...holding,
+    claim: `${holding.claim} (stand-in for the self-check)`,
+    failure: `${holding.rule} violated: a stand-in observation, used only by the self-check`,
+    crashed: false,
+  };
   const rowFor = (o: Outcome): KnownFailure =>
     REGISTRY.get(registryKey(o.fixture, o.claim)) ?? {
       fixture: o.fixture,

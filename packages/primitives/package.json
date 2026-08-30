@@ -1,0 +1,190 @@
+{
+  "name": "@barqjs/primitives",
+  "version": "0.1.0",
+  "description": "A collection of reactive primitives for Barq: scheduling, events, observers, browser APIs, collections and animation",
+  "keywords": [
+    "barq",
+    "dom",
+    "hooks",
+    "primitives",
+    "reactive",
+    "signals"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/primitives"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./animation": {
+      "types": "./dist/animation.d.ts",
+      "bun": "./src/animation.ts",
+      "import": "./dist/animation.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "bun": "./src/browser.ts",
+      "import": "./dist/browser.js"
+    },
+    "./bus": {
+      "types": "./dist/bus.d.ts",
+      "bun": "./src/bus.ts",
+      "import": "./dist/bus.js"
+    },
+    "./clipboard": {
+      "types": "./dist/clipboard.d.ts",
+      "bun": "./src/clipboard.ts",
+      "import": "./dist/clipboard.js"
+    },
+    "./collections": {
+      "types": "./dist/collections.d.ts",
+      "bun": "./src/collections.ts",
+      "import": "./dist/collections.js"
+    },
+    "./derived": {
+      "types": "./dist/derived.d.ts",
+      "bun": "./src/derived.ts",
+      "import": "./dist/derived.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "bun": "./src/element.ts",
+      "import": "./dist/element.js"
+    },
+    "./event": {
+      "types": "./dist/event.d.ts",
+      "bun": "./src/event.ts",
+      "import": "./dist/event.js"
+    },
+    "./focus": {
+      "types": "./dist/focus.d.ts",
+      "bun": "./src/focus.ts",
+      "import": "./dist/focus.js"
+    },
+    "./fullscreen": {
+      "types": "./dist/fullscreen.d.ts",
+      "bun": "./src/fullscreen.ts",
+      "import": "./dist/fullscreen.js"
+    },
+    "./geolocation": {
+      "types": "./dist/geolocation.d.ts",
+      "bun": "./src/geolocation.ts",
+      "import": "./dist/geolocation.js"
+    },
+    "./history": {
+      "types": "./dist/history.d.ts",
+      "bun": "./src/history.ts",
+      "import": "./dist/history.js"
+    },
+    "./keyboard": {
+      "types": "./dist/keyboard.d.ts",
+      "bun": "./src/keyboard.ts",
+      "import": "./dist/keyboard.js"
+    },
+    "./machine": {
+      "types": "./dist/machine.d.ts",
+      "bun": "./src/machine.ts",
+      "import": "./dist/machine.js"
+    },
+    "./media": {
+      "types": "./dist/media.d.ts",
+      "bun": "./src/media.ts",
+      "import": "./dist/media.js"
+    },
+    "./mouse": {
+      "types": "./dist/mouse.d.ts",
+      "bun": "./src/mouse.ts",
+      "import": "./dist/mouse.js"
+    },
+    "./observers": {
+      "types": "./dist/observers.d.ts",
+      "bun": "./src/observers.ts",
+      "import": "./dist/observers.js"
+    },
+    "./promise": {
+      "types": "./dist/promise.d.ts",
+      "bun": "./src/promise.ts",
+      "import": "./dist/promise.js"
+    },
+    "./raf": {
+      "types": "./dist/raf.d.ts",
+      "bun": "./src/raf.ts",
+      "import": "./dist/raf.js"
+    },
+    "./refs": {
+      "types": "./dist/refs.d.ts",
+      "bun": "./src/refs.ts",
+      "import": "./dist/refs.js"
+    },
+    "./scheduled": {
+      "types": "./dist/scheduled.d.ts",
+      "bun": "./src/scheduled.ts",
+      "import": "./dist/scheduled.js"
+    },
+    "./scroll": {
+      "types": "./dist/scroll.d.ts",
+      "bun": "./src/scroll.ts",
+      "import": "./dist/scroll.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "bun": "./src/storage.ts",
+      "import": "./dist/storage.js"
+    },
+    "./timer": {
+      "types": "./dist/timer.d.ts",
+      "bun": "./src/timer.ts",
+      "import": "./dist/timer.js"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.ts",
+      "bun": "./src/utils.ts",
+      "import": "./dist/utils.js"
+    },
+    "./virtual": {
+      "types": "./dist/virtual.d.ts",
+      "bun": "./src/virtual.ts",
+      "import": "./dist/virtual.js"
+    },
+    "./websocket": {
+      "types": "./dist/websocket.d.ts",
+      "bun": "./src/websocket.ts",
+      "import": "./dist/websocket.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@barqjs/core": "workspace:*",
+    "@happy-dom/global-registrator": "^20.11.6",
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.1.0"
+  }
+}
