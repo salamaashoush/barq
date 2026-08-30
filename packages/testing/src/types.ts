@@ -20,6 +20,14 @@ export interface RenderOptions {
   wrapper?: WrapperComponent;
   /** Custom queries to use */
   queries?: typeof queries;
+  /**
+   * Run when this render is disposed, by `unmount()` or by `cleanup()`.
+   *
+   * For state that belongs to the render but is not the DOM — `renderRoute`
+   * uses it to dispose the router, which otherwise keeps its history
+   * subscription and loader cache alive for the rest of the run.
+   */
+  onUnmount?: () => void;
 }
 
 export interface RenderResult extends BoundFunctions<typeof queries> {
@@ -46,6 +54,14 @@ export interface RenderHookOptions<TProps> {
   initialProps?: TProps;
   /** Wrapper component for context providers */
   wrapper?: WrapperComponent;
+  /**
+   * Run when this render is disposed, by `unmount()` or by `cleanup()`.
+   *
+   * For state that belongs to the render but is not the DOM — `renderRoute`
+   * uses it to dispose the router, which otherwise keeps its history
+   * subscription and loader cache alive for the rest of the run.
+   */
+  onUnmount?: () => void;
 }
 
 export interface RenderHookResult<TResult, TProps> {

@@ -78,8 +78,27 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
   // Render the component
   const dispose = barqRender(wrappedUi, container);
 
-  // Track for cleanup
-  mountedContainers.add({ container, dispose });
+  // Track for cleanup.
+  //
+  // ONE object, held in a variable and MUTATED, because a `Set` keys by
+  // reference. Every `delete` here used to be handed a fresh
+  // `{ container, dispose }` literal, which is never the entry that was added,
+  // so `unmount()` left its entry in the set and `cleanup()` disposed it a
+  // second time, and `rerender()` grew the set by one every call while keeping
+  // the superseded `dispose`.
+  //
+  // `onUnmount` runs with the dispose whichever way disposal is reached, which
+  // is what lets `renderRoute` tie a router's lifetime to its container's
+  // without a second registry.
+  let current = dispose;
+  const tracked: MountedRef = {
+    container,
+    dispose: () => {
+      current();
+      options.onUnmount?.();
+    },
+  };
+  mountedContainers.add(tracked);
 
   // Get query helpers bound to container
   const queryHelpers = getQueriesForElement(container, queries);
@@ -102,21 +121,18 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
       }
     },
     unmount: () => {
-      dispose();
-      mountedContainers.delete({ container, dispose });
+      tracked.dispose();
+      mountedContainers.delete(tracked);
     },
     rerender: (newUi: Ui) => {
-      // Clean up old render
-      dispose();
+      current();
       container.innerHTML = "";
-      // Render new UI
       const newWrappedUi: Ui = wrapper
         ? (s: Scope | null): JSXElement => wrapper(s, { children: newUi })
         : newUi;
-      const newDispose = barqRender(newWrappedUi, container);
-      // Update tracked ref
-      mountedContainers.delete({ container, dispose });
-      mountedContainers.add({ container, dispose: newDispose });
+      // The SAME entry keeps pointing at the live dispose, rather than a second
+      // entry being added beside the first.
+      current = barqRender(newWrappedUi, container);
     },
     ...queryHelpers,
   };
@@ -160,7 +176,16 @@ export function renderHook<TResult, TProps = unknown>(
     : renderHookComponent;
 
   dispose = barqRender(wrappedComponent, container);
-  mountedContainers.add({ container, dispose });
+  // One entry, and `dispose` is reassigned by `rerender` below, so reading it
+  // through the closure is what keeps the entry pointing at the live one.
+  const tracked: MountedRef = {
+    container,
+    dispose: () => {
+      dispose();
+      options.onUnmount?.();
+    },
+  };
+  mountedContainers.add(tracked);
 
   return {
     result,
@@ -171,8 +196,8 @@ export function renderHook<TResult, TProps = unknown>(
       dispose = barqRender(wrappedComponent, container);
     },
     unmount: () => {
-      dispose();
-      mountedContainers.delete({ container, dispose });
+      tracked.dispose();
+      mountedContainers.delete(tracked);
     },
   };
 }

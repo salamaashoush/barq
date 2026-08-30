@@ -7,10 +7,16 @@ import { defineConfig } from "tsdown";
  * `packages/start/tsdown.config.ts` records having already sprung.
  */
 export default defineConfig({
-  entry: ["./src/index.ts", "./src/pure.ts"],
+  entry: ["./src/index.ts", "./src/pure.ts", "./src/router.ts", "./src/server.ts"],
   format: ["esm"],
   dts: true,
   clean: true,
-  external: ["@barqjs/core", "@barqjs/server", "@testing-library/dom"],
+  external: [
+    "@barqjs/core",
+    "@barqjs/server",
+    "@barqjs/router",
+    "@barqjs/start",
+    "@testing-library/dom",
+  ],
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
 });

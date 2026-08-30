@@ -190,7 +190,9 @@
       "devDependencies": {
         "@barqjs/compiler-rs": "workspace:*",
         "@barqjs/core": "workspace:*",
+        "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
+        "@barqjs/start": "workspace:*",
         "@happy-dom/global-registrator": "^20.11.6",
         "@types/bun": "^1.4.0",
         "happy-dom": "^20.11.6",
@@ -198,8 +200,14 @@
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/router": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
+        "@barqjs/start": ">=0.1.0",
       },
+      "optionalPeers": [
+        "@barqjs/router",
+        "@barqjs/start",
+      ],
     },
   },
   "packages": {
