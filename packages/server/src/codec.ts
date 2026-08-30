@@ -48,6 +48,42 @@ const DISABLED = Feature.RegExp | Feature.ErrorPrototypeStack;
 interface ErrorInfo extends PluginInfo {
   name: never;
   message: never;
+  /** `"redirect"`, `"not-found"`, or `""` for an ordinary failure. */
+  kind: never;
+  /** A redirect's target and status; empty for everything else. */
+  to: never;
+  status: never;
+}
+
+/**
+ * The two control-flow brands, which an Error has to keep across the wire.
+ *
+ * `Symbol.for`, declared here as well as in `packages/router/src/errors.ts` and
+ * `packages/start/src/client.ts`, because this package cannot import either —
+ * the same constraint and the same answer as those two.
+ *
+ * WHAT WENT WRONG WITHOUT IT. `redactError` reduced every Error to its name and
+ * its message, so a `notFound()` that crossed the seed arrived as a plain
+ * `Error` named `"NotFound"` carrying no brand. `isNotFound` therefore answered
+ * false on the client, and a route with both fallbacks rendered its
+ * `errorComponent` where the server had rendered its `notFoundComponent` — the
+ * same page, hydrating into a different one. A route with ONLY a
+ * `notFoundComponent` matched nothing at all and rendered blank.
+ *
+ * The KIND is not sensitive. `name` already crosses, and it is the thing that
+ * carries the class's identity in the first place; a brand alongside it leaks
+ * strictly nothing new, while keying on `name` alone would let any handler that
+ * happens to throw `Object.assign(new Error(), { name: "Redirect" })` steer the
+ * router.
+ */
+const REDIRECT = Symbol.for("barq.redirect");
+const NOT_FOUND = Symbol.for("barq.not-found");
+
+function kindOf(value: Error): "redirect" | "not-found" | "" {
+  const branded = value as unknown as Record<symbol, unknown>;
+  if (branded[REDIRECT] === true) return "redirect";
+  if (branded[NOT_FOUND] === true) return "not-found";
+  return "";
 }
 
 /**
@@ -67,24 +103,60 @@ interface ErrorInfo extends PluginInfo {
  * the replacement gets its own `sourceURL`, naming this file. Only controlling
  * the emitted string does, which is what a plugin is for.
  *
- * Today the seed channel records resolved values only (`signals.ts` records in
- * `settled`, never in `failed`), so this is reached by an Error INSIDE a
- * resolved value rather than by a rejection. It is hardening, not a live leak.
+ * WHAT IT CARRIES BESIDES. An Error's KIND crosses too, so a `notFound()` or a
+ * `redirect()` is still one on the other side; `kindOf` below says why that is
+ * not a widening of what leaks.
  */
 const redactError: Plugin<Error, ErrorInfo> = createPlugin<Error, ErrorInfo>({
   tag: "barq/redacted-error",
   test: (value) => value instanceof Error,
   parse: {
-    sync: (value, ctx) =>
-      ({ name: ctx.parse(value.name), message: ctx.parse(value.message) }) as unknown as ErrorInfo,
+    sync: (value, ctx) => {
+      const kind = kindOf(value);
+      const redirect = kind === "redirect" ? (value as unknown as RedirectShape) : undefined;
+      return {
+        name: ctx.parse(value.name),
+        message: ctx.parse(value.message),
+        kind: ctx.parse(kind),
+        // A redirect's target is where the browser is about to be sent, so it
+        // is already the least secret thing about the request.
+        to: ctx.parse(typeof redirect?.to === "string" ? redirect.to : ""),
+        status: ctx.parse(typeof redirect?.status === "number" ? redirect.status : 0),
+      } as unknown as ErrorInfo;
+    },
   },
+  // An IIFE rather than one `Object.assign`: a symbol key cannot be written in
+  // an object literal without a computed key, and the redirect branch adds two
+  // more fields. It is emitted once per Error in the payload.
   serialize: (node, ctx) =>
-    `Object.assign(new Error(${ctx.serialize(node.message)}),{name:${ctx.serialize(node.name)}})`,
-  deserialize: (node, ctx) =>
-    Object.assign(new Error(ctx.deserialize<string>(node.message)), {
+    `(()=>{const e=Object.assign(new Error(${ctx.serialize(node.message)}),` +
+    `{name:${ctx.serialize(node.name)}});const k=${ctx.serialize(node.kind)};` +
+    `if(k==="redirect"){e[Symbol.for("barq.redirect")]=true;` +
+    `e.to=${ctx.serialize(node.to)};e.status=${ctx.serialize(node.status)};}` +
+    `else if(k==="not-found"){e[Symbol.for("barq.not-found")]=true;}return e;})()`,
+  deserialize: (node, ctx) => {
+    const error = Object.assign(new Error(ctx.deserialize<string>(node.message)), {
       name: ctx.deserialize<string>(node.name),
-    }),
+    });
+    const kind = ctx.deserialize<string>(node.kind);
+    if (kind === "redirect") {
+      Object.assign(error as object, {
+        [REDIRECT]: true,
+        to: ctx.deserialize<string>(node.to),
+        status: ctx.deserialize<number>(node.status),
+      });
+    } else if (kind === "not-found") {
+      Object.assign(error as object, { [NOT_FOUND]: true });
+    }
+    return error;
+  },
 });
+
+/** The two fields a redirect carries beyond an ordinary Error. */
+interface RedirectShape {
+  readonly to?: unknown;
+  readonly status?: unknown;
+}
 
 /**
  * Next.js warns above this and the reasoning transfers exactly: the seed is
