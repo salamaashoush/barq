@@ -60,6 +60,7 @@ import { settle } from "@barqjs/core";
 import { setAsyncSession } from "@barqjs/core/internal";
 
 import { isNavigable } from "./path.ts";
+import type { TrailingSlash } from "./path.ts";
 import {
   type AnyRouteDefinition,
   type Route,
@@ -338,7 +339,17 @@ export function renderRoutes(state: RouterState): unknown {
   return at(0);
 }
 
-export { NOT_FOUND, NotFound, REDIRECT, Redirect, errorFallbackFor, isNotFound, isRedirect, notFound, redirect } from "./errors.ts";
+export {
+  NOT_FOUND,
+  NotFound,
+  REDIRECT,
+  Redirect,
+  errorFallbackFor,
+  isNotFound,
+  isRedirect,
+  notFound,
+  redirect,
+} from "./errors.ts";
 
 export interface DocumentParts {
   /** The application's markup. */
@@ -400,6 +411,14 @@ export interface PageHandlerOptions {
   readonly notFoundMode?: "root" | "fuzzy";
   /** Literal-segment case matching, matching `RouterConfig`'s. */
   readonly caseSensitive?: boolean;
+  /**
+   * How a built path ends, matching `RouterConfig`'s.
+   *
+   * The server matches either spelling regardless, so this only reaches the
+   * hrefs the SSR pass writes — and it has to reach them, or every `<Link>` in
+   * the document changes shape on hydration.
+   */
+  readonly trailingSlash?: TrailingSlash;
   /**
    * The application, as the string backend wants it: returns `SsrHtml`.
    *
@@ -775,6 +794,7 @@ export function createPageHandler(
       defaults: options.defaults,
       notFoundMode: options.notFoundMode,
       caseSensitive: options.caseSensitive,
+      trailingSlash: options.trailingSlash,
       history: memoryHistory({ initial: [pathname + url.search] }),
       onLoaderError(error) {
         if (isNotFound(error)) missing = true;

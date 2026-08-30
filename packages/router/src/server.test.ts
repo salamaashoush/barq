@@ -19,7 +19,7 @@ import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { ClientOnly, Outlet, RouterProvider, linkAttrHref } from "./components.ts";
+import { ClientOnly, Outlet, RouterProvider, linkAttrHref, linkHref } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
@@ -2287,6 +2287,37 @@ describe("basepath", () => {
 
   test("a miss under the base is still a miss", async () => {
     expect((await handler(get("/app/nope"))).status).toBe(404);
+  });
+});
+
+/**
+ * `trailingSlash` has to reach the REQUEST's router, not just the client's.
+ *
+ * The two halves build the same hrefs from the same code, so a policy the
+ * server never saw would change every anchor in the document on hydration —
+ * which is a mismatch on every link at once, and invisible to a router test
+ * that hydrates a `<div>`.
+ */
+describe("trailingSlash on the server", () => {
+  const hrefs: string[] = [];
+  const handler = createPageHandler({
+    routeTree: baseTable,
+    trailingSlash: "always",
+    app: (state) => {
+      hrefs.push(linkHref(state, { to: "/users/$id", params: { id: "7" } } as never));
+      return ssrHtml("<main>ok</main>");
+    },
+    document,
+  });
+
+  test("the rendered href carries the slash the client would write", async () => {
+    expect((await handler(get("/"))).status).toBe(200);
+    expect(hrefs).toEqual(["/users/7/"]);
+  });
+
+  test("the slashed spelling is still served", async () => {
+    expect((await handler(get("/users/7/"))).status).toBe(200);
+    expect((await handler(get("/users/7"))).status).toBe(200);
   });
 });
 

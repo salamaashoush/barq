@@ -61,7 +61,14 @@ import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { NotFound, errorFallbackFor } from "./errors.ts";
 import { addBase } from "./history.ts";
-import { interpolate, isUnder, leavesTheApp, resolvePath } from "./path.ts";
+import {
+  applyTrailingSlash,
+  interpolate,
+  isUnder,
+  leavesTheApp,
+  resolvePath,
+  withoutTrailingSlash,
+} from "./path.ts";
 
 /** The real ABI. `RouteComponent` is declared props-first for TypeScript's sake. */
 type Invoked = (scope: Scope | null, props: RouteProps) => unknown;
@@ -589,9 +596,14 @@ export function linkIsActive(
   const to = queryAt === -1 ? withoutHash : withoutHash.slice(0, queryAt);
   const linkQuery = queryAt === -1 ? "" : withoutHash.slice(queryAt + 1);
 
-  const here = state.location().pathname;
+  // COMPARED without either trailing slash. The location a browser arrived at
+  // is whatever was typed or linked, so `/about/` against a link built as
+  // `/about` was inactive — and under `trailingSlash: "always"` the two sides
+  // disagree the other way round.
+  const here = withoutTrailingSlash(state.location().pathname);
+  const target = withoutTrailingSlash(to);
   const exact = options?.exact ?? end;
-  if (!(exact ? here === to : isUnder(here, to))) return false;
+  if (!(exact ? here === target : isUnder(here, target))) return false;
 
   if (options?.includeSearch === true) {
     // A SUBSET rather than an equality: a link to `?tab=a` is active on
@@ -664,11 +676,11 @@ export function renderDepth(
       // what `notFoundMode: "fuzzy"` is for: the chain here is the deepest
       // layout owning a prefix of the path, so its answer is the specific one.
       // `config.notFound` is the application-wide fallback beneath it.
-      const own = errorFallbackFor(untrack(() => state.chain()), depth - 1, () => state.params())(
-        instance,
-        () => NOT_FOUND_ERROR,
-        NOOP_RESET,
-      );
+      const own = errorFallbackFor(
+        untrack(() => state.chain()),
+        depth - 1,
+        () => state.params(),
+      )(instance, () => NOT_FOUND_ERROR, NOOP_RESET);
       if (own !== null && own !== undefined) return own as Node;
       const fallback = state.config.notFound;
       if (fallback !== undefined) {
@@ -1227,12 +1239,20 @@ function resolveTo(state: RouterState, props: Incoming<LinkProps>): string {
     props.from === undefined
       ? state.location().pathname
       : (readSlot(props.from, "Link.from") as string);
-  const path =
+  const built =
     pattern !== undefined
       ? interpolate(pattern, (params ?? {}) as Record<string, string>)
       : params !== undefined
         ? interpolate(to, params as Record<string, string>)
         : resolvePath(to, origin);
+  // A `to` that is a route ID carries the pattern's spelling, not the caller's,
+  // so `"preserve"` reads the ORIGIN when `to` addressed nowhere new — which is
+  // the `<Link to=".">` that re-renders where you already are.
+  const path = applyTrailingSlash(
+    built,
+    state.trailingSlash,
+    (to === "" || to === "." ? origin : to).endsWith("/"),
+  );
 
   const query = queryFor(state, props);
   const hash = props.hash === undefined ? "" : (readSlot(props.hash, "Link.hash") as string);

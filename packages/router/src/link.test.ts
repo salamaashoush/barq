@@ -19,8 +19,12 @@ const table = [
   { path: "/posts/$id", component: (() => null) as never },
 ] as never as AnyRouteDefinition[];
 
-const at = (initial: string) =>
-  createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+const at = (initial: string, trailingSlash?: "always" | "never" | "preserve") =>
+  createRouter({
+    routeTree: table,
+    history: memoryHistory({ initial: [initial] }),
+    trailingSlash,
+  });
 
 /** Props reach these functions already read, so a plain object stands in. */
 const href = (state: ReturnType<typeof at>, props: Record<string, unknown>): string =>
@@ -34,9 +38,7 @@ describe("what a link addresses", () => {
   });
 
   test("a hash sits after the query", () => {
-    expect(href(at("/"), { to: "/posts", search: { tab: "a" }, hash: "x" })).toBe(
-      "/posts?tab=a#x",
-    );
+    expect(href(at("/"), { to: "/posts", search: { tab: "a" }, hash: "x" })).toBe("/posts?tab=a#x");
   });
 
   /**
@@ -45,9 +47,9 @@ describe("what a link addresses", () => {
    */
   test("a functional search is handed the current query", () => {
     const state = at("/posts?tab=a&page=1");
-    expect(href(state, { to: "/posts", search: (c: Record<string, string>) => ({ ...c, page: "2" }) })).toBe(
-      "/posts?tab=a&page=2",
-    );
+    expect(
+      href(state, { to: "/posts", search: (c: Record<string, string>) => ({ ...c, page: "2" }) }),
+    ).toBe("/posts?tab=a&page=2");
   });
 
   test("`from` pins what a relative `to` resolves against", () => {
@@ -103,5 +105,58 @@ describe("what counts as active", () => {
   test("a link with a query is still active on its path", () => {
     const state = at("/posts");
     expect(linkIsActive(state, "/posts?tab=a", true)).toBe(true);
+  });
+});
+
+describe("trailingSlash", () => {
+  test('"always" writes one, and the query still follows the path', () => {
+    expect(href(at("/", "always"), { to: "/posts" })).toBe("/posts/");
+    expect(href(at("/", "always"), { to: "/posts", search: { tab: "a" } })).toBe("/posts/?tab=a");
+    expect(href(at("/", "always"), { to: "/posts/$id", params: { id: "7" } })).toBe("/posts/7/");
+    expect(href(at("/", "always"), { to: "/" })).toBe("/");
+  });
+
+  test('"preserve" writes what the caller wrote', () => {
+    expect(href(at("/", "preserve"), { to: "/posts/" })).toBe("/posts/");
+    expect(href(at("/", "preserve"), { to: "/posts" })).toBe("/posts");
+  });
+
+  test('"never" is the default and is what barq always did', () => {
+    expect(href(at("/"), { to: "/posts/" })).toBe("/posts");
+    expect(href(at("/", "never"), { to: "/posts/" })).toBe("/posts");
+  });
+
+  test("active ignores the slash on either side", () => {
+    // The location a browser arrived at is whatever was typed, so neither
+    // spelling of "here" may decide whether a link is lit.
+    expect(linkIsActive(at("/posts/"), "/posts", true)).toBe(true);
+    expect(linkIsActive(at("/posts"), "/posts/", true)).toBe(true);
+    expect(linkIsActive(at("/posts/"), "/posts/", false)).toBe(true);
+    expect(linkIsActive(at("/posts/"), "/posts/$id", true)).toBe(false);
+  });
+});
+
+describe("navigate honours the policy", () => {
+  test('"always" pushes the slashed spelling', async () => {
+    const router = at("/", "always");
+    await router.navigate("/posts");
+    expect(router.location().pathname).toBe("/posts/");
+    await router.navigate("/");
+    expect(router.location().pathname).toBe("/");
+  });
+
+  test("the slashed spelling still matches the route", async () => {
+    const router = at("/", "always");
+    await router.navigate("/posts/7");
+    expect(router.location().pathname).toBe("/posts/7/");
+    expect(router.params()).toEqual({ id: "7" });
+  });
+
+  test('"preserve" keeps a relative navigation as written', async () => {
+    const router = at("/posts", "preserve");
+    await router.navigate("7/");
+    expect(router.location().pathname).toBe("/posts/7/");
+    await router.navigate("/posts/8");
+    expect(router.location().pathname).toBe("/posts/8");
   });
 });

@@ -60,7 +60,9 @@ export {
 
 export {
   type Segment,
+  type TrailingSlash,
   SPLAT_KEY,
+  applyTrailingSlash,
   interpolate,
   isNavigable,
   isUnder,
@@ -70,6 +72,7 @@ export {
   parsePattern,
   resolvePath,
   splitPath,
+  withoutTrailingSlash,
 } from "./path.ts";
 
 /**

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  applyTrailingSlash,
   interpolate,
   isUnder,
   joinPattern,
@@ -9,6 +10,7 @@ import {
   parsePattern,
   resolvePath,
   splitPath,
+  withoutTrailingSlash,
 } from "./path.ts";
 
 describe("splitPath / normalize", () => {
@@ -190,5 +192,29 @@ describe("interpolate, with the braced forms", () => {
 
   test("a decorated splat wraps its first and last segment", () => {
     expect(interpolate("/files/pre{$}post", { _splat: "a/b" })).toBe("/files/prea/bpost");
+  });
+});
+
+describe("trailing slash", () => {
+  test("never strips, always adds, preserve defers to the caller", () => {
+    expect(applyTrailingSlash("/about", "never", true)).toBe("/about");
+    expect(applyTrailingSlash("/about/", "never", true)).toBe("/about/");
+    expect(applyTrailingSlash("/about", "always", false)).toBe("/about/");
+    expect(applyTrailingSlash("/about", "preserve", true)).toBe("/about/");
+    expect(applyTrailingSlash("/about", "preserve", false)).toBe("/about");
+  });
+
+  test("the root never grows one", () => {
+    // `//about` is a protocol-relative URL to a browser, so a slashed root is
+    // not a cosmetic difference — it is a different origin.
+    for (const mode of ["always", "preserve", "never"] as const) {
+      expect(applyTrailingSlash("/", mode, true)).toBe("/");
+    }
+  });
+
+  test("withoutTrailingSlash leaves the root alone", () => {
+    expect(withoutTrailingSlash("/about/")).toBe("/about");
+    expect(withoutTrailingSlash("/about")).toBe("/about");
+    expect(withoutTrailingSlash("/")).toBe("/");
   });
 });

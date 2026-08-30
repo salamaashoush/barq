@@ -266,3 +266,40 @@ export function isUnder(pathname: string, prefix: string): boolean {
   if (!pathname.startsWith(prefix)) return false;
   return pathname.length === prefix.length || pathname.charCodeAt(prefix.length) === 47;
 }
+
+/**
+ * Whether a built path ends in a slash.
+ *
+ * A BUILD-time policy only. `splitPath` drops empty segments, so `/about` and
+ * `/about/` have always matched the same route and always will; what differs is
+ * the one spelling `<Link>` writes into an href and `navigate` pushes into
+ * history. Two spellings of one page is what search engines penalise, so the
+ * router picks one and writes it everywhere.
+ *
+ * `"preserve"` defers to the `to` the caller wrote, which is the only mode
+ * where one route can still produce both.
+ */
+export type TrailingSlash = "always" | "never" | "preserve";
+
+/**
+ * Apply the router's trailing-slash policy to a path built in application space.
+ *
+ * `asked` is whether the `to` that produced this path carried a trailing slash,
+ * and is read by `"preserve"` alone. The root is exempt in every mode: `//` is
+ * a protocol-relative URL to a browser, not a slashed root.
+ */
+export function applyTrailingSlash(path: string, mode: TrailingSlash, asked: boolean): string {
+  if (path === "/" || mode === "never" || (mode === "preserve" && !asked)) return path;
+  return path.endsWith("/") ? path : `${path}/`;
+}
+
+/**
+ * A pathname with any trailing slash removed, for COMPARING two spellings.
+ *
+ * The active check needs this whatever the policy is: the location a browser
+ * arrived at is whatever was typed or linked, and only paths the router itself
+ * built carry the policy — so `<Link to="/about">` on `/about/` was inactive.
+ */
+export function withoutTrailingSlash(path: string): string {
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+}

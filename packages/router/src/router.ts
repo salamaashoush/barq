@@ -44,7 +44,8 @@ import {
   type RouteLifecycle,
   flattenRoutes,
 } from "./route.ts";
-import { leavesTheApp, normalize, resolvePath } from "./path.ts";
+import { applyTrailingSlash, leavesTheApp, normalize, resolvePath } from "./path.ts";
+import type { TrailingSlash } from "./path.ts";
 import { type ScrollRestoration, scrollRestoration, withViewTransition } from "./scroll.ts";
 import {
   type SearchMiddleware,
@@ -350,6 +351,14 @@ export interface RouterConfig {
    */
   readonly caseSensitive?: boolean;
   /**
+   * Whether a path the router BUILDS ends in a slash. Default `"never"`.
+   *
+   * Matching has never cared — `splitPath` drops the empty segment — so this
+   * settles the one spelling `<Link>` writes and `navigate` pushes, and nothing
+   * about which URLs are served. `"preserve"` keeps whatever the `to` said.
+   */
+  readonly trailingSlash?: TrailingSlash;
+  /**
    * What a route gets when it declares none of these itself.
    *
    * Every one is TanStack's `default*` option under the name the ROUTE uses, so
@@ -453,6 +462,11 @@ export interface RouterState {
    * what it matched.
    */
   readonly base: string;
+  /**
+   * The resolved `trailingSlash` policy. Read by `<Link>`, which builds the one
+   * string that leaves for the browser.
+   */
+  readonly trailingSlash: TrailingSlash;
   /**
    * Nothing matched this location, and the chain is the root standing in.
    *
@@ -602,6 +616,7 @@ export interface RouterState {
 
 export function createRouter(config: RouterConfig): RouterState {
   const base = config.basepath === undefined ? "" : normalizeBase(config.basepath);
+  const trailingSlash: TrailingSlash = config.trailingSlash ?? "never";
   const defaults: RouteDefaults = config.defaults ?? {};
   // A history the CALLER built already knows its own base; one built here is
   // told. Both spellings therefore work, and neither has to repeat the other.
@@ -1392,9 +1407,11 @@ export function createRouter(config: RouterConfig): RouterState {
     const cut = intended.search(/[?#]/);
     const pathPart = cut === -1 ? intended : intended.slice(0, cut);
     const rest = cut === -1 ? "" : intended.slice(cut);
-    const resolved = resolvePath(
-      pathPart === "" ? untrack(location).pathname : pathPart,
-      untrack(location).pathname,
+    const from = untrack(location).pathname;
+    const resolved = applyTrailingSlash(
+      resolvePath(pathPart === "" ? from : pathPart, from),
+      trailingSlash,
+      (pathPart === "" ? from : pathPart).endsWith("/"),
     );
     const target = parseLocation(resolved + rest, options?.state ?? null);
 
@@ -1477,6 +1494,7 @@ export function createRouter(config: RouterConfig): RouterState {
     config,
     history,
     base,
+    trailingSlash,
     missed,
     dataFor,
     navigate,
