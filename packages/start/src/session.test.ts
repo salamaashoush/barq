@@ -163,13 +163,35 @@ describe("a cookie that will not open is a visitor who is not signed in", () => 
     expect(await unsealSession(other, sealed)).toBeNull();
   });
 
+  /**
+   * ONE BIT OF THE CIPHERTEXT, flipped in the BYTES rather than in the text.
+   *
+   * This used to flip the last base64 character, and it was flaky in 11.3% of
+   * runs — measured over 2000 seals: base64url carries no padding here, so the
+   * final character of a body
+   * whose byte length is not a multiple of three holds fewer than six
+   * significant bits. Flipping one of the spare ones decodes to the SAME
+   * ciphertext, the seal opens — correctly — and a test named for tampering had
+   * not tampered with anything.
+   */
   test("a TAMPERED ciphertext does not open it — this is what AEAD buys", async () => {
     const sealed = await sealedWith(CONFIG);
     const parts = sealed.split(".");
     const body = parts[3] ?? "";
-    // One character of the ciphertext, flipped. Without authentication this
-    // would decrypt to something, and "something" is an attacker's payload.
-    const flipped = `${body.slice(0, -1)}${body.at(-1) === "A" ? "B" : "A"}`;
+    const bytes = Uint8Array.from(atob(body.replaceAll("-", "+").replaceAll("_", "/")), (c) =>
+      c.charCodeAt(0),
+    );
+    bytes[0] ^= 0b0000_0001;
+    const flipped = btoa(String.fromCharCode(...bytes))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+    // The gate on the gate: a tamper that did not change the ciphertext proves
+    // nothing about authentication, which is exactly how this passed while
+    // testing nothing.
+    expect(flipped).not.toBe(body);
+    // Without authentication this would decrypt to something, and "something"
+    // is an attacker's payload.
     expect(await unsealSession(CONFIG, [...parts.slice(0, 3), flipped].join("."))).toBeNull();
   });
 
