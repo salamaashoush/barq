@@ -271,6 +271,25 @@ fn compile_on_this_stack(
     let filename = options.filename.as_deref().unwrap_or(DEFAULT_FILENAME);
     let source_type = source_type_for(options.filename.as_deref());
 
+    // THE MIDDLEWARE STRIP, before the parse, because it is a source-to-source
+    // rewrite and everything below wants the source it produced.
+    //
+    // Here rather than in a Vite plugin so that every module gets it without a
+    // caller opting in: a middleware's `.server(…)` reaching a browser is the
+    // leak the client stub exists to prevent, and a rule that has to be wired
+    // up per plugin is one an integration can forget. `Blanker` preserves every
+    // offset, so a source map over the result still points at the author's
+    // lines.
+    let stripped;
+    let source = if options.env == crate::options::Env::Client
+        && crate::middleware_split::mentions(source)
+    {
+        stripped = crate::middleware_split::split(source, filename, &options.start_source);
+        stripped.as_deref().unwrap_or(source)
+    } else {
+        source
+    };
+
     let allocator = Allocator::new();
     let ParserReturn { mut program, diagnostics, panicked, .. } =
         Parser::new(&allocator, source, source_type)
@@ -528,13 +547,46 @@ fn client_stubs(
     filename: &str,
 ) -> String {
     let module = module_id(options, filename);
+
+    // The chain each export can carry, and the imports that bind it.
+    //
+    // A middleware's `.client()` half runs in the browser, so the stub has to
+    // name the chain — and the stub is synthesized from nothing, so naming it
+    // means reproducing the import too. Only a PROJECT-RELATIVE import is
+    // reproduced (`Scan::imports` says why), so a chain naming anything else is
+    // dropped whole rather than half-emitted.
+    let mut needed: Vec<&analysis::server_fn::ImportLine> = Vec::new();
+    let bound =
+        |name: &str| scan.imports.iter().find(|line| line.names.iter().any(|bound| bound == name));
+    let chains: Vec<Option<&Vec<String>>> = scan
+        .server_fns()
+        .map(|export| {
+            if export.middleware.is_empty() || !export.middleware.iter().all(|n| bound(n).is_some())
+            {
+                return None;
+            }
+            for name in &export.middleware {
+                if let Some(line) = bound(name)
+                    && !needed.iter().any(|kept| std::ptr::eq(*kept, line))
+                {
+                    needed.push(line);
+                }
+            }
+            Some(&export.middleware)
+        })
+        .collect();
+
     let mut out = String::new();
     out.push_str("import { clientRpc } from \"");
     // The CLIENT subpath, never the index: the index re-exports `context.ts`
     // and `node:async_hooks` with it. See `DEFAULT_CLIENT_SOURCE`.
     out.push_str(&options.client_source);
     out.push_str("\";\n");
-    for export in scan.server_fns() {
+    for line in &needed {
+        out.push_str(&line.text);
+        out.push('\n');
+    }
+    for (export, chain) in scan.server_fns().zip(chains) {
         // `export const default = …` is a syntax error, so the default export
         // takes the statement form. Its id still spells `#default`, which is
         // what the manifest mounts and what `alias.default` reaches.
@@ -546,6 +598,11 @@ fn client_stubs(
             out.push_str(" = /* @__PURE__ */ clientRpc(");
         }
         push_json_string(&mut out, &format!("{module}#{}", export.name));
+        if let Some(names) = chain {
+            out.push_str(", [");
+            out.push_str(&names.join(", "));
+            out.push(']');
+        }
         out.push_str(");\n");
     }
     out
@@ -1021,6 +1078,95 @@ mod tests {
         assert!(code.contains("clientRpc"));
     }
 
+    /// The client stub CARRIES THE CHAIN, which is what lets a middleware's
+    /// `.client()` half run in the browser at all. Nothing else in the stub
+    /// changes: the handler, the validator and the server halves are still
+    /// absent by construction.
+    #[test]
+    fn the_stub_names_the_middleware_chain_and_imports_it() {
+        let code = client_of(
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             import { requireSession } from \"../auth\";\n\
+             export const save = createServerFn()\n\
+               .middleware([requireSession])\n\
+               .handler(async () => 1);",
+        );
+        assert!(code.contains("clientRpc(\"server/users.ts#save\", [requireSession])"), "{code}");
+        assert!(code.contains("from \"../auth\""), "{code}");
+    }
+
+    /// The strip runs on ANY client module, not just one holding server
+    /// functions — a middleware lives in a module of its own.
+    #[test]
+    fn a_client_module_loses_its_middleware_server_halves() {
+        let code = client_of(
+            "import { createMiddleware, useSession } from \"@barqjs/start\";\n\
+             export const requireSession = createMiddleware()\n\
+               .client(async ({ next }) => next())\n\
+               .server(async ({ next }) => next({ context: { s: await useSession({}) } }));",
+        );
+        assert!(!code.contains("useSession({"), "{code}");
+        assert!(code.contains(".client("), "{code}");
+        assert!(code.contains("createMiddleware()"), "{code}");
+    }
+
+    /// …and the SERVER build keeps both halves, which is the other half of the
+    /// claim and the one a strip could silently break.
+    #[test]
+    fn the_server_build_keeps_both_middleware_halves() {
+        let options = ResolvedOptions {
+            env: crate::options::Env::Server,
+            root: Some("/home/me/app".to_string()),
+            ..ResolvedOptions::with_filename("/home/me/app/src/auth.ts")
+        };
+        let code = compile(
+            "import { createMiddleware, useSession } from \"@barqjs/start\";\n\
+             export const requireSession = createMiddleware()\n\
+               .server(async ({ next }) => next({ context: { s: await useSession({}) } }));",
+            &options,
+        )
+        .unwrap_or_else(|d| panic!("{}", format_diagnostics(&d)))
+        .code;
+        assert!(code.contains("useSession({"), "{code}");
+    }
+
+    /// A BARE PACKAGE SPECIFIER is not reproduced, and the chain goes with it.
+    ///
+    /// `import { … } from "@barqjs/start"` in a stub is the leak the whole
+    /// synthesis exists to prevent — the index reaches `node:async_hooks`. A
+    /// chain that cannot be imported safely is dropped whole, so the stub is
+    /// exactly what it was before any of this.
+    #[test]
+    fn a_chain_from_a_package_is_not_carried() {
+        let code = client_of(
+            "import { createServerFn, someGuard } from \"@barqjs/start\";\n\
+             export const save = createServerFn()\n\
+               .middleware([someGuard])\n\
+               .handler(async () => 1);",
+        );
+        assert!(!code.contains("someGuard"), "{code}");
+        assert!(code.contains("clientRpc(\"server/users.ts#save\");"), "{code}");
+    }
+
+    /// `.middleware(chain)` and `.middleware([...rest])` are runtime
+    /// expressions. A partial chain would be worse than none — the stub would
+    /// silently run fewer client halves than were written — so nothing is
+    /// lifted.
+    #[test]
+    fn a_chain_that_is_not_a_literal_array_of_identifiers_is_not_lifted() {
+        for source in [
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             import { chain } from \"../auth\";\n\
+             export const save = createServerFn().middleware(chain).handler(async () => 1);",
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             import { rest } from \"../auth\";\n\
+             export const save = createServerFn().middleware([...rest]).handler(async () => 1);",
+        ] {
+            let code = client_of(source);
+            assert!(code.contains("clientRpc(\"server/users.ts#save\");"), "{code}");
+        }
+    }
+
     /// Export-ness decides the surface, so an internal server function has no
     /// stub and therefore no id and no endpoint.
     #[test]
@@ -1457,6 +1603,130 @@ export const Route = createFileRoute("/x")({
         assert!(
             output.code.contains("errorComponent: _$block(function Boom(_s$, { error })"),
             "the inline function expression did not take a scope:\n{}",
+            output.code
+        );
+    }
+
+    /// The CAPTURE phase, in both spellings.
+    ///
+    /// A capture binding is the only way to see an event before a descendant
+    /// handles it, which is what a component needs when the meaning of a key
+    /// depends on state a child does not have. Delegation cannot serve one —
+    /// the document listener runs after the whole bubble path — so a capture
+    /// prop is always a direct `addEventListener` with `true`, even for a name
+    /// that is in the delegated set.
+    #[test]
+    fn a_capture_prop_binds_a_direct_capturing_listener() {
+        let source = r#"export function Row(props) {
+  return <div onKeyDownCapture={props.onKeyDownCapture} capture:click={props.onClick} />;
+}
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(
+            output.code.contains(r#""keydown""#),
+            "the Capture suffix was not stripped from the type:\n{}",
+            output.code
+        );
+        assert!(
+            !output.code.contains("keydowncapture"),
+            "the suffix reached the event type:\n{}",
+            output.code
+        );
+        // `click` is in the delegated set and must NOT be delegated here.
+        assert!(
+            !output.code.contains("$$click"),
+            "a capture binding was delegated:\n{}",
+            output.code
+        );
+        assert!(
+            output.code.matches(", true)").count() >= 2,
+            "the capture flag did not reach the runtime:\n{}",
+            output.code
+        );
+    }
+
+    /// A bubble binding's output does not move.
+    #[test]
+    fn an_ordinary_event_is_unchanged_by_capture_support() {
+        let source = r#"export function Row(props) {
+  return <div onClick={props.onClick} onFocus={props.onFocus} />;
+}
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(output.code.contains("$$click"), "{}", output.code);
+        assert!(!output.code.contains(", true)"), "a bubble binding grew a flag:\n{}", output.code);
+    }
+
+    /// A `<For>` row that DELEGATES still takes the scope.
+    ///
+    /// The evidence a slot literal on an unknown component needs — that it
+    /// builds JSX — is not needed on a construct this compiler lowers itself:
+    /// `each` calls the row `(scope, item, index)` whatever the row does with
+    /// them. Without the parameter the author's first binding receives the
+    /// SCOPE, and since both are objects nothing fails until a property read
+    /// comes back undefined somewhere else entirely.
+    #[test]
+    fn a_flow_row_that_builds_no_jsx_still_takes_a_scope() {
+        let source = r#"import { For } from "@barqjs/core";
+export function List(props) {
+  return <ul><For each={() => props.rows()}>{(row) => render(row)}</For></ul>;
+}
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(
+            output.code.contains("_$block((_s$, row) => render(row))"),
+            "the delegating row did not take a scope:\n{}",
+            output.code
+        );
+    }
+
+    /// `keyed` is a KEY function, called with the item and nothing else.
+    #[test]
+    fn a_key_function_does_not_take_a_scope() {
+        let source = r#"import { For } from "@barqjs/core";
+export function List(props) {
+  return <For each={() => props.rows()} keyed={(row) => row.id}>{(row) => <li>{row.id}</li>}</For>;
+}
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(
+            output.code.contains("(row) => row.id"),
+            "the key function was given a scope:\n{}",
+            output.code
+        );
+    }
+
+    /// The testing package's `render` opens a root too.
+    ///
+    /// `render(() => <App/>)` in a test is the same position as
+    /// `render(() => <App/>, host)` in an application: the callee opens a root
+    /// scope and invokes the argument with it. Left uncompiled, the arrow
+    /// ignores the scope and the whole tree is built against the module-level
+    /// `null` — no ownership, no context, and a `<For>` whose rows are parented
+    /// to nothing.
+    #[test]
+    fn a_testing_render_takes_a_scope_too() {
+        let source = r#"import { render } from "@barqjs/testing";
+render(() => <App />);
+"#;
+        let output = compile_ok(source, "a.test.tsx");
+        assert!(
+            output.code.contains("render((_s$) => App(_s$, {}))"),
+            "the test's root arrow did not take a scope:\n{}",
+            output.code
+        );
+    }
+
+    /// A `render` that is NOT one of the framework's is left alone.
+    #[test]
+    fn a_local_render_is_not_a_root_mount() {
+        let source = r#"function render(fn) { return fn(); }
+render(() => <App />);
+"#;
+        let output = compile_ok(source, "a.tsx");
+        assert!(
+            output.code.contains("render(() => App(_s$, {}))"),
+            "a local function's callback was rewritten:\n{}",
             output.code
         );
     }
