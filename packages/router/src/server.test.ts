@@ -19,7 +19,7 @@ import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { RouterProvider } from "./components.ts";
+import { RouterProvider, linkAttrHref } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
@@ -2248,5 +2248,65 @@ describe("loaderData in head", () => {
       /* drain */
     }
     expect(firstByteAt).toBeGreaterThanOrEqual(LOADER_MS - 10);
+  });
+});
+
+/**
+ * `basepath` — the deployment mounted somewhere other than the origin root.
+ *
+ * `history.ts` has had `stripBase` and `addBase` since it was written and
+ * nothing reached them: `createRouter` took no base, so an application under
+ * one had to build its own history, and `<Link>` still wrote an href without
+ * it. That last part is the reason this went unnoticed — on the click path the
+ * router intercepts and the missing base is invisible, so it only shows on
+ * "open in new tab", a reload, or a crawler.
+ */
+describe("basepath", () => {
+  const handler = createPageHandler({
+    routeTree: baseTable,
+    basepath: "/app",
+    app: () => ssrHtml("<main>ok</main>"),
+    document,
+  });
+
+  test("a path under the base matches the pattern written without it", async () => {
+    expect((await handler(get("/app/"))).status).toBe(200);
+    expect((await handler(get("/app/users/7"))).status).toBe(200);
+  });
+
+  /** The same path WITHOUT the base is not this application's. */
+  test("a path outside the base is not served", async () => {
+    expect((await handler(get("/users/7"))).status).toBe(404);
+    expect((await handler(get("/other/users/7"))).status).toBe(404);
+  });
+
+  /** A prefix that is not a whole segment must not count as inside. */
+  test("the base is matched by segment, not by prefix", async () => {
+    expect((await handler(get("/application/users/7"))).status).toBe(404);
+  });
+
+  test("a miss under the base is still a miss", async () => {
+    expect((await handler(get("/app/nope"))).status).toBe(404);
+  });
+});
+
+/**
+ * The href a browser sees carries the base; everything inside the router does
+ * not. Two spellings, because they answer different questions — see
+ * `linkAttrHref`.
+ */
+describe("a link under a basepath", () => {
+  test("the attribute carries the base and the router's own view does not", () => {
+    const state = createRouter({ routeTree: baseTable, basepath: "/app" });
+    expect(state.base).toBe("/app");
+    expect(linkAttrHref(state, "/users/7")).toBe("/app/users/7");
+    // An off-site target is left exactly as written.
+    expect(linkAttrHref(state, "https://x.test/y")).toBe("https://x.test/y");
+  });
+
+  test("no basepath is not a transformation", () => {
+    const state = createRouter({ routeTree: baseTable });
+    expect(state.base).toBe("");
+    expect(linkAttrHref(state, "/users/7")).toBe("/users/7");
   });
 });

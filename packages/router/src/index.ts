@@ -123,6 +123,7 @@ export {
   Router,
   RouterContext,
   RouterProvider,
+  linkAttrHref,
   renderDepth,
   useRouteMatch,
   useRouter,

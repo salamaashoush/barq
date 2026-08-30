@@ -54,7 +54,7 @@ import {
   describe as describeViolations,
   verifyRouteChains,
 } from "./manifest.ts";
-import { memoryHistory } from "./history.ts";
+import { memoryHistory, normalizeBase, stripBase } from "./history.ts";
 import { type Match, createMatcher } from "./matcher.ts";
 import { settle } from "@barqjs/core";
 import { setAsyncSession } from "@barqjs/core/internal";
@@ -323,6 +323,14 @@ export interface DocumentParts {
 export interface PageHandlerOptions {
   /** The route table, as `routeTree.gen.ts` exports it. */
   readonly routeTree: readonly AnyRouteDefinition[];
+  /**
+   * The path the application is mounted under, matching `RouterConfig`'s.
+   *
+   * Stripped from the request before anything matches, so every route pattern
+   * and every route HANDLER is written in application space. The client half
+   * has to be given the same value; `barqStart` passes one through to both.
+   */
+  readonly basepath?: string;
   /**
    * The application, as the string backend wants it: returns `SsrHtml`.
    *
@@ -601,9 +609,23 @@ export function createPageHandler(
 ): (request: Request) => Promise<Response> {
   const matcher = createMatcher(flattenRoutes(options.routeTree));
 
+  const base = options.basepath === undefined ? "" : normalizeBase(options.basepath);
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
-    const match = matcher.match(url.pathname);
+    // APPLICATION SPACE from here down. Everything after this line — the
+    // matcher, the route handlers, the router state the render is given — sees
+    // the path as if the application owned the origin, which is what lets a
+    // route file be written without knowing where it was deployed.
+    //
+    // A request OUTSIDE the base is not this application's: answering it would
+    // mean `/other/about` rendering the page `/about` does, from a path the
+    // deployment never claimed.
+    const inside = base === "" || url.pathname === base || url.pathname.startsWith(`${base}/`);
+    if (!inside) return new Response("not found", { status: 404 });
+    const pathname = base === "" ? url.pathname : stripBase(url.pathname, base);
+    if (base !== "") url.pathname = pathname;
+    const match = matcher.match(pathname);
 
     // A ROUTE'S OWN HANDLER ANSWERS FIRST, and before the method gate, because
     // the whole point of one is to answer a `POST` that a page never could.
@@ -678,7 +700,8 @@ export function createPageHandler(
     const config: RouterConfig = {
       routeTree: options.routeTree,
       beforeEach: options.beforeEach,
-      history: memoryHistory({ initial: [url.pathname + url.search] }),
+      basepath: options.basepath,
+      history: memoryHistory({ initial: [pathname + url.search] }),
       onLoaderError(error) {
         if (isNotFound(error)) missing = true;
         answer ??= asResponse(error);

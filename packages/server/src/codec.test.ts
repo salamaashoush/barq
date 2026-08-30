@@ -110,7 +110,7 @@ describe("a control-flow throwable survives the wire", () => {
 describe("a rejected loader on the streaming channel", () => {
   const NOT_FOUND = Symbol.for("barq.not-found");
 
-  const streamOf = async (value: unknown): Promise<string> => {
+  const streamOf = async (value: Record<string, unknown>): Promise<string> => {
     const encoder = createSeedEncoder();
     const chunks: string[] = [];
     await new Promise<void>((done) => {

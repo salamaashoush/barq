@@ -529,7 +529,7 @@ describe("the registry", () => {
     expect(mounted()).toEqual(["dup"]);
     // The newest definition is the one that answers.
     const response = await handleServerFn(post("dup", undefined));
-    expect(decodeWire(await response!.json())).toBe(2);
+    expect(decodeWire<number>(await response!.json())).toBe(2);
   });
 
   test("a URL that is not a server function is not this handler's", async () => {
@@ -926,8 +926,11 @@ describe("a server function's control-flow throws", () => {
    * pair broke — so `errors.test.ts` in the router pins the other direction, and
    * these two literals are the contract.
    */
+  const REDIRECT = Symbol.for("barq.redirect");
+  const NOT_FOUND = Symbol.for("barq.not-found");
+
   class Redirected extends Error {
-    readonly [Symbol.for("barq.redirect")] = true;
+    readonly [REDIRECT] = true;
     constructor(
       readonly to: string,
       readonly status = 302,
@@ -936,7 +939,7 @@ describe("a server function's control-flow throws", () => {
     }
   }
   class Missing extends Error {
-    readonly [Symbol.for("barq.not-found")] = true;
+    readonly [NOT_FOUND] = true;
   }
 
   // `"unchecked"` rather than `null`: the form channel posts a `FormData` body,

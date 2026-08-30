@@ -59,6 +59,7 @@ import type { ToPath } from "./register.ts";
 import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { errorFallbackFor } from "./errors.ts";
+import { addBase } from "./history.ts";
 import { interpolate, isUnder, leavesTheApp, resolvePath } from "./path.ts";
 
 /** The real ABI. `RouteComponent` is declared props-first for TypeScript's sake. */
@@ -529,6 +530,23 @@ export function linkHref(state: RouterState, props: Incoming<LinkProps>): string
   return resolveTo(state, props);
 }
 
+/**
+ * The same target, as the BROWSER must see it.
+ *
+ * Two spellings because they answer different questions. Everything inside the
+ * router — matching, the active check, `navigate` — works in application space,
+ * where `/about` is `/about` whatever the deployment mounted it under. The
+ * `href` ATTRIBUTE is the one string that leaves for the browser, and it has to
+ * carry the base or a middle-click opens a URL the server does not serve.
+ *
+ * That asymmetry is why the base was never wired up before: on the click path
+ * the router intercepts and the missing base is invisible, so the bug only
+ * appears on "open in new tab", a reload, or a crawler.
+ */
+export function linkAttrHref(state: RouterState, to: string): string {
+  return state.base === "" || leavesTheApp(to) ? to : addBase(to, state.base);
+}
+
 /** Whether a `<NavLink>` points at where you are, for either backend. */
 export function linkIsActive(state: RouterState, href: string, end: boolean): boolean {
   const to = href.split("?")[0];
@@ -973,7 +991,7 @@ function anchorElement(
   // path it was built under forever.
   const target = (): string => resolveTo(state, props);
 
-  bindProp(scope, element, setAttr, "href", target);
+  bindProp(scope, element, setAttr, "href", () => linkAttrHref(state, target()));
   if (props.class !== undefined) {
     bindProp(scope, element, setClass, "class", () => readSlot(props.class, "Link.class"));
   }
@@ -1079,7 +1097,13 @@ function LinkImpl(scope: Scope | null, props: Incoming<LinkProps>): Node {
   if (backend !== null) {
     const className =
       props.class === undefined ? "" : (readSlot(props.class, "Link.class") as string);
-    return backend.link(linkHref(useRouter(), props), className, props.children) as never;
+    const state = useRouter();
+    // The ATTRIBUTE carries the base; nothing else does. See `linkAttrHref`.
+    return backend.link(
+      linkAttrHref(state, linkHref(state, props)),
+      className,
+      props.children,
+    ) as never;
   }
   return anchorElement(scope, props, () => {});
 }
@@ -1115,7 +1139,7 @@ function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
         : (readSlot(props.activeClass, "NavLink.activeClass") as string);
     const active = linkIsActive(state, href, end);
     const className = active ? `${base} ${activeClass}`.trim() : base;
-    return backend.link(href, className, props.children) as never;
+    return backend.link(linkAttrHref(state, href), className, props.children) as never;
   }
   return anchorElement(scope, props, (element, target) => {
     const active = (): boolean => {

@@ -21,8 +21,11 @@ import { isNavigable } from "./path.ts";
 
 describe("the brands @barqjs/start agrees to", () => {
   test("the symbols are the ones the other package writes", () => {
-    expect(REDIRECT).toBe(Symbol.for("barq.redirect"));
-    expect(NOT_FOUND).toBe(Symbol.for("barq.not-found"));
+    // `as symbol`: `export const X = Symbol.for(...)` infers `unique symbol`,
+    // and the literal on the right is a plain `symbol`. They are the same
+    // value — that is the assertion — and only the declared types differ.
+    expect(REDIRECT as symbol).toBe(Symbol.for("barq.redirect"));
+    expect(NOT_FOUND as symbol).toBe(Symbol.for("barq.not-found"));
   });
 
   test("what this package throws carries them", () => {
@@ -58,8 +61,11 @@ describe("the brands @barqjs/start agrees to", () => {
    * one was invisible to the other.
    */
   test("a second copy of the class is still a redirect", () => {
+    // Declared as its own `const` because a computed class-property name needs
+    // a `unique symbol`, which is what a `const` binding of `Symbol.for` is.
+    const brand = Symbol.for("barq.redirect");
     class OtherCopy extends Error {
-      readonly [Symbol.for("barq.redirect")] = true;
+      readonly [brand] = true;
       readonly to = "/login";
       readonly status = 302;
     }

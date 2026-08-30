@@ -73,7 +73,14 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
       : { routeTree: options.routeTree };
   const state = createRouter({
     ...config,
-    history: options.history ?? browserHistory(),
+    // The base reaches the HISTORY, not only the router: `browserHistory`
+    // strips it from `window.location` on the way in and adds it back on every
+    // push, and it is the only thing that reads `window.location` at all. A
+    // router given a `basepath` over a history without one matched
+    // `/app/about` as `/app/about` and found nothing.
+    history:
+      options.history ??
+      browserHistory(config.basepath === undefined ? undefined : { base: config.basepath }),
   });
 
   await state.start();

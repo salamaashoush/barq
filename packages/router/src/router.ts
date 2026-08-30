@@ -28,7 +28,14 @@ import {
 } from "@barqjs/core";
 
 import { isRedirect } from "./errors.ts";
-import { type History, type Location, href, memoryHistory, parseLocation } from "./history.ts";
+import {
+  type History,
+  type Location,
+  href,
+  memoryHistory,
+  normalizeBase,
+  parseLocation,
+} from "./history.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
 import { leavesTheApp, resolvePath } from "./path.ts";
@@ -273,6 +280,22 @@ export interface RouterConfig {
    */
   readonly routeTree: readonly AnyRouteDefinition[];
   readonly history?: History;
+  /**
+   * The path the application is mounted under, when it is not the origin root.
+   *
+   * `/app` makes `<Link to="/about">` write `href="/app/about"` and makes the
+   * server match `/app/about` as `/about`, so every route pattern in the
+   * project stays written as if the application owned the origin — which is
+   * what makes a base a DEPLOYMENT decision rather than something route files
+   * have to know about.
+   *
+   * `history.ts` has had `stripBase`/`addBase` since it was written and nothing
+   * reached them: `createRouter` took no base, so an application under one had
+   * to build its own `browserHistory({ base })`, and even then `<Link>` still
+   * wrote an href without it — correct on click, wrong on "open in new tab",
+   * which is the shape of bug that survives every click-through test.
+   */
+  readonly basepath?: string;
   /** Rendered at depth 0 when nothing matched. */
   readonly notFound?: AnyRouteDefinition["component"];
   readonly beforeEach?: readonly Guard[];
@@ -359,6 +382,12 @@ export interface RouterState {
   readonly matcher: Matcher<Route>;
   readonly config: RouterConfig;
   readonly history: History;
+  /**
+   * The normalised `basepath`, or `""`. Read by `<Link>` to write an href a
+   * browser can follow without JavaScript, and by the page handler to strip
+   * what it matched.
+   */
+  readonly base: string;
   /**
    * Tell the router this depth's `pending` fallback is on screen.
    *
@@ -500,6 +529,9 @@ export interface RouterState {
 }
 
 export function createRouter(config: RouterConfig): RouterState {
+  const base = config.basepath === undefined ? "" : normalizeBase(config.basepath);
+  // A history the CALLER built already knows its own base; one built here is
+  // told. Both spellings therefore work, and neither has to repeat the other.
   const history = config.history ?? memoryHistory();
   const matcher = createMatcher(flattenRoutes(config.routeTree));
 
@@ -1291,6 +1323,7 @@ export function createRouter(config: RouterConfig): RouterState {
     matcher,
     config,
     history,
+    base,
     dataFor,
     navigate,
     buildSearch,
