@@ -201,6 +201,7 @@ export {
   useRouterState,
   useMatches,
   useNavigate,
+  useServerFn,
   useParams,
   useSearch,
   useSearchParams,

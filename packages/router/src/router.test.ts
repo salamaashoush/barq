@@ -23,7 +23,14 @@ import { Await, Link, NavLink, Router, RouterProvider, linkHref, useRouter } fro
 import { notFound, redirect } from "./errors.ts";
 import { retainSearchParams } from "./search.ts";
 import { memoryHistory } from "./history.ts";
-import { useLocation, useNavigate, useParams, useSearch, useSearchParams } from "./hooks.ts";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearch,
+  useSearchParams,
+  useServerFn,
+} from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouterState, createRouter } from "./router.ts";
 
@@ -2869,5 +2876,96 @@ describe("Await", () => {
     expect(mounted.host.textContent).toContain("caught the slow part failed");
     mounted.dispose();
     state.dispose();
+  });
+});
+
+/**
+ * `useServerFn` — the four lines every caller of a redirecting server function
+ * writes, written once.
+ */
+describe("useServerFn", () => {
+  /** What `fn` threw, as a value. `redirect` and `notFound` both throw. */
+  const thrownBy = (fn: () => never): unknown => {
+    try {
+      fn();
+    } catch (error) {
+      return error;
+    }
+    throw new Error("it did not throw");
+  };
+
+  /**
+   * Mount a route whose component wraps `fn`, and hand the wrapper back.
+   *
+   * The hook resolves through the SCOPE chain, so the call has to happen inside
+   * a route component — which is where an application makes it too.
+   */
+  const wrapped = <Out>(
+    fn: () => Promise<Out>,
+    initial = "/",
+  ): { call: () => Promise<Out>; state: RouterState; dispose: () => void } => {
+    let call!: () => Promise<Out>;
+    let state!: RouterState;
+    const table = [
+      {
+        path: "/",
+        component: () => {
+          state = useRouter();
+          call = useServerFn(fn);
+          return document.createTextNode("home");
+        },
+      },
+      { path: "/login", component: (() => document.createTextNode("login")) as never },
+    ] as never as AnyRouteDefinition[];
+    const mounted = mount({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+    return { call, state, dispose: mounted.dispose };
+  };
+
+  test("a THROWN redirect navigates instead of rejecting", async () => {
+    const { call, state, dispose } = wrapped(async () => {
+      throw redirect("/login");
+    });
+    await call();
+    await tick();
+    expect(state.location().pathname).toBe("/login");
+    dispose();
+  });
+
+  /**
+   * A RETURNED redirect too. `return redirect(...)` is the same decision as
+   * throwing one, and handing it back as a value would render a navigation
+   * instruction as data.
+   */
+  test("a RETURNED redirect navigates as well", async () => {
+    const asValue = thrownBy(() => redirect("/login"));
+    const { call, state, dispose } = wrapped(async () => asValue as never);
+    await call();
+    await tick();
+    expect(state.location().pathname).toBe("/login");
+    dispose();
+  });
+
+  test("an ordinary value comes back untouched", async () => {
+    const { call, dispose } = wrapped(async () => 41 + 1);
+    expect(await call()).toBe(42);
+    dispose();
+  });
+
+  /**
+   * `notFound()` is NOT caught. A redirect names somewhere to go and the router
+   * is the only thing that can go there; a not-found is an answer about what the
+   * caller asked for, and swallowing it would take it from the component that
+   * knows what to render instead.
+   */
+  test("anything else is re-thrown, and the location does not move", async () => {
+    const gone = thrownBy(() => notFound("gone"));
+    for (const thrown of [new Error("boom"), gone]) {
+      const { call, state, dispose } = wrapped(async () => {
+        throw thrown;
+      });
+      await expect(call()).rejects.toBe(thrown);
+      expect(state.location().pathname).toBe("/");
+      dispose();
+    }
   });
 });

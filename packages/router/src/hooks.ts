@@ -9,6 +9,7 @@
 import { type Cell, onCleanup } from "@barqjs/core";
 
 import { useRouter } from "./components.ts";
+import { isRedirect } from "./errors.ts";
 import type { Location } from "./history.ts";
 import type { Route } from "./route.ts";
 import type { Blocker, NavigateOptions } from "./router.ts";
@@ -36,6 +37,45 @@ export function useSearch<S extends Record<string, unknown> = Record<string, unk
 export function useNavigate(): (to: string, options?: NavigateOptions) => Promise<void> {
   const state = useRouter();
   return (to, options) => state.navigate(to, options);
+}
+
+/**
+ * A server function whose `throw redirect(...)` reaches the ROUTER.
+ *
+ * Calling one directly gives back a rejected promise carrying the redirect, and
+ * every caller then writes the same four lines: catch it, test it, hand `.to` to
+ * `navigate`, re-throw whatever else it was. `/control` in the reference
+ * application is exactly those four lines. This is them, once.
+ *
+ * A RETURNED redirect is thrown too, not just a thrown one. A handler that
+ * writes `return redirect(...)` instead of `throw` has made the same decision,
+ * and answering with it as a VALUE would render a navigation instruction as
+ * data. TanStack tests the result for the same reason.
+ *
+ * `notFound()` is deliberately NOT caught. A redirect names somewhere to go and
+ * the router is the only thing that can go there; a not-found is an answer about
+ * what the caller asked for, and swallowing it here would take it away from the
+ * component that knows what to render instead. Theirs draws the same line.
+ */
+export function useServerFn<Args extends readonly unknown[], Out>(
+  fn: (...args: Args) => Promise<Out>,
+): (...args: Args) => Promise<Out> {
+  const state = useRouter();
+  return async (...args: Args): Promise<Out> => {
+    let result: Out;
+    try {
+      result = await fn(...args);
+    } catch (error) {
+      if (!isRedirect(error)) throw error;
+      await state.navigate(error.to);
+      return undefined as Out;
+    }
+    if (isRedirect(result)) {
+      await state.navigate(result.to);
+      return undefined as Out;
+    }
+    return result;
+  };
 }
 
 /**
