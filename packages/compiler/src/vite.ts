@@ -112,6 +112,14 @@ export interface BarqCompilerOptions {
   routerSource?: string;
 
   /**
+   * Module source for `css`, `keyframes` and `globalCss`. Resolution is by
+   * symbol, so this is the specifier an import must NAME rather than a text the
+   * source must contain — your own `css` is never mistaken for this one.
+   * @default "@barqjs/css"
+   */
+  cssSource?: string;
+
+  /**
    * Every route pattern in the project, which is what BARQ013 checks a
    * `<Link to>` against.
    *
@@ -237,6 +245,7 @@ export type BarqOptimisation =
 
 interface NativeTransformOptions {
   routerSource?: string;
+  cssSource?: string;
   routes?: readonly string[];
   moduleSource?: string;
   serverSource?: string;
@@ -268,7 +277,47 @@ interface NativeResult {
   diagnostics?: BarqDiagnostic[];
   labels?: BarqTemplateLabel[];
   serverFns?: string;
+  css?: string;
 }
+
+/**
+ * The suffix a module's stylesheet is served under.
+ *
+ * A real `.css` PATH rather than the `?…&lang.css` query `@vitejs/plugin-vue`
+ * uses for a SFC's `<style>`. Measured against Vite 8: the query form dies in
+ * rolldown's `builtin:vite-transform` with "Failed to detect the lang of
+ * …/Demo.tsx?barq-css&lang.css", because the path it reads still ends `.tsx`.
+ * `vanilla-extract` reached the same shape (`<file>.vanilla.css`) for the same
+ * reason. Ending in `.css` puts it in Vite's own CSS pipeline, so dev HMR, the
+ * production asset and SSR collection are all the bundler's, and one file
+ * edited invalidates one file's stylesheet.
+ */
+const CSS_QUERY = ".barq.css";
+
+/**
+ * A module's compiled CSS, appended to the module itself.
+ *
+ * The `"inline"` half of {@link BarqVitePluginOptions.cssMode}, exported
+ * because the Vite plugin is not the only loader a barq module goes through:
+ * `bun test` runs the same native transform with no bundler behind it, and it
+ * dropped `result.css` on the floor until this was shared rather than inlined
+ * in one caller.
+ *
+ * Keyed by module id, so re-evaluating the module replaces its rules.
+ */
+export function cssRegistration(
+  id: string,
+  css: string,
+  cssSource = DEFAULT_CSS_SOURCE,
+): string {
+  return (
+    `\nimport { registerCss as _$registerCss } from ${JSON.stringify(cssSource)};\n` +
+    `_$registerCss(${JSON.stringify(id)}, ${JSON.stringify(css)});\n`
+  );
+}
+
+/** The specifier the compiler resolves `css`/`keyframes`/`globalCss` against. */
+export const DEFAULT_CSS_SOURCE = "@barqjs/css";
 
 interface NativeCompiler {
   transform(code: string, options?: NativeTransformOptions): NativeResult;
@@ -311,6 +360,25 @@ export interface BarqVitePluginOptions extends BarqCompilerOptions {
   exclude?: (string | RegExp)[];
 
   /**
+   * How a module's compiled CSS reaches the page.
+   *
+   * `"asset"` serves it from a `.css` module the transformed code imports, so
+   * Vite emits a real stylesheet and `<HeadContent />` links it. That needs a
+   * BUNDLE, which is the one thing dev does not have: a dev server has no
+   * `generateBundle`, so a server-rendered dev page arrived with its classes in
+   * the markup and no stylesheet of any kind.
+   *
+   * `"inline"` appends `registerCss(id, css)` instead, so the module carries
+   * its own rules and every environment reads one registry — the dev document
+   * inlines `collectCss()`, `bun test` gets the rules in its sheet, and a block
+   * the compiler declined lands in the same place instead of a parallel one.
+   *
+   * Derived from {@link dev} when left unset, which is the only correct
+   * default: assets need a build and a build is not dev.
+   */
+  cssMode?: "asset" | "inline";
+
+  /**
    * The in-page diagnostics panel, in dev. Deliberately not Vite's own overlay:
    * `ErrorOverlay` takes `ErrorPayload['err']`, has one red border and no
    * warning payload type at all. `"warning"` opens the panel on the first
@@ -337,6 +405,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     include = [".tsx", ".jsx"],
     exclude = [/node_modules/],
     overlay = "warning",
+    cssMode,
     ...compilerOptions
   } = options;
 
@@ -352,6 +421,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   // channel that survives one.
   const byModule = new Map<string, BarqDiagnostic[]>();
   const labelsByModule = new Map<string, BarqTemplateLabel[]>();
+  const cssByModule = new Map<string, string>();
 
   function publish(): void {
     if (!server) return;
@@ -389,11 +459,17 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     },
 
     resolveId(id) {
-      return id === CLIENT_ID ? RESOLVED_CLIENT_ID : null;
+      if (id === CLIENT_ID) return RESOLVED_CLIENT_ID;
+      // Claimed verbatim rather than resolved: the id already IS a real path,
+      // and letting Vite resolve it again drops the query the stylesheet is
+      // keyed by.
+      return id.includes(CSS_QUERY) ? id : null;
     },
 
     load(id) {
-      return id === RESOLVED_CLIENT_ID ? panelClient() : null;
+      if (id === RESOLVED_CLIENT_ID) return panelClient();
+      if (!id.includes(CSS_QUERY)) return null;
+      return cssByModule.get(id) ?? "";
     },
 
     // Dev only, so no byte of the panel can reach a production bundle.
@@ -444,8 +520,26 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // serves a route's split half at `<file>?barq-split` — and matching the
       // extension against the raw id skipped exactly those, so the split half
       // of every route reached the bundler with its JSX untransformed.
+      // Our OWN stylesheet, coming back round: `…/Demo.tsx.barq.css` still
+      // contains `.tsx`, and a `path.endsWith` list is not what tells them
+      // apart.
+      if (id.includes(CSS_QUERY)) return null;
+
       const path = id.split("?", 1)[0] ?? id;
-      const shouldTransform = include.some((ext) => path.endsWith(ext));
+      const query = id.slice(path.length);
+      // The stylesheet is keyed by the WHOLE id, query included. A route is
+      // split into two modules that differ only by `?barq-split`, and keying on
+      // the path alone gave both the same stylesheet: whichever transformed
+      // last won, and the half that lost was the one with the component in it.
+      // Measured in a browser — the route's markup carried every class and its
+      // sheet was 36 bytes.
+      const stylesheet = `${path}${CSS_QUERY}${query}`;
+      const cssSource = compilerOptions.cssSource ?? DEFAULT_CSS_SOURCE;
+      // A stylesheet lives in a `.ts` module with no JSX in it, so extension
+      // alone would skip exactly the file the CSS is in. Naming the package is
+      // the cheap gate; the compiler then resolves the tag by symbol.
+      const shouldTransform =
+        include.some((ext) => path.endsWith(ext)) || code.includes(cssSource);
       if (!shouldTransform) return null;
 
       const isExcluded = exclude.some((pattern) => {
@@ -475,6 +569,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           startSource: compilerOptions.startSource,
           clientSource: compilerOptions.clientSource,
           routerSource: compilerOptions.routerSource,
+          cssSource: compilerOptions.cssSource,
           routes:
             typeof compilerOptions.routes === "function"
               ? compilerOptions.routes()
@@ -536,8 +631,32 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         publish();
       }
 
+      // Appended rather than prepended: an `import` is hoisted wherever it
+      // stands, and adding a line at the top would shift every mapping in the
+      // source map the compiler just produced.
+      const mode = cssMode ?? (dev === true ? "inline" : "asset");
+      let emitted = result.code;
+      if (result.css != null && result.css !== "") {
+        if (mode === "inline") {
+          emitted += cssRegistration(stylesheet, result.css, cssSource);
+        } else {
+          const changed = cssByModule.get(stylesheet) !== result.css;
+          cssByModule.set(stylesheet, result.css);
+          emitted += `\nimport ${JSON.stringify(stylesheet)};\n`;
+          // The stylesheet's id does not change when its content does, so Vite
+          // would serve the module it already has.
+          if (changed && server !== undefined) {
+            const module = server.moduleGraph.getModuleById(stylesheet);
+            if (module) server.moduleGraph.invalidateModule(module);
+          }
+        }
+      } else if (cssByModule.delete(stylesheet) && server !== undefined) {
+        const module = server.moduleGraph.getModuleById(stylesheet);
+        if (module) server.moduleGraph.invalidateModule(module);
+      }
+
       return {
-        code: result.code,
+        code: emitted,
         map: result.map ? (JSON.parse(result.map) as TransformResult["map"]) : null,
       };
     },

@@ -420,3 +420,139 @@ describe("barqVitePlugin", () => {
     });
   });
 });
+
+/**
+ * The stylesheet is a query on the module's own id, which is the shape
+ * `barqRouter` uses for a route's split half and `@vitejs/plugin-vue` uses for
+ * a SFC's `<style>`. `lang.css` is what makes Vite's own CSS pipeline claim it.
+ */
+describe("stylesheets", () => {
+  const CSS_SOURCE = `import { css } from "@barqjs/css";
+export const card = css\`color: red\`;
+`;
+
+  function resolve(plugin: ReturnType<typeof barqVitePlugin>, id: string): string | null {
+    const hook = plugin.resolveId as unknown as (id: string) => string | null;
+    return hook.call(plugin, id);
+  }
+
+  function load(plugin: ReturnType<typeof barqVitePlugin>, id: string): string | null {
+    const hook = plugin.load as unknown as (id: string) => string | null;
+    return hook.call(plugin, id);
+  }
+
+  test("a block becomes a class and its CSS is served from the module's own id", () => {
+    const plugin = barqVitePlugin();
+    const { result } = run(plugin, CSS_SOURCE, "/a/styles.ts");
+    const code = result?.code ?? "";
+    expect(code).toContain('import "/a/styles.ts.barq.css"');
+    expect(code).not.toContain("css`");
+
+    const sheet = load(plugin, "/a/styles.ts.barq.css") ?? "";
+    const [, klass] = /\.(\w+)\{/.exec(sheet) ?? [];
+    expect(sheet).toBe(`.${klass}{color: red}`);
+    expect(code).toContain(`"${klass}"`);
+  });
+
+  /** A stylesheet lives in a `.ts` module, which the extension list excludes. */
+  test("a module is transformed because it names the package, not because of its extension", () => {
+    const plugin = barqVitePlugin();
+    expect(run(plugin, SOURCE, "/a/plain.ts").result).toBe(null);
+    expect(run(plugin, CSS_SOURCE, "/a/styles.ts").result).not.toBe(null);
+  });
+
+  test("the id is claimed verbatim, so the query it is keyed by survives", () => {
+    const plugin = barqVitePlugin();
+    expect(resolve(plugin, "/a/styles.ts.barq.css")).toBe(
+      "/a/styles.ts.barq.css",
+    );
+    expect(resolve(plugin, "/a/styles.ts")).toBe(null);
+  });
+
+  test("a module that wrote no CSS gets no import appended", () => {
+    const plugin = barqVitePlugin();
+    const { result } = run(plugin, SOURCE, "/a/app.tsx");
+    expect(result?.code).not.toContain(".barq.css");
+  });
+
+  test("an unknown stylesheet loads as empty rather than as undefined", () => {
+    const plugin = barqVitePlugin();
+    expect(load(plugin, "/never/seen.ts.barq.css")).toBe("");
+    expect(load(plugin, "/a/styles.ts")).toBe(null);
+  });
+
+  test("a custom cssSource is what the import must name", () => {
+    const plugin = barqVitePlugin({ cssSource: "@acme/styles" });
+    expect(run(plugin, CSS_SOURCE, "/a/styles.ts").result).toBe(null);
+    const renamed = CSS_SOURCE.replace("@barqjs/css", "@acme/styles");
+    expect(run(plugin, renamed, "/a/styles.ts").result?.code).toContain(".barq.css");
+  });
+});
+
+/**
+ * The two delivery modes, which is the whole of how CSS reaches a page.
+ *
+ * A dev server has no `generateBundle`, so the asset path cannot work there —
+ * measured before this existed: a server-rendered dev page carried 23 compiled
+ * classes and zero stylesheets of any kind.
+ */
+describe("css delivery", () => {
+  const CSS_SOURCE = `import { css } from "@barqjs/css";
+export const card = css\`color: red\`;
+`;
+
+  function load(plugin: ReturnType<typeof barqVitePlugin>, id: string): string | null {
+    const hook = plugin.load as unknown as (id: string) => string | null;
+    return hook.call(plugin, id);
+  }
+
+  test("a build serves the CSS as an asset the module imports", () => {
+    const plugin = barqVitePlugin({ dev: false });
+    const code = run(plugin, CSS_SOURCE, "/a/styles.ts").result?.code ?? "";
+    expect(code).toContain('import "/a/styles.ts.barq.css"');
+    expect(code).not.toContain("registerCss");
+    expect(load(plugin, "/a/styles.ts.barq.css")).toContain("color: red");
+  });
+
+  test("dev carries the rules in the module, keyed by its id", () => {
+    const plugin = barqVitePlugin({ dev: true });
+    const code = run(plugin, CSS_SOURCE, "/a/styles.ts").result?.code ?? "";
+    expect(code).toContain('import { registerCss as _$registerCss } from "@barqjs/css"');
+    // Keyed by the stylesheet's id, which carries the module's query: a split
+    // route is two modules that differ only by `?barq-split`, and keying on the
+    // path alone gave both the same rules.
+    expect(code).toContain('_$registerCss("/a/styles.ts.barq.css"');
+    expect(code).toContain("color: red");
+  });
+
+  test("the mode can be forced against the environment", () => {
+    const asAsset = barqVitePlugin({ dev: true, cssMode: "asset" });
+    expect(run(asAsset, CSS_SOURCE, "/a/styles.ts").result?.code).toContain(".barq.css");
+    const asInline = barqVitePlugin({ dev: false, cssMode: "inline" });
+    expect(run(asInline, CSS_SOURCE, "/a/styles.ts").result?.code).toContain("registerCss");
+  });
+
+  test("the registration names the configured package, not a hard-coded one", () => {
+    const plugin = barqVitePlugin({ dev: true, cssSource: "@acme/styles" });
+    const code = run(plugin, CSS_SOURCE.replace("@barqjs/css", "@acme/styles"), "/a/s.ts").result
+      ?.code;
+    expect(code).toContain('from "@acme/styles"');
+  });
+  /**
+   * A split route is two modules that differ only by a query, and both go
+   * through this hook. Keyed by path alone they shared one stylesheet, so
+   * whichever transformed last won — measured in a browser as a route whose
+   * markup carried every class against a 36-byte sheet.
+   */
+  test("the two halves of a split route get their own stylesheets", () => {
+    const plugin = barqVitePlugin({ dev: false });
+    const reference = `import { globalCss } from "@barqjs/css";\nglobalCss\`body { margin: 0 }\`;\n`;
+    const split = `import { css } from "@barqjs/css";\nexport const box = css\`color: red\`;\n`;
+    run(plugin, reference, "/a/route.tsx");
+    run(plugin, split, "/a/route.tsx?barq-split");
+
+    const load = plugin.load as unknown as (id: string) => string | null;
+    expect(load.call(plugin, "/a/route.tsx.barq.css")).toBe("body{margin: 0}");
+    expect(load.call(plugin, "/a/route.tsx.barq.css?barq-split")).toContain("color: red");
+  });
+});
