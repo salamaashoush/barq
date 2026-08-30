@@ -273,11 +273,23 @@ pub fn split(
             split_out.blank(statement.span());
             continue;
         }
-        let goes_to_split = symbols.iter().any(|symbol| split_closure.contains(symbol));
-        if goes_to_split {
-            reference.blank(statement.span());
-        } else {
+        // A declaration goes where it is NEEDED, and a declaration can be
+        // needed in both places. `import { css, globalCss }` is the ordinary
+        // case: the component reaches `css`, a top-level `globalCss` statement
+        // stays behind, and blanking the whole import from the reference half
+        // because ONE of its bindings moved leaves that statement calling an
+        // identifier no longer in scope. It failed at run time, not at build
+        // time: `ReferenceError: globalCss is not defined`.
+        //
+        // An import in both halves is idempotent, and a `const` in both is two
+        // modules each with their own — which is what a split already means.
+        let needed_by_split = symbols.iter().any(|symbol| split_closure.contains(symbol));
+        let needed_by_reference = symbols.iter().any(|symbol| keep_closure.contains(symbol));
+        if !needed_by_split {
             split_out.blank(statement.span());
+        }
+        if needed_by_split && !needed_by_reference {
+            reference.blank(statement.span());
         }
     }
 
@@ -1012,5 +1024,53 @@ export const Route = createFileRoute("/api/users")({
     fn a_module_that_never_names_the_factory_is_not_parsed() {
         assert!(!mentions("export const x = 1;"));
         assert!(mentions("createFileRoute(\"/x\")"));
+    }
+}
+
+#[cfg(test)]
+mod shared_import_tests {
+    use super::split;
+
+    /// A declaration both halves need stays in both.
+    ///
+    /// `import { css, globalCss }` is the ordinary case: the component reaches
+    /// `css` so the import moves, while a top-level `globalCss` statement stays
+    /// behind. Blanking the whole import because ONE binding moved left that
+    /// statement calling an identifier no longer in scope, and it failed at run
+    /// time rather than at build time — `ReferenceError: globalCss is not
+    /// defined`, from a route that compiled and bundled without a word.
+    #[test]
+    fn an_import_both_halves_need_stays_in_both() {
+        let source = r#"import { createFileRoute } from "@barqjs/router";
+import { css, globalCss } from "@barqjs/css";
+globalCss`body { margin: 0 }`;
+const box = css`color: red`;
+function Page() { return <p class={box}>hi</p>; }
+export const Route = createFileRoute("/x")({ component: Page });
+"#;
+        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        let reference = out.reference;
+        assert!(
+            reference.contains(r#"import { css, globalCss } from "@barqjs/css""#),
+            "the reference half lost the import its own statement uses:\n{reference}"
+        );
+        assert!(reference.contains("globalCss`"), "{reference}");
+        // …and the split half still has what the component reaches.
+        let split_half = out.split;
+        assert!(split_half.contains("color: red"), "{split_half}");
+    }
+
+    /// The property that made the old rule look right: a declaration ONLY the
+    /// component reaches still leaves the reference half.
+    #[test]
+    fn a_declaration_only_the_component_reaches_still_moves() {
+        let source = r#"import { createFileRoute } from "@barqjs/router";
+import { heavy } from "./heavy";
+function Page() { return heavy(); }
+export const Route = createFileRoute("/x")({ component: Page });
+"#;
+        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        assert!(!out.reference.contains("./heavy"), "{}", out.reference);
+        assert!(out.split.contains("./heavy"));
     }
 }
