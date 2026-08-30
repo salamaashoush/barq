@@ -341,11 +341,12 @@ describe("the seed encoder", () => {
     // object and only a primitive is ever written out again.
     const payloads = [
       // Up to the `);` that closes the assignment, not to `</script>`: the
-      // seed script now runs `SEED_SETTLE_GUARD` after it, so the two are no
-      // longer adjacent. `[\s\S]*?` is lazy, so this still stops at the first
-      // close rather than running into the guard.
+      // seed script runs `SEED_SETTLE_GUARD` after it, so the two are no longer
+      // adjacent. The guard's opening is the anchor — a `);` inside the payload
+      // would otherwise end the lazy match early — so this pattern is coupled to
+      // that snippet's first bytes and moves with it.
       ...html.matchAll(
-        /Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);for\(var _k in/g,
+        /Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);\(function\(\)\{var s=\[\]/g,
       ),
     ]
       .map((m) => m[1] ?? "")
@@ -1121,6 +1122,52 @@ describe("a pending promise inside a seeded value", () => {
     expect(out.script).not.toContain("sourceURL");
     // And nothing reports it unhandled after the render is over.
     await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  /**
+   * The guard has to WALK, and this is the shape it has to reach.
+   *
+   * `{ fastData, slowData }` is what deferring looks like, so the key of
+   * `__BARQ_DATA__` is an object and the promise is a level down. A top-level
+   * sweep left it unguarded, and the browser reported an unhandled rejection on
+   * a page whose error boundary had already rendered correctly.
+   */
+  test("a NESTED rejected promise is marked handled by the seed guard", async () => {
+    const cell = runWithOwner(null, () =>
+      computed(
+        async () => {
+          await tick();
+          return {
+            now: "here",
+            later: new Promise((_resolve, reject) =>
+              setTimeout(() => reject(new Error("nested failure")), 5),
+            ),
+          };
+        },
+        { key: "d:nested" },
+      ),
+    );
+    const parts = await collect(
+      renderToStream(() =>
+        ssrLoading(null, {
+          fallback: () => ssrHtml("<i>l</i>"),
+          children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
+        }),
+      ),
+    );
+    const whole = parts.join("");
+    // Run every seed script the way a browser does, then let the rejection land.
+    const store = runSeedScripts(whole) as Record<string, { later: Promise<unknown> }>;
+    const reported: unknown[] = [];
+    const onRejection = (reason: unknown): void => {
+      reported.push(reason);
+    };
+    process.on("unhandledRejection", onRejection);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    process.off("unhandledRejection", onRejection);
+    expect(reported).toEqual([]);
+    // Guarded, not consumed: the rejection is still there for the read.
+    await expect(store["d:nested"]?.later).rejects.toThrow("nested failure");
   });
 
   test("renderToStream DEFERS it and resolves it in a later chunk", async () => {

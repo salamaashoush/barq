@@ -990,10 +990,25 @@ const EVENT_CAPTURE_SNIPPET =
  * there for the read that claims it, and its rejection still reaches the route's
  * error boundary through the read. Emitted after every assignment because a
  * streamed page adds keys as it goes.
+ *
+ * IT WALKS, and a top-level sweep was not enough. Deferred data's ordinary
+ * shape is a promise INSIDE the loader's value — `{ fastData, slowData }`, which
+ * is the shape `<Await>` exists for — so the keys of `__BARQ_DATA__` are objects
+ * and the promise is one level down. Measured in a real browser against a
+ * loader whose deferred half rejects: the page rendered its error boundary
+ * correctly and the console still carried an unhandled rejection.
+ *
+ * The walk is the client's half of `settleNested` and stops in the same places:
+ * plain objects and arrays only, and a cycle is visited once.
  */
 const SEED_SETTLE_GUARD =
-  "for(var _k in window.__BARQ_DATA__){var _v=window.__BARQ_DATA__[_k];" +
-  "if(_v&&typeof _v.then==='function')_v.then(null,function(){})}";
+  "(function(){var s=[];var w=function(v){" +
+  "if(!v||typeof v!=='object')return;" +
+  "if(typeof v.then==='function'){v.then(null,function(){});return}" +
+  "if(s.indexOf(v)!==-1)return;s.push(v);" +
+  "if(Array.isArray(v)){for(var i=0;i<v.length;i++)w(v[i]);return}" +
+  "if(Object.getPrototypeOf(v)!==Object.prototype)return;" +
+  "for(var k in v)w(v[k])};w(window.__BARQ_DATA__)})()";
 
 function hydrationScriptFor(data: Record<string, unknown>, nonce?: string): string {
   return (
