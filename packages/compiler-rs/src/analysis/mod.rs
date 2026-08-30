@@ -9,11 +9,40 @@ use oxc::semantic::{ScopeId, Scoping, SemanticBuilder, SemanticBuilderReturn, Sy
 use crate::ir::Module;
 use crate::options::ResolvedOptions;
 
+/// The expression under any number of TYPE-ONLY wrappers.
+///
+/// `Component as never` is the same value as `Component`, and a scan that
+/// matches `Expression::Identifier` sees a `TSAsExpression` and gives up.
+/// `bind.rs`'s `init_of`, `props_member` and `yields_jsx` each unwrap this
+/// inline; `visit_object_expression` did not, so a route table written
+/// `{ component: Home as never }` did not mark `Home` as used-as-a-value.
+///
+/// What that cost is worth stating, because nothing reported it: an undetected
+/// component keeps its authored parameter list, its JSX lowers against a
+/// module-level `const _s$ = null`, its holes are emitted EAGERLY rather than
+/// as accessors, and no `block()` wraps it. The result renders once, against no
+/// scope, and never updates again.
+pub fn without_type_wrappers<'a, 'b>(expression: &'b Expression<'a>) -> &'b Expression<'a> {
+    let mut current = expression;
+    loop {
+        current = match current {
+            Expression::TSAsExpression(inner) => &inner.expression,
+            Expression::TSSatisfiesExpression(inner) => &inner.expression,
+            Expression::TSNonNullExpression(inner) => &inner.expression,
+            Expression::TSInstantiationExpression(inner) => &inner.expression,
+            Expression::ParenthesizedExpression(inner) => &inner.expression,
+            _ => return current,
+        };
+    }
+}
+
 /// The `SymbolId` behind an identifier reference, or `None` for an unresolved
 /// global. `ReferenceId` lives in a `Cell` on the node itself, so it travels
 /// with an expression P1 moves into a hole and is still readable at P2.
 pub fn symbol_of(scoping: &Scoping, expression: &Expression<'_>) -> Option<SymbolId> {
-    let Expression::Identifier(identifier) = expression else { return None };
+    let Expression::Identifier(identifier) = without_type_wrappers(expression) else {
+        return None;
+    };
     scoping.get_reference(identifier.reference_id.get()?).symbol_id()
 }
 

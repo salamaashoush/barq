@@ -1,6 +1,6 @@
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
-    ArrowFunctionBody, ArrowFunctionExpression, BinaryOperator, Expression, Function,
+    ArrowFunctionBody, ArrowFunctionExpression, BinaryOperator, ChainElement, Expression, Function,
     LogicalOperator, UnaryOperator,
 };
 use oxc::ast_visit::Visit;
@@ -348,6 +348,65 @@ impl<'a> Lift<'a, '_> {
 
             Expression::CallExpression(call) => self.call(call),
 
+            // `new Thing(props.data())` reads the prop exactly as `wrap(...)`
+            // does. There was no arm at all, so it fell to `Rx::OPAQUE` and the
+            // read was emitted unwrapped.
+            Expression::NewExpression(new) => {
+                match self.proven_reactive_parts(&new.callee, &new.arguments) {
+                    Some(deps) => {
+                        Rx { react: React::Reactive, deps, cost: Cost::Expensive, ..Rx::OPAQUE }
+                    }
+                    None => Rx { cost: Cost::Expensive, ..Rx::OPAQUE },
+                }
+            }
+
+            // `a?.b` is the SAME read as `a.b`, wrapped in a `ChainExpression`.
+            // There was no arm for it, so it fell to `Rx::OPAQUE` and the hole
+            // was emitted as a VALUE rather than a thunk — which is not a tracked
+            // read, so it never ran again.
+            //
+            // Measured on one component, the two spellings disagreed and only
+            // the `?.` one was wrong:
+            //   `{props.data().title}`  -> `() => props.data().title`
+            //   `{props.data()?.title}` -> `props.data()?.title`
+            // A route whose component read its loader data that way rendered the
+            // pending value once and stayed there, with no error anywhere.
+            Expression::ChainExpression(chain) => self.chain(&chain.expression),
+
+            // `(a, b)` evaluates both and IS `b`, so its verdict is `b`'s. `a`
+            // is joined for its dependencies: it is evaluated on every read, so
+            // a tracked read in it subscribes too.
+            Expression::SequenceExpression(sequence) => {
+                let mut rx = Rx { react: React::Static, ..Rx::OPAQUE };
+                for (index, item) in sequence.expressions.iter().enumerate() {
+                    let inner = self.rx(item);
+                    rx = if index + 1 == sequence.expressions.len() {
+                        Rx { deps: rx.deps.join(inner.deps), ..inner }
+                    } else {
+                        join(rx, inner)
+                    };
+                }
+                rx.konst = None;
+                rx
+            }
+
+            // The same rule as `TemplateLiteral`, which has always been here:
+            // an interpolation is read on every evaluation. Only the TAG is
+            // extra, and calling it does not make the reads inside the quasis
+            // disappear.
+            Expression::TaggedTemplateExpression(tagged) => {
+                let mut rx = Rx { react: React::Static, shape: Shape::Str, ..Rx::OPAQUE };
+                // The TAG too: `props.fmt()\`...\`` reads a prop before any
+                // quasi is evaluated.
+                rx = join(rx, self.rx(&tagged.tag));
+                for expression in &tagged.quasi.expressions {
+                    rx = join(rx, self.rx(expression));
+                }
+                rx.konst = None;
+                rx.shape = Shape::Str;
+                rx
+            }
+
             Expression::ArrowFunctionExpression(arrow) => self.arrow(arrow),
             Expression::FunctionExpression(function) => self.function(function),
 
@@ -500,6 +559,68 @@ impl<'a> Lift<'a, '_> {
         Rx { react: inner.react, deps: inner.deps, cost: inner.cost, ..Rx::OPAQUE }
     }
 
+    /// One link of an optional chain, classified as the non-optional spelling is.
+    ///
+    /// `?.` changes whether the read HAPPENS, never what it reads, so the
+    /// verdict has to be the same. Each arm delegates to the method the
+    /// equivalent `Expression` arm uses, so the two spellings cannot drift.
+    fn chain(&mut self, element: &ChainElement<'a>) -> Rx<'a> {
+        match element {
+            ChainElement::CallExpression(call) => self.call(call),
+            ChainElement::TSNonNullExpression(inner) => self.rx(&inner.expression),
+            ChainElement::StaticMemberExpression(member) => {
+                self.member(&member.object, Some(member.property.name.as_str()))
+            }
+            ChainElement::ComputedMemberExpression(member) => {
+                let mut rx = self.member(&member.object, None);
+                rx = join(rx, self.rx(&member.expression));
+                rx.konst = None;
+                rx
+            }
+            ChainElement::PrivateFieldExpression(member) => self.member(&member.object, None),
+        }
+    }
+
+    /// The dependencies a call's callee and arguments PROVE, or `None`.
+    ///
+    /// `Opaque` is the deliberate middle value here — `ir/react.rs` says an
+    /// expression the compiler cannot prove either way is emitted UNWRAPPED, so
+    /// the runtime makes the same decision an un-compiled oracle would. Joining
+    /// into it can never help, because `join` is `max` and `Opaque` is the top:
+    /// a proven-reactive argument inside an unknown call was absorbed and the
+    /// read came out untracked.
+    ///
+    /// So this does not join. It asks a narrower question — is any part PROVEN
+    /// reactive — and only then downgrades `Opaque` to `Reactive`. A call whose
+    /// parts are all static or all unknown keeps exactly the verdict it had.
+    fn proven_reactive_parts(
+        &mut self,
+        callee: &Expression<'a>,
+        arguments: &oxc::allocator::Vec<'a, oxc::ast::ast::Argument<'a>>,
+    ) -> Option<DepSet> {
+        let mut deps = DepSet::EMPTY;
+        let mut reactive = false;
+        let consider = |rx: Rx<'a>, reactive: &mut bool, deps: &mut DepSet| {
+            if rx.react == React::Reactive {
+                *reactive = true;
+                *deps = deps.join(rx.deps).join(rx.inner);
+            }
+        };
+        let rx = self.rx(callee);
+        consider(rx, &mut reactive, &mut deps);
+        for argument in arguments {
+            let rx = match argument {
+                oxc::ast::ast::Argument::SpreadElement(spread) => self.rx(&spread.argument),
+                _ => match argument.as_expression() {
+                    Some(expression) => self.rx(expression),
+                    None => continue,
+                },
+            };
+            consider(rx, &mut reactive, &mut deps);
+        }
+        reactive.then_some(deps)
+    }
+
     fn call(&mut self, call: &oxc::ast::ast::CallExpression<'a>) -> Rx<'a> {
         // `Call(f, [])` where `f` is an accessor binding IS the tracked read.
         if call.arguments.is_empty()
@@ -590,7 +711,23 @@ impl<'a> Lift<'a, '_> {
             };
         }
 
-        self.pure_global_call(call).unwrap_or(Rx { cost: Cost::Expensive, ..Rx::OPAQUE })
+        if let Some(rx) = self.pure_global_call(call) {
+            return rx;
+        }
+
+        // `wrap(props.data())` read the prop ONCE, untracked, while
+        // `String(props.data())` twenty lines above propagated correctly — the
+        // same read, two verdicts, decided by whether the callee happened to be
+        // on the folder's whitelist. Every other container already propagated:
+        // an array, an object, a template, a conditional, a binary and a logical
+        // expression all thunk when a part of them is reactive.
+        //
+        // `Cost::Expensive` is kept either way. Reactivity and cost are separate
+        // verdicts: this says the result MOVES, not that it is cheap to redo.
+        if let Some(deps) = self.proven_reactive_parts(&call.callee, &call.arguments) {
+            return Rx { react: React::Reactive, deps, cost: Cost::Expensive, ..Rx::OPAQUE };
+        }
+        Rx { cost: Cost::Expensive, ..Rx::OPAQUE }
     }
 
     /// The only calls the folder is allowed to evaluate: a whitelisted global

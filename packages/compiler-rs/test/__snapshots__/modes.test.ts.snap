@@ -3,7 +3,7 @@
 exports[`the union compiles in every mode the matrix is locked 1`] = `
 "dom-Ox dom-O0 ssr-Ox ssr-O0 interp dom-hydratable ssr-hydratable
 browser-only/pre-hole-newline  e17e0f6b92b5 de542f2f17f2 452462db8cc3 452462db8cc3 da6185bab38b 7d0a0f509564 8498e3f55223
-corpus/array-hole  2c0e30c15986 b7439e22df91 f261682c9c98 f261682c9c98 624204ab05e6 d2a42baa9650 d21c826fc04f
+corpus/array-hole  2c0e30c15986 b7439e22df91 f261682c9c98 f261682c9c98 028665399d36 ef8721aeb27e d21c826fc04f
 corpus/arrow-body-component  6774bb1be5fd fd02934d91eb 4437eea235f3 4437eea235f3 a159624716c3 2987f464b9d8 4437eea235f3
 corpus/async-value  cbad7d124b3a 5a2b4efe717e 44d87aad95c5 44d87aad95c5 792b074ee573 23edbf410cea 44d87aad95c5
 corpus/attribute-namespaces  e64d6a57f1ee ff388625a8e0 18143c426f8f 18143c426f8f af337bc7ef32 191b6bafd4c8 18143c426f8f
@@ -171,7 +171,7 @@ semantics/sem-async-optimistic-derived  b0fac96ae3fe abeca7792f11 d0139887526d d
 semantics/sem-async-read-mode  876138f1c702 25fc65c1f5ac 12012f36ee0c 12012f36ee0c d75c56fb5ba0 2701631bec7f 12012f36ee0c
 semantics/sem-async-stale-response  266b1b6025f1 4b81b5fbd263 f6177224534c f6177224534c 522b24f44645 a8c87af9be59 f6177224534c
 semantics/sem-async-stream  ef8068e6fed7 19edb392dc5b 6f4d3f523bc2 1203d8472a7c 0227fdb7753d 4012969b4260 af05af4afde4
-semantics/sem-calling-convention  05193fefbc44 0408cfa5ef3b 137a757744f3 137a757744f3 6987427227a7 27815825642e c1768a840a19
+semantics/sem-calling-convention  01b42fec769e c45cffe5e339 137a757744f3 137a757744f3 a3d1e6c350de 401b4dda5de6 c1768a840a19
 semantics/sem-ctx-provider-default-silent  9ed6e25ee5b6 31705e925e96 c985c3485789 54c3c07c16cf 30e68892a3cb 848ed55f5d66 d7da70001cf9
 semantics/sem-ctx-provider-direct-child  8521ffd3ac9b 3422bf1764ca b940f26ceea5 b940f26ceea5 4b7f8be02261 c4ce53099456 b940f26ceea5
 semantics/sem-ctx-provider-nested  103987650e6d e5a1cac600fc 2a26389044ff 02b1b4bb27ad a1fbd33cfcb2 f9a8f7b01c39 2a26389044ff
@@ -191,7 +191,7 @@ semantics/sem-own-render-disposer-disposes  05d6c9ee8a92 63882031ea04 7defd663fb
 semantics/sem-own-slot-arguments  1483793e238a 1483793e238a 333429b58075 333429b58075 ec1adc69a944 1483793e238a 333429b58075
 semantics/sem-props-block-in-cell-slot  4745fb1ea7fd 9a4cd4731d94 0ff412539b40 0ff412539b40 25b1cd5d5f91 e5ed1805e3bd 0ff412539b40
 semantics/sem-props-cast-keeps-the-brand  3ac1caabe9fb 9c26db4fdabd d0da01c4290b d0da01c4290b 2e4e5edbab29 f2abdfc46d55 d0da01c4290b
-semantics/sem-react-apply-is-untracked  cc658fb6643b 5415781b1e61 43d9ae370489 43d9ae370489 d3ebf642049a cc658fb6643b 43d9ae370489
+semantics/sem-react-apply-is-untracked  19ad0e38a136 b2c10073963f 43d9ae370489 43d9ae370489 4b026c10e7ab 19ad0e38a136 43d9ae370489
 semantics/sem-react-component-body-untracked  2a89307d95df 4ee232af479d d99900235ddb d99900235ddb d0b423dd0b0c d92dd66e2836 d99900235ddb
 semantics/sem-react-untrack-keeps-owner  5120253797f3 5120253797f3 168143ac7a49 168143ac7a49 5b13ee0e21c3 5120253797f3 168143ac7a49
 semantics/sem-reveal-nested-group  964fad470da9 0b787972feb5 20b12e61c21a 09c739c182cd 5ecd63bc22e7 e426010027d3 fe279e0e2557

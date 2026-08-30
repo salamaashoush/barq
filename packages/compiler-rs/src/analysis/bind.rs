@@ -1354,14 +1354,18 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
     }
 
     /// `{ component: Layout }` — see [`Binder::valued`].
+    ///
+    /// THROUGH A CAST. `{ component: Home as never }` is how a route table
+    /// written by hand spells this, and matching `Expression::Identifier`
+    /// against the `TSAsExpression` found nothing — so `Home` was never marked
+    /// used-as-a-value, `is_component` answered no, and the function was lowered
+    /// as ordinary code containing JSX: `const _s$ = null` at module scope, its
+    /// holes eager instead of accessors, and no `block()`. It rendered once and
+    /// never updated, with nothing reported.
     fn visit_object_expression(&mut self, it: &oxc::ast::ast::ObjectExpression<'a>) {
         for property in &it.properties {
             if let oxc::ast::ast::ObjectPropertyKind::ObjectProperty(property) = property
-                && let Expression::Identifier(identifier) = &property.value
-                && let Some(symbol) = identifier
-                    .reference_id
-                    .get()
-                    .and_then(|id| self.scoping.get_reference(id).symbol_id())
+                && let Some(symbol) = symbol_of(self.scoping, &property.value)
             {
                 self.valued.push(symbol);
             }
