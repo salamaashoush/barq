@@ -73,10 +73,28 @@ pub const SPLIT_QUERY: &str = "barq-split";
 /// module, so deleting it here would take away a value the table has and the
 /// module no longer needs to carry — which it already does not.
 ///
+/// `middleware` joins it, and for the same reason rather than a similar one.
+///
+/// A route's `middleware` is a BUILD-time claim — "every server function
+/// reachable from this route carries this chain" — and the router never calls
+/// it. The only two readers are `manifest.ts`, which is the build's verifier and
+/// runs inside the SSR bundle, and `server.ts`, which reads the separate
+/// `server.middleware` instead. So on the client it is a reference to a closure
+/// nothing will ever invoke.
+///
+/// Keeping it was not free. `middleware: [requireSession]` holds the chain
+/// BY REFERENCE, so the client build followed it into the module that declares
+/// it, and that module value-imports `useSession` from `@barqjs/start` — whose
+/// index reaches `context.ts` and `node:async_hooks`. The browser answered
+/// `Module "node:async_hooks" has been externalized for browser compatibility.
+/// Cannot access "node:async_hooks.AsyncLocalStorage"`, and the router entry
+/// stopped evaluating there: a fully server-rendered page on which nothing was
+/// interactive, from one route declaring a build-time claim.
+///
 /// Deletion is not the split. There is no second module, so nothing can be
 /// double-initialised and nothing has to be refused: the property goes, and any
 /// top-level declaration ONLY it reached goes with it.
-pub const CLIENT_STRIP_KEYS: [&str; 1] = ["server"];
+pub const CLIENT_STRIP_KEYS: [&str; 2] = ["server", "middleware"];
 
 /// What a route module compiles to, both halves.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -198,17 +216,26 @@ pub fn split(
     for property in &stripped {
         collect_refs(program, &scoping, property.value, &mut strip_roots);
     }
+    // What the reference half reaches is the WHOLE route statement minus the
+    // values that are leaving it — not the surviving option values alone.
+    //
+    // The difference is everything outside the options object, and the callee is
+    // the part of it that matters: `createFileRoute("/x")({ … })`. Reading only
+    // the property values left `createFileRoute` out of `keep_closure`, so an
+    // import statement that ALSO carried something the component used was
+    // "needed by split, not needed by reference" and was blanked whole. The
+    // reference half then called an identifier it no longer imported:
+    // `ReferenceError: createFileRoute is not defined`, at run time, on the
+    // server, with the route file's own line number.
+    //
+    // It survived for as long as it did because the ordinary route file writes
+    // `import { createFileRoute } from "@barqjs/router"` on a line of its own,
+    // and a statement the split half does not reach is never blanked. One route
+    // file importing `useNavigate` beside it was enough to find this.
+    let mut leaving: Vec<Span> = present.iter().map(|property| property.value).collect();
+    leaving.extend(stripped.iter().map(|property| property.value));
     let mut keep_roots = FxHashSet::default();
-    for property in &route.properties {
-        // Neither the split half's nor the stripped ones': what is left is what
-        // the reference module keeps, and its reachable set is what stays.
-        if SPLIT_KEYS.contains(&property.key.as_str())
-            || CLIENT_STRIP_KEYS.contains(&property.key.as_str()) && for_client
-        {
-            continue;
-        }
-        collect_refs(program, &scoping, property.value, &mut keep_roots);
-    }
+    collect_refs_excluding(program, &scoping, route.statement, &leaving, &mut keep_roots);
     // Every top-level statement that is not a declaration runs for its effect,
     // and it stays in the reference half — so whatever it reads is the
     // reference half's too.
@@ -672,14 +699,39 @@ fn collect_refs(
     span: Span,
     out: &mut FxHashSet<SymbolId>,
 ) {
+    collect_refs_excluding(program, scoping, span, &[], out);
+}
+
+/// As {@link collect_refs}, minus everything inside one of `excluded`.
+///
+/// What it is for: the reference half reaches the whole route statement EXCEPT
+/// the option values being moved out of it, and those are known as spans rather
+/// than as nodes. Expressing that as "the statement, less these holes" is the
+/// only formulation that also picks up the callee and the type arguments, which
+/// is where the bug this fixed was hiding.
+fn collect_refs_excluding(
+    program: &Program<'_>,
+    scoping: &Scoping,
+    span: Span,
+    excluded: &[Span],
+    out: &mut FxHashSet<SymbolId>,
+) {
     struct Collector<'a, 'b> {
         scoping: &'a Scoping,
         span: Span,
+        excluded: &'a [Span],
         out: &'b mut FxHashSet<SymbolId>,
     }
     impl<'a> Visit<'a> for Collector<'_, '_> {
         fn visit_identifier_reference(&mut self, it: &oxc::ast::ast::IdentifierReference<'a>) {
             if it.span.start < self.span.start || it.span.end > self.span.end {
+                return;
+            }
+            if self
+                .excluded
+                .iter()
+                .any(|hole| it.span.start >= hole.start && it.span.end <= hole.end)
+            {
                 return;
             }
             if let Some(id) = it.reference_id.get()
@@ -695,7 +747,7 @@ fn collect_refs(
             // is stated rather than left as an omission somebody re-derives.
         }
     }
-    let mut collector = Collector { scoping, span, out };
+    let mut collector = Collector { scoping, span, excluded, out };
     walk::walk_program(&mut collector, program);
 }
 
@@ -1058,6 +1110,91 @@ export const Route = createFileRoute("/x")({ component: Page });
         // …and the split half still has what the component reaches.
         let split_half = out.split;
         assert!(split_half.contains("color: red"), "{split_half}");
+    }
+
+    /// The client build deletes a route's `middleware`, and everything only it
+    /// reached goes with it.
+    ///
+    /// It is a build-time claim the router never calls, but it holds the chain
+    /// BY REFERENCE — so keeping it dragged the module declaring the chain into
+    /// the browser, and that module reaches `node:async_hooks` through
+    /// `@barqjs/start`. The page rendered and then nothing on it worked.
+    #[test]
+    fn the_client_build_deletes_a_routes_middleware_claim() {
+        let source = r#"import { createFileRoute } from "@barqjs/router";
+import { requireSession } from "../auth";
+function Page() { return <p>hi</p>; }
+export const Route = createFileRoute("/admin")({
+  middleware: [requireSession],
+  component: Page,
+});
+"#;
+        let client = split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", true, true);
+        assert!(
+            !client.reference.contains("requireSession"),
+            "the client half kept the chain and the import that reaches async_hooks:\n{}",
+            client.reference
+        );
+        assert!(!client.reference.contains("middleware"), "{}", client.reference);
+
+        // The SERVER build keeps it, because the verifier is the only reader and
+        // it runs inside that bundle.
+        let server = split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", false, true);
+        assert!(server.reference.contains("requireSession"), "{}", server.reference);
+        assert!(server.reference.contains("middleware"), "{}", server.reference);
+    }
+
+    /// The factory itself is reached by the reference half, and has to be.
+    ///
+    /// `keep_roots` used to be built from the surviving option VALUES alone, so
+    /// nothing outside the options object counted — including
+    /// `createFileRoute`, the callee the reference half is entirely built
+    /// around. An import statement carrying the factory AND something only the
+    /// component used was therefore "needed by split, not needed by reference"
+    /// and was blanked whole, leaving `createFileRoute is not defined` at run
+    /// time on the server.
+    ///
+    /// It hid for as long as it did because the ordinary route file imports the
+    /// factory on a line of its own, and a statement the split half never
+    /// reaches is never blanked. One route importing `useNavigate` beside it
+    /// was all it took.
+    #[test]
+    fn the_factory_survives_an_import_the_component_shares() {
+        let source = r#"import { createFileRoute, useNavigate } from "@barqjs/router";
+function Page() { const go = useNavigate(); return <p onClick={go}>hi</p>; }
+export const Route = createFileRoute("/x")({ component: Page });
+"#;
+        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        let reference = out.reference;
+        assert!(
+            reference.contains("createFileRoute"),
+            "the reference half calls a factory it no longer imports:\n{reference}"
+        );
+        assert!(
+            reference.contains(r#"import { createFileRoute, useNavigate } from "@barqjs/router""#),
+            "the import the reference half needs was blanked:\n{reference}"
+        );
+        // The component half still reaches the hook it uses.
+        let split_half = out.split;
+        assert!(split_half.contains("useNavigate"), "{split_half}");
+    }
+
+    /// The same, for a value the route's own options reach outside the object:
+    /// a type argument and the id are part of the statement too.
+    #[test]
+    fn a_retained_option_sharing_an_import_with_the_component_keeps_it() {
+        let source = r#"import { createFileRoute, isRedirect } from "@barqjs/router";
+import { load, act } from "./data";
+function Page() { try { act(); } catch (e) { if (isRedirect(e)) {} } return <p>hi</p>; }
+export const Route = createFileRoute("/x")({ loader: () => load(), component: Page });
+"#;
+        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        let reference = out.reference;
+        // `loader` stays, so `load` and the factory both stay with it.
+        assert!(reference.contains("createFileRoute"), "{reference}");
+        assert!(reference.contains(r#"from "./data""#), "{reference}");
+        let split_half = out.split;
+        assert!(split_half.contains("isRedirect"), "{split_half}");
     }
 
     /// The property that made the old rule look right: a declaration ONLY the
