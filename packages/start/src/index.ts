@@ -125,6 +125,14 @@ import {
  * application still writes one import. `middleware.ts` says why they live apart.
  */
 export {
+  type IsomorphicBuilder,
+  type IsomorphicFn,
+  createClientOnlyFn,
+  createIsomorphicFn,
+  createServerOnlyFn,
+} from "./env.ts";
+
+export {
   type BuiltMiddleware,
   type Middleware,
   type MiddlewareContext,

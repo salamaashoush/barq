@@ -290,6 +290,19 @@ fn compile_on_this_stack(
         source
     };
 
+    // THE ENV FUNCTIONS, in BOTH environments — unlike the strip above, which
+    // is the client's alone. Both halves have something to drop here: the
+    // server build loses `.client(…)` exactly as the client build loses
+    // `.server(…)`, and a `createServerOnlyFn` becomes a throw on the wrong
+    // side rather than a body nobody reaches.
+    let resolved;
+    let source = if crate::env_fns::mentions(source) {
+        resolved = crate::env_fns::rewrite(source, filename, &options.start_source, options.env);
+        resolved.as_deref().unwrap_or(source)
+    } else {
+        source
+    };
+
     let allocator = Allocator::new();
     let ParserReturn { mut program, diagnostics, panicked, .. } =
         Parser::new(&allocator, source, source_type)

@@ -11,6 +11,7 @@ export default defineConfig({
     "./src/index.ts",
     "./src/client.ts",
     "./src/middleware.ts",
+    "./src/env.ts",
     "./src/server.ts",
     "./src/serve.ts",
     "./src/vite.ts",

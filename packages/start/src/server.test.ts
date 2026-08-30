@@ -3,6 +3,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   type Middleware,
   DATA_SUFFIX,
+  createClientOnlyFn,
+  createIsomorphicFn,
+  createServerOnlyFn,
   RPC_CONTEXT,
   createMiddleware,
   flattenMiddleware,
@@ -1286,5 +1289,38 @@ describe("createMiddleware", () => {
       await handleServerFn(forged);
       expect(seen).toEqual(["user"]);
     });
+  });
+});
+
+/**
+ * The env functions, UNCOMPILED.
+ *
+ * The compiler replaces every one of these calls, so what is tested here is the
+ * fallback: a bun test, a script run with no plugin, a package's own suite.
+ * `packages/compiler-rs/src/env_fns.rs` tests the rewrite itself.
+ */
+describe("env-only functions, uncompiled", () => {
+  test("an isomorphic fn answers as the server, because that is where this runs", () => {
+    const where = createIsomorphicFn()
+      .server(() => "server")
+      .client(() => "client");
+    expect((where as () => string)()).toBe("server");
+  });
+
+  test("declaring neither half is a no-op rather than a throw", () => {
+    expect((createIsomorphicFn() as () => unknown)()).toBeUndefined();
+  });
+
+  /**
+   * The two env-only wrappers are IDENTITY uncompiled. The refusal is the
+   * compiler's — it replaces the call with a throwing stub in the wrong build —
+   * and a runtime check here would refuse the server's own use of a
+   * server-only function.
+   */
+  test("the env-only wrappers pass the function through", () => {
+    const secret = createServerOnlyFn(() => "s");
+    const measure = createClientOnlyFn(() => "c");
+    expect(secret()).toBe("s");
+    expect(measure()).toBe("c");
   });
 });

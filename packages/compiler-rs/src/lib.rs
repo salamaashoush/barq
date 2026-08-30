@@ -3,6 +3,7 @@ pub mod codegen;
 pub mod compile;
 pub mod css;
 pub mod diag;
+pub mod env_fns;
 /// Generated into `OUT_DIR` by `build.rs`; the lib only needs it to prove the
 /// generated tables still match `dom.ts`.
 #[cfg(test)]

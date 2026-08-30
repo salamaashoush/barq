@@ -39,6 +39,11 @@
       "bun": "./src/middleware.ts",
       "import": "./dist/middleware.js"
     },
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "bun": "./src/env.ts",
+      "import": "./dist/env.js"
+    },
     "./server": {
       "types": "./dist/server.d.ts",
       "bun": "./src/server.ts",
