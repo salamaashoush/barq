@@ -10,104 +10,75 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![Bun](https://img.shields.io/badge/Bun-1.1+-f9f1e1.svg)](https://bun.sh/)
 
-[Getting Started](#quick-start) | [Documentation](./packages/core/USAGE.md) | [Examples](#api-overview)
+[Quick start](#quick-start) | [Packages](#packages) | [How it works](#how-it-works)
 
 </div>
 
 ---
 
-Barq (Arabic for "lightning") is a minimal JSX framework where components run once and only the DOM nodes that depend on changed signals update. No virtual DOM, no diffing, just surgical DOM updates.
+Barq (Arabic for "lightning") is a JSX framework where components run once and
+only the DOM nodes that read a changed signal update. No virtual DOM, no
+diffing.
 
-## Features
+The compiler is not an optimisation on top of a runtime — it is how the
+framework works. JSX lowers to cloned templates and a walk to each dynamic hole,
+props cross a component boundary as callable cells rather than as values, and
+control flow becomes four primitives the compiler hands a `(parent, anchor)`
+pair it already computed.
 
-- **Components run once** - Unlike React, component functions execute only during initial render
-- **Fine-grained reactivity** - Only DOM nodes depending on changed signals update
-- **No Virtual DOM** - Direct DOM mutations, zero diffing overhead
-- **Tiny bundle** - Core is ~5KB gzipped
-- **TypeScript first** - Full type safety with excellent inference
-- **Familiar API** - React-like hooks: `useState`, `useEffect`, `useMemo`, `useContext`
-- **SolidJS-style stores** - Nested reactive state with `useStore`
-- **Async primitives** - `useResource` and `Await` for data fetching
-
-## Installation
+## Quick start
 
 ```bash
-# Core framework
-bun add @barqjs/core
-
-# Optional: Extra utilities (router, CSS-in-JS, query hooks)
-bun add @barqjs/extra
-
-# Optional: Testing utilities
-bun add @barqjs/testing
+bun create barq my-app
+cd my-app
+bun install
+bun run dev
 ```
 
-## Quick Start
+Three templates: `full-stack` (server-rendered pages, API routes, server
+functions, prerendering), `spa` (client routing with server functions), and
+`minimal` (the compiler and signals, no router). Every one of them builds,
+typechecks and runs before it is published.
 
-### 1. Configure TypeScript
-
-```json
-// tsconfig.json
-{
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "@barqjs/core"
-  }
-}
-```
-
-### 2. Create a Component
+## A component
 
 ```tsx
-import { useState } from "@barqjs/core";
+import { render, signal } from "@barqjs/core";
 
 function Counter() {
-  console.log("This runs ONCE, not on every update");
-
-  const [count, setCount] = useState(0);
+  // This runs ONCE. Nothing below re-runs it.
+  const count = signal(0);
 
   return (
-    <div>
-      <span>Count: {count}</span>
-      <button onClick={() => setCount(c => c + 1)}>+</button>
-    </div>
+    <button type="button" onClick={() => count.update((n) => n + 1)}>
+      clicked {count} times
+    </button>
   );
 }
+
+render(() => <Counter />, document.getElementById("app")!);
 ```
 
-### 3. Render
-
-```tsx
-import { render } from "@barqjs/core";
-
-render(<Counter />, document.getElementById("app")!);
-```
-
-## Key Concept: Reactive Interpolation
-
-Pass signals directly to JSX - do NOT call them:
-
-```tsx
-const [name, setName] = useState("World");
-
-// CORRECT - signal passed directly, updates reactively
-<span>Hello {name}</span>
-
-// WRONG - evaluated immediately, never updates
-<span>Hello {name()}</span>
-```
+`{count}` is a tracked read, not a snapshot: the compiler wraps it, and the
+click updates that one text node.
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@barqjs/core` | Core framework: signals, hooks, components, JSX runtime |
-| `@barqjs/server` | SSR: the string backend, streaming, and the hydration seed channel |
-| `@barqjs/start` | Server functions: the builder, the RPC wire, and the request handler |
-| `@barqjs/extra` | Router, CSS-in-JS (goober), TanStack Query integration, utility hooks |
-| `@barqjs/testing` | Testing utilities built on @testing-library/dom |
+| Package | What it is |
+| --- | --- |
+| [`@barqjs/core`](./packages/core#readme) | signals, JSX, the DOM renderer |
+| [`@barqjs/router`](./packages/router#readme) | file-based routing, SSR, prerendering, API routes |
+| [`@barqjs/start`](./packages/start#readme) | server functions, sessions, cookies, rate limiting, the server |
+| [`@barqjs/server`](./packages/server#readme) | the string backend and the streaming SSR runtime |
+| [`@barqjs/testing`](./packages/testing#readme) | rendering, routes, hydration and the RPC wire, under test |
+| [`@barqjs/compiler`](./packages/compiler) | the Vite plugin |
+| [`@barqjs/extra`](./packages/extra) | TanStack Query adapter and utility hooks |
+| [`create-barq`](./packages/create-barq#readme) | `bun create barq my-app` |
 
-## How It Works
+`@barqjs/compiler` is a dev dependency of every application. Without it a `.tsx`
+file goes through a generic JSX transform and gets different semantics.
+
+## How it works
 
 ```
 React:                              Barq:
@@ -127,121 +98,40 @@ Diff old vs new VDOM                Done!
 Patch real DOM
 ```
 
-## API Overview
-
-### State
-
-```tsx
-// Primitive state
-const [count, setCount] = useState(0);
-count();           // Read: 0
-setCount(5);       // Write
-setCount(c => c + 1); // Update
-
-// Nested state with fine-grained reactivity
-const [state, setState] = useStore({
-  user: { name: "John", age: 30 },
-  todos: []
-});
-state.user.name;   // Only subscribes to user.name
-setState("user", { name: "Jane" }); // Partial update
-```
-
-### Effects
-
-```tsx
-// Auto-tracks dependencies
-useEffect(() => {
-  console.log("Count:", count());
-});
-
-// Computed values
-const double = useMemo(() => count() * 2);
-
-// Lifecycle
-onMount(() => console.log("Mounted"));
-onCleanup(() => console.log("Cleanup"));
-```
-
-### Components
-
-```tsx
-// Conditional rendering
-<Show when={() => isLoggedIn()} fallback={<Login />}>
-  {() => <Dashboard />}
-</Show>
-
-// Lists
-<For each={() => items()}>
-  {(item, index) => <div>{index()}: {item.name}</div>}
-</For>
-
-// Lists whose rows survive an edit: key the row, and the item arrives as an
-// accessor. This is what keeps a focused <input> alive across a keystroke.
-<For each={() => rows()} keyed={(row) => row.id}>
-  {(row) => <input value={row().text} />}
-</For>
-
-// Pattern matching
-<Switch fallback={<NotFound />}>
-  <Match when={() => route() === "home"}>{() => <Home />}</Match>
-  <Match when={() => route() === "about"}>{() => <About />}</Match>
-</Switch>
-
-// Async data
-<Await resource={user} loading={<Spinner />}>
-  {(data) => <Profile user={data} />}
-</Await>
-```
-
-### Context
-
-```tsx
-const ThemeContext = createContext<"light" | "dark">("light");
-
-// Provider (requires callback children)
-<ThemeContext.Provider value="dark">
-  {() => <App />}
-</ThemeContext.Provider>
-
-// Consumer
-const theme = useContext(ThemeContext); // "dark"
-```
+One consequence worth stating early: because a component body runs once, a
+"hook" here is not a call that has to happen in the same order every render.
+There is no rules-of-hooks, and no dependency array.
 
 ## Documentation
 
-See [USAGE.md](./packages/core/USAGE.md) for complete API documentation and patterns, and
-[compiler diagnostics](./packages/compiler-rs/docs/README.md) for every code the compiler can
-report and how to silence one.
+Each package's README is its own reference. Beyond those:
+
+- [compiler diagnostics](./packages/compiler-rs/docs/README.md) — every code the
+  compiler can report, what it means, and how to silence one.
+- [`packages/kitchen-sink`](./packages/kitchen-sink) — every feature in one
+  application that builds, prerenders and serves.
 
 ## Development
 
 ```bash
-# Install dependencies
 bun install
-
-# Run dev server (kitchen-sink demo)
-bun run dev
-
-# Run tests
-bun run test
-
-# Type check
+bun run dev         # the kitchen-sink demo
+bun run test        # every package's suite
 bun run typecheck
-
-# Lint
-bun run lint
-
-# Build all packages
 bun run build
+bun run ci          # lint and format, as CI runs them
 ```
+
+The Rust compiler lives in `packages/compiler-rs` and is built by
+`bun run build` there; `cargo test` runs its own suite.
 
 ## Acknowledgments
 
-- [SolidJS](https://solidjs.com) - Inspiration for fine-grained reactivity model
-- [alien-signals](https://github.com/nickmccurdy/alien-signals) - Fast signal implementation
-- [goober](https://github.com/cristianbote/goober) - Tiny CSS-in-JS (used in @barqjs/extra)
-- [TanStack Query](https://tanstack.com/query) - Query integration (used in @barqjs/extra)
+- [SolidJS](https://solidjs.com) — the fine-grained reactivity model
+- [alien-signals](https://github.com/nickmccurdy/alien-signals) — fast signals
+- [TanStack Router](https://tanstack.com/router) — the routing and server-function
+  surface `@barqjs/router` and `@barqjs/start` follow
+- [TanStack Query](https://tanstack.com/query) — the adapter in `@barqjs/extra`
 
 ## License
 
