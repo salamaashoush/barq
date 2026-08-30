@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/extra",
   "version": "0.1.0",
-  "description": "Extra utilities for Barq: CSS-in-JS (goober), clsx, variants, router, and query hooks",
+  "description": "Extra utilities for Barq: the TanStack Query adapter, and the hook-shaped names over @barqjs/primitives",
   "keywords": [
     "barq",
     "clsx",
@@ -49,7 +49,10 @@
     "@tanstack/query-core": "^5.101.4"
   },
   "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/css": "workspace:*",
+    "@barqjs/primitives": "workspace:*",
     "@biomejs/biome": "^2.5.9",
     "@happy-dom/global-registrator": "^20.11.6",
     "@types/bun": "^1.4.0",
@@ -57,6 +60,7 @@
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",
+    "@barqjs/primitives": ">=0.1.0",
     "@tanstack/query-core": "^5.101.4"
   }
 }

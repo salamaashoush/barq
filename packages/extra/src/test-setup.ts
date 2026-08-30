@@ -13,9 +13,13 @@ GlobalRegistrator.register();
 
 import { createRequire } from "node:module";
 import { plugin } from "bun";
+import { cssRegistration } from "@barqjs/compiler";
 
 interface Native {
-  transform(code: string, options?: Record<string, unknown>): { code: string; warnings: string[] };
+  transform(
+    code: string,
+    options?: Record<string, unknown>,
+  ): { code: string; warnings: string[]; css?: string };
 }
 
 const require_ = createRequire(import.meta.url);
@@ -30,7 +34,12 @@ plugin({
       if (out.warnings.length > 0) {
         console.warn(`[barq] ${args.path}\n  ${out.warnings.join("\n  ")}`);
       }
-      return { contents: out.code, loader: "ts" };
+      // AND its stylesheet: there is no bundler here to emit an asset, so a
+      // compiled block's CSS arrives the way it does in dev, appended to the
+      // module and keyed by its id.
+      const css =
+        out.css === undefined || out.css === "" ? "" : cssRegistration(args.path, out.css);
+      return { contents: out.code + css, loader: "ts" };
     });
   },
 });

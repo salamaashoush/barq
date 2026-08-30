@@ -1,11 +1,13 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+// FIRST. See `./register-dom.ts` for why the registration cannot live here, and
+// `./index.ts` at the bottom of this file for why the import is spelled this way.
+import * as dom from "./register-dom.ts";
 
-// Must register before any other imports that might use DOM
-GlobalRegistrator.register();
+void dom;
 
 import { plugin } from "bun";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { cssRegistration } from "@barqjs/compiler";
 
 /**
  * This package's own suite goes through the COMPILER, like every consumer does.
@@ -23,16 +25,23 @@ import { readFileSync } from "node:fs";
  */
 const require_ = createRequire(import.meta.url);
 const native = require_("@barqjs/compiler-rs") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
+  transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
 };
 
 plugin({
   name: "barq",
   setup(build) {
-    build.onLoad({ filter: /\.tsx$/ }, (args) => ({
-      contents: native.transform(readFileSync(args.path, "utf8"), { filename: args.path }).code,
-      loader: "tsx",
-    }));
+    build.onLoad({ filter: /\.tsx$/ }, (args) => {
+      const result = native.transform(readFileSync(args.path, "utf8"), { filename: args.path });
+      // AND its stylesheet. There is no bundler here to emit an asset, so a
+      // compiled block's CSS arrives the way it does in dev: appended to the
+      // module, keyed by its id, into the one registry `@barqjs/css` owns.
+      // Dropped, it left a suite whose whole purpose is to drive the real
+      // emission rendering classes that named nothing.
+      const css =
+        result.css === undefined || result.css === "" ? "" : cssRegistration(args.path, result.css);
+      return { contents: result.code + css, loader: "tsx" };
+    });
   },
 });
 
