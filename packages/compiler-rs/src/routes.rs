@@ -1192,6 +1192,26 @@ mod tests {
         assert_eq!(ids(&literal), ["/index"]);
     }
 
+    /// A braced segment survives the scan intact.
+    ///
+    /// `{-$category}`, `{$name}` and `{$}` are the router's grammar for an
+    /// optional parameter and for a parameter carrying literal text
+    /// (`path.ts`'s `parseSegment`). Nothing here has to understand them — a
+    /// brace is not a separator — but the derivation must not mangle them
+    /// either, and a `$` inside braces must not be read as the bare form.
+    #[test]
+    fn a_braced_segment_reaches_the_pattern_unchanged() {
+        let tree = build_tree(&files(&[
+            "posts.{-$category}.detail.tsx",
+            "files.{$name}[.]csv.tsx",
+            "blob.{$}.tsx",
+        ]));
+        assert_eq!(
+            ids(&tree),
+            ["/blob/{$}", "/files/{$name}.csv", "/posts/{-$category}/detail"]
+        );
+    }
+
     /// `[_]` is a literal underscore, so the segment is NOT a pathless layout.
     #[test]
     fn an_escaped_underscore_is_a_path_segment() {

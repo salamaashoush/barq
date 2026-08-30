@@ -227,3 +227,78 @@ describe("cost", () => {
     }
   });
 });
+
+/**
+ * The braced grammar, matched.
+ *
+ * `path.test.ts` covers the parse; this covers what the trie does with it,
+ * which is where the interesting behaviour is — a decorated parameter has to
+ * beat a bare one, and an optional has to be reachable both ways with
+ * backtracking between them.
+ */
+describe("braced segments", () => {
+  test("a suffix is required, and stripped from the value", () => {
+    const matcher = matcherFor([leaf("/files/{$name}.csv")]);
+    expect(matcher.match("/files/report.csv")?.params).toEqual({ name: "report" });
+    // Without the suffix it is a different path entirely.
+    expect(matcher.match("/files/report")).toBeNull();
+    // An EMPTY value is a miss, or the route would own `/files/.csv` too.
+    expect(matcher.match("/files/.csv")).toBeNull();
+  });
+
+  test("a prefix works the same way", () => {
+    const matcher = matcherFor([leaf("/on-{$id}")]);
+    expect(matcher.match("/on-7")?.params).toEqual({ id: "7" });
+    expect(matcher.match("/7")).toBeNull();
+  });
+
+  /** A decorated parameter demands text a bare one does not, so it wins. */
+  test("a decorated parameter beats a bare one", () => {
+    const matcher = matcherFor([leaf("/files/{$name}.csv"), leaf("/files/$name")]);
+    expect(matcher.match("/files/report.csv")?.route.fullPath).toBe("/files/{$name}.csv");
+    expect(matcher.match("/files/report")?.route.fullPath).toBe("/files/$name");
+  });
+
+  test("an optional matches with and without its segment", () => {
+    const matcher = matcherFor([leaf("/posts/{-$category}/detail")]);
+    expect(matcher.match("/posts/detail")?.params).toEqual({});
+    expect(matcher.match("/posts/tech/detail")?.params).toEqual({ category: "tech" });
+    expect(matcher.match("/posts/a/b/detail")).toBeNull();
+  });
+
+  /** A pattern may END in an optional. */
+  test("a trailing optional is reachable both ways", () => {
+    const matcher = matcherFor([leaf("/posts/{-$page}")]);
+    expect(matcher.match("/posts")?.params).toEqual({});
+    expect(matcher.match("/posts/2")?.params).toEqual({ page: "2" });
+  });
+
+  /**
+   * The backtrack that makes it work. Taking the optional greedily leaves
+   * nothing for `detail`, so the walk has to come back and skip it.
+   */
+  test("a greedy optional gives its segment back when the rest fails", () => {
+    const matcher = matcherFor([leaf("/a/{-$x}/b/$y")]);
+    expect(matcher.match("/a/b/7")?.params).toEqual({ y: "7" });
+    expect(matcher.match("/a/one/b/7")?.params).toEqual({ x: "one", y: "7" });
+  });
+
+  test("two optionals in a row", () => {
+    const matcher = matcherFor([leaf("/{-$a}/{-$b}/end")]);
+    expect(matcher.match("/end")?.params).toEqual({});
+    expect(matcher.match("/x/end")?.params).toEqual({ a: "x" });
+    expect(matcher.match("/x/y/end")?.params).toEqual({ a: "x", b: "y" });
+  });
+
+  test("a splat may be braced and decorated", () => {
+    const matcher = matcherFor([leaf("/files/pre{$}")]);
+    expect(matcher.match("/files/prea/b")?.params).toEqual({ _splat: "a/b" });
+    expect(matcher.match("/files/nope")).toBeNull();
+  });
+
+  /** A decoded value, through the braces. */
+  test("a decorated value is still percent-decoded", () => {
+    const matcher = matcherFor([leaf("/files/{$name}.csv")]);
+    expect(matcher.match("/files/a%20b.csv")?.params).toEqual({ name: "a b" });
+  });
+});

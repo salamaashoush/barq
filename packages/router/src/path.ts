@@ -7,14 +7,49 @@
  * that cost 3.3 µs on a last-position hit, against 14 ns for one regex exec, so
  * the cost was never the regexes and a segment list is what removes it.
  *
- * Syntax is TanStack's: `$name` is a parameter, a bare `$` is a splat.
+ * Syntax is TanStack's: `$name` is a parameter, a bare `$` is a splat, and the
+ * braced forms `{$name}`, `{-$name}` and `{$}` add a prefix, a suffix, or
+ * optionality. `parsePattern` carries the grammar.
  */
 
-/** One piece of a path pattern. */
+/**
+ * One piece of a path pattern.
+ *
+ * `prefix` and `suffix` are the literal text a braced segment wraps its
+ * parameter in — `files/{$name}.csv` is one segment with suffix `.csv`, not two
+ * — and they are `""` for the ordinary `$name`, which is what nearly every
+ * route writes. Keeping them as fields rather than as a separate kind means the
+ * matcher tests one string comparison it can skip, instead of branching on a
+ * shape.
+ */
 export type Segment =
   | { readonly kind: "static"; readonly value: string }
-  | { readonly kind: "param"; readonly name: string }
-  | { readonly kind: "splat"; readonly name: string };
+  | {
+      readonly kind: "param";
+      readonly name: string;
+      readonly prefix: string;
+      readonly suffix: string;
+    }
+  /**
+   * `{-$name}` — matches a segment or NO segment at all.
+   *
+   * The route is reachable both ways and `params[name]` is absent when it was
+   * skipped, which is TanStack's rule. One pattern therefore covers
+   * `/posts/detail` and `/posts/tech/detail`, where barq previously needed two
+   * routes and a shared component.
+   */
+  | {
+      readonly kind: "optional";
+      readonly name: string;
+      readonly prefix: string;
+      readonly suffix: string;
+    }
+  | {
+      readonly kind: "splat";
+      readonly name: string;
+      readonly prefix: string;
+      readonly suffix: string;
+    };
 
 /** The splat's key in `params`, matching the pattern that produced it. */
 export const SPLAT_KEY = "_splat";
@@ -40,13 +75,63 @@ export function splitPath(path: string): string[] {
   return out;
 }
 
-/** Parse a path PATTERN into segments. */
+/**
+ * Parse a path PATTERN into segments.
+ *
+ * The grammar is TanStack's, and the braced forms are the ones barq did not
+ * have (`new-process-route-tree.ts:61`):
+ *
+ * ```text
+ * $            a splat, taking every remaining segment
+ * $name        a parameter
+ * {$name}      the same, so a prefix or a suffix can be written around it
+ * {-$name}     OPTIONAL: matches one segment, or none at all
+ * {$}          a splat, braced, so it too may carry a prefix and a suffix
+ * anything     a literal
+ * ```
+ *
+ * A prefix or a suffix is the literal text OUTSIDE the braces and inside the
+ * segment: `{$name}.csv` has suffix `.csv`, and `on-{$id}` has prefix `on-`.
+ * That is what lets a route own `/files/report.csv` without owning
+ * `/files/report`.
+ *
+ * A malformed brace falls back to a LITERAL rather than throwing. A pattern is
+ * usually derived from a filename, so the failure a throw would produce is a
+ * build that dies on a file somebody named oddly, where treating it as text
+ * gives a route that simply does not match — visible, and local to itself.
+ */
 export function parsePattern(pattern: string): Segment[] {
-  return splitPath(pattern).map((raw) => {
-    if (raw === "$") return { kind: "splat", name: SPLAT_KEY } as const;
-    if (raw.charCodeAt(0) === 36 /* $ */) return { kind: "param", name: raw.slice(1) } as const;
-    return { kind: "static", value: raw } as const;
-  });
+  return splitPath(pattern).map(parseSegment);
+}
+
+function parseSegment(raw: string): Segment {
+  // The common cases first, and neither allocates: a literal never reaches the
+  // brace scan, and `$name` is the spelling nearly every route uses.
+  if (raw === "$") return { kind: "splat", name: SPLAT_KEY, prefix: "", suffix: "" };
+  if (raw.charCodeAt(0) === 36 /* $ */ && !raw.includes("{")) {
+    return { kind: "param", name: raw.slice(1), prefix: "", suffix: "" };
+  }
+  const open = raw.indexOf("{");
+  if (open === -1) return { kind: "static", value: raw };
+  const close = raw.indexOf("}", open);
+  if (close === -1) return { kind: "static", value: raw };
+
+  const prefix = raw.slice(0, open);
+  const suffix = raw.slice(close + 1);
+  const inner = raw.slice(open + 1, close);
+
+  if (inner === "$") return { kind: "splat", name: SPLAT_KEY, prefix, suffix };
+  if (inner.startsWith("-$")) {
+    const name = inner.slice(2);
+    return name === ""
+      ? { kind: "static", value: raw }
+      : { kind: "optional", name, prefix, suffix };
+  }
+  if (inner.startsWith("$")) {
+    const name = inner.slice(1);
+    return name === "" ? { kind: "static", value: raw } : { kind: "param", name, prefix, suffix };
+  }
+  return { kind: "static", value: raw };
 }
 
 /**
@@ -72,6 +157,12 @@ export function normalize(path: string): string {
  *
  * The inverse of matching, and what `<Link to>` uses to build an href from a
  * route id plus params.
+ *
+ * An OPTIONAL parameter with no value contributes no segment at all, which is
+ * the whole point of one: `{-$category}` given nothing produces
+ * `/posts/detail`, not `/posts//detail` and not a throw. A required parameter
+ * with no value is still an error, because the link would silently address
+ * somewhere else.
  */
 export function interpolate(pattern: string, params: Readonly<Record<string, string>>): string {
   const parts: string[] = [];
@@ -81,13 +172,26 @@ export function interpolate(pattern: string, params: Readonly<Record<string, str
       continue;
     }
     const value = params[segment.name];
-    if (value === undefined) {
+    if (value === undefined || value === "") {
+      if (segment.kind === "optional") continue;
+      if (segment.kind === "splat" && value === "") continue;
       throw new Error(`missing route parameter ${JSON.stringify(segment.name)} for ${pattern}`);
     }
     // A splat's value is many segments and is spliced in whole; a parameter's
     // is one segment and is encoded, so a `/` inside it cannot invent one.
-    if (segment.kind === "splat") parts.push(...splitPath(value));
-    else parts.push(encodeURIComponent(value));
+    if (segment.kind === "splat") {
+      const inner = splitPath(value);
+      // A prefix and a suffix belong to the FIRST and LAST segment the splat
+      // expands to, so `x{$}y` over `a/b` is `xa/by` — the same text the
+      // matcher stripped on the way in.
+      if (segment.prefix !== "" && inner.length > 0) inner[0] = segment.prefix + inner[0];
+      if (segment.suffix !== "" && inner.length > 0) {
+        inner[inner.length - 1] += segment.suffix;
+      }
+      parts.push(...inner);
+      continue;
+    }
+    parts.push(segment.prefix + encodeURIComponent(value) + segment.suffix);
   }
   return parts.length === 0 ? "/" : `/${parts.join("/")}`;
 }

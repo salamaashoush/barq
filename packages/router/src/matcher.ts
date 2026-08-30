@@ -40,6 +40,20 @@ export interface Match<T = unknown> {
   readonly params: Record<string, string>;
 }
 
+/**
+ * A parameter edge that carries literal text around its value.
+ *
+ * Its own list rather than a field on the node, because the ordinary `$name`
+ * must not pay for it: `decorated` is `null` on every node no route decorated,
+ * and the walk skips the whole branch with one comparison.
+ */
+interface Decorated<T> {
+  readonly prefix: string;
+  readonly suffix: string;
+  readonly name: string;
+  readonly next: TrieNode<T>;
+}
+
 interface TrieNode<T> {
   /** Static edges, by segment text. */
   readonly statics: Map<string, TrieNode<T>>;
@@ -47,11 +61,20 @@ interface TrieNode<T> {
   param: TrieNode<T> | null;
   /** Its name, needed to build `params` on the way out. */
   paramName: string;
+  /** Parameter edges wrapped in literal text, tried before the bare one. */
+  decorated: Decorated<T>[] | null;
+  /**
+   * `{-$name}` edges, each reachable two ways: having consumed a segment, and
+   * having consumed none.
+   */
+  optional: Decorated<T>[] | null;
   /** A route whose pattern ends here. */
   leaf: FlatRoute<T> | null;
   /** A route whose pattern ends in a splat here. */
   splat: FlatRoute<T> | null;
   splatName: string;
+  splatPrefix: string;
+  splatSuffix: string;
 }
 
 function node<T>(): TrieNode<T> {
@@ -59,10 +82,37 @@ function node<T>(): TrieNode<T> {
     statics: new Map(),
     param: null,
     paramName: "",
+    decorated: null,
+    optional: null,
     leaf: null,
     splat: null,
     splatName: SPLAT_KEY,
+    splatPrefix: "",
+    splatSuffix: "",
   };
+}
+
+/**
+ * The value inside a decorated segment, or `null` when the literals disagree.
+ *
+ * An empty middle is a MISS: `{$name}.csv` must not match `.csv` with an empty
+ * name, or a route owning `/files/report.csv` would also own `/files/.csv`.
+ */
+function unwrap(segment: string, prefix: string, suffix: string): string | null {
+  if (prefix !== "" && !segment.startsWith(prefix)) return null;
+  if (suffix !== "" && !segment.endsWith(suffix)) return null;
+  const inner = segment.slice(prefix.length, segment.length - suffix.length);
+  return inner === "" ? null : inner;
+}
+
+/** Find or add the edge for one decorated parameter. */
+function edgeFor<T>(list: Decorated<T>[], prefix: string, suffix: string, name: string): Decorated<T> {
+  for (const edge of list) {
+    if (edge.prefix === prefix && edge.suffix === suffix && edge.name === name) return edge;
+  }
+  const edge: Decorated<T> = { prefix, suffix, name, next: node<T>() };
+  list.push(edge);
+  return edge;
 }
 
 export interface Matcher<T> {
@@ -92,9 +142,16 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
         }
         current = next;
       } else if (segment.kind === "param") {
-        if (current.param === null) {
+        // A DECORATED parameter is its own edge: `{$id}.csv` and `$id` address
+        // different segments, so they cannot share a node or the literal text
+        // would be neither required nor stripped.
+        if (segment.prefix !== "" || segment.suffix !== "") {
+          current.decorated ??= [];
+          current = edgeFor(current.decorated, segment.prefix, segment.suffix, segment.name).next;
+        } else if (current.param === null) {
           current.param = node<T>();
           current.paramName = segment.name;
+          current = current.param;
         } else if (current.paramName !== segment.name) {
           // Two routes naming the same position differently would make
           // `params` depend on which one matched, which is exactly the class of
@@ -103,14 +160,20 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
             `route ${route.fullPath} names a parameter $${segment.name} where ` +
               `another route names $${current.paramName}; one position, one name`,
           );
+        } else {
+          current = current.param;
         }
-        current = current.param;
+      } else if (segment.kind === "optional") {
+        current.optional ??= [];
+        current = edgeFor(current.optional, segment.prefix, segment.suffix, segment.name).next;
       } else {
         if (current.splat !== null) {
           throw new Error(`two routes claim the splat at ${route.fullPath}`);
         }
         current.splat = route;
         current.splatName = segment.name;
+        current.splatPrefix = segment.prefix;
+        current.splatSuffix = segment.suffix;
         splatted = true;
         break;
       }
@@ -140,6 +203,16 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
   ): FlatRoute<T> | null => {
     if (index === segments.length) {
       if (current.leaf !== null) return current.leaf;
+      // An OPTIONAL that consumed nothing is still a route: `/posts/detail`
+      // reaches the leaf under `{-$category}` by skipping it, and the pattern
+      // may end in one — `/posts/{-$category}` serves `/posts`.
+      if (current.optional !== null) {
+        for (const edge of current.optional) {
+          names[index] = null;
+          const found = walk(edge.next, segments, index, values, names);
+          if (found !== null) return found;
+        }
+      }
       // A splat matches zero segments too, so `/files/$` serves `/files`.
       if (current.splat !== null) {
         values[index] = "";
@@ -160,6 +233,20 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
       if (found !== null) return found;
     }
 
+    // Then a DECORATED parameter, before a bare one: `{$name}.csv` demands
+    // literal text the bare `$name` does not, so it is the more specific of the
+    // two wherever both could match.
+    if (current.decorated !== null) {
+      for (const edge of current.decorated) {
+        const inner = unwrap(segment, edge.prefix, edge.suffix);
+        if (inner === null) continue;
+        values[index] = decodeSegment(inner);
+        names[index] = edge.name;
+        const found = walk(edge.next, segments, index + 1, values, names);
+        if (found !== null) return found;
+      }
+    }
+
     // Then a parameter, which is why the static attempt above must be able to
     // fail without ending the search.
     if (current.param !== null) {
@@ -169,11 +256,38 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
       if (found !== null) return found;
     }
 
+    // Then the optionals, GREEDY first: an optional that can take this segment
+    // takes it, and only a failure further along makes the walk come back and
+    // skip it. That ordering is what makes `/posts/tech/detail` bind `tech`
+    // while `/posts/detail` still matches with nothing bound.
+    if (current.optional !== null) {
+      for (const edge of current.optional) {
+        const inner = unwrap(segment, edge.prefix, edge.suffix);
+        if (inner === null) continue;
+        values[index] = decodeSegment(inner);
+        names[index] = edge.name;
+        const found = walk(edge.next, segments, index + 1, values, names);
+        if (found !== null) return found;
+      }
+      for (const edge of current.optional) {
+        names[index] = null;
+        const found = walk(edge.next, segments, index, values, names);
+        if (found !== null) return found;
+      }
+    }
+
     // Then the splat, which takes everything that is left.
     if (current.splat !== null) {
-      values[index] = segments.slice(index).map(decodeSegment).join("/");
-      names[index] = current.splatName;
-      return current.splat;
+      const rest = segments.slice(index).map(decodeSegment).join("/");
+      const inner =
+        current.splatPrefix === "" && current.splatSuffix === ""
+          ? rest
+          : unwrap(rest, current.splatPrefix, current.splatSuffix);
+      if (inner !== null) {
+        values[index] = inner;
+        names[index] = current.splatName;
+        return current.splat;
+      }
     }
 
     return null;

@@ -24,9 +24,9 @@ describe("parsePattern", () => {
   test("static, param and splat", () => {
     expect(parsePattern("/users/$id/files/$")).toEqual([
       { kind: "static", value: "users" },
-      { kind: "param", name: "id" },
+      { kind: "param", name: "id", prefix: "", suffix: "" },
       { kind: "static", value: "files" },
-      { kind: "splat", name: "_splat" },
+      { kind: "splat", name: "_splat", prefix: "", suffix: "" },
     ]);
   });
 
@@ -116,5 +116,79 @@ describe("isUnder", () => {
     // The one that makes `<NavLink>` correct.
     expect(isUnder("/user-settings", "/user")).toBe(false);
     expect(isUnder("/anything", "/")).toBe(true);
+  });
+});
+
+/**
+ * The braced grammar, which is TanStack's and which barq did not have.
+ *
+ * A prefix or a suffix is what lets a route own `/files/report.csv` without
+ * owning `/files/report`; an optional segment is what lets one pattern serve
+ * `/posts/detail` and `/posts/tech/detail` rather than two routes sharing a
+ * component.
+ */
+describe("braced segments", () => {
+  test("a parameter may carry a prefix and a suffix", () => {
+    expect(parsePattern("/files/{$name}.csv")).toEqual([
+      { kind: "static", value: "files" },
+      { kind: "param", name: "name", prefix: "", suffix: ".csv" },
+    ]);
+    expect(parsePattern("/on-{$id}")).toEqual([
+      { kind: "param", name: "id", prefix: "on-", suffix: "" },
+    ]);
+  });
+
+  test("`{-$name}` is optional", () => {
+    expect(parsePattern("/posts/{-$category}/detail")).toEqual([
+      { kind: "static", value: "posts" },
+      { kind: "optional", name: "category", prefix: "", suffix: "" },
+      { kind: "static", value: "detail" },
+    ]);
+  });
+
+  test("`{$}` is a splat that may be decorated too", () => {
+    expect(parsePattern("/files/pre{$}post")).toEqual([
+      { kind: "static", value: "files" },
+      { kind: "splat", name: "_splat", prefix: "pre", suffix: "post" },
+    ]);
+  });
+
+  /**
+   * A pattern usually comes from a FILENAME, so a brace somebody wrote by
+   * accident must not fail the build. It becomes text, and the route simply
+   * does not match — visible, and local to the one route.
+   */
+  test("a malformed brace is a literal", () => {
+    for (const raw of ["{", "{}", "{-$}", "{$}extra}", "{oops}"]) {
+      const [segment] = parsePattern(`/${raw}`);
+      if (raw === "{$}extra}") {
+        expect(segment).toEqual({ kind: "splat", name: "_splat", prefix: "", suffix: "extra}" });
+        continue;
+      }
+      expect(segment?.kind).toBe("static");
+    }
+  });
+});
+
+describe("interpolate, with the braced forms", () => {
+  test("a prefix and a suffix ride out with the value", () => {
+    expect(interpolate("/files/{$name}.csv", { name: "report" })).toBe("/files/report.csv");
+    expect(interpolate("/on-{$id}", { id: "7" })).toBe("/on-7");
+  });
+
+  test("an optional with no value contributes no segment", () => {
+    expect(interpolate("/posts/{-$category}/detail", {})).toBe("/posts/detail");
+    expect(interpolate("/posts/{-$category}/detail", { category: "tech" })).toBe(
+      "/posts/tech/detail",
+    );
+  });
+
+  /** A REQUIRED parameter with no value is still an error. */
+  test("a required parameter still refuses to go missing", () => {
+    expect(() => interpolate("/users/$id", {})).toThrow(/missing route parameter/);
+  });
+
+  test("a decorated splat wraps its first and last segment", () => {
+    expect(interpolate("/files/pre{$}post", { _splat: "a/b" })).toBe("/files/prea/bpost");
   });
 });
