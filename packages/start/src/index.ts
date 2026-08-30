@@ -17,6 +17,7 @@ export {
   type ResponseDraft,
   applyResponseDraft,
   clearResponseHeaders,
+  collectRequestCss,
   createResponseDraft,
   deleteCookie,
   draftedStatus,
@@ -38,6 +39,7 @@ export {
   setCookie,
   setResponseHeader,
   setResponseHeaders,
+  installCssSink,
   setResponseStatus,
   withRequest,
 } from "./context.ts";

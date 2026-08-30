@@ -71,6 +71,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@barqjs/css": "workspace:*",
     "srvx": "^0.12.7"
   },
   "devDependencies": {

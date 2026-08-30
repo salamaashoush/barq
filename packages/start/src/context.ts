@@ -54,6 +54,15 @@ export interface RequestContext {
    */
   cookies?: Record<string, string>;
   /**
+   * Rules `@barqjs/css` registered while rendering THIS request.
+   *
+   * A server imports the application once and serves forever, so a module-scope
+   * rule belongs to every request and a rule a component body registers belongs
+   * to one. Kept here rather than in the css package because this is what knows
+   * which request is current — two in flight at once cannot take each other's.
+   */
+  css?: Map<string, string>;
+  /**
    * Why this request must not be read, when it must not be.
    *
    * A PRERENDER holds a `Request` a build minted, so `getRequest()` would
@@ -66,7 +75,42 @@ export interface RequestContext {
   refuse?: string;
 }
 
-const STORAGE = new AsyncLocalStorage<RequestContext>();
+/**
+ * Built on first use, never at module scope.
+ *
+ * `@barqjs/start` is documented as the ISOMORPHIC entry — `createServerFn`, the
+ * context, sessions, cookies — so a browser bundle reaches this module whenever
+ * an application imports any of them from a file the client graph can see. A
+ * route that names a middleware closure for the build's chain check is the
+ * ordinary way that happens, and it is not a mistake the application can avoid:
+ * the check compares references, so the route has to import the same binding
+ * the server function carries.
+ *
+ * `node:async_hooks` has no browser implementation, and a bundler answers it
+ * with an empty stub rather than an error. Constructing at module scope
+ * therefore turned "this module is in the graph" into `AsyncLocalStorage is not
+ * a constructor`, thrown while the chunk evaluated — before any application
+ * code ran, on a page that never intended to call a server API at all.
+ *
+ * Lazily, the read path below never constructs anything: no storage means no
+ * request in flight, which is exactly what it already reports. Only a caller
+ * that tries to ENTER a request context off-server reaches the constructor, and
+ * that one gets told what it did.
+ */
+let storage: AsyncLocalStorage<RequestContext> | undefined;
+
+function enterable(): AsyncLocalStorage<RequestContext> {
+  if (storage !== undefined) return storage;
+  if (typeof AsyncLocalStorage !== "function") {
+    throw new Error(
+      "[barq] a request context cannot be entered here: `node:async_hooks` has no " +
+        "implementation in this environment. `withRequest` is server-only — it runs inside " +
+        "`handleServerFn`, a route handler or the prerenderer, never in a browser bundle.",
+    );
+  }
+  storage = new AsyncLocalStorage<RequestContext>();
+  return storage;
+}
 
 /** A fresh, empty draft. One per request. */
 export function createResponseDraft(): ResponseDraft {
@@ -80,6 +124,32 @@ export function createResponseDraft(): ResponseDraft {
  * response and it does so after `body` has returned. `handleServerFn` and
  * `createPageHandler` both make one, pass it in, and merge it on the way out.
  */
+/**
+ * Send `@barqjs/css`'s render-time rules to whichever request is running.
+ *
+ * Installed once, by the generated server entry. Outside a request — module
+ * scope, and the browser — there is nothing to attribute a rule to, so it falls
+ * back to the package's own sheet, which is where a module-scope rule belongs.
+ */
+export function collectRequestCss(): string {
+  const store = storage?.getStore();
+  return store?.css === undefined ? "" : [...store.css.values()].join("");
+}
+
+export function installCssSink(
+  setSink: (fn: (key: string, rules: string) => boolean) => void,
+): void {
+  setSink((key, rules) => {
+    const store = storage?.getStore();
+    // Outside a request there is nothing to attribute the rule to — module
+    // scope, which every request needs — so it goes to the package's own sheet.
+    if (store === undefined) return false;
+    store.css ??= new Map();
+    store.css.set(key, rules);
+    return true;
+  });
+}
+
 export function withRequest<T>(
   request: Request,
   body: () => T,
@@ -89,7 +159,7 @@ export function withRequest<T>(
   // Both spellings work, because the string form reads better at the one call
   // site that uses it — the prerenderer, which refuses and carries no draft.
   const resolved = typeof options === "string" ? { refuse: options } : options;
-  return STORAGE.run(
+  return enterable().run(
     {
       request,
       refuse: resolved.refuse,
@@ -118,12 +188,12 @@ export function getRequest(): Request {
  * case. Code that must have one calls `getRequest` and gets the refusal.
  */
 export function peekRequest(): Request | undefined {
-  const found = STORAGE.getStore();
+  const found = storage?.getStore();
   return found === undefined || found.refuse !== undefined ? undefined : found.request;
 }
 
 function context(): RequestContext {
-  const found = STORAGE.getStore();
+  const found = storage?.getStore();
   if (found === undefined) {
     throw new Error(
       "[barq] this is only available inside a request — a server function, a route handler, " +
@@ -144,7 +214,7 @@ function context(): RequestContext {
  * page rather than the requester, and the prerenderer can write it to disk.
  */
 export function peekResponseDraft(): ResponseDraft | undefined {
-  return STORAGE.getStore()?.response;
+  return storage?.getStore()?.response;
 }
 
 // ---------------------------------------------------------------------------

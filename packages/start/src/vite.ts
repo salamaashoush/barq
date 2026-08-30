@@ -274,11 +274,29 @@ function defaultServerEntry(pages: boolean): string {
   // its pages are rendered in the browser. Without it the handler asked the
   // route table for a `shellComponent`, which an SPA has no reason to declare,
   // and every page request answered 500.
-  const argument = pages ? "" : "{ pages: false }";
+  //
+  // `inlineCss` is passed in BOTH modes and reads the registry per request.
+  // In dev it is the whole sheet, because there is no bundle to emit an asset
+  // from and the compiler hands each module its rules instead. In a build it is
+  // only what the compiler declined (BARQ015), whose CSS would otherwise reach
+  // no server-rendered page at all — the registry had no caller anywhere in the
+  // framework until this line.
+  //
+  // Two channels, because they have different lifetimes. `inlineCss` is what
+  // the application registered when it was IMPORTED, which every request needs.
+  // `requestCss` is what one render registered, which only that request needs —
+  // without the split, `/about` inlined the rules a request for `/css` had
+  // produced.
+  const shared = "inlineCss: collectCss, requestCss: collectRequestCss";
+  const options = pages ? `{ ${shared} }` : `{ pages: false, ${shared} }`;
   return [
     `import { createStartHandler } from "@barqjs/router/server";`,
+    `import { collectCss, setCssSink } from "@barqjs/css";`,
+    `import { collectRequestCss, installCssSink } from "@barqjs/start";`,
     ``,
-    `export default createStartHandler(${argument});`,
+    `installCssSink(setCssSink);`,
+    ``,
+    `export default createStartHandler(${options});`,
     ``,
   ].join("\n");
 }
