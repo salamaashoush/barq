@@ -32,7 +32,7 @@ import {
   useServerFn,
 } from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
-import { type RouterState, createRouter, unmask } from "./router.ts";
+import { type RouterEvent, type RouterState, createRouter, unmask } from "./router.ts";
 
 const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -3074,5 +3074,170 @@ describe("routeMasks", () => {
       expect(unmask(entryOf(state), "a-later-page-load")).toBe("/photos/7");
       state.dispose();
     });
+  });
+});
+
+/**
+ * Typed router events — the same story `beforeEach`/`afterEach` tell, told to
+ * anything that asks and can stop asking.
+ */
+describe("router events", () => {
+  const table = [
+    { path: "/", component: (() => null) as never },
+    { path: "/a", component: (() => null) as never },
+    { path: "/b", component: (() => null) as never },
+  ] as never as AnyRouteDefinition[];
+
+  const at = (initial = "/") =>
+    createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+
+  test("the six fire in order, once each", async () => {
+    const state = at();
+    await state.start();
+    const seen: string[] = [];
+    const types = [
+      "onBeforeNavigate",
+      "onBeforeLoad",
+      "onBeforeRouteMount",
+      "onLoad",
+      "onResolved",
+      "onRendered",
+    ] as const;
+    const offs = types.map((type) => state.subscribe(type, () => seen.push(type)));
+    await state.navigate("/a");
+    await tick(20);
+    expect(seen).toEqual([...types]);
+    for (const off of offs) off();
+    state.dispose();
+  });
+
+  /**
+   * A POPSTATE gets the two events `navigate` emits as well. They belong to any
+   * navigation, not to the ones the application asked for — a progress bar
+   * started on `onBeforeNavigate` would otherwise never start on the back
+   * button, which is exactly when a slow loader is most visible.
+   */
+  test("the back button emits the same six, once each", async () => {
+    const state = at();
+    await state.start();
+    await state.navigate("/a");
+    await tick(20);
+    const seen: string[] = [];
+    for (const type of [
+      "onBeforeNavigate",
+      "onBeforeLoad",
+      "onBeforeRouteMount",
+      "onLoad",
+      "onResolved",
+      "onRendered",
+    ] as const) {
+      state.subscribe(type, () => seen.push(type));
+    }
+    state.history.go(-1);
+    await tick(30);
+    expect(state.location().pathname).toBe("/");
+    expect(seen).toEqual([
+      "onBeforeNavigate",
+      "onBeforeLoad",
+      "onBeforeRouteMount",
+      "onLoad",
+      "onResolved",
+      "onRendered",
+    ]);
+    state.dispose();
+  });
+
+  test("an event carries what changed", async () => {
+    const state = at("/a?x=1#top");
+    await state.start();
+    const events: RouterEvent[] = [];
+    const off = state.subscribe("onResolved", (event) => events.push(event));
+
+    await state.navigate("/b");
+    await tick(20);
+    expect(events.at(-1)).toMatchObject({
+      type: "onResolved",
+      pathChanged: true,
+      hrefChanged: true,
+      hashChanged: true,
+    });
+    expect(events.at(-1)?.from?.pathname).toBe("/a");
+    expect(events.at(-1)?.to.pathname).toBe("/b");
+
+    // A hash-only move changes the href and the hash and not the path.
+    await state.navigate("/b#deep");
+    await tick(20);
+    expect(events.at(-1)).toMatchObject({
+      pathChanged: false,
+      hrefChanged: true,
+      hashChanged: true,
+    });
+    off();
+    state.dispose();
+  });
+
+  /**
+   * BEFORE the blockers, so a listener hears about navigations that never
+   * happen — which is what a progress bar wants and what `beforeEach` cannot
+   * say, being one of the things that refuses.
+   */
+  test("onBeforeNavigate fires even for a navigation a blocker refuses", async () => {
+    const state = at();
+    await state.start();
+    const seen: string[] = [];
+    state.subscribe("onBeforeNavigate", () => seen.push("asked"));
+    state.subscribe("onLoad", () => seen.push("loaded"));
+    state.block(() => true);
+    await state.navigate("/a");
+    await tick(20);
+    expect(seen).toEqual(["asked"]);
+    expect(state.location().pathname).toBe("/");
+    state.dispose();
+  });
+
+  test("unsubscribing stops it, and a second listener is unaffected", async () => {
+    const state = at();
+    await state.start();
+    let first = 0;
+    let second = 0;
+    const off = state.subscribe("onLoad", () => first++);
+    state.subscribe("onLoad", () => second++);
+    await state.navigate("/a");
+    await tick(20);
+    off();
+    await state.navigate("/b");
+    await tick(20);
+    expect(first).toBe(1);
+    expect(second).toBe(2);
+    state.dispose();
+  });
+
+  /**
+   * A listener OBSERVES. One that throws is logged and the navigation it was
+   * watching still commits — the alternative is an analytics call taking the
+   * page down.
+   */
+  test("a listener that throws does not take the navigation with it", async () => {
+    const state = at();
+    await state.start();
+    const errors: unknown[] = [];
+    const realError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args[0]);
+    state.subscribe("onLoad", () => {
+      throw new Error("listener boom");
+    });
+    let after = 0;
+    state.subscribe("onLoad", () => after++);
+    try {
+      await state.navigate("/a");
+      await tick(20);
+    } finally {
+      console.error = realError;
+    }
+    expect(state.location().pathname).toBe("/a");
+    // The one after it still ran, and the throw was reported.
+    expect(after).toBe(1);
+    expect(errors.some((line) => String(line).includes("onLoad"))).toBe(true);
+    state.dispose();
   });
 });

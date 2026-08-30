@@ -331,6 +331,65 @@ export interface RouteMask {
 }
 
 /**
+ * The six moments a navigation passes through, in order.
+ *
+ * `beforeEach` and `afterEach` are the two an application configures at
+ * construction and cannot add to later. These are the same story told to
+ * anything that asks — a devtool, an analytics call, a progress bar — and they
+ * unsubscribe, which a config array cannot.
+ *
+ * TanStack's six names, at barq's moments:
+ *
+ *  - `onBeforeNavigate` — a target has been resolved; blockers and guards have
+ *    not run, so this fires for navigations that never happen.
+ *  - `onBeforeLoad` — the guards said yes and the contexts are about to run.
+ *  - `onBeforeRouteMount` — inside the commit, before the location changes.
+ *  - `onLoad` — the location has changed and every loader in the new chain has
+ *    been started.
+ *  - `onResolved` — the DOM is written. A view transition has run its update
+ *    callback; it may still be animating.
+ *  - `onRendered` — after `onResolved`, with the scroll position restored.
+ *    Theirs emits these two together as well.
+ */
+export type RouterEventType =
+  | "onBeforeNavigate"
+  | "onBeforeLoad"
+  | "onBeforeRouteMount"
+  | "onLoad"
+  | "onResolved"
+  | "onRendered";
+
+/**
+ * What a listener is told.
+ *
+ * The three `*Changed` flags are TanStack's, and they are what make a listener
+ * cheap to write: a scroll-to-top only wants `pathChanged`, an analytics call
+ * only wants `hrefChanged`, and neither has to compare two locations itself.
+ */
+export interface RouterEvent {
+  readonly type: RouterEventType;
+  /** Where the navigation came from. `null` for the first one. */
+  readonly from: Location | null;
+  readonly to: Location;
+  readonly pathChanged: boolean;
+  readonly hrefChanged: boolean;
+  readonly hashChanged: boolean;
+}
+
+export type RouterListener = (event: RouterEvent) => void;
+
+/** How the three flags are computed, in one place so every emit agrees. */
+function changeInfo(from: Location | null, to: Location): Omit<RouterEvent, "type"> {
+  return {
+    from,
+    to,
+    pathChanged: from?.pathname !== to.pathname,
+    hrefChanged: from === null || href(from) !== href(to),
+    hashChanged: from?.hash !== to.hash,
+  };
+}
+
+/**
  * A guard runs before the location commits.
  *
  * `false` refuses, a string redirects, anything else allows. It is UX, not
@@ -685,6 +744,19 @@ export interface RouterState {
    * should not be building context for it.
    */
   block(blocker: Blocker): () => void;
+  /**
+   * Be told when a navigation reaches one of its six moments.
+   *
+   * Returns an unsubscribe, which is the whole reason this exists beside
+   * `beforeEach` and `afterEach`: those are configured once at construction and
+   * outlive everything, where a devtool, a progress bar or an analytics call
+   * comes and goes with the thing that installed it.
+   *
+   * A listener OBSERVES. It cannot refuse a navigation — `beforeEach` and
+   * `block` are for that — and a throw from one is logged rather than allowed
+   * to take down the navigation it was watching.
+   */
+  subscribe(type: RouterEventType, listener: RouterListener): () => void;
   /** Whether there is anything to go back TO. See `History.depth`. */
   canGoBack(): boolean;
   /**
@@ -1490,8 +1562,28 @@ export function createRouter(config: RouterConfig): RouterState {
 
   const unsubscribe = history.subscribe((next) => {
     const asked = pendingNavigate;
+    // A SEPARATE FLAG, not `asked !== undefined`. `navigate("/a")` passes no
+    // options, so `pendingNavigate` stays undefined for it and a popstate could
+    // not be told apart — which double-emitted the two events below for every
+    // optionless navigation. The test for the event order is what said so.
+    const wasNavigate = pendingIsNavigate;
     pendingNavigate = undefined;
+    pendingIsNavigate = false;
     const before = untrack(chain);
+    // Captured before the commit moves it: every event after this point is
+    // about a navigation FROM here, and `location()` stops saying so as soon as
+    // `commit` runs.
+    const leaving = untrack(location);
+    // A POPSTATE never went through `navigate`, so the two events that fire
+    // there have not fired. They belong to any navigation, not to the ones the
+    // application asked for — a progress bar that starts on
+    // `onBeforeNavigate` would otherwise never start on the back button, which
+    // is exactly when a slow loader is most visible. `asked` is set by
+    // `navigate` and is the only thing that tells the two apart.
+    if (!wasNavigate) {
+      emit("onBeforeNavigate", leaving, next);
+      emit("onBeforeLoad", leaving, next);
+    }
 
     /**
      * Everything a commit IS, in one closure, because a view transition
@@ -1503,6 +1595,9 @@ export function createRouter(config: RouterConfig): RouterState {
      * for `staleReloadMode: "blocking"` is what said so.
      */
     const commit = (): void => {
+      // BEFORE the location moves, which is the whole difference between this
+      // and `onLoad`: a listener here still sees the page being left.
+      emit("onBeforeRouteMount", untrack(location), next);
       location.set(next);
 
       // A popstate has no `navigate` to have run `beforeLoad`, so the context
@@ -1534,6 +1629,10 @@ export function createRouter(config: RouterConfig): RouterState {
       // wait for each depth's parent to resolve before beginning the next.
       primeChain();
       sweep();
+      // AFTER the loaders have started, not after they settle. A loader is a
+      // cell a boundary pulls, so "loaded" is not a moment the router has — and
+      // naming one that does not exist would be worse than not having it.
+      emit("onLoad", leaving, next);
 
       // LAST, and synchronously: propagation here is microtask-scheduled, so
       // without this a transition animates old-to-old. The deleted router had
@@ -1549,7 +1648,12 @@ export function createRouter(config: RouterConfig): RouterState {
       await withViewTransition(commit, {
         enabled: asked?.viewTransition ?? config.viewTransition ?? false,
       });
+      // The DOM is written — `withViewTransition` awaits the update callback
+      // rather than the animation — so this is the first moment a listener can
+      // measure the new page.
+      emit("onResolved", leaving, next);
       scroll.restore(next, { reset: asked?.resetScroll });
+      emit("onRendered", leaving, next);
     };
     void restoreScroll();
 
@@ -1577,6 +1681,33 @@ export function createRouter(config: RouterConfig): RouterState {
   };
 
   const blockers = new Set<Blocker>();
+  const listeners = new Map<RouterEventType, Set<RouterListener>>();
+
+  /**
+   * Tell everyone listening for one moment.
+   *
+   * A THROW IS SWALLOWED and logged, which is TanStack's choice and the right
+   * one: a listener is an observer, and one that fails must not take down the
+   * navigation it was only watching. A snapshot of the set, so a listener that
+   * unsubscribes another while being called does not break the iteration.
+   */
+  const emit = (type: RouterEventType, from: Location | null, to: Location): void => {
+    const set = listeners.get(type);
+    if (set === undefined || set.size === 0) return;
+    const event: RouterEvent = { type, ...changeInfo(from, to) };
+    // A snapshot, not the live Set — the same reason `block` takes one: a
+    // listener that unsubscribes another while being called must not break the
+    // iteration.
+    // oxlint-disable-next-line unicorn/no-useless-spread
+    for (const listener of [...set]) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error(`[barq/router] a ${type} listener threw`, error);
+      }
+    }
+  };
+
   const navigating = signal(0);
   const scroll: ScrollRestoration =
     config.scrollRestoration === false
@@ -1585,6 +1716,8 @@ export function createRouter(config: RouterConfig): RouterState {
   // Set by `navigate` and read by the subscription, because the COMMIT is where
   // both of these apply and only the caller knows what it asked for.
   let pendingNavigate: NavigateOptions | undefined;
+  /** Whether the entry about to commit came from `navigate` rather than a popstate. */
+  let pendingIsNavigate = false;
 
   let hops = 0;
   const MAX_REDIRECTS = 10;
@@ -1621,6 +1754,10 @@ export function createRouter(config: RouterConfig): RouterState {
       asked.endsWith("/"),
     );
     const target = parseLocation(resolved + rest, options?.state ?? null);
+    // BEFORE the blockers, so a listener hears about navigations that are then
+    // refused — which is what a progress bar and a devtool both want, and what
+    // `beforeEach` cannot say because it IS one of the refusals.
+    emit("onBeforeNavigate", untrack(location), target);
 
     // Blockers first: a navigation nobody is going to make should not be
     // running guards, building context or warming a cache for itself.
@@ -1652,6 +1789,7 @@ export function createRouter(config: RouterConfig): RouterState {
       return;
     }
     hops = 0;
+    emit("onBeforeLoad", untrack(location), target);
 
     // `beforeLoad` runs BEFORE the commit, so a `throw redirect(...)` from one
     // never leaves a refused location in the URL bar. Its result is the context
@@ -1676,6 +1814,7 @@ export function createRouter(config: RouterConfig): RouterState {
     }
     pendingContexts = produced;
     pendingNavigate = options;
+    pendingIsNavigate = true;
     // The per-call `mask` wins: a call site that names one has said something
     // about THIS navigation that a table cannot know.
     const declared = maskFor(target.pathname);
@@ -1790,6 +1929,17 @@ export function createRouter(config: RouterConfig): RouterState {
     block(blocker) {
       blockers.add(blocker);
       return () => blockers.delete(blocker);
+    },
+    subscribe(type, listener) {
+      let set = listeners.get(type);
+      if (set === undefined) {
+        set = new Set();
+        listeners.set(type, set);
+      }
+      set.add(listener);
+      return () => {
+        set.delete(listener);
+      };
     },
     canGoBack: () => (history.depth?.() ?? 0) > 0,
     isNavigating: () => navigating() > 0,
