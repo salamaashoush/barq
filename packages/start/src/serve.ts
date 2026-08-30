@@ -42,6 +42,17 @@ export interface BarqServeOptions extends Omit<ServerOptions, "fetch">, HandlerO
    * is a MISS, and answering it without touching the disk is worth 0.5 us.
    */
   static?: boolean | StaticOptions;
+  /**
+   * The document to answer a page request with, for a deployment that renders
+   * its pages in the browser.
+   *
+   * A path to the built `index.html`. Consulted only after everything else has
+   * declined — the assets, the server functions and the route handlers all run
+   * first — so `/api/health` still answers JSON and `/_barq/fn/<id>` is still
+   * reserved. Nothing else can do this job: the asset middleware answers what
+   * the build WROTE, and an SPA's routes are exactly the paths it did not.
+   */
+  spa?: string;
 }
 
 /**
@@ -56,10 +67,40 @@ export function createFetchHandler(
   options: BarqServeOptions = {},
 ): (request: Request) => Promise<Response> {
   const page = options.fetch ?? (() => new Response("not found", { status: 404 }));
+  const document = options.spa;
   return async (request: Request): Promise<Response> => {
     const answered = await handleServerFn(request, options);
-    return answered ?? (await page(request));
+    if (answered !== null) return answered;
+    const response = await page(request);
+    if (document === undefined || response.status !== 404) return response;
+    // Only a navigation. A 404 for a missing asset or an XHR is an answer the
+    // caller has to see, and handing it a document instead is the failure every
+    // SPA fallback that matches on "not a file" eventually produces.
+    if (request.method !== "GET" && request.method !== "HEAD") return response;
+    if (!(request.headers.get("accept") ?? "").includes("text/html")) return response;
+    return spaDocument(document, response);
   };
+}
+
+/**
+ * The built `index.html`, read once and held.
+ *
+ * `node:fs` is imported inside rather than at module scope, for the reason
+ * `static.ts` gives: this module resolves on workerd too, where there is none.
+ */
+let spaBody: Promise<string> | undefined;
+async function spaDocument(path: string, missing: Response): Promise<Response> {
+  spaBody ??= import("node:fs/promises").then((fs) => fs.readFile(path, "utf8"));
+  try {
+    return new Response(await spaBody, {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  } catch {
+    // The 404 the handler already produced, rather than a 500 about a file the
+    // caller never asked for.
+    spaBody = undefined;
+    return missing;
+  }
 }
 
 /**
@@ -78,6 +119,7 @@ export function serveBarq(options: BarqServeOptions = {}): Server {
     allowedOrigins: _origins,
     reachable: _reachable,
     static: assets,
+    spa: _spa,
     middleware,
     ...rest
   } = options;

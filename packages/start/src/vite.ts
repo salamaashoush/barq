@@ -77,6 +77,19 @@ function findEntry(root: string, srcDir: string, half: "client" | "server"): str
 }
 
 /**
+ * Does the project own the client entry?
+ *
+ * An `index.html` at the Vite root is Vite's own answer to "what is the entry",
+ * and a project that wrote one has already said the browser boots from there.
+ * The virtual client entry is for every other project, which is nearly all of
+ * them — a server-rendered application has no `index.html` because the document
+ * is its root route's shell.
+ */
+function hasIndexHtml(root: string): boolean {
+  return existsSync(join(root, "index.html"));
+}
+
+/**
  * The application's router, as a specifier the FRAMEWORK can import.
  *
  * `#`-prefixed rather than `virtual:` on purpose, and the distinction is
@@ -257,11 +270,17 @@ function defaultClientEntry(): string {
  * head before the body and shipped a page with no styles until the first
  * navigation.
  */
-function defaultServerEntry(): string {
+function defaultServerEntry(pages: boolean): string {
+  // `{ pages: false }` keeps the route HANDLERS and drops the document, which is
+  // what an SPA deployment is: its API routes and server functions are here and
+  // its pages are rendered in the browser. Without it the handler asked the
+  // route table for a `shellComponent`, which an SPA has no reason to declare,
+  // and every page request answered 500.
+  const argument = pages ? "" : "{ pages: false }";
   return [
     `import { createStartHandler } from "@barqjs/router/server";`,
     ``,
-    `export default createStartHandler();`,
+    `export default createStartHandler(${argument});`,
     ``,
   ].join("\n");
 }
@@ -286,7 +305,7 @@ function defaultServerEntry(): string {
  * So: `server.js` is importable and serves nothing, `serve.js` runs and exports
  * nothing.
  */
-function defaultServeEntry(server: BarqServerOptions | undefined): string {
+function defaultServeEntry(server: BarqServerOptions | undefined, spa: boolean): string {
   const assets = server?.static ?? true;
   const options: string[] = [`fetch: handler.fetch`];
   if (assets !== false) {
@@ -304,6 +323,13 @@ function defaultServeEntry(server: BarqServerOptions | undefined): string {
     // every asset 404'd while every page still rendered, which is why the gate
     // below fetches an asset rather than a page.
     options.push(`static: { dir: new URL("../client", import.meta.url).pathname${tuning} }`);
+  }
+  // The SPA fallback, resolved the same way and for the same reason. Only for a
+  // project that renders no pages here AND wrote its own `index.html`: with
+  // pages on, the handler IS the answer for a path the build did not write, and
+  // a document here would shadow its 404.
+  if (spa) {
+    options.push(`spa: new URL("../client/index.html", import.meta.url).pathname`);
   }
   // `PORT` first because every host sets it, and a configured port is the
   // fallback rather than the override.
@@ -702,8 +728,10 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         "/",
       );
       if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry();
-      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry();
-      if (id === RESOLVED_SERVE_ENTRY_ID) return defaultServeEntry(options.server);
+      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry(serving);
+      if (id === RESOLVED_SERVE_ENTRY_ID) {
+        return defaultServeEntry(options.server, !serving && hasIndexHtml(root));
+      }
       if (id === RESOLVED_ROUTER_ENTRY_ID) return defaultRouterEntry(treeImport);
       if (id !== RESOLVED_CLIENT_ASSETS_ID) return null;
       // In dev the entry is a module Vite serves; there are no chunks and no
@@ -810,6 +838,9 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     // before Vite resolves them, and `consumer` is what decides whether a
     // module graph is a browser one.
     config(user) {
+      // `configResolved` is too late — the environments have to exist by the
+      // end of this hook — so the root is resolved the way Vite resolves it.
+      const ownsEntry = hasIndexHtml(resolve(user.root ?? process.cwd()));
       const target = options.server?.target ?? "auto";
       const pinnedTarget = target === "auto" ? null : target;
       const inputs = {
@@ -817,7 +848,17 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         // identifies its own entry chunk by, and the ssr name is the emitted
         // filename — TanStack's #8118 is a prerender step reconstructing that
         // name from the input path and breaking on any `entryFileNames`.
-        client: { index: CLIENT_ENTRY_ID },
+        //
+        // NOT WHEN THE PROJECT WROTE AN `index.html`. `pages: false` is
+        // documented as "the server-function half alone … what a project with
+        // its own `index.html` wants", and forcing the input made that false:
+        // `index.html` was not an input, so the build emitted chunks and no
+        // document, and the application had nothing to serve. Left undefined,
+        // Vite's own default takes `index.html` and the project's entry with
+        // it. Keyed on the FILE rather than on `pages`, because those are two
+        // different questions and `packages/start`'s own build fixture answers
+        // them differently: it turns pages off and still wants this entry.
+        client: ownsEntry ? undefined : { index: CLIENT_ENTRY_ID },
         // TWO ssr inputs: `server.js` is what the build imports to prerender and
         // what a platform imports for its `fetch`, and `serve.js` is what a
         // person runs. `defaultServeEntry` says why they cannot be one file.

@@ -408,6 +408,20 @@ export interface PageHandlerOptions {
    * days of debugging. This throws instead, naming what asked.
    */
   readonly refuseRequest?: string;
+  /**
+   * Render pages. On by default.
+   *
+   * Off leaves the route HANDLERS — an application whose pages are rendered in
+   * the browser still has its API routes and its server functions here, and
+   * only the document moves. A page GET then answers 404, which is what lets
+   * `serveBarq`'s `spa` fall back to the built `index.html`.
+   *
+   * Without this, `barqStart({ pages: false })` still generated a page handler
+   * and every page request died on "this route table declares no
+   * `shellComponent`" — an SPA has no shell by construction, so the mode was
+   * unreachable in a build however it was configured.
+   */
+  readonly pages?: boolean;
 }
 
 /**
@@ -559,6 +573,11 @@ export function createPageHandler(
     // the whole point of one is to answer a `POST` that a page never could.
     const handled = await runRouteHandlers(request, url, match, options.refuseRequest);
     if (handled !== null) return handled;
+
+    // AFTER the handlers, so an API route still answers, and before the method
+    // gate, so a POST to a path with no handler is a 404 rather than a 405 for
+    // a page that does not exist here.
+    if (options.pages === false) return new Response("not found", { status: 404 });
 
     // A page is a GET. Nothing upstream filters the method — Vite's dev
     // middlewares check none of them and `serveBarq` matches server functions

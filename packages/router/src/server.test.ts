@@ -48,6 +48,43 @@ function get(path: string, init?: RequestInit): Request {
   return new Request(`https://example.com${path}`, init);
 }
 
+/**
+ * `pages: false` — the mode an SPA deploys in.
+ *
+ * The document moves to the browser and everything else stays. It was
+ * unreachable in a build: the generated server entry made an ordinary page
+ * handler, which asked the table for a `shellComponent` an SPA has no reason to
+ * declare, and answered 500 to every page request.
+ */
+describe("a handler that renders no pages", () => {
+  const table: AnyRouteDefinition[] = [
+    { path: "/", component: (() => null) as never },
+    {
+      path: "/api/health",
+      server: { handlers: { GET: () => Response.json({ ok: true }) } },
+    },
+  ] as never;
+
+  const handler = createPageHandler({
+    routeTree: table,
+    pages: false,
+    // Would throw if it were ever reached: nothing here declares a document,
+    // which is the whole point of the mode.
+    app: () => ssrHtml("<main>unreachable</main>"),
+  });
+
+  test("answers a matched page 404, for the SPA fallback to pick up", async () => {
+    const response = await handler(get("/"));
+    expect(response.status).toBe(404);
+  });
+
+  test("still answers the route handlers", async () => {
+    const response = await handler(get("/api/health"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+});
+
 describe("status is decided before the shell", () => {
   test("a match is 200 and a miss is 404", async () => {
     // `renderToStream` emits the shell synchronously, so a status discovered
