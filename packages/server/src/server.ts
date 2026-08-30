@@ -190,7 +190,7 @@ export async function renderPage(
   lastRenderData = data;
   dispose();
 
-  return { html, data, script: hydrationScriptFor(data, options?.nonce) };
+  return { html, data, script: await seedScriptFor(data, options?.nonce) };
 }
 
 /**
@@ -261,10 +261,22 @@ async function drainParked(
  */
 async function settleNested<T>(value: T, seen: WeakSet<object> = new WeakSet()): Promise<T> {
   if (value === null || typeof value !== "object") return value;
-  if (typeof (value as { then?: unknown }).then === "function") {
-    // Cast at the await, not around it: `T` is not known to be thenable, and the
-    // runtime check above is the only thing that establishes it.
-    return settleNested((await (value as unknown as PromiseLike<unknown>)) as T, seen);
+  if (isThenable(value)) {
+    let arrived: unknown;
+    try {
+      arrived = await value;
+    } catch (error) {
+      // A DEFERRED VALUE THAT REJECTED, and letting this escape was a live
+      // defect rather than a gap: this walk runs after the markup exists, so the
+      // rejection left `renderPage`, left the page handler, and the request got
+      // NO RESPONSE AT ALL — no status, no body, no error boundary — for a page
+      // that had already rendered. The streamed arm has always carried it
+      // (seroval emits `resolver.f(error)` in a later chunk), so a browser was
+      // served the page and a crawler, which `isbot` routes to the buffered arm,
+      // took the request down.
+      throw new DeferredRejection(error);
+    }
+    return settleNested(arrived as T, seen);
   }
   // A cycle is left EXACTLY as it stands. Rebuilding one truncates it, and the
   // encoder carries cycles on purpose — a first version of this walk copied
@@ -277,12 +289,20 @@ async function settleNested<T>(value: T, seen: WeakSet<object> = new WeakSet()):
     let moved = false;
     const out = await Promise.all(
       value.map(async (item: unknown) => {
-        const next = await settleNested(item, seen);
-        if (next !== item) moved = true;
-        return next;
+        // BOXED, for the reason `DeferredRejection` is thrown: an async callback
+        // adopts a thenable it returns, so a placed rejection handed back bare
+        // would reject the `Promise.all` instead of taking its slot.
+        try {
+          const next = await settleNested(item, seen);
+          if (next !== item) moved = true;
+          return { next };
+        } catch (error) {
+          moved = true;
+          return { next: placed(error) };
+        }
       }),
     );
-    return moved ? (out as T) : value;
+    return moved ? (out.map((entry) => entry.next) as T) : value;
   }
 
   // Plain objects only: a `Map`, a `Date` or a class instance is handed over as
@@ -292,13 +312,57 @@ async function settleNested<T>(value: T, seen: WeakSet<object> = new WeakSet()):
   let moved = false;
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    const next = await settleNested(item, seen);
+    let next: unknown;
+    try {
+      next = await settleNested(item, seen);
+    } catch (error) {
+      next = placed(error);
+    }
     if (next !== item) moved = true;
     out[key] = next;
   }
   // The ORIGINAL when nothing moved, so identity and cycles survive the common
   // case untouched: only a subtree that actually held a promise is rebuilt.
   return moved ? (out as T) : value;
+}
+
+/**
+ * A PREDICATE rather than a cast: `T` is not known to be thenable, and narrowing
+ * is what lets the `await` above need no assertion at all.
+ */
+function isThenable(value: object): value is PromiseLike<unknown> {
+  return typeof (value as { then?: unknown }).then === "function";
+}
+
+/**
+ * A deferred value rejected, travelling to the composite that holds it.
+ *
+ * A THROW rather than a return, and that is forced rather than chosen: an
+ * `async` function ADOPTS a thenable it returns, so handing the rejected
+ * promise back would reject `settleNested`'s own promise and put the failure
+ * straight back where it came from. Thrown, it lands in the array or object
+ * branch one level up, which is the thing that has a slot to put it in.
+ */
+class DeferredRejection {
+  constructor(readonly cause: unknown) {}
+}
+
+/** A placed rejection, or a rethrow for anything that is not one. */
+function placed(error: unknown): unknown {
+  if (error instanceof DeferredRejection) return handledRejection(error.cause);
+  throw error;
+}
+/**
+ * A promise that is already rejected and already handled.
+ *
+ * The `catch` is not error handling — it is what stops the runtime reporting an
+ * unhandled rejection for a value whose only consumer is the encoder, which
+ * attaches its own handler a moment later.
+ */
+function handledRejection(error: unknown): Promise<never> {
+  const rejected = Promise.reject(error);
+  rejected.catch(() => {});
+  return rejected;
 }
 
 // ── streaming ────────────────────────────────────────────────────────────
@@ -935,6 +999,41 @@ function hydrationScriptFor(data: Record<string, unknown>, nonce?: string): stri
   return (
     `<script${nonceAttr(nonce)}>window.__BARQ_DATA__=${encodeSeed(data)};` +
     `${SEED_SETTLE_GUARD};${EVENT_CAPTURE_SNIPPET}</script>`
+  );
+}
+
+/**
+ * The seed for a BUFFERED page, which is one script and has no later chunk.
+ *
+ * `settleNested` has already replaced every deferred promise with what it
+ * settled on, so the ordinary path is a plain `serialize` and nothing here
+ * runs. What survives it is a promise that REJECTED: there is no settled value
+ * to inline, and the client has to find a rejected promise where the streamed
+ * arm would have sent one — its boundary already rendered the error, and a
+ * settled value there would hydrate different markup.
+ *
+ * `crossSerialize` refuses a promise outright, so that case takes the streaming
+ * encoder and waits for it. Every statement it produces goes in the same script
+ * rather than in a later chunk, which is the only difference between the two
+ * arms once the encoder is the same.
+ */
+async function seedScriptFor(data: Record<string, unknown>, nonce?: string): Promise<string> {
+  const seeds = createSeedEncoder();
+  if (!seeds.hasPending(data)) return hydrationScriptFor(data, nonce);
+
+  const later: string[] = [];
+  let finish!: () => void;
+  // Built before `encodeDeferred` runs, because `onDone` may fire during it.
+  const drained = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const initial = seeds.encodeDeferred(data, (statement) => later.push(statement), finish);
+  await drained;
+  const statements = later.length === 0 ? "" : `${later.join(";")};`;
+  return (
+    `<script${nonceAttr(nonce)}>${seeds.header};` +
+    `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${initial});` +
+    `${statements}${SEED_SETTLE_GUARD};${EVENT_CAPTURE_SNIPPET}</script>`
   );
 }
 

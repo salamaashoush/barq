@@ -344,7 +344,9 @@ describe("the seed encoder", () => {
       // seed script now runs `SEED_SETTLE_GUARD` after it, so the two are no
       // longer adjacent. `[\s\S]*?` is lazy, so this still stops at the first
       // close rather than running into the guard.
-      ...html.matchAll(/Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);for\(var _k in/g),
+      ...html.matchAll(
+        /Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);for\(var _k in/g,
+      ),
     ]
       .map((m) => m[1] ?? "")
       .filter((payload) => payload.includes("streamed-user"));
@@ -1077,6 +1079,48 @@ describe("a pending promise inside a seeded value", () => {
     );
     expect(out.data["d:cycle"]).toBe(cyclic);
     expect((out.data["d:cycle"] as { self: unknown }).self).toBe(cyclic);
+  });
+
+  /**
+   * A deferred value that REJECTS, which the buffered arm used to die on.
+   *
+   * `settleNested` awaited it and let the rejection out, so it left
+   * `renderPage`, left the page handler, and the request got no response at all
+   * for a page that had already rendered. The streamed arm has always carried
+   * it, and `isbot` routes a crawler to the buffered one — so a browser was
+   * served the page and a crawler took the request down.
+   */
+  test("renderPage PLACES a rejection rather than dying on it", async () => {
+    const cell = runWithOwner(null, () =>
+      computed(
+        async () => {
+          await tick();
+          return {
+            now: "here",
+            later: new Promise((_resolve, reject) =>
+              setTimeout(() => reject(new Error("the slow part failed")), 5),
+            ),
+          };
+        },
+        { key: "d:reject" },
+      ),
+    );
+    const out = await renderPage(() =>
+      ssrLoading(null, {
+        fallback: () => ssrHtml("<i>l</i>"),
+        children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
+      }),
+    );
+    expect(out.html).toBe("<b>here</b>");
+    // A REJECTED PROMISE on the client, which is what the streamed arm sends —
+    // the server's own boundary has already rendered the error, so a settled
+    // value here would hydrate different markup.
+    expect(out.script).toContain("the slow part failed");
+    expect(out.script).toContain("resolver.f");
+    // Nothing of the server's filesystem rides along with it.
+    expect(out.script).not.toContain("sourceURL");
+    // And nothing reports it unhandled after the render is over.
+    await new Promise((resolve) => setTimeout(resolve, 30));
   });
 
   test("renderToStream DEFERS it and resolves it in a later chunk", async () => {
