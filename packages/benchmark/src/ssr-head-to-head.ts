@@ -35,6 +35,8 @@ if (!solidServer.isServer) {
 GlobalRegistrator.register();
 
 const barqCore = await import("@barqjs/core");
+// `renderToString` is the STRING backend's, not core's.
+const barqServer = await import("@barqjs/server");
 
 // ---------------------------------------------------------------- fixtures
 
@@ -94,7 +96,8 @@ function rows(n: number): Row[] {
 const DATA = rows(100);
 
 interface Compiled {
-  default: (props?: unknown) => unknown;
+  // A compiled component takes its SCOPE first; a Solid one takes props alone.
+  default: (scope?: unknown, props?: unknown) => unknown;
 }
 
 const barqRows = await loadModule<Compiled>(
@@ -169,7 +172,7 @@ const keep = (html: string): void => {
 // root, which the compiler spells `null`.
 const barqHtml = chunk(barqRows.default(null, { rows: DATA }));
 const solidHtml = chunk(solidRows.default({ rows: DATA }));
-const uncompiledHtml = barqCore.renderToString(() => barqUncompiledPage() as never);
+const uncompiledHtml = barqServer.renderToString(() => barqUncompiledPage() as never);
 
 console.log("barq   compiled  :", `${barqHtml.slice(0, 86)}...`);
 console.log("solid  compiled  :", `${solidHtml.slice(0, 86)}...`);
@@ -235,7 +238,7 @@ report(
       {
         name: "barq compiled",
         setup: () => () => {
-          keep(barqCore.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
+          keep(barqServer.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
         },
       },
       {
@@ -247,7 +250,7 @@ report(
       {
         name: "barq UNCOMPILED (DOM)",
         setup: () => () => {
-          keep(barqCore.renderToString(() => barqUncompiledPage() as never));
+          keep(barqServer.renderToString(() => barqUncompiledPage() as never));
         },
       },
     ],
@@ -268,7 +271,7 @@ console.log(
   }` + (flowCompile.warnings.length > 0 ? `\n  ${flowCompile.warnings.join("\n  ")}` : ""),
 );
 {
-  const withFlowHtml = barqCore.renderToString(
+  const withFlowHtml = barqServer.renderToString(
     () => barqRowsWithFlow.default(null, { rows: DATA }) as never,
   );
   if (withFlowHtml !== barqHtml) {
@@ -286,14 +289,14 @@ report(
       {
         name: "barq, plain module",
         setup: () => () => {
-          keep(barqCore.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
+          keep(barqServer.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
         },
       },
       {
         name: "barq, module mentions Portal",
         setup: () => () => {
           keep(
-            barqCore.renderToString(() => barqRowsWithFlow.default(null, { rows: DATA }) as never),
+            barqServer.renderToString(() => barqRowsWithFlow.default(null, { rows: DATA }) as never),
           );
         },
       },

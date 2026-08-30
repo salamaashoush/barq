@@ -24,6 +24,7 @@
         "@babel/core": "^8.0.1",
         "@barqjs/compiler-rs": "workspace:*",
         "@barqjs/core": "workspace:*",
+        "@barqjs/server": "workspace:*",
         "@happy-dom/global-registrator": "^20.11.6",
         "@solidjs/signals": "^2.0.0-rc.0",
         "@types/babel__core": "^7.20.5",

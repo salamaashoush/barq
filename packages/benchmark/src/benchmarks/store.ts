@@ -11,7 +11,7 @@ import { store, produce, reconcile, effect } from "@barqjs/core";
 
 // SolidJS imports
 import { createStore, produce as solidProduce, reconcile as solidReconcile } from "solid-js/store";
-import { root, createEffect } from "solid-js";
+import { createRoot as root, createEffect } from "solid-js";
 
 export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];

@@ -27,7 +27,7 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 100 items",
       () => {
         const container = document.createElement("div");
-        const [items] = signal(items100);
+        const items = signal(items100);
         const el = For(items as unknown as () => readonly { id: number; name: string }[], (_scope, item: () => { id: number; name: string }) =>
           h("div", { class: "item", "data-id": String(item().id) }, item().name),
         );
@@ -75,7 +75,7 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 1000 items",
       () => {
         const container = document.createElement("div");
-        const [items] = signal(items1000);
+        const items = signal(items1000);
         const el = For(items as unknown as () => readonly { id: number; name: string }[], (_scope, item: () => { id: number; name: string }) =>
           h("div", { class: "item", "data-id": String(item().id) }, item().name),
         );

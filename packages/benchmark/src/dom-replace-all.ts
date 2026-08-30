@@ -110,7 +110,7 @@ investigations.push({
   solid: () => {
     const parent = container();
     let set!: (v: Row[]) => void;
-    solidCore.root(() => {
+    solidCore.createRoot(() => {
       const [data, setData] = solidCore.createSignal(makeRows(N));
       set = setData as (v: Row[]) => void;
       const view = solidCore.createMemo(
@@ -158,7 +158,7 @@ investigations.push({
     solid: () => {
       const parent = container();
       let set!: (v: Row[]) => void;
-      solidCore.root(() => {
+      solidCore.createRoot(() => {
         const [data, setData] = solidCore.createSignal(pool[0]);
         set = setData as (v: Row[]) => void;
         const view = solidCore.createMemo(
@@ -209,7 +209,7 @@ investigations.push({
     solid: () => {
       let set!: (v: Row[]) => void;
       let out: unknown;
-      solidCore.root(() => {
+      solidCore.createRoot(() => {
         const [data, setData] = solidCore.createSignal(pool[0]);
         set = setData as (v: Row[]) => void;
         const view = solidCore.createMemo(
@@ -259,7 +259,7 @@ investigations.push({
     solid: () => {
       const parent = container();
       let set!: (v: number) => void;
-      solidCore.root(() => {
+      solidCore.createRoot(() => {
         const [which, setWhich] = solidCore.createSignal(0);
         set = setWhich as (v: number) => void;
         solid.insert(parent, () => nodePool[which() % POOL]);

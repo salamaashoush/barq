@@ -225,7 +225,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "For render (100 items)",
       () => {
         const container = document.createElement("div");
-        const [items] = signal(items100);
+        const items = signal(items100);
         const el = For(items, (_scope, item: () => Item) =>
           h("div", { "data-id": String(item().id) }, item().name),
         );
@@ -243,7 +243,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "For render (1000 items)",
       () => {
         const container = document.createElement("div");
-        const [items] = signal(items1000);
+        const items = signal(items1000);
         const el = For(items, (_scope, item: () => Item) =>
           h("div", { "data-id": String(item().id) }, item().name),
         );

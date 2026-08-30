@@ -13,9 +13,11 @@
  * has been quietly improved is not the thing that was measured.
  */
 
-interface RouteLike {
+export interface RouteLike {
   path: string;
   children?: RouteLike[];
+  /** Carried by a caller building a real table; the matcher never reads it. */
+  component?: unknown;
 }
 type Params = Record<string, string>;
 interface MatchedRoute {

@@ -646,7 +646,7 @@ function agree(): string | null {
   const reference = (() => {
     const parent = host()
     const scope = rootScope()
-    mountA(parent, rows(3), scope)
+    mountA(parent, rows(3))
     const html = parent.innerHTML
     parent.remove()
     scope.dispose()

@@ -6,7 +6,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
 import { signal, computed, effect, batch, scope } from "@barqjs/core";
-import { createEffect, createMemo, root, createSignal, batch as solidBatch } from "solid-js";
+import { createEffect, createMemo, createRoot as root, createSignal, batch as solidBatch } from "solid-js";
 
 const ITERATIONS = 10000;
 

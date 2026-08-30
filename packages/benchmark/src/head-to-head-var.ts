@@ -15,7 +15,7 @@ const {
 import {
   createEffect as sEffect,
   createMemo as sMemo,
-  root as sRoot,
+  createRoot as sRoot,
   createSignal as sSignal,
   flush as sFlush,
 } from "@solidjs/signals";

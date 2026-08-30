@@ -44,7 +44,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "toggle show/hide 100x",
       () => {
         const container = document.createElement("div");
-        let setVisible: (v: boolean) => void;
+        let setVisible: ((v: boolean) => void) | undefined;
 
         const dispose = solidRender(() => {
           const [visible, _setVisible] = createSignal(true);
@@ -100,7 +100,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "show/fallback toggle 100x",
       () => {
         const container = document.createElement("div");
-        let setVisible: (v: boolean) => void;
+        let setVisible: ((v: boolean) => void) | undefined;
 
         const dispose = solidRender(() => {
           const [visible, _setVisible] = createSignal(true);
@@ -181,7 +181,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "switch 5 tabs 100x",
       () => {
         const container = document.createElement("div");
-        let setTab: (v: number) => void;
+        let setTab: ((v: number) => void) | undefined;
 
         const dispose = solidRender(() => {
           const [tab, _setTab] = createSignal(0);

@@ -28,7 +28,7 @@ import { computed as bComputed, effect as bEffect, flush as bFlush, signal as bS
 import {
   createEffect as sEffect,
   createMemo as sMemo,
-  root as sRoot,
+  createRoot as sRoot,
   createSignal as sSignal,
   flush as sFlush,
 } from "@solidjs/signals"
@@ -70,7 +70,7 @@ const barqFramework: ReactiveFramework = {
 const solidFramework: ReactiveFramework = {
   name: "@solidjs/signals",
   signal: (initialValue) => {
-    const [get, set] = sSignal(initialValue)
+    const [get, set] = sSignal(initialValue as never)
     return { read: () => get(), write: (v) => set(v as never) }
   },
   computed: (fn) => {
@@ -112,7 +112,7 @@ const violations: string[] = []
 const nativeAssert = console.assert.bind(console)
 console.assert = (condition: unknown, ...rest: unknown[]) => {
   if (!condition) violations.push(rest.map(String).join(" ") || "assertion failed")
-  nativeAssert(condition, ...rest)
+  nativeAssert(Boolean(condition), ...rest)
 }
 
 globalScope.__jrbSuites = ["kairo", "cellx", "sbench"]

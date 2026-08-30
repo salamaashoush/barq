@@ -35,14 +35,14 @@ const barq: Api = {
 
 const solid: Api = {
   signal: (v, opts) => {
-    const [g, s] = S.createSignal(v, opts as never);
+    const [g, s] = S.createSignal(v as never, opts as never);
     return [g, s as (v: never) => void] as never;
   },
   memo: (fn, opts) => S.createMemo(fn as never, opts as never) as never,
   effect: (fn) => {
     S.createEffect(fn as never, () => {});
   },
-  root: (fn) => S.root(fn),
+  root: (fn) => S.createRoot(fn),
   flush: () => S.flush(),
   cleanup: (fn) => {
     S.onCleanup(fn);

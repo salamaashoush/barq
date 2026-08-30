@@ -92,7 +92,7 @@ const cases: Case[] = [];
     solid: () => {
       const tmpl = solid.template(`<div><span></span></div>`);
       return () => {
-        solidCore.root((d) => {
+        solidCore.createRoot((d) => {
           const root = tmpl() as HTMLElement;
           const span = root.firstChild as HTMLElement;
           const [s] = solidCore.createSignal(0);
@@ -126,7 +126,7 @@ const cases: Case[] = [];
     solid: () => {
       const tmpl = solid.template(`<div><span></span></div>`);
       let set!: (v: number) => void;
-      solidCore.root(() => {
+      solidCore.createRoot(() => {
         const root = tmpl() as HTMLElement;
         container().appendChild(root);
         const span = root.firstChild as HTMLElement;
@@ -168,7 +168,7 @@ const cases: Case[] = [];
     solid: () => {
       const tmpl = solid.template(`<tr><td></td><td></td></tr>`);
       return () => {
-        solidCore.root((d) => {
+        solidCore.createRoot((d) => {
           const parent = document.createElement("tbody");
           for (const row of rows) {
             const tr = tmpl() as HTMLElement;
@@ -213,7 +213,7 @@ const cases: Case[] = [];
       const parent = container();
       let set!: (v: Row[]) => void;
       let peek!: () => Row[];
-      solidCore.root(() => {
+      solidCore.createRoot(() => {
         const [data, setData] = solidCore.createSignal(makeRows(200));
         set = setData as (v: Row[]) => void;
         peek = data;
@@ -260,7 +260,7 @@ const cases: Case[] = [];
     solid: () => {
       const parent = container();
       let set!: (v: Row[]) => void;
-      solidCore.root(() => {
+      solidCore.createRoot(() => {
         const [data, setData] = solidCore.createSignal(makeRows(100));
         set = setData as (v: Row[]) => void;
         const view = solidCore.createMemo(
@@ -300,7 +300,7 @@ const cases: Case[] = [];
       const el = document.createElement("div");
       container().appendChild(el);
       let set!: (v: number) => void;
-      solidCore.root(() => {
+      solidCore.createRoot(() => {
         const [s, setS] = solidCore.createSignal(0);
         set = setS as (v: number) => void;
         solidCore.createRenderEffect(() => {
@@ -348,7 +348,7 @@ function timePair(c: Case): [number, number] {
   const t = solid.template(`<div><span></span></div>`);
   let probeSpan!: HTMLElement;
   let probeSet!: (v: number) => void;
-  solidCore.root(() => {
+  solidCore.createRoot(() => {
     const root = t() as HTMLElement;
     document.body.appendChild(root);
     probeSpan = root.firstChild as HTMLElement;
@@ -389,7 +389,7 @@ function timePair(c: Case): [number, number] {
   }
   const scls = document.createElement("div");
   let sclsSet!: (v: number) => void;
-  solidCore.root(() => {
+  solidCore.createRoot(() => {
     const [v, setV] = solidCore.createSignal(0);
     sclsSet = setV as (v: number) => void;
     solidCore.createRenderEffect(() => {
@@ -436,7 +436,7 @@ console.log("\nDOM nodes produced for one dynamic text hole (<span>{x}</span>):"
 }
 {
   const tmpl = solid.template(`<div><span></span></div>`);
-  solidCore.root(() => {
+  solidCore.createRoot(() => {
     const root = tmpl() as HTMLElement;
     const span = root.firstChild as HTMLElement;
     const [s] = solidCore.createSignal("hi");

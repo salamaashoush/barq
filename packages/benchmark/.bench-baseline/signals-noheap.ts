@@ -1761,7 +1761,7 @@ export function createAsync<T>(
 type MaybeAccessor<T> = T | (() => T);
 
 // Type-only: keeps Provider usable as a JSX component (no runtime cycle)
-import type { JSXElement } from "./dom.ts";
+import type { JSXElement } from "@barqjs/core";
 
 /**
  * Context object type

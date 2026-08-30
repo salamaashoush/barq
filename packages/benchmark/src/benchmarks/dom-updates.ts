@@ -44,7 +44,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "text update 1000x",
       () => {
         const container = document.createElement("div");
-        let setCount: (v: number) => void;
+        let setCount: ((v: number) => void) | undefined;
 
         const dispose = solidRender(() => {
           const [count, _setCount] = createSignal(0);
@@ -90,7 +90,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "class update 1000x",
       () => {
         const container = document.createElement("div");
-        let setActive: (v: boolean) => void;
+        let setActive: ((v: boolean) => void) | undefined;
 
         const dispose = solidRender(() => {
           const [active, _setActive] = createSignal(false);
@@ -142,7 +142,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "style update 1000x",
       () => {
         const container = document.createElement("div");
-        let setWidth: (v: number) => void;
+        let setWidth: ((v: number) => void) | undefined;
 
         const dispose = solidRender(() => {
           const [width, _setWidth] = createSignal(0);
@@ -196,7 +196,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "multi-attr update 500x",
       () => {
         const container = document.createElement("div");
-        let setState: (v: { x: number; y: number; scale: number }) => void;
+        let setState: ((v: { x: number; y: number; scale: number }) => void) | undefined;
 
         const dispose = solidRender(() => {
           const [state, _setState] = createSignal({ x: 0, y: 0, scale: 1 });

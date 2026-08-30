@@ -22,7 +22,7 @@ import {
   Show as SolidShow,
   createEffect,
   createMemo,
-  root,
+  createRoot as root,
   createSignal,
 } from "solid-js";
 import { render as solidRender, template } from "solid-js/web";
@@ -75,8 +75,9 @@ const suites: BenchmarkSuite[] = [
           root((dispose) => {
             const [count, setCount] = createSignal(0);
             for (let i = 0; i < 1000; i++) {
-              count.set(i);
+              setCount(i);
             }
+            count();
             dispose();
           });
         },
@@ -85,7 +86,7 @@ const suites: BenchmarkSuite[] = [
         operation: "create computed",
         barq: () => {
           scope((dispose) => {
-            const [count] = signal(0);
+            const count = signal(0);
             computed(() => count() * 2);
             dispose();
           });
@@ -124,7 +125,7 @@ const suites: BenchmarkSuite[] = [
               effectRuns++;
             });
             for (let i = 0; i < 100; i++) {
-              count.set(i);
+              setCount(i);
             }
             dispose();
           });
@@ -159,7 +160,7 @@ const suites: BenchmarkSuite[] = [
             const f = createMemo(() => e() + a());
 
             for (let i = 0; i < 100; i++) {
-              a.set(i);
+              setA(i);
               f();
             }
             dispose();
@@ -172,10 +173,10 @@ const suites: BenchmarkSuite[] = [
         barq: () => {
           scope((dispose) => {
             const signals = Array.from({ length: 10 }, (_, i) => signal(i));
-            const sum = computed(() => signals.reduce((acc, [s]) => acc + s(), 0));
+            const sum = computed(() => signals.reduce((acc, s) => acc + s(), 0));
 
             for (let i = 0; i < 100; i++) {
-              signals[i % 10][1](i);
+              signals[i % 10]!.set(i);
               sum();
             }
             dispose();
@@ -389,7 +390,7 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           const container = document.createElement("div");
-          let setVisible: (v: boolean) => void;
+          let setVisible: ((v: boolean) => void) | undefined;
 
           const dispose = solidRender(() => {
             const [visible, _setVisible] = createSignal(true);
@@ -435,7 +436,7 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           const container = document.createElement("div");
-          let setVisible: (v: boolean) => void;
+          let setVisible: ((v: boolean) => void) | undefined;
 
           const dispose = solidRender(() => {
             const [visible, _setVisible] = createSignal(true);
@@ -488,7 +489,7 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           const container = document.createElement("div");
-          let setCount: (v: number) => void;
+          let setCount: ((v: number) => void) | undefined;
 
           const dispose = solidRender(() => {
             const [count, _setCount] = createSignal(0);
@@ -526,7 +527,7 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           const container = document.createElement("div");
-          let setActive: (v: boolean) => void;
+          let setActive: ((v: boolean) => void) | undefined;
 
           const dispose = solidRender(() => {
             const [active, _setActive] = createSignal(false);
@@ -568,7 +569,7 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           const container = document.createElement("div");
-          let setWidth: (v: number) => void;
+          let setWidth: ((v: number) => void) | undefined;
 
           const dispose = solidRender(() => {
             const [width, _setWidth] = createSignal(0);
@@ -613,7 +614,7 @@ const suites: BenchmarkSuite[] = [
         },
         solid: () => {
           const container = document.createElement("div");
-          let setState: (v: { x: number; y: number; scale: number }) => void;
+          let setState: ((v: { x: number | undefined; y: number; scale: number }) => void) | undefined;
 
           const dispose = solidRender(() => {
             const [state, _setState] = createSignal({ x: 0, y: 0, scale: 1 });

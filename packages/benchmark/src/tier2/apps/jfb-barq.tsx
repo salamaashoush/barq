@@ -1,4 +1,6 @@
 /**
+ * @jsxImportSource @barqjs/core
+ *
  * js-framework-benchmark, keyed, in barq.
  *
  * A transliteration of `frameworks/keyed/solid/src/main.jsx` from

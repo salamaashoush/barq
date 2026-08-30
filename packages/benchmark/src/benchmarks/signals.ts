@@ -10,7 +10,7 @@ import { benchmark } from "../utils.ts";
 import { signal, computed, effect, batch, scope } from "@barqjs/core";
 
 // SolidJS imports
-import { createEffect, createMemo, root, createSignal, batch as solidBatch } from "solid-js";
+import { createEffect, createMemo, createRoot as root, createSignal, batch as solidBatch } from "solid-js";
 
 export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
