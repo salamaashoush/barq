@@ -705,7 +705,7 @@ export function renderDepth(
 function routeFallback(state: RouterState, route: Route): Block<unknown> | null {
   const pending = route.definition.pendingComponent;
   if (pending === undefined) return null;
-  const delay = route.definition.pendingMs ?? 0;
+  const delay = route.definition.pendingMs ?? state.config.defaults?.pendingMs ?? 0;
 
   return (fallbackScope: Scope | null) => {
     const shown = (pending as unknown as Invoked)(fallbackScope, {
@@ -1004,7 +1004,9 @@ function anchorElement(
   // live observers doing layout work for nothing.
   const strategy = (): PreloadStrategy =>
     props.preload === undefined
-      ? false
+      ? // The router's answer when the link does not give one. `false` still,
+        // unless a project turned preloading on for every link at once.
+        (state.config.defaults?.preload ?? false)
       : ((readSlot(props.preload, "Link.preload") as PreloadStrategy) ?? false);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1027,7 +1029,7 @@ function anchorElement(
     timer = setTimeout(() => {
       timer = undefined;
       warm();
-    }, PRELOAD_DELAY);
+    }, state.config.defaults?.preloadDelay ?? PRELOAD_DELAY);
   };
 
   listen(scope, element, "mouseenter", onIntent);

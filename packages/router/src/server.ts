@@ -71,6 +71,7 @@ import {
 import {
   type BeforeLoadResult,
   type Guard,
+  type RouteDefaults,
   type RouterConfig,
   type RouterState,
   ROUTE_CONTEXT_GLOBAL,
@@ -331,6 +332,8 @@ export interface PageHandlerOptions {
    * has to be given the same value; `barqStart` passes one through to both.
    */
   readonly basepath?: string;
+  /** The router's per-route defaults, matching `RouterConfig`'s. */
+  readonly defaults?: RouteDefaults;
   /**
    * The application, as the string backend wants it: returns `SsrHtml`.
    *
@@ -701,6 +704,7 @@ export function createPageHandler(
       routeTree: options.routeTree,
       beforeEach: options.beforeEach,
       basepath: options.basepath,
+      defaults: options.defaults,
       history: memoryHistory({ initial: [pathname + url.search] }),
       onLoaderError(error) {
         if (isNotFound(error)) missing = true;
@@ -823,7 +827,7 @@ export function createPageHandler(
             // client refetching everything the server had already fetched.
             const session = Symbol("page-session");
             const restore = setAsyncSession(session);
-            const modes = resolveSsr(chain);
+            const modes = resolveSsr(chain, options.defaults?.ssr ?? true);
             const projected: { route: Route; ssr: boolean }[] = [];
             for (const [depth, route] of chain.entries()) {
               // `ssr: false` means NOTHING of this route runs on the server, so

@@ -51,6 +51,30 @@ import {
 
 const NOOP = (): void => {};
 
+/**
+ * The router-wide answer for a per-route option.
+ *
+ * Named for the ROUTE option each one stands in for, so `defaults.staleTime` is
+ * plainly the default for `staleTime`. TanStack spells the same set
+ * `defaultStaleTime`, `defaultPendingMs` and so on at the top level; one nested
+ * object is the same information without a second vocabulary.
+ */
+export interface RouteDefaults {
+  readonly pendingMs?: number;
+  readonly pendingMinMs?: number;
+  readonly staleTime?: number;
+  readonly preloadStaleTime?: number;
+  readonly gcTime?: number;
+  readonly preloadGcTime?: number;
+  readonly staleReloadMode?: "background" | "blocking";
+  /** What a `<Link>` does when it does not say. `false` is still the default. */
+  readonly preload?: import("./components.ts").PreloadStrategy;
+  /** Hover before `preload: "intent"` counts as intent. Default 50 ms. */
+  readonly preloadDelay?: number;
+  /** What every route runs on the server when it does not say. Default `true`. */
+  readonly ssr?: boolean | "data-only";
+}
+
 /** How many resolved loader cells to keep. Beyond this the oldest go. */
 const DEFAULT_CACHE_SIZE = 100;
 
@@ -85,11 +109,14 @@ export type SsrMode = boolean | "data-only";
  * downward, `"data-only"` clamps a child's `true`, and a child may always
  * declare `false` for itself.
  */
-export function resolveSsr(chain: readonly Route[]): readonly SsrMode[] {
+export function resolveSsr(chain: readonly Route[], fallback: SsrMode = true): readonly SsrMode[] {
   const out: SsrMode[] = [];
   let parent: SsrMode = true;
   for (const route of chain) {
-    const own = route.definition.ssr ?? true;
+    // `fallback` is the router's `defaults.ssr`, which is how a project makes
+    // every route client-only without writing `ssr: false` on each. A route
+    // that says something itself always wins.
+    const own = route.definition.ssr ?? fallback;
     let mode: SsrMode;
     if (parent === false) mode = false;
     else if (own === true && parent === "data-only") mode = "data-only";
@@ -296,6 +323,18 @@ export interface RouterConfig {
    * which is the shape of bug that survives every click-through test.
    */
   readonly basepath?: string;
+  /**
+   * What a route gets when it declares none of these itself.
+   *
+   * Every one is TanStack's `default*` option under the name the ROUTE uses, so
+   * there is one word to learn rather than two. Before this a project that
+   * wanted, say, a 200 ms pending delay everywhere had to write `pendingMs` on
+   * every route and keep writing it on every new one.
+   *
+   * The built-in fallbacks are unchanged and still apply when an entry here is
+   * absent, so adding this option changes no existing application's behaviour.
+   */
+  readonly defaults?: RouteDefaults;
   /** Rendered at depth 0 when nothing matched. */
   readonly notFound?: AnyRouteDefinition["component"];
   readonly beforeEach?: readonly Guard[];
@@ -530,6 +569,7 @@ export interface RouterState {
 
 export function createRouter(config: RouterConfig): RouterState {
   const base = config.basepath === undefined ? "" : normalizeBase(config.basepath);
+  const defaults: RouteDefaults = config.defaults ?? {};
   // A history the CALLER built already knows its own base; one built here is
   // told. Both spellings therefore work, and neither has to repeat the other.
   const history = config.history ?? memoryHistory();
@@ -791,8 +831,8 @@ export function createRouter(config: RouterConfig): RouterState {
       if (live.has(key) || entry.inFlight || entry.updatedAt === 0) continue;
       const definition = entry.route.definition;
       const budget = entry.preload
-        ? (definition.preloadGcTime ?? DEFAULT_PRELOAD_GC_TIME)
-        : (definition.gcTime ?? DEFAULT_GC_TIME);
+        ? (definition.preloadGcTime ?? defaults.preloadGcTime ?? DEFAULT_PRELOAD_GC_TIME)
+        : (definition.gcTime ?? defaults.gcTime ?? DEFAULT_GC_TIME);
       if (at - entry.updatedAt < budget) continue;
       entry.dispose();
       entries.delete(key);
@@ -815,8 +855,8 @@ export function createRouter(config: RouterConfig): RouterState {
         : definition.shouldReload;
     if (configured !== undefined) return Boolean(configured);
     const budget = entry.preload
-      ? (definition.preloadStaleTime ?? DEFAULT_PRELOAD_STALE_TIME)
-      : (definition.staleTime ?? DEFAULT_STALE_TIME);
+      ? (definition.preloadStaleTime ?? defaults.preloadStaleTime ?? DEFAULT_PRELOAD_STALE_TIME)
+      : (definition.staleTime ?? defaults.staleTime ?? DEFAULT_STALE_TIME);
     return now() - entry.updatedAt >= budget;
   };
 
@@ -863,9 +903,9 @@ export function createRouter(config: RouterConfig): RouterState {
    * value, and on the server every value is cold.
    */
   const readerFor = (entry: Entry, blocking: boolean): Cell<unknown> => {
-    const mode = entry.route.definition.staleReloadMode ?? "background";
+    const mode = entry.route.definition.staleReloadMode ?? defaults.staleReloadMode ?? "background";
     const held = (): boolean => {
-      const minimum = entry.route.definition.pendingMinMs ?? 0;
+      const minimum = entry.route.definition.pendingMinMs ?? defaults.pendingMinMs ?? 0;
       if (minimum === 0 || entry.shownAt === 0) return false;
       // Read the signal so this re-evaluates when the hold expires.
       entry.hold();
@@ -964,7 +1004,7 @@ export function createRouter(config: RouterConfig): RouterState {
     candidate: Match<Route> | null,
     options?: { readonly server?: boolean },
   ): Promise<BeforeLoadResult> => {
-    const modes = resolveSsr(candidate?.route.chain ?? []);
+    const modes = resolveSsr(candidate?.route.chain ?? [], defaults.ssr ?? true);
     const out: Record<string, unknown>[] = [];
     const produced: (Record<string, unknown> | undefined)[] = [];
     // Parent-to-child by SPREAD, child wins on a collision — TanStack's rule
@@ -1062,7 +1102,7 @@ export function createRouter(config: RouterConfig): RouterState {
 
   const primeChain = (server = false): void => {
     const forParams = untrack(params);
-    const modes = resolveSsr(untrack(chain));
+    const modes = resolveSsr(untrack(chain), defaults.ssr ?? true);
     for (const [depth, route] of untrack(chain).entries()) {
       if (route.definition.loader === undefined) continue;
       // On the server a route that opted out runs nothing, so priming it would
@@ -1378,7 +1418,7 @@ export function createRouter(config: RouterConfig): RouterState {
     },
     canGoBack: () => (history.depth?.() ?? 0) > 0,
     isNavigating: () => navigating() > 0,
-    ssrModes: () => resolveSsr(chain()),
+    ssrModes: () => resolveSsr(chain(), defaults.ssr ?? true),
     async preload(to) {
       if (leavesTheApp(to)) return;
       // RESOLVED, parsed and base-stripped, exactly as `navigate` does it. The

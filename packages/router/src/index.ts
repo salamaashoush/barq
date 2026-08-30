@@ -197,6 +197,7 @@ export {
   type Guard,
   type LoadCause,
   type NavigateOptions,
+  type RouteDefaults,
   type RouterConfig,
   type RouterState,
   type SsrMode,

@@ -2409,3 +2409,59 @@ test("navigating to a lazy() route reveals it once the module lands", async () =
   dispose();
   host.remove();
 });
+
+/**
+ * `defaults` — the router's answer for a per-route option.
+ *
+ * TanStack spells these `defaultStaleTime`, `defaultPendingMs` and so on at the
+ * top level; one nested object under the ROUTE's own names is the same
+ * information without a second vocabulary to learn. Before this, a project that
+ * wanted one pending delay everywhere wrote it on every route and kept writing
+ * it on every new one.
+ */
+describe("router-wide route defaults", () => {
+  const table = [
+    { path: "/", component: (() => null) as never },
+    { path: "/slow", loader: () => "x", component: (() => null) as never },
+  ] as never as AnyRouteDefinition[];
+
+  test("an absent `defaults` changes nothing", () => {
+    const state = createRouter({ routeTree: table });
+    expect(state.config.defaults).toBeUndefined();
+  });
+
+  test("`ssr` applies to every route that does not say", () => {
+    const state = createRouter({ routeTree: table, defaults: { ssr: false } });
+    expect(state.ssrModes()).toEqual([false]);
+  });
+
+  /** A route that declares its own always wins over the default. */
+  test("a route's own answer beats the default", () => {
+    const own = [
+      { path: "/", ssr: true, component: (() => null) as never },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({ routeTree: own, defaults: { ssr: false } });
+    expect(state.ssrModes()).toEqual([true]);
+  });
+
+  /**
+   * The asymmetry `resolveSsr` documents still holds under a default: a
+   * parent's `false` forces every descendant, because there is no rendered
+   * parent to put them in.
+   */
+  test("inheritance is unchanged", () => {
+    const nested = [
+      {
+        path: "/parent",
+        ssr: false,
+        component: (() => null) as never,
+        children: [{ path: "child", ssr: true, component: (() => null) as never }],
+      },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: nested,
+      history: memoryHistory({ initial: ["/parent/child"] }),
+    });
+    expect(state.ssrModes()).toEqual([false, false]);
+  });
+});

@@ -99,6 +99,7 @@ export const sections = [
   { id: "query", label: "TanStack Query" },
   { id: "routing", label: "Routing" },
   { id: "jsx-types", label: "JSX Types" },
+  { id: "control", label: "Control Flow" },
 ] as const;
 
 globalCss`
