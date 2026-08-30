@@ -2310,3 +2310,56 @@ describe("a link under a basepath", () => {
     expect(linkAttrHref(state, "/users/7")).toBe("/users/7");
   });
 });
+
+/**
+ * Hydrating a path that matched NOTHING.
+ *
+ * Reported as a browser tab dying with `SIGTRAP` on any unmatched URL, which is
+ * what a renderer does when it runs out of stack. Every route's own tests mount
+ * COLD, so nothing exercised the one path where the server and the client
+ * disagree about how much markup there is.
+ */
+describe("an unmatched path, hydrated", () => {
+  test("does not recurse", async () => {
+    const table: AnyRouteDefinition[] = [
+      { path: "/", component: (() => null) as never },
+      { path: "/users/$id", component: (() => null) as never },
+    ] as never;
+
+    const handler = createPageHandler({
+      routeTree: table,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document: (parts) =>
+        `<!doctype html><html><head></head><body>[APP[${parts.body}]APP]${parts.seed}</body></html>`,
+    });
+
+    const response = await handler(get("/nowhere"));
+    expect(response.status).toBe(404);
+    const html = await response.text();
+    // The server writes the not-found; it used to write an empty string, so
+    // the client built a text node into markup that had none.
+    expect(html).toContain("404 - Not Found");
+
+    const container = globalThis.document.createElement("div");
+    globalThis.document.body.appendChild(container);
+    container.innerHTML = html.slice(html.indexOf("[APP[") + 5, html.indexOf("]APP]"));
+
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/nowhere"] }),
+    });
+    const provider = RouterProvider as never as (s: unknown, p: unknown) => unknown;
+    hydrate(((s: unknown) => provider(s, { state: () => state })) as never, container);
+    flush();
+
+    // THE ASSERTION. A mismatch here meant the client threw the server's whole
+    // document away and rendered cold over it, which is what killed the tab.
+    // RECOVERY is the thing that killed the tab: it throws the server's whole
+    // document away and renders the page cold over it. The server writing
+    // nothing where the client writes a node guaranteed it on every 404.
+    expect(hydrate.report.recovered).toBe(false);
+    expect(container.textContent).toContain("404 - Not Found");
+    expect(hydrate.report.mismatches).toEqual([]);
+  });
+});

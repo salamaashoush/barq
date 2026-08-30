@@ -32,7 +32,7 @@ import {
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
-import { HYDRATE, type Block, type Scope, cell, getOwner, provide } from "@barqjs/core";
+import { HYDRATE, type Block, type Scope, cell, getOwner, provide, untrack } from "@barqjs/core";
 import { encodeSeed } from "@barqjs/server/codec";
 import { isbot } from "isbot";
 
@@ -80,8 +80,10 @@ import {
 } from "./router.ts";
 import {
   type HeadAssets,
+  EMPTY_CHILDREN,
   HeadAssetsContext,
   LinkBackendContext,
+  NOT_FOUND,
   RouteMatchContext,
   RouterContext,
   routePropsFor,
@@ -139,7 +141,6 @@ const linkBackend = {
 
 export function renderRoutes(state: RouterState): unknown {
   const chain = state.chain();
-  if (chain.length === 0) return ssrHtml("");
 
   // Before depth 0 is built, and from HERE rather than from the page handler:
   // this runs inside the render session, and a value first read outside one is
@@ -188,7 +189,32 @@ export function renderRoutes(state: RouterState): unknown {
   // branch rather than instead of it.
   const bodyAt = (depth: number): unknown => {
     const route = chain[depth];
-    if (route === undefined) return ssrHtml("");
+    if (route === undefined) {
+      // AN UNMATCHED LOCATION, at depth 0, renders what the DOM path renders.
+      //
+      // `renderRoutes` used to return an empty string before it built any
+      // region at all, while `renderDepth` built `config.notFound` — or a
+      // `404 - Not Found` text node — inside the range structure every depth
+      // writes. So every unmatched URL served an empty `#app` and then asked
+      // the client to hydrate a tree that was not there. The client threw the
+      // server's document away and rendered the whole page cold over it, which
+      // on a real browser killed the tab.
+      //
+      // Reached through the ordinary depth walk rather than short-circuited, so
+      // the ranges the client claims are the ranges the server wrote.
+      if (!untrack(state.missed) || depth !== chain.length) return ssrHtml("");
+      const fallback = state.config.notFound;
+      // `<p>` with the text inside it, matching the template the DOM path
+      // builds — same element, same hole, so the client claims rather than
+      // rebuilds.
+      // The same element and the same STATIC text the DOM template holds, so
+      // the client claims it rather than rebuilding a range around it.
+      if (fallback === undefined) return ssrHtml(`<p>${esc(NOT_FOUND)}</p>`);
+      return (fallback as unknown as (s: unknown, p: unknown) => unknown)(
+        getOwner(),
+        routePropsFor(state, 0, null, EMPTY_CHILDREN),
+      );
+    }
 
     const children = ((): unknown => at(depth + 1)) as never;
     const component = route.definition.component;

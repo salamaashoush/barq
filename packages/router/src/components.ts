@@ -364,8 +364,12 @@ function assetsFromDocument(): {
 export async function resolveHeadFor(
   state: RouterState,
 ): Promise<readonly import("./head.ts").MatchAssets[]> {
+  // `state.chain()`, not `state.match()`. On an unmatched location the chain is
+  // the ROOT route standing in, and the server renders its `head` — so reading
+  // the match here gave the client an EMPTY head for every 404, and
+  // `<HeadContent />` then reconciled away every tag the server had written.
   const match = state.match();
-  const chain = match?.route.chain ?? [];
+  const chain = state.chain();
   return projectHead(
     chain.map((route) => ({
       params: match?.params ?? {},
@@ -599,7 +603,15 @@ export function useRouter(): RouterState {
   return read(RouterContext)();
 }
 
-const NOT_FOUND = "404 - Not Found";
+/**
+ * What a location matching NO route renders when the application declares no
+ * `notFound`.
+ *
+ * Exported because the STRING backend has to write the same thing. It rendered
+ * nothing at all, so every unmatched URL was a guaranteed hydration mismatch:
+ * the server sent an empty app and the client built a text node inside it.
+ */
+export const NOT_FOUND = "404 - Not Found";
 
 /**
  * A code-split component's tracked readiness probe, when it has one.
@@ -633,7 +645,11 @@ export function renderDepth(
   const body = (instance: Scope | null): unknown => {
     const route = untrack(routeAt);
     if (route === null) {
-      if (depth > 0) return null;
+      // The not-found goes where the MATCHED route would have gone, which with
+      // a root route in the table is depth 1 rather than depth 0. That keeps
+      // the shell and the navigation the root renders, and it keeps a miss the
+      // same shape as a hit — which is what hydration compares.
+      if (!untrack(state.missed) || depth !== untrack(() => state.chain()).length) return null;
       const fallback = state.config.notFound;
       if (fallback !== undefined) {
         // A not-found route has no next depth, so its `children` is the Block
@@ -644,7 +660,18 @@ export function renderDepth(
           routeProps(state, depth, null, EMPTY_CHILDREN),
         );
       }
-      return document.createTextNode(NOT_FOUND);
+      // THROUGH `template`, not `document.createTextNode`.
+      //
+      // A raw node is invisible to hydration: it cannot be claimed, so the
+      // client rebuilt it over markup the server had written and `hydrate`
+      // RECOVERED — threw the whole document away and rendered the page cold.
+      // On a real browser that killed the tab.
+      //
+      // The text is STATIC, so it lives in the template rather than going
+      // through `insert`, which would write a range around a constant. The
+      // server emits the same element with the same text and no range, and the
+      // client claims it.
+      return notFoundTemplate();
     }
 
     const component = route.definition.component;
@@ -817,7 +844,8 @@ export function routePropsFor(
 }
 
 /** The `children` of a depth that has none: a Block that places nothing. */
-const EMPTY_CHILDREN: Block<unknown> = () => null;
+/** A route with no next depth places nothing. Shared with the string backend. */
+export const EMPTY_CHILDREN: Block<unknown> = () => null;
 
 function routeProps(
   state: RouterState,
@@ -1041,6 +1069,9 @@ export interface LinkProps extends AnchorProps {
   readonly viewTransition?: boolean;
   readonly children?: unknown;
 }
+
+/** The default not-found, as an element the server writes identically. */
+const notFoundTemplate = template(`<p>${NOT_FOUND}</p>`);
 
 const anchorTemplate = template("<a></a>");
 

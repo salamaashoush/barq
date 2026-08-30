@@ -36,9 +36,10 @@ import {
   normalizeBase,
   parseLocation,
 } from "./history.ts";
+import { ROOT_ROUTE_ID } from "./file-route.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
-import { leavesTheApp, resolvePath } from "./path.ts";
+import { leavesTheApp, normalize, resolvePath } from "./path.ts";
 import { type ScrollRestoration, scrollRestoration, withViewTransition } from "./scroll.ts";
 import {
   type SearchMiddleware,
@@ -428,6 +429,13 @@ export interface RouterState {
    */
   readonly base: string;
   /**
+   * Nothing matched this location, and the chain is the root standing in.
+   *
+   * Read by both render paths to put the not-found at the depth the matched
+   * route would have occupied.
+   */
+  readonly missed: Cell<boolean>;
+  /**
    * Tell the router this depth's `pending` fallback is on screen.
    *
    * `pendingMinMs` needs a start time, and only the thing that RENDERS the
@@ -637,7 +645,33 @@ export function createRouter(config: RouterConfig): RouterState {
     }
     return { slices, defaults, failures };
   });
-  const chain = computed<readonly Route[]>(() => match()?.route.chain ?? []);
+  /**
+   * The chain an UNMATCHED location renders.
+   *
+   * The root route, when the table has one, so a 404 is a page IN the
+   * application rather than instead of it. Everything the root renders — the
+   * shell, the navigation, the layout — is there, and the not-found goes where
+   * the matched route would have.
+   *
+   * IT IS ALSO WHAT STOPPED A BROWSER CRASH. An empty chain rendered no root,
+   * so the server's document and the client's disagreed about the whole page
+   * rather than about one node; `hydrate` recovered by throwing the document
+   * away and rendering cold over it, and a real Chrome tab died with `SIGTRAP`
+   * on every unmatched URL. Rendering the root on both sides makes a miss
+   * structurally the same shape as a hit.
+   */
+  const rootChain: readonly Route[] = ((): readonly Route[] => {
+    const root = config.routeTree.find(
+      (definition) => definition.id === ROOT_ROUTE_ID || definition.children !== undefined,
+    );
+    if (root === undefined || root.id !== ROOT_ROUTE_ID) return [];
+    return [{ id: root.id, fullPath: normalize(root.path ?? "/"), definition: root }];
+  })();
+
+  const chain = computed<readonly Route[]>(() => match()?.route.chain ?? rootChain);
+
+  /** Nothing matched, so the chain above is the root standing in. */
+  const missed = computed<boolean>(() => match() === null);
 
   const entries = new Map<string, Entry>();
   const limit = config.cacheSize ?? DEFAULT_CACHE_SIZE;
@@ -980,6 +1014,8 @@ export function createRouter(config: RouterConfig): RouterState {
    * `beforeLoad`: otherwise there is nothing to wait for, and a router driven
    * without ever being mounted — a test, a probe — would wait forever.
    */
+  /** Whether `start()` has already run. See the guard inside it. */
+  let started = false;
   let releaseContexts = NOOP;
   let contextsReady: Promise<void> | null = null;
   const armContexts = (): void => {
@@ -1364,6 +1400,7 @@ export function createRouter(config: RouterConfig): RouterState {
     config,
     history,
     base,
+    missed,
     dataFor,
     navigate,
     buildSearch,
@@ -1379,7 +1416,21 @@ export function createRouter(config: RouterConfig): RouterState {
       settleContexts(next);
     },
     async start() {
-      if (untrack(contexts).length > 0) return;
+      // A FLAG, not a look at `contexts`.
+      //
+      // The guard used to be `contexts.length > 0`, which asks "did the chain
+      // produce any context?" rather than "have I started?". Those agree for a
+      // matched location, because `runBeforeLoad` pushes one entry per depth —
+      // and disagree completely for one that matched NOTHING, where the chain
+      // is empty and the answer is permanently zero.
+      //
+      // `RouterProvider` calls `start()` from its body, so the guard never
+      // latching meant: start -> `settleContexts([])` -> the signal notifies ->
+      // the provider re-runs -> start again, forever. Every unmatched URL span
+      // the event loop writing `<head>` until the renderer ran out of memory;
+      // in Chrome the tab died with `SIGTRAP`, after appearing to load.
+      if (started) return;
+      started = true;
       const here = untrack(location);
       const candidate = matcher.match(here.pathname);
       if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();

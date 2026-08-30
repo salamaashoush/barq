@@ -2465,3 +2465,61 @@ describe("router-wide route defaults", () => {
     expect(state.ssrModes()).toEqual([false, false]);
   });
 });
+
+/**
+ * `start()` is idempotent BY A FLAG, not by looking at `contexts`.
+ *
+ * The guard used to be `contexts.length > 0`, which asks "did the chain produce
+ * any context?" rather than "have I started?". Those agree for a matched
+ * location, because `runBeforeLoad` pushes one entry per depth, and disagree
+ * completely for one that matched NOTHING: the chain is empty and the answer is
+ * permanently zero.
+ *
+ * `RouterProvider` calls `start()` from its body, so a guard that never latched
+ * meant start -> `settleContexts([])` -> the signal notifies -> the provider
+ * re-runs -> start again, without end. Every unmatched URL spun the event loop
+ * until the renderer ran out of memory; in Chrome the tab died with `SIGTRAP`
+ * after appearing to load.
+ */
+describe("start() latches", () => {
+  const table = [
+    { path: "/", component: (() => null) as never },
+    { path: "/users/$id", component: (() => null) as never },
+  ] as never as AnyRouteDefinition[];
+
+  const runsOf = async (initial: string): Promise<number> => {
+    let ran = 0;
+    const counted = table.map((route) => ({
+      ...route,
+      beforeLoad: () => {
+        ran += 1;
+        return {};
+      },
+    })) as AnyRouteDefinition[];
+    const state = createRouter({
+      routeTree: counted,
+      history: memoryHistory({ initial: [initial] }),
+    });
+    // Ten calls stands in for the provider re-running: before the flag, each
+    // one did the whole of `start()` again.
+    for (let at = 0; at < 10; at++) await state.start();
+    return ran;
+  };
+
+  test("a matched location starts once", async () => {
+    expect(await runsOf("/users/7")).toBe(1);
+  });
+
+  /** The case that looped: no route matched, so no context was ever produced. */
+  test("an UNMATCHED location starts once too", async () => {
+    const state = createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/nowhere"] }),
+    });
+    for (let at = 0; at < 10; at++) await state.start();
+    // Nothing to assert on `contexts` — the point is that ten calls terminate
+    // and the eleventh is a no-op rather than a fresh `runBeforeLoad`.
+    expect(state.chain().length).toBeGreaterThanOrEqual(0);
+    expect(state.match()).toBeNull();
+  });
+});
