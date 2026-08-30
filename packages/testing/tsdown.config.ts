@@ -1,15 +1,16 @@
 import { defineConfig } from "tsdown";
 
+/**
+ * Two entries, because `./pure` is a real subpath: it is how a suite opts out of
+ * the `afterEach(cleanup)` `./index.ts` registers. A subpath the `exports` map
+ * declares and the build does not emit resolves to `any`, which is the trap
+ * `packages/start/tsdown.config.ts` records having already sprung.
+ */
 export default defineConfig({
-  entry: ["./src/index.ts"],
+  entry: ["./src/index.ts", "./src/pure.ts"],
   format: ["esm"],
-  // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
-  outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   dts: true,
   clean: true,
-  external: ["@barqjs/core", "@testing-library/dom"],
-  esbuildOptions: {
-    jsx: "automatic",
-    jsxImportSource: "@barqjs/core",
-  },
+  external: ["@barqjs/core", "@barqjs/server", "@testing-library/dom"],
+  outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
 });

@@ -624,9 +624,7 @@ describe("the six string-inlinable flow components", () => {
 
 describe("the two SSR strategies compose", () => {
   test("renderToString returns compiled markup without touching the DOM", () => {
-    expect(renderToString(() => html('<div class="c">x</div>') as never)).toBe(
-      '<div class="c">x</div>',
-    );
+    expect(renderToString(() => html('<div class="c">x</div>'))).toBe('<div class="c">x</div>');
   });
 
   test("a DOM-backend module renders a string-compiled component's markup", () => {

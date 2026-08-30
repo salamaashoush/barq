@@ -33,14 +33,27 @@ import {
   setAsyncSession,
   settleStep,
 } from "@barqjs/core/internal";
-import { type StreamSink, esc, escapeAttribute, resumeDeferred, setStreamSink } from "./ssr.ts";
+import {
+  type SsrHtml,
+  type StreamSink,
+  esc,
+  escapeAttribute,
+  resumeDeferred,
+  setStreamSink,
+} from "./ssr.ts";
 import { createSeedEncoder, encodeSeed } from "./codec.ts";
 
 /**
  * Render synchronously to an HTML string. Pending async values render
  * their Loading fallbacks; use renderToStringAsync to wait for them.
+ *
+ * `SsrHtml` IS in the parameter type, because the body checks `isSsrHtml` and
+ * takes a different path for it — index.ts's header has said "accepts both"
+ * since this module existed, and the signature said otherwise. It surfaced when
+ * `@barqjs/testing` handed it the output of `html()`, which is the ordinary way
+ * to write the server half of a hydration test.
  */
-export function renderToString(fn: () => JSXElement): string {
+export function renderToString(fn: () => JSXElement | SsrHtml): string {
   let container: HTMLElement | null = null;
   let markup: string | null = null;
   let dispose!: () => void;
