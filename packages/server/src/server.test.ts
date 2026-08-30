@@ -340,9 +340,11 @@ describe("the seed encoder", () => {
     // `refs` map spans every flush, so the settle-over emits `$R[n]` for an
     // object and only a primitive is ever written out again.
     const payloads = [
-      // `);</script>` since the seed script stopped chaining a
-      // `window.__BARQ_SEED__.tell(...)` call after the assignment.
-      ...html.matchAll(/Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);<\/script>/g),
+      // Up to the `);` that closes the assignment, not to `</script>`: the
+      // seed script now runs `SEED_SETTLE_GUARD` after it, so the two are no
+      // longer adjacent. `[\s\S]*?` is lazy, so this still stops at the first
+      // close rather than running into the guard.
+      ...html.matchAll(/Object\.assign\(window\.__BARQ_DATA__\|\|\{\},([\s\S]*?)\);for\(var _k in/g),
     ]
       .map((m) => m[1] ?? "")
       .filter((payload) => payload.includes("streamed-user"));

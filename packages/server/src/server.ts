@@ -602,6 +602,7 @@ export function renderToStream(
     return (
       `<script${nonceAttr(options?.nonce)}>` +
       `${header}window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${payload});` +
+      SEED_SETTLE_GUARD +
       "</script>"
     );
   };
@@ -638,6 +639,7 @@ export function renderToStream(
     return (
       `<script${nonceAttr(options?.nonce)}>` +
       `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(settledValues)});` +
+      SEED_SETTLE_GUARD +
       "</script>"
     );
   };
@@ -908,8 +910,32 @@ const EVENT_CAPTURE_SNIPPET =
   "ts.forEach(function(t){document.addEventListener(t,h,true)});" +
   "return function(){ts.forEach(function(t){document.removeEventListener(t,h,true)})}})();";
 
+/**
+ * Mark every seeded promise as handled, the moment it exists.
+ *
+ * A DEFERRED value is on the wire as a promise the stream settles later, and a
+ * loader that threw settles it by REJECTING. The consumer is `hydrate()`, which
+ * runs from a module script — deferred by definition, so it runs after the
+ * document has been parsed and therefore after the rejection chunk at the end
+ * of the body has already run. For that window the rejected promise has no
+ * handler, and the browser reports an unhandled rejection: a console error on
+ * every streamed page whose loader failed, and a spurious event for anything
+ * listening on `unhandledrejection` to report crashes.
+ *
+ * `then(null, noop)` marks it handled without consuming it — the value is still
+ * there for the read that claims it, and its rejection still reaches the route's
+ * error boundary through the read. Emitted after every assignment because a
+ * streamed page adds keys as it goes.
+ */
+const SEED_SETTLE_GUARD =
+  "for(var _k in window.__BARQ_DATA__){var _v=window.__BARQ_DATA__[_k];" +
+  "if(_v&&typeof _v.then==='function')_v.then(null,function(){})}";
+
 function hydrationScriptFor(data: Record<string, unknown>, nonce?: string): string {
-  return `<script${nonceAttr(nonce)}>window.__BARQ_DATA__=${encodeSeed(data)};${EVENT_CAPTURE_SNIPPET}</script>`;
+  return (
+    `<script${nonceAttr(nonce)}>window.__BARQ_DATA__=${encodeSeed(data)};` +
+    `${SEED_SETTLE_GUARD};${EVENT_CAPTURE_SNIPPET}</script>`
+  );
 }
 
 /**
