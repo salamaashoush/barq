@@ -117,10 +117,22 @@ type Invoked = (s: Scope | null, props: unknown) => unknown;
  * which is what makes the page work with no JavaScript at all.
  */
 const linkBackend = {
-  link: (href: string, className: string, children: unknown): unknown => {
-    const attributes =
+  link: (
+    href: string,
+    className: string,
+    children: unknown,
+    extra?: Readonly<Record<string, string>>,
+  ): unknown => {
+    let attributes =
       `href="${escapeSsrAttribute(href)}"` +
       (className === "" ? "" : ` class="${escapeSsrAttribute(className)}"`);
+    // The NAME is checked as well as the value: it comes from a prop key, and
+    // an attribute name carrying a space or a quote would close the tag and
+    // let the rest of the key be read as markup.
+    for (const [name, value] of Object.entries(extra ?? {})) {
+      if (!/^[a-zA-Z_:][\w:.-]*$/.test(name)) continue;
+      attributes += ` ${name}="${escapeSsrAttribute(value)}"`;
+    }
     return ssrHtml(`<a ${attributes}>${esc(children)}</a>`);
   },
 };

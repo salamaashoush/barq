@@ -110,6 +110,7 @@ export {
 } from "./route.ts";
 
 export {
+  type ActiveOptions,
   type LinkProps,
   type NavLinkProps,
   type PreloadStrategy,
