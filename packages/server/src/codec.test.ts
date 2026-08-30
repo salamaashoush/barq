@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { decodeWire, encodeSeed, encodeWire } from "./codec.ts";
+import { createSeedEncoder, decodeWire, encodeSeed, encodeWire } from "./codec.ts";
 
 /**
  * An Error keeps its KIND across the wire.
@@ -91,5 +91,69 @@ describe("a control-flow throwable survives the wire", () => {
     const payload = encodeSeed({ leaky });
     expect(payload).not.toContain("sourceURL");
     expect(payload).not.toContain("secret");
+  });
+});
+
+/**
+ * The STREAMING seed channel, which is the one a rejected loader reaches.
+ *
+ * seroval picks its parse mode from the context rather than from the value:
+ * `serialize` is sync, a promise's settled value is `async`, and
+ * `crossSerializeStream` is `stream`. `redactError` defined only `sync`, so on
+ * the other two the plugin did not apply at all and seroval's BUILT-IN Error
+ * node ran instead — which writes an error's own enumerable properties.
+ *
+ * On Bun those are `sourceURL`, `line`, `column`, `originalLine` and
+ * `originalColumn`, so every streamed response whose loader threw carried the
+ * server's absolute filesystem path in its HTML.
+ */
+describe("a rejected loader on the streaming channel", () => {
+  const NOT_FOUND = Symbol.for("barq.not-found");
+
+  const streamOf = async (value: unknown): Promise<string> => {
+    const encoder = createSeedEncoder();
+    const chunks: string[] = [];
+    await new Promise<void>((done) => {
+      const initial = encoder.encodeDeferred(
+        value,
+        (payload) => chunks.push(payload),
+        () => done(),
+      );
+      chunks.unshift(initial);
+    });
+    return chunks.join("\n");
+  };
+
+  /** The leak, named by the property that carried it. */
+  test("the server's own paths do not reach the wire", async () => {
+    // The shape Bun really produces: own enumerable properties on the Error.
+    const leaky = Object.assign(new Error("db connection failed"), {
+      name: "NotFound",
+      [NOT_FOUND]: true,
+      sourceURL: "/home/someone/app/src/data/rows.ts",
+      originalLine: 2,
+      column: 30,
+    });
+    const rejected = Promise.reject(leaky);
+    rejected.catch(() => {});
+
+    const payload = await streamOf({ e: rejected });
+    expect(payload).not.toContain("sourceURL");
+    expect(payload).not.toContain("/home/someone");
+    expect(payload).not.toContain("originalLine");
+    // The message and the name still cross, as they always did.
+    expect(payload).toContain("db connection failed");
+  });
+
+  test("and the kind survives the rejection", async () => {
+    const missing = Object.assign(new Error("no such row"), {
+      name: "NotFound",
+      [NOT_FOUND]: true,
+    });
+    const rejected = Promise.reject(missing);
+    rejected.catch(() => {});
+
+    const payload = await streamOf({ e: rejected });
+    expect(payload).toContain("barq.not-found");
   });
 });

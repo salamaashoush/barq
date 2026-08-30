@@ -79,6 +79,28 @@ interface ErrorInfo extends PluginInfo {
 const REDIRECT = Symbol.for("barq.redirect");
 const NOT_FOUND = Symbol.for("barq.not-found");
 
+/**
+ * One parse body for all three modes.
+ *
+ * The three contexts differ only in what `ctx.parse` may return, and every
+ * field here is a string or a number, so the same body serves them all. Typed
+ * against the sync context and reached by the other two through a cast, which
+ * is narrower than declaring the union.
+ */
+function parseError(value: Error, ctx: { parse: (input: unknown) => unknown }): ErrorInfo {
+  const kind = kindOf(value);
+  const redirect = kind === "redirect" ? (value as unknown as RedirectShape) : undefined;
+  return {
+    name: ctx.parse(value.name),
+    message: ctx.parse(value.message),
+    kind: ctx.parse(kind),
+    // A redirect's target is where the browser is about to be sent, so it is
+    // already the least secret thing about the request.
+    to: ctx.parse(typeof redirect?.to === "string" ? redirect.to : ""),
+    status: ctx.parse(typeof redirect?.status === "number" ? redirect.status : 0),
+  } as unknown as ErrorInfo;
+}
+
 function kindOf(value: Error): "redirect" | "not-found" | "" {
   const branded = value as unknown as Record<symbol, unknown>;
   if (branded[REDIRECT] === true) return "redirect";
@@ -110,20 +132,34 @@ function kindOf(value: Error): "redirect" | "not-found" | "" {
 const redactError: Plugin<Error, ErrorInfo> = createPlugin<Error, ErrorInfo>({
   tag: "barq/redacted-error",
   test: (value) => value instanceof Error,
+  /**
+   * ALL THREE MODES, and defining only `sync` was a live leak rather than a gap.
+   *
+   * seroval picks the parse mode from the CONTEXT, not from the value: a plain
+   * `serialize` is sync, but a promise's settled value goes through `async`, and
+   * `crossSerializeStream` — which is what the streaming seed channel uses for
+   * every deferred loader — goes through `stream`. With only `sync` defined the
+   * plugin simply did not apply on the other two, and seroval fell back to its
+   * BUILT-IN Error node, which writes an error's own enumerable properties.
+   *
+   * On Bun those properties are `sourceURL`, `line`, `column`, `originalLine`
+   * and `originalColumn`, so a route whose loader REJECTED streamed the
+   * server's absolute filesystem path into the HTML of every such response:
+   *
+   * ```
+   * Object.assign(new Error("no such row"),{name:"NotFound",originalLine:2,
+   *   originalColumn:31,line:2,column:30,sourceURL:"/home/…/src/data/rows.ts"})
+   * ```
+   *
+   * The comment above used to say this plugin was "hardening, not a live leak",
+   * on the grounds that the seed records resolved values only. A rejection is
+   * the case that was missed, and it is the ordinary one: any loader that
+   * throws reaches it.
+   */
   parse: {
-    sync: (value, ctx) => {
-      const kind = kindOf(value);
-      const redirect = kind === "redirect" ? (value as unknown as RedirectShape) : undefined;
-      return {
-        name: ctx.parse(value.name),
-        message: ctx.parse(value.message),
-        kind: ctx.parse(kind),
-        // A redirect's target is where the browser is about to be sent, so it
-        // is already the least secret thing about the request.
-        to: ctx.parse(typeof redirect?.to === "string" ? redirect.to : ""),
-        status: ctx.parse(typeof redirect?.status === "number" ? redirect.status : 0),
-      } as unknown as ErrorInfo;
-    },
+    sync: (value, ctx) => parseError(value, ctx),
+    async: (value, ctx) => Promise.resolve(parseError(value, ctx)),
+    stream: (value, ctx) => parseError(value, ctx),
   },
   // An IIFE rather than one `Object.assign`: a symbol key cannot be written in
   // an object literal without a computed key, and the redirect branch adds two
