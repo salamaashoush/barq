@@ -44,6 +44,16 @@
       "types": "./dist/server.d.ts",
       "bun": "./src/server.ts",
       "import": "./dist/server.js"
+    },
+    "./a11y": {
+      "types": "./dist/a11y.d.ts",
+      "bun": "./src/a11y.ts",
+      "import": "./dist/a11y.js"
+    },
+    "./user": {
+      "types": "./dist/user.d.ts",
+      "bun": "./src/user.ts",
+      "import": "./dist/user.js"
     }
   },
   "scripts": {

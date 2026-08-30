@@ -26,6 +26,7 @@ import {
   getQueriesForElement,
   prettyDOM,
 } from "@testing-library/dom";
+import type { BoundFunctions, queries as dtlQueries } from "@testing-library/dom";
 
 import type {
   MountedRef,
@@ -267,6 +268,29 @@ export function act(callback: () => void | Promise<void>): Promise<void> {
 }
 
 /**
+ * Let queued microtasks run, then flush.
+ *
+ * `onMount` defers to a microtask, so anything a component does on mount — an
+ * autofocus, a measurement, a subscription to something that only exists once
+ * the nodes are in the document — has not happened when `render` returns.
+ * `flush()` alone does not help: it drains the reactive queue, not the
+ * microtask queue.
+ *
+ * ```ts
+ * render(() => <Dialog />);
+ * await tick();
+ * expect(document.activeElement).toBe(screen.getByRole("button"));
+ * ```
+ */
+export async function tick(): Promise<void> {
+  // Two turns: `onMount`'s own microtask schedules the work, and an effect it
+  // starts may queue one more.
+  await Promise.resolve();
+  await Promise.resolve();
+  flush();
+}
+
+/**
  * fireEvent wrapped to flush Barq's update queue after dispatching,
  * so DOM assertions right after an event see the updated output.
  */
@@ -365,7 +389,15 @@ export {
   queryHelpers,
 } from "@testing-library/dom";
 
-type ScreenQueries = ReturnType<typeof getQueriesForElement>;
+/**
+ * `ReturnType` of a generic signature erases the type parameters to their
+ * CONSTRAINTS, not to their defaults, so `ReturnType<typeof
+ * getQueriesForElement>` lands on `Queries` — an index signature of
+ * `(container, ...args: any[]) => any`. Every `screen.getByRole(...)` then has
+ * type `any`, and the type-aware lint that would have caught a wrong argument
+ * reports the call site instead.
+ */
+type ScreenQueries = BoundFunctions<typeof dtlQueries>;
 
 /**
  * Screen object that lazily binds queries to document.body
@@ -393,6 +425,52 @@ function createLazyScreen(): ScreenQueries {
 }
 
 export const screen: ScreenQueries = createLazyScreen();
+
+/**
+ * What assistive technology would make of the DOM under test: the accessible
+ * name and description computations, and the ARIA rules a headless DOM can
+ * honestly check.
+ */
+export {
+  accessibleDescription,
+  accessibleName,
+  ariaViolations,
+  expectNoAriaViolations,
+  role,
+} from "./a11y.ts";
+export type { AriaCheckOptions, AriaViolation } from "./a11y.ts";
+
+/**
+ * Interactions as the events a browser actually fires, rather than the one
+ * synthetic event `fireEvent` dispatches.
+ */
+export {
+  blur,
+  clear,
+  click,
+  dblClick,
+  focus,
+  hover,
+  key,
+  keyboard,
+  keyDown,
+  keyUp,
+  paste,
+  pointerCancel,
+  pointerDown,
+  pointerHold,
+  pointerMove,
+  pointerUp,
+  rightClick,
+  tab,
+  tabbableElements,
+  tap,
+  type,
+  unhover,
+  user,
+  virtualClick,
+} from "./user.ts";
+export type { KeyOptions, PointerOptions } from "./user.ts";
 
 /**
  * Hydration: what a browser does with a page the server rendered.

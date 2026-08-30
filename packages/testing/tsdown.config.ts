@@ -7,7 +7,14 @@ import { defineConfig } from "tsdown";
  * `packages/start/tsdown.config.ts` records having already sprung.
  */
 export default defineConfig({
-  entry: ["./src/index.ts", "./src/pure.ts", "./src/router.ts", "./src/server.ts"],
+  entry: [
+    "./src/index.ts",
+    "./src/pure.ts",
+    "./src/router.ts",
+    "./src/server.ts",
+    "./src/a11y.ts",
+    "./src/user.ts",
+  ],
   format: ["esm"],
   dts: true,
   clean: true,

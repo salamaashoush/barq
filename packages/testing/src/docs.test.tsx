@@ -402,7 +402,7 @@ describe("packages/testing/README.md", () => {
     }
 
     renderForTest(() => <Counter />);
-    fireEvent.click(screen.getByRole("button") as HTMLElement);
+    fireEvent.click(screen.getByRole("button"));
 
     // `fireEvent` flushes: barq batches on the microtask queue, so an assertion
     // straight after a `set()` would otherwise read the DOM as it was before.
