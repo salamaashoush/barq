@@ -6,7 +6,29 @@
  */
 
 import type { Child } from "@barqjs/core";
+import { css, globalCss } from "@barqjs/css";
 import { HeadContent, NavLink, Outlet, Scripts, createRootRoute } from "@barqjs/router";
+
+// Compiled away. `css` returns a class name and the block becomes a rule in a
+// stylesheet the build emits; nothing of the call survives into the bundle.
+globalCss`
+  body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.6 }
+  a { color: #2563eb; text-decoration: none }
+  a.active { font-weight: 600; text-decoration: underline }
+`;
+
+const layout = css`
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+
+  nav {
+    display: flex;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+`;
 
 // The whole document, and only a root route may declare one. `<HeadContent />`
 // renders every matched route's merged `head` plus the framework's own tags;
@@ -36,7 +58,7 @@ const head = {
 
 function Layout() {
   return (
-    <div>
+    <div class={layout}>
       <nav>
         <NavLink to="/" activeClass="active">
           Home

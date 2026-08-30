@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@barqjs/core": "^0.1.0"
+    "@barqjs/core": "^0.1.0",
+    "@barqjs/css": "^0.1.0"
   },
   "devDependencies": {
     "@barqjs/compiler": "^0.1.0",

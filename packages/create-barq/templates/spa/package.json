@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@barqjs/core": "^0.1.0",
+    "@barqjs/css": "^0.1.0",
     "@barqjs/router": "^0.1.0",
     "@barqjs/server": "^0.1.0",
     "@barqjs/start": "^0.1.0"

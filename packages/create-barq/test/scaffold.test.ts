@@ -29,8 +29,13 @@ const REPO = fileURLToPath(new URL("../../..", import.meta.url));
 const PACKAGES = join(REPO, "packages");
 const OWN_MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
 
-/** Everything a template can name, whether or not this one does. */
-const WORKSPACE = ["core", "router", "server", "start", "compiler", "compiler-rs", "extra"];
+/**
+ * Everything a template can name, whether or not this one does — plus what the
+ * FRAMEWORK names on a template's behalf. `@barqjs/start`'s generated server
+ * entry imports `collectCss` from `@barqjs/css`, so a project that never writes
+ * a `css` block still resolves it.
+ */
+const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "compiler-rs", "extra"];
 
 /** Built once for the whole file: a template resolves `@barqjs/*` through it. */
 function ensureBuilt(): void {
