@@ -84,7 +84,8 @@ describe("Repeat", () => {
     scope(() => {
       const el = Repeat(null, {
         count: () => count(),
-        children: (_s, i) => element(null, "span", { children: String(i) }) as Node,
+        children: (_s: Scope | null, i: number) =>
+          element(null, "span", { children: String(i) }) as Node,
       });
       render(el, container);
     });
@@ -108,7 +109,8 @@ describe("Repeat", () => {
         count: () => count(),
         from: 10,
         fallback: document.createTextNode("empty"),
-        children: (_s, i) => element(null, "span", { children: String(i) }) as Node,
+        children: (_s: Scope | null, i: number) =>
+          element(null, "span", { children: String(i) }) as Node,
       });
       render(el, container);
     });

@@ -17,7 +17,8 @@
     "declaration": true,
     "declarationMap": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@barqjs/core"
+    "jsxImportSource": "@barqjs/core",
+    "types": ["@types/bun"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]

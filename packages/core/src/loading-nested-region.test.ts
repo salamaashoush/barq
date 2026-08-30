@@ -51,7 +51,7 @@ function mount(nest: (inner: Scope | null, which: () => number) => Node | null) 
       null,
       null,
       "loading",
-      document.createTextNode("[busy]"),
+      () => document.createTextNode("[busy]"),
       (inner: Scope | null) =>
         [nest(inner, () => which()), document.createTextNode(`:${data()}`)] as never,
     );

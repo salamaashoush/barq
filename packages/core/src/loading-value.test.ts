@@ -116,8 +116,13 @@ describe("A8: the loading window", () => {
     scope(() => {
       // The body reads DIRECTLY, so a pending read throws into the boundary —
       // which is the only way the boundary can be the thing under test.
-      const el = boundary(null, null, null, "loading", document.createTextNode("[fallback]"), () =>
-        document.createTextNode(node()),
+      const el = boundary(
+        null,
+        null,
+        null,
+        "loading",
+        () => document.createTextNode("[fallback]"),
+        () => document.createTextNode(node()),
       );
       render(el, container);
     });

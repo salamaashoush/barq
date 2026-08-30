@@ -343,8 +343,8 @@ describe("O4 — ambient hygiene", () => {
         root,
         ctx,
         () => 1,
-        (s: Scope) => {
-          instance = s;
+        (s: Scope | null) => {
+          instance = s as Scope;
           onCleanup(() => ran.push("half-built"));
           throw new Error("built nothing");
         },
@@ -439,8 +439,8 @@ describe("O5 — render opens a root and returns a disposer that disposes", () =
   test("the Block form is invoked with the root scope", () => {
     const host = document.createElement("div");
     const given: Scope[] = [];
-    const disposer = render((scope: Scope) => {
-      given.push(scope);
+    const disposer = render((scope: Scope | null) => {
+      given.push(scope as Scope);
       return document.createElement("i");
     }, host);
     expect(given.length).toBe(1);
@@ -463,7 +463,7 @@ describe("O5 — render opens a root and returns a disposer that disposes", () =
     });
 
     const host = document.createElement("div");
-    const disposer = render((_scope: Scope) => document.createElement("i"), host);
+    const disposer = render((_scope: Scope | null) => document.createElement("i"), host);
     flush();
     const before = libraryRuns.length;
     expect(before).toBeGreaterThan(0);
@@ -541,7 +541,7 @@ describe("X — context on the scope", () => {
       root,
       ctx,
       () => value(),
-      (inner: Scope) => {
+      (inner: Scope | null) => {
         const deep = enter(inner);
         const nested = enter(deep);
         seen.push(read(ctx, nested)());

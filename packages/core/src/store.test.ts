@@ -344,9 +344,9 @@ describe("reconcile function", () => {
       items: [{ a: 1 }, { b: 2 }],
     });
 
-    setState("items", reconcile([{ c: 3 }]));
+    setState("items", reconcile([{ c: 3 }] as never));
 
-    expect(state.items).toEqual([{ c: 3 }]);
+    expect(state.items).toEqual([{ c: 3 }] as never);
   });
 });
 
@@ -728,7 +728,7 @@ describe("Improved produce (proxy-based)", () => {
     const [state, setState] = store(original);
 
     setState(
-      produce((draft) => {
+      produce((draft: { a: { value: number } }) => {
         draft.a.value = 100;
       }),
     );
@@ -794,12 +794,12 @@ describe("Improved produce (proxy-based)", () => {
 
     setState(
       "data",
-      produce((draft) => {
+      produce((draft: Partial<Record<"a" | "b" | "c", number>>) => {
         delete draft.b;
-      }),
+      }) as never,
     );
 
-    expect(state.data).toEqual({ a: 1, c: 3 });
+    expect(state.data).toEqual({ a: 1, c: 3 } as never);
     expect("b" in state.data).toBe(false);
   });
 
@@ -969,8 +969,7 @@ describe("Additional edge cases", () => {
     });
 
     expect(() => {
-      // @ts-expect-error - Testing runtime behavior
-      setState("user", "address", "city", "NYC");
+      setState("user", "address", "city" as never, "NYC" as never);
     }).toThrow();
   });
 });

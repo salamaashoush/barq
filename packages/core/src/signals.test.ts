@@ -702,7 +702,9 @@ describe("linked — writable derived state that re-seeds", () => {
 
   test("compute is handed the previous value, so a re-seed can keep a choice", () => {
     const options = signal(["a", "b", "c"]);
-    const chosen = linked(options, (list, previous) =>
+    // Spelled, because the compute's return type mentions `previous`, so `T`
+    // has nothing to infer from but itself.
+    const chosen = linked<string[], string>(options, (list, previous) =>
       previous !== undefined && list.includes(previous) ? previous : list[0],
     );
     expect(chosen()).toBe("a");

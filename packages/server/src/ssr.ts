@@ -1033,7 +1033,7 @@ function loadingBoundary(
   if (SINK === null) {
     return html((flags & HYDRATE) === 0 ? String(shown) : parkedRange(String(shown)));
   }
-  return html(deferredRange(SINK.defer(arm, given, flags), shown));
+  return html(deferredRange(SINK.defer(arm, given, flags), String(shown)));
 }
 
 /**

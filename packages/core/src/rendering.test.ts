@@ -69,7 +69,7 @@ describe("For component item updates", () => {
 
     const node = For(null, {
       each: items,
-      children: (_s: unknown, item) => {
+      children: (_s: unknown, item: { value: string }) => {
         const span = document.createElement("span");
         span.textContent = item.value;
         return span;
@@ -98,7 +98,7 @@ describe("LIS algorithm performance", () => {
 
     const node = For(null, {
       each: items,
-      children: (_s: unknown, item) => {
+      children: (_s: unknown, item: { value: string }) => {
         const div = document.createElement("div");
         div.textContent = item.value;
         return div;
@@ -129,7 +129,7 @@ describe("LIS algorithm performance", () => {
 
     const node = For(null, {
       each: items,
-      children: (_s: unknown, item) => {
+      children: (_s: unknown, item: { id: number }) => {
         const div = document.createElement("div");
         div.dataset.id = String(item.id);
         return div;
@@ -294,7 +294,7 @@ describe("Errored", () => {
     // Fix the error and reset
     throwSignal.set(false);
     flush();
-    resetFn?.();
+    (resetFn as (() => void) | null)?.();
     flush();
 
     // Wait for re-render
@@ -677,7 +677,8 @@ describe("Deep nested reactivity", () => {
           children: (inner: Scope | null) =>
             For(inner, {
               each: items,
-              children: (_s: unknown, item) => element(null, "span", { children: String(item) }),
+              children: (_s: unknown, item: unknown) =>
+                element(null, "span", { children: String(item) }),
             }),
         }),
     });
@@ -924,10 +925,10 @@ describe("splitProps", () => {
 
   test("handles missing keys", () => {
     const props = { a: 1, b: 2 };
-    const [picked, rest] = splitProps(props, ["a", "c" as keyof typeof props]);
+    const [picked, rest] = splitProps(props, ["a", "c"] as (keyof typeof props)[]);
 
-    expect(picked).toEqual({ a: 1 });
-    expect(rest).toEqual({ b: 2 });
+    expect(picked).toEqual({ a: 1 } as never);
+    expect(rest).toEqual({ b: 2 } as never);
   });
 
   test("handles empty keys array", () => {

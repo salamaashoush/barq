@@ -16,6 +16,7 @@ import {
   refresh,
   render,
   signal,
+  type Scope,
 } from "./index.ts";
 import { Errored, Loading } from "./components.ts";
 
@@ -224,7 +225,8 @@ describe("Errored boundary", () => {
 
     scope(() => {
       const el = Errored(null, {
-        fallback: (_s, error) => document.createTextNode(`error: ${error().message}`),
+        fallback: (_s: Scope | null, error: () => Error) =>
+          document.createTextNode(`error: ${error().message}`),
         children: () => {
           throw new Error("render exploded");
         },
@@ -242,7 +244,8 @@ describe("Errored boundary", () => {
 
     scope(() => {
       const el = Errored(null, {
-        fallback: (_s, error) => document.createTextNode(`caught: ${error().message}`),
+        fallback: (_s: Scope | null, error: () => Error) =>
+          document.createTextNode(`caught: ${error().message}`),
         children: () => {
           effect(() => {
             if (trigger()) throw new Error("effect exploded");
@@ -268,7 +271,7 @@ describe("Errored boundary", () => {
 
     scope(() => {
       const el = Errored(null, {
-        fallback: (_s, error, reset) => {
+        fallback: (_s: Scope | null, error: () => Error, reset: () => void) => {
           resetFn = reset;
           return document.createTextNode(`error: ${error().message}`);
         },

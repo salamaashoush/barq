@@ -23,6 +23,7 @@ import {
   onCleanup,
   runWithOwner,
   signal,
+  type Scope,
 } from "./signals.ts";
 
 describe("feedback writes do not strand heap nodes", () => {
@@ -133,7 +134,7 @@ describe("context provider disposal", () => {
     const Ctx = context<number>(0);
     let cleaned = false;
     const dispose = scope((d) => {
-      Ctx.Provider(getOwner(), {
+      Ctx.Provider(getOwner() as Scope, {
         value: 42,
         children: () => {
           onCleanup(() => {

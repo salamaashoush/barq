@@ -324,8 +324,8 @@ describe("a delegated handler runs under the scope stapled to its element", () =
     // Written as the COMPILED path writes it — the expando directly, with no
     // `delegate` call to guard — because that is the only shape in which this
     // can reach the dispatcher at all.
-    (el as Element & Record<string, unknown>).$$click = leaf;
-    (el as Element & Record<string, unknown>).$$s = root;
+    (el as unknown as Record<string, unknown>).$$click = leaf;
+    (el as unknown as Record<string, unknown>).$$s = root;
     delegateEvents(["click"]);
 
     const errors: unknown[] = [];

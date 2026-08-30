@@ -42,7 +42,7 @@ describe("A7: a thenable that is not a native Promise", () => {
         queueMicrotask(() => resolve("settled"));
       },
     };
-    const node = computed(() => thenable);
+    const node = computed(() => thenable as unknown as PromiseLike<string>);
 
     expect(read(node)).toBe("PENDING");
     await tick();
@@ -58,7 +58,7 @@ describe("A7: a thenable that is not a native Promise", () => {
         queueMicrotask(() => reject(new Error("refused")));
       },
     };
-    const node = computed(() => thenable);
+    const node = computed(() => thenable as unknown as PromiseLike<string>);
     expect(read(node)).toBe("PENDING");
     await tick();
     flush();
@@ -102,7 +102,9 @@ describe("A7: an async iterable", () => {
   });
 
   test("a stream that ends without yielding settles instead of hanging pending", async () => {
-    const node = computed(async function* () {
+    // `never`, spelled: an async generator that yields nothing infers no item
+    // type, and the row is about what the node holds when it ends empty.
+    const node = computed<undefined>(async function* () {
       // yields nothing
     });
     expect(read(node)).toBe("PENDING");
@@ -235,7 +237,9 @@ describe("A7: an async iterable", () => {
     // already buffered may skip the promise. Calling `.then` on that is a
     // TypeError, and buffering producers are the common case for a
     // deserialised stream.
-    const node = computed(() => ({
+    // A `next()` that answers SYNCHRONOUSLY. `AsyncIterable` demands a promise
+    // and the runtime awaits whatever it is handed, which is what this pins.
+    const node = computed<number>(() => ({
       [Symbol.asyncIterator]() {
         let n = 0;
         return {
@@ -245,7 +249,7 @@ describe("A7: an async iterable", () => {
               ? { done: false, value: n }
               : ({ done: true, value: undefined } as IteratorResult<number>);
           },
-        };
+        } as unknown as AsyncIterator<number>;
       },
     }));
 

@@ -37,7 +37,7 @@ import {
   renderToStringAsync,
   swapDeferredRange,
 } from "./server.ts";
-import { boundary as ssrBoundary, esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
+import { type SsrHtml, boundary as ssrBoundary, esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
 import { encodeSeed } from "./codec.ts";
 
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
@@ -236,7 +236,9 @@ describe("the seed encoder", () => {
     cyclic.self = cyclic;
     const rich = computed(async () => cyclic, { key: "rich" });
 
-    await renderToStringAsync(() => element(null, "div", { children: () => rich().tags.size }));
+    await renderToStringAsync(() =>
+      element(null, "div", { children: () => (rich() as { tags: Set<unknown> }).tags.size }),
+    );
 
     const back = (0, eval)(encodeSeed(getRenderData())) as Record<string, { self: unknown }>;
     const value = back.rich as unknown as typeof cyclic;
@@ -565,7 +567,7 @@ describe("hydrate", () => {
         : () => boundary(null, null, null, "loading", fallback, content, HYDRATE);
     };
 
-    const serverHtml = await renderToStringAsync(makeApp(true) as never);
+    const serverHtml = await renderToStringAsync(makeApp(true));
     expect(serverHtml).toContain("<b>Ada</b>");
     expect(serverHtml).toContain("<!--[-->");
     const data = getRenderData();
@@ -952,7 +954,7 @@ describe("renderToStream", () => {
   });
 
   test("a page with nothing to defer streams the shell, the capture, and no swap machinery", async () => {
-    const parts = await collect(renderToStream((() => ssrHtml("<p>flat</p>")) as never));
+    const parts = await collect(renderToStream(() => ssrHtml("<p>flat</p>")));
     expect(parts[0]).toBe("<p>flat</p>");
     // The capture goes out even with nothing deferred: a user can click before
     // the bundle arrives on any page, deferred or not.
@@ -1040,11 +1042,12 @@ describe("a pending promise inside a seeded value", () => {
         { key: "d:page" },
       ),
     );
-    const out = await renderPage((() =>
+    const out = await renderPage(() =>
       ssrLoading(null, {
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
-      })) as never);
+      }),
+    );
     expect(out.html).toBe("<b>here</b>");
     // Resolved, not a promise: the seed carries the value.
     expect(out.script).toContain("arrived");
@@ -1064,11 +1067,12 @@ describe("a pending promise inside a seeded value", () => {
         { key: "d:cycle" },
       ),
     );
-    const out = await renderPage((() =>
+    const out = await renderPage(() =>
       ssrLoading(null, {
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { name: string }).name)}</b>`),
-      })) as never);
+      }),
+    );
     expect(out.data["d:cycle"]).toBe(cyclic);
     expect((out.data["d:cycle"] as { self: unknown }).self).toBe(cyclic);
   });
@@ -1084,11 +1088,12 @@ describe("a pending promise inside a seeded value", () => {
       ),
     );
     const parts = await collect(
-      renderToStream((() =>
+      renderToStream(() =>
         ssrLoading(null, {
           fallback: () => ssrHtml("<i>l</i>"),
           children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
-        })) as never),
+        }),
+      ),
     );
     const whole = parts.join("");
     expect(whole).toContain("<b>here</b>");
@@ -1108,7 +1113,7 @@ describe("a pending promise inside a seeded value", () => {
  * shell — it errors the BOUNDARY — and these rows pin that barq does not either.
  */
 describe("a throw after the shell", () => {
-  const pageThatThrowsLate = (): (() => unknown) => {
+  const pageThatThrowsLate = (): (() => SsrHtml) => {
     const bad = computed(async () => {
       await tick();
       throw new Error("late boom");

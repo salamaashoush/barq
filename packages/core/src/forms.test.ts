@@ -13,7 +13,7 @@ function attach(html: string): HTMLElement {
   const host = document.createElement("div");
   host.innerHTML = html;
   document.body.appendChild(host);
-  return host.firstElementChild as T;
+  return host.firstElementChild as HTMLElement;
 }
 
 describe("coerceLive — the value the DOM would hold", () => {
@@ -45,14 +45,14 @@ describe("coerceLive — the value the DOM would hold", () => {
 
 describe("holdsLive — the compare against the element", () => {
   test("NaN equals itself, or an empty number field is cleared on every run", () => {
-    const input = attach<HTMLInputElement>(`<input type="number">`);
+    const input = attach(`<input type="number">`) as HTMLInputElement;
     expect(Number.isNaN(input.valueAsNumber)).toBe(true);
     expect(holdsLive(input, "valueAsNumber", Number.NaN)).toBe(true);
     expect(holdsLive(input, "valueAsNumber", 3)).toBe(false);
   });
 
   test("two Dates are compared by their time, not by identity", () => {
-    const el = attach<HTMLInputElement>(`<input type="date">`) as unknown as Element &
+    const el = attach(`<input type="date">`) as HTMLInputElement as unknown as Element &
       Record<string, unknown>;
     el.valueAsDate = new Date(0);
     expect(holdsLive(el, "valueAsDate", new Date(0))).toBe(true);
@@ -60,7 +60,7 @@ describe("holdsLive — the compare against the element", () => {
   });
 
   test("everything else is identity", () => {
-    const input = attach<HTMLInputElement>(`<input type="text" value="a">`);
+    const input = attach(`<input type="text" value="a">`) as HTMLInputElement;
     expect(holdsLive(input, "value", "a")).toBe(true);
     expect(holdsLive(input, "value", "b")).toBe(false);
   });
@@ -68,7 +68,7 @@ describe("holdsLive — the compare against the element", () => {
 
 describe("writeLive — the write, and the write that does not happen", () => {
   test("reports whether it wrote, and does not write what is already there", () => {
-    const input = attach<HTMLInputElement>(`<input type="text" value="a">`);
+    const input = attach(`<input type="text" value="a">`) as HTMLInputElement;
     expect(writeLive(input, "value", "a")).toBe(false);
     expect(writeLive(input, "value", "b")).toBe(true);
     expect(input.value).toBe("b");
@@ -78,7 +78,7 @@ describe("writeLive — the write, and the write that does not happen", () => {
   });
 
   test("a write that lands on a focused control restores the range and the direction", () => {
-    const input = attach<HTMLInputElement>(`<input type="text" value="hello world">`);
+    const input = attach(`<input type="text" value="hello world">`) as HTMLInputElement;
     input.focus();
     input.setSelectionRange(2, 7, "backward");
     writeLive(input, "value", "hello there world");
@@ -89,7 +89,7 @@ describe("writeLive — the write, and the write that does not happen", () => {
   });
 
   test("and clamps the restore to the text that is now there", () => {
-    const input = attach<HTMLInputElement>(`<input type="text" value="hello world">`);
+    const input = attach(`<input type="text" value="hello world">`) as HTMLInputElement;
     input.focus();
     input.setSelectionRange(6, 11);
     writeLive(input, "value", "hi");
@@ -97,8 +97,8 @@ describe("writeLive — the write, and the write that does not happen", () => {
   });
 
   test("an UNFOCUSED control is not touched — the caret work is only for the field the user is in", () => {
-    const input = attach<HTMLInputElement>(`<input type="text" value="hello">`);
-    const other = attach<HTMLInputElement>(`<input type="text">`);
+    const input = attach(`<input type="text" value="hello">`) as HTMLInputElement;
+    const other = attach(`<input type="text">`) as HTMLInputElement;
     other.focus();
     expect(captureCaret(input)).toBeNull();
     writeLive(input, "value", "goodbye");
@@ -108,14 +108,14 @@ describe("writeLive — the write, and the write that does not happen", () => {
   test("a type with no selection API is written without one", () => {
     // `setSelectionRange` throws InvalidStateError on these, so the membership
     // test has to be the guard rather than a try/catch around the write.
-    const input = attach<HTMLInputElement>(`<input type="number">`);
+    const input = attach(`<input type="number">`) as HTMLInputElement;
     input.focus();
     expect(() => writeLive(input, "valueAsNumber", 42)).not.toThrow();
     expect(input.valueAsNumber).toBe(42);
   });
 
   test("a contenteditable caret is saved by offset and survives its text node being replaced", () => {
-    const editor = attach<HTMLElement>(`<div contenteditable="true">editable text</div>`);
+    const editor = attach(`<div contenteditable="true">editable text</div>`);
     const first = editor.firstChild!;
     editor.focus();
     const range = document.createRange();
@@ -134,7 +134,7 @@ describe("writeLive — the write, and the write that does not happen", () => {
   });
 
   test("the offset walk crosses element children, and a caret placed on the ELEMENT counts the text before it", () => {
-    const editor = attach<HTMLElement>(`<div contenteditable="true">one <b>two</b> three</div>`);
+    const editor = attach(`<div contenteditable="true">one <b>two</b> three</div>`);
     editor.focus();
     const selection = window.getSelection()!;
     const range = document.createRange();
@@ -163,7 +163,7 @@ describe("writeLive — the write, and the write that does not happen", () => {
   });
 
   test("a caret past the end of the new text is placed at the end rather than nowhere", () => {
-    const editor = attach<HTMLElement>(`<div contenteditable="true">a long piece of text</div>`);
+    const editor = attach(`<div contenteditable="true">a long piece of text</div>`);
     editor.focus();
     const range = document.createRange();
     range.setStart(editor.firstChild!, 18);
@@ -178,7 +178,7 @@ describe("writeLive — the write, and the write that does not happen", () => {
   });
 
   test("restoreCaret with nothing saved is a no-op rather than a throw", () => {
-    const input = attach<HTMLInputElement>(`<input type="text">`);
+    const input = attach(`<input type="text">`) as HTMLInputElement;
     expect(() => restoreCaret(input, null)).not.toThrow();
   });
 });

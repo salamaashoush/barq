@@ -226,7 +226,7 @@ describe("X1/O2: a Provider provides on the scope it was GIVEN", () => {
       });
     });
 
-    expect(seenValue).toBe("PROVIDED");
+    expect(seenValue as string | null).toBe("PROVIDED");
     // The instance scope's PARENT is the scope the Provider was handed, not
     // the one that happened to be current at the call site.
     expect(seenChain).toContain("A(passed)");

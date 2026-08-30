@@ -91,7 +91,7 @@ export function renderToString(fn: () => JSXElement | SsrHtml): string {
  * boundaries resolve to content and keyed async values are recorded for
  * generateHydrationScript.
  */
-export async function renderToStringAsync(fn: () => JSXElement): Promise<string> {
+export async function renderToStringAsync(fn: () => JSXElement | SsrHtml): Promise<string> {
   const { html } = await renderPage(fn);
   return html;
 }
@@ -106,7 +106,7 @@ let lastRenderData: Record<string, unknown> = {};
  * session's fetches.
  */
 export async function renderPage(
-  fn: () => JSXElement,
+  fn: () => JSXElement | SsrHtml,
   options?: {
     nonce?: string;
     /**
@@ -496,7 +496,7 @@ const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
  * that makes streaming worth doing.
  */
 export function renderToStream(
-  fn: () => JSXElement,
+  fn: () => JSXElement | SsrHtml,
   options?: StreamOptions,
 ): ReadableStream<Uint8Array> {
   const session = options?.session ?? Symbol("stream-session");

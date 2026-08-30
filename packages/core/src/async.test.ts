@@ -22,8 +22,14 @@ import { NotReadyError, batch, scope, effect, resolve, signal } from "./signals.
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-/** The read that starts a lazy memo without caring what it currently holds. */
-function kick(r: Resource<unknown>): void {
+/**
+ * The read that starts a lazy memo without caring what it currently holds.
+ *
+ * Generic, because `Resource<T>` is not covariant in `T`: `mutate` takes a `T`,
+ * so `Resource<string>` is not a `Resource<unknown>`. Nothing here reads the
+ * value, so nothing here needs to name its type.
+ */
+function kick<T>(r: Resource<T>): void {
   r.loading();
 }
 

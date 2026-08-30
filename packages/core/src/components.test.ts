@@ -195,7 +195,7 @@ describe("Show component", () => {
     });
 
     container.appendChild(node as Node);
-    expect(receivedValue).toBe("hello");
+    expect(receivedValue as string | null).toBe("hello");
     expect(container.textContent).toContain("hello");
   });
 

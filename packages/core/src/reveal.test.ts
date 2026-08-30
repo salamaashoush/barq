@@ -43,7 +43,7 @@ function leaf(s: Scope | null, data: () => string, label: string) {
     null,
     null,
     "loading",
-    document.createTextNode(`[f${label}]`),
+    () => document.createTextNode(`[f${label}]`),
     asyncChild(data, label),
   );
 }
@@ -66,7 +66,7 @@ describe("Loading revalidation", () => {
         null,
         null,
         "loading",
-        document.createTextNode("loading..."),
+        () => document.createTextNode("loading..."),
         asyncChild(() => data(), "v"),
       );
       render(el, container);
@@ -115,7 +115,7 @@ describe("Reveal", () => {
             null,
             null,
             "loading",
-            document.createTextNode("[fa]"),
+            () => document.createTextNode("[fa]"),
             asyncChild(() => dataA(), "A"),
           ),
           boundary(
@@ -123,7 +123,7 @@ describe("Reveal", () => {
             null,
             null,
             "loading",
-            document.createTextNode("[fb]"),
+            () => document.createTextNode("[fb]"),
             asyncChild(() => dataB(), "B"),
           ),
         ],

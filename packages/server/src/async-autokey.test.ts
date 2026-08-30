@@ -257,8 +257,15 @@ describe("createAsync auto-keying", () => {
         fetches++;
         return `Hello ${user()}`;
       });
-      return boundary(null, null, null, "loading", document.createTextNode("loading..."), () =>
-        document.createTextNode(greeting()),
+      // A Block, not a node: `boundary` takes a deferred construction, and the
+      // runtime tolerating an already-built value is not the contract.
+      return boundary(
+        null,
+        null,
+        null,
+        "loading",
+        () => document.createTextNode("loading..."),
+        () => document.createTextNode(greeting()),
       );
     };
 

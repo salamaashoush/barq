@@ -183,7 +183,7 @@ describe("Ref handling", () => {
       },
     }) as HTMLDivElement;
 
-    expect(refEl).toBe(el);
+    expect(refEl as Element | null).toBe(el);
   });
 
   test("ref object is set", () => {

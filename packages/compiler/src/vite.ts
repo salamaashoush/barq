@@ -241,6 +241,7 @@ interface NativeTransformOptions {
   moduleSource?: string;
   serverSource?: string;
   startSource?: string;
+  clientSource?: string;
   serverFns?: boolean;
   env?: string;
   root?: string;
@@ -256,6 +257,8 @@ interface NativeTransformOptions {
   optimize?: number;
   passes?: string[][];
   hydratable?: boolean;
+  ownership?: boolean;
+  addresses?: boolean;
 }
 
 interface NativeResult {

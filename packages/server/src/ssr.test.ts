@@ -9,7 +9,6 @@ import {
   props,
   render,
   type Cell,
-  type JSXElement,
   type Scope,
 } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
@@ -521,14 +520,17 @@ describe("the six string-inlinable flow components", () => {
     expect(ssrShow(null, { when: true, children: html("<b>y</b>") }).toString()).toBe("<b>y</b>");
     expect(ssrShow(null, { when: 0, fallback: "no", children: "yes" }).toString()).toBe("no");
     expect(
-      ssrShow(null, { when: () => "v", children: (_s, v: unknown) => esc(v) }).toString(),
+      ssrShow(null, {
+        when: () => "v",
+        children: (_s: Scope | null, v: unknown) => esc(v),
+      }).toString(),
     ).toBe("v");
     // Non-keyed narrows to an accessor.
     expect(
       ssrShow(null, {
         when: "v",
         keyed: false,
-        children: (_s, v: unknown) => esc((v as () => unknown)()),
+        children: (_s: Scope | null, v: unknown) => esc((v as () => unknown)()),
       }).toString(),
     ).toBe("v");
     // A body that is user data is still escaped.
@@ -538,7 +540,7 @@ describe("the six string-inlinable flow components", () => {
   test("ssrSwitch picks the first truthy Match and falls back", () => {
     const children = [
       ssrMatch(null, { when: false, children: "a" }),
-      ssrMatch(null, { when: () => "hit", children: (_s, v: unknown) => esc(v) }),
+      ssrMatch(null, { when: () => "hit", children: (_s: Scope | null, v: unknown) => esc(v) }),
       ssrMatch(null, { when: true, children: "c" }),
     ];
     expect(ssrSwitch(null, { children }).toString()).toBe("hit");
@@ -566,7 +568,7 @@ describe("the six string-inlinable flow components", () => {
       [
         ssrFor(null, { each: rows, children: row }).toString(),
         () =>
-          For<{ n: string }, JSXElement>(null, {
+          For(null, {
             each: () => rows,
             children: (_s: Scope | null, item: { n: string }, index: Cell<number>) =>
               element(null, "li", { children: `${index()}: ${item.n}` }),
@@ -580,7 +582,7 @@ describe("the six string-inlinable flow components", () => {
             html(`<li>${index}: ${esc(item().n)}</li>`),
         }).toString(),
         () =>
-          For<{ n: string }, JSXElement>(null, {
+          For(null, {
             each: () => rows,
             keyed: false,
             children: (_s: Scope | null, item: Cell<{ n: string }>, index: number) =>
@@ -592,7 +594,7 @@ describe("the six string-inlinable flow components", () => {
         () =>
           Repeat(null, {
             count: 2,
-            children: (_s, i) => element(null, "li", { children: String(i) }),
+            children: (_s: Scope | null, i: number) => element(null, "li", { children: String(i) }),
           }),
       ],
       [
