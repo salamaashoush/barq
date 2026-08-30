@@ -446,8 +446,18 @@ describe("the convention, from the other side", () => {
       "vite.ts": "vite.test.ts",
       "index.ts": "exports.test.ts",
     };
+    // `.d.ts` is excluded: a declaration file has no runtime behaviour to cover,
+    // and `build-modules.d.ts` exists precisely so that no APPLICATION declares
+    // the build's specifiers. Its content is checked by `tsc`, which is the only
+    // thing that reads it.
     const modules = readdirSync(SRC)
-      .filter((f) => f.endsWith(".ts") && !f.includes(".test.") && f !== "test-setup.ts")
+      .filter(
+        (f) =>
+          f.endsWith(".ts") &&
+          !f.endsWith(".d.ts") &&
+          !f.includes(".test.") &&
+          f !== "test-setup.ts",
+      )
       .toSorted();
     expect(modules).toEqual(Object.keys(coveredBy).toSorted());
     const tests = new Set(readdirSync(SRC));

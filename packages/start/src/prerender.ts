@@ -98,10 +98,10 @@ function fileFor(path: string, outDir: string, subfolderIndex: boolean): string 
  * and exits 0 is the failure a prerenderer exists to prevent.
  */
 export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
-  const build = run.entry.createFetch;
+  const build = run.entry.default?.createFetch;
   if (typeof build !== "function") {
     throw new Error(
-      "[barq-start] prerendering needs the server entry to export `createFetch(extra)` — " +
+      "[barq-start] prerendering needs the server entry to default-export `createFetch(extra)` — " +
         "`stream: false` is a different renderer from a buffered stream, and a handler built " +
         "with streaming on bakes its placeholders and swap scripts into the static file",
     );

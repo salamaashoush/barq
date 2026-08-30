@@ -24,8 +24,22 @@ import { type RouterState, createRouter } from "./router.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
 export interface StartClientOptions {
-  /** The generated table, from `./routeTree.gen`. */
-  readonly routeTree: readonly AnyRouteDefinition[];
+  /**
+   * The table. Omitted, it comes from the project's `src/router.ts`.
+   *
+   * An application's own entry does NOT import `routeTree.gen.ts` to pass it
+   * here — theirs does not either
+   * (`solid-start/src/default-entry/client.tsx` is two imports and a
+   * `hydrateStart()`). The import lives in `src/router.ts`, which is an ordinary
+   * file naming an ordinary relative path.
+   *
+   * Route TYPES are unaffected either way: they travel through `Register`, which
+   * `routeTree.gen.ts` augments, and this parameter is `AnyRouteDefinition[]`,
+   * which never carried them.
+   *
+   * Still accepted, because a test hands over a table of its own.
+   */
+  readonly routeTree?: readonly AnyRouteDefinition[];
   /** Defaults to `browserHistory()`; a test may hand over its own. */
   readonly history?: RouterState["history"];
   /** Defaults to the whole document — the shell is part of the tree. */
@@ -48,9 +62,19 @@ export interface StartClientOptions {
  *    with nothing in it claims nothing and then replaces every tag the server
  *    wrote.
  */
-export async function startClient(options: StartClientOptions): Promise<RouterState> {
+export async function startClient(options: StartClientOptions = {}): Promise<RouterState> {
+  // DYNAMIC, and only when nothing was passed: this package's own suite imports
+  // this module with no Vite plugin anywhere, so a static import would fail to
+  // resolve at load. `#barq-router-entry` is an ALIAS to the project's own
+  // `src/router.ts`, not a synthesised module — the client must never reach
+  // `virtual:barq-server-fns`, which would put the whole server registry in the
+  // browser bundle.
+  const config =
+    options.routeTree === undefined
+      ? (await import("#barq-router-entry")).config
+      : { routeTree: options.routeTree };
   const state = createRouter({
-    routeTree: options.routeTree,
+    ...config,
     history: options.history ?? browserHistory(),
   });
 

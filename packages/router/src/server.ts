@@ -1111,6 +1111,91 @@ export { PRERENDER_HEADER };
 export { HeadContent, Scripts } from "./components.ts";
 
 /**
+ * What a server entry is, once the build has supplied the parts.
+ *
+ * All three hang off ONE object because a default export is the only thing a
+ * one-line entry can provide, and the build needs all three: `createFetch` for
+ * the prerenderer's non-streaming twin, `verifyChains` for the route-action
+ * check. As named module exports they had to be written out by hand, which is
+ * what made a hand-written entry a transcription of the generated one.
+ */
+export interface StartHandler {
+  readonly fetch: (request: Request) => Promise<Response>;
+  readonly createFetch: (
+    extra?: Partial<PageHandlerOptions>,
+  ) => (request: Request) => Promise<Response>;
+  readonly verifyChains: (reachability: Reachability) => Promise<string>;
+}
+
+/**
+ * The whole server entry, as one call.
+ *
+ * `export default createStartHandler()` is the entire file, generated or
+ * hand-written. That is TanStack's shape —
+ * `solid-start/src/default-entry/server.ts` names no manifest, no assets and no
+ * route tree — and it is why THIS function holds the build artefacts.
+ *
+ * WHAT IS AND IS NOT A VIRTUAL MODULE HERE. `virtual:barq-route-assets`,
+ * `virtual:barq-client-assets` and `virtual:barq-server-fns` are things the
+ * build synthesises and no author could write, so they are virtual and they are
+ * imported here rather than by an application. `#barq-router-entry` is an ALIAS
+ * to the project's own `src/router.ts` — a real file, importing
+ * `./routeTree.gen` by a plain relative path. The route table is not hidden
+ * behind a specifier only the bundler can resolve; that is theirs too
+ * (`examples/solid/start-basic/src/router.tsx`).
+ *
+ * The imports are DYNAMIC and the handler is built on first request. Two
+ * reasons, both load-bearing: this package's own suite imports this module with
+ * no Vite plugin anywhere, so a static import would fail to resolve at load; and
+ * `clientAssets` is only final after the client build, so reading it at module
+ * scope reads the dev placeholder in a production bundle.
+ *
+ * `chainVerifier`'s own note explains why the check has to run from inside the
+ * ssr bundle rather than from a Vite plugin. It still does: `resolve.noExternal`
+ * compiles `@barqjs/*` into that bundle, so this module and the registry it asks
+ * are the same copy. Being in APPLICATION source was never what made that work.
+ */
+export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): StartHandler {
+  let parts: Promise<PageHandlerOptions> | undefined;
+  const app = (): Promise<PageHandlerOptions> => {
+    parts ??= (async (): Promise<PageHandlerOptions> => {
+      const [{ config }, { routeAssets }, { clientAssets }] = await Promise.all([
+        import("#barq-router-entry"),
+        import("virtual:barq-route-assets"),
+        import("virtual:barq-client-assets"),
+      ]);
+      // MOUNTS every server function the build found. Importing it is what
+      // gives each one a URL — without it `/_barq/fn/<id>` 404s for all of them,
+      // and `verifyChains` has an empty registry to ask.
+      await import("virtual:barq-server-fns");
+      return {
+        ...config,
+        routeAssets,
+        clientAssets,
+        app: (state: RouterState): unknown => renderRoutes(state),
+      };
+    })();
+    return parts;
+  };
+
+  const createFetch = (
+    more: Partial<PageHandlerOptions> = {},
+  ): ((request: Request) => Promise<Response>) => {
+    let handler: ((request: Request) => Promise<Response>) | undefined;
+    return async (request: Request): Promise<Response> => {
+      handler ??= createPageHandler({ ...(await app()), ...extra, ...more });
+      return handler(request);
+    };
+  };
+
+  return {
+    fetch: createFetch(),
+    createFetch,
+    verifyChains: async (reachability) => chainVerifier((await app()).routeTree)(reachability),
+  };
+}
+
+/**
  * Split the document around the app's markup and stream the middle.
  *
  * The document function is called once, with an empty body, and the result is

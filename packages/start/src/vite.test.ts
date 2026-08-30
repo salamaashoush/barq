@@ -1,8 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { transform } from "@barqjs/compiler-rs";
 
-import { CLIENT_ENTRY_ID, MANIFEST_ID, SERVER_ENTRY_ID, barqStart } from "./vite.ts";
+import {
+  CLIENT_ENTRY_ID,
+  MANIFEST_ID,
+  ROUTER_ENTRY_ID,
+  SERVER_ENTRY_ID,
+  barqStart,
+} from "./vite.ts";
 
 /**
  * The three plugins `barqStart()` returns, as the loose shapes these tests
@@ -148,12 +157,16 @@ describe("the entries an application does not write", () => {
     };
   };
 
-  test("the client half boots through `startClient` and hydrates the DOCUMENT", () => {
+  test("the client half boots through `startClient` and names nothing else", () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(CLIENT_ENTRY_ID) as string) ?? "";
 
     expect(code).toContain('import { startClient } from "@barqjs/router/client"');
-    expect(code).toContain("await startClient({ routeTree })");
+    expect(code).toContain("await startClient()");
+    // NO ROUTE TREE. It used to pass `routeTree` from `routeTree.gen.ts`, so an
+    // application overriding this entry had to import a generated file to hand
+    // back a value the framework can reach itself.
+    expect(code).not.toContain("routeTree");
     // The boot ORDER is the framework's, so an application never writes it.
     expect(code).not.toContain("createRouter");
     expect(code).not.toContain("preloadMatched");
@@ -164,35 +177,93 @@ describe("the entries an application does not write", () => {
     expect(code).not.toContain("getElementById");
   });
 
-  test("the server half has no document template, and exposes the chain check", () => {
+  test("the server half is `createStartHandler()` and nothing else", () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(SERVER_ENTRY_ID) as string) ?? "";
 
-    expect(code).toContain("routeTree,");
-    expect(code).toContain("createPageHandler");
+    expect(code).toContain('import { createStartHandler } from "@barqjs/router/server"');
+    expect(code).toContain("export default createStartHandler()");
     // The document is `shellComponent` on the root route; `<HeadContent />` and
     // `<Scripts />` place themselves. A template here is a second answer, and it
     // was the one that serialised the head before the body.
     expect(code).not.toContain("<!doctype html>");
     expect(code).not.toContain("document:");
-    // `createFetch` beside `default`, because `stream` is fixed when the handler
-    // is built and the prerenderer needs a non-streaming twin of the SAME
-    // declaration.
-    expect(code).toContain("export const createFetch");
-    expect(code).toContain("export default { fetch: createFetch({}) }");
-    // Without this import every `/_barq/fn/<id>` 404s and the chain check has an
-    // empty registry to ask.
-    expect(code).toContain(`import "${MANIFEST_ID}"`);
-    expect(code).toContain("chainVerifier(options.routeTree)");
+    // `createFetch` and `verifyChains` hang off the DEFAULT export now, built by
+    // `createStartHandler`, so the entry declares neither.
+    expect(code).not.toContain("export const createFetch");
+    expect(code).not.toContain("chainVerifier");
   });
 
-  test("both name the generated tree by an ABSOLUTE path", () => {
-    // A virtual module has no directory of its own, so a relative specifier in
-    // one resolves against nothing.
+  /**
+   * The regression this whole arrangement exists to prevent.
+   *
+   * Both entries used to name `virtual:barq-route-assets`,
+   * `virtual:barq-client-assets`, `virtual:barq-server-fns` and the generated
+   * table, so overriding one meant transcribing specifiers with no types of
+   * their own — and `packages/kitchen-sink/src/virtual.d.ts` existed only to
+   * make that transcription typecheck.
+   *
+   * Grepped across both of TanStack's `start-basic` examples, user code names no
+   * `virtual:` and no `#` specifier at all. This is that property, as a gate.
+   */
+  test("neither entry names a build specifier, because an application copies them", () => {
     const plugin = entries();
     for (const id of [CLIENT_ENTRY_ID, SERVER_ENTRY_ID]) {
       const code = plugin.load(plugin.resolveId(id) as string) ?? "";
-      expect(code).toContain(`${ROOT}/src/routeTree.gen.ts`);
+      expect(code).not.toContain("virtual:");
+      expect(code).not.toContain("#barq-");
+      expect(code).not.toContain("routeTree.gen");
     }
+  });
+
+  test("the ROUTER entry is where the generated tree is named, by an ABSOLUTE path", () => {
+    // A generated module has no directory of its own, so a relative specifier in
+    // one resolves against nothing. This is also the only generated module that
+    // names the tree at all — a project writing `src/router.ts` replaces it, and
+    // names the tree by an ordinary relative path of its own.
+    const plugin = entries();
+    const code = plugin.load(plugin.resolveId(ROUTER_ENTRY_ID) as string) ?? "";
+    expect(code).toContain(`${ROOT}/src/routeTree.gen.ts`);
+    expect(code).toContain("export const config = { routeTree }");
+  });
+});
+
+describe("the router entry a project DOES write", () => {
+  const routerEntry = (root: string): string | null => {
+    const plugins = barqStart() as unknown as (Loose & { name: string })[];
+    for (const plugin of plugins) plugin.configResolved?.({ root, mode: "development" });
+    const entries = plugins.find((one) => one.name === "barq-start:entries") as unknown as {
+      resolveId: (id: string) => string | null;
+    };
+    return entries.resolveId(ROUTER_ENTRY_ID);
+  };
+
+  test("a project's own `src/router.ts` wins over the generated default", () => {
+    const resolved = routerEntry(join(import.meta.dir, "../test/router-fixture"));
+    // The FILE, not the `\0`-prefixed generated id — so the module keeps its own
+    // identity in the graph and the watcher sees the file the author edits,
+    // which is the reason `resolveId` answers a path for the entries too.
+    expect(resolved).toEndWith("/test/router-fixture/src/router.ts");
+    expect(resolved).not.toStartWith("\0");
+  });
+
+  test("and the file it wins with names no build specifier", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../test/router-fixture/src/router.ts"),
+      "utf8",
+    );
+    // IMPORT STATEMENTS, not raw text: the fixture's own comment explains what
+    // it is avoiding and says both strings out loud, which a whole-file `grep`
+    // reads as the very leak it is documenting.
+    const specifiers = [...source.matchAll(/from\s*["']([^"']+)["']/g)].map((m) => m[1]);
+    // The property the whole arrangement exists for: what a project writes
+    // reaches the route table by an ordinary relative import.
+    expect(specifiers.filter((one) => one.startsWith("virtual:"))).toEqual([]);
+    expect(specifiers.filter((one) => one.startsWith("#barq-"))).toEqual([]);
+  });
+
+  test("without one, the generated default is used and names the tree absolutely", () => {
+    const resolved = routerEntry(ROOT);
+    expect(resolved).toBe(`\0${ROUTER_ENTRY_ID}`);
   });
 });

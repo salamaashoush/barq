@@ -30,14 +30,14 @@ const PAGES: Record<string, string> = {
  * export, hands it the module-graph fact, and does the right thing with what it
  * answers. The verifier's own logic is `router/src/manifest.test.ts`.
  */
-export const verifyChains = (reachability: ReadonlyMap<string, ReadonlySet<string>>): string => {
+const verifyChains = (reachability: ReadonlyMap<string, ReadonlySet<string>>): string => {
   const ids = [...reachability.values()].flatMap((set) => [...set]);
   return ids.includes("src/data.ts#loadUser")
     ? "1 server function(s) do not carry the middleware of a route that reaches them."
     : "";
 };
 
-export const createFetch = (extra: Record<string, unknown>) => {
+const createFetch = (extra: Record<string, unknown>) => {
   const streaming = extra.stream !== false;
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -57,4 +57,11 @@ export const createFetch = (extra: Record<string, unknown>) => {
   };
 };
 
-export default { fetch: createFetch({}) };
+/**
+ * ALL THREE ON `default`, which is the contract `@barqjs/start/protocol`
+ * declares: `export default createStartHandler()` is what a real project writes,
+ * and the build reads `createFetch` and `verifyChains` off that one object. They
+ * were named module exports, which is what forced a hand-written entry to
+ * transcribe the generated one.
+ */
+export default { fetch: createFetch({}), createFetch, verifyChains };

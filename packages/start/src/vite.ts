@@ -39,14 +39,6 @@ export const ENVIRONMENTS = { client: "client", server: "ssr" } as const;
 /** The module a server entry imports to mount everything the build found. */
 export const MANIFEST_ID = "virtual:barq-server-fns";
 
-/**
- * The route -> client-assets map, which `barqRouter` owns and this only NAMES.
- *
- * Re-declared rather than imported from `@barqjs/router/vite` so this module
- * does not pull the router's build half — and napi with it — into a config that
- * may only want the server-function halves.
- */
-const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
 const RESOLVED_MANIFEST_ID = `\0${MANIFEST_ID}`;
 
 /**
@@ -79,10 +71,61 @@ function findEntry(root: string, srcDir: string, half: "client" | "server"): str
 }
 
 /**
+ * The application's router, as a specifier the FRAMEWORK can import.
+ *
+ * `#`-prefixed rather than `virtual:` on purpose, and the distinction is
+ * TanStack's: `ENTRY_POINTS.router` is `#tanstack-router-entry`
+ * (`start-plugin-core/src/constants.ts:23`) and resolves to the project's OWN
+ * `src/router.tsx` through `resolve.alias` (`vite/planning.ts:34-39`), while
+ * `virtual:` is reserved for modules the plugin synthesises. This is an alias to
+ * a real file, so it gets the real-file spelling.
+ *
+ * NO APPLICATION FILE NAMES THIS. Grepped across both of their `start-basic`
+ * examples: user code names no `virtual:` and no `#` specifier at all. What a
+ * project writes is `src/router.ts`, which imports `./routeTree.gen` by a plain
+ * relative path — the route table is not hidden behind a specifier only the
+ * bundler can resolve, and never was.
+ */
+export const ROUTER_ENTRY_ID = "#barq-router-entry";
+const RESOLVED_ROUTER_ENTRY_ID = `\0${ROUTER_ENTRY_ID}`;
+
+function findRouterEntry(root: string, srcDir: string): string | null {
+  for (const extension of ENTRY_EXTENSIONS) {
+    const file = join(root, srcDir, `router${extension}`);
+    if (existsSync(file)) return file;
+  }
+  return null;
+}
+
+/**
+ * What `#barq-router-entry` is when the project has not written `src/router.ts`.
+ *
+ * Theirs is REQUIRED (`planning.ts:107-113`) because their router carries the
+ * options; barq's `RouterConfig` is optional in every field but `routeTree`, so
+ * a project with nothing to configure should not have to write a file that says
+ * so. The default re-exports the generated table under the same name the written
+ * file would export, so the two are interchangeable to every consumer.
+ */
+function defaultRouterEntry(routeTreeImport: string): string {
+  return [
+    `import { routeTree } from ${JSON.stringify(routeTreeImport)};`,
+    ``,
+    `export const config = { routeTree };`,
+    ``,
+  ].join("\n");
+}
+
+/**
  * The client half, when the project has not written one.
  *
- * Three lines, and every one of them is the framework's: `startClient` owns the
- * boot ORDER, which is load-bearing three times over — `start()` before the
+ * Two lines, and both are what an application writes by hand when it overrides
+ * this — which is the point of the shape. NO ROUTE TREE IMPORT: it used to pass
+ * `routeTree` from `routeTree.gen.ts`, so overriding meant importing a generated
+ * file to hand back a value the framework can reach itself. `startClient` reads
+ * `#barq-router-entry`, which is the project's own `src/router.ts`.
+ *
+ * `startClient` owns the boot ORDER, which is load-bearing three times over —
+ * `start()` before the
  * walk, because hydration claims one range per route depth and an empty chain
  * claims ranges for nothing; the matched chunks before the walk, because a cold
  * `lazy()` throws `NotReadyError` and parks the depth's boundary onto a rebuild,
@@ -101,12 +144,11 @@ function findEntry(root: string, srcDir: string, half: "client" | "server"): str
  * first navigation reconciled the whole head away. Only `packages/kitchen-sink`
  * exercised the current design, because only it wrote its own entry.
  */
-function defaultClientEntry(routeTreeImport: string): string {
+function defaultClientEntry(): string {
   return [
     `import { startClient } from "@barqjs/router/client";`,
-    `import { routeTree } from "${routeTreeImport}";`,
     ``,
-    `await startClient({ routeTree });`,
+    `await startClient();`,
     ``,
   ].join("\n");
 }
@@ -114,49 +156,35 @@ function defaultClientEntry(routeTreeImport: string): string {
 /**
  * The server half, when the project has not written one.
  *
- * It exports `options` beside `fetch` because `stream` is fixed when the handler
- * is built, and the prerenderer needs a non-streaming twin of the SAME
- * declaration rather than a second one to keep in step. The dev server adds
- * `transformShell`; the prerenderer sets `stream: false` and `refuseRequest`.
+ * TWO LINES, and they are the two lines a project writes by hand when it does
+ * override the entry — which is the whole point of the shape. Theirs is the same
+ * size and for the same reason (`solid-start/src/default-entry/server.ts`:
+ * `createStartHandler(defaultStreamHandler)` and nothing else).
+ *
+ * IT USED TO NAME FOUR BUILD ARTEFACTS: `virtual:barq-route-assets`,
+ * `virtual:barq-client-assets`, `virtual:barq-server-fns` and the generated
+ * table. So overriding the entry meant transcribing specifiers that have no
+ * types of their own, and `packages/kitchen-sink/src/virtual.d.ts` existed for
+ * no other purpose than to make that transcription typecheck. They all moved
+ * into `createStartHandler`, which is in `@barqjs/router/server` — the same
+ * place TanStack keeps theirs (`start-server-core/src/router-manifest.ts:28`,
+ * `getServerFnById.ts:1`).
+ *
+ * `stream` is still fixed when the handler is built and the prerenderer still
+ * needs a non-streaming twin of the SAME declaration, so `createStartHandler`
+ * returns `createFetch` beside `fetch` rather than the entry declaring both.
  *
  * NO `document` TEMPLATE. The document is `shellComponent` on the root route and
  * `<HeadContent />` and `<Scripts />` place themselves, so there is no order to
  * get right here — which is the trap the string template had: it serialised the
  * head before the body and shipped a page with no styles until the first
- * navigation. The only thing this still hands over is `clientAssets`, which the
- * build produces and no route can know about.
+ * navigation.
  */
-function defaultServerEntry(routeTreeImport: string): string {
+function defaultServerEntry(): string {
   return [
-    `import { chainVerifier, createPageHandler, renderRoutes } from "@barqjs/router/server";`,
-    `import { routeAssets } from "${ROUTE_ASSETS_ID}";`,
-    `import { routeTree } from "${routeTreeImport}";`,
-    `import { clientAssets } from "${CLIENT_ASSETS_ID}";`,
-    `// MOUNTS every server function the build found. Importing it is what gives`,
-    `// each one a URL — without this line \`/_barq/fn/<id>\` 404s for all of them,`,
-    `// and the route-action check below has an empty registry to ask.`,
-    `import "${MANIFEST_ID}";`,
+    `import { createStartHandler } from "@barqjs/router/server";`,
     ``,
-    `export const options = {`,
-    `  routeTree,`,
-    `  routeAssets,`,
-    `  clientAssets,`,
-    `  app: (state) => renderRoutes(state),`,
-    `};`,
-    ``,
-    `/**`,
-    ` * The route-action chain check, exposed to the BUILD.`,
-    ` *`,
-    ` * Here rather than in a Vite plugin because this is the only place that can`,
-    ` * see both halves: \`resolve.noExternal\` compiles \`@barqjs/*\` into this`,
-    ` * bundle, so a plugin importing the registry would be asking a second, empty`,
-    ` * one — and a route's \`middleware\` are closures that exist nowhere else.`,
-    ` */`,
-    `export const verifyChains = chainVerifier(options.routeTree);`,
-    ``,
-    `export const createFetch = (extra) => createPageHandler({ ...options, ...extra });`,
-    ``,
-    `export default { fetch: createFetch({}) };`,
+    `export default createStartHandler();`,
     ``,
   ].join("\n");
 }
@@ -478,18 +506,25 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       if (id === SERVER_ENTRY_ID) {
         return findEntry(root, srcDirectory, "server") ?? RESOLVED_SERVER_ENTRY_ID;
       }
+      // The project's own `src/router.ts` when it has one, exactly as an entry
+      // resolves — so the framework imports one stable specifier and the choice
+      // costs nothing anywhere else.
+      if (id === ROUTER_ENTRY_ID) {
+        return findRouterEntry(root, srcDirectory) ?? RESOLVED_ROUTER_ENTRY_ID;
+      }
       return id === CLIENT_ASSETS_ID ? RESOLVED_CLIENT_ASSETS_ID : null;
     },
     load(id) {
       // A VIRTUAL module has no directory of its own, so a relative specifier
-      // in it resolves against nothing. The generated entries name the file by
+      // in it resolves against nothing. The generated default names the file by
       // its absolute path, which Vite resolves everywhere.
       const treeImport = join(root, options.routeTree ?? "src/routeTree.gen.ts").replaceAll(
         "\\",
         "/",
       );
-      if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry(treeImport);
-      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry(treeImport);
+      if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry();
+      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry();
+      if (id === RESOLVED_ROUTER_ENTRY_ID) return defaultRouterEntry(treeImport);
       if (id !== RESOLVED_CLIENT_ASSETS_ID) return null;
       // In dev the entry is a module Vite serves; there are no chunks and no
       // CSS files, because the browser's own module graph does that work.
@@ -688,14 +723,14 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // fail should not leave half a site on disk first.
       const verify = options.verify;
       if (verify !== undefined) {
-        const check = entry.verifyChains;
+        const check = entry.default?.verifyChains;
         const reachability = verify.reachability();
         if (typeof check !== "function") {
           throw new TypeError(
-            "[barq-start] `verify` needs the server entry to export " +
-              "`verifyChains` — `export const verifyChains = chainVerifier(options.routes)` " +
-              "from `@barqjs/router/server`. The check runs inside the built bundle because " +
-              "that is where the route middleware and the mounted registry both are.",
+            "[barq-start] `verify` needs the server entry to default-export " +
+              "`verifyChains` — `export default createStartHandler()` from " +
+              "`@barqjs/router/server` provides it. The check runs inside the built bundle " +
+              "because that is where the route middleware and the mounted registry both are.",
           );
         }
         if (reachability === undefined) {
@@ -829,13 +864,12 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
        */
       let built: { from: object; fetch: (request: Request) => Promise<Response> } | null = null;
 
-      type ServerEntry = {
-        default?: { fetch?: (request: Request) => Promise<Response> };
-        createFetch?: (extra: Record<string, unknown>) => (request: Request) => Promise<Response>;
-      };
-
+      // `ServerEntryModule`, not a local restatement of it. There WAS a local
+      // one here, declaring `createFetch` as a named module export, and it was
+      // the second copy `protocol.ts`'s own header warns about — it went stale
+      // the moment the contract moved onto `default` and `tsc` caught it.
       const pageFetch = async (): Promise<(request: Request) => Promise<Response>> => {
-        const entry = (await environment.runner.import(SERVER_ENTRY_ID)) as ServerEntry;
+        const entry = (await environment.runner.import(SERVER_ENTRY_ID)) as ServerEntryModule;
         if (built !== null && built.from === entry) return built.fetch;
         // `createFetch` is how the dev server gets `/@vite/client` and every
         // `transformIndexHtml` plugin into a document Vite has no file for.
@@ -843,15 +877,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         // an undocumented invariant; this is the contract, and an entry without
         // it degrades to no injection rather than to a broken page.
         const fetchPage =
-          typeof entry.createFetch === "function"
-            ? entry.createFetch({
+          typeof entry.default?.createFetch === "function"
+            ? entry.default.createFetch({
                 transformShell: (shell: string, url: URL) => transformShell(viteServer, shell, url),
               })
             : entry.default?.fetch;
         if (typeof fetchPage !== "function") {
           throw new Error(
-            `[barq-start] ${SERVER_ENTRY_ID} must export \`createFetch\` or default-export ` +
-              "`{ fetch(request): Response }`",
+            `[barq-start] ${SERVER_ENTRY_ID} must default-export \`createStartHandler()\` ` +
+              "or `{ fetch(request): Response }`",
           );
         }
         built = { from: entry, fetch: fetchPage };
