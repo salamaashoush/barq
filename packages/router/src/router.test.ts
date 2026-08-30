@@ -32,7 +32,7 @@ import {
   useServerFn,
 } from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
-import { type RouterState, createRouter } from "./router.ts";
+import { type RouterState, createRouter, unmask } from "./router.ts";
 
 const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -2967,5 +2967,112 @@ describe("useServerFn", () => {
       expect(state.location().pathname).toBe("/");
       dispose();
     }
+  });
+});
+
+/**
+ * Route masks — showing one URL while rendering another, declared once beside
+ * the routes rather than at every call site.
+ */
+describe("routeMasks", () => {
+  const table = [
+    { path: "/feed", component: (() => null) as never },
+    { path: "/photos/$id", component: (() => null) as never },
+    { path: "/albums/$album/$id", component: (() => null) as never },
+  ] as never as AnyRouteDefinition[];
+
+  const at = (masks: Parameters<typeof createRouter>[0]["routeMasks"], extra = {}) =>
+    createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: ["/feed"] }),
+      routeMasks: masks,
+      ...extra,
+    });
+
+  test("a matching navigation shows the mask and renders the target", async () => {
+    const state = at([{ from: "/photos/$id", to: "/feed" }]);
+    await state.start();
+    await state.navigate("/photos/7");
+    // What the address bar says…
+    expect(state.location().pathname).toBe("/feed");
+    // …and what is actually being rendered.
+    expect(state.chain().at(-1)?.fullPath).toBe("/photos/$id");
+    expect(state.params()).toEqual({ id: "7" } as never);
+    state.dispose();
+  });
+
+  test("a navigation nothing masks is untouched", async () => {
+    const state = at([{ from: "/photos/$id", to: "/feed" }]);
+    await state.start();
+    await state.navigate("/albums/holiday/2");
+    expect(state.location().pathname).toBe("/albums/holiday/2");
+    state.dispose();
+  });
+
+  test("the mask's own params are interpolated", async () => {
+    const state = at([
+      { from: "/albums/$album/$id", to: "/photos/$id", params: (p) => ({ id: p.id ?? "" }) },
+    ]);
+    await state.start();
+    await state.navigate("/albums/holiday/2");
+    expect(state.location().pathname).toBe("/photos/2");
+    expect(state.chain().at(-1)?.fullPath).toBe("/albums/$album/$id");
+    state.dispose();
+  });
+
+  test("a per-call mask wins over the table", async () => {
+    const state = at([{ from: "/photos/$id", to: "/feed" }]);
+    await state.start();
+    await state.navigate("/photos/7", { mask: "/albums/holiday/2" });
+    expect(state.location().pathname).toBe("/albums/holiday/2");
+    expect(state.chain().at(-1)?.fullPath).toBe("/photos/$id");
+    state.dispose();
+  });
+
+  /**
+   * `unmaskOnReload` — whether the mask survives the page load that wrote it.
+   *
+   * A history entry outlives the page that pushed it, so the router records
+   * which load wrote the mask and a later one stops honouring it. Simulated by
+   * reading the pushed entry back through `unmask` with a different key, which
+   * is exactly what a reload does.
+   */
+  describe("unmaskOnReload", () => {
+    const entryOf = (state: RouterState) => state.history.current();
+
+    test("off by default: the real location survives a reload", async () => {
+      const state = at([{ from: "/photos/$id", to: "/feed" }]);
+      await state.start();
+      await state.navigate("/photos/7");
+      expect(unmask(entryOf(state), "a-later-page-load")).toBe("/photos/7");
+      state.dispose();
+    });
+
+    test("on: a later page load renders the URL it can see", async () => {
+      const state = at([{ from: "/photos/$id", to: "/feed", unmaskOnReload: true }]);
+      await state.start();
+      await state.navigate("/photos/7");
+      // This page load still sees through it…
+      expect(unmask(entryOf(state))).toBe("/photos/7");
+      // …and the next one does not.
+      expect(unmask(entryOf(state), "a-later-page-load")).toBe("/feed");
+      state.dispose();
+    });
+
+    test("the router-wide default applies to a per-call mask too", async () => {
+      const state = at(undefined, { unmaskOnReload: true });
+      await state.start();
+      await state.navigate("/photos/7", { mask: "/feed" });
+      expect(unmask(entryOf(state), "a-later-page-load")).toBe("/feed");
+      state.dispose();
+    });
+
+    test("a per-call override beats the router-wide default", async () => {
+      const state = at(undefined, { unmaskOnReload: true });
+      await state.start();
+      await state.navigate("/photos/7", { mask: "/feed", unmaskOnReload: false });
+      expect(unmask(entryOf(state), "a-later-page-load")).toBe("/photos/7");
+      state.dispose();
+    });
   });
 });

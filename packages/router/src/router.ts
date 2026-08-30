@@ -44,7 +44,14 @@ import {
   type RouteLifecycle,
   flattenRoutes,
 } from "./route.ts";
-import { applyTrailingSlash, leavesTheApp, normalize, resolvePath } from "./path.ts";
+import {
+  applyTrailingSlash,
+  interpolate,
+  leavesTheApp,
+  normalize,
+  parsePattern,
+  resolvePath,
+} from "./path.ts";
 import type { TrailingSlash } from "./path.ts";
 import { type ScrollRestoration, scrollRestoration, withViewTransition } from "./scroll.ts";
 import {
@@ -221,6 +228,8 @@ export interface NavigateOptions {
    * masked URL renders the MASK, which is the whole point of choosing it.
    */
   readonly mask?: string;
+  /** Whether THIS mask survives a page load. Overrides the router-wide answer. */
+  readonly unmaskOnReload?: boolean;
 }
 
 /**
@@ -263,12 +272,62 @@ export const ROUTE_CONTEXT_GLOBAL = "__BARQ_ROUTE_CONTEXT__";
 /** Where the real target hides while the URL shows something else. */
 const MASK = "__barqMask";
 
-/** The path a location actually matches, which is not always the one it shows. */
-export function unmask(location: Location): string {
+/**
+ * The page load that wrote the mask, when the mask is meant to survive only
+ * that one.
+ *
+ * `unmaskOnReload` is what puts it there. A history entry outlives the page
+ * that pushed it — the back button, a reload, a restored tab — and the key is
+ * how the router tells "I put this here a moment ago" from "this came back from
+ * somewhere else". TanStack's `__tempKey` against its `tempLocationKey`, and
+ * the same trick.
+ */
+const MASK_SESSION = "__barqMaskSession";
+
+/** This page load's identity, for {@link MASK_SESSION}. Never persisted. */
+const MASK_KEY = `m${Math.round(Math.random() * 1e9)}`;
+
+/**
+ * The path a location actually matches, which is not always the one it shows.
+ *
+ * `session` is this page load's key. A mask written with `unmaskOnReload` is
+ * ignored once the key stops matching, which is what "removed when the page is
+ * reloaded" means: the URL is then simply the location, and the modal that was
+ * open renders as the page it addresses.
+ */
+export function unmask(location: Location, session: string = MASK_KEY): string {
   const state = location.state;
   if (state === null || typeof state !== "object") return location.pathname;
-  const masked = (state as Record<string, unknown>)[MASK];
-  return typeof masked === "string" ? masked : location.pathname;
+  const record = state as Record<string, unknown>;
+  const masked = record[MASK];
+  if (typeof masked !== "string") return location.pathname;
+  const wrote = record[MASK_SESSION];
+  if (typeof wrote === "string" && wrote !== session) return location.pathname;
+  return masked;
+}
+
+/**
+ * One entry in `routeMasks`: what to hide, and what to show instead.
+ *
+ * The alternative is passing `mask` at every call site, which means a photo
+ * opened from three places has the rule written three times and drifts. This is
+ * the rule once, beside the routes.
+ */
+export interface RouteMask {
+  /** The route pattern whose matches are masked — `/photos/$id`. */
+  readonly from: string;
+  /** The pattern the URL shows instead — `/feed`. */
+  readonly to: string;
+  /**
+   * What fills `to`'s parameters. A function is handed the params `from`
+   * captured, which is how a mask keeps one of them and drops the rest.
+   * Absent means `from`'s params are reused as they stand.
+   */
+  readonly params?:
+    | Record<string, string>
+    | ((captured: Record<string, string>) => Record<string, string>);
+  /** Overrides the router-wide `unmaskOnReload` for this mask alone. */
+  readonly unmaskOnReload?: boolean;
 }
 
 /**
@@ -358,6 +417,25 @@ export interface RouterConfig {
    * about which URLs are served. `"preserve"` keeps whatever the `to` said.
    */
   readonly trailingSlash?: TrailingSlash;
+  /**
+   * Rules for showing one URL while rendering another, declared once.
+   *
+   * `navigate(to, { mask })` is the per-call form and still wins where both
+   * apply. This is the rule beside the routes, so a photo opened from a feed,
+   * a search result and a profile masks the same way in all three without the
+   * three of them agreeing to.
+   */
+  readonly routeMasks?: readonly RouteMask[];
+  /**
+   * Whether a mask survives a page load. Default `false`.
+   *
+   * `false` is the interesting one and is TanStack's default too: the real
+   * location rides in `history.state`, so reloading a masked URL in the same
+   * tab reopens what was actually open. `true` drops it, and the URL is then
+   * simply the location — which is what an application wants when the mask is
+   * the shareable thing and the modal is not.
+   */
+  readonly unmaskOnReload?: boolean;
   /**
    * What a route gets when it declares none of these itself.
    *
@@ -625,6 +703,40 @@ export interface RouterState {
 export function createRouter(config: RouterConfig): RouterState {
   const base = config.basepath === undefined ? "" : normalizeBase(config.basepath);
   const trailingSlash: TrailingSlash = config.trailingSlash ?? "never";
+  /**
+   * The mask table as something that can be MATCHED, built once.
+   *
+   * The same `createMatcher` the routes use, over the masks' `from` patterns —
+   * so `/photos/$id` masks `/photos/7` by the same specificity rules a route
+   * would, rather than by a second, subtly different comparison.
+   */
+  const maskTable =
+    config.routeMasks === undefined || config.routeMasks.length === 0
+      ? null
+      : createMatcher(
+          config.routeMasks.map((mask, index) => ({
+            id: `mask:${index}`,
+            fullPath: normalize(mask.from),
+            segments: parsePattern(mask.from),
+            chain: [mask],
+          })),
+          { caseSensitive: config.caseSensitive },
+        );
+
+  /** The URL a target should SHOW, when a mask claims it. */
+  const maskFor = (pathname: string): { to: string; unmaskOnReload: boolean } | null => {
+    if (maskTable === null) return null;
+    const hit = maskTable.match(pathname);
+    const mask = hit?.route.chain[0];
+    if (mask === undefined) return null;
+    const captured = hit?.params ?? {};
+    const filled =
+      typeof mask.params === "function" ? mask.params(captured) : (mask.params ?? captured);
+    return {
+      to: interpolate(mask.to, filled),
+      unmaskOnReload: mask.unmaskOnReload ?? config.unmaskOnReload ?? false,
+    };
+  };
   const defaults: RouteDefaults = config.defaults ?? {};
   // A history the CALLER built already knows its own base; one built here is
   // told. Both spellings therefore work, and neither has to repeat the other.
@@ -1564,7 +1676,10 @@ export function createRouter(config: RouterConfig): RouterState {
     }
     pendingContexts = produced;
     pendingNavigate = options;
-    const mask = options?.mask;
+    // The per-call `mask` wins: a call site that names one has said something
+    // about THIS navigation that a table cannot know.
+    const declared = maskFor(target.pathname);
+    const mask = options?.mask ?? declared?.to;
     // Where the page being LEFT is, recorded before it stops being current.
     scroll.save(untrack(location));
     if (mask === undefined) {
@@ -1572,10 +1687,20 @@ export function createRouter(config: RouterConfig): RouterState {
       return;
     }
     // The mask goes in the URL; the real target goes in the state the URL
-    // carries, so a reload in this tab still renders what was open.
+    // carries, so a reload in this tab still renders what was open — unless
+    // `unmaskOnReload` says otherwise, and then the page load that wrote it is
+    // recorded beside it and a later one stops honouring it.
+    const survives =
+      options?.mask !== undefined
+        ? (options.unmaskOnReload ?? config.unmaskOnReload ?? false)
+        : (declared?.unmaskOnReload ?? false);
     history.push(mask, {
       replace: options?.replace,
-      state: { ...(options?.state as object | null), [MASK]: href(target) },
+      state: {
+        ...(options?.state as object | null),
+        [MASK]: href(target),
+        ...(survives ? { [MASK_SESSION]: MASK_KEY } : {}),
+      },
     });
   };
 

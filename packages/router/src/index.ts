@@ -215,6 +215,7 @@ export {
   type LoadCause,
   type NavigateOptions,
   type RouteDefaults,
+  type RouteMask,
   type RouterConfig,
   type RouterState,
   type SsrMode,
