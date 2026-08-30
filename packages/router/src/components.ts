@@ -28,6 +28,7 @@ import {
   boundary,
   branch,
   cell,
+  computed,
   context,
   effect,
   element,
@@ -105,6 +106,16 @@ export interface LinkBackend {
    * which is the shape the client's first render produces.
    */
   readonly clientOnly?: (fallback: Block<unknown>, children: Block<unknown>) => unknown;
+  /**
+   * `<Await>`, on the string backend: the same loading boundary the DOM path
+   * builds, so a body that parks writes a deferred range the stream can swap
+   * and the client can claim.
+   */
+  readonly awaited?: (
+    fallback: Block<unknown> | null,
+    errorFallback: Block<unknown>,
+    children: Block<unknown>,
+  ) => unknown;
   readonly link: (
     href: string,
     className: string,
@@ -1010,6 +1021,121 @@ function ClientOnlyImpl(scope: Scope | null, props: Incoming<ClientOnlyProps>): 
 }
 
 export const ClientOnly = ClientOnlyImpl as unknown as (props: ClientOnlyProps) => JSXElement;
+
+export interface AwaitProps<T = unknown> {
+  /** A promise a loader returned WITHOUT awaiting it. */
+  readonly promise: Promise<T>;
+  /** Shown until it settles. */
+  readonly fallback?: unknown;
+  /**
+   * Handed an ACCESSOR for the settled value, not the value.
+   *
+   * TanStack's `<Await>` hands the plain value because React re-runs the
+   * component; barq hands a cell because every other block argument in the
+   * framework is one — `<Errored>`'s `(error, reset)`, `<For>`'s `(item,
+   * index)`. That is what lets the region re-read when the promise itself
+   * changes under a navigation, without rebuilding the region.
+   */
+  readonly children: (value: Cell<T>) => unknown;
+}
+
+/**
+ * Render a loader's un-awaited promise once it settles, its `fallback` until
+ * then.
+ *
+ * THERE IS NO `defer()`, and its absence is the design rather than a gap.
+ * TanStack tags a promise with `TSR_DEFERRED_PROMISE` and hangs `{status, data,
+ * error}` off it because React suspends by THROWING the promise and their
+ * transport needs a marker to find it. barq's seed channel already streams any
+ * promise a loader returns — `crossSerializeStream` emits a pending promise in
+ * the shell and a later `<script>` resolves it — so there is nothing to tag,
+ * and a `defer()` here would be an identity function with a symbol on it.
+ *
+ * The park is an async `computed`, which is the whole of barq's async model:
+ * reading one before it settles throws `NotReadyError`, the nearest `Loading`
+ * boundary catches that and shows its fallback, and the settle wakes it. That
+ * is the same mechanism a route's own loader uses one level up, so a deferred
+ * value inside a route behaves exactly as the route's data does — including on
+ * the string backend, where the boundary writes a deferred range and the stream
+ * swaps it.
+ *
+ * A REJECTION renders the enclosing route's `errorComponent`, IN PLACE of the
+ * awaited region rather than in place of the route. That is the same
+ * `loading(fallback, errored(routeFallback, content))` pair a route depth is
+ * built from, one level down, and it is forced by the string backend rather
+ * than chosen: an error boundary ABOVE this one has already written its bytes
+ * by the time a parked body resumes, so a throw let out of here reaches nothing
+ * and takes the render down. React can unwind to an outer boundary because it
+ * re-renders; a stream cannot un-send a shell.
+ *
+ * Both backends therefore put the error in the same place, which is the only
+ * arrangement that hydrates. TanStack serializes the error into a
+ * `__isServerError` envelope; barq's codec already carries an `Error` with its
+ * kind, so a `redirect()` or a `notFound()` awaited here is still one when it
+ * lands.
+ */
+function AwaitImpl<T>(scope: Scope | null, props: Incoming<AwaitProps<T>>): JSXElement {
+  // TRACKED on purpose: `props.promise` is a slot over the loader's data, so a
+  // navigation that produces a different promise re-runs this and the region
+  // parks again rather than holding the previous page's value.
+  const settled = computed(
+    async () => await (readSlot(props.promise, "Await.promise") as Promise<T>),
+  );
+
+  const fallback: Block<unknown> | null =
+    props.fallback === undefined
+      ? null
+      : block((inner: Scope | null) =>
+          typeof props.fallback === "function"
+            ? (props.fallback as (s: Scope | null) => unknown)(inner)
+            : (props.fallback ?? null),
+        );
+
+  const content: Block<unknown> = (inner: Scope | null): unknown => {
+    // READ HERE, in the boundary's own body, rather than left to whatever the
+    // child does with the cell. A child that puts the value in a hole would
+    // park that hole and not this boundary, so the fallback would never show;
+    // reading it here is what makes "pending" a fact about the region.
+    settled();
+    return (props.children as unknown as (s: Scope | null, value: Cell<T>) => unknown)(
+      inner,
+      settled,
+    );
+  };
+
+  // The enclosing route's own fallback, walked outward from this depth exactly
+  // as `renderDepth` walks it. Outside a route — two routers, a stray `<Await>`
+  // — there is no chain to ask, and the region renders nothing rather than
+  // taking the page.
+  const match = read(RouteMatchContext)();
+  const errorFallback: Block<unknown> = ((
+    fallbackScope: Scope | null,
+    error: () => Error,
+    reset: () => void,
+  ): unknown => {
+    if (match === null) return null;
+    const shown = errorFallbackFor(
+      untrack(() => match.state.chain()),
+      match.depth,
+      () => match.state.params(),
+    )(fallbackScope, error, reset);
+    return shown === null || shown === undefined ? null : shown;
+  }) as Block<unknown>;
+
+  const backend = linkBackend();
+  if (backend?.awaited !== undefined) {
+    return backend.awaited(fallback, errorFallback, content) as JSXElement;
+  }
+  // INSIDE the loading boundary, which is the order `renderDepth` uses and for
+  // the reason it records: what is re-entered after a park is the loading
+  // boundary's own content, so a catcher outside it is not in the path on the
+  // retry.
+  const guarded: Block<unknown> = (contentScope: Scope | null): unknown =>
+    boundary(contentScope, null, null, "error", errorFallback, content, HYDRATE);
+  return boundary(scope, null, null, "loading", fallback, guarded, HYDRATE);
+}
+
+export const Await = AwaitImpl as unknown as <T>(props: AwaitProps<T>) => JSXElement;
 
 // ---------------------------------------------------------------- components
 

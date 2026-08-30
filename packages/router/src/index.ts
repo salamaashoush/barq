@@ -122,6 +122,7 @@ export {
 
 export {
   type ActiveOptions,
+  type AwaitProps,
   type ClientOnlyProps,
   type LinkProps,
   type NavLinkProps,
@@ -129,6 +130,7 @@ export {
   type RedirectProps,
   type RouterProps,
   type RouteMatchInfo,
+  Await,
   ClientOnly,
   Link,
   NavLink,

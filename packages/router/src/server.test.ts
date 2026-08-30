@@ -19,7 +19,7 @@ import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { ClientOnly, Outlet, RouterProvider, linkAttrHref, linkHref } from "./components.ts";
+import { Await, ClientOnly, Outlet, RouterProvider, linkAttrHref, linkHref } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
@@ -787,6 +787,102 @@ describe("ssr: boolean | 'data-only'", () => {
  * now was survive a non-streamed render, where there is no later chunk to
  * resolve into.
  */
+/**
+ * `<Await>` on the string backend, which is the half that has to stream.
+ *
+ * The wire already carried an un-awaited promise — `crossSerializeStream` emits
+ * a pending one in the shell and a later script resolves it — so what was
+ * missing was a way to RENDER one. There is no `defer()`: the transport needs
+ * no tag, so a `defer()` here would be identity with a symbol on it.
+ */
+describe("Await", () => {
+  const table = (fallback: unknown) =>
+    [
+      {
+        id: "awaited",
+        path: "/report",
+        loader: async () => ({
+          summary: "ready now",
+          rows: new Promise((resolve) => setTimeout(() => resolve("the slow part"), 10)),
+        }),
+        component: (scope: unknown, props: { data: () => { summary: string; rows: unknown } }) =>
+          ssrHtml(
+            `<main>${esc(props.data().summary)}</main>` +
+              esc(
+                (Await as never as (s: unknown, p: unknown) => unknown)(scope, {
+                  promise: () => props.data().rows,
+                  fallback,
+                  children: (_inner: unknown, value: () => unknown) =>
+                    ssrHtml(`<p id="rows">${esc(String(value()))}</p>`),
+                }),
+              ),
+          ),
+      },
+    ] as never;
+
+  const render = async (stream: boolean, fallback: unknown = () => ssrHtml("<p>waiting</p>")) => {
+    const handler = createPageHandler({
+      routeTree: table(fallback),
+      stream,
+      app: (s) => renderRoutes(s),
+      document,
+    });
+    return (await handler(get("/report"))).text();
+  };
+
+  test("streamed: the fallback flushes first and the value follows", async () => {
+    const body = await render(true);
+    expect(body).toContain("<main>ready now</main>");
+    expect(body).toContain("<p>waiting</p>");
+    expect(body).toContain(`<p id="rows">the slow part</p>`);
+    // The whole point: the shell did not wait for the promise.
+    expect(body.indexOf("waiting")).toBeLessThan(body.indexOf("the slow part"));
+  });
+
+  test("buffered: the value is simply there", async () => {
+    const body = await render(false);
+    expect(body).toContain("<main>ready now</main>");
+    expect(body).toContain(`<p id="rows">the slow part</p>`);
+  });
+
+  /**
+   * A rejection is NOT caught by `<Await>`. The computed re-throws on read,
+   * inside the boundary's content, so it reaches the route's `errorComponent` —
+   * barq's error model, rather than a serialized envelope the child has to
+   * unpack.
+   */
+  test("a rejected promise reaches the route's error boundary", async () => {
+    const routes = [
+      {
+        id: "awaited-boom",
+        path: "/report",
+        loader: async () => ({
+          rows: new Promise((_resolve, reject) =>
+            setTimeout(() => reject(new Error("the slow part failed")), 5),
+          ),
+        }),
+        component: (scope: unknown, props: { data: () => { rows: unknown } }) =>
+          (Await as never as (s: unknown, p: unknown) => unknown)(scope, {
+            promise: () => props.data().rows,
+            fallback: () => ssrHtml("<p>waiting</p>"),
+            children: (_inner: unknown, value: () => unknown) =>
+              ssrHtml(`<p>${esc(String(value()))}</p>`),
+          }),
+        errorComponent: ((_s: unknown, props: { error: () => Error }) =>
+          ssrHtml(`<p id="boom">caught ${esc(props.error().message)}</p>`)) as never,
+      },
+    ] as never;
+    const handler = createPageHandler({
+      routeTree: routes,
+      stream: false,
+      app: (s) => renderRoutes(s),
+      document,
+    });
+    const body = await (await handler(get("/report"))).text();
+    expect(body).toContain("caught the slow part failed");
+  });
+});
+
 describe("deferred loader data", () => {
   const routes = [
     {

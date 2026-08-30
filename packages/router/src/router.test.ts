@@ -19,7 +19,7 @@ import {
 } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { Link, NavLink, Router, RouterProvider, linkHref, useRouter } from "./components.ts";
+import { Await, Link, NavLink, Router, RouterProvider, linkHref, useRouter } from "./components.ts";
 import { notFound, redirect } from "./errors.ts";
 import { retainSearchParams } from "./search.ts";
 import { memoryHistory } from "./history.ts";
@@ -2804,6 +2804,70 @@ describe("params.parse / params.stringify", () => {
     expect(linkHref(state, { to: "/org/$org/team", params: { org: "ACME" } } as never)).toBe(
       "/org/acme/team",
     );
+    state.dispose();
+  });
+});
+
+/**
+ * `<Await>` on the DOM backend.
+ *
+ * The park is an async `computed` and the fallback is the `Loading` boundary
+ * catching its `NotReadyError` — barq's own async model, one level down from
+ * the route's. There is no `defer()`: the seed channel already streams any
+ * promise a loader returns, so there is nothing to tag.
+ */
+describe("Await", () => {
+  const later = <T>(value: T, ms = 5): Promise<T> =>
+    new Promise((resolve) => setTimeout(() => resolve(value), ms));
+
+  const tableWith = (rows: () => Promise<unknown>): AnyRouteDefinition[] =>
+    [
+      {
+        path: "/report",
+        loader: () => ({ summary: "ready now", rows: rows() }),
+        component: ((scope: Scope | null, props: { data: () => { rows: Promise<unknown> } }) =>
+          (Await as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+            promise: () => props.data().rows,
+            fallback: () => document.createTextNode("waiting"),
+            children: (_inner: Scope | null, value: () => unknown) =>
+              document.createTextNode(`rows: ${String(value())}`),
+          })) as never,
+        errorComponent: ((_s: Scope | null, props: { error: () => Error }) =>
+          document.createTextNode(`caught ${props.error().message}`)) as never,
+      },
+    ] as never;
+
+  test("the fallback shows, then the settled value replaces it", async () => {
+    const state = createRouter({
+      routeTree: tableWith(() => later("the slow part")),
+      history: memoryHistory({ initial: ["/report"] }),
+    });
+    await state.start();
+    const mounted = mountState(state);
+    expect(mounted.host.textContent).toContain("waiting");
+    await tick(30);
+    flush();
+    expect(mounted.host.textContent).toContain("rows: the slow part");
+    mounted.dispose();
+    state.dispose();
+  });
+
+  test("a rejection renders the route's errorComponent in the awaited region", async () => {
+    const state = createRouter({
+      routeTree: tableWith(
+        () =>
+          new Promise((_resolve, reject) =>
+            setTimeout(() => reject(new Error("the slow part failed")), 5),
+          ),
+      ),
+      history: memoryHistory({ initial: ["/report"] }),
+    });
+    await state.start();
+    const mounted = mountState(state);
+    await tick(30);
+    flush();
+    expect(mounted.host.textContent).toContain("caught the slow part failed");
+    mounted.dispose();
     state.dispose();
   });
 });

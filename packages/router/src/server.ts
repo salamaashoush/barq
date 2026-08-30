@@ -145,6 +145,28 @@ const linkBackend = {
    */
   clientOnly: (fallback: Block<unknown>, children: Block<unknown>): unknown =>
     ssrBranch(getOwner(), null, null, () => 0, [fallback, children], HYDRATE),
+  /**
+   * `<Await>`: the same loading boundary a route depth gets, one level down.
+   *
+   * The body reads an async `computed` and parks, which is what opens the seed
+   * channel for the promise and makes the shell flush with the fallback in a
+   * deferred range. Without a boundary here the park would walk out to the
+   * route's own, and the whole depth would wait on the value the author
+   * deliberately did not await.
+   */
+  awaited: (
+    fallback: Block<unknown> | null,
+    errorFallback: Block<unknown>,
+    children: Block<unknown>,
+  ): unknown =>
+    ssrLoading(
+      getOwner(),
+      {
+        fallback: fallback ?? undefined,
+        children: () => ssrErrored(getOwner(), { fallback: errorFallback, children }, HYDRATE),
+      },
+      HYDRATE,
+    ),
 };
 
 /** A not-found for an unmatched LOCATION has nothing to retry. */
