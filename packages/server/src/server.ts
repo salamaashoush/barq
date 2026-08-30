@@ -41,7 +41,7 @@ import {
   resumeDeferred,
   setStreamSink,
 } from "./ssr.ts";
-import { createSeedEncoder, encodeSeed } from "./codec.ts";
+import { createSeedEncoder, encodeSeed, serializationAdapters } from "./codec.ts";
 
 /**
  * Render synchronously to an HTML string. Pending async values render
@@ -664,9 +664,10 @@ export function renderToStream(
       : seeds.encode(fresh);
     void keys;
     return (
-      `<script${nonceAttr(options?.nonce)}>` +
-      `${header}window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${payload});` +
-      SEED_SETTLE_GUARD +
+      `<script${nonceAttr(options?.nonce)}>${header}` +
+      adapted(
+        `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${payload});${SEED_SETTLE_GUARD}`,
+      ) +
       "</script>"
     );
   };
@@ -702,8 +703,9 @@ export function renderToStream(
     if (!any) return "";
     return (
       `<script${nonceAttr(options?.nonce)}>` +
-      `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(settledValues)});` +
-      SEED_SETTLE_GUARD +
+      adapted(
+        `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(settledValues)});${SEED_SETTLE_GUARD}`,
+      ) +
       "</script>"
     );
   };
@@ -751,7 +753,13 @@ export function renderToStream(
             // The resolutions themselves. A statement here settles a promise the
             // initial payload already put in `__BARQ_DATA__`, so the read that is
             // awaiting it wakes with no channel in between.
-            `<script${nonceAttr(options?.nonce)}>${statements}</script>`,
+            //
+            // QUEUED WITH THE PAYLOAD when adapters deferred it. These reference
+            // `$R` slots the initial payload creates, so running them ahead of
+            // it reads an empty reference table — measured in Chrome as
+            // `Cannot read properties of undefined (reading 's')` on the first
+            // deferred value of an adapted page.
+            `<script${nonceAttr(options?.nonce)}>${adapted(statements)}</script>`,
           ),
         );
       };
@@ -1001,6 +1009,35 @@ const EVENT_CAPTURE_SNIPPET =
  * The walk is the client's half of `settleNested` and stops in the same places:
  * plain objects and arrays only, and a cycle is visited once.
  */
+/**
+ * The reviver an adapted value's seed calls, and the buffer that makes it work.
+ *
+ * THE ORDERING PROBLEM. `fromSerializable` is a closure in the application's
+ * bundle, so an emitted seed can only NAME it — and the seed is an inline
+ * script that runs while the client entry, a module, has not evaluated yet. At
+ * that moment no adapter is registered and the value would rebuild as its
+ * reduced form, silently and one call away from where it matters.
+ *
+ * So the whole seed ASSIGNMENT is deferred rather than any single value: the
+ * script pushes a thunk, and `startClient` drains the queue once the adapters
+ * are in. A chunk that arrives after that runs immediately, which is what makes
+ * a streamed page work — its later seeds land long after hydration began.
+ * TanStack buffers at the same point and for the same reason
+ * (`load-client.ts:2163`).
+ *
+ * EMITTED ONLY WHEN AN ADAPTER IS REGISTERED. A seed is the most delicate thing
+ * this file writes, and an application with no adapters gets the same bytes it
+ * got before any of this existed.
+ */
+const ADAPTER_BOOTSTRAP =
+  "window.__BARQ_SEED__=window.__BARQ_SEED__||{ready:false,q:[]," +
+  "push:function(f){if(this.ready){f()}else{this.q.push(f)}}," +
+  "drain:function(){this.ready=true;var q=this.q;this.q=[];" +
+  "for(var i=0;i<q.length;i++){q[i]()}}};" +
+  "window.__BARQ_ADAPTERS__=window.__BARQ_ADAPTERS__||new Map;" +
+  "window.__BARQ_REVIVE__=window.__BARQ_REVIVE__||function(k,v){" +
+  "var f=window.__BARQ_ADAPTERS__.get(k);return f?f(v):v};";
+
 const SEED_SETTLE_GUARD =
   "(function(){var s=[];var w=function(v){" +
   "if(!v||typeof v!=='object')return;" +
@@ -1012,9 +1049,20 @@ const SEED_SETTLE_GUARD =
 
 function hydrationScriptFor(data: Record<string, unknown>, nonce?: string): string {
   return (
-    `<script${nonceAttr(nonce)}>window.__BARQ_DATA__=${encodeSeed(data)};` +
-    `${SEED_SETTLE_GUARD};${EVENT_CAPTURE_SNIPPET}</script>`
+    `<script${nonceAttr(nonce)}>${adapted(`window.__BARQ_DATA__=${encodeSeed(data)};${SEED_SETTLE_GUARD};`)}` +
+    `${EVENT_CAPTURE_SNIPPET}</script>`
   );
+}
+
+/**
+ * The seed's assignment, deferred when an adapter could be needed to build it.
+ *
+ * The guard rides INSIDE the thunk: it walks `__BARQ_DATA__` to mark promises
+ * handled, and there is nothing to walk until the assignment has run.
+ */
+function adapted(assignment: string): string {
+  if (serializationAdapters().length === 0) return assignment;
+  return `${ADAPTER_BOOTSTRAP}window.__BARQ_SEED__.push(function(){${assignment}});`;
 }
 
 /**
@@ -1047,8 +1095,11 @@ async function seedScriptFor(data: Record<string, unknown>, nonce?: string): Pro
   const statements = later.length === 0 ? "" : `${later.join(";")};`;
   return (
     `<script${nonceAttr(nonce)}>${seeds.header};` +
-    `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${initial});` +
-    `${statements}${SEED_SETTLE_GUARD};${EVENT_CAPTURE_SNIPPET}</script>`
+    adapted(
+      `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${initial});` +
+        `${statements}${SEED_SETTLE_GUARD};`,
+    ) +
+    `${EVENT_CAPTURE_SNIPPET}</script>`
   );
 }
 

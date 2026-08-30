@@ -16,6 +16,7 @@
  */
 
 import { type Scope, hydrate } from "@barqjs/core";
+import { type SerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
 
 import { Document, RouterProvider, resolveHeadFor } from "./components.ts";
 import { browserHistory } from "./history.ts";
@@ -60,6 +61,34 @@ export interface StartClientOptions {
  *    with nothing in it claims nothing and then replaces every tag the server
  *    wrote.
  */
+/**
+ * Put the application's adapters where the codec and the queued seed can find
+ * them, then let the seed run.
+ *
+ * Two registries because there are two readers. `registerSerializationAdapters`
+ * is the codec's, for `decodeWire` on every later server-function call;
+ * `window.__BARQ_ADAPTERS__` is the emitted seed's, which can only name a key.
+ *
+ * The drain is unconditional and cheap: `__BARQ_SEED__` exists only on a page
+ * whose server had adapters registered, and an application with none never
+ * emitted the bootstrap at all.
+ */
+function installSerializationAdapters(
+  adapters: readonly SerializationAdapter<never, unknown>[],
+): void {
+  if (adapters.length > 0) registerSerializationAdapters(adapters);
+  const holder = globalThis as unknown as {
+    __BARQ_ADAPTERS__?: Map<string, (value: never) => unknown>;
+    __BARQ_SEED__?: { drain: () => void };
+  };
+  if (holder.__BARQ_ADAPTERS__ !== undefined) {
+    for (const adapter of adapters) {
+      holder.__BARQ_ADAPTERS__.set(adapter.key, adapter.fromSerializable as never);
+    }
+  }
+  holder.__BARQ_SEED__?.drain();
+}
+
 export async function startClient(options: StartClientOptions = {}): Promise<RouterState> {
   // DYNAMIC, and only when nothing was passed: this package's own suite imports
   // this module with no Vite plugin anywhere, so a static import would fail to
@@ -71,6 +100,15 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
     options.routeTree === undefined
       ? (await import("#barq-router-entry")).config
       : { routeTree: options.routeTree };
+  // BEFORE `createRouter`, and before anything reads a seeded value. The seed
+  // is an inline script that ran while this module was still being fetched, so
+  // it queued its assignment rather than making it — see `ADAPTER_BOOTSTRAP`.
+  // Registering here and draining is what turns the queue into `__BARQ_DATA__`.
+  installSerializationAdapters(
+    (config as { serializationAdapters?: readonly SerializationAdapter<never, unknown>[] })
+      .serializationAdapters ?? [],
+  );
+
   const state = createRouter({
     ...config,
     // The base reaches the HISTORY, not only the router: `browserHistory`

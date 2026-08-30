@@ -212,13 +212,138 @@ export const SEED_WARN_BYTES = 128_000;
 // of escaping makes `eval` safe on attacker-reachable input. So the wire uses
 // the JSON channel, which reconstructs through `fromJSON` and never evaluates.
 //
+/**
+ * How a type the codec does not know about crosses anyway.
+ *
+ * seroval carries `Date`, `Map`, `Set`, `BigInt`, typed arrays and cycles
+ * already, which is most of what an application needs. What it cannot carry is
+ * a type only the application knows — a `Decimal`, a `Temporal.Instant`, a
+ * domain object with methods — and those arrive as plain objects with the
+ * methods gone, which is a bug that shows up one call later and nowhere near
+ * its cause.
+ *
+ * `test` is asked on the way out, `toSerializable` reduces the value to
+ * something the codec DOES carry, and `fromSerializable` rebuilds it. TanStack's
+ * four fields under their names.
+ */
+export interface SerializationAdapter<In = never, Out = unknown> {
+  /**
+   * What the payload names this adapter by. It is written into the wire and
+   * into the seed, so renaming one is a breaking change for anything holding a
+   * payload written by an older build.
+   */
+  readonly key: string;
+  readonly test: (value: unknown) => value is In;
+  readonly toSerializable: (value: In) => Out;
+  readonly fromSerializable: (value: Out) => In;
+}
+
+/** Identity, plus the place the types are pinned. */
+export function createSerializationAdapter<In, Out>(
+  adapter: SerializationAdapter<In, Out>,
+): SerializationAdapter<In, Out> {
+  return adapter;
+}
+
+/**
+ * The adapters this process serializes with, by key.
+ *
+ * A MODULE-LEVEL REGISTRY, which the rest of this file works hard to avoid, and
+ * the reason is that both ends have to agree: the server writes a payload
+ * naming a key and the client rebuilds from the same key, and threading a list
+ * through `encodeWire`, `decodeWire`, `encodeSeed`, every `createSeedEncoder`
+ * and both halves of the RPC would put the same argument in nine signatures for
+ * a value that is fixed for the life of the process. It is configuration, not
+ * request state, so it does not have the concurrency problem an ambient request
+ * would.
+ */
+const ADAPTERS = new Map<string, SerializationAdapter<never, unknown>>();
+
+/**
+ * Install adapters for this process. Later calls REPLACE earlier ones for the
+ * same key, which is what an edit looks like under HMR.
+ */
+export function registerSerializationAdapters(
+  adapters: readonly SerializationAdapter<never, unknown>[],
+): void {
+  for (const adapter of adapters) ADAPTERS.set(adapter.key, adapter);
+  plugins = null;
+}
+
+/** What is installed, for the client bootstrap and for tests. */
+export function serializationAdapters(): readonly SerializationAdapter<never, unknown>[] {
+  return [...ADAPTERS.values()];
+}
+
+/** Test seam. Not for application use. */
+export function clearSerializationAdapters(): void {
+  ADAPTERS.clear();
+  plugins = null;
+}
+
+interface AdapterNode extends PluginInfo {
+  v: never;
+}
+
+/**
+ * One adapter, as a seroval plugin.
+ *
+ * ALL THREE PARSE MODES, for the reason `redactError` records at length: seroval
+ * picks the mode from the CONTEXT, so a plugin defining only `sync` silently
+ * does not apply to a promise's settled value or to anything the streaming seed
+ * carries.
+ *
+ * `serialize` emits a call into the client registry rather than inlining the
+ * rebuild, because `fromSerializable` is a closure in the application's bundle
+ * and there is no way to write one into a string.
+ */
+function pluginFor(adapter: SerializationAdapter<never, unknown>): Plugin<unknown, AdapterNode> {
+  const reduce = (value: unknown, ctx: { parse: (value: unknown) => never }): AdapterNode => ({
+    v: ctx.parse(adapter.toSerializable(value as never)),
+  });
+  return createPlugin<unknown, AdapterNode>({
+    tag: `barq/adapter/${adapter.key}`,
+    test: adapter.test,
+    parse: {
+      sync: (value, ctx) => reduce(value, ctx as never),
+      async: (value, ctx) => Promise.resolve(reduce(value, ctx as never)),
+      stream: (value, ctx) => reduce(value, ctx as never),
+    },
+    serialize: (node, ctx) =>
+      `${ADAPTER_GLOBAL}(${JSON.stringify(adapter.key)},${ctx.serialize(node.v)})`,
+    deserialize: (node, ctx) => adapter.fromSerializable(ctx.deserialize(node.v)),
+  });
+}
+
+/** The function an emitted seed calls to rebuild an adapted value. */
+export const ADAPTER_GLOBAL = "window.__BARQ_REVIVE__";
+
+/**
+ * The plugin list, built once and rebuilt when the registry changes.
+ *
+ * `redactError` is always LAST so an adapter may claim an `Error` subclass of
+ * its own — seroval asks the plugins in order, and the redactor tests every
+ * `Error`, so putting it first would take them all.
+ */
+type AnyPlugin = Plugin<never, never>;
+
+let plugins: AnyPlugin[] | null = null;
+
+function pluginList(): AnyPlugin[] {
+  plugins ??= [
+    ...[...ADAPTERS.values()].map((adapter) => pluginFor(adapter) as unknown as AnyPlugin),
+    redactError as unknown as AnyPlugin,
+  ];
+  return plugins;
+}
+
 // The hardening is shared: the same disabled features and the same Error
 // redaction, so a value that cannot leave through one channel cannot leave
 // through the other.
 
 /** Encode a value for the wire: JSON-safe, no evaluation on the far side. */
 export function encodeWire(value: unknown): unknown {
-  return toJSON(value, { disabledFeatures: DISABLED, plugins: [redactError] });
+  return toJSON(value, { disabledFeatures: DISABLED, plugins: pluginList() as never });
 }
 
 /**
@@ -229,12 +354,12 @@ export function encodeWire(value: unknown): unknown {
 // what comes back, which is this function's whole interface.
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 export function decodeWire<T>(payload: unknown): T {
-  return fromJSON<T>(payload as never, { plugins: [redactError] });
+  return fromJSON<T>(payload as never, { plugins: pluginList() as never });
 }
 
 /** Encode one render's resolved values as the JS expression that rebuilds them. */
 export function encodeSeed(data: Record<string, unknown>): string {
-  const payload = serialize(data, { disabledFeatures: DISABLED, plugins: [redactError] });
+  const payload = serialize(data, { disabledFeatures: DISABLED, plugins: pluginList() as never });
   warnIfLarge(payload.length);
   return payload;
 }
@@ -319,7 +444,7 @@ export function createSeedEncoder(): SeedEncoder {
         scopeId,
         refs,
         disabledFeatures: DISABLED,
-        plugins: [redactError],
+        plugins: pluginList() as never,
       });
       warnIfLarge(payload.length);
       return payload;
@@ -330,7 +455,7 @@ export function createSeedEncoder(): SeedEncoder {
         scopeId,
         refs,
         disabledFeatures: DISABLED,
-        plugins: [redactError],
+        plugins: pluginList() as never,
         onSerialize(payload, isInitial) {
           if (isInitial) initial = payload;
           else onLater(payload);

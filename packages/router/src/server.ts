@@ -33,7 +33,11 @@ import {
   ssrLoading,
 } from "@barqjs/server";
 import { HYDRATE, type Block, type Scope, cell, getOwner, provide, untrack } from "@barqjs/core";
-import { encodeSeed } from "@barqjs/server/codec";
+import {
+  type SerializationAdapter,
+  encodeSeed,
+  registerSerializationAdapters,
+} from "@barqjs/server/codec";
 import { isbot } from "isbot";
 
 import type { Middleware } from "@barqjs/start";
@@ -438,6 +442,14 @@ export interface PageHandlerOptions {
   /** Literal-segment case matching, matching `RouterConfig`'s. */
   readonly caseSensitive?: boolean;
   /**
+   * Custom types that cross the SSR boundary, matching `RouterConfig`'s.
+   *
+   * Registered with the codec here so the SEED a render writes carries them.
+   * The client half registers the same list, which is what makes the two ends
+   * agree on a key.
+   */
+  readonly serializationAdapters?: readonly SerializationAdapter<never, unknown>[];
+  /**
    * How a built path ends, matching `RouterConfig`'s.
    *
    * The server matches either spelling regardless, so this only reaches the
@@ -721,6 +733,12 @@ async function runRouteHandlers(
 export function createPageHandler(
   options: PageHandlerOptions,
 ): (request: Request) => Promise<Response> {
+  // AT CONSTRUCTION, not per request: adapters are configuration and fixed for
+  // the life of the process, and re-registering per request would rebuild the
+  // plugin list on every page.
+  if (options.serializationAdapters !== undefined) {
+    registerSerializationAdapters(options.serializationAdapters);
+  }
   const matcher = createMatcher(flattenRoutes(options.routeTree), {
     caseSensitive: options.caseSensitive,
   });

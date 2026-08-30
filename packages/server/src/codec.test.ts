@@ -5,9 +5,18 @@
  * this file is about the one thing an Error has to KEEP.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
-import { createSeedEncoder, decodeWire, encodeSeed, encodeWire } from "./codec.ts";
+import {
+  clearSerializationAdapters,
+  createSeedEncoder,
+  createSerializationAdapter,
+  decodeWire,
+  encodeSeed,
+  encodeWire,
+  registerSerializationAdapters,
+  serializationAdapters,
+} from "./codec.ts";
 
 /**
  * An Error keeps its KIND across the wire.
@@ -155,5 +164,132 @@ describe("a rejected loader on the streaming channel", () => {
 
     const payload = await streamOf({ e: rejected });
     expect(payload).toContain("barq.not-found");
+  });
+});
+
+/**
+ * `serializationAdapters` — a type only the application knows, taught to cross.
+ *
+ * seroval already carries `Date`, `Map`, `Set`, `BigInt` and cycles. What it
+ * cannot carry is a domain type, and one arriving as a plain object with its
+ * methods gone is a bug that shows up one call later and nowhere near its cause.
+ */
+describe("serialization adapters", () => {
+  /** A type the codec has no idea about. */
+  class Money {
+    constructor(
+      readonly cents: number,
+      readonly currency: string,
+    ) {}
+    format(): string {
+      return `${(this.cents / 100).toFixed(2)} ${this.currency}`;
+    }
+  }
+
+  const money = createSerializationAdapter<Money, { c: number; u: string }>({
+    key: "money",
+    test: (value): value is Money => value instanceof Money,
+    toSerializable: (value) => ({ c: value.cents, u: value.currency }),
+    fromSerializable: (value) => new Money(value.c, value.u),
+  });
+
+  afterEach(clearSerializationAdapters);
+
+  /**
+   * WITHOUT AN ADAPTER THE ENCODE REFUSES, which is better than the silent loss
+   * this was assumed to be: seroval will not guess at a class it does not know,
+   * so a loader returning one fails where it is returned rather than one call
+   * later with its methods missing.
+   */
+  test("without one, the value cannot cross at all", () => {
+    expect(() => encodeWire(new Money(1250, "GBP"))).toThrow();
+  });
+
+  test("with one, the value round-trips as itself", () => {
+    registerSerializationAdapters([money as never]);
+    const back = decodeWire<Money>(encodeWire(new Money(1250, "GBP")));
+    expect(back).toBeInstanceOf(Money);
+    expect(back.format()).toBe("12.50 GBP");
+  });
+
+  test("it reaches a value NESTED in an ordinary structure", () => {
+    registerSerializationAdapters([money as never]);
+    const back = decodeWire<{ rows: Money[]; when: Date }>(
+      encodeWire({ rows: [new Money(1, "GBP")], when: new Date(0) }),
+    );
+    expect(back.rows[0]).toBeInstanceOf(Money);
+    // …and the types seroval already carried still work.
+    expect(back.when).toBeInstanceOf(Date);
+  });
+
+  /**
+   * The SEED is JS rather than JSON, so an adapter cannot inline its rebuild —
+   * `fromSerializable` is a closure in the application's bundle. It emits a
+   * call into the client registry instead.
+   */
+  test("the seed emits a call into the client registry", () => {
+    registerSerializationAdapters([money as never]);
+    const payload = encodeSeed({ price: new Money(1250, "GBP") });
+    expect(payload).toContain("__BARQ_REVIVE__");
+    expect(payload).toContain('"money"');
+    // The reduced form is what travels, not the instance.
+    expect(payload).toContain("1250");
+  });
+
+  test("the streaming encoder carries one too", async () => {
+    registerSerializationAdapters([money as never]);
+    const seeds = createSeedEncoder();
+    const later: string[] = [];
+    let done!: () => void;
+    const drained = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    const initial = seeds.encodeDeferred(
+      { price: Promise.resolve(new Money(99, "EUR")) },
+      (statement) => later.push(statement),
+      done,
+    );
+    await drained;
+    expect(`${initial}${later.join("")}`).toContain("__BARQ_REVIVE__");
+  });
+
+  /**
+   * `redactError` is asked LAST, so an adapter may claim an `Error` subclass of
+   * its own — seroval tries plugins in order and the redactor tests every
+   * `Error`, so it would otherwise take them all.
+   */
+  test("an adapter beats the Error redactor for its own subclass", () => {
+    class Refusal extends Error {
+      constructor(readonly code: string) {
+        super("refused");
+      }
+    }
+    registerSerializationAdapters([
+      createSerializationAdapter<Refusal, string>({
+        key: "refusal",
+        test: (value): value is Refusal => value instanceof Refusal,
+        toSerializable: (value) => value.code,
+        fromSerializable: (code) => new Refusal(code),
+      }) as never,
+    ]);
+    const back = decodeWire<Refusal>(encodeWire(new Refusal("E_NOPE")));
+    expect(back).toBeInstanceOf(Refusal);
+    expect(back.code).toBe("E_NOPE");
+    // An ordinary Error still goes through the redactor.
+    expect(decodeWire<Error>(encodeWire(new Error("plain")))).toBeInstanceOf(Error);
+  });
+
+  test("registering the same key twice replaces it, which is what an edit is", () => {
+    registerSerializationAdapters([money as never]);
+    registerSerializationAdapters([
+      createSerializationAdapter<Money, { c: number; u: string }>({
+        key: "money",
+        test: (value): value is Money => value instanceof Money,
+        toSerializable: (value) => ({ c: value.cents, u: "USD" }),
+        fromSerializable: (value) => new Money(value.c, value.u),
+      }) as never,
+    ]);
+    expect(serializationAdapters()).toHaveLength(1);
+    expect(decodeWire<Money>(encodeWire(new Money(5, "GBP"))).currency).toBe("USD");
   });
 });

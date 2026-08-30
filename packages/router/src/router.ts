@@ -27,6 +27,7 @@ import {
   untrack,
 } from "@barqjs/core";
 
+import type { SerializationAdapter } from "@barqjs/server/codec";
 import { PathParamError, isNotFound, isRedirect } from "./errors.ts";
 import {
   type History,
@@ -485,6 +486,18 @@ export interface RouterConfig {
    * three of them agreeing to.
    */
   readonly routeMasks?: readonly RouteMask[];
+  /**
+   * Types the codec does not know about, taught to cross the SSR boundary.
+   *
+   * seroval already carries `Date`, `Map`, `Set`, `BigInt` and cycles. This is
+   * for a type only the application knows — a `Decimal`, a `Temporal.Instant`,
+   * a domain object with methods — which otherwise arrives as a plain object
+   * with the methods gone, one call away from where that matters.
+   *
+   * The SAME LIST has to reach the server, where `createPageHandler` registers
+   * it: a payload names an adapter by key and both ends look it up.
+   */
+  readonly serializationAdapters?: readonly SerializationAdapter<never, unknown>[];
   /**
    * Whether a mask survives a page load. Default `false`.
    *
