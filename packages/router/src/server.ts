@@ -1441,6 +1441,31 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
 const BODY_MARKER = "<!--barq-body-->";
 
 /**
+ * Stop an inner stream, whether or not this wrapper is holding its lock.
+ *
+ * `ReadableStream.cancel` on a LOCKED stream throws a `TypeError`
+ * synchronously, and the window in which the lock is held is the whole body —
+ * exactly when a client disconnects. Cancelling through the reader is allowed
+ * there; cancelling the stream is right before the reader exists and after it
+ * has been released.
+ *
+ * Both are wrapped anyway. This runs from a host's disconnect handler, and a
+ * throw out of one is a throw with nothing above it to catch it: srvx's guard
+ * is `.catch()`, which sees a rejected promise and not a synchronous throw.
+ */
+function cancelStream(
+  reader: ReadableStreamDefaultReader<Uint8Array> | null,
+  stream: ReadableStream<Uint8Array>,
+  reason: unknown,
+): void {
+  try {
+    void (reader === null ? stream.cancel(reason) : reader.cancel(reason))?.catch(() => {});
+  } catch {
+    /* already cancelled, already errored, or locked by somebody else */
+  }
+}
+
+/**
  * A JSX shell cannot emit a doctype — it is not an element — so the handler
  * prepends it. TanStack does the same thing for the same reason:
  * `renderRouterToStream` puts `Solid.ssr('<!DOCTYPE html>')` ahead of the tree.
@@ -1479,10 +1504,13 @@ function wrapStream(
   const tail = document.slice(cut + BODY_MARKER.length);
 
   const encoder = new TextEncoder();
+  // HELD FOR `cancel`, which is the whole of the fix below.
+  let reading: ReadableStreamDefaultReader<Uint8Array> | null = null;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       controller.enqueue(encoder.encode(await shellOf(options, head, url)));
       const reader = stream.getReader();
+      reading = reader;
       try {
         for (;;) {
           const { done: finished, value } = await reader.read();
@@ -1490,6 +1518,7 @@ function wrapStream(
           controller.enqueue(value);
         }
       } finally {
+        reading = null;
         reader.releaseLock();
       }
       const late = redirectScript(answer());
@@ -1502,7 +1531,17 @@ function wrapStream(
       // The client went away. Cancelling the inner stream is what stops the
       // render doing work nobody will read — on Lambda a stream that is not
       // cancelled is billed for its full duration.
-      void stream.cancel(reason);
+      //
+      // THE READER, NOT THE STREAM, and the difference killed the dev server.
+      // `start` takes a reader and holds it for the whole body, so the inner
+      // stream is LOCKED for exactly the window a disconnect happens in — and
+      // `ReadableStream.cancel` on a locked stream throws a `TypeError`
+      // SYNCHRONOUSLY. srvx calls this from `nodeRes.on("close")` and guards it
+      // with `.catch()`, which sees a rejected promise and not a sync throw, so
+      // the error reached the top and took the process with it:
+      // `ERR_INVALID_STATE` out of `ServerResponse.emit`, twice in one session.
+      // Cancelling through the reader is allowed while it holds the lock.
+      cancelStream(reading, stream, reason);
       done();
     },
   });
@@ -1729,9 +1768,11 @@ function shellStream(
   // Not a growing buffer: what is held is a SUFFIX of the shell — `</body></html>`
   // and whatever the shell put between them — captured once and never appended to.
   let tail = "";
+  let reading: ReadableStreamDefaultReader<Uint8Array> | null = null;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = stream.getReader();
+      reading = reader;
       try {
         for (;;) {
           const { done: finished, value } = await reader.read();
@@ -1756,6 +1797,7 @@ function shellStream(
           controller.enqueue(value);
         }
       } finally {
+        reading = null;
         reader.releaseLock();
       }
       const late = redirectScript(answer());
@@ -1766,7 +1808,8 @@ function shellStream(
       done();
     },
     cancel(reason) {
-      void stream.cancel(reason);
+      // Through the READER while one holds the lock — see `wrapStream`.
+      cancelStream(reading, stream, reason);
       done();
     },
   });

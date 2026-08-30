@@ -2449,6 +2449,65 @@ describe("basepath", () => {
 });
 
 /**
+ * A CLIENT THAT GOES AWAY MID-STREAM.
+ *
+ * The wrapper holds a reader on the inner stream for the whole body, so the
+ * inner stream is LOCKED for exactly the window a disconnect happens in — and
+ * `ReadableStream.cancel` on a locked stream throws a `TypeError` synchronously.
+ * A host calls `cancel` from its own close handler; srvx guards it with
+ * `.catch()`, which sees a rejected promise and not a sync throw, so the error
+ * reached the top and killed the dev server.
+ */
+describe("a cancelled response", () => {
+  const table = [
+    {
+      id: "__root__",
+      path: "/",
+      component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+      children: [
+        {
+          id: "/slow",
+          path: "slow",
+          loader: () => new Promise((resolve) => setTimeout(() => resolve("late"), 200)),
+          component: (_s: unknown, props: { data: () => unknown }) =>
+            ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+        },
+      ],
+    },
+  ] as never;
+
+  test("cancelling mid-body does not throw out of `cancel`", async () => {
+    const handler = createPageHandler({
+      routeTree: table,
+      stream: true,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const response = await handler(get("/slow"));
+    const reader = response.body!.getReader();
+    // One chunk — the shell — so the wrapper is inside its read loop and the
+    // inner stream is locked. This is the state a disconnect finds.
+    await reader.read();
+    // THE ASSERTION IS THAT THIS DOES NOT THROW. Before the fix it raised
+    // `TypeError: Invalid state: ReadableStream is locked` from here.
+    await reader.cancel("the client went away");
+    // …and the request is over rather than left running.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+
+  test("cancelling before a byte is read is still safe", async () => {
+    const handler = createPageHandler({
+      routeTree: table,
+      stream: true,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const response = await handler(get("/slow"));
+    await response.body!.cancel("gone before the shell");
+  });
+});
+
+/**
  * `<MatchRoute>` on the string backend, which has to write the same two-armed
  * region the client builds — a bare arm with no region is what a hydration
  * mismatch looks like.
