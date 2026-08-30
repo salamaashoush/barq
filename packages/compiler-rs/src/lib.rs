@@ -10,6 +10,7 @@ mod dom_ts;
 pub mod harvest;
 pub mod ir;
 pub mod lower;
+pub mod middleware_split;
 pub mod options;
 pub mod ownership;
 pub mod passes;
@@ -317,6 +318,26 @@ pub fn route_split(
         split_components.unwrap_or(true),
     );
     RouteSplitResult { reference: out.reference, split: out.split, refused: out.refused }
+}
+
+/// The CLIENT half of a module that declares middleware: `.server(…)` deleted,
+/// and any top-level declaration only it reached deleted with it.
+///
+/// Returns the source unchanged when there is nothing to strip, so a caller can
+/// hand every module through without asking first.
+///
+/// `middleware_split.rs` says why this has to exist: a middleware's client half
+/// runs in the browser, so the client stub imports the module that declares it —
+/// and a module holding a session check reaches whatever that check needs. The
+/// same import through a route's `middleware` once left a fully server-rendered
+/// page on which nothing was interactive.
+#[napi]
+pub fn middleware_split(source: String, filename: String, start_source: Option<String>) -> String {
+    if !middleware_split::mentions(&source) {
+        return source;
+    }
+    let start = start_source.unwrap_or_else(|| crate::options::DEFAULT_START_SOURCE.to_string());
+    middleware_split::split(&source, &filename, &start).unwrap_or(source)
 }
 
 /// The directory part of a project-relative path, POSIX, no trailing slash.

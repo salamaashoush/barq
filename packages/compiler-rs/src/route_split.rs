@@ -421,16 +421,16 @@ fn json_string(value: &str) -> String {
 /// keeps its original offset, so the JSX compiler that runs after this produces
 /// a map against the file the author actually wrote. Newlines are kept for the
 /// same reason, one line further along.
-struct Blanker {
+pub(crate) struct Blanker {
     out: Vec<u8>,
 }
 
 impl Blanker {
-    fn new(source: &str) -> Self {
+    pub(crate) fn new(source: &str) -> Self {
         Self { out: source.as_bytes().to_vec() }
     }
 
-    fn blank(&mut self, span: Span) {
+    pub(crate) fn blank(&mut self, span: Span) {
         for index in range(span) {
             if self.out[index] != b'\n' {
                 self.out[index] = b' ';
@@ -441,7 +441,7 @@ impl Blanker {
     /// Blank a span and write text at its start. The replacement must fit, and
     /// every caller's does — `lazy($$barqSplit, (m) => m.component)` is longer
     /// than `Posts`, so the span is widened by padding the source instead.
-    fn replace(&mut self, span: Span, text: &str) {
+    pub(crate) fn replace(&mut self, span: Span, text: &str) {
         self.blank(span);
         let start = span.start as usize;
         let bytes = text.as_bytes();
@@ -455,7 +455,7 @@ impl Blanker {
         self.out.splice(start..span.end as usize, bytes.iter().copied());
     }
 
-    fn finish(self) -> String {
+    pub(crate) fn finish(self) -> String {
         String::from_utf8(self.out).expect("blanking preserves utf-8 boundaries")
     }
 }
@@ -534,13 +534,13 @@ fn find_route(program: &Program<'_>) -> Option<RouteDeclaration> {
 }
 
 /// A top-level binding: its name, and whether it came from an import.
-struct Top {
+pub(crate) struct Top {
     name: String,
     imported: bool,
 }
 
 /// Every module-level binding, by symbol.
-fn top_level(program: &Program<'_>, scoping: &Scoping) -> FxHashMap<SymbolId, Top> {
+pub(crate) fn top_level(program: &Program<'_>, scoping: &Scoping) -> FxHashMap<SymbolId, Top> {
     let mut out = FxHashMap::default();
     for statement in &program.body {
         if let Statement::ImportDeclaration(import) = statement {
@@ -567,7 +567,7 @@ fn top_level(program: &Program<'_>, scoping: &Scoping) -> FxHashMap<SymbolId, To
 }
 
 /// The declaration a statement makes, as symbols, or `None` for an effect.
-fn declaration_of(statement: &Statement<'_>) -> Option<Vec<SymbolId>> {
+pub(crate) fn declaration_of(statement: &Statement<'_>) -> Option<Vec<SymbolId>> {
     match statement {
         Statement::ImportDeclaration(_) => Some(bindings_of(statement)),
         Statement::FunctionDeclaration(_)
@@ -649,7 +649,7 @@ fn bindings_of(statement: &Statement<'_>) -> Vec<SymbolId> {
 }
 
 /// Top-level symbol -> the top-level symbols its own declaration reaches.
-fn dependencies(
+pub(crate) fn dependencies(
     program: &Program<'_>,
     scoping: &Scoping,
     tops: &FxHashMap<SymbolId, Top>,
@@ -671,7 +671,7 @@ fn dependencies(
 }
 
 /// The transitive closure of a root set over the dependency graph.
-fn reachable(
+pub(crate) fn reachable(
     roots: &FxHashSet<SymbolId>,
     graph: &FxHashMap<SymbolId, FxHashSet<SymbolId>>,
 ) -> FxHashSet<SymbolId> {
@@ -693,7 +693,7 @@ fn reachable(
 /// By SPAN rather than by node, so one visitor serves both a statement and a
 /// single option value. Resolution is by `SymbolId`: a scan for the text would
 /// match a shadowing local, a property name and a comment.
-fn collect_refs(
+pub(crate) fn collect_refs(
     program: &Program<'_>,
     scoping: &Scoping,
     span: Span,
@@ -709,7 +709,7 @@ fn collect_refs(
 /// than as nodes. Expressing that as "the statement, less these holes" is the
 /// only formulation that also picks up the callee and the type arguments, which
 /// is where the bug this fixed was hiding.
-fn collect_refs_excluding(
+pub(crate) fn collect_refs_excluding(
     program: &Program<'_>,
     scoping: &Scoping,
     span: Span,

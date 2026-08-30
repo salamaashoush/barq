@@ -12,8 +12,8 @@
 //! aliased import (`createServerFn as rpc`) is not a false negative.
 
 use oxc::ast::ast::{
-    BindingPattern, Declaration, Expression, ImportDeclarationSpecifier, ModuleExportName, Program,
-    Statement,
+    Argument, BindingPattern, Declaration, Expression, ImportDeclarationSpecifier,
+    ModuleExportName, Program, Statement,
 };
 use oxc::semantic::{Scoping, SemanticBuilder, SymbolId};
 use oxc::span::Span;
@@ -24,11 +24,44 @@ pub struct Export {
     pub name: String,
     pub span: Span,
     pub server_fn: bool,
+    /// The identifiers this function's `.middleware([…])` named, in order.
+    ///
+    /// Recorded so the CLIENT stub can carry the chain: a middleware's
+    /// `.client()` half runs in the browser, and the stub is synthesized from
+    /// nothing, so a chain it does not name is a chain that cannot run.
+    ///
+    /// EMPTY WHEN IT CANNOT BE LIFTED. `.middleware([a, b])` is an array of
+    /// plain identifiers and is the shape every application writes;
+    /// `.middleware(chain)` and `.middleware([...rest])` are runtime
+    /// expressions and this records nothing for them. That fails in the safe
+    /// direction — a client half that does not run, rather than a stub naming a
+    /// binding that is not there — and it is the same line the route-action
+    /// verifier draws for the same reason.
+    pub middleware: Vec<String>,
+}
+
+/// One import statement the client stub may need to reproduce.
+pub struct ImportLine {
+    /// The local names it binds.
+    pub names: Vec<String>,
+    /// The statement, as written.
+    pub text: String,
 }
 
 #[derive(Default)]
 pub struct Scan {
     pub exports: Vec<Export>,
+    /// The module's PROJECT-RELATIVE imports, which are the only ones a client
+    /// stub may reproduce.
+    ///
+    /// A bare package specifier is excluded and the exclusion is the safety
+    /// rule rather than a simplification. A stub is synthesized precisely so
+    /// that nothing the handler imported reaches the browser, and
+    /// `import { rateLimit } from "@barqjs/start"` in one would put
+    /// `node:async_hooks` there — the leak the route strip already had to fix
+    /// once. A relative module is the application's own, and `middleware_split`
+    /// has already taken the server halves out of it.
+    pub imports: Vec<ImportLine>,
 }
 
 impl Scan {
@@ -73,6 +106,32 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
 
     let mut scan = Scan::default();
     for statement in &program.body {
+        if let Statement::ImportDeclaration(import) = statement {
+            let specifier = import.source.value.as_str();
+            if specifier.starts_with('.') || specifier.starts_with('/') {
+                let names = import
+                    .specifiers
+                    .iter()
+                    .flatten()
+                    .map(|specifier| match specifier {
+                        ImportDeclarationSpecifier::ImportSpecifier(named) => {
+                            named.local.name.to_string()
+                        }
+                        ImportDeclarationSpecifier::ImportDefaultSpecifier(default) => {
+                            default.local.name.to_string()
+                        }
+                        ImportDeclarationSpecifier::ImportNamespaceSpecifier(star) => {
+                            star.local.name.to_string()
+                        }
+                    })
+                    .collect();
+                scan.imports.push(ImportLine {
+                    names,
+                    text: program.source_text[import.span.start as usize..import.span.end as usize]
+                        .to_string(),
+                });
+            }
+        }
         match statement {
             Statement::ExportDeclaration(export) => match &export.declaration {
                 Declaration::VariableDeclaration(declaration) => {
@@ -86,6 +145,11 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                             server_fn: declarator.init.as_ref().is_some_and(|init| {
                                 holds_server_fn(init, factory, &scoping, &locals)
                             }),
+                            middleware: declarator
+                                .init
+                                .as_ref()
+                                .map(|init| declared_middleware(init, factory, &scoping))
+                                .unwrap_or_default(),
                         });
                     }
                 }
@@ -94,7 +158,12 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                     // function: the builder returns a value, and a declaration
                     // is not one.
                     if let Some(id) = declaration_name(declaration) {
-                        scan.exports.push(Export { name: id.0, span: id.1, server_fn: false });
+                        scan.exports.push(Export {
+                            name: id.0,
+                            span: id.1,
+                            server_fn: false,
+                            middleware: Vec::new(),
+                        });
                     }
                 }
             },
@@ -119,6 +188,10 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                         span: specifier.span,
                         server_fn: local_symbol(&specifier.local, &scoping)
                             .is_some_and(|symbol| locals.get(&symbol).copied().unwrap_or(false)),
+                        // A re-exported binding's chain is declared where the
+                        // binding is, and this module cannot see through the
+                        // alias to it.
+                        middleware: Vec::new(),
                     });
                 }
             }
@@ -136,6 +209,11 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                         .declaration
                         .as_expression()
                         .is_some_and(|init| holds_server_fn(init, factory, &scoping, &locals)),
+                    middleware: export
+                        .declaration
+                        .as_expression()
+                        .map(|init| declared_middleware(init, factory, &scoping))
+                        .unwrap_or_default(),
                 });
             }
             _ => {}
@@ -235,6 +313,52 @@ fn holds_server_fn(
         .get()
         .and_then(|id| scoping.get_reference(id).symbol_id())
         .is_some_and(|symbol| locals.get(&symbol).copied().unwrap_or(false))
+}
+
+/// The identifiers `.middleware([…])` named, walking the builder chain.
+///
+/// The chain is a `CallExpression` whose callee is a member of a call of a
+/// member of … so this walks the same spine `rooted_at` walks and reads the
+/// argument at the step spelled `middleware`. Only a plain array of plain
+/// identifiers is lifted; see {@link Export::middleware} for why anything else
+/// records nothing.
+fn declared_middleware(
+    expression: &Expression<'_>,
+    factory: SymbolId,
+    scoping: &Scoping,
+) -> Vec<String> {
+    if !rooted_at(expression, factory, scoping) {
+        return Vec::new();
+    }
+    let mut current = expression;
+    loop {
+        match current {
+            Expression::ParenthesizedExpression(inner) => current = &inner.expression,
+            Expression::CallExpression(call) => {
+                if let Expression::StaticMemberExpression(member) = &call.callee
+                    && member.property.name == "middleware"
+                    && let Some(Argument::ArrayExpression(array)) = call.arguments.first()
+                {
+                    let mut names = Vec::with_capacity(array.elements.len());
+                    for element in &array.elements {
+                        // A hole, a spread or anything that is not a bare
+                        // identifier makes the whole list unliftable: a partial
+                        // chain would be worse than none, because the stub would
+                        // silently run fewer client halves than were written.
+                        let Some(Expression::Identifier(reference)) = element.as_expression()
+                        else {
+                            return Vec::new();
+                        };
+                        names.push(reference.name.to_string());
+                    }
+                    return names;
+                }
+                current = &call.callee;
+            }
+            Expression::StaticMemberExpression(member) => current = &member.object,
+            _ => return Vec::new(),
+        }
+    }
 }
 
 /// Whether an expression is a call chain whose root callee is `factory`.
