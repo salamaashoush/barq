@@ -7,9 +7,10 @@
  * A test that hits either reads an empty session and blames the session code.
  */
 
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
 import {
+  createServerFn,
   getCookie,
   getRequest,
   getRequestHeader,
@@ -19,7 +20,11 @@ import {
   useSession,
 } from "@barqjs/start";
 
-import { cookiesOf, runInRequest, testRequest } from "./server.ts";
+import { esc, html as ssrHtml } from "@barqjs/server";
+import type { AnyRouteDefinition } from "@barqjs/router";
+import { mount, unmountAll } from "@barqjs/start/server";
+
+import { callServerFn, cookiesOf, runInRequest, ssrPage, testRequest } from "./server.ts";
 
 const PASSWORD = "a-password-at-least-thirty-two-chars-long";
 
@@ -168,5 +173,189 @@ describe("a session round-trips, which is the whole point of the cookie trap", (
     // way. So the clear is itself a `set-cookie`, and its value is empty.
     expect(cleared.cookies).toHaveLength(1);
     expect(cookiesOf(cleared).sess).toBe("");
+  });
+});
+
+/**
+ * The two paths nothing drove: a whole document out of `createPageHandler`, and
+ * a server function over its own HTTP endpoint.
+ */
+describe("ssrPage renders a whole document", () => {
+  const table: AnyRouteDefinition[] = [
+    {
+      path: "/",
+      // `(scope, props)`, because this shell is hand-written: the compiler
+      // prepends the scope for a component it lowers, and `children` is a BLOCK
+      // rather than a value. Authored `(props)`, `children` is the scope and the
+      // body renders empty with no error at all.
+      shellComponent: (_scope: unknown, props: { children: () => unknown }) =>
+        ssrHtml(`<html><head><title>t</title></head><body>${esc(props.children())}</body></html>`),
+      component: () => ssrHtml("<main>home</main>"),
+    },
+    {
+      path: "/greet",
+      loader: async () => {
+        await Promise.resolve();
+        return "Ada";
+      },
+      component: (_s: unknown, props: { data: () => unknown }) =>
+        ssrHtml(`<main>hello ${esc(String(props.data()))}</main>`),
+    },
+  ] as never;
+
+  test("answers the markup, the status and the headers together", async () => {
+    const page = await ssrPage("/", { routeTree: table });
+
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-type")).toContain("text/html");
+    // The DOCUMENT, not the app's fragment: the shell is part of what the
+    // handler produces and a test that only saw the fragment could not tell a
+    // missing `<Scripts />` from a present one.
+    expect(page.html).toStartWith("<!doctype html>");
+    expect(page.container.querySelector("main")?.textContent).toBe("home");
+  });
+
+  test("a miss is 404 with the page still rendered", async () => {
+    const page = await ssrPage("/nothing", { routeTree: table });
+    expect(page.status).toBe(404);
+  });
+
+  test("a table with no shell renders through the default app", async () => {
+    // `app` is only consulted when no root route declares a `shellComponent`:
+    // `renderShell` calls `renderRoutes` itself. So this is the one arrangement
+    // that proves the default is the framework's own renderer and not a stub.
+    const page = await ssrPage("/bare", {
+      routeTree: [{ path: "/bare", component: () => ssrHtml("<main>bare</main>") }] as never,
+      document: ({ body }: { body: string }) => `<html><body>${body}</body></html>`,
+    });
+    expect(page.container.querySelector("main")?.textContent).toBe("bare");
+  });
+
+  test("a loader's value is IN the markup, not fetched again by the client", async () => {
+    // The assertion that catches a page which rendered its pending state and
+    // called itself server-rendered.
+    const page = await ssrPage("/greet", { routeTree: table });
+    expect(page.container.querySelector("main")?.textContent).toBe("hello Ada");
+  });
+});
+
+describe("callServerFn goes over the wire", () => {
+  const id = "src/data.ts#greet";
+
+  // The registry is module state and `mount` refuses a duplicate id, so each
+  // test starts from an empty one. `unmountAll` is the seam that exists for it.
+  beforeEach(() => {
+    unmountAll();
+  });
+
+  test("POSTs the input and decodes the answer", async () => {
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(({ data }: { data: unknown }) => ({ hello: data, at: new Date(0) })),
+    );
+    const call = await callServerFn<{ hello: unknown; at: Date }>({ id, input: "Ada" });
+
+    expect(call.status).toBe(200);
+    expect(call.value?.hello).toBe("Ada");
+    // Through the same codec the client uses, so a `Date` survives as a `Date`
+    // rather than as the string `JSON.stringify` would have made of it.
+    expect(call.value?.at).toBeInstanceOf(Date);
+  });
+
+  test("refuses anything but POST", async () => {
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(() => "ok"),
+    );
+    const call = await callServerFn({ id, method: "GET" });
+    // A server function reachable by navigation is a one-click mutation
+    // carrying SameSite=Lax cookies, which is CVE-2026-39371.
+    expect(call.status).toBe(405);
+    expect(call.response.headers.get("allow")).toBe("POST");
+  });
+
+  test("refuses a cross-origin caller", async () => {
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(() => "ok"),
+    );
+    const call = await callServerFn({ id, input: 1, origin: "https://evil.example" });
+    expect(call.status).toBe(403);
+  });
+
+  test("allows an origin the handler was told about", async () => {
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(() => "ok"),
+    );
+    const call = await callServerFn({
+      id,
+      origin: "https://trusted.example",
+      allowedOrigins: ["https://trusted.example"],
+    });
+    expect(call.status).toBe(200);
+  });
+
+  test("an unreachable id is indistinguishable from an unknown one", async () => {
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(() => "ok"),
+    );
+    const unreachable = await callServerFn({ id, reachable: () => false });
+    const unknown = await callServerFn({ id: "src/nowhere.ts#nope" });
+
+    expect(unreachable.status).toBe(404);
+    expect(unknown.status).toBe(404);
+  });
+
+  test("a FormData body takes the no-JS channel", async () => {
+    let seen: unknown;
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(({ data }: { data: unknown }) => {
+          seen = data;
+          return "ok";
+        }),
+    );
+
+    const form = new FormData();
+    form.set("name", "Ada");
+    const call = await callServerFn({ id, form });
+
+    // 303 and not a value: the browser goes back where it came from, which is
+    // what makes the no-JS path a round trip rather than a dead end.
+    expect(call.status).toBe(303);
+    // `data` is a real `FormData`, not an object the value codec made of one.
+    // The same function seeing two input types depending on whether JS ran is
+    // the divergence progressive enhancement exists to prevent.
+    expect(seen).toBeInstanceOf(FormData);
+    expect((seen as FormData).get("name")).toBe("Ada");
+  });
+
+  test("a set-cookie written by the handler survives to the response", async () => {
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(() => {
+          setCookie("session", "abc", { path: "/" });
+          return "ok";
+        }),
+    );
+
+    const call = await callServerFn({ id });
+    expect(call.cookies.some((line) => line.startsWith("session=abc"))).toBe(true);
   });
 });
