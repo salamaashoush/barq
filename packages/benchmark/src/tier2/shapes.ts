@@ -1,10 +1,11 @@
 /**
- * Tier 2, half two: the §0.2/§0.3 microbenchmarks, in Chrome.
+ * Tier 2, half two: the props and calling-convention microbenchmarks, in
+ * Chrome.
  *
  * These are the numbers that decided the props model and defended the calling
  * convention. Every one of them was taken on a stub DOM or on happy-dom, and
- * §0.3 says so in its own text: "a 0% happy-dom result is not sufficient
- * evidence on its own". This is the run it asks for.
+ * and a 0% happy-dom result is not sufficient evidence on its own. This is the
+ * run that was asked for.
  *
  * Trials are interleaved across shapes and summarised with a spread and a
  * paired Wilcoxon on the comparisons the document actually makes, because the
@@ -62,22 +63,21 @@ export interface ShapeResult {
 }
 
 /**
- * The same shapes with the DOM replaced by a plain object — §0.3's own
+ * The same shapes with the DOM replaced by a plain object: the original
  * instrument, run by V8 instead of by Bun over happy-dom.
  *
- * It exists because the browser arms cannot decide §0.3's ratio. Their `js`
- * column is mount INCLUDING the DOM mutation, ~2000 ns a row at 200 rows
- * against the 46.6 ns a row §0.3's stub reported, so a 23.7% difference in the
- * JS half would be ~0.5% of that column and no number of trials resolves it.
- * The browser arms bound the TOTAL cost; this one measures the quantity 23.7%
- * was a percentage OF.
+ * It exists because the browser arms cannot decide the ratio. Their `js` column
+ * is ~2% of the number they report — 2000 ns a row against the 46.6 ns a row
+ * the stub reported — so a 23.7% difference in the JS half would be ~0.5% of
+ * that column and no number of trials resolves it. The browser arms bound the
+ * TOTAL cost; this one measures the quantity 23.7% was a percentage OF.
  */
 export interface StubResult {
   rows: number
   trials: number
   /** Milliseconds per mount, per shape. */
   shapes: Record<string, Summary>
-  /** Nanoseconds per row, per shape — §0.3's own unit. */
+  /** Nanoseconds per row, per shape — the shapes reading's own unit. */
   nsPerRow: Record<string, number>
   ratios: Array<{ label: string; a: string; b: string; ratio: number; p: number; mde: number }>
 }
@@ -105,15 +105,15 @@ export interface ShapesResult {
   /** One entry per row count, so a scale-dependent conclusion cannot hide. */
   shapes: ShapeResult[]
   channels: ChannelResult
-  /** `SEMANTICS.md` K1's cost, which the rule states in words. */
+  /** K1's cost, which the rule states in words. */
   keying: KeyingResult[]
-  /** §0.3's stub-DOM contrast, in V8 — the only arm that can rule on 23.7%. */
+  /** The stub-DOM contrast, in V8 — the only arm that can rule on 23.7%. */
   stub: StubResult[]
 }
 
 /**
- * The comparisons `CODESIGN.md` actually makes. Naming them here rather than
- * printing a 9x9 grid is the point: each one is a sentence in §0.2 or §0.3 that
+ * The comparisons the design record actually makes. Naming them here rather than
+ * printing a 9x9 grid is the point: each one is a recorded sentence that
  * this lane is re-adjudicating.
  */
 const CONTRASTS: Array<{ label: string; a: string; b: string }> = [
@@ -178,7 +178,7 @@ function contrast(
 }
 
 /**
- * §0.3's contrast without the DOM. `STUB_CONTRASTS` is the subset §0.3's four
+ * The contrast without the DOM. `STUB_CONTRASTS` is the subset the four
  * conclusions are stated over; B is absent because a stub node has no "return
  * it and let the caller append" that differs from appending.
  */
@@ -296,7 +296,7 @@ export async function runShapes(
         nsPerWrite[name] = one.nsPerWrite
         console.log(`    ${name.padEnd(22)} ${one.nsPerWrite.toFixed(2)} ns`)
       }
-      // The three comparisons §0.4 is actually about, each against a comparand
+      // The three comparisons this is actually about, each against a comparand
       // that does the SAME work. The bare-DOM rows stay above so the extra work
       // is visible rather than folded away.
       const pair = (dispatched: string, direct: string): string =>

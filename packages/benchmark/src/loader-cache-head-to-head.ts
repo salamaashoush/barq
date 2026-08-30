@@ -15,8 +15,8 @@
  * WHAT THIS CANNOT DECIDE. A Bun microbenchmark bounds per-call CPU on a
  * synthetic route. It cannot see how many times a real page reads `props.data()`
  * per render, which is the multiplier that turns ns into a percentage — that
- * needs the Tier-2 lane, and per CODESIGN §0.7 this is Tier 1 and PROVISIONAL
- * until it has one.
+ * needs the Tier-2 lane. Tier 1 iterates and Tier 2 adjudicates, so this is
+ * Tier 1 and PROVISIONAL until it has one.
  */
 
 import { computed, runWithOwner } from "@barqjs/core";

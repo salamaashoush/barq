@@ -1,5 +1,5 @@
 /**
- * What each control-flow flag is worth. `CODESIGN.md` §3.4 and §8:
+ * What each control-flow flag is worth. The standing rule:
  *
  *   "Discipline, enforced in review: a flag that moves neither an allocation
  *    count nor a wall-clock number on a named benchmark is deleted, not kept."
@@ -34,7 +34,7 @@
  * A flag that reports 0 allocations saved and p > 0.05 is deleted from
  * `packages/core/src/flow.ts` in the same change that runs this. Two were, and
  * `grep -rn 'FAST_CLEAR|INDEX_UNUSED' packages` now finds them only in this
- * paragraph and in `CODESIGN.md`'s catalogue of candidates. The measurement that
+ * paragraph. The measurement that
  * killed them, 81 trials × 400 iterations:
  *
  *   FAST_CLEAR     52.00 -> 52.00 scopes,  1.1% faster,  p = 4.4e-1
@@ -45,7 +45,8 @@
  * per list, which is real and which neither counter here could see: the scope
  * counter counts `Scope`s only, and the retained-heap probe under happy-dom
  * reported numbers too noisy to publish. So it has an argument and no number,
- * and §8 is about the number. Either may come back with a benchmark that shows
+ * and the rule is about the number. Either may come back with a benchmark that
+ * shows
  * it earning, and it comes back with a row in this table, not with a comment.
  *
  * Run: bun --conditions=browser run src/flow-flags.ts
@@ -205,7 +206,8 @@ const noScope: Case = {
 
 const CASES: readonly Case[] = [staticKey, noScope];
 
-// §8 made machine-checked rather than "enforced in review": a flag declared in
+// The rule made machine-checked rather than "enforced in review": a flag
+// declared in
 // the runtime with no row in this table has no number, and a flag with no number
 // is deleted. Read off the source, so adding a `1 << n` and forgetting the
 // benchmark fails here instead of shipping. The VALUE is read off the same line,

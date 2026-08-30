@@ -2,16 +2,14 @@
  * The Tier-1 claims this lane re-adjudicates, with the numbers they were
  * recorded at and the Tier-2 procedure that decides them.
  *
- * `CODESIGN.md` §0.7, the standing rule: "Tier 1 iterates, Tier 2 adjudicates. A
- * Tier-1 win is PROVISIONAL until Tier 2 confirms it." Every number in that
- * document was Tier 1. This file is the list of the ones a browser can rule on,
- * so that "which survive" is answered against a table written BEFORE the run
- * rather than assembled from whatever the run happened to show.
+ * The standing rule: Tier 1 iterates, Tier 2 adjudicates, and a Tier-1 win is
+ * PROVISIONAL until Tier 2 confirms it. Every recorded number was Tier 1. This
+ * file is the list of the ones a browser can rule on, so that "which survive"
+ * is answered against a table written BEFORE the run rather than assembled from
+ * whatever the run happened to show.
  *
- * The M7c readings are recorded in the sections these claims name — §0.2 (C5),
- * §0.3 (C1, C2, C3, C4), §0.4 (C6), §9.1 (C7, C9) — and the survival table in
- * §12 collects them. `says` and `tier1` below stay as the claims were WRITTEN;
- * they are the pre-run record and are not edited to match the outcome.
+ * `says` and `tier1` below stay as the claims were WRITTEN: they are the
+ * pre-run record and are not edited to match the outcome.
  *
  * A claim that does not survive is a FINDING, not a failure. Three things can
  * be true of a Tier-1 number and they are kept apart here:
@@ -31,7 +29,7 @@ export type Tier = "microbenchmark" | "mount" | "reactivity" | "server"
 
 export interface Claim {
   id: string
-  /** The section of `CODESIGN.md` the claim lives in. */
+  /** Where the claim was recorded. */
   section: string
   /** The claim, in the document's own terms. */
   says: string

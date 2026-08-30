@@ -57,7 +57,7 @@ export default function Page(props) {
 /**
  * The SAME page, in a module that also mentions a control-flow component.
  *
- * `CODESIGN.md` §0.1's 41.88x row: until M6 the compiler scanned every symbol
+ * The 41.88x row: the compiler used to scan every symbol
  * and dropped the WHOLE module to the DOM backend if any of eight flow
  * components was referenced, so one import cost the page its string backend.
  * The markup `Page` produces is byte-identical either way — which is what makes
@@ -256,7 +256,7 @@ report(
   "barq compiled",
 );
 
-// ------------------------------------------------- CODESIGN §0.1's 41.88x row
+// ------------------------------------------------------------ the 41.88x row
 //
 // The same page, rendered from a module that also mentions `Portal`. Before M6
 // that reference sent the whole module to the DOM backend; the row is kept

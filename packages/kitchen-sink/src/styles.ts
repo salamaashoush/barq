@@ -1,14 +1,13 @@
 /**
  * The application's CSS layer.
  *
- * It used to be `packages/extra/src/css.ts`. `CODESIGN.md` §4.1 indicts that
- * module's JSX pragma for re-implementing element creation a fifth time — 24
- * lines of `document.createElement` plus className, `on*` and style-object
- * handling — and CSS scoping is ecosystem rather than framework, so the
- * framework stopped shipping it and the application that wants goober depends
- * on goober.
+ * It used to be `packages/extra/src/css.ts`, whose JSX pragma re-implemented
+ * element creation a fifth time — 24 lines of `document.createElement` plus
+ * className, `on*` and style-object handling. CSS scoping is ecosystem rather
+ * than framework, so the framework stopped shipping it and the application that
+ * wants goober depends on goober.
  *
- * Three exports went with the indictment rather than moving: `setupCss` (the
+ * Three exports went with it rather than moving: `setupCss` (the
  * pragma itself), `styled` (the only thing that needed the pragma, and nothing
  * here used it), and `createGlobalStyle` (a component declaration that took
  * props in the scope's position and was reachable by nobody). `getStyleTag`

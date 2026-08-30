@@ -8,7 +8,7 @@
  *
  * ## Why it is Tier 2 and the eleven cases are not
  *
- * `CODESIGN.md` §0.1's "10 wins / 1 tie, up to 6.25x" is eleven graphs this
+ * The "10 wins / 1 tie, up to 6.25x" reading is eleven graphs this
  * project wrote, timed in Node. This is a suite this project did not write,
  * with graphs chosen by somebody with no stake in the answer, run in the engine
  * a browser actually uses. Both numbers can be true; only one of them is

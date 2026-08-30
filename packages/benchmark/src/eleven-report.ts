@@ -2,7 +2,8 @@
  * Drives `eleven-run.ts` across N independent processes and aggregates.
  *
  * A single process cannot distinguish a real effect from one JIT tier-up
- * decision, which is why §9 asks for a Wilcoxon across ≥5 processes. Pairing
+ * decision, which is why the verdict wants a Wilcoxon across ≥5 processes.
+ * Pairing
  * stays inside a process — every trial times both sides back to back — and the
  * paired differences are pooled across processes for the test.
  */
@@ -92,8 +93,8 @@ console.log(
  * counts for A only when the Wilcoxon rejects at 0.05 AND the interquartile band
  * of the per-trial ratios sits entirely on one side of parity: a point estimate
  * of 0.97x whose p25–p75 spans 0.85–1.09 is a TIE however small its p, and
- * reporting one as a win is exactly what `CODESIGN.md` §0 withdrew three
- * designs' claims for.
+ * reporting one as a win is exactly what withdrew three earlier designs'
+ * claims.
  */
 function verdict(r: (typeof rows)[number]): "A" | "tie" | "B" {
   if (r.p >= 0.05) return "tie";

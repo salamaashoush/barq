@@ -73,7 +73,7 @@ function MemoDemo() {
   const firstName = signal("John");
   const lastName = signal("Doe");
 
-  // §11 rejected implicit reads: an accessor in a template literal stringifies
+  // Implicit reads were rejected: an accessor in a template literal stringifies
   // to its own source text, and BARQ001 says so at the exact position.
   const fullName = () => `${firstName()} ${lastName()}`;
 

@@ -4,8 +4,7 @@
  *
  * There is no second route system and no second directory: this file is scanned,
  * named and nested by the same generator as every page, and it appears in
- * `routeTree.gen.ts` beside them. That is TanStack's arrangement
- * (`examples/react/start-basic/src/routes/api/users.ts`).
+ * `routeTree.gen.ts` beside them. That is TanStack's arrangement.
  *
  * NOTHING HERE SHIPS TO THE BROWSER. The compiler deletes the `server` option
  * from the client build, so `SERVER_ONLY` below — and any database import a real

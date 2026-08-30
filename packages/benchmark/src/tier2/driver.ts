@@ -1,10 +1,10 @@
 /**
  * Tier 2: a real Chrome, a real DOM, real layout and real paint.
  *
- * `CODESIGN.md` §12 records the gap this closes. Every number in that document
- * is Tier 1 — Node microbenchmarks, a stub DOM, happy-dom — including §0.3's
- * defence of the calling convention, whose conclusion ("0% through a DOM") is a
- * claim about a real browser made without ever running one. happy-dom has
+ * The gap this closes: every Tier-1 number is a Node microbenchmark, a stub DOM
+ * or happy-dom, including the defence of the calling convention, whose
+ * conclusion ("0% through a DOM") is a claim about a real browser made without
+ * ever running one. happy-dom has
  * hidden four distinct bug classes on this project already; it is not the
  * oracle for a performance claim either.
  *

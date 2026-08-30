@@ -1,11 +1,11 @@
 /**
- * `CODESIGN.md` §0.2 and §0.3, re-run against a real DOM.
+ * The props and calling-convention microbenchmarks, re-run against a real DOM.
  *
- * ## This file IS §0.3's measurement, as of M7c
+ * ## This file IS the shapes measurement
  *
- * §0.3 cites this path, and carries a table of this file's own numbers beside
- * the original one it quoted from a scratch file that no longer exists. A
- * change to the calling convention re-runs
+ * The recorded reading cites this path and carries a table of this file's own
+ * numbers beside the original one, which was quoted from a scratch file that no
+ * longer exists. A change to the calling convention re-runs
  *
  *     cd packages/benchmark && bun run bench:tier2:shapes
  *
@@ -14,16 +14,16 @@
  *
  * ## Why this file had to be written from the document rather than moved
  *
- * The A/B/C/D/D2/E table in §0.3 is the measurement the chosen calling
+ * The A/B/C/D/D2/E table is the measurement the chosen calling
  * convention rests on, and it is not in the repository. It was taken in a
  * scratch file that no longer exists, so the number defending the convention
  * cannot be reproduced from what is checked in — which is a finding about the
  * project's evidence, independent of what the re-run says. What follows is a
- * RECONSTRUCTION from §0.3's own descriptions of the six shapes. It is stated
+ * RECONSTRUCTION from the recorded descriptions of the six shapes. It is stated
  * as one, and the shapes are written out so a reader can disagree with the
  * reconstruction rather than with a number.
  *
- * The six, in §0.3's words:
+ * The six, as recorded:
  *
  *   A  current: eager children, value props            (the baseline it omits)
  *   B  thunk props + block children, return-DOM
@@ -38,7 +38,7 @@
  *
  * ## What is measured, and why it is two numbers
  *
- * §0.3's conclusion has two halves that pull apart — "23.7% of JS overhead"
+ * The conclusion has two halves that pull apart — "23.7% of JS overhead"
  * against "0% through a DOM" — so both are reported: `js` is the mount loop,
  * `total` is the mount loop plus a forced layout. On a stub DOM those are the
  * same number, which is exactly how a stub DOM produced a conclusion about a
@@ -100,7 +100,7 @@ function fill(node: Element, label: string, tone: string, tail: unknown): void {
 // ---------------------------------------------------------------- A
 // Eager children, value props. `children` is a prop like any other and it is
 // already built by the time the component is entered, which is the defect
-// §3.1's convention exists to make unrepresentable.
+// the calling convention exists to make unrepresentable.
 
 function RowA(p: { label: string; tone: string; children?: unknown }): Element {
   const node = tmpl() as Element
@@ -199,7 +199,7 @@ function mountD(parent: HTMLElement, data: readonly Row[], scope: Scope): void {
 }
 
 // ---------------------------------------------------------------- D2
-// D with a real `Scope` allocated per position. §0.3 priced this at 7.3 ns a
+// D with a real `Scope` allocated per position, priced at 7.3 ns a
 // row on a stub DOM and concluded it was "worth a NO_SCOPE flag, not worth a
 // design"; the flag exists, so this row is what the flag is worth.
 
@@ -224,7 +224,7 @@ function mountD2(parent: HTMLElement, data: readonly Row[], scope: Scope): void 
 
 // ---------------------------------------------------------------- E
 // No component frame at all — the shape Anvil's headline optimisation would
-// produce. §0.3 measured it at 15% of JS overhead on a stub DOM and 0% through
+// produce, measured at 15% of JS overhead on a stub DOM and 0% through
 // happy-dom, and sent it to the backlog on the strength of the second number.
 
 function mountE(parent: HTMLElement, data: readonly Row[]): void {
@@ -239,19 +239,19 @@ function mountE(parent: HTMLElement, data: readonly Row[]): void {
 }
 
 // ---------------------------------------------------------------- stub DOM
-// §0.3's own instrument, moved inside V8.
+// The original instrument, moved inside V8.
 //
 // The browser arms above time `mount` INCLUDING the DOM mutation, and at 200
-// rows that is ~98% of the number: 2000 ns a row against the 46.6 ns a row
-// §0.3's stub reported. A 23.7% difference in the JS half is therefore ~0.5% of
-// the browser `js` column, which no amount of trials resolves — so the browser
-// arms can bound the TOTAL cost and cannot adjudicate the ratio §0.3 stated.
+// rows that is ~98% of the number: 2000 ns a row against the 46.6 ns a row the
+// stub reported. A 23.7% difference in the JS half is therefore ~0.5% of the
+// browser `js` column, which no amount of trials resolves — so the browser arms
+// can bound the TOTAL cost and cannot adjudicate the ratio.
 //
 // These arms can. They keep every part of the convention real — `props`, `cell`,
 // `block`'s owner save-and-restore, `enter`/`exit`, the component frames — and
 // replace only the node with a plain object, which is exactly the substitution
-// §0.3 made. What comes out is the same quantity §0.3's 9.328/11.537 µs are,
-// measured by V8 instead of by Bun over happy-dom's stubs.
+// the original made. What comes out is the same quantity its 9.328/11.537 µs
+// are, measured by V8 instead of by Bun over happy-dom's stubs.
 
 interface StubNode {
   kids: StubNode[]
@@ -353,7 +353,8 @@ function stubE(parent: StubNode, data: readonly Row[]): void {
   }
 }
 
-// §0.2's three carriers on the same instrument. The 8.7x is a stub-DOM number
+// The three props carriers on the same instrument. The 8.7x is a stub-DOM
+// number
 // (81.283 vs 9.328 µs) and the browser arms cannot report in that unit either,
 // for exactly the reason the A/D pair cannot.
 
@@ -405,7 +406,7 @@ const STUB_MOUNTS: Record<string, StubMount> = {
 }
 
 // ---------------------------------------------------------------- carriers
-// §0.2's three props carriers, at the scale a props object is allocated: once
+// The three props carriers, at the scale a props object is allocated: once
 // per component instance, i.e. once per list row. The GETTER row is the shape
 // Solid emits and the one this design rejected at 8.7x.
 
@@ -443,8 +444,8 @@ function mountThunk(parent: HTMLElement, data: readonly Row[]): void {
   }
 }
 
-// ---------------------------------------------------------------- §0.4
-// `setProp`'s dispatch against the direct DOM call it resolves to. §0.4 found
+// --------------------------------------------------------------- dispatch
+// `setProp`'s dispatch against the direct DOM call it resolves to, which found
 // 0–8% on happy-dom and struck the "10–25% per write" claim all three designs
 // made. The channels are the ones that section names.
 
@@ -462,7 +463,7 @@ function channelCases(n: number): Record<string, () => void> {
   // it therefore ADDS a token every call and removes none: after 20,000 writes
   // the element carries 20,000 classes and `classList.add` is walking all of
   // them. The first version of this file did exactly that and the run stopped
-  // dead here — which is worth recording twice over, because §0.4's own
+  // dead here — which is worth recording twice over, because its own
   // `setProp(el,'class',v)` number was taken the same way on happy-dom and is
   // a measurement of that accumulation rather than of the dispatcher.
   const classes = ["alpha", "beta"]
@@ -553,7 +554,7 @@ function channelCases(n: number): Record<string, () => void> {
 }
 
 // ---------------------------------------------------------------- K1
-// The keying default's cost, which `SEMANTICS.md` K1 states and no lane
+// The keying default's cost, which K1 states and no lane
 // measured. `mapArray` is the mapping half on its own — a stub mapper, so what
 // is timed is the diff and the row bookkeeping and nothing else — under all
 // three modes, against the two updates that tell them apart: a REORDER of the
@@ -736,7 +737,7 @@ globalScope.__shapesPrepare = (rowCount: number) => {
  * A trial times all nine so that machine drift lands on all of them together,
  * and the starting shape rotates so no shape always runs first — the same
  * interleaving `stats.ts` argues for and for the same reason. Reporting a
- * min-of-N per shape taken in a fixed order, which is what §0.2 and §0.3 did,
+ * min-of-N per shape taken in a fixed order, which is what the originals did,
  * cannot tell a 4% convention difference from a 4% thermal ramp.
  */
 globalScope.__shapesTrial = (trial: number) => {
@@ -781,7 +782,7 @@ globalScope.__channel = (name: string, writes: number, trials: number) => {
       const elapsed = performance.now() - start
       if (elapsed < best) best = elapsed
     }
-    // Nanoseconds per write, which is the unit §0.4 reports.
+    // Nanoseconds per write, which is the unit reported.
     return { name, nsPerWrite: (best * 1e6) / writes }
   } catch (error) {
     return { __benchError: `channel ${name}: ${(error as Error)?.message ?? error}` }
@@ -793,7 +794,7 @@ globalScope.__channel = (name: string, writes: number, trials: number) => {
  * Best of `trials` per arm, the arms rotated so none of them always runs first.
  */
 /**
- * The same contrast as `__shapesTrial`, with the DOM taken out — §0.3's own
+ * The same contrast as `__shapesTrial`, with the DOM taken out: the original
  * instrument, in V8. Interleaved and rotated for the same reason.
  */
 const stubTrial = (trial: number): { trial: number; timings: Record<string, number> } | { __benchError: string } => {

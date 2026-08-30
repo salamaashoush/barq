@@ -13,7 +13,7 @@
  *     O(1). That is a real difference in what the two frameworks provide, and
  *     it is why the `select row` row is reported and never used to adjudicate a
  *     barq-internal claim.
- *  2. barq's `For` is identity-keyed by default (`CODESIGN.md` §12, Q3), which
+ * 2. barq's `For` is identity-keyed by default, which
  *     is what "keyed" means here, so no `keyed` prop is written.
  */
 import { For, batch, render, signal } from "@barqjs/core"

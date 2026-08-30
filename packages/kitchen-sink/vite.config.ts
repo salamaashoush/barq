@@ -140,9 +140,8 @@ export default defineConfig({
         routes: ["/"],
       },
       /**
-       * The route-action chain check, ARMED — the thing DESIGN-START §6 calls
-       * "the single strongest thing barq could build" and that nobody has
-       * shipped in a mainstream framework.
+       * The route-action chain check, ARMED: the strongest thing barq builds,
+       * and nobody has shipped it in a mainstream framework.
        *
        * `/admin` declares `middleware: [requireSession]`, and both server
        * functions in `admin.data.ts` carry the same closure. Delete

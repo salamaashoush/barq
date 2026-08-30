@@ -1,5 +1,5 @@
 /**
- * The reactivity cases of CODESIGN §0.1, as a library.
+ * The eleven reactivity cases, as a library.
  *
  * `head-to-head.ts` hard-wires one barq module and reports a bare min-of-9
  * ratio. These are the same graphs, but the barq side is a parameter so two

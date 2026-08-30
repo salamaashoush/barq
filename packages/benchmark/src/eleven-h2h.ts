@@ -1,6 +1,6 @@
 /**
- * Runs `head-to-head-var.ts` — the §0.1 instrument, min-of-9 per side — in N
- * independent processes per build and reports the spread it never had.
+ * Runs `head-to-head-var.ts`, min-of-9 per side, in N independent processes per
+ * build, and reports the spread a single process never had.
  *
  *   bun run src/eleven-h2h.ts --procs 9 --build on=@barqjs/core --build off=/path/to/index.ts
  */
