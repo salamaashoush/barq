@@ -690,7 +690,7 @@ impl<'a> Lift<'a, '_> {
             };
         }
 
-        // C4 and §11 Q1's settled spelling: `props.x()` is how a Cell is READ,
+        // The settled spelling: `props.x()` is how a Cell is READ,
         // so it is the tracked read the consumer's effect subscribes to. Without
         // this arm the call is `Opaque`, which `react.rs` emits UNWRAPPED, and
         // the prop lands in the DOM once at construction and never moves again.
@@ -1056,7 +1056,8 @@ pub(super) fn number_to_js_string(number: f64) -> Option<String> {
     None
 }
 
-/// §3.0 rule 1's other half: whether a zero-arity function is a **Cell** or a
+/// The other half of the arity rule: whether a zero-arity function is a
+/// **Cell** or a
 /// **handler**.
 ///
 /// Arity alone cannot answer it, and answering it by arity is a silent

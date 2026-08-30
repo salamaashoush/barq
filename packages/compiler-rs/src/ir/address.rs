@@ -120,14 +120,14 @@ impl<'a> RefPlan<'a> {
 }
 
 // ============================================================================
-// The other sense of "address" — the SHARED one (CODESIGN.md §3.11, §5.2)
+// The other sense of "address" — the SHARED one
 // ============================================================================
 //
 // Everything above is the DOM backend's walk to a node. What follows names a
 // POSITION, which is a fact about the analysed IR and is therefore the same on
 // every target: `(module path, unit index, position index)`.
 //
-// It is Marko's discipline, adopted in §3.11 because it is the only thing that
+// It is Marko's discipline, adopted because it is the only thing that
 // lets the two emitters make checkable claims about each other. It carries no
 // `NodeId` — a node is a DOM concept and the two backends do not agree about the
 // skeleton, because `anchor` inserts markers for one of them and not the other.
@@ -190,7 +190,7 @@ mod tests {
     use super::*;
 
     fn plan(allocator: &Allocator) -> RefPlan<'_> {
-        // The §7 worked example: root, <p> via firstChild+nextSibling,
+        // The worked example: root, <p> via firstChild+nextSibling,
         // <button> via nextSibling, <ul> via lastChild.
         let mut plan = RefPlan::new_in(allocator);
         plan.defs.push(RefDef { node: 0, step: Step::Root, name: 0, span: Span::default() });
@@ -231,7 +231,7 @@ mod tests {
     fn cost_counts_property_reads_and_collapsed_hops() {
         let allocator = Allocator::new();
         let plan = plan(&allocator);
-        // §7: firstChild.nextSibling (2) + nextSibling (1) + lastChild (1).
+        // firstChild.nextSibling (2) + nextSibling (1) + lastChild (1).
         assert_eq!(plan.cost(), 4);
         assert_eq!(Step::NextSibling(0, 4).cost(), 4);
         assert_eq!(Step::FirstChild(0, 3).cost(), 4);

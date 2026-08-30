@@ -347,7 +347,7 @@ fn template_declaration<'a>(
     if wrapped {
         arguments.push(Argument::from(Expression::new_boolean_literal(span, true, &emit.ast)));
     }
-    // §12's detection axis, threaded where the claim is made. `template()` is
+    // The detection axis, threaded where the claim is made. `template()` is
     // the ONE place a unit root reaches the DOM, so it is the one place that
     // holds both the tree the client would have built and the tree the server
     // sent — which is what the check needs and what a per-step tag argument

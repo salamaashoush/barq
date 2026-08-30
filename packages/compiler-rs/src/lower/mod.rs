@@ -102,8 +102,8 @@ struct TmpAttr<'a> {
     span: Span,
 }
 
-/// The instruction the attribute becomes, decided at P1 — §3.5's "every
-/// attribute resolves at compile time to exactly one channel".
+/// The instruction the attribute becomes, decided at P1: every attribute
+/// resolves at compile time to exactly one channel.
 #[derive(Clone, Copy)]
 enum AttrKind {
     Chan(crate::ir::Chan),
@@ -113,10 +113,10 @@ enum AttrKind {
     Bind,
     Ref,
     /// `{...rest}`. The one attribute whose NAMES are not a compile-time fact
-    /// (§3.13 item 1), so the channel per key is resolved at run time — by the
+    /// so the channel per key is resolved at run time, by the
     /// same tables `build.rs` generates the compiler's from.
     Spread,
-    /// `action` on a `<form>`. §3.8's compiler surface: the name is resolved
+    /// `action` on a `<form>`: the name is resolved
     /// here like every other, and it is the one whose VALUE decides whether it
     /// is an attribute at all.
     FormAction,
@@ -151,7 +151,7 @@ impl<'a> Build<'a> {
         self.next_slot += 1;
         self.push(SkelNode::Slot(slot), parent, NONE, span);
         let value = self.unit.exprs.push(ExprSrc::Verbatim(value), span, Rx::OPAQUE);
-        // Provisionally a marker with no node behind it yet (DESIGN §3/P1). P5
+        // Provisionally a marker with no node behind it yet. P5
         // is the only pass that materialises one, and only where no cheaper
         // anchor exists.
         self.insert_patches.push(Patch {
@@ -230,7 +230,7 @@ impl<'a> Lower<'a, '_> {
         // off the template path: it is a PROP whose value is the child list,
         // and P4 is where a child list becomes a Block.
         let names_children = element.opening_element.attributes.iter().any(|item| match item {
-            // A spread stays on the template path (§5.2). Its NAMES are the one
+            // A spread stays on the template path. Its NAMES are the one
             // thing about an attribute the compiler cannot know, so the channel
             // per key is resolved at run time — but the element around it, its
             // literal attributes and its children are compiled as ever.
@@ -510,8 +510,8 @@ impl<'a> Lower<'a, '_> {
             };
             let attribute = attribute.unbox();
             let raw = attribute_name(&attribute.name, self.allocator);
-            // §3.5/§3.12: the channel is decided HERE, from the name plus the
-            // namespace plus the author's override, and never again.
+            // The channel is decided HERE, from the name plus the namespace
+            // plus the author's override, and never again.
             let (kind, key) = match names::prefixed(raw) {
                 names::Prefixed::Ref => (AttrKind::Ref, "ref"),
                 // The type is resolved here and never re-derived: `on:` is
@@ -532,12 +532,12 @@ impl<'a> Lower<'a, '_> {
                     AttrKind::Event,
                     self.allocator.alloc_str(&name[2..].to_ascii_lowercase()) as &'a str,
                 ),
-                // §3.8. `action` on a `<form>` is a URL or a SUBMIT HANDLER,
-                // and §3.0 rule 1 cannot separate them: an `action()` is
+                // `action` on a `<form>` is a URL or a SUBMIT HANDLER,
+                // and the arity rule cannot separate them: an `action()` is
                 // `(...args) => Promise<R>`, whose arity is 0, so the attribute
                 // channel read it as a Cell, CALLED it at mount, and wrote the
                 // promise it returned into the form's target. The slot decides,
-                // exactly as it does for `on*` (§3.5's `is_cell` exception).
+                // exactly as it does for `on*`.
                 //
                 // A literal `action="/url"` never reaches here: it is bakeable
                 // by name and folds into the template bytes.
@@ -655,7 +655,7 @@ impl<'a> Lower<'a, '_> {
         self.literal_attribute(ordered, "type")
     }
 
-    /// §3.10 — a `contenteditable` host has no `value`, so `bind:value` on one
+    /// A `contenteditable` host has no `value`, so `bind:value` on one
     /// resolves to its TEXT. The author writes the attribute statically or the
     /// compiler cannot know, which is the same rule `type` follows.
     fn is_contenteditable(&self, ordered: &[TmpAttr<'a>]) -> bool {

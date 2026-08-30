@@ -16,7 +16,7 @@ pub struct ExprEntry<'a> {
 
 /// The expression is OWNED. P1 moves the parsed node straight out of the JSX it
 /// is deleting, so nothing is cloned and the original `Span` survives into the
-/// emitted AST, which is what makes the sourcemap byte-exact (§6.1). A shared
+/// emitted AST, which is what makes the sourcemap byte-exact. A shared
 /// borrow could never do this: P8 hands the node to `oxc_codegen` by value.
 pub enum ExprSrc<'a> {
     /// The node the parser produced, unmodified.

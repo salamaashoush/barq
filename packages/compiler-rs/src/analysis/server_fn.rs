@@ -359,7 +359,7 @@ mod tests {
     /// false and no `BARQ012`; nothing to synthesize, so no client stub; and
     /// `namesOf` filtering on `serverFn` meant nothing was mounted. The handler
     /// body and every import it needed shipped to the browser, silently, which
-    /// is the leak §3.1 claims this design is structurally immune to.
+    /// is the leak this design is meant to be structurally immune to.
     #[test]
     fn a_default_export_is_a_server_function() {
         let scan =

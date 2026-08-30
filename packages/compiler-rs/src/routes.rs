@@ -9,8 +9,7 @@
 //!
 //! Naming is TanStack's, and this is a port of their algorithm rather than a
 //! paraphrase of their docs. Nesting is decided by walking the `/` SEGMENTS of
-//! the absolute route path and taking the longest registered prefix
-//! (`router-generator/src/utils.ts:47-62`, `RoutePrefixMap.findParent`), not by
+//! the absolute route path and taking the longest registered prefix, not by
 //! comparing dotted filenames. That distinction is what makes the `_` suffix
 //! work with no rule of its own — see `build_tree`.
 //!
@@ -73,7 +72,7 @@ const INDEX_TOKEN: &str = "index";
 const ROOT_FILE: &str = "__root";
 const ROOT_ID: &str = "__root__";
 /// A file or directory the route tree does not see, so logic can sit beside a
-/// route (`routing-concepts.md:551`). Theirs is `routeFileIgnorePrefix`.
+/// route. Theirs is `routeFileIgnorePrefix`.
 const IGNORE_PREFIX: char = '-';
 
 /// Strip the extension. Separators are left alone — `derive` splits on both.
@@ -622,7 +621,7 @@ fn variable_names(tree: &[RouteNode]) -> Vec<(String, String)> {
 
 /// The identifier for one route id.
 ///
-/// Ported from `routePathToVariable` (`router-generator/src/utils.ts:490-511`)
+/// Ported from their `routePathToVariable`,
 /// including its character table, with the INDEX case made explicit: theirs
 /// derives the name from the file path so `/` happens to become `Index`, and
 /// barq derives it from the id, where `/` is the empty string. Spelling the
@@ -715,8 +714,7 @@ fn import_specifier(out_dir: &str, file: &str) -> String {
         out.push_str("./");
     }
     out.push_str(&to[shared..].join("/"));
-    // Extension-less, as theirs is (`addExtensions` defaults to false,
-    // `router-generator/src/config.ts:52-60`): a `.tsx` in an import needs
+    // Extension-less, as theirs is: a `.tsx` in an import needs
     // `allowImportingTsExtensions`, which a project is not obliged to set.
     for extension in EXTENSIONS {
         if let Some(stripped) = out.strip_suffix(extension) {

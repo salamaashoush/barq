@@ -1,11 +1,11 @@
-//! P8b. DESIGN §5 — the second lowering table over the same `Module`.
+//! The second lowering table over the same `Module`.
 //!
 //! Target #10 is one sentence: every static byte is escaped at COMPILE time and
 //! emitted as a literal chunk of one concatenation, and no DOM operation is
 //! performed at all. There is no `template()`, no clone, no walk and no `_el$`;
 //! P6's REF PLAN is skipped entirely, because a string has no siblings to walk
-//! to. P6's other half — §3.11's compile-time addresses — is not skipped, and is
-//! what the two backends are diffed against.
+//! to. P6's other half, the compile-time addresses, is not skipped, and is what
+//! the two backends are diffed against.
 //!
 //! The two backends cannot drift because they read the same IR through two
 //! total matches: `node` over `SkelNode`, here, and the shared
@@ -37,7 +37,7 @@ use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, intrinsic_tag};
 use crate::lower::{names, text};
 
-/// §3.11's branch instruction, at a hole rather than at a branch: a hole has no
+/// The branch instruction, at a hole rather than at a branch: a hole has no
 /// key to write, so the open comment carries none. `ssr.ts` spells the same
 /// three constants — one for the DOM's insert anchor and two for a range — and
 /// `packages/core/src/hydration.ts` reads them back. Three places, one format,
@@ -478,8 +478,8 @@ fn attribute_order(unit: &Unit<'_>, node: NodeId, name: u32) -> u32 {
 /// This is the DISPATCH, and it is total on purpose. `attribute_call` below is
 /// total too, but a total match nothing reaches is not a guarantee: a filter
 /// here that quietly dropped an opcode would produce MISSING OUTPUT with no
-/// error, which is the exact silence DESIGN §4's "the two backends cannot
-/// drift" is supposed to make impossible. A new opcode has to answer in both
+/// error, which is the exact silence "the two backends cannot drift" is
+/// supposed to make impossible. A new opcode has to answer in both
 /// places or the crate does not compile.
 enum Slot {
     /// writes one attribute, positioned by the name the author wrote
@@ -505,8 +505,8 @@ fn attribute_slot(op: Op) -> Slot {
             Slot::Elsewhere
         }
         // A bind has TWO halves and only one of them is client-only. The
-        // listener that reports an edit cannot exist on the wire, and §5 drops
-        // it with the rest — but the VALUE is an ordinary attribute, and it is
+        // listener that reports an edit cannot exist on the wire and is dropped
+        // with the rest — but the VALUE is an ordinary attribute, and it is
         // what makes a server-rendered field arrive with something in it.
         // Dropping the whole op shipped `<input>` where the DOM backend builds
         // `<input value="ada">`.
@@ -665,9 +665,9 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
                 // A hole that OWNS its parent's child list pays neither, because
                 // both arguments dissolve: nothing is beside it to fuse with,
                 // and its extent is every child of the parent, which the client
-                // reads off the document. §12's Q4 reversal is what this
-                // predicate is for — it is where 4,800 of the 100-row page's
-                // 6,416 hydration bytes were.
+                // reads off the document. The reversal is what this predicate
+                // is for: it is where 4,800 of the 100-row page's 6,416
+                // hydration bytes were.
                 let delimited = self.ctx.hydratable
                     && !self.ctx.hole_owns_child_list(self.unit, at.target(), slot);
                 if delimited {
@@ -1109,7 +1109,8 @@ fn root_into<'a>(ctx: &mut Emit<'a, '_>, chunks: &mut Chunks<'a>, index: u32, sp
 ///
 /// The pass lowers ten constructs to a primitive and never emits a call for
 /// them; what reaches here is the shapes it cannot read statically — a spread
-/// source, an unreadable `keyed` — and the three §3.4 names as refusals. All
+/// source, an unreadable `keyed` — and the three primitive names as refusals.
+/// All
 /// thirteen have a string component now, each of them an adapter over the same
 /// four primitives, so there is no construct left that could send a module to
 /// another backend. `uninlinable_flow` and its eight-component set went with

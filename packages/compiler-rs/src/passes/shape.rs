@@ -571,7 +571,8 @@ impl<'a> Shaper<'a, '_> {
     /// accessor, which a signal getter is (R6); a member read off a props
     /// parameter, which the total ABI makes a Cell (C3.1); and a zero-arity
     /// function the author wrote, which is literally `() => T` — INLINE or
-    /// bound to a name, because §3.0 rule 1 is about arity and a binding does
+    /// bound to a name, because the arity rule is about arity and a binding
+    /// does
     /// not change it. Refusing the named one is what made `each={activeItems}`
     /// cross as `() => activeItems`, one Cell too many for `For` to unwrap.
     ///
@@ -645,8 +646,8 @@ impl<'a> Shaper<'a, '_> {
 
     /// `(_s$) => value` — a Block. When the body is a compiled unit's
     /// placeholder its site is retargeted, so codegen splices the walk and the
-    /// patch program straight into the arrow: the shape `CODESIGN.md` §7.1
-    /// prints, costing neither an IIFE nor a call.
+    /// patch program straight into the arrow, costing neither an IIFE nor a
+    /// call.
     pub(super) fn block(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
         if let Expression::Identifier(identifier) = &value
             && let Some(index) = self.uids.root_index(identifier.name.as_str())
@@ -657,7 +658,7 @@ impl<'a> Shaper<'a, '_> {
         self.brand(arrow, span)
     }
 
-    /// §3.0 rule 3. `_$b(fn)` marks the function in place and hands it back, so
+    /// `_$b(fn)` marks the function in place and hands it back, so
     /// a Block costs one property write at its definition site and no extra
     /// closure at any activation. Kind then travels with the VALUE (rule 4): a
     /// forwarded Block is still branded, a Cell never is, and no consumer has to
@@ -848,7 +849,7 @@ impl<'a> Shaper<'a, '_> {
     /// forwarded value AND what the callee does with it, so a Block landing in
     /// a Cell slot is a compile-time fact and not something to discover at run
     /// time. Item 2 — the `ScopeMissingError` — is what answers across a module
-    /// boundary, where `CODESIGN.md` §3.13 item 1 says nothing else can.
+    /// boundary, where nothing else can.
     ///
     /// The span is the FORWARDING site, which is where the fix is written; the
     /// message carries the consuming position, because a `Diag` holds one span.
@@ -1134,11 +1135,11 @@ mod tests {
         assert!(code.contains("Card(_s$, { tone: props.tone })"), "{code}");
     }
 
-    /// C6 and O2.1, and the reason the whole redesign exists. `CODESIGN.md`
-    /// §7.1: the child may not be an ARGUMENT, because an argument is evaluated
-    /// at the call site, before the provider's scope exists and before its
-    /// context binding is installed. The emitted shape is a Block taking a
-    /// scope, and the only party that can hand it one is `provide`.
+    /// The reason the whole redesign exists: the child may not be an ARGUMENT,
+    /// because an argument is evaluated at the call site, before the provider's
+    /// scope exists and before its context binding is installed. The emitted
+    /// shape is a Block taking a scope, and the only party that can hand it one
+    /// is `provide`.
     #[test]
     fn a_child_is_a_block_taking_a_scope_never_a_built_node() {
         let code = emit(
@@ -1167,7 +1168,7 @@ mod tests {
     /// memoised and not tracking — so the CONSUMER's effect subscribes, at the
     /// consumer's position. Where it used to be a getter it is now a plain
     /// property, which is what makes `{...props}` in user code correct (C3.4)
-    /// and what buys the 8.7x allocation measurement in `CODESIGN.md` §0.2.
+    /// and what buys the 8.7x allocation measurement.
     #[test]
     fn a_reactive_prop_crosses_the_boundary_as_a_cell() {
         let code = emit(
@@ -1199,7 +1200,7 @@ mod tests {
         assert!(!code.contains("get total()"), "{code}");
     }
 
-    /// The constant-thunk graft (`CODESIGN.md` §2, from Uniform Deferral): a
+    /// The constant-thunk graft, from Uniform Deferral: a
     /// proven constant crosses through a module-hoisted DEDUPED thunk, so a
     /// thousand rows spelling `tone="w"` allocate one closure between them.
     ///
@@ -1407,7 +1408,8 @@ mod tests {
         assert!(bare.contains("_$insert(_s$, _el$1, props.total)"), "{bare}");
     }
 
-    /// §3.0 rule 1 through a BINDING. A zero-arity function the author wrote is
+    /// The arity rule through a BINDING. A zero-arity function the author wrote
+    /// is
     /// a Cell whether it is written inline or given a name, so `each={rows}`
     /// forwards the accessor itself. Wrapping it was one Cell too many: `For`
     /// unwraps exactly one level, so `each()` handed back the FUNCTION and the
@@ -1425,7 +1427,7 @@ mod tests {
         assert!(!code.contains("() => rows"), "{code}");
 
         // A PARAMETERISED binding is not a Cell — it is a key FUNCTION, and the
-        // arity is what tells the two apart (§3.0 rule 1). `each` takes it as
+        // arity is what tells the two apart. `each` takes it as
         // `keyOf` directly, where the adapter had to re-derive that at run time
         // from `typeof carrier === "function" && carrier.length >= 1`.
         let keyed = emit(
@@ -1609,7 +1611,7 @@ mod tests {
         assert!(quiet.is_empty(), "{quiet:?}");
 
         // A key FUNCTION boxes the row in a signal, so its item is an accessor
-        // too and the note has nothing to warn about (ERGONOMICS §4.3).
+        // too and the note has nothing to warn about.
         for keyed in ["(r) => r.id", "keyOf"] {
             let quiet = dev(&format!(
                 "import {{ For }} from \"@barqjs/core\";\n\

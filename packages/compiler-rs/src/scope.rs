@@ -16,7 +16,7 @@ use rustc_hash::FxHashSet;
 
 use crate::ir::Module;
 
-/// P-new `scope`, the AST half — `CODESIGN.md` §3.2 C1 and §5.2.
+/// The `scope` pass, the AST half.
 ///
 /// A function that is CALLED with a scope gains the scope as its FIRST
 /// parameter. Mistiming is then a missing argument rather than a runtime

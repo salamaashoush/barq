@@ -50,7 +50,8 @@ mod tests {
     use super::*;
 
     /// The patch program is scanned linearly by every pass from P2 on, so its
-    /// record size is a throughput fact. DESIGN §1 claims 32 bytes; §2.2's field
+    /// record size is a throughput fact. The design budget is 32 bytes; the
+    /// field
     /// list costs 40, for two reasons that are pinned here rather than
     /// rediscovered: oxc 0.143's `Span` carries a `PointerAlign` ZST and is
     /// therefore 8-ALIGNED, and `Op`'s widest variants (`Insert`, `Delegate`,

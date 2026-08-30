@@ -1,4 +1,4 @@
-//! The reference backend — `CODESIGN.md` §6 L2.
+//! The reference backend.
 //!
 //! It serialises the analysed IR beside the module and lets a small JS
 //! interpreter (`@barqjs/core/interp`) walk it. The property the whole layer

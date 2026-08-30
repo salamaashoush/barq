@@ -13,12 +13,11 @@ use crate::ir::{
 /// be walked THROUGH — a step composes its descent with its sibling run, so one
 /// def is one binding.
 ///
-/// DESIGN §3 specifies a two-sweep distance transform, which minimises the route
-/// to each node SEPARATELY. That is the wrong objective: an existing ref costs
-/// nothing to walk from, so what the emitted code pays is the SUM of the steps.
-/// Minimising the sum is a spanning tree, and it is strictly cheaper — on §7's
-/// own example it finds three property reads where the hand-derived plan there
-/// spends four.
+/// A two-sweep distance transform minimises the route to each node SEPARATELY.
+/// That is the wrong objective: an existing ref costs nothing to walk from, so
+/// what the emitted code pays is the SUM of the steps. Minimising the sum is a
+/// spanning tree, and it is strictly cheaper — on the worked example it finds
+/// three property reads where the hand-derived plan spends four.
 ///
 /// `nearest` is the optimisation: the spanning tree, and with it `lastChild`,
 /// `previousSibling` and walking from a sibling that already has a binding. Off,
@@ -228,7 +227,7 @@ fn define<'a>(
 }
 
 // ============================================================================
-// P6, the other sense: compile-time addresses (CODESIGN.md §3.11, §5.2)
+// P6, the other sense: compile-time addresses
 // ============================================================================
 //
 // One file, two senses of "address", and the distinction is worth stating
@@ -238,12 +237,11 @@ fn define<'a>(
 // `(module, unit, position)` that both backends compute from the same analysed
 // IR and that neither can compute differently.
 //
-// §3.11 adopts Marko's discipline for the reason Marko has it: it is the only
-// thing that lets two emitters make checkable claims about each other. The claim
-// M6 lands is the one §5.2 asks for and calls unassertable today — compile the
-// corpus both ways and diff the address sets — and the consumers §5.2 lists
-// (hydration claiming, HMR granularity, branch instructions, async seeding keys,
-// error labels) are milestones that come after this one and read the table.
+// Marko's discipline, adopted for the reason Marko has it: it is the only thing
+// that lets two emitters make checkable claims about each other. The claim is
+// that compiling the corpus both ways and diffing the address sets agrees, and
+// the consumers (hydration claiming, HMR granularity, branch instructions,
+// async seeding keys, error labels) read the table.
 
 use crate::ir::{Address, Op, Position, PositionKind};
 
@@ -367,7 +365,7 @@ mod address_tests {
         )
     }
 
-    /// §5.2's acceptance test for P6, in miniature — the corpus-wide version is
+    /// The acceptance test for P6, in miniature — the corpus-wide version is
     /// `test/addresses.test.ts`. The two backends disagree about the SKELETON
     /// (the anchor pass inserts markers for one of them) and must not disagree
     /// about a single address.
@@ -405,7 +403,7 @@ mod address_tests {
         assert!(asked.addresses.is_some());
     }
 
-    /// `-O0` and `-Ox` are the same program at a different speed (§6 L3), so
+    /// `-O0` and `-Ox` are the same program at a different speed, so
     /// they name the same positions. Effect fusion is the case that could break
     /// it: `EffectGroup` is a prefix marker with no position of its own, and
     /// giving it one would shift every address behind it the moment fusion was

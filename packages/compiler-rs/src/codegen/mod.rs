@@ -28,7 +28,7 @@ pub enum Target {
     #[default]
     Dom,
     Ssr,
-    /// `CODESIGN.md` §6 L2. Serialises the analysed IR beside the module and
+    /// Serialises the analysed IR beside the module and
     /// lets `@barqjs/core/interp` walk it, instead of printing the walk and the
     /// patch program as JavaScript. It runs the DOM backend's passes and reads
     /// the DOM backend's artefacts — the anchors, the template bytes, the ref
@@ -46,11 +46,11 @@ impl Target {
         }
     }
 
-    /// Whether this target consumes the three passes DESIGN §5 calls DOM
-    /// concepts: a `<!---->` is an insert anchor, a `template()` is a parse, and
-    /// a REF PLAN is a sibling walk. §3.11's compile-time addresses are not on
-    /// that list and never were — they are computed for every target, out of the
-    /// patch program, which is the artefact the targets share.
+    /// Whether this target consumes the three passes that are DOM concepts: a
+    /// `<!---->` is an insert anchor, a `template()` is a parse, and a REF PLAN
+    /// is a sibling walk. The compile-time addresses are not on that list and
+    /// never were — they are computed for every target, out of the patch
+    /// program, which is the artefact the targets share.
     #[inline]
     pub fn walks_the_dom(self) -> bool {
         matches!(self, Self::Dom | Self::Interp)
@@ -69,10 +69,10 @@ pub const FIRST_SERVER_HELPER: usize = 37;
 /// reaches a production bundle through the other two.
 pub const FIRST_INTERP_HELPER: usize = 59;
 
-/// The names that exist in BOTH runtime halves: §3.0's three ABI constructors
-/// and `flow.ts`'s four primitives with `each`'s count symbol.
+/// The names that exist in BOTH runtime halves: the three ABI constructors and
+/// `flow.ts`'s four primitives with `each`'s count symbol.
 ///
-/// `CODESIGN.md` §3.11's "one ABI means no fallback cliff", applied to a runtime
+/// One ABI means no fallback cliff, applied to a runtime
 /// entry point rather than to a call: one name, one argument order, two
 /// implementations, and the SOURCE is what the target chooses. A module compiled
 /// for the DOM imports `branch` from `@barqjs/core`; the same module compiled
@@ -98,13 +98,13 @@ pub enum Helper {
     Insert = 1,
     SetProp = 2,
     /// `_$element($s, tag, props)` — one element by tag NAME, built rather than
-    /// cloned. The two shapes that need it are §3.13's: a tag chosen at run time
+    /// cloned. Two shapes need it: a tag chosen at run time
     /// (`dynamic`'s string arm), and an intrinsic the tree builder would not produce
     /// as written, which a template therefore cannot carry. Both go through
     /// `spread` and `insert` from there, so the props and children rules are the
     /// compiled ones.
     Element = 3,
-    /// `_$spread($s, el, sources)` — §3.13 item 1 on an element. The one
+    /// `_$spread($s, el, sources)` on an element. The one
     /// channel whose NAMES are not a compile-time fact, so the object travels
     /// whole and the runtime resolves each key through the same tables
     /// `build.rs` generates the compiler's from.
@@ -128,7 +128,7 @@ pub enum Helper {
     /// FUNCTION-valued prop takes, so `props.onClick()` returns the same object
     /// every time and C5's identity claim survives a handler.
     Cell = 8,
-    /// `_$b(fn)` — §3.0 rule 3's brand. Marks a Block that USES the scope it is
+    /// `_$b(fn)` — the scope brand. Marks a Block that USES the scope it is
     /// handed, once per definition site, so kind travels with the VALUE and a
     /// consumer never has to guess it from arity. It is what makes a Block
     /// landing in a Cell slot throw instead of being invoked with `undefined`
@@ -136,10 +136,9 @@ pub enum Helper {
     Block = 9,
     // ── `flow.ts`'s four primitives, plus `each`'s count-mode symbol ──────
     //
-    // `CODESIGN.md` §3.4. These are what the thirteen control-flow constructs
-    // lower ONTO: the compiler hands each one the `(parent, anchor)` pair its
-    // own template walk computed, and a flags integer carrying the properties it
-    // proved.
+    // These are what the thirteen control-flow constructs lower ONTO: the
+    // compiler hands each one the `(parent, anchor)` pair its own template walk
+    // computed, and a flags integer carrying the properties it proved.
     Branch = 10,
     Each = 11,
     Boundary = 12,
@@ -161,11 +160,11 @@ pub enum Helper {
     /// one of the four primitives and never was; what M9 removed is the
     /// component around it.
     Reveal = 16,
-    /// `_$dynamic($s, component, props)` — §3.13 item 4. The branch that swaps it is
+    /// `_$dynamic($s, component, props)`. The branch that swaps it is
     /// the compiler's; the one question left is whether the resolved value is a
     /// tag or a component, and only the value can answer that.
     Dynamic = 17,
-    /// `_$readSlot(v, "origin")` — §3.0 rule 2's Cell-slot read, at the one
+    /// `_$readSlot(v, "origin")` — the Cell-slot read, at the one
     /// place the compiler cannot perform it itself: a prop that arrived through
     /// a SPREAD, where the source object is the author's own and nothing wrapped
     /// its values into Cells. It is the call the fourteen adapters made under
@@ -175,14 +174,14 @@ pub enum Helper {
     /// It sits inside [`SHARED_ABI`] because the lowering that emits it runs
     /// before the backend is chosen, so both halves must answer to the name.
     ReadSlot = 18,
-    // ── §3.5's resolved channels ──────────────────────────────────────────
+    // ── the resolved channels ─────────────────────────────────────────────
     //
     // One entry point per channel, chosen at compile time. There is no
     // `setProp` on the compiled path: the name never reaches the runtime as a
     // question, only as the argument the channel already knows what to do with.
     SetAttr = 19,
     SetDomProp = 20,
-    /// §3.10.1 — the user-mutable channel. Compares against the ELEMENT rather
+    /// The user-mutable channel. Compares against the ELEMENT rather
     /// than against what the framework last applied, and preserves the caret of
     /// whatever the user is inside. Emitted only for the names that need it.
     SetLive = 21,
@@ -192,7 +191,7 @@ pub enum Helper {
     SetStyleProp = 25,
     SetClassList = 26,
     SetHtml = 27,
-    /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question §3.13 keeps
+    /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question kept
     /// at run time: whether the value that arrived is a live Cell. The channel
     /// is the compiler's and is passed in.
     BindProp = 28,
@@ -200,10 +199,11 @@ pub enum Helper {
     BindValue = 29,
     /// A scope-owned `ref` registration (B3, E2 #7).
     Ref = 30,
-    /// `_$formAction($s, el, value)` — §3.8's compiler surface. `action` on a
+    /// `_$formAction($s, el, value)`. `action` on a
     /// `<form>` is a URL or a SUBMIT HANDLER, and nothing about the expression
     /// tells them apart: an `action()` is `(...args) => Promise<R>`, so its
-    /// arity is 0 and §3.0 rule 1 reads it as a Cell. The SLOT decides, exactly
+    /// arity is 0 and the arity rule reads it as a Cell. The SLOT decides,
+    /// exactly
     /// as it does for `on*`. It takes a scope because the listener it installs
     /// is owned by the position (B4).
     FormAction = 31,
@@ -212,9 +212,9 @@ pub enum Helper {
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
     BindEvent = 33,
-    // ── the hydration-only walk (`SEMANTICS.md` H3) ───────────────────────
+    // ── the hydration-only walk ───────────────────────────────────────────
     //
-    // `child(n, 3)` is H3's own spelling. Under `hydratable` the template walk
+    // Under `hydratable` the template walk
     // goes through these two instead of `.firstChild`/`.nextSibling`, because
     // the server's children are the template's skeleton PLUS a `<!--[-->` …
     // `<!--]-->` range at every hole, and a native sibling step counts those.
@@ -419,11 +419,11 @@ pub struct Emit<'a, 'm> {
     /// The three optimisations codegen owns: η-reduction, module-scope hoisting
     /// of a capture-free handler, and statement splicing.
     pub opt: Opt,
-    /// `CODESIGN.md` §3.11. Both backends read it, and it is the only option
+    /// Both backends read it, and it is the only option
     /// outside `Opt` that changes the bytes: the string backend writes range
     /// boundaries and the DOM backend walks logically.
     pub hydratable: bool,
-    /// `CODESIGN.md` §12's Q4 reversal — RECOVERY is on the wire, DETECTION is
+    /// RECOVERY is on the wire and DETECTION is
     /// an emission axis, and this is the axis. `dev && hydratable`: the string
     /// backend spells a branch's chosen key into its open comment and the DOM
     /// backend asks `template()` to verify the subtree it claimed against the
@@ -470,7 +470,7 @@ impl<'a, 'm> Emit<'a, 'm> {
     /// Two conditions, and both are about what the CLIENT can re-derive. The
     /// slot must own its parent's child list, so its extent is readable off the
     /// document ([`crate::ir::Skeleton::slot_owns_child_list`]). And the parent
-    /// must not be one of the three tags §3.13 item 8 keeps at run time: inside
+    /// must not be one of the three tags kept at run time: inside
     /// `<pre>`, `<textarea>`, `<listing>` and the rawtext family the tokenizer
     /// eats a leading newline that the OPEN comment is currently what protects,
     /// so removing the comment there would change the text the server sent.
@@ -503,9 +503,9 @@ impl<'a, 'm> Emit<'a, 'm> {
     /// `detect`.
     ///
     /// A region's open comment is where the key goes, and the key is the whole
-    /// of what §12 left on the detection axis — H2's "the client cannot
-    /// re-evaluate the condition, so the server's choice has to be on the wire
-    /// or it is lost". A dev build therefore keeps the comments at every range,
+    /// of what is left on the detection axis: the client cannot re-evaluate the
+    /// condition, so the server's choice has to be on the wire or it is lost. A
+    /// dev build therefore keeps the comments at every range,
     /// sole-occupant or not, and pays for them; a production build drops them
     /// wherever the client can read the extent off the parent, exactly as it
     /// does at a hole.
@@ -550,7 +550,7 @@ impl<'a, 'm> Emit<'a, 'm> {
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
     }
 
-    /// `_s$` — the scope the enclosing Block was given. CODESIGN §3.3 C6 puts
+    /// `_s$` — the scope the enclosing Block was given. The convention puts
     /// it FIRST on every ABI primitive that constructs, so a Block reached with
     /// no scope throws at the primitive rather than building under whatever was
     /// ambient. One identifier at every position, so lexical shadowing does the
@@ -669,7 +669,7 @@ impl<'a, 'm> Emit<'a, 'm> {
 /// refused through `createElement`. Walking the replacement is what reaches the
 /// units nested inside a hole expression.
 ///
-/// Statement splicing (DESIGN §4): a unit whose root sits in a return, a
+/// Statement splicing: a unit whose root sits in a return, a
 /// declarator initialiser or an arrow's expression body emits its walk and its
 /// patch program as FLAT statements of the enclosing body — one fewer closure
 /// allocation and one fewer stack frame per component instance, and far more

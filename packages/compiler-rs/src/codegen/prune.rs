@@ -11,8 +11,8 @@ use super::Emit;
 
 /// The other half of P3 Fold. `const SIZE = "lg"` whose only reader was baked
 /// into a `_tmpl$` string is a binding nothing evaluates any more, and leaving
-/// it behind is what made DESIGN §7's "`SIZE` and `theme` never appear at
-/// runtime" untrue of the emitted module.
+/// it behind is what makes "`SIZE` and `theme` never appear at runtime" untrue
+/// of the emitted module.
 ///
 /// Deliberately narrow, because this is the only pass that deletes user code:
 ///

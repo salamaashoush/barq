@@ -45,8 +45,7 @@ flag_set!(TagFlags: u16 {
     ESCAPABLE_RAW_TEXT = 2;
     /// the parser ignores one U+000A character token directly after the open
     /// tag, so a leading newline has to be DOUBLED or the DOM diverges from
-    /// `createTextNode`. A character reference does not escape the rule
-    /// (DESIGN §12 O9)
+    /// `createTextNode`. A character reference does not escape the rule.
     PRESERVE_WS = 3;
     /// member of the generated `SVG_TAGS`
     SVG = 4;
@@ -81,7 +80,7 @@ pub struct NameRow<'a> {
 /// Every bit that mirrors the runtime — `SVG_TAGS`, `DELEGATED_EVENTS`,
 /// `DOM_PROPS`, the names `applyProp` intercepts, the two SVG attributes that
 /// escape kebab-casing — comes off [`crate::tables`], which `build.rs` derives
-/// from `packages/core/src/dom.ts` (§9). The tables declared below are the
+/// from `packages/core/src/dom.ts`. The tables declared below are the
 /// remainder: HTML tree-construction facts, which no runtime edit can move.
 pub struct Interner<'a> {
     allocator: &'a Allocator,
@@ -319,7 +318,7 @@ mod tests {
         assert_eq!(interner.name(title).flags, NameFlags::EMPTY);
     }
 
-    /// The bits DESIGN §9 says must be generated rather than transcribed. A
+    /// The bits that must be generated rather than transcribed. A
     /// hand table gets `onChange` wrong — it is NOT in this runtime's delegated
     /// set, and delegating it would emit a silently dead handler.
     #[test]

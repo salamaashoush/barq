@@ -1,6 +1,6 @@
 //! The lowering surface every backend implements, over the same analysed IR.
 //!
-//! `CODESIGN.md` §5.1 and §6 L2: one lowering `JSX → IR`, one `Backend` trait,
+//! One lowering `JSX → IR`, one `Backend` trait,
 //! N implementations, and **a new `Op` variant is a Rust compile error in every
 //! one of them**. That guarantee is what lets a reference backend exist at all —
 //! a reference that reads the same analysed IR cannot know less than codegen, so
@@ -113,12 +113,12 @@ backend! {
     Delegate { event: NameId, handler: HandlerRef, data: Option<ExprId> } => delegate;
     /// `addEventListener`, for everything outside the delegated set.
     Listen { event: NameId, handler: HandlerRef } => listen;
-    /// §3.5: not a prop. `write` lowers to `binding = _n1`.
+    /// Not a prop. `write` lowers to `binding = _n1`.
     Ref { value: ExprId, write: bool } => set_ref;
-    /// §3.8's compiler surface: `<form action={…}>` is a URL or a submit
-    /// handler, and only the value can say which.
+    /// `<form action={…}>` is a URL or a submit handler, and only the value can
+    /// say which.
     FormAction { value: ExprId } => form_action;
-    /// §3.10's channel half, with the property and the reporting event already
+    /// The `bind:` channel, with the property and the reporting event already
     /// resolved from the tag and the `type` attribute.
     Bind { prop: NameId, event: NameId, value: ExprId } => bind;
     Spread { value: ExprId, live: bool } => spread;
@@ -142,7 +142,7 @@ mod tests {
     ///
     /// It shows the trait is the WHOLE lowering surface and that nothing about
     /// it is DOM-shaped or string-shaped, which is the precondition for the
-    /// reference backend `CODESIGN.md` §6 L2 asks for. And it is where the
+    /// reference backend to exist. And it is where the
     /// no-drift guarantee is demonstrated rather than described: adding an `Op`
     /// variant stops this crate compiling three times over — at `lower`'s match,
     /// at `impl Backend for Dom`, at `impl Backend for Ssr` — and a fourth time

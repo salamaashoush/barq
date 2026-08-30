@@ -70,15 +70,15 @@ pub struct TransformResult {
     /// Populated under `dev` only.
     pub labels: Vec<JsTemplateLabel>,
     /// The static ownership tree as JSON, under `ownership: true` only.
-    /// `CODESIGN.md` §6 L2b — the oracle's expected value, derived from the
-    /// source rather than from a second execution.
+    /// The oracle's expected value, derived from the source rather than from a
+    /// second execution.
     pub ownership: Option<String>,
     /// This module's export surface and which exports are server functions, as
     /// JSON, under `serverFns: true` only. The build reads it to know what to
     /// mount, and a reviewer reads it to see what is public.
     pub server_fns: Option<String>,
     /// The compile-time address table as JSON, under `addresses: true` only.
-    /// `CODESIGN.md` §3.11 and §5.2 P6 — `(module, unit, position)` for every
+    /// `(module, unit, position)` for every
     /// position in the module, computed identically by every backend.
     pub addresses: Option<String>,
 }
@@ -187,7 +187,7 @@ pub struct JsCode {
 /// against it in BOTH directions. Rust exhaustiveness makes a new `Op` a compile
 /// error in every `impl Backend`; nothing in the language can make it a compile
 /// error in `interp.ts`, so the name sets are asserted equal instead — the same
-/// bidirectional pinning discipline `SEMANTICS.md` §0.3 uses for rule IDs.
+/// bidirectional pinning discipline the rule IDs use.
 #[napi]
 pub fn opcodes() -> Vec<String> {
     codegen::backend::OPS.iter().map(|name| (*name).to_string()).collect()
@@ -226,9 +226,8 @@ pub struct RouteTreeResult {
     /// The contents of `routeTree.gen.ts` — the table AND its types.
     ///
     /// One file rather than a virtual module plus a `.d.ts`, which is
-    /// TanStack's arrangement (`generatedRouteTree` defaults to
-    /// `./src/routeTree.gen.ts`, `router-generator/src/config.ts:50`). The
-    /// caller writes it where `out_file` said.
+    /// TanStack's arrangement, whose generated tree defaults to
+    /// `./src/routeTree.gen.ts`. The caller writes it where `out_file` said.
     pub source: String,
     /// Every route file found, project-relative. The caller registers these
     /// with its watcher — file EVENTS are the one part of this that cannot move
@@ -291,8 +290,7 @@ pub struct RouteSplitResult {
 ///
 /// `for_client` also DELETES the `server` option, which holds a route's HTTP
 /// handlers. Without it a handler's body — and whatever it imports to reach a
-/// database — sits in the browser bundle. Theirs deletes the same node
-/// (`start-plugin-core/src/vite/start-router-plugin/plugin.ts:166`).
+/// database — sits in the browser bundle. Theirs deletes the same node.
 #[napi]
 pub fn route_split(
     source: String,

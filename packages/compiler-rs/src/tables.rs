@@ -56,7 +56,7 @@ pub fn is_dom_prop(name: &str) -> bool {
     DOM_PROPS.binary_search(&name).is_ok()
 }
 
-/// §3.10.1. A property the USER also writes, so the write must compare against
+/// A property the USER also writes, so the write must compare against
 /// the ELEMENT rather than against what the framework last applied. The compiler
 /// resolves the channel here and emits the DOM-compare form only for these
 /// names — every other prop keeps the cheap cached compare.

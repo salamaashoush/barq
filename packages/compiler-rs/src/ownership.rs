@@ -1,10 +1,10 @@
 //! L2b's expected value: the static ownership tree.
 //!
-//! `CODESIGN.md` §5.2 (P-new `scope`) and §6 L2b. The tree is derived from the
-//! source, never from a second execution, so it is the one oracle channel that
-//! needs no reference implementation. `SEMANTICS.md` O1 fixes which constructs
-//! own — `render`, a `branch` instance, an `each` row, `provide`, `boundary`,
-//! `portal`, and a component call owns NOTHING — and O2 fixes what a Block runs
+//! The tree is derived from the source, never from a second execution, so it is
+//! the one oracle channel that needs no reference implementation. Which
+//! constructs own is fixed — `render`, a `branch` instance, an `each` row,
+//! `provide`, `boundary`, `portal`, and a component call owns NOTHING — as is
+//! what a Block runs
 //! under. This module answers, per compiled position, which of those constructs
 //! must be its ancestors.
 //!
@@ -599,7 +599,7 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
         let inner = match self.classify(name) {
             Tag::Intrinsic => owner,
             // C8-adjacent: `Match` builds nothing and owns nothing. It carries a
-            // `when` and a body for the `Switch` above it to read, and §3.4
+            // `when` and a body for the `Switch` above it to read, and the pass
             // collapses the pair into ONE `branch` with one instance scope per
             // activation. A node here made the static tree claim a scope the
             // runtime has never had and never will.

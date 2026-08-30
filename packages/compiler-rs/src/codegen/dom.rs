@@ -100,9 +100,9 @@ pub struct Dom<'a, 'e, 'm, 'u> {
     pub owned: &'u mut FxHashSet<NodeId>,
 }
 
-/// §3.5: the channel is a compile-time fact, so it is a different runtime entry
-/// point rather than a string the runtime classifies. Justified on capability —
-/// §0.4 measured the dispatch removal at 0-8%, and this is not claimed on speed.
+/// The channel is a compile-time fact, so it is a different runtime entry
+/// point rather than a string the runtime classifies. Justified on capability:
+/// the dispatch removal measured at 0-8%, so this is not claimed on speed.
 pub(super) fn channel_helper(chan: Chan) -> Helper {
     match chan {
         Chan::Attr => Helper::SetAttr,
@@ -150,8 +150,8 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(self.write(at, name, chan, value))
     }
 
-    /// The channel is resolved; the LIVENESS is not, and §3.13 says it cannot
-    /// be. `bindProp` is handed the channel and asks the one remaining question.
+    /// The channel is resolved; the LIVENESS cannot be. `bindProp` is handed
+    /// the channel and asks the one remaining question.
     fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
         let span = at.span();
         let value = take(self.ctx, self.unit, value, span);
@@ -362,8 +362,9 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
-    /// §3.10's channel: the property a user edit lands on and the event that
-    /// reports it, both decided at compile time from the tag and the `type`.
+    /// The `bind:` channel: the property a user edit lands on and the event
+    /// that reports it, both decided at compile time from the tag and the
+    /// `type`.
     fn bind(&mut self, at: At<'_>, prop: NameId, event: NameId, value: ExprId) -> Self::Out {
         let span = at.span();
         let scope = self.ctx.scope(span);
@@ -439,10 +440,10 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(fused_effect(self.ctx, self.unit, at.members, at.patch))
     }
 
-    /// §3.13 item 1's one concession on an ELEMENT. Every other channel is
-    /// resolved at compile time because the compiler knows the name; here it
-    /// does not, so the object is handed to the runtime whole and the same
-    /// tables `build.rs` reads to build the compiler's decide each key.
+    /// The one concession on an ELEMENT. Every other channel is resolved at
+    /// compile time because the compiler knows the name; here it does not, so
+    /// the object is handed to the runtime whole and the same tables `build.rs`
+    /// reads to build the compiler's decide each key.
     ///
     /// A live spread arrives as a THUNK, which is what makes `spread` open its
     /// own effect and diff against what it last applied — the keys that vanish
@@ -515,7 +516,7 @@ pub fn region_call<'a>(
     // not, and finding no key has always meant "claim positionally". The DOM
     // half's detection is threaded through `template()` instead, at the one call
     // that holds both trees. Sending the bit to a runtime with no reader for it
-    // would be a flag with no row, which §8 deletes.
+    // would be a flag with no row.
     let flags = flags
         | if ctx.hydratable { crate::ir::HYDRATE } else { 0 }
         | if ctx.detect && ctx.target == crate::codegen::Target::Ssr {
@@ -727,7 +728,7 @@ fn writable_target(value: Expression<'_>) -> AssignmentTarget<'_> {
     }
 }
 
-/// B2 — the fused compute/apply record (`CODESIGN.md` §3.5).
+/// The fused compute/apply record.
 ///
 /// ```js
 /// _$bindEffect(_s$, () => ({ a: cls(), b: id() }), (_v$, _p$ = {}) => {

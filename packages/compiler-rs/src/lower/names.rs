@@ -5,7 +5,7 @@ use crate::ir::Chan;
 pub use crate::tables::{is_dom_prop, is_math_tag, is_svg_tag};
 
 /// What a `namespace:name` attribute means. The prefix is the author overriding
-/// a decision the compiler would otherwise take from the name (§3.12), and it is
+/// a decision the compiler would otherwise take from the name, and it is
 /// the whole custom-element story: a name the compiler cannot classify has no
 /// correct default, so the author gets to say.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -55,9 +55,9 @@ pub fn channel_of(name: &str, is_svg: bool, tag: &str) -> Chan {
         "style" => Chan::Style,
         "classList" => Chan::ClassList,
         "dangerouslySetInnerHTML" => Chan::Html,
-        // §3.13 item 8's third parser fact — see `state_attribute`.
+        // The third parser fact — see `state_attribute`.
         _ if state_attribute(name, tag) => Chan::Attr,
-        // §3.10.1 before the plain property channel: these are properties too,
+        // The user-mutable channel comes first: these are properties too,
         // and what separates them is who else writes them.
         _ if !is_svg && crate::tables::is_user_mutable(tag, name) => Chan::Live,
         _ if !is_svg && is_dom_prop(name) => Chan::Prop,
@@ -166,7 +166,7 @@ pub fn attribute_channel(name: &str, is_svg: bool, tag: &str) -> bool {
 /// The DOM_PROPS whose ATTRIBUTE carries the state rather than a default, so
 /// baking one into the template is not the `value="x"` divergence above.
 ///
-/// `multiple` is the whole list, and it is here because of §3.13 item 8: a
+/// `multiple` is the whole list, and it is here because of a parser fact: a
 /// `<select>` runs "ask for a reset" as each `<option>` arrives, and the answer
 /// depends on `multiple` being in place BEFORE they are. In the template it is;
 /// as a property written after the clone it is not, and the first option comes
@@ -208,7 +208,7 @@ mod tests {
         assert!(!is_dom_prop("class") && !is_dom_prop("href"));
     }
 
-    /// §3.10's channel table, which exists TWICE — here and in
+    /// The `bind:` channel table, which exists TWICE — here and in
     /// `dom.ts::bindChannelOf` — because the compiled path resolves it at
     /// compile time and the un-compiled one at run time. The oracle differential
     /// compares the two on every element of `bind-family.tsx`; this pins the
@@ -250,7 +250,8 @@ mod tests {
         );
     }
 
-    /// §3.10.1's set is keyed by the PAIR. `<option value>` is the negative the
+    /// The user-mutable set is keyed by the PAIR. `<option value>` is the
+    /// negative the
     /// key was widened for: an option's `value` falls back to its TEXT, so a
     /// compare against the element skips the write and the reflected attribute
     /// never appears.
@@ -325,7 +326,7 @@ mod tests {
         assert!(bakeable("data-kind", false, "div"));
     }
 
-    /// §3.13 item 8: the attribute is the state, and it has to be in the
+    /// The attribute is the state, and it has to be in the
     /// template because the children's default selectedness depends on it.
     #[test]
     fn multiple_is_an_attribute_on_a_select_and_a_property_everywhere_else() {

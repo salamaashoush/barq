@@ -68,8 +68,7 @@ pub const SPLIT_QUERY: &str = "barq-split";
 /// `server` holds a route's HTTP handlers — its database queries, its secrets,
 /// its `node:` imports. It is reachable from the browser only in the sense that
 /// its BODY would sit in the bundle, which is exactly the leak. Theirs deletes
-/// the same node and two more (`start-plugin-core/src/vite/start-router-plugin/
-/// plugin.ts:166`, `deleteNodes: ['ssr', 'server', 'headers']`); barq's `ssr` is
+/// the same node and two more, `ssr` and `headers`, with it. barq's `ssr` is
 /// already LIFTED into the generated table as a literal rather than read off the
 /// module, so deleting it here would take away a value the table has and the
 /// module no longer needs to carry — which it already does not.
@@ -914,8 +913,7 @@ export const Route = createFileRoute("/admin")({
 
     /// The CLIENT build deletes `server`, so a route's HTTP handlers — and
     /// whatever they import to reach a database — never sit in the browser
-    /// bundle. Theirs deletes the same node
-    /// (`start-plugin-core/src/vite/start-router-plugin/plugin.ts:166`).
+    /// bundle. Theirs deletes the same node.
     #[test]
     fn the_client_build_deletes_the_server_handlers() {
         let source = r#"import { createFileRoute } from "@barqjs/router";

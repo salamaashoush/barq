@@ -30,7 +30,8 @@ pub enum Op {
         diff: Diff,
     },
     /// `React::Opaque`. The CHANNEL is resolved, but the value's LIVENESS is not
-    /// — §3.13 keeps that at run time — so the value goes to `bindProp` beside
+    /// — that stays a run-time question — so the value goes to `bindProp`
+    /// beside
     /// the channel the compiler picked.
     SetOpaque {
         name: NameId,
@@ -40,7 +41,7 @@ pub enum Op {
 
     // ── events ────────────────────────────────────────────────────────────
     /// An event whose TYPE the compiler resolved — `onClick` → `click`,
-    /// `on:my-event` → `my-event`, verbatim and with no lowercasing (§3.6) —
+    /// `on:my-event` → `my-event`, verbatim and with no lowercasing —
     /// but whose value it could not prove is a handler. `bindEvent` makes the
     /// delegated/direct choice the compiler already made and applies the
     /// runtime's own `isEventHandlerValue` test to the value.
@@ -62,19 +63,19 @@ pub enum Op {
     },
 
     // ── misc element ──────────────────────────────────────────────────────
-    /// §3.5: `ref` is not a prop. `write` is true when the value is a WRITABLE
+    /// `ref` is not a prop. `write` is true when the value is a WRITABLE
     /// binding, which lowers to `binding = _n1` — today's `setProp(el, "ref", el)`
     /// reads the variable and never writes it.
     Ref {
         value: ExprId,
         write: bool,
     },
-    /// `<form action={…}>`. §3.8's compiler surface, and the one attribute whose
-    /// value decides whether it is an attribute at all: a string is the form's
-    /// URL and a function is its SUBMIT HANDLER. Nothing about the expression
-    /// separates them — an `action()` is `(...args) => Promise<R>`, whose arity
-    /// is 0, so §3.0 rule 1 reads it as a Cell — which is why the SLOT decides,
-    /// exactly as it does for `on*` (§3.5's `is_cell` exception).
+    /// `<form action={…}>`: the one attribute whose value decides whether it is
+    /// an attribute at all. A string is the form's URL and a function is its
+    /// SUBMIT HANDLER, and nothing about the expression separates them — an
+    /// `action()` is `(...args) => Promise<R>`, whose arity is 0, so the arity
+    /// rule reads it as a Cell. That is why the SLOT decides, exactly as it
+    /// does for `on*`.
     ///
     /// It is its own op rather than a `Chan` because the handler it may install
     /// is a listener the POSITION owns (B4), so the emission needs the scope and
@@ -82,9 +83,9 @@ pub enum Op {
     FormAction {
         value: ExprId,
     },
-    /// §3.10's channel half. `prop` is the property a user edit lands on and
-    /// `event` the one that reports it, both resolved from the tag and the
-    /// `type` attribute at compile time. Selection and focus preservation are M7.
+    /// The `bind:` channel half. `prop` is the property a user edit lands on
+    /// and `event` the one that reports it, both resolved from the tag and the
+    /// `type` attribute at compile time.
     Bind {
         prop: NameId,
         event: NameId,
@@ -123,10 +124,10 @@ pub enum Op {
 /// The channel an attribute resolves to, decided ONCE at P1 from `NameFlags`
 /// plus the element's namespace plus the `prop:` / `attr:` / `bool:` overrides.
 ///
-/// `CODESIGN.md` §3.5: there is no `setProp` dispatcher on the compiled path.
-/// Justified on CAPABILITY — custom elements, the `bind:` family, class and
-/// style joining the fused record at all — and never on speed: §0.4 measured the
-/// dispatch removal at 0-8% against the 10-25% three designs claimed.
+/// There is no `setProp` dispatcher on the compiled path. Justified on
+/// CAPABILITY — custom elements, the `bind:` family, class and style joining
+/// the fused record at all — and never on speed: the dispatch removal measured
+/// at 0-8% against the 10-25% three designs claimed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Chan {
     /// setAttribute / removeAttribute
@@ -136,7 +137,7 @@ pub enum Chan {
     /// HTML would only set the default attribute, which diverges on a dirty form
     /// field.
     Prop,
-    /// §3.10.1 — a property the USER also writes. The write compares against the
+    /// A property the USER also writes. The write compares against the
     /// ELEMENT, never against what the framework last applied, and it preserves
     /// the caret of whatever the user is inside. Always paired with
     /// [`Diff::Always`]: the record's cached guard is exactly the compare this

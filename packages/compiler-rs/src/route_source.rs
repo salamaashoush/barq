@@ -19,11 +19,9 @@
 //! THE LIFT HAS NO TANSTACK COUNTERPART. Their `routeTree.gen.ts` imports every
 //! route module statically, so `ssr` is an ordinary runtime option they read off
 //! the loaded module; their build-time pass over it goes the other way, deleting
-//! it from the client bundle (`start-plugin-core/src/vite/start-router-plugin/
-//! plugin.ts:166`, `deleteNodes: ['ssr', 'server', 'headers']`). barq's routes
-//! are lazy, so barq has to lift the value instead. What IS theirs is the shape
-//! of the read — `getCreateFileRouteProps` walks the options `ObjectExpression`
-//! and skips computed keys (`router-generator/src/transform/transform.ts:324`).
+//! it from the client bundle instead. barq's routes are lazy, so barq has to
+//! lift the value. What IS theirs is the shape of the read: their generator
+//! walks the options `ObjectExpression` and skips computed keys.
 
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
@@ -88,8 +86,7 @@ pub struct RouteModule {
     /// component is a different answer: a cold `lazy()` throws `NotReadyError`,
     /// which PARKS the loading boundary and renders exactly that fallback. The
     /// whole page came back empty. So the emit asks what was declared, which is
-    /// what `getCreateFileRouteProps` collects in theirs
-    /// (`router-generator/src/transform/transform.ts:324`).
+    /// what their own generator collects.
     pub props: Vec<String>,
 }
 

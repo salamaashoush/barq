@@ -12,8 +12,8 @@ use rustc_hash::FxHashSet;
 
 use super::{Emit, Helper};
 
-/// §3.0 rule 3 at the DEFINITION site of every emitted component, not only of
-/// the arrows the compiler synthesises itself.
+/// The scope brand at the DEFINITION site of every emitted component, not only
+/// of the arrows the compiler synthesises itself.
 ///
 /// `shape::block` brands what P4 builds — a JSX child, a row callback, a slot
 /// literal — and nothing branded a component DECLARATION, so `isBlock(Wrap)`
@@ -33,10 +33,10 @@ use super::{Emit, Helper};
 /// every emitted Block at its definition site buys C7 full coverage, for one
 /// wrapper per definition site and none per activation.
 ///
-/// The set it applies to is the one §3.0 rule 3 names, and no wider: "the
-/// compiler brands the Blocks that USE their scope … a Block that ignores its
-/// scope — an arity-0 `template()`, C6 — is simultaneously a legal Cell and
-/// needs no brand". `block`'s entry guard throws on `scope === undefined`, so
+/// The set it applies to is the one the rule names, and no wider: the compiler
+/// brands the Blocks that USE their scope, and a Block that ignores its scope —
+/// an arity-0 `template()` — is simultaneously a legal Cell and needs no brand.
+/// `block`'s entry guard throws on `scope === undefined`, so
 /// branding a component whose emitted body never reads `_s$` would retire
 /// exactly the dual Block/Cell use rule 3 grants it, and neither motivation
 /// above can bite in a body that never touches the scope. The test is the
@@ -51,7 +51,7 @@ use super::{Emit, Helper};
 /// corpus's component declarations went unbranded while every one of them
 /// carried a live binding — closed at the source, by giving `bindEffect` the
 /// scope. `createElement` is the other and cannot be closed that way: it is the
-/// un-compiled walk §4.1 retires at M9, it opens its own bindings, and it takes
+/// un-compiled walk, it opens its own bindings, and it takes
 /// no scope at all. A body that reaches it is therefore treated as using its
 /// scope, so `block` establishes `CURRENT` for it and its bindings are owned by
 /// the argument rather than by the call site.
@@ -257,10 +257,11 @@ mod tests {
         }
     }
 
-    /// §3.0 rule 3's other half, and the one M5 lost: a Block that IGNORES its
-    /// scope is simultaneously a legal Cell, so branding it — `block` installs
-    /// an entry guard that throws on `scope === undefined` — would retire the
-    /// dual use the rule grants. `Leaf` here is one clone and nothing else.
+    /// The other half of the rule, and the one that is easy to lose: a Block
+    /// that IGNORES its scope is simultaneously a legal Cell, so branding it —
+    /// `block` installs an entry guard that throws on `scope === undefined` —
+    /// would retire the dual use the rule grants. `Leaf` here is one clone and
+    /// nothing else.
     #[test]
     fn a_component_that_never_reads_its_scope_is_not_branded() {
         let code = emit(

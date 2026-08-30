@@ -1,7 +1,7 @@
 //! P4b Flow — the thirteen control-flow constructs, lowered onto `flow.ts`'s
 //! four primitives.
 //!
-//! `CODESIGN.md` §3.4 and `SEMANTICS.md` K5. A construct that reaches here stops
+//! A construct that reaches here stops
 //! being a component: it becomes a [`Region`] row carrying the arguments its
 //! primitive takes, and the patch program hands that primitive the
 //! `(parent, anchor)` pair the template walk already computed. What that removes
@@ -49,9 +49,9 @@
 //! **The adapters are not a migration artefact and do not get deleted.**
 //! `Opt::flow` is a flippable knob and `-O0` turns this pass off, so at `-O0`
 //! every construct is a component call — 37 of 131 fixtures keep a flow import
-//! there, against 0 at `-Ox`. §6 L3 grades this pass by comparing the two, so
+//! there, against 0 at `-Ox`. The pass is graded by comparing the two, so
 //! `components.ts` and `ssr.ts`'s string half are the reference it is graded
-//! against. `CODESIGN.md` §4.1's row is struck on that ground.
+//! against, and neither can be deleted.
 
 use oxc::allocator::{Box as ArenaBox, CloneIn, Vec as ArenaVec};
 use oxc::ast::ast::{
@@ -250,7 +250,7 @@ fn admits_value<'a>(
         // assumed — the two answers are different programs.
         Flow::Show | Flow::Match => boolean_of(value).is_some(),
         // `For` accepts a third answer: a key FUNCTION, told from a Cell by the
-        // parameter it declares (§3.0 rule 1) — the discriminator
+        // parameter it declares — the discriminator
         // `components.ts` applies at runtime, asked at compile time.
         Flow::For => boolean_of(value).is_some() || key_function(shaper, value).is_some(),
         _ => false,
@@ -272,7 +272,7 @@ fn boolean_of(value: Option<&JSXAttributeValue<'_>>) -> Option<bool> {
 }
 
 /// A key function: written inline, or a binding the analysis resolved to a
-/// function that declares a parameter. A NULLARY binding is a Cell (§3.0 rule 1)
+/// function that declares a parameter. A NULLARY binding is a Cell
 /// and is therefore not one.
 fn key_function<'a>(shaper: &Shaper<'a, '_>, value: Option<&JSXAttributeValue<'a>>) -> Option<()> {
     let Some(JSXAttributeValue::ExpressionContainer(container)) = value else { return None };
@@ -442,7 +442,7 @@ fn value_cell<'a>(
     arrow(shaper, read, span)
 }
 
-/// `_$readSlot(v, "origin")` — §3.0 rule 2, emitted rather than assumed.
+/// `_$readSlot(v, "origin")` — the Cell-slot read, emitted rather than assumed.
 fn read_slot<'a>(
     shaper: &mut Shaper<'a, '_>,
     value: Expression<'a>,
@@ -773,7 +773,8 @@ fn list<'a>(
     let keyed = match bag.take(shaper, "keyed") {
         // Off a spread the three modes are not a compile-time choice, and they
         // do not have to be: `keyOf` is already a RUNTIME argument that `each`
-        // dispatches on, and §3.0 rule 1 — a Cell declares no parameter, a key
+        // dispatches on, and the arity rule — a Cell declares no parameter, a
+        // key
         // function declares one — is the same discriminator the compiler
         // applies here statically. So the carrier goes through unresolved and
         // `each` reads it. The body is untouched either way: `mapArray` decides
@@ -1174,7 +1175,7 @@ fn wants_value(body: &Expression<'_>) -> bool {
         Expression::ArrowFunctionExpression(arrow) => arrow.params.items.len() > 1,
         Expression::FunctionExpression(function) => function.params.items.len() > 1,
         // A forwarded name, whose arity is not visible here. Offering the value
-        // is free: a Cell ignores every argument (§3.0 rule 1).
+        // is free: a Cell ignores every argument.
         _ => true,
     }
 }

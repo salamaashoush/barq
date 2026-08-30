@@ -127,7 +127,7 @@ fn markable<'a>(interner: &Interner<'a>, unit: &Unit<'a>, node: NodeId) -> bool 
     })
 }
 
-/// DESIGN §3/P5, in order. Every skeleton node but a `Slot` materialises, so the
+/// In order. Every skeleton node but a `Slot` materialises, so the
 /// immediate next sibling is always the one that decides. Rule 3 is a theorem
 /// about the parse, not a wish: two literal text runs either side of an elided
 /// hole become ONE text node, and then nothing addresses the second run.
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn a_hole_followed_by_one_text_run_anchors_against_it() {
-        // DESIGN §7: `<p>{hole} clicks</p>` has exactly one materialised child.
+        // `<p>{hole} clicks</p>` has exactly one materialised child.
         let (html, anchors) = anchors("const V = () => <p>{x} clicks</p>;\n");
         assert_eq!(html, "<p> clicks</p>");
         assert!(!anchors[0].costs_a_comment_node());

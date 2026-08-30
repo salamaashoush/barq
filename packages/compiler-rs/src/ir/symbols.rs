@@ -82,7 +82,7 @@ pub enum SourceKind {
     /// take the `$$click` expando instead of going through `setProp`. Inert in
     /// every other respect — creating a reference to it reads nothing.
     ///
-    /// `nullary` is §3.0 rule 1's discriminator, and it is the ONLY thing that
+    /// `nullary` is the arity discriminator, and it is the ONLY thing that
     /// separates a Cell from a key function once both are values in the same
     /// slot: `Cell<T> = (...ignored: never[]) => T` declares no parameter, so a
     /// zero-arity binding forwards by identity (C5) and a parameterised one
@@ -137,7 +137,7 @@ impl Prim {
             "computed" => Prim::Computed,
             "store" => Prim::Store,
             "resource" => Prim::Resource,
-            // §13: the one `use*` that stays, because it is not an alias of a
+            // The one `use*` that stays, because it is not an alias of a
             // constructor — reading what the owner tree provides is its own
             // operation, and it answers with the Cell compiled code wants.
             "useContext" => Prim::UseContext,
@@ -254,8 +254,8 @@ pub enum Flow {
 // `Show`, `Switch`, `Match`, `Errored`, `Loading`, `Reveal` from `solid-js`,
 // plus `Portal` and `Dynamic` from `@solidjs/web` — read out of
 // `solid-js@2.0.0-rc.0` rather than out of its documentation. None of the three
-// is in it, and `CODESIGN.md` §3.8 and §4.1 had already called them legacy
-// duplicates of `Loading` / `resource` / `Errored`.
+// is in it, and all three were already legacy duplicates of `Loading` /
+// `resource` / `Errored`.
 //
 // `Suspense` was `Loading` under its pre-2.0 name and forwarded to it verbatim.
 // `ErrorBoundary` was `Errored` with the error handed over BY VALUE instead of
@@ -358,7 +358,7 @@ pub struct ReactiveEnv<'a> {
     /// another in-module component's slot that is one.
     ///
     /// Item 1 is the compile-time half of "a Block landing in a Cell slot", and
-    /// it is answerable only within a module (`CODESIGN.md` §3.13 item 1). The
+    /// it is answerable only within a module. The
     /// set is the CALLEE's; the diagnostic is raised at the caller, which is
     /// what "naming both positions" means when a `Diag` carries one span.
     pub cell_slots: Vec<CellSlot<'a>>,

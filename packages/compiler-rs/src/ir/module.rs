@@ -20,7 +20,7 @@ pub struct Unit<'a> {
     pub regions: AVec<'a, Region<'a>>,
     /// empty until P6
     pub refs: RefPlan<'a>,
-    /// `NodeId` → originating JSX span. §6 point 3: an `_el$4` that throws must
+    /// `NodeId` → originating JSX span: an `_el$4` that throws must
     /// land on the element it walked to. P7 turns this into `Skeleton::origin`.
     pub spans: AVec<'a, Span>,
     /// `(element, attribute, source position)` for every attribute P1 could not
@@ -138,7 +138,7 @@ pub struct Module<'a> {
     /// with `(parent, anchor) = (null, null)`, which is `flow.ts`'s own
     /// "the caller inserts the anchor I return" path.
     pub regions: AVec<'a, Option<Region<'a>>>,
-    /// §3.11's compile-time addresses, filled by `passes::address::locate` for
+    /// The compile-time addresses, filled by `passes::address::locate` for
     /// every target. A side table: nothing in lowering, the passes or codegen
     /// reads it, so the emitted code is byte-identical whether it was built or
     /// not — which is what makes the both-ways address diff evidence about the
@@ -337,7 +337,7 @@ impl<'a> Uids<'a> {
     }
 
     /// Absent from the source text, so a hit on it in the emitted module is
-    /// always one of ours. §6's template-interior segments find the hoisted
+    /// always one of ours. The template-interior segments find the hoisted
     /// declaration by it, after codegen has printed and the arena is no longer
     /// in reach.
     #[inline]
@@ -382,8 +382,8 @@ const UID_BASES: [&str; 12] =
     ["_el$", "_tmpl$", "_jsx$", "_h$", "_p$", "_v$", "_ir$", "_s$", "_k$", "_b$", "_g$", "_o$"];
 
 /// Twelve names the source never mentions. `generate_uid` against a real scope
-/// tree is not on oxc 0.143's `Scoping` — DESIGN §4 assumes an API that only
-/// `oxc_traverse`'s `TraverseScoping` has.
+/// tree is not on oxc 0.143's `Scoping`; only `oxc_traverse`'s
+/// `TraverseScoping` has that API.
 ///
 /// Every base opens with `_`, so the underscores are the only positions a
 /// collision can start at and one scan answers all of them. A source that spells
@@ -421,7 +421,7 @@ pub enum Hoisted<'a> {
     Frozen { id: HoistId, expr: &'a Expression<'a>, span: Span },
     /// module-scope `const _k$1 = () => "w"` — a constant prop Cell.
     ///
-    /// `CODESIGN.md` §2 (grafted from Uniform Deferral): a proven constant
+    /// Grafted from Uniform Deferral: a proven constant
     /// crosses a component boundary through a module-hoisted deduped thunk, so
     /// a constant prop costs **zero** per-instance allocation. Deduped by the
     /// printed text of the expression, module-wide, which is why `id` is
@@ -444,12 +444,13 @@ impl Hoisted<'_> {
 /// offsets throughout; line/column conversion runs once at the end against a
 /// precomputed line-start table, so the emit loop never does line arithmetic.
 ///
-/// These are the §6 segments oxc's own builder cannot produce, and only those:
-/// it records a position per emitted AST node, which covers §6.1 and §6.3 by
-/// construction, but a `_$template("…")` is ONE node and §6.2 wants a segment
-/// per originating element *inside* its string literal. `gen_off` is a byte
-/// offset into the finished output, so the columns are filled after codegen has
-/// printed — which is also the only moment those offsets exist.
+/// These are the segments oxc's own builder cannot produce, and only those: it
+/// records a position per emitted AST node, which covers the statement and
+/// expression cases by construction, but a `_$template("…")` is ONE node and
+/// the map wants a segment per originating element *inside* its string literal.
+/// `gen_off` is a byte offset into the finished output, so the columns are
+/// filled after codegen has printed, which is also the only moment those
+/// offsets exist.
 #[derive(Default)]
 pub struct Mappings {
     pub gen_off: Vec<u32>,
@@ -526,7 +527,7 @@ impl Mappings {
     }
 }
 
-/// §6's "precomputed line-start table": byte offset → `(line, column)`, with
+/// The precomputed line-start table: byte offset → `(line, column)`, with
 /// columns in UTF-16 code units because that is what a source map v3 counts.
 ///
 /// The terminator set is the one a JS engine recognises — U+2028 and U+2029

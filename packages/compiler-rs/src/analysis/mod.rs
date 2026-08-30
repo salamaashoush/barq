@@ -226,10 +226,10 @@ mod tests {
         assert_eq!(local(&module, "projected"), SourceKind::ReactiveObject);
     }
 
-    /// `CODESIGN.md` §3.8 collapsed the async primitives onto one `resource`,
-    /// and §13 deleted the `use*` spelling of every constructor — so `resource`
-    /// is the only name that reaches that row, and a LOCAL binding of the same
-    /// name must still be whatever it was bound to.
+    /// The async primitives collapsed onto one `resource`, and the `use*`
+    /// spelling of every constructor is gone, so `resource` is the only name
+    /// that reaches that row and a LOCAL binding of the same name must still be
+    /// whatever it was bound to.
     #[test]
     fn the_one_resource_classifies_under_its_only_spelling() {
         let allocator = Allocator::new();
@@ -284,7 +284,7 @@ mod tests {
     /// `keyed` has THREE arms, not two. A key function boxes the row in a
     /// signal (`map.ts:57`), so both parameters are accessors — reading the
     /// predicate as "not literal false" classified the row a plain value and
-    /// applied `{item().text}` once, with no effect (ERGONOMICS §4.3).
+    /// applied `{item().text}` once, with no effect.
     #[test]
     fn a_key_function_makes_both_row_parameters_accessors() {
         let allocator = Allocator::new();
@@ -311,7 +311,7 @@ mod tests {
     /// A spread can carry `keyed` where nothing can read it, so it takes the
     /// same unprovable verdict a `keyed` behind a binding does. Reading only
     /// `JSXAttributeItem::Attribute` left `<For {...opts}>` on the by-item arm,
-    /// which applies `{row().text}` once — ERGONOMICS §4.3 through another door.
+    /// which applies `{row().text}` once.
     #[test]
     fn a_spread_attribute_puts_the_row_on_the_arm_that_is_safe_when_wrong() {
         let allocator = Allocator::new();
@@ -407,10 +407,10 @@ mod tests {
             assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{expression}` must be silent");
         }
 
-        // §4.2's cited false positive: `useMemo(…).peek()` is a typed public API
-        // (`Computed<T>` declares `peek`), and `MemberMask` cannot be widened to
-        // exempt it without turning a tracked read into `Static`. D1 carries its
-        // own member list for exactly this.
+        // The cited false positive: `useMemo(…).peek()` is a typed public API
+        // (`Computed<T>` declares `peek`), and `MemberMask` cannot be widened
+        // to exempt it without turning a tracked read into `Static`. D1 carries
+        // its own member list for exactly this.
         let source = "import { useMemo, computed } from \"@barqjs/core\";\n\
                       const a = useMemo(() => 1);\nconst b = computed(() => 2);\n\
                       const v = a.peek() + b.peek();\n";

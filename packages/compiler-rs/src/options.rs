@@ -54,7 +54,7 @@ impl Env {
     }
 }
 
-/// Which optimisations run. `CODESIGN.md` §6 L3: the reference for an optimising
+/// Which optimisations run. The reference for an optimising
 /// compiler is the same compiler with the optimisations off, so `-O0` shares the
 /// front end, the IR, the ABI and the ownership model and can encode neither a
 /// legacy decision nor an optimisation bug. Every field is separately flippable
@@ -160,7 +160,7 @@ impl Opt {
 
 /// `autoComputed` and the three component NAME LISTS the deleted Babel plugin
 /// took are not here and will not be. Nothing in this compiler could read them —
-/// every component and every reactive read resolves by `SymbolId` in P0 (§12 O6),
+/// every component and every reactive read resolves by `SymbolId` in P0,
 /// and `autoComputed` rewrote statements OUTSIDE JSX, which this pipeline never
 /// touches: lowering takes no `Program` and codegen only splices at the sites
 /// harvest recorded.
@@ -206,7 +206,7 @@ pub struct TransformOptions {
     pub dev: Option<bool>,
     pub templates: Option<bool>,
     pub ssr: Option<bool>,
-    /// Emit for the reference backend (`CODESIGN.md` §6 L2) instead of the DOM
+    /// Emit for the reference backend instead of the DOM
     /// backend: the analysed IR is serialised beside the module and
     /// `@barqjs/core/interp` walks it. DEV and test only. Wins over `ssr`,
     /// because the two are different backends over the same IR and asking for
@@ -222,22 +222,21 @@ pub struct TransformOptions {
     pub checks: Option<Vec<Vec<String>>>,
     /// The category every code takes when `checks` does not name it.
     pub default_category: Option<String>,
-    /// Emit the static ownership tree (`CODESIGN.md` §6 L2b) alongside the
+    /// Emit the static ownership tree alongside the
     /// code. It is a side artefact: no field it produces reaches lowering, the
     /// passes or codegen, so `code` is byte-identical either way. Off by
     /// default — a production compile does not pay for the extra AST walk.
     pub ownership: Option<bool>,
-    /// Emit the compile-time address table (`CODESIGN.md` §3.11, §5.2 P6)
-    /// alongside the code. A side artefact on the same terms as `ownership`:
-    /// nothing it produces reaches lowering, the passes or codegen, so `code` is
-    /// byte-identical either way. Its point is that the DOM and the string
-    /// backend can be compiled from one source and their address sets diffed —
-    /// the agreement §5.2 says is not assertable today.
+    /// Emit the compile-time address table alongside the code. A side artefact
+    /// on the same terms as `ownership`: nothing it produces reaches lowering,
+    /// the passes or codegen, so `code` is byte-identical either way. Its point
+    /// is that the DOM and the string backend can be compiled from one source
+    /// and their address sets diffed.
     pub addresses: Option<bool>,
-    /// Emit for CLAIM-BASED HYDRATION (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4).
+    /// Emit for CLAIM-BASED HYDRATION.
     ///
     /// Unlike `ownership` and `addresses` this one DOES change the emitted
-    /// module, on both backends, and that is the point §11 Q4 settled: the
+    /// module, on both backends, and that is the point: the
     /// string backend writes `<!--[-->` … `<!--]-->` at every hole and
     /// `<!--[k-->` at every range, and the DOM backend walks through `child`
     /// and `sib` — a hydration-only logical index that steps over those ranges
@@ -248,7 +247,7 @@ pub struct TransformOptions {
     /// diff between the two settings.
     pub hydratable: Option<bool>,
     /// The optimisation level. `0` turns every optimisation off and is the
-    /// oracle's reference (`CODESIGN.md` §6 L3); anything else is the optimising
+    /// oracle's reference; anything else is the optimising
     /// path, which is the default. It changes no semantics — `-O0` output is
     /// slower and larger and never different.
     pub optimize: Option<u32>,

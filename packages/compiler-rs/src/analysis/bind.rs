@@ -35,7 +35,7 @@ enum InitOf<'a> {
     /// Reading the binding tracks nothing and it carries no constant.
     Inert,
     /// A function or arrow expression: reading the binding tracks nothing, AND
-    /// the binding is known to hold a callable. `nullary` is §3.0 rule 1.
+    /// the binding is known to hold a callable. `nullary` is the arity rule.
     Fn {
         nullary: bool,
     },
@@ -396,7 +396,7 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
-    /// DESIGN §2.4: the props parameter of a compiled component. Member reads on
+    /// The props parameter of a compiled component. Member reads on
     /// it are ⊤-reactive because our own component emit lowers props to getters,
     /// so without this the getter is dead weight and `{props.total}` renders once.
     ///
@@ -679,9 +679,9 @@ impl<'a> Binder<'_, 'a> {
                 symbol_of(self.scoping, expression).map_or(InitOf::Unknown, InitOf::Alias)
             }
             Expression::ArrowFunctionExpression(arrow) => InitOf::Fn {
-                // `nullary` is §3.0 rule 1, and rule 1 is about a value that
-                // YIELDS when it is called. A zero-arity arrow whose body cannot
-                // produce one is a handler; treating it as a Cell makes
+                // `nullary` is the arity rule, which is about a value that
+                // YIELDS when it is called. A zero-arity arrow whose body
+                // cannot produce one is a handler; treating it as a Cell makes
                 // `props.onClick()` run it. See `classify::yields_a_value`.
                 nullary: !arrow.r#async
                     && arrow.params.items.is_empty()

@@ -27,7 +27,7 @@ pub const HYDRATE: u8 = 1 << 2;
 /// AND `dev`, so a range spells the key its primitive CHOSE into its open
 /// comment — `<!--[b-->` rather than `<!--[-->` — and the client compares.
 ///
-/// `CODESIGN.md` §12 reversed Q4: the wire carries what RECOVERY needs and
+/// The wire carries what RECOVERY needs and
 /// detection is an emission axis. The key is the one fact about a range that
 /// detection cannot re-derive and recovery does not need, so it is the one byte
 /// that moved onto this flag. A production build writes `<!--[-->` and the
@@ -124,7 +124,7 @@ impl RegionKind {
     /// A loading boundary can: with a stream sink installed it flushes
     /// `<!--[b:N-->` … `<!--]-->` around its fallback and parks the continuation,
     /// and no compile-time predicate can see that coming — whether a promise is
-    /// ready is exactly §3.13 item 6. So [`WHOLE`] is refused for it: the client
+    /// ready is a run-time fact. So [`WHOLE`] is refused for it: the client
     /// would read "no comments here" and claim a child list that has two.
     #[inline]
     pub fn may_write_its_own_range(self) -> bool {
@@ -250,7 +250,7 @@ mod tests {
         }
     }
 
-    /// §12's split, at the one place both halves are visible at once. A
+    /// The split, at the one place both halves are visible at once. A
     /// production hydratable build ships `HYDRATE` and NOT `DETECT`: the range
     /// is written, claimed and recoverable, and no key is spelled into it.
     /// Detection is the extra bit and never the other way round.

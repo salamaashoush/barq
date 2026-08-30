@@ -183,8 +183,8 @@ impl<'a> Emit<'a, '_> {
     }
 
     /// A fragment is an ARRAY of its parts — one template per root plus the
-    /// array, which is what `template()` returning `content.firstChild` forces
-    /// (DESIGN §8 V5). There is no `Fragment` component behind it: every
+    /// array, which is what `template()` returning `content.firstChild` forces.
+    /// There is no `Fragment` component behind it: every
     /// position that admits a child already admits an array of children, so the
     /// wrapper only ever added a call and a second flattening rule.
     pub(super) fn fragment_array(

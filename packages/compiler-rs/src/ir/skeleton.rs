@@ -106,11 +106,10 @@ pub struct SkelElement<'a> {
     pub tag: TagId,
     /// STATIC ONLY, in SOURCE order — that is what reads well in the emitted
     /// template string, and P1 has already collapsed the duplicates, so the
-    /// order carries no meaning. DESIGN §2.1 originally wanted these sorted by
-    /// name for a stable content hash; §2.1's M4 amendment keeps source order
-    /// instead, which costs P7 a share between two elements that spell the same
-    /// attributes in a different order and buys back an emitted template a
-    /// reader can line up with the JSX that produced it.
+    /// order carries no meaning. Sorting them by name would give a stable
+    /// content hash; source order instead costs P7 a share between two elements
+    /// that spell the same attributes in a different order, and buys back an
+    /// emitted template a reader can line up with the JSX that produced it.
     pub attrs: &'a [SkelAttr],
     /// half-open range into [`Skeleton::nodes`]
     pub children: (NodeId, NodeId),
@@ -197,8 +196,8 @@ impl<'a> Skeleton<'a> {
         }
     }
 
-    /// Whether `slot` is the only thing in `parent`'s child list — `SEMANTICS.md`
-    /// H2's sole-occupancy test, and the reason a hole can cost zero wire bytes.
+    /// Whether `slot` is the only thing in `parent`'s child list: the
+    /// sole-occupancy test, and the reason a hole can cost zero wire bytes.
     ///
     /// The extent of a hole is data — the client cannot know how many nodes the
     /// server put there — so a delimited position needs its `<!--[-->` …
@@ -356,7 +355,7 @@ mod tests {
     use super::*;
     use crate::ir::{Interner, TagFlags};
 
-    /// `<p>{hole} clicks</p>` — the case §3/P6 calls out: one materialised child,
+    /// `<p>{hole} clicks</p>`: one materialised child,
     /// at index 0, even though the hole is written first.
     fn hole_then_text<'a>(allocator: &'a Allocator, interner: &mut Interner<'a>) -> Skeleton<'a> {
         let tag = interner.intern_tag("p");

@@ -37,7 +37,7 @@ pub fn template_span(module: &Module<'_>, claimant: &[UnitId], id: TemplateId) -
     unit.spans.get(unit.skeleton.roots.0 as usize).copied().filter(|span| !span.is_empty())
 }
 
-/// §6.2. One segment per `Skeleton::origin` entry, addressed into the INTERIOR
+/// One segment per `Skeleton::origin` entry, addressed into the INTERIOR
 /// of the hoisted template literal, so a debugger stepping into `_tmpl$1` lands
 /// on the JSX element whose markup those bytes are.
 ///
@@ -139,8 +139,8 @@ fn locate(code: &str, from: usize, name: &str, escaped: &str) -> Option<usize> {
 /// The bytes a template literal in the OUTPUT carries for a run of template
 /// html. Borrows when nothing needs escaping, which is almost every template.
 ///
-/// This is what both backends emit through, so it is also what §6.2's offset
-/// arithmetic reproduces in `escape_width` — a segment placed at the unescaped
+/// This is what both backends emit through, so it is also what the offset
+/// arithmetic in `escape_width` reproduces: a segment placed at the unescaped
 /// offset would drift by one per escape.
 pub(super) fn template_raw<'a>(raw: &'a str, allocator: &'a Allocator) -> &'a str {
     // Deliberately looser than `escape_width`: a lone `$` takes the copying path

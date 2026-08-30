@@ -57,7 +57,7 @@ pub fn run<'a>(
     // walk indexes the server's child list, a marker is a node in it, and a
     // marker the wire omitted would shift every index after it by one. The
     // string backend still has no walk — it serialises the comment and nothing
-    // reads it there. `SEMANTICS.md` H3.
+    // reads it there.
     if target.walks_the_dom() || options.hydratable {
         anchor::run(allocator, module, opt.anchor);
     }
@@ -77,7 +77,7 @@ pub fn run<'a>(
     // the primitive `(null, null)` — it has no nodes to name, and the range it
     // owns is the markup it returns.
     claim_regions(module);
-    // §3.11's compile-time addresses, for EVERY target and after the claim, so
+    // The compile-time addresses, for EVERY target and after the claim, so
     // an `Op::Region` and the `Op::Insert` it replaced address the same JSX
     // position. Nothing downstream reads the table, which is what makes the
     // corpus-wide both-ways diff evidence about the IR rather than about a
@@ -85,7 +85,7 @@ pub fn run<'a>(
     address::locate(module);
     // The two guarded passes are artefacts of the DOM backend and nothing else
     // reads them: a `template()` is a parse and an address is a sibling walk.
-    // P8b concatenates bytes and has neither (DESIGN §5). The DOM order is left
+    // P8b concatenates bytes and has neither. The DOM order is left
     // exactly as it was.
     if target.walks_the_dom() {
         serialize::run(module, opt.dedup);
@@ -138,7 +138,7 @@ fn staged_region(
     uids.region_index(identifier.name.as_str())
 }
 
-/// §3.11's address table as JSON, for a caller across the napi boundary.
+/// The address table as JSON, for a caller across the napi boundary.
 pub fn address_json(module: &Module<'_>, path: &str) -> String {
     address::to_json(module, path)
 }
@@ -227,7 +227,7 @@ mod tests {
         assert!(checked >= 25, "only {checked} fixtures found");
     }
 
-    /// Target #2, stated as the type-level fact DESIGN §1 claims it is: the
+    /// Target #2, stated as the type-level fact it is: the
     /// attributes fold into the skeleton, the patch program empties, and
     /// `is_pure_static()` becomes true without anything asking whether the
     /// subtree was "static".

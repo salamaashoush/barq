@@ -83,7 +83,7 @@ pub struct CompileOutput {
     /// artefact: it is derived from the program BEFORE harvest and consumed by
     /// nothing downstream, so `code` is byte-identical with it on or off.
     pub ownership: Option<String>,
-    /// §3.11's compile-time address table, as JSON, under `options.addresses`
+    /// The compile-time address table, as JSON, under `options.addresses`
     /// only. A side artefact on the same terms: the two backends compile the
     /// same source to the same address set, and nothing reads it to emit.
     pub addresses: Option<String>,
@@ -673,7 +673,7 @@ fn template_labels(
     labels
 }
 
-/// Folds §6.2's template-interior segments into the map oxc's codegen built for
+/// Folds the template-interior segments into the map oxc's codegen built for
 /// the AST it printed, and closes the one gap that map has by construction.
 ///
 /// That gap: oxc records a position per emitted node and SKIPS a node whose span
@@ -809,7 +809,7 @@ pub fn format_diagnostics(diagnostics: &[Diagnostic]) -> String {
 }
 
 /// The line table, built at most once and only if something asks for a
-/// position. §4.1's cost trap was `line_column`'s O(source) scan PER diagnostic,
+/// position. The cost trap is `line_column`'s O(source) scan PER diagnostic,
 /// which is quadratic once a rule fires fifty times in a file; building the
 /// index unconditionally instead costs every clean compile a scan it does not
 /// need, and target #11 is measured in tenths of a percent.
@@ -867,10 +867,9 @@ fn located(
 ///
 /// What is NOT here any more is `uninlinable_flow`. It scanned every symbol and
 /// dropped the whole module to the DOM backend when any of eight flow components
-/// was referenced — CODESIGN §0.1 measures that at 41.88x on the 100-row page,
-/// for one import. M6 gave the string backend the four primitives and a string
-/// component for all thirteen constructs, so the split it decided no longer
-/// exists to decide.
+/// was referenced, which measured at 41.88x on the 100-row page for one import.
+/// The string backend has the four primitives and a string component for all
+/// thirteen constructs now, so the split it decided no longer exists to decide.
 fn analysis_diagnostics(
     module: &Module<'_>,
     filename: &str,
@@ -1438,7 +1437,7 @@ mod tests {
         assert!(!output.code.contains("_$insert"), "{}", output.code);
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
         // No walk, no arrow, no statements: the clone IS the component body.
-        // No brand either — §3.0 rule 3 brands the Blocks that USE their scope,
+        // No brand either: the compiler brands the Blocks that USE their scope,
         // and a body that is one clone reads nothing.
         assert!(
             output.code.trim_end().ends_with("const V = (_s$) => _tmpl$1();"),
@@ -1499,7 +1498,7 @@ mod tests {
     fn a_property_channel_attribute_never_reaches_the_template_html() {
         let output = compile_ok("const V = () => <input type=\"text\" value=\"v\" />;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<input type=\"text\">`)"), "{}", output.code);
-        // `value` is on the USER-MUTABLE channel (§3.10.1); the plain property
+        // `value` is on the USER-MUTABLE channel; the plain property
         // channel is asserted beside it, because the claim is about neither
         // reaching the template HTML.
         assert!(output.code.contains("_$setLive(_el$1, \"value\", \"v\")"), "{}", output.code);
@@ -1942,7 +1941,7 @@ mod tests {
         assert!(map.contains("\"mappings\""), "{map}");
     }
 
-    // ── M4: DESIGN §6, the sourcemap strategy ─────────────────────────────
+    // ── the sourcemap strategy ────────────────────────────────────────────
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct Segment {
@@ -2116,7 +2115,7 @@ mod tests {
 
     /// Whether each generated line STARTS inside a template literal. Such a
     /// line is the continuation of one token, not the start of a statement, so
-    /// §6's leftwards fill deliberately leaves it alone (the M4 amendment) and
+    /// the leftwards fill deliberately leaves it alone, and
     /// there is nothing for a stack frame to name on it. Comments and strings
     /// are tracked because the output carries backticks inside all three.
     fn inside_a_template(code: &str) -> Vec<bool> {
@@ -2201,7 +2200,7 @@ mod tests {
         }
     }
 
-    /// §6.2. A debugger stepping into `_tmpl$1` is inside a string literal, and
+    /// A debugger stepping into `_tmpl$1` is inside a string literal, and
     /// the segments there are the only thing that can say which markup it is.
     #[test]
     fn the_inside_of_a_hoisted_template_maps_to_the_elements_that_produced_it() {
@@ -2236,7 +2235,7 @@ mod tests {
         }
     }
 
-    /// Target #6 meets §6. One `template()` call now serves N source sites, and
+    /// One `template()` call serves N source sites, and
     /// a source map is a function: the generated bytes name the site that
     /// SERIALISED them, and every other site stays reachable through the span on
     /// its own `_tmpl$N()` clone call.
@@ -2299,7 +2298,8 @@ mod tests {
 
     /// Backticks and `${` are escaped on the way into the template literal, so a
     /// segment placed at the unescaped offset drifts by one per escape. This is
-    /// the only thing in §6 that can be off by a constant and still look right.
+    /// the one thing in the map that can be off by a constant and still look
+    /// right.
     #[test]
     fn a_template_that_needs_escaping_still_maps_at_the_right_column() {
         let source =
@@ -2358,7 +2358,8 @@ mod tests {
         assert!(mapped.original(&hit).starts_with("<i>x</i>"), "{:?}", mapped.original(&hit));
     }
 
-    /// §6.3 and statement splicing together: the walk and the patch program are
+    /// Statement splicing and the map together: the walk and the patch program
+    /// are
     /// spliced flat into the enclosing body, and each spliced statement has to
     /// land on the JSX node it was derived from — not on the site it was
     /// spliced into.
@@ -2386,7 +2387,8 @@ mod tests {
         }
     }
 
-    /// The property §6 exists for, stated over the whole corpus: a stack frame
+    /// The property the map exists for, stated over the whole corpus: a stack
+    /// frame
     /// naming any emitted statement can be resolved. The exceptions are named
     /// rather than tolerated — the helper import and `delegateEvents` are module
     /// preamble with no single JSX origin, and a comment is not executable.
@@ -2422,7 +2424,8 @@ mod tests {
     /// The map has to survive a consumer that is not the one that wrote it. This
     /// is the same question a debugger asks — parse the JSON, build the lookup
     /// table, resolve a generated `(line, column)` — and it answers it about a
-    /// position INSIDE the hoisted template literal, which is the one §6.2 adds.
+    /// position INSIDE the hoisted template literal, which is the one this
+    /// adds.
     #[test]
     fn a_real_consumer_resolves_a_position_inside_the_template_to_the_right_jsx() {
         let mapped = map_of(CARD, "Card.tsx");
@@ -2530,7 +2533,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------
-    // M1 — the optimisation-level axis (CODESIGN §5.1, §6 L3)
+    // the optimisation-level axis
     // ---------------------------------------------------------------------
 
     fn at(opt: crate::options::Opt, ssr: bool) -> ResolvedOptions {
@@ -2596,7 +2599,7 @@ mod tests {
 
     /// M3's ABI, asserted over the WHOLE corpus rather than on hand-written
     /// cases, and at both optimisation levels and both backends — because
-    /// `CODESIGN.md` §8 requires `-O0` and `-Ox` to emit the same convention
+    /// `-O0` and `-Ox` must emit the same convention
     /// from the same IR, and because a calling convention that holds on the
     /// examples someone thought to write is not a convention.
     ///
@@ -2613,7 +2616,7 @@ mod tests {
     ///   the calling convention itself, where no runtime can undo it.
     ///
     /// `deferred` is the C6 predicate for the `children` slot: `_$block(fn)` is
-    /// §3.0 rule 3's brand around a Block and leaves the slot deferred; every
+    /// the scope brand around a Block and leaves the slot deferred; every
     /// OTHER call in that position has already produced a node.
     ///
     /// An arity-0 arrow is C6's THIRD named falsifier — "a nullary thunk" — so
@@ -2655,7 +2658,7 @@ mod tests {
     /// to `a={<span/> as never}` exactly as it applies to `children`.
     ///
     /// An arity-0 arrow counts: a nullary thunk holding a template clone is a
-    /// Block stripped of its brand, and §3.0 rule 3 has no expression meaning
+    /// Block stripped of its brand, and the rule has no expression meaning
     /// "children, already built" precisely so that it cannot be spelled. An
     /// arrow that TAKES the scope is a Block and is not counted, however deep
     /// its body builds.
@@ -2846,7 +2849,7 @@ mod tests {
         }
 
         // And the two shapes that MUST pass, so the predicate is not simply
-        // "everything fails": §3.0 rule 3's brand, and a Block that takes the
+        // "everything fails": the scope brand, and a Block that takes the
         // scope and builds as deeply as it likes.
         for source in
             ["({ children: _$block((_s$) => _tmpl$1()) })", "({ children: (_s$) => _tmpl$1() })"]
@@ -3505,7 +3508,7 @@ mod tests {
         assert!(output.code.contains("_$template(`<input>`)"), "{}", output.code);
     }
 
-    /// DESIGN §7 claims `SIZE` and `theme` "never appear at runtime". They did:
+    /// `SIZE` and `theme` must never appear at runtime. They did:
     /// P3 baked their bytes into the template and left the declarations behind.
     #[test]
     fn a_binding_whose_last_read_was_folded_away_does_not_reach_the_output() {
