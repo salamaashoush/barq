@@ -7,7 +7,7 @@ export default defineConfig({
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   dts: true,
   clean: true,
-  external: ["@barqjs/core", "goober", "@tanstack/query-core"],
+  external: ["@barqjs/core", "@tanstack/query-core"],
   esbuildOptions: {
     jsx: "automatic",
     jsxImportSource: "@barqjs/core",

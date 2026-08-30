@@ -31,7 +31,8 @@ jobs:
       - name: Build packages (required for lint and typecheck)
         run: |
           bun run --cwd packages/core build
-          bun run --cwd packages/extra build
+          bun run --cwd packages/primitives build
+          bun run --cwd packages/query build
           bun run --cwd packages/testing build
           bun run --cwd packages/compiler build
 
@@ -123,7 +124,7 @@ jobs:
         run: bun test test/throughput.test.ts
         working-directory: packages/compiler-rs
 
-      # Every package, no exclusions. `packages/extra` was excluded from M2 to
+      # Every package, no exclusions. `packages/query` was excluded from M2 to
       # M8 while its migration was scheduled; M8 landed it, so the exclusion and
       # the informational second run that stood in for it are gone with it.
       - name: Run tests
@@ -153,7 +154,7 @@ jobs:
       - name: Build publishable packages
         run: |
           bun run --cwd packages/core build
-          bun run --cwd packages/extra build
+          bun run --cwd packages/query build
           bun run --cwd packages/testing build
 
       - name: Verify package contents

@@ -72,7 +72,8 @@ click updates that one text node.
 | [`@barqjs/server`](./packages/server#readme) | the string backend and the streaming SSR runtime |
 | [`@barqjs/testing`](./packages/testing#readme) | rendering, routes, hydration and the RPC wire, under test |
 | [`@barqjs/compiler`](./packages/compiler) | the Vite plugin |
-| [`@barqjs/extra`](./packages/extra) | TanStack Query adapter and utility hooks |
+| [`@barqjs/primitives`](./packages/primitives#readme) | scheduling, events, observers, browser APIs, collections, motion |
+| [`@barqjs/query`](./packages/query#readme) | the TanStack Query adapter |
 | [`create-barq`](./packages/create-barq#readme) | `bun create barq my-app` |
 
 `@barqjs/compiler` is a dev dependency of every application. Without it a `.tsx`
@@ -131,7 +132,7 @@ The Rust compiler lives in `packages/compiler-rs` and is built by
 - [alien-signals](https://github.com/nickmccurdy/alien-signals) — fast signals
 - [TanStack Router](https://tanstack.com/router) — the routing and server-function
   surface `@barqjs/router` and `@barqjs/start` follow
-- [TanStack Query](https://tanstack.com/query) — the adapter in `@barqjs/extra`
+- [TanStack Query](https://tanstack.com/query) — the adapter in `@barqjs/query`
 
 ## License
 

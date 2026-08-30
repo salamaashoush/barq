@@ -1,28 +1,25 @@
 /**
- * Utility Hooks Demo
- * Tests: useFetch, useDebounce, useThrottle, usePrevious, useToggle, useCounter,
- *        useLocalStorage, useMediaQuery, useWindowSize, useIntersection,
- *        useClickOutside, useKeyboard, useTitle, useInterval, useTimeout
+ * Primitives Demo
+ *
+ * Tests `@barqjs/primitives` directly: resource fetching, debounced/throttled
+ * values, previous, persisted storage, media queries, viewport size,
+ * intersection, click-outside, shortcuts, the document title and timers.
  */
 
-import { Show, signal } from "@barqjs/core";
+import { Show, resource, signal } from "@barqjs/core";
 import {
-  useClickOutside,
-  useCounter,
-  useDebounce,
-  useFetch,
-  useIntersection,
-  useInterval,
-  useKeyboard,
-  useLocalStorage,
-  useMediaQuery,
-  usePrevious,
-  useThrottle,
-  useTimeout,
-  useTitle,
-  useToggle,
-  useWindowSize,
-} from "@barqjs/extra";
+  clickOutside,
+  debounced,
+  interval,
+  mediaQuery,
+  persisted,
+  previous,
+  shortcut,
+  throttled,
+  timeout,
+  visible,
+  windowSize,
+} from "@barqjs/primitives";
 import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
@@ -44,12 +41,19 @@ export function HooksDemo() {
   );
 }
 
-// useFetch
+// resource
 function FetchDemo() {
-  const users = useFetch<{ id: number; name: string; email: string }[]>("/api/users");
+  const users = resource(
+    () => "/api/users",
+    async (url: string): Promise<{ id: number; name: string; email: string }[]> => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      return await response.json();
+    },
+  );
 
   return (
-    <DemoCard title="useFetch - Data Fetching">
+    <DemoCard title="resource — data fetching">
       <Show when={() => users.loading()}>
         <div class={loadingStyle}>Loading...</div>
       </Show>
@@ -75,14 +79,14 @@ function FetchDemo() {
   );
 }
 
-// useDebounce and useThrottle
+// debounced and throttled
 function DebounceThrottleDemo() {
   const value = signal("");
-  const debounced = useDebounce(value, 500);
-  const throttled = useThrottle(value, 500);
+  const settled = debounced(value, 500);
+  const paced = throttled(value, 500);
 
   return (
-    <DemoCard title="useDebounce & useThrottle">
+    <DemoCard title="debounced & throttled">
       <input
         type="text"
         value={value()}
@@ -98,29 +102,29 @@ function DebounceThrottleDemo() {
         </div>
         <div>
           <strong>Debounced (500ms):</strong>
-          <span>{debounced}</span>
+          <span>{settled}</span>
         </div>
         <div>
           <strong>Throttled (500ms):</strong>
-          <span>{throttled}</span>
+          <span>{paced}</span>
         </div>
       </div>
     </DemoCard>
   );
 }
 
-// usePrevious
+// previous
 function PreviousDemo() {
   const count = signal(0);
-  const previous = usePrevious(count);
+  const before = previous(count);
 
   return (
-    <DemoCard title="usePrevious">
+    <DemoCard title="previous">
       <p>
         Current: <strong>{count}</strong>
       </p>
       <p>
-        Previous: <strong>{() => previous() ?? "N/A"}</strong>
+        Previous: <strong>{() => before() ?? "N/A"}</strong>
       </p>
 
       <div class={buttonRowStyle}>
@@ -132,13 +136,24 @@ function PreviousDemo() {
   );
 }
 
-// useToggle and useCounter
+// plain signals
 function ToggleCounterDemo() {
-  const [isOn, toggle, setIsOn] = useToggle(false);
-  const counter = useCounter(0);
+  // No primitive for these, and none is wanted: a toggle is `update((v) => !v)`
+  // and a counter is a signal, so a wrapper would only hide what it costs.
+  const isOn = signal(false);
+  const toggle = () => isOn.update((v) => !v);
+  const setIsOn = (next: boolean) => isOn.set(next);
+  const count = signal(0);
+  const counter = {
+    count,
+    increment: () => count.update((n) => n + 1),
+    decrement: () => count.update((n) => n - 1),
+    reset: () => count.set(0),
+    set: (next: number) => count.set(next),
+  };
 
   return (
-    <DemoCard title="useToggle & useCounter">
+    <DemoCard title="signals — toggle & counter">
       <div class={rowStyle}>
         <div class={boxStyle}>
           <p>
@@ -166,13 +181,17 @@ function ToggleCounterDemo() {
   );
 }
 
-// useLocalStorage
+// persisted
 function LocalStorageDemo() {
-  const [name, setName] = useLocalStorage("demo-name", "");
-  const [theme, setTheme] = useLocalStorage<"light" | "dark">("demo-theme", "dark");
+  const nameValue = persisted("demo-name", "");
+  const name = nameValue;
+  const setName = (next: string) => nameValue.set(next);
+  const themeValue = persisted<"light" | "dark">("demo-theme", "dark");
+  const theme = themeValue;
+  const setTheme = (next: "light" | "dark") => themeValue.set(next);
 
   return (
-    <DemoCard title="useLocalStorage">
+    <DemoCard title="persisted — storage, and other tabs">
       <div class={fieldStyle}>
         <label>
           Name (persisted):
@@ -207,14 +226,14 @@ function LocalStorageDemo() {
   );
 }
 
-// useMediaQuery
+// mediaQuery
 function MediaQueryDemo() {
-  const isMobile = useMediaQuery("(max-width: 768px)");
-  const isDark = useMediaQuery("(prefers-color-scheme: dark)");
-  const isReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const isMobile = mediaQuery("(max-width: 768px)");
+  const isDark = mediaQuery("(prefers-color-scheme: dark)");
+  const isReducedMotion = mediaQuery("(prefers-reduced-motion: reduce)");
 
   return (
-    <DemoCard title="useMediaQuery">
+    <DemoCard title="mediaQuery — one listener per query, shared">
       <ul class={mediaListStyle}>
         <li>
           Mobile (&lt;768px): <strong>{() => (isMobile() ? "Yes" : "No")}</strong>
@@ -232,12 +251,12 @@ function MediaQueryDemo() {
   );
 }
 
-// useWindowSize
+// windowSize
 function WindowSizeDemo() {
-  const { width, height } = useWindowSize();
+  const { width, height } = windowSize();
 
   return (
-    <DemoCard title="useWindowSize">
+    <DemoCard title="windowSize — shared across every caller">
       <div class={sizeDisplayStyle}>
         <div>
           <span>Width</span>
@@ -254,15 +273,15 @@ function WindowSizeDemo() {
   );
 }
 
-// useIntersection
+// visible
 function IntersectionDemo() {
   // The hooks take an ACCESSOR, so a signal is the ref: the element arrives
   // through the ref channel and every reader is live from that moment.
   const ref = signal<HTMLDivElement | null>(null);
-  const isVisible = useIntersection(ref, { threshold: 0.5 });
+  const isVisible = visible(ref, { threshold: 0.5 });
 
   return (
-    <DemoCard title="useIntersection">
+    <DemoCard title="visible — a shared IntersectionObserver">
       <p>
         Box is visible: <strong>{() => (isVisible() ? "Yes" : "No")}</strong>
       </p>
@@ -285,13 +304,13 @@ function IntersectionDemo() {
   );
 }
 
-// useClickOutside
+// clickOutside
 function ClickOutsideDemo() {
   const ref = signal<HTMLDivElement | null>(null);
   const isOpen = signal(false);
   const clickCount = signal(0);
 
-  useClickOutside(ref, () => {
+  clickOutside(ref, () => {
     if (isOpen()) {
       isOpen.set(false);
       clickCount.update((c) => c + 1);
@@ -299,7 +318,7 @@ function ClickOutsideDemo() {
   });
 
   return (
-    <DemoCard title="useClickOutside">
+    <DemoCard title="clickOutside">
       <p>
         Outside clicks detected: <strong>{clickCount}</strong>
       </p>
@@ -319,7 +338,7 @@ function ClickOutsideDemo() {
   );
 }
 
-// useKeyboard
+// shortcut
 function KeyboardDemo() {
   const logs = signal<string[]>([]);
 
@@ -327,12 +346,12 @@ function KeyboardDemo() {
     logs.update((l) => [...l.slice(-4), msg]);
   };
 
-  useKeyboard("Escape", () => addLog("Escape pressed"));
-  useKeyboard("s", () => addLog("Ctrl+S pressed"), { ctrl: true });
-  useKeyboard("Enter", () => addLog("Shift+Enter pressed"), { shift: true });
+  shortcut("escape", () => addLog("Escape pressed"), { whileTyping: true });
+  shortcut("ctrl+s", () => addLog("Ctrl+S pressed"));
+  shortcut("shift+enter", () => addLog("Shift+Enter pressed"));
 
   return (
-    <DemoCard title="useKeyboard">
+    <DemoCard title="shortcut — modifiers matched exactly">
       <p>Try these shortcuts:</p>
       <ul class={shortcutListStyle}>
         <li>
@@ -351,25 +370,25 @@ function KeyboardDemo() {
   );
 }
 
-// useInterval and useTimeout
+// interval and timeout
 function TimerDemo() {
   const count = signal(0);
   const intervalActive = signal(false);
   const message = signal("");
 
-  useInterval(
+  interval(
     () => count.update((c) => c + 1),
     () => (intervalActive() ? 1000 : null),
   );
 
   const showTimeout = signal(false);
-  useTimeout(
+  timeout(
     () => message.set("Timeout fired!"),
     () => (showTimeout() ? 2000 : null),
   );
 
   return (
-    <DemoCard title="useInterval & useTimeout">
+    <DemoCard title="interval & timeout">
       <div class={rowStyle}>
         <div class={boxStyle}>
           <p>

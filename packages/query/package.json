@@ -1,14 +1,13 @@
 {
-  "name": "@barqjs/extra",
+  "name": "@barqjs/query",
   "version": "0.1.0",
-  "description": "Extra utilities for Barq: the TanStack Query adapter, and the hook-shaped names over @barqjs/primitives",
+  "description": "TanStack Query for Barq: useQuery, useMutation, useInfiniteQuery, over @tanstack/query-core",
   "keywords": [
+    "async",
     "barq",
-    "clsx",
-    "css-in-js",
+    "cache",
     "query",
-    "router",
-    "variants"
+    "tanstack"
   ],
   "homepage": "https://github.com/salamaashoush/barq#readme",
   "bugs": {
@@ -18,13 +17,14 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/salamaashoush/barq.git",
-    "directory": "packages/extra"
+    "directory": "packages/query"
   },
   "files": [
     "dist",
     "src"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -38,29 +38,22 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "test": "bun test",
-    "test:coverage": "bun test --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check src",
-    "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
-    "format": "bunx @biomejs/biome format --write src",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@tanstack/query-core": "^5.101.4"
+    "@tanstack/query-core": "^5.102.8"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
-    "@barqjs/css": "workspace:*",
-    "@barqjs/primitives": "workspace:*",
-    "@biomejs/biome": "^2.5.9",
+    "@barqjs/core": "workspace:*",
     "@happy-dom/global-registrator": "^20.11.6",
     "@types/bun": "^1.4.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",
-    "@barqjs/primitives": ">=0.1.0",
-    "@tanstack/query-core": "^5.101.4"
+    "@tanstack/query-core": "^5.102.8"
   }
 }

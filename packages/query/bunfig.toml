@@ -1,4 +1,4 @@
-# Bun configuration for @barqjs/extra
+# Bun configuration for @barqjs/query
 # https://bun.sh/docs/runtime/bunfig
 
 [test]

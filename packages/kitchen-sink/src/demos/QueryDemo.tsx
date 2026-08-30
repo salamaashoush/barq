@@ -60,27 +60,27 @@ function BasicQueryDemo() {
     <DemoCard title="useQuery - Basic">
       <div class={statusRowStyle}>
         <span>
-          Status: <code>{() => query().status}</code>
+          Status: <code>{() => query.status}</code>
         </span>
         <span>
-          Stale: <code>{() => String(query().isStale)}</code>
+          Stale: <code>{() => String(query.isStale)}</code>
         </span>
         <span>
-          Fetching: <code>{() => String(query().isFetching)}</code>
+          Fetching: <code>{() => String(query.isFetching)}</code>
         </span>
       </div>
 
-      <Show when={() => query().isPending}>
+      <Show when={() => query.isPending}>
         <div class={loadingStyle}>Loading users...</div>
       </Show>
 
-      <Show when={() => query().isError}>
-        <div class={errorStyle}>Error: {() => (query().error as Error)?.message}</div>
+      <Show when={() => query.isError}>
+        <div class={errorStyle}>Error: {() => (query.error as Error)?.message}</div>
       </Show>
 
-      <Show when={() => query().isSuccess}>
+      <Show when={() => query.isSuccess}>
         <ul class={listStyle}>
-          <For each={() => query().data || []}>
+          <For each={() => query.data || []}>
             {(user: User) => (
               <li class={listItemStyle}>
                 <strong>{user.name}</strong>
@@ -91,7 +91,7 @@ function BasicQueryDemo() {
         </ul>
       </Show>
 
-      <Button onClick={() => query().refetch()}>Refetch</Button>
+      <Button onClick={() => query.refetch()}>Refetch</Button>
     </DemoCard>
   );
 }
@@ -124,14 +124,14 @@ function QueryWithParamsDemo() {
       </div>
 
       <div class={resultBoxStyle}>
-        <Show when={() => query().isPending}>
+        <Show when={() => query.isPending}>
           <div class={loadingStyle}>Loading user {userId}...</div>
         </Show>
 
-        <Show when={() => query().isSuccess && query().data}>
+        <Show when={() => query.isSuccess && query.data}>
           <div class={userCardStyle}>
-            <h4>{() => query().data?.name}</h4>
-            <p>{() => query().data?.email}</p>
+            <h4>{() => query.data?.name}</h4>
+            <p>{() => query.data?.email}</p>
           </div>
         </Show>
       </div>
@@ -170,26 +170,26 @@ function MutationDemo() {
   const handleCreate = () => {
     const names = ["Alice", "Bob", "Charlie", "Diana", "Eve"];
     const randomName = names[Math.floor(Math.random() * names.length)];
-    mutation().mutate(randomName);
+    mutation.mutate(randomName);
   };
 
   return (
     <DemoCard title="useMutation">
       <div class={statusRowStyle}>
         <span>
-          Status: <code>{() => mutation().status}</code>
+          Status: <code>{() => mutation.status}</code>
         </span>
         <span>
-          Pending: <code>{() => String(mutation().isPending)}</code>
+          Pending: <code>{() => String(mutation.isPending)}</code>
         </span>
       </div>
 
-      <Button onClick={handleCreate} disabled={mutation().isPending}>
-        {() => (mutation().isPending ? "Creating..." : "Create Random User")}
+      <Button onClick={handleCreate} disabled={mutation.isPending}>
+        {() => (mutation.isPending ? "Creating..." : "Create Random User")}
       </Button>
 
-      <Show when={() => mutation().isSuccess}>
-        <div class={successStyle}>Created: {() => (mutation().data as User)?.name}</div>
+      <Show when={() => mutation.isSuccess}>
+        <div class={successStyle}>Created: {() => (mutation.data as User)?.name}</div>
       </Show>
 
       <div class={logBoxStyle}>
@@ -213,7 +213,7 @@ function InfiniteQueryDemo() {
   }));
 
   const allPosts = () => {
-    const data = query().data;
+    const data = query.data;
     if (!data) return [];
     return data.pages.flatMap((page: PostsPage) => page.posts);
   };
@@ -222,14 +222,14 @@ function InfiniteQueryDemo() {
     <DemoCard title="useInfiniteQuery - Pagination">
       <div class={statusRowStyle}>
         <span>
-          Pages: <code>{() => query().data?.pages?.length || 0}</code>
+          Pages: <code>{() => query.data?.pages?.length || 0}</code>
         </span>
         <span>
-          Has More: <code>{() => String(query().hasNextPage)}</code>
+          Has More: <code>{() => String(query.hasNextPage)}</code>
         </span>
       </div>
 
-      <Show when={() => query().isPending && !query().data}>
+      <Show when={() => query.isPending && !query.data}>
         <div class={loadingStyle}>Loading posts...</div>
       </Show>
 
@@ -246,13 +246,13 @@ function InfiniteQueryDemo() {
       </Show>
 
       <Button
-        onClick={() => query().fetchNextPage()}
-        disabled={!query().hasNextPage || query().isFetchingNextPage}
+        onClick={() => query.fetchNextPage()}
+        disabled={!query.hasNextPage || query.isFetchingNextPage}
       >
         {() =>
-          query().isFetchingNextPage
+          query.isFetchingNextPage
             ? "Loading more..."
-            : query().hasNextPage
+            : query.hasNextPage
               ? "Load More"
               : "No more posts"
         }

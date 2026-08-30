@@ -43,6 +43,18 @@ import {
   untrack,
   useContext,
 } from "@barqjs/core";
+import {
+  ReactiveMap,
+  debounce,
+  on,
+  persisted,
+  previous,
+  scheduled,
+  selector,
+  shortcut,
+  until,
+  windowSize,
+} from "@barqjs/primitives";
 import { fireEvent, render as renderForTest, screen } from "./index.ts";
 
 /**
@@ -395,6 +407,166 @@ describe("packages/testing/README.md", () => {
     // `fireEvent` flushes: barq batches on the microtask queue, so an assertion
     // straight after a `set()` would otherwise read the DOM as it was before.
     expect(screen.getByRole("button").textContent).toContain("clicked 1 times");
+  });
+});
+
+describe("packages/primitives/README.md", () => {
+  test("a component's listeners and its shared source go with it", () => {
+    const host = mount();
+    let width = 0;
+    const dispose = render(() => {
+      const size = windowSize();
+      width = size.width();
+      on(document, "keydown", () => {});
+      return <aside />;
+    }, host);
+
+    expect(width).toBe(window.innerWidth);
+    dispose();
+  });
+
+  test("a global source is one source for every caller", () => {
+    const dispose = scope((release) => {
+      expect(windowSize()).toBe(windowSize());
+      return release;
+    }, true);
+    dispose();
+  });
+
+  test("debounce runs once, with the last arguments, and flush forces it", () => {
+    const seen: string[] = [];
+    const search = debounce((q: string) => seen.push(q), 250);
+    search("ba");
+    search("barq");
+    expect(seen).toEqual([]);
+    search.flush();
+    expect(seen).toEqual(["barq"]);
+  });
+
+  test("scheduled gates a computation without narrowing what it depends on", async () => {
+    const query = signal("a");
+    const runs: string[] = [];
+    const dispose = scope((release) => {
+      const settled = scheduled((fire) => debounce(fire, 10));
+      effect(() => {
+        const q = query();
+        if (settled()) runs.push(q);
+      });
+      return release;
+    }, true);
+
+    query.set("b");
+    flush();
+    expect(runs).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    flush();
+    expect(runs).toEqual(["b"]);
+    dispose();
+  });
+
+  test("selector wakes the row that lost the selection and the one that gained it", () => {
+    const selected = signal(1);
+    const runs: Record<number, number> = { 1: 0, 2: 0, 3: 0 };
+    const dispose = scope((release) => {
+      const isSelected = selector(selected);
+      for (const id of [1, 2, 3]) {
+        effect(() => {
+          isSelected(id);
+          runs[id] = (runs[id] ?? 0) + 1;
+        });
+      }
+      return release;
+    }, true);
+
+    selected.set(2);
+    flush();
+    expect(runs).toEqual({ 1: 2, 2: 2, 3: 1 });
+    dispose();
+  });
+
+  test("previous advances even when nothing reads it", () => {
+    const count = signal(1);
+    const dispose = scope((release) => {
+      const before = previous(count);
+      count.set(2);
+      flush();
+      count.set(3);
+      flush();
+      expect(before()).toBe(2);
+      return release;
+    }, true);
+    dispose();
+  });
+
+  test("persisted follows another tab and does not write its initial value", () => {
+    localStorage.clear();
+    const dispose = scope((release) => {
+      const theme = persisted("theme", "system");
+      expect(localStorage.getItem("theme")).toBe(null);
+      theme.set("dark");
+      flush();
+      expect(localStorage.getItem("theme")).toBe('"dark"');
+
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "theme",
+          newValue: '"light"',
+          storageArea: localStorage,
+        }),
+      );
+      expect(theme()).toBe("light");
+      return release;
+    }, true);
+    dispose();
+    localStorage.clear();
+  });
+
+  test("a ReactiveMap key is a dependency of its own", () => {
+    const users = new ReactiveMap<string, string>();
+    const runs = { ada: 0, size: 0 };
+    const dispose = scope((release) => {
+      effect(() => {
+        users.get("ada");
+        runs.ada++;
+      });
+      effect(() => {
+        expect(users.size).toBeGreaterThanOrEqual(0);
+        runs.size++;
+      });
+      return release;
+    }, true);
+
+    users.set("grace", "Hopper");
+    flush();
+    expect(runs).toEqual({ ada: 1, size: 2 });
+    dispose();
+  });
+
+  test("shortcut matches its modifiers exactly", () => {
+    let opened = 0;
+    const dispose = scope((release) => {
+      shortcut("ctrl+k", () => opened++);
+      return release;
+    }, true);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    expect(opened).toBe(0);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
+    expect(opened).toBe(1);
+    dispose();
+  });
+
+  test("until resolves at once when the condition already holds", async () => {
+    const currentUser = signal<string | null>(null);
+    const [dispose, waiting] = scope((release) => {
+      const promise = until(currentUser);
+      currentUser.set("Ada");
+      flush();
+      return [release, promise] as const;
+    }, true);
+
+    expect(await waiting).toBe("Ada");
+    dispose();
   });
 });
 

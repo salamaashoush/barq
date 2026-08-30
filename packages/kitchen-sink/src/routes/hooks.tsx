@@ -2,10 +2,10 @@
  * `/hooks` — CLIENT-ONLY, because one of the hooks it demonstrates cannot run
  * on a server.
  *
- * `useKeyboard` from `@barqjs/extra` opens an effect that binds `document` at
- * construction, so rendering this route on the string backend throws
- * `ReferenceError: document is not defined` — inside its own error boundary,
- * which is exactly the shape `errorComponent`-less boundaries used to swallow.
+ * The demo drives `@barqjs/primitives` against live browser state — an
+ * `IntersectionObserver`, a `MediaQueryList`, `localStorage` — and while every
+ * one of those reads a neutral value on the server, the point of the page is
+ * what they do once there is a browser to read.
  *
  * `ssr: false` is the front door's answer to a route that cannot be rendered on
  * a server: the server emits this depth's `pendingComponent` and the browser
