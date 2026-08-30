@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "@barqjs/core": "workspace:*",
+    "@barqjs/css": "workspace:*",
     "@barqjs/extra": "workspace:*",
-    "@tanstack/query-core": "^5.101.4",
-    "goober": "^2.1.19",
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
-    "@barqjs/start": "workspace:*"
+    "@barqjs/start": "workspace:*",
+    "@tanstack/query-core": "^5.101.4"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",

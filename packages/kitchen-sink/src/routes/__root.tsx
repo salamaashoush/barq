@@ -8,7 +8,7 @@
 
 import { type Child, For } from "@barqjs/core";
 import { QueryClient } from "@tanstack/query-core";
-import { QueryClientProvider } from "@barqjs/extra";
+import { QueryClientProvider } from "@barqjs/query";
 // The ISOMORPHIC entry, not `/server`: this module is the ROOT ROUTE and ships
 // to the browser like every other route module. `@barqjs/router/server` reaches
 // `node:async_hooks`, and importing it here made Vite externalise that for the
@@ -22,13 +22,31 @@ import {
   useLocation,
 } from "@barqjs/router";
 
-import { baseStyles, collectStyles, css, globalCss } from "../styles";
+import { css, globalCss } from "@barqjs/css";
 
 // The global rules and the query client live HERE, not in an entry. A root
 // route's component wraps every route on BOTH backends, where an entry wraps
 // only the one it is the entry for — which is TanStack's arrangement too: their
 // providers go in `__root.tsx` and their entries carry nothing but the boot.
-baseStyles();
+//
+// A plain top-level call, where it used to be a `baseStyles()` function the
+// document called: the ordering it existed to control was goober's, and the
+// compiler deletes this statement outright rather than running it.
+globalCss`
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    line-height: 1.6;
+  }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-family: "Fira Code", monospace; }
+  pre { background: #1e293b; padding: 16px; border-radius: 8px; overflow-x: auto; }
+  button { cursor: pointer; font-family: inherit; }
+  input, select, textarea { font-family: inherit; }
+`;
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5000, retry: 1 } },
@@ -42,13 +60,16 @@ const queryClient = new QueryClient({
  * client CSS. `<Scripts />` renders the body scripts and the client entry. There
  * is no order to get right and no `<title>` here: the site title is this route's
  * own `head`, which merges with every route below it.
+ *
+ * The `<style id="_goober">` that used to stand here is gone with the runtime
+ * that filled it. Its CSS is a build asset now, and `<HeadContent />` was
+ * already linking the client build's stylesheets.
  */
 const shellComponent = (props: { children: Child }) => (
   <html lang="en">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <style id="_goober">{collectStyles()}</style>
       <HeadContent />
     </head>
     <body>

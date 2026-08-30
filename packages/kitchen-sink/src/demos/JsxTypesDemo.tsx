@@ -18,7 +18,7 @@ import {
   type VoidProps,
   signal,
 } from "@barqjs/core";
-import { clsx, css } from "../styles";
+import { clsx, css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 // ============================================================================

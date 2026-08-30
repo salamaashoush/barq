@@ -3,7 +3,7 @@
  */
 
 import { type Child, For, type Incoming } from "@barqjs/core";
-import { clsx, css } from "../styles";
+import { clsx, css } from "@barqjs/css";
 
 // Demo section container
 export function DemoSection(props: Incoming<{ children: Child }>) {

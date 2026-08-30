@@ -23,9 +23,7 @@ import {
   useToggle,
   useWindowSize,
 } from "@barqjs/extra";
-import {
-  css,
-} from "../styles";
+import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function HooksDemo() {

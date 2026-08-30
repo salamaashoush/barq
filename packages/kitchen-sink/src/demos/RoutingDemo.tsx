@@ -7,7 +7,7 @@
  */
 
 import { For, Show, signal } from "@barqjs/core";
-import { clsx, css } from "../styles";
+import { clsx, css } from "@barqjs/css";
 import type { Cell } from "@barqjs/core";
 import {
   type Guard,

@@ -11,8 +11,8 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-} from "@barqjs/extra";
-import { css } from "../styles";
+} from "@barqjs/query";
+import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {

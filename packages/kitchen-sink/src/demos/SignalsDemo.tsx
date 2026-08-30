@@ -21,7 +21,7 @@ import {
   effect,
   signal,
 } from "@barqjs/core";
-import { css } from "../styles";
+import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 export function SignalsDemo() {
@@ -457,21 +457,33 @@ function ContextDemo() {
   );
 }
 
+const consumerStyle = css`
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 12px;
+  background: var(--consumer-bg);
+  color: var(--consumer-fg);
+  border: 1px solid var(--consumer-border);
+`;
+
 function ContextConsumer() {
   // getContext returns a getter for reactive access
   const theme = useContext(ThemeContext);
   const user = useContext(UserContext);
 
+  // The three values are the only thing about this block that is not known at
+  // compile time, so they are the only thing left at runtime: the block itself
+  // compiles to a class, and `style` sets three custom properties on this one
+  // element. Interpolating them into the CSS instead reports BARQ015 and keeps
+  // the whole block on the runtime.
   return (
     <div
-      class={css`
-        padding: 12px;
-        border-radius: 6px;
-        margin-top: 12px;
-        background: ${theme() === "dark" ? "#1e293b" : "#f1f5f9"};
-        color: ${theme() === "dark" ? "#e2e8f0" : "#1e293b"};
-        border: 1px solid ${theme() === "dark" ? "#475569" : "#cbd5e1"};
-      `}
+      class={consumerStyle}
+      style={{
+        "--consumer-bg": theme() === "dark" ? "#1e293b" : "#f1f5f9",
+        "--consumer-fg": theme() === "dark" ? "#e2e8f0" : "#1e293b",
+        "--consumer-border": theme() === "dark" ? "#475569" : "#cbd5e1",
+      }}
     >
       <p>
         Theme from context: <strong>{theme}</strong>

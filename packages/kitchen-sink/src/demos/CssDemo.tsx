@@ -6,16 +6,41 @@
 import { For, type Incoming, signal } from "@barqjs/core";
 import {
   type DesignTokens,
-  clsx,
   createTheme,
-  css,
-  cssVar,
   defineVars,
-  keyframe,
   token,
   variants,
 } from "../styles";
+import {
+  atoms,
+  clsx,
+  create,
+  createTheme as createCssTheme,
+  css,
+  cssVar,
+  defineVars as defineTokens,
+  dynamic,
+  firstThatWorks,
+  keyframes,
+  props,
+} from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
+
+const cardBase = css`
+  padding: 20px;
+  border-radius: 12px;
+  font-weight: 500;
+`;
+
+const cardPrimary = css`
+  background: #3b82f6;
+  color: white;
+`;
+
+const cardSecondary = css`
+  background: #475569;
+  color: #e2e8f0;
+`;
 
 export function CssDemo() {
   return (
@@ -27,6 +52,9 @@ export function CssDemo() {
       <VariantsDemo />
       <ThemeDemo />
       <CssVarDemo />
+      <AtomsDemo />
+      <TokensDemo />
+      <DynamicDemo />
     </DemoSection>
   );
 }
@@ -78,30 +106,15 @@ function CssBasicDemo() {
 
 // styled components
 function StyledDemo() {
-  // Note: styled() requires goober's createElement integration
-  // For now we'll show the css`` approach which works reliably
-
-  const Card = (props: Incoming<{ variant: "primary" | "secondary"; children: string }>) => {
-    const cardStyle = () =>
-      css`
-        padding: 20px;
-        border-radius: 12px;
-        font-weight: 500;
-        ${
-          props.variant() === "primary"
-            ? `
-          background: #3b82f6;
-          color: white;
-        `
-            : `
-          background: #475569;
-          color: #e2e8f0;
-        `
-        }
-      `;
-
-    return <div class={cardStyle()}>{props.children}</div>;
-  };
+  // One block per variant rather than one block with a branch in it. An
+  // interpolation standing where a declaration would go has no CSS grammar to
+  // sit in, so the compiler refuses it (BARQ014) instead of guessing; written
+  // as two classes, both compile and the choice is an ordinary ternary.
+  const Card = (props: Incoming<{ variant: "primary" | "secondary"; children: string }>) => (
+    <div class={clsx(cardBase, props.variant() === "primary" ? cardPrimary : cardSecondary)}>
+      {props.children}
+    </div>
+  );
 
   return (
     <DemoCard title="Styled Components Pattern">
@@ -119,7 +132,7 @@ function StyledDemo() {
 function KeyframeDemo() {
   const animating = signal(false);
 
-  const pulse = keyframe`
+  const pulse = keyframes`
     0%, 100% {
       transform: scale(1);
       opacity: 1;
@@ -130,7 +143,7 @@ function KeyframeDemo() {
     }
   `;
 
-  const spin = keyframe`
+  const spin = keyframes`
     from {
       transform: rotate(0deg);
     }
@@ -139,7 +152,7 @@ function KeyframeDemo() {
     }
   `;
 
-  const bounce = keyframe`
+  const bounce = keyframes`
     0%, 100% {
       transform: translateY(0);
     }
@@ -421,6 +434,12 @@ function ThemeDemo() {
 
   return (
     <DemoCard title="createTheme & token">
+      {/*
+        The one block in this application that BARQ015 reports, and it is left
+        that way on purpose: `token()` is a call the compiler cannot fold, so
+        this block stays on `@barqjs/css`'s runtime and the demo exercises the
+        escape hatch end to end. Its class is prefixed `r`, not `b`.
+      */}
       <div
         class={css`
           padding: 16px;
@@ -553,3 +572,111 @@ const noteStyle = css`
   font-style: italic;
   margin-top: 12px;
 `;
+
+/**
+ * `atoms` and `create`: one class per declaration, merged by property.
+ *
+ * The last argument wins per property, which is the difference from
+ * `clsx(base, variant)` — there the stylesheet's order decides, here the
+ * call's does. Every id here is asserted against a real browser.
+ */
+const cardStyles = create({
+  root: { padding: 12, borderRadius: 8, background: "#1e293b" },
+  loud: { color: "rgb(217, 70, 239)" },
+  calm: { color: "rgb(16, 185, 129)" },
+});
+
+const boxed = atoms({ margin: "0 4px", color: "rgb(2, 132, 199)" }, { marginTop: 8 });
+const cleared = atoms({ color: "rgb(220, 38, 38)", padding: 6 }, { color: null });
+const stuck = atoms({ position: firstThatWorks("sticky", "-webkit-sticky", "fixed") });
+const conditioned = atoms({
+  "::before": { content: '"* "' },
+  color: {
+    default: "rgb(120, 113, 108)",
+    "@media (min-width: 1px)": { default: "rgb(101, 163, 13)", ":hover": "rgb(190, 24, 93)" },
+  },
+});
+
+function AtomsDemo() {
+  const loud = signal(false);
+
+  return (
+    <DemoCard title="atoms & create - merged by property">
+      <div class={atoms(cardStyles.root)}>
+        <p data-testid="group" class={atoms(cardStyles.calm, loud() && cardStyles.loud)}>
+          Last argument wins per property
+        </p>
+        <p data-testid="boxed" class={boxed}>
+          A longhand replaces one side of a shorthand
+        </p>
+        <p data-testid="cleared" class={cleared}>
+          `null` removes the colour and keeps the padding
+        </p>
+        <p data-testid="stuck" class={stuck}>
+          `firstThatWorks` repeats the declaration, best last
+        </p>
+        <p data-testid="conditioned" class={conditioned}>
+          A media query with a pseudo-class inside it
+        </p>
+      </div>
+      <Button onClick={() => loud.update((on) => !on)}>Toggle variant</Button>
+      <p class={noteStyle}>
+        Compiled: every class above is a string literal in the bundle, and the CSS is a build
+        asset.
+      </p>
+    </DemoCard>
+  );
+}
+
+/** `defineVars` and `createTheme`: tokens as custom properties. */
+// Aliased: this file also uses the application's own `defineVars`, which
+// returns a declaration STRING for a `style` attribute rather than a token set.
+const tokens = defineTokens({ brand: "rgb(59, 130, 246)", pad: "12px" });
+const brighter = createCssTheme(tokens, { brand: "rgb(96, 165, 250)" });
+
+const tokenBox = css`
+  color: ${tokens.brand};
+  padding: ${tokens.pad};
+  border: 1px solid ${tokens.brand};
+  border-radius: 6px;
+`;
+
+function TokensDemo() {
+  return (
+    <DemoCard title="defineVars & createTheme - tokens">
+      <div data-testid="tokens-default" class={tokenBox}>
+        Reads the token
+      </div>
+      <div class={brighter}>
+        <div data-testid="tokens-themed" class={tokenBox}>
+          The same block, under a theme that redeclares one token
+        </div>
+      </div>
+      <p class={noteStyle}>
+        A token crosses a module boundary as a `var()` string, so nothing has to resolve an
+        import at build time.
+      </p>
+    </DemoCard>
+  );
+}
+
+/** `dynamic`: the class is fixed, only the value changes. */
+const tint = dynamic((colour: string) => ({ backgroundColor: colour }));
+
+function DynamicDemo() {
+  const hot = signal(false);
+
+  return (
+    <DemoCard title="dynamic - a value only known at run time">
+      <p
+        data-testid="dynamic"
+        {...props(cardStyles.root, tint(hot() ? "rgb(251, 146, 60)" : "rgb(148, 163, 184)"))}
+      >
+        One custom property changes; no new CSS is produced
+      </p>
+      <Button onClick={() => hot.update((on) => !on)} data-testid="toggle">
+        Toggle colour
+      </Button>
+    </DemoCard>
+  );
+}

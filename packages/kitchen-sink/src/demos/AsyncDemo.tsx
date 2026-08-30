@@ -21,7 +21,7 @@ import {
   signal,
   type Incoming,
 } from "@barqjs/core";
-import { css } from "../styles";
+import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface User {

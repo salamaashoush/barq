@@ -8,7 +8,7 @@
  */
 
 import { Errored, For, Match, Portal, Show, Switch, signal } from "@barqjs/core";
-import { css } from "../styles";
+import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 export function ComponentsDemo() {

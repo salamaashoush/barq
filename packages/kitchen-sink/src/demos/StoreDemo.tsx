@@ -7,7 +7,7 @@
  */
 
 import { For, Show, produce, reconcile, unwrap, effect, signal, store } from "@barqjs/core";
-import { css } from "../styles";
+import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
 
 interface Todo {
