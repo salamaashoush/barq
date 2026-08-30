@@ -17,6 +17,7 @@ import { Route as IndexRoute } from "./routes/index";
 import { Route as AboutRoute } from "./routes/about";
 import { Route as AdminRoute } from "./routes/admin";
 import { Route as AsyncRoute } from "./routes/async";
+import { Route as ClientonlyRoute } from "./routes/clientonly";
 import { Route as ComponentsRoute } from "./routes/components";
 import { Route as ControlRoute } from "./routes/control";
 import { Route as CssRoute } from "./routes/css";
@@ -46,6 +47,7 @@ export const routeTree: AnyRouteDefinition[] = [
     { ...AboutRoute.options, id: "/about", path: "about", src: "/src/routes/about.tsx", prerender: true },
     { ...AdminRoute.options, id: "/admin", path: "admin", src: "/src/routes/admin.tsx" },
     { ...AsyncRoute.options, id: "/async", path: "async", src: "/src/routes/async.tsx" },
+    { ...ClientonlyRoute.options, id: "/clientonly", path: "clientonly", src: "/src/routes/clientonly.tsx" },
     { ...ComponentsRoute.options, id: "/components", path: "components", src: "/src/routes/components.tsx" },
     { ...ControlRoute.options, id: "/control", path: "control", src: "/src/routes/control.tsx" },
     { ...CssRoute.options, id: "/css", path: "css", src: "/src/routes/css.tsx" },
@@ -73,6 +75,7 @@ export interface FileRoutesById {
   "/about": typeof AboutRoute;
   "/admin": typeof AdminRoute;
   "/async": typeof AsyncRoute;
+  "/clientonly": typeof ClientonlyRoute;
   "/components": typeof ComponentsRoute;
   "/control": typeof ControlRoute;
   "/css": typeof CssRoute;
@@ -92,9 +95,9 @@ export interface FileRoutesById {
 
 export interface FileRouteTypes {
   /** Every route id, layouts included — what `useMatch` and `Link`'s `to` address. */
-  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/shop/" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
+  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/clientonly" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/shop/" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
   /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */
-  fullPaths: "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
+  fullPaths: "/" | "/about" | "/admin" | "/async" | "/clientonly" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
   fileRoutesById: FileRoutesById;
 }
 

@@ -112,12 +112,14 @@ export {
 
 export {
   type ActiveOptions,
+  type ClientOnlyProps,
   type LinkProps,
   type NavLinkProps,
   type PreloadStrategy,
   type RedirectProps,
   type RouterProps,
   type RouteMatchInfo,
+  ClientOnly,
   Link,
   NavLink,
   Outlet,

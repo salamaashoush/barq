@@ -137,6 +137,13 @@ const linkBackend = {
     }
     return ssrHtml(`<a ${attributes}>${esc(children)}</a>`);
   },
+  /**
+   * `<ClientOnly>`: the fallback arm of the same two-armed region the client
+   * builds, so the ranges the client claims are the ranges the server wrote.
+   * A bare fallback with no region is what a mismatch looks like.
+   */
+  clientOnly: (fallback: Block<unknown>, children: Block<unknown>): unknown =>
+    ssrBranch(getOwner(), null, null, () => 0, [fallback, children], HYDRATE),
 };
 
 /** A not-found for an unmatched LOCATION has nothing to retry. */

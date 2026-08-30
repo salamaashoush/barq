@@ -19,7 +19,7 @@ import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { Outlet, RouterProvider, linkAttrHref } from "./components.ts";
+import { ClientOnly, Outlet, RouterProvider, linkAttrHref } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
@@ -2420,5 +2420,38 @@ describe("notFoundMode", () => {
     const html = await response.text();
     expect(html).not.toContain("no such aisle");
     expect(html).toContain("404 - Not Found");
+  });
+});
+
+/**
+ * `<ClientOnly>` — the subtree that cannot be server-rendered.
+ *
+ * The property that matters is not "it renders on the client": it is that the
+ * SERVER and the client's FIRST render agree, so hydration compares the same
+ * tree. A `typeof document` check cannot do that — it is already true on the
+ * first client render, which is the render that has to match the server's.
+ */
+describe("ClientOnly", () => {
+  const table: AnyRouteDefinition[] = [
+    {
+      path: "/",
+      component: ((scope: unknown) =>
+        (ClientOnly as never as (s: unknown, p: unknown) => unknown)(scope, {
+          fallback: () => ssrHtml("<p>skeleton</p>"),
+          children: () => ssrHtml("<p>the chart</p>"),
+        })) as never,
+    },
+  ] as never;
+
+  test("the server writes the fallback, never the children", async () => {
+    const handler = createPageHandler({
+      routeTree: table,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const html = await (await handler(get("/"))).text();
+    expect(html).toContain("skeleton");
+    expect(html).not.toContain("the chart");
   });
 });

@@ -88,6 +88,16 @@ const RouterContext = context<RouterState>(undefined, "barq-router");
  * server runtime in the browser bundle.
  */
 export interface LinkBackend {
+  /**
+   * `<ClientOnly>`, on the string backend.
+   *
+   * It cannot use the DOM `branch` — that renders nothing without a document —
+   * and it must not simply emit the fallback either: the client builds a BRANCH
+   * there, and a server that wrote no range is a tree the client cannot claim.
+   * So the backend writes the same two-armed region with the first arm chosen,
+   * which is the shape the client's first render produces.
+   */
+  readonly clientOnly?: (fallback: Block<unknown>, children: Block<unknown>) => unknown;
   readonly link: (
     href: string,
     className: string,
@@ -936,6 +946,63 @@ export function Outlet(scope: Scope | null, _props?: Record<string, never>): JSX
   if (match === null) return null;
   return match.children(scope) as JSXElement;
 }
+
+export interface ClientOnlyProps {
+  /** Shown once the browser has taken over. */
+  readonly children?: unknown;
+  /** Shown on the server, and on the first client render. Nothing by default. */
+  readonly fallback?: unknown;
+}
+
+/**
+ * Render `children` only once the client is running; `fallback` until then.
+ *
+ * For the subtree that CANNOT be server-rendered — a chart measuring its
+ * container, a map, anything reading `window` at build time. `ssr: false` is
+ * the route-level answer to the same problem; this is the component-level one,
+ * so a page that is otherwise server-rendered can carve out one region.
+ *
+ * WHY A SIGNAL AND NOT `typeof document`. The two renders have to AGREE: the
+ * server writes the fallback, and the client's first render must write the
+ * fallback too or hydration is comparing different trees. A signal that starts
+ * `false` and is flipped by an `effect` gives exactly that — the effect runs
+ * after the first render on the client and never on the string backend, so the
+ * swap happens on the second render, with the server's markup already claimed.
+ *
+ * Sniffing the environment cannot do this: it would be `true` on the client's
+ * FIRST render, which is the render that has to match the server's.
+ */
+function ClientOnlyImpl(scope: Scope | null, props: Incoming<ClientOnlyProps>): JSXElement {
+  const shown = signal(false);
+  // Never runs on the string backend, which is what makes the server's answer
+  // the fallback without asking what environment this is.
+  effect(() => {
+    shown.set(true);
+  });
+  // A Block is INVOKED with the scope the branch is holding, exactly as
+  // `Outlet` invokes the next depth; anything else is a value and is returned.
+  // That is what lets `<ClientOnly>` take JSX children and a JSX fallback.
+  const place = (slot: unknown) => (inner: Scope | null) =>
+    typeof slot === "function" ? (slot as (s: Scope | null) => unknown)(inner) : (slot ?? null);
+
+  const bodies = [block(place(props.fallback)), block(place(props.children))] as const;
+  // The string backend writes the same region with the fallback arm chosen.
+  const backend = linkBackend();
+  if (backend?.clientOnly !== undefined) {
+    return backend.clientOnly(bodies[0], bodies[1]) as JSXElement;
+  }
+  // The key is an INDEX into `bodies`, not a boolean — core's own
+  // `errorBoundary` picks `0` or `1` the same way. A boolean key selects
+  // `bodies[false]`, which is `undefined`, and the region renders nothing.
+  const arm = (): number => (shown() ? 1 : 0);
+  return branch(scope, null, null, arm as Cell<number>, [
+    // Index 0 is `false`: the fallback. Index 1 is `true`: the children.
+    bodies[0],
+    bodies[1],
+  ]) as JSXElement;
+}
+
+export const ClientOnly = ClientOnlyImpl as unknown as (props: ClientOnlyProps) => JSXElement;
 
 // ---------------------------------------------------------------- components
 
