@@ -38,3 +38,7 @@ packages/compiler-rs/target/
 *.node
 packages/compiler-rs/index.js
 packages/compiler-rs/index.d.ts
+
+# Browser-automation output. Regenerated on every run, and a debugging
+# session leaves a screenshot per step behind.
+.ferridriver/artifacts/
