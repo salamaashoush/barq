@@ -1,0 +1,1555 @@
+//! `css` / `keyframes` / `globalCss`, compiled away.
+//!
+//! A tagged template whose tag resolves to `cssSource` is replaced by the class
+//! name it produces, and its CSS is collected for the module. Nothing of the
+//! call survives: no tag function, no template, no runtime.
+//!
+//! It runs BEFORE `bind`, which is what makes the second-order win available.
+//! `class={cardStyle}` is a string literal by the time the JSX is lowered, so
+//! `fold` bakes it into the template markup and the element carries no class
+//! channel and no `renderEffect` at all.
+//!
+//! Resolution is by `SymbolId`, like everything else here: a local function
+//! named `css` is not this `css`, and `import { css as style }` still is.
+
+use oxc::allocator::{Allocator, Vec as ArenaVec};
+use oxc::ast::ast::{
+    Expression, ImportDeclarationSpecifier, LogicalOperator, ModuleExportName, ObjectProperty,
+    ObjectPropertyKind, Program, PropertyKey, PropertyKind, Statement, TemplateLiteral,
+};
+use oxc::ast::builder::AstBuilder;
+use oxc::ast_visit::VisitMut;
+use oxc::ast_visit::walk_mut::{walk_expression, walk_statements, walk_variable_declarator};
+use oxc::semantic::{Scoping, SemanticBuilder, SymbolId};
+use oxc::span::{GetSpan, Span};
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::analysis::without_type_wrappers;
+use crate::diag::Code;
+use crate::options::ResolvedOptions;
+
+/// What one of the three tags compiles to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tag {
+    Css,
+    Keyframes,
+    Global,
+    Atoms,
+    Create,
+    FirstThatWorks,
+    Props,
+    DefineVars,
+    Dynamic,
+}
+
+impl Tag {
+    fn of(name: &str) -> Option<Self> {
+        Some(match name {
+            "css" => Tag::Css,
+            "keyframes" => Tag::Keyframes,
+            "globalCss" => Tag::Global,
+            "atoms" => Tag::Atoms,
+            "create" => Tag::Create,
+            "firstThatWorks" => Tag::FirstThatWorks,
+            "props" => Tag::Props,
+            "defineVars" => Tag::DefineVars,
+            "dynamic" => Tag::Dynamic,
+            _ => return None,
+        })
+    }
+
+    fn kind(self) -> barq_css::Kind {
+        match self {
+            Tag::Keyframes => barq_css::Kind::Keyframes,
+            Tag::Global => barq_css::Kind::Global,
+            _ => barq_css::Kind::Scoped,
+        }
+    }
+}
+
+pub struct Extracted {
+    /// This module's stylesheet, or empty when it produced none.
+    pub css: String,
+    pub reports: Vec<Report>,
+}
+
+pub struct Report {
+    pub code: Code,
+    pub message: String,
+    pub span: Span,
+}
+
+/// The cheap question first: a module that never names the package cannot
+/// import from it, and a symbol table built to discover that is pure cost.
+pub fn mentions(source: &str, css_source: &str) -> bool {
+    source.contains(css_source)
+}
+
+pub fn run<'a>(
+    allocator: &'a Allocator,
+    program: &mut Program<'a>,
+    options: &ResolvedOptions,
+) -> Extracted {
+    // Semantic FIRST: `ImportSpecifier::local.symbol_id` is a `Cell` the
+    // builder fills, so reading it before the build finds every import
+    // unresolved and the pass silently does nothing.
+    let scoping = SemanticBuilder::new().build(program).semantic.into_scoping();
+    let tags = imported_tags(program, &options.css_source);
+    if tags.is_empty() {
+        return Extracted { css: String::new(), reports: Vec::new() };
+    }
+
+    let mut pass = Css {
+        allocator,
+        ast: AstBuilder::new(allocator),
+        scoping: &scoping,
+        tags,
+        folded: FxHashMap::default(),
+        groups: FxHashMap::default(),
+        debug: options.dev,
+        css: String::new(),
+        emitted: FxHashSet::default(),
+        reports: Vec::new(),
+        name: None,
+    };
+    pass.visit_program(program);
+    Extracted { css: pass.css, reports: pass.reports }
+}
+
+struct Css<'a, 'b> {
+    allocator: &'a Allocator,
+    ast: AstBuilder<'a>,
+    scoping: &'b Scoping,
+    tags: FxHashMap<SymbolId, Tag>,
+    /// Module-level `const`s whose value is known as text, so an interpolation
+    /// naming one folds. Gains every class this pass generates as it goes,
+    /// which is what makes `` css`.${button} & { … }` `` compose.
+    folded: FxHashMap<SymbolId, String>,
+    /// `create` results, so `styles.root` in a later `atoms` folds to the class
+    /// string that group produced. Filled as the walk goes, like `folded`.
+    groups: FxHashMap<SymbolId, FxHashMap<String, String>>,
+    debug: bool,
+    css: String,
+    /// One rule per class, however many times the module writes the block.
+    emitted: FxHashSet<String>,
+    reports: Vec<Report>,
+    /// The binding the template is being assigned to, for a readable dev class.
+    name: Option<String>,
+}
+
+impl<'a> VisitMut<'a> for Css<'a, '_> {
+    /// `globalCss` yields nothing, so its statement goes rather than becoming a
+    /// dead expression. Handled here because this is the only place the
+    /// statement list is addressable.
+    fn visit_statements(&mut self, statements: &mut ArenaVec<'a, Statement<'a>>) {
+        let mut compiled: FxHashSet<Span> = FxHashSet::default();
+        for statement in statements.iter() {
+            let Statement::ExpressionStatement(expression) = statement else { continue };
+            let Expression::TaggedTemplateExpression(tagged) = &expression.expression else {
+                continue;
+            };
+            if self.tag_of(&tagged.tag) != Some(Tag::Global) {
+                continue;
+            }
+            if self.compile(Tag::Global, &tagged.quasi, tagged.span).is_some() {
+                compiled.insert(expression.span);
+            }
+        }
+        if !compiled.is_empty() {
+            statements.retain(|statement| match statement {
+                Statement::ExpressionStatement(expression) => !compiled.contains(&expression.span),
+                _ => true,
+            });
+        }
+        walk_statements(self, statements);
+    }
+
+    fn visit_variable_declarator(
+        &mut self,
+        declarator: &mut oxc::ast::ast::VariableDeclarator<'a>,
+    ) {
+        let outer = self.name.replace(
+            declarator
+                .id
+                .get_binding_identifier()
+                .map(|id| id.name.to_string())
+                .unwrap_or_default(),
+        );
+        walk_variable_declarator(self, declarator);
+        self.name = outer;
+
+        // Recorded after the walk, so what lands in the table is the class the
+        // rewrite produced rather than the call that produced it.
+        let Some(symbol) = declarator.id.get_binding_identifier().and_then(|id| id.symbol_id.get())
+        else {
+            return;
+        };
+        match declarator.init.as_ref() {
+            Some(Expression::StringLiteral(literal)) => {
+                self.folded.insert(symbol, literal.value.to_string());
+            }
+            Some(Expression::ObjectExpression(object)) => {
+                let mut group = FxHashMap::default();
+                for property in &object.properties {
+                    let ObjectPropertyKind::ObjectProperty(property) = property else { continue };
+                    let (PropertyKey::StaticIdentifier(name), Expression::StringLiteral(value)) =
+                        (&property.key, &property.value)
+                    else {
+                        continue;
+                    };
+                    group.insert(name.name.to_string(), value.value.to_string());
+                }
+                if !group.is_empty() {
+                    self.groups.insert(symbol, group);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn visit_expression(&mut self, expression: &mut Expression<'a>) {
+        walk_expression(self, expression);
+
+        if let Expression::CallExpression(call) = expression {
+            let span = call.span;
+            match self.tag_of(&call.callee) {
+                Some(Tag::Atoms) => {
+                    if let Some(replacement) = self.compile_atoms(call, span) {
+                        *expression = replacement;
+                    }
+                    return;
+                }
+                Some(Tag::Create) => {
+                    if let Some(replacement) = self.compile_create(call, span) {
+                        *expression = replacement;
+                    }
+                    return;
+                }
+                Some(Tag::Props) => {
+                    if let Some(classes) = self.compile_atoms(call, span) {
+                        // `{ class: … }`. The `style` half only exists when a
+                        // dynamic group is in the call, and a dynamic group is
+                        // not something this arm can see yet.
+                        *expression = self.object(span, vec![("class", classes)]);
+                    }
+                    return;
+                }
+                Some(Tag::DefineVars) => {
+                    if let Some(replacement) = self.compile_define_vars(call, span) {
+                        *expression = replacement;
+                    }
+                    return;
+                }
+                Some(Tag::Dynamic) => {
+                    if let Some(replacement) = self.compile_dynamic(call, span) {
+                        *expression = replacement;
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        let Expression::TaggedTemplateExpression(tagged) = expression else { return };
+        let Some(tag) = self.tag_of(&tagged.tag) else { return };
+        // A `globalCss` reached here is one written somewhere other than
+        // statement position, where deleting the statement is not available.
+        // It stays on the runtime rather than being rewritten to a value it
+        // never had.
+        if tag == Tag::Global {
+            return;
+        }
+        let span = tagged.span;
+        let Some(name) = self.compile(tag, &tagged.quasi, span) else { return };
+        let name = self.allocator.alloc_str(&name);
+        *expression = Expression::new_string_literal(span, name, None, &self.ast);
+    }
+}
+
+/// `(property, condition path, value)`, where `None` REMOVES what an earlier
+/// argument applied — StyleX's rule for `null`, and the reason it is one:
+/// `props(base, { color: null })` is how a component says "whatever you set,
+/// not this".
+type Declaration = (String, String, Option<String>);
+
+/// One argument to `atoms`, once its declarations are known.
+struct Argument<'a> {
+    /// `Some` for `cond && { … }`, whose classes are only applied when it holds.
+    test: Option<Expression<'a>>,
+    declarations: Vec<Declaration>,
+    /// Classes another `atoms` or `create` already produced, whose rules are
+    /// already in the sheet. Only the key each name carries is needed to merge.
+    atoms: Vec<barq_css::atoms::Atom>,
+}
+
+impl<'a> Css<'a, '_> {
+    /// `atoms({ … })` as the class string it produces.
+    ///
+    /// `None` leaves the call for the runtime, which computes exactly this.
+    fn compile_atoms(
+        &mut self,
+        call: &mut oxc::ast::ast::CallExpression<'a>,
+        span: Span,
+    ) -> Option<Expression<'a>> {
+        let mut arguments: Vec<Argument<'a>> = Vec::new();
+        for argument in call.arguments.iter_mut() {
+            let expression = argument.as_expression_mut()?;
+            match crate::analysis::without_type_wrappers(expression) {
+                // `false && …` and friends: the argument contributes nothing and
+                // is not a value the compiler has to know.
+                Expression::NullLiteral(_) => continue,
+                Expression::BooleanLiteral(literal) if !literal.value => continue,
+                Expression::Identifier(identifier) if identifier.name == "undefined" => continue,
+                _ => {}
+            }
+            arguments.push(match expression {
+                Expression::ObjectExpression(_) => Argument {
+                    test: None,
+                    declarations: self.declarations(expression)?,
+                    atoms: Vec::new(),
+                },
+                // `styles.root` — a group `create` already produced.
+                Expression::StaticMemberExpression(_) | Expression::StringLiteral(_) => Argument {
+                    test: None,
+                    declarations: Vec::new(),
+                    atoms: self.known(expression)?,
+                },
+                Expression::LogicalExpression(logical)
+                    if logical.operator == LogicalOperator::And =>
+                {
+                    let (declarations, atoms) = match &logical.right {
+                        Expression::ObjectExpression(_) => {
+                            (self.declarations(&logical.right)?, Vec::new())
+                        }
+                        other => (Vec::new(), self.known(other)?),
+                    };
+                    // The test is MOVED out of the argument rather than printed
+                    // back from source: it may be any expression, and a source
+                    // slice loses the symbols `bind` has already resolved in it.
+                    let placeholder = Expression::new_null_literal(logical.left.span(), &self.ast);
+                    let test = std::mem::replace(&mut logical.left, placeholder);
+                    Argument { test: Some(test), declarations, atoms }
+                }
+                _ => return None,
+            });
+        }
+
+        // One conditional is the idiom (`atoms(base, active() && { … })`) and
+        // costs one ternary. Two is four outcomes and three is eight, and a
+        // nested ternary over eight class strings is larger than the runtime it
+        // replaces — so past one, the runtime keeps the call.
+        let conditionals = arguments.iter().filter(|argument| argument.test.is_some()).count();
+        if conditionals > 1 {
+            self.reports.push(Report {
+                code: Code::Barq016,
+                message: format!(
+                    "`atoms` has {conditionals} conditional arguments, so it stays on the \
+                     runtime; merge them into one object, or apply the second with a separate \
+                     `atoms` call"
+                ),
+                span,
+            });
+            return None;
+        }
+
+        let with = Self::merge(&arguments, true);
+        let Some(index) = arguments.iter().position(|argument| argument.test.is_some()) else {
+            let all = self.emit_atoms(&with);
+            let text = self.allocator.alloc_str(&all);
+            return Some(Expression::new_string_literal(span, text, None, &self.ast));
+        };
+
+        // Both branches, because either can run — but only the atoms one of
+        // them actually names.
+        let without_atoms = Self::merge(&arguments, false);
+        let all = self.emit_atoms(&with);
+        let without = self.emit_atoms(&without_atoms);
+        let test = arguments[index].test.take()?;
+        let consequent =
+            Expression::new_string_literal(span, self.allocator.alloc_str(&all), None, &self.ast);
+        let alternate = Expression::new_string_literal(
+            span,
+            self.allocator.alloc_str(&without),
+            None,
+            &self.ast,
+        );
+        Some(Expression::new_conditional_expression(span, test, consequent, alternate, &self.ast))
+    }
+
+    /// An object literal from `(key, value)` pairs.
+    fn object(&self, span: Span, entries: Vec<(&'a str, Expression<'a>)>) -> Expression<'a> {
+        let mut properties = ArenaVec::new_in(&self.allocator);
+        for (name, value) in entries {
+            // A custom property is not a JS identifier, and an unquoted
+            // `--background-color-1j1m7tz:` is a syntax error rather than a key.
+            let key = if is_identifier(name) {
+                PropertyKey::new_static_identifier(span, name, &self.ast)
+            } else {
+                PropertyKey::StringLiteral(oxc::ast::ast::StringLiteral::boxed(
+                    span, name, None, &self.ast,
+                ))
+            };
+            properties.push(ObjectPropertyKind::ObjectProperty(ObjectProperty::boxed(
+                span,
+                PropertyKind::Init,
+                key,
+                value,
+                false,
+                false,
+                false,
+                &self.ast,
+            )));
+        }
+        Expression::new_object_expression(span, properties, &self.ast)
+    }
+
+    /// `dynamic((c) => ({ backgroundColor: c }))` as the arrow it already is,
+    /// with a compiled body.
+    ///
+    /// The CLASS half is knowable here and the value half is not, which is the
+    /// whole shape of a dynamic style: the class reads `var(--…)` and is fixed,
+    /// so a colour that changes every frame writes one custom property and
+    /// produces no CSS. The property name comes from the declaration's property
+    /// alone, so this and `@barqjs/css`'s runtime agree without either knowing
+    /// what the other saw.
+    ///
+    /// The arrow is REUSED rather than rebuilt: its parameters are already
+    /// bound to the expressions this moves into `$vars`, and synthesising a new
+    /// one would have to rebind them.
+    fn compile_dynamic(
+        &mut self,
+        call: &mut oxc::ast::ast::CallExpression<'a>,
+        span: Span,
+    ) -> Option<Expression<'a>> {
+        if call.arguments.len() != 1 {
+            return None;
+        }
+        let argument = call.arguments.first_mut()?.as_expression_mut()?;
+        let Expression::ArrowFunctionExpression(arrow) = argument else { return None };
+        // StyleX requires the same: "the function body must be an object
+        // literal", because a body that computes cannot be read statically.
+        // An expression-bodied arrow carries its expression directly; a braced
+        // one carries a `return`. `(c) => ({ … })` is the first, and the second
+        // is what a formatter produces from it.
+        let body: &mut Expression<'a> = match &mut arrow.body {
+            oxc::ast::ast::ArrowFunctionBody::FunctionBody(block) => {
+                match block.statements.first_mut()? {
+                    Statement::ExpressionStatement(statement) => &mut statement.expression,
+                    Statement::ReturnStatement(statement) => statement.argument.as_mut()?,
+                    _ => return None,
+                }
+            }
+            other => other.as_expression_mut()?,
+        };
+        // `(c) => ({ … })` parses with the object inside parentheses, and the
+        // parser keeps them (`preserve_parens`) so a printed expression keeps
+        // the author's grouping.
+        let mut body = body;
+        while let Expression::ParenthesizedExpression(inner) = body {
+            body = &mut inner.expression;
+        }
+        let Expression::ObjectExpression(object) = body else { return None };
+
+        let mut classes: Vec<barq_css::atoms::Atom> = Vec::new();
+        let mut vars: Vec<(&'a str, Expression<'a>)> = Vec::new();
+        for property in object.properties.iter_mut() {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let name = key_name(&property.key)?;
+            if is_condition(&name) {
+                return None;
+            }
+            let property_name = barq_css::atoms::kebab(&name);
+            let variable = barq_css::atoms::dynamic_var(&property_name);
+            for atom in expand_atoms(&property_name, "default", &format!("var({variable})")) {
+                classes.push(atom);
+            }
+            let placeholder = Expression::new_null_literal(property.value.span(), &self.ast);
+            let value = std::mem::replace(&mut property.value, placeholder);
+            vars.push((self.allocator.alloc_str(&variable), value));
+        }
+        if classes.is_empty() {
+            return None;
+        }
+
+        let class = self.emit_atoms(&classes);
+        let class =
+            Expression::new_string_literal(span, self.allocator.alloc_str(&class), None, &self.ast);
+        let vars = self.object(span, vars);
+        *body = self.object(span, vec![("$class", class), ("$vars", vars)]);
+
+        let placeholder = Expression::new_null_literal(span, &self.ast);
+        Some(std::mem::replace(argument, placeholder))
+    }
+
+    /// `defineVars({ brand: "#3b82f6" })` as the `var()` references it names.
+    ///
+    /// The declarations go to `:root` and the call becomes an object of plain
+    /// strings — which is what lets a token set cross a module boundary as DATA
+    /// rather than as something the compiler has to resolve there.
+    fn compile_define_vars(
+        &mut self,
+        call: &oxc::ast::ast::CallExpression<'a>,
+        span: Span,
+    ) -> Option<Expression<'a>> {
+        let [argument] = call.arguments.as_slice() else { return None };
+        let Expression::ObjectExpression(object) =
+            crate::analysis::without_type_wrappers(argument.as_expression()?)
+        else {
+            return None;
+        };
+
+        let mut tokens: Vec<(String, barq_css::atoms::TokenValue)> = Vec::new();
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let name = key_name(&property.key)?;
+            let value = match crate::analysis::without_type_wrappers(&property.value) {
+                Expression::NumericLiteral(literal) => {
+                    barq_css::atoms::TokenValue::Number(literal.value)
+                }
+                other => barq_css::atoms::TokenValue::Text(self.text_of(other)?),
+            };
+            tokens.push((name, value));
+        }
+
+        let group = barq_css::atoms::hash32(&barq_css::atoms::json_object(&tokens));
+        let mut declarations = String::new();
+        let mut entries: Vec<(String, String)> = Vec::new();
+        for (token, value) in &tokens {
+            let property = barq_css::atoms::token_property(&group, token);
+            if !declarations.is_empty() {
+                declarations.push(';');
+            }
+            let text = match value {
+                barq_css::atoms::TokenValue::Text(text) => text.clone(),
+                barq_css::atoms::TokenValue::Number(number) => {
+                    barq_css::atoms::number_text(*number)
+                }
+            };
+            declarations.push_str(&format!("{property}:{text}"));
+            entries.push((token.clone(), format!("var({property})")));
+        }
+        if self.emitted.insert(format!("vars:{group}")) {
+            self.css.push_str(&format!(":root{{{declarations}}}"));
+        }
+
+        let built: Vec<(&'a str, Expression<'a>)> = entries
+            .into_iter()
+            .map(|(token, reference)| {
+                (
+                    self.allocator.alloc_str(&token),
+                    Expression::new_string_literal(
+                        span,
+                        self.allocator.alloc_str(&reference),
+                        None,
+                        &self.ast,
+                    ),
+                )
+            })
+            .collect();
+        Some(self.object(span, built))
+    }
+
+    /// `create({ root: { … }, child: { … } })` as an object of class strings.
+    ///
+    /// StyleX's shape, and it costs nothing beyond `atoms`: a group is one
+    /// merge, and two groups compose by handing both back to `atoms`, which
+    /// merges names by the key each one carries.
+    fn compile_create(
+        &mut self,
+        call: &mut oxc::ast::ast::CallExpression<'a>,
+        span: Span,
+    ) -> Option<Expression<'a>> {
+        let [argument] = call.arguments.as_slice() else { return None };
+        let Expression::ObjectExpression(object) =
+            crate::analysis::without_type_wrappers(argument.as_expression()?)
+        else {
+            return None;
+        };
+
+        let mut groups: Vec<(String, String)> = Vec::new();
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let name = match &property.key {
+                PropertyKey::StaticIdentifier(identifier) => identifier.name.to_string(),
+                PropertyKey::StringLiteral(literal) => literal.value.to_string(),
+                _ => return None,
+            };
+            let declarations = self.declarations(&property.value)?;
+            let merged =
+                Self::merge(&[Argument { test: None, declarations, atoms: Vec::new() }], true);
+            groups.push((name, self.emit_atoms(&merged)));
+        }
+
+        let mut properties = ArenaVec::new_in(&self.allocator);
+        for (name, classes) in groups {
+            let key = PropertyKey::new_static_identifier(
+                span,
+                self.allocator.alloc_str(&name),
+                &self.ast,
+            );
+            let value = Expression::new_string_literal(
+                span,
+                self.allocator.alloc_str(&classes),
+                None,
+                &self.ast,
+            );
+            properties.push(ObjectPropertyKind::ObjectProperty(ObjectProperty::boxed(
+                span,
+                PropertyKind::Init,
+                key,
+                value,
+                false,
+                false,
+                false,
+                &self.ast,
+            )));
+        }
+        Some(Expression::new_object_expression(span, properties, &self.ast))
+    }
+
+    /// The merged atoms, with the conditional argument in or out.
+    ///
+    /// Merging is "keep the last per key", which is what makes PASSING order
+    /// decide instead of the order the rules were written. Nothing is emitted
+    /// here: an atom a later argument replaced is not in the result, and
+    /// emitting as the walk went left `margin-top:0` in the stylesheet under a
+    /// class no output referenced.
+    fn merge(arguments: &[Argument<'_>], conditional: bool) -> Vec<barq_css::atoms::Atom> {
+        let mut applied: Vec<barq_css::atoms::Atom> = Vec::new();
+        for argument in arguments {
+            if argument.test.is_some() && !conditional {
+                continue;
+            }
+            for atom in argument.atoms.iter().cloned() {
+                match applied.iter_mut().find(|slot| slot.key == atom.key) {
+                    Some(slot) => *slot = atom,
+                    None => applied.push(atom),
+                }
+            }
+            for (property, condition, value) in &argument.declarations {
+                // `"0"` is a stand-in: a removal only needs the KEY, and the key
+                // is the class up to its value.
+                let text = value.clone().unwrap_or_else(|| "0".to_string());
+                for atom in expand_atoms(property, condition, &text) {
+                    if value.is_none() {
+                        applied.retain(|slot| slot.key != atom.key);
+                        continue;
+                    }
+                    match applied.iter_mut().find(|slot| slot.key == atom.key) {
+                        Some(slot) => *slot = atom,
+                        None => applied.push(atom),
+                    }
+                }
+            }
+        }
+        applied
+    }
+
+    fn emit_atoms(&mut self, atoms: &[barq_css::atoms::Atom]) -> String {
+        // Emitted in TIER order, which is the one ordering specificity cannot
+        // give: `@media` adds none, so a base and the same property under one
+        // are separated by source order alone. A stable sort, so everything
+        // within a tier keeps the order the author wrote it in.
+        let mut sorted: Vec<&barq_css::atoms::Atom> = atoms.iter().collect();
+        sorted.sort_by_key(|atom| atom.tier);
+        for atom in sorted {
+            if !atom.rule.is_empty() && self.emitted.insert(atom.class.clone()) {
+                self.css.push_str(&atom.rule);
+            }
+        }
+        atoms.iter().map(|atom| atom.class.as_str()).collect::<Vec<_>>().join(" ")
+    }
+
+    /// The atoms behind a class string this module already produced.
+    ///
+    /// Their rules are in the sheet already, so only the key matters — which is
+    /// in the name, which is the whole reason the key lives there.
+    fn known(&self, expression: &Expression<'_>) -> Option<Vec<barq_css::atoms::Atom>> {
+        let classes = match crate::analysis::without_type_wrappers(expression) {
+            Expression::StringLiteral(literal) => literal.value.to_string(),
+            Expression::StaticMemberExpression(member) => {
+                let symbol = crate::analysis::symbol_of(self.scoping, &member.object)?;
+                self.groups.get(&symbol)?.get(member.property.name.as_str())?.clone()
+            }
+            _ => return None,
+        };
+        Some(
+            classes
+                .split(' ')
+                .filter(|class| !class.is_empty())
+                .filter_map(|class| {
+                    let cut = class.rfind('_')?;
+                    Some(barq_css::atoms::Atom {
+                        key: class[..cut].to_string(),
+                        class: class.to_string(),
+                        // Already registered by the call that produced it; only
+                        // the key matters here, and the key is in the name.
+                        rule: String::new(),
+                        tier: barq_css::atoms::Tier::Base,
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    /// A style object as `(property, condition, value)`, where `None` for the
+    /// value means REMOVE what an earlier argument applied.
+    ///
+    /// The same walk `@barqjs/css` does, and it has to be: a form this read
+    /// differently would compile to something the runtime would not have
+    /// produced, which is worse than not compiling it at all. Two forms used to
+    /// do exactly that — a top-level `"::placeholder"` key was read as a
+    /// property whose conditions were its declarations, and `null` was skipped
+    /// where it should remove.
+    fn declarations(&self, object: &Expression<'_>) -> Option<Vec<Declaration>> {
+        let Expression::ObjectExpression(object) = crate::analysis::without_type_wrappers(object)
+        else {
+            return None;
+        };
+        let mut out = Vec::new();
+        self.walk(object, "default", &mut out)?;
+        Some(out)
+    }
+
+    fn walk(
+        &self,
+        object: &oxc::ast::ast::ObjectExpression<'_>,
+        condition: &str,
+        out: &mut Vec<Declaration>,
+    ) -> Option<()> {
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let name = key_name(&property.key)?;
+            let value = crate::analysis::without_type_wrappers(&property.value);
+
+            // A top-level condition key holds a whole style object.
+            if is_condition(&name) {
+                let Expression::ObjectExpression(nested) = value else { return None };
+                self.walk(nested, &join(condition, &name), out)?;
+                continue;
+            }
+
+            let property_name = barq_css::atoms::kebab(&name);
+            let Expression::ObjectExpression(conditions) = value else {
+                out.extend(self.declaration(&property_name, condition, value)?);
+                continue;
+            };
+            for entry in &conditions.properties {
+                let ObjectPropertyKind::ObjectProperty(entry) = entry else { return None };
+                let inner = key_name(&entry.key)?;
+                let where_ = if inner == "default" {
+                    condition.to_string()
+                } else {
+                    join(condition, &inner)
+                };
+                let value = crate::analysis::without_type_wrappers(&entry.value);
+                if let Expression::ObjectExpression(deeper) = value {
+                    // A condition inside a condition, which is the shape a media
+                    // query with a pseudo-class inside it takes.
+                    let mut wrapper = Vec::new();
+                    self.conditions(deeper, &property_name, &where_, &mut wrapper)?;
+                    out.extend(wrapper);
+                    continue;
+                }
+                // `null` under a NON-default condition has no meaning, so it is
+                // skipped rather than removing what a sibling key just set.
+                if inner != "default" && matches!(value, Expression::NullLiteral(_)) {
+                    continue;
+                }
+                out.extend(self.declaration(&property_name, &where_, value)?);
+            }
+        }
+        Some(())
+    }
+
+    /// One property's nested conditions, one level deeper.
+    fn conditions(
+        &self,
+        object: &oxc::ast::ast::ObjectExpression<'_>,
+        property: &str,
+        condition: &str,
+        out: &mut Vec<Declaration>,
+    ) -> Option<()> {
+        for entry in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(entry) = entry else { return None };
+            let inner = key_name(&entry.key)?;
+            let where_ =
+                if inner == "default" { condition.to_string() } else { join(condition, &inner) };
+            let value = crate::analysis::without_type_wrappers(&entry.value);
+            match value {
+                Expression::ObjectExpression(deeper) => {
+                    self.conditions(deeper, property, &where_, out)?;
+                }
+                _ => out.extend(self.declaration(property, &where_, value)?),
+            }
+        }
+        Some(())
+    }
+
+    /// `None` for a value this compiler cannot know, which sends the whole call
+    /// to the runtime; an empty list for one that contributes nothing.
+    fn declaration(
+        &self,
+        property: &str,
+        condition: &str,
+        value: &Expression<'_>,
+    ) -> Option<Vec<Declaration>> {
+        match value {
+            // REMOVE, not skip.
+            Expression::NullLiteral(_) => {
+                Some(vec![(property.to_string(), condition.to_string(), None)])
+            }
+            Expression::BooleanLiteral(literal) if !literal.value => Some(Vec::new()),
+            Expression::Identifier(identifier) if identifier.name == "undefined" => {
+                Some(Vec::new())
+            }
+            Expression::NumericLiteral(literal) => {
+                let raw =
+                    literal.raw.map_or_else(|| literal.value.to_string(), |raw| raw.to_string());
+                Some(vec![(
+                    property.to_string(),
+                    condition.to_string(),
+                    Some(barq_css::atoms::number_value(property, &raw)),
+                )])
+            }
+            // `firstThatWorks(…)`: the declaration repeated, best last.
+            Expression::CallExpression(call)
+                if self.tag_of(&call.callee) == Some(Tag::FirstThatWorks) =>
+            {
+                let mut values = Vec::new();
+                for argument in &call.arguments {
+                    let expression = argument.as_expression()?;
+                    values.push(match crate::analysis::without_type_wrappers(expression) {
+                        Expression::NumericLiteral(literal) => literal
+                            .raw
+                            .map_or_else(|| literal.value.to_string(), |raw| raw.to_string()),
+                        other => self.text_of(other)?,
+                    });
+                }
+                Some(vec![(
+                    property.to_string(),
+                    condition.to_string(),
+                    Some(barq_css::atoms::fallback(property, &values)),
+                )])
+            }
+            other => Some(vec![(
+                property.to_string(),
+                condition.to_string(),
+                Some(self.text_of(other)?),
+            )]),
+        }
+    }
+
+    fn tag_of(&self, tag: &Expression<'_>) -> Option<Tag> {
+        let Expression::Identifier(identifier) = without_type_wrappers(tag) else { return None };
+        let symbol = self.scoping.get_reference(identifier.reference_id.get()?).symbol_id()?;
+        self.tags.get(&symbol).copied()
+    }
+
+    /// `None` leaves the call where it is, for the runtime to evaluate.
+    fn compile(&mut self, tag: Tag, quasi: &TemplateLiteral<'_>, span: Span) -> Option<String> {
+        let source = self.interpolate(quasi, span)?;
+        let options = barq_css::Options {
+            debug_name: if self.debug { self.name.as_deref() } else { None },
+            ..barq_css::Options::default()
+        };
+        match barq_css::compile(&source, tag.kind(), &options) {
+            Ok(compiled) => {
+                if compiled.name.is_empty() || self.emitted.insert(compiled.name.clone()) {
+                    self.css.push_str(&compiled.css);
+                }
+                Some(compiled.name)
+            }
+            Err(error) => {
+                // The block's span, not the module's: the CSS was assembled from
+                // several quasis and the offsets inside it do not address the
+                // source the author is looking at.
+                self.reports.push(Report {
+                    code: Code::Barq014,
+                    message: format!("this CSS could not be compiled: {}", error.message),
+                    span,
+                });
+                None
+            }
+        }
+    }
+
+    /// The template as one CSS string, or `None` when an interpolation names
+    /// something whose text this compiler cannot know.
+    fn interpolate(&mut self, quasi: &TemplateLiteral<'_>, span: Span) -> Option<String> {
+        let mut source = String::new();
+        for (index, element) in quasi.quasis.iter().enumerate() {
+            let text = element
+                .value
+                .cooked
+                .as_ref()
+                .map_or_else(|| element.value.raw.as_str(), |cooked| cooked.as_str());
+            source.push_str(text);
+            let Some(expression) = quasi.expressions.get(index) else { continue };
+            match self.text_of(expression) {
+                Some(folded) => source.push_str(&folded),
+                None => {
+                    self.reports.push(Report {
+                        code: Code::Barq015,
+                        message: "this interpolation is not known at compile time, so the block \
+                                  stays on the runtime; move the value into a CSS custom property \
+                                  and set it through `style`"
+                            .to_string(),
+                        span,
+                    });
+                    return None;
+                }
+            }
+        }
+        Some(source)
+    }
+
+    fn text_of(&self, expression: &Expression<'_>) -> Option<String> {
+        match without_type_wrappers(expression) {
+            Expression::StringLiteral(literal) => Some(literal.value.to_string()),
+            Expression::NumericLiteral(literal) => {
+                Some(literal.raw.map_or_else(|| literal.value.to_string(), |raw| raw.to_string()))
+            }
+            Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
+                template.quasis.first().map(|quasi| {
+                    quasi
+                        .value
+                        .cooked
+                        .as_ref()
+                        .map_or_else(|| quasi.value.raw.to_string(), |cooked| cooked.to_string())
+                })
+            }
+            Expression::Identifier(identifier) => {
+                let symbol =
+                    self.scoping.get_reference(identifier.reference_id.get()?).symbol_id()?;
+                self.folded.get(&symbol).cloned()
+            }
+            // `theme.brand` — a token set or a `create` group this module
+            // produced, whose values are strings by the time the walk gets
+            // here. Without it a block interpolating a token stayed on the
+            // runtime, which is the one thing tokens exist to avoid.
+            Expression::StaticMemberExpression(member) => {
+                let symbol = crate::analysis::symbol_of(self.scoping, &member.object)?;
+                self.groups.get(&symbol)?.get(member.property.name.as_str()).cloned()
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Whether a key can be written unquoted in an object literal.
+fn is_identifier(name: &str) -> bool {
+    let mut characters = name.chars();
+    characters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_' || first == '$')
+        && characters.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+fn is_condition(key: &str) -> bool {
+    key.starts_with(':') || key.starts_with('@') || key.starts_with('&') || key.starts_with('[')
+}
+
+fn join(outer: &str, inner: &str) -> String {
+    if outer == "default" {
+        inner.to_string()
+    } else {
+        format!("{outer}{}{inner}", barq_css::atoms::NEST)
+    }
+}
+
+fn key_name(key: &PropertyKey<'_>) -> Option<String> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_string()),
+        PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
+        _ => None,
+    }
+}
+
+/// A declaration, expanded through any shorthand it is.
+///
+/// An unexpandable shorthand is left whole rather than half-expanded: its
+/// values go to sub-properties by TYPE, so counting them cannot say which one
+/// a value belongs to, and guessing is worse than not expanding.
+fn expand_atoms(property: &str, condition: &str, value: &str) -> Vec<barq_css::atoms::Atom> {
+    match barq_css::atoms::expand(property, value) {
+        Some(longhands) => longhands
+            .into_iter()
+            .map(|(name, own)| barq_css::atoms::atom(&name, condition, &own))
+            .collect(),
+        None => vec![barq_css::atoms::atom(property, condition, value)],
+    }
+}
+
+/// The local symbols `css` / `keyframes` / `globalCss` were imported as.
+fn imported_tags(program: &Program<'_>, css_source: &str) -> FxHashMap<SymbolId, Tag> {
+    let mut out = FxHashMap::default();
+    for statement in &program.body {
+        let Statement::ImportDeclaration(declaration) = statement else { continue };
+        if declaration.source.value.as_str() != css_source {
+            continue;
+        }
+        let Some(specifiers) = declaration.specifiers.as_ref() else { continue };
+        for specifier in specifiers {
+            let ImportDeclarationSpecifier::ImportSpecifier(imported) = specifier else { continue };
+            let ModuleExportName::IdentifierName(name) = &imported.imported else { continue };
+            let (Some(tag), Some(symbol)) =
+                (Tag::of(name.name.as_str()), imported.local.symbol_id.get())
+            else {
+                continue;
+            };
+            out.insert(symbol, tag);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::options::ResolvedOptions;
+
+    const IMPORT: &str = "import { css, keyframes, globalCss } from \"@barqjs/css\";\n";
+
+    fn run(body: &str) -> CompileOutput {
+        compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
+            .expect("compiles")
+    }
+
+    fn css_of(body: &str) -> String {
+        run(body).css.unwrap_or_default()
+    }
+
+    /// The class in the emitted stylesheet, so a test never has to hard-code a
+    /// hash that a change to the block would legitimately move.
+    fn class(output: &str) -> &str {
+        output.split(['.', '{']).nth(1).expect("a class in the output")
+    }
+
+    #[test]
+    fn a_block_becomes_its_class_and_the_call_is_gone() {
+        let output = run("export const card = css`color: red`;");
+        let css = output.css.as_deref().expect("a stylesheet");
+        assert_eq!(css, format!(".{}{{color: red}}", class(css)));
+        assert!(output.code.contains(&format!("\"{}\"", class(css))), "{}", output.code);
+        assert!(!output.code.contains("css`"), "the template survived: {}", output.code);
+    }
+
+    /// The whole reason the pass runs before `harvest`: a literal class reaches
+    /// `fold`, which bakes it into the template rather than binding it.
+    #[test]
+    fn a_class_on_an_intrinsic_element_is_baked_into_the_template() {
+        let output = run(
+            "const card = css`color: red`;\nexport function Card() { return <div class={card}>hi</div>; }",
+        );
+        let class = class(output.css.as_deref().expect("a stylesheet"));
+        assert!(
+            output.code.contains(&format!("<div class=\"{class}\">hi</div>")),
+            "{}",
+            output.code
+        );
+        assert!(!output.code.contains("setClass"), "a class channel survived: {}", output.code);
+        assert!(!output.code.contains("bindProp"), "a binding survived: {}", output.code);
+    }
+
+    #[test]
+    fn nesting_is_flattened_against_the_generated_class() {
+        let css = css_of(
+            "export const card = css`color: red; &:hover { color: blue } span { color: green }`;",
+        );
+        let class = class(&css);
+        assert_eq!(
+            css,
+            format!(
+                ".{class}{{color: red}}.{class}:hover{{color: blue}}.{class} span{{color: green}}"
+            )
+        );
+    }
+
+    #[test]
+    fn a_global_block_leaves_no_statement_behind() {
+        let output = run("globalCss`body { margin: 0 }`;\nexport const x = 1;");
+        assert_eq!(output.css.as_deref(), Some("body{margin: 0}"));
+        // The import specifier stays; the CALL does not. An unused named import
+        // is the bundler's to drop, and removing one here would be this pass
+        // reasoning about side effects it cannot see.
+        assert!(!output.code.contains("globalCss`"), "the call survived: {}", output.code);
+        assert!(output.code.contains("export const x = 1"), "{}", output.code);
+    }
+
+    #[test]
+    fn keyframes_takes_a_generated_name() {
+        let output =
+            run("export const spin = keyframes`from { rotate: 0deg } to { rotate: 360deg }`;");
+        let css = output.css.as_deref().expect("a stylesheet");
+        let name = css
+            .strip_prefix("@keyframes ")
+            .and_then(|rest| rest.split('{').next())
+            .expect("a name");
+        assert_eq!(css, format!("@keyframes {name}{{from{{rotate: 0deg}}to{{rotate: 360deg}}}}"));
+        assert!(output.code.contains(&format!("\"{name}\"")), "{}", output.code);
+    }
+
+    /// Resolution is by `SymbolId`, so the check is not "is it spelled `css`".
+    #[test]
+    fn a_css_that_came_from_somewhere_else_is_not_this_css() {
+        let output = compile(
+            "const css = (s) => s.raw[0];\nexport const card = css`color: red`;",
+            &ResolvedOptions::with_filename("s.tsx"),
+        )
+        .expect("compiles");
+        assert_eq!(output.css, None);
+        assert!(output.code.contains("css`color: red`"), "{}", output.code);
+    }
+
+    #[test]
+    fn and_a_renamed_import_still_is() {
+        let output = compile(
+            "import { css as style } from \"@barqjs/css\";\nexport const card = style`color: red`;",
+            &ResolvedOptions::with_filename("s.tsx"),
+        )
+        .expect("compiles");
+        assert!(output.css.is_some());
+        assert!(!output.code.contains("style`"), "{}", output.code);
+    }
+
+    #[test]
+    fn a_literal_interpolation_folds() {
+        let css =
+            css_of("const GAP = \"8px\";\nexport const card = css`gap: ${GAP}; padding: ${8}px`;");
+        assert_eq!(css, format!(".{}{{gap: 8px;padding: 8px}}", class(&css)));
+    }
+
+    /// What makes composition work: the pass records each class as it generates
+    /// it, so a later block can name an earlier one.
+    #[test]
+    fn one_block_can_name_another_by_its_binding() {
+        let css = css_of(
+            "const button = css`color: red`;\nexport const panel = css`.${button} & { color: blue }`;",
+        );
+        let first = class(&css);
+        assert!(css.starts_with(&format!(".{first}{{color: red}}")), "{css}");
+        assert!(
+            css.contains(&format!(".{first} .")),
+            "the second block did not name the first: {css}"
+        );
+    }
+
+    #[test]
+    fn the_same_block_written_twice_is_emitted_once() {
+        let css = css_of("export const a = css`color: red`;\nexport const b = css`color: red`;");
+        let class = class(&css);
+        assert_eq!(css, format!(".{class}{{color: red}}"));
+    }
+
+    #[test]
+    fn an_unfoldable_interpolation_leaves_the_call_to_the_runtime() {
+        let output = run("export const card = (bg) => css`background: ${bg}`;");
+        assert_eq!(output.css, None);
+        assert!(output.code.contains("css`background: ${bg}`"), "{}", output.code);
+        let report = output.warnings.iter().find(|w| w.code == Some(crate::diag::Code::Barq015));
+        assert!(report.is_some(), "{:?}", output.warnings);
+    }
+
+    #[test]
+    fn css_that_cannot_compile_is_an_error_and_the_call_stays() {
+        let output = run("export const card = css`$brand: red; color: $brand`;");
+        assert_eq!(output.css, None);
+        let report = output
+            .warnings
+            .iter()
+            .find(|warning| warning.code == Some(crate::diag::Code::Barq014))
+            .expect("BARQ014");
+        assert!(report.message.contains("Sass variable"), "{}", report.message);
+    }
+
+    /// A stylesheet lives in a `.ts` module with no JSX in it, which is outside
+    /// the gate every other analysis in this compiler runs behind.
+    #[test]
+    fn a_module_with_no_jsx_is_compiled_too() {
+        let output = compile(
+            &format!("{IMPORT}export const card = css`color: red`;"),
+            &ResolvedOptions::with_filename("styles.ts"),
+        )
+        .expect("compiles");
+        assert!(output.css.is_some(), "a .ts stylesheet was skipped");
+    }
+
+    #[test]
+    fn dev_names_the_class_after_its_binding() {
+        let output = compile(
+            &format!("{IMPORT}export const cardStyle = css`color: red`;"),
+            &ResolvedOptions { dev: true, ..ResolvedOptions::with_filename("s.tsx") },
+        )
+        .expect("compiles");
+        let css = output.css.as_deref().expect("a stylesheet");
+        assert!(css.starts_with(".cardStyle_"), "{css}");
+    }
+
+    #[test]
+    fn and_production_does_not() {
+        let css = css_of("export const cardStyle = css`color: red`;");
+        assert!(!css.contains("cardStyle"), "{css}");
+    }
+
+    #[test]
+    fn a_module_that_never_imports_the_package_is_untouched() {
+        let output =
+            compile("export const card = \"plain\";", &ResolvedOptions::with_filename("s.tsx"))
+                .expect("compiles");
+        assert_eq!(output.css, None);
+    }
+}
+
+#[cfg(test)]
+mod atom_tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::options::ResolvedOptions;
+
+    const IMPORT: &str = "import { atoms, create } from \"@barqjs/css\";\n";
+
+    fn run(body: &str) -> CompileOutput {
+        compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
+            .expect("compiles")
+    }
+
+    /// The class the runtime produces for the same declaration, pinned in
+    /// `barq_css::atoms`'s own parity test from the other side.
+    #[test]
+    fn a_static_call_becomes_the_class_string_it_produces() {
+        let out = run("export const a = atoms({ color: \"red\", paddingTop: 8 });");
+        assert!(
+            out.code.contains("export const a = \"a-color_1sew0by a-padding-top_1l9h9x1\""),
+            "{}",
+            out.code
+        );
+        assert_eq!(
+            out.css.as_deref(),
+            Some(".a-color_1sew0by{color:red}.a-padding-top_1l9h9x1{padding-top:8px}")
+        );
+        assert!(!out.code.contains("atoms({"), "the call survived: {}", out.code);
+    }
+
+    /// The whole point of atoms: the LAST argument wins per property, and the
+    /// rule the first one would have written is not in the sheet at all.
+    #[test]
+    fn a_later_argument_replaces_an_earlier_one_and_leaves_no_dead_rule() {
+        let out = run("export const b = atoms({ margin: 0 }, { marginTop: 4 });");
+        let css = out.css.as_deref().expect("a stylesheet");
+        assert!(css.contains("margin-top:4px"), "{css}");
+        assert!(!css.contains("margin-top:0"), "the replaced rule survived: {css}");
+        assert!(css.contains("margin-right:0"), "the other sides were dropped: {css}");
+    }
+
+    #[test]
+    fn one_conditional_argument_becomes_a_ternary_of_two_literals() {
+        let out =
+            run("export const c = (on) => atoms({ color: \"red\" }, on && { color: \"blue\" });");
+        assert!(out.code.contains("on ? \"a-color_9i4lnn\" : \"a-color_1sew0by\""), "{}", out.code);
+        let css = out.css.as_deref().expect("a stylesheet");
+        assert!(css.contains("color:red") && css.contains("color:blue"), "{css}");
+    }
+
+    /// Two is four outcomes and three is eight; a nested ternary over eight
+    /// class strings is larger than the runtime it replaces.
+    #[test]
+    fn a_second_conditional_argument_stays_on_the_runtime_and_says_so() {
+        let out = run(
+            "export const d = (x, y) => atoms({ color: \"red\" }, x && { color: \"blue\" }, y && { color: \"green\" });",
+        );
+        assert_eq!(out.css, None);
+        assert!(out.code.contains("atoms("), "{}", out.code);
+        assert!(
+            out.warnings.iter().any(|w| w.code == Some(crate::diag::Code::Barq016)),
+            "{:?}",
+            out.warnings
+        );
+    }
+
+    #[test]
+    fn a_condition_gets_its_own_key_so_it_replaces_nothing() {
+        let out =
+            run("export const e = atoms({ color: { default: \"red\", \":hover\": \"blue\" } });");
+        let css = out.css.as_deref().expect("a stylesheet");
+        assert!(css.contains(".a-color-doumed_63189g:hover{color:blue}"), "{css}");
+        assert!(!css.contains("@layer"), "atoms must not be layered: {css}");
+        assert_eq!(out.code.matches("a-color").count(), 2, "{}", out.code);
+    }
+
+    /// StyleX's shape, which is the same merge over names instead of objects.
+    #[test]
+    fn create_becomes_an_object_of_class_strings_and_its_groups_compose() {
+        let out = run(
+            "const s = create({ root: { width: \"100%\" }, child: { marginBlock: \"1rem\" } });\n\
+             export const f = atoms(s.root, s.child);",
+        );
+        assert!(out.code.contains("root: \"a-width_e9elx8\""), "{}", out.code);
+        assert!(
+            out.code.contains("export const f = \"a-width_e9elx8 a-margin-block-start_"),
+            "{}",
+            out.code
+        );
+        assert!(!out.code.contains("create("), "the call survived: {}", out.code);
+        // A logical shorthand expands like a physical one.
+        let css = out.css.as_deref().expect("a stylesheet");
+        assert!(css.contains("margin-block-start:1rem") && css.contains("margin-block-end:1rem"));
+    }
+
+    #[test]
+    fn a_group_can_be_the_conditional_argument() {
+        let out = run(
+            "const c = create({ red: { backgroundColor: \"red\" }, green: { backgroundColor: \"lightgreen\" } });\n\
+             export const g = (on) => atoms(c.red, on && c.green);",
+        );
+        assert!(out.code.contains(" ? \"a-background-color_"), "{}", out.code);
+        // One class either way: both groups set the same property.
+        assert_eq!(out.code.matches("a-background-color_").count(), 4, "{}", out.code);
+    }
+
+    #[test]
+    fn a_value_the_compiler_cannot_know_leaves_the_call_alone() {
+        let out = run("export const h = (c) => atoms({ color: c });");
+        assert_eq!(out.css, None);
+        assert!(out.code.contains("atoms({ color: c })"), "{}", out.code);
+    }
+
+    #[test]
+    fn an_atoms_that_came_from_somewhere_else_is_not_this_one() {
+        let out = compile(
+            "const atoms = (x) => x;\nexport const i = atoms({ color: \"red\" });",
+            &ResolvedOptions::with_filename("s.tsx"),
+        )
+        .expect("compiles");
+        assert_eq!(out.css, None);
+    }
+}
+
+#[cfg(test)]
+mod parity_tests {
+    use crate::compile::compile;
+    use crate::options::ResolvedOptions;
+
+    /// The exact classes `@barqjs/css`'s runtime produces for StyleX's own
+    /// documented forms.
+    ///
+    /// Compiled and runtime output MUST be identical: a form the compiler read
+    /// differently would produce a class the runtime never registers a rule
+    /// for. Two of these used to do exactly that — a top-level `"::placeholder"`
+    /// key was read as a property whose conditions were its declarations, and
+    /// `null` was skipped where it has to REMOVE.
+    fn classes(body: &str) -> String {
+        let source = format!(
+            "import {{ atoms, firstThatWorks }} from \"@barqjs/css\";\nexport const x = {body};\n"
+        );
+        let out = compile(&source, &ResolvedOptions::with_filename("s.tsx")).expect("compiles");
+        let code = out.code.clone();
+        let start = code.find("export const x = \"").map(|at| at + 18);
+        match start {
+            Some(start) => code[start..].split('"').next().unwrap_or_default().to_string(),
+            None => panic!("did not compile: {code}"),
+        }
+    }
+
+    fn sheet(body: &str) -> String {
+        let source = format!(
+            "import {{ atoms, firstThatWorks }} from \"@barqjs/css\";\nexport const x = {body};\n"
+        );
+        compile(&source, &ResolvedOptions::with_filename("s.tsx"))
+            .expect("compiles")
+            .css
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn a_pseudo_element_is_a_top_level_key_holding_a_style_object() {
+        assert_eq!(
+            classes(r##"atoms({ "::placeholder": { color: "#999" } })"##),
+            "a-color-1t2wucq_1eolkbx"
+        );
+        assert!(
+            sheet(r##"atoms({ "::placeholder": { color: "#999" } })"##)
+                .contains(".a-color-1t2wucq_1eolkbx::placeholder{color:#999}"),
+            "{}",
+            sheet(r##"atoms({ "::placeholder": { color: "#999" } })"##)
+        );
+    }
+
+    #[test]
+    fn conditions_combine_and_the_at_rule_wraps_the_selector() {
+        let body = r#"atoms({ color: { default: "black", "@media (min-width: 800px)": { default: "navy", ":hover": "blue" } } })"#;
+        assert_eq!(classes(body), "a-color_doyqta a-color-12j0t8v_1ld2zyk a-color-n29619_acirwk");
+        assert!(
+            sheet(body)
+                .contains("@media (min-width: 800px){.a-color-n29619_acirwk:hover{color:blue}}"),
+            "{}",
+            sheet(body)
+        );
+    }
+
+    #[test]
+    fn first_that_works_repeats_the_declaration_best_last() {
+        let body = r#"atoms({ position: firstThatWorks("sticky", "-webkit-sticky", "fixed") })"#;
+        assert_eq!(classes(body), "a-position_n53mkl");
+        assert!(
+            sheet(body).contains("position:fixed;position:-webkit-sticky;position:sticky"),
+            "{}",
+            sheet(body)
+        );
+    }
+
+    #[test]
+    fn null_removes_what_an_earlier_argument_applied() {
+        let body = r#"atoms({ color: "red", padding: 4 }, { color: null })"#;
+        assert_eq!(
+            classes(body),
+            "a-padding-top_xez13l a-padding-right_1qluhxc a-padding-bottom_1vy816r \
+             a-padding-left_13qynt1"
+        );
+        // And no rule for the class it removed, nor a stand-in for the removal.
+        let css = sheet(body);
+        assert!(!css.contains("color:red"), "{css}");
+        assert!(!css.contains("color:0"), "{css}");
+    }
+
+    #[test]
+    fn null_removes_every_longhand_a_shorthand_set() {
+        assert_eq!(classes(r#"atoms({ margin: 4 }, { margin: null })"#), "");
+    }
+
+    #[test]
+    fn false_and_undefined_decline_to_add_rather_than_remove() {
+        let base = classes(r#"atoms({ color: "red" })"#);
+        assert_eq!(classes(r#"atoms({ color: "red" }, { color: false })"#), base);
+        assert_eq!(classes(r#"atoms({ color: "red" }, { color: undefined })"#), base);
+    }
+}
+
+#[cfg(test)]
+mod vars_tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::options::ResolvedOptions;
+
+    fn run(body: &str) -> CompileOutput {
+        let source =
+            format!("import {{ create, defineVars, props }} from \"@barqjs/css\";\n{body}\n");
+        compile(&source, &ResolvedOptions::with_filename("s.tsx")).expect("compiles")
+    }
+
+    /// The names `@barqjs/css` produces for the same tokens, pinned. The group
+    /// suffix is a hash of `JSON.stringify(tokens)`, so anything that formatted
+    /// one byte differently would name the same tokens two things.
+    #[test]
+    fn define_vars_becomes_the_references_it_names() {
+        let out = run("export const theme = defineVars({ brand: \"#3b82f6\", gap: 8 });");
+        assert!(out.code.contains("brand: \"var(--brand-bbt2i)\""), "{}", out.code);
+        assert!(out.code.contains("gap: \"var(--gap-bbt2i)\""), "{}", out.code);
+        assert!(!out.code.contains("defineVars("), "the call survived: {}", out.code);
+        assert_eq!(out.css.as_deref(), Some(":root{--brand-bbt2i:#3b82f6;--gap-bbt2i:8}"));
+    }
+
+    /// A number is printed as `String(value)` does, with no `px`: a token is a
+    /// value, not a length, and `defineVars` never guesses a unit.
+    #[test]
+    fn a_token_number_keeps_its_own_text() {
+        let out = run("export const t = defineVars({ gap: 8, ratio: 1.5 });");
+        let css = out.css.as_deref().expect("a stylesheet");
+        assert!(css.contains(":8;"), "{css}");
+        assert!(css.contains(":1.5}"), "{css}");
+    }
+
+    #[test]
+    fn the_same_tokens_anywhere_are_the_same_properties() {
+        let one = run("export const a = defineVars({ brand: \"#3b82f6\", gap: 8 });");
+        let two = run("export const b = defineVars({ brand: \"#3b82f6\", gap: 8 });");
+        assert_eq!(one.css, two.css);
+        let different = run("export const c = defineVars({ brand: \"#ef4444\", gap: 8 });");
+        assert_ne!(one.css, different.css);
+    }
+
+    #[test]
+    fn a_token_the_compiler_cannot_know_leaves_the_call_alone() {
+        let out = run("export const t = (x) => defineVars({ brand: x });");
+        assert_eq!(out.css, None);
+        assert!(out.code.contains("defineVars({"), "{}", out.code);
+    }
+
+    #[test]
+    fn props_becomes_the_attribute_an_element_takes() {
+        let out =
+            run("const s = create({ root: { padding: 8 } });\nexport const p = props(s.root);");
+        assert!(
+            out.code.contains(
+                "class: \"a-padding-top_1l9h9x1 a-padding-right_eqfcdg \
+                 a-padding-bottom_6r1047 a-padding-left_fwimld\""
+            ),
+            "{}",
+            out.code
+        );
+        assert!(!out.code.contains("props("), "the call survived: {}", out.code);
+    }
+
+    #[test]
+    fn props_merges_like_atoms_and_a_conditional_is_still_a_ternary() {
+        let out =
+            run("export const p = (on) => props({ color: \"red\" }, on && { color: \"blue\" });");
+        assert!(
+            out.code.contains("class: on ? \"a-color_9i4lnn\" : \"a-color_1sew0by\""),
+            "{}",
+            out.code
+        );
+    }
+}
+
+#[cfg(test)]
+mod dynamic_tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::options::ResolvedOptions;
+
+    fn run(body: &str) -> CompileOutput {
+        let source = format!("import {{ dynamic, props }} from \"@barqjs/css\";\n{body}\n");
+        compile(&source, &ResolvedOptions::with_filename("s.tsx")).expect("compiles")
+    }
+
+    /// The class is fixed and reads a custom property; only the value is left
+    /// for run time. Which is the whole shape of a dynamic style: a colour that
+    /// changes every frame writes one property and produces no CSS.
+    #[test]
+    fn the_class_compiles_and_only_the_value_stays() {
+        let out = run("export const bg = dynamic((color) => ({ backgroundColor: color }));");
+        assert!(!out.code.contains("dynamic("), "the call survived: {}", out.code);
+        assert!(out.code.contains("$class: \"a-background-color_"), "{}", out.code);
+        assert!(
+            out.code.contains("\"--background-color-1j1m7tz\": color"),
+            "the parameter did not reach the variable: {}",
+            out.code
+        );
+        let css = out.css.as_deref().expect("a stylesheet");
+        assert!(css.contains("background-color:var(--background-color-1j1m7tz)"), "{css}");
+    }
+
+    #[test]
+    fn a_braced_body_with_a_return_compiles_too() {
+        let out = run(
+            "export const bg = dynamic((color) => {\n  return { backgroundColor: color };\n});",
+        );
+        assert!(!out.code.contains("dynamic("), "{}", out.code);
+        assert!(out.code.contains("$vars:"), "{}", out.code);
+    }
+
+    #[test]
+    fn several_parameters_and_declarations_each_get_their_own_variable() {
+        let out = run("export const box = dynamic((w, h) => ({ width: w, height: h }));");
+        assert!(out.code.contains("\"--width-"), "{}", out.code);
+        assert!(out.code.contains("\"--height-"), "{}", out.code);
+        assert_eq!(out.code.matches("a-width_").count(), 1, "{}", out.code);
+    }
+
+    /// A body that is not an object literal cannot be read, which is the same
+    /// rule StyleX states.
+    #[test]
+    fn a_body_that_computes_leaves_the_call_alone() {
+        let out = run("export const bg = dynamic((c) => build(c));");
+        assert_eq!(out.css, None);
+        assert!(out.code.contains("dynamic("), "{}", out.code);
+    }
+}

@@ -15,6 +15,9 @@ Every message the compiler can produce has a stable code, a level, and a page he
 | [BARQ011](BARQ011.md) | note | `keyed={false}` binds the row's DOM state to the position, and this row holds some |
 | [BARQ012](BARQ012.md) | error | a module mixes server functions with other exports, so no client half can be synthesized for it |
 | [BARQ013](BARQ013.md) | warning | `<Link to>` names a path no route matches |
+| [BARQ014](BARQ014.md) | error | a `css` block is not CSS this compiler can compile |
+| [BARQ015](BARQ015.md) | note | a `css` block interpolates a value known only at run time, so it stays on the runtime |
+| [BARQ016](BARQ016.md) | note | `atoms` has more than one conditional argument, so it stays on the runtime |
 
 BARQ001, BARQ002, BARQ003 and BARQ005 are the source-level rules. They run when
 `diagnostics` is on, which defaults to `dev`. BARQ004, BARQ010 and BARQ011 are

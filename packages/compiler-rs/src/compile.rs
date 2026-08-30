@@ -93,6 +93,10 @@ pub struct CompileOutput {
     /// public surface and recording it is what makes it reviewable. A side
     /// artefact on the same terms as the two above.
     pub server_fns: Option<String>,
+    /// This module's stylesheet. A side artefact on the same terms as the three
+    /// above, except that the code is NOT identical with it on or off: every
+    /// `css` call it collected has been replaced by the class it produced.
+    pub css: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -349,8 +353,21 @@ fn compile_on_this_stack(
             server_fns: options
                 .server_fns
                 .then(|| server_fn_json(Some(scan), &module_id(options, filename))),
+            css: None,
         });
     }
+
+    // Before `bind`, and outside its JSX gate. Before, because it REWRITES the
+    // program — a `css` template becomes a string literal — and `bind`'s own
+    // note says the symbol table it builds must never be invalidated by a later
+    // rewrite. Outside the gate, because a module with no JSX at all is exactly
+    // where an application keeps its stylesheet.
+    //
+    // The payoff is downstream: `class={cardStyle}` is a literal by the time
+    // `lower` sees it, so `fold` bakes the class into the template markup and
+    // the element carries no class channel.
+    let stylesheet = crate::css::mentions(source_text, &options.css_source)
+        .then(|| crate::css::run(&allocator, &mut program, options));
 
     let mut module = Module::for_source(&allocator, source_text);
     // A dialect that cannot express JSX compiles to no units at all, so there is
@@ -371,6 +388,18 @@ fn compile_on_this_stack(
     lower::lower(&allocator, source_text, options, &mut module);
 
     let mut warnings = warnings;
+    if let Some(sheet) = stylesheet.as_ref() {
+        for report in &sheet.reports {
+            warnings.push(located(
+                report.code.default_level(),
+                report.code,
+                report.message.clone(),
+                report.span,
+                filename,
+                &mut lines,
+            ));
+        }
+    }
     if let Some(scan) = server_fns.as_ref()
         && scan.mixed()
         && let Some(span) = analysis::server_fn::first_other(scan)
@@ -454,7 +483,8 @@ fn compile_on_this_stack(
 
     let warnings = resolve_diagnostics(warnings, &mut suppressions, filename, &mut lines, options);
     let server_fns = options.server_fns.then(|| server_fn_json(server_fns.as_ref(), filename));
-    Ok(CompileOutput { code, map, warnings, labels, ownership, addresses, server_fns })
+    let css = stylesheet.and_then(|sheet| (!sheet.css.is_empty()).then_some(sheet.css));
+    Ok(CompileOutput { code, map, warnings, labels, ownership, addresses, server_fns, css })
 }
 
 /// Suppression, severity resolution and ordering, in one place — the compiler,

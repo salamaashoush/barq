@@ -99,6 +99,9 @@ codes! {
     Barq011 = "BARQ011", Note, "`keyed={false}` binds the row's DOM state to the position, and this row holds some";
     Barq012 = "BARQ012", Error, "a module mixes server functions with other exports, so no client half can be synthesized for it";
     Barq013 = "BARQ013", Warning, "`<Link to>` names a path no route matches";
+    Barq014 = "BARQ014", Error, "a `css` block is not CSS this compiler can compile";
+    Barq015 = "BARQ015", Note, "a `css` block interpolates a value known only at run time, so it stays on the runtime";
+    Barq016 = "BARQ016", Note, "`atoms` has more than one conditional argument, so it stays on the runtime";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

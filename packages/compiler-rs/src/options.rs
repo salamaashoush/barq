@@ -27,6 +27,11 @@ pub const DEFAULT_START_SOURCE: &str = "@barqjs/start";
 /// The author still writes `import { createServerFn } from "@barqjs/start"` —
 /// this is only where the emitted stub points.
 pub const DEFAULT_CLIENT_SOURCE: &str = "@barqjs/start/client";
+
+/// Module source for `css`/`keyframes`/`globalCss`. Resolution is by symbol,
+/// so this is the specifier an import must name rather than a text the source
+/// must contain.
+pub const DEFAULT_CSS_SOURCE: &str = "@barqjs/css";
 const DEFAULT_ROUTER_SOURCE: &str = "@barqjs/router";
 
 /// Which half of the program is being compiled.
@@ -183,6 +188,9 @@ pub struct TransformOptions {
     /// Module source for `Link` and `NavLink`.
     /// @default `@barqjs/router`
     pub router_source: Option<String>,
+    /// Module source for `css`, `keyframes` and `globalCss`.
+    /// @default `@barqjs/css`
+    pub css_source: Option<String>,
     /// Every route pattern in the project, for `BARQ013` to check `<Link to>`
     /// against. The compiler sees ONE module; the route set is a whole-project
     /// fact, so it arrives as an option rather than being discovered.
@@ -295,6 +303,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "passes",
     "routerSource",
     "routes",
+    "cssSource",
 ];
 
 /// The message for an option this compiler does not have. Names the nearest
@@ -321,6 +330,7 @@ pub struct ResolvedOptions {
     pub start_source: String,
     pub client_source: String,
     pub router_source: String,
+    pub css_source: String,
     pub routes: Option<Vec<String>>,
     pub env: Env,
     pub root: Option<String>,
@@ -351,6 +361,7 @@ impl Default for ResolvedOptions {
             start_source: DEFAULT_START_SOURCE.to_string(),
             client_source: DEFAULT_CLIENT_SOURCE.to_string(),
             router_source: DEFAULT_ROUTER_SOURCE.to_string(),
+            css_source: DEFAULT_CSS_SOURCE.to_string(),
             routes: None,
             env: Env::Server,
             root: None,
@@ -411,6 +422,7 @@ impl TransformOptions {
             start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),
             client_source: self.client_source.unwrap_or_else(|| DEFAULT_CLIENT_SOURCE.to_string()),
             router_source: self.router_source.unwrap_or_else(|| DEFAULT_ROUTER_SOURCE.to_string()),
+            css_source: self.css_source.unwrap_or_else(|| DEFAULT_CSS_SOURCE.to_string()),
             routes: self.routes,
             env: self.env.as_deref().and_then(Env::parse).unwrap_or(Env::Server),
             root: self.root,

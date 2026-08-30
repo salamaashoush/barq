@@ -1,6 +1,7 @@
 pub mod analysis;
 pub mod codegen;
 pub mod compile;
+pub mod css;
 pub mod diag;
 /// Generated into `OUT_DIR` by `build.rs`; the lib only needs it to prove the
 /// generated tables still match `dom.ts`.
@@ -81,6 +82,11 @@ pub struct TransformResult {
     /// `(module, unit, position)` for every
     /// position in the module, computed identically by every backend.
     pub addresses: Option<String>,
+    /// This module's stylesheet, when it wrote any `css`. The build serves it
+    /// from a virtual module the transformed code imports, so the bundler owns
+    /// dev invalidation, the production asset and SSR collection — and one file
+    /// edited invalidates one file's CSS.
+    pub css: Option<String>,
 }
 
 fn js_diagnostic(diagnostic: &Diagnostic) -> JsDiagnostic {
@@ -159,6 +165,7 @@ pub fn transform(code: String, options: Option<Object>) -> napi::Result<Transfor
             ownership: output.ownership,
             addresses: output.addresses,
             server_fns: output.server_fns,
+            css: output.css,
         }),
         Err(diagnostics) => Err(napi::Error::from_reason(format!(
             "[barq-compiler] {}\n{}",

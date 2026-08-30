@@ -247,6 +247,16 @@ describe("the diagnostic engine", () => {
           `export const V = () => <Link to="/user/7">go</Link>;\n`,
         options: { routes: ["/", "/users/$id"] },
       },
+      BARQ014:
+        `import { css } from "@barqjs/css";\n` +
+        "export const card = css`$brand: red; color: $brand`;\n",
+      BARQ015:
+        `import { css } from "@barqjs/css";\n` +
+        "export const card = (bg) => css`background: ${bg}`;\n",
+      BARQ016:
+        `import { atoms } from "@barqjs/css";\n` +
+        `export const cls = (x, y) =>\n` +
+        `  atoms({ color: "red" }, x && { color: "blue" }, y && { padding: 8 });\n`,
     };
 
     const advertised = native
