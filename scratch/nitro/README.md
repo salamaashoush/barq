@@ -42,6 +42,29 @@ request and barq should replace it with a build-time map whether or not nitro
 lands. Comparing against it flatters nitro by counting a barq bug as a nitro
 feature.
 
+## What barq did about it
+
+`assetMiddleware` (`packages/start/src/static.ts`) serves `dist/client` from a
+manifest the build writes, so a miss is a `Set.has` and not two syscalls.
+`barq-static.mjs` measures the REAL middleware against the real manifest and the
+real output directory, not a model:
+
+```
+MISS (an SSR page request, the common case)
+  preview.mjs (existsSync+stat)   0.7476 us  1,337,528/s
+  assetMiddleware (manifest)      0.3290 us  3,039,208/s
+  -> 0.419 us saved per request, 56% faster
+```
+
+There is no HIT row. A hit is delegated to `srvx/static`, which streams from an
+open handle; looping it without consuming 100,000 response bodies leaks
+descriptors and bun errors on collection, which says more about the benchmark
+than about the middleware.
+
+That 0.419 us is most of the 0.459 us nitro costs. It does not make nitro free —
+h3's dispatch is separate and unchanged — but it does mean barq's own server is
+now the faster of the two on the work they share.
+
 ## Method
 
 `overhead.mjs` and `same-job.mjs` MODEL nitro's static handler rather than
