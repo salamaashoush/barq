@@ -7,7 +7,7 @@
  * fixture corpus does not reach, which is everywhere an application lives.
  * Fixtures are compiled, not typechecked, which is why nothing saw it.
  *
- * This file is COMPILED BY `tsc` AND NOT RUN. `form-action-types.test.ts` is
+ * This file is COMPILED BY `tsc` AND NOT RUN. `attribute-types.test.ts` is
  * what asserts it, by typechecking this directory in isolation: the positives
  * must compile and every `@ts-expect-error` must fire, which is the half a
  * hand-read cannot do — an expectation that stops being an error is an error

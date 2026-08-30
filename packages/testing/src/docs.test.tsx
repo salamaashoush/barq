@@ -263,6 +263,21 @@ describe("packages/core/README.md", () => {
     dispose();
   });
 
+  test("bind:value writes the property and reports the edit", () => {
+    const host = mount();
+    const name = signal("Ada");
+    const dispose = render(() => <input type="text" bind:value={name} />, host);
+
+    const input = host.querySelector("input")!;
+    expect(input.value).toBe("Ada");
+
+    input.value = "Grace";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    flush();
+    expect(name()).toBe("Grace");
+    dispose();
+  });
+
   test("linked holds a write until its source changes", () => {
     const source = signal("Ada");
     const dispose = scope(() => {

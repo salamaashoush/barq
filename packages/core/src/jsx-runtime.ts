@@ -109,6 +109,20 @@ export type RefCallback<T> = (el: T) => void;
 export type RefObject<T> = { current: T | null };
 
 // JSX namespace for TypeScript
+/**
+ * A `bind:` target: readable by calling, and WRITABLE.
+ *
+ * Structural rather than `Signal<T>` so that anything carrying a `.set` — a
+ * `linked` cell, a store field wrapper, a project's own handle — is admitted.
+ * A `Computed` and a bare accessor are not, which is the whole point: the
+ * runtime answers those with `BIND_TARGET_NOT_WRITABLE`, and this is the same
+ * refusal one step earlier.
+ */
+export type Bindable<T> = {
+  (): T;
+  set(value: T): void;
+};
+
 export namespace JSX {
   export type Element = JSXElement;
 
@@ -638,6 +652,9 @@ export namespace JSX {
     hidden?: FunctionMaybe<boolean>;
     draggable?: FunctionMaybe<boolean | "true" | "false">;
     contentEditable?: FunctionMaybe<boolean | "true" | "false" | "inherit">;
+    // The HTML spelling, which is what `bind:value` on an editable host looks
+    // for: the compiler reads either, so both are declared.
+    contenteditable?: FunctionMaybe<boolean | "true" | "false" | "inherit">;
     spellcheck?: FunctionMaybe<boolean>;
     dir?: FunctionMaybe<"ltr" | "rtl" | "auto">;
     lang?: FunctionMaybe<string>;
@@ -661,6 +678,41 @@ export namespace JSX {
 
     // Ref - callback or object
     ref?: T | ((el: T) => void) | { current: T | null };
+
+    /**
+     * `bind:` — the two-way channel.
+     *
+     * The property written and the event that reports a user edit are both
+     * resolved at COMPILE time from the tag and the `type`: a text input writes
+     * `value` and reports on `input`, a checkbox writes `checked` on `change`, a
+     * number input writes `valueAsNumber`, a date input `valueAsDate`, a
+     * `contenteditable` host its `textContent`. `bind:this` is a ref.
+     *
+     * The target has to be WRITABLE, which is what [`Bindable`] states: a
+     * read-only accessor reaching one of these is the mistake the type exists to
+     * catch, and the runtime answers it with `BIND_TARGET_NOT_WRITABLE`.
+     *
+     * `bind:value` is deliberately wide. Which of these a given element takes
+     * depends on its tag and its `type` attribute, and the props type is not
+     * generic over either.
+     */
+    "bind:value"?: Bindable<string | number | boolean | Date | string[] | null>;
+    "bind:checked"?: Bindable<boolean>;
+    "bind:group"?: Bindable<string>;
+    "bind:files"?: Bindable<FileList | null>;
+    "bind:open"?: Bindable<boolean>;
+    "bind:this"?: T | ((el: T) => void) | { current: T | null };
+    /**
+     * Any other property, because that is the runtime's own rule: a `bind:` name
+     * that is not one of the four special cases binds the property of that name
+     * and reports on `change`.
+     */
+    [key: `bind:${string}`]:
+      | Bindable<unknown>
+      | T
+      | ((el: T) => void)
+      | { current: T | null }
+      | undefined;
 
     // Children
     children?: Child | Child[];

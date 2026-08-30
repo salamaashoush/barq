@@ -114,11 +114,23 @@ keystroke:
 
 ## Two-way binding
 
+```tsx
+<input type="text" bind:value={name} />
+<input type="checkbox" bind:value={agreed} />
+<input type="number" bind:value={amount} />
+<input type="radio" name="size" value="s" bind:group={size} />
+<div contenteditable="true" bind:value={rich} />
+<dialog bind:open={showing} />
+<input type="file" bind:files={picked} />
+<input type="text" bind:this={element} />
+```
+
 `bind:value` resolves its property and its reporting event at COMPILE time from
 the tag and the `type`: a text input writes `value` and reports on `input`, a
 checkbox writes `checked` and reports on `change`, a number input writes
-`valueAsNumber`, a `contenteditable` writes its text. `bind:group`, `bind:open`,
-`bind:files` and `bind:this` follow the same rule.
+`valueAsNumber`, a date input `valueAsDate`, a `contenteditable` host its
+`textContent`. `bind:this` is a ref, and any other name binds the property of
+that name.
 
 Two things it does that `value={x}` cannot, and they are why it is compiler
 syntax rather than a helper:
@@ -134,11 +146,6 @@ syntax rather than a helper:
 The target must be writable: a signal, a `linked` cell, or anything with a
 `.set`. A read-only accessor is a `BIND_TARGET_NOT_WRITABLE` diagnostic.
 
-> **`bind:` has no JSX type yet.** The compiler and the runtime both handle it,
-> but nothing declares the attribute, so `<input bind:value={name} />` is a
-> `TS2322` in a project with `strict` on. Until the declaration lands, the
-> working spellings are `writeLive` and an `onInput` handler.
-
 ## `linked` — writable state that re-seeds
 
 ```tsx
@@ -151,7 +158,7 @@ const draft = linked(
   (name) => name,
 );
 
-<input value={draft()} onInput={(event) => draft.set(event.currentTarget.value)} />;
+<input type="text" bind:value={draft} />;
 ```
 
 The write holds until `source` next changes; that change recomputes over it and
@@ -162,10 +169,13 @@ need both directions at once.
 `compute` receives the previous value, so a re-seed can keep a choice:
 
 ```tsx
-const chosen = linked(options, (list, previous) =>
-  previous !== undefined && list.includes(previous) ? previous : list[0],
+const chosen = linked<string[], string>(options, (list, previous) =>
+  previous !== undefined && list.includes(previous) ? previous : list[0]!,
 );
 ```
+
+Both type arguments are spelled because the compute's return mentions
+`previous`, so `T` has nothing to infer from but itself.
 
 ## Compiler mode
 

@@ -7,7 +7,7 @@
  * and no diagnostic; it produces a compile that does not happen.
  *
  * So the channel is `tsc` itself, run over `src/jsx-types` in isolation by
- * `packages/core/src/jsx-types/form-action-types.test.ts`, and it asserts BOTH
+ * `packages/core/src/jsx-types/attribute-types.test.ts`, and it asserts BOTH
  * directions: the positives compile, and every `@ts-expect-error` still FIRES.
  * The second half is what makes such a rule assertable at all — an expectation
  * that quietly stops being an error is exactly the rot this project's registries

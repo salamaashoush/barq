@@ -2,11 +2,12 @@
  * The type-level channel, because nothing else in the suite can see a type.
  *
  * Every other oracle here compiles a fixture and runs it. A JSX ATTRIBUTE TYPE
- * is invisible to all of them: `form-action.tsx` and `sem-form-action-slot.tsx`
- * both drive `<form action={fn}>` green while the declared type of that slot
- * said `string`, because a fixture is compiled and never typechecked. So this
- * shells out to `tsc` over `src/jsx-types` alone — its own tsconfig, so core's
- * pre-existing errors are not in scope and a green run means what it says.
+ * is invisible to all of them, and both files in this directory exist because
+ * of a slot that was WRONG while every fixture over it was green: `<form
+ * action={fn}>` was declared `string`, and `bind:` was not declared at all. So
+ * this shells out to `tsc` over `src/jsx-types` alone — its own tsconfig, so
+ * core's pre-existing errors are not in scope and a green run means what it
+ * says.
  *
  * Both directions matter. The positives must compile, and every
  * `@ts-expect-error` must FIRE — an expectation that stops being an error is
@@ -32,7 +33,7 @@ function typecheck(): { status: number; output: string } {
   };
 }
 
-describe("B8 — the `action` slot's declared type", () => {
+describe("the JSX attribute types this directory declares", () => {
   test("the accepted shapes compile and every refused one is still refused", () => {
     const { status, output } = typecheck();
     // A non-zero exit is either a positive that stopped compiling or a

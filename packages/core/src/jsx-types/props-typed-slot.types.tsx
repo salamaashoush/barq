@@ -5,7 +5,7 @@
  * procedures are "MUST be a type error", and a type error is invisible to every
  * other oracle here, all of which compile a fixture and run it.
  *
- * `form-action-types.test.ts` typechecks this whole directory and asserts BOTH
+ * `attribute-types.test.ts` typechecks this whole directory and asserts BOTH
  * directions — the positives compile, and every `@ts-expect-error` still FIRES.
  * The second half is the one that matters here: a rule whose content is "this
  * does not typecheck" is worth nothing if the expectation silently stops being
