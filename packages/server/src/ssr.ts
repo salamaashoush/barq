@@ -403,11 +403,36 @@ export function attr(name: string, value: unknown, tag?: string): string {
   const resolved = unwrap(value);
   // Nullish and `false` write nothing, and the DOM path's `removeAttribute`
   // does not validate either — so a name is only checked where it reaches bytes.
-  if (resolved === null || resolved === undefined || resolved === false) return "";
+  // The exception is an ENUMERATED attribute, where `false` is a value.
+  if (resolved === null || resolved === undefined) return "";
   const attribute = REFLECTS_AS[key] ?? key;
+  if (typeof resolved === "boolean" && isEnumeratedAttr(attribute)) {
+    checkName(attribute);
+    return ` ${attribute}="${resolved ? "true" : "false"}"`;
+  }
+  if (resolved === false) return "";
   checkName(attribute);
   if (resolved === true) return ` ${attribute}=""`;
   return ` ${attribute}="${escapeAttribute(toString(resolved))}"`;
+}
+
+/**
+ * Attributes where `false` means "false", not "absent".
+ *
+ * The same set `dom.ts` applies, and it has to be the same one: a server that
+ * omitted `aria-pressed="false"` and a client that wrote it would report a
+ * hydration mismatch on every toggle button on the page.
+ */
+const ENUMERATED_ATTRS = new Set([
+  "contenteditable",
+  "contentEditable",
+  "draggable",
+  "spellcheck",
+  "spellCheck",
+]);
+
+function isEnumeratedAttr(name: string): boolean {
+  return name.startsWith("aria-") || ENUMERATED_ATTRS.has(name);
 }
 
 /**
@@ -510,7 +535,11 @@ export function formAttr(value: unknown): string {
 
 export function attrLit(name: string, value: unknown): string {
   const resolved = typeof value === "function" ? (value as () => unknown)() : value;
-  if (resolved === null || resolved === undefined || resolved === false) return "";
+  if (resolved === null || resolved === undefined) return "";
+  if (typeof resolved === "boolean" && isEnumeratedAttr(name)) {
+    return ` ${name}="${resolved ? "true" : "false"}"`;
+  }
+  if (resolved === false) return "";
   if (resolved === true) return ` ${name}=""`;
   return ` ${name}="${escapeAttribute(toString(resolved))}"`;
 }

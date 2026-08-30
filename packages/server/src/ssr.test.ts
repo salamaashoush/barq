@@ -17,6 +17,7 @@ import { renderToString } from "./server.ts";
 import {
   SsrHtml,
   attr,
+  attrLit,
   cls,
   clsList,
   content,
@@ -217,6 +218,23 @@ describe("attributes", () => {
     expect(attr("disabled", false)).toBe("");
     expect(attr("tabindex", 0)).toBe(' tabindex="0"');
     expect(attr("title", () => "lazy")).toBe(' title="lazy"');
+  });
+
+  test("an aria attribute spells false out, where a boolean one disappears", () => {
+    // `aria-pressed="false"` says "a toggle button, currently off". Removing it
+    // says "not a toggle button", which is a different control.
+    expect(attr("aria-pressed", false)).toBe(' aria-pressed="false"');
+    expect(attr("aria-pressed", true)).toBe(' aria-pressed="true"');
+    expect(attr("aria-hidden", false)).toBe(' aria-hidden="false"');
+    expect(attr("contentEditable", false)).toBe(' contentEditable="false"');
+    expect(attr("disabled", false)).toBe("");
+  });
+
+  test("attrLit draws the same line, since the compiler emits it for a literal name", () => {
+    expect(attrLit("aria-pressed", false)).toBe(' aria-pressed="false"');
+    expect(attrLit("aria-expanded", true)).toBe(' aria-expanded="true"');
+    expect(attrLit("hidden", false)).toBe("");
+    expect(attrLit("hidden", true)).toBe(' hidden=""');
   });
 
   test("a hostile attribute value cannot escape its quotes", () => {

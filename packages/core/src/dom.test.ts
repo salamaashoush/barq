@@ -13,6 +13,7 @@ import {
   enterRoot,
   exit,
   flush,
+  getOwner,
   signal,
   type Scope,
 } from "./signals.ts";
@@ -632,6 +633,39 @@ describe("render function", () => {
     expect(container.textContent).toBe("42");
   });
 
+  test("a fragment root holding a Cell stays a live hole", () => {
+    const shown = signal(false);
+    // What `render(() => <>{() => cond() ? <span/> : null}</>)` produces: an
+    // array whose only member is a Cell. Appending its nodes once left a
+    // component whose whole output is a conditional — an overlay — rendered at
+    // its first value for good.
+    render([() => (shown() ? element(null, "span", { children: "in" }) : null)], container);
+
+    expect(container.textContent).toBe("");
+
+    shown.set(true);
+    flush();
+    expect(container.textContent).toBe("in");
+
+    shown.set(false);
+    flush();
+    expect(container.textContent).toBe("");
+  });
+
+  test("a fragment root keeps its static members in order around a Cell", () => {
+    const middle = signal("b");
+    render(
+      [element(null, "span", { children: "a" }), () => middle(), element(null, "span", { children: "c" })],
+      container,
+    );
+
+    expect(container.textContent).toBe("abc");
+
+    middle.set("B");
+    flush();
+    expect(container.textContent).toBe("aBc");
+  });
+
   test("renders array of elements", () => {
     const elements = [
       element(null, "span", { children: "a" }),
@@ -1114,5 +1148,209 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     flush();
     expect(caught, "the throw escaped the framework").toBe("boom" as string);
     dispose();
+  });
+});
+
+describe("enumerated attributes", () => {
+  test("aria-pressed={false} is written, not removed", () => {
+    const el = element(null, "button", { "aria-pressed": false }) as HTMLButtonElement;
+    expect(el.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  test("aria-pressed={true} is the string, not the empty boolean attribute", () => {
+    const el = element(null, "button", { "aria-pressed": true }) as HTMLButtonElement;
+    expect(el.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("a boolean HTML attribute is still its own presence", () => {
+    const on = element(null, "button", { disabled: true }) as HTMLButtonElement;
+    const off = element(null, "button", { hidden: false }) as HTMLButtonElement;
+    expect(on.disabled).toBe(true);
+    expect(off.hasAttribute("hidden")).toBe(false);
+  });
+
+  test("the value follows a signal both ways", () => {
+    const pressed = signal(false);
+    const el = element(null, "button", { "aria-pressed": () => pressed() }) as HTMLButtonElement;
+    container.appendChild(el);
+
+    expect(el.getAttribute("aria-pressed")).toBe("false");
+    pressed.set(true);
+    flush();
+    expect(el.getAttribute("aria-pressed")).toBe("true");
+    pressed.set(false);
+    flush();
+    expect(el.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  test("contentEditable spells its value out", () => {
+    const el = element(null, "div", { contentEditable: false }) as HTMLDivElement;
+    expect(el.getAttribute("contentEditable")).toBe("false");
+  });
+});
+
+describe("a component's construction is not a dependency of the hole that placed it", () => {
+  test("changing a signal the body READ does not rebuild the subtree", () => {
+    const label = signal("a");
+    let builds = 0;
+
+    // What the compiler emits for `<Parent><Child/></Parent>`: the child is a
+    // Block, and the parent places it with `insert`.
+    const child = block((s: Scope | null) => {
+      builds++;
+      const el = document.createElement("span");
+      insert(s, el, () => label());
+      return el;
+    });
+
+    const parent = document.createElement("div");
+    scope((dispose) => {
+      insert(getOwner(), parent, child);
+      flush();
+
+      const first = parent.firstChild;
+      expect(builds).toBe(1);
+      expect(parent.textContent).toBe("a");
+
+      label.set("b");
+      flush();
+
+      expect(builds, "the body ran again").toBe(1);
+      expect(parent.firstChild, "the element was replaced").toBe(first);
+      expect(parent.textContent, "the update did not land").toBe("b");
+      dispose();
+    });
+  });
+
+  test("DOM state the user owns survives a change the body read", () => {
+    const checked = signal(false);
+
+    const child = block(() => {
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      // The read that used to make this hole depend on `checked`.
+      input.setAttribute("data-checked", String(checked()));
+      return input;
+    });
+
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    scope((dispose) => {
+      insert(getOwner(), parent, child);
+      flush();
+
+      const input = parent.firstChild as HTMLInputElement;
+      // The USER checks it. Nothing in the framework knows.
+      input.checked = true;
+
+      checked.set(true);
+      flush();
+
+      expect((parent.firstChild as HTMLInputElement).checked).toBe(true);
+      dispose();
+    });
+    parent.remove();
+  });
+
+  test("an expression hole is still tracked", () => {
+    const count = signal(0);
+    const parent = document.createElement("div");
+
+    scope((dispose) => {
+      // `<Foo>{count()}</Foo>` compiles to a plain arrow, not a Block.
+      insert(getOwner(), parent, () => String(count()));
+      flush();
+      expect(parent.textContent).toBe("0");
+
+      count.set(1);
+      flush();
+      expect(parent.textContent).toBe("1");
+      dispose();
+    });
+  });
+});
+
+describe("capture-phase events", () => {
+  test("an onXCapture prop fires before a descendant's bubble handler", () => {
+    const seen: string[] = [];
+    const parent = element(null, "div", {
+      onKeyDownCapture: () => seen.push("parent-capture"),
+      onKeyDown: () => seen.push("parent-bubble"),
+    }) as HTMLDivElement;
+    const child = element(null, "input", {
+      onKeyDown: () => seen.push("child"),
+    }) as HTMLInputElement;
+    parent.appendChild(child);
+    container.appendChild(parent);
+
+    child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+
+    expect(seen).toEqual(["parent-capture", "child", "parent-bubble"]);
+  });
+
+  test("a capture handler can stop the event reaching the child", () => {
+    const seen: string[] = [];
+    const parent = element(null, "div", {
+      onKeyDownCapture: (e: Event) => {
+        seen.push("capture");
+        e.stopPropagation();
+      },
+    }) as HTMLDivElement;
+    const child = element(null, "input", {
+      onKeyDown: () => seen.push("child"),
+    }) as HTMLInputElement;
+    parent.appendChild(child);
+    container.appendChild(parent);
+
+    child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+
+    expect(seen).toEqual(["capture"]);
+  });
+
+  test("the capture: namespace is the verbatim form", () => {
+    const seen: string[] = [];
+    const parent = document.createElement("div");
+    setProp(null, parent, "capture:keydown", () => seen.push("capture"));
+    const child = document.createElement("input");
+    parent.appendChild(child);
+    container.appendChild(parent);
+
+    child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+
+    expect(seen).toEqual(["capture"]);
+  });
+
+  test("a spread binds both phases of one event type", () => {
+    const seen: string[] = [];
+    const parent = document.createElement("div");
+    spread(null, parent, {
+      onKeyDownCapture: () => seen.push("capture"),
+      onKeyDown: () => seen.push("bubble"),
+    });
+    const child = document.createElement("input");
+    parent.appendChild(child);
+    container.appendChild(parent);
+
+    child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+
+    expect(seen).toEqual(["capture", "bubble"]);
+  });
+
+  test("a capture listener is removed when its scope is disposed", () => {
+    const seen: string[] = [];
+    const parent = document.createElement("div");
+    const child = document.createElement("input");
+    parent.appendChild(child);
+    container.appendChild(parent);
+
+    scope((dispose) => {
+      setProp(getOwner(), parent, "onKeyDownCapture", () => seen.push("capture"));
+      child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+      expect(seen).toEqual(["capture"]);
+      dispose();
+    });
+
+    child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+    expect(seen).toEqual(["capture"]);
   });
 });

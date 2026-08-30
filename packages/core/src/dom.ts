@@ -10,6 +10,7 @@ import {
   ERROR_BOUNDARY,
   isBlock,
   lookupContext,
+  NotReadyError,
   onCleanup,
   requireScope,
   ScopeMissingError,
@@ -355,6 +356,27 @@ function isEventHandlerValue(value: unknown): boolean {
   return typeof value === "function" || (Array.isArray(value) && typeof value[0] === "function");
 }
 
+/**
+ * The event type an `on…Capture` prop names, or `null` if it names none.
+ *
+ * The capture phase is not a nicety. It is the only way to see an event BEFORE
+ * a descendant handles it, which is what a component has to do when the
+ * meaning of a key depends on state a child does not have: a listbox's
+ * typeahead has to claim a Space as a search character before the option below
+ * it reads the same key as "select me". Delegation cannot express it — the
+ * document listener runs after the whole bubble path — so a capture prop is
+ * always a direct listener.
+ */
+const CAPTURE_SUFFIX = "Capture";
+
+function captureTypeOf(key: string): string | null {
+  // "on" + at least one character + "Capture".
+  if (key.length <= CAPTURE_SUFFIX.length + 3) return null;
+  if (key.charCodeAt(0) !== 111 || key.charCodeAt(1) !== 110) return null;
+  if (!key.endsWith(CAPTURE_SUFFIX)) return null;
+  return key.slice(2, -CAPTURE_SUFFIX.length).toLowerCase();
+}
+
 /** Wrap a tuple handler for direct (non-delegated) listeners */
 function toListener(value: DelegatedHandler): EventListener {
   if (typeof value === "function") return value;
@@ -423,8 +445,15 @@ function toKebabCase(str: string): string {
   return result;
 }
 
-/** Array of JSX elements */
-export type ArrayElement = JSXElement[];
+/**
+ * A fragment: JSX elements, and the CELLS among them.
+ *
+ * A member that is a function is a live hole rather than a value, which is what
+ * `<>{() => cond() ? <a/> : <b/>}</>` compiles to — an array whose only member
+ * is a Cell. `insert` has always placed one; the type said otherwise, so the
+ * capability was reachable from the runtime and not from typed code.
+ */
+export type ArrayElement = (JSXElement | (() => JSXElement))[];
 
 /**
  * JSXElement type that components can return
@@ -523,9 +552,37 @@ export function element(s: Scope | null, tag: string, props: Record<string, unkn
 export type Channel = (element: Element, name: string, value: unknown, prev?: unknown) => unknown;
 
 /** `setAttribute` / `removeAttribute`. A boolean value toggles the attribute. */
+/**
+ * Attributes where `false` means "false", not "absent".
+ *
+ * A boolean HTML attribute is its own presence: `disabled=""` and no
+ * `disabled` are the only two states, so `false` removes it. Every `aria-*`
+ * attribute is an ENUMERATED one instead, and the distinction is load-bearing:
+ * `aria-pressed="false"` says "this is a toggle button that is off", which a
+ * screen reader announces, while no `aria-pressed` at all says "this is not a
+ * toggle button". Removing the attribute changes what the control IS.
+ *
+ * The same holds for the three global attributes that spell their values out.
+ */
+const ENUMERATED_ATTRS = new Set([
+  "contenteditable",
+  "contentEditable",
+  "draggable",
+  "spellcheck",
+  "spellCheck",
+]);
+
+function isEnumeratedAttr(name: string): boolean {
+  return name.startsWith("aria-") || ENUMERATED_ATTRS.has(name);
+}
+
 export function setAttr(element: Element, name: string, value: unknown, prev?: unknown): unknown {
   if (value === prev) return prev;
   if (isBoolean(value)) {
+    if (isEnumeratedAttr(name)) {
+      element.setAttribute(name, value ? "true" : "false");
+      return value;
+    }
     if (value) {
       element.setAttribute(name, "");
     } else {
@@ -1390,7 +1447,13 @@ function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Nod
     // `applyInsert` → here, and never through `childToNodes` at all. The row's
     // diagnosis was describing a path M9 had already restructured.
     if (typeof child === "function") {
-      visit((child as (s: unknown) => Child)(s));
+      // `buildChild`, so a Block reached through an array hole — a component's
+      // children, `<>{props.children}</>` — is built untracked. Called bare,
+      // every signal the component's BODY read became a dependency of the one
+      // effect placing the whole array, and the next change rebuilt all of it:
+      // a popover constructed twice, two entries in the overlay stack, and the
+      // one holding the mounted element no longer the top.
+      visit(buildChild(child as (s: unknown) => Child, s));
       return;
     }
 
@@ -1595,6 +1658,38 @@ function applyInsert(
  * the root ends up holding the argument's effects after all. That belongs to
  * O5's milestone, with the fixture re-cut in the same change.
  */
+/**
+ * Build the value at a hole, with a COMPONENT's construction untracked.
+ *
+ * A component reads signals while it builds — a prop, a piece of state it
+ * derives a class from — and inside `insert`'s effect those reads become
+ * dependencies of the HOLE. The next change to any of them then re-runs the
+ * insert and rebuilds the whole subtree: new elements, new listeners, focus
+ * gone, and every piece of state the DOM itself was holding (a checkbox's
+ * `checked`, a field's caret, a scroll offset) gone with them. What looked
+ * like a fine-grained update was a teardown and a re-mount.
+ *
+ * The reads that are meant to be live are inside the effects the body creates,
+ * and an effect created here establishes its own tracking, so nothing that
+ * should update stops updating. Only a BLOCK is untracked: the compiler emits
+ * one for a scope-taking JSX body and a plain arrow for an expression hole, so
+ * `<Foo>{count()}</Foo>` keeps tracking its expression.
+ *
+ * A body that SUSPENDS is retried tracked, for the reason `flow.ts`'s
+ * `swapMaybeSuspending` states: nothing was built, and an untracked read
+ * registered no dependency, so the position could never wake and the boundary
+ * above would sit on its fallback for good.
+ */
+function buildChild(value: (s: unknown) => Child, owner: Scope | null): Child {
+  if (!isBlock(value)) return value(owner);
+  try {
+    return untrack(() => value(owner));
+  } catch (error) {
+    if (!(error instanceof NotReadyError)) throw error;
+    return value(owner);
+  }
+}
+
 function ownedBy(given: Scope | null, origin: string, build: () => void): void {
   if (given === null) {
     build();
@@ -1700,10 +1795,10 @@ export function insert(
         let produced: Child;
         let taken: Node[] | null = null;
         if (claiming === null) {
-          produced = (value as (s: unknown) => Child)(owner);
+          produced = buildChild(value as (s: unknown) => Child, owner);
         } else {
           const run = withRangeTaken(claiming, () => {
-            const built = (value as (s: unknown) => Child)(owner);
+            const built = buildChild(value as (s: unknown) => Child, owner);
             // RESOLVED INSIDE THE CURSOR. A thunk in the produced array is
             // called by `childToNodes` on the way into `applyInsert`, which is
             // AFTER `withRangeTaken` has closed the cursor — so a `template()`
@@ -1824,6 +1919,10 @@ export function setProp(s: Scope | null, element: Element, key: string, value: u
         // custom-element story.
         bindEvent(given, element, rest, value);
         return;
+      case "capture":
+        // `on:`'s capture-phase sibling, verbatim for the same reason.
+        bindEvent(given, element, rest, value, true);
+        return;
       case "prop":
         bindProp(given, element, setDomProp, rest, value);
         return;
@@ -1852,6 +1951,13 @@ export function setProp(s: Scope | null, element: Element, key: string, value: u
 
   // `applyProp`'s original test: `key[0] === "o" && key[1] === "n"`, so
   // `onceUpon` really does bind a `ceupon` listener and the compiler agrees.
+  // The `Capture` suffix is tested FIRST, or `onKeyDownCapture` would bind a
+  // bubble-phase listener for an event called `keydowncapture`.
+  const captured = captureTypeOf(key);
+  if (captured !== null) {
+    bindEvent(given, element, captured, value, true);
+    return;
+  }
   if (key[0] === "o" && key[1] === "n") {
     bindEvent(given, element, key.slice(2).toLowerCase(), value);
     return;
@@ -1896,13 +2002,21 @@ export function bindChannelOf(element: Element, name: string): [string, string] 
  * anything binds at all — which is the oracle's test, on a value neither side
  * can see.
  */
-export function bindEvent(s: Scope | null, element: Element, type: string, value: unknown): void {
+export function bindEvent(
+  s: Scope | null,
+  element: Element,
+  type: string,
+  value: unknown,
+  capture = false,
+): void {
   if (!isEventHandlerValue(value)) return;
-  if (DELEGATED_EVENTS.has(type)) {
+  // Delegation is one document-level listener in the BUBBLE phase, so it
+  // cannot serve a capture binding at all.
+  if (!capture && DELEGATED_EVENTS.has(type)) {
     delegate(s, element, type, value as DelegatedHandler);
     return;
   }
-  listen(s, element, type, toListener(value as DelegatedHandler));
+  listen(s, element, type, toListener(value as DelegatedHandler), capture);
 }
 
 /**
@@ -1934,9 +2048,11 @@ export function spread(
 
   const applyOne = (key: string, value: unknown): void => {
     // Events: delegated handlers swap by expando; direct ones re-listen
-    if (key[0] === "o" && key[1] === "n") {
-      const eventName = key.slice(2).toLowerCase();
-      if (DELEGATED_EVENTS.has(eventName)) {
+    const captured = captureTypeOf(key);
+    if (captured !== null || (key[0] === "o" && key[1] === "n")) {
+      const eventName = captured ?? key.slice(2).toLowerCase();
+      // A capture binding is always direct: delegation is bubble-phase only.
+      if (captured === null && DELEGATED_EVENTS.has(eventName)) {
         delegate(
           given,
           element,
@@ -1944,21 +2060,26 @@ export function spread(
           isEventHandlerValue(value) ? (value as DelegatedHandler) : undefined,
         );
       } else {
-        const prevListener = directListeners[eventName];
+        // Keyed by the PROP, not the event type: `onKeyDown` and
+        // `onKeyDownCapture` are two listeners for one type, and one would
+        // otherwise remove the other.
+        const prevListener = directListeners[key];
         if (prevListener) {
-          element.removeEventListener(eventName, prevListener);
-          delete directListeners[eventName];
+          element.removeEventListener(eventName, prevListener, captured !== null);
+          delete directListeners[key];
         }
         if (isEventHandlerValue(value)) {
           const listener = routedListener(given, element, toListener(value as DelegatedHandler));
-          directListeners[eventName] = listener;
-          element.addEventListener(eventName, listener);
-          if (given !== null && !owned.has(eventName)) {
-            owned.add(eventName);
+          directListeners[key] = listener;
+          element.addEventListener(eventName, listener, captured !== null);
+          if (given !== null && !owned.has(key)) {
+            owned.add(key);
             underScope(given, "spread", () => {
               onCleanup(() => {
-                const last = directListeners[eventName];
-                if (last !== undefined) element.removeEventListener(eventName, last);
+                const last = directListeners[key];
+                if (last !== undefined) {
+                  element.removeEventListener(eventName, last, captured !== null);
+                }
               });
             });
           }
@@ -2063,7 +2184,11 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
   // the `render` path above and nothing else.
   if (typeof child === "function") {
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("children", s);
-    const built = (child as (s: unknown) => Child)(s);
+    // `buildChild`, not a bare call: a Block reached through an array hole is
+    // a component's construction, and it must no more be a dependency of the
+    // hole that placed it here than it is anywhere else. A Cell stays tracked,
+    // because a Cell in an array IS what the hole is watching.
+    const built = buildChild(child as (s: unknown) => Child, s);
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("children");
     return childToNodes(built, s);
   }
@@ -2171,6 +2296,15 @@ function insertRendered(
     return;
   }
   if (Array.isArray(element)) {
+    // A fragment root holding a Cell is a live hole, exactly as one is
+    // anywhere else. `childToNodes` calls each function once and returns
+    // nodes, so `render(() => <>{() => cond() ? <A/> : null}</>)` rendered the
+    // first value and never moved again — and a component whose whole output
+    // is a conditional is the ordinary shape for an overlay.
+    if (element.some(holdsAFunction)) {
+      insert(scope, container, element as Child);
+      return;
+    }
     for (const child of element) {
       const nodes = childToNodes(child, scope);
       for (const node of nodes) {
