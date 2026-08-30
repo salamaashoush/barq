@@ -1,0 +1,10 @@
+{
+  "name": "h3bench",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "h3": "^2.0.1-rc.29",
+    "srvx": "^0.12.7",
+    "ufo": "^1.6.4"
+  }
+}
