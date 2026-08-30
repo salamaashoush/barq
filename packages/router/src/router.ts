@@ -38,7 +38,12 @@ import {
 } from "./history.ts";
 import { ROOT_ROUTE_ID } from "./file-route.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
-import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
+import {
+  type AnyRouteDefinition,
+  type Route,
+  type RouteLifecycle,
+  flattenRoutes,
+} from "./route.ts";
 import { leavesTheApp, normalize, resolvePath } from "./path.ts";
 import { type ScrollRestoration, scrollRestoration, withViewTransition } from "./scroll.ts";
 import {
@@ -324,6 +329,19 @@ export interface RouterConfig {
    * which is the shape of bug that survives every click-through test.
    */
   readonly basepath?: string;
+  /**
+   * Where an unmatched path renders its not-found. Default `"fuzzy"`.
+   *
+   *  - `"fuzzy"` — inside the deepest LAYOUT whose pattern is a prefix of the
+   *    path, using that layout's `notFoundComponent` or the nearest one above
+   *    it. `/posts/nope` keeps `/posts`'s layout.
+   *  - `"root"` — the root route only.
+   *
+   * Fuzzy is TanStack's default and the better one: a 404 inside the
+   * application keeps its own navigation, where the alternative discards
+   * everything below the shell over one mistyped segment.
+   */
+  readonly notFoundMode?: "root" | "fuzzy";
   /**
    * What a route gets when it declares none of these itself.
    *
@@ -668,7 +686,24 @@ export function createRouter(config: RouterConfig): RouterState {
     return [{ id: root.id, fullPath: normalize(root.path ?? "/"), definition: root }];
   })();
 
-  const chain = computed<readonly Route[]>(() => match()?.route.chain ?? rootChain);
+  /**
+   * Where an unmatched location renders its not-found.
+   *
+   * `"fuzzy"` (the default, and TanStack's) puts it inside the deepest LAYOUT
+   * whose pattern is a prefix of the path, so `/posts/nope` keeps `/posts`'s
+   * layout and uses its `notFoundComponent`. `"root"` renders only the root
+   * route, which is the whole application chrome and nothing more.
+   *
+   * Either way the ROOT renders — that part is not a mode, it is what stops a
+   * 404 being a blank document that disagrees with what the client builds.
+   */
+  const fuzzyChain = computed<readonly Route[]>(() => {
+    if ((config.notFoundMode ?? "fuzzy") === "root") return rootChain;
+    const prefix = matcher.matchPrefix(unmask(location()));
+    return prefix === null ? rootChain : prefix.route.chain;
+  });
+
+  const chain = computed<readonly Route[]>(() => match()?.route.chain ?? fuzzyChain());
 
   /** Nothing matched, so the chain above is the root standing in. */
   const missed = computed<boolean>(() => match() === null);
@@ -1169,6 +1204,35 @@ export function createRouter(config: RouterConfig): RouterState {
   const causeFor = (route: Route): LoadCause => (previous.includes(route) ? "stay" : "enter");
 
   /**
+   * `onLeave`, then `onStay` or `onEnter` — TanStack's order and their rule
+   * (`runRouteLifecycle`, `router.ts:930`): every route in the old chain that
+   * is not in the new one leaves first, and only then does each route in the
+   * new chain get told whether it arrived or remained.
+   *
+   * Compared BY ID rather than by object identity. A route object is stable
+   * across a navigation today, and a chain rebuilt from a fresh match would not
+   * be — an id is what the author named and what a hook is written against.
+   */
+  const runLifecycle = (before: readonly Route[], after: readonly Route[]): void => {
+    const stayed = new Set(after.map((route) => route.id));
+    const had = new Set(before.map((route) => route.id));
+    const forParams = untrack(params);
+    const told = (route: Route): RouteLifecycle => ({
+      routeId: route.id,
+      fullPath: route.fullPath,
+      params: forParams,
+      staticData: route.definition.staticData ?? {},
+    });
+    for (const route of before) {
+      if (!stayed.has(route.id)) route.definition.onLeave?.(told(route));
+    }
+    for (const route of after) {
+      const hook = had.has(route.id) ? route.definition.onStay : route.definition.onEnter;
+      hook?.(told(route));
+    }
+  };
+
+  /**
    * The reload decision happens ONCE PER NAVIGATION, not once per read.
    *
    * Putting it in `dataFor` was wrong in a way the tests caught immediately:
@@ -1232,6 +1296,10 @@ export function createRouter(config: RouterConfig): RouterState {
 
       previous = before;
       revalidate();
+      // AFTER `revalidate`, which is what sets `previous` to the committed
+      // chain, and before the loaders start: a hook that reads the match should
+      // see the page it is being told about.
+      runLifecycle(before, untrack(chain));
       // Start every loader in the new chain at once, so the client does not
       // wait for each depth's parent to resolve before beginning the next.
       primeChain();
@@ -1442,10 +1510,16 @@ export function createRouter(config: RouterConfig): RouterState {
       if (seed !== null && seed.href === href(here)) {
         hydrateContexts(here, seed.produced);
         primeChain();
+        runLifecycle([], untrack(chain));
         return;
       }
+      // The FIRST chain enters too. Nothing has left, so this is `onEnter` for
+      // every depth — TanStack runs the same pass as matches load, and without
+      // it a hook only ever fired from the second navigation onwards.
+      const enter = (): void => runLifecycle([], untrack(chain));
       try {
         settleContexts((await runBeforeLoad(here, candidate)).contexts);
+        enter();
       } catch {
         /* the boundary shows it; there is no navigation to refuse at mount */
         releaseContexts();

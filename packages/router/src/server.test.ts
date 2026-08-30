@@ -19,7 +19,7 @@ import { mount, unmountAll } from "@barqjs/start/server";
 import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { RouterProvider, linkAttrHref } from "./components.ts";
+import { Outlet, RouterProvider, linkAttrHref } from "./components.ts";
 
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
@@ -2361,5 +2361,64 @@ describe("an unmatched path, hydrated", () => {
     expect(hydrate.report.recovered).toBe(false);
     expect(container.textContent).toContain("404 - Not Found");
     expect(hydrate.report.mismatches).toEqual([]);
+  });
+});
+
+/**
+ * `notFoundMode` — where an unmatched path renders its answer.
+ *
+ * Fuzzy is TanStack's default and the better one: a 404 inside the application
+ * keeps its own navigation, where the alternative discards everything below the
+ * shell over one mistyped segment.
+ */
+describe("notFoundMode", () => {
+  const nested: AnyRouteDefinition[] = [
+    {
+      id: "__root__",
+      path: "/",
+      // `Outlet`, not `() => null`: a layout that never places its children
+      // renders nothing below it, and the not-found lives at the depth the
+      // matched route would have occupied.
+      component: Outlet as never,
+      children: [
+        { path: "", component: (() => null) as never },
+        {
+          path: "shop",
+          component: Outlet as never,
+          notFoundComponent: (() => ssrHtml("<p>no such aisle</p>")) as never,
+          children: [{ path: "", component: (() => null) as never }],
+        },
+      ],
+    },
+  ] as never;
+
+  const handlerFor = (mode?: "root" | "fuzzy") =>
+    createPageHandler({
+      routeTree: nested,
+      notFoundMode: mode,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+
+  test("fuzzy uses the deepest layout's own notFoundComponent", async () => {
+    const response = await handlerFor()(get("/shop/nope"));
+    expect(response.status).toBe(404);
+    expect(await response.text()).toContain("no such aisle");
+  });
+
+  /** A miss with no layout above it falls through to the default. */
+  test("a top-level miss still answers", async () => {
+    const response = await handlerFor()(get("/nowhere"));
+    expect(response.status).toBe(404);
+    expect(await response.text()).toContain("404 - Not Found");
+  });
+
+  test("`root` ignores the layout's component", async () => {
+    const response = await handlerFor("root")(get("/shop/nope"));
+    expect(response.status).toBe(404);
+    const html = await response.text();
+    expect(html).not.toContain("no such aisle");
+    expect(html).toContain("404 - Not Found");
   });
 });

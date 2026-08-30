@@ -302,3 +302,62 @@ describe("braced segments", () => {
     expect(matcher.match("/files/a%20b.csv")?.params).toEqual({ name: "a b" });
   });
 });
+
+/**
+ * `matchPrefix` — what `notFoundMode: "fuzzy"` renders inside.
+ *
+ * Layouts rather than leaves, and over chains rather than the trie: a leaf walk
+ * answered `/nowhere` with the `/` index route, which would render the HOME
+ * PAGE for a path that does not exist.
+ */
+describe("the fuzzy not-found ancestor", () => {
+  const nested: AnyRouteDefinition[] = [
+    { path: "/", component: noop as never },
+    {
+      path: "/posts",
+      component: noop as never,
+      children: [
+        { path: "", component: noop as never },
+        { path: "$id", component: noop as never },
+      ],
+    },
+  ] as never;
+
+  test("a path under a layout finds that layout", () => {
+    expect(matcherFor(nested).matchPrefix("/posts/7/nope")?.route.chain.at(-1)?.fullPath).toBe(
+      "/posts",
+    );
+  });
+
+  /** An index LEAF is an ancestor of nothing. */
+  test("a top-level miss finds no layout", () => {
+    expect(matcherFor(nested).matchPrefix("/nowhere")).toBeNull();
+  });
+
+  /** A path a route fully owns is not a PREFIX case; `match` answers it. */
+  test("an exactly-matched path is not a prefix match", () => {
+    expect(matcherFor(nested).matchPrefix("/posts")).toBeNull();
+  });
+
+  test("the deepest layout wins, and the chain stops there", () => {
+    const deep: AnyRouteDefinition[] = [
+      {
+        path: "/a",
+        component: noop as never,
+        children: [
+          {
+            path: "b",
+            component: noop as never,
+            children: [{ path: "c", component: noop as never }],
+          },
+        ],
+      },
+    ] as never;
+    const matcher = matcherFor(deep);
+    expect(matcher.matchPrefix("/a/b/nope")?.route.chain.map((r) => r.fullPath)).toEqual([
+      "/a",
+      "/a/b",
+    ]);
+    expect(matcher.matchPrefix("/a/nope")?.route.chain.map((r) => r.fullPath)).toEqual(["/a"]);
+  });
+});

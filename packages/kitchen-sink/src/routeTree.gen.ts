@@ -25,6 +25,8 @@ import { Route as JsxTypesRoute } from "./routes/jsx-types";
 import { Route as LinksRoute } from "./routes/links";
 import { Route as QueryRoute } from "./routes/query";
 import { Route as RoutingRoute } from "./routes/routing";
+import { Route as ShopRoute } from "./routes/shop";
+import { Route as ShopIndexRoute } from "./routes/shop.index";
 import { Route as SignalsRoute } from "./routes/signals";
 import { Route as StoreRoute } from "./routes/store";
 import { Route as ApiHealthRoute } from "./routes/api/health";
@@ -52,6 +54,9 @@ export const routeTree: AnyRouteDefinition[] = [
     { ...LinksRoute.options, id: "/links", path: "links", src: "/src/routes/links.tsx" },
     { ...QueryRoute.options, id: "/query", path: "query", src: "/src/routes/query.tsx", ssr: "data-only" },
     { ...RoutingRoute.options, id: "/routing", path: "routing", src: "/src/routes/routing.tsx", ssr: false },
+    { ...ShopRoute.options, id: "/shop", path: "shop", src: "/src/routes/shop.tsx", children: [
+      { ...ShopIndexRoute.options, id: "/shop/", path: "", src: "/src/routes/shop.index.tsx" }
+    ] },
     { ...SignalsRoute.options, id: "/signals", path: "signals", src: "/src/routes/signals.tsx" },
     { ...StoreRoute.options, id: "/store", path: "store", src: "/src/routes/store.tsx" },
     { ...ApiHealthRoute.options, id: "/api/health", path: "api/health", src: "/src/routes/api/health.ts", component: Outlet as never },
@@ -76,6 +81,8 @@ export interface FileRoutesById {
   "/links": typeof LinksRoute;
   "/query": typeof QueryRoute;
   "/routing": typeof RoutingRoute;
+  "/shop": typeof ShopRoute;
+  "/shop/": typeof ShopIndexRoute;
   "/signals": typeof SignalsRoute;
   "/store": typeof StoreRoute;
   "/api/health": typeof ApiHealthRoute;
@@ -85,9 +92,9 @@ export interface FileRoutesById {
 
 export interface FileRouteTypes {
   /** Every route id, layouts included — what `useMatch` and `Link`'s `to` address. */
-  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
+  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/shop/" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
   /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */
-  fullPaths: "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
+  fullPaths: "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
   fileRoutesById: FileRoutesById;
 }
 

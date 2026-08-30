@@ -59,7 +59,7 @@ import type { JSX as CoreJSX } from "@barqjs/core/jsx-runtime";
 import type { ToPath } from "./register.ts";
 import { type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
-import { errorFallbackFor } from "./errors.ts";
+import { NotFound, errorFallbackFor } from "./errors.ts";
 import { addBase } from "./history.ts";
 import { interpolate, isUnder, leavesTheApp, resolvePath } from "./path.ts";
 
@@ -650,6 +650,16 @@ export function renderDepth(
       // the shell and the navigation the root renders, and it keeps a miss the
       // same shape as a hit — which is what hydration compares.
       if (!untrack(state.missed) || depth !== untrack(() => state.chain()).length) return null;
+      // A ROUTE'S OWN `notFoundComponent` FIRST, walking outward — which is
+      // what `notFoundMode: "fuzzy"` is for: the chain here is the deepest
+      // layout owning a prefix of the path, so its answer is the specific one.
+      // `config.notFound` is the application-wide fallback beneath it.
+      const own = errorFallbackFor(untrack(() => state.chain()), depth - 1, () => state.params())(
+        instance,
+        () => NOT_FOUND_ERROR,
+        NOOP_RESET,
+      );
+      if (own !== null && own !== undefined) return own as Node;
       const fallback = state.config.notFound;
       if (fallback !== undefined) {
         // A not-found route has no next depth, so its `children` is the Block
@@ -1072,6 +1082,18 @@ export interface LinkProps extends AnchorProps {
 
 /** The default not-found, as an element the server writes identically. */
 const notFoundTemplate = template(`<p>${NOT_FOUND}</p>`);
+
+/** A fuzzy not-found has nothing to retry, so its `reset` does nothing. */
+const NOOP_RESET = (): void => {};
+
+/**
+ * The error a route's `notFoundComponent` is handed for an unmatched LOCATION.
+ *
+ * One instance: it carries no per-request detail — the path is in
+ * `location()` — and a fresh object per render would make every re-render a
+ * change to anything comparing it.
+ */
+const NOT_FOUND_ERROR = new NotFound(NOT_FOUND);
 
 const anchorTemplate = template("<a></a>");
 

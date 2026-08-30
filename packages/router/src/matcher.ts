@@ -117,6 +117,18 @@ function edgeFor<T>(list: Decorated<T>[], prefix: string, suffix: string, name: 
 
 export interface Matcher<T> {
   match(pathname: string): Match<T> | null;
+  /**
+   * The deepest LAYOUT whose pattern is a strict prefix of this path.
+   *
+   * What `notFoundMode: "fuzzy"` renders inside. `/posts/nope/deeper` matches no
+   * route, but `/posts` does, and rendering that layout with its
+   * `notFoundComponent` inside keeps the navigation, the sidebar and the
+   * chrome — which is the whole difference between a 404 inside an application
+   * and a 404 instead of one.
+   *
+   * `null` when no layout owns a prefix of the path.
+   */
+  matchPrefix(pathname: string): Match<T> | null;
   readonly routes: readonly FlatRoute<T>[];
 }
 
@@ -293,8 +305,50 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
     return null;
   };
 
+  /**
+   * Layouts rather than leaves, and over CHAINS rather than the trie.
+   *
+   * `flattenRoutes` never emits a layout, so the trie holds only leaves — a
+   * walk of it answered `/nowhere` with the `/` index route and would render
+   * the HOME PAGE for a path that does not exist. TanStack draws the same line:
+   * their fuzzy fallback is the deepest matched route WITH CHILDREN.
+   *
+   * Linear over the table, which is right for what this is: it runs only when
+   * nothing matched, and a miss is not the path to optimise.
+   */
+  const deepestLayoutPrefix = (pathname: string): { route: FlatRoute<T>; depth: number } | null => {
+    const segments = splitPath(pathname);
+    let best: { route: FlatRoute<T>; depth: number } | null = null;
+    for (const route of routes) {
+      // The LAST element of a chain is the leaf; everything before it is a
+      // layout the leaf renders inside.
+      for (let at = 0; at < route.chain.length - 1; at++) {
+        const ancestor = route.chain[at] as { fullPath: string };
+        const owned = splitPath(ancestor.fullPath);
+        if (owned.length === 0 || owned.length >= segments.length) continue;
+        let matches = true;
+        for (let i = 0; i < owned.length; i++) {
+          if (owned[i] !== segments[i]) {
+            matches = false;
+            break;
+          }
+        }
+        if (!matches) continue;
+        if (best === null || owned.length > best.depth) {
+          best = { route: { ...route, chain: route.chain.slice(0, at + 1) }, depth: owned.length };
+        }
+      }
+    }
+    return best;
+  };
+
   return {
     routes,
+    matchPrefix(pathname: string): Match<T> | null {
+      const best = deepestLayoutPrefix(pathname);
+      // No params: every segment compared was a literal, so a prefix binds none.
+      return best === null ? null : { route: best.route, params: {} };
+    },
     match(pathname: string): Match<T> | null {
       const segments = splitPath(pathname);
       const values: (string | null)[] = new Array(segments.length + 1).fill(null);

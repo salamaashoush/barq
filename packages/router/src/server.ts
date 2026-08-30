@@ -47,7 +47,7 @@ import {
 import { crossOriginRefused, mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
-import { errorFallbackFor, isNotFound, isRedirect } from "./errors.ts";
+import { NotFound, errorFallbackFor, isNotFound, isRedirect } from "./errors.ts";
 import { type ManagedTag, projectHead, tagKey, tagProps } from "./head.ts";
 import {
   type Reachability,
@@ -139,6 +139,17 @@ const linkBackend = {
   },
 };
 
+/** A not-found for an unmatched LOCATION has nothing to retry. */
+const NOOP_RESET = (): void => {};
+
+/**
+ * The error a route's `notFoundComponent` is handed for an unmatched location.
+ *
+ * One instance: it carries no per-request detail — the path is on the state —
+ * and a fresh object per render would be a change to anything comparing it.
+ */
+const NOT_FOUND_ERROR = new NotFound(NOT_FOUND);
+
 export function renderRoutes(state: RouterState): unknown {
   const chain = state.chain();
 
@@ -203,12 +214,18 @@ export function renderRoutes(state: RouterState): unknown {
       // Reached through the ordinary depth walk rather than short-circuited, so
       // the ranges the client claims are the ranges the server wrote.
       if (!untrack(state.missed) || depth !== chain.length) return ssrHtml("");
+      // THE SAME THREE ANSWERS THE DOM PATH GIVES, in the same order, because
+      // hydration compares what the two produced: a route's own
+      // `notFoundComponent` walking outward from the deepest layout owning a
+      // prefix of the path, then `config.notFound`, then a `<p>` holding the
+      // default text as STATIC content — no range, so the client claims it.
+      const own = errorFallbackFor(chain, depth - 1, () => state.params())(
+        getOwner(),
+        () => NOT_FOUND_ERROR,
+        NOOP_RESET,
+      );
+      if (own !== null && own !== undefined) return own;
       const fallback = state.config.notFound;
-      // `<p>` with the text inside it, matching the template the DOM path
-      // builds — same element, same hole, so the client claims rather than
-      // rebuilds.
-      // The same element and the same STATIC text the DOM template holds, so
-      // the client claims it rather than rebuilding a range around it.
       if (fallback === undefined) return ssrHtml(`<p>${esc(NOT_FOUND)}</p>`);
       return (fallback as unknown as (s: unknown, p: unknown) => unknown)(
         getOwner(),
@@ -372,6 +389,8 @@ export interface PageHandlerOptions {
   readonly basepath?: string;
   /** The router's per-route defaults, matching `RouterConfig`'s. */
   readonly defaults?: RouteDefaults;
+  /** Where an unmatched path renders its not-found, matching `RouterConfig`'s. */
+  readonly notFoundMode?: "root" | "fuzzy";
   /**
    * The application, as the string backend wants it: returns `SsrHtml`.
    *
@@ -743,6 +762,7 @@ export function createPageHandler(
       beforeEach: options.beforeEach,
       basepath: options.basepath,
       defaults: options.defaults,
+      notFoundMode: options.notFoundMode,
       history: memoryHistory({ initial: [pathname + url.search] }),
       onLoaderError(error) {
         if (isNotFound(error)) missing = true;
