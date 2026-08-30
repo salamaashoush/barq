@@ -91,12 +91,19 @@ export {
  * from "@barqjs/start"` the only thing an application writes.
  */
 export {
+  type RpcControl,
   type ServerFn,
   type ServerFnArgs,
   type ServerFnMeta,
   DATA_SUFFIX,
+  NOT_FOUND,
+  REDIRECT,
+  RPC_CONTROL,
   RPC_PREFIX,
+  RpcNotFound,
+  RpcRedirect,
   SERVER_FN,
+  ServerFnError,
   clientRpc,
   isServerFn,
 } from "./client.ts";

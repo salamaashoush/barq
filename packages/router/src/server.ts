@@ -47,7 +47,7 @@ import {
 import { crossOriginRefused, mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
-import { NotFound, Redirect, errorFallbackFor } from "./errors.ts";
+import { errorFallbackFor, isNotFound, isRedirect } from "./errors.ts";
 import { type ManagedTag, projectHead, tagKey, tagProps } from "./head.ts";
 import {
   type Reachability,
@@ -275,7 +275,7 @@ export function renderRoutes(state: RouterState): unknown {
   return at(0);
 }
 
-export { NotFound, Redirect, errorFallbackFor, notFound, redirect } from "./errors.ts";
+export { NOT_FOUND, NotFound, REDIRECT, Redirect, errorFallbackFor, isNotFound, isRedirect, notFound, redirect } from "./errors.ts";
 
 export interface DocumentParts {
   /** The application's markup. */
@@ -680,7 +680,7 @@ export function createPageHandler(
       beforeEach: options.beforeEach,
       history: memoryHistory({ initial: [url.pathname + url.search] }),
       onLoaderError(error) {
-        if (error instanceof NotFound) missing = true;
+        if (isNotFound(error)) missing = true;
         answer ??= asResponse(error);
       },
     };
@@ -733,7 +733,7 @@ export function createPageHandler(
             );
           } catch (error) {
             dispose();
-            if (error instanceof NotFound) return html("not found", 404);
+            if (isNotFound(error)) return html("not found", 404);
             const early = asResponse(error);
             // THE DRAFT RIDES THE EARLY RETURN, and this is the login shape:
             // a `beforeLoad` that authenticates seats the session cookie and
@@ -986,7 +986,7 @@ export function createPageHandler(
  */
 function asResponse(error: unknown): Response | null {
   if (error instanceof Response) return error;
-  if (error instanceof Redirect) return redirectResponse(error.to, error.status);
+  if (isRedirect(error)) return redirectResponse(error.to, error.status);
   return null;
 }
 

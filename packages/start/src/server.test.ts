@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   type Middleware,
   DATA_SUFFIX,
+  RPC_CONTROL,
   RPC_PREFIX,
   type StandardSchema,
   UncheckedInputError,
@@ -508,9 +509,27 @@ describe("the registry", () => {
     expect(isServerFn(internal)).toBe(true);
   });
 
-  test("two functions cannot claim one id", () => {
+  /**
+   * RE-MOUNTING REPLACES, and refusing it was a dev-server bug.
+   *
+   * The generated manifest is invalidated whenever a server-function module is
+   * transformed and re-imported on the next request, while this registry lives
+   * in a module nothing invalidates. The old rule therefore refused ids the
+   * first evaluation had legitimately claimed, and every page in the
+   * application answered 500 after the first edit — `two server functions claim
+   * the id src/data/admin.ts#adminStats`, from an app containing exactly one.
+   *
+   * The check that MATTERS did not go away; it moved to where it can tell a
+   * collision from a re-evaluation, which is manifest generation. `vite.test.ts`
+   * covers it.
+   */
+  test("re-mounting an id replaces it, because that is what an edit looks like", async () => {
     mountOf(define("dup", () => 1));
-    expect(() => mountOf(define("dup", () => 2) as never)).toThrow(/claim the id/);
+    mountOf(define("dup", () => 2) as never);
+    expect(mounted()).toEqual(["dup"]);
+    // The newest definition is the one that answers.
+    const response = await handleServerFn(post("dup", undefined));
+    expect(decodeWire(await response!.json())).toBe(2);
   });
 
   test("a URL that is not a server function is not this handler's", async () => {
@@ -887,5 +906,164 @@ describe("the CSRF rule for route handlers", () => {
         request("POST", { origin: "https://evil.example", "sec-fetch-site": "same-origin" }),
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * `throw redirect(...)` and `throw notFound()` from a server FUNCTION.
+ *
+ * Both used to fall through the handler's rethrow and become a 500 with an
+ * opaque message, so the two ordinary control-flow throws in the framework were
+ * the two a server function could not carry. The classes are
+ * `@barqjs/router`'s and this package cannot import them, so what is checked
+ * here is the BRAND contract between the two: a value carrying
+ * `Symbol.for("barq.redirect")` is a redirect whoever constructed it.
+ */
+describe("a server function's control-flow throws", () => {
+  /**
+   * Built here rather than imported, which is the POINT of the test: if
+   * `@barqjs/router` changed its brand, this would keep passing while the real
+   * pair broke — so `errors.test.ts` in the router pins the other direction, and
+   * these two literals are the contract.
+   */
+  class Redirected extends Error {
+    readonly [Symbol.for("barq.redirect")] = true;
+    constructor(
+      readonly to: string,
+      readonly status = 302,
+    ) {
+      super(`redirect to ${to}`);
+    }
+  }
+  class Missing extends Error {
+    readonly [Symbol.for("barq.not-found")] = true;
+  }
+
+  // `"unchecked"` rather than `null`: the form channel posts a `FormData` body,
+  // and a function that declared no validator refuses ANY argument with a 400
+  // before the handler runs — which is the fail-closed default working, not a
+  // thing to work around.
+  const throwing = (id: string, error: unknown) =>
+    mountOf(
+      serverRpc<undefined, never>(
+        { id },
+        {
+          validator: "unchecked",
+          middleware: [],
+          handler: () => {
+            throw error;
+          },
+        },
+      ),
+    );
+
+  test("the data channel describes a redirect rather than answering 3xx", async () => {
+    throwing("gated", new Redirected("/login"));
+    const response = await handleServerFn(post("gated", undefined));
+
+    // 200, NOT 302. `fetch` follows a 3xx, so a redirecting server function
+    // would hand the caller the login page's HTML instead of a navigation.
+    expect(response?.status).toBe(200);
+    expect(response?.headers.get(RPC_CONTROL)).toBe("redirect");
+    expect(await response?.json()).toEqual({ kind: "redirect", to: "/login", status: 302 });
+  });
+
+  test("the form channel answers a real 3xx the browser can follow", async () => {
+    throwing("gated-form", new Redirected("/login"));
+    const body = new FormData();
+    const response = await handleServerFn(
+      new Request(`${ORIGIN}${RPC_PREFIX}gated-form`, {
+        method: "POST",
+        headers: { origin: ORIGIN, referer: `${ORIGIN}/x` },
+        body,
+      }),
+    );
+
+    // 303 rather than the 302 asked for, so a reload does not repost.
+    expect(response?.status).toBe(303);
+    expect(response?.headers.get("location")).toBe("/login");
+  });
+
+  test("an explicit status survives to the browser", async () => {
+    throwing("moved", new Redirected("/elsewhere", 301));
+    const body = new FormData();
+    const response = await handleServerFn(
+      new Request(`${ORIGIN}${RPC_PREFIX}moved`, {
+        method: "POST",
+        headers: { origin: ORIGIN, referer: `${ORIGIN}/x` },
+        body,
+      }),
+    );
+    expect(response?.status).toBe(301);
+  });
+
+  test("notFound is a 404 on both channels", async () => {
+    throwing("gone", new Missing("no such row"));
+
+    const data = await handleServerFn(post("gone", undefined));
+    expect(data?.status).toBe(404);
+    expect(data?.headers.get(RPC_CONTROL)).toBe("not-found");
+    expect(await data?.json()).toEqual({ kind: "not-found", message: "no such row" });
+
+    throwing("gone-form", new Missing("no such row"));
+    const form = await handleServerFn(
+      new Request(`${ORIGIN}${RPC_PREFIX}gone-form`, {
+        method: "POST",
+        headers: { origin: ORIGIN, referer: `${ORIGIN}/x` },
+        body: new FormData(),
+      }),
+    );
+    expect(form?.status).toBe(404);
+  });
+
+  test("a cookie a middleware set rides the redirect out", async () => {
+    mountOf(
+      serverRpc<undefined, never>(
+        { id: "rotating" },
+        {
+          validator: null,
+          middleware: [
+            async (next) => {
+              setCookie("session", "rotated");
+              return next();
+            },
+          ],
+          handler: () => {
+            throw new Redirected("/login");
+          },
+        },
+      ),
+    );
+    const response = await handleServerFn(post("rotating", undefined));
+    expect(response?.headers.get("set-cookie")).toContain("session=rotated");
+  });
+
+  /**
+   * The escalation `isNavigable` exists for. A 302 to `javascript:` is inert,
+   * but the client rebuilds this redirect and hands it to the router, which
+   * navigates — so the refusal has to happen where both channels share it.
+   */
+  test("a non-navigable target is refused on both channels", async () => {
+    const refused = ["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "vbscript:x"];
+    for (const [at, to] of refused.entries()) {
+      throwing(`evil-${at}`, new Redirected(to));
+      const response = await handleServerFn(post(`evil-${at}`, undefined));
+      expect(response?.status).toBe(500);
+      expect(response?.headers.get("location")).toBeNull();
+      expect(response?.headers.get(RPC_CONTROL)).toBeNull();
+    }
+  });
+
+  test("the targets a redirect may name are the router's list, exactly", async () => {
+    // The pin between the two copies of `isNavigable`. `packages/router`'s own
+    // `path.test.ts` runs the same table against its copy, so a change to
+    // either that the other does not follow fails on one side or the other.
+    const allowed = ["/login", "login", "./x", "../x", "//host/path", "https://x.test/y", "http://x.test"];
+    for (const [at, to] of allowed.entries()) {
+      throwing(`ok-${at}`, new Redirected(to));
+      const response = await handleServerFn(post(`ok-${at}`, undefined));
+      expect(response?.status).toBe(200);
+      expect(await response?.json()).toMatchObject({ to });
+    }
   });
 });

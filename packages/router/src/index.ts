@@ -77,7 +77,16 @@ export {
  * `isRedirect` is the predicate a consumer actually wants, and
  * `@barqjs/router/server` still exports the class for code that needs it.
  */
-export { NotFound, isNotFound, isRedirect, notFound, redirect } from "./errors.ts";
+export {
+  type RedirectLike,
+  NOT_FOUND,
+  NotFound,
+  REDIRECT,
+  isNotFound,
+  isRedirect,
+  notFound,
+  redirect,
+} from "./errors.ts";
 
 export {
   type Loader,

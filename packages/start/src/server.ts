@@ -11,6 +11,7 @@
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
 import { applyResponseDraft, createResponseDraft, draftedStatus, withRequest } from "./context.ts";
+import { NOT_FOUND, REDIRECT, RPC_CONTROL, type RpcControl } from "./client.ts";
 import { DATA_SUFFIX, InputError, RPC_PREFIX, type ServerFn, isServerFn } from "./index.ts";
 
 /**
@@ -37,7 +38,18 @@ const REGISTRY = new Map<string, ServerFn<unknown, unknown>>();
 export function mount(id: string, fn: ServerFn<unknown, unknown>): void {
   if (!isServerFn(fn)) throw new TypeError("mount() takes a server function");
   if (id === "") throw new TypeError("a mounted server function needs an id");
-  if (REGISTRY.has(id)) throw new TypeError(`two server functions claim the id ${id}`);
+  // RE-MOUNTING AN ID REPLACES, and refusing it was a dev-server bug rather
+  // than a safeguard. The generated manifest is invalidated whenever a
+  // server-function module is transformed and re-imported on the next request,
+  // while this registry lives in a module nothing invalidates — so the second
+  // evaluation was refusing ids the first had legitimately claimed, and every
+  // page answered 500 after the first edit.
+  //
+  // Nothing is lost by replacing: an id is `<root-relative file>#<export>`, so
+  // two DISTINCT functions can only collide if two paths normalise to one, and
+  // the manifest generator refuses that where it can see the whole set at once.
+  // Here there is no second set to compare against — only the same module,
+  // again, newer.
   // Stamped rather than read. The compiler leaves the SERVER half of a module
   // alone — it is the module, compiled — so the builder has no id of its own;
   // the id lives in the manifest the build generates, and mounting is where the
@@ -254,6 +266,14 @@ export async function handleServerFn(
     // cookie and THEN refused must not lose the rotation — the browser would
     // keep replaying a token the server has already retired.
     if (error instanceof Response) return applyResponseDraft(error, draft);
+    // `throw redirect(...)` and `throw notFound()` are ANSWERS, and a server
+    // function is entitled to both — a handler that finds the session expired
+    // redirects to the login page, and one asked for a row that is gone says
+    // so. Before this they fell through to the rethrow below and became a 500
+    // with an opaque message, so the two most ordinary control-flow throws in
+    // the framework were the two it could not carry.
+    const control = controlOf(error);
+    if (control !== null) return applyResponseDraft(controlResponse(control, isData), draft);
     // A validation failure is the caller's fault and says so. Anything else is
     // reported without a body: a handler's message can name a table, a column
     // or a path, and none of that is the caller's business.
@@ -267,6 +287,94 @@ export async function handleServerFn(
     }
     throw error;
   }
+}
+
+/**
+ * Read a thrown value as a control answer, by BRAND rather than by class.
+ *
+ * The classes are `@barqjs/router`'s and this package cannot import them; see
+ * {@link REDIRECT}. A brand check is also what lets the same code recognise a
+ * redirect the router threw and one `@barqjs/start/client` rebuilt off the
+ * wire, which matters when a server function calls another one.
+ */
+function controlOf(error: unknown): RpcControl | null {
+  if (typeof error !== "object" || error === null) return null;
+  const branded = error as Record<symbol, unknown> & { to?: unknown; status?: unknown };
+  if (branded[REDIRECT] === true) {
+    // The shape is checked rather than trusted: the brand says what this claims
+    // to be, and a `to` that is not a string would put `undefined` in a
+    // `Location` header.
+    if (typeof branded.to !== "string") return null;
+    const status = typeof branded.status === "number" ? branded.status : 302;
+    return { kind: "redirect", to: branded.to, status };
+  }
+  if (branded[NOT_FOUND] === true) {
+    const message = (error as { message?: unknown }).message;
+    return { kind: "not-found", message: typeof message === "string" ? message : "not found" };
+  }
+  return null;
+}
+
+/**
+ * A control answer, on whichever channel asked.
+ *
+ * THE TWO CHANNELS DIVERGE HERE ON PURPOSE, because their clients are different
+ * programs. The form channel's client is a BROWSER following the response
+ * itself, so a redirect has to be a real 3xx with a `Location`. The data
+ * channel's client is `clientRpc`, and a real 3xx there would be FOLLOWED by
+ * `fetch` — the caller would receive the target page's HTML instead of a
+ * navigation. So the data channel answers 200 and describes the redirect in the
+ * body, and the client re-throws it for the router to act on. That is a soft
+ * navigation rather than a document load, which is both correct and faster;
+ * TanStack returns the raw 3xx and the fetch follows it.
+ *
+ * `not-found` is a 404 on both, because 404 is the honest status and no client
+ * follows one.
+ */
+function controlResponse(control: RpcControl, isData: boolean): Response {
+  if (control.kind === "not-found") {
+    return isData
+      ? Response.json(control, { status: 404, headers: { [RPC_CONTROL]: control.kind } })
+      : new Response(control.message, { status: 404 });
+  }
+  if (!isNavigable(control.to)) {
+    reportRefusedRedirect(control.to);
+    return new Response("bad redirect", { status: 500 });
+  }
+  if (isData) {
+    return Response.json(control, { status: 200, headers: { [RPC_CONTROL]: control.kind } });
+  }
+  // 303 unless the handler asked for something else, so the browser re-issues
+  // as GET and a reload does not repost — the same reason `seeOther` below is
+  // 303. A handler that set an explicit status gets the one it set.
+  const status = control.status === 302 ? 303 : control.status;
+  return new Response(null, { status, headers: { location: control.to } });
+}
+
+/**
+ * Somewhere a browser may be SENT.
+ *
+ * A SECOND COPY of `isNavigable` from `packages/router/src/path.ts`, and the
+ * duplication is the lesser evil rather than an oversight: this package cannot
+ * import the router (see {@link REDIRECT}), and a server function is an
+ * independent trust boundary that has to make the decision for itself. The
+ * router's copy carries the reasoning and the browser measurement behind it.
+ * `server.test.ts` pins the two against one table of cases, so a change to
+ * either that the other does not follow fails there rather than silently
+ * opening a hole on one channel.
+ */
+function isNavigable(to: string): boolean {
+  const scheme = /^([a-zA-Z][a-zA-Z\d+\-.]*):/.exec(to);
+  if (scheme === null) return true;
+  const name = (scheme[1] ?? "").toLowerCase();
+  return name === "http" || name === "https";
+}
+
+function reportRefusedRedirect(to: string): void {
+  console.error(
+    `[barq] a server function threw redirect(${JSON.stringify(to)}), which is not a path or an ` +
+      "http(s) URL. Only those are navigable — check whatever produced it.",
+  );
 }
 
 /**

@@ -42,6 +42,84 @@ export const RPC_PREFIX = "/_barq/fn/";
  */
 export const DATA_SUFFIX = ".data";
 
+/**
+ * The two brands a thrown redirect and a thrown `notFound()` carry.
+ *
+ * DECLARED TWICE ON PURPOSE. The classes live in `@barqjs/router`, which this
+ * package must not import: the dependency runs router -> start and start is an
+ * OPTIONAL peer of it, so an import here would be a cycle and would break the
+ * router for anyone using it without server functions. `Symbol.for` is the
+ * global registry, so both declarations name the same symbol with no edge
+ * between the packages — `SERVER_FN` above already works this way. The other
+ * declaration is `REDIRECT` / `NOT_FOUND` in `packages/router/src/errors.ts`,
+ * and `server.test.ts` checks the two agree.
+ */
+export const REDIRECT = Symbol.for("barq.redirect");
+export const NOT_FOUND = Symbol.for("barq.not-found");
+
+/**
+ * How the data channel says "the answer is an instruction, not a value".
+ *
+ * A HEADER rather than a body sniff, so a caller that does not care never
+ * parses the body to find out, and so a handler returning a plain object that
+ * happens to have a `to` field is never mistaken for a redirect.
+ */
+export const RPC_CONTROL = "x-barq-rpc";
+
+/** What rides in the body under {@link RPC_CONTROL}. */
+export type RpcControl =
+  | { readonly kind: "redirect"; readonly to: string; readonly status: number }
+  | { readonly kind: "not-found"; readonly message: string };
+
+/**
+ * A redirect that arrived over the wire, rebuilt on the client.
+ *
+ * NOT `@barqjs/router`'s `Redirect` — this package cannot construct that one.
+ * It carries the same brand, so `isRedirect` from the router accepts it and the
+ * router navigates on it exactly as it would on a redirect a loader threw. That
+ * interchangeability is the whole reason those predicates are brand checks
+ * rather than `instanceof`.
+ */
+export class RpcRedirect extends Error {
+  readonly [REDIRECT] = true as const;
+  readonly to: string;
+  readonly status: number;
+  constructor(to: string, status: number) {
+    super(`redirect to ${to}`);
+    this.name = "Redirect";
+    this.to = to;
+    this.status = status;
+  }
+}
+
+/** The `notFound()` counterpart, branded for the same reason. */
+export class RpcNotFound extends Error {
+  readonly [NOT_FOUND] = true as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "NotFound";
+  }
+}
+
+/**
+ * A server function answered with a failure.
+ *
+ * THE MESSAGE IS NOT THE HANDLER'S, and that is deliberate rather than
+ * unfinished. `server.ts` refuses to put a handler's error text on the wire
+ * because it can name a table, a column or a filesystem path, and none of that
+ * is the caller's business — TanStack serialises the whole error object to the
+ * client instead. What a caller legitimately needs is the STATUS, so it is here
+ * as a field rather than something to parse back out of a string.
+ */
+export class ServerFnError extends Error {
+  readonly status: number;
+  constructor(id: string, status: number) {
+    super(`server function ${id} failed: ${status}`);
+    this.name = "ServerFnError";
+    this.status = status;
+  }
+}
+
 export interface ServerFnMeta {
   /** Stable across edits and deploys: the module path and the export name. */
   id: string;
@@ -115,11 +193,39 @@ export function clientRpc<In, Out>(id: string): ServerFn<In, Out> {
       // through `fromJSON`, which evaluates nothing.
       body: form ? input : JSON.stringify({ input: encodeWire(input) }),
       credentials: "same-origin",
+      // `manual` so a handler that answers with its OWN 3xx — a real
+      // `new Response(null, { status: 302 })`, not a `throw redirect(...)` —
+      // is handed back as a response rather than silently followed. The
+      // default `follow` would fetch the target and hand the CALLER that
+      // page's body, which is how TanStack's fetcher turns a redirecting
+      // server function into an opaque HTML string.
+      redirect: "manual",
     });
-    if (!response.ok) throw new Error(`server function ${id} failed: ${response.status}`);
+    // A control answer is an INSTRUCTION rather than a value, and it is read
+    // off the header so an ordinary result never pays a second body parse.
+    const control = response.headers.get(RPC_CONTROL);
+    if (control !== null) throw fromControl((await response.json()) as RpcControl);
+    if (!response.ok) throw new ServerFnError(id, response.status);
     return decodeWire<Out>(await response.json());
   };
   return Object.assign(call, { [SERVER_FN]: true as const, meta: { id } });
+}
+
+/**
+ * Rebuild the throwable a control answer describes.
+ *
+ * An UNKNOWN kind is an error rather than a pass-through: it means the server is
+ * newer than the client and is describing something this build cannot act on,
+ * and returning it as a value would let a navigation instruction be rendered as
+ * data.
+ */
+function fromControl(control: RpcControl): Error {
+  if (control.kind === "redirect") return new RpcRedirect(control.to, control.status);
+  if (control.kind === "not-found") return new RpcNotFound(control.message);
+  return new Error(
+    `[barq] server function answered with an unrecognised ${RPC_CONTROL} kind ` +
+      `${JSON.stringify((control as { kind: string }).kind)}; the server is newer than this client bundle.`,
+  );
 }
 
 /** Whether a value is a server function, by brand rather than by shape. */

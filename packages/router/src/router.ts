@@ -27,7 +27,7 @@ import {
   untrack,
 } from "@barqjs/core";
 
-import { Redirect } from "./errors.ts";
+import { isRedirect } from "./errors.ts";
 import { type History, type Location, href, memoryHistory, parseLocation } from "./history.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
 import { type AnyRouteDefinition, type Route, flattenRoutes } from "./route.ts";
@@ -1253,7 +1253,7 @@ export function createRouter(config: RouterConfig): RouterState {
     try {
       produced = (await runBeforeLoad(target, candidate)).contexts;
     } catch (error) {
-      if (error instanceof Redirect) {
+      if (isRedirect(error)) {
         if (hops++ >= MAX_REDIRECTS) {
           hops = 0;
           console.error(`[barq/router] more than ${MAX_REDIRECTS} redirects; giving up`);
