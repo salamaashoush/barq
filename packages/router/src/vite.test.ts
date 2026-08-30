@@ -4,7 +4,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { DEFAULT_ROUTE_TREE, barqRouter, routeTree } from "./vite.ts";
+import {
+  DEFAULT_ROUTE_TREE,
+  SPLIT_QUERY,
+  barqRouter,
+  routeStylesheets,
+  routeTree,
+} from "./vite.ts";
 
 const made: string[] = [];
 
@@ -637,4 +643,95 @@ export const Route = createFileRoute("/")({ component: () => "home" });
     expect(server).toContain("DB_MARKER_7a3");
     expect(server).toContain("SECRET_MARKER_b12");
   }, 60_000);
+});
+
+/**
+ * The stylesheet map, against the two shapes that produced a partly unstyled
+ * first paint on the reference application: 15 of the 23 classes in the
+ * prerendered `/` were defined in sheets nothing linked.
+ */
+describe("routeStylesheets", () => {
+  const entries = [{ id: "/posts", file: "src/routes/posts.tsx" }];
+
+  test("takes the split half, which is where the component and its CSS are", () => {
+    const map = routeStylesheets(
+      entries,
+      [
+        // The reference half, with the router entry and no stylesheet.
+        {
+          fileName: "assets/entry.js",
+          modules: ["/p/src/routes/posts.tsx"],
+          imports: [],
+          css: [],
+        },
+        // The split half, which is the one that renders.
+        {
+          fileName: "assets/posts.js",
+          modules: [`/p/src/routes/posts.tsx?${SPLIT_QUERY}`],
+          imports: [],
+          css: ["assets/posts.css"],
+        },
+      ],
+      "/",
+    );
+    expect(map["/posts"]).toEqual(["/assets/posts.css"]);
+  });
+
+  test("walks the import chain, because `chunk.imports` is only one level", () => {
+    const map = routeStylesheets(
+      entries,
+      [
+        {
+          fileName: "assets/posts.js",
+          modules: [`/p/src/routes/posts.tsx?${SPLIT_QUERY}`],
+          imports: ["assets/demo.js"],
+          css: ["assets/posts.css"],
+        },
+        {
+          fileName: "assets/demo.js",
+          modules: ["/p/src/demo.tsx"],
+          imports: ["assets/shared.js"],
+          css: ["assets/demo.css"],
+        },
+        {
+          fileName: "assets/shared.js",
+          modules: ["/p/src/shared.tsx"],
+          imports: [],
+          css: ["assets/shared.css"],
+        },
+      ],
+      "/",
+    );
+    expect(map["/posts"]?.toSorted()).toEqual([
+      "/assets/demo.css",
+      "/assets/posts.css",
+      "/assets/shared.css",
+    ]);
+  });
+
+  test("a cycle in the chunk graph terminates", () => {
+    const map = routeStylesheets(
+      entries,
+      [
+        {
+          fileName: "a.js",
+          modules: [`/p/src/routes/posts.tsx?${SPLIT_QUERY}`],
+          imports: ["b.js"],
+          css: ["a.css"],
+        },
+        { fileName: "b.js", modules: [], imports: ["a.js"], css: ["b.css"] },
+      ],
+      "/",
+    );
+    expect(map["/posts"]?.toSorted()).toEqual(["/a.css", "/b.css"]);
+  });
+
+  test("a route with no stylesheet gets an empty list rather than nothing", () => {
+    const map = routeStylesheets(
+      entries,
+      [{ fileName: "a.js", modules: ["/p/src/routes/posts.tsx"], imports: [], css: [] }],
+      "/",
+    );
+    expect(map["/posts"]).toEqual([]);
+  });
 });

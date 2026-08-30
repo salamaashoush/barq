@@ -379,6 +379,45 @@ export interface PageHandlerOptions {
    * unknowable to the server.
    */
   readonly routeAssets?: Readonly<Record<string, readonly string[]>>;
+
+  /**
+   * Route id -> the stylesheets that route's chunks import, from
+   * `virtual:barq-route-assets`.
+   *
+   * A separate map from {@link routeAssets} because it produces a different
+   * tag: `rel="stylesheet"`, which BLOCKS the first paint, against
+   * `rel="modulepreload"`, which does not. Without it a code-split route's CSS
+   * only arrives when `__vitePreload` inserts it ahead of the chunk, so the
+   * server-rendered markup paints unstyled first — the exact flash a server
+   * render exists to remove, and the one the goober `<style>` tag used to
+   * cover.
+   */
+  readonly routeCss?: Readonly<Record<string, readonly string[]>>;
+
+  /**
+   * The framework's collected stylesheet, read PER REQUEST.
+   *
+   * A thunk rather than a string, and that is the whole point: in dev the
+   * compiler hands each module its rules at evaluation, so the sheet grows as
+   * modules load and a value captured when the handler was built is the sheet
+   * as it stood before the first route was reached.
+   *
+   * Supplied by `@barqjs/start`'s server entry, which is what owns the
+   * dependency on `@barqjs/css`. A production build leaves it unset and links
+   * assets instead.
+   */
+  readonly inlineCss?: () => string;
+
+  /**
+   * The rules THIS request's render registered, read at `<Scripts />`.
+   *
+   * Separate from {@link inlineCss} because the two have different lifetimes: a
+   * module-scope rule belongs to every request and a rule a component body
+   * registers belongs to one. Read after the body renders, which is the only
+   * moment it is complete — `<head>` has long since flushed.
+   */
+  readonly requestCss?: () => string;
+
   /** Streamed by default. A crawler or a test may want the whole thing at once. */
   readonly stream?: boolean;
   readonly nonce?: string;
@@ -800,12 +839,25 @@ export function createPageHandler(
             );
             setAsyncSession(restore);
             const context = contextScript(url, before.produced, options.nonce);
-            const preloads = preloadFiles(match?.route.chain ?? null, options.routeAssets);
+            const preloads = chainFiles(match?.route.chain ?? null, options.routeAssets);
             const preload = preloadTags(match?.route.chain ?? null, options.routeAssets);
             const headAssets: HeadAssets = {
               matches: assets,
               nonce: options.nonce,
-              clientAssets: options.clientAssets,
+              // The entry's stylesheets plus the matched chain's. The entry
+              // carries only what its own static graph imports, which for a
+              // route-split application is usually nothing at all.
+              clientAssets: {
+                ...options.clientAssets,
+                css: [
+                  ...(options.clientAssets?.css ?? []),
+                  ...chainFiles(match?.route.chain ?? null, options.routeCss),
+                ],
+              },
+              inlineCss: options.inlineCss?.(),
+              // This request's own rules, and no other request's. Read at
+              // `<Scripts />`, after the body — the only moment it is complete.
+              lateCss: () => options.requestCss?.() ?? "",
               preloads,
               preload,
               // The string backend's own renderer, handed over the way
@@ -1003,14 +1055,18 @@ function redirectScript(answer: Response | null): string {
 }
 
 /**
- * The modulepreload tags for one matched chain, deduplicated in chain order.
+ * One matched chain's files, from a per-route map, deduplicated in chain order.
  *
  * Outermost first, because that is the order the browser will need them in: a
  * layout's chunk is parsed before the route it wraps. Duplicates are dropped
  * rather than emitted twice — a shared chunk appears in several routes' asset
  * lists by construction.
+ *
+ * Both per-route maps the build produces have this shape, so both go through
+ * here: `routeAssets` for the modulepreloads and `routeCss` for the
+ * stylesheets. It was `preloadFiles` while there was only one.
  */
-export function preloadFiles(
+export function chainFiles(
   chain: readonly Route[] | null,
   assets: Readonly<Record<string, readonly string[]>> | undefined,
 ): string[] {
@@ -1040,7 +1096,7 @@ export function preloadTags(
   assets: Readonly<Record<string, readonly string[]>> | undefined,
 ): string {
   let out = "";
-  for (const file of preloadFiles(chain, assets)) {
+  for (const file of chainFiles(chain, assets)) {
     out += `<link rel="modulepreload" href="${escapeAttribute(file)}">`;
   }
   return out;
@@ -1173,7 +1229,7 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
   let parts: Promise<PageHandlerOptions> | undefined;
   const app = (): Promise<PageHandlerOptions> => {
     parts ??= (async (): Promise<PageHandlerOptions> => {
-      const [{ config }, { routeAssets }, { clientAssets }] = await Promise.all([
+      const [{ config }, { routeAssets, routeCss }, { clientAssets }] = await Promise.all([
         import("#barq-router-entry"),
         import("virtual:barq-route-assets"),
         import("virtual:barq-client-assets"),
@@ -1185,6 +1241,7 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
       return {
         ...config,
         routeAssets,
+        routeCss,
         clientAssets,
         app: (state: RouterState): unknown => renderRoutes(state),
       };

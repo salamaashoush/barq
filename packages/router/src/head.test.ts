@@ -7,7 +7,14 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { type MatchAssets, projectHead, renderTags, resolveHead, resolveScripts } from "./head.ts";
+import {
+  type MatchAssets,
+  projectHead,
+  renderTags,
+  resolveHead,
+  resolveScripts,
+  styleText,
+} from "./head.ts";
 
 const html = (matches: readonly MatchAssets[]): string => renderTags(resolveHead(matches));
 
@@ -323,5 +330,47 @@ describe("the framework's own tags", () => {
     expect(markup).toContain('rel="modulepreload"');
     expect(markup).toContain('rel="stylesheet"');
     expect(markup).not.toContain("data-barq-head");
+  });
+});
+
+/**
+ * The stylesheet a build cannot emit.
+ *
+ * `generateBundle` does not run in dev, so the asset path has nothing to link.
+ * Measured before this channel existed: a server-rendered dev page carried 23
+ * compiled classes and zero stylesheets of any kind.
+ */
+describe("the inline stylesheet", () => {
+  const matches: readonly MatchAssets[] = [{ meta: [{ title: "Page" }] }];
+
+  test("renders as one style element after the linked ones", () => {
+    const tags = resolveHead(matches, { css: ["/s.css"], inlineCss: ".b1{color:red}" });
+    const order = tags.map((tag) => `${tag.tag}:${String(tag.attrs?.rel ?? "")}`);
+    expect(order).toEqual(["title:", "link:stylesheet", "style:"]);
+    const style = tags.find((tag) => tag.tag === "style");
+    expect(style?.children).toBe(".b1{color:red}");
+    expect(style?.attrs?.id).toBe("barq-css");
+  });
+
+  test("an empty sheet renders no element at all", () => {
+    expect(resolveHead(matches, { inlineCss: "" }).some((tag) => tag.tag === "style")).toBe(false);
+    expect(resolveHead(matches, {}).some((tag) => tag.tag === "style")).toBe(false);
+  });
+
+  /**
+   * A style element's content is raw text, so `</` closes it whatever follows.
+   * `\/` is a valid CSS escape for `/` in and out of strings.
+   */
+  test("a `</` in the CSS cannot close the element", () => {
+    const css = `.b1::after{content:"</style><script>alert(1)</script>"}`;
+    const markup = renderTags(resolveHead(matches, { inlineCss: css }));
+    expect(markup).not.toContain("</style><script>");
+    expect(markup).toContain("<\\/style>");
+    expect(styleText(css)).toBe(css.replaceAll("</", "<\\/"));
+  });
+
+  test("it carries the nonce, like every other tag the framework places", () => {
+    const tags = resolveHead(matches, { inlineCss: ".b1{color:red}", nonce: "n1" });
+    expect(tags.find((tag) => tag.tag === "style")?.attrs?.nonce).toBe("n1");
   });
 });

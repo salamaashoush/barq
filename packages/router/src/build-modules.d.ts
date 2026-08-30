@@ -41,7 +41,8 @@ declare module "#barq-router-entry" {
 /** Route id -> the client chunks that route needs, for `<link rel=modulepreload>`. */
 declare module "virtual:barq-route-assets" {
   const routeAssets: Readonly<Record<string, readonly string[]>>;
-  export { routeAssets };
+  const routeCss: Readonly<Record<string, readonly string[]>>;
+  export { routeAssets, routeCss };
   export default routeAssets;
 }
 

@@ -79,6 +79,74 @@ const ROUTE_EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"];
  * a preload tag would. The map is a `vite build` artefact for the same reason
  * the route-action manifest is.
  */
+/** One client chunk, reduced to what a stylesheet lookup needs. */
+export interface ChunkAssets {
+  readonly fileName: string;
+  readonly modules: readonly string[];
+  /** The chunk's DIRECT static imports. */
+  readonly imports: readonly string[];
+  /** `viteMetadata.importedCss` — this chunk's own stylesheets. */
+  readonly css: readonly string[];
+}
+
+/**
+ * Route id -> every stylesheet the route can render, as hrefs.
+ *
+ * Two things separate this from the modulepreload list beside it, and both were
+ * measured as a partly unstyled first paint on the reference application:
+ *
+ * 1. **Both halves count.** `routeSplit` puts a route's component in
+ *    `<file>?barq-split`, which is what gets its own chunk; the reference half
+ *    stays with the router entry. A lookup that takes the first module ending
+ *    in the route's file finds the half WITHOUT the component, so the sheet
+ *    holding the classes that component renders is named nowhere.
+ * 2. **The walk is transitive.** `chunk.imports` is a chunk's DIRECT static
+ *    imports, so a component chunk importing a shared one that imports another
+ *    loses the last sheet.
+ *
+ * Both are safe to be generous about here and would not be in the preload list:
+ * a `modulepreload` that arrives late costs a round trip, and a stylesheet that
+ * arrives late costs a visible flash.
+ */
+export function routeStylesheets(
+  entries: readonly { readonly id: string; readonly file: string }[],
+  chunks: readonly ChunkAssets[],
+  base: string,
+): Record<string, string[]> {
+  const cssOf = new Map<string, readonly string[]>();
+  const importsOf = new Map<string, readonly string[]>();
+  const byFile = new Map<string, string[]>();
+  for (const chunk of chunks) {
+    cssOf.set(chunk.fileName, chunk.css);
+    importsOf.set(chunk.fileName, chunk.imports);
+    for (const moduleId of chunk.modules) {
+      byFile.set(moduleId, [chunk.fileName, ...chunk.imports]);
+    }
+  }
+
+  const out: Record<string, string[]> = {};
+  for (const entry of entries) {
+    const seen = new Set<string>();
+    const walked = new Set<string>();
+    const queue: string[] = [];
+    for (const [moduleId, assets] of byFile) {
+      const file = moduleId.endsWith(`?${SPLIT_QUERY}`)
+        ? moduleId.slice(0, -(SPLIT_QUERY.length + 1))
+        : moduleId;
+      if (file.endsWith(entry.file)) queue.push(...assets);
+    }
+    while (queue.length > 0) {
+      const file = queue.pop() as string;
+      if (walked.has(file)) continue;
+      walked.add(file);
+      for (const css of cssOf.get(file) ?? []) seen.add(`${base}${css}`);
+      queue.push(...(importsOf.get(file) ?? []));
+    }
+    out[entry.id] = [...seen];
+  }
+  return out;
+}
+
 export const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
 const RESOLVED_ROUTE_ASSETS_ID = `\0${ROUTE_ASSETS_ID}`;
 
@@ -252,6 +320,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   let root = process.cwd();
   let base = "/";
   let routeAssets: Record<string, string[]> = {};
+  let routeCss: Record<string, string[]> = {};
   let tree: RouteTree = {
     source: "",
     files: [],
@@ -448,6 +517,9 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      */
     generateBundle(_output, bundle) {
       if ((this as { environment?: { name?: string } }).environment?.name === "ssr") return;
+      // `viteMetadata.importedCss` is per CHUNK, so a route's stylesheets are
+      // its own chunk's plus every chunk it statically imports — the same
+      // closure the preloads use, read off the same `chunk.imports`.
       const byFile = new Map<string, string[]>();
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== "chunk") continue;
@@ -465,7 +537,24 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
           }
         }
       }
+
       routeAssets = next;
+      routeCss = routeStylesheets(
+        tree.entries,
+        Object.values(bundle).flatMap((chunk) =>
+          chunk.type === "chunk"
+            ? [
+                {
+                  fileName: chunk.fileName,
+                  modules: Object.keys(chunk.modules),
+                  imports: chunk.imports,
+                  css: [...(chunk.viteMetadata?.importedCss ?? [])],
+                },
+              ]
+            : [],
+        ),
+        base,
+      );
     },
 
     /**
@@ -485,7 +574,11 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
 
     load(id) {
       if (id === RESOLVED_ROUTE_ASSETS_ID) {
-        return `export const routeAssets = ${JSON.stringify(routeAssets)};\nexport default routeAssets;\n`;
+        return (
+          `export const routeAssets = ${JSON.stringify(routeAssets)};\n` +
+          `export const routeCss = ${JSON.stringify(routeCss)};\n` +
+          `export default routeAssets;\n`
+        );
       }
       if (!isSplitId(id)) return null;
       // The ORIGINAL source. `transform` below is what turns it into the split

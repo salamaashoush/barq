@@ -52,6 +52,7 @@ import {
   renderTags,
   resolveHead,
   resolveScripts,
+  styleText,
   tagProps,
 } from "./head.ts";
 import type { ToPath } from "./register.ts";
@@ -129,6 +130,25 @@ export interface HeadAssets {
    * does not produce is reconciled away.
    */
   readonly preloads?: readonly string[];
+  /**
+   * The framework's collected stylesheet, as text. Dev and `bun test` deliver a
+   * module's CSS to a registry rather than to an asset, because neither has a
+   * bundle to emit one from; this is that registry, drained per request.
+   */
+  readonly inlineCss?: string;
+  /**
+   * Rules that registered AFTER the head was taken, read at `<Scripts />`.
+   *
+   * `<head>` renders before `<body>`, so a block evaluated during a component's
+   * render — which is what an uncompiled `css` call is — cannot be in the head's
+   * sheet. It was measured reaching no server-rendered page at all: `/css`
+   * carried the class `rv14nqj` in its markup against a zero-byte sheet.
+   *
+   * Late is worse than early and better than never: those rules apply on parse
+   * rather than before it. Compiling the block (BARQ015 names the fix) puts it
+   * in the head instead.
+   */
+  readonly lateCss?: () => string;
   /** The same set rendered, for the `document()` template, which has no tree. */
   readonly preload?: string;
   /** The route-context handoff, already rendered. */
@@ -194,6 +214,7 @@ export function HeadContent(scope: Scope | null, _props?: Record<string, never>)
       nonce: assets.nonce,
       preloads: assets.preloads,
       css: assets.clientAssets?.css,
+      inlineCss: assets.inlineCss,
     });
   // A backend with no tree renderer gets the string it always got. That is the
   // `document()` template's path, which is markup and has nowhere to put a tree.
@@ -218,8 +239,10 @@ export function Scripts(): JSXElement {
   const assets = read(HeadAssetsContext)();
   if (assets === null) return null;
   const nonce = assets.nonce === undefined ? "" : ` nonce="${escapeHeadAttribute(assets.nonce)}"`;
+  const late = assets.lateCss?.() ?? "";
   return assets.raw(
-    renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
+    (late === "" ? "" : `<style id="barq-css-late"${nonce}>${styleText(late)}</style>`) +
+      renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
       (assets.clientAssets?.scripts ?? [])
         .map((src) => `<script type="module"${nonce} src="${escapeHeadAttribute(src)}"></script>`)
         .join(""),
@@ -269,17 +292,52 @@ function escapeHeadAttribute(value: string): string {
  * and the attribute is what the server wrote, and only the second one round
  * trips into a tag that claims the node it came from.
  */
-function assetsFromDocument(): { preloads: string[]; css: string[] } {
+function assetsFromDocument(): {
+  preloads: string[];
+  css: string[];
+  inlineCss: string;
+  lateCss: string;
+} {
   const preloads: string[] = [];
   const css: string[] = [];
-  for (const link of document.head.querySelectorAll("link[rel]")) {
+  // The framework's own sheet, read back for the same reason the links are:
+  // `<HeadContent />` is a KEYED list and the claim takes `<head>`'s children
+  // whole, so a tag the server wrote and the client does not produce is
+  // reconciled away. A server-only `<style>` there took the whole document with
+  // it — `document.head` was null by the time this ran.
+  const inlineCss = document.getElementById("barq-css")?.textContent ?? "";
+  // `<Scripts />` writes the same shape at the end of `<body>`, and the same
+  // rule applies: the client has to produce the tag the server did.
+  const lateCss = document.getElementById("barq-css-late")?.textContent ?? "";
+
+  /**
+   * `document.head` is not a given, and the case where it is missing is the one
+   * that matters most.
+   *
+   * A hydration mismatch recovers by clearing the container and rendering cold.
+   * The container here is the DOCUMENT, so `clear` means
+   * `documentElement.remove()` — and this function then runs, inside that
+   * re-render, against a document with no head. Throwing turned a recoverable
+   * mismatch into a destroyed page: the removal had already happened, the throw
+   * aborted the render that was going to rebuild it, and every route in the
+   * application ended as a bare doctype with no delegation and no bindings.
+   *
+   * Measured on `packages/kitchen-sink`: 12 of 13 routes, all with
+   * `Cannot read properties of null (reading 'querySelectorAll')`. There is
+   * genuinely nothing to read in that state — the server's tags are gone —
+   * and an empty list is what "no server markup to read" means.
+   */
+  const head = document.head;
+  if (head === null) return { preloads, css, inlineCss, lateCss };
+
+  for (const link of head.querySelectorAll("link[rel]")) {
     const href = link.getAttribute("href");
     if (href === null) continue;
     const rel = link.getAttribute("rel");
     if (rel === "modulepreload") preloads.push(href);
     else if (rel === "stylesheet") css.push(href);
   }
-  return { preloads, css };
+  return { preloads, css, inlineCss, lateCss };
 }
 
 /**
@@ -304,19 +362,38 @@ export async function resolveHeadFor(
   );
 }
 
+/**
+ * What the SERVER wrote, captured at import.
+ *
+ * Not at render: hydration replaces the document before `Document()` runs, so a
+ * read from inside it finds an empty `<head>` and every link, preload and style
+ * the server placed is reconciled away — measured in a browser as a fully
+ * server-rendered page hydrating to plain unstyled text, with no error of any
+ * kind. The client bundle imports this module before it boots, which is the
+ * last moment the document is still exactly what the server sent.
+ */
+const served =
+  typeof document === "undefined"
+    ? { preloads: [], css: [], inlineCss: "", lateCss: "" }
+    : assetsFromDocument();
+
 export function clientHeadAssets(
   state: RouterState,
   options: {
     readonly clientAssets?: HeadAssets["clientAssets"];
     readonly preloads?: readonly string[];
     readonly nonce?: string;
+    /**
+     * The framework's sheet. Defaults to what the SERVER wrote, read back out
+     * of the document — `<HeadContent />` is a keyed list and the claim takes
+     * `<head>`'s children whole, so a tag the server produced and the client
+     * does not is reconciled away, and that one took the document with it.
+     */
+    readonly inlineCss?: string;
     /** What the boot already resolved, so the first render claims. */
     readonly initial?: readonly import("./head.ts").MatchAssets[];
   } = {},
 ): HeadAssets {
-  // Read BEFORE the render, while the document is still exactly what the server
-  // sent: the first thing hydration does is claim these nodes.
-  const served = assetsFromDocument();
   const resolved = signal<readonly import("./head.ts").MatchAssets[]>(options.initial ?? []);
   let newest = 0;
   let first = options.initial !== undefined;
@@ -349,7 +426,20 @@ export function clientHeadAssets(
       return resolved();
     },
     nonce: options.nonce,
-    clientAssets: options.clientAssets ?? { css: served.css },
+    // The document's own stylesheets are UNIONED in, not replaced.
+    //
+    // `<HeadContent />` is a keyed list and the claim takes `<head>`'s children
+    // whole, so every link the client does not produce is reconciled away.
+    // `clientAssets.css` is the ENTRY chunk's CSS, which for a route-split
+    // application is empty — so the per-route sheets the server linked were
+    // removed the moment hydration ran, and the page rendered unstyled with no
+    // error of any kind.
+    clientAssets: {
+      ...options.clientAssets,
+      css: [...new Set([...(options.clientAssets?.css ?? []), ...served.css])],
+    },
+    inlineCss: options.inlineCss ?? served.inlineCss,
+    lateCss: () => served.lateCss,
     preloads: options.preloads ?? served.preloads,
     raw: (markup: string) => {
       const host = document.createElement("template");

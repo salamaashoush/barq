@@ -106,6 +106,18 @@ export interface MatchAssets {
  * whole-tag comparison they use, so an ordinary stylesheet or preload still
  * coexists with every other one.
  */
+/**
+ * CSS on its way into a `<style>` element.
+ *
+ * A `</` in the text closes the element early, whatever follows it — the only
+ * sequence that can, since a style element's content is raw text. `\/` is a
+ * valid CSS escape for `/` in and out of strings, so the rule survives and the
+ * parser never sees a closing tag.
+ */
+export function styleText(css: string): string {
+  return css.replaceAll("</", "<\\/");
+}
+
 function linkIdentity(attrs: HeadTag): string {
   const rel = attrs.rel === undefined ? "" : String(attrs.rel);
   // A document has exactly one canonical URL. Keying on the href is what lets a
@@ -216,6 +228,21 @@ export function resolveHead(
      */
     readonly preloads?: readonly string[];
     readonly css?: readonly string[];
+    /**
+     * The framework's own stylesheet, as TEXT rather than as an href.
+     *
+     * A production build emits `.css` assets and {@link css} links them. A dev
+     * server has no bundle to emit one from, so the compiler hands each module
+     * its rules instead and this is where the collected sheet goes. Without it
+     * a server-rendered dev page arrived with every class in its markup and no
+     * stylesheet of any kind, which is the flash a server render exists to
+     * remove — measured at 23 classes and zero stylesheets on the reference
+     * application.
+     *
+     * Last of the head's style tags, so a route's own `styles` can still say
+     * something about a rule this sheet defines.
+     */
+    readonly inlineCss?: string;
   },
 ): ManagedTag[] {
   const nonce = options?.nonce;
@@ -302,11 +329,23 @@ export function resolveHead(
     attrs: { rel: "stylesheet", href, nonce },
     identity: `stylesheet:${href}`,
   }));
+  const inline: ManagedTag[] =
+    options?.inlineCss === undefined || options.inlineCss === ""
+      ? []
+      : [
+          {
+            tag: "style",
+            attrs: { id: "barq-css", nonce },
+            children: styleText(options.inlineCss),
+            identity: "style:barq-css",
+          },
+        ];
   return [
     ...meta,
     ...preloads,
     ...collapse(links),
     ...css,
+    ...inline,
     ...collapse(styles),
     ...collapse(scripts),
   ];
