@@ -76,9 +76,9 @@ const RouterContext = context<RouterState>(undefined, "barq-router");
  *
  * A CONTEXT rather than a `typeof document` test, because that test is wrong
  * here and the repo has already paid for learning it — happy-dom defines
- * `document` in exactly the process that renders the string backend
- * (`DESIGN.md` P6-5). Each backend knows which it is and says so, which is the
- * same rule `routePropsFor`'s `blocking` follows.
+ * `document` in exactly the process that renders the string backend. Each
+ * backend knows which it is and says so, which is the same rule
+ * `routePropsFor`'s `blocking` follows.
  *
  * It lives in `server.ts` because building the markup needs `@barqjs/server`,
  * and this module is the ISOMORPHIC entry — importing it here would put the
@@ -109,8 +109,8 @@ function linkBackend(): LinkBackend | null {
  * shell is never rendered — barq hydrates `#app`, not the document — so both
  * components render nothing there and a navigation's head is patched by
  * `installHead` instead. That is a divergence from TanStack, whose `HeadContent`
- * lives in the reactive tree and portals into `<head>`; it is recorded in
- * `DESIGN.md` P6-4 and it falls out of barq hydrating a container.
+ * lives in the reactive tree and portals into `<head>`. It falls out of barq hydrating a container
+ * rather than the document.
  */
 export interface HeadAssets {
   readonly matches: readonly import("./head.ts").MatchAssets[];
@@ -178,8 +178,8 @@ export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-h
  * server entry, for the same reason.
  *
  * So the markup builder arrives through the CONTEXT, exactly as `LinkBackend`
- * does and for the reason `DESIGN.md` P6-5 already paid for: each backend knows
- * which it is and says so, rather than being sniffed with `typeof document`.
+ * does, and for the same reason: each backend knows which it is and says so, rather than being
+ * sniffed with `typeof document`.
  *
  * SERVER ONLY. There are no assets on the client — the shell is never rendered
  * there, because barq hydrates `#app` rather than the document.
@@ -500,11 +500,10 @@ export function renderDepth(
     }
 
     const component = route.definition.component;
-    // UNTRACKED, per CODESIGN §3.9: "component bodies running untracked" is one
-    // of the two structural exits from reactivity. A body that reads
-    // `useParams()` directly would otherwise subscribe the enclosing block and
-    // rebuild the whole route on a parameter change — measured: two builds for
-    // one navigation within the same route.
+    // UNTRACKED: a component body is one of the two structural exits from
+    // reactivity. A body that reads `useParams()` directly would otherwise
+    // subscribe the enclosing block and rebuild the whole route on a parameter
+    // change. Measured: two builds for one navigation within the same route.
     const content = (contentScope: Scope | null): unknown => {
       // TRACKED, and outside the `untrack` below on purpose. A code-split route
       // is a `lazy()`, and reading its cell inside `untrack` subscribes to

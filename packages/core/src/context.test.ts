@@ -1,6 +1,5 @@
 /**
- * Context tests - ported from SolidJS signals
- * https://github.com/solidjs/signals/blob/main/tests/context.test.ts
+ * Context tests, ported from SolidJS signals.
  */
 
 import { describe, expect, test } from "bun:test";

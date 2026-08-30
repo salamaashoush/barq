@@ -48,8 +48,8 @@ describe("parsing", () => {
   });
 
   test("the record has NO prototype, so a cookie named `constructor` is inert", () => {
-    // A client-supplied name used as a property access is CVE-2025-55182's
-    // shape. `Object.create(null)` has no chain to walk into.
+    // `Object.create(null)` has no chain for a client-supplied name to walk
+    // into, which is the shape of a critical RCE elsewhere.
     const cookies = parseCookies("constructor=x");
     expect(cookies.constructor).toBe("x" as never);
     expect(Object.getPrototypeOf(cookies)).toBeNull();

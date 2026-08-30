@@ -3,10 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { captureCaret, coerceLive, holdsLive, restoreCaret, writeLive } from "./forms.ts";
 
 /**
- * CODESIGN §3.10's two halves at the level of the function, beside the L1
+ * The two halves of a form write at the level of the function, beside the
  * fixtures that drive them through a compiled module. Both are kept: the
- * fixtures say what the CHANNEL does, and these say what the arithmetic does
- * on the cases a fixture would need a whole component to reach.
+ * fixtures say what the CHANNEL does, and these say what the arithmetic does on
+ * the cases a fixture would need a whole component to reach.
  */
 
 function attach(html: string): HTMLElement {

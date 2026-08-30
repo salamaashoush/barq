@@ -1,8 +1,8 @@
 /**
  * The merge, checked against TanStack's `useTags` semantics.
  *
- * Where a test is named after one of their bugs it is a DIVERGENCE, recorded in
- * `DESIGN.md` P6-4 — the API is theirs and only the dedup identity differs.
+ * Where a test is named after one of their bugs it is a DIVERGENCE: the API is
+ * theirs and only the dedup identity differs.
  */
 
 import { describe, expect, test } from "bun:test";

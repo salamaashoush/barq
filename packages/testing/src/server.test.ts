@@ -273,7 +273,7 @@ describe("callServerFn goes over the wire", () => {
     );
     const call = await callServerFn({ id, method: "GET" });
     // A server function reachable by navigation is a one-click mutation
-    // carrying SameSite=Lax cookies, which is CVE-2026-39371.
+    // carrying SameSite=Lax cookies.
     expect(call.status).toBe(405);
     expect(call.response.headers.get("allow")).toBe("POST");
   });

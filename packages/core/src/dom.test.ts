@@ -187,7 +187,7 @@ describe("Ref handling", () => {
   });
 
   test("ref object is set", () => {
-    // M9 deleted the `useRef()` FACTORY (§4.1) — a ref is a writable binding
+    // M9 deleted the `useRef()` FACTORY — a ref is a writable binding
     // (B3) or a callback, and the box is one object literal. The `{current}`
     // SHAPE is still a ref the channel writes, which is what this asserts.
     const ref: { current: HTMLDivElement | null } = { current: null };
@@ -647,7 +647,7 @@ describe("render function", () => {
 
 describe("the { current } ref shape", () => {
   // `useRef()` returned `{ current: null }` and nothing else, so M9 deleted it
-  // (§4.1) and left the SHAPE, which is what the ref channel actually writes.
+  // and left the SHAPE, which is what the ref channel actually writes.
   test("a fresh box starts null", () => {
     const ref: { current: HTMLDivElement | null } = { current: null };
     expect(ref.current).toBeNull();

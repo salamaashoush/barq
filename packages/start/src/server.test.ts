@@ -190,7 +190,7 @@ describe("the request is checked before the handler runs", () => {
     expect(response?.status).toBe(403);
   });
 
-  /** A sandboxed iframe sends the literal string; treating it as absent is CVE-2026-27978. */
+  /** A sandboxed iframe sends the literal string, so absent and `null` differ. */
   test("Origin: null is refused rather than treated as absent", () => {
     const request = new Request(`${ORIGIN}${RPC_PREFIX}m`, {
       method: "POST",
@@ -303,10 +303,9 @@ describe("middleware and request context", () => {
 
   /**
    * A module-level "current request" hands one caller's session to another
-   * under concurrency. That is GHSA-hgv7-v322-mmgr in SvelteKit — batched
-   * queries resolving under one context and disclosing data across users — so
-   * the storage is per-async-context and this test interleaves two requests to
-   * say so.
+   * under concurrency. SvelteKit shipped that as batched queries resolving
+   * under one context and disclosing data across users, so the storage is
+   * per-async-context and this test interleaves two requests to say so.
    */
   test("two concurrent requests never see each other's request", async () => {
     mountOf(
@@ -487,9 +486,9 @@ describe("progressive enhancement", () => {
 
 describe("the registry", () => {
   /**
-   * CVE-2025-55182 was CVSS 10.0 and was a client-supplied name used as a raw
-   * property access: `constructor` yielded `Function`. A Map has no prototype
-   * chain to reach into.
+   * A client-supplied name used as a raw property access has shipped as a
+   * critical RCE: `constructor` yields `Function`. A Map has no prototype chain
+   * to reach into.
    */
   test("a prototype name is not callable", async () => {
     mountOf(define("real", () => "ran"));
@@ -567,9 +566,8 @@ describe("the fetch handler", () => {
 /**
  * The call convention, and the one thing barq refuses to match.
  *
- * `fn({ data })` and `.handler(({ data, context }) => …)` are theirs
- * (`examples/react/start-basic/src/utils/posts.tsx:10-12`). `method: "GET"` is
- * theirs too, and it is refused here rather than accepted-and-ignored.
+ * `fn({ data })` and `.handler(({ data, context }) => …)` are theirs, and
+ * `method: "GET"` is theirs too, and it is refused here rather than accepted-and-ignored.
  */
 describe("the call convention", () => {
   test("a function with no validator is called with NO argument", async () => {
@@ -626,13 +624,13 @@ describe("the call convention", () => {
 
   /**
    * A server function reachable by navigation is a link that mutates.
-   * RedwoodSDK shipped exactly that — CVE-2026-39371, CVSS 8.1 — where an
-   * `<a href>` became a one-click mutation carrying `SameSite=Lax` cookies. So
+   * RedwoodSDK shipped exactly that, where an `<a href>` became a one-click
+   * mutation carrying `SameSite=Lax` cookies. So
    * the option a TanStack application would copy is REFUSED with the reason
    * rather than accepted and quietly ignored.
    */
   test("`method: 'GET'` is refused, and says why", () => {
-    expect(() => createServerFn({ method: "GET" as never })).toThrow(/POST only|CVE-2026-39371/);
+    expect(() => createServerFn({ method: "GET" as never })).toThrow(/POST only/);
     // The one value barq does implement is accepted, so stating the intent is
     // not itself an error.
     expect(() => createServerFn({ method: "POST" })).not.toThrow();

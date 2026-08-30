@@ -1,5 +1,5 @@
 /**
- * The one resource — `CODESIGN.md` §3.8, `SEMANTICS.md` A1–A3.
+ * The one resource.
  *
  * Three things changed shape when the several async primitives collapsed into
  * one, and every test below is written against the new contract rather than

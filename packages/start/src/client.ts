@@ -51,9 +51,8 @@ export interface ServerFnMeta {
  * How a server function is CALLED: `fn({ data })`, and `fn()` when it takes
  * none.
  *
- * TanStack's convention (`examples/react/start-basic/src/utils/posts.tsx:10-12`,
- * `fetchPost({ data: postId })`; `routes/deferred.tsx:5-8`), and worth matching
- * for a reason beyond fidelity: a named field leaves room for the options that
+ * TanStack's convention, and worth matching for a reason beyond fidelity: a
+ * named field leaves room for the options that
  * come after it without ever changing the call shape again, and it removes the
  * `adminStats(undefined)` the bare form forced on every no-argument call.
  */

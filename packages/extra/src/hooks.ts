@@ -1,12 +1,5 @@
-/**
- * Extra hooks - utility hooks for common patterns
- */
-
 import { type Resource, onMount, effect, resource, signal } from "@barqjs/core";
 
-/**
- * Async data fetching with fetch API
- */
 export function useFetch<T>(url: string | (() => string), options?: RequestInit): Resource<T> {
   const getUrl = typeof url === "function" ? url : () => url;
 
@@ -20,9 +13,6 @@ export function useFetch<T>(url: string | (() => string), options?: RequestInit)
   });
 }
 
-/**
- * Debounced value
- */
 export function useDebounce<T>(source: () => T, delay: number): () => T {
   const debounced = signal(source());
 
@@ -38,9 +28,6 @@ export function useDebounce<T>(source: () => T, delay: number): () => T {
   return debounced;
 }
 
-/**
- * Throttled value
- */
 export function useThrottle<T>(source: () => T, limit: number): () => T {
   const throttled = signal(source());
   let lastRun = 0;
@@ -58,17 +45,12 @@ export function useThrottle<T>(source: () => T, limit: number): () => T {
   return throttled;
 }
 
-/**
- * Previous value - returns a reactive getter
- */
 export function usePrevious<T>(source: () => T): () => T | undefined {
   const prev = signal<T | undefined>(undefined);
   const current = { value: undefined as T | undefined };
 
   effect(() => {
     const value = source();
-    // On first run, current.value is undefined, so prev stays undefined
-    // On subsequent runs, prev gets the previous value
     prev.set(current.value);
     current.value = value;
   });
@@ -76,17 +58,11 @@ export function usePrevious<T>(source: () => T): () => T | undefined {
   return prev;
 }
 
-/**
- * Boolean toggle
- */
 export function useToggle(initial = false): [() => boolean, () => void, (value: boolean) => void] {
   const value = signal(initial);
   return [value, () => value.update((v) => !v), (next: boolean) => value.set(next)];
 }
 
-/**
- * Counter with increment/decrement
- */
 export function useCounter(initial = 0): {
   count: () => number;
   increment: () => void;
@@ -105,9 +81,6 @@ export function useCounter(initial = 0): {
   };
 }
 
-/**
- * Persistent state in localStorage
- */
 export function useLocalStorage<T>(key: string, initialValue: T): [() => T, (value: T) => void] {
   let initial = initialValue;
 
@@ -130,9 +103,6 @@ export function useLocalStorage<T>(key: string, initialValue: T): [() => T, (val
   return [value, (next: T) => value.set(next)];
 }
 
-/**
- * Media query match
- */
 export function useMediaQuery(query: string): () => boolean {
   const matches = signal(false);
 
@@ -151,9 +121,6 @@ export function useMediaQuery(query: string): () => boolean {
   return matches;
 }
 
-/**
- * Window dimensions
- */
 export function useWindowSize(): { width: () => number; height: () => number } {
   const width = signal(typeof window !== "undefined" ? window.innerWidth : 0);
   const height = signal(typeof window !== "undefined" ? window.innerHeight : 0);
@@ -173,9 +140,6 @@ export function useWindowSize(): { width: () => number; height: () => number } {
   return { width, height };
 }
 
-/**
- * Intersection observer
- */
 export function useIntersection(
   ref: { current: Element | null } | (() => Element | null),
   options?: IntersectionObserverInit,
@@ -184,11 +148,11 @@ export function useIntersection(
   const mounted = signal(false);
   let observer: IntersectionObserver | null = null;
 
-  // Trigger re-run after mount when ref.current is set
   onMount(() => mounted.set(true));
 
   effect(() => {
-    // Read mounted to create dependency
+    // Read, not ignored: the ref is filled after mount, so this is the
+    // dependency that re-runs the effect once the element exists.
     mounted();
 
     const element = typeof ref === "function" ? ref() : ref.current;
@@ -211,9 +175,6 @@ export function useIntersection(
   return isIntersecting;
 }
 
-/**
- * Click outside detection
- */
 export function useClickOutside(
   ref: { current: Element | null } | (() => Element | null),
   handler: () => void,
@@ -238,9 +199,6 @@ export function useClickOutside(
   });
 }
 
-/**
- * Keyboard shortcut
- */
 export function useKeyboard(
   key: string,
   handler: (e: KeyboardEvent) => void,
@@ -262,9 +220,6 @@ export function useKeyboard(
   });
 }
 
-/**
- * Document title
- */
 export function useTitle(title: string | (() => string)): void {
   effect(() => {
     const t = typeof title === "function" ? title() : title;
@@ -272,14 +227,11 @@ export function useTitle(title: string | (() => string)): void {
   });
 }
 
-/**
- * Interval - accepts reactive delay
- */
 export function useInterval(
   callback: () => void,
   delay: number | null | (() => number | null),
 ): void {
-  // Store callback in a ref so we always call the latest version
+  // A ref, so a re-render does not restart the timer with a stale callback.
   let savedCallback = callback;
 
   effect(() => {
@@ -295,14 +247,11 @@ export function useInterval(
   });
 }
 
-/**
- * Timeout - accepts reactive delay
- */
 export function useTimeout(
   callback: () => void,
   delay: number | null | (() => number | null),
 ): void {
-  // Store callback in a ref so we always call the latest version
+  // A ref, so a re-render does not restart the timer with a stale callback.
   let savedCallback = callback;
 
   effect(() => {

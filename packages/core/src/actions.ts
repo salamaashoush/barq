@@ -1,5 +1,5 @@
 /**
- * Actions and optimistic state — `CODESIGN.md` §3.8, `SEMANTICS.md` A4 and A5.
+ * Actions and optimistic state.
  *
  * An action is a LANE: an explicit transaction lifetime. While it runs, the
  * writes it makes to an opt-in primitive land in that primitive's OVERRIDE

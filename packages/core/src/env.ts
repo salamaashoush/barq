@@ -3,13 +3,13 @@
  *
  * A runtime constant, deliberately, and NOT something the compiler folds.
  *
- * Folding it was considered and is not being done. `SEMANTICS.md` H5 says the
- * compile-time address table is "stable for one build's flags, not across
- * them", because P3's fold turns a constant `SetOnce` into template bytes and
- * bytes have no position to claim. An `isServer` the compiler folded would move
- * the same source's addresses between the client and server builds, and §3.11's
- * claim — that the two backends compile one source to one address set, so the
- * sets can be diffed — would stop being checkable.
+ * Folding it was considered and is not being done. The compile-time address
+ * table is stable for one build's flags and not across them, because the fold
+ * pass turns a constant `SetOnce` into template bytes and bytes have no
+ * position to claim. An `isServer` the compiler folded would move the same
+ * source's addresses between the client and server builds, and the claim that
+ * the two backends compile one source to one address set — so the sets can be
+ * diffed — would stop being checkable.
  *
  * Nothing here triggers that. `isServer` is an IMPORTED binding, and `bind.rs`
  * proves constants only for a local `const` with a literal initialiser, so the

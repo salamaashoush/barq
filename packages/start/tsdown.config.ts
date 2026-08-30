@@ -1,11 +1,10 @@
 import { defineConfig } from "tsdown";
 
 /**
- * This package had no config at all, so `tsdown` built `src/index.ts` alone and
- * the `./server`, `./vite` and `./serve` subpaths its `exports` map declares
- * were never emitted. That is the trap `DESIGN-ROUTER.md` §5 names — "a new
- * subpath export needs a `tsdown.config.ts` entry and a build, or it silently
- * resolves to `any`" — and it was already sprung.
+ * A subpath in `exports` needs an entry HERE and a build, or it resolves to
+ * `any` with nothing to say so. With no config at all `tsdown` builds
+ * `src/index.ts` alone, and `./server`, `./vite` and `./serve` were never
+ * emitted.
  */
 export default defineConfig({
   entry: [

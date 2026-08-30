@@ -2,7 +2,7 @@
  * `@barqjs/server` — everything the server needs, and the module the
  * compiler's SSR backend imports its helpers from.
  *
- * Two strategies live behind one entry point (DESIGN §5): `ssr.ts` is the
+ * Two strategies live behind one entry point: `ssr.ts` is the
  * string backend a compiled module calls into, and `server.ts` is the
  * happy-dom path that renders anything still built as DOM — a hand-written
  * `createElement` tree, or a component from a module this compiler never saw.
@@ -10,8 +10,8 @@
  *
  * `branch`, `each`, `boundary`, `portal` and `COUNT` — and `props`, `cell` and
  * `block` with them — are exported here under the names `@barqjs/core` exports
- * them under, with the same argument order: `CODESIGN.md` §3.11's one ABI, two
- * implementations. The compiler emits the same call for both backends and
+ * them under, with the same argument order: one ABI, two implementations. The
+ * compiler emits the same call for both backends and
  * chooses between them by choosing this source, which is why a string-compiled
  * module imports from here and from nowhere else.
  */

@@ -1,11 +1,9 @@
 /**
  * The document head, with TanStack Start's API.
  *
- * Shapes taken from their source rather than from a description of it:
- * `router-core/src/route.ts:1367-1385` for the `head` signature and its return,
- * `solid-router/src/headContentUtils.tsx` for the merge, `router-core/src/
- * manifest.ts:145-167` for the link/style/script dedup, and
- * `router-core/src/load-server.ts:618-653` (`projectLane`) for when it runs.
+ * The `head` signature, the merge, the link/style/script dedup and the moment
+ * it runs are all taken from their implementation rather than from a
+ * description of it.
  *
  * A route writes what they write:
  *
@@ -19,19 +17,18 @@
  *
  * `title` lives inside `meta`. `links` and `scripts` are plural. `scripts` here
  * are HEAD scripts; a route's `scripts` export is the BODY ones. All four match
- * `router-core`'s `head?: (ctx) => Awaitable<{ links, scripts, meta, styles }>`.
+ * their `head?: (ctx) => Awaitable<{ links, scripts, meta, styles }>`.
  *
- * WHERE barq DIVERGES, and every one of these is invisible in the API and
- * belongs in `DESIGN.md` P6-4:
+ * WHERE barq DIVERGES, and every one of these is invisible in the API:
  *
  * 1. **`meta` dedup keeps `name`, `property` and `http-equiv` apart.** Theirs
  *    keys on `m.name ?? m.property` — one namespace — so `<meta name="author">`
  *    and `<meta property="author">` collide.
  * 2. **`rel="canonical"` is a singleton.** Theirs dedups links on
  *    `JSON.stringify(tag)`, so a child's canonical does not replace a parent's
- *    and both render. Open as their #6719.
- * 3. **A single tag still goes through dedup.** `appendUniqueUserTags` returns
- *    early at `manifest.ts:153-156` when `tags.length === 1`.
+ *    and both render, which is an open bug there.
+ * 3. **A single tag still goes through dedup.** Theirs returns early when
+ *    `tags.length === 1`.
  */
 
 /** One managed tag, as `HeadContent` and `Scripts` render it. */

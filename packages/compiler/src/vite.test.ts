@@ -1,7 +1,7 @@
 /**
- * The plugin surface. Since M6 there is exactly one pipeline: the Babel plugin
- * is gone, `@barqjs/compiler-rs` is a hard dependency, and a checkout whose
- * native binary has not been built is an ERROR rather than a quieter build.
+ * The plugin surface. There is exactly one pipeline: `@barqjs/compiler-rs` is a
+ * hard dependency, and a checkout whose native binary has not been built is an
+ * ERROR rather than a quieter build.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -109,8 +109,7 @@ describe("barqVitePlugin", () => {
 
   test("an SSR module takes the string backend", () => {
     // `ssr` is per MODULE: Vite transforms the same file twice and only this
-    // argument says which build is running. Since P8b the server build is the
-    // compiler's too — one concatenation, and no `template()` clone.
+    // argument says which build is running.
     const plugin = barqVitePlugin();
     const { result, warnings } = run(plugin, SOURCE, "/a/app.tsx", { ssr: true });
     expect(result?.code).toContain("@barqjs/server");
@@ -141,18 +140,13 @@ describe("barqVitePlugin", () => {
   });
 
   /**
-   * O3 is a dev-mode compile note, and before M6 it could not fire through this
-   * plugin at all: `dev` reached the compiler only if the user passed
-   * `barqVitePlugin({ dev: true })` by hand. Vite already knows which build this
-   * is, so the plugin asks it.
+   * A dev-mode compile note fires only when `dev` reaches the compiler. Vite
+   * already knows which build this is, so the plugin asks it rather than making
+   * the user pass `barqVitePlugin({ dev: true })` by hand.
    */
   describe("dev is derived from Vite rather than asked for", () => {
-    // BARQ006 (DESIGN O7) used to be the probe here. M3 deleted it with the
-    // getters it was about — under C3 every prop is a Cell and a copy of a Cell
-    // is the same Cell, so `Dynamic` spreading its props reads nothing and
-    // warning would be a lie about the emitted module. BARQ004 (DESIGN O3) is
-    // the dev-gated note that survived, so the PROBE moved and the claim — dev
-    // is derived from Vite's own command/mode — did not.
+    // BARQ004 is the probe because it is the dev-gated note: what is under
+    // test is that `dev` is derived from Vite's own command and mode.
     const DEV_NOTE = `import { For, store } from "@barqjs/core";\n
       const [state] = store({ rows: [] });
       export const V = () => <ul><For each={state.rows}>{(row) => <li>{row.name}</li>}</For></ul>;\n`;
@@ -183,9 +177,8 @@ describe("barqVitePlugin", () => {
   });
 
   /**
-   * M8a. `this.warn(warning)` with no second argument is why no code frame
-   * existed anywhere, in any mode: Rollup produces `pos`/`loc`/`frame` only when
-   * it is given a position.
+   * `this.warn(warning)` with no second argument produces no code frame in any
+   * mode: Rollup fills `pos`/`loc`/`frame` only when it is given a position.
    */
   describe("diagnostics reach both channels", () => {
     const COERCED =
@@ -353,10 +346,10 @@ describe("barqVitePlugin", () => {
     });
 
     test("optimize 0 turns every optimisation off", () => {
-      // `fuse` off means one effect per live prop, not none: CODESIGN §3.5
-      // removed the `setProp` dispatcher a thunk used to be handed to, so the
-      // effect around a proven-live write belongs to the compiler at every
-      // level. What the level still decides is whether two props SHARE one.
+      // `fuse` off means one effect per live prop, not none: there is no
+      // runtime `setProp` dispatcher to hand a thunk to, so the effect around a
+      // proven-live write belongs to the compiler at every level. What the
+      // level decides is whether two props SHARE one.
       const reference = build({ optimize: 0 });
       expect(reference.match(/_\$bindEffect\(/g)).toHaveLength(2);
       expect(build().match(/_\$bindEffect\(/g)).toHaveLength(1);

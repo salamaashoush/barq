@@ -1,10 +1,3 @@
-/**
- * TanStack Query adapter for Barq
- *
- * Provides reactive query hooks that integrate with Barq's signal-based reactivity.
- * Uses @tanstack/query-core for the framework-agnostic query logic.
- */
-
 import {
   type Cell,
   type JSXElement,
@@ -35,13 +28,8 @@ import {
   notifyManager,
 } from "@tanstack/query-core";
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export type { QueryClient, QueryKey, DefaultError, InfiniteData };
 
-/** Query options for useQuery */
 export type UseQueryOptions<
   TQueryFnData = unknown,
   TError = DefaultError,
@@ -49,13 +37,11 @@ export type UseQueryOptions<
   TQueryKey extends QueryKey = QueryKey,
 > = QueryObserverOptions<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>;
 
-/** Query result from useQuery */
 export type UseQueryResult<TData = unknown, TError = DefaultError> = QueryObserverResult<
   TData,
   TError
 >;
 
-/** Mutation options for useMutation */
 export type UseMutationOptions<
   TData = unknown,
   TError = DefaultError,
@@ -63,7 +49,6 @@ export type UseMutationOptions<
   TContext = unknown,
 > = MutationObserverOptions<TData, TError, TVariables, TContext>;
 
-/** Mutation result from useMutation */
 export interface UseMutationResult<
   TData = unknown,
   TError = DefaultError,
@@ -83,7 +68,6 @@ export interface UseMutationResult<
   reset: () => void;
 }
 
-/** Infinite query options */
 export type UseInfiniteQueryOptions<
   TQueryFnData = unknown,
   TError = DefaultError,
@@ -92,23 +76,17 @@ export type UseInfiniteQueryOptions<
   TPageParam = unknown,
 > = InfiniteQueryObserverOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>;
 
-/** Infinite query result */
 export type UseInfiniteQueryResult<
   TData = unknown,
   TError = DefaultError,
 > = InfiniteQueryObserverResult<TData, TError>;
 
-// ============================================================================
-// The client, reached through the scope chain
-// ============================================================================
-
 const QueryClientContext = context<QueryClient>(undefined, "barq-query-client");
 
 /**
- * The provider is the only mechanism. An "application default" held in a module
- * `let` and reached through a `catch` arm is `contextState() || getMainBrowserRouter()`
- * with exception control flow instead of `||` \u2014 the same workaround, one module
- * over, and it kept the reference application off the path it was meant to prove.
+ * The provider is the only way to reach a client. A module-level default read
+ * through a `catch` arm is the same fallback written as exception control flow,
+ * and it lets an application work without ever entering the path it declares.
  */
 function resolveClient(): QueryClient {
   try {
@@ -121,8 +99,8 @@ function resolveClient(): QueryClient {
 }
 
 /**
- * A real provider: it forks the context on its own instance scope and builds
- * `children` INSIDE it, so a consumer constructed below sees this client.
+ * Forks the context on its own instance scope and builds `children` INSIDE it,
+ * so a consumer constructed below sees this client rather than an outer one.
  */
 export const QueryClientProvider = block(
   (scope: Scope | null, props: { client: Cell<QueryClient>; children?: unknown }): unknown => {
@@ -141,26 +119,6 @@ export interface QueryClientProviderProps {
   children?: unknown;
 }
 
-// ============================================================================
-// useQuery
-// ============================================================================
-
-/**
- * Query hook for fetching and caching server state
- *
- * @example
- * ```tsx
- * const query = useQuery(() => ({
- *   queryKey: ['users', userId],
- *   queryFn: () => fetchUser(userId),
- * }));
- *
- * // Access reactive state
- * query().data    // TData | undefined
- * query().isLoading
- * query().error
- * ```
- */
 export function useQuery<
   TQueryFnData = unknown,
   TError = DefaultError,
@@ -180,10 +138,8 @@ export function useQuery<
   const state = signal<UseQueryResult<TData, TError>>(observer.getCurrentResult());
 
   effect(() => {
-    // Update options if they change
     observer.setOptions(options());
 
-    // Subscribe to observer updates
     const unsubscribe = observer.subscribe(
       notifyManager.batchCalls((result: QueryObserverResult<TData, TError>) => {
         state.set(result);
@@ -198,31 +154,6 @@ export function useQuery<
   return state;
 }
 
-// ============================================================================
-// useMutation
-// ============================================================================
-
-/**
- * Mutation hook for modifying server state
- *
- * @example
- * ```tsx
- * const mutation = useMutation(() => ({
- *   mutationFn: (data: CreateUserData) => createUser(data),
- *   onSuccess: () => {
- *     queryClient.invalidateQueries({ queryKey: ['users'] });
- *   },
- * }));
- *
- * // Trigger mutation
- * mutation().mutate({ name: 'John' });
- *
- * // Access state
- * mutation().isPending
- * mutation().error
- * mutation().data
- * ```
- */
 export function useMutation<
   TData = unknown,
   TError = DefaultError,
@@ -280,29 +211,6 @@ export function useMutation<
   return result;
 }
 
-// ============================================================================
-// useInfiniteQuery
-// ============================================================================
-
-/**
- * Infinite query hook for paginated/infinite scroll data
- *
- * @example
- * ```tsx
- * const query = useInfiniteQuery(() => ({
- *   queryKey: ['posts'],
- *   queryFn: ({ pageParam }) => fetchPosts(pageParam),
- *   initialPageParam: 0,
- *   getNextPageParam: (lastPage) => lastPage.nextCursor,
- * }));
- *
- * // Access pages
- * query().data?.pages
- *
- * // Load more
- * query().fetchNextPage()
- * ```
- */
 export function useInfiniteQuery<
   TQueryFnData = unknown,
   TError = DefaultError,
@@ -342,38 +250,10 @@ export function useInfiniteQuery<
   return state;
 }
 
-// ============================================================================
-// useQueryClient
-// ============================================================================
-
-/**
- * Get the QueryClient instance
- *
- * @example
- * ```tsx
- * const queryClient = useQueryClient();
- * queryClient.invalidateQueries({ queryKey: ['users'] });
- * ```
- */
 export function useQueryClient(): QueryClient {
   return resolveClient();
 }
 
-// ============================================================================
-// useIsFetching
-// ============================================================================
-
-/**
- * Get the number of queries currently fetching
- *
- * @example
- * ```tsx
- * const isFetching = useIsFetching();
- * if (isFetching() > 0) {
- *   // Show global loading indicator
- * }
- * ```
- */
 export function useIsFetching(filters?: { queryKey?: QueryKey }): () => number {
   const client = resolveClient();
   const count = signal(client.isFetching(filters));
@@ -389,21 +269,6 @@ export function useIsFetching(filters?: { queryKey?: QueryKey }): () => number {
   return count;
 }
 
-// ============================================================================
-// useIsMutating
-// ============================================================================
-
-/**
- * Get the number of mutations currently in progress
- *
- * @example
- * ```tsx
- * const isMutating = useIsMutating();
- * if (isMutating() > 0) {
- *   // Show saving indicator
- * }
- * ```
- */
 export function useIsMutating(filters?: { mutationKey?: QueryKey }): () => number {
   const client = resolveClient();
   const count = signal(client.isMutating(filters));

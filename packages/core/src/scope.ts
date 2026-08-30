@@ -1,6 +1,5 @@
 /**
- * Scope — the unit of ownership and the unit of death. `SEMANTICS.md` §2 is
- * the specification; `CODESIGN.md` §3.1 and §3.3 are the design.
+ * Scope: the unit of ownership and the unit of death.
  *
  * **Why the implementation is in `signals.ts` and this module is its face.**
  * `signals.ts` may acquire neither a value import nor a reassigned top-level
@@ -39,11 +38,11 @@ import {
 
 export type { Boundary, Scope } from "./signals.ts";
 
-/** §3.0: a deferred READ. No identity, callable many times, arity-tolerant. */
+/** A deferred READ. No identity, callable many times, arity-tolerant. */
 export type Cell<T> = (...ignored: never[]) => T;
 
 /**
- * §3.0: a deferred CONSTRUCTION under a supplied scope. `s` is not OPTIONAL —
+ * A deferred CONSTRUCTION under a supplied scope. `s` is not OPTIONAL —
  * `undefined` is a missing argument and `ScopeMissingError` is the answer to it
  * — but it is nullable, because `null` is a scope value: it is the parent of a
  * root, and it is what the compiler emits for a module-level position
@@ -52,7 +51,7 @@ export type Cell<T> = (...ignored: never[]) => T;
 export type Block<R, A extends unknown[] = Cell<unknown>[]> = (s: Scope | null, ...args: A) => R;
 
 /**
- * §3.0/C4: a renderable slot takes either kind, because a Cell ignores the
+ * A renderable slot takes either kind, because a Cell ignores the
  * scope a Block needs. Every other slot takes a Cell only, and a Block landing
  * in one is a type error at the read site.
  */
@@ -62,7 +61,7 @@ export type Slot<T> = Cell<T> | Block<T>;
 export type Component<P = Record<string, unknown>, R = unknown> = (s: Scope | null, props: P) => R;
 
 export {
-  /** O2/§3.0: open a fresh child of the given scope and make it current. */
+  /** Open a fresh child of the given scope and make it current. */
   enter,
   /** O4.1: restore `CURRENT` to what it was before the matching `enter`. */
   exit,
@@ -77,7 +76,7 @@ export {
   /** O5: the root a mount is owned by. */
   enterRoot,
   isDisposed,
-  /** §3.0 rule 3: a construct invoked with no scope, named. */
+  /** A construct invoked with no scope, named. */
   ScopeMissingError,
   /** The scope a construct was handed, or a throw naming where it was missing. */
   requireScope,

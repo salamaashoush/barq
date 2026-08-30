@@ -113,7 +113,7 @@ export namespace JSX {
   export type Element = JSXElement;
 
   /**
-   * §3.2: a component takes its SCOPE first — `Comp($scope, props)` — and
+   * A component takes its SCOPE first — `Comp($scope, props)` — and
    * TypeScript's JSX rule reads a function component's FIRST parameter as its
    * props. Without this hook every construct checked its attributes against
    * `Scope` and reported all of them missing: `<Show when={x}>` read as "`when`

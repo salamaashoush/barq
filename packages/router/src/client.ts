@@ -3,7 +3,7 @@
  *
  * TanStack Start ships this as a DEFAULT ENTRY the app never writes:
  * `hydrateRoot(document, <StartClient />)`, with `StartClient` hiding the boot
- * behind a promise (`start-client-core/src/client/hydrateStart.ts`). barq cannot
+ * behind a promise. barq cannot
  * hide it behind a promise for a reason that is barq's own — the tree has to be
  * complete BEFORE `hydrate` walks it, or the claim runs against a page the
  * client has not finished deciding — so the boot is awaited here and the
@@ -28,10 +28,8 @@ export interface StartClientOptions {
    * The table. Omitted, it comes from the project's `src/router.ts`.
    *
    * An application's own entry does NOT import `routeTree.gen.ts` to pass it
-   * here — theirs does not either
-   * (`solid-start/src/default-entry/client.tsx` is two imports and a
-   * `hydrateStart()`). The import lives in `src/router.ts`, which is an ordinary
-   * file naming an ordinary relative path.
+   * here, and theirs does not either. The import lives in `src/router.ts`,
+   * which is an ordinary file naming an ordinary relative path.
    *
    * Route TYPES are unaffected either way: they travel through `Register`, which
    * `routeTree.gen.ts` augments, and this parameter is `AnyRouteDefinition[]`,

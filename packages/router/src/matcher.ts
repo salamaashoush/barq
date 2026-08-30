@@ -10,10 +10,9 @@
  * A generated switch was measured too, and REJECTED: it beat a plain
  * first-segment bucket by 58 ns on a last-position hit and by nothing at all on
  * a miss, while costing a code generator and 76 kB of emitted JavaScript at
- * 1000 routes. `CODESIGN.md` §3.4's rule decided it — "a flag that moves neither
- * an allocation count nor a wall-clock number on a named benchmark is deleted,
- * not kept". A trie is the same idea as the bucket, one level deeper, and it is
- * built at runtime from data.
+ * 1000 routes. A flag that moves neither an allocation count nor a wall-clock
+ * number on a named benchmark is deleted, not kept. A trie is the same idea as
+ * the bucket, one level deeper, and it is built at runtime from data.
  *
  * Ranking is structural, not scored. The walk tries static before parameter
  * before splat and BACKTRACKS, so `/users/new` beats `/users/$id` because the

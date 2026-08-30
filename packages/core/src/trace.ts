@@ -1,5 +1,5 @@
 /**
- * The L2b ownership trace (CODESIGN.md §6). DEV/test only, off by default.
+ * The L2b ownership trace. DEV/test only, off by default.
  *
  * Every scope entry, exit and disposal, and every construction the runtime
  * performs on someone else's behalf, appends one record. The oracle then asks

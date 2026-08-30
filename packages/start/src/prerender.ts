@@ -69,8 +69,8 @@ export interface PrerenderedPage {
  * open bugs in the nearest prior art. TanStack's crawler appends a trailing
  * slash without `respectQueryAndFragment`, so `/posts?page=2` becomes
  * `/posts?page=2/`, re-serialises as `page=2%2F`, and every crawl step produces
- * a URL nothing has seen — the crawl never terminates (#7837). And `/x` against
- * `/x/` as two keys is their #6978. A query string has no effect on a statically
+ * a URL nothing has seen, and the crawl never terminates. `/x` against `/x/` as
+ * two keys is a second open bug there. A query string has no effect on a statically
  * exported page anyway, which is the note SvelteKit's crawler carries.
  */
 function normalize(path: string): string | null {
@@ -106,7 +106,7 @@ function fileFor(path: string, outDir: string, subfolderIndex: boolean): string 
  * Failures are COLLECTED and rethrown after the queue drains, never swallowed.
  * TanStack's equivalent adds to its queue without awaiting and resolves on
  * `onSettled` regardless of outcome, so their `failOnError` cannot fail a build
- * and their `retryCount` is dead code (#8120). A build that emits a broken page
+ * and their `retryCount` is dead code. A build that emits a broken page
  * and exits 0 is the failure a prerenderer exists to prevent.
  */
 export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
@@ -169,8 +169,8 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     }
     const file = fileFor(path, run.outDir, run.subfolderIndex);
     await mkdir(dirname(file), { recursive: true });
-    // Written as each page finishes rather than accumulated: SvelteKit's #5233
-    // is ~300 data-heavy pages held in memory until the end and a 2 GB heap.
+    // Written as each page finishes rather than accumulated: holding ~300
+    // data-heavy pages to the end is a 2 GB heap, which SvelteKit shipped.
     await writeFile(file, html, "utf8");
     pages.push({
       path,

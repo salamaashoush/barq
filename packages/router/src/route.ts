@@ -32,10 +32,8 @@ export interface RouteProps<
    * the entire layout pattern and has to typecheck. The runtime value IS a
    * Block; the compiler lowers that hole to `insert($s, el, props.children)`,
    * and `insert` calls a Block with the scope it is holding. `Child` does not
-   * admit a Block — a Block declares a parameter and a `Cell` is
-   * arity-TOLERANT, which is the whole asymmetry of §3.0's rules 1 and 2 — so
-   * the two cannot be reconciled in the type. `packages/extra/src/router.ts`
-   * declared it the same way.
+   * admit a Block: a Block declares a parameter and a `Cell` is arity-TOLERANT,
+   * so the two cannot be reconciled in the type.
    */
   readonly children: Child;
 }
@@ -407,17 +405,15 @@ export interface RouteDefinition<
    * An API route is not a second kind of route in barq, and that is TanStack's
    * arrangement rather than a simplification: `createFileRoute('/api/users')({
    * server: { handlers: { GET } } })` is an ordinary route file that declares
-   * handlers instead of — or as well as — a component
-   * (`examples/react/start-basic/src/routes/api/users.ts:44`). One tree, one
-   * file convention, one generator, and a route may be BOTH: `/posts` can serve
-   * HTML to a browser and JSON to a `fetch`, from the same path, deciding on the
+   * handlers instead of, or as well as, a component. One tree, one file
+   * convention, one generator, and a route may be BOTH: `/posts` can serve HTML
+   * to a browser and JSON to a `fetch`, from the same path, deciding on the
    * method.
    *
    * NONE OF THIS SHIPS TO THE BROWSER. The compiler deletes `server` from the
-   * client build, which is theirs too (`start-plugin-core/src/vite/
-   * start-router-plugin/plugin.ts:166`, `deleteNodes: ['ssr', 'server',
-   * 'headers']`). Without that a handler's body — and its database import — is
-   * in the client bundle, so the strip is not an optimisation.
+   * client build, which is theirs too. Without that a handler's body, and its
+   * database import, is in the client bundle, so the strip is not an
+   * optimisation.
    */
   readonly server?: RouteServer<Params>;
   readonly children?: readonly AnyRouteDefinition[];

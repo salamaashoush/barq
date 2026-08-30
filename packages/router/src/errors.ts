@@ -4,9 +4,8 @@
  * Its own module rather than `server.ts`'s, and the reason is the bundle rather
  * than tidiness: `components.ts` needs `errorFallbackFor` for the DOM path, and
  * `server.ts` imports `@barqjs/server` and `@barqjs/start`. Reaching for it
- * there would put the whole server runtime in the client graph — the shape
- * `DESIGN-START.md` §3 exists to prevent, arrived at by an import rather than by
- * a server function.
+ * there would put the whole server runtime in the client graph, reached by an
+ * import rather than by a server function.
  *
  * Nothing here touches a `Request`, a `Response` or the DOM.
  */

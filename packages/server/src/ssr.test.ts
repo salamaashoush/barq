@@ -262,7 +262,7 @@ describe("attributes", () => {
     // uses to build the field's DEFAULT, and the default is what the FIRST
     // PAINT shows; a server that wrote nothing shipped an empty field that
     // jumped to its value when the client assigned the property. Solid writes
-    // them for the same reason (`dom-expressions/src/server.js:698`).
+    // them for the same reason.
     expect(attr("value", "hi", "input")).toBe(' value="hi"');
     expect(attr("value", "hi", "option")).toBe(' value="hi"');
     expect(attr("value", "hi", "button")).toBe(' value="hi"');
@@ -448,7 +448,7 @@ describe("the six string-inlinable flow components", () => {
   });
 
   test("a BARE key function carried by a spread is told apart from a Cell by its arity", () => {
-    // §3.0 rule 1, on the seam where it is load-bearing. `<For {...opts}>`
+    // The arity rule, on the seam where it is load-bearing. `<For {...opts}>`
     // splices `opts` into the source list verbatim, so `props.keyed` is the key
     // function itself and not a Cell carrying one. Reading it the way a Cell is
     // read calls it with no row, and `row.id` throws on `undefined`. `For`
@@ -841,7 +841,7 @@ describe("a form action", () => {
 
   test("a server function becomes the endpoint, with the method it requires", () => {
     // POST is not decoration: the endpoint refuses GET, because a GET-invocable
-    // mutation is CVE-2026-39371.
+    // mutation is a link that mutates.
     expect(formAttr(serverFn("todos/add"))).toBe(' action="/_barq/fn/todos%2Fadd" method="post"');
   });
 

@@ -1,5 +1,5 @@
 /**
- * §3.3 — search validation, and the middlewares that build a location.
+ * Search validation, and the middlewares that build a location.
  *
  * The router-level behaviour (inheritance across the chain, a failure landing on
  * the route's own boundary) is in `router.test.ts`; this file is the unit half.

@@ -182,8 +182,8 @@ describe("the request is ambient for the whole render", () => {
     // async `computed`, `settle` awaits it with `allSettled`, and the rejection
     // lands on a boundary. So the refusal was rendered as an error and answered
     // 200. `onLoaderError` is how the answer reaches the handler, and it is a
-    // per-request callback rather than an ambient slot for the reason
-    // GHSA-hgv7-v322-mmgr gives.
+    // per-request callback rather than an ambient slot, because a module-level
+    // one hands one request's answer to another.
     const guard = async (next: () => Promise<unknown>): Promise<unknown> => {
       if (!(getRequest().headers.get("authorization") ?? "").startsWith("Bearer ")) {
         throw new Response("unauthorized", { status: 401 });
@@ -291,10 +291,9 @@ describe("the document", () => {
 });
 
 /**
- * Five defects found by probe at the start of P6, each on a shipped path and
- * each with nothing in this suite that would have caught it. They are written
- * here before the fixes so the commits that follow have something to turn
- * green — `packages/router/DESIGN.md`'s P-A/P-B/P-C are the model.
+ * Five defects found by probe, each on a shipped path and each with nothing in
+ * this suite that would have caught it. They are written here before the fixes,
+ * so the commits that follow have something to turn green.
  */
 describe("P6 defects", () => {
   /** Distinct ids per test: a dropped loader keeps running after its response. */
@@ -460,7 +459,7 @@ describe("P6 defects", () => {
 });
 
 /**
- * §3.4 — an error boundary per route depth, on the STRING backend.
+ * An error boundary per route depth, on the STRING backend.
  *
  * The B3 fix stopped a rejected loader tearing the response, and traded a torn
  * body for a silently truncated one: status 200, content missing, nothing in the
@@ -601,7 +600,7 @@ describe("errorComponent and notFoundComponent", () => {
 });
 
 /**
- * §3.5 — `<link rel="modulepreload">` for the matched chain.
+ * `<link rel="modulepreload">` for the matched chain.
  *
  * The channel that stops a code-split route flashing its `pending` fallback on
  * first hydration. `lazy()` cannot report its own module URL — the specifier
@@ -668,7 +667,7 @@ describe("modulepreload for the matched chain", () => {
 });
 
 /**
- * §3.6 — selective SSR.
+ * Selective SSR.
  *
  * The inheritance is TanStack's and it is ASYMMETRIC, which is the part worth
  * testing rather than assuming.
@@ -781,12 +780,12 @@ describe("ssr: boolean | 'data-only'", () => {
 });
 
 /**
- * §3.7 — a loader returning a value with a promise still inside it.
+ * A loader returning a value with a promise still inside it.
  *
- * `DESIGN-START.md` §2.5 is the record: seroval can represent a pending promise
- * in the seed, so barq does not have to DROP the value and refetch the way
- * SvelteKit does. What it could not do until now was survive a non-streamed
- * render, where there is no later chunk to resolve into.
+ * seroval can represent a pending promise in the seed, so barq does not have to
+ * DROP the value and refetch the way SvelteKit does. What it could not do until
+ * now was survive a non-streamed render, where there is no later chunk to
+ * resolve into.
  */
 describe("deferred loader data", () => {
   const routes = [
@@ -1675,9 +1674,9 @@ describe("the response a page render drafts", () => {
 /**
  * API routes — `server: { handlers }` on an ordinary route.
  *
- * Not a second route system, which is TanStack's arrangement
- * (`examples/react/start-basic/src/routes/api/users.ts:44`): one tree, one file
- * convention, one generator, and a route may answer BOTH a page and an endpoint.
+ * Not a second route system, which is TanStack's arrangement: one tree, one
+ * file convention, one generator, and a route may answer BOTH a page and an
+ * endpoint.
  */
 describe("a route's own HTTP handlers", () => {
   const api = (server: unknown, extra: Partial<AnyRouteDefinition> = {}) =>
@@ -2095,9 +2094,7 @@ describe("a redirect target has to be navigable", () => {
  * A `head` written as a FUNCTION is asking for the match, so its route's loader
  * settles before the head is serialized — and only its route's.
  *
- * Theirs waits for the whole matched chain on every page
- * (`start-server-core/src/createStartHandler.ts:688`, `await
- * routerInstance.load()` before the handler callback runs), so a static title
+ * Theirs waits for the whole matched chain on every page, so a static title
  * pays there and does not here.
  */
 describe("loaderData in head", () => {

@@ -4,8 +4,7 @@
  * An application's `routeTree.gen.ts` augments this interface, and everything
  * below reads it. That is TanStack's mechanism and it is the whole reason their
  * generated file is worth generating: theirs augments `FileRoutesByPath` and
- * declares `interface Register { router: … }`
- * (`examples/react/start-basic/src/routeTree.gen.ts:238,443`).
+ * declares `interface Register { router: … }`.
  *
  * THIS IS WHAT THE PREVIOUS ARRANGEMENT WAS MISSING. The old generator emitted
  * `RouteMap`, `RoutePath`, `SearchFor` and `DataFor` into a `.d.ts` for every
@@ -111,7 +110,7 @@ export type FileRoutesById = RoutesOf<RegisteredRouteTree>;
  *
  * `RoutePath | RouteId` alone would be strict, which is theirs — their own
  * example needs a `@ts-expect-error` to write a link to a route that does not
- * exist (`start-basic/src/routes/__root.tsx:113`). barq stops one step short of
+ * exist. barq stops one step short of
  * that ON PURPOSE, and the reason is that barq has a second checker theirs does
  * not: `BARQ013` compares every `<Link to>` against the route set the SAME scan
  * produced, and it can be told about tables the types cannot see — a second

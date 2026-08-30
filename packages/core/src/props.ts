@@ -1,5 +1,5 @@
 /**
- * The props model — `CODESIGN.md` §3.0/§3.3 C3–C5, `SEMANTICS.md` C3.*.
+ * The props model.
  *
  * Every own property of a props object is a `Cell` (`() => T`) or a `Block`
  * (`(s, ...cells) => Out`). Never a getter. A spread is an ordered list of

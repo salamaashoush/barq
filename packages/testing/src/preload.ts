@@ -11,12 +11,12 @@ import { readFileSync } from "node:fs";
  * This package's own suite goes through the COMPILER, like every consumer does.
  *
  * It used to rely on bun's `react-jsx` transform, which lowers JSX onto
- * `jsx`/`jsxs` from `@barqjs/core/jsx-runtime`. M9 deleted those (CODESIGN §4.1)
- * and the reason is not tidiness: bun's transform cannot produce scope-taking
+ * `jsx`/`jsxs` from `@barqjs/core/jsx-runtime`. Those are gone, and the reason
+ * is not tidiness: bun's transform cannot produce scope-taking
  * Blocks, so a module lowered that way gets DIFFERENT semantics — props arrive
  * as plain values rather than Cells, and children are built eagerly instead of
  * being Blocks. This file's own components carried a comment saying exactly
- * that, which means the suite was measuring a path §11 Q2 says does not exist.
+ * that, which means the suite was measuring a path no consumer takes.
  *
  * One `onLoad` hook fixes it: `.tsx` under `src/` is handed to the native
  * transform first, so what these tests drive is what a user's build produces.

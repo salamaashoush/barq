@@ -966,10 +966,10 @@ describe("mergeProps", () => {
     expect(result).toEqual({ x: 1, z: 3 });
   });
 
-  // `children` stopped being special at M3. It is a Block like any other slot,
-  // and a Block is not an array a merge can concatenate — C6/§4.1. Last source
-  // wins, exactly as for every other key, which is what makes `mergeProps` one
-  // line over the source list instead of a `for…in` body with a special case.
+  // `children` is not special. It is a Block like any other slot, and a Block
+  // is not an array a merge can concatenate. Last source wins, exactly as for
+  // every other key, which is what makes `mergeProps` one line over the source
+  // list instead of a `for…in` body with a special case.
   test("children is an ordinary key: the last source wins", () => {
     const a = { children: ["a", "b"] };
     const b = { children: ["c"] };
@@ -979,7 +979,7 @@ describe("mergeProps", () => {
   });
 });
 
-// `describe("children helper")` was deleted at M9 with `components.ts` (§4.1).
+// `describe("children helper")` was deleted at M9 with `components.ts`.
 //
 // `children(fn)` resolved a slot to a Node[] and memoised it — an artefact of
 // the EAGER-children convention, where a child arrived as a built subtree and

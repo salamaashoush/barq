@@ -11,7 +11,7 @@ describe("which side this is", () => {
   });
 
   /**
-   * The property that keeps `SEMANTICS.md` H5 intact: the compiler proves
+   * The property that keeps the address table stable: the compiler proves
    * constants only for a local `const` with a literal initialiser, so an
    * imported binding is never one and the fold pass cannot move an address
    * between the client and server builds. Asserted on the compiler's own

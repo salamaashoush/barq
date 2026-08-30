@@ -4,9 +4,9 @@
  *
  * `client.ts` and `server.ts` in this package import these. No file an
  * application writes does, which is the whole point: grepped across both of
- * TanStack's `start-basic` examples, user code names no `virtual:` and no `#`
- * specifier at all. Theirs are declared the same way and in the same place —
- * inside the package, at `start-server-core/src/tanstack-start.d.ts`.
+ * TanStack's examples, user code names no `virtual:` and no `#` specifier at
+ * all. Theirs are declared the same way and in the same place, inside the
+ * package.
  *
  * It was the other way round, and the cost was visible: the generated entries
  * named all four, so overriding an entry meant transcribing them, and
@@ -30,8 +30,7 @@
  * table when it has not written one.
  *
  * An ALIAS to a real file, which is why it is `#`-prefixed rather than
- * `virtual:` — TanStack's `#tanstack-router-entry`
- * (`start-plugin-core/src/constants.ts:23`) resolves to the project's
+ * `virtual:`. TanStack's `#tanstack-router-entry` resolves to the project's
  * `src/router.tsx` the same way.
  */
 declare module "#barq-router-entry" {

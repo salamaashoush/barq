@@ -74,12 +74,11 @@ export function useMatch(routeId?: string): Cell<Route | null> {
  * The router's state as ONE reactive value, for a component that wants several
  * pieces of it without subscribing to each separately.
  *
- * `isLoading` is deliberately NOT a router-wide counter — that is the thing
- * `packages/router/DESIGN.md` says should not exist, because loading is a
- * `Loading` boundary per route depth and a global spinner is how a page ends up
- * with two of them disagreeing. What is here is `isNavigating`: a navigation
- * has been asked for and has not committed, which is a fact about the ROUTER
- * rather than about any route's data.
+ * `isLoading` is deliberately NOT a router-wide counter: loading is a `Loading`
+ * boundary per route depth, and a global spinner is how a page ends up with two
+ * of them disagreeing. What is here is `isNavigating`: a navigation has been
+ * asked for and has not committed, which is a fact about the ROUTER rather than
+ * about any route's data.
  */
 export function useRouterState(): Cell<{
   readonly location: Location;

@@ -61,7 +61,7 @@ import {
 } from "./hydration.ts";
 
 /**
- * §3.0: a function child is a `Cell<Child>` or a `Block<Child>` and the two are
+ * A function child is a `Cell<Child>` or a `Block<Child>` and the two are
  * not distinguished here — a Cell ignores the scope a Block needs, so both are
  * called the same way and both belong in the same position.
  */
@@ -155,7 +155,7 @@ const CSS_NUMBER_PROPS: Record<string, 1> = {
   widows: 1,
 };
 
-// CODESIGN §3.10.1: the properties the USER also writes. Their channel compares
+// The properties the USER also writes. Their channel compares
 // against the element rather than against the last framework write, because for
 // these two writers exist and only one of them is the framework. Contenteditable
 // text is in the set too and is not spelled here: it arrives only through
@@ -437,9 +437,9 @@ export type JSXElement = Node | ArrayElement | (string & {}) | number | boolean 
 export type { JSXElement as Element };
 
 /**
- * `<Dynamic component={c}>` — §3.13 item 4, which is the whole reason this
- * exists: a component or a tag whose value is not a module-local `const` cannot
- * be resolved at compile time, so the choice is made here and nowhere else.
+ * `<Dynamic component={c}>`, and the whole reason it exists: a component or a
+ * tag whose value is not a module-local `const` cannot be resolved at compile
+ * time, so the choice is made here and nowhere else.
  *
  * The compiler has already done everything else. The key is a `branch`'s, so
  * the swap and the teardown are the primitive's; the props are a SOURCE LIST
@@ -508,7 +508,7 @@ export function element(s: Scope | null, tag: string, props: Record<string, unkn
 }
 
 /**
- * A resolved CHANNEL — `CODESIGN.md` §3.5.
+ * A resolved CHANNEL.
  *
  * The compiler picks one of these at compile time from `NameFlags` plus the
  * element's namespace, so nothing here re-derives attribute-vs-property,
@@ -558,7 +558,7 @@ export function setDomProp(
 }
 
 /**
- * The user-mutable channel (§3.10.1). It takes NO `prev`, and that is the whole
+ * The user-mutable channel. It takes NO `prev`, and that is the whole
  * rule rather than an omission: `prev` is what the FRAMEWORK last wrote, and for
  * these properties the user writes too. A handler that rejects a keystroke
  * leaves the element holding text no signal ever contained, `prev` still agrees
@@ -725,10 +725,10 @@ export function setRef(element: Element, _name: string, value: unknown, prev?: u
 }
 
 /**
- * §3.0 rule 3 at the `ref` slot. `block`'s entry guard fires on
- * `scope === undefined`, and this is one of the two slots where the value is
- * invoked with something ELSE — the Element — so the guard is structurally
- * unreachable and a forwarded Block would run with a DOM node as its scope.
+ * The no-scope guard at the `ref` slot. `block`'s entry guard fires on `scope
+ * === undefined`, and this is one of the two slots where the value is invoked
+ * with something ELSE — the Element — so the guard is structurally unreachable
+ * and a forwarded Block would run with a DOM node as its scope.
  * `requireScope` accepts it, everything below it is parented to that node, and
  * root disposal never reaches any of it. The brand is a property of the VALUE
  * (C3.8), so the test belongs here, at the read, exactly as `readSlot` puts it.
@@ -785,18 +785,18 @@ export function ref(s: Scope | null, element: Element, value: unknown): void {
 }
 
 /**
- * `<form action={…}>` — §3.8's compiler surface, and §3.5's handler-channel rule
- * applied to the one attribute that carries either kind of value.
+ * `<form action={…}>`: the handler-channel rule applied to the one attribute
+ * that carries either kind of value.
  *
  * `action` on a `<form>` is a URL when it holds a string and a SUBMIT HANDLER
  * when it holds a function, which is what React 19 and Solid 2.0 both settled
  * on. Nothing about the expression can tell them apart — an `action()` is
- * `(...args) => Promise<R>`, so its `length` is 0 and §3.0 rule 1 reads it as a
- * Cell — so the SLOT decides, exactly as it does for `on*`: a function arriving
- * here is the handler, never a Cell yielding a URL.
+ * `(...args) => Promise<R>`, so its `length` is 0 and the arity rule reads it
+ * as a Cell — so the SLOT decides, exactly as it does for `on*`: a function
+ * arriving here is the handler, never a Cell yielding a URL.
  *
- * Until M10 the compiler routed this down the attribute channel and `bindProp`
- * applied §3.0 rule 1 to it. Both halves of that were wrong and both were
+ * The compiler used to route this down the attribute channel, where `bindProp`
+ * applied the arity rule to it. Both halves of that were wrong and both were
  * silent: the action was CALLED at mount, and the promise it returned was
  * stringified into the form's target as `action="[object Promise]"`. No console
  * error, and the form posted to a relative URL named after a promise.
@@ -910,7 +910,7 @@ export function delegate(
 }
 
 /**
- * The one question channel resolution CANNOT answer at compile time (§3.13):
+ * The one question channel resolution CANNOT answer at compile time:
  * whether the value that arrived is a live Cell. The CHANNEL is the compiler's,
  * passed in; only liveness is decided here.
  */
@@ -922,9 +922,9 @@ export function bindProp(
   value: unknown,
 ): void {
   const given = requireScope(s, "setProp");
-  // §3.0 rule 2 / §3.13: an attribute is a CELL slot. A Block forwarded into one
-  // is the asymmetry the rule is about, and it throws here rather than being
-  // invoked with `undefined` and stringified into the attribute.
+  // An attribute is a CELL slot. A Block forwarded into one is the asymmetry
+  // the rule is about, and it throws here rather than being invoked with
+  // `undefined` and stringified into the attribute.
   if (isBlock(value)) {
     throw new ScopeMissingError(`setProp ${name} (a Block reached a Cell slot)`);
   }
@@ -1004,8 +1004,8 @@ function editsOf(value: object): Signal<number> {
 }
 
 /**
- * `bind:` — §3.10 whole. The property, the event that reports a user edit and
- * the coercion are all resolved at compile time; what is left is the write, the
+ * `bind:` whole. The property, the event that reports a user edit and the
+ * coercion are all resolved at compile time; what is left is the write, the
  * read-back, and the two things that make a controlled input actually work.
  *
  * **The write compares against the ELEMENT** (`writeLive`), not against the
@@ -1097,10 +1097,10 @@ export function bindValue(
 
 /**
  * Name → channel, for the UN-COMPILED path only. The compiled path never calls
- * this: `CODESIGN.md` §3.5 says there is no `setProp` dispatcher on it, and this
- * is the dispatcher, kept alive for `createElement` and `spread` — which §4.1
- * retires at M9 — and as the definition the generated Rust tables are read out
- * of, so the two resolutions cannot drift.
+ * this, because there is no `setProp` dispatcher on it. This is that
+ * dispatcher, kept alive for `createElement` and `spread`, and it is the
+ * definition the generated Rust tables are read out of, so the two resolutions
+ * cannot drift.
  */
 function channelOf(key: string, isSvg: boolean, tag: string): Channel {
   if (key === "class") return setClass;
@@ -1109,8 +1109,8 @@ function channelOf(key: string, isSvg: boolean, tag: string): Channel {
   if (key === "classList") return setClassList;
   if (key === "ref") return setRef;
   if (key === "dangerouslySetInnerHTML") return setHtml;
-  // §3.10.1 before the plain property channel: these are properties too, and
-  // what separates them is who else writes them.
+  // The user-mutable channel comes before the plain property one: these are
+  // properties too, and what separates them is who else writes them.
   if (!isSvg && isUserMutable(tag, key)) return setLive;
   // Form-field exceptions stay properties (value, checked, selected, ...). The
   // runtime takes that branch only outside the SVG namespace.
@@ -1291,9 +1291,9 @@ export function styleToString(value: unknown): string | null {
 
 /**
  * Brand carried by every value the compiler's SSR string mode produces. A
- * module that fell back to this DOM backend (DESIGN §5's eight non-inlinable
- * flow components) can still render a component compiled to strings, and
- * without this it would insert the markup as escaped text.
+ * module that fell back to this DOM backend can still render a component
+ * compiled to strings, and without this it would insert the markup as escaped
+ * text.
  *
  * A REGISTERED SYMBOL, and that is the security property: this brand decides
  * whether a value is written as markup or escaped as text, so a shape
@@ -1417,7 +1417,7 @@ function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Nod
  * Reconcile two node arrays in place (udomdiff: common prefix/suffix,
  * swap shortcut, lazy Map fallback). Keys are node identities - exactly
  * right for fine-grained rendering where rows keep their DOM nodes.
- * Adapted from https://github.com/WebReflection/udomdiff
+ * * Adapted from udomdiff.
  */
 function reconcileNodeArrays(parent: Node, a: Node[], b: Node[], after: Node | null): void {
   const bLength = b.length;
@@ -1605,9 +1605,10 @@ function ownedBy(given: Scope | null, origin: string, build: () => void): void {
 
 /**
  * Insert a child into `parent` before `marker` (or append when absent), under
- * the scope the enclosing Block was given. CODESIGN §3.3 C6: scope FIRST.
+ * the scope the enclosing Block was given. Scope FIRST.
  *
- * Taking it as an argument is what makes §3.0 rule 3 enforceable at no cost. A
+ * Taking it as an argument is what makes the no-scope guard enforceable at no
+ * cost. A
  * compiled Block that builds anything reaches here, so a Block invoked with no
  * scope throws where it was mistimed rather than silently constructing under
  * whatever happened to be current — and the ownership trace gets a `given` that
@@ -1621,7 +1622,7 @@ export function insert(
   marker?: Node | null,
   /**
    * `hydration.ts`'s `WHOLE`, emitted only by a `hydratable` build and only at a
-   * hole that owns its parent's child list. §12: the string backend wrote no
+   * hole that owns its parent's child list. The string backend wrote no
    * boundary comments there, so the claim is every child of `parent`.
    */
   mode?: number,
@@ -1635,7 +1636,7 @@ export function insert(
   // function exactly once and returns nodes — so `<table>{a()}-{b()}</table>`
   // rendered `A-B` and never moved again. It is only reachable where the
   // compiler cannot split the children into holes of their own: `element`'s
-  // props, `dynamic`'s, a component's `children` (§3.13). Everywhere else P1 emits
+  // props, `dynamic`'s, a component's `children`. Everywhere else P1 emits
   // one `_$insert` per hole and never gets here.
   //
   // ONE effect for the whole array, not one per element, which is what Solid's
@@ -1661,11 +1662,11 @@ export function insert(
   // then goes through the ordinary reconciler, which writes `.data` on the
   // claimed text node and keeps its identity.
   //
-  // This is the "marker restored" answer to `CODESIGN.md` §10 Q4, and it costs
-  // the payload §11 Q4 agreed to pay. The alternative — a hydration-aware
-  // insert that adopts whatever children it finds — needs no marker but cannot
-  // tell an adjacent static text run from the dynamic one beside it, because
-  // the parser fuses them into a single node before the client ever sees them.
+  // This is the "marker restored" answer, and it costs the payload that
+  // decision agreed to pay. The alternative — a hydration-aware insert that
+  // adopts whatever children it finds — needs no marker but cannot tell an
+  // adjacent static text run from the dynamic one beside it, because the parser
+  // fuses them into a single node before the client ever sees them.
   const claim: Range | null = hydrating() ? claimRange(parent, anchor, mode) : null;
   // From here on this position IS the range. Every later update writes before
   // the close comment, so the boundary stays well formed for the life of the
@@ -1805,10 +1806,10 @@ function detectTextDrift(claimed: readonly Node[], produced: Child): void {
 /**
  * The UN-COMPILED path's prop entry: resolve the name to a channel, then bind.
  *
- * `CODESIGN.md` §3.5 removes this from the compiled path — every attribute
- * resolves to exactly one channel at compile time — and what is left here is
- * what `createElement` and `spread` need, plus the namespace syntax so the two
- * paths accept the same source. §4.1 retires it with `createElement` at M9.
+ * The compiled path never reaches this: every attribute resolves to exactly one
+ * channel at compile time. What is left here is what `createElement` and
+ * `spread` need, plus the namespace syntax so the two paths accept the same
+ * source.
  */
 export function setProp(s: Scope | null, element: Element, key: string, value: unknown): void {
   const given = requireScope(s, "setProp");
@@ -2038,7 +2039,7 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
     return ssrHtmlNodes(child);
   }
 
-  // §3.0 rules 1-2: a Cell ignores the argument, a Block needs it, and one
+  // A Cell ignores the argument, a Block needs it, and one
   // call serves both.
   //
   // O4.5: the Block is invoked with the scope this call was GIVEN.
@@ -2157,7 +2158,7 @@ function insertRendered(
     if (element.parentNode !== container) container.appendChild(element);
     return;
   }
-  // `Out` admits `Cell<Out>` (§3.0). A mount whose block returned one is a live
+  // `Out` admits `Cell<Out>`. A mount whose block returned one is a live
   // hole at the root, so it is inserted as one rather than stringified.
   if (typeof element === "function") {
     insert(scope, container, element);
@@ -2364,7 +2365,7 @@ function eventFor(rec: CapturedEvent): Event {
 }
 
 /**
- * Claim-based hydration (`SEMANTICS.md` H1–H4, H6).
+ * Claim-based hydration.
  *
  * The container is NOT cleared. The compiled walk claims the server's nodes as
  * it goes, and the only two outcomes are the claim succeeding or a
@@ -2501,7 +2502,7 @@ hydrate.report = {
 /**
  * `render`, with the one line that makes it hydration or not.
  *
- * §3.11: "`container.textContent = ""` … currently throws the entire server
+ * "`container.textContent = ""` … currently throws the entire server
  * render away". It is still exactly right for a cold render and exactly wrong
  * for a claim, so it is the parameter rather than a second copy of the mount
  * sequence — there is one root, one insertion, one disposer, and the claim path
@@ -2590,9 +2591,9 @@ export function template(html: string, isSVG = false, detect = false): () => Nod
     // nothing is being hydrated, and `claimNode` throws rather than returning
     // one when the server's tree is not the client's.
     if (hydrating()) {
-      // `detect` is §12's axis, threaded from the compiler to the one call that
-      // holds both trees at once. A production build passes nothing and the
-      // subtree comparison never runs.
+      // `detect` is the detection axis, threaded from the compiler to the one
+      // call that holds both trees at once. A production build passes nothing
+      // and the subtree comparison never runs.
       const claimed = claimNode(cached, detect);
       if (claimed !== null) return claimed;
     }

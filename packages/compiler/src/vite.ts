@@ -43,10 +43,7 @@ export interface BarqTemplateLabel {
  * every reactive read resolves by `SymbolId`.
  */
 export interface BarqCompilerOptions {
-  /**
-   * Module source for barq imports
-   * @default "@barqjs/core"
-   */
+  /** @default "@barqjs/core" */
   moduleSource?: string;
 
   /**
@@ -157,8 +154,8 @@ export interface BarqCompilerOptions {
   defaultCategory?: "suppress" | "note" | "warning" | "error";
 
   /**
-   * Compile intrinsic JSX trees to hoisted cloneable templates with
-   * precomputed walks to dynamic holes (the optimizing pass)
+   * Hoist an intrinsic JSX tree to a cloneable template with a precomputed walk
+   * to each dynamic hole.
    * @default true
    */
   templates?: boolean;
@@ -211,7 +208,7 @@ export interface BarqCompilerOptions {
   passes?: Partial<Record<BarqOptimisation, boolean>>;
 
   /**
-   * Emit for CLAIM-BASED HYDRATION (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4).
+   * Emit for CLAIM-BASED HYDRATION.
    *
    * It changes BOTH emissions, and it has to be the same value for both halves
    * of one deployment: the string backend writes `<!--[-->` … `<!--]-->` at
@@ -304,16 +301,10 @@ export function resetNativeCompilerCache(): void {
 }
 
 export interface BarqVitePluginOptions extends BarqCompilerOptions {
-  /**
-   * File extensions to transform
-   * @default ['.tsx', '.jsx']
-   */
+  /** @default [".tsx", ".jsx"] */
   include?: string[];
 
-  /**
-   * File patterns to exclude
-   * @default [/node_modules/]
-   */
+  /** @default [/node_modules/] */
   exclude?: (string | RegExp)[];
 
   /**
@@ -338,20 +329,6 @@ function passPairs(passes: BarqCompilerOptions["passes"]): string[][] | undefine
   return Object.entries(passes).map(([name, on]) => [name, on ? "on" : "off"]);
 }
 
-/**
- * Vite plugin for the Barq compiler.
- *
- * @example
- * ```ts
- * // vite.config.ts
- * import { defineConfig } from 'vite'
- * import { barqVitePlugin } from '@barqjs/compiler/vite'
- *
- * export default defineConfig({
- *   plugins: [barqVitePlugin()],
- * })
- * ```
- */
 export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   const {
     include = [".tsx", ".jsx"],
@@ -571,8 +548,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
  * panel is fed by a custom HMR event and owes Vite's logger nothing.
  *
  * Deliberately not Vite's own overlay: `ErrorOverlay` takes `ErrorPayload['err']`
- * and has one red border, with no warning payload type. vite-plugin-checker
- * reached the same conclusion and ships its own.
+ * and has one red border, with no warning payload type at all.
  */
 function panelClient(): string {
   return `

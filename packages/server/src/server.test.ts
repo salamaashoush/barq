@@ -420,9 +420,8 @@ describe("the seed encoder", () => {
    * SOLID'S SHAPE, which replaced a waiter channel: the key goes on the wire the
    * moment its flight STARTS, as a promise, so a read that misses finds
    * something to await rather than a hole. `registerFragment` does
-   * `serializer.write(key, p)` with `p` still pending
-   * (`dom-expressions/src/server.js`), and `Suspense.ts:144-167` awaits whatever
-   * `sharedConfig.load(key)` hands back.
+   * `serializer.write(key, p)` with `p` still pending, and the consumer awaits
+   * whatever the store hands back.
    */
   test("a key still in flight is on the wire as a PROMISE, before it settles", async () => {
     let releaseSlow!: () => void;
@@ -726,14 +725,12 @@ describe("settle", () => {
 });
 
 /**
- * Streaming — `CODESIGN.md` §3.11.
+ * Streaming: an unready boundary flushes `<!--[b:7-->fallback<!--]-->` plus a
+ * continuation record `(Block, Scope)`, and when its promises settle the server
+ * flushes a `<template>` and a swap. The Block is re-invocable with its scope,
+ * so there is no second code path.
  *
- * "an unready boundary flushes `<!--[b:7-->fallback<!--]-->` plus a continuation
- * record `(Block, Scope)`; when its promises settle the server flushes a
- * `<template>` and a swap. The Block is re-invocable with its scope, so there is
- * no second code path."
- *
- * The tests below are about those three sentences and nothing else: the shell
+ * The tests below are about that and nothing else: the shell
  * really is flushed before the boundary resolves (which is the only reason to
  * stream at all), the range comment carries the continuation's address, and the
  * SECOND invocation is the same Block under the same scope.
@@ -759,7 +756,7 @@ describe("renderToStream", () => {
     // The shell is its own chunk, and it carries the fallback, not the value.
     expect(parts[0]).toContain("<i>loading</i>");
     expect(parts[0]).not.toContain("Ada");
-    // §3.11's range instruction, naming the continuation.
+    // The range instruction, naming the continuation.
     expect(parts[0]).toContain("<!--[b:0-->");
     expect(parts[0]).toContain("<!--]-->");
     // The content arrives later, in a template plus a swap.

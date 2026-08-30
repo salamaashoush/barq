@@ -1,6 +1,5 @@
 /**
  * Graph correctness tests - ported from SolidJS signals
- * https://github.com/solidjs/signals/blob/main/tests/graph.test.ts
  *
  * These tests verify:
  * - Diamond dependency handling (glitch-free)

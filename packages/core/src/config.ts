@@ -96,8 +96,8 @@ export type StrictAccessor<T> = IsCompilerMode extends true ? T | Accessor<T> : 
  * is the OUTGOING side — what a JSX call site may write, which the compiler
  * widens to `T | Accessor<T>` because it wraps a bare value in a thunk for you.
  * Incoming is the CALLEE side, and there the compiler has already done that: a
- * prop that is present is a Cell and is called at the use site (CODESIGN
- * §3.1), in every mode. So this is `Accessor` unconditionally.
+ * prop that is present is a Cell and is called at the use site, in every mode.
+ * So this is `Accessor` unconditionally.
  *
  * Optionality is preserved rather than stripped, because it is load-bearing:
  * a prop the caller omitted is not an own property, so the read is `?.()` and

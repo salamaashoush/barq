@@ -10,8 +10,8 @@
  * owns file events, so `routeTree` returns the file list and this registers it.
  *
  * THE TABLE IS A FILE, not a virtual module. `src/routeTree.gen.ts` is written
- * into the project and imported by path, which is TanStack's arrangement
- * (`examples/react/start-basic/src/router.tsx:2`) and buys three things a
+ * into the project and imported by path, which is TanStack's arrangement and
+ * buys three things a
  * virtual specifier cannot: the route modules are imported STATICALLY, so a
  * route's whole option set reaches the router; the types live in the same file
  * as the values, so they are inferred rather than reconstructed; and a person
@@ -148,8 +148,8 @@ const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
  * TypeScript and silently resolves to `any`.
  *
  * `writeIds` lets the generator OWN the `createFileRoute` path literal and
- * rewrite it in the source file when a rename makes it wrong — which is what
- * their plugin does (`router-generator/src/transform/transform.ts:133-140`).
+ * rewrite it in the source file when a rename makes it wrong, which is what
+ * their plugin does.
  * Off by default, so nothing writes to a project unless a dev server asked.
  */
 export function routeTree(
@@ -209,8 +209,8 @@ export interface BarqRouterOptions {
   /**
    * Where to write the generated route tree. `false` writes none.
    *
-   * Default `src/routeTree.gen.ts`, which is theirs (`generatedRouteTree`,
-   * `router-generator/src/config.ts:50`). The application imports it BY PATH,
+   * Default `src/routeTree.gen.ts`, which is theirs. The application imports it
+   * BY PATH,
    * so this is a real file in the project rather than a virtual specifier only
    * the bundler can resolve.
    */
@@ -350,8 +350,8 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      *
      * Sharing this one is what puts the root instance in every environment, so
      * `onRoutes` and `onReachability` reach the same closure `buildApp` reads
-     * from. DESIGN-FRONTDOOR §3.3 records the other half of the same lesson:
-     * sharing SOME is worse than sharing none.
+     * from. The other half of the same lesson: sharing SOME is worse than
+     * sharing none.
      */
     sharedDuringBuild: true,
 

@@ -9,10 +9,10 @@
  * statement about the contract that replaced it. Nothing was dropped; each row
  * below names the row it replaces.
  *
- * The nine workarounds `CODESIGN.md` §8 enumerates are DELETIONS, and this file
- * is where "deleted" is checkable rather than claimed: each is a string that
- * used to be in `router.tsx` and is in no source file now, beside the primitive
- * that took its job.
+ * The nine workarounds are DELETIONS, and this file is where "deleted" is
+ * checkable rather than claimed: each is a string that used to be in
+ * `router.tsx` and is in no source file now, beside the primitive that took its
+ * job.
  *
  * MOVED HERE when `packages/extra/src/router.ts` was deleted. Pointed at the
  * file that replaced it rather than retired with it: a scorecard that only ever
@@ -165,8 +165,8 @@ describe("the nine workarounds are deletions", () => {
   // two reads of a level counter, so a component had to be told where it sat.
   //
   // `<Outlet />` came BACK, deliberately, when the route surface moved to
-  // TanStack's — theirs is `<Outlet />` and route components take no props
-  // (`examples/react/start-basic/src/routes/posts.tsx:24`). What did not come
+  // TanStack's: theirs is `<Outlet />` and route components take no props. What
+  // did not come
   // back is the thing this row was about: there is still no depth context and
   // nothing threads a level. `Outlet` places the SAME Block `children` always
   // was, so the next route is still CONSTRUCTED inside the layout's scope and a
@@ -343,9 +343,9 @@ describe("the convention, from the other side", () => {
 
     for (const [name, value] of Object.entries(components)) {
       expect(typeof value, name).toBe("function");
-      // C1 plus §3.0 rule 3: branded, so a Block reaching a Cell slot throws
-      // rather than being stringified, and invoking one with no scope names the
-      // Block instead of failing downstream.
+      // Branded, so a Block reaching a Cell slot throws rather than being
+      // stringified, and invoking one with no scope names the Block instead of
+      // failing downstream.
       expect(core.isBlock(value), name).toBe(true);
       expect(() => (value as (...a: unknown[]) => unknown)(), name).toThrow(/Block|scope/i);
     }

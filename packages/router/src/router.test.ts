@@ -209,12 +209,12 @@ describe("loaders", () => {
             return `user ${params.id}`;
           },
           pendingComponent: page("loading"),
-          // The COMPILED shape. A component body runs untracked (CODESIGN
-          // §3.9), so a bare `props.data()` in the body would read the pending
-          // value, throw `NotReadyError` with nothing subscribed, and never
-          // re-run when it settled. `insert` is what the compiler emits for a
-          // dynamic hole and it is a tracked effect, which is what registers
-          // the read with the loading boundary.
+          // The COMPILED shape. A component body runs untracked, so a bare
+          // `props.data()` in the body would read the pending value, throw
+          // `NotReadyError` with nothing subscribed, and never re-run when it
+          // settled. `insert` is what the compiler emits for a dynamic hole and
+          // it is a tracked effect, which is what registers the read with the
+          // loading boundary.
           component: (scope: Scope | null, props: RouteProps) => {
             const node = document.createElement("span");
             insert(scope, node, () => String(props.data()));
@@ -1930,8 +1930,8 @@ describe("the smaller surface", () => {
   });
 
   test("isNavigating is true only between the ask and the commit", async () => {
-    // Not a loading counter — DESIGN.md rules that out — but the gap where
-    // blockers, guards and `beforeLoad` run.
+    // Not a loading counter, but the gap where blockers, guards and
+    // `beforeLoad` run.
     const history = memoryHistory({ initial: ["/a"] });
     const seen: boolean[] = [];
     const state = createRouter({
@@ -2350,10 +2350,10 @@ void text;
  * Every route a file-based table generates is `lazy()`, and this never worked:
  * the destination showed its fallback forever and a second navigation was
  * stuck behind it. `renderDepth` invokes a route component inside `untrack` —
- * on purpose, per CODESIGN §3.9, so a body reading `props.params()` does not
- * resubscribe its whole subtree — and a `lazy()` cell read there subscribes to
- * nothing, so the `NotReadyError` parked this depth's boundary and the module
- * landing could never wake it.
+ * on purpose, so a body reading `props.params()` does not resubscribe its whole
+ * subtree — and a `lazy()` cell read there subscribes to nothing, so the
+ * `NotReadyError` parked this depth's boundary and the module landing could
+ * never wake it.
  *
  * The fix is a TRACKED probe outside the untrack: `lazy()` exposes `ready()`,
  * and `renderDepth` calls it before invoking the body.

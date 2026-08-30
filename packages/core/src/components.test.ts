@@ -1097,7 +1097,7 @@ describe("Switch/Match components", () => {
   });
 });
 
-// `describe("Marker utilities")` was deleted at M9 with `markers.ts` (§4.1).
+// `describe("Marker utilities")` was deleted at M9 with `markers.ts`.
 //
 // Its four tests drove `createMarkerPair`/`clearRange`/`insertNodes` directly.
 // Anchor identity is a compile-time ADDRESS now: the compiler bakes a `<!---->`

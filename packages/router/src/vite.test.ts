@@ -563,8 +563,7 @@ export const Route = createFileRoute("/admin")({ component: Admin });
  * The strip is NOT a size optimisation, which is why it runs even with code
  * splitting off: a handler's body is the route's database query, its secret and
  * its `node:` imports, and the static route tree pulls the module into the
- * client graph by construction. Theirs deletes the same node
- * (`start-plugin-core/src/vite/start-router-plugin/plugin.ts:166`).
+ * client graph by construction. Theirs deletes the same node.
  */
 describe("the server half of a route", () => {
   const project_ = () =>

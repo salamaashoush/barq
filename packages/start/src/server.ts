@@ -17,9 +17,9 @@ import { DATA_SUFFIX, InputError, RPC_PREFIX, type ServerFn, isServerFn } from "
  * id → function, and the ONLY way an id becomes callable.
  *
  * A `Map` rather than an object, because the id comes off the wire and an
- * object's prototype is reachable through one. CVE-2025-55182 was CVSS 10.0 and
- * was exactly that: a client-supplied name used as a raw property access, so
- * asking for `constructor` yielded `Function` and then arbitrary code. `Map.get`
+ * object's prototype is reachable through one. A client-supplied name used as a
+ * raw property access has shipped as a critical RCE elsewhere: asking for
+ * `constructor` yields `Function`, and then arbitrary code. `Map.get`
  * has no prototype chain to walk into, so the guard is structural rather than a
  * `hasOwnProperty` call someone can later forget.
  */
@@ -113,8 +113,8 @@ export interface HandlerOptions {
 export function originAllowed(request: Request, options?: HandlerOptions): boolean {
   const origin = request.headers.get("origin");
   if (origin !== null) {
-    // A sandboxed iframe sends the literal string. Treating it as "absent" is
-    // CVE-2026-27978, so it is refused rather than fallen through.
+    // A sandboxed iframe sends the literal string, so it is refused rather than
+    // read as absent and fallen through.
     if (origin === "null") return false;
     if (origin === new URL(request.url).origin) return true;
     return options?.allowedOrigins?.includes(origin) ?? false;
@@ -148,8 +148,8 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * refuse when a signal is present and says cross-origin; allow when there is no
  * signal, because then it is not a browser and cannot be a forgery.
  *
- * `null` origin — a sandboxed iframe, a `data:` URL — is refused rather than read
- * as absent. Treating it as absent is CVE-2026-27978.
+ * `null` origin — a sandboxed iframe, a `data:` URL — is refused rather than
+ * read as absent, which is a bypass that has shipped.
  */
 export function crossOriginRefused(request: Request, allowedOrigins?: readonly string[]): boolean {
   if (SAFE_METHODS.has(request.method.toUpperCase())) return false;
@@ -181,8 +181,8 @@ export async function handleServerFn(
   if (!url.pathname.startsWith(RPC_PREFIX)) return null;
 
   // A mutation must not be reachable by navigation. RedwoodSDK shipped server
-  // functions invocable over GET (CVE-2026-39371, CVSS 8.1), which made a plain
-  // link a one-click mutation carrying SameSite=Lax cookies.
+  // functions invocable over GET, which made a plain link a one-click mutation
+  // carrying SameSite=Lax cookies.
   if (request.method !== "POST") {
     return new Response("method not allowed", { status: 405, headers: { allow: "POST" } });
   }

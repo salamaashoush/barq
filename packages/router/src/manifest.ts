@@ -14,7 +14,7 @@
  *
  * WHY NOT REDISPATCH. `@vitejs/plugin-rsc` answers this by re-running a
  * mis-routed action through the owning route's middleware; Next.js is REMOVING
- * action forwarding (PR #96951) because "the action executes under a different
+ * action forwarding because the action executes under a different
  * route and request context". The deeper reason it is wrong here is this repo's
  * own rule, written at `packages/start/src/server.ts`: values derived from the
  * request are fine to navigate to and never fine to authorize with. A

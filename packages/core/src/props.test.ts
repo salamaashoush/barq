@@ -1,5 +1,5 @@
 /**
- * LAZINESS CONFORMANCE — `CODESIGN.md` §8 M3's named acceptance test.
+ * LAZINESS CONFORMANCE, as an acceptance test.
  *
  * A counting Cell must read **zero** after spread, rest-destructure,
  * `Object.assign`, `for…in`, `mergeProps`, `splitProps`, `omit`, and
@@ -226,11 +226,11 @@ describe("cell", () => {
 });
 
 /**
- * §4's claim is about the SOURCE LIST, and the eight named operations do not
+ * The claim is about the SOURCE LIST, and the eight named operations do not
  * test it: they read zero because the carrier is a thunk, and an eager
  * plain-object copy of a props record passes every one of them. What the source
- * list buys is that a view READS the list — so these are the cases a copy
- * cannot pass, and they are what §4 rests on.
+ * list buys is that a view READS the list, so these are the cases a copy cannot
+ * pass and they are what the claim rests on.
  */
 describe("the source list is a view, not a copy", () => {
   test("a key added to a source AFTER the view was built is visible through it", () => {

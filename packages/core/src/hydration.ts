@@ -1,5 +1,5 @@
 /**
- * Claim-based hydration. `CODESIGN.md` §3.11 and §12, `SEMANTICS.md` H1–H4, H6.
+ * Claim-based hydration.
  *
  * The client CLAIMS the server's nodes by walking them. Nothing is cleared,
  * nothing is replaced, and the walk that claims is the walk that would have
@@ -23,10 +23,11 @@
  *   a row of an `each` — no comments; the rows are built in order and each one
  *     claims from the list's cursor, so its extent is what it consumed
  *
- * §12 REVERSED §11 Q4 on a measurement: the boundary comments cost 55.7% raw
- * and 7.3% gzipped on a 100-row page, and 7.3% on every page forever is
- * material. The split that replaces it is this: THE WIRE CARRIES WHAT RECOVERY
- * NEEDS AND NOTHING ELSE, and DETECTION is an emission axis that a dev build
+ * Writing a boundary comment at every position was reversed on a measurement:
+ * the comments cost 55.7% raw and 7.3% gzipped on a 100-row page, and 7.3% on
+ * every page forever is material. The split that replaces it is this: THE WIRE
+ * CARRIES WHAT RECOVERY NEEDS AND NOTHING ELSE, and DETECTION is an emission
+ * axis that a dev build
  * turns on and a production build does not have. What is left above is
  * load-bearing for the claim itself — a delimited hole's extent is data the
  * client cannot compute, and a range's identity is a decision only the server
@@ -210,10 +211,10 @@ export function beginHydration(container: Node): void {
  * unknown amount. That is not recoverable locally and must not be treated as if
  * it were.
  *
- * `true` proves the markup is hydratable; `false` proves nothing. §12 took the
- * comments off every position whose extent the client can read off its parent,
- * so a hydratable page can now carry none at all. The caller uses it to choose
- * the wording of a diagnostic, which is all a one-way signal can carry.
+ * `true` proves the markup is hydratable; `false` proves nothing. The comments
+ * are off every position whose extent the client can read off its parent, so a
+ * hydratable page can now carry none at all. The caller uses it to choose the
+ * wording of a diagnostic, which is all a one-way signal can carry.
  */
 export function wireIsMarked(): boolean {
   return SESSION !== null && SESSION.marked;
@@ -365,10 +366,10 @@ export function claimNode(template: Node, detect?: boolean): Node | null {
       `the server's markup ran out where the client expected <${expect.toLowerCase()}>`,
     );
   }
-  // The ROOT name is compared in every build, and that is not a hedge on §12's
-  // split: the template node is already the argument, so the comparison is one
-  // string test at a claim that was happening anyway. What §12 moved off the
-  // production path is the O(subtree) walk below it.
+  // The ROOT name is compared in every build, and that is not a hedge: the
+  // template node is already the argument, so the comparison is one string test
+  // at a claim that was happening anyway. What is off the production path is
+  // the O(subtree) walk below it.
   if (node.nodeName !== expect) {
     throw new HydrationMismatch(
       "structure",
@@ -449,16 +450,16 @@ export function withinElement<T>(parent: Element, body: () => T): T {
  * `<!--]-->` there.
  *
  * STATIC TEXT is compared as well as node names, and that is the compensation
- * §12 owes: an undelimited hole no longer leaves a `<!--]-->` for `claimRange`
- * to assert against, and two branch arms that differ only in the words they
- * print are structurally identical. Text that came out of a HOLE is inside a
- * range and is skipped; text that is here is template bytes on both sides, from
- * one compiler and one escaper, so a difference is a real divergence and not a
- * normalisation artefact.
+ * owed for dropping the comments: an undelimited hole no longer leaves a
+ * `<!--]-->` for `claimRange` to assert against, and two branch arms that
+ * differ only in the words they print are structurally identical. Text that
+ * came out of a HOLE is inside a range and is skipped; text that is here is
+ * template bytes on both sides, from one compile, so a difference is a real
+ * divergence rather than a normalisation artefact.
  *
- * O(subtree) per claim — which is exactly why the production build does not
- * call it. §12: silent failure is the dominant harm IN DEVELOPMENT, and this is
- * where it is answered.
+ * O(subtree) per claim, which is exactly why the production build does not call
+ * it. Silent failure is the dominant harm IN DEVELOPMENT, and this is where it
+ * is answered.
  */
 function verifySubtree(want: Node, have: Node, path: string): void {
   const wanted = want.childNodes;
@@ -701,8 +702,8 @@ export function sib(node: Node, k: number, back?: number): Node | null {
  * if the comment is not exactly there, the client is not looking at the tree the
  * server serialised and says so.
  *
- * `mode` is the compiler's `WHOLE`, and it is the §12 half: a hole that owns its
- * parent's child list was written with no comments at all.
+ * `mode` is the compiler's `WHOLE`: a hole that owns its parent's child list
+ * was written with no comments at all.
  */
 export function claimRange(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
   const host = anchor !== null ? anchor.parentNode : parent;
@@ -829,9 +830,9 @@ export function probeRange(parent: Node | null, anchor: Node | null): Range | nu
 /**
  * The key the server wrote in `<!--[k-->`, or `null` when it wrote none.
  *
- * `null` is the ordinary answer in a PRODUCTION build: §12 moved the key onto
- * the detection axis, so a production range is `<!--[-->` and the client claims
- * it positionally — which is exactly what a hole has always had, and what a key
+ * `null` is the ordinary answer in a PRODUCTION build: the key is on the
+ * detection axis, so a production range is `<!--[-->` and the client claims it
+ * positionally — which is exactly what a hole has always had, and what a key
  * with no safe comment spelling has always fallen back to.
  */
 export function rangeKey(range: Range): string | null {

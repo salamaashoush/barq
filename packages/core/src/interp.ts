@@ -1,5 +1,5 @@
 /**
- * The reference backend's runtime — `CODESIGN.md` §6 L2. DEV and test only.
+ * The reference backend's runtime. DEV and test only.
  *
  * The compiler has three backends over one analysed IR: `Dom` prints the walk
  * and the patch program as JavaScript, `Ssr` concatenates bytes, and `Interp`
@@ -13,13 +13,14 @@
  * It carries no legacy decision because it did not exist before: no
  * `createElement`, no child normalisation of its own, no prop dispatch of its
  * own. Where it writes to the DOM it goes through the same ABI primitives
- * (§3.0) the emitted module goes through — `template`, `insert`, the resolved
+ * the emitted module goes through — `template`, `insert`, the resolved
  * channels, `bindEffect` — because those are the contract both backends are
  * written against, not the thing under test. The CHANNEL travels in the record:
  * the compiler resolved it, and a reference backend that re-derived it from the
- * name would be answering a question the thing under test no longer asks. A rule of `SEMANTICS.md` that the runtime
- * violates is therefore violated identically on this path, by construction:
- * this file is a reference for the COMPILER, and M1 changes no semantics.
+ * name would be answering a question the thing under test no longer asks. A
+ * rule the runtime violates is therefore violated identically on this path, by
+ * construction: this file is a reference for the COMPILER and changes no
+ * semantics.
  *
  * ## The serialised form
  *
@@ -78,7 +79,7 @@ export type Ref = readonly [RefKind, number | null, number];
 type Diff = "identity" | "always" | "thread";
 type Plan = "once" | "live" | "opaque";
 
-/** §3.5's channel set, spelled the same way the compiler spells it. */
+/** The channel set, spelled the same way the compiler spells it. */
 type Chan =
   | "attr"
   | "prop"
@@ -169,7 +170,7 @@ export const HANDLED: readonly string[] = [
  * Opcodes the compiler can emit that never reach this file. Empty since M9,
  * when `spread` joined the template path: `setClass`, `setStyle` and `setHtml`
  * were here at M4b and are DELETED, not moved — `class`, `style` and
- * `dangerouslySetInnerHTML` are CHANNELS now (§3.5), reached through `setOnce`
+ * `dangerouslySetInnerHTML` are CHANNELS now, reached through `setOnce`
  * / `setLive` / `setOpaque` like every other name.
  */
 export const OFF_TEMPLATE: readonly string[] = [];
@@ -263,14 +264,14 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
       bindValue(s, nodes[op[1]] as Element, op[2], op[3], slots[op[4]]);
       return;
 
-    // §3.8. The slot is a nullary thunk over the value the author wrote, and
+    // The slot is a nullary thunk over the value the author wrote, and
     // the runtime is what tells a URL from a submit handler — which is the
     // whole point of the op, so the interpreter hands it over unread.
     case "formAction":
       formAction(s, nodes[op[1]] as HTMLFormElement, slots[op[2]]());
       return;
 
-    // §3.13 item 1: the one channel whose NAMES are runtime data. `live` is the
+    // The one channel whose NAMES are runtime data. `live` is the
     // compiler saying the source may change, and it is the same bit that makes
     // the DOM backend hand `spread` a thunk instead of an object.
     case "spread":

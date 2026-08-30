@@ -15,18 +15,14 @@
  * }
  * ```
  *
- * Shapes taken from their source: `createFileRoute('/posts/$postId')({…})` and
- * `Route.useLoaderData()` are `examples/react/start-basic/src/routes/
- * posts.$postId.tsx:6,17`; `createRootRoute({ head, shellComponent, … })` is
- * that example's `routes/__root.tsx:15`; the curried
- * `createRootRouteWithContext<T>()({…})` is `router-core/src/root.ts`. The
- * options object is `FileBaseRouteOptions & UpdatableRouteOptions`
- * (`router-core/src/route.ts:1205`), which is what `RouteDefinition` already
- * spells out.
+ * The shapes are TanStack's: `createFileRoute('/posts/$postId')({…})`,
+ * `Route.useLoaderData()`, `createRootRoute({ head, shellComponent, … })` and
+ * the curried `createRootRouteWithContext<T>()({…})`. The options object is
+ * what `RouteDefinition` already spells out.
  *
  * THE ARGUMENT IS THE ROUTE ID, not a pattern to be parsed — `/posts/$postId`
  * for a leaf, `/posts/` for that route's index, `/posts` for the layout. barq
- * derives the same ids from filenames (`compiler-rs/src/routes.rs`), and the
+ * derives the same ids from filenames, and the
  * generator REWRITES this literal in place when a file is renamed, so it is
  * never hand-maintained. Nothing at runtime parses it; it is what the
  * route-scoped hooks below check themselves against.
@@ -187,7 +183,7 @@ export function createRootRoute<Data = unknown, Params = Record<string, string>,
 /**
  * The root route, with the type of the context every route inherits.
  *
- * Curried for the reason theirs is (`router-core/src/root.ts`): TypeScript has
+ * Curried for the reason theirs is: TypeScript has
  * no partial type-argument inference, so the context has to be named in a call
  * that infers nothing else.
  */

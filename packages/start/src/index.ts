@@ -47,8 +47,7 @@ export { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } f
 /**
  * Sessions: a sealed cookie, with no store behind it.
  *
- * The interface is TanStack's (`start-server-core/src/session.ts`); the SEALING
- * is not — AES-GCM through WebCrypto rather than iron's AES-CBC plus a separate
+ * The interface is TanStack's; the SEALING is not: AES-GCM through WebCrypto rather than iron's AES-CBC plus a separate
  * HMAC, which costs no dependency and has no encrypt-then-MAC composition to get
  * wrong. A cookie sealed by one does not open in the other, and `session.ts`
  * says so where it can be read.
@@ -176,8 +175,7 @@ export type Middleware = (next: MiddlewareNext) => Promise<unknown>;
  *
  * `next({ context })` MERGES into what the handler is handed, which is how a
  * middleware that authenticates hands the session down without a module-level
- * store — theirs is `next({ context: { user } })`
- * (`start-client-core/src/createMiddleware.ts`). `next()` with no argument is
+ * store, which is theirs too. `next()` with no argument is
  * unchanged and is what every existing middleware writes, so nothing had to
  * move: the chain is still compared by closure identity, which is what the
  * route-action manifest depends on.
@@ -187,8 +185,8 @@ export type MiddlewareNext = (options?: {
 }) => Promise<unknown>;
 
 /**
- * What a handler is handed — TanStack's shape
- * (`start-basic/src/utils/posts.tsx:12`, `.handler(async ({ data }) => …)`).
+ * What a handler is handed, which is TanStack's shape:
+ * `.handler(async ({ data }) => …)`.
  *
  * `context` is what the middleware chain contributed, merged outermost-first.
  * `signal` aborts with the request, so a handler can hand it to `fetch` and a
@@ -236,9 +234,8 @@ export interface ServerFnBuilder<In, Out> {
  * `method` is here so a function copied from a TanStack application is a
  * TYPE error rather than a silently different program — and `"GET"` is not
  * assignable, deliberately. A server function reachable by navigation is a link
- * that mutates: RedwoodSDK shipped exactly that (CVE-2026-39371, CVSS 8.1),
- * where a `<a href>` became a one-click mutation carrying `SameSite=Lax`
- * cookies. `server.ts` answers 405 to anything but POST and says so there too.
+ * that mutates: RedwoodSDK shipped exactly that, where an `<a href>` became a
+ * one-click mutation carrying `SameSite=Lax` cookies. `server.ts` answers 405 to anything but POST and says so there too.
  * The option exists to be REFUSED with a reason, which is the only honest thing
  * to do with an option barq will not implement.
  */
@@ -257,8 +254,8 @@ export function createServerFn(options: ServerFnOptions = {}): ServerFnBuilder<u
   if (options.method !== undefined && options.method !== "POST") {
     throw new TypeError(
       `[barq] createServerFn({ method: ${JSON.stringify(options.method)} }) — a server function ` +
-        "answers POST only. A mutation reachable by navigation is a link that mutates, which is " +
-        "CVE-2026-39371 (CVSS 8.1). Fetch read-only data from a route `loader` instead.",
+        "answers POST only. A mutation reachable by navigation is a link that mutates. Fetch " +
+        "read-only data from a route `loader` instead.",
     );
   }
   const built: Built<unknown, unknown> = {

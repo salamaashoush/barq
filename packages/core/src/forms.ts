@@ -1,6 +1,6 @@
 /**
- * `CODESIGN.md` §3.10 — the two halves of a form write that no runtime-only
- * design can get right, and the reason `bind:` is compiler syntax.
+ * The two halves of a form write that no runtime-only design can get right, and
+ * the reason `bind:` is compiler syntax.
  *
  * 1. **Compare against the ELEMENT, not against the last framework write.** The
  *    fused record's `!==` guard compares a value against what the framework
@@ -10,7 +10,7 @@
  *    never repairs it — the defining case controlled inputs exist for.
  *
  * 2. **The write that does land must not eat the caret.** `input.value = x`
- *    moves the text entry cursor to the end of the control (HTML §4.10.5.5),
+ * moves the text entry cursor to the end of the control,
  *    so a value written while the user is typing discards their selection and
  *    puts the caret after the last character. This project has shipped that
  *    failure once already, in replace-based hydration, and it was found by

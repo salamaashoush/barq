@@ -84,8 +84,8 @@ describe("a production build", () => {
   test("carries the client's own emitted chunk name into the server half", () => {
     const assets = readdirSync(join(OUT, "client", "assets")).filter((n) => n.endsWith(".js"));
     expect(assets).toHaveLength(1);
-    // Not a reconstruction of the input name — TanStack's #8118 is exactly that
-    // — but the name the client build actually emitted.
+    // The name the client build actually emitted, not a reconstruction of the
+    // input name, which breaks on any `entryFileNames`.
     expect(server).toContain(assets[0]);
   });
 });

@@ -1,9 +1,8 @@
 /**
  * Scroll restoration and view transitions.
  *
- * Both are NEW WORK: `packages/router/DESIGN.md` §D11 records that the deleted
- * router had zero tests for either, so what exists is a list of its bugs. Each
- * test below names the one it pins.
+ * Both are NEW WORK: the router this replaced had zero tests for either, so
+ * what exists is a list of its bugs. Each test below names the one it pins.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";

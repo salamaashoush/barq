@@ -1,6 +1,5 @@
 /**
- * The type-level channel `SEMANTICS.md` §14.1 has been naming since M3, built
- * at M11 for B8 because nothing else in the suite can see a type.
+ * The type-level channel, because nothing else in the suite can see a type.
  *
  * Every other oracle here compiles a fixture and runs it. A JSX ATTRIBUTE TYPE
  * is invisible to all of them: `form-action.tsx` and `sem-form-action-slot.tsx`

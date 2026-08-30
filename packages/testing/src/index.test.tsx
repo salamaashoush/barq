@@ -5,9 +5,8 @@ import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index
 
 // C1: scope first, and these components go through the COMPILER — `preload.ts`
 // registers the native transform for every `.tsx` here, so a prop really is a
-// Cell and a child really is a Block. This file used to run on bun's own JSX
-// transform, which hands plain values instead, so it was measuring a path that
-// §11 Q2 says does not exist.
+// Cell and a child really is a Block. Run on bun's own JSX transform this file
+// gets plain values instead, and measures a path no consumer takes.
 function Counter(_s: Scope | null, props: { initial?: number }) {
   const count = signal(props.initial ?? 0);
   return (

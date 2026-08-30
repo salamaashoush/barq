@@ -3,8 +3,7 @@
  *
  * The point of the file is what it does NOT contain: no `virtual:` specifier and
  * no `#barq-` specifier. The route table arrives by an ordinary relative import,
- * which is theirs exactly (`examples/solid/start-basic/src/router.tsx` imports
- * `./routeTree.gen` and nothing else unusual).
+ * which is theirs exactly.
  */
 
 export const config = {

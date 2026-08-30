@@ -1,18 +1,10 @@
 /**
- * Test setup for `@barqjs/router`.
+ * happy-dom globals, then the barq compiler as a `bun test` loader.
  *
- * Two things, and the second is the milestone's:
- *
- *  1. happy-dom globals, registered before anything captures them.
- *  2. **the barq compiler, wired into `bun test`.** §11 Q2 deletes the
- *     un-compiled authoring path, so a test file that writes JSX has to be
- *     COMPILED like any other consumer. Until M8 this package went through
- *     Bun's `react-jsx` transform into `@barqjs/core/jsx-runtime` — a second
- *     implementation of component invocation, which is the root cause the whole
- *     redesign exists to remove. Now the router's `.tsx` tests reach the runtime
- *     through exactly the emission `packages/kitchen-sink` reaches it through,
- *     so the suite can see the invocation half rather than only the declaration
- *     half.
+ * A `.tsx` test has to be COMPILED like any other consumer. Left to bun's own
+ * `react-jsx` transform it reaches the runtime through a second implementation
+ * of component invocation, so the suite sees the declaration half and never the
+ * invocation half.
  */
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";

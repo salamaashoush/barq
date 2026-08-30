@@ -94,7 +94,7 @@ function hasIndexHtml(root: string): boolean {
  *
  * `#`-prefixed rather than `virtual:` on purpose, and the distinction is
  * TanStack's: `ENTRY_POINTS.router` is `#tanstack-router-entry`
- * (`start-plugin-core/src/constants.ts:23`) and resolves to the project's OWN
+ * and resolves to the project's OWN
  * `src/router.tsx` through `resolve.alias` (`vite/planning.ts:34-39`), while
  * `virtual:` is reserved for modules the plugin synthesises. This is an alias to
  * a real file, so it gets the real-file spelling.
@@ -248,8 +248,7 @@ function defaultClientEntry(): string {
  *
  * TWO LINES, and they are the two lines a project writes by hand when it does
  * override the entry — which is the whole point of the shape. Theirs is the same
- * size and for the same reason (`solid-start/src/default-entry/server.ts`:
- * `createStartHandler(defaultStreamHandler)` and nothing else).
+ * size and for the same reason.
  *
  * IT USED TO NAME FOUR BUILD ARTEFACTS: `virtual:barq-route-assets`,
  * `virtual:barq-client-assets`, `virtual:barq-server-fns` and the generated
@@ -257,8 +256,7 @@ function defaultClientEntry(): string {
  * types of their own, and `packages/kitchen-sink/src/virtual.d.ts` existed for
  * no other purpose than to make that transcription typecheck. They all moved
  * into `createStartHandler`, which is in `@barqjs/router/server` — the same
- * place TanStack keeps theirs (`start-server-core/src/router-manifest.ts:28`,
- * `getServerFnById.ts:1`).
+ * place TanStack keeps theirs.
  *
  * `stream` is still fixed when the handler is built and the prerenderer still
  * needs a non-streaming twin of the SAME declaration, so `createStartHandler`
@@ -570,7 +568,7 @@ export interface BarqStartOptions {
    *
    * VALIDATE AND REJECT, never redispatch. `@vitejs/plugin-rsc` re-runs a
    * mis-routed action through the owning route's middleware; Next.js is REMOVING
-   * action forwarding (#96951) because the action then executes under a
+   * action forwarding because the action then executes under a
    * different request context, and the deeper reason is this repo's own rule —
    * a client-supplied route selecting a middleware chain lets the caller pick
    * the weakest chain that reaches the action.
@@ -744,15 +742,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
      *
      * Keyed on OUR named input rather than on "an entry chunk": TanStack's
      * equivalent is `applyToEnvironment(env => env.name === "client")` with no
-     * identity check, and their #7912 is another framework in the same Vite app
-     * owning an environment called `client` and throwing here.
+     * identity check, which throws when another framework in the same Vite app
+     * owns an environment called `client`.
      */
     generateBundle(_output, bundle) {
       const environment = (this as { environment?: { name?: string } }).environment?.name;
       if (environment === ENVIRONMENTS.server) {
-        // RECORDED, not reconstructed. TanStack's #8118 is a prerender step
-        // rebuilding this name from the input path and dying on any
-        // `entryFileNames`; the build already knows what it wrote.
+        // RECORDED, not reconstructed: rebuilding this name from the input path
+        // dies on any `entryFileNames`, and the build already knows what it
+        // wrote.
         for (const chunk of Object.values(bundle)) {
           if (chunk.type === "chunk" && chunk.isEntry && chunk.name === "server") {
             serverFile = chunk.fileName;
@@ -846,8 +844,8 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const inputs = {
         // NAMED, both of them. The client name is what `generateBundle` above
         // identifies its own entry chunk by, and the ssr name is the emitted
-        // filename — TanStack's #8118 is a prerender step reconstructing that
-        // name from the input path and breaking on any `entryFileNames`.
+        // filename, and reconstructing it from the input path breaks on any
+        // `entryFileNames`.
         //
         // NOT WHEN THE PROJECT WROTE AN `index.html`. `pages: false` is
         // documented as "the server-function half alone … what a project with
@@ -945,10 +943,10 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
        *
        * TanStack spawns `vite.preview()` and fetches over a socket, which costs
        * them a config re-resolved from disk that loses how the parent was
-       * launched (#7593) and a server filename reconstructed from the input
-       * (#8118). What it does NOT cost them — and what this inherits exactly —
-       * is that a platform-targeted bundle cannot be imported into Node at all
-       * (#7481, #6330). That is a limit of importing a server build, not of the
+       * launched, and a server filename reconstructed from the input. What it
+       * does NOT cost them, and what this inherits exactly, is that a
+       * platform-targeted bundle cannot be imported into Node at all. That is a
+       * limit of importing a server build, not of the
        * transport, and it is stated rather than papered over: a project
        * targeting a non-Node runtime prerenders on that runtime or not at all.
        */

@@ -1,5 +1,5 @@
 /**
- * One resource — `CODESIGN.md` §3.8, `SEMANTICS.md` A1–A3.
+ * One resource.
  *
  * `resource(source, fetcher)` is an async memo with three things bolted to the
  * scope that created it rather than to a state machine beside it:
@@ -67,7 +67,7 @@ export interface ResourceOptions<T = unknown> {
   readonly loadingValue?: T;
 }
 
-/** §3.0: a `Cell<T>` with the status channel hung off the function object. */
+/** A `Cell<T>` with the status channel hung off the function object. */
 export interface Resource<T> {
   (): T;
   state: () => ResourceStatus;

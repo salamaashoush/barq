@@ -3,7 +3,7 @@
  *
  * The session lives in the cookie, encrypted and authenticated, so there is no
  * store to run and no sticky routing to arrange. That is h3's design and
- * therefore TanStack's (`start-server-core/src/session.ts`), and the interface
+ * therefore TanStack's, and the interface
  * below is theirs — `{ id, data, update, clear }` from `useSession({ password
  * })` — so the shape a reader already knows is the shape here.
  *

@@ -1,6 +1,6 @@
 /**
  * String-mode server rendering — the runtime half of the compiler's SSR
- * backend (DESIGN §5 / P8b). Every function here builds bytes, and a module
+ * backend. Every function here builds bytes, and a module
  * compiled entirely by the string backend renders with no `document` in scope
  * at all. The one exception is `serializeNode`, the declared bridge for the
  * other direction: a module that FELL BACK to the DOM backend hands a
@@ -12,12 +12,11 @@
  * the compiler's `lower::entity` must agree byte for byte, because the same
  * markup is produced by both.
  *
- * Since M6 it also holds the STRING half of `flow.ts`'s four primitives —
+ * It also holds the STRING half of `flow.ts`'s four primitives —
  * `branch`, `each`, `boundary`, `portal` — under the same names, in the same
- * argument order, reached by the same emitted call. `CODESIGN.md` §3.11: one
- * ABI, two implementations, and the compiler chooses between them by choosing
- * the import SOURCE. That is what deleted `uninlinable_flow` and the
- * whole-module SSR→DOM downgrade behind it.
+ * argument order, reached by the same emitted call: one ABI, two
+ * implementations, and the compiler chooses between them by choosing the import
+ * SOURCE.
  */
 
 import {
@@ -194,8 +193,7 @@ export function esc(value: unknown): string {
   if (typeof value === "string") return escapeText(value);
   if (value === null || value === undefined || typeof value === "boolean") return "";
   if (typeof value === "number" || typeof value === "bigint") return String(value);
-  // §3.0 rules 1-2: a Cell ignores the scope, a Block needs it, one call
-  // serves both. On this backend the scope is only ever handed on.
+  // A Cell ignores the scope, a Block needs it, and one call serves both. On this backend the scope is only ever handed on.
   if (typeof value === "function") return esc((value as (s: unknown) => unknown)(getOwner()));
   if (isArray<unknown>(value)) {
     let out = "";
@@ -208,7 +206,7 @@ export function esc(value: unknown): string {
 }
 
 /**
- * The other half of DESIGN §5's two-strategy coexistence: a module that fell
+ * The other half of the two-strategy coexistence: a module that fell
  * back to the DOM backend hands a string-compiled caller real nodes, and they
  * have to reach the wire as the markup they already are.
  */
@@ -293,7 +291,7 @@ const REFLECTS_AS: Record<string, string> = {
   defaultChecked: "checked",
   readOnly: "readonly",
   // `bind:value` on `<input type="number">` resolves to this property at
-  // compile time (§3.10), and it reaches the wire as the field's `value` — a
+  // compile time, and it reaches the wire as the field's `value` — a
   // number has exactly one decimal spelling, so there is nothing to guess.
   // `valueAsDate` does NOT: the string a date field wants depends on its type
   // (`yyyy-mm-dd`, `yyyy-Www`, …) and `String(date)` is none of them, so it
@@ -315,9 +313,8 @@ const REFLECTS_AS: Record<string, string> = {
  * unchecked and then jumped to its real state when the client set the property.
  *
  * Solid's server takes `value` out of the property branch specifically so it
- * falls through to the ordinary attribute path
- * (`dom-expressions/src/server.js:698`) and writes `checked` when truthy on the
- * line below it.
+ * falls through to the ordinary attribute path, and writes `checked` when it is
+ * truthy.
  */
 const NOT_AN_ATTRIBUTE: Record<string, 1> = {
   children: 1,
@@ -484,9 +481,8 @@ const ATTR_INTERCEPTED: Record<string, 1> = {
  * there is now one.
  *
  * `method="post"` rides along because the endpoint refuses anything else: a
- * form defaults to GET, and a GET-invocable mutation is CVE-2026-39371. The two
- * attributes are one decision, which is why one function writes both — the same
- * shape SvelteKit's `{...form}` spread has.
+ * form defaults to GET, and a GET-invocable mutation is a link that mutates.
+ * The two attributes are one decision, which is why one function writes both.
  *
  * The brand is read through `Symbol.for` rather than imported. `@barqjs/start`
  * depends on this package, so importing it back would be a cycle; the symbol is
@@ -615,7 +611,7 @@ export function content(name: string, value: unknown): string {
 }
 
 // ============================================================================
-// The four primitives, string-valued (CODESIGN.md §3.4, §3.11)
+// The four primitives, string-valued
 // ============================================================================
 //
 // One name, one argument order, two implementations. `flow.ts` splices nodes
@@ -623,9 +619,8 @@ export function content(name: string, value: unknown): string {
 // into, so the compiler hands them `(null, null)` and the range they own is the
 // markup they return.
 //
-// THE RANGE INSTRUCTION, and when it is written. §11 Q4 settled "pay the bytes,
-// get the recovery"; §12 REVERSED it on a measurement — the comments cost 55.7%
-// raw and 7.3% gzipped on a 100-row page — and split the decision in two.
+// THE RANGE INSTRUCTION, and when it is written. The comments cost 55.7% raw
+// and 7.3% gzipped on a 100-row page, which is what split the decision in two.
 //
 // RECOVERY. A range writes `<!--[-->` … `<!--]-->` when, and only when, the
 // module was compiled `hydratable`, which the compiler ships as the `HYDRATE`
@@ -636,7 +631,7 @@ export function content(name: string, value: unknown): string {
 // DETECTION. The KEY inside that open comment — `<!--[b-->` — is written only
 // when the module was compiled `dev` as well, which the compiler ships as
 // `DETECT`. It is the one thing the client cannot re-derive (re-evaluating the
-// condition is unsound: `SEMANTICS.md` H2, it may read data the client has not
+// condition is unsound: it may read data the client has not
 // been seeded with) and the one thing recovery does not need, because a client
 // that claims the wrong arm still writes its own values through the nodes it
 // took. A production page therefore pays for the range and not for the key.
@@ -713,7 +708,7 @@ function range(inner: string, flags: number, key?: unknown): string {
 }
 
 /**
- * §3.11's streaming range: a boundary whose content is still to come, addressed
+ * The streaming range: a boundary whose content is still to come, addressed
  * by the continuation the stream will resume.
  */
 function deferredRange(id: number, inner: string): string {
@@ -742,8 +737,8 @@ function parkedRange(inner: string): string {
  * then a boundary shows its fallback and that is the whole answer — which is
  * what `renderPage`'s second render exists to repair.
  *
- * §3.11: "the Block is re-invocable with its scope, so there is no second code
- * path". The record is exactly that pair.
+ * The Block is re-invocable with its scope, so there is no second code path,
+ * and the record is exactly that pair.
  */
 export interface StreamSink {
   /**
@@ -771,8 +766,8 @@ export function setStreamSink(sink: StreamSink | null): StreamSink | null {
 /**
  * Re-invoke a parked continuation. It is the SAME call `boundary` made when it
  * built the shell — same Block, same scope, same activation — so there is no
- * second code path for a resumed boundary to diverge along, which is §3.11's
- * whole claim about streaming.
+ * second code path for a resumed boundary to diverge along, which is the whole
+ * claim about streaming.
  */
 export function resumeDeferred(body: Block<unknown>, scope: Scope | null): string {
   return activate(scope, body, NO_ARGS, 0, "branch");
@@ -789,7 +784,7 @@ function cellSlot(value: unknown, origin: string): void {
   if (isBlock(value)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
 }
 
-/** A Cell ignores every argument (§3.0 rule 1), so one spelling serves both. */
+/** A Cell ignores every argument, so one spelling serves both. */
 function invokeBlock(scope: Scope | null, body: unknown, args: readonly unknown[]): unknown {
   if (typeof body !== "function") return body;
   return (body as (s: Scope | null, ...rest: readonly unknown[]) => unknown)(scope, ...args);
@@ -877,7 +872,7 @@ export function each<T>(
   refuseASite(parent, anchor, "each");
   cellSlot(src, "each source");
   const value = untrack(src as Cell<unknown>);
-  // The LIST gets a range; a ROW gets nothing. §12: a row's extent is what its
+  // The LIST gets a range; a ROW gets nothing. A row's extent is what its
   // build consumed, because the rows are produced in order and the client walks
   // them from one cursor — so the two comments per row were the client telling
   // itself something it already knew. The list's own range is what tells it
@@ -1026,7 +1021,7 @@ function loadingBoundary(
     if (!(error instanceof NotReadyError)) throw error;
     shown = "";
   }
-  // §3.11's streaming form: the fallback goes out now, and the pair
+  // The streaming form: the fallback goes out now, and the pair
   // `(arm Block, this scope)` goes to the sink so the same Block can be
   // re-invoked when its promises settle. There is no second rendering path —
   // the continuation IS the Block the shell already refused to wait for.
@@ -1099,10 +1094,9 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
 //
 // The short version: `Opt::flow` is a flippable knob and `-O0` turns it off, so
 // at `-O0` every construct is a component call and these are what it calls —
-// 37 of 131 fixtures keep a flow import there, against 0 at `-Ox`. §6 L3 grades
-// the flow pass by rendering the corpus at both levels and requiring the frames
-// to agree, so this file IS the reference the pass is graded against. Deleting
-// it would delete the oracle.
+// 37 of 131 fixtures keep a flow import there, against 0 at `-Ox`. The flow
+// pass is graded by rendering the corpus at both levels and requiring the frames
+// to agree, so this file IS the reference. Deleting it would delete the oracle.
 //
 // Three constructs also still refuse at `-Ox`, so `ssrSwitch`, `ssrMatch` and
 // `ssrDynamic` are reachable from an optimised build too: `Switch` needs
@@ -1110,7 +1104,7 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
 // unrecognised props are the resolved component's rather than the construct's.
 // `passes::flow::admits_spread` states each one where it is enforced.
 
-/** A CELL-slot read (§3.0 rule 2): called with no scope, never with one. */
+/** A CELL-slot read: called with no scope, never with one. */
 function readValue(slot: unknown, origin: string): unknown {
   cellSlot(slot, origin);
   return typeof slot === "function" ? (slot as () => unknown)() : slot;
@@ -1134,7 +1128,7 @@ export function ssrShow(
   const key: Cell<unknown> = keyed
     ? (): unknown => value() || false
     : (): unknown => value() !== false && !!value();
-  // ONE body for every key (§3.4), exactly as `components.ts` writes it: the
+  // ONE body for every key, exactly as `components.ts` writes it: the
   // value is read at ACTIVATION time, which is why the branch takes no slot
   // argument of its own. The DEFAULT is non-keyed, so children get the narrowed
   // accessor; `keyed` hands over the raw value.
@@ -1156,8 +1150,8 @@ export function ssrFor(
     children: (s: Scope | null, item: never, index: never) => unknown;
   },
 ): SsrHtml {
-  // §3.0 rule 1 is `each`'s own (`flow.ts`'s `keyMode`), so the carrier crosses
-  // unresolved and both backends reach one implementation of it.
+  // `keyMode` in `flow.ts` owns the key rule, so the carrier crosses unresolved
+  // and both backends reach one implementation of it.
   return eachOf(s, props.each, props.keyed as Cell<unknown>, props, "For");
 }
 

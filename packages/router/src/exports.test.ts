@@ -10,9 +10,8 @@
  *
  * `packages/start` was worse: it had no `tsdown.config.ts` at all, so only
  * `src/index.ts` was ever built and the `./server`, `./vite` and `./serve`
- * subpaths it advertises resolved to nothing. That is the exact trap
- * `DESIGN-ROUTER.md` §5 warns about, already sprung, and it surfaced only when
- * this package tried to import `@barqjs/start` and tsc could not find its types.
+ * subpaths it advertises resolved to nothing. It surfaced only when this
+ * package tried to import `@barqjs/start` and tsc could not find its types.
  *
  * The check lives here because this is the package that tripped over it.
  */

@@ -12,7 +12,7 @@
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
 
 /**
- * The L2b ownership trace's attachment point (CODESIGN.md §6). `null` until
+ * The L2b ownership trace's attachment point. `null` until
  * `beginOwnershipTrace()` installs a sink.
  *
  * why: a `const` holder rather than an `export let`, and `import type` above
@@ -60,7 +60,7 @@ export class NoOwnerError extends Error {
 }
 
 /**
- * §3.0 rule 3's brand and its enforcement, in one value.
+ * The Block brand and its enforcement, in one value.
  *
  * The brand is POSITIVE: it means "this value requires a scope". An unbranded
  * function is a Cell, or a Block that ignores its scope (an arity-0
@@ -73,7 +73,7 @@ export class NoOwnerError extends Error {
  * where someone remembered to ask, and six of the seven Cell slots on the
  * primitive surface did not — so a Block reaching one ran with `s === undefined`
  * and every ambient read inside it resolved against `CURRENT`, which is the
- * Provider bug at the one place §3.0 says nobody would look. The wrapper is one
+ * Provider bug at the one place nobody would look. The wrapper is one
  * closure per DEFINITION site and none per activation.
  *
  * It lives here rather than in `props.ts` for the reason `scope.ts` states at
@@ -137,7 +137,7 @@ export function isBlock(value: unknown): boolean {
 }
 
 /**
- * §3.0 rule 3. A construct invoked without a scope throws and NEVER falls back
+ * A construct invoked without a scope throws and NEVER falls back
  * to the ambient owner: that fallback is the Provider bug reintroduced at the
  * one place nobody would look for it.
  *
@@ -377,9 +377,8 @@ interface ComputedNode<T> extends SignalNode<T> {
   _kind: number; // EFFECT_PURE | EFFECT_RENDER | EFFECT_USER
   _depGen: number; // Bumped when a recompute starts re-reading dependencies
   _cleanup: (() => void) | undefined;
-  // --- Q6: the Scope split. CODESIGN.md §4.2 / §10 Q6. Two slots replace the
-  // six this node used to carry (cleanups, children, disposed, dispose,
-  // _parent, _context).
+  // The Scope split: two slots replace the six this node used to carry
+  // (cleanups, children, disposed, dispose, _parent, _context).
   //
   // The revert is these four edits and nothing else: put the six fields back
   // in the literal below, drop `_owner`/`_scope`, make `hostScope` and
@@ -596,7 +595,7 @@ let clock = 0;
 const defaultContext: ContextRecord = {};
 
 // ============================================================================
-// Scope — the unit of ownership and the unit of death (SEMANTICS.md §2)
+// Scope — the unit of ownership and the unit of death
 // ============================================================================
 
 /**
@@ -683,7 +682,7 @@ export function scopeAllocations(): number {
 let effectsAllocated = 0;
 
 /**
- * The other half of §8's flag gate: `STATIC_KEY` skips an effect and no scope,
+ * The other half of the flag gate: `STATIC_KEY` skips an effect and no scope,
  * so `scopeAllocations` cannot see it and only a wall-clock number was left.
  */
 export function effectAllocations(): number {
@@ -760,7 +759,7 @@ export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
 }
 
 /**
- * O2/§3.0: open a fresh child of `parent`, make it current, and hand it back.
+ * Open a fresh child of `parent`, make it current, and hand it back.
  * `exit` is the other half and is required on both paths (O4.1).
  *
  * `parent` has no default, deliberately. O4.5: a primitive that reads the
@@ -794,9 +793,9 @@ export function requireScope(scope: Scope | null | undefined, origin: string): S
 }
 
 /**
- * §3.0 rule 2 / §3.13: a CELL-slot read. A Cell is called with no scope and
- * yields its value; a Block reaching here would be called with `s === undefined`
- * and rule 3 says that throws rather than silently building under `CURRENT` or
+ * A CELL-slot read. A Cell is called with no scope and yields its value; a
+ * Block reaching here would be called with `s === undefined`, which throws
+ * rather than silently building under `CURRENT` or
  * silently yielding `undefined`. The brand makes it a property test, so the
  * throw names both ends instead of waiting for a downstream `TypeError`.
  */
@@ -938,7 +937,7 @@ export function ownRange(scope: Scope, remove: () => void): void {
 }
 
 /**
- * X6/§3.3: share the parent record by reference until the first provide, then
+ * Share the parent record by reference until the first provide, then
  * `Object.create` once. A scope that provides nothing costs nothing, and a
  * provider costs one prototype link regardless of how many keys are in scope.
  */
@@ -1000,11 +999,11 @@ function lookupNodeContext(node: ComputedNode<unknown>, key: string | symbol): u
  * 14–30% slowdown on the DOM rows — and let an unrelated later `render` adopt
  * and destroy work it had nothing to do with.
  *
- * **This list dies with M8, not M3.** M3 made the COMPILED path build under the
- * root, but the un-compiled consumers (`packages/extra`, `packages/kitchen-sink`)
- * still build ownerless and their `onCleanup` has nowhere else to go. Once §8
- * puts them on the barq compiler, `adoptOrphans` has nothing to find and the
- * three functions below go with it. Pinned in extra/src/m8-convention.test.ts.
+ * **This list dies once every consumer is compiled.** The COMPILED path builds
+ * under the root, but an un-compiled consumer still builds ownerless and its
+ * `onCleanup` has nowhere else to go. Once they all go through the barq
+ * compiler, `adoptOrphans` has nothing to find and the three functions below go
+ * with it.
  */
 const orphans: Kid[] = [];
 
@@ -2285,8 +2284,8 @@ export function computed<T>(
 }
 
 /**
- * `CODESIGN.md` §3.9 — writable derived state that RE-SEEDS when its source
- * changes. Written to, it holds the write; the next change of `source` recomputes
+ * Writable derived state that RE-SEEDS when its source changes. Written to, it
+ * holds the write; the next change of `source` recomputes
  * over it and the write is gone.
  *
  * One primitive covering three problems the ergonomics work had listed
@@ -2965,10 +2964,8 @@ const hydrationData = new Map<symbol | null, Map<string, unknown>>();
  *
  * Solid's shape, and the reason it is better than the waiter channel it
  * replaced. `registerFragment` writes the key into the payload the moment a
- * boundary parks — `serializer.write(key, p)` with `p` still pending
- * (`dom-expressions/src/server.js`) — so the client's store holds a PROMISE
- * rather than a hole, and `sharedConfig.load(id)` returning that promise IS the
- * wait (`solid/src/render/Suspense.ts:144-167`).
+ * boundary parks, with the promise still pending, so the client's store holds a
+ * PROMISE rather than a hole and the read of that promise IS the wait.
  *
  * barq used to emit a seed only once a value SETTLED, so a key still in flight
  * was simply absent and a second mechanism had to stand in for it. Registering
@@ -3341,9 +3338,9 @@ export function refresh(target: () => unknown): void {
  * override). The signal read tests this one global before doing anything
  * unusual, so the ordinary path stays two branches.
  *
- * Snapshot capture used to be the other occupant. M9 deleted it (§4.1): it had
+ * Snapshot capture used to be the other occupant. M9 deleted it: it had
  * no consumer outside its own test, and it cost a `_snapshot` slot on EVERY
- * signal node — which §4.2 states as a hard budget, because every field is
+ * signal node, which is a hard budget because every field is
  * present on every instance to keep the shape monomorphic.
  */
 let slowSignalRead = 0;
@@ -3423,7 +3420,7 @@ export function markInMotion(target: () => unknown): () => void {
 }
 
 // ============================================================================
-// Overrides and lanes (SEMANTICS.md A5)
+// Overrides and lanes
 // ============================================================================
 
 /**
@@ -3763,7 +3760,7 @@ export function hasContext<T>(context: Context<T>, owner: Owner | null = getOwne
 }
 
 /**
- * X2/§3.0: what a scope stores for a context key is a Cell. Every write site
+ * What a scope stores for a context key is a Cell. Every write site
  * that can take a plain value wraps here, so a stored function is always the
  * Cell and never a value that happens to be callable — the ambiguity that had
  * `getContext` hand back the accessor while `read` handed back its result.
@@ -3773,7 +3770,7 @@ export function cellOf(value: unknown): () => unknown {
 }
 
 /**
- * The user-facing context read, returning a Cell — §3.0's rule applied to the
+ * The user-facing context read, returning a Cell: the same rule applied to the
  * context channel, and the form every compiled read takes.
  *
  * The name is Solid's, and so is the split: `@solidjs/signals` marks its
@@ -3783,7 +3780,7 @@ export function cellOf(value: unknown): () => unknown {
  * what components call, and it answers with the accessor so the read stays
  * live. Two readers, two questions.
  *
- * It is also the one `use*` name §13 keeps, and the reason is that it is not an
+ * It is also the one `use*` name kept, and the reason is that it is not an
  * alias of anything: the four that went — `useState`, `useMemo`, `useEffect`,
  * `useResource` — were one-line wrappers over `signal`, `computed`, `effect`
  * and `resource`. Reading a value the OWNER TREE provides is its own operation.

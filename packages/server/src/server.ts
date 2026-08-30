@@ -133,10 +133,8 @@ export async function renderPage(
   // resumes it and patches the settled markup into the bytes.
   //
   // What this REPLACED was a second full render of the page, which is a
-  // mechanism neither reference has — Solid's `renderToStringAsync` IS
-  // `renderToStream` awaited (`dom-expressions/src/server.js:63-73`), and
-  // TanStack renders one stream and awaits it for a bot
-  // (`solid-router/src/ssr/renderRouterToStream.tsx:124-129`). It cost two real
+  // mechanism neither Solid nor TanStack has: both render one stream and await
+  // it when a whole document is wanted. The second render cost two real
   // defects: the second pass built under a fresh root so every auto-key missed
   // and crawlers and the prerenderer were served SKELETONS, and one extra pass
   // settles exactly one level of nesting, so a boundary inside a boundary
@@ -303,12 +301,12 @@ async function settleNested<T>(value: T, seen: WeakSet<object> = new WeakSet()):
   return moved ? (out as T) : value;
 }
 
-// ── streaming (CODESIGN.md §3.11) ────────────────────────────────────────
+// ── streaming ────────────────────────────────────────────────────────────
 //
-// "Streaming falls out of Blocks: an unready boundary flushes
-// `<!--[b:7-->fallback<!--]-->` plus a continuation record `(Block, Scope)`;
+// Streaming falls out of Blocks: an unready boundary flushes
+// `<!--[b:7-->fallback<!--]-->` plus a continuation record `(Block, Scope)`, and
 // when its promises settle the server flushes a `<template>` and a swap. The
-// Block is re-invocable with its scope, so there is no second code path."
+// Block is re-invocable with its scope, so there is no second code path.
 //
 // That is the whole implementation. The shell is one ordinary string render
 // with a SINK installed; every unready `Loading` parks its content Block and
@@ -373,12 +371,10 @@ const STREAM_GRACE = 1_000;
 /**
  * The SERVER half of the same swap, on a string that has not been flushed yet.
  *
- * This is what makes one renderer serve both arms, which is how Solid and
- * TanStack do it and what barq did not: Solid's stream replaces a placeholder in
- * place while `!firstFlushed` (`dom-expressions/src/server.js`'s `replacePlaceholder`)
- * and only emits `<template>` + `$df` once bytes are gone; TanStack renders one
- * stream and, for a bot, simply awaits it
- * (`solid-router/src/ssr/renderRouterToStream.tsx:124-129`).
+ * One renderer serves both arms, which is how Solid and TanStack do it: a
+ * stream replaces a placeholder in place until the first bytes are gone, and
+ * emits a `<template>` plus a swap after that. Awaiting the same stream is what
+ * produces a whole document.
  *
  * barq used to answer the buffered case by RENDERING THE PAGE A SECOND TIME and
  * hoping every value was cached under the same key. It cost two real defects:
@@ -430,8 +426,8 @@ export function patchDeferredRange(
  * The client half of a swap: replace the range between `<!--[b:n-->` and its
  * matching `<!--]-->` with the template that just arrived.
  *
- * It reads the boundary comments the string backend wrote, which is the whole
- * reason §11 Q4 paid the bytes for them. Nested ranges are why the scan counts
+ * It reads the boundary comments the string backend wrote, which is what those
+ * bytes are paid for. Nested ranges are why the scan counts
  * depth rather than stopping at the first close: a fallback may itself contain a
  * range, and its `<!--]-->` is not this boundary's.
  *
@@ -568,8 +564,7 @@ export function renderToStream(
     }
     // …and the keys still IN FLIGHT, as the promises themselves. This is Solid's
     // `registerFragment`: `serializer.write(key, p)` the moment a boundary parks,
-    // so the client's store holds something to AWAIT rather than a hole
-    // (`dom-expressions/src/server.js`, and `Suspense.ts:144-167` consumes it).
+    // so the client's store holds something to AWAIT rather than a hole.
     //
     // Sent ONCE, like any other key: the promise is the value, and
     // `crossSerializeStream` emits its resolution as a later statement, so a
@@ -705,8 +700,8 @@ export function renderToStream(
         // `hydrationScriptFor` installs it for `renderPage`, and nothing
         // installed it here — so the DEFAULT page (`createPageHandler` streams
         // unless told otherwise) dropped every click and keystroke made before
-        // hydration, and `SEMANTICS.md` H6's whole claim-based replay was
-        // unreachable on the path most pages take. Counted in the emitted bytes:
+        // hydration, so claim-based replay was unreachable on the path most
+        // pages take. Counted in the emitted bytes:
         // 1 occurrence on a non-streamed page, 0 on a streamed one.
         //
         // Right after the shell, which is the earliest a stream can manage —
@@ -883,7 +878,7 @@ export function escapeScriptPayload(json: string): string {
  *
  * Claiming preserves the node, so the target is recorded as the NODE ITSELF.
  * That is what puts `keydown` and the typed value and the caret position in the
- * queue at all; `SEMANTICS.md` H6 is the rule it exists for.
+ * queue at all, which is the rule it exists for.
  *
  * A node reference and not a child-index path, and the difference is a bug this
  * shipped with: `__BARQ_SWAP__` replaces a settled boundary's fallback between

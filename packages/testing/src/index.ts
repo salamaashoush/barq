@@ -2,9 +2,9 @@
  * Everything `./pure.ts` exports, plus the `afterEach(cleanup)` that keeps one
  * test's DOM out of the next one's.
  *
- * React Testing Library's split exactly (`rtl/src/index.js`): the
- * implementation is `pure`, and this module does nothing but wire the hook and
- * re-export. Two escape hatches, both theirs — import `@barqjs/testing/pure`, or
+ * React Testing Library's split exactly: the implementation is `pure`, and this
+ * module does nothing but wire the hook and re-export. Two escape hatches, both
+ * theirs — import `@barqjs/testing/pure`, or
  * set `BARQ_SKIP_AUTO_CLEANUP`.
  *
  * IT USED TO BE A COMMENT TELLING YOU TO DO THIS YOURSELF, which meant a suite

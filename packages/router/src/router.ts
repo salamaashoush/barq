@@ -268,9 +268,8 @@ export interface RouterConfig {
    * The route table, as `routeTree.gen.ts` exports it.
    *
    * Named for what it IS rather than for what it holds, which is TanStack's
-   * name (`createRouter({ routeTree })`, `examples/react/start-basic/src/
-   * router.tsx:7`) and worth matching: an application arriving from theirs
-   * writes one word differently in one place, or none at all.
+   * name and worth matching: an application arriving from theirs writes one
+   * word differently in one place, or none at all.
    */
   readonly routeTree: readonly AnyRouteDefinition[];
   readonly history?: History;
@@ -296,9 +295,9 @@ export interface RouterConfig {
    * `throw new Response(401)` rendered as an error and answered 200.
    *
    * A callback rather than an ambient store, because it must be request-scoped
-   * and a module-level "current answer" is GHSA-hgv7-v322-mmgr — one request's
-   * answer handed to another under load. The router state is already
-   * request-scoped on the server, so the callback rides it.
+   * and a module-level "current answer" hands one request's answer to another
+   * under load. The router state is already request-scoped on the server, so
+   * the callback rides it.
    */
   readonly onLoaderError?: (error: unknown) => void;
 }
@@ -490,10 +489,9 @@ export interface RouterState {
   /**
    * A navigation has been asked for and has not committed.
    *
-   * Not a loading counter — `packages/router/DESIGN.md` rules that out, because
-   * loading is a boundary per route depth. This is the gap between `navigate`
-   * being called and the location changing, which is where blockers, guards and
-   * `beforeLoad` run.
+   * Not a loading counter, because loading is a boundary per route depth. This
+   * is the gap between `navigate` being called and the location changing, which
+   * is where blockers, guards and `beforeLoad` run.
    */
   readonly isNavigating: Cell<boolean>;
   /** Drop every cached loader result and re-read the current location. */

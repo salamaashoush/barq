@@ -1,12 +1,12 @@
 /**
  * The flow components — the adapters `passes::flow` falls back to.
  *
- * ## Why these exist, and why the deletion §4.1 asks for cannot happen
+ * ## Why these exist, and why they cannot be deleted
  *
- * `CODESIGN.md` §4.1 lists the fourteen for deletion. M9 deleted them, put them
- * back, and recorded the blocker as one compiler gap — a construct whose props
- * arrive through a SPREAD stays a component call. M10 closed that gap for ten of
- * the thirteen and found the row was wrong for a reason that has nothing to do
+ * Fourteen of these were listed for deletion. They were deleted, put back, and
+ * the blocker recorded as one compiler gap: a construct whose props arrive
+ * through a SPREAD stays a component call. Ten of the thirteen were closed
+ * later, and the row turned out to be wrong for a reason that has nothing to do
  * with spreads.
  *
  * **`Opt::flow` is a flippable knob and `-O0` turns it off.** At `-O0` the flow
@@ -19,10 +19,10 @@
  *          Reveal 2 · Await 1 · Dynamic 1 · ErrorBoundary 1 · Loading 1
  *          Portal 1 · Suspense 1
  *
- * And `-O0` is not a debug convenience: §6 L3 grades every optimisation by
+ * And `-O0` is not a debug convenience: every optimisation is graded by
  * rendering the corpus at both levels and requiring the frames to agree, so the
  * `-O0` emission is the flow pass's own reference. Deleting these would delete
- * what the pass is graded against. The row is struck, not deferred.
+ * what the pass is graded against.
  *
  * Three constructs also still refuse at `-Ox`, each for a stated reason in
  * `passes::flow::admits_spread`, so their adapters are reachable from an
@@ -36,7 +36,7 @@
  * emitted `_$insert($s, el, For($s, _$props([…])))` — an adapter frame inside an
  * insert hole, at a position the compiler already knew. Now it emits
  * `_$each($s, el, null, …)` against a binding the source list is evaluated into
- * once, which is the `(parent, anchor)` pair §3.4 exists to deliver.
+ * once, which is the `(parent, anchor)` pair the lowering exists to deliver.
  *
  * On `control-flow-for-keyed-spread`, the one fixture that had this shape
  * before: effects 3 created / 8 runs, unchanged; clones 3, unchanged; emitted
@@ -61,7 +61,7 @@
  * `children()`, `dynamic()` and the `DocumentFragment` `Fragment` built, which
  * C8 replaced with an array.
  *
- * `For`'s copy of §3.0 rule 1 went at M10: `each`'s own `keyMode` resolves the
+ * `For`'s own copy of the arity rule is gone: `each`'s `keyMode` resolves the
  * keying carrier for both the adapter and the compiled path, so there is one
  * implementation of it rather than three.
  */
@@ -170,7 +170,7 @@ export type DynamicComponent =
   | keyof HTMLElementTagNameMap
   | ((s: Scope | null, props: Record<string, unknown>) => JSXElement);
 
-/** A CELL-slot read (§3.0 rule 2): the value is called with no scope. */
+/** A CELL-slot read: the value is called with no scope. */
 function readValue(slot: unknown, origin: string): unknown {
   return readSlot(slot, origin);
 }
@@ -234,8 +234,8 @@ export function Show(
  *    through `C extends (scope, props: infer Q) => any`, and `infer Q` against a
  *    GENERIC signature instantiates its parameters at their constraints. Type
  *    arguments are inferred from a component's FIRST parameter, which under
- *    §3.2's calling convention is the scope. So no generic barq component can
- *    infer anything from its JSX attributes, whatever its props type says.
+ * the calling convention is the scope. So no generic barq component can infer
+ * anything from its JSX attributes, whatever its props type says.
  *
  * The props stay permissive, which is what `Show` and `Repeat` also do, and a
  * call site that wants the type annotates its callback —
@@ -245,10 +245,10 @@ export function For(
   _s: Scope | null,
   props: { each: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
 ): JSXElement {
-  // §3.0 rule 1 — a Cell declares no parameter and a key function declares one
-  // — is `each`'s own, so the carrier goes through unresolved. This adapter and
-  // the compiler's spread lowering therefore reach the primitive with the same
-  // argument rather than with two implementations of one rule.
+  // The arity rule — a Cell declares no parameter and a key function declares
+  // one — is `each`'s own, so the carrier goes through unresolved. This adapter
+  // and the compiler's spread lowering therefore reach the primitive with the
+  // same argument rather than with two implementations of one rule.
   return each(
     _s,
     null,
@@ -395,9 +395,9 @@ export function Errored(
  * and an un-compiled consumer has to get something that works. That is the same
  * arrangement `Portal` and `Show` are in.
  *
- * Solid's is `NoHydration` too (`dom-expressions/src/server.js:569`), and it is
- * deliberately NOT one of the ten control-flow constructs: it decides who claims
- * the markup, not what the page contains.
+ * Solid's is `NoHydration` too, and it is deliberately NOT one of the ten
+ * control-flow constructs: it decides who claims the markup, not what the page
+ * contains.
  */
 export function NoHydration(_s: Scope | null, props: { children: unknown }): JSXElement {
   return island(_s, null, null, props.children as Block<unknown>);
@@ -416,9 +416,9 @@ export function Portal(
 
 /**
  * `<Dynamic component={c}>` — a `branch` keyed on the component VALUE with one
- * body for every key, and `dynamic` inside it. §3.13 item 4: the tag or component
- * cannot be resolved at compile time, so the choice is made at run time and
- * nowhere else. The swap and the teardown are the branch's.
+ * body for every key, and `dynamic` inside it. The tag or component cannot be
+ * resolved at compile time, so the choice is made at run time and nowhere else.
+ * The swap and the teardown are the branch's.
  */
 export function Dynamic(
   _s: Scope | null,
@@ -511,9 +511,9 @@ export function lazy<P = unknown>(
    * Invoking the component reads the cell too, but a caller that invokes it
    * inside `untrack` establishes no dependency — so the `NotReadyError` parks a
    * boundary that the module landing can never wake. `@barqjs/router` is exactly
-   * that caller: `CODESIGN.md` §3.9 makes component bodies run untracked on
-   * purpose, so a route reading `props.params()` does not resubscribe its whole
-   * subtree. Measured before this existed: navigating to a code-split route
+   * that caller: component bodies run untracked on purpose, so a route reading
+   * `props.params()` does not resubscribe its whole subtree. Measured before
+   * this existed: navigating to a code-split route
    * showed its fallback forever, and every route a file-based table generates is
    * code-split.
    *

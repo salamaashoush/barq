@@ -1,15 +1,7 @@
 /**
- * `query.ts` had no test file either, and that is exactly why its own C1 hole
- * was silent: `QueryClientProvider(props)` took props in the scope's position
- * and nothing observed it.
- *
- * Two things are asserted here that were not assertable before:
- *
- *  1. the provider is a REAL provider — it forks the context on its own
- *     instance scope and builds `children` inside it, so a consumer sees the
- *     client that is above it rather than whichever one was set last;
- *  2. two clients can coexist on one page, which is the property a module
- *     global cannot have and the same one the router's registry cost it.
+ * Two properties a module-global client cannot have: the provider forks the
+ * context on its own instance scope, so a consumer sees the client above it
+ * rather than whichever was set last, and two clients can coexist on one page.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -119,12 +111,8 @@ describe("the client is reached through the scope chain", () => {
     dispose();
   });
 
-  // Re-cut from "setQueryClient is an application default, not the resolution
-  // mechanism". The application default was `contextState() || getMainBrowserRouter()`
-  // wearing a `catch`: a module-level `let` that answered whenever the scope
-  // chain did not. It is deleted, so what this now asserts is that the provider
-  // is the ONLY mechanism — a consumer with nothing above it fails loudly rather
-  // than silently reaching a global.
+  // The provider is the ONLY mechanism: a consumer with nothing above it fails
+  // loudly rather than silently reaching a module-level default.
   test("the provider is the only mechanism, and its absence is an error", () => {
     const host = document.createElement("div");
     let thrown: unknown = null;

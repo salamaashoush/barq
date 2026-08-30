@@ -5,9 +5,8 @@
  * are different objects. A construct is handed scope A while an unrelated scope
  * B is ambient; a Block is invoked with no scope at all; `pin` is given
  * something to override. An implementation that resolves ownership from
- * `CURRENT` passes none of them, which is the whole point — the previous shape
- * of this suite could not tell the two apart, and `SEMANTICS.md` O2/O4.5 had no
- * executable channel because of it.
+ * `CURRENT` passes none of them, which is the whole point: the previous shape
+ * of this suite could not tell the two apart.
  */
 
 import { describe, expect, test } from "bun:test";

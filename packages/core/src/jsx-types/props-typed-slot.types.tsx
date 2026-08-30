@@ -1,12 +1,9 @@
 /**
- * C4 — props are read by CALLING, and the type says so.
+ * Props are read by CALLING, and the type says so.
  *
  * The rule is checkable only in the type channel: both of its falsification
  * procedures are "MUST be a type error", and a type error is invisible to every
- * other oracle here, all of which compile a fixture and run it. §14.1 has named
- * `sem-props-typed-slot.d.test.ts` since M3 as the one type-level test the
- * worklist wants; the channel it needed arrived at M11 for B8, so this is that
- * test in this directory's shape.
+ * other oracle here, all of which compile a fixture and run it.
  *
  * `form-action-types.test.ts` typechecks this whole directory and asserts BOTH
  * directions — the positives compile, and every `@ts-expect-error` still FIRES.
@@ -18,7 +15,7 @@
 import type { JSX } from "../jsx-runtime.ts";
 import type { Block, Cell, Scope } from "../scope.ts";
 
-// The three carriers, in the shapes §3.0 and C4 declare them.
+// The three carriers, in the shapes the rules declare them.
 declare const cellOfString: Cell<string>;
 declare const blockValue: Block<JSX.Element>;
 declare const scopeValue: Scope;

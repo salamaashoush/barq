@@ -1,5 +1,5 @@
 /**
- * The M2 ownership machinery: `SEMANTICS.md` §2 (O) and §4 (X).
+ * The ownership machinery.
  *
  * The L1 fixtures in `packages/compiler-rs/fixtures/semantics/` ask these
  * questions of COMPILED code, which is what makes them the oracle. These ask

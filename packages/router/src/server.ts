@@ -91,9 +91,8 @@ import {
  *
  * `renderDepth` in `components.ts` is the DOM one — it calls `branch` and
  * `boundary`, which build nodes. The string backend has its own implementations
- * of the same constructs (`ssrLoading`), and CODESIGN §3.11's "one ABI means no
- * fallback cliff" is what makes a userland component drivable by both: every
- * component is `(s, props) -> Out` and `Out` is a string here.
+ * of the same constructs (`ssrLoading`), and one ABI means no fallback cliff:
+ * every component is `(s, props) -> Out`, and `Out` is a string here.
  *
  * There is no `branch` on this side and none is needed. A string render has no
  * later frame to re-key into, so the chain is walked once, outermost first,
@@ -436,9 +435,8 @@ export interface PageHandlerOptions {
  *
  * Not a second route system: `server.handlers` is an option on an ordinary
  * route, so `/api/users` is a file under `src/routes` like any other and a
- * route may serve BOTH a page and an endpoint. TanStack's arrangement
- * (`examples/react/start-basic/src/routes/api/users.ts:44`) and their dispatch
- * rules, which are worth having for the reasons each one states.
+ * route may serve BOTH a page and an endpoint. TanStack's arrangement, and
+ * their dispatch rules, which are worth having for the reasons each one states.
  */
 
 /** The `Allow` header for a route, so a 405 says what it WOULD accept. */
@@ -480,9 +478,8 @@ async function runRouteHandlers(
 
   const method = request.method.toUpperCase() as RouteMethod;
   // RFC 9110 §9.3.2: HEAD must answer with the same header fields as GET, so a
-  // route with a GET and no HEAD gets one for free — and its body is stripped
-  // below rather than sent. Theirs resolves it in the same order
-  // (`createStartHandler.ts:932-937`).
+  // route with a GET and no HEAD gets one for free, and its body is stripped
+  // below rather than sent. Theirs resolves it in the same order.
   const handler =
     method === "HEAD"
       ? (handlers.HEAD ?? handlers.GET ?? handlers.ANY)
@@ -632,7 +629,7 @@ export function createPageHandler(
           : "0";
 
     // Request-scoped, so the answer a loader throws cannot reach another
-    // request. A module-level "current answer" is GHSA-hgv7-v322-mmgr.
+    // request. A module-level "current answer" hands one request's to the next.
     let answer: Response | null = null;
     // `notFound()` is an ANSWER, not a failure: the page still renders (its
     // `notFoundComponent` does), and what changes is the status. Tracked
@@ -787,9 +784,8 @@ export function createPageHandler(
                   //
                   // MEASURED, on a 300 ms loader: an object head streams its
                   // first byte at 5 ms, a function head at 301 ms. Theirs waits
-                  // for the whole matched chain on every page
-                  // (`start-server-core/src/createStartHandler.ts:688`), so a
-                  // static title pays there and does not here.
+                  // for the whole matched chain on every page, so a static
+                  // title pays there and does not here.
                   loaderData:
                     ssr && typeof route.definition.head === "function"
                       ? await settleLoader(state, route, params, session)
@@ -1090,8 +1086,8 @@ export function contextScript(
  *
  * The URL is a PARAMETER rather than something the caller reads off an ambient
  * request, because the dev server needs it and two requests are in flight at
- * once on any real server. A module-level "current request" is
- * GHSA-hgv7-v322-mmgr, and it would be that here for the sake of one string.
+ * once on any real server. A module-level "current request" hands one request's
+ * URL to another, for the sake of one string.
  */
 async function shellOf(options: PageHandlerOptions, shell: string, url: URL): Promise<string> {
   return options.transformShell === undefined ? shell : await options.transformShell(shell, url);
@@ -1150,9 +1146,9 @@ export interface StartHandler {
  * The whole server entry, as one call.
  *
  * `export default createStartHandler()` is the entire file, generated or
- * hand-written. That is TanStack's shape —
- * `solid-start/src/default-entry/server.ts` names no manifest, no assets and no
- * route tree — and it is why THIS function holds the build artefacts.
+ * hand-written. That is TanStack's shape, whose own default entry names no
+ * manifest, no assets and no route tree, and it is why THIS function holds the
+ * build artefacts.
  *
  * WHAT IS AND IS NOT A VIRTUAL MODULE HERE. `virtual:barq-route-assets`,
  * `virtual:barq-client-assets` and `virtual:barq-server-fns` are things the
@@ -1160,8 +1156,7 @@ export interface StartHandler {
  * imported here rather than by an application. `#barq-router-entry` is an ALIAS
  * to the project's own `src/router.ts` — a real file, importing
  * `./routeTree.gen` by a plain relative path. The route table is not hidden
- * behind a specifier only the bundler can resolve; that is theirs too
- * (`examples/solid/start-basic/src/router.tsx`).
+ * behind a specifier only the bundler can resolve; that is theirs too.
  *
  * The imports are DYNAMIC and the handler is built on first request. Two
  * reasons, both load-bearing: this package's own suite imports this module with

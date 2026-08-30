@@ -1,13 +1,7 @@
 /**
- * `hooks.ts` had no test file, which `untested-surface.test.ts` registered as
- * M8's debt. This is that debt paid.
- *
- * These fifteen are convention-agnostic — plain functions over the core
- * primitives, no component, no props object, no JSX — so nothing here changed
- * with the calling convention. What they DO need, and never had asserted, is an
- * owner: every one of them opens an effect, and an effect with no owner is a
- * leak. Each test runs its hook inside `scope` and disposes it, which is
- * the only shape that can observe the cleanup half at all.
+ * Every one of these opens an effect, and an effect with no owner is a leak, so
+ * each test runs its hook inside `scope` and disposes it. That is the only
+ * shape that can observe the cleanup half at all.
  */
 
 import { describe, expect, test } from "bun:test";

@@ -1,5 +1,5 @@
 /**
- * The four control-flow primitives. `CODESIGN.md` §3.4, `SEMANTICS.md` K and E.
+ * The four control-flow primitives.
  *
  * Two invariants the shape of this file exists to hold:
  *
@@ -68,7 +68,7 @@ import {
 // Flags — the compiler ships proofs, the runtime skips work because of them
 // ============================================================================
 
-// CODESIGN.md §8: a flag that moves neither an allocation count nor a
+// A flag that moves neither an allocation count nor a
 // wall-clock number is deleted. `bench:flags` throws if a flag declared here has
 // no row; `FAST_CLEAR` and `INDEX_UNUSED` were written, measured at zero on both
 // counters, and removed.
@@ -81,7 +81,7 @@ export const NO_SCOPE = 1 << 1;
 /**
  * The module was compiled `hydratable`, so this range is written to the wire
  * between `<!--[-->` and `<!--]-->` and claimed rather than built. The compiler
- * sets it from one option for both backends (`CODESIGN.md` §3.11), so the bytes
+ * sets it from one option for both backends, so the bytes
  * the string backend writes and the claim this side makes are one decision.
  */
 export const HYDRATE = 1 << 2;
@@ -403,12 +403,12 @@ function activate(
   // H4'S BLAST RADIUS, GENERALISED.
   //
   // `hydration.ts` says a mismatch has exactly two catchers: a region rebuilds
-  // its own range, or `hydrate` re-renders the page. Until §12 only ONE
-  // mismatch reached the first catcher — a branch key that disagreed — and
-  // every other kind travelled all the way up, so a divergent arm cost the page
-  // rather than the range.
+  // its own range, or `hydrate` re-renders the page. While the branch key was
+  // on the production wire only ONE mismatch reached the first catcher — a key
+  // that disagreed — and every other kind travelled all the way up, so a
+  // divergent arm cost the page rather than the range.
   //
-  // §12 took the key off the production wire, which makes this the catcher that
+  // The key is off the production wire now, which makes this the catcher that
   // has to work: a production build detects a divergent arm STRUCTURALLY, from
   // inside the claim, and this is what turns that into a local rebuild. The
   // attempt's own `finally` has already released the server's nodes and
@@ -512,7 +512,7 @@ function evictUnclaimed(claim: Range | null, cursor: Cursor | null): void {
   report("structure", `${stranded.length} server node(s) at a range the client rebuilt`);
 }
 
-/** A Cell ignores every argument (§3.0 rule 1), so one spelling serves both. */
+/** A Cell ignores every argument, so one spelling serves both. */
 function build(scope: Scope | null, body: Block<unknown>, args: readonly unknown[]): Node[] {
   // An already-built value in a renderable slot. Compiled code never produces
   // one — C6 makes children a Block — but the un-compiled surface `packages/extra`
@@ -542,7 +542,7 @@ function countCall(body: object): void {
     emitDiagnostic(
       "BLOCK_EVALUATED_TWICE",
       "error",
-      "a Block was invoked twice for one activation (SEMANTICS.md C7): a second call at one compile-addressed slot builds a second subtree and discards one of them.",
+      "a Block was invoked twice for one activation: a second call at one compile-addressed slot builds a second subtree and discards one of them.",
     );
   }
   lastSeen.set(body, activation);
@@ -790,8 +790,7 @@ const EMPTY_ARGS: readonly unknown[] = [];
 
 /**
  * A row IS a scope; row disposal is scope disposal. The LIS move-minimisation
- * in `map.ts` is retained wholesale — it is genuinely independent of ownership
- * (`CODESIGN.md` §3.4).
+ * in `map.ts` is retained wholesale: it is genuinely independent of ownership.
  *
  * `keyOf` picks the identity, and the four modes are `mapArray`'s three plus
  * `Repeat`'s:
@@ -807,14 +806,14 @@ const EMPTY_ARGS: readonly unknown[] = [];
  * parameter list is `(scope, item, index)` in all three list modes and it is
  * `mapArray` that decides what `item` and `index` are. That is what lets a
  * construct whose `keyed` arrived through a spread lower here at all — the
- * carrier crosses unresolved and `keyed` below is §3.0 rule 1, asked once per
- * construction rather than per row.
+ * carrier crosses unresolved and `keyed` below is the arity rule, asked once
+ * per construction rather than per row.
  */
 /**
- * §3.0 rule 1, applied to the keying slot: a key FUNCTION declares a parameter
- * and a Cell declares none, and that is the only thing separating them once both
- * are values in one slot. `true` and `undefined` are identity, which `mapArray`
- * spells `null`.
+ * The arity rule, applied to the keying slot: a key FUNCTION declares a
+ * parameter and a Cell declares none, and that is the only thing separating
+ * them once both are values in one slot. `true` and `undefined` are identity,
+ * which `mapArray` spells `null`.
  *
  * The compiler answers this statically wherever it can see the prop and emits
  * `null` / `false` / the function itself, so the three tests below cost one
@@ -864,9 +863,9 @@ export function each<T>(
   // A row used to be delimited on the wire so the client could hand row `i` its
   // own nodes. It does not need to be: the rows are built in ORDER, so a row's
   // extent is exactly what its build consumed, and a cursor that survives
-  // between rows records that with no bytes at all. §12's reversal is what this
-  // is — 1,600 of the 100-row page's 6,416 hydration bytes, and the only two
-  // comments per row anyone was ever paying for.
+  // between rows records that with no bytes at all. That reversal is 1,600 of
+  // the 100-row page's 6,416 hydration bytes, and the only two comments per row
+  // anyone was ever paying for.
   //
   // A client that renders more rows than the server wrote builds the extra ones
   // cold; a client that renders fewer leaves nodes nobody adopted. Both are
@@ -1192,7 +1191,7 @@ function errorBoundary(
  * `LOADING_BOUNDARY` on its own scope chain, so a build outside an effect under
  * this scope can never be known to be pending.
  *
- * The content is PARKED, not disposed, while the fallback shows (§3.8). That
+ * The content is PARKED, not disposed, while the fallback shows. That
  * parking deliberately does NOT reach `branch`: transitions are unspecified (A5).
  */
 function loadingBoundary(
@@ -1387,7 +1386,7 @@ function loadingBoundary(
 
 /**
  * A hole whose insertion target is elsewhere and whose scope's parent is the
- * LEXICAL one (§3.4), which is why a portalled modal reads the provider it is
+ * LEXICAL one, which is why a portalled modal reads the provider it is
  * WRITTEN under (X4).
  */
 /**

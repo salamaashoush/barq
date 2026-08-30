@@ -2,8 +2,7 @@
  * `@barqjs/router` — routing for barq, with SSR, streaming and server-function
  * loaders.
  *
- * The design record is `DESIGN.md` beside this file. Two things a reader should
- * know before anything else:
+ * Two things a reader should know before anything else:
  *
  *  - **A loader is an ordinary isomorphic function, not a server function.** It
  *    runs on the server for the first request and on the client for every

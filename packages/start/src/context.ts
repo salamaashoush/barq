@@ -11,11 +11,9 @@
  *
  * `AsyncLocalStorage` and not a module-level variable: two requests are in
  * flight at once on any real server, and a module-level variable would hand one
- * request's handler the other's session. That is
- * [GHSA-hgv7-v322-mmgr](https://github.com/advisories/GHSA-hgv7-v322-mmgr) in
- * SvelteKit — `query.batch()` merging concurrent requests under one context and
- * disclosing data across users. TanStack reaches for the same primitive for the
- * same reason (`start-server-core/src/request-response.ts:1`).
+ * request's handler the other's session. SvelteKit shipped exactly that:
+ * concurrent requests merged under one context, disclosing data across users.
+ * TanStack reaches for the same primitive for the same reason.
  *
  * THE DRAFT IS THE FIX FOR A MEASURED HOLE. Before it, a server function could
  * not set a cookie at all on the JS path: `handleServerFn` answered the `.data`

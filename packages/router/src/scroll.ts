@@ -1,10 +1,10 @@
 /**
  * Scroll restoration and view transitions.
  *
- * Both are new work: `packages/router/DESIGN.md` §D11 records that the deleted
- * router had ZERO tests for either, so there was nothing to port — only a list
- * of what it got wrong, and TanStack's shape to compare against. Every bug below
- * is one of theirs, named where it came from.
+ * Both are new work: the router this replaced had ZERO tests for either, so
+ * there was nothing to port, only a list of what it got wrong and TanStack's
+ * shape to compare against. Every bug below is one of theirs, named where it
+ * came from.
  */
 
 import type { Location } from "./history.ts";
