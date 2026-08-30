@@ -28,7 +28,13 @@ export {
   stripBase,
 } from "./history.ts";
 
-export { type FlatRoute, type Match, type Matcher, createMatcher } from "./matcher.ts";
+export {
+  type FlatRoute,
+  type Match,
+  type Matcher,
+  type MatcherOptions,
+  createMatcher,
+} from "./matcher.ts";
 
 export {
   type ScrollRestoration,

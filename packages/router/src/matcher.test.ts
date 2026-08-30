@@ -361,3 +361,34 @@ describe("the fuzzy not-found ancestor", () => {
     expect(matcher.matchPrefix("/a/nope")?.route.chain.map((r) => r.fullPath)).toEqual(["/a"]);
   });
 });
+
+/**
+ * `caseSensitive` — barq matches literal segments by case, TanStack does not.
+ *
+ * The default stays barq's: a case-insensitive matcher answers `/Users` and
+ * `/USERS` from one route, so a page has unbounded distinct URLs and each is a
+ * separate entry in a cache, a log and an analytics report.
+ */
+describe("caseSensitive", () => {
+  const table: AnyRouteDefinition[] = [
+    { path: "/users/$id", component: noop as never },
+  ] as never;
+
+  test("by default, case must match", () => {
+    const matcher = createMatcher(flattenRoutes(table));
+    expect(matcher.match("/users/7")).not.toBeNull();
+    expect(matcher.match("/Users/7")).toBeNull();
+  });
+
+  test("turned off, a literal matches in any case", () => {
+    const matcher = createMatcher(flattenRoutes(table), { caseSensitive: false });
+    expect(matcher.match("/Users/7")).not.toBeNull();
+    expect(matcher.match("/USERS/7")).not.toBeNull();
+  });
+
+  /** A parameter's VALUE is data, not routing, and is never folded. */
+  test("a parameter keeps the case it was given", () => {
+    const matcher = createMatcher(flattenRoutes(table), { caseSensitive: false });
+    expect(matcher.match("/USERS/AbC")?.params).toEqual({ id: "AbC" });
+  });
+});

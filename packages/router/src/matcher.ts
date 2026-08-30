@@ -139,7 +139,31 @@ export interface Matcher<T> {
  * shadowing: the old router resolved it by declaration order, which made a
  * route unreachable without saying so.
  */
-export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
+export interface MatcherOptions {
+  /**
+   * Whether a literal segment must match the URL's case. Default `true`.
+   *
+   * TANSTACK DEFAULTS TO THE OPPOSITE, and barq keeps its own default rather
+   * than adopting theirs: a case-insensitive matcher answers `/Users` and
+   * `/USERS` from the same route, so one page has unbounded distinct URLs and
+   * every one of them is a separate entry in a cache, a log and an analytics
+   * report. Opt in where a legacy link set needs it.
+   *
+   * Only LITERAL segments are affected. A parameter's value is passed through
+   * as written, because it is data rather than routing.
+   */
+  readonly caseSensitive?: boolean;
+}
+
+export function createMatcher<T>(
+  routes: readonly FlatRoute<T>[],
+  options: MatcherOptions = {},
+): Matcher<T> {
+  const sensitive = options.caseSensitive ?? true;
+  // Folded once per segment on the way in AND on the way out, so the trie's
+  // keys and the lookup agree. `toLowerCase` on a string that is already lower
+  // returns the same string, so the sensitive path pays one comparison.
+  const fold = (segment: string): string => (sensitive ? segment : segment.toLowerCase());
   const root = node<T>();
 
   for (const route of routes) {
@@ -147,10 +171,11 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
     let splatted = false;
     for (const segment of route.segments) {
       if (segment.kind === "static") {
-        let next = current.statics.get(segment.value);
+        const key = fold(segment.value);
+        let next = current.statics.get(key);
         if (next === undefined) {
           next = node<T>();
-          current.statics.set(segment.value, next);
+          current.statics.set(key, next);
         }
         current = next;
       } else if (segment.kind === "param") {
@@ -238,7 +263,7 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
 
     // Static first. A literal is more specific than anything that could also
     // match it, and taking this edge first is the whole of the ranking rule.
-    const nextStatic = current.statics.get(segment);
+    const nextStatic = current.statics.get(fold(segment));
     if (nextStatic !== undefined) {
       names[index] = null;
       const found = walk(nextStatic, segments, index + 1, values, names);
@@ -328,7 +353,7 @@ export function createMatcher<T>(routes: readonly FlatRoute<T>[]): Matcher<T> {
         if (owned.length === 0 || owned.length >= segments.length) continue;
         let matches = true;
         for (let i = 0; i < owned.length; i++) {
-          if (owned[i] !== segments[i]) {
+          if (fold(owned[i] as string) !== fold(segments[i] as string)) {
             matches = false;
             break;
           }

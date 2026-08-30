@@ -398,6 +398,8 @@ export interface PageHandlerOptions {
   readonly defaults?: RouteDefaults;
   /** Where an unmatched path renders its not-found, matching `RouterConfig`'s. */
   readonly notFoundMode?: "root" | "fuzzy";
+  /** Literal-segment case matching, matching `RouterConfig`'s. */
+  readonly caseSensitive?: boolean;
   /**
    * The application, as the string backend wants it: returns `SsrHtml`.
    *
@@ -674,7 +676,9 @@ async function runRouteHandlers(
 export function createPageHandler(
   options: PageHandlerOptions,
 ): (request: Request) => Promise<Response> {
-  const matcher = createMatcher(flattenRoutes(options.routeTree));
+  const matcher = createMatcher(flattenRoutes(options.routeTree), {
+    caseSensitive: options.caseSensitive,
+  });
 
   const base = options.basepath === undefined ? "" : normalizeBase(options.basepath);
 
@@ -770,6 +774,7 @@ export function createPageHandler(
       basepath: options.basepath,
       defaults: options.defaults,
       notFoundMode: options.notFoundMode,
+      caseSensitive: options.caseSensitive,
       history: memoryHistory({ initial: [pathname + url.search] }),
       onLoaderError(error) {
         if (isNotFound(error)) missing = true;

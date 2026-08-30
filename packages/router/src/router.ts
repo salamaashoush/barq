@@ -343,6 +343,13 @@ export interface RouterConfig {
    */
   readonly notFoundMode?: "root" | "fuzzy";
   /**
+   * Whether a literal path segment must match the URL's case. Default `true`.
+   *
+   * TanStack defaults to the opposite; `MatcherOptions` says why barq keeps
+   * its own default and when to turn this off.
+   */
+  readonly caseSensitive?: boolean;
+  /**
    * What a route gets when it declares none of these itself.
    *
    * Every one is TanStack's `default*` option under the name the ROUTE uses, so
@@ -599,7 +606,9 @@ export function createRouter(config: RouterConfig): RouterState {
   // A history the CALLER built already knows its own base; one built here is
   // told. Both spellings therefore work, and neither has to repeat the other.
   const history = config.history ?? memoryHistory();
-  const matcher = createMatcher(flattenRoutes(config.routeTree));
+  const matcher = createMatcher(flattenRoutes(config.routeTree), {
+    caseSensitive: config.caseSensitive,
+  });
 
   const location = signal<Location>(history.current());
   // Bumped by `invalidate`, and read by every loader cell, so invalidating is a
