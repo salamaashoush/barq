@@ -9,6 +9,7 @@
 import { esc, html as ssrHtml, ssrLoading } from "@barqjs/server";
 import {
   type Middleware,
+  createMiddleware,
   createServerFn,
   getRequest,
   setCookie,
@@ -1226,7 +1227,11 @@ describe("hydration", () => {
  * found in the client graph resolves to the function that was actually mounted.
  */
 describe("chainVerifier", () => {
-  const gate: Middleware = async (next) => next();
+  // BUILT, not a bare closure: the compiler carries a server function's chain
+  // into its client stub, and only a `createMiddleware` middleware can have its
+  // server half stripped on the way. `verifyClientChains` refuses the other
+  // shape, which the last test here pins.
+  const gate = createMiddleware().server(async ({ next }) => next());
 
   const table = [
     {
@@ -1259,6 +1264,55 @@ describe("chainVerifier", () => {
   test("an id nothing mounted is not a violation — it is not an endpoint", async () => {
     unmountAll();
     expect(await chainVerifier(table)(new Map([["/admin", new Set(["ghost"])]]))).toBe("");
+  });
+
+  /**
+   * A BARE CLOSURE in a carried chain, which is the shape the client build
+   * cannot strip. TanStack has no such case — every middleware there is
+   * `createMiddleware`-built — and this is barq adopting the invariant at the
+   * only place that can see the real closures.
+   */
+  test("a bare closure in a chain fails the build, naming it", async () => {
+    unmountAll();
+    const requireSession: Middleware = async (next) => next();
+    mount(
+      "leaky",
+      createServerFn()
+        .middleware([requireSession])
+        .handler(async () => "ok") as never,
+    );
+    const report = await chainVerifier(table)(new Map());
+    expect(report).toContain("leaky carries `requireSession`");
+    expect(report).toContain("createMiddleware()");
+  });
+
+  test("a built chain is not reported, whatever it is reachable from", async () => {
+    unmountAll();
+    mount(
+      "clean",
+      createServerFn()
+        .middleware([gate])
+        .handler(async () => "ok") as never,
+    );
+    expect(await chainVerifier(table)(new Map())).toBe("");
+  });
+
+  /**
+   * A bare closure on a ROUTE is untouched. Only the combination that leaks is
+   * refused, and a route's `middleware` is a build-time claim the client build
+   * already deletes outright.
+   */
+  test("a route's own bare middleware is not the thing being refused", async () => {
+    unmountAll();
+    const bareRoute = [
+      {
+        path: "/admin",
+        middleware: [async (next: () => Promise<unknown>) => next()],
+        component: (() => ssrHtml("")) as never,
+        children: [{ path: "", component: (() => ssrHtml("")) as never }],
+      },
+    ] as never as AnyRouteDefinition[];
+    expect(await chainVerifier(bareRoute)(new Map())).toBe("");
   });
 });
 

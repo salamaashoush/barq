@@ -37,7 +37,7 @@
  * of those shapes and needs no compiler work at all.
  */
 
-import { type Middleware, middlewareOf } from "@barqjs/start";
+import { type Middleware, flattenMiddleware, isBuiltMiddleware, middlewareOf } from "@barqjs/start";
 
 import type { AnyRouteDefinition, Route } from "./route.ts";
 import { flattenRoutes } from "./route.ts";
@@ -94,6 +94,73 @@ export async function verifyRouteChains(options: VerifyOptions): Promise<Violati
   }
 
   return violations;
+}
+
+/** A server function whose chain the client cannot be given. */
+export interface UnbuiltChain {
+  readonly serverFnId: string;
+  /** The bare closures, by whatever name they were declared under. */
+  readonly names: readonly string[];
+}
+
+/**
+ * Every mounted function whose `.middleware([…])` names a BARE CLOSURE.
+ *
+ * The compiler carries a server function's chain into its client stub so that a
+ * middleware's `.client()` half can run in the browser, and it does that by
+ * importing the module the chain was declared in. That is safe for a
+ * `createMiddleware` middleware — `middleware_split` deletes its `.server(…)`
+ * and `.validator(…)` bodies, and whatever only they reached — and it is not
+ * safe for a bare closure: nothing marks the body as server-only, so the module
+ * arrives whole. The reference application's `requireSession` opens a sealed
+ * cookie and reaches `node:async_hooks` through it, which is a browser error on
+ * a page that then does nothing.
+ *
+ * TanStack has no such case: every middleware there is `createMiddleware`-built,
+ * which is the invariant that makes their strip total. This is barq adopting
+ * it, at the only place that can see the real closures.
+ *
+ * A bare closure remains perfectly good on a ROUTE and on a function nothing
+ * carries to the client. What is refused is exactly the combination that leaks.
+ */
+export function verifyClientChains(
+  ids: readonly string[],
+  lookup: VerifyOptions["lookup"],
+): UnbuiltChain[] {
+  const out: UnbuiltChain[] = [];
+  for (const id of ids) {
+    const fn = lookup(id);
+    if (fn === undefined) continue;
+    const names = flattenMiddleware(middlewareOf(fn as never))
+      .filter((step) => !isBuiltMiddleware(step))
+      // A `const` arrow takes the binding's name, which is what the author
+      // wrote and what they have to find. An anonymous one says so.
+      .map((step) => (step.name === "" ? "an anonymous middleware" : `\`${step.name}\``));
+    if (names.length > 0) out.push({ serverFnId: id, names });
+  }
+  return out;
+}
+
+/** A build-stopping message for {@link verifyClientChains}. */
+export function describeUnbuilt(unbuilt: readonly UnbuiltChain[]): string {
+  const lines = unbuilt.map(
+    ({ serverFnId, names }) => `  ${serverFnId} carries ${names.join(", ")}`,
+  );
+  return [
+    `${unbuilt.length} server function(s) carry a middleware the client build cannot strip.`,
+    "",
+    ...lines,
+    "",
+    "A server function's chain is carried into its client stub so a middleware's",
+    "`.client()` half can run in the browser, which means the module declaring it is",
+    "imported there. The compiler deletes `.server(…)` and `.validator(…)` from a",
+    "`createMiddleware` middleware and everything only they reached; a bare closure",
+    "has no such marker, so its body — and whatever it imports to open a session or",
+    "reach a database — arrives whole.",
+    "",
+    "Write it as `createMiddleware().server(async ({ next }) => …)`. A bare closure is",
+    "still fine on a route, and on a function no client stub carries.",
+  ].join("\n");
 }
 
 /**

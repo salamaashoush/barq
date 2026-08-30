@@ -44,7 +44,7 @@ import {
   peekResponseDraft,
   withRequest,
 } from "@barqjs/start";
-import { crossOriginRefused, mountedFn } from "@barqjs/start/server";
+import { crossOriginRefused, mounted, mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
 import { NotFound, errorFallbackFor, isNotFound, isRedirect } from "./errors.ts";
@@ -52,6 +52,8 @@ import { type ManagedTag, projectHead, tagKey, tagProps } from "./head.ts";
 import {
   type Reachability,
   describe as describeViolations,
+  describeUnbuilt,
+  verifyClientChains,
   verifyRouteChains,
 } from "./manifest.ts";
 import { memoryHistory, normalizeBase, stripBase } from "./history.ts";
@@ -1508,8 +1510,15 @@ export function chainVerifier(
   routeTree: readonly AnyRouteDefinition[],
 ): (reachability: Reachability) => Promise<string> {
   return async (reachability) => {
+    const reports: string[] = [];
     const violations = await verifyRouteChains({ routeTree, reachability, lookup: mountedFn });
-    return violations.length === 0 ? "" : describeViolations(violations);
+    if (violations.length > 0) reports.push(describeViolations(violations));
+    // A SECOND question, over every mounted function rather than the reachable
+    // ones: the compiler carries a chain into every exported function's client
+    // stub, so a bare closure leaks whether or not a route can reach it.
+    const unbuilt = verifyClientChains(mounted(), mountedFn);
+    if (unbuilt.length > 0) reports.push(describeUnbuilt(unbuilt));
+    return reports.join("\n\n");
   };
 }
 
