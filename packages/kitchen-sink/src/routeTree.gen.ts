@@ -27,6 +27,8 @@ import { Route as RoutingRoute } from "./routes/routing";
 import { Route as SignalsRoute } from "./routes/signals";
 import { Route as StoreRoute } from "./routes/store";
 import { Route as ApiHealthRoute } from "./routes/api/health";
+import { Route as ReportChar123nameChar125DotcsvRoute } from "./routes/report.{$name}[.]csv";
+import { Route as DocsChar123VersionChar125GuideRoute } from "./routes/docs.{-$version}.guide";
 
 /**
  * The table, exactly the shape `createRouter` and `createPageHandler` take.
@@ -50,7 +52,9 @@ export const routeTree: AnyRouteDefinition[] = [
     { ...RoutingRoute.options, id: "/routing", path: "routing", src: "/src/routes/routing.tsx", ssr: false },
     { ...SignalsRoute.options, id: "/signals", path: "signals", src: "/src/routes/signals.tsx" },
     { ...StoreRoute.options, id: "/store", path: "store", src: "/src/routes/store.tsx" },
-    { ...ApiHealthRoute.options, id: "/api/health", path: "api/health", src: "/src/routes/api/health.ts", component: Outlet as never }
+    { ...ApiHealthRoute.options, id: "/api/health", path: "api/health", src: "/src/routes/api/health.ts", component: Outlet as never },
+    { ...ReportChar123nameChar125DotcsvRoute.options, id: "/report/{$name}.csv", path: "report/{$name}.csv", src: "/src/routes/report.{$name}[.]csv.tsx" },
+    { ...DocsChar123VersionChar125GuideRoute.options, id: "/docs/{-$version}/guide", path: "docs/{-$version}/guide", src: "/src/routes/docs.{-$version}.guide.tsx" }
   ] }
 ];
 
@@ -72,13 +76,15 @@ export interface FileRoutesById {
   "/signals": typeof SignalsRoute;
   "/store": typeof StoreRoute;
   "/api/health": typeof ApiHealthRoute;
+  "/report/{$name}.csv": typeof ReportChar123nameChar125DotcsvRoute;
+  "/docs/{-$version}/guide": typeof DocsChar123VersionChar125GuideRoute;
 }
 
 export interface FileRouteTypes {
   /** Every route id, layouts included — what `useMatch` and `Link`'s `to` address. */
-  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store" | "/api/health";
+  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
   /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */
-  fullPaths: "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store" | "/api/health";
+  fullPaths: "/" | "/about" | "/admin" | "/async" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/query" | "/routing" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
   fileRoutesById: FileRoutesById;
 }
 
