@@ -89,6 +89,18 @@
         "vite": "^8.2.2",
       },
     },
+    "packages/css": {
+      "name": "@barqjs/css",
+      "version": "0.1.0",
+      "dependencies": {
+        "csstype": "^3.2.3",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+      },
+    },
     "packages/extra": {
       "name": "@barqjs/extra",
       "version": "0.1.0",
@@ -96,7 +108,10 @@
         "@tanstack/query-core": "^5.101.4",
       },
       "devDependencies": {
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/css": "workspace:*",
+        "@barqjs/primitives": "workspace:*",
         "@biomejs/biome": "^2.5.9",
         "@happy-dom/global-registrator": "^20.11.6",
         "@types/bun": "^1.4.0",
@@ -104,6 +119,7 @@
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/primitives": ">=0.1.0",
         "@tanstack/query-core": "^5.101.4",
       },
     },
@@ -112,18 +128,49 @@
       "version": "0.1.0",
       "dependencies": {
         "@barqjs/core": "workspace:*",
+        "@barqjs/css": "workspace:*",
         "@barqjs/extra": "workspace:*",
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
         "@tanstack/query-core": "^5.101.4",
-        "goober": "^2.1.19",
       },
       "devDependencies": {
         "@barqjs/compiler": "workspace:*",
         "@types/bun": "^1.4.0",
         "typescript": "^7.0.2",
         "vite": "^8.2.2",
+      },
+    },
+    "packages/primitives": {
+      "name": "@barqjs/primitives",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@barqjs/core": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
+      },
+    },
+    "packages/query": {
+      "name": "@barqjs/query",
+      "version": "0.1.0",
+      "dependencies": {
+        "@tanstack/query-core": "^5.101.4",
+      },
+      "devDependencies": {
+        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/core": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
+        "@tanstack/query-core": "^5.101.4",
       },
     },
     "packages/router": {
@@ -176,6 +223,7 @@
       "name": "@barqjs/start",
       "version": "0.1.0",
       "dependencies": {
+        "@barqjs/css": "workspace:*",
         "srvx": "^0.12.7",
       },
       "devDependencies": {
@@ -201,8 +249,11 @@
         "@testing-library/dom": "^10.4.1",
       },
       "devDependencies": {
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/compiler-rs": "workspace:*",
         "@barqjs/core": "workspace:*",
+        "@barqjs/css": "workspace:*",
+        "@barqjs/primitives": "workspace:*",
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
@@ -272,9 +323,15 @@
 
     "@barqjs/core": ["@barqjs/core@workspace:packages/core"],
 
+    "@barqjs/css": ["@barqjs/css@workspace:packages/css"],
+
     "@barqjs/extra": ["@barqjs/extra@workspace:packages/extra"],
 
     "@barqjs/kitchen-sink": ["@barqjs/kitchen-sink@workspace:packages/kitchen-sink"],
+
+    "@barqjs/primitives": ["@barqjs/primitives@workspace:packages/primitives"],
+
+    "@barqjs/query": ["@barqjs/query@workspace:packages/query"],
 
     "@barqjs/router": ["@barqjs/router@workspace:packages/router"],
 
@@ -803,8 +860,6 @@
     "gensync": ["gensync@1.0.0-beta.2", "", {}, "sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg=="],
 
     "get-tsconfig": ["get-tsconfig@5.0.0-beta.5", "", { "dependencies": { "resolve-pkg-maps": "^1.0.0" } }, "sha512-/6gFNr0N04nob252sTQxyFLi3eKFRqIg1I87YcqAMT1i6SQrSF6KujUEQrtrjMV0H/eejTCltLdDSTEMzHbnsQ=="],
-
-    "goober": ["goober@2.1.19", "", { "peerDependencies": { "csstype": "^3.0.10" } }, "sha512-U7veizMqxyKlM58+Z5j2ngJBH/r9siDmxpvNxSw0PylF6WQvrASJEZrxh1hidRBJc2jqoBVSyOban5u8m+6Rxg=="],
 
     "happy-dom": ["happy-dom@20.11.6", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-Hldbg8AdAa5a5oDcZpjqnGitp7JB0hqWmfv/8qr+kft4vzSD8BHsbdRfzYvL/0QcbKcURC/yyoygbeDQarPvYg=="],
 
