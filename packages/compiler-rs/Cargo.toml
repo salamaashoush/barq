@@ -1,4 +1,5 @@
 [workspace]
+members = ["crates/*"]
 
 [package]
 name = "barq_compiler"
@@ -11,6 +12,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+barq_css = { path = "crates/barq-css" }
 napi = { version = "3.12.1", default-features = false, features = ["napi4", "dyn-symbols"] }
 napi-derive = "3.6.3"
 oxc = { version = "0.146.0", features = ["ast_visit", "codegen", "semantic"] }

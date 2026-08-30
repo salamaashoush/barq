@@ -1,0 +1,16 @@
+[package]
+name = "barq_css"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+doctest = false
+
+# Pinned exactly. The crate is pre-1.0 and published three days before this was
+# written, so a caret range would let a breaking AST change land in a `cargo
+# update`. Only `Statement`, `QualifiedRule`, `Declaration`, `AtRule` and `Span`
+# are touched, which is the part of the AST least likely to move.
+[dependencies]
+oxc-css-parser = "=0.0.12"
