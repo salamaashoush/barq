@@ -2,53 +2,36 @@
  * Serve the build: prerendered HTML and static assets first, then SSR.
  *
  * `vite preview` is client-only — it reads `environments.client.build.outDir`
- * and nothing else — so previewing an app with a server half is this. It is also
- * the shape a deployment has: a static file wins, and whatever is left is
- * rendered.
+ * and nothing else — so previewing an app with a server half is this.
  *
- * RUN IT WITH BUN, which is what `package.json` does. It was `node
- * ./preview.mjs` against a file whose every I/O call is `Bun.serve` and
- * `Bun.file`, so `bun run preview` was a `ReferenceError` on the first request
- * and had been for as long as the script existed — nothing runs it in CI.
+ * IT USED TO BE A HAND-ROLLED STATIC SERVER, and that is the whole reason
+ * `serveBarq` grew `static`. It called `existsSync` and `statSync` per request,
+ * which measured 1.3295 us to answer a MISS against 0.8080 us for the build-time
+ * manifest (`scratch/nitro/static.mjs`), and it could not know that a
+ * prerendered page had a status of its own — every page came back 200 whatever
+ * it was rendered as. Both are the framework's problem, not an application's,
+ * and both are now solved where every deployment gets them.
+ *
+ * What is left here is the demos' own endpoints, which are the app's fixtures.
  */
 
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { serveBarq } from "@barqjs/start/serve";
 
-const root = new URL("./dist/client/", import.meta.url).pathname;
-const { default: entry } = await import("./dist/server/server.js");
+import entry from "./dist/server/server.js";
 
-const TYPES = {
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".html": "text/html; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".json": "application/json",
-};
-
-function staticFile(pathname) {
-  for (const candidate of [join(root, pathname), join(root, pathname, "index.html")]) {
-    if (!existsSync(candidate) || !statSync(candidate).isFile()) continue;
-    const extension = candidate.slice(candidate.lastIndexOf("."));
-    return new Response(Bun.file(candidate), {
-      headers: { "content-type": TYPES[extension] ?? "application/octet-stream" },
-    });
-  }
-  return null;
-}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const json = (value) =>
+  new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
 
 /**
  * The demos' endpoints, which `vite.config.ts` serves in dev.
  *
  * Here too, because a preview that 404s them shows a demo its error state and
- * calls that the production build. They are the app's fixtures, not the
- * framework's.
+ * calls that the production build. An `srvx` middleware rather than a branch in
+ * `fetch`, so it composes the same way anything else a project adds would.
  */
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function mockApi(url) {
-  const json = (value) =>
-    new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
+async function mockApi(request, next) {
+  const url = new URL(request.url);
   if (url.pathname === "/api/users") {
     await sleep(500);
     return json([
@@ -60,7 +43,12 @@ async function mockApi(url) {
   if (url.pathname.startsWith("/api/users/")) {
     const id = url.pathname.split("/").pop();
     await sleep(300);
-    return json({ id: Number(id), name: `User ${id}`, email: `user${id}@example.com`, bio: "Lorem ipsum dolor sit amet" });
+    return json({
+      id: Number(id),
+      name: `User ${id}`,
+      email: `user${id}@example.com`,
+      bio: "Lorem ipsum dolor sit amet",
+    });
   }
   if (url.pathname === "/api/posts") {
     const page = Number(url.searchParams.get("page") || "1");
@@ -83,15 +71,18 @@ async function mockApi(url) {
     return json({ name: url.searchParams.get("name") ?? "?", at: Date.now() });
   }
   if (url.pathname === "/api/error") return new Response("Internal Server Error", { status: 500 });
-  return null;
+  return next();
 }
 
 const port = Number(process.env.PORT ?? 3456);
-Bun.serve({
+
+serveBarq({
   port,
-  fetch: async (request) => {
-    const url = new URL(request.url);
-    return (await mockApi(url)) ?? staticFile(url.pathname) ?? entry.fetch(request);
-  },
+  fetch: entry.fetch,
+  // A year, and immutable: every filename under `assets/` is content-hashed, so
+  // a changed file is a changed URL and a cached one can never be wrong.
+  static: { dir: new URL("./dist/client", import.meta.url).pathname, maxAge: 31_536_000, immutable: true },
+  middleware: [mockApi],
 });
+
 console.log(`preview on http://localhost:${port}`);

@@ -18,6 +18,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { readdir, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -26,7 +27,9 @@ import { NodeRequest, sendNodeResponse } from "srvx/node";
 import { type Plugin, type ViteDevServer, isRunnableDevEnvironment } from "vite";
 
 import { RPC_PREFIX } from "./index.ts";
-import { type ServerEntryModule, prerender } from "./prerender.ts";
+import { type PrerenderedPage, type ServerEntryModule, prerender } from "./prerender.ts";
+import { PRERENDER_HEADER } from "./protocol.ts";
+import { ASSET_MANIFEST_FILE, type AssetManifest } from "./static.ts";
 
 /**
  * Vite's own environment names. `ssr` for the server one rather than something
@@ -95,6 +98,77 @@ function findRouterEntry(root: string, srcDir: string): string | null {
     if (existsSync(file)) return file;
   }
   return null;
+}
+
+/**
+ * Index what the build put on disk, so serving it costs no `stat`.
+ *
+ * Written LAST, because it describes the finished directory: the client chunks,
+ * anything copied out of `public/`, and every page the prerenderer wrote. A
+ * request path is the key, so the server does one lookup rather than reproducing
+ * the candidate rules (`/about` -> `about/index.html`) at runtime.
+ *
+ * IT CARRIES `status` AND `headers` FOR A PAGE. `PrerenderedPage` has recorded
+ * both since the prerenderer was written and nothing persisted them, so a
+ * prerendered 404 was served as a 200 by anything reading the directory alone —
+ * `packages/kitchen-sink/preview.mjs` did exactly that.
+ *
+ * Nothing else about a file is recorded. `content-type`, `etag` and `size` are
+ * derivable from the bytes and `srvx/static` derives them; a copy here is a
+ * second source of truth that goes stale against the file it describes.
+ */
+async function writeAssetManifest(
+  clientOut: string,
+  pages: readonly PrerenderedPage[],
+  base: string,
+): Promise<void> {
+  const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
+  // RELATIVE to the output directory, in the manifest too. `file` arrives
+  // absolute, which is the build machine's path — persisting that ships a
+  // deployable artefact that only resolves on the machine that produced it.
+  const fileOf = (page: PrerenderedPage): string =>
+    relative(clientOut, page.file).replaceAll("\\", "/");
+  const written = new Set(pages.map(fileOf));
+
+  const files: string[] = [];
+  const walk = async (dir: string, at: string): Promise<void> => {
+    for (const item of await readdir(dir, { withFileTypes: true })) {
+      const child = join(dir, item.name);
+      const url = `${at}/${item.name}`;
+      if (item.isDirectory()) {
+        await walk(child, url);
+        continue;
+      }
+      // A prerendered page is indexed under its REQUEST path below, with the
+      // status it was rendered as. Listing the file here too would let
+      // `/about/index.html` be fetched directly and answer 200 regardless.
+      if (!written.has(relative(clientOut, child).replaceAll("\\", "/"))) files.push(url);
+    }
+  };
+  await walk(clientOut, "");
+
+  const entries: Record<
+    string,
+    { file: string; status: number; headers?: Record<string, string> }
+  > = {};
+  for (const page of pages) {
+    const path = `${prefix}${page.path}`;
+    // `x-barq-prerender` is how the handler told the PRERENDERER whether to keep
+    // the page. It is build-time signalling and has no business on a response to
+    // a browser, so it does not travel into the manifest.
+    const { [PRERENDER_HEADER]: _internal, ...headers } = page.headers;
+    entries[path === "" ? "/" : path] = {
+      file: fileOf(page),
+      status: page.status,
+      ...(Object.keys(headers).length === 0 ? {} : { headers }),
+    };
+  }
+
+  const manifest: AssetManifest = {
+    pages: entries,
+    files: files.map((file) => `${prefix}${file}`).toSorted(),
+  };
+  await writeFile(join(clientOut, ASSET_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 /**
@@ -236,21 +310,12 @@ export interface PrerenderOptions {
   readonly onPages?: (pages: readonly PrerenderedPage[]) => void;
 }
 
-/** One prerendered page, as the build records it. */
-export interface PrerenderedPage {
-  readonly path: string;
-  readonly file: string;
-  readonly status: number;
-  /**
-   * The response's own headers.
-   *
-   * Kept because a static host cannot recover them from a file, and every
-   * framework that drops them has an open issue about it — SvelteKit rescues
-   * `cache-control` alone into a `<meta http-equiv>` and carries a TODO for the
-   * rest, Nitro loses `content-type` on a generated feed.
-   */
-  readonly headers: Record<string, string>;
-}
+/**
+ * RE-EXPORTED, not restated. It was declared here as well as in `prerender.ts`,
+ * two identical copies of a five-field interface, which is the same drift the
+ * local `ServerEntry` type had before `tsc` caught it.
+ */
+export type { PrerenderedPage };
 
 /**
  * Vite's HTML transforms, run over the bytes that go out before the app.
@@ -751,18 +816,28 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         }
       }
 
-      if (wanted === undefined) return;
-      const result = await prerender({
-        entry,
-        outDir: outDirOf(client),
-        routes: wanted.routes ?? [],
-        crawl: wanted.crawl ?? true,
-        concurrency: wanted.concurrency ?? 4,
-        subfolderIndex: wanted.subfolderIndex ?? true,
-        base,
-        log: (message) => builder.config.logger.info(`[barq] prerender ${message}`),
-      });
-      wanted.onPages?.(result.pages);
+      const clientOut = outDirOf(client);
+      let pages: readonly PrerenderedPage[] = [];
+      if (wanted !== undefined) {
+        const result = await prerender({
+          entry,
+          outDir: clientOut,
+          routes: wanted.routes ?? [],
+          crawl: wanted.crawl ?? true,
+          concurrency: wanted.concurrency ?? 4,
+          subfolderIndex: wanted.subfolderIndex ?? true,
+          base,
+          log: (message) => builder.config.logger.info(`[barq] prerender ${message}`),
+        });
+        pages = result.pages;
+        wanted.onPages?.(pages);
+      }
+
+      // LAST, and unconditionally: the manifest indexes what is on disk, so it
+      // is written after the prerenderer has finished putting things there, and
+      // a project with no prerender still has chunks and `public/` files to
+      // serve. Skipped only when there is no client output at all.
+      if (existsSync(clientOut)) await writeAssetManifest(clientOut, pages, base);
     },
 
     configResolved(config) {

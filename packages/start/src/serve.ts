@@ -15,6 +15,10 @@
 import { type Server, type ServerOptions, serve } from "srvx";
 
 import { type HandlerOptions, handleServerFn } from "./server.ts";
+import { type StaticOptions, assetMiddleware } from "./static.ts";
+
+export type { AssetManifest, PrerenderedAsset, StaticOptions } from "./static.ts";
+export { ASSET_MANIFEST_FILE, assetMiddleware } from "./static.ts";
 
 export interface BarqServeOptions extends Omit<ServerOptions, "fetch">, HandlerOptions {
   /**
@@ -26,6 +30,18 @@ export interface BarqServeOptions extends Omit<ServerOptions, "fetch">, HandlerO
    * for it would be worse than saying nothing is there.
    */
   fetch?: (request: Request) => Response | Promise<Response>;
+  /**
+   * Serve the build's own files, in front of everything else.
+   *
+   * `true` serves `dist/client` through the manifest the build wrote. Omitted,
+   * nothing static is served — which is right for a deployment whose assets are
+   * on a CDN and for a server that only answers server functions, and wrong
+   * enough to notice for anything else.
+   *
+   * `static.ts` explains why a manifest rather than a `stat`: the common request
+   * is a MISS, and answering it without touching the disk is worth 0.5 us.
+   */
+  static?: boolean | StaticOptions;
 }
 
 /**
@@ -54,6 +70,25 @@ export function createFetchHandler(
  * it every call is a 404.
  */
 export function serveBarq(options: BarqServeOptions = {}): Server {
-  const { fetch: _page, allowedOrigins: _origins, ...rest } = options;
-  return serve({ ...rest, fetch: createFetchHandler(options) });
+  // `reachable` and `static` come out too. They were not, so both were handed
+  // to `serve()` as options it has never heard of — harmless, and exactly the
+  // drift that spreads once one key leaks.
+  const {
+    fetch: _page,
+    allowedOrigins: _origins,
+    reachable: _reachable,
+    static: assets,
+    middleware,
+    ...rest
+  } = options;
+
+  // FIRST in the chain, so a hashed chunk never enters the page handler. Ahead
+  // of a project's own middleware too: those exist to shape application
+  // responses, and an asset is not one.
+  const chain =
+    assets === undefined || assets === false
+      ? middleware
+      : [assetMiddleware(assets === true ? {} : assets), ...(middleware ?? [])];
+
+  return serve({ ...rest, middleware: chain, fetch: createFetchHandler(options) });
 }

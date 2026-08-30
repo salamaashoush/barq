@@ -43,10 +43,22 @@ export interface PrerenderResult {
   readonly pages: PrerenderedPage[];
 }
 
+/** One prerendered page, as the build records it. */
 export interface PrerenderedPage {
   readonly path: string;
   readonly file: string;
   readonly status: number;
+  /**
+   * The response's own headers.
+   *
+   * Kept because a static host cannot recover them from a file, and every
+   * framework that drops them has an open issue about it — SvelteKit rescues
+   * `cache-control` alone into a `<meta http-equiv>` and carries a TODO for the
+   * rest, Nitro loses `content-type` on a generated feed.
+   *
+   * `writeAssetManifest` in `vite.ts` is what finally persists them, and
+   * `static.ts` is what serves a page with the status it was rendered as.
+   */
   readonly headers: Record<string, string>;
 }
 
