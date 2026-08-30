@@ -276,6 +276,27 @@ const ACCESSOR_MEMBERS: &[&str] = &[
     "valueOf",
 ];
 
+/// The packages that open a ROOT SCOPE and invoke their first argument with it.
+///
+/// The runtime's own `render`/`hydrate` are the obvious pair. The testing
+/// package's are the same position wearing a different name on the import:
+/// `render(ui)` there forwards `ui` to the runtime's `render`, so the argument
+/// is a Block and has to be compiled as one. Without this, every tree a test
+/// mounts is built with a null scope — no ownership, no context, and a `<For>`
+/// whose rows are parented to nothing.
+///
+/// By SOURCE rather than by name, because `render` is an ordinary identifier
+/// that an application may well define; a call to a local `render` must not
+/// have its callback rewritten into something its own signature cannot accept.
+fn mounts_roots(source: &str) -> bool {
+    matches!(source, "@barqjs/testing" | "@barqjs/testing/pure" | "@barqjs/testing/router")
+}
+
+/// The exports of those packages whose FIRST argument is the root Block.
+fn is_root_mount(name: &str) -> bool {
+    matches!(name, "render" | "hydrate" | "renderAndHydrate")
+}
+
 impl<'a> Binder<'_, 'a> {
     /// A flat scan over top-level statements, not a walk: `build_module_record`
     /// does not exist on oxc 0.143, and an import binding is an ordinary symbol
@@ -283,7 +304,10 @@ impl<'a> Binder<'_, 'a> {
     fn imports(&mut self, program: &Program<'a>, module_source: &str) {
         for statement in &program.body {
             let Statement::ImportDeclaration(declaration) = statement else { continue };
-            if declaration.source.value.as_str() != module_source {
+            let source = declaration.source.value.as_str();
+            let is_runtime = source == module_source;
+            let mounts_from_here = is_runtime || mounts_roots(source);
+            if !is_runtime && !mounts_from_here {
                 continue;
             }
             let Some(specifiers) = declaration.specifiers.as_ref() else { continue };
@@ -293,10 +317,14 @@ impl<'a> Binder<'_, 'a> {
                         let ModuleExportName::IdentifierName(name) = &imported.imported else {
                             continue;
                         };
-                        if matches!(name.name.as_str(), "render" | "hydrate")
+                        if mounts_from_here
+                            && is_root_mount(name.name.as_str())
                             && let Some(symbol) = imported.local.symbol_id.get()
                         {
                             self.root_mounts.push(symbol);
+                        }
+                        if !is_runtime {
+                            continue;
                         }
                         let Some(prim) = Prim::of_export(name.name.as_str()) else { continue };
                         if let Some(symbol) = imported.local.symbol_id.get() {

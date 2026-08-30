@@ -90,7 +90,7 @@ impl<'a> Classify<'a, '_> {
     /// emitted and what the oracle does.
     fn resolve(&mut self, unit: &mut Unit<'a>, patch: Patch) -> Option<Op> {
         match patch.op {
-            Op::SetEvent { event, value } => self.event(unit, event, value),
+            Op::SetEvent { event, value, capture } => self.event(unit, event, value, capture),
             Op::SetOpaque { name, value, chan } => {
                 let rx = unit.exprs.rx(value);
                 if !self.live_prop(rx) {
@@ -168,8 +168,12 @@ impl<'a> Classify<'a, '_> {
         unit: &mut Unit<'a>,
         event: crate::ir::NameId,
         value: ExprId,
+        capture: bool,
     ) -> Option<Op> {
-        let delegated = tables::is_delegated_event(self.interner.name(event).text);
+        // A capture binding is never delegated: the document listener that
+        // serves the delegated set runs after the whole bubble path, which is
+        // the opposite of what capture is for.
+        let delegated = !capture && tables::is_delegated_event(self.interner.name(event).text);
         let rx = unit.exprs.rx(value);
 
         // `applyProp` binds nothing unless `isEventHandlerValue` holds, so the
@@ -192,7 +196,7 @@ impl<'a> Classify<'a, '_> {
         if delegated {
             Some(Op::Delegate { event, handler, data: None })
         } else {
-            Some(Op::Listen { event, handler })
+            Some(Op::Listen { event, handler, capture })
         }
     }
 

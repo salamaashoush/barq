@@ -14,7 +14,7 @@ use oxc::ast_visit::walk_mut::{
 use oxc::span::Span;
 use rustc_hash::FxHashSet;
 
-use crate::ir::Module;
+use crate::ir::{Module, Prim};
 
 /// The `scope` pass, the AST half.
 ///
@@ -67,6 +67,7 @@ pub fn run<'a>(allocator: &'a Allocator, program: &mut Program<'a>, module: &mut
         declared,
         slots,
         root_args,
+        blocks: FxHashSet::default(),
         jsx: 0,
         unbound: false,
     };
@@ -100,6 +101,10 @@ struct Scope<'a> {
     slots: FxHashSet<Span>,
     /// The spans of bare JSX arguments in `render`/`hydrate`'s first position.
     root_args: FxHashSet<Span>,
+    /// The spans of function literals in a CONTROL-FLOW component's Block
+    /// position. Unlike a slot on an unknown component, the ABI here is known,
+    /// so no evidence beyond the position is needed.
+    blocks: FxHashSet<Span>,
     /// JSX roots seen since the innermost function was entered.
     jsx: u32,
     /// JSX below here needs a scope binding that no function between it and the
@@ -170,6 +175,7 @@ impl<'a> Scope<'a> {
     /// literal takes one exactly when it builds something that needs one.
     fn takes_scope(&self, span: Span) -> bool {
         self.declared.contains(&span)
+            || self.blocks.contains(&span)
             || (self.slots.contains(&span) && (self.jsx > 0 || self.unbound))
     }
 
@@ -241,6 +247,32 @@ impl<'a> Scope<'a> {
             _ => {}
         }
     }
+
+    /// Position 2a: a Block position on a construct whose ABI is this
+    /// compiler's own.
+    ///
+    /// `<For>`'s row and `fallback`, and the same two on every other control
+    /// flow construct, are invoked as `(scope, …)` by the runtime this pass
+    /// emits calls into. That is not a guess, so it needs no evidence: the
+    /// "does it build JSX" test that guards an unknown component's slot exists
+    /// because the callee is unknown, and applying it here MISCOMPILES a row
+    /// that delegates. `{(item) => renderRow(item)}` builds no JSX of its own,
+    /// so the parameter was not prepended, and `each` then handed the SCOPE to
+    /// the author's `item` — silently, since both are objects.
+    ///
+    /// `keyed` is deliberately not here: it is a key function `(item) => key`,
+    /// called by the runtime with no scope at all.
+    fn admit_block(&mut self, expression: &JSXExpression<'a>) {
+        match expression {
+            JSXExpression::ArrowFunctionExpression(arrow) => {
+                self.blocks.insert(arrow.span);
+            }
+            JSXExpression::FunctionExpression(function) => {
+                self.blocks.insert(function.span);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// A lowercase tag is an element, and its slots are element children the
@@ -253,6 +285,27 @@ pub(crate) fn is_component_tag(name: &JSXElementName<'_>) -> bool {
         JSXElementName::MemberExpression(_) | JSXElementName::NamespacedName(_) => true,
         JSXElementName::ThisExpression(_) => false,
     }
+}
+
+/// Whether the tag is one of the control-flow constructs this compiler lowers
+/// itself, and whose Block ABI it therefore knows exactly.
+fn is_flow_tag(name: &JSXElementName<'_>) -> bool {
+    let text = match name {
+        JSXElementName::Identifier(id) => id.name.as_str(),
+        JSXElementName::IdentifierReference(id) => id.name.as_str(),
+        _ => return false,
+    };
+    matches!(Prim::of_export(text), Some(Prim::Flow(_)))
+}
+
+/// The props of a control-flow construct that hold a BLOCK rather than a Cell.
+///
+/// `children` and nothing else. `fallback` is a Block for `For` and `Show` and
+/// is NOT one for `Errored`, which calls it with `(error, reset)` — and a
+/// zero-arity fallback there is η-reduced to the Cell it already is, which
+/// prepending a parameter would prevent.
+fn is_block_prop(name: &str) -> bool {
+    name == "children"
 }
 
 impl<'a> VisitMut<'a> for Scope<'a> {
@@ -281,17 +334,24 @@ impl<'a> VisitMut<'a> for Scope<'a> {
     fn visit_jsx_element(&mut self, it: &mut oxc::ast::ast::JSXElement<'a>) {
         self.jsx += 1;
         if is_component_tag(&it.opening_element.name) {
+            let flow = is_flow_tag(&it.opening_element.name);
             for attribute in it.opening_element.attributes.iter() {
                 if let JSXAttributeItem::Attribute(attribute) = attribute
                     && let Some(JSXAttributeValue::ExpressionContainer(container)) =
                         &attribute.value
                 {
                     self.admit_slot(&container.expression);
+                    if flow && is_block_prop(attribute.name.get_identifier().name.as_str()) {
+                        self.admit_block(&container.expression);
+                    }
                 }
             }
             for child in it.children.iter() {
                 if let JSXChild::ExpressionContainer(container) = child {
                     self.admit_slot(&container.expression);
+                    if flow {
+                        self.admit_block(&container.expression);
+                    }
                 }
             }
         }

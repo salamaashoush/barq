@@ -48,6 +48,10 @@ pub enum Op {
     SetEvent {
         event: NameId,
         value: ExprId,
+        /// `addEventListener`'s third argument. Set by `on…Capture` and
+        /// `capture:x`, and it forces the direct path: delegation is one
+        /// document listener in the BUBBLE phase and cannot serve it.
+        capture: bool,
     },
     /// `el.$$click = h`, or `el.$$click = [h, data]` for the bound-tuple form.
     /// THE TUPLE LIVES IN `$$<type>`. There is no `$$<type>Data` in this runtime.
@@ -56,10 +60,12 @@ pub enum Op {
         handler: HandlerRef,
         data: Option<ExprId>,
     },
-    /// addEventListener, for everything outside the 22-name delegated set.
+    /// addEventListener, for everything outside the 22-name delegated set and
+    /// for every capture binding.
     Listen {
         event: NameId,
         handler: HandlerRef,
+        capture: bool,
     },
 
     // ── misc element ──────────────────────────────────────────────────────

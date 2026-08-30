@@ -715,9 +715,9 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
 
     fn delegate(&mut self, _at: At<'_>, _event: NameId, _h: HandlerRef, _data: Option<ExprId>) {}
 
-    fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef) {}
+    fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef, _capture: bool) {}
 
-    fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId) {}
+    fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId, _capture: bool) {}
 
     fn set_ref(&mut self, _at: At<'_>, _value: ExprId, _write: bool) {}
 

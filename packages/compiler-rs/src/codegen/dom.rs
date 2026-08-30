@@ -316,7 +316,13 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// element, so the listener dies with its position. E2 #6: a throw routes to
     /// the enclosing boundary. Both live in `listen`, so neither can be
     /// forgotten at a call site.
-    fn listen(&mut self, at: At<'_>, event: NameId, handler: HandlerRef) -> Self::Out {
+    fn listen(
+        &mut self,
+        at: At<'_>,
+        event: NameId,
+        handler: HandlerRef,
+        capture: bool,
+    ) -> Self::Out {
         let span = at.span();
         let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
@@ -324,16 +330,23 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let key = self.ctx.string(key, span);
         let handler = handler_expression(self.ctx, self.unit, handler, span);
         let callee = self.ctx.helper(Helper::Listen, span);
-        let call = self.ctx.call(
-            callee,
-            vec![
-                Argument::from(scope),
-                Argument::from(element),
-                Argument::from(key),
-                Argument::from(handler),
-            ],
-            span,
-        );
+        let mut arguments = vec![
+            Argument::from(scope),
+            Argument::from(element),
+            Argument::from(key),
+            Argument::from(handler),
+        ];
+        // `listen`'s fifth parameter is `addEventListener`'s options, and the
+        // bare `true` is its capture spelling. Omitted entirely for a bubble
+        // binding, so nothing about the ordinary path's output moves.
+        if capture {
+            arguments.push(Argument::from(Expression::new_boolean_literal(
+                span,
+                true,
+                &self.ctx.ast,
+            )));
+        }
+        let call = self.ctx.call(callee, arguments, span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
@@ -341,7 +354,13 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// runtime's own `isEventHandlerValue` test decides whether anything binds
     /// — exactly as the un-compiled path does. The delegated/direct split is
     /// still the compiler's, made from the resolved type.
-    fn set_event(&mut self, at: At<'_>, event: NameId, value: ExprId) -> Self::Out {
+    fn set_event(
+        &mut self,
+        at: At<'_>,
+        event: NameId,
+        value: ExprId,
+        capture: bool,
+    ) -> Self::Out {
         let span = at.span();
         let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
@@ -349,16 +368,20 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let key = self.ctx.string(key, span);
         let value = take(self.ctx, self.unit, value, span);
         let callee = self.ctx.helper(Helper::BindEvent, span);
-        let call = self.ctx.call(
-            callee,
-            vec![
-                Argument::from(scope),
-                Argument::from(element),
-                Argument::from(key),
-                Argument::from(value),
-            ],
-            span,
-        );
+        let mut arguments = vec![
+            Argument::from(scope),
+            Argument::from(element),
+            Argument::from(key),
+            Argument::from(value),
+        ];
+        if capture {
+            arguments.push(Argument::from(Expression::new_boolean_literal(
+                span,
+                true,
+                &self.ctx.ast,
+            )));
+        }
+        let call = self.ctx.call(callee, arguments, span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 

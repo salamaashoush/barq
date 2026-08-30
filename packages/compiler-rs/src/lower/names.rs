@@ -16,6 +16,8 @@ pub enum Prefixed<'a> {
     Chan(&'a str, Chan),
     /// `on:` — a verbatim event name, with NO lowercasing
     Event(&'a str),
+    /// `capture:` — the same, bound in the CAPTURE phase
+    CaptureEvent(&'a str),
     /// `bind:x` — the two-way channel; `bind:this` is a ref
     Bind(&'a str),
     Ref,
@@ -39,6 +41,7 @@ pub fn prefixed(name: &str) -> Prefixed<'_> {
         "bool" => Prefixed::Chan(rest, Chan::Bool),
         "style" => Prefixed::Chan(rest, Chan::StyleProp),
         "on" => Prefixed::Event(rest),
+        "capture" => Prefixed::CaptureEvent(rest),
         "bind" if rest == "this" => Prefixed::Ref,
         "bind" => Prefixed::Bind(rest),
         // `xlink:href` and friends: a name with a colon the runtime writes
@@ -194,6 +197,21 @@ pub fn bakeable(name: &str, is_svg: bool, tag: &str) -> bool {
         return false;
     }
     !crate::tables::is_intercepted(name) || matches!(name, "class" | "className")
+}
+
+/// The event type an `on…Capture` name binds in the CAPTURE phase.
+///
+/// `dom.ts::captureTypeOf`, in Rust: `on` + at least one character +
+/// `Capture`, with the middle lowercased exactly as `onX` is. Tested BEFORE
+/// the plain `on` rule, or `onKeyDownCapture` names an event called
+/// `keydowncapture` that nothing ever fires.
+pub fn capture_event(name: &str) -> Option<String> {
+    let rest = name.strip_prefix("on")?;
+    let middle = rest.strip_suffix("Capture")?;
+    if middle.is_empty() {
+        return None;
+    }
+    Some(middle.to_ascii_lowercase())
 }
 
 #[cfg(test)]

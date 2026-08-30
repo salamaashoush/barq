@@ -109,6 +109,9 @@ enum AttrKind {
     Chan(crate::ir::Chan),
     /// a delegated expando or an `addEventListener`; P2 picks which
     Event,
+    /// `addEventListener(type, handler, true)`. Never delegated: delegation is
+    /// one document listener in the BUBBLE phase.
+    CaptureEvent,
     /// `bind:x` — resolved into `(property, event)` by the element
     Bind,
     Ref,
@@ -454,7 +457,8 @@ impl<'a> Lower<'a, '_> {
             build.unit.attr_order.push((node, name, order));
             let op = match kind {
                 AttrKind::Chan(chan) => Op::SetOpaque { name, value, chan },
-                AttrKind::Event => Op::SetEvent { event: name, value },
+                AttrKind::Event => Op::SetEvent { event: name, value, capture: false },
+                AttrKind::CaptureEvent => Op::SetEvent { event: name, value, capture: true },
                 AttrKind::Ref => Op::Ref { value, write: writable },
                 AttrKind::Spread => Op::Spread { value, live: false },
                 AttrKind::FormAction => Op::FormAction { value },
@@ -517,6 +521,7 @@ impl<'a> Lower<'a, '_> {
                 // The type is resolved here and never re-derived: `on:` is
                 // verbatim, `onX` is `key.slice(2).toLowerCase()`.
                 names::Prefixed::Event(event) => (AttrKind::Event, event),
+                names::Prefixed::CaptureEvent(event) => (AttrKind::CaptureEvent, event),
                 names::Prefixed::Bind(name) => (AttrKind::Bind, name),
                 names::Prefixed::Chan(name, chan) => (
                     AttrKind::Chan(chan),
@@ -527,6 +532,14 @@ impl<'a> Lower<'a, '_> {
                         crate::ir::Chan::StyleProp => names::to_kebab(name, self.allocator),
                         _ => name,
                     },
+                ),
+                // Before the plain `on` rule: `onKeyDownCapture` is a capture
+                // binding for `keydown`, not a bubble one for `keydowncapture`.
+                names::Prefixed::Plain(name) if names::capture_event(name).is_some() => (
+                    AttrKind::CaptureEvent,
+                    self.allocator.alloc_str(
+                        &names::capture_event(name).expect("checked by the guard"),
+                    ) as &'a str,
                 ),
                 names::Prefixed::Plain(name) if name.starts_with("on") => (
                     AttrKind::Event,

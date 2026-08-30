@@ -260,11 +260,21 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
     }
 
     /// The resolved type with a value the compiler could not prove is a handler.
-    fn set_event(&mut self, at: At<'_>, event: NameId, value: ExprId) -> Self::Out {
+    fn set_event(
+        &mut self,
+        at: At<'_>,
+        event: NameId,
+        value: ExprId,
+        capture: bool,
+    ) -> Self::Out {
         let span = at.span();
         let (node, key) = (self.node(at.target(), span), self.key(event, span));
         let slot = self.once(value, span);
-        Some(self.record("setEvent", vec![node, key, slot], span))
+        let mut arguments = vec![node, key, slot];
+        if capture {
+            arguments.push(Expression::new_boolean_literal(span, true, &self.ctx.ast));
+        }
+        Some(self.record("setEvent", arguments, span))
     }
 
     /// A writable binding cannot be READ back through a nullary slot, so the
@@ -382,11 +392,21 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         Some(self.record("delegate", vec![node, key, slot], span))
     }
 
-    fn listen(&mut self, at: At<'_>, event: NameId, handler: HandlerRef) -> Self::Out {
+    fn listen(
+        &mut self,
+        at: At<'_>,
+        event: NameId,
+        handler: HandlerRef,
+        capture: bool,
+    ) -> Self::Out {
         let span = at.span();
         let (node, key) = (self.node(at.target(), span), self.key(event, span));
         let slot = self.handler(handler, span);
-        Some(self.record("listen", vec![node, key, slot], span))
+        let mut arguments = vec![node, key, slot];
+        if capture {
+            arguments.push(Expression::new_boolean_literal(span, true, &self.ctx.ast));
+        }
+        Some(self.record("listen", arguments, span))
     }
 
     /// A group of one lowers to the member's own record, which is the cheaper

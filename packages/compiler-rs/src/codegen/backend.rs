@@ -108,11 +108,12 @@ backend! {
     SetOpaque { name: NameId, value: ExprId, chan: Chan } => set_opaque;
     /// An event whose TYPE is resolved but whose value is not provably a
     /// handler: the delegated/direct choice is still the compiler's.
-    SetEvent { event: NameId, value: ExprId } => set_event;
+    SetEvent { event: NameId, value: ExprId, capture: bool } => set_event;
     /// `el.$$click = h` plus a module-level delegation of the names used.
     Delegate { event: NameId, handler: HandlerRef, data: Option<ExprId> } => delegate;
-    /// `addEventListener`, for everything outside the delegated set.
-    Listen { event: NameId, handler: HandlerRef } => listen;
+    /// `addEventListener`, for everything outside the delegated set and for
+    /// every capture binding, which delegation cannot serve at all.
+    Listen { event: NameId, handler: HandlerRef, capture: bool } => listen;
     /// Not a prop. `write` lowers to `binding = _n1`.
     Ref { value: ExprId, write: bool } => set_ref;
     /// `<form action={…}>` is a URL or a submit handler, and only the value can
@@ -169,7 +170,7 @@ mod tests {
         fn set_opaque(&mut self, _at: At<'_>, _name: NameId, _value: ExprId, _chan: Chan) {
             self.0.push("SetOpaque");
         }
-        fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId) {
+        fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId, _capture: bool) {
             self.0.push("SetEvent");
         }
         fn delegate(
@@ -181,7 +182,7 @@ mod tests {
         ) {
             self.0.push("Delegate");
         }
-        fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef) {
+        fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef, _capture: bool) {
             self.0.push("Listen");
         }
         fn set_ref(&mut self, _at: At<'_>, _value: ExprId, _write: bool) {
@@ -229,9 +230,9 @@ mod tests {
             Op::SetOnce { name: 0, value: 0, chan: Chan::Attr },
             Op::SetLive { name: 0, value: 0, chan: Chan::Attr, diff: Diff::Identity },
             Op::SetOpaque { name: 0, value: 0, chan: Chan::Attr },
-            Op::SetEvent { event: 0, value: 0 },
+            Op::SetEvent { event: 0, value: 0, capture: false },
             Op::Delegate { event: 0, handler: HandlerRef::Inline(0), data: None },
-            Op::Listen { event: 0, handler: HandlerRef::Inline(0) },
+            Op::Listen { event: 0, handler: HandlerRef::Inline(0), capture: false },
             Op::Ref { value: 0, write: false },
             Op::FormAction { value: 0 },
             Op::Bind { prop: 0, event: 0, value: 0 },
