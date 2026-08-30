@@ -17,7 +17,7 @@
  * settled state and stay there, or "the layer was dropped" and "nothing was
  * ever written" would be the same observation.
  *
- * SEMANTICS.md §10 A4.
+ * A4.
  */
 import { action, optimistic, render } from "@barqjs/core"
 

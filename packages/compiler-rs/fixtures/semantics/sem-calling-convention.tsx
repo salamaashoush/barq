@@ -5,7 +5,7 @@
  * convention), C2 (a component is DECLARED, never inferred) and C3 (props are
  * Cells). The corpus-wide assertion in `compile.rs` covers C1's EMISSION, and
  * `packages/core/src/props.test.ts` covers C3's runtime — but neither is the L1
- * channel §14.1 asks for, and §14.1's own coverage line counted all three as
+ * channel the type-level rules ask for, and the coverage line counted all three as
  * unobserved.
  *
  * Every claim below runs the COMPILED module and reads the answer off the DOM
@@ -18,7 +18,7 @@
  * scope. `Label` below is exactly that shape, and before M3 it bound `props` to
  * the Scope and threw.
  *
- * SEMANTICS.md §3 C1, C2, C3.
+ * C1, C2, C3.
  */
 import { mergeProps, omit, render, splitProps } from "@barqjs/core"
 

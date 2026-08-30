@@ -17,7 +17,7 @@
  * about `NotReady` specifically: with the SAME two boundaries stacked the same
  * way, a real failure still reaches the error fallback.
  *
- * SEMANTICS.md §10 A3, §6 E2.3.
+ * A3, E2.3.
  */
 import { Errored, Loading, render, resource } from "@barqjs/core"
 

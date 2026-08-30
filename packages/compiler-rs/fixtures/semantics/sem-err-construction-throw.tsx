@@ -18,7 +18,7 @@
  * fallback, so they drove one path — `ErrorBoundary` was `Errored` with the
  * error handed over by VALUE, and neither claim read it.
  *
- * SEMANTICS.md §6 E2.1; §2 O4.4.
+ * E2.1 and O4.4.
  */
 import type { Block } from "@barqjs/core"
 import {

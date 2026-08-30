@@ -1,7 +1,7 @@
 import { Show, signal } from "@barqjs/core"
 
 /**
- * The `STATIC_KEY` half of §3.4's flag catalogue, which had no fixture at all
+ * The `STATIC_KEY` half of the flag catalogue, which had no fixture at all
  * until this one: every `Show` in the corpus keys on a signal, so the flag was
  * emittable and never emitted, and a flag with no fixture is a flag with no
  * number.
@@ -18,7 +18,7 @@ import { Show, signal } from "@barqjs/core"
  * that shipped them together could not say which one it was pinning:
  *
  *  - `loud` has a hole in its body, so the body is not inert and `NO_SCOPE` is
- *    NOT proved — it ships `STATIC_KEY` alone.
+ *  NOT proved — it ships `STATIC_KEY` alone.
  *  - `quiet` is one clone with no patch at all, so both are proved.
  */
 const VERBOSE: boolean = true

@@ -10,7 +10,7 @@
  * rendered, so there is no node whose survival could be checked. The thunked
  * control does answer it, and it is the assertion M3 has to keep true.
  *
- * SEMANTICS.md §4 X2.
+ * X2.
  */
 import type { Block } from "@barqjs/core"
 import { context, render, signal, useContext } from "@barqjs/core"

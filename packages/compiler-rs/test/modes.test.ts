@@ -7,11 +7,11 @@ import { digest, reachRatchet } from "./ratchet.ts";
 import { MODE_MATRIX_REACH, MATRIX_EXCEPTIONS } from "./mode-matrix.ts";
 
 /**
- * L5, the mode matrix, over the UNION — `CODESIGN.md` §6 L5 and §12.
+ * L5, the mode matrix, over the UNION.
  *
  * ## The hole this closes
  *
- * §6 L5 says "every fixture runs in five modes". Every suite that implements it
+ * Every fixture runs in five modes. Every suite that implements that
  * runs over `listFixtures()`, which is `fixtures/*.tsx` and nothing else. The
  * other four directories — 51 more fixture files — have each only ever been
  * compiled the one way their own suite needs:
@@ -26,7 +26,7 @@ import { MODE_MATRIX_REACH, MATRIX_EXCEPTIONS } from "./mode-matrix.ts";
  * `Op::Region` CORRECTLY for a construct only `fixtures/semantics/` writes, and
  * until this file nothing asked.
  *
- * ## The warning §12 attaches, and what it changed here
+ * ## The warning attached to this, and what it changed here
  *
  * "Solid's own SSR/DOM hole-id desync was caught by an end-to-end streaming
  * example, NOT by fixture parity, because parity compares COMPILERS rather than
@@ -255,7 +255,7 @@ describe("the two backends agree, over the union", () => {
   });
 
   /**
-   * End to end, which is the assertion §12 says fixture parity cannot make.
+   * End to end, which is the assertion fixture parity cannot make.
    *
    * The two backends are run against each other rather than against a shared
    * reference: one source, compiled twice, rendered twice, trees compared.
@@ -316,10 +316,10 @@ describe("the two backends agree, over the union", () => {
    *
    * They are the ones whose whole point is to throw — an L1 fixture that
    * asserts a construction-time error, an L4 session driven by the harness
-   * rather than by a default export. That is legitimate and `SEMANTICS.md` says
-   * so. What is not legitimate is the list growing quietly: a fixture that
-   * stopped rendering has left the end-to-end comparison above, and the
-   * comparison would go on reporting green with one less subject.
+   * rather than by a default export. That is legitimate. What is not legitimate
+   * is the list growing quietly: a fixture that stopped rendering has left the
+   * end-to-end comparison above, and the comparison would go on reporting green
+   * with one less subject.
    */
   it("the fixtures that render on neither backend are the ones on the list", () => {
     const observed = UNRENDERABLE.map((r) => r.fixture.id).sort();

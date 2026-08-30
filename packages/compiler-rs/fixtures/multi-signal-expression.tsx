@@ -20,7 +20,7 @@ export const optimality = {
   patchCalls: 2,
   // Two independent dep sets joined into one hole and one attribute. The
   // element carries exactly ONE live prop, so there is nothing to coalesce —
-  // and the effect around it is not the grouping, it is the write: §3.5 leaves
+  // and the effect around it is not the grouping, it is the write: channel resolution leaves
   // no `setProp` for a thunk to be handed to, so a proven-live prop owns its
   // own effect and threads its own prev through the compute's return.
   emits: ['"data-both"', "a() + b()", "bindEffect("],

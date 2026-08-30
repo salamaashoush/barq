@@ -11,7 +11,7 @@ import {
 } from "./dom-tables.ts";
 
 /**
- * DESIGN §9's drift check, from the side that reaches a user: `dom.ts` as it is
+ * The drift check, from the side that reaches a user: `dom.ts` as it is
  * on disk RIGHT NOW, against the behaviour of the binding the harness loaded. It
  * goes red the moment the two disagree, whether the cause is a stale prebuilt
  * artifact or a table the generator never learned about.
@@ -103,8 +103,8 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
   it("no DOM_PROPS name is folded into the template on an HTML element", () => {
     // The property channel writes these, so baking a literal into the HTML sets
     // only the default attribute and diverges the moment the field is dirty.
-    // The compiler picks the channel now (§3.5), so the assertion is which
-    // channel it picked — and there are two of them: §3.10.1 splits the names
+    // The compiler picks the channel now, so the assertion is which
+    // channel it picked — and there are two of them: the user-mutable channel splits the names
     // the USER also writes onto `setLive`, which compares against the element
     // instead of against the framework's own last write. The split is asserted
     // as a PARTITION rather than as two independent lists: a name on both
@@ -125,7 +125,7 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
   });
 
   /**
-   * §3.10.1's own row. `USER_MUTABLE_PROPS` is keyed `tag:property` because the
+   * the user-mutable channel's own row. `USER_MUTABLE_PROPS` is keyed `tag:property` because the
    * question is not whether a property can be written but whether the USER can
    * write it on THIS element — and the compiler has to answer it the same way
    * the runtime does or the two paths diverge on the one element that matters.
@@ -200,7 +200,7 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     //
     // Where the drift DOES become observable is the SSR backend: markup has one
     // `style=` slot and no CSSOM, so a literal style object is folded into the
-    // chunk at compile time (DESIGN §5's M6 amendment) and the px rule becomes
+    // chunk at compile time, and the px rule becomes
     // the COMPILER's decision, which it can get wrong. `ssr.test.ts` holds that
     // comparison — it asserts the fold really happened and then diffs the unit
     // against the runtime's own answer — driven by the same table this file

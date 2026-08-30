@@ -7,7 +7,7 @@
  * have written a provider for each value and neither of them does anything at
  * all.
  *
- * SEMANTICS.md §2 O2; §4 X3; §3 C6.
+ * O2 and X3; C6.
  */
 import type { Block } from "@barqjs/core"
 import { context, render, useContext } from "@barqjs/core"

@@ -8,7 +8,7 @@
  * the clone lands at `root > provide` exactly where the compiler placed it.
  *
  * This is the hand-written workaround for O2, and it is what every fixture in
- * `fixtures/` is written in (`fixtures/README.md`: "explicit-thunk style") —
+ * `fixtures/` is written in, the explicit-thunk style —
  * which is why 117 differential fixtures never saw the defect. It is also the
  * shape `packages/extra/src/router.tsx:1766` carries with the author's own
  * comment beside it: *"Must use function children so inner JSX is evaluated

@@ -1,5 +1,5 @@
 /**
- * L6 applied to the RUNTIME. `CODESIGN.md` §6 L6 and §8.
+ * L6 applied to the RUNTIME. the mutation layer and the shipping gate.
  *
  * `mutants.ts` breaks one COMPILER optimisation at a time and reports which
  * driver killed it. This file asks the same question of `packages/core/src/flow.ts`,
@@ -9,7 +9,7 @@
  *
  * Two rows go further down and mutate `enter` itself. They are here because
  * O4.5 — "`CURRENT` is never READ to decide ownership" — had no falsification
- * procedure at all: `SEMANTICS.md` §13 answered `structural (§14)`, which is a
+ * procedure at all: the rule set answered `structural`, which is a
  * claim about where to look rather than a way to find out. Re-binding `enter` to
  * read the ambient owner, and re-binding it to re-parent every scope one level
  * up, are the two shapes the whole redesign exists to remove, and until they had
@@ -111,7 +111,7 @@ interface Mutant {
 }
 
 /**
- * The four mutations `CODESIGN.md` §8 names for this milestone — leak a scope,
+ * The four mutations the shipping gate names for this milestone — leak a scope,
  * evaluate a Block twice, recreate a row that should have moved, dispose out of
  * order — plus the two the L4 channels were designed around: a region that
  * rebuilds on an unchanged key, and a teardown that forgets the DOM.
@@ -357,7 +357,7 @@ const MUTANTS: Mutant[] = [
     find: "  setProperty(element, name, value);",
     replace: "  element.setAttribute(name, String(value));",
   },
-  // M7's three, against §3.10's two halves. Both are shapes the channel HAD
+  // M7's three, against the `bind:` channel's two halves. Both are shapes the channel HAD
   // before this milestone, so each row is a real past defect rather than an
   // invented one. All three edit `dom.ts` — the module whose `mock.module`
   // entry the tracer owns and hands over through `BARQ_DOM_OVERRIDE` — by

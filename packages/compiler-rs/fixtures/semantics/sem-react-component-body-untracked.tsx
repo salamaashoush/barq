@@ -1,13 +1,13 @@
 /**
  * R1 — a component body is not a tracking scope.
  *
- * §13 named this fixture and it did not exist, so R1 read `HOLDS` on an
+ * This fixture was named and did not exist, so R1 read `HOLDS` on an
  * assertion nothing ran. The falsification procedure is the rule's own: read a
  * signal in a component body, write it, and the body must not run again — and
  * nothing may re-render on account of that read, which is the half a body-run
  * counter alone does not cover.
  *
- * SEMANTICS.md §6 R1.
+ * R1.
  */
 import { render, signal } from "@barqjs/core"
 

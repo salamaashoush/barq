@@ -1,7 +1,7 @@
 import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts";
 
 /**
- * The hydration channel (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4, H6).
+ * The hydration channel.
  *
  * Three renderings of the same source, and the whole suite is the comparison
  * between them:
@@ -29,7 +29,7 @@ export interface Compiled {
 }
 
 /**
- * `dev` is `CODESIGN.md` §12's DETECTION axis, and it is a parameter here for
+ * `dev` is the DETECTION axis, and it is a parameter here for
  * the reason the axis exists: a production build and a development build of the
  * same source are two different emissions of both backends, and every claim
  * this file measures has to be measured on each of them.
@@ -168,9 +168,9 @@ export function describe(node: Node): string {
  * The DOM as a string, with the claim scaffolding removed.
  *
  * The boundary comments are what a hydrated tree has and a cold one does not,
- * and they are the ONE difference that is allowed — they are the payload §11 Q4
- * agreed to pay. Everything else has to match, so they are stripped here and
- * counted separately by `payload`.
+ * and they are the ONE difference that is allowed: they are the payload the
+ * wire agreed to pay. Everything else has to match, so they are stripped here
+ * and counted separately by `payload`.
  */
 export function shape(root: Node, canonicalizeLeadingNewlines = false): string {
   let out = "";
@@ -233,7 +233,7 @@ export interface Outcome {
 /**
  * Fixtures whose hydration DIVERGES, with the divergence written down.
  *
- * `SEMANTICS.md` §0.3's discipline, applied here: a registered row that starts
+ * The pinning discipline, applied here: a registered row that starts
  * passing fails the suite as STALE, and an unregistered fixture that diverges
  * fails it outright. There is no skip and no tolerance — a row states the
  * `kinds` it must report, whether it had to recover, and the reuse floor it
@@ -255,7 +255,7 @@ export interface KnownDivergence {
  * EVERY `reuse` below was re-measured at M7b and most of them MOVED, without a
  * single fixture changing what it claims.
  *
- * `CODESIGN.md` §12 took the boundary comments off the wire wherever the client
+ * The boundary comments came off the wire wherever the client
  * can read a position's extent off its parent, and the census counts NODES — so
  * a comment that used to sit in the server's markup and trivially survive was in
  * the denominator, and is not any more. A row that loses the same subtree over a
@@ -379,7 +379,7 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
 };
 
 /**
- * The hydration channel's declared REACH — `SEMANTICS.md` §11's H family.
+ * The hydration channel's declared REACH: the H family.
  *
  * Stated here rather than inside the suites so that `semantics.test.ts` can
  * compute what the whole oracle covers without importing one. A rule leaves this

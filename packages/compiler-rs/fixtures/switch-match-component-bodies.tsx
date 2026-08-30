@@ -34,7 +34,7 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 4,
-  // DESIGN §8 V9: on the DOM target `Match` is a real call. It returns its own
+  // On the DOM target `Match` is a real call. It returns its own
   // props object and `Switch` reads it, so collapsing the pair into a ternary —
   // which is what the SSR backend does, and only the SSR backend — produces a
   // `Switch` with nothing to read. The component bodies are ordinary calls with

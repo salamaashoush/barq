@@ -1,6 +1,6 @@
 /**
  * Layer L2b of the oracle — the ownership trace, checked against the
- * compiler's static ownership tree. `CODESIGN.md` §6 L2b.
+ * compiler's static ownership tree. the ownership channel.
  *
  * The claim, per fixture:
  *
@@ -270,7 +270,7 @@ export interface Finding {
    * make every reworded diagnostic a registry diff.
    */
   id: string;
-  /** the `SEMANTICS.md` rule this violation is about */
+  /** the the rule set rule this violation is about */
   rule: string;
   kind: string;
   detail: string;

@@ -23,7 +23,7 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 4,
-  // K5, and the shape §3.4 asks for: `Switch` and its arms collapse into ONE
+  // K5, and the shape the lowering asks for: `Switch` and its arms collapse into ONE
   // `branch` whose key is an INTEGER — the winning arm's index, with 0 for the
   // fallback — and a hoisted body table indexed by it. `Match` ceases to exist
   // on this backend as it already had on the string one.

@@ -7,7 +7,7 @@ export const clicks = signal(0)
  * never claims it, so a static region costs zero hydration work and ships no
  * behaviour.
  *
- * Solid's `NoHydration` (`dom-expressions/src/server.js:569`), and deliberately
+ * Solid's `NoHydration`, and deliberately
  * not one of the ten control-flow constructs: it renders its children once and
  * unconditionally, and what it decides is who CLAIMS the markup.
  *

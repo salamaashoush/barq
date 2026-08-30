@@ -14,7 +14,7 @@ const opts = { keyed: (row: { id: number }) => row.id }
  *
  * The row: reading only `JSXAttributeItem::Attribute` left the spread invisible,
  * so the body took the by-item arm and `{row().text}` was applied once — the
- * ERGONOMICS §4.3 stale cell, reached by a different door. A spread cannot be
+ * The stale cell, reached by a different door. A spread cannot be
  * proved not to carry `keyed`, so `analysis::bind` resolves it to the
  * key-function arm, which is the one that is safe when wrong. Step 0 is the only
  * frame that can tell: the keys do not move and the items behind them do.
@@ -25,8 +25,8 @@ const opts = { keyed: (row: { id: number }) => row.id }
  * Block's own parameter list is `(scope, item, index)` in all three modes and the
  * three keying fixtures differ at the `keyOf` argument and nowhere else. The
  * carrier therefore crosses unresolved and `flow.ts`'s `keyMode` reads it, which
- * is the same §3.0 rule 1 the compiler applies statically when it can see the
- * prop. What the lowering buys is the `(parent, anchor)` pair §3.4 exists to
+ * is the same arity rule the compiler applies statically when it can see the
+ * prop. What the lowering buys is the `(parent, anchor)` pair the lowering exists to
  * deliver, in place of an `insert` hole around an adapter frame.
  */
 export default function ControlFlowForKeyedSpread() {

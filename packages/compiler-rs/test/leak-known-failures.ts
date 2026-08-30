@@ -1,6 +1,5 @@
 /**
- * The known-failure registry for the leak oracle — `SEMANTICS.md` §15, applied
- * to O3.7 and B4.
+ * The known-failure registry for the leak oracle, applied to O3.7 and B4.
  *
  * **Why a third table.** `known-failures.ts` addresses a `claim` inside a
  * fixture under `fixtures/semantics/` and asserts that a row matching no claim
@@ -19,7 +18,7 @@
  *   3. a registered leak whose rule is not the rule the probe named is a suite
  *      failure. A fixture that fails because it does not compile is not evidence
  *      that anything leaked;
- *   4. every `rule` exists in `SEMANTICS.md` and in the leak channel's declared
+ * 4. every `rule` is a defined rule and is in the leak channel's declared
  *      reach.
  *
  * There is no wildcard, no glob, no per-fixture opt-out and no environment
@@ -55,15 +54,15 @@ export interface LeakKnownFailure {
   readonly fixture: string;
   /** the `id` of one `LeakFinding`: `<kind>@<what>` */
   readonly leak: string;
-  /** the rule from `SEMANTICS.md` the probe must name */
+  /** the rule the probe must name */
   readonly rule: string;
   /**
    * `VIOLATED` is a bug that shipped. `PLANNED` is a semantic change this design
    * chose on the record. Both fail today; only the first is an indictment, and
-   * §0.2 forbids conflating them.
+   * conflating them is forbidden.
    */
   readonly status: "VIOLATED" | "PLANNED";
-  /** the milestone from `CODESIGN.md` §8 after which this row must be deleted */
+  /** the milestone after which this row must be deleted */
   readonly greenAt: string;
   /** the defect, not the symptom */
   readonly reason: string;

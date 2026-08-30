@@ -16,7 +16,7 @@
  * user's edit is a write, the server's answer is a re-seed, and neither needs a
  * second signal or a reconcile step.
  *
- * SEMANTICS.md §8 R7.
+ * R7.
  */
 import { linked, render, signal } from "@barqjs/core"
 import type { Block } from "@barqjs/core"

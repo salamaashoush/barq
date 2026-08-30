@@ -19,7 +19,7 @@
  * to be written at the call site of a component whose body the author is not
  * looking at.
  *
- * `SEMANTICS.md` §2 O2, O2.1; §4 X1.
+ * O2, O2.1 and X1.
  * Registered in `ownership-known-failures.ts`.
  */
 import { context, useContext } from "@barqjs/core"

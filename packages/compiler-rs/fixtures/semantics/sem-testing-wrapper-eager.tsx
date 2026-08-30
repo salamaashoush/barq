@@ -3,7 +3,7 @@
  * hand-written, at `packages/testing/src/index.ts:74`:
  *
  * ```ts
- * const wrappedUi: Ui = wrapper ? () => wrapper({ children: ui() }) : ui;
+ * const wrappedUi: Ui = wrapper ? () => wrapper({ children: ui() }): ui;
  * ```
  *
  * `ui()` is an argument. The component under test is therefore built BEFORE the
@@ -14,7 +14,7 @@
  * So a 445-line shipped package cannot test a context-consuming component, and
  * a user who writes that test watches it fail and concludes their component is
  * wrong. `packages/testing` is a first-class consumer of the calling convention
- * and it is the reason `CODESIGN.md` §11's "one rule across props, context,
+ * and it is the reason the "one rule across props, context,
  * rows, refs, slot args" has to reach outside `packages/core`.
  *
  * The import is by relative path on purpose: `compiler-rs` does not depend on
@@ -23,7 +23,7 @@
  * file and the compiled module the harness writes sit two directories below the
  * package root, so the one specifier resolves from either.
  *
- * SEMANTICS.md §2 O2, O2.1; §3 C6.
+ * O2, O2.1 and C6.
  */
 import { context, useContext } from "@barqjs/core"
 

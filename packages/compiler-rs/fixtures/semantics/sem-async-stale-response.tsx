@@ -7,7 +7,7 @@
  *
  * ```ts
  * const data = await fetcher(…)
- * if (abortController.signal.aborted) return   // the NEWEST controller
+ * if (abortController.signal.aborted) return // the NEWEST controller
  * ```
  *
  * By the time a slow first response arrived, `abortController` named the second
@@ -20,7 +20,7 @@
  * wins. Without it "the second response wins" would also be satisfied by a
  * framework that simply believes the last thing it was told, which is the bug.
  *
- * SEMANTICS.md §10 A2.
+ * A2.
  */
 import { render, resource, signal } from "@barqjs/core"
 

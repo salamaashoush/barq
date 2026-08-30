@@ -212,7 +212,7 @@ describe("compiler contract", () => {
   });
 
   it("a hole's emitted code maps back to the original JSX expression", () => {
-    // DESIGN §6.1: the parsed node is MOVED into the emitted call rather than
+    // The parsed node is MOVED into the emitted call rather than
     // rebuilt, so its span cannot drift. This decodes the map and checks that
     // claim on a real hole instead of trusting the mappings string is non-empty.
     const source = fixtureSource("text-hole-fused");
@@ -236,7 +236,7 @@ describe("compiler contract", () => {
   });
 
   /**
-   * DESIGN §6.2. The template is a STRING LITERAL, so nothing oxc's AST-driven
+   * The template is a STRING LITERAL, so nothing oxc's AST-driven
    * builder records can address its inside: without the segments the compiler
    * adds after printing, a debugger that steps into `_tmpl$1` is looking at
    * bytes with no origin at all.
@@ -314,7 +314,7 @@ describe("compiler contract", () => {
   });
 
   /**
-   * Target #6 meets §6. One `template()` call serves two source sites, and a
+   * Target #6 meets the oracle design. One `template()` call serves two source sites, and a
    * source map is a FUNCTION from a generated position to a source position —
    * two sites cannot both own one byte. The bytes name the site that serialised
    * them; the other site is reachable at its own `_tmpl$1()` clone call.
@@ -348,7 +348,7 @@ describe("compiler contract", () => {
   });
 
   /**
-   * The map was ~30% of compile time at M1 and it still is — completing §6 cost
+   * The map was ~30% of compile time at M1 and it still is — completing the oracle design cost
    * about a third of the map, and roughly two thirds of it is oxc's own builder
    * and VLQ encoder. Maps are off by default and a mapped compile is 26x inside
    * the 1 ms budget, so the number is printed rather than tuned.

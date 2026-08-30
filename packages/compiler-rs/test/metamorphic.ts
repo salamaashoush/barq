@@ -1,5 +1,5 @@
 /**
- * The node-identity channel, regraded METAMORPHIC — `CODESIGN.md` §6 L4.
+ * The node-identity channel, regraded METAMORPHIC.
  *
  * ## What was wrong with the differential grading
  *
@@ -21,7 +21,7 @@
  *     more implementation, with its own reuse behaviour. A rebuild both paths
  *     perform is certified, not caught.
  *
- * §6 retired that reference at M9, which settles (2) by removing it. This file
+ * That reference is retired, which settles (2) by removing it. This file
  * is what (1) needed either way, and it predates the retirement: an
  * unconditional property is not something a better reference could have given.
  *
@@ -419,10 +419,10 @@ function mm4(
     // other channel in this repository is a function of — and fails here.
     //
     // `grows` and `shrinks` carry NO disposal claim, and the reason is a fact
-    // about §3.4 rather than a concession. `Show` compiles to ONE Block used for
-    // every key (`components.ts:116`), so a `<Show when={…}>` with no fallback
-    // still activates an instance scope for the falsy arm and builds nothing in
-    // it — `mm-nested-branch`'s inner region grows by exactly one element and
+    // about the lowering rather than a concession. `Show` compiles to ONE Block
+    // used for every key, so a `<Show when={…}>` with no fallback still
+    // activates an instance scope for the falsy arm and builds nothing in it —
+    // `mm-nested-branch`'s inner region grows by exactly one element and
     // disposes exactly one scope, and both are correct. Asserting "grows disposes
     // nothing" would be asserting that the empty arm is not an activation.
     const disposals = disposalsInto(frame);

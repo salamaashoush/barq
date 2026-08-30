@@ -1,5 +1,5 @@
 /**
- * L4 — single-evaluation conformance. `SEMANTICS.md` C7.
+ * L4 — single-evaluation conformance. the rule set C7.
  *
  * > For each activation of a position, its Block is invoked **exactly once**.
  * > Not zero times, not twice.
@@ -40,7 +40,7 @@ interface C7Declaration {
 }
 
 /**
- * The consumers `SEMANTICS.md` C7 lists, mapped to the fixture that drives each
+ * The consumers the rule set C7 lists, mapped to the fixture that drives each
  * with an instrumented Block. The map is asserted total below: a consumer with
  * no fixture is a gap in the conformance, and naming it here is what makes the
  * gap fail rather than go unmentioned.
@@ -108,7 +108,7 @@ describe("L4 — C7, single evaluation", () => {
   });
 
   it("the four primitives and both non-region consumers are all covered", () => {
-    // §3.4's four, plus the two C7 names beyond them. A conformance suite that
+    // the four primitives's four, plus the two C7 names beyond them. A conformance suite that
     // covered `branch` sixteen times and `portal` never would pass every
     // assertion below and prove a quarter of the rule.
     for (const construct of ["branch", "each", "boundary", "portal", "provide", "dynamic"]) {

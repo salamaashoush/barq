@@ -1,5 +1,5 @@
 /**
- * The optimisation-level axis — `CODESIGN.md` §5.1 and §6 L3.
+ * The optimisation-level axis, and the differential.
  *
  * The settled answer in the optimising-compiler literature is that the
  * reference for an optimising compiler is YOUR OWN COMPILER WITH THE
@@ -10,7 +10,7 @@
  * not say about itself. What `-O0` cannot say about ITSELF is the other half:
  * two builds that share a front end cannot grade it, so P2 `classify` and P4
  * `shape` need an ABSOLUTE grader and the oracle does not retire until one
- * exists. `CODESIGN.md` §6 states it; the last describe block here asserts it.
+ * exists. the oracle design states it; the last describe block here asserts it.
  *
  * This file is the M1 half of that: `-O0` is a build that RUNS and renders what
  * `-Ox` renders. The channels it compares are the ones L4 grades as
@@ -121,7 +121,7 @@ describe("-O0 is a build, not a debug mode", () => {
 });
 
 /**
- * L3, over the fixture corpus. This is the channel `CODESIGN.md` §6 L4 grades
+ * L3, over the fixture corpus. This is the channel the grade table grades
  * "differential — `-O0` vs `-Ox` byte-identical", and it is the property that
  * makes `-O0` usable as the oracle's reference at all: an optimisation that
  * changes what the program DOES fails here, on the exact frame it changed.
@@ -148,7 +148,7 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
       // shape of the axis: `-O0` turns anchor elision off, so it bakes a
       // `<!---->` where `-Ox` anchors against a node the template already
       // carries. Demanding they agree would be demanding that the optimisation
-      // do nothing. §6 L4 grades that channel self-check rather than
+      // do nothing. the grade table grades that channel self-check rather than
       // differential for exactly this reason, and `oracle.test.ts` already
       // holds each level to its own baked-in count.
       expect(reference.channels.length, `${name}: frame count`).toBe(optimised.channels.length);
@@ -193,7 +193,7 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
  * same `Show(_s$, { when, fallback, children })` and the whole corpus
  * differential above was green ON A PAIR THAT DID NOT CHANGE. Green for the
  * right reason and green because there is nothing to compare are the same
- * colour, and the second is the one §6 exists to prevent.
+ * colour, and the second is the one the oracle design exists to prevent.
  *
  * This describe is the answer in the sharpest available form: `flow` OFF is the
  * only difference between the two builds, so every fixture below compares an
@@ -334,7 +334,7 @@ describe("L3 — the -O0/-Ox differential through the string backend", () => {
  * single bug this compiler can have — left the whole `-O0` differential and the
  * whole Interp differential fully green.
  *
- * Gating `classify` would not fix it, and `CODESIGN.md` §6 now says why: the
+ * Gating `classify` would not fix it, and the oracle design now says why: the
  * pessimal choice for the reactivity analysis is not "assume nothing", it is a
  * DIFFERENT PROGRAM. With P2 skipped every patch stays the `Op::SetOpaque` /
  * `InsertPlan::Opaque` that P1 emitted, which `codegen::dom` passes to the
@@ -350,7 +350,7 @@ describe("L3 — the -O0/-Ox differential through the string backend", () => {
  * read is LIVE wherever it is written, and a snapshot of one is not. They are
  * run in every live mode, so a backend that agrees with its siblings by all
  * being wrong fails here — and they are written in the DIRECT form, which is
- * exactly the form `fixtures/README.md` steers the corpus away from and the
+ * exactly the form the corpus is steered away from and the
  * reason only 9 fixtures noticed the mutant at all.
  */
 const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; after: string }> = [

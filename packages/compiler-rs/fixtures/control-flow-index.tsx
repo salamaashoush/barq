@@ -6,7 +6,7 @@ export const nums = signal([1, 2, 3])
  * The positional mode, which since M7b has ONE spelling: `keyed={false}`.
  * `Index` is deleted — Solid ran `For` and `Index` side by side for five years
  * and removed the second because having both "encourages bikeshedding and
- * accidental misuse" (`CODESIGN.md` §12). The emission is unchanged: the
+ * accidental misuse". The emission is unchanged: the
  * construct was already `each(src, false, row)` under either name.
  */
 export default function ControlFlowIndex() {

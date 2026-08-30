@@ -18,7 +18,7 @@
  * gains an ordering channel because after (c) the thing registering is not
  * always a boundary.
  *
- * SEMANTICS.md §10 A6.
+ * A6.
  */
 import { Loading, Reveal, render, resource } from "@barqjs/core"
 

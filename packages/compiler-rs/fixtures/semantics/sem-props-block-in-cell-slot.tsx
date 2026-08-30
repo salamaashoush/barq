@@ -8,7 +8,7 @@
  * source, `portal`'s target, `boundary`'s `on`, a spread's members, a provider's
  * value) invoked a branded Block with `s === undefined` and let it run, and
  * every ambient read inside it resolved against whatever scope happened to be
- * current. That is the Provider bug at the one place §3.0 says nobody would look
+ * current. That is the Provider bug at the one place nobody would look
  * for it, so the claim below drives every slot and not a representative one.
  *
  * C3.9's half is the compiler's: a Block forwarded out of a rest-destructured
@@ -27,7 +27,7 @@
  * redundant with the other three: the compiled path writes `_el$1.$$click = h`
  * itself and never calls `delegate`.
  *
- * SEMANTICS.md §3 C3.6, C3.7, C3.8, C3.9, C5.1.
+ * C3.6, C3.7, C3.8, C3.9, C5.1.
  */
 import { block, delegate, dispose, enterRoot, exit, isBlock, listen, pin, ref, render, setProp } from "@barqjs/core"
 import { branch, boundary, each, onCleanup, portal, provide, context, useContext } from "@barqjs/core"
@@ -53,11 +53,11 @@ const needsScope = block((s: Scope | null) => {
  *
  * - `guarded` is `block()`'s: branded AND carrying an entry guard of its own.
  * - `pinned` is `pin()`'s: branded and deliberately UNGUARDED, because `pin`
- *   promises the handed scope is ignored including when there is none. Nothing
- *   but a slot's own test can stop it, and four of the six slots had none.
+ *  promises the handed scope is ignored including when there is none. Nothing
+ *  but a slot's own test can stop it, and four of the six slots had none.
  * - `laundered` is a Cell that YIELDS a Block: an uncompiled caller wrapping a
- *   forwarded prop in `() => x` produces one, and it carries no brand at all, so
- *   the value test walks past it and only a test on the READ can see it.
+ *  forwarded prop in `() => x` produces one, and it carries no brand at all, so
+ *  the value test walks past it and only a test on the READ can see it.
  */
 type Shape = "guarded" | "pinned" | "laundered"
 
@@ -396,7 +396,7 @@ export const claims: Claim[] = [
       // Every drive here carries a plain CELL, so nothing in the value can
       // throw: the only thing under test is the primitive's own refusal of a
       // missing scope. Without it `scope ?? null` reads as "no owner", which is
-      // a legal value (§3.0) and silently detaches everything the call builds.
+      // a legal value and silently detaches everything the call builds.
       const cases = slots(() => () => "a cell")
       const surviving: string[] = []
       const wrong: string[] = []

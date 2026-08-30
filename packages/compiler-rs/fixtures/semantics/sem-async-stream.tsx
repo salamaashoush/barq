@@ -13,7 +13,7 @@
  * satisfied by an implementation that awaits the first step and abandons the
  * iterator, which is most of the ways to get this wrong.
  *
- * SEMANTICS.md §10 A7, A3.
+ * A7, A3.
  */
 import { Loading, computed, render } from "@barqjs/core"
 

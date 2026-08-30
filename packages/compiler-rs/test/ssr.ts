@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts";
 
 /**
- * The dual-render conformance seam (DESIGN §5, §10 M6).
+ * The dual-render conformance seam .
  *
  * Two backends emit markup for the same IR. The DOM one builds nodes, so
  * escaping is something it gets for free — a text node cannot be parsed as a
@@ -134,7 +134,7 @@ export interface SsrRender {
  * Render a loaded module to markup.
  *
  * A compiled SSR module returns a string and is used as it stands. Anything
- * else — a compiled DOM module, and the SSR fallback DESIGN §5 keeps for the
+ * else — a compiled DOM module, and the SSR fallback kept for the
  * flow constructs that cannot be inlined — goes through the runtime's own
  * `renderToString`. Accepting both is the point: the fallback is a documented
  * strategy rather than a failure, and the markup it produces is held to exactly
@@ -187,9 +187,9 @@ function isSsrHtml(value: unknown): boolean {
 /**
  * The compiled DOM module, serialised by the runtime's own `renderToString`.
  *
- * This is the reference the string backend is held to. `CODESIGN.md` §6 retires
+ * This is the reference the string backend is held to. the oracle design retires
  * the un-compiled `createElement` path as an oracle, and the replacement here is
- * §6 L2's construction rather than a second implementation: one lowering, one
+ * the reference backend's construction rather than a second implementation: one lowering, one
  * IR, two `Backend` impls. A new `Op` is a Rust compile error in both, so the
  * two sides cannot drift, and neither carries a decision the other does not.
  */
@@ -344,7 +344,7 @@ const VOID = new Set([
  * The tags whose first U+000A a conforming parser ignores, and the reason a
  * markup string and a SERIALISED DOM cannot be compared byte for byte here.
  *
- * The compiler doubles a leading newline (DESIGN O9) so that the parser's rule
+ * The compiler doubles a leading newline so that the parser's rule
  * leaves exactly one. The serialiser's half of the round trip is the one no
  * engine implements: the spec says to write the newline back, real Chrome does
  * not (`browser-parse-check.ts` measures both directions), and happy-dom
@@ -397,7 +397,7 @@ function serialize(root: Node, canonicalizeLeadingNewlines = false): string {
 /**
  * The markup string as a TREE.
  *
- * Comments go, on both sides. DESIGN §5 says `SkelNode::Marker` is skipped
+ * Comments go, on both sides. `SkelNode::Marker` is skipped
  * entirely by the SSR serialiser — a `<!---->` is a DOM insert anchor and means
  * nothing on the wire — and the flow components the fallback path renders splice
  * their own NAMED marker pairs into the live DOM, which the oracle's

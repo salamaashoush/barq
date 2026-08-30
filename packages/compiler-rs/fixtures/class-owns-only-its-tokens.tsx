@@ -18,11 +18,11 @@ export const label = signal("first")
  * not:
  *
  *  - the fused record guards `class` on its own field, so `title` changing
- *    cannot reach the class channel at all;
+ *  cannot reach the class channel at all;
  *  - the class channel diffs the tokens it applied last time against the ones
- *    it applies now, so even a real class change leaves `pinned` and `ref-added`
- *    alone. This is the half a differential cannot see — the un-compiled path
- *    calls the same channel, so both paths were wrong together.
+ *  it applies now, so even a real class change leaves `pinned` and `ref-added`
+ *  alone. This is the half a differential cannot see — the un-compiled path
+ *  calls the same channel, so both paths were wrong together.
  *
  * Step 0 changes only `label`; step 1 changes `tone`. The token survival is
  * asserted absolutely, in `optimality.test.ts`.
@@ -46,7 +46,7 @@ export const steps = [
 ]
 
 /**
- * A `ref` callback is client-only — DESIGN §5's opcode table drops it — so the
+ * A `ref` callback is client-only — the opcode table drops it — so the
  * token it adds imperatively has no bytes on the wire. Everything the two
  * CHANNELS wrote is there and in the same order.
  */

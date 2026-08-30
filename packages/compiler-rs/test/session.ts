@@ -1,7 +1,7 @@
 /**
  * The L4 session driver — one render window, every graded channel read off it.
  *
- * `CODESIGN.md` §6 L4 replaces near-total equality with GRADED properties, and
+ * the grade table replaces near-total equality with GRADED properties, and
  * three of the grades want observations the L1/L2/L3 drivers never took: which
  * nodes survived a transition, which scopes were still alive when the render was
  * disposed, and what was still registered against the outside world afterwards.

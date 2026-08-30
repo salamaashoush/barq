@@ -9,7 +9,7 @@
  * next to it. 117 fixtures missed the bug because every one of them is written
  * that way. This one is not.
  *
- * SEMANTICS.md §2 O2, O2.1; §4 X1; §3 C6.
+ * O2, O2.1 and X1; C6.
  */
 import { context, getOwner, hasContext, render, signal, useContext } from "@barqjs/core"
 
@@ -136,7 +136,7 @@ export const claims: Claim[] = [
           "inspect and this claim would pass for a fixture that renders nothing",
       )
       const call = /\bProvider\)\(\s*[\w$]+\s*,\s*\{[\s\S]{0,200}?children:\s*([A-Za-z_$][\w$]*)\(/.exec(kit.emitted)
-      // §3.0 rule 3's brand is the ONE call that leaves the slot deferred: it
+      // The scope brand is the ONE call that leaves the slot deferred: it
       // marks the function in place and hands it back. Every other call in this
       // position has already produced a node.
       if (call && !/block$/.test(call[1])) {

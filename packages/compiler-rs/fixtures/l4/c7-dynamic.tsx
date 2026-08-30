@@ -1,7 +1,7 @@
 /**
  * C7 on `branch` keyed by a component VALUE rather than by an index.
  *
- * `Dynamic` is the case §3.4 handles by letting `bodies` be a single Block used
+ * `Dynamic` is the case the lowering handles by letting `bodies` be a single Block used
  * for every key — one `typeof` per activation and no flag. Each tag change is
  * one activation of that single Block, and the replayed step in between is none.
  *

@@ -1,5 +1,5 @@
 /**
- * The milestone from `CODESIGN.md` §8 that has shipped.
+ * The milestone that has shipped.
  *
  * Every known-failure registry carries a `greenAt`, and a marker nobody
  * compares to a clock rots: three rows promised green at M5 and were still
@@ -14,10 +14,8 @@
  * two promised M9 and one M10, and none had been rechecked against a clock
  * since. All three now say M12 and say why they moved.
  *
- * `CODESIGN.md` §8 was written to M6 and stopped, so this number ran past the
- * document that defines what it counts. §8 carries the M7–M11 history and M12's
- * contents now; a marker here is only as good as a reader's ability to look up
- * what the milestone IS.
+ * A marker here is only as good as a reader's ability to look up what the
+ * milestone IS.
  */
 export const CURRENT_MILESTONE = 11;
 

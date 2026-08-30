@@ -10,7 +10,7 @@
  * once inline in the `catch` and once when the effect re-ran on the captured
  * error — was outside every L4 channel.
  *
- * SEMANTICS.md §3 C7, §5 E3.
+ * C7 and E3.
  */
 import { Errored, signal } from "@barqjs/core"
 

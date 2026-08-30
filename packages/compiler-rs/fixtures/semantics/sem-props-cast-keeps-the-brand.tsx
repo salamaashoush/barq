@@ -9,7 +9,7 @@
  * erased the Block: a plain child crossed as a branded Block, and the same child
  * behind `as never` crossed as a bare nullary thunk building a template.
  *
- * The second is C6's third named falsifier and the one expression §3.0 rule 3
+ * The second is C6's third named falsifier and the one expression the brand rule
  * says the emitted language does not contain. Run against `packages/core` the
  * first threw `ScopeMissingError` and the second silently built the subtree and
  * stringified it into the attribute — `title="<b>C</b>"` — which is exactly what
@@ -19,7 +19,7 @@
  * The corpus could not see it: no fixture anywhere had a JSX-valued prop on a
  * user component, and none had a type assertion on JSX.
  *
- * SEMANTICS.md §3 C6, C5.1.
+ * C6, C5.1.
  */
 import { render } from "@barqjs/core"
 

@@ -4,11 +4,10 @@ import { ADDRESS_CHANNEL_RULES } from "./addresses.ts";
 import { compileFixtureRaw, listFixtures } from "./harness.ts";
 
 /**
- * P6, the compile-time address table — `CODESIGN.md` §3.11 and §5.2.
+ * P6, the compile-time address table.
  *
- * §5.2 states the acceptance criterion and states that it cannot be met today:
- * "A fixture compiles the whole corpus both ways and diffs the address sets — an
- * agreement that is currently not assertable at all." This is that fixture.
+ * The acceptance criterion is that the whole corpus compiles both ways and the
+ * address sets diff clean. This is that fixture.
  *
  * WHY IT IS WORTH A CHANNEL OF ITS OWN. The two backends share the front end and
  * four of the passes and disagree about three: `anchor` inserts marker nodes for
@@ -19,7 +18,7 @@ import { compileFixtureRaw, listFixtures } from "./harness.ts";
  * instead, which both targets compute identically — and this suite is what says
  * "identically" rather than assuming it.
  *
- * The addresses are also asserted STABLE across `-O0`, because §6 L3's whole
+ * The addresses are also asserted STABLE across `-O0`, because the whole
  * claim is that the two levels are one program at two speeds. An address that
  * moved when effect fusion was turned off would be an address about the
  * compiler's mood.
@@ -51,7 +50,7 @@ function rows(it: Table): string[] {
 
 describe("compile-time addresses", () => {
   it("declares the rule it reports on", () => {
-    // §14.2's row for H5 names this channel, and `semantics.test.ts` computes
+    // H5 names this channel, and `semantics.test.ts` computes
     // the oracle's coverage from the same constant — so a channel that stopped
     // reporting a rule and a document that stopped claiming one cannot drift.
     expect([...ADDRESS_CHANNEL_RULES]).toEqual(["H5"]);
@@ -102,7 +101,7 @@ describe("compile-time addresses", () => {
    * bytes, and bytes have no position to claim at run time — there is nothing
    * there for a client to write to, so an address for it would name a hole that
    * does not exist. That is a real semantic difference between the two builds
-   * and not a stability defect, and it is fine for every consumer §5.2 lists,
+   * and not a stability defect, and it is fine for every consumer of the table,
    * because a server and its client are ONE build with ONE set of flags.
    *
    * It is pinned here so that the boundary is a measured fact. A version of this

@@ -15,7 +15,7 @@ function Flaky() {
  *
  * `unwrapped_by` names five props — `each`, `count`, `when`, `component`, `on` —
  * that the runtime really does unwrap with
- * `typeof raw === "function" ? raw() : raw`. For exactly those, `() => acc()` and
+ * `typeof raw === "function" ? raw(): raw`. For exactly those, `() => acc()` and
  * `acc` are the same value and the arrow is dead weight, so the compiler drops
  * it. For every other prop the runtime STORES what it is handed and decides for
  * itself what to do with it, and reducing the arrow away is the compiler
@@ -57,7 +57,7 @@ export const optimality = {
   milestone: 5,
   templates: 4,
   // η-reduction is UNIVERSAL after M3 rather than a five-name whitelist: a
-  // zero-arity function IS a Cell (§3.0 rule 1), so `() => note()` and `note`
+  // zero-arity function IS a Cell, so `() => note()` and `note`
   // are the same carrier and the reduced one allocates nothing. The boundary
   // this fixture draws therefore moved from WHICH PROP to WHAT SHAPE, and the
   // negatives below are what still says the reduction happened.

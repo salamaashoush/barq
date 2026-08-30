@@ -1,8 +1,8 @@
 /**
- * L6 — mutation testing of the harness, generalised. `CODESIGN.md` §6 L6 and §8.
+ * L6 — mutation testing of the harness, generalised. the mutation layer and the shipping gate.
  *
  * The acceptance test for a differential harness is not that it passes. It is
- * that it CATCHES. §8 makes that a shipping gate in as many words: *no
+ * that it CATCHES. the shipping gate makes that a shipping gate in as many words: *no
  * optimisation pass ships until a mutation operator exists for it and no mutant
  * survives*. So this script breaks one optimisation at a time, in the compiler
  * itself, and reports which driver and which fixture killed each one.
@@ -250,7 +250,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     /**
-     * §3.5's whole claim is that the channel is a compile-time fact. Collapse
+     * channel resolution's whole claim is that the channel is a compile-time fact. Collapse
      * every channel onto `setAttr` and the name reaches the DOM as an attribute
      * whatever it meant: a `DOM_PROPS` name stops writing the property, a
      * `classList` object is stringified into `class`, `style` is written whole.
@@ -331,7 +331,7 @@ const MUTANTS: Mutant[] = [
      *
      * P2 `classify` is shared by both levels and all three backends, so `-O0`
      * and `Interp` are wrong in exactly the same way when it is — the whole L3
-     * and L2 apparatus is structurally blind to it (`CODESIGN.md` §6 L3, "what
+     * and L2 apparatus is structurally blind to it (the differential, "what
      * L3 is blind to"). Keeping the row in the table is what stops that from
      * being a claim in prose: it must be killed by the ABSOLUTE grader in
      * `optimisation.test.ts`, never by a differential, and the `killed by`
@@ -619,7 +619,7 @@ function everyInput(): Array<[string, string]> {
  *
  * This is the distinction a mutation-testing report is worthless without.
  * "Survived" means the harness watched a wrong compiler produce different output
- * and said nothing — a coverage hole, and a shipping gate under §8. "Equivalent"
+ * and said nothing — a coverage hole, and a shipping gate under the shipping gate. "Equivalent"
  * means the mutation is unreachable: the mutated compiler and the original agree
  * on every byte of every input, so there was nothing for any oracle to catch and
  * no suite in existence could have caught it. Reporting the second as the first

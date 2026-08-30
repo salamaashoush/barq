@@ -12,9 +12,9 @@ export const count = signal(1)
  *
  * A bare `count()` inside a template literal cannot η-reduce, so each of these
  * three holes forces a fresh `() => …`:
- *   - an attribute value,
- *   - a child expression,
- *   - and a bare read, which DOES η-reduce, as the contrast.
+ *  - an attribute value,
+ *  - a child expression,
+ *  - and a bare read, which DOES η-reduce, as the contrast.
  *
  * Under `createElement` all three are read once at construction and never
  * again; compiled, they are live bindings. That is exactly what compiling buys,

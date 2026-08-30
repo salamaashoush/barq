@@ -6,7 +6,7 @@ export const total = signal(0)
  * The whole of "fine-grained flow across a component boundary", stated as a
  * divergence rather than as a claim about emitted code.
  *
- * `createElement` builds its own props object (`{ ...props }`, dom.ts:309), so
+ * `createElement` builds its own props object (`{...props }`, dom.ts:309), so
  * the un-compiled path hands `Badge` a SNAPSHOT of `total()` and the cell can
  * never change again. A compiled call site is a direct call whose reactive prop
  * is a GETTER, so the read inside `Badge` stays live and the cell updates. Same

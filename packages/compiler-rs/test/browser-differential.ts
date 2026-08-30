@@ -16,12 +16,12 @@
  * has no meaning in a browser — so this is the DOM half of the invariant, which
  * is exactly the half a fake DOM can lie about.
  *
- * ## What M9 changed here
+ * ## The reference, and what replaced the old one
  *
  * This used to bundle the fixture's own source BESIDE the compiled module and
- * diff the two. `CODESIGN.md` §6 retires that reference, so the page now drives
- * the compiled module alone and returns what it observed. Two things replace
- * the diff, and neither needs a second implementation:
+ * diff the two. That reference is retired, so the page now drives the compiled
+ * module alone and returns what it observed. Two things replace the diff, and
+ * neither needs a second implementation:
  *
  *  - the page keeps the channels that were always self-checks — marker layout
  *    against the anchors the clones baked in, and the attribute PARTITION —
@@ -320,9 +320,9 @@ window.__barqDifferential = async function () {
     // node. The order WITHIN each group is compared against the clean run, in
     // node, by \`compareRuns\`.
     // A module carrying a spread is EXEMPT: a spread's names are the one
-    // attribute fact the compiler cannot have (§3.13 item 1), so nothing read
-    // off the code can say which attributes the patch wrote — and §5.3's M9
-    // note bakes NOTHING on such an element, so there is no partition there.
+    // attribute fact the compiler cannot have, so nothing read
+    // off the code can say which attributes the patch wrote, and NOTHING is
+    // baked on such an element, so there is no partition there.
     const names = new Set(patched)
     for (let i = 0; i < channels.length; i++) {
       for (const line of channels[i].attributes) {

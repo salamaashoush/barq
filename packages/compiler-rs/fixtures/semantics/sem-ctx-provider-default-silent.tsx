@@ -8,7 +8,7 @@
  * written at all. A theme provider silently serving the light theme, a locale
  * provider silently serving English, and a test suite that is green.
  *
- * SEMANTICS.md §2 O2; §4 X3.
+ * O2 and X3.
  */
 import type { Block } from "@barqjs/core"
 import { context, render, useContext } from "@barqjs/core"

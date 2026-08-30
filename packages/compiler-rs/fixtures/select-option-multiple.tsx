@@ -1,7 +1,7 @@
 /**
  * A select decides its options' default selectedness with the "ask for a reset"
  * algorithm as each child arrives, and the answer depends on `multiple` being
- * in place before they are (§3.13 item 8).
+ * in place before they are.
  *
  * The parser puts it there. `multiple` is the one DOM_PROP whose ATTRIBUTE
  * carries the state rather than a default, so it is baked into the template and

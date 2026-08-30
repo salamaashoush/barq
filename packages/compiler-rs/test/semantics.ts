@@ -198,18 +198,18 @@ export async function runSemanticFixture(
 }
 
 // ---------------------------------------------------------------------------
-// the rule IDs SEMANTICS.md actually defines
+// the rule IDs that are actually defined
 // ---------------------------------------------------------------------------
 
 const HEADING_RULE = /^#{2,4}\s+([A-Z]\d+(?:\.\d+)?)\s+—/gm;
 const BOLD_RULE = /\*\*([A-Z]\d+(?:\.\d+)?)(?:\.\*\*|\s+—)/g;
-/** A §13 index row, including the ranges it writes as `O3.1–3`. */
+/** An index row, including the ranges it writes as `O3.1–3`. */
 const INDEX_ROW = /^\|\s*([A-Z]\d+(?:\.\d+)?(?:–\d+)?)\s*\|/gm;
 
 /**
  * The `**Status.**` line of every rule section, by rule ID.
  *
- * §0.2 makes a status a claim about an OBSERVATION — `HOLDS` means the
+ * the status rule makes a status a claim about an OBSERVATION — `HOLDS` means the
  * falsification procedure was run and did not falsify, `VIOLATED` means it did.
  * Nothing checked that, so the document went on recording O2, X1, X2, X3, C6
  * and E2.1 as `VIOLATED` through three rounds in which their pinning fixtures
@@ -292,12 +292,12 @@ export function documentedStatus(doc = readFileSync(SEMANTICS_DOC, "utf8")): Map
 }
 
 /**
- * Every rule ID `SEMANTICS.md` defines, from all three places it writes one:
- * the section headings, the bold sub-rule markers inside a section, and the §13
+ * Every rule ID the rule set defines, from all three places it writes one:
+ * the section headings, the bold sub-rule markers inside a section, and the
  * index — which is the only one that carries `O3.1–3` as a range and therefore
  * the only one that has to be expanded.
  *
- * This is what makes §0.3's pinning bidirectional: an ID in a fixture's `rules`
+ * This is what makes the pinning discipline's pinning bidirectional: an ID in a fixture's `rules`
  * that is not in here is a typo pinning nothing.
  */
 export function documentedRules(doc = readFileSync(SEMANTICS_DOC, "utf8")): Set<string> {
@@ -316,7 +316,7 @@ export function documentedRules(doc = readFileSync(SEMANTICS_DOC, "utf8")): Set<
   return ids;
 }
 
-/** A `` `name` `` in §13's fixture column, with whether it is marked *(new)*. */
+/** A `` `name` `` in the fixture column, with whether it is marked *(new)*. */
 export interface IndexedFixture {
   rule: string;
   name: string;
@@ -327,7 +327,7 @@ const INDEX_LINE = /^\|\s*([A-Z]\d+(?:\.\d+)?(?:–\d+)?)\s*\|[^|]*\|[^|]*\|([^|
 const INDEX_FIXTURE = /`([a-zA-Z0-9._-]+)`(\s*\*\(new\)\*)?/g;
 
 /**
- * Every fixture §13 names, per rule. The `*(new)*` marker is the one column a
+ * Every fixture named, per rule. The `*(new)*` marker is the one column a
  * reader uses to tell a pinned rule from an unpinned one, and nothing checked
  * it — six cells still carried the marker for fixtures that had been written.
  * A hand-maintained column that drifts is worse than no column: it reports
@@ -345,7 +345,7 @@ export function indexedFixtures(doc = readFileSync(SEMANTICS_DOC, "utf8")): Inde
 
 const INDEX_STATUS = /^\|\s*([A-Z]\d+(?:\.\d+)?(?:–\d+)?)\s*\|[^|]*\|([^|]*)\|/gm;
 
-/** The letter §13's legend gives each prose status word. */
+/** The letter the legend gives each prose status word. */
 export const STATUS_LETTER: Readonly<Record<string, string>> = Object.freeze({
   HOLDS: "H",
   VIOLATED: "V",
@@ -358,7 +358,7 @@ export const STATUS_LETTER: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /**
- * §13's Status column, per rule. Scoped to §13 by hand because §14's channel
+ * the Status column, per rule. Scoped by hand because the channel
  * table has the same row shape and a different third column.
  *
  * The column and the prose `**Status.**` lines are two hand-maintained records
@@ -380,7 +380,7 @@ export function indexedStatuses(doc = readFileSync(SEMANTICS_DOC, "utf8")): Map<
 /**
  * A rule ID as a standalone token. `includes("O2")` is satisfied by `O2.1`, and
  * the two are different rules with different statuses — conflating them is
- * exactly what §15.2's third assertion exists to prevent.
+ * exactly what the registry assertions's third assertion exists to prevent.
  */
 export function namesRule(message: string, rule: string): boolean {
   const escaped = rule.replace(/\./g, "\\.");

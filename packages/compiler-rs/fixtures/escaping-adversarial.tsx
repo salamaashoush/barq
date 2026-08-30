@@ -24,13 +24,13 @@ export const amp = signal("a & b &amp; c &#38; d")
  *
  *  - text — `<` opens a tag and `&` opens a reference.
  *  - a double-quoted attribute — `"` closes the value and lets the next
- *    characters become ATTRIBUTES, which is how `onmouseover=` gets in.
+ *  characters become ATTRIBUTES, which is how `onmouseover=` gets in.
  *  - `<pre>` — whitespace is significant, so an escaper that normalises it
- *    changes the rendered text.
+ *  changes the rendered text.
  *  - `<title>` and `<textarea>` — escapable raw text: `<` and `&` are escaped,
- *    but a tag inside is NOT a tag.
+ *  but a tag inside is NOT a tag.
  *  - `<style>` — raw text: nothing is escaped, and the only thing that can end
- *    it is the literal closing tag.
+ *  it is the literal closing tag.
  *
  * The static text carries a non-BMP astral character, U+2028, and a NBSP, all
  * of which survive a byte-for-byte copy and none of which survive a naive

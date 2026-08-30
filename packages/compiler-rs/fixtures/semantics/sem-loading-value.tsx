@@ -12,7 +12,7 @@
  * claim that stopped at the window would be satisfied by an option that just
  * suppressed pendingness for good.
  *
- * SEMANTICS.md §10 A8.
+ * A8.
  */
 import { Loading, isPending, render, resource, signal } from "@barqjs/core"
 

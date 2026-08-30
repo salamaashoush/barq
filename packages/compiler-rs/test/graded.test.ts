@@ -1,13 +1,13 @@
 /**
- * L4 — the grade table itself. `CODESIGN.md` §6 L4.
+ * L4 — the grade table itself.
  *
  * `graded.ts` is a table, and a table is a comment unless something checks it.
- * These assertions are what make it an artefact: every channel §6 L4 names is
+ * These assertions are what make it an artefact: every channel named is
  * present, every grade is one of the six, every file a channel claims to live in
  * exists, every rule a channel claims to report is a documented rule, and the
  * number of exemptions the whole oracle honours is printed on every run.
  *
- * That last number is the point of the milestone. §6 L4's complaint is not that
+ * That last number is the point. The complaint it answers is not that
  * barq's oracle is weak — it is that barq "applies near-total equality everywhere
  * and buys exceptions back", so the strength is unmeasurable. Counting the
  * exceptions makes it measurable, and the three regraded channels are asserted
@@ -31,7 +31,7 @@ const GRADES: readonly Grade[] = [
   "ungraded",
 ];
 
-/** The seven channels `CODESIGN.md` §6 L4 tabulates, by the row it gives each. */
+/** The seven channels, by the row each is given. */
 const SPEC_ROWS = [
   "rendered-dom",
   "node-identity",
@@ -131,7 +131,7 @@ describe("L4 — the grade table", () => {
     for (const c of CHANNELS) {
       expect(c.premise.length, `${c.id} has no premise`).toBeGreaterThan(3);
       if (c.grade === "ungraded") continue;
-      // A premise that IS the frames being compared is the defect §6 L4 is
+      // A premise that IS the frames being compared is the defect the grade table is
       // about, and the three regraded channels say so in their own words.
       expect(
         /identical|equal|agree/i.test(c.premise) && !/premise/i.test(c.premise) ? c.id : "",

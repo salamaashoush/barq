@@ -1,8 +1,8 @@
 /**
- * L3, drivers 2 and 3 — `CODESIGN.md` §6 L3.
+ * L3, drivers 2 and 3.
  *
- * §6 L3 names three drivers for the `-O0`/`-Ox` differential. Driver 1, the
- * fixture corpus, is `optimisation.test.ts`. This file is the other two:
+ * Three drivers make up the `-O0`/`-Ox` differential. Driver 1, the fixture
+ * corpus, is `optimisation.test.ts`. This file is the other two:
  *
  *  2. **a JSX generator** — random valid JSX, compiled both ways, diffed. See
  *     `generator.ts` for what it can and cannot express, and why each exclusion
@@ -312,9 +312,9 @@ describe("L3 — EMI mutation over the corpus", () => {
    * two and it was being met by material that was not material.
    *
    * The corpus number is LOW, and that is a fact about the corpus rather than a
-   * weakness of the driver: `fixtures/README.md` requires a fixture's `steps`
-   * and `events` to be non-inert and `oracle.test.ts` fails a fixture whose
-   * driver reaches nothing new, so the corpus renders every branch it contains.
+   * weakness of the driver: a fixture's `steps` and `events` have to be
+   * non-inert and `oracle.test.ts` fails a fixture whose driver reaches nothing
+   * new, so the corpus renders every branch it contains.
    * It is lower than it was, for two reasons that both make the driver stronger:
    *
    *  - the scanner was desynchronised by `</tag>` (`stripLiterals` read the `/`
@@ -390,9 +390,9 @@ describe("L3 — EMI mutation over the corpus", () => {
 /**
  * The same driver over generated programs, which is where EMI gets its material:
  * `generator.ts` emits subtrees guarded by a literal `false` and one component
- * that is declared and never called, so every one of the three shapes §6 L3
- * names — an untaken branch, an unselected body, an uninstantiated component —
- * is present by construction rather than by luck.
+ * that is declared and never called, so all three shapes — an untaken branch,
+ * an unselected body, an uninstantiated component — are present by construction
+ * rather than by luck.
  */
 describe("L3 — EMI mutation over generated programs", () => {
   const programs = generateMany(BASE_SEED + 10_000, 40);

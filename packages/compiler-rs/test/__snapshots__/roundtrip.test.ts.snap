@@ -112,7 +112,7 @@ export const compact = signal(true);
 export const beeps = signal(0);
 let grid: Element | null = null;
 /**
-* CODESIGN §3.5/§3.12 and SEMANTICS B5. A name the compiler cannot classify has
+* B5. A name the compiler cannot classify has
 * no correct default, so the author says which channel it is: \`prop:\` writes the
 * property, \`attr:\` the attribute, \`bool:\` its presence, \`on:\` a verbatim event
 * name with no lowercasing.
@@ -201,9 +201,9 @@ export const count = signal(1);
 *
 * A bare \`count()\` inside a template literal cannot η-reduce, so each of these
 * three holes forces a fresh \`() => …\`:
-*   - an attribute value,
-*   - a child expression,
-*   - and a bare read, which DOES η-reduce, as the contrast.
+*  - an attribute value,
+*  - a child expression,
+*  - and a bare read, which DOES η-reduce, as the contrast.
 *
 * Under \`createElement\` all three are read once at construction and never
 * again; compiled, they are live bindings. That is exactly what compiling buys,
@@ -243,7 +243,7 @@ export const amount = signal(2);
 export const server = signal("seeded");
 export const draft = linked(server, (value) => value);
 /**
-* CODESIGN §3.10 — the \`bind:\` family, resolved at compile time from the tag
+* The \`bind:\` family, resolved at compile time from the tag
 * and the \`type\`. Five channels, five reporting events, one shape.
 *
 * The corpus channels are the point of having it here rather than only under
@@ -261,7 +261,7 @@ export const draft = linked(server, (value) => value);
 * attribute in "default/on" mode for \`checkbox\` and \`radio\`, where it reflects.
 * So SSR ships a radio with no value and the DOM builds one with a value. It is
 * pre-existing, it needs the input TYPE threaded through the \`attr\` ABI, and it
-* is named in SEMANTICS.md §9 B6 rather than papered over with \`ssrDiffers\`.
+* is named as B6 rather than papered over with \`ssrDiffers\`.
 * \`bind:group\` itself is driven, both directions, in
 * \`fixtures/semantics/sem-form-selection-preserved.tsx\`.
 */
@@ -325,7 +325,7 @@ exports[`emitted code snapshots bind-value-channel 1`] = `
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<label><input type="text"><b></b></label>\`);
 export const text = signal("hi");
 /**
-* CODESIGN §3.10 — the \`bind:\` CHANNEL. The property a user edit lands on and
+* The \`bind:\` CHANNEL. The property a user edit lands on and
 * the event that reports it are resolved at compile time from the tag and the
 * \`type\` attribute: a text input writes \`value\` and reports on \`input\`, a
 * checkbox writes \`checked\` and reports on \`change\`.
@@ -547,11 +547,11 @@ export const label = signal("first");
 * not:
 *
 *  - the fused record guards \`class\` on its own field, so \`title\` changing
-*    cannot reach the class channel at all;
+*  cannot reach the class channel at all;
 *  - the class channel diffs the tokens it applied last time against the ones
-*    it applies now, so even a real class change leaves \`pinned\` and \`ref-added\`
-*    alone. This is the half a differential cannot see — the un-compiled path
-*    calls the same channel, so both paths were wrong together.
+*  it applies now, so even a real class change leaves \`pinned\` and \`ref-added\`
+*  alone. This is the half a differential cannot see — the un-compiled path
+*  calls the same channel, so both paths were wrong together.
 *
 * Step 0 changes only \`label\`; step 1 changes \`tone\`. The token survival is
 * asserted absolutely, in \`optimality.test.ts\`.
@@ -572,7 +572,7 @@ export default function ClassOwnsOnlyItsTokens(_s$) {
 ClassOwnsOnlyItsTokens = _$block(ClassOwnsOnlyItsTokens);
 export const steps = [() => label.set("second"), () => tone.set("blue")];
 /**
-* A \`ref\` callback is client-only — DESIGN §5's opcode table drops it — so the
+* A \`ref\` callback is client-only — the opcode table drops it — so the
 * token it adds imperatively has no bytes on the wire. Everything the two
 * CHANNELS wrote is there and in the same order.
 */
@@ -615,10 +615,10 @@ export const label = signal("first");
 * Two structural changes remove it rather than avoid it:
 *
 *  - the fused record gives every field its own guard, so \`class\` is written
-*    ONLY when the class value changed. \`title\` changing cannot reach it;
+*  ONLY when the class value changed. \`title\` changing cannot reach it;
 *  - the class channel emits only the tokens it OWNS, diffing what it applied
-*    last time against what it applies now, so even a real class change leaves
-*    \`extra\` alone.
+*  last time against what it applies now, so even a real class change leaves
+*  \`extra\` alone.
 *
 * Step 0 changes only \`label\`; step 1 changes only \`tone\`. \`extra\` survives
 * both, and it survived neither at M4.
@@ -849,12 +849,12 @@ function pick(label: unknown, _event: MouseEvent): void {
 * Both reachable forms are here:
 *
 *  - \`cb={[props.handler(), props.label()]}\` — an array, so \`identity_matters\`
-*    evaluates it ONCE into a cell. The runtime installs that array as
-*    the \`$$click\` expando, so a carrier that rebuilt it per read would install
-*    a different listener on every frame.
-*  - \`render={() => …}\` — an author-written zero-arity arrow, which §3.0 rule 1
-*    says already IS a Cell, so it forwards untouched and reads the same object
-*    twice.
+*  evaluates it ONCE into a cell. The runtime installs that array as
+*  the \`$$click\` expando, so a carrier that rebuilt it per read would install
+*  a different listener on every frame.
+*  - \`render={() => …}\` — an author-written zero-arity arrow, which the arity rule
+*  says already IS a Cell, so it forwards untouched and reads the same object
+*  twice.
 *
 * \`data-same\` and \`data-render-same\` are that identity, rendered: each reads its
 * prop twice and says whether the two reads agreed. Both must say \`true\` on the
@@ -918,7 +918,7 @@ export const optimality = {
   templates: 2,
   // Three carriers, three rules, in one call. \`cb\` is an array, so C3's
   // identity rule evaluates it ONCE into a cell; \`render\` is a zero-arity arrow
-  // the author wrote, so §3.0 rule 1 forwards it untouched; \`tone\` is a Cell
+  // the author wrote, so the arity rule forwards it untouched; \`tone\` is a Cell
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
     "Chip(",
@@ -1006,7 +1006,7 @@ export const total = signal(0);
 * The whole of "fine-grained flow across a component boundary", stated as a
 * divergence rather than as a claim about emitted code.
 *
-* \`createElement\` builds its own props object (\`{ ...props }\`, dom.ts:309), so
+* \`createElement\` builds its own props object (\`{...props }\`, dom.ts:309), so
 * the un-compiled path hands \`Badge\` a SNAPSHOT of \`total()\` and the cell can
 * never change again. A compiled call site is a direct call whose reactive prop
 * is a GETTER, so the read inside \`Badge\` stays live and the cell updates. Same
@@ -1562,7 +1562,7 @@ export const rows = signal([{
 * \`{row().text}\` has to become a live binding.
 *
 * Reading \`keyed\` as "no attribute whose value is the literal false" put this
-* on the by-item arm and applied the read ONCE (ERGONOMICS §4.3). The first
+* on the by-item arm and applied the read ONCE. The first
 * frame is identical either way, which is how 110 fixtures missed it — the
 * evidence is step 0, where the keys are unchanged and only the items are new.
 */
@@ -1606,7 +1606,7 @@ export const optimality = {
   // value the runtime subscribes to.
   // The key function reaches \`each\` as \`keyOf\` DIRECTLY. What the runtime used
   // to do — \`typeof carrier === "function" && carrier.length >= 1\` — the
-  // compiler answers from the arity the author declared (§3.0 rule 1).
+  // compiler answers from the arity the author declared.
   emits: [
     "each(",
     ", rows, (row) => row.id, ",
@@ -1643,7 +1643,7 @@ const opts = { keyed: (row: {
 *
 * The row: reading only \`JSXAttributeItem::Attribute\` left the spread invisible,
 * so the body took the by-item arm and \`{row().text}\` was applied once — the
-* ERGONOMICS §4.3 stale cell, reached by a different door. A spread cannot be
+* The stale cell, reached by a different door. A spread cannot be
 * proved not to carry \`keyed\`, so \`analysis::bind\` resolves it to the
 * key-function arm, which is the one that is safe when wrong. Step 0 is the only
 * frame that can tell: the keys do not move and the items behind them do.
@@ -1654,8 +1654,8 @@ const opts = { keyed: (row: {
 * Block's own parameter list is \`(scope, item, index)\` in all three modes and the
 * three keying fixtures differ at the \`keyOf\` argument and nowhere else. The
 * carrier therefore crosses unresolved and \`flow.ts\`'s \`keyMode\` reads it, which
-* is the same §3.0 rule 1 the compiler applies statically when it can see the
-* prop. What the lowering buys is the \`(parent, anchor)\` pair §3.4 exists to
+* is the same arity rule the compiler applies statically when it can see the
+* prop. What the lowering buys is the \`(parent, anchor)\` pair the lowering exists to
 * deliver, in place of an \`insert\` hole around an adapter frame.
 */
 export default function ControlFlowForKeyedSpread(_s$) {
@@ -1836,7 +1836,7 @@ export const nums = signal([
 * The positional mode, which since M7b has ONE spelling: \`keyed={false}\`.
 * \`Index\` is deleted — Solid ran \`For\` and \`Index\` side by side for five years
 * and removed the second because having both "encourages bikeshedding and
-* accidental misuse" (\`CODESIGN.md\` §12). The emission is unchanged: the
+* accidental misuse". The emission is unchanged: the
 * construct was already \`each(src, false, row)\` under either name.
 */
 export default function ControlFlowIndex(_s$) {
@@ -2469,7 +2469,7 @@ const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="loud"></p>\`);
 const _tmpl$4 = /* @__PURE__ */ _$template(\`<span class="off">off</span>\`);
 const _tmpl$5 = /* @__PURE__ */ _$template(\`<p class="quiet">on</p>\`);
 /**
-* The \`STATIC_KEY\` half of §3.4's flag catalogue, which had no fixture at all
+* The \`STATIC_KEY\` half of the flag catalogue, which had no fixture at all
 * until this one: every \`Show\` in the corpus keys on a signal, so the flag was
 * emittable and never emitted, and a flag with no fixture is a flag with no
 * number.
@@ -2486,7 +2486,7 @@ const _tmpl$5 = /* @__PURE__ */ _$template(\`<p class="quiet">on</p>\`);
 * that shipped them together could not say which one it was pinning:
 *
 *  - \`loud\` has a hole in its body, so the body is not inert and \`NO_SCOPE\` is
-*    NOT proved — it ships \`STATIC_KEY\` alone.
+*  NOT proved — it ships \`STATIC_KEY\` alone.
 *  - \`quiet\` is one clone with no patch at all, so both are proved.
 */
 const VERBOSE: boolean = true;
@@ -2691,7 +2691,7 @@ export const optimality = {
   milestone: 10,
   templates: 2,
   // One \`branch\`, one body, and the keying test inside both the key and the
-  // body — which is the whole of the third arm. \`readSlot\` is §3.0 rule 2 at
+  // body — which is the whole of the third arm. \`readSlot\` is the Cell-slot read at
   // the one slot the compiler cannot resolve itself.
   emits: [
     "branch(",
@@ -2731,7 +2731,7 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 4,
-  // K5, and the shape §3.4 asks for: \`Switch\` and its arms collapse into ONE
+  // K5, and the shape the lowering asks for: \`Switch\` and its arms collapse into ONE
   // \`branch\` whose key is an INTEGER — the winning arm's index, with 0 for the
   // fallback — and a hoisted body table indexed by it. \`Match\` ceases to exist
   // on this backend as it already had on the string one.
@@ -3407,13 +3407,13 @@ export const amp = signal("a & b &amp; c &#38; d");
 *
 *  - text — \`<\` opens a tag and \`&\` opens a reference.
 *  - a double-quoted attribute — \`"\` closes the value and lets the next
-*    characters become ATTRIBUTES, which is how \`onmouseover=\` gets in.
+*  characters become ATTRIBUTES, which is how \`onmouseover=\` gets in.
 *  - \`<pre>\` — whitespace is significant, so an escaper that normalises it
-*    changes the rendered text.
+*  changes the rendered text.
 *  - \`<title>\` and \`<textarea>\` — escapable raw text: \`<\` and \`&\` are escaped,
-*    but a tag inside is NOT a tag.
+*  but a tag inside is NOT a tag.
 *  - \`<style>\` — raw text: nothing is escaped, and the only thing that can end
-*    it is the literal closing tag.
+*  it is the literal closing tag.
 *
 * The static text carries a non-BMP astral character, U+2028, and a NBSP, all
 * of which survive a byte-for-byte copy and none of which survive a naive
@@ -3484,7 +3484,7 @@ function Flaky(_s$) {
 *
 * \`unwrapped_by\` names five props — \`each\`, \`count\`, \`when\`, \`component\`, \`on\` —
 * that the runtime really does unwrap with
-* \`typeof raw === "function" ? raw() : raw\`. For exactly those, \`() => acc()\` and
+* \`typeof raw === "function" ? raw(): raw\`. For exactly those, \`() => acc()\` and
 * \`acc\` are the same value and the arrow is dead weight, so the compiler drops
 * it. For every other prop the runtime STORES what it is handed and decides for
 * itself what to do with it, and reducing the arrow away is the compiler
@@ -3529,7 +3529,7 @@ export const optimality = {
   milestone: 5,
   templates: 4,
   // η-reduction is UNIVERSAL after M3 rather than a five-name whitelist: a
-  // zero-arity function IS a Cell (§3.0 rule 1), so \`() => note()\` and \`note\`
+  // zero-arity function IS a Cell, so \`() => note()\` and \`note\`
   // are the same carrier and the reduced one allocates nothing. The boundary
   // this fixture draws therefore moved from WHICH PROP to WHAT SHAPE, and the
   // negatives below are what still says the reduction happened.
@@ -3676,12 +3676,12 @@ export const saved = signal("");
 export const draft = optimistic("");
 export const log: string[] = [];
 /**
-* \`<form action={…}>\` — §3.8's compiler surface, and the whole of A5 reached
+* \`<form action={…}>\` — the server-function surface, and the whole of A5 reached
 * from compiled JSX rather than from a hand-written call.
 *
 * \`action\` on a \`<form>\` is a URL when it holds a string and a SUBMIT HANDLER
 * when it holds a function, and nothing about the expression separates them: an
-* \`action()\` is \`(...args) => Promise<R>\`, so its arity is 0 and §3.0 rule 1
+* \`action()\` is \`(...args) => Promise<R>\`, so its arity is 0 and the arity rule
 * reads it as a Cell. Before M10 the attribute channel did exactly that — it
 * CALLED the action at mount and wrote the promise it returned into the form's
 * target as \`action="[object Promise]"\`, with no console error. The SLOT decides
@@ -4203,15 +4203,15 @@ export const note = signal("<!---->");
 * counts, in every place they can reach the emitted module:
 *
 *  - \`data-note\` is static, so \`<!---->\` is baked into the template HTML as an
-*    ATTRIBUTE VALUE. It is characters, not a node, and a substring count of the
-*    template span reads it as an anchor that does not exist.
+*  ATTRIBUTE VALUE. It is characters, not a node, and a substring count of the
+*  template span reads it as an anchor that does not exist.
 *  - \`{() => note()}\` renders the same characters as TEXT. In the marker channel
-*    a text node and an anchor serialize identically unless the walk keeps them
-*    apart.
+*  a text node and an anchor serialize identically unless the walk keeps them
+*  apart.
 *  - \`hint\` is a string holding the emitted helper's own name, which a
-*    module-wide \`_$insert(\` count reads as a hole. Every counted anchor it
-*    fakes is one the compiler could then drop without the bound noticing —
-*    which is precisely what target #9 makes possible.
+*  module-wide \`_$insert(\` count reads as a hole. Every counted anchor it
+*  fakes is one the compiler could then drop without the bound noticing —
+*  which is precisely what target #9 makes possible.
 *
 * This module bakes ZERO anchors: the \`<!---->\` in \`data-note\` is an attribute
 * value, and the hole anchors on the \`<span>\` that follows it. That is what
@@ -4303,7 +4303,7 @@ export const optimality = {
   patchCalls: 2,
   // Two independent dep sets joined into one hole and one attribute. The
   // element carries exactly ONE live prop, so there is nothing to coalesce —
-  // and the effect around it is not the grouping, it is the write: §3.5 leaves
+  // and the effect around it is not the grouping, it is the write: channel resolution leaves
   // no \`setProp\` for a thunk to be handed to, so a proven-live prop owns its
   // own effect and threads its own prev through the compute's return.
   emits: [
@@ -4346,7 +4346,7 @@ export const optimality = {
   milestone: 5,
   // Five: the host, and one per static subtree the fragments hold. A fragment
   // is not an element, so it cannot be a template root — \`template()\` returns
-  // \`content.firstChild\` only (DESIGN §8 V5) — and each of its children has to
+  // \`content.firstChild\` only — and each of its children has to
   // become a root of its own.
   templates: 5,
   emits: [
@@ -4396,7 +4396,7 @@ export const clicks = signal(0);
 * never claims it, so a static region costs zero hydration work and ships no
 * behaviour.
 *
-* Solid's \`NoHydration\` (\`dom-expressions/src/server.js:569\`), and deliberately
+* Solid's \`NoHydration\`, and deliberately
 * not one of the ten control-flow constructs: it renders its children once and
 * unconditionally, and what it decides is who CLAIMS the markup.
 *
@@ -5189,7 +5189,7 @@ const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="reassigned"></p>\`);
 * The corpus contained no reassigned \`let\` at all, in any position, so dropping
 * that one guard was a mutation the whole L3 differential and the whole Interp
 * differential ran green against — it moves the emitted bytes AND the rendered
-* DOM, and no input reached it. §8 makes an operator with no killing input a
+* DOM, and no input reached it. An operator with no killing input is a
 * shipping gate for the pass it belongs to, and \`mutants.ts\` carries the
 * operator (\`fold-folds-a-reassigned-binding\`); this is its input.
 */
@@ -5221,7 +5221,7 @@ export const optimality = {
 exports[`emitted code snapshots ref-binding 1`] = `
 "import { template as _$template, block as _$block, ref as _$ref } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><div class="boxed">target</div><span>callback</span></div>\`);
-// M9 deleted the \`useRef()\` factory (§4.1): a ref is a writable binding (B3)
+// There is no \`useRef()\` factory: a ref is a writable binding (B3)
 // or a callback, and the \`{current}\` box the ref channel writes is one object
 // literal. The SHAPE is what this fixture is about, and it is unchanged.
 export const box: {
@@ -5243,7 +5243,7 @@ export const optimality = {
   milestone: 5,
   templates: 1,
   patchCalls: 2,
-  // §3.5/B3: \`ref\` is a CHANNEL of its own, not a prop — the name never reaches
+  // B3: \`ref\` is a CHANNEL of its own, not a prop — the name never reaches
   // the runtime, and neither form is an attribute write. Baking either into the
   // template writes the string \`[object Object]\` into the markup and never
   // resolves the ref at all.
@@ -5251,7 +5251,7 @@ export const optimality = {
   absent: ["ref=\\"", "\\"ref\\""]
 };
 /**
-* DESIGN §5's opcode table drops \`Ref\` on the SSR target: a ref resolves to a
+* The opcode table drops \`Ref\` on the SSR target: a ref resolves to a
 * NODE, and there are no nodes on the wire. The callback ref here is the whole
 * point — it mutates the element it is handed — so the DOM render carries a
 * \`data-reffed\` the string render structurally cannot.
@@ -5305,7 +5305,7 @@ exports[`emitted code snapshots ref-on-component 1`] = `
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="boxed"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="refs"><b class="direct">element</b></div>\`);
 const _k$1 = () => "component";
-// M9 deleted the \`useRef()\` factory (§4.1); the \`{current}\` shape the ref
+// There is no \`useRef()\` factory; the \`{current}\` shape the ref
 // channel writes is one object literal and is what this fixture pins.
 export const viaComponent: {
   current: HTMLSpanElement | null;
@@ -5473,7 +5473,7 @@ const _tmpl$1 = /* @__PURE__ */ _$template(\`<select class="picker" multiple><op
 /**
 * A select decides its options' default selectedness with the "ask for a reset"
 * algorithm as each child arrives, and the answer depends on \`multiple\` being
-* in place before they are (§3.13 item 8).
+* in place before they are.
 *
 * The parser puts it there. \`multiple\` is the one DOM_PROP whose ATTRIBUTE
 * carries the state rather than a default, so it is baked into the template and
@@ -5973,7 +5973,7 @@ export const optimality = {
   target: 8,
   milestone: 5,
   templates: 4,
-  // DESIGN §8 V9: on the DOM target \`Match\` is a real call. It returns its own
+  // On the DOM target \`Match\` is a real call. It returns its own
   // props object and \`Switch\` reads it, so collapsing the pair into a ternary —
   // which is what the SSR backend does, and only the SSR backend — produces a
   // \`Switch\` with nothing to read. The component bodies are ordinary calls with
@@ -6355,7 +6355,7 @@ export const suffix = signal("un");
 /**
 * A template whose html carries multi-byte characters PAST byte 100.
 *
-* §6.2 locates a hoisted template by scanning a fixed byte budget past the
+* The map locates a hoisted template by scanning a fixed byte budget past the
 * declaration name, and the budget lands exactly there: slicing a \`&str\` at it
 * split a two-byte character in half and took the whole compile down with a Rust
 * panic. Vite passes \`sourcemap: true\` unconditionally, so that was an ordinary

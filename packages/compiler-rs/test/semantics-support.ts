@@ -1,17 +1,17 @@
 /**
- * Layer L1 of the oracle: absolute expectations, taken from `SEMANTICS.md`.
+ * Layer L1 of the oracle: absolute expectations, taken from the rule set.
  *
  * The differential harness (`oracle.test.ts`) cannot see any of the rules
  * pinned through this channel. It asks "do the compiled path and the
  * `createElement` path agree", and for the Provider defect they agree
  * perfectly — both render a blank page. The oracle certified the bug. So this
  * channel asks a different question: **does the observed behaviour match what
- * `SEMANTICS.md` says it must be**, with no second implementation involved.
+ * the rule set says it must be**, with no second implementation involved.
  *
  * A fixture here is a real, compilable module with two exports:
  *
  * ```ts
- * export const rules: string[]      // rule IDs from SEMANTICS.md this fixture pins
+ * export const rules: string[]      // rule IDs from the rule set this fixture pins
  * export const claims: Claim[]      // one falsification procedure each
  * ```
  *
@@ -20,7 +20,7 @@
  * (`known-failures.ts`) then asserts that each expected failure fails *for that
  * rule*, which is what makes the M0 gate mean anything.
  *
- * The compiled path is the only one this channel runs. `CODESIGN.md` §11
+ * The compiled path is the only one this channel runs. the wire decision
  * records the decision that the compiler is a hard dependency and that there is
  * no un-compiled authoring path, so the compiled module is the artefact the
  * rules are about.
@@ -76,7 +76,7 @@ export interface Kit {
    * `function Direct() { return <div /> }` left three of its four claims still
    * "failing as registered", because a claim that observes an absence is
    * satisfied by an absence for any reason at all. A failed precondition
-   * CRASHES rather than reporting a violation, so §15.2's third assertion
+   * CRASHES rather than reporting a violation, so the registry assertions's third assertion
    * catches it as a wrong reason.
    */
   precondition(ok: boolean, observed: string): void;
@@ -96,7 +96,7 @@ export class PreconditionFailed extends Error {
 export interface Claim {
   /** Stable within the fixture; the registry addresses rows by it. */
   readonly id: string;
-  /** The rule ID from `SEMANTICS.md` this claim is a falsification procedure for. */
+  /** The rule ID from the rule set this claim is a falsification procedure for. */
   readonly rule: string;
   /** What the rule requires, in one line, phrased as the thing that must be true. */
   readonly says: string;

@@ -1,7 +1,7 @@
 /**
  * MM3 `rebuilds` through `Switch`/`Match`.
  *
- * §3.4 collapses `Switch` and `Match` into ONE `branch` with one instance scope
+ * The lowering collapses `Switch` and `Match` into ONE `branch` with one instance scope
  * per activation, so an arm change is a key change and everything the old arm
  * built goes. The component's output IS the switch, so the frame and the region
  * are the same thing and `rebuilds` is exact.

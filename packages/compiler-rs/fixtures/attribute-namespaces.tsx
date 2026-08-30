@@ -7,7 +7,7 @@ export const beeps = signal(0)
 let grid: Element | null = null
 
 /**
- * CODESIGN §3.5/§3.12 and SEMANTICS B5. A name the compiler cannot classify has
+ * B5. A name the compiler cannot classify has
  * no correct default, so the author says which channel it is: `prop:` writes the
  * property, `attr:` the attribute, `bool:` its presence, `on:` a verbatim event
  * name with no lowercasing.

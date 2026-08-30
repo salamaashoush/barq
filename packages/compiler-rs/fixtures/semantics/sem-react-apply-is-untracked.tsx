@@ -1,8 +1,8 @@
 /**
  * R2 — reactivity is left STRUCTURALLY by the apply phase of every element
- * effect. `SEMANTICS.md` §8 R2, `CODESIGN.md` §3.5.
+ * effect. R2, and channel resolution.
  *
- * §13 named this fixture and it did not exist, because until M5 there was no
+ * This fixture was named and did not exist, because until M5 there was no
  * apply phase to test: an element's live props were one tracked function that
  * both read and wrote, so every read a CHANNEL performed was a read of the
  * effect. The fused record splits the two, and the split is what makes the

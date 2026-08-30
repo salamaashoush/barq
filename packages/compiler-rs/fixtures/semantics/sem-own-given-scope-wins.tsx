@@ -2,7 +2,7 @@
  * O4.5 — `CURRENT` never decides ownership.
  *
  * Every primitive in `packages/core` takes the scope as its first argument, and
- * §13 recorded the rule as pinned by "structural (§14)": the SIGNATURE was the
+ * The rule was recorded as pinned structurally: the SIGNATURE was the
  * evidence. A signature is not evidence. `insert` and `setProp` both took a
  * `Scope`, validated it with `requireScope`, and then opened their render effect
  * under whatever was ambient — so the argument was decoration, and the L2b
@@ -23,7 +23,7 @@
  * `control-the-argument-form-reports-that-it-cannot-dispose` red, because the
  * root then owns a kid and `RENDER_SUBTREE_NOT_OWNED` stops firing.
  *
- * SEMANTICS.md §7 O4.5.
+ * O4.5.
  */
 import { block, branch, dispose, effect, enterRoot, exit, insert, onCleanup, setProp, signal } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"

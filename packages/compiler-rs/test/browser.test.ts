@@ -204,8 +204,8 @@ describe("real browser: the corpus in Chrome", () => {
       "every fixture came back with a render, so nothing threw",
     ).toBe(differential.checked);
     // Marker layout against the anchors the clones baked in, and the attribute
-    // partition. Both are self-checks — §6 L4's grade for them — so there is
-    // nothing to buy out of and the assertion is a flat equality.
+    // partition. Both are self-checks, so there is nothing to buy out of and
+    // the assertion is a flat equality.
     expect(differential.divergences).toEqual([]);
   });
 

@@ -26,7 +26,7 @@ import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts";
 import { ratchet, reachRatchet } from "./ratchet.ts";
 
 /**
- * Layer L2b of the oracle — `CODESIGN.md` §6, and the half of M0 that has no
+ * Layer L2b of the oracle — the oracle design, and the half of M0 that has no
  * counterpart in any other project surveyed.
  *
  * The question every other suite in this package asks is "do two executions
@@ -143,7 +143,7 @@ function report(fixture: string, finding: Finding): string {
 }
 
 // ---------------------------------------------------------------------------
-// §15.2 — the four assertions about the registry
+// the registry assertions — the four assertions about the registry
 // ---------------------------------------------------------------------------
 
 describe("the known-failure registry", () => {
@@ -227,7 +227,7 @@ describe("the known-failure registry", () => {
     );
   });
 
-  // The ratchet — `CODESIGN.md` §12, `ratchet.ts`. A finding that goes on
+  // The ratchet — the wire split, `ratchet.ts`. A finding that goes on
   // occurring while its DETAIL changes leaves every assertion above green and
   // the row's `slot` describing something that no longer happens.
   it("ratchets: a registered finding that changed shape is a failure either way", () => {
@@ -260,7 +260,7 @@ describe("the known-failure registry", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §15.4 — what the gate is really about
+// the gate rows — what the gate is really about
 // ---------------------------------------------------------------------------
 
 describe("the M3 gate", () => {
@@ -453,7 +453,7 @@ describe("the trace costs nothing when it is off", () => {
     core.beginOwnershipTrace();
     const on = shape();
     core.endOwnershipTrace();
-    // M2 replaced the ad-hoc owner record with `Scope` (SEMANTICS.md §2), so
+    // M2 replaced the ad-hoc owner record with `Scope`, so
     // this list moved: `_context`/`_parent`/`children`/`disposed` became
     // `ctx`/`parent`/`kids`/`dead`, and `catcher` (E1), `gen` (A2), `origin`
     // (X5), `_prev`/`_prevHost`/`_open` (O4.3), `_abort` (O3.4), `_range`
@@ -549,7 +549,7 @@ describe("self-check: the assertion would notice", () => {
     // M3 made this unrepresentable in the SOURCE: `<P><C/></P>` and
     // `<P>{() => <C/>}</P>` lower to the same Block, so unwrapping the thunk —
     // the mutation this self-check used at M0 — now changes nothing at all.
-    // That is §7.1's claim holding, and it is also this assertion's problem:
+    // That is the claim holding, and it is also this assertion's problem:
     // a mutation that no longer mutates makes the check decoration.
     //
     // So the defect is written where it can still be written, in the emitted
@@ -695,7 +695,7 @@ describe("self-check: the assertion would notice", () => {
             dispose = d;
             core.scope(
               (_d: () => void, provide: object) => {
-                // `insert` is HANDED the scope it must build under (§3.3 C6),
+                // `insert` is HANDED the scope it must build under,
                 // so `given` is threaded rather than read back off `CURRENT` at
                 // the handover instant — which is the comparison that could not
                 // fail whatever the runtime did.

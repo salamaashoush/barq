@@ -2,7 +2,7 @@
  * K1 — the default row identity is the ITEM, and K3 — what `keyed={false}`
  * costs, observed rather than described.
  *
- * The reversal these claims pin is recorded in `CODESIGN.md` §12 Q3. The
+ * The reversal these claims pin was made on the record. The
  * index-keyed default rested on a compile-time diagnostic for stateful row DOM,
  * and that diagnostic cannot cross a component boundary: `{x => <Row item={x}/>}`
  * with an `<input>` inside `Row` compiles to an opaque call and produces
@@ -19,16 +19,16 @@
  * half of it is comfortable:
  *
  *  1. a REORDER of the same items moves each row's nodes with its item, so the
- *     `<input>` the user typed into travels with the row it belongs to;
+ *  `<input>` the user typed into travels with the row it belongs to;
  *  2. an immutable update that REPLACES the row objects rebuilds every row and
- *     loses that state — the visible performance-and-state cost identity keying
- *     trades for, and the reason `keyed={r => r.id}` exists;
+ *  loses that state — the visible performance-and-state cost identity keying
+ *  trades for, and the reason `keyed={r => r.id}` exists;
  *  3. under `keyed={false}` the first direction inverts: the nodes stay put and
- *     the VALUES move through them, so the typed text is left behind at slot N.
- *     That is the loss BARQ011 hints at, and the reason it is only a hint — it
- *     is a fact about a spelling the author asked for by hand.
+ *  the VALUES move through them, so the typed text is left behind at slot N.
+ *  That is the loss BARQ011 hints at, and the reason it is only a hint — it
+ *  is a fact about a spelling the author asked for by hand.
  *
- * SEMANTICS.md §5 K1, K3.
+ * K1, K3.
  */
 import { For, render, signal } from "@barqjs/core"
 import type { Block } from "@barqjs/core"

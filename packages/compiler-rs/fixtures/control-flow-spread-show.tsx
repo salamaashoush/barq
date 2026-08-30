@@ -38,7 +38,7 @@ export const optimality = {
   milestone: 10,
   templates: 2,
   // One `branch`, one body, and the keying test inside both the key and the
-  // body — which is the whole of the third arm. `readSlot` is §3.0 rule 2 at
+  // body — which is the whole of the third arm. `readSlot` is the Cell-slot read at
   // the one slot the compiler cannot resolve itself.
   emits: ["branch(", "readSlot(", "Show.keyed", ".when()", "?.("],
   absent: ["Show(", "ssrShow"],

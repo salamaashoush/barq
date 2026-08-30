@@ -1,5 +1,5 @@
 /**
- * The address channel's declared REACH — `SEMANTICS.md` §14.2's H5 row.
+ * The address channel's declared REACH.
  *
  * Stated here rather than inside `addresses.test.ts` so that `semantics.test.ts`
  * can compute what the whole oracle covers without importing a suite. A rule

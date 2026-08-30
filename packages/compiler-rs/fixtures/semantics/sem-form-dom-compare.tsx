@@ -19,7 +19,7 @@
  * first place — so it asserts that an ACCEPTED edit reaches the signal and is
  * not overwritten.
  *
- * SEMANTICS.md §9 B6.
+ * B6.
  */
 import { render, signal } from "@barqjs/core"
 import type { Block } from "@barqjs/core"

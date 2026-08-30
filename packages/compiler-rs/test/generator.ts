@@ -1,12 +1,12 @@
 /**
- * The JSX generator — `CODESIGN.md` §6 L3, driver 2.
+ * The JSX generator: driver 2.
  *
  * Csmith's discipline, and it is the whole of the design: **the generator may
  * only produce programs whose behaviour is well defined**, because a divergence
  * in a program that has no defined behaviour tells you nothing. Csmith buys that
  * by refusing to emit signed overflow, unsequenced side effects and uninitialised
  * reads; the analogue here is that the generated module must have exactly one
- * meaning under `SEMANTICS.md`, must render the same thing twice in one process,
+ * meaning, must render the same thing twice in one process,
  * and must not depend on any rule the host DOM does not implement.
  *
  * ## What this generator CAN express
@@ -37,7 +37,7 @@
  *
  *  - **Anything async** — `Await`, `Suspense`, `Loading`, `Errored`, and any
  *    promise. Their observable order is a function of the microtask queue, and
- *    `SEMANTICS.md` marks the transition design NOT SPECIFIED. Two builds of a
+ * the transition design is NOT SPECIFIED. Two builds of a
  *    program with no specified order can differ without either being wrong.
  *  - **Throwing, and `ErrorBoundary`** — the routed error entry points are among
  *    the VIOLATED rules; a generated throw would report a known defect as a
@@ -425,7 +425,7 @@ class Gen {
     const declarations: string[] = [];
     for (let i = 0; i < components; i++) this.declareComponent();
     const body = this.children("flow", 3 + this.int(2), false);
-    // Declared and never called: the third shape §6 L3 names for EMI, beside an
+    // Declared and never called: the third shape EMI wants, beside an
     // untaken branch and an unselected `Match`.
     this.features.add("uncalled component");
     this.lines.push(

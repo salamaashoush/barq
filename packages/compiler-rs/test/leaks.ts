@@ -1,5 +1,5 @@
 /**
- * The leak oracle — `SEMANTICS.md` O3.7 and B4.
+ * The leak oracle, for O3.7 and B4.
  *
  * > After disposal, every effect, listener, subscription and async continuation
  * > must be released.
@@ -36,7 +36,7 @@
  * A finding is `(fixture, kind, detail)`. `leak-known-failures.ts` carries the
  * same four assertions the other two registries do — stale rows fail, unregistered
  * findings fail, a row whose rule is not the rule the probe named fails, and every
- * rule exists in `SEMANTICS.md`. There is no wildcard and no opt-out.
+ * rule is a defined rule. There is no wildcard and no opt-out.
  */
 
 import type { Session } from "./session.ts";
@@ -57,7 +57,7 @@ const RULE_OF: Record<LeakKind, string> = {
 export interface LeakFinding {
   fixture: string;
   kind: LeakKind;
-  /** the rule from `SEMANTICS.md` this probe is a falsification procedure for */
+  /** the rule this probe is a falsification procedure for */
   rule: string;
   /**
    * Stable within a fixture: `<kind>@<what>`. The detail is part of the identity

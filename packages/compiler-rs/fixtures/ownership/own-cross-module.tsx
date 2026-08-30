@@ -16,7 +16,7 @@
  * site — and this fixture is the record that L2b cannot currently see it
  * across a module boundary.
  *
- * `SEMANTICS.md` §2 O1, O2.
+ * O1, O2.
  */
 import { Card, Theme } from "./own-card.module.tsx"
 

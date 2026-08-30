@@ -3,7 +3,7 @@ import { signal } from "@barqjs/core"
 export const text = signal("hi")
 
 /**
- * CODESIGN §3.10 — the `bind:` CHANNEL. The property a user edit lands on and
+ * The `bind:` CHANNEL. The property a user edit lands on and
  * the event that reports it are resolved at compile time from the tag and the
  * `type` attribute: a text input writes `value` and reports on `input`, a
  * checkbox writes `checked` and reports on `change`.

@@ -283,7 +283,7 @@ describe("the diagnostic engine", () => {
    *
    * D1 fires on ZERO of the 116 fixtures that predate it, and on zero of the 71
    * real `.ts`/`.tsx` files in this repo's own packages beyond the four genuine
-   * bugs recorded in docs/BARQ001.md's own measurement.
+   * bugs recorded in `docs/BARQ001.md`'s own measurement.
    */
   it("fires on exactly two fixtures in the corpus, and both are documented", () => {
     const hits: string[] = [];

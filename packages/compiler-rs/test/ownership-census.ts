@@ -9,7 +9,7 @@
  *   - `clones`. A Block invoked twice per activation builds two DOM subtrees
  *     and drops one. Every test in this repository passes under it — core
  *     809/0, compiler-rs 1408/0, both M0 channels green — and the only trace of
- *     it is the corpus clone total moving from 272 to 274. `SEMANTICS.md` C7
+ *     it is the corpus clone total moving from 272 to 274. the rule set C7
  *     ("a Block is called exactly once per activation") has no runtime channel
  *     until M4; until then a declared per-fixture count is what makes a silent
  *     double invocation a diff. Multiplicity is not decidable from the source
@@ -82,7 +82,7 @@ export interface CensusRow {
  *   for-each-local-function                4 -> 1 -> 4   the row Block is called per row.
  *                                                   It fell to 1 while `each={activeItems}` was
  *                                                   wrapped in a second Cell and the list rendered
- *                                                   EMPTY; §3.0 rule 1 through a binding put the
+ *                                                   EMPTY; the arity rule through a binding put the
  *                                                   rows back.
  *
  * The last five are the ones worth reading twice: FEWER clones, because a Block

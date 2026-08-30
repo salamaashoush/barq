@@ -2,7 +2,7 @@
  * C6's last sentence, which had no pin: **slot parameters are extra `Cell`
  * arguments to the Block.**
  *
- * §13 named `sem-own-slot-arguments` for this half three times and the file did
+ * `sem-own-slot-arguments` was named for this half three times and the file did
  * not exist anywhere in the repository. The gate that is supposed to catch that
  * — "a rule whose prose claims HOLDS is pinned by a fixture that exists" — used
  * `named.some(...)`, so C6 read HOLDS on the strength of its four SIBLING pins
@@ -14,14 +14,14 @@
  * falsifiable:
  *
  *  1. the scope is FIRST and the slot arguments follow it — the arity guess that
- *     handed a row callback the Scope where its item belongs is what the brand
- *     replaced (C3.8, C3.9);
+ *  handed a row callback the Scope where its item belongs is what the brand
+ *  replaced (C3.8, C3.9);
  *  2. the slot arguments obey the kind table `each` documents, and the by-item
- *     row VALUE is a plain value while its index is a Cell (K1, C3.6);
+ *  row VALUE is a plain value while its index is a Cell (K1, C3.6);
  *  3. a row Block written by the author already carries the convention, so the
- *     compiler forwards it BY NAME and mints no closure at the hop (C5).
+ *  compiler forwards it BY NAME and mints no closure at the hop (C5).
  *
- * SEMANTICS.md §3 C6.
+ * C6.
  */
 import { each, enterRoot, exit, dispose, signal } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"

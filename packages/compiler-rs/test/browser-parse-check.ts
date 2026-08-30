@@ -186,8 +186,8 @@ const HAZARDS = [
   //
   // The compiler emits the parse-correct spelling on BOTH backends. A byte
   // comparison against `renderToString` therefore shows one extra newline and is
-  // right to; a TREE comparison in a real browser shows none. DESIGN §5's
-  // amendment states it, and these two rows are the measurement behind it.
+  // right to; a TREE comparison in a real browser shows none, and these two
+  // rows are the measurement behind that.
   {
     name: "pre does NOT serialise the eaten newline back",
     html: `<pre>\n\na</pre>`,

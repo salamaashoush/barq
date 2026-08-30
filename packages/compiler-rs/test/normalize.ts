@@ -83,7 +83,7 @@ const WHITESPACE_SIGNIFICANT_TAGS = new Set(["pre", "textarea"]);
 /**
  * The tags whose first U+000A a conforming parser IGNORES. `intern.rs` flags
  * exactly these three `PRESERVE_WS`, which is why the compiler doubles a
- * leading newline (DESIGN O9).
+ * leading newline.
  */
 const NEWLINE_EATING_TAGS = new Set(["pre", "textarea", "listing"]);
 
@@ -339,7 +339,7 @@ function serializeChildren(
  * It lives HERE, beside the walk that produces the lines it partitions, because
  * it had two consumers: the happy-dom harness and the differential page running
  * in Chrome. Both now check the PARTITION rather than a reference's order — the
- * order within each group is a golden (§6 L4) — so this is what remains of the
+ * order within each group is a golden — so this is what remains of the
  * shared derivation, kept because a second copy in the page source is how a
  * channel quietly starts measuring two different things in the two engines.
  *

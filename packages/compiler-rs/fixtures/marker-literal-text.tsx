@@ -7,15 +7,15 @@ export const note = signal("<!---->")
  * counts, in every place they can reach the emitted module:
  *
  *  - `data-note` is static, so `<!---->` is baked into the template HTML as an
- *    ATTRIBUTE VALUE. It is characters, not a node, and a substring count of the
- *    template span reads it as an anchor that does not exist.
+ *  ATTRIBUTE VALUE. It is characters, not a node, and a substring count of the
+ *  template span reads it as an anchor that does not exist.
  *  - `{() => note()}` renders the same characters as TEXT. In the marker channel
- *    a text node and an anchor serialize identically unless the walk keeps them
- *    apart.
+ *  a text node and an anchor serialize identically unless the walk keeps them
+ *  apart.
  *  - `hint` is a string holding the emitted helper's own name, which a
- *    module-wide `_$insert(` count reads as a hole. Every counted anchor it
- *    fakes is one the compiler could then drop without the bound noticing —
- *    which is precisely what target #9 makes possible.
+ *  module-wide `_$insert(` count reads as a hole. Every counted anchor it
+ *  fakes is one the compiler could then drop without the bound noticing —
+ *  which is precisely what target #9 makes possible.
  *
  * This module bakes ZERO anchors: the `<!---->` in `data-note` is an attribute
  * value, and the hole anchors on the `<span>` that follows it. That is what

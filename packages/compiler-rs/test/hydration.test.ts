@@ -14,7 +14,7 @@ import {
 } from "./hydration.ts";
 
 /**
- * L5 — the hydration oracle (`CODESIGN.md` §3.11, `SEMANTICS.md` H1–H4, H6).
+ * L5 — the hydration oracle.
  *
  * Three renderings of every fixture, and the suite is the comparison between
  * them: the string module's WIRE, the DOM module HYDRATED over it, and the DOM
@@ -22,7 +22,7 @@ import {
  * one every framework makes. The second is the one this milestone exists for:
  * node IDENTITY, because a replaced node and a claimed node serialise
  * identically and a markup diff cannot tell them apart. That is the shape of
- * silent failure §11 Q4 bought detection for.
+ * silent failure detection was bought for.
  */
 
 const FIXTURES = listFixtures();
@@ -96,7 +96,7 @@ const ALL: Promise<Map<string, Result>> = (async () => {
 /**
  * The same pass over a DEVELOPMENT build — `dev` on top of `hydratable`.
  *
- * §12 made detection an emission axis, and an axis has two settings. Everything
+ * Detection is an emission axis, and an axis has two settings. Everything
  * above measures the PRODUCTION one; this measures the other, and the property
  * it exists for is the one a stronger checker fails first: turning detection ON
  * must not report a divergence that is not there. The subtree walk compares
@@ -305,7 +305,7 @@ describe("L5 hydration conformance, with detection on", () => {
 });
 
 // ---------------------------------------------------------------------------
-// the payload §11 Q4 agreed to pay, measured
+// the payload, measured
 // ---------------------------------------------------------------------------
 
 /** One wire, measured raw and gzipped. */
@@ -331,8 +331,8 @@ function delta(before: Bytes, after: Bytes): string {
 
 describe("the claim payload", () => {
   /**
-   * §11 Q4: "Revisit if the measured byte cost is material on a real page."
-   * §12: it was — 55.7% raw and 7.3% gzipped on the 100-row page — and the
+   * "Revisit if the measured byte cost is material on a real page."
+   * it was — 55.7% raw and 7.3% gzipped on the 100-row page — and the
    * decision reversed. THE WIRE CARRIES WHAT RECOVERY NEEDS, AND DETECTION IS
    * AN EMISSION AXIS.
    *
@@ -341,7 +341,7 @@ describe("the claim payload", () => {
    * numbers are printed rather than asserted at a threshold nobody agreed to,
    * with three assertions that ARE agreed — the bytes are comments, so the two
    * markups differ by comments alone; the production page costs ZERO, which is
-   * §12's own acceptance criterion; and development costs MORE than production,
+   * the acceptance criterion; and development costs MORE than production,
    * because a detection axis nobody can measure is not an axis.
    */
   test("costs what it costs, on the corpus and on a real page, in both builds", async () => {
@@ -389,8 +389,8 @@ describe("the claim payload", () => {
         `    development ${delta(mixed.plain, mixed.development)}`,
     );
 
-    // §12's acceptance criterion, verbatim: "the production number should go to
-    // roughly zero; if it does not, the split did not land". On THIS page it is
+    // The acceptance criterion: the production number should go to roughly
+    // zero, and if it does not the split did not land. On THIS page it is
     // zero EXACTLY — every hole owns the element it sits in, every row is
     // claimed from one cursor, and the list owns the `<tbody>` — so this is an
     // equality rather than a tolerance, and one byte creeping back fails it.
@@ -513,7 +513,7 @@ describe("H6 focus and typed input survive hydration", () => {
    * hydration completes; after hydration, `document.activeElement` and the
    * input's value must be unchanged."
    *
-   * `CODESIGN.md` §10 Q4's table measured `focusKept: false` and
+   * The replace-based path measured `focusKept: false` and
    * `inputValueKept: ""` at EVERY page size on the replace-based path, and
    * `server.ts` conceded the cause in a comment: capture was coordinate-based
    * "(as coordinates — the nodes get replaced)" and keyboard events could not be
@@ -636,7 +636,7 @@ describe("H6 focus and typed input survive hydration", () => {
 
 describe("claim against replace", () => {
   /**
-   * `CODESIGN.md` §10 Q4 measured the replace path losing focus and discarding
+   * The replace path was measured losing focus and discarding
    * typed input at EVERY page size, and put the layout cost past a 60Hz frame at
    * about 3500 nodes. The first half is asserted by H6 above. This is the
    * second, on the same page at four sizes: the claim path against the path a

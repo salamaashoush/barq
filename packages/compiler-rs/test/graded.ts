@@ -1,5 +1,5 @@
 /**
- * L4 — the grade table. `CODESIGN.md` §6 L4.
+ * L4 — the grade table. the grade table.
  *
  * > React's `itRenders` grades its properties (full equality on clean render,
  * > node identity across hydration, text-content-only on deliberately bad
@@ -38,7 +38,7 @@
  *
  * ## The table
  *
- * The seven channels of §6 L4, with the grade each is checked at and where the
+ * The seven channels of the grade table, with the grade each is checked at and where the
  * checking lives. This module is the machine-readable copy; `graded.test.ts`
  * asserts it against the code rather than letting it become a comment that drifts.
  */
@@ -79,7 +79,7 @@ export interface Channel {
    * written down rather than discovered.
    */
   readonly exemptions: readonly string[];
-  /** rules from `SEMANTICS.md` this channel can report */
+  /** rules from the rule set this channel can report */
   readonly rules: readonly string[];
 }
 
@@ -217,7 +217,7 @@ export function channel(id: string): Channel {
 }
 
 /**
- * The count of exemptions the whole table honours. §6 L4's complaint is that
+ * The count of exemptions the whole table honours. the grade table's complaint is that
  * barq "buys exceptions back", so the number is printed on every run: a regrade
  * that quietly grew its exemption list has not regraded anything.
  */

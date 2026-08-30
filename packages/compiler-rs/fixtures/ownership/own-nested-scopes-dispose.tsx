@@ -7,13 +7,13 @@
  * are worth writing down because they are the reasons the claim is nearly
  * untestable against today's runtime:
  *
- *   - a list's rows are DETACHED scopes disposed by `map.ts` in array order,
- *     which is the list's bookkeeping and not the parent's
- *   - a `Show` builds its instance scope inside its own `renderEffect`, so the
- *     disposer is registered with the *effect node* rather than with the scope
- *     above it — the order those come apart in is the effect's business
- *   - a branch that flips disposes one instance while its parent is very much
- *     alive, which is not a cascade at all.
+ *  - a list's rows are DETACHED scopes disposed by `map.ts` in array order,
+ *  which is the list's bookkeeping and not the parent's
+ *  - a `Show` builds its instance scope inside its own `renderEffect`, so the
+ *  disposer is registered with the *effect node* rather than with the scope
+ *  above it — the order those come apart in is the effect's business
+ *  - a branch that flips disposes one instance while its parent is very much
+ *  alive, which is not a cascade at all.
  *
  * What is left is a construct that opens its scope at CALL time, directly under
  * whatever scope called it: `Loading` does, through `loadingBoundary`'s

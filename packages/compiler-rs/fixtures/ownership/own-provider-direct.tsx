@@ -18,7 +18,7 @@
  * `scope` inside `Provider` has made the scope that
  * `owner._context[id] = props.value` writes into.
  *
- * `SEMANTICS.md` §2 O2, O2.1; §4 X1, X3; §3 C6.
+ * O2, O2.1 and X1, X3; C6.
  * Registered in `ownership-known-failures.ts`.
  */
 import { context, useContext } from "@barqjs/core"

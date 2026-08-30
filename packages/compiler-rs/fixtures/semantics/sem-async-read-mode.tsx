@@ -28,7 +28,7 @@
  * A conformance claim is about behaviour; the shape of one backend's output is
  * the corpus channel's question.
  *
- * SEMANTICS.md §10 A5 (f).
+ * A5 (f).
  */
 import { action, commit, latest, isPending, optimistic, render } from "@barqjs/core"
 

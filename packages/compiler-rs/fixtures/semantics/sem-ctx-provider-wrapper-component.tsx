@@ -21,7 +21,7 @@
  * nothing. A component owns nothing (O1), so forwarding children through one
  * cannot move ownership to it.
  *
- * SEMANTICS.md §2 O1, O2, O2.1; §4 X1; §15.4.
+ * O1, O2, O2.1 and X1;.
  */
 import type { Block } from "@barqjs/core"
 import { context, getOwner, hasContext, render, useContext } from "@barqjs/core"

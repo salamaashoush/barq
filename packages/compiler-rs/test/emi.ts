@@ -1,5 +1,5 @@
 /**
- * EMI-style mutation — `CODESIGN.md` §6 L3, driver 3.
+ * EMI-style mutation: driver 3.
  *
  * Equivalence Modulo Inputs. Le, Afshari and Su's insight is that a program and
  * a driver together decide which code is LIVE; everything else can be replaced

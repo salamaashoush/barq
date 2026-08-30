@@ -1,7 +1,7 @@
 /**
  * THE UNION — every fixture source in this package, in one list.
  *
- * `CODESIGN.md` §12, adopted from Solid: "Their suite compiles the union of ALL
+ * Adopted from Solid, whose suite compiles the union of ALL
  * fixture sources through EVERY mode. barq has 2 backends x 2 optimisation
  * levels plus the interpreter — five emission modes — and fixtures written per
  * feature. The `backend!` macro proves every backend HANDLES every `Op`; it
@@ -22,17 +22,17 @@
  *   fixtures/browser-only/ 1  the Chrome differential, DOM only
  *
  * The partition is defensible for what each suite ASSERTS — `oracle.test.ts`
- * cannot judge a fixture whose point is that it throws, and `SEMANTICS.md`'s
- * own note says so. It is not defensible for whether the code COMPILES. A
- * construct that only `fixtures/semantics/` exercises has never reached the SSR
- * backend, and the `backend!` macro cannot see the difference: it proves every
+ * cannot judge a fixture whose point is that it throws. It is not defensible
+ * for whether the code COMPILES. A construct that only `fixtures/semantics/`
+ * exercises has never reached the SSR backend, and the `backend!` macro cannot
+ * see the difference: it proves every
  * backend has an arm for every `Op`, which is a statement about the match
  * expression and not about the arm.
  *
  * So this file is the union, and `modes.test.ts` drives it through all five
  * emission modes.
  *
- * ## The warning attached to this, from §12, and what it changes
+ * ## The warning attached to this, and what it changes
  *
  * "Solid's own SSR/DOM hole-id desync was caught by an end-to-end streaming
  * example, NOT by fixture parity, because parity compares COMPILERS rather than
@@ -102,9 +102,9 @@ export function unionFixtures(): Fixture[] {
 }
 
 /**
- * The five emission modes of `CODESIGN.md` §6 L5, as compiler options.
+ * The five emission modes, as compiler options.
  *
- * `ssr → hydrate` is L5's fifth mode as a RENDER; as an EMISSION there are five
+ * `ssr → hydrate` is the fifth mode as a RENDER; as an EMISSION there are five
  * because `hydratable` is a sixth axis on both backends rather than a mode of
  * its own. It is driven separately below, so the matrix covers seven columns
  * and says which two are the hydration ones.

@@ -1,5 +1,5 @@
 
-// M9 deleted the `useRef()` factory (§4.1): a ref is a writable binding (B3)
+// There is no `useRef()` factory: a ref is a writable binding (B3)
 // or a callback, and the `{current}` box the ref channel writes is one object
 // literal. The SHAPE is what this fixture is about, and it is unchanged.
 export const box: { current: HTMLDivElement | null } = { current: null }
@@ -22,7 +22,7 @@ export const optimality = {
   milestone: 5,
   templates: 1,
   patchCalls: 2,
-  // §3.5/B3: `ref` is a CHANNEL of its own, not a prop — the name never reaches
+  // B3: `ref` is a CHANNEL of its own, not a prop — the name never reaches
   // the runtime, and neither form is an attribute write. Baking either into the
   // template writes the string `[object Object]` into the markup and never
   // resolves the ref at all.
@@ -31,7 +31,7 @@ export const optimality = {
 }
 
 /**
- * DESIGN §5's opcode table drops `Ref` on the SSR target: a ref resolves to a
+ * The opcode table drops `Ref` on the SSR target: a ref resolves to a
  * NODE, and there are no nodes on the wire. The callback ref here is the whole
  * point — it mutates the element it is handed — so the DOM render carries a
  * `data-reffed` the string render structurally cannot.

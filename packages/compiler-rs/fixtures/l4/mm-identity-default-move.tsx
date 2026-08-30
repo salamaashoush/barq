@@ -9,11 +9,11 @@
  * trade is real and only one half is comfortable:
  *
  *  - step 0 reorders the SAME three objects, so every row moves and none is
- *    built — `permutes`;
+ *  built — `permutes`;
  *  - step 1 replaces them with structurally-equal FRESH objects, which under
- *    identity keying is three new rows — `rebuilds`. That is the declared cost
- *    of this default, and a fixture that only asserted the comfortable half
- *    would be certifying index keying by omission.
+ *  identity keying is three new rows — `rebuilds`. That is the declared cost
+ *  of this default, and a fixture that only asserted the comfortable half
+ *  would be certifying index keying by omission.
  *
  * Both replacement arrays are module constants, so replaying a step is the same
  * INPUT rather than a fresh allocation — which is what makes MM2 and MM3 sound

@@ -5,7 +5,7 @@ export const suffix = signal("un")
 /**
  * A template whose html carries multi-byte characters PAST byte 100.
  *
- * §6.2 locates a hoisted template by scanning a fixed byte budget past the
+ * The map locates a hoisted template by scanning a fixed byte budget past the
  * declaration name, and the budget lands exactly there: slicing a `&str` at it
  * split a two-byte character in half and took the whole compile down with a Rust
  * panic. Vite passes `sourcemap: true` unconditionally, so that was an ordinary

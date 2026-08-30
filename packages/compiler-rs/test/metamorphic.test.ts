@@ -1,5 +1,5 @@
 /**
- * L4 — the node-identity channel, regraded METAMORPHIC. `CODESIGN.md` §6 L4.
+ * L4 — the node-identity channel, regraded METAMORPHIC.
  *
  * `metamorphic.ts`'s header states what was wrong with the differential grading
  * and what replaces it. This file is the discipline around it: the properties
@@ -196,7 +196,7 @@ describe("L4 — node identity, graded metamorphic", () => {
   });
 
   it("the declared corpus covers branch, each, boundary and portal", () => {
-    // The four primitives §3.4 names. A metamorphic corpus that only exercised
+    // The four primitives. A metamorphic corpus that only exercised
     // `branch` would be a strong statement about a quarter of the runtime.
     const covered = new Set(L4.map((name) => name.replace(/^(mm|c7)-/, "").split("-")[0]));
     for (const construct of ["branch", "keyed", "index", "switch", "nested"]) {

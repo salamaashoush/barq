@@ -21,7 +21,7 @@ import { countAnchors, normalizeDom } from "./normalize.ts";
 /**
  * THE ORACLE, after M9 removed its reference implementation.
  *
- * `CODESIGN.md` §6 retires the un-compiled `createElement` path as an oracle on
+ * the oracle design retires the un-compiled `createElement` path as an oracle on
  * three grounds, the first of which is decisive: both paths rendered a blank
  * page for `<Provider><Child/></Provider>`, so the harness was green on the very
  * bug that prompted the redesign. A second implementation that shares your
@@ -42,7 +42,7 @@ import { countAnchors, normalizeDom } from "./normalize.ts";
  *  - MARKER LAYOUT and the ATTRIBUTE PARTITION never needed a reference: both
  *    sides come off the emitted module and the clones it produced. They stay,
  *    as `harness.ts auditCompiled`.
- *  - The corruption self-checks stay, and they are the point of §6 L6 —
+ *  - The corruption self-checks stay, and they are the point of the mutation layer —
  *    "would my suite notice a wrong compiler change?". Their reference is now
  *    the CLEAN compiled render of the same fixture (`compareToClean`), which is
  *    not a second implementation and cannot share an implementation's defect.
@@ -353,7 +353,7 @@ describe("compiled render integrity", () => {
 describe("rendered DOM golden", () => {
   /**
    * The absolute grader for rendered DOM, and the half that had been carried by
-   * the retired reference. §6 L4 assigns a golden to attribute order, emitted
+   * the retired reference. the grade table assigns a golden to attribute order, emitted
    * bytes, diagnostics and sourcemaps for a reason that applies here word for
    * word — "a silently-dropped diagnostic, a corrupted mapping or a size
    * regression becomes a visible diff" — and once the reference is gone, the
@@ -591,12 +591,12 @@ describe("attribute-order channel", () => {
    *
    * ABSOLUTE: the per-fixture DOM golden above records every element's
    * attribute line verbatim, so any reordering anywhere in the corpus is a
-   * visible diff. That is the grade §6 L4 assigns attribute order, and it is
+   * visible diff. That is the grade the grade table assigns attribute order, and it is
    * what the retired reference was standing in for.
    *
    * SELF-CHECK: `auditCompiled` asserts the PARTITION — every prop the patch
    * code writes reaches the element after every attribute the template baked
-   * in. That is what source order lowers to on both backends (§5.3), and it
+   * in. That is what source order lowers to on both backends, and it
    * holds without any reference at all.
    *
    * The two below are the detectors that say neither grade is inert.
@@ -734,7 +734,7 @@ describe("template parse conformance", () => {
 });
 
 describe("harness self-check", () => {
-  // §6 L6, the layer no other project in the survey has: "would my suite notice
+  // the mutation layer, the layer no other project in the survey has: "would my suite notice
   // a wrong compiler change?" Each case corrupts one thing and names the
   // detector that must catch it; if any of these start passing, the
   // corresponding assertion above has stopped working.
@@ -742,7 +742,7 @@ describe("harness self-check", () => {
   // The reference for every one of them is the CLEAN compiled render of the
   // same fixture. That is not a second implementation — it is the same compiler
   // on the same source with nothing broken — so it cannot share an
-  // implementation's defect, which is the objection §6 raises against the
+  // implementation's defect, which is the objection the oracle design raises against the
   // retired `createElement` oracle.
 
   it("detects a changed static attribute value (initial-dom)", async () => {

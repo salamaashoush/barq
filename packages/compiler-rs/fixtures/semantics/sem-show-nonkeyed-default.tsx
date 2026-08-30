@@ -14,7 +14,7 @@
  * The second claim is the CONTROL. Without it, "the default preserves the node"
  * and "this construct never rebuilds anything" are the same observation.
  *
- * SEMANTICS.md §K K1.1.
+ * K1.1.
  */
 import { Show, render, signal } from "@barqjs/core"
 

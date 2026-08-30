@@ -21,7 +21,7 @@
  * |    | and `props.children()` without a Scope is another (C3.8's type half)   |
  *
  * Adding a rule here without a `.types.tsx` that observes it is the same
- * offence as adding one to `SEMANTICS.md` with no fixture, and the bidirectional
+ * offence as adding one to the rule set with no fixture, and the bidirectional
  * check in `semantics.test.ts` treats it the same way.
  */
 export const TYPE_CHANNEL_RULES: readonly string[] = Object.freeze(["B8", "C4"]);

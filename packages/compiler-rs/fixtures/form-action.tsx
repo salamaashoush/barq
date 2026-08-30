@@ -5,12 +5,12 @@ export const draft = optimistic("")
 export const log: string[] = []
 
 /**
- * `<form action={…}>` — §3.8's compiler surface, and the whole of A5 reached
+ * `<form action={…}>` — the server-function surface, and the whole of A5 reached
  * from compiled JSX rather than from a hand-written call.
  *
  * `action` on a `<form>` is a URL when it holds a string and a SUBMIT HANDLER
  * when it holds a function, and nothing about the expression separates them: an
- * `action()` is `(...args) => Promise<R>`, so its arity is 0 and §3.0 rule 1
+ * `action()` is `(...args) => Promise<R>`, so its arity is 0 and the arity rule
  * reads it as a Cell. Before M10 the attribute channel did exactly that — it
  * CALLED the action at mount and wrote the promise it returned into the form's
  * target as `action="[object Promise]"`, with no console error. The SLOT decides

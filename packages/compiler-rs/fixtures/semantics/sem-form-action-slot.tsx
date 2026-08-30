@@ -3,13 +3,13 @@
  *
  * A string is the form's URL and a function is its submit handler. Nothing
  * about the expression separates them: an `action()` is `(...args) =>
- * Promise<R>`, so its arity is 0 and §3.0 rule 1 reads it as a Cell. The slot is
- * the only thing that can decide, exactly as it is for `on*` (§3.5's `is_cell`
+ * Promise<R>`, so its arity is 0 and the arity rule reads it as a Cell. The slot is
+ * the only thing that can decide, exactly as it is for `on*` (the `is_cell`
  * exception).
  *
  * The first two claims are the defect that shipped, and they are separate
  * because it failed twice in one line. Routing `action` down the attribute
- * channel put the function through `bindProp`, which applied §3.0 rule 1 to it:
+ * channel put the function through `bindProp`, which applied the arity rule to it:
  * the action was CALLED at mount, and the promise it returned was written into
  * the form's target as `action="[object Promise]"`. Neither reported anything.
  *
@@ -17,7 +17,7 @@
  * CONTROL — without it, "no attribute was written" and "the whole channel is
  * dead" are the same observation.
  *
- * SEMANTICS.md §9 B8.
+ * B8.
  */
 import { action, render } from "@barqjs/core"
 

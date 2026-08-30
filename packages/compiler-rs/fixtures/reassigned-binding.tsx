@@ -10,7 +10,7 @@
  * The corpus contained no reassigned `let` at all, in any position, so dropping
  * that one guard was a mutation the whole L3 differential and the whole Interp
  * differential ran green against — it moves the emitted bytes AND the rendered
- * DOM, and no input reached it. §8 makes an operator with no killing input a
+ * DOM, and no input reached it. An operator with no killing input is a
  * shipping gate for the pass it belongs to, and `mutants.ts` carries the
  * operator (`fold-folds-a-reassigned-binding`); this is its input.
  */

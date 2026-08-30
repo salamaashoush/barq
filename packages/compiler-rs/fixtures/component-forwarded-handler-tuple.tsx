@@ -13,12 +13,12 @@ function pick(label: unknown, _event: MouseEvent): void {
  * Both reachable forms are here:
  *
  *  - `cb={[props.handler(), props.label()]}` — an array, so `identity_matters`
- *    evaluates it ONCE into a cell. The runtime installs that array as
- *    the `$$click` expando, so a carrier that rebuilt it per read would install
- *    a different listener on every frame.
- *  - `render={() => …}` — an author-written zero-arity arrow, which §3.0 rule 1
- *    says already IS a Cell, so it forwards untouched and reads the same object
- *    twice.
+ *  evaluates it ONCE into a cell. The runtime installs that array as
+ *  the `$$click` expando, so a carrier that rebuilt it per read would install
+ *  a different listener on every frame.
+ *  - `render={() => …}` — an author-written zero-arity arrow, which the arity rule
+ *  says already IS a Cell, so it forwards untouched and reads the same object
+ *  twice.
  *
  * `data-same` and `data-render-same` are that identity, rendered: each reads its
  * prop twice and says whether the two reads agreed. Both must say `true` on the
@@ -85,7 +85,7 @@ export const optimality = {
   templates: 2,
   // Three carriers, three rules, in one call. `cb` is an array, so C3's
   // identity rule evaluates it ONCE into a cell; `render` is a zero-arity arrow
-  // the author wrote, so §3.0 rule 1 forwards it untouched; `tone` is a Cell
+  // the author wrote, so the arity rule forwards it untouched; `tone` is a Cell
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
     "Chip(",

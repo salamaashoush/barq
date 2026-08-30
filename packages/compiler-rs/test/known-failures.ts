@@ -1,5 +1,5 @@
 /**
- * The known-failure registry — `SEMANTICS.md` §15.
+ * The known-failure registry.
  *
  * "Green except the known failures" has to be a state the suite ASSERTS. A list
  * that can silently absorb a new failure is worthless, so this file is a data
@@ -15,14 +15,14 @@
  * the two apart, and "this fixture fails" would stop being evidence about
  * anything in particular.
  *
- * `semantics.test.ts` makes seven assertions against this table (§15.2, §15.7):
+ * `semantics.test.ts` makes seven assertions against this table:
  *
  *   1. a registered claim that PASSES is a suite failure, reported as stale;
  *   2. an unregistered claim that FAILS is a suite failure;
  *   3. a registered claim that fails for the WRONG REASON is a suite failure —
  *      the message must name `rule` as a standalone token, and a crash is never
  *      the right reason. This is the assertion that makes M0 mean anything;
- *   4. every `rule` exists in `SEMANTICS.md` and is declared in the fixture's
+ *   4. every `rule` exists in the rule set and is declared in the fixture's
  *      own `rules` export, checked in both directions;
  *   5. a row matching no claim is a suite failure, reported as stale;
  *   6. a row whose `greenAt` is behind `CURRENT_MILESTONE` is a suite failure,
@@ -30,7 +30,7 @@
  *      this is the other direction, a row that never started passing, and
  *      without it a marker rots across milestones until someone deregisters the
  *      row on the strength of the marker rather than a measurement.
- *   7. THE RATCHET (`ratchet.ts`, `CODESIGN.md` §12). A row whose claim still
+ *   7. THE RATCHET (`ratchet.ts`, the wire split). A row whose claim still
  *      fails but fails DIFFERENTLY is a suite failure, whether the difference
  *      is a regression or an improvement. Assertions 1 and 6 only see a row
  *      that flipped; this one sees a row that moved. C3.8 below is the live
@@ -44,16 +44,16 @@ export interface KnownFailure {
   readonly fixture: string;
   /** The `id` of one `Claim` in that fixture's `claims` export. */
   readonly claim: string;
-  /** The rule from `SEMANTICS.md` the failure must name. */
+  /** The rule from the rule set the failure must name. */
   readonly rule: string;
   /**
    * `VIOLATED` is a bug that shipped. `PLANNED` is a semantic change this
-   * design chose on the record in `CODESIGN.md` §11. Both fail at M0; only the
-   * first is an indictment, and conflating them is what §0.2 forbids.
+   * design chose on the record in the wire decision. Both fail at M0; only the
+   * first is an indictment, and conflating them is what the status rule forbids.
    */
   readonly status: "VIOLATED" | "PLANNED";
   /**
-   * The milestone from `CODESIGN.md` §8 after which this row must be deleted.
+   * The milestone from the shipping gate after which this row must be deleted.
    * Enforced against `milestone.ts`'s `CURRENT_MILESTONE`: moving it is a diff
    * that has to say why in `reason`.
    */
@@ -121,8 +121,8 @@ const ROWS: readonly KnownFailure[] = [
   // on passing while silently measuring the Block form.
   // -------------------------------------------------------------------------
   // -------------------------------------------------------------------------
-  // sem-own-given-scope-wins. O4.5 was recorded in §13 as pinned by "structural
-  // (§14)" — the SIGNATURE was the evidence, and a signature is not evidence.
+  // sem-own-given-scope-wins. O4.5 was recorded as pinned by "structural
+  // " — the SIGNATURE was the evidence, and a signature is not evidence.
   // `insert` and `setProp` both took a `Scope`, validated it, and then opened
   // their render effect under whatever was ambient. Both now open it under the
   // scope they were handed, and the first three claims of this fixture pin that.
@@ -199,7 +199,7 @@ export const KNOWN_FAILURES: readonly KnownFailure[] = Object.freeze(
   ROWS.map((row) => Object.freeze(row)),
 );
 
-/** The rows §15.4 says the gate is really about, addressed by fixture. */
+/** The rows the gate rows says the gate is really about, addressed by fixture. */
 export const GATE_FIXTURES: readonly string[] = Object.freeze([
   "sem-ctx-provider-direct-child",
   "sem-ctx-provider-wrapper-component",

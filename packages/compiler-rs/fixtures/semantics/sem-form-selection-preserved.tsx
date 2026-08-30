@@ -4,7 +4,7 @@
  * B6 is the write that is skipped; this is the write that is not. When the
  * signal genuinely changes while the user is inside the control, the value has
  * to be written, and `element.value = x` moves the text entry cursor to the end
- * of the control (HTML §4.10.5.5). Everything the user had selected is gone and
+ * of the control. Everything the user had selected is gone and
  * the next character they type lands in the wrong place.
  *
  * This project has shipped this exact failure once already — replace-based
@@ -19,7 +19,7 @@
  * keystrokes over CDP. Both are kept: this pins the arithmetic — which offsets,
  * clamped how — and Chrome pins that the arithmetic is about the right thing.
  *
- * SEMANTICS.md §9 B7.
+ * B7.
  */
 import { render, signal } from "@barqjs/core"
 import type { Block } from "@barqjs/core"

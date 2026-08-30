@@ -1,13 +1,13 @@
 /**
  * O6 — the owner and the observer are two ambients, and `untrack` moves one.
  *
- * §13 named this fixture and it did not exist, so the rule read `HOLDS,
+ * This fixture was named and did not exist, so the rule read `HOLDS,
  * untested` with nothing behind it. The two directions are separable and both
  * are here: a cleanup registered inside `untrack` must still belong to the scope
  * that lexically encloses it, and a read inside `untrack` must not subscribe the
  * effect that encloses it.
  *
- * SEMANTICS.md §2 O6.
+ * O6.
  */
 import { effect, onCleanup, render, signal, untrack } from "@barqjs/core"
 

@@ -1,9 +1,9 @@
 /**
- * L3, the machinery — `CODESIGN.md` §6 L3.
+ * L3, the machinery.
  *
  * The reference for an optimising compiler is the same compiler with the
  * optimisations off. `test/optimisation.test.ts` drives that over the fixture
- * corpus; this module is the part the other two drivers §6 L3 names need — the
+ * corpus; this module is the part the other two drivers need — the
  * JSX generator (`generator.ts`) and the EMI mutator (`emi.ts`) — because both
  * produce SOURCE rather than a fixture name, and neither can go through
  * `renderViaCompiler`.
@@ -30,7 +30,7 @@ import { compileSource, loadModule, renderModule, type RenderResult } from "./ha
 /**
  * `dom-Ox` is what ships. `dom-O0` is the reference: same front end, same IR,
  * same ABI, same props model, same ownership model, every optimisation off.
- * `interp` is §6 L2's reference backend over the same analysed IR.
+ * `interp` is the reference backend over the same analysed IR.
  *
  * **Why the string backend is not a fourth mode.** L3's channels are read off a
  * rendered DOM and off a driven interaction — nodes, attributes, text, effect
@@ -288,7 +288,7 @@ export function oneSourceOrderExplainsBoth(a: string[], b: string[]): boolean {
  * `markers`/`anchors` are deliberately absent, and the reason is structural
  * rather than a concession: `-O0` turns anchor elision off, so demanding the two
  * levels agree on baked anchors would be demanding that the optimisation do
- * nothing. §6 L4 grades that channel self-check, and `oracle.test.ts` holds each
+ * nothing. That channel is graded self-check, and `oracle.test.ts` holds each
  * build to its own count.
  *
  * Effect counts are absent for the same reason — with fusion off, every binding

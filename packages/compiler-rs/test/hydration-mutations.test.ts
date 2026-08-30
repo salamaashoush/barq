@@ -4,12 +4,12 @@ import { compileSource } from "./harness.ts";
 import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
 
 /**
- * L6 pointed at hydration. `CODESIGN.md` §6 L6, §11 Q4.
+ * L6 pointed at hydration. the mutation layer, the wire decision Q4.
  *
  * **A property no mutation can violate is not a property.** The conformance
  * suite next door says every fixture hydrates cleanly; on its own that is a
  * statement about a corpus, not about a detector. This file corrupts the wire
- * one way at a time and asks the two questions §11 Q4 paid the bytes for:
+ * one way at a time and asks the two questions the wire decision Q4 paid the bytes for:
  *
  *   1. was the corruption DETECTED?
  *   2. did it degrade to a full client render, or to a wrong tree?
@@ -60,12 +60,12 @@ interface Expected {
    * The shape the page ends at when it is NOT the shape a cold client render
    * would have produced — a SURVIVING corruption, written down.
    *
-   * There are three of them and they are all the same trade. §12 moved the
+   * There are three of them and they are all the same trade. the wire split moved the
    * subtree comparison onto the detection axis, so a production build no longer
    * walks a claimed subtree against the template it would have built, and a
    * corruption that is invisible to the claim itself — an extra element, a
    * missing one, a swapped tag in the middle of a template — survives. That is
-   * what Solid does and it is what §12 chose: the check runs where the bug is
+   * what Solid does and it is what the wire split chose: the check runs where the bug is
    * debugged, and the same three rows are DETECTED in the development column.
    *
    * Recorded exactly rather than tolerated. A row that starts matching the cold
@@ -84,7 +84,7 @@ interface Mutation {
    * expressed there at all.
    *
    * `null` is a claim rather than an omission, and `the table` holds it to one:
-   * the mutation must leave a production wire UNCHANGED. §12 moved the branch
+   * the mutation must leave a production wire UNCHANGED. the wire split moved the branch
    * key onto the detection axis, so "the server says it took arm `true`" is a
    * sentence a production wire cannot say — and the row that reads it stays
    * here, aimed at the build that can.
@@ -283,7 +283,7 @@ async function run(mutation: Mutation, dev: boolean): Promise<Verdict> {
  * The table, run twice — once against a PRODUCTION `hydratable` build and once
  * against a DEVELOPMENT one.
  *
- * That is §12's split, made falsifiable. The two builds emit different bytes on
+ * That is the split, made falsifiable. The two builds emit different bytes on
  * both backends, so "the detector works" is a claim about two artefacts and not
  * one, and the row that is `null` in production is the axis itself: with the key
  * off the wire the corruption has nothing to bite on, and the assertion is that
@@ -316,7 +316,7 @@ for (const dev of [false, true]) {
         }
         // A corruption that is DECLARED to be expressible must actually change
         // the bytes. Every row below is an artefact otherwise, which is exactly
-        // what three of them silently became when §12 shrank the wire — they
+        // what three of them silently became when the wire split shrank the wire — they
         // went on passing because a no-op is never caught and was never
         // supposed to be.
         expect({ name: verdict.name, bit: verdict.bit }).toEqual({
@@ -351,7 +351,7 @@ for (const dev of [false, true]) {
       // named — an EQUALITY, so a new silent row cannot slip in beside them and
       // a declared one that starts being caught fails as stale.
       //
-      // The development column's list is empty and that is §12's promise kept:
+      // The development column's list is empty and that is the split's promise kept:
       // silent failure is the dominant harm, the argument is about development,
       // and no corruption on this table survives a development build. The
       // production column's three are the price, listed rather than averaged.
@@ -444,7 +444,7 @@ describe("hydrating a page the compiler never made hydratable", () => {
   });
 
   /**
-   * §12's split, stated as three wires over one source.
+   * the split, stated as three wires over one source.
    *
    * `hydratable` off writes no claim scaffolding at all. `hydratable` on writes
    * the ranges RECOVERY needs — around the branch, whose extent is data, and
@@ -487,7 +487,7 @@ describe("hydrating a page the compiler never made hydratable", () => {
         .replace("<!--]--></ul>", "</ul>"),
     ).toBe(production);
 
-    // And the numbers §12 turns on, on this page: recovery costs one range,
+    // And the numbers the wire split turns on, on this page: recovery costs one range,
     // detection costs a key and a second range, and a build that hydrates
     // nothing costs neither.
     expect(production.length - plain.length).toBe("<!--[-->".length + "<!--]-->".length);

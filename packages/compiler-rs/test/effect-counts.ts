@@ -1,5 +1,5 @@
 /**
- * L4's absolute effect channel — `CODESIGN.md` §6 L4, the row that reads
+ * L4's absolute effect channel, whose row reads
  *
  * > Effect counts / run counts | **absolute** | Hand-written expected numbers
  * > per fixture, as Svelte's `tests/signals` does with `log` arrays. These are
@@ -9,9 +9,9 @@
  *
  * Until M9 the effect channel was `harness.ts boundEffects`: an upper BOUND
  * measured against the un-compiled `createElement` oracle, because "fewer
- * effects than the oracle is the entire point of the compiler". §6 retires that
- * oracle, and `oracle-known-failures.ts` stated the consequence before it
- * happened — the baseline goes with it, and repointing it at `Interp` would
+ * effects than the oracle is the entire point of the compiler". That oracle is
+ * retired, and `oracle-known-failures.ts` stated the consequence before it
+ * happened: the baseline goes with it, and repointing it at `Interp` would
  * make the delta identically zero because `Interp` consumes the same analysed
  * IR.
  *

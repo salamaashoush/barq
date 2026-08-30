@@ -12,7 +12,7 @@
  * live scopes, zero retained nodes" — is not merely false, it is not
  * FORMULABLE, because nothing owns the subtree in the first place.
  *
- * SEMANTICS.md §2 O5, O3.7.
+ * O5, O3.7.
  */
 import { scope, DEV, effect, onCleanup, render, renderEffect, signal } from "@barqjs/core"
 
@@ -103,19 +103,19 @@ const MOUNTED =
  * So there are THREE positions now where there were two, and the claims below
  * are re-pointed at them:
  *
- *   - `jsx`   — `render(<Tree/>, host)`, the spelling an application writes.
- *               It is a Block after the wrap, and it is what O5's own claim
- *               measures, because O5 is about what `render` does for the code
- *               people write.
- *   - `block` — `render((s) => <Tree/>, host)`, written out by hand. The
- *               control that says the wrap produced the shape it claims to.
- *   - `built` — `const built = <Tree/>` through a LOCAL, then `render(built,
- *               host)`. An ordinary declarator, so the compiler leaves it eager
- *               and the callee is handed a value. This is the runtime's
- *               argument form, which still EXISTS — a hand-written or
- *               un-compiled caller can still produce one — and the two controls
- *               about relocation and the diagnostic drive it, because they are
- *               statements about the runtime and not about the compiler.
+ *  - `jsx` — `render(<Tree/>, host)`, the spelling an application writes.
+ *  It is a Block after the wrap, and it is what O5's own claim
+ *  measures, because O5 is about what `render` does for the code
+ *  people write.
+ *  - `block` — `render((s) => <Tree/>, host)`, written out by hand. The
+ *  control that says the wrap produced the shape it claims to.
+ *  - `built` — `const built = <Tree/>` through a LOCAL, then `render(built,
+ *  host)`. An ordinary declarator, so the compiler leaves it eager
+ *  and the callee is handed a value. This is the runtime's
+ *  argument form, which still EXISTS — a hand-written or
+ *  un-compiled caller can still produce one — and the two controls
+ *  about relocation and the diagnostic drive it, because they are
+ *  statements about the runtime and not about the compiler.
  *
  * Without the third position those two controls would have gone on passing
  * while silently measuring the Block form, which is worse than failing.

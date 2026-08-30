@@ -59,9 +59,9 @@ export interface NativeTransformResult {
   code: string;
   map?: string;
   warnings: string[];
-  /** `CODESIGN.md` §6 L2b, under `ownership: true` only. */
+  /** the ownership channel, under `ownership: true` only. */
   ownership?: string | null;
-  /** `CODESIGN.md` §3.11's compile-time address table, under `addresses: true` only. */
+  /** the address table's compile-time address table, under `addresses: true` only. */
   addresses?: string | null;
 }
 
@@ -73,7 +73,7 @@ interface NativeCompiler {
 
 /**
  * `BARQ_NATIVE` points the whole harness at a different build of the compiler.
- * L6 (`CODESIGN.md` §6) asks whether this suite would notice a wrong compiler
+ * L6 (the oracle design) asks whether this suite would notice a wrong compiler
  * change, and the only honest way to answer it is to run the suite against a
  * compiler that really has been changed. `test/mutants.ts` builds one mutant
  * per optimisation pass out of a scratch copy of the crate and points this at
@@ -140,7 +140,7 @@ export interface FixtureModule {
   /** What the compiler must eventually make of this fixture. */
   optimality?: OptimalityExpectation;
   /**
-   * A markup difference the SSR backend is REQUIRED to have. DESIGN §5's opcode
+   * A markup difference the SSR backend is REQUIRED to have. The opcode
    * table drops `Delegate`, `Listen` and `Ref` — a handler and a ref callback
    * are client-only, so a fixture whose DOM render only differs BECAUSE one of
    * them ran cannot match the string on the wire.
@@ -589,7 +589,7 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
  *
  * The COMPILED module, not the source. Loading a fixture un-compiled makes bun
  * lower its JSX with its own transform, which needs `jsx`/`jsxs` to resolve on
- * `@barqjs/core/jsx-runtime` — and M9 deleted them (§4.1), because bun's
+ * `@barqjs/core/jsx-runtime` — and M9 deleted them, because bun's
  * transform cannot produce scope-taking Blocks and an authoring path that
  * cannot have the same semantics is worse than none. The declarations are
  * module-scope constants and survive the compile untouched, so reading them off
@@ -624,7 +624,7 @@ export async function renderViaCompiler(
 }
 
 /**
- * The reference backend (`CODESIGN.md` §6 L2): the SAME analysed IR the DOM
+ * The reference backend (the reference backend): the SAME analysed IR the DOM
  * backend consumes, serialised beside the module and walked by
  * `@barqjs/core/interp` instead of printed as JavaScript.
  */
@@ -988,7 +988,7 @@ export function auditAnchors(code: string): AnchorAudit {
     used.add(node);
   };
   for (const call of callsTo(stripped, "insert")) {
-    // `_$insert($s, parent, value, anchor)` — the scope is first (§3.3 C6), so
+    // `_$insert($s, parent, value, anchor)` — the scope is first, so
     // the anchor is the FOURTH argument.
     if (call.length < 4) continue;
     claim(call[3].trim());
@@ -1117,7 +1117,7 @@ function reportedAs(name: string): string {
 }
 
 /**
- * `CODESIGN.md` §3.5's channel set, as it appears in emitted code:
+ * channel resolution's channel set, as it appears in emitted code:
  * `_$setAttr(el, "id", v)`. `_\$+`, not `_\$`: a fixture whose own source
  * contains `_$` makes the compiler shift every emitted uid to `_$$`, and a
  * scanner pinned to one prefix would silently see no writes at all.
@@ -1194,8 +1194,8 @@ export function propCalls(code: string): number {
 /**
  * Two renders of ONE fixture, compared channel by channel.
  *
- * The reference used to be the un-compiled `createElement` path. `CODESIGN.md`
- * §6 retires it — a second implementation that shares your defect certifies the
+ * The reference used to be the un-compiled `createElement` path. the design
+ * the oracle design retires it — a second implementation that shares your defect certifies the
  * defect — so nothing in the corpus sweep calls this with a second
  * implementation any more. What survives is the L6 use: the reference is the
  * CLEAN compiled render and the subject is the same fixture compiled with one
@@ -1332,7 +1332,7 @@ export interface CompiledAudit {
 /**
  * Every channel the compiled render can be held to WITHOUT a second render.
  * Both sides of each check come off the emitted module and the DOM that module
- * actually produced, which is §6 L4's `self-check` grade.
+ * actually produced, which is the grade table's `self-check` grade.
  */
 export async function auditCompiled(
   name: string,
@@ -1421,16 +1421,16 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
     // Attribute ORDER, at the one grade a single render can carry: the props
     // the patch code writes reach the element AFTER every attribute the
     // template baked in. That partition is what source order lowers to on both
-    // backends (`CODESIGN.md` §5.3), and it is the half a self-check can see —
+    // backends (the two backends' split), and it is the half a self-check can see —
     // the order WITHIN each group is pinned absolutely by the per-fixture DOM
     // golden, and a build that reorders either group is caught by comparing it
     // against the clean build (`compareRenders`).
     //
-    // A module that emits `_$spread` is EXEMPT, and the exemption is §3.13 item
+    // A module that emits `_$spread` is EXEMPT, and the exemption is the run-time questions item
     // 1 rather than a concession: a spread's names are the one attribute fact
     // the compiler cannot have, so the runtime resolves them and no reading of
     // the emitted code can tell which of an element's attributes the patch code
-    // wrote. §5.3's M9 note also makes those elements bake nothing at all, so
+    // wrote. the two backends' split's M9 note also makes those elements bake nothing at all, so
     // there is no partition on them to check — every attribute is applied, in
     // source order, and the golden is what records it.
     const patched = patchedAttributeNames(code);
@@ -1467,7 +1467,7 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
 
 /**
  * The clean compiled render against a deliberately broken one — L6's channel.
- * `CODESIGN.md` §6 L6: "would my suite notice a wrong compiler change?"
+ * the mutation layer: "would my suite notice a wrong compiler change?"
  */
 export async function compareToClean(
   name: string,

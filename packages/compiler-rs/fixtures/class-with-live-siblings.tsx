@@ -15,10 +15,10 @@ export const label = signal("first")
  * Two structural changes remove it rather than avoid it:
  *
  *  - the fused record gives every field its own guard, so `class` is written
- *    ONLY when the class value changed. `title` changing cannot reach it;
+ *  ONLY when the class value changed. `title` changing cannot reach it;
  *  - the class channel emits only the tokens it OWNS, diffing what it applied
- *    last time against what it applies now, so even a real class change leaves
- *    `extra` alone.
+ *  last time against what it applies now, so even a real class change leaves
+ *  `extra` alone.
  *
  * Step 0 changes only `label`; step 1 changes only `tone`. `extra` survives
  * both, and it survived neither at M4.

@@ -20,7 +20,7 @@
  * listener the runner tears down between fixtures and a listener the element
  * owns needs nothing at all.
  *
- * SEMANTICS.md §6 E2, E2.2.
+ * E2, E2.2.
  */
 import { Errored, render } from "@barqjs/core"
 import type { Block } from "@barqjs/core"

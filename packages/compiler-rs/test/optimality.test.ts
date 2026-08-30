@@ -136,7 +136,7 @@ describe("declared optimality", () => {
       expect(emittedCalls(code, "template"), "templates").toBe(decl.templates);
     if (decl.patchCalls !== undefined) {
       // Every call the module makes after the clone: holes, prop channels, and
-      // the element channels §3.5/§3.6 gave their own entry points.
+      // the element channels channel resolution/the event channel gave their own entry points.
       const patches =
         emittedCalls(code, "insert") +
         propCalls(code) +
@@ -240,7 +240,7 @@ describe("declared optimality", () => {
       );
       if (lost.length > 0) withProps.set(name, [...new Set(lost)]);
       calls += [...code.matchAll(/(?<![\w$.])[A-Z][\w$]*\(_s\$[,)]/g)].length;
-      // §3.0 rule 3: a Block is BRANDED at its definition site, so the slot's
+      // A Block is BRANDED at its definition site, so the slot's
       // value is `_$block((_s$…`. The brand is what lets a consumer test kind
       // instead of guessing it from arity.
       //
@@ -301,7 +301,7 @@ describe("declared optimality", () => {
 
   const NO_DECLARATION: Record<string, Excuse> = {
     // Both used to point at their declared `win`s, which were behavioural
-    // claims against the retired oracle. §6 replaces that channel with the
+    // claims against the retired oracle. the oracle design replaces that channel with the
     // per-fixture rendered-DOM golden, which records every frame either fixture
     // drives rather than only the ones that differed from a reference.
     "conditional-children": {
@@ -605,7 +605,7 @@ describe("target 3 — constant folding into the template string", () => {
 describe("target 4 — one effect per element, not one per prop", () => {
   it("multi-prop-one-element: three dynamic props share a single effect", async () => {
     // The contrast used to be the oracle's count — one effect per live prop.
-    // §6 retires it, so the same claim is stated off the module: ONE bindEffect
+    // the oracle design retires it, so the same claim is stated off the module: ONE bindEffect
     // that covers two or more channel writes, and one effect at run time. The
     // module half is the stronger of the two, because the count alone is also
     // what a compiler that dropped two props produces.
@@ -1126,7 +1126,7 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     expect(silent).toEqual([]);
     // The gate is only worth what its population is: a run where the flow pass
     // lowered nothing would satisfy every clause above by having nothing to
-    // check, which is the same fail-open shape §6 L3's third detection value
+    // check, which is the same fail-open shape the differential's third detection value
     // exists to prevent.
     expect(lowered, "no fixture in the corpus lowers a construct at all").toBeGreaterThan(24);
   }, 180_000);
@@ -1396,7 +1396,7 @@ describe("open questions the harness must be able to state", () => {
     // It then became "a fixture may hold a bare read, but it must DECLARE what
     // goes live", because a live hole cost one effect the reference did not
     // create and the bound had to be lifted by exactly the holes that earned it.
-    // §6 retires the reference and `effect-counts.ts` makes the count absolute,
+    // the oracle design retires the reference and `effect-counts.ts` makes the count absolute,
     // so there is nothing left to declare: the number for a fixture holding a
     // bare read simply IS one higher, and a hole that stopped going live moves
     // that number and fails there.

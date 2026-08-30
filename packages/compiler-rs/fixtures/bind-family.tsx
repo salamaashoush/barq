@@ -10,7 +10,7 @@ export const server = signal("seeded")
 export const draft = linked(server, (value) => value)
 
 /**
- * CODESIGN §3.10 — the `bind:` family, resolved at compile time from the tag
+ * The `bind:` family, resolved at compile time from the tag
  * and the `type`. Five channels, five reporting events, one shape.
  *
  * The corpus channels are the point of having it here rather than only under
@@ -28,7 +28,7 @@ export const draft = linked(server, (value) => value)
  * attribute in "default/on" mode for `checkbox` and `radio`, where it reflects.
  * So SSR ships a radio with no value and the DOM builds one with a value. It is
  * pre-existing, it needs the input TYPE threaded through the `attr` ABI, and it
- * is named in SEMANTICS.md §9 B6 rather than papered over with `ssrDiffers`.
+ * is named as B6 rather than papered over with `ssrDiffers`.
  * `bind:group` itself is driven, both directions, in
  * `fixtures/semantics/sem-form-selection-preserved.tsx`.
  */

@@ -14,7 +14,7 @@
  * satisfied by a framework that aborts everything the moment it is created, and
  * that framework would pass the first three.
  *
- * SEMANTICS.md §10 A1.
+ * A1.
  */
 import { render, resource, signal } from "@barqjs/core"
 

@@ -134,9 +134,9 @@ export const MATRIX_EXCEPTIONS = {
 // And +1 fixture, +7 cells, +1 renderableOnBoth for `control-flow-show-keyed-false`,
 // which is the `Show` arm that had no fixture — the reason its body parameter
 // went untyped long enough for the read in it to be applied once.
-// And +1 fixture, +7 cells, +1 renderableOnBoth for `form-action`, §3.8's
-// compiler surface. It renders on both backends and they deliberately DISAGREE
-// about the attribute — the client installs a submit handler, the server writes
+// And +1 fixture, +7 cells, +1 renderableOnBoth for `form-action`. It renders
+// on both backends and they deliberately DISAGREE about the attribute — the
+// client installs a submit handler, the server writes
 // no `action` at all — which is why it is worth one cell in each of the seven.
 // `sem-form-action-slot` is the semantics half of the same rule (B8) and adds
 // the last +1/+7/+1: four claims, of which two are the defect that shipped.

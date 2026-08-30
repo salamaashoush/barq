@@ -1,5 +1,5 @@
 /**
- * L4 — the leak oracle. `SEMANTICS.md` O3.7 and B4.
+ * L4 — the leak oracle, for O3.7 and B4.
  *
  * `leaks.ts` states the five probes and why each one needs to be taken from
  * outside the runtime. This file is the discipline: every probe runs on every
@@ -171,7 +171,7 @@ describe("L4 — the leak oracle", () => {
   });
 
   /**
-   * The ratchet — `CODESIGN.md` §12, `ratchet.ts`. A registered leak that goes
+   * The ratchet, in `ratchet.ts`. A registered leak that goes
    * on leaking while its message changes leaves every assertion above green.
    */
   it("ratchets: a registered leak that changed shape is a failure either way", () => {

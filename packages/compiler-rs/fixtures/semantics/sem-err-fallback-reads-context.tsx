@@ -15,7 +15,7 @@
  * context: none of them can be written. What the user sees is that the recovery
  * itself throws.
  *
- * SEMANTICS.md §2 O2; §4 X3.
+ * O2 and X3.
  */
 import type { Block } from "@barqjs/core"
 import { context, effect, Errored, hasContext, getOwner, render, useContext } from "@barqjs/core"

@@ -1,5 +1,5 @@
 /**
- * The parity ratchet, generalised — `CODESIGN.md` §12, adopted from Solid's
+ * The parity ratchet, generalised — the wire split, adopted from Solid's
  * `parity.test.js`.
  *
  * Their rule, in their words:

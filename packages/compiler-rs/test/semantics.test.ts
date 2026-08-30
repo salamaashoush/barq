@@ -36,7 +36,7 @@ import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts";
 import { digest, ratchet, regenerationReport } from "./ratchet.ts";
 
 /**
- * Layer L1 of the oracle, run against the CURRENT compiler — `CODESIGN.md` §8's
+ * Layer L1 of the oracle, run against the CURRENT compiler — the shipping gate's
  * M0 gate, and the only suite in this package that is expected to contain
  * failures. It does not contain them as `it.failing`, and it does not contain
  * them as skips: every claim below runs, and whether its outcome is acceptable
@@ -202,8 +202,8 @@ export function verdict(outcome: Outcome, row: KnownFailure | undefined): string
   // Assertion 7, the ratchet. Failing for the right rule is still not enough:
   // it has to fail the SAME WAY the row was written against. A partial fix
   // leaves the rule, the status and the milestone all correct and quietly
-  // detaches the row's prose from what happens — which is what `CODESIGN.md`
-  // §12 adopted from Solid's parity.test.js, and the one half none of this
+  // detaches the row's prose from what happens — which is what the design
+  // the wire split adopted from Solid's parity.test.js, and the one half none of this
   // project's three registries had.
   return ratchet({
     key: registryKey(outcome.fixture, outcome.claim),
@@ -214,7 +214,7 @@ export function verdict(outcome: Outcome, row: KnownFailure | undefined): string
 }
 
 // ---------------------------------------------------------------------------
-// §15.2 assertion 4 — the document, the fixtures and the registry, in both
+// the registry assertions assertion 4 — the document, the fixtures and the registry, in both
 // directions. These run first because every assertion below is only meaningful
 // once the rule IDs mean something.
 // ---------------------------------------------------------------------------
@@ -238,7 +238,7 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
   });
 
   /**
-   * §0.2 makes a status a claim about an OBSERVATION, and until now nothing
+   * the status rule makes a status a claim about an OBSERVATION, and until now nothing
    * compared the two. That is how O2, X1, X3 and C6 stayed `VIOLATED` in the
    * document across three rounds in which their pinning fixtures passed, while
    * each round truthfully reported "rules moved: NONE" — a status nobody checks
@@ -247,7 +247,7 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
    *
    * Both directions. A rule the suite falsifies may not be recorded `HOLDS`,
    * and a rule every one of whose claims holds may not be left `VIOLATED` or
-   * `PLANNED`. A rule with no L1 claim is not judged here — §14's worklist is
+   * `PLANNED`. A rule with no L1 claim is not judged here — the worklist is
    * what tracks those.
    */
   it("no rule's Status contradicts what its own claims observe", () => {
@@ -391,7 +391,7 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
   });
 
   /**
-   * The four §13 cells that are one row about several rules. Written out rather
+   * The four cells that are one row about several rules. Written out rather
    * than derived, so adding a range row is a diff and not a silent widening of
    * what the checker is allowed not to read.
    */
@@ -472,7 +472,7 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
         unbacked.push(`${rule} (${word}): ${named.join(", ")} — none of them exist`);
       }
       // EVERY named pin, not merely one of them. C6 named five and read HOLDS
-      // while `sem-own-slot-arguments` — §13's own pin for the slot-parameter
+      // while `sem-own-slot-arguments` — the pin for the slot-parameter
       // half, and the half M4b's gate round found broken — did not exist. The
       // ones still missing are a checked-in list, not a silence.
       for (const name of named) {
@@ -509,7 +509,7 @@ describe("the registry, the fixtures and SEMANTICS.md agree", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §15.2 assertions 1-3 — one test per claim, so the failure the suite prints is
+// the registry assertions assertions 1-3 — one test per claim, so the failure the suite prints is
 // the claim's own message rather than a count.
 // ---------------------------------------------------------------------------
 
@@ -587,7 +587,7 @@ describe("the gate closes", () => {
 
   // The ratchet's own three conditions, driven the same way. An IMPROVEMENT is
   // asserted separately from a regression because failing on improvement is the
-  // half `CODESIGN.md` §12 says this project did not have, and "it fails on any
+  // half the wire split says this project did not have, and "it fails on any
   // change" is not the same statement as "it fails when the news is good".
   it("rejects a registered failure that now fails DIFFERENTLY", () => {
     const worse = { ...failing, failure: `${failing.failure} and one more thing besides` };
@@ -620,7 +620,7 @@ describe("the gate closes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §15.2 assertion 5 — a row that matches no claim.
+// the registry assertions assertion 5 — a row that matches no claim.
 // ---------------------------------------------------------------------------
 
 describe("the registry has no rows left over", () => {
@@ -638,7 +638,7 @@ describe("the registry has no rows left over", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §15.4 — the fixtures the gate is really about. Stated separately from the
+// the gate rows — the fixtures the gate is really about. Stated separately from the
 // rows so that deleting a row cannot quietly delete the gate with it.
 //
 // At M0 this block asserted these fixtures FAIL on these rules: if the oracle

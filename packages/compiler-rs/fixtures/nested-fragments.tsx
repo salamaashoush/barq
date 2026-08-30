@@ -23,7 +23,7 @@ export const optimality = {
   milestone: 5,
   // Five: the host, and one per static subtree the fragments hold. A fragment
   // is not an element, so it cannot be a template root — `template()` returns
-  // `content.firstChild` only (DESIGN §8 V5) — and each of its children has to
+  // `content.firstChild` only — and each of its children has to
   // become a root of its own.
   templates: 5,
   emits: ["<span>one</span>", "<b>deep</b>", "<span>two</span>"],

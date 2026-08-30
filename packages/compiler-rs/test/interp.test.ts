@@ -1,5 +1,5 @@
 /**
- * The reference backend — `CODESIGN.md` §6 L2.
+ * The reference backend.
  *
  * `Interp` serialises the analysed IR and `@barqjs/core/interp` walks it. What
  * makes it an oracle rather than a fourth implementation is stated once and
@@ -13,7 +13,7 @@
  *
  * ## The one tension worth stating, and its answer
  *
- * `SEMANTICS.md` carries 29 `VIOLATED` rules. `Interp` is new code, so the
+ * There are 29 `VIOLATED` rules. `Interp` is new code, so the
  * question is whether it implements those rules AS SPECIFIED (and disagrees
  * with the runtime on all 29) or AS IMPLEMENTED (and reproduces the bugs).
  *
@@ -21,7 +21,7 @@
  * defects of the RUNTIME — of ownership, of the calling convention, of context,
  * of error routing, of async, of hydration. None of them is a defect of the
  * lowering. `Interp` reaches the DOM through the same four ABI primitives
- * (§3.0) the emitted module reaches it through — `template`, `insert`,
+ * the emitted module reaches it through — `template`, `insert`,
  * `setProp`, `bindEffect` — because those are the contract both backends are
  * written against, not the thing under test. A rule the runtime violates is
  * therefore violated identically on this path, by construction, with no code
@@ -79,8 +79,8 @@ describe("the instruction set cannot drift across the boundary", () => {
    * match and then in every `impl Backend` — `Dom`, `Ssr`, `Interp` and the
    * `Trace` backend in `backend.rs`'s tests. Nothing in any language can make
    * it a compile error in `interp.ts`, so the name sets are asserted equal
-   * instead: the same bidirectional pinning discipline `SEMANTICS.md` §0.3 uses
-   * for rule IDs, and for the same reason — a one-way check lets the other side
+   * instead: the same bidirectional pinning discipline the rule IDs use, and
+   * for the same reason — a one-way check lets the other side
    * rot.
    */
   it("every opcode the compiler can emit is either handled or declared unreachable", () => {
@@ -326,7 +326,7 @@ describe("L1 — the conformance corpus reaches the same verdict through the int
 
 /**
  * Rewrite one thing in the serialised IR and require the corpus to notice.
- * `CODESIGN.md` §6 L6 generalises `oracle.test.ts`'s corruption self-checks to
+ * This generalises `oracle.test.ts`'s corruption self-checks to
  * one operator per pass; these are the two that address what this file is a
  * test of — the ref plan the interpreter walks, and the reactivity verdict it
  * reads off each hole. Each throws when it matches nothing, so a change to the

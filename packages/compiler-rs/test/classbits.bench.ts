@@ -1,10 +1,10 @@
 /**
  * The class-bitmask measurement, taken BEFORE anything was built on the strength
- * of it. `CODESIGN.md` §0.4 is the cautionary case: three designs asserted a
- * 10-25% win from removing `setProp` dispatch and the measurement returned 0-8%,
- * so a §3.5 optimisation without a number does not ship.
+ * of it. The cautionary case: three designs asserted a 10-25% win from removing
+ * `setProp` dispatch and the measurement returned 0-8%, so an optimisation
+ * without a number does not ship.
  *
- * §3.5 proposes lowering a conditional class list to an integer:
+ * The proposal is to lower a conditional class list to an integer:
  *
  *   class={{a: x(), b: y()}}  →  setClassBits(el, (x()?1:0)|(y()?2:0), NAMES, base)
  *
@@ -76,7 +76,7 @@ function stringArm(rows: Element[]): void {
 }
 
 /**
- * Arm C — §3.5's proposal. The bits are the compute's return, the names are
+ * Arm C — the proposal. The bits are the compute's return, the names are
  * hoisted, and an unchanged mask returns before any string exists.
  */
 function setClassBits(
@@ -137,7 +137,8 @@ console.log(
 );
 
 // ---------------------------------------------------------------------------
-// The number that actually decides, because §0.4's lesson is that a channel
+// The number that actually decides, because the lesson of the last one is that
+// a channel
 // measured on its own is not the thing the compiler changes. Here the class
 // write sits inside the emitted shape it really has: a fused record whose
 // compute is tracked, driven by a signal write and a scheduler flush, over a

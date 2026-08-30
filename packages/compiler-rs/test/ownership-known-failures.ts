@@ -1,5 +1,5 @@
 /**
- * The known-failure registry for layer L2b — `SEMANTICS.md` §15, applied to the
+ * The known-failure registry for layer L2b — the registry discipline, applied to the
  * ownership channel.
  *
  * **Why this is a second table and not rows in `known-failures.ts`.** That one
@@ -20,7 +20,7 @@
  *      suite failure. This is the assertion that makes M0 mean anything: a
  *      fixture that fails because it does not compile is not evidence that the
  *      oracle saw an ownership defect;
- *   4. every `rule` exists in `SEMANTICS.md`.
+ *   4. every `rule` exists in the rule set.
  *
  * There is no wildcard, no glob, no per-fixture opt-out and no environment
  * variable that widens this. Adding a row is a diff. Removing one is what a
@@ -73,15 +73,15 @@ export interface OwnershipKnownFailure {
    * template would let the second land inside the first's row unseen.
    */
   readonly finding: string;
-  /** the rule from `SEMANTICS.md` the channel must name */
+  /** the rule the channel must name */
   readonly rule: string;
   /**
    * `VIOLATED` is a bug that shipped. `PLANNED` is a semantic change this
    * design chose on the record. Both fail at M0; only the first is an
-   * indictment, and `SEMANTICS.md` §0.2 forbids conflating them.
+   * indictment, and the status rule forbids conflating them.
    */
   readonly status: "VIOLATED" | "PLANNED";
-  /** the milestone from `CODESIGN.md` §8 after which this row must be deleted */
+  /** the milestone from the shipping gate after which this row must be deleted */
   readonly greenAt: string;
   /** the slot that was built eagerly, in the source's own words */
   readonly slot: string;
@@ -117,7 +117,7 @@ const ROWS: readonly OwnershipKnownFailure[] = [
   //
   //   - **`Match` is not a scope** (`control-flow-switch-match` ×2,
   //     `switch-match-component-bodies` ×2). The static tree placed an arm body
-  //     one level deeper than the runtime ever put it. §3.4 collapses
+  //     one level deeper than the runtime ever put it. the four primitives collapses
   //     `Switch`/`Match` into ONE `branch` with one instance scope per
   //     activation, so the tree stopped claiming the second: `ownership.rs`
   //     gives `Flow::Match` no node of its own. Note the direction — the
@@ -192,7 +192,7 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper";
  * fixture at all, which is how its body parameter went untyped.
  *
  * `form-action` is the fifth: 141 fixtures, 401 scopes, 267 effects, 313 clones,
- * 311 determined — §3.8 reached from compiled JSX rather than a hand-written
+ * 311 determined — the server-function surface reached from compiled JSX rather than a hand-written
  * call, which it never had been.
  *
  * 401 scopes became 407 with no fixture added: the M10 loading-boundary fix

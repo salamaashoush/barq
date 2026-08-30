@@ -1,8 +1,8 @@
 /**
  * The runtime tables, read out of `packages/core/src/dom.ts` AS IT IS ON DISK.
  *
- * DESIGN §9 calls table generation "the only mechanism that keeps the compiler
- * and the runtime honest". `build.rs` re-derives them on every build
+ * Table generation is the only mechanism that keeps the compiler and the
+ * runtime honest. `build.rs` re-derives them on every build
  * `cargo:rerun-if-changed` triggers, and `src/tables.rs`'s own test proves the
  * GENERATOR is sensitive to an edit. Neither can see the drift that actually
  * reaches a user: the compiler ships as a prebuilt `.node`, and a `dom.ts` that

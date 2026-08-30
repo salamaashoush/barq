@@ -42,7 +42,7 @@ import {
 } from "./ssr.ts";
 
 /**
- * The dual-render conformance suite — DESIGN §10's M6 deliverable, and target
+ * The dual-render conformance suite — the dual-render deliverable, and target
  * #10's behavioural half.
  *
  * `optimality.test.ts` asserts the SHAPE of the SSR emit: one concatenation, no
@@ -56,10 +56,10 @@ import {
  * `ssr: true` and seeing whether the compiler refuses. Nothing has to be flipped
  * when P8b lands: the pending blocks below become live on that build.
  *
- * THE REFERENCE, after M9. `CODESIGN.md` §6 retires the un-compiled
+ * THE REFERENCE, after M9. the oracle design retires the un-compiled
  * `createElement` path, and every comparison here that used it now runs against
  * the compiled DOM module serialised by the same runtime. That is not a
- * downgrade to a self-comparison: it is §6 L2's construction — one lowering,
+ * downgrade to a self-comparison: it is the reference backend's construction — one lowering,
  * one IR, a `Backend` trait implemented twice — so the two sides share the
  * front end and share nothing else, and a new `Op` is a Rust compile error in
  * both. It is also the only pairing that can compare the compiler's template
@@ -78,7 +78,7 @@ const CORPUS = fixtures;
  *
  * It held seven names, and every one of them was there for the same reason: a
  * reference to one of eight flow components dropped the whole module to the DOM
- * backend, at CODESIGN §0.1's 41.88x. `uninlinable_flow` is deleted, the four
+ * backend, at 41.88x. `uninlinable_flow` is deleted, the four
  * primitives have a string implementation and all fourteen constructs have a
  * string component, so there is no fixture left with anywhere else to go.
  *
@@ -149,7 +149,7 @@ describe("dual render: the DOM backend's bytes are a document", () => {
   // the compiler baked into `_$template(`…`)` is what the HTML parser reads.
   //
   // The un-compiled reference used to stand on the other side of this. It is
-  // retired (§6), and the fixture-level equality it carried is now the
+  // retired, and the fixture-level equality it carried is now the
   // string-against-DOM comparison further down, which is the same claim between
   // two backends over one IR rather than between two implementations.
   for (const name of CORPUS) {
@@ -239,7 +239,7 @@ describe("dual render: the compiled SSR string", () => {
 
   for (const name of CORPUS) {
     run(`${name}: the SSR string is the same document as the DOM backend builds`, async () => {
-      // Two `Backend` impls over one lowered IR (§6 L2). A divergence here is a
+      // Two `Backend` impls over one lowered IR. A divergence here is a
       // backend that read the same IR differently, which is the only kind of
       // disagreement this pairing can produce and exactly the kind worth
       // reporting — the front end is shared, so it cannot be the front end.
@@ -264,7 +264,7 @@ describe("dual render: the compiled SSR string", () => {
   }
 
   run("every declared SSR divergence is one of the three dropped opcodes", async () => {
-    // DESIGN §5 drops `Delegate`, `Listen` and `Ref` and nothing else. A fixture
+    // The opcode table drops `Delegate`, `Listen` and `Ref` and nothing else. A fixture
     // may only declare a divergence if it binds one of them — otherwise
     // `ssrDiffers` becomes a way to sign off on any bug at all.
     const unexplained: string[] = [];
@@ -275,7 +275,7 @@ describe("dual render: the compiled SSR string", () => {
       // question is whether the COMPILER bound one of the three, not whether the
       // author wrote the word somewhere.
       const code = compileFixtureBody(name);
-      // §3.5/§3.6 gave `ref` and the listener their own entry points, so the
+      // channel resolution/the event channel gave `ref` and the listener their own entry points, so the
       // dropped opcodes are named by the CALL rather than by a string argument.
       const clientOnly =
         /\$\$[a-z]+\s*=/.test(stripLiterals(code)) ||
@@ -288,7 +288,7 @@ describe("dual render: the compiled SSR string", () => {
   });
 
   run("no compiled SSR string carries an insert anchor", () => {
-    // DESIGN §5: `SkelNode::Marker` is skipped entirely. A `<!---->` on the wire
+    // `SkelNode::Marker` is skipped entirely. A `<!---->` on the wire
     // is bytes a browser downloads for a DOM operation that never happens.
     //
     // Read out of the CHUNKS, and off the body with the fixture's own
@@ -319,7 +319,7 @@ describe("dual render: the compiled SSR string", () => {
       inlined.push(name);
       // Attributable to the COMPILER. `document.` on its own is not: a fixture's
       // own event handler survives into the SSR module as a dead binding for the
-      // bundler to remove (DESIGN §7), and `component-function-props` has one
+      // bundler to remove, and `component-function-props` has one
       // that calls `document.querySelector`. Counting the compiler's own helper
       // calls asks the question the target is actually about.
       const code = compileFixtureSsr(name);
@@ -1160,7 +1160,7 @@ describe("SSR emit shape", () => {
   });
 
   run("a delegated handler is dropped, and leaves no empty quasi behind", () => {
-    // DESIGN §5's opcode table: `Delegate`/`Listen`/`Ref` are dropped, and no cut
+    // The opcode table: `Delegate`/`Listen`/`Ref` are dropped, and no cut
     // is made where they were, so `<button class="btn">Bump` stays ONE quasi.
     const code = compileSource(
       'const h = () => {};\nexport default () => <button class="btn" onClick={h}>Bump</button>;\n',

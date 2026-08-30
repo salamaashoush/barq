@@ -12,7 +12,7 @@ export const rows = signal([
  * `{row().text}` has to become a live binding.
  *
  * Reading `keyed` as "no attribute whose value is the literal false" put this
- * on the by-item arm and applied the read ONCE (ERGONOMICS §4.3). The first
+ * on the by-item arm and applied the read ONCE. The first
  * frame is identical either way, which is how 110 fixtures missed it — the
  * evidence is step 0, where the keys are unchanged and only the items are new.
  */
@@ -58,7 +58,7 @@ export const optimality = {
   // value the runtime subscribes to.
   // The key function reaches `each` as `keyOf` DIRECTLY. What the runtime used
   // to do — `typeof carrier === "function" && carrier.length >= 1` — the
-  // compiler answers from the arity the author declared (§3.0 rule 1).
+  // compiler answers from the arity the author declared.
   emits: ["each(", ", rows, (row) => row.id, ", ", row, index) =>", "() => row().text"],
   absent: ["For(", "() => index()", ", row().text)"],
 }
