@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 const ROOT = new URL("../../..", import.meta.url).pathname;
-const PACKAGES = ["core", "server", "start", "router", "extra", "testing", "compiler"];
+const PACKAGES = ["core", "server", "start", "router", "primitives", "query", "css", "testing", "compiler"];
 
 interface Manifest {
   name: string;
@@ -72,12 +72,18 @@ describe("published entry points", () => {
     for (const conditions of Object.values(p.exports ?? {})) {
       const bun = conditions.bun;
       if (bun === undefined) continue;
-      // `./src/server.ts` in the exports map must appear as an entry.
+      // `./src/server.ts` in the exports map must appear as an entry — either
+      // spelled out, or as the module NAME a computed entry list maps over.
+      // `@barqjs/primitives` builds its 28 entries with
+      // `modules.map((name) => `./src/${name}.ts`)`, which covers every subpath
+      // and contains none of them as a literal.
       const entry = bun.replace(/^\.\//, "");
+      const module = entry.replace(/^src\//, "").replace(/\.tsx?$/, "");
+      const named = new RegExp(`["'\`]${module.replaceAll("/", "\\/")}["'\`]`).test(source);
       expect(
-        source,
+        source.includes(entry) || named,
         `${p.name} exports ${bun} but its tsdown config has no entry for it`,
-      ).toContain(entry);
+      ).toBe(true);
     }
   });
 });
