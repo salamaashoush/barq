@@ -11,11 +11,11 @@
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
-    "lint": "oxlint --type-aware packages/core packages/server packages/start packages/router packages/extra packages/testing",
-    "lint:fix": "oxlint --type-aware --fix packages/core packages/server packages/start packages/router packages/extra packages/testing",
-    "format": "oxfmt packages/core packages/server packages/start packages/router packages/extra packages/testing packages/compiler-rs/src packages/compiler-rs/test",
-    "format:check": "oxfmt --check packages/core packages/server packages/start packages/router packages/extra packages/testing packages/compiler-rs/src packages/compiler-rs/test",
-    "ci": "oxlint --type-aware --deny-warnings packages/core packages/server packages/start packages/router packages/extra packages/testing && oxfmt --check packages/core packages/server packages/start packages/router packages/extra packages/testing packages/compiler-rs/src packages/compiler-rs/test",
+    "lint": "oxlint --type-aware packages/core packages/server packages/start packages/router packages/extra packages/testing packages/create-barq/src packages/create-barq/test",
+    "lint:fix": "oxlint --type-aware --fix packages/core packages/server packages/start packages/router packages/extra packages/testing packages/create-barq/src packages/create-barq/test",
+    "format": "oxfmt packages/core packages/server packages/start packages/router packages/extra packages/testing packages/create-barq/src packages/create-barq/test packages/compiler-rs/src packages/compiler-rs/test",
+    "format:check": "oxfmt --check packages/core packages/server packages/start packages/router packages/extra packages/testing packages/create-barq/src packages/create-barq/test packages/compiler-rs/src packages/compiler-rs/test",
+    "ci": "oxlint --type-aware --deny-warnings packages/core packages/server packages/start packages/router packages/extra packages/testing packages/create-barq/src packages/create-barq/test && oxfmt --check packages/core packages/server packages/start packages/router packages/extra packages/testing packages/create-barq/src packages/create-barq/test packages/compiler-rs/src packages/compiler-rs/test",
     "benchmark": "bun run --cwd packages/benchmark start"
   },
   "devDependencies": {

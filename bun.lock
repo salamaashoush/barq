@@ -76,6 +76,18 @@
         "typescript": ">=7.0.0",
       },
     },
+    "packages/create-barq": {
+      "name": "create-barq",
+      "version": "0.1.0",
+      "bin": {
+        "create-barq": "./dist/index.js",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+        "vite": "^8.2.2",
+      },
+    },
     "packages/extra": {
       "name": "@barqjs/extra",
       "version": "0.1.0",
@@ -750,6 +762,8 @@
     "content-type": ["content-type@2.1.0", "", {}, "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag=="],
 
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
+
+    "create-barq": ["create-barq@workspace:packages/create-barq"],
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 

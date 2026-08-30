@@ -1,0 +1,23 @@
+{
+  "name": "barq-project",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "bun dist/server/serve.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@barqjs/core": "^0.1.0",
+    "@barqjs/router": "^0.1.0",
+    "@barqjs/server": "^0.1.0",
+    "@barqjs/start": "^0.1.0"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "^0.1.0",
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}
