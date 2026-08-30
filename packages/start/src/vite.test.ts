@@ -10,6 +10,7 @@ import {
   MANIFEST_ID,
   ROUTER_ENTRY_ID,
   SERVER_ENTRY_ID,
+  SERVE_ENTRY_ID,
   barqStart,
 } from "./vite.ts";
 
@@ -20,6 +21,7 @@ import {
  */
 interface Loose {
   configResolved?: (config: unknown) => void;
+  config?: (user: unknown, env: unknown) => unknown;
   transform?: (code: string, id: string, options?: { ssr?: boolean }) => { code: string } | null;
   resolveId?: (id: string) => string | null;
   load?: (id: string) => string | null;
@@ -140,6 +142,16 @@ describe("the artifact the manifest is built from", () => {
  * The override path has its own coverage in `test/dev-server.test.ts`, against a
  * fixture that writes both entries.
  */
+const serveEntryWith = (options: Parameters<typeof barqStart>[0]): string => {
+  const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
+  for (const plugin of plugins) plugin.configResolved?.({ root: ROOT, mode: "development" });
+  const found = plugins.find((one) => one.name === "barq-start:entries") as unknown as {
+    resolveId: (id: string) => string | null;
+    load: (id: string) => string | null;
+  };
+  return found.load(found.resolveId(SERVE_ENTRY_ID) as string) ?? "";
+};
+
 describe("the entries an application does not write", () => {
   const entries = (): {
     resolveId: (id: string) => string | null;
@@ -177,12 +189,16 @@ describe("the entries an application does not write", () => {
     expect(code).not.toContain("getElementById");
   });
 
-  test("the server half is `createStartHandler()` and nothing else", () => {
+  test("the server half is `createStartHandler()` and serves nothing", () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(SERVER_ENTRY_ID) as string) ?? "";
 
     expect(code).toContain('import { createStartHandler } from "@barqjs/router/server"');
     expect(code).toContain("export default createStartHandler()");
+    // IT STARTS NOTHING, and that is the property. `vite build` imports this
+    // module to prerender and to run the chain check, so a `serve()` here would
+    // bind a port in the middle of a build and never return.
+    expect(code).not.toContain("serveBarq");
     // The document is `shellComponent` on the root route; `<HeadContent />` and
     // `<Scripts />` place themselves. A template here is a second answer, and it
     // was the one that serialised the head before the body.
@@ -192,6 +208,51 @@ describe("the entries an application does not write", () => {
     // `createStartHandler`, so the entry declares neither.
     expect(code).not.toContain("export const createFetch");
     expect(code).not.toContain("chainVerifier");
+  });
+
+  /**
+   * `bun <file>` auto-serves any module whose DEFAULT export has a `fetch`
+   * function — probed on bun 1.4 against a plain object, an object with extra
+   * keys, and a class instance. So one entry that both exports the handler and
+   * starts a server binds the port twice and dies with EADDRINUSE, which is what
+   * it did. Nitro splits the same way: its node preset is a serve call with no
+   * default export.
+   */
+  test("the RUNNABLE half is a different module, and exports nothing", () => {
+    const plugin = entries();
+    const code = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
+
+    expect(code).toContain('import { serveBarq } from "@barqjs/start/serve"');
+    expect(code).toContain("serveBarq({");
+    expect(code).not.toContain("export default");
+    expect(code).not.toContain("export const");
+  });
+
+  test("static serving is on by default, and its path resolves at RUNTIME", () => {
+    const plugin = entries();
+    const code = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
+    // `../client`, because this file is `<out>/server/serve.js`. Getting the
+    // number of `..` wrong 404s every asset while every page still renders,
+    // which is why `test/build.test.ts` fetches an asset for real.
+    expect(code).toContain('static: { dir: new URL("../client", import.meta.url).pathname');
+    // Never the build machine's absolute path: its layout is not the
+    // deployment's, the same mistake the prerender manifest made.
+    expect(code).not.toContain(ROOT);
+  });
+
+  test("`static: false` is honoured, for the CDN-in-front deployment", () => {
+    const code = serveEntryWith({ server: { static: false } });
+    expect(code).not.toContain("static:");
+    expect(code).toContain("fetch: handler.fetch");
+  });
+
+  test("`port` reads PORT first, because every host sets it", () => {
+    expect(serveEntryWith({ server: { port: 4321 } })).toContain(
+      "port: Number(process.env.PORT ?? 4321)",
+    );
+    // And defaults to 3000 rather than to srvx's own, so the generated file
+    // says what it will do.
+    expect(serveEntryWith({})).toContain("port: Number(process.env.PORT ?? 3000)");
   });
 
   /**
@@ -214,6 +275,20 @@ describe("the entries an application does not write", () => {
       expect(code).not.toContain("#barq-");
       expect(code).not.toContain("routeTree.gen");
     }
+  });
+
+  /**
+   * `serve.js` is exempt from the rule above, and the exemption is the point:
+   * it is the one generated module an application never overrides, because
+   * there is nothing in it to override. So it may name its sibling — and only
+   * its sibling.
+   */
+  test("the serve entry names the server entry, and no other specifier", () => {
+    const plugin = entries();
+    const code = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
+    const specifiers = [...code.matchAll(/from\s*["']([^"']+)["']/g)].map((m) => m[1]);
+    expect(specifiers.toSorted()).toEqual(["@barqjs/start/serve", SERVER_ENTRY_ID]);
+    expect(code).not.toContain("routeTree.gen");
   });
 
   test("the ROUTER entry is where the generated tree is named, by an ABSOLUTE path", () => {
@@ -265,5 +340,43 @@ describe("the router entry a project DOES write", () => {
   test("without one, the generated default is used and names the tree absolutely", () => {
     const resolved = routerEntry(ROOT);
     expect(resolved).toBe(`\0${ROUTER_ENTRY_ID}`);
+  });
+});
+
+describe("`target` pins the srvx adapter at BUILD time", () => {
+  const ssrAlias = (options: Parameters<typeof barqStart>[0]): unknown => {
+    const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
+    for (const plugin of plugins) plugin.configResolved?.({ root: ROOT, mode: "development" });
+    for (const plugin of plugins) {
+      const config = plugin.config?.({}, { command: "build", mode: "production" }) as
+        | { environments?: Record<string, { resolve?: { alias?: unknown } }> }
+        | undefined;
+      const alias = config?.environments?.ssr?.resolve?.alias;
+      if (alias !== undefined) return alias;
+    }
+    return undefined;
+  };
+
+  /**
+   * Under a bundler the export condition applied is the BUILD's, not the
+   * deployment's, so `import { serve } from "srvx"` in a bundle built on Node
+   * carries the Node adapter wherever it is deployed. Naming the target is what
+   * pins it, and doing it here costs nothing per request.
+   */
+  test("naming one rewrites the bare `srvx` specifier", () => {
+    expect(ssrAlias({ server: { target: "bun" } })).toEqual([
+      { find: /^srvx$/, replacement: "srvx/bun" },
+    ]);
+  });
+
+  test("the pattern is ANCHORED, so `srvx/static` is left alone", () => {
+    const [entry] = ssrAlias({ server: { target: "node" } }) as { find: RegExp }[];
+    expect(entry.find.test("srvx")).toBe(true);
+    expect(entry.find.test("srvx/static")).toBe(false);
+  });
+
+  test("`auto` pins nothing, because srvx's own conditions already answer", () => {
+    expect(ssrAlias({})).toEqual([]);
+    expect(ssrAlias({ server: { target: "auto" } })).toEqual([]);
   });
 });

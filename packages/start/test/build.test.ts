@@ -45,6 +45,7 @@ beforeAll(async () => {
         // `@barqjs/start` listed first turns `@barqjs/start/client` into
         // `…/src/index.ts/client` and the build cannot resolve it.
         "@barqjs/start/client": fileURLToPath(new URL("../src/client.ts", import.meta.url)),
+        "@barqjs/start/serve": fileURLToPath(new URL("../src/serve.ts", import.meta.url)),
         "@barqjs/start": fileURLToPath(new URL("../src/index.ts", import.meta.url)),
       },
     },
@@ -166,6 +167,7 @@ describe("verify, the route-action chain check", () => {
           // `@barqjs/start` listed first turns `@barqjs/start/client` into
           // `…/src/index.ts/client` and the build cannot resolve it.
           "@barqjs/start/client": fileURLToPath(new URL("../src/client.ts", import.meta.url)),
+          "@barqjs/start/serve": fileURLToPath(new URL("../src/serve.ts", import.meta.url)),
           "@barqjs/start": fileURLToPath(new URL("../src/index.ts", import.meta.url)),
         },
       },
@@ -204,4 +206,66 @@ describe("verify, the route-action chain check", () => {
     expect(message).toContain("answered nothing");
     expect(message).toContain("onReachability");
   }, 60_000);
+});
+
+/**
+ * The build emits a file a person can RUN, and running it serves the build.
+ *
+ * This is an end-to-end test rather than a string assertion because the failure
+ * it exists for was invisible to one: `static.dir` resolved to
+ * `<out>/server/client` instead of `<out>/client`, so every page still rendered
+ * and every asset 404'd. Only fetching an asset says so.
+ */
+describe("`serve.js`, the half a person runs", () => {
+  test("is a SEPARATE file from the one the build imports", () => {
+    // `bun <file>` auto-serves any module whose default export has a `fetch`
+    // function, so a single entry that both exports the handler and starts a
+    // server binds the port twice and dies with EADDRINUSE. Probed on bun 1.4
+    // against a plain object, an object with extra keys, and a class instance.
+    const serve = readFileSync(join(OUT, "server", "serve.js"), "utf8");
+    expect(serve).toContain("serveBarq");
+    expect(serve).not.toMatch(/export\s*\{[^}]*\bdefault\b/);
+    // …and the importable half starts nothing.
+    expect(server).not.toContain("serveBarq(");
+  });
+
+  test("serves a page, an asset and a 404, with one command and no wrapper", async () => {
+    const port = 3400 + Math.floor(Math.random() * 100);
+    const child = Bun.spawn(["bun", join(OUT, "server", "serve.js")], {
+      env: { ...process.env, PORT: String(port) },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    try {
+      const base = `http://localhost:${port}`;
+      // Poll rather than sleep: a fixed wait is either flaky or slow.
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try {
+          await fetch(base);
+          break;
+        } catch {
+          await Bun.sleep(20);
+        }
+      }
+
+      const asset = readdirSync(join(OUT, "client", "assets")).find((n) => n.endsWith(".js"));
+      const [page, chunk, missing] = await Promise.all([
+        fetch(base),
+        fetch(`${base}/assets/${asset}`),
+        fetch(`${base}/definitely-not-here`),
+      ]);
+
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain("<h1>home</h1>");
+      // THE ONE THAT CAUGHT THE BUG. `static.dir` is resolved against this
+      // file's own URL, and getting the number of `..` wrong 404s every asset
+      // while every page keeps rendering.
+      expect(chunk.status).toBe(200);
+      expect(chunk.headers.get("content-type")).toContain("javascript");
+      expect(missing.status).toBe(404);
+    } finally {
+      child.kill();
+      await child.exited;
+    }
+  }, 30_000);
 });

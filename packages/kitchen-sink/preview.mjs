@@ -6,13 +6,15 @@
  *
  * IT USED TO BE A HAND-ROLLED STATIC SERVER, and that is the whole reason
  * `serveBarq` grew `static`. It called `existsSync` and `statSync` per request,
- * which measured 1.3295 us to answer a MISS against 0.8080 us for the build-time
- * manifest (`scratch/nitro/static.mjs`), and it could not know that a
- * prerendered page had a status of its own — every page came back 200 whatever
- * it was rendered as. Both are the framework's problem, not an application's,
- * and both are now solved where every deployment gets them.
+ * which measured 0.7476 us to answer the MISS every SSR request is, against
+ * 0.3290 us for the build-time manifest (`scratch/nitro/barq-static.mjs`), and
+ * it could not know a prerendered page had a status of its own, so every page
+ * came back 200 whatever it was rendered as.
  *
- * What is left here is the demos' own endpoints, which are the app's fixtures.
+ * THIS FILE IS NOW ONLY THE DEMOS' ENDPOINTS. Serving the build needs nothing
+ * from an application at all: `bun dist/server/serve.js` does it, which is what
+ * `test/build.test.ts` runs. What is left here is the app's own fixtures, and
+ * they are the reason `bun run preview` is not simply that command.
  */
 
 import { serveBarq } from "@barqjs/start/serve";

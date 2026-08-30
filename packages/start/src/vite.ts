@@ -59,8 +59,11 @@ const RESOLVED_MANIFEST_ID = `\0${MANIFEST_ID}`;
  */
 export const CLIENT_ENTRY_ID = "virtual:barq-entry-client";
 export const SERVER_ENTRY_ID = "virtual:barq-entry-server";
+/** The runnable half. Always generated; there is nothing in it to override. */
+export const SERVE_ENTRY_ID = "virtual:barq-entry-serve";
 const RESOLVED_CLIENT_ENTRY_ID = `\0${CLIENT_ENTRY_ID}`;
 const RESOLVED_SERVER_ENTRY_ID = `\0${SERVER_ENTRY_ID}`;
+const RESOLVED_SERVE_ENTRY_ID = `\0${SERVE_ENTRY_ID}`;
 
 /** Tried in order, against `<root>/<srcDir>/entry-{client,server}`. */
 const ENTRY_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
@@ -264,6 +267,61 @@ function defaultServerEntry(): string {
 }
 
 /**
+ * The RUNNABLE half, emitted beside the importable one as `dist/server/serve.js`.
+ *
+ * Two files rather than one, and the reason is measured rather than stylistic.
+ * `bun <file>` auto-serves any module whose DEFAULT export has a `fetch`
+ * function — probed on bun 1.4 against a plain object, an object with extra
+ * keys, and a class instance, and all three start a server. So a single entry
+ * that both default-exports the handler and starts its own server binds the
+ * port twice and dies with `EADDRINUSE`, which is exactly what it did.
+ *
+ * Splitting them also removes a problem that had nothing to do with bun: `vite
+ * build` imports the server entry to prerender and to run the route-action
+ * check, and a `serve()` at module scope in THAT file would hold a port in the
+ * middle of a build. Nitro splits the same way, for the same reason — its node
+ * preset (`presets/node/runtime/node-server.ts`) is a serve call with no default
+ * export, and the app is a separate module it imports.
+ *
+ * So: `server.js` is importable and serves nothing, `serve.js` runs and exports
+ * nothing.
+ */
+function defaultServeEntry(server: BarqServerOptions | undefined): string {
+  const assets = server?.static ?? true;
+  const options: string[] = [`fetch: handler.fetch`];
+  if (assets !== false) {
+    const tuning =
+      assets === true
+        ? ""
+        : Object.entries(assets)
+            .map(([k, v]) => `, ${k}: ${v}`)
+            .join("");
+    // Resolved at RUNTIME against this file, not baked in: the build machine's
+    // directory layout is not the deployment's, which is the same mistake the
+    // prerender manifest made before it started storing relative names.
+    // `../client`, because this file is `<out>/server/serve.js` and the client
+    // build is `<out>/client`. `./client` resolved to `<out>/server/client` and
+    // every asset 404'd while every page still rendered, which is why the gate
+    // below fetches an asset rather than a page.
+    options.push(`static: { dir: new URL("../client", import.meta.url).pathname${tuning} }`);
+  }
+  // `PORT` first because every host sets it, and a configured port is the
+  // fallback rather than the override.
+  const port = server?.port ?? 3000;
+  options.push(`port: Number(process.env.PORT ?? ${port})`);
+  if (server?.hostname !== undefined) options.push(`hostname: ${JSON.stringify(server.hostname)}`);
+
+  return [
+    `import { serveBarq } from "@barqjs/start/serve";`,
+    ``,
+    `import handler from "${SERVER_ENTRY_ID}";`,
+    ``,
+    `serveBarq({ ${options.join(", ")} });`,
+    ``,
+  ].join("\n");
+}
+
+/**
  * What the client build emitted, for the server half to place in the document.
  *
  * In dev it is the entry's own module id, which Vite serves; in a build it is
@@ -386,12 +444,67 @@ interface Discovered {
   names: string[];
 }
 
+/**
+ * What the generated server entry serves with, when it is run as the program.
+ *
+ * SERIALISABLE ONLY, and that is the whole boundary. `vite.config.ts` is
+ * build-time and the entry is generated source, so a closure written here could
+ * not be embedded in it. srvx's `plugins`, `middleware` and `error` are
+ * functions, and they belong in a project's own `src/entry-server.ts` — which
+ * after `createStartHandler` is four lines, so owning it is cheap:
+ *
+ * ```ts
+ * import { createStartHandler } from "@barqjs/router/server";
+ * import { serveIfMain } from "@barqjs/start/serve";
+ *
+ * const handler = createStartHandler();
+ * serveIfMain(import.meta, { fetch: handler.fetch, plugins: [logPlugin()] });
+ * export default handler;
+ * ```
+ *
+ * Everything here is available there too, because both end up as
+ * `BarqServeOptions`.
+ */
+export interface BarqServerOptions {
+  /**
+   * Which srvx adapter the entry imports `serve` from.
+   *
+   * `"auto"` is the default and imports from `srvx`, whose root export resolves
+   * by runtime condition — `deno`, `bun`, `workerd`, `node`, and a generic
+   * fallback. That genuinely covers Node, Bun and Deno with no configuration,
+   * which is why it is the default rather than a guess.
+   *
+   * Naming one pins the import to `srvx/<name>` instead. That matters when the
+   * BUILD's conditions are not the deployment's, which is every bundled target.
+   *
+   * `cloudflare` and `aws-lambda` are deliberately absent: their entry has a
+   * different EXPORT SHAPE, not a different adapter import, and an export is not
+   * something a runtime condition can add. Write `src/entry-server.ts` for
+   * those; `serve.ts` documents what each needs.
+   */
+  readonly target?: "auto" | "node" | "bun" | "deno";
+  /** Overridden by `PORT` in the environment, which every host sets. */
+  readonly port?: number;
+  readonly hostname?: string;
+  /**
+   * Serve `dist/client` in front of the page handler.
+   *
+   * On by default, because a build that emits a client directory and a server
+   * that refuses to serve it is not a deployment. `false` is for the case where
+   * a CDN is in front, which is also the case where the 0.419 us
+   * `assetMiddleware` saves stops mattering.
+   */
+  readonly static?: boolean | { readonly maxAge?: number; readonly immutable?: boolean };
+}
+
 export interface BarqStartOptions {
   /**
    * Origins allowed to call a server function beyond the request's own. Passed
    * to the dev handler; a production server passes its own.
    */
   allowedOrigins?: readonly string[];
+  /** What the generated entry serves with when it is run as the program. */
+  server?: BarqServerOptions;
   /** Forwarded to the compiler plugin this one configures. */
   compiler?: Omit<BarqCompilerOptions, "serverFns" | "onServerFns" | "root">;
   /** Where `entry-client.*` and `entry-server.*` are looked for. */
@@ -574,6 +687,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // The project's own `src/router.ts` when it has one, exactly as an entry
       // resolves — so the framework imports one stable specifier and the choice
       // costs nothing anywhere else.
+      if (id === SERVE_ENTRY_ID) return RESOLVED_SERVE_ENTRY_ID;
       if (id === ROUTER_ENTRY_ID) {
         return findRouterEntry(root, srcDirectory) ?? RESOLVED_ROUTER_ENTRY_ID;
       }
@@ -589,6 +703,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       );
       if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry();
       if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry();
+      if (id === RESOLVED_SERVE_ENTRY_ID) return defaultServeEntry(options.server);
       if (id === RESOLVED_ROUTER_ENTRY_ID) return defaultRouterEntry(treeImport);
       if (id !== RESOLVED_CLIENT_ASSETS_ID) return null;
       // In dev the entry is a module Vite serves; there are no chunks and no
@@ -695,13 +810,18 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     // before Vite resolves them, and `consumer` is what decides whether a
     // module graph is a browser one.
     config(user) {
+      const target = options.server?.target ?? "auto";
+      const pinnedTarget = target === "auto" ? null : target;
       const inputs = {
         // NAMED, both of them. The client name is what `generateBundle` above
         // identifies its own entry chunk by, and the ssr name is the emitted
         // filename — TanStack's #8118 is a prerender step reconstructing that
         // name from the input path and breaking on any `entryFileNames`.
         client: { index: CLIENT_ENTRY_ID },
-        server: { server: SERVER_ENTRY_ID },
+        // TWO ssr inputs: `server.js` is what the build imports to prerender and
+        // what a platform imports for its `fetch`, and `serve.js` is what a
+        // person runs. `defaultServeEntry` says why they cannot be one file.
+        server: { server: SERVER_ENTRY_ID, serve: SERVE_ENTRY_ID },
       };
       return {
         // `?? "custom"`, never a bare assignment: `mergeConfig` lets a plugin's
@@ -730,7 +850,21 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
             // resolver otherwise, which takes the `import` condition to a built
             // `dist/` — and a stale one renders a spinner with an empty seed,
             // which is indistinguishable from a bug the repo had already fixed.
-            resolve: { noExternal: [/@barqjs\//] },
+            resolve: {
+              noExternal: [/@barqjs\//],
+              // `target` is a BUILD-time choice, resolved here rather than by a
+              // dynamic import at runtime. srvx's root export picks its adapter
+              // from the runtime condition, and under a bundler the condition
+              // applied is the BUILD's, not the deployment's — so a bundle built
+              // on Node and run on Bun would carry the Node adapter. Naming the
+              // target pins it.
+              //
+              // Anchored, so `srvx/static` is not rewritten to `srvx/bun/static`.
+              alias:
+                pinnedTarget === null
+                  ? []
+                  : [{ find: /^srvx$/, replacement: `srvx/${pinnedTarget}` }],
+            },
             build: {
               ssr: true,
               rollupOptions: { input: inputs.server },
