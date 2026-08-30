@@ -40,6 +40,7 @@ export {
   type ScrollRestoration,
   type ViewTransitionOptions,
   SCROLL_ID_ATTRIBUTE,
+  type ScrollOptions,
   scrollKey,
   scrollRestoration,
   withViewTransition,

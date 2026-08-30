@@ -3346,3 +3346,169 @@ describe("matchRoute", () => {
     dispose();
   });
 });
+
+/**
+ * `structuralSharing`, `remountDeps` and the scroll options.
+ */
+describe("structuralSharing", () => {
+  const table = [
+    { path: "/", component: (() => null) as never },
+    { path: "/posts/$id", component: (() => null) as never },
+  ] as never as AnyRouteDefinition[];
+
+  const at = (initial: string, on = true) =>
+    createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: [initial] }),
+      structuralSharing: on,
+    });
+
+  test("params keep their identity when nothing about them moved", async () => {
+    const state = at("/posts/7");
+    await state.start();
+    const first = state.params();
+    await state.navigate("/posts/7?tab=a");
+    expect(state.params()).toBe(first);
+    await state.navigate("/posts/7?tab=a#deep");
+    expect(state.params()).toBe(first);
+    // …and a real change is still a change.
+    await state.navigate("/posts/8");
+    expect(state.params()).not.toBe(first);
+    expect(state.params()).toEqual({ id: "8" } as never);
+    state.dispose();
+  });
+
+  test("the validated search keeps its identity across a hash move", async () => {
+    const state = at("/posts/7?tab=a");
+    await state.start();
+    const first = state.validSearch();
+    await state.navigate("/posts/7?tab=a#top");
+    expect(state.validSearch()).toBe(first);
+    await state.navigate("/posts/7?tab=b");
+    expect(state.validSearch()).not.toBe(first);
+    state.dispose();
+  });
+
+  test("turning it off restores the old identity churn", async () => {
+    const state = at("/posts/7", false);
+    await state.start();
+    const first = state.params();
+    await state.navigate("/posts/7?tab=a");
+    expect(state.params()).not.toBe(first);
+    expect(state.params()).toEqual({ id: "7" } as never);
+    state.dispose();
+  });
+
+  /**
+   * The regression this exposed, pinned from the other side.
+   *
+   * A loader is keyed on the search as well as the params, and the read that
+   * reaches it re-ran on a search change only because `params` happened to be a
+   * fresh object per location. With the identity honest the dependency has to
+   * be real — and being real is what stops a HASH move re-running it.
+   */
+  test("a search change still re-runs the loader", async () => {
+    let runs = 0;
+    const history = memoryHistory({ initial: ["/list?page=1"] });
+    let state!: RouterState;
+    const { host, dispose } = mount({
+      routeTree: [
+        {
+          path: "/list",
+          loader: async ({ search }: { search: URLSearchParams }) => {
+            runs++;
+            await tick();
+            return search.get("page") ?? "1";
+          },
+          pendingComponent: (() => document.createTextNode("loading")) as never,
+          // A HOLE, which is what makes the read tracked — a body reads once
+          // and would never see the second answer.
+          component: (scope: Scope | null, props: RouteProps) => {
+            state = useRouter();
+            const node = document.createElement("span");
+            insert(scope, node, () => `page ${String(props.data() ?? "")}`);
+            return node;
+          },
+        },
+      ] as never,
+      history,
+    });
+    await settle();
+    flush();
+    expect(host.textContent).toBe("page 1");
+    expect(runs).toBe(1);
+
+    history.push("/list?page=2");
+    flush();
+    await settle();
+    flush();
+    expect(host.textContent).toBe("page 2");
+    expect(runs).toBe(2);
+
+    // A HASH MOVE still revalidates, and that is `staleTime` rather than this:
+    // the default is 0 and "a navigation revalidates" is what it means. What
+    // structural sharing changes is that the READ no longer rebuilds — the
+    // params and the search kept their identity — so nothing above the loader
+    // is torn down for a fragment.
+    expect(state.params()).toBe(state.params());
+    dispose();
+  });
+});
+
+describe("remountDeps", () => {
+  /**
+   * A route is ONE component across every location it matches, so a parameter
+   * moving updates it rather than starting it over. `remountDeps` is how a
+   * route says the opposite — an editor for a different document must not
+   * inherit the previous one's half-typed state.
+   */
+  const tableWith = (remountDeps?: (o: { params: Record<string, string> }) => unknown) =>
+    [
+      {
+        path: "/posts/$id",
+        remountDeps,
+        component: (() => {
+          built++;
+          return document.createTextNode("post");
+        }) as never,
+      },
+      { path: "/", component: (() => null) as never },
+    ] as never as AnyRouteDefinition[];
+
+  let built = 0;
+
+  test("by default a parameter change UPDATES rather than rebuilds", async () => {
+    built = 0;
+    const history = memoryHistory({ initial: ["/posts/1"] });
+    const { dispose } = mount({ routeTree: tableWith(), history });
+    expect(built).toBe(1);
+    history.push("/posts/2");
+    flush();
+    await tick();
+    flush();
+    expect(built).toBe(1);
+    dispose();
+  });
+
+  test("declaring one rebuilds when it changes, and not when it does not", async () => {
+    built = 0;
+    const history = memoryHistory({ initial: ["/posts/1"] });
+    const { dispose } = mount({
+      routeTree: tableWith(({ params }) => params.id),
+      history,
+    });
+    expect(built).toBe(1);
+    history.push("/posts/2");
+    flush();
+    await tick();
+    flush();
+    expect(built).toBe(2);
+    // The same id with a different query is the same document.
+    history.push("/posts/2?tab=a");
+    flush();
+    await tick();
+    flush();
+    expect(built).toBe(2);
+    dispose();
+  });
+});

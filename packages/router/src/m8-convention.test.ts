@@ -141,7 +141,13 @@ describe("the nine workarounds are deletions", () => {
     // The key is route IDENTITY. Neither data nor params is in it, which is
     // what lets a loader landing or a parameter moving UPDATE the route instead
     // of rebuilding it.
-    expect(ROUTER).toMatch(/branch\(scope, parent, anchor, routeAt/);
+    //
+    // ASSERTED AS THE PROPERTY, not as an identifier: `remountDeps` gave the
+    // key a name of its own, and a route that declares one is asking to be
+    // rebuilt. What still has to hold is the DEFAULT — a route declaring none
+    // is keyed on itself and nothing else — so that is what this reads.
+    expect(ROUTER).toMatch(/branch\(scope, parent, anchor, keyAt/);
+    expect(ROUTER).toMatch(/if \(route === null \|\| deps === undefined\) return route;/);
   });
 
   // #5 — a detached `scope(fn, true)` plus a manual `disposeCurrentRoute`.

@@ -454,6 +454,24 @@ export interface RouteDefinition<
    */
   readonly staticData?: Record<string, unknown>;
   /**
+   * What makes this route's component start OVER rather than update.
+   *
+   * A route is one component across every location it matches, so navigating
+   * `/posts/1` -> `/posts/2` keeps the scroll position, the open accordion and
+   * whatever a form had half-typed in it. That is usually right and sometimes
+   * exactly wrong — an editor for a different document should not inherit the
+   * previous one's dirty state.
+   *
+   * Returning anything whose JSON differs rebuilds the subtree from nothing.
+   * `({ params }) => params.id` is the whole of the common case. TanStack's
+   * option and their four arguments.
+   */
+  readonly remountDeps?: (options: {
+    readonly routeId: string;
+    readonly params: Params;
+    readonly search: Record<string, unknown>;
+  }) => unknown;
+  /**
    * Called when this route ENTERS the matched chain, STAYS in it across a
    * navigation, or LEAVES it.
    *

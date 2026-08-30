@@ -216,3 +216,91 @@ describe("withViewTransition", () => {
     }
   });
 });
+
+/**
+ * The two scroll options a project may need: what a position is filed under,
+ * and what a reset actually scrolls.
+ */
+describe("scroll options", () => {
+  test("getKey decides the slot, so a filter query can share one", async () => {
+    // The default keys on the whole URL, so typing in a search box writes a new
+    // slot per keystroke and going back restores a position nobody was at.
+    const restoration = scrollRestoration({ getKey: (location) => location.pathname });
+    window.scrollTo(0, 400);
+    restoration.save(at("/list?q=ab"));
+
+    window.scrollTo(0, 0);
+    restoration.restore(at("/list?q=abc"));
+    await nextFrame();
+    expect(window.scrollY).toBe(400);
+    restoration.dispose();
+  });
+
+  test("without it, a different query is a different slot", async () => {
+    const restoration = scrollRestoration();
+    window.scrollTo(0, 400);
+    restoration.save(at("/list?q=ab"));
+
+    window.scrollTo(0, 0);
+    restoration.restore(at("/list?q=abc"));
+    await nextFrame();
+    expect(window.scrollY).toBe(0);
+    restoration.dispose();
+  });
+
+  /**
+   * A layout whose `<main>` is the scroller leaves the window at zero, so
+   * resetting the window alone moves nothing a visitor can see.
+   */
+  test("toTop reaches an element the window does not", async () => {
+    const main = document.createElement("main");
+    main.className = "pane";
+    document.body.append(main);
+    let scrolledTo: unknown;
+    (main as unknown as { scrollTo: (x: number, y: number) => void }).scrollTo = (x, y) => {
+      scrolledTo = { x, y };
+    };
+
+    const restoration = scrollRestoration({ toTop: [".pane"] });
+    restoration.restore(at("/fresh"), { reset: true });
+    await nextFrame();
+    expect(scrolledTo).toEqual({ x: 0, y: 0 });
+    restoration.dispose();
+  });
+
+  test("a lookup function works as well as a selector", async () => {
+    const pane = document.createElement("div");
+    let hit = false;
+    (pane as unknown as { scrollTo: () => void }).scrollTo = () => {
+      hit = true;
+    };
+    const restoration = scrollRestoration({ toTop: [() => pane] });
+    restoration.restore(at("/fresh"), { reset: true });
+    await nextFrame();
+    expect(hit).toBe(true);
+    restoration.dispose();
+  });
+
+  /** A hash still wins: a `#section` link is not a reset. */
+  test("a hash target is scrolled to instead of the top", async () => {
+    const target = document.createElement("div");
+    target.id = "api";
+    let intoView = false;
+    (target as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {
+      intoView = true;
+    };
+    document.body.append(target);
+    let paneScrolled = false;
+    const pane = document.createElement("div");
+    (pane as unknown as { scrollTo: () => void }).scrollTo = () => {
+      paneScrolled = true;
+    };
+
+    const restoration = scrollRestoration({ toTop: [() => pane] });
+    restoration.restore(at("/docs#api"));
+    await nextFrame();
+    expect(intoView).toBe(true);
+    expect(paneScrolled).toBe(false);
+    restoration.dispose();
+  });
+});

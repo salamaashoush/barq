@@ -675,6 +675,27 @@ export function renderDepth(
 ): Node | null {
   const routeAt = (): Route | null => state.chain()[depth] ?? null;
 
+  /**
+   * What this depth's region is keyed on.
+   *
+   * The ROUTE alone, until a route declares `remountDeps`. `branch` rebuilds
+   * when its key changes, so folding the deps into the key is the whole of
+   * "start over rather than update" — no second construct, and the ordinary
+   * route pays one identity comparison exactly as it did.
+   *
+   * A STRING, because the deps are a value and `branch` compares keys with
+   * `===`: two runs returning `{ id: "2" }` are different objects and would
+   * rebuild on every navigation, which is the opposite of what was asked for.
+   */
+  const keyAt = (): unknown => {
+    const route = routeAt();
+    const deps = route?.definition.remountDeps;
+    if (route === null || deps === undefined) return route;
+    return `${route.id}\u0000${JSON.stringify(
+      deps({ routeId: route.id, params: state.params() as never, search: state.validSearch() }),
+    )}`;
+  };
+
   const body = (instance: Scope | null): unknown => {
     const route = untrack(routeAt);
     if (route === null) {
@@ -802,7 +823,7 @@ export function renderDepth(
   // ranges while this side claimed none of them, and every SSR'd page threw its
   // markup away and re-rendered cold — measured as `claimed: 0, recovered: true`
   // against a real dev server before this line existed.
-  return branch(scope, parent, anchor, routeAt as Cell<unknown>, body, HYDRATE);
+  return branch(scope, parent, anchor, keyAt as Cell<unknown>, body, HYDRATE);
 }
 
 /**

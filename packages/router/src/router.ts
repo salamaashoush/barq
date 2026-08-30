@@ -56,7 +56,12 @@ import {
   withoutTrailingSlash,
 } from "./path.ts";
 import type { TrailingSlash } from "./path.ts";
-import { type ScrollRestoration, scrollRestoration, withViewTransition } from "./scroll.ts";
+import {
+  type ScrollOptions,
+  type ScrollRestoration,
+  scrollRestoration,
+  withViewTransition,
+} from "./scroll.ts";
 import {
   type SearchMiddleware,
   SearchParamError,
@@ -406,6 +411,47 @@ export interface RouterEvent {
 
 export type RouterListener = (event: RouterEvent) => void;
 
+/**
+ * Whether two derived records hold the same thing.
+ *
+ * WHAT `structuralSharing` MEANS HERE. Theirs is a per-hook opt-in because
+ * React pays per component: a `useSearch` whose object identity changed
+ * re-renders whatever read it, so the fix has to be applied where the reading
+ * happens. barq has no component re-render — a hole re-runs when a cell it read
+ * CHANGED — so the same fix belongs one level up, on the cell, and is paid once
+ * per navigation instead of once per reader.
+ *
+ * It is not cosmetic. `match()` is a fresh object per location, so `params` and
+ * the validated search changed identity on every navigation including a hash
+ * move — which is the refetch `dataFor`'s memo comment already records working
+ * around from the other end.
+ *
+ * BOUNDED, and plain values only. A `Date` compares by time, an array and a
+ * plain object compare by contents, and anything else compares by identity —
+ * which is the safe direction: an unrecognised value reports "changed" and the
+ * reader re-runs, exactly as it did before.
+ */
+function sameShape(a: unknown, b: unknown, depth = 0): boolean {
+  if (Object.is(a, b)) return true;
+  if (depth > 8 || a === null || b === null) return false;
+  if (typeof a !== "object" || typeof b !== "object") return false;
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((item, index) => sameShape(item, b[index], depth + 1));
+  }
+  if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) return false;
+  return keys.every(
+    (key) => Object.hasOwn(right, key) && sameShape(left[key], right[key], depth + 1),
+  );
+}
+
 /** How the three flags are computed, in one place so every emit agrees. */
 function changeInfo(from: Location | null, to: Location): Omit<RouterEvent, "type"> {
   return {
@@ -557,6 +603,17 @@ export interface RouterConfig {
    * browser, and a no-op without a DOM.
    */
   readonly scrollRestoration?: boolean;
+  /**
+   * What scroll restoration keys on, and what a reset scrolls besides the
+   * window. `scroll.ts`'s `ScrollOptions` says what each is for.
+   */
+  readonly scroll?: ScrollOptions;
+  /**
+   * Whether a derived record keeps its identity when its contents did not
+   * change. Default `true`. See {@link sameShape} for what it costs and why the
+   * default is the opposite of theirs.
+   */
+  readonly structuralSharing?: boolean;
   /** Wrap every commit in a view transition unless a navigation says otherwise. */
   readonly viewTransition?: boolean;
   /**
@@ -889,8 +946,22 @@ export function createRouter(config: RouterConfig): RouterState {
    * put it between them. TanStack splits them the same way and for the same
    * reason (`match.pathname` against `match._strictParams`).
    */
-  const rawParams = computed<Record<string, string>>(() => match()?.params ?? {});
-  const search = computed(() => new URLSearchParams(location().search));
+  // `undefined` rather than a comparator when it is off, so the ordinary
+  // strict-equality path stays exactly what `computed` does by default.
+  const shared = config.structuralSharing === false ? undefined : { equals: sameShape };
+
+  const rawParams = computed<Record<string, string>>(() => match()?.params ?? {}, shared);
+  /**
+   * Shared too, by the query STRING: a hash-only move leaves the search alone,
+   * and a fresh `URLSearchParams` per location made `dataFor`'s memo rebuild
+   * for it — which is the refetch that comment records.
+   */
+  const search = computed(
+    () => new URLSearchParams(location().search),
+    config.structuralSharing === false
+      ? undefined
+      : { equals: (a: URLSearchParams, b: URLSearchParams) => a.toString() === b.toString() },
+  );
 
   /**
    * `params.parse` down a chain, one slice per depth.
@@ -953,10 +1024,20 @@ export function createRouter(config: RouterConfig): RouterState {
    * this value, so allocating a copy per read would rebuild every reader on
    * every location change.
    */
+  /**
+   * The deepest route's validated search, shared like `params` and for the same
+   * reason: `useSearch()` reads it from a hole, and a fresh record per
+   * navigation re-runs that hole when nothing in the query moved.
+   */
+  const validSearch = computed<Record<string, unknown>>(() => {
+    const { slices } = validated();
+    return slices[slices.length - 1] ?? searchRecord(search());
+  }, shared);
+
   const params = computed<Record<string, string>>(() => {
     const { slices } = parsedParams();
     return (slices[slices.length - 1] ?? rawParams()) as Record<string, string>;
-  });
+  }, shared);
 
   /**
    * The validated search, one entry per depth, and the LAST one is what
@@ -1362,15 +1443,37 @@ export function createRouter(config: RouterConfig): RouterState {
    * `params` is a `computed`, so its identity is stable for as long as the match
    * is — which makes an identity compare the whole of the invalidation rule.
    */
-  const memo = new Map<Route, { params: unknown; blocking: boolean; reader: Cell<unknown> }>();
+  const memo = new Map<
+    Route,
+    { params: unknown; search: unknown; blocking: boolean; reader: Cell<unknown> }
+  >();
 
   const dataFor = (
     route: Route,
     forParams: Readonly<Record<string, string>>,
     blocking = false,
   ): Cell<unknown> => {
+    // THE SEARCH IS IN THE MEMO KEY, and leaving it out was a live bug that
+    // only `structuralSharing` exposed: a loader is keyed on the search as well
+    // as the params, and the memo compared params alone. It happened to
+    // invalidate anyway because `params` was a fresh object per location — so
+    // the rule was right by accident, and making the identity honest broke it.
+    // Two identity compares, which is what this memo exists to keep cheap.
+    //
+    // TRACKED, not untracked, and that is the other half. `renderDepth` reads
+    // this from a hole and the hole's dependencies are what re-run it: it reads
+    // `params()`, and while that was a fresh object per location a search
+    // change re-ran it by accident. With the identity honest it does not, so
+    // the dependency has to be real — and being real is what stops a HASH move
+    // re-running it, because the shared `search` keeps its identity there.
+    const forSearch = search();
     const hit = memo.get(route);
-    if (hit !== undefined && hit.params === forParams && hit.blocking === blocking) {
+    if (
+      hit !== undefined &&
+      hit.params === forParams &&
+      hit.search === forSearch &&
+      hit.blocking === blocking
+    ) {
       return hit.reader;
     }
     // The KEY comes from the raw segments and the loader's `params` from the
@@ -1379,7 +1482,7 @@ export function createRouter(config: RouterConfig): RouterState {
     // the current location, so the router's own raw record is the right one.
     const entry = acquire(route, untrack(rawParams), forParams, causeFor(route));
     const reader = readerFor(entry, blocking);
-    memo.set(route, { params: forParams, blocking, reader });
+    memo.set(route, { params: forParams, search: forSearch, blocking, reader });
     return reader;
   };
 
@@ -1764,7 +1867,7 @@ export function createRouter(config: RouterConfig): RouterState {
   const scroll: ScrollRestoration =
     config.scrollRestoration === false
       ? { save: () => {}, restore: () => {}, dispose: () => {} }
-      : scrollRestoration();
+      : scrollRestoration(config.scroll);
   // Set by `navigate` and read by the subscription, because the COMMIT is where
   // both of these apply and only the caller knows what it asked for.
   let pendingNavigate: NavigateOptions | undefined;
@@ -1910,10 +2013,7 @@ export function createRouter(config: RouterConfig): RouterState {
     dataFor,
     navigate,
     buildSearch,
-    validSearch: () => {
-      const { slices } = validated();
-      return slices[slices.length - 1] ?? searchRecord(search());
-    },
+    validSearch: validSearch,
     searchErrorAt(depth) {
       return untrack(validated).failures[depth] ?? null;
     },

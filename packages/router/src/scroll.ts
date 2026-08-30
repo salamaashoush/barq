@@ -38,6 +38,29 @@ export function scrollKey(location: Location): string {
   return location.pathname + location.search + location.hash;
 }
 
+/** What a project may change about scroll restoration. */
+export interface ScrollOptions {
+  /**
+   * What a saved position is filed under. Default {@link scrollKey}.
+   *
+   * The default keys on the whole URL, which is right almost always and wrong
+   * for a page whose query is a filter: typing in a search box writes a new
+   * key per keystroke, so going back restores a position nobody was ever at.
+   * A project that knows its own query returns `location.pathname` and the list
+   * keeps its place.
+   */
+  readonly getKey?: (location: Location) => string;
+  /**
+   * Elements to scroll to the top BESIDES the window, by selector or by lookup.
+   *
+   * A layout with its own scrolling `<main>` needs this: resetting the window
+   * moves nothing, because the window never scrolled. `[data-barq-scroll]`
+   * containers are saved and restored already; this is for the reset, where
+   * there is no saved position to put back.
+   */
+  readonly toTop?: readonly (string | (() => Element | null | undefined))[];
+}
+
 function storage(): Storage | null {
   try {
     // Touching `sessionStorage` at all throws on an opaque origin, so the read
@@ -100,6 +123,24 @@ function containers(): { id: string; get: () => Offsets; set: (to: Offsets) => v
   return out;
 }
 
+/** The extra scroll containers a reset should reach, resolved now. */
+function toTopElements(
+  selectors: readonly (string | (() => Element | null | undefined))[] | undefined,
+): Element[] {
+  const out: Element[] = [];
+  for (const selector of selectors ?? []) {
+    if (typeof selector === "function") {
+      const found = selector();
+      if (found !== null && found !== undefined) out.push(found);
+      continue;
+    }
+    // ALL of them, not the first: a selector naming a class matches every
+    // pane that carries it, and a two-pane layout wants both reset.
+    for (const element of document.querySelectorAll(selector)) out.push(element);
+  }
+  return out;
+}
+
 export interface ScrollRestoration {
   /** Remember where the CURRENT page is, before leaving it. */
   save(location: Location): void;
@@ -115,10 +156,11 @@ export interface ScrollRestoration {
  * did — so the browser's own restoration raced the router's on every popstate,
  * and could clobber `window.scrollY` before the handler read it.
  */
-export function scrollRestoration(): ScrollRestoration {
+export function scrollRestoration(options: ScrollOptions = {}): ScrollRestoration {
   if (typeof document === "undefined") {
     return { save: () => {}, restore: () => {}, dispose: () => {} };
   }
+  const keyOf = options.getKey ?? scrollKey;
 
   const previous = history.scrollRestoration;
   try {
@@ -129,7 +171,7 @@ export function scrollRestoration(): ScrollRestoration {
 
   return {
     save(location) {
-      const key = scrollKey(location);
+      const key = keyOf(location);
       const all = read();
       const entry: Entry = {};
       for (const container of containers()) entry[container.id] = container.get();
@@ -140,8 +182,8 @@ export function scrollRestoration(): ScrollRestoration {
       write(all);
     },
 
-    restore(location, options) {
-      const saved = options?.reset === true ? undefined : read()[scrollKey(location)];
+    restore(location, to) {
+      const saved = to?.reset === true ? undefined : read()[keyOf(location)];
       const apply = (): void => {
         if (saved !== undefined) {
           for (const container of containers()) {
@@ -161,6 +203,12 @@ export function scrollRestoration(): ScrollRestoration {
           }
         }
         window.scrollTo(0, 0);
+        // …and anything else that scrolls. A layout whose `<main>` is the
+        // scroller leaves the window at zero, so resetting the window alone
+        // moves nothing a visitor can see.
+        for (const element of toTopElements(options.toTop)) {
+          element.scrollTo?.(0, 0);
+        }
       };
 
       // BEFORE the next paint. The old router restored after
