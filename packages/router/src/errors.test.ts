@@ -144,18 +144,33 @@ describe("onCatch", () => {
     const seen: string[] = [];
     const chain = chainOf(
       { onCatch: (e: Error) => seen.push(`root:${e.message}`) },
-      { onCatch: (e: Error) => seen.push(`leaf:${e.message}`), errorComponent: (() => null) as never },
+      {
+        onCatch: (e: Error) => seen.push(`leaf:${e.message}`),
+        errorComponent: (() => null) as never,
+      },
     );
     const fallback = errorFallbackFor(chain, 1, () => ({}));
     const boom = new Error("boom");
 
-    fallback(null, () => boom, () => {});
+    fallback(
+      null,
+      () => boom,
+      () => {},
+    );
     // A re-render of the SAME error reports nothing further.
-    fallback(null, () => boom, () => {});
+    fallback(
+      null,
+      () => boom,
+      () => {},
+    );
     expect(seen).toEqual(["leaf:boom", "root:boom"]);
 
     // A different error is a different report.
-    fallback(null, () => new Error("again"), () => {});
+    fallback(
+      null,
+      () => new Error("again"),
+      () => {},
+    );
     expect(seen).toEqual(["leaf:boom", "root:boom", "leaf:again", "root:again"]);
   });
 
@@ -166,7 +181,11 @@ describe("onCatch", () => {
       onCatch: (e: Error) => seen.push(e.message),
       notFoundComponent: (() => null) as never,
     });
-    errorFallbackFor(chain, 0, () => ({}))(null, () => new NotFound("gone"), () => {});
+    errorFallbackFor(chain, 0, () => ({}))(
+      null,
+      () => new NotFound("gone"),
+      () => {},
+    );
     expect(seen).toEqual([]);
   });
 });

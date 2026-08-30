@@ -106,7 +106,12 @@ function unwrap(segment: string, prefix: string, suffix: string): string | null 
 }
 
 /** Find or add the edge for one decorated parameter. */
-function edgeFor<T>(list: Decorated<T>[], prefix: string, suffix: string, name: string): Decorated<T> {
+function edgeFor<T>(
+  list: Decorated<T>[],
+  prefix: string,
+  suffix: string,
+  name: string,
+): Decorated<T> {
   for (const edge of list) {
     if (edge.prefix === prefix && edge.suffix === suffix && edge.name === name) return edge;
   }

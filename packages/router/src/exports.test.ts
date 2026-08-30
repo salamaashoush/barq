@@ -22,7 +22,17 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 const ROOT = new URL("../../..", import.meta.url).pathname;
-const PACKAGES = ["core", "server", "start", "router", "primitives", "query", "css", "testing", "compiler"];
+const PACKAGES = [
+  "core",
+  "server",
+  "start",
+  "router",
+  "primitives",
+  "query",
+  "css",
+  "testing",
+  "compiler",
+];
 
 interface Manifest {
   name: string;

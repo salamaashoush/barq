@@ -370,9 +370,7 @@ describe("the fuzzy not-found ancestor", () => {
  * separate entry in a cache, a log and an analytics report.
  */
 describe("caseSensitive", () => {
-  const table: AnyRouteDefinition[] = [
-    { path: "/users/$id", component: noop as never },
-  ] as never;
+  const table: AnyRouteDefinition[] = [{ path: "/users/$id", component: noop as never }] as never;
 
   test("by default, case must match", () => {
     const matcher = createMatcher(flattenRoutes(table));
