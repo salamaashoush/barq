@@ -1,5 +1,6 @@
 import { Button as AriaButton, type ButtonComponentProps } from "@barqjs/aria/button";
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { ui, uiVariants } from "../lib/atoms.ts";
@@ -28,7 +29,7 @@ export type ButtonSize =
  * ```
  */
 export const buttonVariants = uiVariants({
-  base: ui({
+  base: atomsIn("barq.ui", {
     display: "inline-flex",
     flexShrink: "0",
     alignItems: "center",
@@ -84,7 +85,7 @@ export const buttonVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: ui({
+      default: atomsIn("barq.ui", {
         backgroundColor: "var(--primary)",
         color: "var(--primary-foreground)",
         "@media (hover: hover)": {
@@ -98,7 +99,7 @@ export const buttonVariants = uiVariants({
           },
         },
       }),
-      destructive: ui({
+      destructive: atomsIn("barq.ui", {
         backgroundColor: "var(--destructive)",
         color: "var(--color-white)",
         "@media (hover: hover)": {
@@ -130,7 +131,7 @@ export const buttonVariants = uiVariants({
           },
         },
       }),
-      outline: ui({
+      outline: atomsIn("barq.ui", {
         borderStyle: "var(--ui-border-style)",
         borderWidth: "1px",
         backgroundColor: "var(--background)",
@@ -159,7 +160,7 @@ export const buttonVariants = uiVariants({
           },
         },
       }),
-      secondary: ui({
+      secondary: atomsIn("barq.ui", {
         backgroundColor: "var(--secondary)",
         color: "var(--secondary-foreground)",
         "@media (hover: hover)": {
@@ -173,7 +174,7 @@ export const buttonVariants = uiVariants({
           },
         },
       }),
-      ghost: ui({
+      ghost: atomsIn("barq.ui", {
         "@media (hover: hover)": {
           ":hover": {
             backgroundColor: "var(--accent)",
@@ -189,7 +190,7 @@ export const buttonVariants = uiVariants({
           },
         },
       }),
-      link: ui({
+      link: atomsIn("barq.ui", {
         color: "var(--primary)",
         textUnderlineOffset: "4px",
         "@media (hover: hover)": {
@@ -200,7 +201,7 @@ export const buttonVariants = uiVariants({
       }),
     },
     size: {
-      default: ui({
+      default: atomsIn("barq.ui", {
         height: "calc(var(--spacing) * 9)",
         paddingInline: "calc(var(--spacing) * 4)",
         paddingBlock: "calc(var(--spacing) * 2)",
@@ -208,7 +209,7 @@ export const buttonVariants = uiVariants({
           paddingInline: "calc(var(--spacing) * 3)",
         },
       }),
-      xs: ui({
+      xs: atomsIn("barq.ui", {
         height: "calc(var(--spacing) * 6)",
         gap: "var(--spacing)",
         borderRadius: "calc(var(--radius) - 2px)",
@@ -223,7 +224,7 @@ export const buttonVariants = uiVariants({
           height: "calc(var(--spacing) * 3)",
         },
       }),
-      sm: ui({
+      sm: atomsIn("barq.ui", {
         height: "calc(var(--spacing) * 8)",
         gap: "calc(var(--spacing) * 1.5)",
         borderRadius: "calc(var(--radius) - 2px)",
@@ -232,7 +233,7 @@ export const buttonVariants = uiVariants({
           paddingInline: "calc(var(--spacing) * 2.5)",
         },
       }),
-      lg: ui({
+      lg: atomsIn("barq.ui", {
         height: "calc(var(--spacing) * 10)",
         borderRadius: "calc(var(--radius) - 2px)",
         paddingInline: "calc(var(--spacing) * 6)",
@@ -240,11 +241,11 @@ export const buttonVariants = uiVariants({
           paddingInline: "calc(var(--spacing) * 4)",
         },
       }),
-      icon: ui({
+      icon: atomsIn("barq.ui", {
         width: "calc(var(--spacing) * 9)",
         height: "calc(var(--spacing) * 9)",
       }),
-      "icon-xs": ui({
+      "icon-xs": atomsIn("barq.ui", {
         width: "calc(var(--spacing) * 6)",
         height: "calc(var(--spacing) * 6)",
         borderRadius: "calc(var(--radius) - 2px)",
@@ -253,11 +254,11 @@ export const buttonVariants = uiVariants({
           height: "calc(var(--spacing) * 3)",
         },
       }),
-      "icon-sm": ui({
+      "icon-sm": atomsIn("barq.ui", {
         width: "calc(var(--spacing) * 8)",
         height: "calc(var(--spacing) * 8)",
       }),
-      "icon-lg": ui({
+      "icon-lg": atomsIn("barq.ui", {
         width: "calc(var(--spacing) * 10)",
         height: "calc(var(--spacing) * 10)",
       }),

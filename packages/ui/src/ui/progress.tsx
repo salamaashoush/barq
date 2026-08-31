@@ -1,12 +1,13 @@
 import { progressBar } from "@barqjs/aria/link";
 import { fromProps, mergeProps } from "@barqjs/aria/utils";
 import { Show, type Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 
-const track = ui({
+const track = atomsIn("barq.ui", {
   position: "relative",
   height: "calc(var(--spacing) * 2)",
   width: "100%",
@@ -18,7 +19,7 @@ const track = ui({
   },
 });
 
-const bar = ui({
+const bar = atomsIn("barq.ui", {
   height: "100%",
   width: "100%",
   flex: "1",
@@ -84,7 +85,7 @@ export function Progress(props: Incoming<ProgressProps>) {
 }
 
 /** The label is named to assistive technology and drawn nowhere. */
-const visuallyHidden = ui({
+const visuallyHidden = atomsIn("barq.ui", {
   position: "absolute",
   width: "1px",
   height: "1px",

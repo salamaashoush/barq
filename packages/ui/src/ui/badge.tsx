@@ -1,7 +1,8 @@
 import { Show, type Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui, uiVariants } from "../lib/atoms.ts";
+import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -15,7 +16,7 @@ export type BadgeVariant = "default" | "secondary" | "destructive" | "outline" |
  * ```
  */
 export const badgeVariants = uiVariants({
-  base: ui({
+  base: atomsIn("barq.ui", {
     display: "inline-flex",
     width: "fit-content",
     flexShrink: "0",
@@ -69,7 +70,7 @@ export const badgeVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: ui({
+      default: atomsIn("barq.ui", {
         backgroundColor: "var(--primary)",
         color: "var(--primary-foreground)",
         "@media (hover: hover)": {
@@ -83,7 +84,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      secondary: ui({
+      secondary: atomsIn("barq.ui", {
         backgroundColor: "var(--secondary)",
         color: "var(--secondary-foreground)",
         "@media (hover: hover)": {
@@ -97,7 +98,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      destructive: ui({
+      destructive: atomsIn("barq.ui", {
         backgroundColor: "var(--destructive)",
         color: "var(--color-white)",
         ":focus-visible": {
@@ -129,7 +130,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      outline: ui({
+      outline: atomsIn("barq.ui", {
         borderColor: "var(--border)",
         color: "var(--foreground)",
         "@media (hover: hover)": {
@@ -139,7 +140,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      ghost: ui({
+      ghost: atomsIn("barq.ui", {
         "@media (hover: hover)": {
           "a&:hover": {
             backgroundColor: "var(--accent)",
@@ -147,7 +148,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      link: ui({
+      link: atomsIn("barq.ui", {
         color: "var(--primary)",
         textUnderlineOffset: "4px",
         "@media (hover: hover)": {

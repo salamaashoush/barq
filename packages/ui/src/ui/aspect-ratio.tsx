@@ -1,8 +1,8 @@
 import { mergeProps } from "@barqjs/aria/utils";
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -14,7 +14,7 @@ import { uiProps } from "../lib/slot.ts";
  * safe to rely on when that component was written. It is now, and the property
  * does the same job without taking the child out of flow.
  */
-const box = ui({
+const box = atomsIn("barq.ui", {
   position: "relative",
   width: "100%",
   aspectRatio: "var(--barq-aspect-ratio, 1)",

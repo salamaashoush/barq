@@ -5,7 +5,8 @@
   "title": "Separator",
   "dependencies": [
     "@barqjs/aria",
-    "@barqjs/core"
+    "@barqjs/core",
+    "@barqjs/css"
   ],
   "registryDependencies": [
     "atoms",
@@ -15,7 +16,7 @@
     {
       "path": "ui/separator.tsx",
       "type": "registry:ui",
-      "content": "import { Separator as AriaSeparator, type SeparatorComponentProps } from \"@barqjs/aria/link\";\nimport type { Incoming } from \"@barqjs/core\";\n\nimport \"../theme/layers.ts\";\nimport { ui } from \"../lib/atoms.ts\";\n\nconst separator = ui({\n  flexShrink: \"0\",\n  backgroundColor: \"var(--border)\",\n  '[data-orientation=\"horizontal\"]': {\n    height: \"1px\",\n    width: \"100%\",\n  },\n  '[data-orientation=\"vertical\"]': {\n    height: \"100%\",\n    width: \"1px\",\n  },\n});\n\n/**\n * The reset gives `<hr>` a `border-top-width: 1px`, which is a SECOND line\n * beside the one this draws with a background. shadcn's separator is a `<div>`\n * and never meets it; `@barqjs/aria` renders the element the platform has a\n * role for, so the border is removed here instead.\n */\nconst noBorder = ui({\n  border: \"0\",\n});\n\nexport interface SeparatorProps extends SeparatorComponentProps {\n  children?: never;\n  /** Renames the slot, for a wrapper that is a separator and answers to another name. */\n  \"data-slot\"?: string;\n}\n\n/**\n * ```tsx\n * <Separator />\n * <Separator orientation=\"vertical\" />\n * ```\n */\nexport function Separator(props: Incoming<SeparatorProps>) {\n  return (\n    <AriaSeparator\n      {...props}\n      data-slot={props[\"data-slot\"]?.() ?? \"separator\"}\n      class={ui(separator, noBorder, props.class?.(), props.className?.())}\n    />\n  );\n}\n"
+      "content": "import { Separator as AriaSeparator, type SeparatorComponentProps } from \"@barqjs/aria/link\";\nimport type { Incoming } from \"@barqjs/core\";\nimport { atomsIn } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport { ui } from \"../lib/atoms.ts\";\n\nconst separator = atomsIn(\"barq.ui\", {\n  flexShrink: \"0\",\n  backgroundColor: \"var(--border)\",\n  '[data-orientation=\"horizontal\"]': {\n    height: \"1px\",\n    width: \"100%\",\n  },\n  '[data-orientation=\"vertical\"]': {\n    height: \"100%\",\n    width: \"1px\",\n  },\n});\n\n/**\n * The reset gives `<hr>` a `border-top-width: 1px`, which is a SECOND line\n * beside the one this draws with a background. shadcn's separator is a `<div>`\n * and never meets it; `@barqjs/aria` renders the element the platform has a\n * role for, so the border is removed here instead.\n */\nconst noBorder = atomsIn(\"barq.ui\", {\n  border: \"0\",\n});\n\nexport interface SeparatorProps extends SeparatorComponentProps {\n  children?: never;\n  /** Renames the slot, for a wrapper that is a separator and answers to another name. */\n  \"data-slot\"?: string;\n}\n\n/**\n * ```tsx\n * <Separator />\n * <Separator orientation=\"vertical\" />\n * ```\n */\nexport function Separator(props: Incoming<SeparatorProps>) {\n  return (\n    <AriaSeparator\n      {...props}\n      data-slot={props[\"data-slot\"]?.() ?? \"separator\"}\n      class={ui(separator, noBorder, props.class?.(), props.className?.())}\n    />\n  );\n}\n"
     }
   ]
 }

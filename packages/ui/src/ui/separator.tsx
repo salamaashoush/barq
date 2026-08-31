@@ -1,10 +1,11 @@
 import { Separator as AriaSeparator, type SeparatorComponentProps } from "@barqjs/aria/link";
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 
-const separator = ui({
+const separator = atomsIn("barq.ui", {
   flexShrink: "0",
   backgroundColor: "var(--border)",
   '[data-orientation="horizontal"]': {
@@ -23,7 +24,7 @@ const separator = ui({
  * and never meets it; `@barqjs/aria` renders the element the platform has a
  * role for, so the border is removed here instead.
  */
-const noBorder = ui({
+const noBorder = atomsIn("barq.ui", {
   border: "0",
 });
 

@@ -8,11 +8,12 @@ import {
   type SliderContextValue,
 } from "@barqjs/aria/slider";
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 
-const root = ui({
+const root = atomsIn("barq.ui", {
   position: "relative",
   display: "flex",
   width: "100%",
@@ -31,7 +32,7 @@ const root = ui({
   },
 });
 
-const track = ui({
+const track = atomsIn("barq.ui", {
   position: "relative",
   flexGrow: "1",
   borderRadius: "calc(infinity * 1px)",
@@ -46,7 +47,7 @@ const track = ui({
   },
 });
 
-const thumb = ui({
+const thumb = atomsIn("barq.ui", {
   position: "absolute",
   display: "block",
   width: "calc(var(--spacing) * 4)",
@@ -86,7 +87,7 @@ const thumb = ui({
   },
 });
 
-const output = ui({
+const output = atomsIn("barq.ui", {
   position: "absolute",
   width: "1px",
   height: "1px",
@@ -113,7 +114,7 @@ const output = ui({
  * left a sliver. A background is clipped by `border-radius` on its own, with
  * the same square ends shadcn's clipped element has, and it clips nothing else.
  */
-const range = ui({
+const range = atomsIn("barq.ui", {
   '[data-orientation="horizontal"]': {
     backgroundImage:
       "linear-gradient( to right, transparent var(--barq-slider-start), var(--primary) var(--barq-slider-start), var(--primary) var(--barq-slider-end), transparent var(--barq-slider-end) )",
@@ -138,7 +139,7 @@ const range = ui({
  * 6px-tall track, where the static position is the track's top edge and a 16px
  * thumb hangs 10px below it.
  */
-const place = ui({
+const place = atomsIn("barq.ui", {
   '[data-orientation="horizontal"] &': {
     left: "var(--barq-slider-thumb)",
     top: "50%",

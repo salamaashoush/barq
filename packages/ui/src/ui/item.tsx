@@ -1,5 +1,5 @@
 import { Show, type Incoming } from "@barqjs/core";
-import { firstThatWorks } from "@barqjs/css";
+import { atomsIn, firstThatWorks } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { ui, uiVariants } from "../lib/atoms.ts";
@@ -7,12 +7,12 @@ import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Separator, type SeparatorProps } from "./separator.tsx";
 
-const group = ui({
+const group = atomsIn("barq.ui", {
   display: "flex",
   flexDirection: "column",
 });
 
-const separator = ui({
+const separator = atomsIn("barq.ui", {
   marginBlock: "0px",
 });
 
@@ -21,7 +21,7 @@ export type ItemVariant = "default" | "outline" | "muted";
 export type ItemSize = "default" | "sm";
 
 export const itemVariants = uiVariants({
-  base: ui({
+  base: atomsIn("barq.ui", {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
@@ -71,13 +71,13 @@ export const itemVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: ui({
+      default: atomsIn("barq.ui", {
         backgroundColor: "transparent",
       }),
-      outline: ui({
+      outline: atomsIn("barq.ui", {
         borderColor: "var(--border)",
       }),
-      muted: ui({
+      muted: atomsIn("barq.ui", {
         backgroundColor: "var(--muted)",
         "@supports (color: color-mix(in lab, red, red))": {
           backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
@@ -85,11 +85,11 @@ export const itemVariants = uiVariants({
       }),
     },
     size: {
-      default: ui({
+      default: atomsIn("barq.ui", {
         gap: "calc(var(--spacing) * 4)",
         padding: "calc(var(--spacing) * 4)",
       }),
-      sm: ui({
+      sm: atomsIn("barq.ui", {
         gap: "calc(var(--spacing) * 2.5)",
         paddingInline: "calc(var(--spacing) * 4)",
         paddingBlock: "calc(var(--spacing) * 3)",
@@ -102,7 +102,7 @@ export const itemVariants = uiVariants({
 export type ItemMediaVariant = "default" | "icon" | "image";
 
 export const itemMediaVariants = uiVariants({
-  base: ui({
+  base: atomsIn("barq.ui", {
     display: "flex",
     flexShrink: "0",
     alignItems: "center",
@@ -119,10 +119,10 @@ export const itemMediaVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: ui({
+      default: atomsIn("barq.ui", {
         backgroundColor: "transparent",
       }),
-      icon: ui({
+      icon: atomsIn("barq.ui", {
         width: "calc(var(--spacing) * 8)",
         height: "calc(var(--spacing) * 8)",
         borderRadius: "calc(var(--radius) - 4px)",
@@ -134,7 +134,7 @@ export const itemMediaVariants = uiVariants({
           height: "calc(var(--spacing) * 4)",
         },
       }),
-      image: ui({
+      image: atomsIn("barq.ui", {
         width: "calc(var(--spacing) * 10)",
         height: "calc(var(--spacing) * 10)",
         overflow: "hidden",
@@ -150,7 +150,7 @@ export const itemMediaVariants = uiVariants({
   defaults: { variant: "default" },
 });
 
-const content = ui({
+const content = atomsIn("barq.ui", {
   display: "flex",
   flex: "1",
   flexDirection: "column",
@@ -160,7 +160,7 @@ const content = ui({
   },
 });
 
-const title = ui({
+const title = atomsIn("barq.ui", {
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -175,7 +175,7 @@ const title = ui({
   fontWeight: "var(--font-weight-medium)",
 });
 
-const description = ui({
+const description = atomsIn("barq.ui", {
   overflow: "hidden",
   display: "-webkit-box",
   "-webkit-box-orient": "vertical",
@@ -199,13 +199,13 @@ const description = ui({
   },
 });
 
-const actions = ui({
+const actions = atomsIn("barq.ui", {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
 });
 
-const band = ui({
+const band = atomsIn("barq.ui", {
   display: "flex",
   flexBasis: "100%",
   alignItems: "center",

@@ -5,18 +5,19 @@ import {
   type RadioGroupComponentProps,
 } from "@barqjs/aria/radio";
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import { Circle } from "@barqjs/lucide/icons/circle";
 
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 
-const items = ui({
+const items = atomsIn("barq.ui", {
   display: "grid",
   gap: "calc(var(--spacing) * 3)",
 });
 
-const circle = ui({
+const circle = atomsIn("barq.ui", {
   position: "relative",
   display: "inline-flex",
   aspectRatio: "1 / 1",
@@ -74,7 +75,7 @@ const circle = ui({
   },
 });
 
-const indicator = ui({
+const indicator = atomsIn("barq.ui", {
   position: "relative",
   display: "flex",
   alignItems: "center",

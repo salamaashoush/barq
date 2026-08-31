@@ -1,6 +1,6 @@
 import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
 import { Show, type Child, type Incoming } from "@barqjs/core";
-import { firstThatWorks } from "@barqjs/css";
+import { atomsIn, firstThatWorks } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
 import "../theme/layers.ts";
@@ -11,7 +11,7 @@ import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 import { srOnly } from "./sr-only.ts";
 
-const overlay = ui({
+const overlay = atomsIn("barq.ui", {
   position: "fixed",
   inset: "0px",
   zIndex: "50",
@@ -29,14 +29,14 @@ const overlay = ui({
   },
 });
 
-const header = ui({
+const header = atomsIn("barq.ui", {
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 1.5)",
   padding: "calc(var(--spacing) * 4)",
 });
 
-const footer = ui({
+const footer = atomsIn("barq.ui", {
   marginTop: "auto",
   display: "flex",
   flexDirection: "column",
@@ -44,19 +44,19 @@ const footer = ui({
   padding: "calc(var(--spacing) * 4)",
 });
 
-const title = ui({
+const title = atomsIn("barq.ui", {
   "--ui-font-weight": "var(--font-weight-semibold)",
   fontWeight: "var(--font-weight-semibold)",
   color: "var(--foreground)",
 });
 
-const description = ui({
+const description = atomsIn("barq.ui", {
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
 });
 
-const close = ui({
+const close = atomsIn("barq.ui", {
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
   right: "calc(var(--spacing) * 4)",
@@ -97,7 +97,7 @@ const close = ui({
 export type SheetSide = "top" | "right" | "bottom" | "left";
 
 export const sheetVariants = uiVariants({
-  base: ui({
+  base: atomsIn("barq.ui", {
     position: "fixed",
     zIndex: "50",
     display: "flex",
@@ -131,7 +131,7 @@ export const sheetVariants = uiVariants({
   }),
   variants: {
     side: {
-      right: ui({
+      right: atomsIn("barq.ui", {
         insetBlock: "0px",
         right: "0px",
         height: "100%",
@@ -148,7 +148,7 @@ export const sheetVariants = uiVariants({
           },
         },
       }),
-      left: ui({
+      left: atomsIn("barq.ui", {
         insetBlock: "0px",
         left: "0px",
         height: "100%",
@@ -165,7 +165,7 @@ export const sheetVariants = uiVariants({
           },
         },
       }),
-      top: ui({
+      top: atomsIn("barq.ui", {
         insetInline: "0px",
         top: "0px",
         height: "auto",
@@ -176,7 +176,7 @@ export const sheetVariants = uiVariants({
           "--ui-exit-translate-y": "-100%",
         },
       }),
-      bottom: ui({
+      bottom: atomsIn("barq.ui", {
         insetInline: "0px",
         bottom: "0px",
         height: "auto",
@@ -259,7 +259,7 @@ export function SheetContent(props: Incoming<SheetContentProps>) {
 }
 
 /** See `dialog.tsx`: the dialog's own element lays nothing out. */
-const contents = ui({
+const contents = atomsIn("barq.ui", {
   display: "contents",
 });
 

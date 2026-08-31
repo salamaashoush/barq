@@ -8,14 +8,14 @@ import {
 } from "@barqjs/aria/tooltip";
 import { filterDOMProps, fromProps, mergeProps, styleProps } from "@barqjs/aria/utils";
 import { Show, type Incoming } from "@barqjs/core";
-import { firstThatWorks } from "@barqjs/css";
+import { atomsIn, firstThatWorks } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 
-const content = ui({
+const content = atomsIn("barq.ui", {
   zIndex: "50",
   width: "fit-content",
   animation:
@@ -69,7 +69,7 @@ const content = ui({
   },
 });
 
-const arrow = ui({
+const arrow = atomsIn("barq.ui", {
   position: "absolute",
   zIndex: "50",
   width: "calc(var(--spacing) * 2.5)",
@@ -86,7 +86,7 @@ const arrow = ui({
  * to the caller, because only the caller knows how big the arrow is. A rotated
  * square is pushed half its own width past the edge it points away from.
  */
-const arrowSide = ui({
+const arrowSide = atomsIn("barq.ui", {
   '[data-placement="top"]': {
     bottom: "calc(var(--spacing) * -1)",
   },

@@ -1,6 +1,7 @@
 import type { Key } from "@barqjs/aria/collections";
 import type { FilterFn } from "@barqjs/aria/combobox";
 import { getOwner, Show, signal, type Child, type Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
@@ -12,7 +13,7 @@ import { Button } from "./button.tsx";
 import { Command, CommandItem } from "./command.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx";
 
-const trigger = ui({
+const trigger = atomsIn("barq.ui", {
   width: "100%",
   justifyContent: "space-between",
   "--ui-font-weight": "var(--font-weight-normal)",
@@ -26,13 +27,13 @@ const trigger = ui({
  * `width: 100%` cannot do it: the popover is portalled, so 100% resolves
  * against the body and the list came out as wide as the page.
  */
-const content = ui({
+const content = atomsIn("barq.ui", {
   width: "var(--barq-trigger-width, auto)",
   minWidth: "var(--barq-trigger-width, auto)",
   padding: "0px",
 });
 
-const item = ui({
+const item = atomsIn("barq.ui", {
   position: "relative",
   display: "flex",
   width: "100%",
@@ -71,7 +72,7 @@ const item = ui({
   },
 });
 
-const indicator = ui({
+const indicator = atomsIn("barq.ui", {
   pointerEvents: "none",
   position: "absolute",
   right: "calc(var(--spacing) * 2)",
@@ -82,7 +83,7 @@ const indicator = ui({
   justifyContent: "center",
 });
 
-const chevron = ui({
+const chevron = atomsIn("barq.ui", {
   opacity: "50%",
 });
 

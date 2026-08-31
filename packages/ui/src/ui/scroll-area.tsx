@@ -1,7 +1,7 @@
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -20,7 +20,7 @@ import { uiProps } from "../lib/slot.ts";
  * overlay the content or to fade out when idle. If you need that, the DOM is
  * yours and this component is forty lines.
  */
-const box = ui({
+const box = atomsIn("barq.ui", {
   position: "relative",
   overflow: "auto",
   overscrollBehavior: "contain",

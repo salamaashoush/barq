@@ -1,12 +1,11 @@
 import type { Incoming } from "@barqjs/core";
-import { firstThatWorks } from "@barqjs/css";
+import { atomsIn, firstThatWorks } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const label = ui({
+const label = atomsIn("barq.ui", {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",

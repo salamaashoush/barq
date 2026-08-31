@@ -174,7 +174,8 @@
       "type": "registry:ui",
       "title": "Alert",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -192,10 +193,10 @@
       "title": "Aspect Ratio",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -209,10 +210,10 @@
       "type": "registry:ui",
       "title": "Avatar",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -226,7 +227,8 @@
       "type": "registry:ui",
       "title": "Badge",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -244,10 +246,10 @@
       "title": "Breadcrumb",
       "dependencies": [
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot",
@@ -262,7 +264,8 @@
       "type": "registry:ui",
       "title": "Button Group",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -281,7 +284,8 @@
       "title": "Button",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -316,7 +320,8 @@
       "type": "registry:ui",
       "title": "Card",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -335,6 +340,7 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide"
       ],
       "registryDependencies": [
@@ -369,6 +375,7 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide"
       ],
       "registryDependencies": [
@@ -390,6 +397,7 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide",
         "@barqjs/primitives"
       ],
@@ -412,6 +420,7 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide"
       ],
       "registryDependencies": [
@@ -530,7 +539,8 @@
       "type": "registry:ui",
       "title": "Input Group",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -554,7 +564,6 @@
         "@barqjs/primitives"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -587,10 +596,10 @@
       "type": "registry:ui",
       "title": "Kbd",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -608,7 +617,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -623,7 +631,8 @@
       "title": "Menubar",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -643,6 +652,7 @@
       "title": "Native Select",
       "dependencies": [
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/primitives"
       ],
       "registryDependencies": [
@@ -661,6 +671,7 @@
       "title": "Pagination",
       "dependencies": [
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide"
       ],
       "registryDependencies": [
@@ -701,7 +712,8 @@
       "title": "Progress",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -719,6 +731,7 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide"
       ],
       "registryDependencies": [
@@ -734,10 +747,10 @@
       "type": "registry:ui",
       "title": "Scroll Area",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -772,7 +785,8 @@
       "title": "Separator",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -810,10 +824,10 @@
       "type": "registry:ui",
       "title": "Skeleton",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -828,7 +842,8 @@
       "title": "Slider",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -844,6 +859,7 @@
       "title": "Spinner",
       "dependencies": [
         "@barqjs/core",
+        "@barqjs/css",
         "@barqjs/lucide"
       ],
       "registryDependencies": [
@@ -875,7 +891,8 @@
       "title": "Switch",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -890,10 +907,10 @@
       "type": "registry:ui",
       "title": "Table",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "slot"
@@ -908,7 +925,8 @@
       "title": "Tabs",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -923,7 +941,8 @@
       "type": "registry:ui",
       "title": "Toggle Group",
       "dependencies": [
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",
@@ -942,7 +961,8 @@
       "title": "Toggle",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/css"
       ],
       "registryDependencies": [
         "atoms",

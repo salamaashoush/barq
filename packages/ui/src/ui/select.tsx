@@ -6,7 +6,7 @@ import {
   type SelectComponentProps,
 } from "@barqjs/aria/select";
 import type { Incoming } from "@barqjs/core";
-import { firstThatWorks } from "@barqjs/css";
+import { atomsIn, firstThatWorks } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 
 import "../theme/layers.ts";
@@ -14,7 +14,7 @@ import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const trigger = ui({
+const trigger = atomsIn("barq.ui", {
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -118,7 +118,7 @@ const trigger = ui({
  * publishes the same measurement; the plain `8rem` beside it is the fallback
  * for a browser without `max()`, and is what the transcription produced.
  */
-const list = ui({
+const list = atomsIn("barq.ui", {
   position: "relative",
   zIndex: "50",
   margin: "0px",
@@ -172,7 +172,7 @@ const list = ui({
   },
 });
 
-const item = ui({
+const item = atomsIn("barq.ui", {
   position: "relative",
   display: "flex",
   width: "100%",
@@ -210,7 +210,7 @@ const item = ui({
   },
 });
 
-const indicator = ui({
+const indicator = atomsIn("barq.ui", {
   position: "absolute",
   right: "calc(var(--spacing) * 2)",
   display: "flex",
@@ -226,7 +226,7 @@ const indicator = ui({
   },
 });
 
-const label = ui({
+const label = atomsIn("barq.ui", {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-xs)",
@@ -234,7 +234,7 @@ const label = ui({
   color: "var(--muted-foreground)",
 });
 
-const separator = ui({
+const separator = atomsIn("barq.ui", {
   pointerEvents: "none",
   marginInline: "calc(var(--spacing) * -1)",
   marginBlock: "var(--spacing)",
@@ -254,7 +254,7 @@ const separator = ui({
  * by a screen reader, which an `<svg>` there would have needed
  * `aria-hidden` to avoid.
  */
-const chevron = ui({
+const chevron = atomsIn("barq.ui", {
   "::after": {
     content: '""',
     width: "calc(var(--spacing) * 4)",

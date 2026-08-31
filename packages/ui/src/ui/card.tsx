@@ -1,11 +1,12 @@
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const card = ui({
+const card = atomsIn("barq.ui", {
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 6)",
@@ -21,7 +22,7 @@ const card = ui({
     "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
 });
 
-const header = ui({
+const header = atomsIn("barq.ui", {
   containerType: "inline-size",
   containerName: "card-header",
   display: "grid",
@@ -35,26 +36,26 @@ const header = ui({
   },
 });
 
-const headerBordered = ui({
+const headerBordered = atomsIn("barq.ui", {
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
   paddingBottom: "calc(var(--spacing) * 6)",
 });
 
-const title = ui({
+const title = atomsIn("barq.ui", {
   "--ui-leading": "1",
   lineHeight: "1",
   "--ui-font-weight": "var(--font-weight-semibold)",
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = ui({
+const description = atomsIn("barq.ui", {
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
 });
 
-const action = ui({
+const action = atomsIn("barq.ui", {
   gridColumnStart: "2",
   gridRow: "span 2 / span 2",
   gridRowStart: "1",
@@ -62,17 +63,17 @@ const action = ui({
   justifySelf: "flex-end",
 });
 
-const content = ui({
+const content = atomsIn("barq.ui", {
   paddingInline: "calc(var(--spacing) * 6)",
 });
 
-const footer = ui({
+const footer = atomsIn("barq.ui", {
   display: "flex",
   alignItems: "center",
   paddingInline: "calc(var(--spacing) * 6)",
 });
 
-const footerBordered = ui({
+const footerBordered = atomsIn("barq.ui", {
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   paddingTop: "calc(var(--spacing) * 6)",

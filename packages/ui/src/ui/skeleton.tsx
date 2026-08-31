@@ -1,11 +1,11 @@
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const skeleton = ui({
+const skeleton = atomsIn("barq.ui", {
   animation: "var(--animate-pulse)",
   borderRadius: "calc(var(--radius) - 2px)",
   backgroundColor: "var(--accent)",

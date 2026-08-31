@@ -1,12 +1,12 @@
 import type { Incoming } from "@barqjs/core";
-import { firstThatWorks } from "@barqjs/css";
+import { atomsIn, firstThatWorks } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui, uiVariants } from "../lib/atoms.ts";
+import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const root = ui({
+const root = atomsIn("barq.ui", {
   display: "flex",
   minWidth: "0px",
   flex: "1",
@@ -28,7 +28,7 @@ const root = ui({
   },
 });
 
-const header = ui({
+const header = atomsIn("barq.ui", {
   display: "flex",
   maxWidth: "var(--container-sm)",
   flexDirection: "column",
@@ -37,7 +37,7 @@ const header = ui({
   textAlign: "center",
 });
 
-const title = ui({
+const title = atomsIn("barq.ui", {
   fontSize: "var(--text-lg)",
   lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
   "--ui-font-weight": "var(--font-weight-medium)",
@@ -46,7 +46,7 @@ const title = ui({
   letterSpacing: "var(--tracking-tight)",
 });
 
-const description = ui({
+const description = atomsIn("barq.ui", {
   fontSize: "var(--text-sm)",
   lineHeight: "var(--leading-relaxed)",
   color: "var(--muted-foreground)",
@@ -59,7 +59,7 @@ const description = ui({
   },
 });
 
-const content = ui({
+const content = atomsIn("barq.ui", {
   display: "flex",
   width: "100%",
   maxWidth: "var(--container-sm)",
@@ -75,7 +75,7 @@ const content = ui({
 export type EmptyMediaVariant = "default" | "icon";
 
 export const emptyMediaVariants = uiVariants({
-  base: ui({
+  base: atomsIn("barq.ui", {
     marginBottom: "calc(var(--spacing) * 2)",
     display: "flex",
     flexShrink: "0",
@@ -88,10 +88,10 @@ export const emptyMediaVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: ui({
+      default: atomsIn("barq.ui", {
         backgroundColor: "transparent",
       }),
-      icon: ui({
+      icon: atomsIn("barq.ui", {
         display: "flex",
         width: "calc(var(--spacing) * 10)",
         height: "calc(var(--spacing) * 10)",

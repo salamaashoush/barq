@@ -1,4 +1,5 @@
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
@@ -7,7 +8,7 @@ import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { controlProps } from "../lib/slot.ts";
 
-const control = ui({
+const control = atomsIn("barq.ui", {
   height: "calc(var(--spacing) * 9)",
   width: "100%",
   borderRadius: "calc(var(--radius) - 2px)",
@@ -71,7 +72,7 @@ const control = ui({
  * picker, it scrolls with a thumb the user already knows, and it costs no
  * JavaScript at all.
  */
-const chevron = ui({
+const chevron = atomsIn("barq.ui", {
   appearance: "none",
   backgroundImage:
     "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",

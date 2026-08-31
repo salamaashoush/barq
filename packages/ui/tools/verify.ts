@@ -69,6 +69,10 @@ function kebab(property: string): string {
  * The literal is read rather than evaluated. Its keys are properties or
  * conditions, and a condition's value is a block, so a flat scan for
  * `key: "value"` finds every declaration at every depth and no condition.
+ *
+ * `atomsIn("barq.ui", { … })` and not the `ui` helper around it, because that
+ * is the shape the compiler folds: an identifier for the layer is not a literal
+ * and the call would stay on the runtime.
  */
 function byLiteral(): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
@@ -78,8 +82,8 @@ function byLiteral(): Map<string, Set<string>> {
     if (!/\.tsx?$/.test(file) || file.includes(".test.")) continue;
     const source = readFileSync(join(dir, file), "utf8");
 
-    for (const start of source.matchAll(/\bui\(\{/g)) {
-      const open = (start.index ?? 0) + 3;
+    for (const start of source.matchAll(/\batomsIn\("[\w.]+", \{/g)) {
+      const open = (start.index ?? 0) + start[0].length - 1;
       let depth = 0;
       let at = open;
       for (; at < source.length; at++) {

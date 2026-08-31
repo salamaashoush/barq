@@ -1,17 +1,17 @@
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const container = ui({
+const container = atomsIn("barq.ui", {
   position: "relative",
   width: "100%",
   overflowX: "auto",
 });
 
-const table = ui({
+const table = atomsIn("barq.ui", {
   width: "100%",
   captionSide: "bottom",
   borderCollapse: "collapse",
@@ -19,21 +19,21 @@ const table = ui({
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
-const header = ui({
+const header = atomsIn("barq.ui", {
   "& tr": {
     borderBottomStyle: "var(--ui-border-style)",
     borderBottomWidth: "1px",
   },
 });
 
-const body = ui({
+const body = atomsIn("barq.ui", {
   "& tr:last-child": {
     borderStyle: "var(--ui-border-style)",
     borderWidth: "0px",
   },
 });
 
-const footer = ui({
+const footer = atomsIn("barq.ui", {
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   backgroundColor: "var(--muted)",
@@ -48,7 +48,7 @@ const footer = ui({
   },
 });
 
-const row = ui({
+const row = atomsIn("barq.ui", {
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
   "--ui-border-style": "solid",
@@ -72,7 +72,7 @@ const row = ui({
   },
 });
 
-const head = ui({
+const head = atomsIn("barq.ui", {
   height: "calc(var(--spacing) * 10)",
   paddingInline: "calc(var(--spacing) * 2)",
   textAlign: "left",
@@ -86,7 +86,7 @@ const head = ui({
   },
 });
 
-const cell = ui({
+const cell = atomsIn("barq.ui", {
   padding: "calc(var(--spacing) * 2)",
   verticalAlign: "middle",
   whiteSpace: "nowrap",
@@ -95,7 +95,7 @@ const cell = ui({
   },
 });
 
-const caption = ui({
+const caption = atomsIn("barq.ui", {
   marginTop: "calc(var(--spacing) * 4)",
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",

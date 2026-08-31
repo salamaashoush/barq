@@ -1,10 +1,11 @@
 import { Switch as AriaSwitch, type SwitchComponentProps } from "@barqjs/aria/switch";
 import type { Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 
-const track = ui({
+const track = atomsIn("barq.ui", {
   display: "inline-flex",
   flexShrink: "0",
   alignItems: "center",
@@ -57,7 +58,7 @@ const track = ui({
   },
 });
 
-const thumb = ui({
+const thumb = atomsIn("barq.ui", {
   pointerEvents: "none",
   display: "block",
   "--ui-translate-x": "0px",

@@ -1,5 +1,6 @@
 import { Checkbox as AriaCheckbox, type CheckboxComponentProps } from "@barqjs/aria/checkbox";
 import { Show, type Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import { Check } from "@barqjs/lucide/icons/check";
 import { Minus } from "@barqjs/lucide/icons/minus";
@@ -7,7 +8,7 @@ import { Minus } from "@barqjs/lucide/icons/minus";
 import "../theme/layers.ts";
 import { ui } from "../lib/atoms.ts";
 
-const box = ui({
+const box = atomsIn("barq.ui", {
   display: "inline-grid",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
@@ -74,7 +75,7 @@ const box = ui({
   },
 });
 
-const indicator = ui({
+const indicator = atomsIn("barq.ui", {
   display: "none",
   placeContent: "center",
   color: "currentcolor",

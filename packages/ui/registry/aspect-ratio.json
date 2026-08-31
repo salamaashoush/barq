@@ -5,10 +5,10 @@
   "title": "Aspect Ratio",
   "dependencies": [
     "@barqjs/aria",
-    "@barqjs/core"
+    "@barqjs/core",
+    "@barqjs/css"
   ],
   "registryDependencies": [
-    "atoms",
     "layers",
     "props",
     "slot"
@@ -17,7 +17,7 @@
     {
       "path": "ui/aspect-ratio.tsx",
       "type": "registry:ui",
-      "content": "import { mergeProps } from \"@barqjs/aria/utils\";\nimport type { Incoming } from \"@barqjs/core\";\n\nimport \"../theme/layers.ts\";\nimport { ui } from \"../lib/atoms.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\nimport { uiProps } from \"../lib/slot.ts\";\n\n/**\n * `aspect-ratio`, not the padding-bottom trick.\n *\n * Radix — and so shadcn — wraps the content in a box with `padding-bottom:\n * 56.25%` and absolutely positions the child, because `aspect-ratio` was not\n * safe to rely on when that component was written. It is now, and the property\n * does the same job without taking the child out of flow.\n */\nconst box = ui({\n  position: \"relative\",\n  width: \"100%\",\n  aspectRatio: \"var(--barq-aspect-ratio, 1)\",\n  \"& > *\": {\n    width: \"100%\",\n    height: \"100%\",\n  },\n});\n\nexport interface AspectRatioProps extends UiProps {\n  /** Width over height. `16 / 9` is 1.777…, and so is `\"16 / 9\"`. @default 1 */\n  ratio?: number | string;\n}\n\n/**\n * ```tsx\n * <AspectRatio ratio={16 / 9}>\n *   <img src=\"/cover.jpg\" alt=\"\" />\n * </AspectRatio>\n * ```\n */\nexport function AspectRatio(props: Incoming<AspectRatioProps>) {\n  // A custom property rather than a class, so a ratio from a signal writes one\n  // value and produces no new CSS.\n  const elementProps = mergeProps(uiProps(\"aspect-ratio\", box, props), {\n    style: () => ({\n      ...props.style?.(),\n      \"--barq-aspect-ratio\": String(props.ratio?.() ?? 1),\n    }),\n  });\n\n  return <div {...elementProps}>{props.children}</div>;\n}\n"
+      "content": "import { mergeProps } from \"@barqjs/aria/utils\";\nimport type { Incoming } from \"@barqjs/core\";\nimport { atomsIn } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\nimport { uiProps } from \"../lib/slot.ts\";\n\n/**\n * `aspect-ratio`, not the padding-bottom trick.\n *\n * Radix — and so shadcn — wraps the content in a box with `padding-bottom:\n * 56.25%` and absolutely positions the child, because `aspect-ratio` was not\n * safe to rely on when that component was written. It is now, and the property\n * does the same job without taking the child out of flow.\n */\nconst box = atomsIn(\"barq.ui\", {\n  position: \"relative\",\n  width: \"100%\",\n  aspectRatio: \"var(--barq-aspect-ratio, 1)\",\n  \"& > *\": {\n    width: \"100%\",\n    height: \"100%\",\n  },\n});\n\nexport interface AspectRatioProps extends UiProps {\n  /** Width over height. `16 / 9` is 1.777…, and so is `\"16 / 9\"`. @default 1 */\n  ratio?: number | string;\n}\n\n/**\n * ```tsx\n * <AspectRatio ratio={16 / 9}>\n *   <img src=\"/cover.jpg\" alt=\"\" />\n * </AspectRatio>\n * ```\n */\nexport function AspectRatio(props: Incoming<AspectRatioProps>) {\n  // A custom property rather than a class, so a ratio from a signal writes one\n  // value and produces no new CSS.\n  const elementProps = mergeProps(uiProps(\"aspect-ratio\", box, props), {\n    style: () => ({\n      ...props.style?.(),\n      \"--barq-aspect-ratio\": String(props.ratio?.() ?? 1),\n    }),\n  });\n\n  return <div {...elementProps}>{props.children}</div>;\n}\n"
     }
   ]
 }

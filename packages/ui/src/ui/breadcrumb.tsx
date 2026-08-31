@@ -1,15 +1,15 @@
 import type { Child, Incoming } from "@barqjs/core";
+import { atomsIn } from "@barqjs/css";
 
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
-const list = ui({
+const list = atomsIn("barq.ui", {
   margin: "0px",
   display: "flex",
   listStyleType: "none",
@@ -28,13 +28,13 @@ const list = ui({
   },
 });
 
-const item = ui({
+const item = atomsIn("barq.ui", {
   display: "inline-flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 1.5)",
 });
 
-const link = ui({
+const link = atomsIn("barq.ui", {
   transitionProperty:
     "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
   transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
@@ -46,13 +46,13 @@ const link = ui({
   },
 });
 
-const page = ui({
+const page = atomsIn("barq.ui", {
   "--ui-font-weight": "var(--font-weight-normal)",
   fontWeight: "var(--font-weight-normal)",
   color: "var(--foreground)",
 });
 
-const separator = ui({
+const separator = atomsIn("barq.ui", {
   display: "inline-flex",
   alignItems: "center",
   "& > svg": {
@@ -61,7 +61,7 @@ const separator = ui({
   },
 });
 
-const ellipsis = ui({
+const ellipsis = atomsIn("barq.ui", {
   display: "flex",
   width: "calc(var(--spacing) * 9)",
   height: "calc(var(--spacing) * 9)",
