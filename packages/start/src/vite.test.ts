@@ -54,7 +54,7 @@ const ROOT = "/home/me/app";
 const FILE = `${ROOT}/server/users.ts`;
 
 /** The plugin pair, driven the way Vite drives it. */
-function drive(): { manifest: string; stubs: string } {
+async function drive(): Promise<{ manifest: string; stubs: string }> {
   const [compiler, manifest, dev] = byName(barqStart());
 
   const config = { root: ROOT, mode: "development" };
@@ -63,7 +63,7 @@ function drive(): { manifest: string; stubs: string } {
 
   // Vite hands the compiler a plugin context; only `warn` is reached here.
   const context = { warn: () => {} };
-  const client = compiler.transform.call(context, SOURCE, FILE, { ssr: false });
+  const client = await compiler.transform.call(context, SOURCE, FILE, { ssr: false });
 
   const resolved = manifest.resolveId(MANIFEST_ID) as string;
   return { manifest: manifest.load(resolved) as string, stubs: client?.code ?? "" };
@@ -76,8 +76,8 @@ describe("the manifest", () => {
    * strings are derived separately they drift, and a call reaches nothing with
    * no error on either side. So the ids are compared as strings, not as rules.
    */
-  test("mounts exactly the ids the client stubs call", () => {
-    const { manifest, stubs } = drive();
+  test("mounts exactly the ids the client stubs call", async () => {
+    const { manifest, stubs } = await drive();
 
     const called = [...stubs.matchAll(/clientRpc\("([^"]+)"\)/g)].map((m) => m[1]);
     const mounted = [...manifest.matchAll(/mount\("([^"]+)"/g)].map((m) => m[1]);
@@ -87,14 +87,14 @@ describe("the manifest", () => {
   });
 
   /** Export-ness decides the surface on both sides, not just in the compiler. */
-  test("an internal server function is neither stubbed nor mounted", () => {
-    const { manifest, stubs } = drive();
+  test("an internal server function is neither stubbed nor mounted", async () => {
+    const { manifest, stubs } = await drive();
     expect(stubs).not.toContain("internal");
     expect(manifest).not.toContain("internal");
   });
 
-  test("the client stubs carry no server code", () => {
-    const { stubs } = drive();
+  test("the client stubs carry no server code", async () => {
+    const { stubs } = await drive();
     expect(stubs).not.toContain("db.query");
     expect(stubs).not.toContain("./db");
   });
@@ -109,7 +109,7 @@ describe("the manifest", () => {
    * manifest must generate the same single set however many times the module
    * has been through the compiler.
    */
-  test("re-transforming a module does not double-mount it", () => {
+  test("re-transforming a module does not double-mount it", async () => {
     const [compiler, manifest, dev] = byName(barqStart());
     const config = { root: ROOT, mode: "development" };
     compiler.configResolved?.(config);
@@ -117,7 +117,7 @@ describe("the manifest", () => {
 
     const context = { warn: () => {} };
     for (let at = 0; at < 3; at++) {
-      compiler.transform.call(context, SOURCE, FILE, { ssr: false });
+      await compiler.transform.call(context, SOURCE, FILE, { ssr: false });
     }
 
     const code = manifest.load(manifest.resolveId(MANIFEST_ID) as string) as string;
@@ -132,15 +132,15 @@ describe("the manifest", () => {
    * while the SSR environment sees the bare path. Keyed by the raw id those were
    * two entries producing one `mount()` call twice.
    */
-  test("a query on the module id is not a second module", () => {
+  test("a query on the module id is not a second module", async () => {
     const [compiler, manifest, dev] = byName(barqStart());
     const config = { root: ROOT, mode: "development" };
     compiler.configResolved?.(config);
     dev.configResolved?.(config);
 
     const context = { warn: () => {} };
-    compiler.transform.call(context, SOURCE, FILE, { ssr: false });
-    compiler.transform.call(context, SOURCE, `${FILE}?v=8f1c2a`, { ssr: false });
+    await compiler.transform.call(context, SOURCE, FILE, { ssr: false });
+    await compiler.transform.call(context, SOURCE, `${FILE}?v=8f1c2a`, { ssr: false });
 
     const code = manifest.load(manifest.resolveId(MANIFEST_ID) as string) as string;
     const mounted = [...code.matchAll(/mount\("([^"]+)"/g)].map((m) => m[1]);
@@ -148,7 +148,7 @@ describe("the manifest", () => {
   });
 
   /** An app with no server functions still imports this module. */
-  test("an empty manifest is a module rather than an error", () => {
+  test("an empty manifest is a module rather than an error", async () => {
     const [, manifest] = byName(barqStart());
     const code = manifest.load(manifest.resolveId(MANIFEST_ID) as string) as string;
     expect(code).toContain("export {}");
@@ -162,7 +162,7 @@ describe("the artifact the manifest is built from", () => {
    * pins the compiler's own answer to the same rule. If the compiler changes
    * how it spells an id, this fails here rather than at runtime as a 404.
    */
-  test("the compiler spells an id the same way the plugin does", () => {
+  test("the compiler spells an id the same way the plugin does", async () => {
     const out = transform(SOURCE, { filename: FILE, root: ROOT, env: "client", serverFns: true });
     expect(out.code).toContain('clientRpc("server/users.ts#getUser")');
 
@@ -217,7 +217,7 @@ describe("the entries an application does not write", () => {
     };
   };
 
-  test("the client half boots through `startClient` and names nothing else", () => {
+  test("the client half boots through `startClient` and names nothing else", async () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(CLIENT_ENTRY_ID) as string) ?? "";
 
@@ -237,7 +237,7 @@ describe("the entries an application does not write", () => {
     expect(code).not.toContain("getElementById");
   });
 
-  test("the server half is `createStartHandler` and serves nothing", () => {
+  test("the server half is `createStartHandler` and serves nothing", async () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(SERVER_ENTRY_ID) as string) ?? "";
 
@@ -277,7 +277,7 @@ describe("the entries an application does not write", () => {
    * it did. Nitro splits the same way: its node preset is a serve call with no
    * default export.
    */
-  test("the RUNNABLE half is a different module, and exports nothing", () => {
+  test("the RUNNABLE half is a different module, and exports nothing", async () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
 
@@ -287,7 +287,7 @@ describe("the entries an application does not write", () => {
     expect(code).not.toContain("export const");
   });
 
-  test("static serving is on by default, and its path resolves at RUNTIME", () => {
+  test("static serving is on by default, and its path resolves at RUNTIME", async () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
     // `../client`, because this file is `<out>/server/serve.js`. Getting the
@@ -299,13 +299,13 @@ describe("the entries an application does not write", () => {
     expect(code).not.toContain(ROOT);
   });
 
-  test("`static: false` is honoured, for the CDN-in-front deployment", () => {
+  test("`static: false` is honoured, for the CDN-in-front deployment", async () => {
     const code = serveEntryWith({ server: { static: false } });
     expect(code).not.toContain("static:");
     expect(code).toContain("fetch: handler.fetch");
   });
 
-  test("`port` reads PORT first, because every host sets it", () => {
+  test("`port` reads PORT first, because every host sets it", async () => {
     expect(serveEntryWith({ server: { port: 4321 } })).toContain(
       "port: Number(process.env.PORT ?? 4321)",
     );
@@ -326,7 +326,7 @@ describe("the entries an application does not write", () => {
    * Grepped across both of TanStack's `start-basic` examples, user code names no
    * `virtual:` and no `#` specifier at all. This is that property, as a gate.
    */
-  test("neither entry names a build specifier, because an application copies them", () => {
+  test("neither entry names a build specifier, because an application copies them", async () => {
     const plugin = entries();
     for (const id of [CLIENT_ENTRY_ID, SERVER_ENTRY_ID]) {
       const code = plugin.load(plugin.resolveId(id) as string) ?? "";
@@ -342,7 +342,7 @@ describe("the entries an application does not write", () => {
    * there is nothing in it to override. So it may name its sibling — and only
    * its sibling.
    */
-  test("the serve entry names the server entry, and no other specifier", () => {
+  test("the serve entry names the server entry, and no other specifier", async () => {
     const plugin = entries();
     const code = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
     const specifiers = [...code.matchAll(/from\s*["']([^"']+)["']/g)].map((m) => m[1]);
@@ -350,7 +350,7 @@ describe("the entries an application does not write", () => {
     expect(code).not.toContain("routeTree.gen");
   });
 
-  test("the ROUTER entry is where the generated tree is named, by an ABSOLUTE path", () => {
+  test("the ROUTER entry is where the generated tree is named, by an ABSOLUTE path", async () => {
     // A generated module has no directory of its own, so a relative specifier in
     // one resolves against nothing. This is also the only generated module that
     // names the tree at all — a project writing `src/router.ts` replaces it, and
@@ -372,7 +372,7 @@ describe("the router entry a project DOES write", () => {
     return entries.resolveId(ROUTER_ENTRY_ID);
   };
 
-  test("a project's own `src/router.ts` wins over the generated default", () => {
+  test("a project's own `src/router.ts` wins over the generated default", async () => {
     const resolved = routerEntry(join(import.meta.dir, "../test/router-fixture"));
     // The FILE, not the `\0`-prefixed generated id — so the module keeps its own
     // identity in the graph and the watcher sees the file the author edits,
@@ -381,7 +381,7 @@ describe("the router entry a project DOES write", () => {
     expect(resolved).not.toStartWith("\0");
   });
 
-  test("and the file it wins with names no build specifier", () => {
+  test("and the file it wins with names no build specifier", async () => {
     const source = readFileSync(
       join(import.meta.dir, "../test/router-fixture/src/router.ts"),
       "utf8",
@@ -396,7 +396,7 @@ describe("the router entry a project DOES write", () => {
     expect(specifiers.filter((one) => one.startsWith("#barq-"))).toEqual([]);
   });
 
-  test("without one, the generated default is used and names the tree absolutely", () => {
+  test("without one, the generated default is used and names the tree absolutely", async () => {
     const resolved = routerEntry(ROOT);
     expect(resolved).toBe("\0barq-router-entry");
   });
@@ -414,7 +414,7 @@ describe("the router entry a project DOES write", () => {
    * The check is on the RESOLVED id rather than on the public specifier, which
    * keeps its `#` because it is an alias to a real file.
    */
-  test("the resolved id carries nothing a URL would read as a fragment or a query", () => {
+  test("the resolved id carries nothing a URL would read as a fragment or a query", async () => {
     const resolved = routerEntry(ROOT) as string;
     expect(resolved.startsWith("\0")).toBe(true);
     for (const character of ["#", "?"]) {
@@ -443,19 +443,19 @@ describe("`target` pins the srvx adapter at BUILD time", () => {
    * carries the Node adapter wherever it is deployed. Naming the target is what
    * pins it, and doing it here costs nothing per request.
    */
-  test("naming one rewrites the bare `srvx` specifier", () => {
+  test("naming one rewrites the bare `srvx` specifier", async () => {
     expect(ssrAlias({ server: { target: "bun" } })).toEqual([
       { find: /^srvx$/, replacement: "srvx/bun" },
     ]);
   });
 
-  test("the pattern is ANCHORED, so `srvx/static` is left alone", () => {
+  test("the pattern is ANCHORED, so `srvx/static` is left alone", async () => {
     const [entry] = ssrAlias({ server: { target: "node" } }) as { find: RegExp }[];
     expect(entry.find.test("srvx")).toBe(true);
     expect(entry.find.test("srvx/static")).toBe(false);
   });
 
-  test("`auto` pins nothing, because srvx's own conditions already answer", () => {
+  test("`auto` pins nothing, because srvx's own conditions already answer", async () => {
     expect(ssrAlias({})).toEqual([]);
     expect(ssrAlias({ server: { target: "auto" } })).toEqual([]);
   });
