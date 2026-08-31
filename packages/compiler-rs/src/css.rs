@@ -708,16 +708,13 @@ impl<'a> Css<'a, '_> {
             classes
                 .split(' ')
                 .filter(|class| !class.is_empty())
-                .filter_map(|class| {
-                    let cut = class.rfind('_')?;
-                    Some(barq_css::atoms::Atom {
-                        key: class[..cut].to_string(),
-                        class: class.to_string(),
-                        // Already registered by the call that produced it; only
-                        // the key matters here, and the key is in the name.
-                        rule: String::new(),
-                        tier: barq_css::atoms::Tier::Base,
-                    })
+                .map(|class| barq_css::atoms::Atom {
+                    key: barq_css::atoms::merge_key(class),
+                    class: class.to_string(),
+                    // Already registered by the call that produced it; only
+                    // the key matters here, and the key is in the name.
+                    rule: String::new(),
+                    tier: barq_css::atoms::Tier::Base,
                 })
                 .collect(),
         )
@@ -1384,6 +1381,18 @@ mod atom_tests {
         let out =
             run("declare const name: string;\nexport const a = atomsIn(name, { color: \"red\" });");
         assert!(out.code.contains("atomsIn("), "{}", out.code);
+    }
+
+    /// A class that is not an atom is carried through, not dropped.
+    ///
+    /// `known` keyed every class on the slice before its last `_` and threw
+    /// away anything with no `_` in it — so `atoms("my-button", { … })`
+    /// compiled to the atoms alone while the runtime kept both, and a component
+    /// handed a caller's class lost it on the way through the build.
+    #[test]
+    fn a_class_that_is_not_an_atom_survives_the_merge() {
+        let out = run("export const a = atoms(\"my-button\", { color: \"red\" });");
+        assert!(out.code.contains("\"my-button a-color_i0tgik\""), "{}", out.code);
     }
 
     /// The class the runtime produces for the same declaration, pinned in

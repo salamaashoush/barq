@@ -425,6 +425,19 @@ pub fn atom(property: &str, condition: &str, value: &str) -> Atom {
     atom_in("", property, condition, value)
 }
 
+/// What a class already in a class string merges against.
+///
+/// An atom carries its property, so `a-color_1n4k2p0` is replaced by any later
+/// `color`. A class that is NOT one of ours — an application's own, arriving
+/// through a `class` prop — carries no property and has nothing to merge
+/// against, so it stands for itself and survives whatever follows it.
+pub fn merge_key(class: &str) -> String {
+    match class.rfind('_') {
+        Some(cut) if class.starts_with("a-") => class[..cut].to_string(),
+        _ => class.to_string(),
+    }
+}
+
 /// The same, inside a cascade layer.
 ///
 /// For a component LIBRARY, whose rules are meant to lose to an application's.
@@ -529,6 +542,19 @@ mod tests {
         assert_eq!(red.key, blue.key);
         assert_ne!(red.class, blue.class);
         assert_eq!(red.class, format!("{}_{}", red.key, red.class.rsplit('_').next().unwrap()));
+    }
+
+    /// `build` in `atoms.ts` keys a class on itself unless it is one of ours,
+    /// and this has to agree: keyed on a slice, `my-button` and `my-badge`
+    /// would collide the moment both reached one call, and the compiler used to
+    /// drop such a class outright.
+    #[test]
+    fn a_class_that_is_not_an_atom_merges_against_itself() {
+        assert_eq!(merge_key("a-color_i0tgik"), "a-color");
+        assert_eq!(merge_key("a-color-doumed_10cd4ul"), "a-color-doumed");
+        assert_eq!(merge_key("my-button"), "my-button");
+        assert_eq!(merge_key("my_button"), "my_button");
+        assert_eq!(merge_key("b1n4k2p0"), "b1n4k2p0");
     }
 
     #[test]
