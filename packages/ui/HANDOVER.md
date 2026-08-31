@@ -4,10 +4,10 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (307), aria (654), core (938),
+Green on the current tree: `bun test` passes in ui (310), aria (661), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
-css (85), ui-cli (47), lucide (17) and query (15), and `cargo test --workspace`
-in `compiler-rs` (500 + 34 + 30). `bunx tsc --noEmit` is clean in ui, ui-cli and
+css (92), ui-cli (59), lucide (17) and query (15), and `cargo test --workspace`
+in `compiler-rs` (512 + 34 + 30). `bunx tsc --noEmit` is clean in ui, ui-cli and
 lucide, all three build, `bun run verify` reports 2375 of 2375 declarations
 present, and `oxlint --type-aware --deny-warnings` is clean over `packages/ui`
 and `packages/aria`.
@@ -391,6 +391,84 @@ document and a removed element keeps focus.
    correctly a `bindEffect`. Fixed in `compiler-rs`'s shape pass
    (`a_container_literal_holding_a_reactive_read_is_rebuilt_not_frozen`).
 
+## The configurator, and the compiler bug it found
+
+`bun run gallery` picks a base, an accent, a radius and light or dark, applies
+each through `installTheme`, and offers the result as CSS with a swatch per
+colour. That is shadcn's own story over data that is shaped differently here:
+seven BASES declare the whole token set and seventeen ACCENTS layer a handful
+over one, where shadcn has a single flat list.
+
+**`themeValues` is why the copy is honest.** `themeCss` is built from it, so the
+values on screen and the text on the clipboard are one computation rather than
+two that have to be kept agreeing. shadcn's customiser has the other shape:
+`getThemeCodeOKLCH` spells the CSS a second time beside the page that is already
+displaying it.
+
+Checked in Chrome at 1280x720: switching base moved `--primary` and a real
+button's background; the accent moved `--primary` alone; `Large` gave
+`--radius: 0.875rem` and a button `border-radius: 12px`, which is the
+`calc(var(--radius) - 2px)` it should be. The keyed replacement holds under
+switching, and this is the number to check if it ever stops: one `:root`, one
+`.dark`, one `@layer barq.theme` in `<style id="barq-css">` however many times
+you switch, and the character count returns EXACTLY to its starting value on
+returning to the starting theme. All 53 declarations shown in the dialog were
+byte-identical to lines in what the Copy button put on the clipboard.
+
+**A chosen radius used to be written twice.** Every base declares `radius` among
+its tokens and both generators appended rather than overrode, so every themed
+project carried two `--radius` declarations. The cascade took the second and the
+page was right, which is why nothing caught it. It overrides the token now, so
+it also keeps the token's PLACE in the list.
+
+### The bug the copy button found
+
+`<Comp><Icon />{label()}</Comp>` rendered `label()`'s first value and never moved
+again. Two defects in `compiler-rs`'s shape pass, and the second is the one that
+matters to anyone writing a component here:
+
+1. **`builds_dom` stopped at a ternary.** So `{on() ? <A/> : <B/>}` looked like
+   it built nothing and the array holding it was a Cell over a value built once.
+   `compile.rs`'s `builds_dom_eagerly` had always seen through a conditional, a
+   logical and a sequence, so the pass that DECIDES and the pass that CHECKS
+   disagreed and only the deciding one was consulted.
+2. **Nothing wrapped a moving child inside a children Block.** The array goes
+   into a Block as soon as any child builds DOM, and `buildChild` runs a Block
+   UNTRACKED on purpose, so the per-element thunk is the only thing that can
+   keep a read alive there. One child that built DOM froze every other child
+   beside it.
+
+The shape now: a construction written directly stays bare, one reached through a
+CHOICE is thunked, and a LONE choice becomes an array of one so `insert` sees a
+live hole. Both halves are load-bearing and each broke the tree when I got it
+wrong. Thunking a directly-written construction captures the scope at the call
+site; wrapping one in a Block of its own shadows the `_s$` the array just
+rebound, and `<ContextMenuTrigger>` stopped finding its `<ContextMenu>` — 68
+aria tests and 58 here. `chooses_dom` is the distinction, and anything weaker
+than it (`react != Static`, say) takes a plain `<Child />` back out of its Block,
+because an ordinary component call is `Opaque` rather than `Static`.
+
+`packages/aria/src/children.test.tsx` is the runtime half, in aria because that
+is the lowest package whose suite goes through the compiler. Every one of those
+cases rendered CORRECTLY on first paint; the failures were all in the second
+assertion, which is why no existing test had it.
+
+## Two tools that were quietly stale
+
+- **`tools/exports.ts` still wrote the `dist` exports map.** `c840bf3` moved the
+  package to publishing SOURCE under a `barq` condition by editing
+  `package.json` directly, and running `bun run exports` put the old map back:
+  `types` and `import` pointing at a build that no longer exists. The generator
+  writes the source map now, and `package.json` is byte-identical to the
+  hand-written one, which is the check that it agrees.
+- **The gallery was never typechecked.** `tsconfig.json` included `src`, `tools`
+  and `types` and not `gallery`, so 900 lines of the package's only browser
+  surface answered to nothing. It is in now, with a `paths` entry for the
+  `@barqjs/ui` self-import that Vite aliases and `tsc` cannot. Twenty of the
+  errors that surfaced were kebab-case style keys, which were a bug in
+  `@barqjs/core`'s `CSSProperties` rather than in the gallery, and one was
+  `Section` declaring plain props where barq hands a component Cells.
+
 ## Things that will bite
 
 - **The compiler PROVES reactivity; it does not guess.** A prop whose value
@@ -429,6 +507,9 @@ document and a removed element keeps focus.
   is what cost the accordion its dividers; the next consumer hits it too.
 - **The gallery is the only browser check.** It is opened by hand every time,
   and every visual bug in this file was found that way.
+- **The theme configurator is the gallery's, not the package's.** A consumer
+  building one of their own has `themeValues` and `themeCss` and writes the
+  controls; nothing here ships a `<ThemeConfigurator>`.
 - **Server rendering.** Nothing here has been rendered through
   `@barqjs/server`. The CSS arrives through `collectCss`, which `@barqjs/start`
   already inlines, but no test covers a component's markup crossing the wire.

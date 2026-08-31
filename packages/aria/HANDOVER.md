@@ -5,9 +5,10 @@ The package surface, its conventions and what is not implemented are in
 changes this package caused, the traps that cost a debugging session each, and
 what has not been re-run.
 
-Green on the current tree: `bun test` passes in aria (648), core (938),
+Green on the current tree: `bun test` passes in aria (661), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
-css (62) and query (15), and `cargo test` in `compiler-rs` (468). `bunx tsc --noEmit` is clean in `packages/aria` and
+css (92) and query (15), and `cargo test --workspace` in `compiler-rs`
+(512 + 34 + 30). `bunx tsc --noEmit` is clean in `packages/aria` and
 `packages/testing`, `bun run build` succeeds in aria, and
 `oxlint --type-aware --deny-warnings` and `oxfmt --check` are both clean over
 `packages/aria` and `packages/testing`.
@@ -46,6 +47,35 @@ Each has a regression test where the bug was, not where it showed up.
    row callback building no JSX of its own got no scope parameter (`scope.rs`).
 5. **Capture-phase events did not exist.** `onKeyDownCapture` and
    `capture:keydown`, end to end through the compiler and all three backends.
+
+### In the compiler
+
+14. **A child that MOVES was spent once beside a child that BUILDS.** A
+    component's children go into a Block as soon as any of them builds DOM, and
+    `buildChild` runs a Block untracked on purpose, so the per-element thunk is
+    the only thing keeping a read alive in there. Nothing wrapped them:
+    `<Comp><Icon />{label()}</Comp>` rendered `label()`'s first value and never
+    moved again. `builds_dom` also stopped at a ternary, so an array holding
+    `{on() ? <A/> : <B/>}` was not a Block at all but a Cell over a value built
+    once, while `compile.rs`'s `builds_dom_eagerly` had always seen through one.
+    `src/children.test.tsx` is the runtime half and lives here because this is
+    the lowest package whose suite goes through the compiler.
+
+    **The shape is delicate and both halves cost a full suite when wrong.** A
+    construction written directly stays bare. Wrapping one in a thunk captures
+    the scope at the CALL site. Wrapping one in a Block of its own shadows the
+    `_s$` the array just rebound, which is the Provider bug from the other side
+    and took `<ContextMenuTrigger>` away from its `<ContextMenu>` in 68 tests
+    here. A construction reached through a CHOICE is thunked instead, and
+    a lone one becomes an array of ONE so `insert` sees a live hole rather than
+    an untracked Block. `chooses_dom` in `passes/shape.rs` is that distinction;
+    anything weaker takes a plain `<Child />` back out of its Block, because an
+    ordinary component call is `Opaque` rather than `Static`.
+
+15. **A style key could only be spelled camelCase.** Every backend puts one
+    through `toKebabCase` and the string renderer shares it via `styleToString`,
+    so `style={{ "max-width": x }}` always worked and only `CSSProperties`
+    refused it.
 
 ### In `@barqjs/aria`'s own foundation
 
