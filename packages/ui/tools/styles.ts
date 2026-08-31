@@ -34,7 +34,7 @@ const LAYER = "barq.style";
  * covered without this file being edited, and a slot RENAMED stops matching
  * loudly instead of quietly styling nothing.
  */
-function slotsWeEmit(root: string): Set<string> {
+export function slotsWeEmit(root: string): Set<string> {
   const out = new Set<string>();
   const directory = resolve(root, "src/ui");
   for (const file of readdirSync(directory)) {
@@ -88,6 +88,11 @@ const ALIASES: Readonly<Record<string, string>> = {
   "calendar-caption": "calendar-month-caption",
   "combobox-list": "combobox-content",
   "radio-group-indicator-icon": "radio-group-indicator",
+  // `@barqjs/aria`'s group is a wrapper and the ROW inside it is what lays the
+  // options out. `cn-radio-group` reached the wrapper, where `grid` and a gap
+  // apply to a single child and do nothing; the geometry diff found it as
+  // "display: grid | block".
+  "radio-group": "radio-group-items",
   // One control, whichever element it is.
   "input-group-input": "input-group-control",
   "input-group-textarea": "input-group-control",
@@ -143,10 +148,15 @@ export function selectorFor(cn: string, slots: ReadonlySet<string>): string | nu
   // logical-property twin. Both style the SAME element this package renders, so
   // both resolve to the one slot rather than being reported as missing.
   const bare = name.replace(/-(?:aria|logical)$/, "");
-  if (slots.has(bare)) return `[data-slot="${bare}"]`;
 
+  // The alias FIRST, because the interesting ones rename a slot this package
+  // also emits: `radio-group` exists here as the wrapper and the row inside it
+  // is what the style meant. Checking `slots.has` first sent those rules to the
+  // wrong element and reported success.
   const alias = ALIASES[bare];
   if (alias !== undefined && slots.has(alias)) return `[data-slot="${alias}"]`;
+
+  if (slots.has(bare)) return `[data-slot="${bare}"]`;
 
   for (const [axis, attribute] of AXES) {
     const at = bare.lastIndexOf(`-${axis}-`);

@@ -47,3 +47,7 @@ packages/compiler-rs/index.d.ts
 # Five upstream checkouts; the notes taken from them are in
 # packages/css/ZERO-RUNTIME.md, which is what ships.
 scratch/css-research/
+
+# `tools/geometry.ts` writes these for a browser to read; they are the
+# stylesheet and the spec, both regenerated from source.
+packages/ui/gallery/geometry/

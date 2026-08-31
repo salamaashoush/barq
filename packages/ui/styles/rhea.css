@@ -231,7 +231,7 @@
       }
     }
 
-    [data-slot="radio-group"] {
+    [data-slot="radio-group-items"] {
       display: grid;
       gap: calc(var(--spacing) * 3);
     }
