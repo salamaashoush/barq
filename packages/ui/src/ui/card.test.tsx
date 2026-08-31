@@ -64,6 +64,36 @@ describe("Card", () => {
     for (const one of plain) expect(ruled).toContain(one);
   });
 
+  // The eight styles select on both of these and the card wrote neither:
+  // `[--card-spacing:--spacing(4)]` hangs off `data-[size=sm]`, and a bordered
+  // edge's padding off the literal `.border-b` / `.border-t`. Nothing failed
+  // without them — the card simply kept the large spacing under every style,
+  // and a bordered header had a rule and no padding to go with it.
+  test("carries the hooks the styles select on", () => {
+    render(() => (
+      <Card size="sm">
+        <CardHeader bordered>
+          <CardTitle>Invoices</CardTitle>
+        </CardHeader>
+        <CardFooter bordered>Paid</CardFooter>
+      </Card>
+    ));
+
+    expect(slot("card").getAttribute("data-size")).toBe("sm");
+    expect(slot("card-header").className.split(" ")).toContain("border-b");
+    expect(slot("card-footer").className.split(" ")).toContain("border-t");
+  });
+
+  test("a card is default-sized unless it is told otherwise", () => {
+    render(() => <Card>a</Card>);
+    expect(slot("card").getAttribute("data-size")).toBe("default");
+  });
+
+  test("an unbordered edge carries no border marker", () => {
+    render(() => <CardHeader>a</CardHeader>);
+    expect(slot("card-header").className.split(" ")).not.toContain("border-b");
+  });
+
   test("a caller's class comes after the component's own", () => {
     const { container } = render(() => <Card class="mine">a</Card>);
     const classes = container.querySelector('[data-slot="card"]')!.className.split(" ");

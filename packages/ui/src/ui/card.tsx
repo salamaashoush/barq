@@ -76,6 +76,20 @@ const footerBordered = ui({
   paddingTop: "calc(var(--spacing) * 6)",
 });
 
+export type CardSize = "default" | "sm";
+
+export interface CardProps extends UiProps {
+  /**
+   * The padding, the gap and the title's size, together.
+   *
+   * One attribute rather than three props because that is what the eight styles
+   * select on: each declares `[--card-spacing:--spacing(6)]` and
+   * `data-[size=sm]:[--card-spacing:--spacing(4)]` on the card itself, and
+   * every part reads the token by inheritance.
+   */
+  size?: CardSize;
+}
+
 /**
  * ```tsx
  * <Card>
@@ -89,8 +103,12 @@ const footerBordered = ui({
  * </Card>
  * ```
  */
-export function Card(props: Incoming<UiProps>) {
-  return <div {...uiProps("card", card, props)}>{props.children}</div>;
+export function Card(props: Incoming<CardProps>) {
+  return (
+    <div {...uiProps("card", card, props)} data-size={props.size?.() ?? "default"}>
+      {props.children}
+    </div>
+  );
 }
 
 export interface CardEdgeProps extends UiProps {
@@ -106,7 +124,16 @@ export interface CardEdgeProps extends UiProps {
 }
 
 export function CardHeader(props: Incoming<CardEdgeProps>) {
-  const className = (): string => ui(header, props.bordered?.() === true && headerBordered);
+  // A literal alongside the atoms. The styles ask for the padding as
+  // `[.border-b]:pb-(--card-spacing)`, which compiles to `&:is(.border-b)`, so
+  // without the class a bordered header had a rule under every style and no
+  // padding to go with it.
+  const className = (): string =>
+    ui(
+      header,
+      props.bordered?.() === true && headerBordered,
+      props.bordered?.() === true && "border-b",
+    );
   return <div {...uiProps("card-header", className, props)}>{props.children}</div>;
 }
 
@@ -128,6 +155,11 @@ export function CardContent(props: Incoming<UiProps>) {
 }
 
 export function CardFooter(props: Incoming<CardEdgeProps>) {
-  const className = (): string => ui(footer, props.bordered?.() === true && footerBordered);
+  const className = (): string =>
+    ui(
+      footer,
+      props.bordered?.() === true && footerBordered,
+      props.bordered?.() === true && "border-t",
+    );
   return <div {...uiProps("card-footer", className, props)}>{props.children}</div>;
 }
