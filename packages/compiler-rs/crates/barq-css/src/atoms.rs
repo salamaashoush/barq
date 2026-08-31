@@ -352,6 +352,51 @@ pub enum Tier {
     Media,
 }
 
+impl Tier {
+    /// The sub-layer this tier is emitted into, INSIDE the layer the call
+    /// named.
+    ///
+    /// Emitting in tier order settles the pair specificity cannot, and it
+    /// settles it within one `atoms` call and nowhere else: a group declared in
+    /// another module had its rules registered first, so composing it can
+    /// invert such a pair. A sub-layer makes the order global — the cascade
+    /// decides by layer whatever the source order — without giving up the thing
+    /// atoms exist for, because a sub-layer of `barq.ui` is still inside
+    /// `barq.ui` and still loses to an application's unlayered rule.
+    ///
+    /// Only for a layered atom. An unlayered one cannot have a sub-layer for
+    /// the same reason it cannot have a layer: a layered rule loses to an
+    /// unlayered one whatever its specificity, and an application's own
+    /// `* { margin: 0 }` would beat every margin on the page.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Tier::Descendant => "descendant",
+            Tier::Base => "base",
+            Tier::Select => "select",
+            Tier::Element => "element",
+            Tier::Media => "media",
+        }
+    }
+
+    pub const ALL: [Tier; 5] =
+        [Tier::Descendant, Tier::Base, Tier::Select, Tier::Element, Tier::Media];
+}
+
+/// The one statement that fixes a layer's sub-layer order.
+///
+/// Written rather than inferred, because a layer's position is decided by where
+/// it is FIRST NAMED and a module whose first atom is a media atom would
+/// otherwise put `media` before `base`. Repeating it is free: a second
+/// `@layer a, b;` for names already ordered is a no-op, which is what lets a
+/// per-file pass emit it at all. StyleX cannot — its layer list is
+/// `priority1 … priorityN` derived from the whole rule set, so only a
+/// build-level aggregation can write it.
+pub fn sub_layer_order(layer: &str) -> String {
+    let names: Vec<String> =
+        Tier::ALL.iter().map(|tier| format!("{layer}.{}", tier.as_str())).collect();
+    format!("@layer {};", names.join(", "))
+}
+
 /// A condition path, joined. `@media …` outside, `:hover` inside.
 ///
 /// NUL, because it cannot appear in a selector or an at-rule prelude, and
@@ -484,10 +529,16 @@ pub fn atom_in(layer: &str, property: &str, condition: &str, value: &str) -> Ato
     for part in parts.iter().filter(|part| part.starts_with('@')).rev() {
         inner = format!("{part}{{{inner}}}");
     }
+    let tier = tier_of(condition);
     if !layer.is_empty() {
-        inner = format!("@layer {layer}{{{inner}}}");
+        // The SUB-layer, so tier order is the cascade's rather than the order
+        // two modules happened to be emitted in. The class name is untouched:
+        // the tier is a pure function of the condition and the condition is
+        // already in the key, so it adds nothing to the atom's identity and
+        // the suffix still hashes `layer|value`.
+        inner = format!("@layer {layer}.{}{{{inner}}}", tier.as_str());
     }
-    Atom { class, key, rule: inner, tier: tier_of(condition) }
+    Atom { class, key, rule: inner, tier }
 }
 
 #[cfg(test)]

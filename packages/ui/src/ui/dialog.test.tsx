@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { flush } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, tick, user } from "@barqjs/testing";
 
+import { rulesFor } from "../test-rules.ts";
 import { Button } from "./button.tsx";
 import {
   Dialog,
@@ -124,14 +124,10 @@ describe("Dialog", () => {
     const underlay = document.querySelector("[data-barq-underlay]") as HTMLElement;
     expect(underlay).not.toBeNull();
     expect(underlay.className).not.toBe("");
-    const names = underlay.className.split(" ");
-    const rules = collectCss()
-      .split("@layer barq.ui{")
-      .filter((chunk) => names.some((name) => chunk.includes(`.${name}{`)))
-      .join("");
-    expect(rules).toContain("position:fixed");
+    const rules = rulesFor(underlay.className);
+    expect(rules).toContain("position: fixed");
     // Atoms expand a shorthand, so `inset: 0` is its four sides.
-    expect(rules).toContain("top:0px");
+    expect(rules).toContain("top: 0px");
   });
 
   test("role can be alertdialog", async () => {

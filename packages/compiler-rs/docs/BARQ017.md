@@ -9,23 +9,41 @@ so the call is left where it is and `@barqjs/css` evaluates it in the browser.
 
 ```tsx
 import { atoms } from "@barqjs/css";
+import { theme } from "./theme.ts";
 
-const card = atoms({ color: theme.brand });   // BARQ017: `theme` is not this module's
+const card = atoms({ color: theme.brand });   // BARQ017: another module's value
 ```
 
 Nothing is broken. The runtime computes exactly what the compiler would have,
 into the same registry and under the same class names, which is what the parity
 test in `crates/barq-css/src/atoms.rs` pins. What is lost is the compilation:
 that object is walked on every evaluation, and it is the reason `@barqjs/css`
-ships its object path at all.
+ships its object path at all. Measured on the forty-six component gallery, that
+path is 4.34 KB raw and 1.35 KB gzipped.
 
-## Why it exists
+## What reaches this note, and what does not
 
-The three ways to decline used to be two notes and five silences. A call that
-fell back said nothing, so the only way to find out an application was still
-paying for the runtime was to read the bundle. Measured on the forty-six
-component gallery, the object path is 4.34 KB raw and 1.35 KB gzipped, and a
-build that never triggers it has no way to say so without this note.
+**Everything this reports is a value from another module or a value that is
+genuinely only known at run time.** It is not a list of shapes the compiler has
+not got round to. Each of these folds:
+
+```ts
+const BRAND = "#3b82f6";                 // wherever in the file it is written
+const SAME = BRAND;                      // and a binding naming a binding
+const GAP = 8;                           // a number, `px` and all
+const MIX = "@supports (color: color-mix(in lab, red, red))";
+const LAYER = "barq.ui";
+
+atoms({ color: BRAND, padding: GAP });
+atoms({ [MIX]: { color: BRAND } });      // a computed key
+atoms([base, active() && loud], extra);  // an array, and a spread of one
+atomsIn(LAYER, { color: BRAND });        // a layer named by a constant
+createTheme(tokens, { brand: BRAND });   // over a token set this module declares
+```
+
+A module-level `const` is a fact about the module, not about the line it is on:
+a component written above the `const` it reads folds exactly as one written
+below it, and a group or a token set is resolved the same way.
 
 ## What it does not report
 
@@ -50,15 +68,18 @@ README recommends.
 
 ## The shapes that report, and the fix for each
 
-| what | fix |
-| --- | --- |
-| `{ color: theme.brand }`, a value from another module | pass the value through a custom property and set it with `style` |
-| `atomsIn(LAYER, …)`, a layer that is not a literal | bind it once with `const ui = layer("barq.ui")`, in this module |
-| `atoms(...rest)`, a spread | write the arguments out; `atoms` takes as many as you like |
-| `{ color: LATER }` above `const LATER = …` | move the `const` above the call — the fold reads a table the same walk is filling |
-| `createTheme(imported, …)` | declare the token set in the module that themes it, or accept the runtime |
-| `dynamic((c) => build(c))` | the body must be an object literal, which is the rule StyleX states for the same reason |
-| `globalCss` outside statement position | `globalCss` writes rules and returns nothing; give it its own statement |
+Every one of them is the per-file rule or a runtime value:
+
+| what | why | fix |
+| --- | --- | --- |
+| `{ color: theme.brand }`, imported | `transform` is per-file and holds no cross-file state | pass it through a custom property and set it with `style`, or declare the token set here |
+| `atomsIn(LAYER, …)`, `LAYER` imported | the layer joins every class name | bind it in this module with `const ui = layer("barq.ui")` |
+| `atoms(...rest)` | not an argument list anything can count through | write the arguments out, or spread an array literal, which does fold |
+| `defineVars({ brand: pick() })` | a call is not a value | name the value |
+| `dynamic((c) => build(c))` | a body that computes cannot be read statically | the body must be an object literal, which is the rule StyleX states for the same reason |
+| `createTheme(imported, …)` | the property names live in the token set | declare the token set in the module that themes it |
+| `atoms(opaque, { color: null })` | a removal has to see what came before it | put the removal before the opaque argument, or use a separate call |
+| `globalCss` outside statement position | it writes rules and returns nothing | give it its own statement |
 
 ## `strictCss`
 

@@ -17,7 +17,7 @@
 import type * as CSS from "csstype";
 
 import { UNEXPANDABLE, expand } from "./shorthands.ts";
-import { hash, register } from "./sheet.ts";
+import { TIERS, hash, register } from "./sheet.ts";
 
 export type AtomValue = string | number | false | null | undefined | Fallback;
 
@@ -168,36 +168,12 @@ function atomKey(property: string, condition: string): string {
 }
 
 /**
- * How an atom is ORDERED against another atom, and nothing more.
- *
- * Not a cascade layer, and this was one for a while. Layers gave ordering
- * across modules and took away the thing atoms exist for: a layered rule loses
- * to an UNLAYERED one whatever the specificity, so an application's
- * `* { margin: 0 }` beat every `margin` atom on the page — measured in a
- * browser, every margin and padding computing to `0px`.
- *
- * Specificity already answers that: `.a-margin-top_x` is 0-1-0 against the
- * reset's 0-0-0. It answers most of the rest too — `:hover` is 0-2-0 and
- * `::before` is 0-1-1 — and the only pair it cannot separate is a base against
- * the same property under an at-rule, since `@media` adds none. So a module
- * emits its atoms in tier order and that pair is decided.
- *
- * Ordering ACROSS modules is not needed and never was: two atoms conflict only
- * when merged, merging happens in one `atoms` call, and one call is in one
- * module. Tailwind does layer (`@layer theme, base, components, utilities;`)
- * because it owns the reset as well as the utilities; vanilla-extract layers
- * only where asked, and Linaria and StyleX not at all.
+ * The tier order and the statement that publishes it, from the module that owns
+ * the sheet. Re-exported because a tier is an ATOM's fact and `atoms.ts` is
+ * where a reader looks for it; it lives beside `register` because `sheet.ts`
+ * cannot import from here without a cycle.
  */
-/**
- * `descendant` comes FIRST, and that is the one tier order decides rather than
- * specificity. A rule a parent writes about its children — `& > *`, `& svg` —
- * and a rule the child writes about itself are both one class, so nothing
- * separates them but which was written last. Measured in a browser: a field
- * saying `& > * { width: 100% }` took a label's own `width: fit-content` away
- * and stretched it across the row. The child's own rule is the more specific
- * INTENT, so the parent's goes before it and loses the tie.
- */
-export const TIERS = ["descendant", "base", "select", "element", "media"] as const;
+export { TIERS, subLayerOrder } from "./sheet.ts";
 
 /** Whether a condition's subject is this element, or something under it. */
 function aboutSelf(condition: string): boolean {
@@ -243,7 +219,7 @@ export function tierOf(condition: string): number {
  * descendant — the same four cases the nested-block flattener has, because a
  * condition here is a nested selector written on one line.
  */
-function rule(name: string, condition: string, declaration: string, into = ""): string {
+function rule(name: string, condition: string, declaration: string, into = "", tier = 1): string {
   const parts = condition === "default" ? [] : condition.split(NEST);
   // At-rules wrap from the outside in; the selector parts all apply to the one
   // class, so they concatenate.
@@ -259,7 +235,15 @@ function rule(name: string, condition: string, declaration: string, into = ""): 
   }
   inner = `${inner}{${declaration}}`;
   for (const wrap of wraps.toReversed()) inner = `${wrap}{${inner}}`;
-  return into === "" ? inner : `@layer ${into}{${inner}}`;
+  // The SUB-layer, so tier order is the cascade's rather than the order two
+  // modules happened to register in. Emitting in tier order settles the pair
+  // specificity cannot — a base against the same property under an at-rule,
+  // since `@media` adds none — and it settles it within one `atoms` call and
+  // nowhere else: a group declared in another module registered first, so
+  // composing it could invert such a pair. A sub-layer of `barq.ui` is still
+  // inside `barq.ui`, so an application's unlayered rule still beats it and
+  // the thing atoms exist for is untouched.
+  return into === "" ? inner : `@layer ${into}.${TIERS[tier]}{${inner}}`;
 }
 
 /**
@@ -286,8 +270,13 @@ function atom(property: string, condition: string, value: string, into = ""): st
   // one value, and a compressor reads three of the four suffixes as
   // back-references instead of as noise. Measured over `@barqjs/ui`'s
   // stylesheet, 1,078 atoms: 16.2 KB brotli down to 13.1.
+  // The class name carries the LAYER and not the tier. The tier is a pure
+  // function of the condition and the condition is already in the key, so it
+  // adds nothing to the atom's identity — and keeping it out means turning
+  // sub-layers on renames nothing.
   const name = `${atomKey(property, condition)}_${hash(into === "" ? value : `${into}|${value}`).slice(1)}`;
-  register(name, rule(name, condition, `${property}:${value}`, into), tierOf(condition));
+  const tier = tierOf(condition);
+  register(name, rule(name, condition, `${property}:${value}`, into, tier), tier);
   named.set(memo, name);
   return name;
 }

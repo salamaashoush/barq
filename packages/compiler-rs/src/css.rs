@@ -113,16 +113,29 @@ pub fn run<'a>(
         scoping: &scoping,
         tags,
         folded: FxHashMap::default(),
+        numeric: FxHashSet::default(),
         groups: FxHashMap::default(),
         layers: FxHashMap::default(),
         debug: options.dev,
         css: String::new(),
+        sub_layers: Vec::new(),
         emitted: FxHashSet::default(),
         reports: Vec::new(),
         name: None,
     };
+    pass.seed_module_constants(program);
     pass.visit_program(program);
-    Extracted { css: gather_layers(&pass.css), reports: pass.reports }
+    // Prepended, not interleaved: a layer's ORDER is decided by where its name
+    // is first seen, and a module whose first atom is a media atom would
+    // otherwise declare `barq.ui.media` before `barq.ui.base`. Repeating the
+    // statement across modules is a no-op in CSS, which is what lets a per-file
+    // pass write it at all.
+    let mut css = String::new();
+    for layer in &pass.sub_layers {
+        css.push_str(&barq_css::atoms::sub_layer_order(layer));
+    }
+    css.push_str(&pass.css);
+    Extracted { css: gather_layers(&css), reports: pass.reports }
 }
 
 struct Css<'a, 'b> {
@@ -134,6 +147,14 @@ struct Css<'a, 'b> {
     /// naming one folds. Gains every class this pass generates as it goes,
     /// which is what makes `` css`.${button} & { … }` `` compose.
     folded: FxHashMap<SymbolId, String>,
+    /// Of those, the ones whose value is a NUMBER.
+    ///
+    /// `{ padding: 8 }` is `8px` and `{ padding: "8" }` is `8`, because
+    /// `cssValue` asks `typeof value === "number"`. Folding a binding to its
+    /// text alone loses exactly that, and the compiler would have written `8`
+    /// where the runtime writes `8px` — one declaration reaching the page as
+    /// two classes, which is the failure the parity test exists to catch.
+    numeric: FxHashSet<SymbolId>,
     /// `create` results, so `styles.root` in a later `atoms` folds to the class
     /// string that group produced. Filled as the walk goes, like `folded`.
     groups: FxHashMap<SymbolId, FxHashMap<String, String>>,
@@ -143,6 +164,10 @@ struct Css<'a, 'b> {
     layers: FxHashMap<SymbolId, String>,
     debug: bool,
     css: String,
+    /// Layers this module emitted an atom into, in first-use order, so the
+    /// statement that fixes their tier order can be written once at the top of
+    /// the stylesheet rather than wherever the first atom happened to land.
+    sub_layers: Vec<String>,
     /// One rule per class, however many times the module writes the block.
     emitted: FxHashSet<String>,
     reports: Vec<Report>,
@@ -235,7 +260,7 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
             Some(Expression::CallExpression(call))
                 if self.tag_of(&call.callee) == Some(Tag::Layer) =>
             {
-                if let Some(name) = Self::string_argument(call, 0) {
+                if let Some(name) = self.text_argument(call, 0) {
                     self.layers.insert(symbol, name);
                 }
             }
@@ -258,14 +283,14 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                 // `atomsIn("barq.ui", …)`: the layer is the first argument and
                 // has to be a literal, because it becomes part of every name.
                 Some(Tag::AtomsIn) => {
-                    if Self::string_argument(call, 0).is_none() {
+                    if self.text_argument(call, 0).is_none() {
                         // The layer joins every class name, so it cannot be
                         // resolved later. `layer()` binds one per module for
                         // exactly this reason.
                         self.declined_layer(call, span);
                         return;
                     }
-                    if let Some(layer) = Self::string_argument(call, 0) {
+                    if let Some(layer) = self.text_argument(call, 0) {
                         call.arguments.remove(0);
                         if let Some(replacement) = self.compile_atoms(call, span, &layer) {
                             *expression = replacement;
@@ -286,11 +311,11 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     return;
                 }
                 Some(Tag::CreateIn) => {
-                    if Self::string_argument(call, 0).is_none() {
+                    if self.text_argument(call, 0).is_none() {
                         self.declined_layer(call, span);
                         return;
                     }
-                    if let Some(layer) = Self::string_argument(call, 0) {
+                    if let Some(layer) = self.text_argument(call, 0) {
                         call.arguments.remove(0);
                         if let Some(replacement) = self.compile_create(call, span, &layer) {
                             *expression = replacement;
@@ -324,7 +349,7 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     return;
                 }
                 Some(Tag::DefineVars) => {
-                    match self.compile_define_vars(call, span) {
+                    match self.compile_define_vars(call, span, true) {
                         Some(replacement) => *expression = replacement,
                         None => self.decline(
                             span,
@@ -422,6 +447,134 @@ enum Step {
 }
 
 impl<'a> Css<'a, '_> {
+    /// Every module-level binding whose value is text, before anything reads
+    /// one.
+    ///
+    /// The fold table used to be filled by the same walk that reads it, so
+    /// whether a `const` folded depended on where in the FILE it was written:
+    ///
+    /// ```ts
+    /// export function Card() { return <div class={atoms({ color: BRAND })} />; }
+    /// const BRAND = "#3b82f6";
+    /// ```
+    ///
+    /// That is ordinary, valid code — the component runs after the module is
+    /// evaluated — and it compiled to nothing while the same two lines the
+    /// other way round compiled away. A module-level `const` is a fact about
+    /// the module, not about the line it is on, so it is read as one.
+    ///
+    /// Only values that need no emission: a string, a number, a template with
+    /// no substitutions, and a binding naming one of those. A `css` block's
+    /// class and a `create` group still land in the table as the walk produces
+    /// them, because knowing those means emitting them and emitting twice is
+    /// two copies of every rule.
+    fn seed_module_constants(&mut self, program: &Program<'a>) {
+        let mut pending: Vec<(SymbolId, &Expression<'a>)> = Vec::new();
+        let mut bindings: Vec<(SymbolId, &Expression<'a>)> = Vec::new();
+        for statement in &program.body {
+            let declaration = match statement {
+                Statement::VariableDeclaration(declaration) => &**declaration,
+                // `export const five = 5` is its own variant here, not a
+                // named export carrying a declaration.
+                Statement::ExportDeclaration(export) => match &export.declaration {
+                    oxc::ast::ast::Declaration::VariableDeclaration(declaration) => &**declaration,
+                    _ => continue,
+                },
+                _ => continue,
+            };
+            for declarator in &declaration.declarations {
+                let (Some(symbol), Some(init)) = (
+                    declarator.id.get_binding_identifier().and_then(|id| id.symbol_id.get()),
+                    declarator.init.as_ref(),
+                ) else {
+                    continue;
+                };
+                match literal_text(init) {
+                    Some((text, numeric)) => {
+                        self.folded.insert(symbol, text);
+                        if numeric {
+                            self.numeric.insert(symbol);
+                        }
+                        continue;
+                    }
+                    // `const B = A`, where `A` is one of these. Deferred rather
+                    // than resolved here, because `A` may be written below it.
+                    None => pending.push((symbol, init)),
+                }
+                bindings.push((symbol, init));
+            }
+        }
+
+        // A chain is at most as long as the list, and each round resolves at
+        // least one link or there is nothing left to resolve.
+        for _ in 0..pending.len() {
+            let mut moved = false;
+            let mut resolved: Vec<(SymbolId, String, bool)> = Vec::new();
+            pending.retain(|(symbol, init)| {
+                let Some(text) = self.text_of(init) else { return true };
+                let numeric = crate::analysis::symbol_of(self.scoping, init)
+                    .is_some_and(|source| self.numeric.contains(&source));
+                resolved.push((*symbol, text, numeric));
+                moved = true;
+                false
+            });
+            for (symbol, text, numeric) in resolved {
+                self.folded.insert(symbol, text);
+                if numeric {
+                    self.numeric.insert(symbol);
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+
+        // A group, a token set and a bound layer are values too, and a
+        // component written above the `const` that declares one reads it just
+        // as legitimately as a component written below. Named here and emitted
+        // nowhere: seeding by emitting would put a group's rules ahead of rules
+        // from calls written above it, and order is what decides between two
+        // atoms of one tier.
+        for (symbol, init) in bindings {
+            let Expression::CallExpression(call) = without_type_wrappers(init) else { continue };
+            match self.tag_of(&call.callee) {
+                Some(Tag::Layer) => {
+                    if let Some(name) = self.text_argument(call, 0) {
+                        self.layers.insert(symbol, name);
+                    }
+                }
+                Some(tag @ (Tag::Create | Tag::CreateIn)) => {
+                    let at = usize::from(tag == Tag::CreateIn);
+                    let layer = if at == 1 {
+                        match self.text_argument(call, 0) {
+                            Some(layer) => layer,
+                            None => continue,
+                        }
+                    } else {
+                        String::new()
+                    };
+                    let Some(argument) = call.arguments.get(at).and_then(|a| a.as_expression())
+                    else {
+                        continue;
+                    };
+                    let Expression::ObjectExpression(object) = without_type_wrappers(argument)
+                    else {
+                        continue;
+                    };
+                    if let Some(groups) = self.group_classes(object, &layer, false) {
+                        self.groups.insert(symbol, groups.into_iter().collect());
+                    }
+                }
+                Some(Tag::DefineVars) => {
+                    let Some(tokens) = self.token_values(call) else { continue };
+                    let (entries, ..) = Self::token_entries(&tokens);
+                    self.groups.insert(symbol, entries.into_iter().collect());
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// One reason this call is going to the runtime, said out loud.
     ///
     /// The pass declined in seven different shapes and reported in two of them,
@@ -486,6 +639,7 @@ impl<'a> Css<'a, '_> {
         span: Span,
         layer: &str,
     ) -> Option<Expression<'a>> {
+        self.flatten_arguments(call);
         let mut slots: Vec<Slot> = Vec::new();
         for (at, argument) in call.arguments.iter().enumerate() {
             // A spread is not an argument list this pass can count through.
@@ -722,6 +876,69 @@ impl<'a> Css<'a, '_> {
         None
     }
 
+    /// `atoms([base, loud], x)` as `atoms(base, loud, x)`, in the AST.
+    ///
+    /// `build` does `styles.flat(4)`, so an array argument has always MEANT
+    /// the arguments it holds — the README writes `atoms([base, active() &&
+    /// loud])` and it is the shape a list of conditional treatments takes. The
+    /// pass had no arm for it, so the whole call went to the runtime and every
+    /// object in it with it.
+    ///
+    /// Done as a rewrite before the fold rather than as another case inside it:
+    /// the fold indexes arguments by position to take a conditional's test back
+    /// out, and a list flattened underneath that would address the wrong one.
+    /// Flattening a call this pass then declines is still correct, because it
+    /// is the same call — `flat` was going to do it anyway.
+    ///
+    /// Four levels, which is `flat(4)`. A depth past that is not something the
+    /// runtime flattens either.
+    fn flatten_arguments(&self, call: &mut oxc::ast::ast::CallExpression<'a>) {
+        for _ in 0..4 {
+            let nested = call.arguments.iter().any(|argument| match argument {
+                oxc::ast::ast::Argument::SpreadElement(spread) => {
+                    matches!(
+                        without_type_wrappers(&spread.argument),
+                        Expression::ArrayExpression(_)
+                    )
+                }
+                other => matches!(
+                    other.as_expression().map(without_type_wrappers),
+                    Some(Expression::ArrayExpression(_))
+                ),
+            });
+            if !nested {
+                return;
+            }
+            let old = std::mem::replace(&mut call.arguments, ArenaVec::new_in(&self.allocator));
+            for argument in old {
+                let mut expression = match argument {
+                    oxc::ast::ast::Argument::SpreadElement(spread) => spread.unbox().argument,
+                    // Every other `Argument` variant IS an expression: the
+                    // spread above is the only one that is not.
+                    other => other.into_expression(),
+                };
+                match array_of(&mut expression) {
+                    Some(array) => {
+                        let elements = std::mem::replace(
+                            &mut array.elements,
+                            ArenaVec::new_in(&self.allocator),
+                        );
+                        for element in elements {
+                            // A hole contributes nothing, which is what an
+                            // `undefined` in the list does at run time.
+                            let oxc::ast::ast::ArrayExpressionElement::Elision(_) = element else {
+                                call.arguments
+                                    .push(oxc::ast::ast::Argument::from(element.into_expression()));
+                                continue;
+                            };
+                        }
+                    }
+                    None => call.arguments.push(oxc::ast::ast::Argument::from(expression)),
+                }
+            }
+        }
+    }
+
     /// A whole call's worth of readable arguments, as the one value they make.
     fn fold(
         &mut self,
@@ -904,45 +1121,11 @@ impl<'a> Css<'a, '_> {
         &mut self,
         call: &oxc::ast::ast::CallExpression<'a>,
         span: Span,
+        emit: bool,
     ) -> Option<Expression<'a>> {
-        let [argument] = call.arguments.as_slice() else { return None };
-        let Expression::ObjectExpression(object) =
-            crate::analysis::without_type_wrappers(argument.as_expression()?)
-        else {
-            return None;
-        };
-
-        let mut tokens: Vec<(String, barq_css::atoms::TokenValue)> = Vec::new();
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = self.key_text(property)?;
-            let value = match crate::analysis::without_type_wrappers(&property.value) {
-                Expression::NumericLiteral(literal) => {
-                    barq_css::atoms::TokenValue::Number(literal.value)
-                }
-                other => barq_css::atoms::TokenValue::Text(self.text_of(other)?),
-            };
-            tokens.push((name, value));
-        }
-
-        let group = barq_css::atoms::hash32(&barq_css::atoms::json_object(&tokens));
-        let mut declarations = String::new();
-        let mut entries: Vec<(String, String)> = Vec::new();
-        for (token, value) in &tokens {
-            let property = barq_css::atoms::token_property(&group, token);
-            if !declarations.is_empty() {
-                declarations.push(';');
-            }
-            let text = match value {
-                barq_css::atoms::TokenValue::Text(text) => text.clone(),
-                barq_css::atoms::TokenValue::Number(number) => {
-                    barq_css::atoms::number_text(*number)
-                }
-            };
-            declarations.push_str(&format!("{property}:{text}"));
-            entries.push((token.clone(), format!("var({property})")));
-        }
-        if self.emitted.insert(format!("vars:{group}")) {
+        let tokens = self.token_values(call)?;
+        let (entries, group, declarations) = Self::token_entries(&tokens);
+        if emit && self.emitted.insert(format!("vars:{group}")) {
             self.css.push_str(&format!(":root{{{declarations}}}"));
         }
 
@@ -961,6 +1144,65 @@ impl<'a> Css<'a, '_> {
             })
             .collect();
         Some(self.object(span, built))
+    }
+
+    /// `defineVars`' argument as `(token, value)`, with each value's KIND kept.
+    ///
+    /// The group's name is a hash of `JSON.stringify(tokens)`, so `{"gap":8}`
+    /// and `{"gap":"8"}` are two different token sets and a binding folded to
+    /// its text alone would name one of them the other.
+    fn token_values(
+        &self,
+        call: &oxc::ast::ast::CallExpression<'_>,
+    ) -> Option<Vec<(String, barq_css::atoms::TokenValue)>> {
+        let [argument] = call.arguments.as_slice() else { return None };
+        let Expression::ObjectExpression(object) =
+            crate::analysis::without_type_wrappers(argument.as_expression()?)
+        else {
+            return None;
+        };
+        let mut tokens = Vec::new();
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let name = self.key_text(property)?;
+            let value = match crate::analysis::without_type_wrappers(&property.value) {
+                Expression::NumericLiteral(literal) => {
+                    barq_css::atoms::TokenValue::Number(literal.value)
+                }
+                other if self.is_numeric(other) => {
+                    barq_css::atoms::TokenValue::Number(self.text_of(other)?.parse().ok()?)
+                }
+                other => barq_css::atoms::TokenValue::Text(self.text_of(other)?),
+            };
+            tokens.push((name, value));
+        }
+        Some(tokens)
+    }
+
+    /// A token set as `(token, reference)`, its group name and its `:root`
+    /// declarations. Naming only, so a token set can be known before the walk
+    /// reaches it and emitted where the walk reaches it.
+    fn token_entries(
+        tokens: &[(String, barq_css::atoms::TokenValue)],
+    ) -> (Vec<(String, String)>, String, String) {
+        let group = barq_css::atoms::hash32(&barq_css::atoms::json_object(tokens));
+        let mut declarations = String::new();
+        let mut entries: Vec<(String, String)> = Vec::new();
+        for (token, value) in tokens {
+            let property = barq_css::atoms::token_property(&group, token);
+            if !declarations.is_empty() {
+                declarations.push(';');
+            }
+            let text = match value {
+                barq_css::atoms::TokenValue::Text(text) => text.clone(),
+                barq_css::atoms::TokenValue::Number(number) => {
+                    barq_css::atoms::number_text(*number)
+                }
+            };
+            declarations.push_str(&format!("{property}:{text}"));
+            entries.push((token.clone(), format!("var({property})")));
+        }
+        (entries, group, declarations)
     }
 
     /// `createTheme(tokens, { brand: "#60a5fa" })` as the class that redeclares
@@ -1043,22 +1285,7 @@ impl<'a> Css<'a, '_> {
             return None;
         };
 
-        let mut groups: Vec<(String, String)> = Vec::new();
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = match &property.key {
-                PropertyKey::StaticIdentifier(identifier) => identifier.name.to_string(),
-                PropertyKey::StringLiteral(literal) => literal.value.to_string(),
-                _ => return None,
-            };
-            let declarations = self.declarations(&property.value)?;
-            let merged = Self::merge(
-                &[Argument { at: 0, conditional: false, declarations, atoms: Vec::new() }],
-                true,
-                layer,
-            );
-            groups.push((name, self.emit_atoms(&merged)));
-        }
+        let groups = self.group_classes(object, layer, true)?;
 
         let mut properties = ArenaVec::new_in(&self.allocator);
         for (name, classes) in groups {
@@ -1085,6 +1312,40 @@ impl<'a> Css<'a, '_> {
             )));
         }
         Some(Expression::new_object_expression(span, properties, &self.ast))
+    }
+
+    /// A `create` object as `(name, classes)`, emitting or not.
+    ///
+    /// The two halves are separate so a group can be KNOWN before the walk
+    /// reaches it and still be EMITTED where the walk reaches it. Seeding by
+    /// emitting would put a group's rules before rules from calls written
+    /// above it, and order is what decides between two same-tier atoms.
+    fn group_classes(
+        &mut self,
+        object: &oxc::ast::ast::ObjectExpression<'_>,
+        layer: &str,
+        emit: bool,
+    ) -> Option<Vec<(String, String)>> {
+        let mut groups: Vec<(String, String)> = Vec::new();
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let name = match &property.key {
+                PropertyKey::StaticIdentifier(identifier) => identifier.name.to_string(),
+                PropertyKey::StringLiteral(literal) => literal.value.to_string(),
+                _ => return None,
+            };
+            let declarations = self.declarations(&property.value)?;
+            let merged = Self::merge(
+                &[Argument { at: 0, conditional: false, declarations, atoms: Vec::new() }],
+                true,
+                layer,
+            );
+            if emit {
+                self.emit_rules(&merged);
+            }
+            groups.push((name, Self::classes(&merged)));
+        }
+        Some(groups)
     }
 
     /// The merged atoms, with the conditional argument in or out.
@@ -1140,9 +1401,15 @@ impl<'a> Css<'a, '_> {
         let mut sorted: Vec<&barq_css::atoms::Atom> = atoms.iter().collect();
         sorted.sort_by_key(|atom| atom.tier);
         for atom in sorted {
-            if !atom.rule.is_empty() && self.emitted.insert(atom.class.clone()) {
-                self.css.push_str(&atom.rule);
+            if atom.rule.is_empty() || !self.emitted.insert(atom.class.clone()) {
+                continue;
             }
+            if let Some(layer) = layer_of_rule(&atom.rule)
+                && !self.sub_layers.iter().any(|seen| seen == layer)
+            {
+                self.sub_layers.push(layer.to_string());
+            }
+            self.css.push_str(&atom.rule);
         }
     }
 
@@ -1325,11 +1592,18 @@ impl<'a> Css<'a, '_> {
                     Some(barq_css::atoms::fallback(property, &values)),
                 )])
             }
-            other => Some(vec![(
-                property.to_string(),
-                condition.to_string(),
-                Some(self.text_of(other)?),
-            )]),
+            other => {
+                let text = self.text_of(other)?;
+                // `{ padding: GAP }` where `GAP` is `8` is `8px`, exactly as
+                // `{ padding: 8 }` is: `cssValue` asks the value's TYPE, not
+                // its spelling.
+                let value = if self.is_numeric(other) {
+                    barq_css::atoms::number_value(property, &text)
+                } else {
+                    text
+                };
+                Some(vec![(property.to_string(), condition.to_string(), Some(value))])
+            }
         }
     }
 
@@ -1346,12 +1620,19 @@ impl<'a> Css<'a, '_> {
         self.layers.get(&symbol).cloned()
     }
 
-    /// One argument as a string literal, which is what a layer name has to be.
-    fn string_argument(call: &oxc::ast::ast::CallExpression<'_>, index: usize) -> Option<String> {
-        match call.arguments.get(index)?.as_expression().map(without_type_wrappers) {
-            Some(Expression::StringLiteral(literal)) => Some(literal.value.to_string()),
-            _ => None,
-        }
+    /// One argument as text, which is what a layer name has to be.
+    ///
+    /// Read through the same table an interpolation is, so
+    /// `const LAYER = "barq.ui"` beside the call works and only an IMPORTED
+    /// name does not. It used to demand a string literal at the call site,
+    /// which made naming the layer once a module — the thing `layer()` exists
+    /// for — impossible to do with a constant.
+    fn text_argument(
+        &self,
+        call: &oxc::ast::ast::CallExpression<'_>,
+        index: usize,
+    ) -> Option<String> {
+        self.text_of(call.arguments.get(index)?.as_expression()?)
     }
 
     /// `None` leaves the call where it is, for the runtime to evaluate.
@@ -1426,6 +1707,12 @@ impl<'a> Css<'a, '_> {
         key_name(&property.key)
     }
 
+    /// Whether a foldable expression's value is a NUMBER rather than its text.
+    fn is_numeric(&self, expression: &Expression<'_>) -> bool {
+        crate::analysis::symbol_of(self.scoping, expression)
+            .is_some_and(|symbol| self.numeric.contains(&symbol))
+    }
+
     fn text_of(&self, expression: &Expression<'_>) -> Option<String> {
         match without_type_wrappers(expression) {
             Expression::StringLiteral(literal) => Some(literal.value.to_string()),
@@ -1488,12 +1775,68 @@ fn join(outer: &str, inner: &str) -> String {
     }
 }
 
+/// The array an expression is, through whatever type wrappers it wears.
+fn array_of<'a, 'b>(
+    expression: &'b mut Expression<'a>,
+) -> Option<&'b mut oxc::ast::ast::ArrayExpression<'a>> {
+    let mut at = expression;
+    loop {
+        at = match at {
+            Expression::TSAsExpression(cast) => &mut cast.expression,
+            Expression::TSSatisfiesExpression(cast) => &mut cast.expression,
+            Expression::TSNonNullExpression(cast) => &mut cast.expression,
+            Expression::ParenthesizedExpression(inner) => &mut inner.expression,
+            Expression::ArrayExpression(array) => return Some(array),
+            _ => return None,
+        };
+    }
+}
+
+/// A value that is text without anything having to be emitted for it.
+///
+/// Deliberately narrow. `text_of` also resolves a binding and a token
+/// reference, which is right where the table is already built and wrong while
+/// it is being built.
+fn literal_text(expression: &Expression<'_>) -> Option<(String, bool)> {
+    match without_type_wrappers(expression) {
+        Expression::StringLiteral(literal) => Some((literal.value.to_string(), false)),
+        Expression::NumericLiteral(literal) => Some((
+            literal.raw.map_or_else(|| literal.value.to_string(), |raw| raw.to_string()),
+            true,
+        )),
+        Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
+            template.quasis.first().map(|quasi| {
+                (
+                    quasi
+                        .value
+                        .cooked
+                        .as_ref()
+                        .map_or_else(|| quasi.value.raw.to_string(), |cooked| cooked.to_string()),
+                    false,
+                )
+            })
+        }
+        _ => None,
+    }
+}
+
 fn key_name(key: &PropertyKey<'_>) -> Option<String> {
     match key {
         PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_string()),
         PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
         _ => None,
     }
+}
+
+/// The layer a rule is wrapped in, without the tier `atom_in` appended.
+///
+/// Read back off the rule rather than threaded through, because `emit_rules`
+/// is the only place that sees every rule a call produced and a `create` group
+/// reaches it by a different route than an `atoms` call does.
+fn layer_of_rule(rule: &str) -> Option<&str> {
+    let after = rule.strip_prefix("@layer ")?;
+    let name = &after[..after.find('{')?];
+    Some(&name[..name.rfind('.')?])
 }
 
 /// Neighbouring rules in one cascade layer, as one block.
@@ -1851,7 +2194,7 @@ mod atom_tests {
         );
         let css = out.css.as_deref().unwrap_or_default();
         assert!(css.contains("@layer barq.reset, barq.ui;"), "{css}");
-        assert!(css.contains("@layer barq.ui{"), "{css}");
+        assert!(css.contains("@layer barq.ui.base{"), "{css}");
     }
 
     /// `atomsIn` folds like `atoms`, and its rules land in the layer it names.
@@ -1862,11 +2205,52 @@ mod atom_tests {
         let out = run("export const a = atomsIn(\"barq.ui\", { color: \"red\", paddingTop: 8 });");
         assert!(!out.code.contains("atomsIn("), "the call survived: {}", out.code);
         let css = out.css.as_deref().unwrap_or_default();
-        assert!(css.starts_with("@layer barq.ui{"), "{css}");
+        // The order statement first, then one block per tier the call used.
+        assert!(css.starts_with(&barq_css::atoms::sub_layer_order("barq.ui")), "{css}");
+        assert!(css.contains("@layer barq.ui.base{"), "{css}");
         assert!(css.contains("color:red"), "{css}");
         assert!(css.contains("padding-top:8px"), "{css}");
         // One block, not one per atom.
-        assert_eq!(css.matches("@layer barq.ui{").count(), 1, "{css}");
+        assert_eq!(css.matches("@layer barq.ui.base{").count(), 1, "{css}");
+    }
+
+    /// Tier order is the CASCADE's now, not the order two modules happened to
+    /// be emitted in. Within one call the two agree; across modules they did
+    /// not, and three pairs on the gallery were decided the wrong way round.
+    #[test]
+    fn each_tier_is_its_own_sub_layer_and_the_order_is_declared_once() {
+        let out = run(
+            "export const a = atomsIn(\"barq.ui\", { color: { default: \"red\", \":hover\": \"blue\", \
+             \"@media print\": \"green\" }, \"& > *\": { color: \"grey\" } });",
+        );
+        let css = out.css.as_deref().unwrap_or_default();
+        let order = barq_css::atoms::sub_layer_order("barq.ui");
+        assert_eq!(
+            order,
+            "@layer barq.ui.descendant, barq.ui.base, barq.ui.select, barq.ui.element, \
+             barq.ui.media;"
+        );
+        assert!(css.starts_with(&order), "{css}");
+        // Declared once however many blocks follow it.
+        assert_eq!(css.matches(&order).count(), 1, "{css}");
+        for tier in ["descendant", "base", "select", "media"] {
+            assert!(css.contains(&format!("@layer barq.ui.{tier}{{")), "{tier}: {css}");
+        }
+        // And the plain layer is gone: a rule in `barq.ui` and not in one of
+        // its sub-layers would beat every sub-layer, whatever its tier.
+        assert!(!css.contains("@layer barq.ui{"), "{css}");
+    }
+
+    /// An UNLAYERED atom keeps no layer at all. A layered rule loses to an
+    /// unlayered one whatever its specificity, so wrapping these would put an
+    /// application's own `* { margin: 0 }` above every margin on the page —
+    /// measured in a browser, and it is why `atoms` is unlayered.
+    #[test]
+    fn an_unlayered_atom_is_not_given_a_sub_layer() {
+        let out =
+            run("export const a = atoms({ color: \"red\", \"@media print\": { color: \"b\" } });");
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(!css.contains("@layer"), "{css}");
     }
 
     /// `const ui = layer("barq.ui")` folds exactly as the `atomsIn` it stands
@@ -1905,7 +2289,8 @@ mod atom_tests {
             "export const shared = createIn(\"barq.ui\", { ring: { outlineWidth: \"3px\" } });",
         );
         let css = out.css.as_deref().unwrap_or_default();
-        assert!(css.starts_with("@layer barq.ui{"), "{css}");
+        assert!(css.starts_with(&barq_css::atoms::sub_layer_order("barq.ui")), "{css}");
+        assert!(css.contains("@layer barq.ui.base{"), "{css}");
         assert!(css.contains("outline-width:3px"), "{css}");
         assert!(out.code.contains("ring:"), "{}", out.code);
         assert!(!out.code.contains("createIn("), "the call survived: {}", out.code);
@@ -2130,6 +2515,20 @@ mod decline_tests {
             .expect("compiles")
     }
 
+    /// The rules a module emitted, as a set: two orderings of the same source
+    /// emit the same rules where the walk reaches each call.
+    fn rules(out: &CompileOutput) -> Vec<String> {
+        let mut all: Vec<String> = out
+            .css
+            .as_deref()
+            .unwrap_or_default()
+            .split_inclusive('}')
+            .map(str::to_string)
+            .collect();
+        all.sort_unstable();
+        all
+    }
+
     fn codes(out: &CompileOutput) -> Vec<&'static str> {
         out.warnings.iter().filter_map(|warning| warning.code).map(Code::as_str).collect()
     }
@@ -2146,10 +2545,6 @@ mod decline_tests {
                 "export const a = atomsIn(LAYER, { color: \"red\" });",
             ),
             ("a spread", "export const a = atoms(...rest);"),
-            (
-                "a const below its use",
-                "export const a = atoms({ color: LATER });\nconst LATER = \"red\";",
-            ),
             (
                 "a group that will not read",
                 "export const a = create({ x: { color: theme.brand } });",
@@ -2168,6 +2563,129 @@ mod decline_tests {
         for (what, body) in cases {
             assert!(codes(&run(body)).contains(&"BARQ017"), "{what}: {body}");
         }
+    }
+
+    /// A module-level `const` is a fact about the MODULE, not about the line it
+    /// is on. The fold table used to be filled by the same walk that reads it,
+    /// so this compiled to nothing and the same two lines the other way round
+    /// compiled away.
+    #[test]
+    fn a_module_constant_folds_wherever_in_the_file_it_is_written() {
+        let below =
+            run("export function Card() { return <div class={atoms({ color: BRAND })} />; }\n\
+             const BRAND = \"#3b82f6\";");
+        let above = run("const BRAND = \"#3b82f6\";\n\
+             export function Card() { return <div class={atoms({ color: BRAND })} />; }");
+        assert_eq!(below.css, above.css, "{}", below.code);
+        assert!(below.css.as_deref().unwrap_or_default().contains("color:#3b82f6"));
+        assert!(codes(&below).is_empty(), "{:?}", codes(&below));
+    }
+
+    /// A chain, and a number. `shared-box.ts` spells a five-`var()` box-shadow
+    /// out in three files because naming it looked like it would take the file
+    /// to the runtime.
+    #[test]
+    fn a_constant_naming_another_constant_folds_and_so_does_a_number() {
+        let out = run("const SHADOW = \"var(--a), var(--b)\";\n\
+             const SAME = SHADOW;\n\
+             const GAP = 8;\n\
+             export const a = atoms({ boxShadow: SAME, padding: GAP });");
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains("box-shadow:var(--a), var(--b)"), "{css}");
+        assert!(css.contains("padding-top:8px"), "{css}");
+        assert!(codes(&out).is_empty(), "{:?}", codes(&out));
+    }
+
+    /// A group and a token set are values too, so a component written above the
+    /// `const` that declares one reads it as legitimately as one written below.
+    /// Named in the seed and emitted where the walk reaches them: seeding by
+    /// EMITTING would put a group's rules ahead of rules from calls written
+    /// above it, and order is what decides between two atoms of one tier.
+    #[test]
+    fn a_group_and_a_token_set_are_known_before_the_walk_reaches_them() {
+        let below = run(
+            "export function Card() { return <div class={atoms(g.r, { color: t.brand })} />; }\n\
+             const g = create({ r: { padding: 8 } });\n\
+             const t = defineVars({ brand: \"#3b82f6\" });",
+        );
+        let above = run("const g = create({ r: { padding: 8 } });\n\
+             const t = defineVars({ brand: \"#3b82f6\" });\n\
+             export function Card() { return <div class={atoms(g.r, { color: t.brand })} />; }");
+        assert!(!below.code.contains("atoms("), "the call survived: {}", below.code);
+        assert!(
+            below.css.as_deref().unwrap_or_default().contains("color:var(--brand-"),
+            "{:?}",
+            below.css
+        );
+        assert!(codes(&below).is_empty(), "{:?}", codes(&below));
+        // The same rules either way. Only the ORDER differs, because each is
+        // emitted where the walk reaches its call — which is the point of
+        // naming in the seed and emitting in the walk.
+        assert_eq!(rules(&below), rules(&above));
+    }
+
+    /// And a theme over a token set declared below it.
+    #[test]
+    fn a_theme_reads_a_token_set_written_after_it() {
+        let below = run("export const dark = createTheme(t, { brand: \"#60a5fa\" });\n\
+             const t = defineVars({ brand: \"#3b82f6\" });");
+        let above = run("const t = defineVars({ brand: \"#3b82f6\" });\n\
+             export const dark = createTheme(t, { brand: \"#60a5fa\" });");
+        assert!(!below.code.contains("createTheme("), "{}", below.code);
+        assert!(codes(&below).is_empty(), "{:?}", codes(&below));
+        assert!(below.code.contains("\"r"), "the theme did not become a class: {}", below.code);
+        // The rules are the same set; only the order they were emitted in can
+        // differ, because the walk emits where it reaches them.
+        assert_eq!(rules(&below), rules(&above));
+    }
+
+    /// The layer resolves through the same table an interpolation does, so only
+    /// an IMPORTED name is one this pass cannot read. It used to demand a
+    /// string literal at the call site.
+    #[test]
+    fn a_layer_named_by_a_module_constant_folds() {
+        let named = run("const LAYER = \"barq.ui\";\n\
+             const ui = layer(LAYER);\n\
+             export const a = ui({ color: \"red\" });\n\
+             export const b = atomsIn(LAYER, { padding: 8 });");
+        let literal = run("export const a = atomsIn(\"barq.ui\", { color: \"red\" });\n\
+             export const b = atomsIn(\"barq.ui\", { padding: 8 });");
+        assert_eq!(named.css, literal.css);
+        assert!(codes(&named).is_empty(), "{:?}", codes(&named));
+    }
+
+    /// `build` does `styles.flat(4)`, so an array argument has always MEANT the
+    /// arguments it holds — the README writes `atoms([base, active() && loud])`
+    /// and there was no arm for it, so the whole call and every object in it
+    /// went to the runtime.
+    #[test]
+    fn an_array_argument_is_the_arguments_it_holds() {
+        let nested =
+            run("export const a = atoms([{ color: \"red\" }, [{ padding: 8 }]], { gap: 4 });");
+        let flat = run("export const a = atoms({ color: \"red\" }, { padding: 8 }, { gap: 4 });");
+        assert_eq!(nested.css, flat.css);
+        assert_eq!(nested.code, flat.code);
+        assert!(codes(&nested).is_empty(), "{:?}", codes(&nested));
+    }
+
+    /// And a conditional inside one is still the one ternary it would be
+    /// outside it, which is what makes a list of treatments composable.
+    #[test]
+    fn a_conditional_inside_an_array_is_still_a_ternary() {
+        let out = run("export const a = atoms([{ color: \"red\" }, on() && { color: \"blue\" }]);");
+        assert!(out.code.contains(" ? \""), "{}", out.code);
+        assert!(!out.code.contains("atoms("), "the call survived: {}", out.code);
+    }
+
+    /// A spread of an array literal is the same list by another spelling.
+    #[test]
+    fn a_spread_of_a_literal_list_folds_and_one_of_something_else_does_not() {
+        let out = run("export const a = atoms(...[{ color: \"red\" }, { padding: 8 }]);");
+        assert!(!out.code.contains("atoms("), "the call survived: {}", out.code);
+        assert!(codes(&out).is_empty(), "{:?}", codes(&out));
+        // A spread of anything else is not an argument list this pass can
+        // count through, and it says so.
+        assert!(codes(&run("export const a = atoms(...rest);")).contains(&"BARQ017"));
     }
 
     /// The line is at the OBJECT, not at the call. An argument this pass cannot

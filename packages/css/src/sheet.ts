@@ -37,6 +37,55 @@ export function hash(text: string): string {
 const SHEET_ID = "barq-css";
 
 /**
+ * How an atom is ORDERED against another atom, and nothing more.
+ *
+ * Not a cascade layer for an UNLAYERED atom, and it was one for a while:
+ * layering gave ordering across modules and took away the thing atoms exist
+ * for, because a layered rule loses to an unlayered one whatever the
+ * specificity. Measured in a browser, an application's `* { margin: 0 }` beat
+ * every margin atom on the page and every margin and padding computed to `0px`.
+ *
+ * Specificity answers most of it on its own: `.a-margin-top_x` is 0-1-0 against
+ * the reset's 0-0-0, `:hover` is 0-2-0 and `::before` is 0-1-1. The one pair it
+ * cannot separate is a base against the same property under an at-rule, since
+ * `@media` adds none — so the tier decides that one.
+ *
+ * Emitting in tier order settles it within one `atoms` call. It does NOT settle
+ * it across modules: a group declared elsewhere registered its rules first, so
+ * composing one could invert such a pair, and three pairs on `@barqjs/ui`'s
+ * gallery were decided the wrong way round. A LAYERED atom therefore goes into
+ * a sub-layer named for its tier — `barq.ui.base`, `barq.ui.media` — which
+ * makes the order the cascade's rather than the bundler's while staying inside
+ * `barq.ui`, so an application's unlayered rule still wins.
+ *
+ * An unlayered atom cannot have that, for the same reason it cannot have a
+ * layer, and does not need it: two atoms conflict only when merged, merging
+ * happens in one `atoms` call, and one call is in one module.
+ *
+ * `descendant` comes FIRST, and that is the one tier order decides rather than
+ * specificity. A rule a parent writes about its children — `& > *`, `& svg` —
+ * and a rule the child writes about itself are both one class, so nothing
+ * separates them but which came last. Measured in a browser: a field saying
+ * `& > * { width: 100% }` took a label's own `width: fit-content` away and
+ * stretched it across the row. The child's own rule is the more specific
+ * INTENT, so the parent's goes before it and loses the tie.
+ */
+export const TIERS = ["descendant", "base", "select", "element", "media"] as const;
+
+/**
+ * The statement that fixes a layer's sub-layer order.
+ *
+ * A layer's position is decided by where it is FIRST NAMED, so a module whose
+ * first atom is a media atom would otherwise put `media` before `base`. Written
+ * rather than inferred, and repeating it is free: a second `@layer a, b;` over
+ * names already ordered is a no-op, which is what lets a per-file compiler emit
+ * it and this emit it again without either knowing what the other did.
+ */
+export function subLayerOrder(into: string): string {
+  return `@layer ${TIERS.map((tier) => `${into}.${tier}`).join(", ")};`;
+}
+
+/**
  * The tier each rule sorts in, for the one ordering specificity cannot give:
  * a base against the same property under an at-rule, since `@media` adds no
  * specificity. Everything not an atom is tier 0 and keeps insertion order.
@@ -161,6 +210,12 @@ export function collectCss(): string {
   // the order. The block sits where the layer was first named.
   const out: string[] = [];
   const layers = new Map<string, string[]>();
+  // A layered atom goes into a SUB-layer named for its tier, and a sub-layer's
+  // position is decided by where it is first named — so a module whose first
+  // atom is a media atom would put `media` before `base` and invert the one
+  // pair specificity cannot separate. The statement that fixes the order is
+  // written once, before the first block of that layer, wherever that lands.
+  const ordered = new Set<string>();
   for (const rule of rules) {
     const split = wrapped(rule);
     if (split === null) {
@@ -169,6 +224,11 @@ export function collectCss(): string {
     }
     const held = layers.get(split.layer);
     if (held === undefined) {
+      const base = baseLayer(split.layer);
+      if (base !== null && !ordered.has(base)) {
+        ordered.add(base);
+        out.push(subLayerOrder(base));
+      }
       layers.set(split.layer, [split.body]);
       out.push(`\u0000${split.layer}`);
     } else {
@@ -183,6 +243,13 @@ export function collectCss(): string {
         : part,
     )
     .join("");
+}
+
+/** The layer a tier sub-layer belongs to, or `null` for anything else. */
+function baseLayer(name: string): string | null {
+  const cut = name.lastIndexOf(".");
+  if (cut < 0) return null;
+  return (TIERS as readonly string[]).includes(name.slice(cut + 1)) ? name.slice(0, cut) : null;
 }
 
 /**

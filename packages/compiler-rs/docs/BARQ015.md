@@ -25,11 +25,15 @@ browser on every evaluation, and it is why `@barqjs/css` ships a runtime at all.
 
 - **A literal.** `${8}`, `${"red"}`, and a template literal with no
   interpolations of its own.
-- **A module-level `const` holding one.** `const GAP = "8px"` then `${GAP}`.
+- **A module-level `const` holding one.** `const GAP = "8px"` then `${GAP}`,
+  wherever in the file the `const` is written. A number and a template with no
+  substitutions of its own both count, and so does a binding naming another
+  binding.
 - **Another block's class.** `const button = css\`…\`` then
   `` css`.${button} & { … }` ``, because the pass records each class as it
-  generates it. The declaration has to come first in the file: the fold reads a
-  table the same walk is filling.
+  generates it. That one has to come first in the file: knowing a block's class
+  means compiling the block, and the fold reads a table the same walk is
+  filling.
 
 ## Fixing it
 
