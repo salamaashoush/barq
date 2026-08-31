@@ -1,0 +1,799 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry.json",
+  "name": "@barqjs/ui",
+  "homepage": "https://github.com/salamaashoush/barq",
+  "items": [
+    {
+      "name": "base",
+      "type": "registry:theme",
+      "title": "Base",
+      "description": "The scale every component's CSS reads.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "theme/base.ts"
+      ]
+    },
+    {
+      "name": "layers",
+      "type": "registry:theme",
+      "title": "Layers",
+      "description": "The order this package's own rules cascade in, declared before any of them.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "theme/layers.ts"
+      ]
+    },
+    {
+      "name": "reset",
+      "type": "registry:theme",
+      "title": "Reset",
+      "description": "Tailwind's preflight, which shadcn's components are written against.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "theme/reset.ts"
+      ]
+    },
+    {
+      "name": "tokens",
+      "type": "registry:theme",
+      "title": "Tokens",
+      "description": "The semantic tokens, by the names shadcn/ui gives them.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        "theme/tokens.ts"
+      ]
+    },
+    {
+      "name": "overlay",
+      "type": "registry:lib",
+      "title": "Overlay",
+      "description": "The state a trigger and its overlay share, and the context that carries it.",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/overlay.tsx"
+      ]
+    },
+    {
+      "name": "props",
+      "type": "registry:lib",
+      "title": "Props",
+      "description": "What every component in this package accepts.",
+      "dependencies": [
+        "@barqjs/core"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/props.ts"
+      ]
+    },
+    {
+      "name": "slot",
+      "type": "registry:lib",
+      "title": "Slot",
+      "description": "The props a component puts on its element.",
+      "dependencies": [
+        "@barqjs/core"
+      ],
+      "registryDependencies": [
+        "props"
+      ],
+      "files": [
+        "lib/slot.ts"
+      ]
+    },
+    {
+      "name": "utils",
+      "type": "registry:lib",
+      "title": "Utils",
+      "description": "`cn`, which shadcn's copied components all call.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/utils.ts"
+      ]
+    },
+    {
+      "name": "accordion",
+      "type": "registry:ui",
+      "title": "Accordion",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/accordion.tsx"
+      ]
+    },
+    {
+      "name": "alert-dialog",
+      "type": "registry:ui",
+      "title": "Alert Dialog",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "overlay",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/alert-dialog.tsx"
+      ]
+    },
+    {
+      "name": "alert",
+      "type": "registry:ui",
+      "title": "Alert",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/alert.tsx"
+      ]
+    },
+    {
+      "name": "aspect-ratio",
+      "type": "registry:ui",
+      "title": "Aspect Ratio",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/aspect-ratio.tsx"
+      ]
+    },
+    {
+      "name": "avatar",
+      "type": "registry:ui",
+      "title": "Avatar",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/avatar.tsx"
+      ]
+    },
+    {
+      "name": "badge",
+      "type": "registry:ui",
+      "title": "Badge",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/badge.tsx"
+      ]
+    },
+    {
+      "name": "breadcrumb",
+      "type": "registry:ui",
+      "title": "Breadcrumb",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/breadcrumb.tsx"
+      ]
+    },
+    {
+      "name": "button-group",
+      "type": "registry:ui",
+      "title": "Button Group",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "separator",
+        "slot"
+      ],
+      "files": [
+        "ui/button-group.tsx"
+      ]
+    },
+    {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Button",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/button.tsx"
+      ]
+    },
+    {
+      "name": "card",
+      "type": "registry:ui",
+      "title": "Card",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/card.tsx"
+      ]
+    },
+    {
+      "name": "checkbox",
+      "type": "registry:ui",
+      "title": "Checkbox",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/checkbox.tsx"
+      ]
+    },
+    {
+      "name": "collapsible",
+      "type": "registry:ui",
+      "title": "Collapsible",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/collapsible.tsx"
+      ]
+    },
+    {
+      "name": "dialog",
+      "type": "registry:ui",
+      "title": "Dialog",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "overlay",
+        "props",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/dialog.tsx"
+      ]
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "registry:ui",
+      "title": "Dropdown Menu",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/dropdown-menu.tsx"
+      ]
+    },
+    {
+      "name": "empty",
+      "type": "registry:ui",
+      "title": "Empty",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/empty.tsx"
+      ]
+    },
+    {
+      "name": "field",
+      "type": "registry:ui",
+      "title": "Field",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "label",
+        "layers",
+        "props",
+        "separator",
+        "slot"
+      ],
+      "files": [
+        "ui/field.tsx"
+      ]
+    },
+    {
+      "name": "input-group",
+      "type": "registry:ui",
+      "title": "Input Group",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "input",
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/input-group.tsx"
+      ]
+    },
+    {
+      "name": "input",
+      "type": "registry:ui",
+      "title": "Input",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/input.tsx"
+      ]
+    },
+    {
+      "name": "item",
+      "type": "registry:ui",
+      "title": "Item",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "separator",
+        "slot"
+      ],
+      "files": [
+        "ui/item.tsx"
+      ]
+    },
+    {
+      "name": "kbd",
+      "type": "registry:ui",
+      "title": "Kbd",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/kbd.tsx"
+      ]
+    },
+    {
+      "name": "label",
+      "type": "registry:ui",
+      "title": "Label",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/label.tsx"
+      ]
+    },
+    {
+      "name": "native-select",
+      "type": "registry:ui",
+      "title": "Native Select",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/native-select.tsx"
+      ]
+    },
+    {
+      "name": "pagination",
+      "type": "registry:ui",
+      "title": "Pagination",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/pagination.tsx"
+      ]
+    },
+    {
+      "name": "popover",
+      "type": "registry:ui",
+      "title": "Popover",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "overlay",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/popover.tsx"
+      ]
+    },
+    {
+      "name": "progress",
+      "type": "registry:ui",
+      "title": "Progress",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props"
+      ],
+      "files": [
+        "ui/progress.tsx"
+      ]
+    },
+    {
+      "name": "radio-group",
+      "type": "registry:ui",
+      "title": "Radio Group",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/radio-group.tsx"
+      ]
+    },
+    {
+      "name": "scroll-area",
+      "type": "registry:ui",
+      "title": "Scroll Area",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/scroll-area.tsx"
+      ]
+    },
+    {
+      "name": "select",
+      "type": "registry:ui",
+      "title": "Select",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/select.tsx"
+      ]
+    },
+    {
+      "name": "separator",
+      "type": "registry:ui",
+      "title": "Separator",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/separator.tsx"
+      ]
+    },
+    {
+      "name": "sheet",
+      "type": "registry:ui",
+      "title": "Sheet",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "overlay",
+        "props",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/sheet.tsx"
+      ]
+    },
+    {
+      "name": "skeleton",
+      "type": "registry:ui",
+      "title": "Skeleton",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/skeleton.tsx"
+      ]
+    },
+    {
+      "name": "slider",
+      "type": "registry:ui",
+      "title": "Slider",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/slider.tsx"
+      ]
+    },
+    {
+      "name": "spinner",
+      "type": "registry:ui",
+      "title": "Spinner",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/spinner.tsx"
+      ]
+    },
+    {
+      "name": "sr-only",
+      "type": "registry:ui",
+      "title": "Sr Only",
+      "description": "Named to assistive technology, drawn nowhere.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/sr-only.ts"
+      ]
+    },
+    {
+      "name": "switch",
+      "type": "registry:ui",
+      "title": "Switch",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/switch.tsx"
+      ]
+    },
+    {
+      "name": "table",
+      "type": "registry:ui",
+      "title": "Table",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/table.tsx"
+      ]
+    },
+    {
+      "name": "tabs",
+      "type": "registry:ui",
+      "title": "Tabs",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/tabs.tsx"
+      ]
+    },
+    {
+      "name": "toggle",
+      "type": "registry:ui",
+      "title": "Toggle",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/toggle.tsx"
+      ]
+    },
+    {
+      "name": "tooltip",
+      "type": "registry:ui",
+      "title": "Tooltip",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props"
+      ],
+      "files": [
+        "ui/tooltip.tsx"
+      ]
+    }
+  ]
+}

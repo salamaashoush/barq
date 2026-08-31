@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "props",
+  "type": "registry:lib",
+  "title": "Props",
+  "description": "What every component in this package accepts.",
+  "dependencies": [
+    "@barqjs/core"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/props.ts",
+      "type": "registry:lib",
+      "content": "/**\n * What every component in this package accepts.\n *\n * shadcn spreads `React.ComponentProps<\"div\">` and lets anything through.\n * `uiProps` filters instead — a design-system prop like `variant` must not\n * become an attribute — so this type is the list of what survives the filter,\n * and `class` above all, because that is what the whole package is overridden\n * through.\n */\n\nimport type { Child } from \"@barqjs/core\";\n\nexport interface UiProps {\n  /** Composed with the component's own classes; yours wins, because this package's rules are layered. */\n  class?: string;\n  className?: string;\n  style?: Record<string, string | number | undefined>;\n  id?: string;\n  children?: Child;\n  role?: string;\n  title?: string;\n  tabIndex?: number;\n  hidden?: boolean;\n  dir?: \"ltr\" | \"rtl\" | \"auto\";\n  lang?: string;\n  \"aria-label\"?: string;\n  \"aria-labelledby\"?: string;\n  \"aria-describedby\"?: string;\n  \"aria-hidden\"?: boolean | \"true\" | \"false\";\n  /** Overrides the component's own slot name. Every element carries one; this renames it. */\n  \"data-slot\"?: string;\n  \"data-testid\"?: string;\n  onClick?: (event: MouseEvent) => void;\n  onPointerDown?: (event: PointerEvent) => void;\n  onPointerUp?: (event: PointerEvent) => void;\n  onMouseEnter?: (event: MouseEvent) => void;\n  onMouseLeave?: (event: MouseEvent) => void;\n}\n"
+    }
+  ]
+}

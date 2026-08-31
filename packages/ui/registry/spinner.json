@@ -1,0 +1,21 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "spinner",
+  "type": "registry:ui",
+  "title": "Spinner",
+  "dependencies": [
+    "@barqjs/core",
+    "@barqjs/css",
+    "@barqjs/lucide"
+  ],
+  "registryDependencies": [
+    "layers"
+  ],
+  "files": [
+    {
+      "path": "ui/spinner.tsx",
+      "type": "registry:ui",
+      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { clsx, css } from \"@barqjs/css\";\nimport { LoaderCircle } from \"@barqjs/lucide/icons/loader-circle\";\n\nimport \"../theme/layers.ts\";\n\nconst spinner = css`\n  @layer barq.ui {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n    animation: var(--animate-spin);\n  }\n`;\n\nexport interface SpinnerProps {\n  class?: string;\n  className?: string;\n  style?: Record<string, string | number | undefined>;\n  id?: string;\n  /** What a screen reader says while it turns. @default \"Loading\" */\n  label?: string;\n  \"data-testid\"?: string;\n}\n\n/**\n * ```tsx\n * <Button isDisabled><Spinner /> Saving</Button>\n * ```\n *\n * `role=\"status\"` with a name, so the wait is announced once rather than being\n * a silent turning circle.\n */\nexport function Spinner(props: Incoming<SpinnerProps>) {\n  return (\n    <LoaderCircle\n      role=\"status\"\n      aria-label={props.label?.() ?? \"Loading\"}\n      data-slot=\"spinner\"\n      data-testid={props[\"data-testid\"]?.()}\n      id={props.id?.()}\n      style={props.style?.()}\n      class={clsx(spinner, props.class?.(), props.className?.())}\n    />\n  );\n}\n"
+    }
+  ]
+}

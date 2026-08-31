@@ -1,0 +1,20 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "collapsible",
+  "type": "registry:ui",
+  "title": "Collapsible",
+  "dependencies": [
+    "@barqjs/core",
+    "@barqjs/css"
+  ],
+  "registryDependencies": [
+    "layers"
+  ],
+  "files": [
+    {
+      "path": "ui/collapsible.tsx",
+      "type": "registry:ui",
+      "content": "import {\n  Disclosure,\n  DisclosureButton,\n  DisclosurePanel,\n  type DisclosureButtonComponentProps,\n  type DisclosureComponentProps,\n  type DisclosurePanelComponentProps,\n} from \"@barqjs/aria/disclosure\";\nimport type { Incoming } from \"@barqjs/core\";\nimport { clsx, css } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\n\nconst trigger = css`\n  @layer barq.ui {\n    --ui-outline-style: none;\n    outline-style: none;\n    &[data-focus-visible] {\n      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))\n        var(--ui-ring-color, currentcolor);\n      box-shadow:\n        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),\n        var(--ui-ring-shadow), var(--ui-shadow);\n      --ui-ring-color: var(--ring);\n      @supports (color: color-mix(in lab, red, red)) {\n        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);\n      }\n    }\n    &[data-disabled] {\n      pointer-events: none;\n      opacity: 50%;\n    }\n  }\n`;\n\n/** The same `grid-template-rows` collapse the accordion uses; see `accordion.tsx`. */\nconst panel = css`\n  @layer barq.ui {\n    display: grid;\n    grid-template-rows: 0fr;\n    overflow: hidden;\n    transition: grid-template-rows 200ms ease-out;\n\n    &[data-expanded] {\n      grid-template-rows: 1fr;\n    }\n\n    & > * {\n      overflow: hidden;\n      min-height: 0;\n    }\n\n    @media (prefers-reduced-motion: reduce) {\n      transition: none;\n    }\n  }\n`;\n\nexport interface CollapsibleProps extends DisclosureComponentProps {}\n\n/**\n * ```tsx\n * <Collapsible>\n *   <CollapsibleTrigger>Details</CollapsibleTrigger>\n *   <CollapsibleContent>…</CollapsibleContent>\n * </Collapsible>\n * ```\n *\n * The panel stays in the document while collapsed, so find-in-page reaches it.\n */\nexport function Collapsible(props: Incoming<CollapsibleProps>) {\n  return <Disclosure {...props} />;\n}\n\nexport interface CollapsibleTriggerProps extends DisclosureButtonComponentProps {}\n\nexport function CollapsibleTrigger(props: Incoming<CollapsibleTriggerProps>) {\n  return (\n    <DisclosureButton\n      {...props}\n      data-slot=\"collapsible-trigger\"\n      class={clsx(trigger, props.class?.(), props.className?.())}\n    />\n  );\n}\n\nexport interface CollapsibleContentProps extends DisclosurePanelComponentProps {}\n\nexport function CollapsibleContent(props: Incoming<CollapsibleContentProps>) {\n  return (\n    <DisclosurePanel {...props} data-slot=\"collapsible-content\" class={panel}>\n      <div class={clsx(props.class?.(), props.className?.())}>{props.children}</div>\n    </DisclosurePanel>\n  );\n}\n"
+    }
+  ]
+}

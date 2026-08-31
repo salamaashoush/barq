@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "utils",
+  "type": "registry:lib",
+  "title": "Utils",
+  "description": "`cn`, which shadcn's copied components all call.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/utils.ts",
+      "type": "registry:lib",
+      "content": "/**\n * `cn`, which shadcn's copied components all call.\n *\n * There it is `twMerge(clsx(…))`, and the `twMerge` half exists because two\n * Tailwind classes setting the same property are decided by the stylesheet\n * rather than by the call. That question is answered a layer up here: every\n * rule this package writes is inside `@layer barq.ui` and an application's is\n * not, so a caller's class wins whatever order the bundler chose. What is left\n * is the joining, which is `clsx`.\n *\n * When two classes of YOUR OWN conflict, `atoms` from `@barqjs/css` is the tool\n * that answers it: one class per property, merged by the call.\n */\n\nexport { clsx as cn } from \"@barqjs/css\";\nexport type { ClassValue } from \"@barqjs/css\";\n"
+    }
+  ]
+}

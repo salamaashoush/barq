@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@barqjs/core",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["@types/bun"],
+    "allowImportingTsExtensions": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["src/**/*", "tools/**/*", "types/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

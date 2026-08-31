@@ -1,0 +1,22 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "alert",
+  "type": "registry:ui",
+  "title": "Alert",
+  "dependencies": [
+    "@barqjs/core",
+    "@barqjs/css"
+  ],
+  "registryDependencies": [
+    "layers",
+    "props",
+    "slot"
+  ],
+  "files": [
+    {
+      "path": "ui/alert.tsx",
+      "type": "registry:ui",
+      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { css, variants } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\nimport { uiProps } from \"../lib/slot.ts\";\n\nexport type AlertVariant = \"default\" | \"destructive\";\n\nexport const alertVariants = variants({\n  base: css`\n    @layer barq.ui {\n      position: relative;\n      display: grid;\n      width: 100%;\n      grid-template-columns: 0 1fr;\n      align-items: flex-start;\n      row-gap: calc(var(--spacing) * 0.5);\n      border-radius: var(--radius);\n      border-style: var(--ui-border-style);\n      border-width: 1px;\n      padding-inline: calc(var(--spacing) * 4);\n      padding-block: calc(var(--spacing) * 3);\n      font-size: var(--text-sm);\n      line-height: var(--ui-leading, var(--text-sm--line-height));\n      &:has(> svg) {\n        grid-template-columns: calc(var(--spacing) * 4) 1fr;\n        column-gap: calc(var(--spacing) * 3);\n      }\n      & > svg {\n        width: calc(var(--spacing) * 4);\n        height: calc(var(--spacing) * 4);\n        --ui-translate-y: calc(var(--spacing) * 0.5);\n        translate: var(--ui-translate-x) var(--ui-translate-y);\n        color: currentcolor;\n      }\n    }\n  `,\n  variants: {\n    variant: {\n      default: css`\n        @layer barq.ui {\n          background-color: var(--card);\n          color: var(--card-foreground);\n        }\n      `,\n      destructive: css`\n        @layer barq.ui {\n          background-color: var(--card);\n          color: var(--destructive);\n          :is(& > *)[data-slot=\"alert-description\"] {\n            color: var(--destructive);\n            @supports (color: color-mix(in lab, red, red)) {\n              color: color-mix(in oklab, var(--destructive) 90%, transparent);\n            }\n          }\n          & > svg {\n            color: currentcolor;\n          }\n        }\n      `,\n    },\n  },\n  defaults: { variant: \"default\" },\n});\n\nconst title = css`\n  @layer barq.ui {\n    grid-column-start: 2;\n    overflow: hidden;\n    display: -webkit-box;\n    -webkit-box-orient: vertical;\n    -webkit-line-clamp: 1;\n    min-height: calc(var(--spacing) * 4);\n    --ui-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n    --ui-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n`;\n\nconst description = css`\n  @layer barq.ui {\n    grid-column-start: 2;\n    display: grid;\n    justify-items: start;\n    gap: var(--spacing);\n    font-size: var(--text-sm);\n    line-height: var(--ui-leading, var(--text-sm--line-height));\n    color: var(--muted-foreground);\n    & p {\n      --ui-leading: var(--leading-relaxed);\n      line-height: var(--leading-relaxed);\n    }\n  }\n`;\n\nexport interface AlertProps extends UiProps {\n  variant?: AlertVariant;\n}\n\n/**\n * ```tsx\n * <Alert variant=\"destructive\">\n *   <TriangleAlert />\n *   <AlertTitle>Payment failed</AlertTitle>\n *   <AlertDescription>The card was declined.</AlertDescription>\n * </Alert>\n * ```\n *\n * An icon is an ordinary child. The grid finds it with `:has(> svg)` and opens\n * a column for it, so there is no slot to remember and no prop to set.\n */\nexport function Alert(props: Incoming<AlertProps>) {\n  const className = (): string => alertVariants({ variant: props.variant?.() });\n  return (\n    <div\n      {...uiProps(\"alert\", className, props)}\n      role={props.role?.() ?? \"alert\"}\n      data-variant={props.variant?.() ?? \"default\"}\n    >\n      {props.children}\n    </div>\n  );\n}\n\nexport function AlertTitle(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"alert-title\", title, props)}>{props.children}</div>;\n}\n\nexport function AlertDescription(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"alert-description\", description, props)}>{props.children}</div>;\n}\n"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "sr-only",
+  "type": "registry:ui",
+  "title": "Sr Only",
+  "description": "Named to assistive technology, drawn nowhere.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [
+    "layers"
+  ],
+  "files": [
+    {
+      "path": "ui/sr-only.ts",
+      "type": "registry:ui",
+      "content": "/**\n * Named to assistive technology, drawn nowhere.\n *\n * `display: none` and `visibility: hidden` both take an element out of the\n * accessibility tree as well as out of the layout, which is the opposite of\n * what this is for. Clipping to nothing while staying in the flow is the only\n * arrangement every screen reader still reads.\n */\n\nimport { css } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\n\n/**\n * `&&` on purpose. A layout rule of the same specificity, `<Field>`'s\n * `& > * { width: 100% }`, would otherwise be decided by which module the\n * bundler registered first and a screen-reader-only child would be drawn.\n * shadcn cancels that one rule by hand (`[&>.sr-only]:w-auto`); winning\n * outright needs no cancelling anywhere.\n */\nexport const srOnly = css`\n  @layer barq.ui {\n    && {\n      position: absolute;\n      width: 1px;\n      height: 1px;\n      padding: 0;\n      margin: -1px;\n      overflow: hidden;\n      clip-path: inset(50%);\n      white-space: nowrap;\n      border-width: 0;\n    }\n  }\n`;\n"
+    }
+  ]
+}

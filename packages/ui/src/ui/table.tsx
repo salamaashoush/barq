@@ -1,0 +1,206 @@
+import type { Incoming } from "@barqjs/core";
+import { css } from "@barqjs/css";
+
+import "../theme/layers.ts";
+import type { UiProps } from "../lib/props.ts";
+import { uiProps } from "../lib/slot.ts";
+
+const container = css`
+  @layer barq.ui {
+    position: relative;
+    width: 100%;
+    overflow-x: auto;
+  }
+`;
+
+const table = css`
+  @layer barq.ui {
+    width: 100%;
+    caption-side: bottom;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+    line-height: var(--ui-leading, var(--text-sm--line-height));
+  }
+`;
+
+const header = css`
+  @layer barq.ui {
+    & tr {
+      border-bottom-style: var(--ui-border-style);
+      border-bottom-width: 1px;
+    }
+  }
+`;
+
+const body = css`
+  @layer barq.ui {
+    & tr:last-child {
+      border-style: var(--ui-border-style);
+      border-width: 0px;
+    }
+  }
+`;
+
+const footer = css`
+  @layer barq.ui {
+    border-top-style: var(--ui-border-style);
+    border-top-width: 1px;
+    background-color: var(--muted);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+    }
+    --ui-font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-medium);
+    & > tr:last-child {
+      border-bottom-style: var(--ui-border-style);
+      border-bottom-width: 0px;
+    }
+  }
+`;
+
+const row = css`
+  @layer barq.ui {
+    border-bottom-style: var(--ui-border-style);
+    border-bottom-width: 1px;
+    --ui-border-style: solid;
+    border-style: solid;
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+      --ui-gradient-from, --ui-gradient-via, --ui-gradient-to;
+    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
+    transition-duration: var(--ui-duration, var(--default-transition-duration));
+    @media (hover: hover) {
+      &:hover {
+        background-color: var(--muted);
+      }
+      @supports (color: color-mix(in lab, red, red)) {
+        &:hover {
+          background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+        }
+      }
+    }
+    &[data-selected] {
+      background-color: var(--muted);
+    }
+  }
+`;
+
+const head = css`
+  @layer barq.ui {
+    height: calc(var(--spacing) * 10);
+    padding-inline: calc(var(--spacing) * 2);
+    text-align: left;
+    vertical-align: middle;
+    --ui-font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+    color: var(--foreground);
+    &:has([role="checkbox"]) {
+      padding-right: 0px;
+    }
+  }
+`;
+
+const cell = css`
+  @layer barq.ui {
+    padding: calc(var(--spacing) * 2);
+    vertical-align: middle;
+    white-space: nowrap;
+    &:has([role="checkbox"]) {
+      padding-right: 0px;
+    }
+  }
+`;
+
+const caption = css`
+  @layer barq.ui {
+    margin-top: calc(var(--spacing) * 4);
+    font-size: var(--text-sm);
+    line-height: var(--ui-leading, var(--text-sm--line-height));
+    color: var(--muted-foreground);
+  }
+`;
+
+/**
+ * A plain HTML table, styled.
+ *
+ * Deliberately NOT `@barqjs/aria`'s `<Table>`, which is a grid: it has roving
+ * focus, selection, sortable columns and a keyboard delegate, and it is the
+ * right thing for a data grid and the wrong thing for a table of five invoices.
+ * Reach for `@barqjs/aria/table` when you need those; this is the markup.
+ */
+export function Table(props: Incoming<UiProps>) {
+  return (
+    <div data-slot="table-container" class={container}>
+      <table {...uiProps("table", table, props)}>{props.children}</table>
+    </div>
+  );
+}
+
+export function TableHeader(props: Incoming<UiProps>) {
+  return <thead {...uiProps("table-header", header, props)}>{props.children}</thead>;
+}
+
+export function TableBody(props: Incoming<UiProps>) {
+  return <tbody {...uiProps("table-body", body, props)}>{props.children}</tbody>;
+}
+
+export function TableFooter(props: Incoming<UiProps>) {
+  return <tfoot {...uiProps("table-footer", footer, props)}>{props.children}</tfoot>;
+}
+
+export interface TableRowProps extends UiProps {
+  /** Marks the row as chosen. The CSS reads `data-selected`. */
+  isSelected?: boolean;
+}
+
+export function TableRow(props: Incoming<TableRowProps>) {
+  return (
+    <tr
+      {...uiProps("table-row", row, props)}
+      data-selected={props.isSelected?.() === true ? "" : undefined}
+      aria-selected={props.isSelected?.() === true ? true : undefined}
+    >
+      {props.children}
+    </tr>
+  );
+}
+
+export interface TableHeadProps extends UiProps {
+  colSpan?: number;
+  scope?: "col" | "row" | "colgroup" | "rowgroup";
+}
+
+export function TableHead(props: Incoming<TableHeadProps>) {
+  return (
+    <th
+      {...uiProps("table-head", head, props)}
+      colSpan={props.colSpan?.()}
+      scope={props.scope?.() ?? "col"}
+    >
+      {props.children}
+    </th>
+  );
+}
+
+export interface TableCellProps extends UiProps {
+  colSpan?: number;
+  rowSpan?: number;
+}
+
+export function TableCell(props: Incoming<TableCellProps>) {
+  return (
+    <td
+      {...uiProps("table-cell", cell, props)}
+      colSpan={props.colSpan?.()}
+      rowSpan={props.rowSpan?.()}
+    >
+      {props.children}
+    </td>
+  );
+}
+
+/** The table's name. Placed at the bottom, which is where shadcn puts it. */
+export function TableCaption(props: Incoming<UiProps>) {
+  return <caption {...uiProps("table-caption", caption, props)}>{props.children}</caption>;
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "progress",
+  "type": "registry:ui",
+  "title": "Progress",
+  "dependencies": [
+    "@barqjs/aria",
+    "@barqjs/core",
+    "@barqjs/css"
+  ],
+  "registryDependencies": [
+    "layers",
+    "props"
+  ],
+  "files": [
+    {
+      "path": "ui/progress.tsx",
+      "type": "registry:ui",
+      "content": "import { progressBar } from \"@barqjs/aria/link\";\nimport { fromProps, mergeProps } from \"@barqjs/aria/utils\";\nimport { Show, type Incoming } from \"@barqjs/core\";\nimport { clsx, css } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\n\nconst track = css`\n  @layer barq.ui {\n    position: relative;\n    height: calc(var(--spacing) * 2);\n    width: 100%;\n    overflow: hidden;\n    border-radius: calc(infinity * 1px);\n    background-color: var(--primary);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--primary) 20%, transparent);\n    }\n  }\n`;\n\nconst bar = css`\n  @layer barq.ui {\n    height: 100%;\n    width: 100%;\n    flex: 1;\n    background-color: var(--primary);\n    transition-property: all;\n    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));\n    transition-duration: var(--ui-duration, var(--default-transition-duration));\n  }\n`;\n\nexport interface ProgressProps extends UiProps {\n  /** 0 to `maxValue`. @default 0 */\n  value?: number;\n  minValue?: number;\n  maxValue?: number;\n  isIndeterminate?: boolean;\n  /** Rendered visually hidden, and what names the bar. */\n  label?: string;\n  \"aria-label\"?: string;\n  \"aria-labelledby\"?: string;\n}\n\n/**\n * ```tsx\n * <Progress value={60} label=\"Upload\" />\n * ```\n *\n * Built on the `progressBar` hook rather than `@barqjs/aria`'s component,\n * because that one renders the value as visible text — right for a bar with a\n * number beside it, and inside this track it would be text on top of the fill.\n *\n * Give it a `label` or an `aria-label`. A progress bar with neither is a\n * rectangle a screen reader announces as \"progress bar, 60 percent\" with no\n * word about what is at sixty percent.\n */\nexport function Progress(props: Incoming<ProgressProps>) {\n  const options = fromProps(props);\n  const { progressBarProps, labelProps, percentage } = progressBar(options);\n\n  const elementProps = mergeProps(progressBarProps, {\n    \"data-slot\": \"progress\",\n    \"data-testid\": () => props[\"data-testid\"]?.(),\n    class: () => clsx(track, props.class?.(), props.className?.()),\n    style: () => props.style?.(),\n  });\n\n  const fill = (): Record<string, string> => ({\n    transform:\n      props.isIndeterminate?.() === true\n        ? \"translateX(-50%)\"\n        : `translateX(-${String(100 - percentage() * 100)}%)`,\n  });\n\n  return (\n    <div {...elementProps}>\n      <Show when={props.label?.() !== undefined}>\n        <span {...labelProps} class={visuallyHidden}>\n          {props.label}\n        </span>\n      </Show>\n      <div data-slot=\"progress-indicator\" class={bar} style={fill()} />\n    </div>\n  );\n}\n\n/** The label is named to assistive technology and drawn nowhere. */\nconst visuallyHidden = css`\n  @layer barq.ui {\n    position: absolute;\n    width: 1px;\n    height: 1px;\n    padding: 0;\n    margin: -1px;\n    overflow: hidden;\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n  }\n`;\n"
+    }
+  ]
+}
