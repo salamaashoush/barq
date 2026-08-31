@@ -62,6 +62,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -224,6 +229,18 @@ const FAQS = [
   { id: "a", q: "Is it accessible?", a: "Yes. It follows the WAI-ARIA patterns." },
   { id: "b", q: "Is it styled?", a: "Yes, and every rule is yours to change." },
 ];
+
+/** A big enough area to right-click in, and to measure the menu against. */
+const dropzone = css`
+  display: flex;
+  height: 9rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px dashed var(--border);
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+`;
 
 const ACTIONS = [
   { id: "rename", name: "Rename" },
@@ -464,6 +481,20 @@ function Gallery() {
             <Button variant="outline">Tooltip</Button>
             <TooltipContent>Saves to the server</TooltipContent>
           </Tooltip>
+        </div>
+
+        <div class={stack} style={{ "max-width": "32rem" }}>
+          <ContextMenu>
+            <ContextMenuTrigger class={dropzone}>Right-click anywhere in here</ContextMenuTrigger>
+            <ContextMenuContent items={ACTIONS} aria-label="Actions">
+              {(action: (typeof ACTIONS)[number]) => (
+                <ContextMenuItem variant={action.id === "delete" ? "destructive" : "default"}>
+                  {action.name}
+                  <ContextMenuShortcut>{"\u2318R"}</ContextMenuShortcut>
+                </ContextMenuItem>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
         </div>
       </Section>
 

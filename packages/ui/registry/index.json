@@ -64,6 +64,7 @@
       "description": "The state a trigger and its overlay share, and the context that carries it.",
       "dependencies": [
         "@barqjs/aria",
+        "@barqjs/core",
         "@barqjs/primitives"
       ],
       "registryDependencies": [],
@@ -90,6 +91,7 @@
       "title": "Slot",
       "description": "The props a component puts on its element.",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core"
       ],
       "registryDependencies": [
@@ -117,6 +119,7 @@
       "type": "registry:ui",
       "title": "Accordion",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide"
@@ -311,6 +314,7 @@
       "type": "registry:ui",
       "title": "Collapsible",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css"
       ],
@@ -348,6 +352,7 @@
       "title": "Command",
       "dependencies": [
         "@barqjs/aria",
+        "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide",
         "@barqjs/primitives"
@@ -361,6 +366,26 @@
       ],
       "files": [
         "ui/command.tsx"
+      ]
+    },
+    {
+      "name": "context-menu",
+      "type": "registry:ui",
+      "title": "Context Menu",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "dropdown-menu",
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/context-menu.tsx"
       ]
     },
     {
@@ -446,6 +471,7 @@
       "title": "Hover Card",
       "dependencies": [
         "@barqjs/aria",
+        "@barqjs/core",
         "@barqjs/css",
         "@barqjs/primitives"
       ],
@@ -551,11 +577,13 @@
       "type": "registry:ui",
       "title": "Menubar",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css"
       ],
       "registryDependencies": [
         "button",
+        "dropdown-menu",
         "layers",
         "props",
         "slot"
@@ -643,6 +671,7 @@
       "type": "registry:ui",
       "title": "Radio Group",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide"
@@ -750,6 +779,7 @@
       "type": "registry:ui",
       "title": "Slider",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css"
       ],
@@ -829,6 +859,7 @@
       "type": "registry:ui",
       "title": "Tabs",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css"
       ],
@@ -862,6 +893,7 @@
       "type": "registry:ui",
       "title": "Toggle",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css"
       ],

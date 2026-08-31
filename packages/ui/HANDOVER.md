@@ -4,15 +4,15 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (216), aria (630), core (938),
+Green on the current tree: `bun test` passes in ui (275), aria (648), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
-css (62), ui-cli (46), lucide (17) and query (15), and `cargo test` in
+css (62), ui-cli (47), lucide (17) and query (15), and `cargo test` in
 `compiler-rs` (468). `bunx tsc --noEmit` is clean in ui, ui-cli and lucide, all
-three build, `bun run verify` reports 2224 of 2224 declarations present, and
+three build, `bun run verify` reports 2254 of 2254 declarations present, and
 `oxlint --type-aware --deny-warnings` is clean over `packages/ui` and
 `packages/aria`.
 
-Thirteen commits on `feat/ui-package`, and the tree is clean. `packages/ui`,
+Fifteen commits on `feat/ui-package`, and the tree is clean. `packages/ui`,
 `packages/ui-cli` and `packages/lucide` were entirely untracked before them.
 
 `bun run ci` at the root still FAILS, on 30 findings in `packages/router`,
@@ -21,19 +21,17 @@ predate this work.
 
 ## Where to pick up
 
-Forty-four components. What is left of the classic registry, in value order:
+Forty-five components. What is left of the classic registry, in value order:
 
-1. **ContextMenu** — a menu anchored to the pointer. `@barqjs/aria` has no
-   pointer-anchored trigger; everything else is `DropdownMenu`'s.
-2. **Calendar**, then **DatePicker** — aria has `calendar` and `datepicker`
+1. **Calendar**, then **DatePicker** — aria has `calendar` and `datepicker`
    state. shadcn's calendar CSS is written against `react-day-picker`'s DOM, so
    the class list does not map one to one and that is the whole of the work.
-3. **InputOTP** — one input per character, with paste and arrow handling.
-4. **Sidebar** — big but mechanical: a context, a `Sheet` on narrow screens,
+2. **InputOTP** — one input per character, with paste and arrow handling.
+3. **Sidebar** — big but mechanical: a context, a `Sheet` on narrow screens,
    and a lot of layout.
-5. **NavigationMenu** — needs a viewport and an indicator aria has no shape for.
-6. **Toast** / **Sonner** — needs a Toast in `@barqjs/aria` first.
-7. **Carousel**, **Resizable**, **Drawer**, **Chart** — each wraps a third-party
+4. **NavigationMenu** — needs a viewport and an indicator aria has no shape for.
+5. **Toast** / **Sonner** — needs a Toast in `@barqjs/aria` first.
+6. **Carousel**, **Resizable**, **Drawer**, **Chart** — each wraps a third-party
    engine (embla, react-resizable-panels, vaul, recharts). These are not
    transcription. Decide whether to take the dependency or write the engine
    before starting one.
@@ -82,6 +80,46 @@ animation is on the list INSIDE the popover that carries the attribute.
 own Radix demo closes on Escape, Radix prevents only the outside interaction,
 and the APG asks for Escape on every dialog. The test asserts the new behaviour
 and says why.
+
+## The context menu was checked at four points in a real browser
+
+`ContextMenu` is the first component here whose whole behaviour is geometry, so
+the browser pass is the test. In Chrome at 1280x720, right-clicking the gallery's
+region put the panel two pixels right of the pointer with its top edge on it,
+every time; a second right-click 220px away moved it there rather than reopening
+it where it was. Near the bottom of the viewport it slid up to sit 12px off the
+edge and stayed anchored horizontally; in a 520px window a click 4px from the
+region's right edge flipped it to `left` and it ended two pixels left of the
+pointer with no horizontal overflow. Escape and an outside press both closed it,
+`data-closed` was on the panel while the opacity ran 0.65 to 0.03, and focus went
+back to the region.
+
+Shift+F10 opens it under whatever has focus, on the first item. A region of
+plain text has nothing to focus, so the demo needs a `tabIndex` before the
+keyboard can reach it at all — which is what `<ContextMenuTrigger>`'s doc
+comment now says.
+
+Two things about the driver rather than the code: `keyboard.down("Shift")`
+followed by `press("F10")` sends F10 with `shiftKey: false`, so the chord form
+`press("Shift+F10")` is the one that works; and `document.body.click()` does not
+dismiss an overlay, because the dismissal is on the pointer events.
+
+## Fourteen registry items were missing dependencies, and nothing said so
+
+`tools/registry.ts` finds a component's imports with a regex, and that regex
+stopped at the end of a line — so every import long enough for `oxfmt` to wrap
+it was invisible. `slider`, `tabs`, `toggle`, `accordion`, `radio-group` and
+`collapsible` all shipped without `@barqjs/aria`; `menubar` and `context-menu`
+without the `dropdown-menu` they are built on. `barq-ui add slider` therefore
+wrote a file importing a package it had not installed.
+
+`packages/ui-cli/src/build.ts` had the same regex, so a registry someone built
+of their own had the same hole. Both now match the import CLAUSE — names,
+braces, commas, `*`, whitespace — rather than "anything up to the newline".
+
+`src/registry.test.ts` reads the registry back and finds the imports with a
+rule too simple to share the bug: every `from "…"` in the file, wherever it is.
+It fails on twelve items with the old regex in place.
 
 ## `bun run verify` is how you know it still matches shadcn
 
@@ -206,10 +244,9 @@ document and a removed element keeps focus.
 
 ## What has not been done
 
-- **Components.** `Command`, `Combobox`, `Calendar`, `DatePicker`, `Toast`,
-  `Sidebar`, `NavigationMenu`, `Menubar`, `ContextMenu`, `HoverCard`,
-  `Carousel`, `Resizable`, `InputOTP`, `Drawer` and `Chart`. `Toast` and
-  `ContextMenu` need new work in `@barqjs/aria`; the rest are transcription plus
+- **Components.** `Calendar`, `DatePicker`, `Toast`, `Sidebar`,
+  `NavigationMenu`, `Carousel`, `Resizable`, `InputOTP`, `Drawer` and `Chart`.
+  `Toast` needs new work in `@barqjs/aria`; the rest are transcription plus
   composition.
 - **The new upstream.** `ui.shadcn.com` has moved to a registry whose look is
   in a stylesheet rather than in class lists, which `tools/css.ts` cannot

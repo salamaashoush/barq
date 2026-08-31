@@ -172,7 +172,9 @@ than on a wrapper that focus never reaches.
 
 **A trigger renders no element.** `<DialogTrigger>` and `<PopoverTrigger>` are
 not `<div>`s. They hand `aria-expanded`, `aria-haspopup` and the press handling
-to whatever control is inside them.
+to whatever control is inside them. `<ContextMenuTrigger>` is the one exception,
+and it has to be: a context menu belongs to an area rather than to a control,
+so there is nothing else for the pointer to land on.
 
 **An animation decides its own length.** shadcn tells Radix how long an overlay
 takes to leave; here nobody is told. `presence` reads the duration back off the
@@ -196,18 +198,17 @@ what a stylesheet of your own selects:
 
 ## What is here
 
-|                |                                                                                                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Layout**     | `Card` `AspectRatio` `Separator` `ScrollArea` `Table` `Empty` `Item`                                                                                         |
-| **Forms**      | `Button` `Input` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `Slider` `Select` `NativeSelect` `Toggle` `Progress` `Field` `InputGroup` `ButtonGroup` |
-| **Overlays**   | `Dialog` `AlertDialog` `Sheet` `Popover` `Tooltip` `DropdownMenu`                                                                                            |
-| **Disclosure** | `Accordion` `Collapsible` `Tabs`                                                                                                                             |
-| **Navigation** | `Breadcrumb` `Pagination`                                                                                                                                    |
-| **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner`                                                                                                          |
+|                |                                                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Layout**     | `Card` `AspectRatio` `Separator` `ScrollArea` `Table` `Empty` `Item`                                                                                                                  |
+| **Forms**      | `Button` `Input` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `Slider` `Select` `NativeSelect` `Combobox` `Toggle` `ToggleGroup` `Progress` `Field` `InputGroup` `ButtonGroup` |
+| **Overlays**   | `Dialog` `AlertDialog` `Sheet` `Popover` `HoverCard` `Tooltip` `DropdownMenu` `ContextMenu` `Command`                                                                                 |
+| **Disclosure** | `Accordion` `Collapsible` `Tabs`                                                                                                                                                      |
+| **Navigation** | `Breadcrumb` `Pagination` `Menubar`                                                                                                                                                   |
+| **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner`                                                                                                                                   |
 
-Not built yet: `Command`, `Combobox`, `Calendar`, `DatePicker`, `Toast`,
-`Sidebar`, `NavigationMenu`, `Menubar`, `ContextMenu`, `HoverCard`, `Carousel`,
-`Resizable`, `InputOTP`, `Drawer` and `Chart`.
+Not built yet: `Calendar`, `DatePicker`, `Toast`, `Sidebar`, `NavigationMenu`,
+`Carousel`, `Resizable`, `InputOTP`, `Drawer` and `Chart`.
 
 ## Icons
 

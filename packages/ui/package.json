@@ -138,6 +138,11 @@
       "bun": "./src/ui/command.tsx",
       "import": "./dist/ui/command.js"
     },
+    "./context-menu": {
+      "types": "./dist/ui/context-menu.d.ts",
+      "bun": "./src/ui/context-menu.tsx",
+      "import": "./dist/ui/context-menu.js"
+    },
     "./dialog": {
       "types": "./dist/ui/dialog.d.ts",
       "bun": "./src/ui/dialog.tsx",
