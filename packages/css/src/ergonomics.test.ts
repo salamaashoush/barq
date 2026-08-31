@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   atoms,
+  atomsIn,
   collectCss,
   create,
   createTheme,
@@ -12,6 +13,7 @@ import {
   globalCss,
   mergeable,
   props,
+  tierOf,
   variants,
 } from "./index.ts";
 
@@ -50,6 +52,22 @@ describe("atoms", () => {
     const colors = cls.filter((name) => name.startsWith("a-color_"));
     expect(colors).toHaveLength(1);
     expect(ruleFor(colors[0])).toBe(`.${colors[0]}{color:blue}`);
+  });
+
+  test("a selector with `&` in the middle is a condition, not a property", () => {
+    // `a&:hover` is "an anchor that is also this element". `rule` substitutes
+    // `&` wherever it sits, so leading with it was never required.
+    const cls = atoms({ backgroundColor: { "a&:hover": "red" } }).split(" ")[0] ?? "";
+    expect(ruleFor(cls)).toBe(`a.${cls}:hover{background-color:red}`);
+  });
+
+  test("a class that is not an atom is kept rather than merged", () => {
+    // An application's own class arrives through a `class` prop and has no
+    // property in its name. Keyed on a slice of itself, two of them could
+    // collide and one would vanish.
+    const merged = atoms("promo", { color: "red" }, "promotion");
+    expect(merged.split(" ")).toContain("promo");
+    expect(merged.split(" ")).toContain("promotion");
   });
 
   test("a falsy argument contributes nothing", () => {
@@ -233,6 +251,81 @@ describe("create", () => {
  * exist for: a layered rule loses to an unlayered one whatever the specificity,
  * so an application's `* { margin: 0 }` beat every `margin` atom on the page.
  */
+/** What one cascade layer holds, out of the whole sheet. */
+function layerBody(name: string): string {
+  const sheet = collectCss();
+  const at = sheet.indexOf(`@layer ${name}{`);
+  if (at < 0) return "";
+  const start = at + `@layer ${name}{`.length;
+  let depth = 1;
+  for (let index = start; index < sheet.length; index++) {
+    if (sheet[index] === "{") depth++;
+    else if (sheet[index] === "}" && --depth === 0) return sheet.slice(start, index);
+  }
+  return "";
+}
+
+describe("atoms > a rule about a child", () => {
+  test("comes before the child's own rule, so the child wins the tie", () => {
+    // Both are one class, so nothing but order separates them. Measured in a
+    // browser: a field saying `& > * { width: 100% }` stretched a label that
+    // asked for `width: fit-content`.
+    const parent = atoms({ width: { "& > *": "100%" } });
+    const child = atoms({ width: "fit-content" });
+    const sheet = collectCss();
+    expect(sheet.indexOf(`.${parent}`)).toBeLessThan(sheet.indexOf(`.${child}`));
+  });
+
+  test("and a condition about itself still comes after", () => {
+    const base = atoms({ color: "olivedrab" });
+    const hover = atoms({ color: { ":hover": "olivedrab" } });
+    const sheet = collectCss();
+    expect(sheet.indexOf(`.${base}`)).toBeLessThan(sheet.indexOf(`.${hover}`));
+  });
+
+  test("`&:has(> x)` is about itself, however deep the brackets go", () => {
+    expect(tierOf('&:has(> [data-slot="field"])')).toBe(tierOf(":hover"));
+    expect(tierOf("& > *")).toBeLessThan(tierOf("default"));
+    expect(tierOf("& svg")).toBeLessThan(tierOf("default"));
+  });
+});
+
+describe("atomsIn", () => {
+  test("puts every atom in the layer it is given", () => {
+    const classes = atomsIn("barq.ui", { color: "rebeccapurple", padding: { ":hover": 4 } });
+    expect(classes).not.toBe("");
+    const body = layerBody("barq.ui");
+    for (const cls of classes.split(" ")) expect(body).toContain(`.${cls}`);
+  });
+
+  test("and neighbours share the one block rather than each writing it", () => {
+    // A package with a thousand atoms wrote `@layer barq.ui{` a thousand times.
+    const sheet = collectCss();
+    expect(sheet.split("@layer barq.ui{").length - 1).toBe(1);
+  });
+
+  test("the layer is part of the atom, so the same declaration is two classes", () => {
+    // One class name cannot carry two different rules, and a layered rule and
+    // an unlayered one are exactly that.
+    const plain = atoms({ color: "papayawhip" });
+    const layered = atomsIn("barq.ui", { color: "papayawhip" });
+    expect(layered).not.toBe(plain);
+    expect(layerBody("barq.ui")).not.toContain(`.${plain}`);
+    expect(layerBody("barq.ui")).toContain(`.${layered}`);
+  });
+
+  test("and they still merge, because the key is the property", () => {
+    const merged = atoms(atomsIn("barq.ui", { color: "tomato" }), { color: "olive" }).split(" ");
+    expect(merged).toHaveLength(1);
+    expect(ruleFor(merged[0] ?? "")).toBe(`.${merged[0] ?? ""}{color:olive}`);
+  });
+
+  test("a condition inside a layer keeps both", () => {
+    const cls = atomsIn("barq.ui", { color: { "@media print": "black" } }).split(" ")[0] ?? "";
+    expect(layerBody("barq.ui")).toContain(`@media print{.${cls}{color:black}}`);
+  });
+});
+
 describe("atoms > ordering", () => {
   test("nothing is wrapped in a cascade layer", () => {
     const classes = atoms({ color: "seagreen", padding: { ":hover": 2, "@media print": 3 } });

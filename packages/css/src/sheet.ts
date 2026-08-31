@@ -145,9 +145,57 @@ export function registerCss(key: string, rules: string): void {
 export function collectCss(): string {
   // A STABLE sort, so everything within a tier keeps the order it registered
   // in — which is what a scoped block and a global rule need.
-  return [...registered.entries()]
+  const rules = [...registered.entries()]
     .map((entry, index) => [entry, index] as const)
     .toSorted(([a, i], [b, j]) => (tiers.get(a[0]) ?? 0) - (tiers.get(b[0]) ?? 0) || i - j)
-    .map(([entry]) => entry[1])
+    .map(([entry]) => entry[1]);
+
+  // One block per cascade layer. A layered atom carries its own
+  // `@layer barq.ui{…}`, and a package with a thousand of them wrote the
+  // wrapper a thousand times: 16 KB of the 110 KB the sheet weighed, and the
+  // repetition cost more than it compressed away.
+  //
+  // Gathering a layer's rules is safe in a way that gathering ordinary rules
+  // would not be. Order still decides between two rules INSIDE the layer, and
+  // that order is kept; against anything outside it the layer decides, whatever
+  // the order. The block sits where the layer was first named.
+  const out: string[] = [];
+  const layers = new Map<string, string[]>();
+  for (const rule of rules) {
+    const split = wrapped(rule);
+    if (split === null) {
+      out.push(rule);
+      continue;
+    }
+    const held = layers.get(split.layer);
+    if (held === undefined) {
+      layers.set(split.layer, [split.body]);
+      out.push(`\u0000${split.layer}`);
+    } else {
+      held.push(split.body);
+    }
+  }
+
+  return out
+    .map((part) =>
+      part.startsWith("\u0000")
+        ? `@layer ${part.slice(1)}{${(layers.get(part.slice(1)) ?? []).join("")}}`
+        : part,
+    )
     .join("");
+}
+
+/** A rule that is exactly one cascade layer, as its name and its contents. */
+function wrapped(rule: string): { layer: string; body: string } | null {
+  const match = /^@layer ([\w.-]+)\{/.exec(rule);
+  if (match === null || !rule.endsWith("}")) return null;
+  const open = match[0].length;
+  // The layer must CLOSE at the end, or this is a layer holding something that
+  // closes early and the text after it would be lifted out of the layer.
+  let depth = 1;
+  for (let at = open; at < rule.length - 1; at++) {
+    if (rule[at] === "{") depth++;
+    else if (rule[at] === "}" && --depth === 0) return null;
+  }
+  return { layer: match[1] ?? "", body: rule.slice(open, -1) };
 }

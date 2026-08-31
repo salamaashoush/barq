@@ -46,7 +46,14 @@ export const NEST = "\u0000";
 
 function looksLikeCondition(name: string): boolean {
   return (
-    name.startsWith(":") || name.startsWith("@") || name.startsWith("&") || name.startsWith("[")
+    name.startsWith(":") ||
+    name.startsWith("@") ||
+    name.startsWith("&") ||
+    name.startsWith("[") ||
+    // `a&:hover` — an anchor that is also this element. `rule` substitutes `&`
+    // wherever it appears, so a selector is not obliged to lead with it, and a
+    // property name never contains one.
+    name.includes("&")
   );
 }
 
@@ -68,12 +75,20 @@ export type AtomConditions = { readonly [condition: string]: AtomValue | AtomCon
 export type AtomStyles = {
   readonly [K in keyof CSS.Properties]?: AtomValue | AtomConditions;
 } & {
-  readonly [key: `--${string}`]: AtomValue | AtomConditions;
+  /**
+   * A custom property, and a vendor-prefixed one.
+   *
+   * `-webkit-user-select` has no other spelling: camel-cased to
+   * `WebkitUserSelect` it comes back out of `kebab` as `webkit-user-select`,
+   * which is not a property any browser has.
+   */
+  readonly [key: `-${string}`]: AtomValue | AtomConditions;
 } & {
   readonly [key: `:${string}`]: AtomStyles | undefined;
   readonly [key: `@${string}`]: AtomStyles | undefined;
   readonly [key: `&${string}`]: AtomStyles | undefined;
   readonly [key: `[${string}`]: AtomStyles | undefined;
+  readonly [key: `${string}&${string}`]: AtomStyles | undefined;
 };
 
 /** Properties whose bare number is a count, not a length. */
@@ -141,6 +156,11 @@ function key(className: string): string {
   return className.slice(0, className.lastIndexOf("_"));
 }
 
+/** `a-color_1n4k2p0`, and not `my-button`. */
+function atomic(className: string): boolean {
+  return className.startsWith("a-") && className.includes("_");
+}
+
 /** `a-margin-top`, `a-color--hover-1x2y3z`, `a-var-brand`. */
 function atomKey(property: string, condition: string): string {
   const name = property.startsWith("--") ? `var-${property.slice(2)}` : property;
@@ -168,14 +188,54 @@ function atomKey(property: string, condition: string): string {
  * because it owns the reset as well as the utilities; vanilla-extract layers
  * only where asked, and Linaria and StyleX not at all.
  */
-export const TIERS = ["base", "select", "element", "media"] as const;
+/**
+ * `descendant` comes FIRST, and that is the one tier order decides rather than
+ * specificity. A rule a parent writes about its children — `& > *`, `& svg` —
+ * and a rule the child writes about itself are both one class, so nothing
+ * separates them but which was written last. Measured in a browser: a field
+ * saying `& > * { width: 100% }` took a label's own `width: fit-content` away
+ * and stretched it across the row. The child's own rule is the more specific
+ * INTENT, so the parent's goes before it and loses the tie.
+ */
+export const TIERS = ["descendant", "base", "select", "element", "media"] as const;
+
+/** Whether a condition's subject is this element, or something under it. */
+function aboutSelf(condition: string): boolean {
+  let selector = "&";
+  for (const part of condition.split(NEST)) {
+    if (part.startsWith("@")) continue;
+    selector = part.includes("&")
+      ? part.replaceAll("&", selector)
+      : part.startsWith(":") || part.startsWith("[")
+        ? `${selector}${part}`
+        : `${selector} ${part}`;
+  }
+
+  // Whatever follows the last `&` at bracket depth zero: a combinator there
+  // means the rule is about another element.
+  const at = selector.lastIndexOf("&");
+  let depth = 0;
+  for (let index = at + 1; index < selector.length; index++) {
+    const character = selector[index];
+    if (character === "(" || character === "[") depth++;
+    else if (character === ")" || character === "]") depth--;
+    else if (
+      depth === 0 &&
+      (character === " " || character === ">" || character === "+" || character === "~")
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function tierOf(condition: string): number {
-  if (condition === "default") return 0;
+  if (condition === "default") return 1;
   const parts = condition.split(NEST);
-  if (parts.some((part) => part.startsWith("@"))) return 3;
-  if (parts.some((part) => part.includes("::"))) return 2;
-  return 1;
+  if (!aboutSelf(condition)) return 0;
+  if (parts.some((part) => part.startsWith("@"))) return 4;
+  if (parts.some((part) => part.includes("::"))) return 3;
+  return 2;
 }
 
 /**
@@ -183,7 +243,7 @@ export function tierOf(condition: string): number {
  * descendant — the same four cases the nested-block flattener has, because a
  * condition here is a nested selector written on one line.
  */
-function rule(name: string, condition: string, declaration: string): string {
+function rule(name: string, condition: string, declaration: string, layer = ""): string {
   const parts = condition === "default" ? [] : condition.split(NEST);
   // At-rules wrap from the outside in; the selector parts all apply to the one
   // class, so they concatenate.
@@ -199,7 +259,7 @@ function rule(name: string, condition: string, declaration: string): string {
   }
   inner = `${inner}{${declaration}}`;
   for (const wrap of wraps.toReversed()) inner = `${wrap}{${inner}}`;
-  return inner;
+  return layer === "" ? inner : `@layer ${layer}{${inner}}`;
 }
 
 /**
@@ -212,12 +272,18 @@ function rule(name: string, condition: string, declaration: string): string {
  */
 const named = new Map<string, string>();
 
-function atom(property: string, condition: string, value: string): string {
-  const memo = `${property}|${condition}|${value}`;
+function atom(property: string, condition: string, value: string, layer = ""): string {
+  // The layer is part of the KEY, not just the rule: the same declaration in
+  // and out of a layer is two different rules, and one class name cannot carry
+  // both.
+  const memo =
+    layer === ""
+      ? `${property}|${condition}|${value}`
+      : `${layer}|${property}|${condition}|${value}`;
   const hit = named.get(memo);
   if (hit !== undefined) return hit;
   const name = `${atomKey(property, condition)}_${hash(memo).slice(1)}`;
-  register(name, rule(name, condition, `${property}:${value}`), tierOf(condition));
+  register(name, rule(name, condition, `${property}:${value}`, layer), tierOf(condition));
   named.set(memo, name);
   return name;
 }
@@ -237,15 +303,16 @@ function apply(
   property: string,
   condition: string,
   text: string,
+  layer: string,
 ): void {
   const expanded = expand(property, text);
   if (expanded === null) {
-    const name = atom(property, condition, text);
+    const name = atom(property, condition, text, layer);
     applied.set(key(name), name);
     return;
   }
   for (const [longhand, own] of expanded) {
-    const name = atom(longhand, condition, own);
+    const name = atom(longhand, condition, own, layer);
     applied.set(key(name), name);
   }
 }
@@ -274,6 +341,7 @@ function walk(
   applied: Map<string, string>,
   style: Record<string, unknown>,
   condition: string,
+  layer: string,
 ): void {
   for (const rawKey in style) {
     const raw = style[rawKey];
@@ -281,19 +349,19 @@ function walk(
     // `'@media …'`, `'&:hover .x'`.
     if (looksLikeCondition(rawKey)) {
       if (isConditions(raw)) {
-        walk(applied, raw, join(condition, rawKey));
+        walk(applied, raw, join(condition, rawKey), layer);
       }
       continue;
     }
     const property = kebab(rawKey);
     if (isFallback(raw)) {
-      apply(applied, property, condition, declarations(property, raw));
+      apply(applied, property, condition, declarations(property, raw), layer);
       continue;
     }
     if (!isConditions(raw)) {
       if (raw === null) remove(applied, property, condition);
       else if (typeof raw === "string" || typeof raw === "number") {
-        apply(applied, property, condition, cssValue(property, raw));
+        apply(applied, property, condition, cssValue(property, raw), layer);
       }
       continue;
     }
@@ -301,11 +369,11 @@ function walk(
       const value = raw[inner];
       const where = inner === "default" ? condition : join(condition, inner);
       if (isConditions(value) && !isFallback(value)) {
-        walk(applied, { [rawKey]: value }, where);
+        walk(applied, { [rawKey]: value }, where, layer);
         continue;
       }
       if (isFallback(value)) {
-        apply(applied, property, where, declarations(property, value));
+        apply(applied, property, where, declarations(property, value), layer);
         continue;
       }
       // `null` under a non-default condition has no meaning, so it is skipped
@@ -315,7 +383,7 @@ function walk(
         continue;
       }
       if (typeof value !== "string" && typeof value !== "number") continue;
-      apply(applied, property, where, cssValue(property, value));
+      apply(applied, property, where, cssValue(property, value), layer);
     }
   }
 }
@@ -339,19 +407,50 @@ function declarations(property: string, fallback: Fallback): string {
 export type AtomInput = AtomStyles | string | false | null | undefined;
 
 export function atoms(...styles: (AtomInput | readonly AtomInput[])[]): string {
+  return build("", styles);
+}
+
+/**
+ * The same atoms, inside a cascade layer.
+ *
+ * For a component LIBRARY, whose rules are meant to lose. `atoms` is unlayered
+ * on purpose — the reasoning is above `TIERS` — and that is right for an
+ * application styling itself, where losing to a stray `* { margin: 0 }` is the
+ * failure. A design system wants the opposite: whatever an application writes
+ * should win without `!important` and without counting specificity, which is
+ * what a layer gives and nothing else does.
+ *
+ * ```ts
+ * const ui = (...styles: AtomInput[]) => atomsIn("barq.ui", ...styles);
+ * ```
+ *
+ * The layer is part of each atom's identity, so the same declaration layered
+ * and not is two classes. Merging still works across them: the merge key is the
+ * property, which both carry.
+ */
+export function atomsIn(layer: string, ...styles: (AtomInput | readonly AtomInput[])[]): string {
+  return build(layer, styles);
+}
+
+function build(layer: string, styles: (AtomInput | readonly AtomInput[])[]): string {
   const applied = new Map<string, string>();
 
   for (const style of styles.flat(4)) {
     if (style === false || style === null || style === undefined) continue;
     // A class string is already atomic and its rules are already registered,
-    // so merging it needs only the key each name carries.
+    // so merging it needs only the key each name carries. A class that is NOT
+    // one of ours — an application's own, arriving through a `class` prop —
+    // has no property in its name and nothing to merge against, so it is kept
+    // as it is rather than keyed on a slice of itself and dropped when another
+    // happens to slice the same way.
     if (typeof style === "string") {
       for (const name of style.split(" ")) {
-        if (name !== "") applied.set(key(name), name);
+        if (name === "") continue;
+        applied.set(atomic(name) ? key(name) : name, name);
       }
       continue;
     }
-    walk(applied, style, "default");
+    walk(applied, style, "default", layer);
   }
   return [...applied.values()].join(" ");
 }
@@ -480,7 +579,7 @@ export function dynamic<A extends unknown[]>(
       const name = dynamicVar(property);
       vars[name] = value;
       const applied = new Map<string, string>();
-      apply(applied, property, "default", `var(${name})`);
+      apply(applied, property, "default", `var(${name})`, "");
       classes.push(...applied.values());
     }
     return { $class: classes.join(" "), $vars: vars };
