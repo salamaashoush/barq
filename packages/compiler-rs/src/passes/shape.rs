@@ -371,7 +371,8 @@ impl<'a> Shaper<'a, '_> {
             // `chooses_dom` and not "reactive": a plain `<Child />` is an opaque
             // CALL, so any weaker test wrapped `<Ctx.Provider><Child /></…>` and
             // took the child back out of its Block.
-            let lone_hole = kids.len() == 1 && kids.first().is_some_and(|kid| self.chooses_dom(kid));
+            let lone_hole =
+                kids.len() == 1 && kids.first().is_some_and(|kid| self.chooses_dom(kid));
             let value = if kids.len() == 1 && !lone_hole {
                 kids.remove(0)
             } else {
@@ -1462,6 +1463,38 @@ mod tests {
         assert!(code.contains("[() => on() ? A(_s$, {}) : B(_s$, {})]"), "{code}");
         // Nothing moves here, so nothing is wrapped: two bare constructions.
         assert!(code.contains("[Icon(_s$, {}), Other(_s$, {})]"), "{code}");
+    }
+
+    /// A CHOICE that may build DOM is handed over as a choice.
+    ///
+    /// A JSX element is `Opaque` with no thunk, so a conditional over two of
+    /// them joined to `Opaque` and `insert` was handed a BUILT node: switching
+    /// a view with `{on() ? <A /> : <B />}` rendered one of them and never
+    /// swapped. The same thing on intrinsic elements worked by accident, since
+    /// those lower to a `_tmpl$()` CALL, which already carries `Thunk::Arrow`.
+    ///
+    /// The thunk goes on the conditional and NOT on the element, because a JSX
+    /// child written directly is a construction the consumer places once, and
+    /// wrapping every one of them makes a component's construction a dependency
+    /// of the hole that placed it.
+    #[test]
+    fn a_choice_of_components_at_a_hole_is_a_choice_rather_than_a_result() {
+        let code = emit(
+            "import { signal } from \"@barqjs/core\";\n\
+             const on = signal(false);\n\
+             export const V = () => (\n\
+               <>\n\
+                 <div>{on() ? <A /> : <B />}</div>\n\
+                 <div>{on() ? <A /> : null}</div>\n\
+                 <div><A /></div>\n\
+               </>\n\
+             );\n",
+        )
+        .code;
+        assert!(code.contains("() => on() ? A(_s$, {}) : B(_s$, {})"), "{code}");
+        assert!(code.contains("() => on() ? A(_s$, {}) : null"), "{code}");
+        // A child written directly is still placed once, with no closure.
+        assert!(!code.contains("() => A(_s$, {}))"), "{code}");
     }
 
     /// C3.2. An opaque expression still crosses as a Cell: the ABI is TOTAL, so

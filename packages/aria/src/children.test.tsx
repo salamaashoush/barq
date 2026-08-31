@@ -105,6 +105,25 @@ describe("a choice between two elements among children", () => {
     expect(screen.queryByTestId("no"), "the false branch was left behind").toBeNull();
   });
 
+  test("swaps COMPONENT branches inside an intrinsic element", () => {
+    // The earlier case had intrinsic branches. A component CALL is opaque, and
+    // that is a different question: `<div>{on() ? <A/> : <B/>}</div>` where A
+    // and B are components is the ordinary way a page switches views.
+    function A() {
+      return <i data-testid="a" />;
+    }
+    function B() {
+      return <i data-testid="b" />;
+    }
+    const on = signal(false);
+    render(() => <div data-testid="host">{on() ? <A /> : <B />}</div>);
+    expect(screen.queryByTestId("b")).not.toBeNull();
+    on.set(true);
+    flush();
+    expect(screen.queryByTestId("a"), "the true branch never arrived").not.toBeNull();
+    expect(screen.queryByTestId("b"), "the false branch was left behind").toBeNull();
+  });
+
   test("swaps inside an intrinsic element, which always worked", () => {
     const on = signal(false);
     render(() => (

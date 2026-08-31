@@ -340,6 +340,21 @@ impl<'a> Lift<'a, '_> {
                 } else {
                     Shape::Unknown
                 };
+                // A CHOICE that may build DOM has to be handed to the consumer
+                // as a choice, never as the result of making it. A JSX element
+                // is `Opaque` with no thunk, so the join produced `Opaque` and
+                // `insert` was given a built node: `{on() ? <A/> : <B/>}` on
+                // components rendered one of them and never swapped, while the
+                // same thing on intrinsics worked by accident — those lower to
+                // a `_tmpl$()` CALL, which is already Arrow.
+                //
+                // On the conditional and not on the element, because a JSX
+                // child written directly is a construction the consumer places
+                // once; wrapping every one of them makes a component's
+                // construction a dependency of the hole that placed it.
+                if consequent.shape == Shape::Node || alternate.shape == Shape::Node {
+                    rx.thunk = Thunk::Arrow;
+                }
                 rx.konst = None;
                 rx
             }
