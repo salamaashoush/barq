@@ -4091,6 +4091,10 @@
       }
     }
 
+    [data-slot="toast"] {
+      border-radius: 0 !important;
+    }
+
     [data-slot="switch"] {
       flex-shrink: 0;
       border-radius: 0;

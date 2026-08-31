@@ -4026,6 +4026,10 @@
       }
     }
 
+    [data-slot="toast"] {
+      border-radius: var(--radius-2xl);
+    }
+
     [data-slot="switch"] {
       flex-shrink: 0;
       border-radius: calc(infinity * 1px);

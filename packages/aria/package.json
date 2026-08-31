@@ -255,6 +255,11 @@
       "types": "./src/navigation.ts",
       "barq": "./src/navigation.ts",
       "bun": "./src/navigation.ts"
+    },
+    "./toast": {
+      "types": "./src/toast.ts",
+      "barq": "./src/toast.ts",
+      "bun": "./src/toast.ts"
     }
   },
   "scripts": {

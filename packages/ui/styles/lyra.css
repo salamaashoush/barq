@@ -4002,6 +4002,10 @@
       }
     }
 
+    [data-slot="toast"] {
+      border-radius: 0;
+    }
+
     [data-slot="switch"] {
       flex-shrink: 0;
       border-radius: calc(infinity * 1px);

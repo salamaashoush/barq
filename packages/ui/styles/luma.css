@@ -4424,6 +4424,10 @@
       background-color: var(--muted);
     }
 
+    [data-slot="toast"] {
+      border-radius: var(--radius-2xl);
+    }
+
     [data-slot="table-container"] {
       position: relative;
       width: 100%;

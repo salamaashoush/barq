@@ -318,6 +318,11 @@
       "barq": "./src/ui/slider.tsx",
       "bun": "./src/ui/slider.tsx"
     },
+    "./sonner": {
+      "types": "./src/ui/sonner.tsx",
+      "barq": "./src/ui/sonner.tsx",
+      "bun": "./src/ui/sonner.tsx"
+    },
     "./spinner": {
       "types": "./src/ui/spinner.tsx",
       "barq": "./src/ui/spinner.tsx",

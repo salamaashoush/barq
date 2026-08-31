@@ -206,9 +206,23 @@ loses to every atom.
 
 The one pair specificity cannot separate is a base against the same property
 under an at-rule, since `@media` adds none. The atom's **tier** decides that one,
-and a tier is an ORDER: `collectCss` sorts every rule it holds by it, and a
-production build runs `orderCss` over the concatenated asset so the bundle agrees
-with dev. Composing a group from another module used to invert such a pair,
+and a tier is an ORDER: a production build runs `orderCss` over the concatenated
+asset, rule by rule.
+
+**In dev the sort is per MODULE, not per rule, and that is a real difference.**
+`registerCss` files a compiled module's whole stylesheet under one key with one
+tier, so `collectCss`'s stable sort can only order the blobs. Within a blob the
+order is whatever the module wrote, and across blobs it is import order. Two
+modules writing the same atom therefore emit it twice, and a later module's copy
+of `width: 100%` sits after an earlier module's `@media (…) { width: 24rem }`
+and beats it. Measured on `@barqjs/ui`'s gallery: a toast region 384px wide in
+the build and full-width in dev, from one source. lightningcss deduplicates the
+pair in a build, which is why `orderCss` has one of each to order.
+
+Closing it means sorting rule by rule at run time, which is a second
+implementation of what the compiler crate's `tier_of` already decides. That is
+the one thing `crates/barq-css`'s parity test exists to prevent, so it is a
+decision rather than an oversight. Composing a group from another module used to invert such a pair,
 because that module's rules were registered first — measured on `@barqjs/ui`'s
 gallery, a calendar laid out in a column at 1280px because
 `@media (width >= 48rem) { flex-direction: row }` lost to a `column` a later

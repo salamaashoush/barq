@@ -1102,6 +1102,27 @@
       ]
     },
     {
+      "name": "sonner",
+      "type": "registry:ui",
+      "title": "Sonner",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "slot",
+        "spinner"
+      ],
+      "files": [
+        "ui/sonner.tsx"
+      ]
+    },
+    {
       "name": "spinner",
       "type": "registry:ui",
       "title": "Spinner",

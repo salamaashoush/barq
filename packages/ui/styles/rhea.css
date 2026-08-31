@@ -4418,6 +4418,10 @@
       background-color: var(--muted);
     }
 
+    [data-slot="toast"] {
+      border-radius: var(--radius-2xl) !important;
+    }
+
     [data-slot="table-container"] {
       position: relative;
       width: 100%;

@@ -569,6 +569,30 @@ evaluated at return time. `<Show>` is the primitive for a reactive conditional
 and is what to reach for; `sidebar.tsx` has the bare shape and gets away with it
 only because `collapsible` never changes at run time.
 
+## Dev and the build disagree about tier order, and it is measurable
+
+Found building the `<Toaster>`, whose region is `w-full sm:w-96`. In a
+production build it is 384px wide and correct; on the dev server it is the full
+viewport, from the same source.
+
+`registerCss` files a compiled module's WHOLE stylesheet under one key with one
+tier, so `collectCss`'s stable sort can only order the blobs: within one the
+order is whatever the module wrote, and across them it is import order. Several
+modules emit the same atom, so a later module's `width: 100%` lands after an
+earlier module's `@media (…) { width: 24rem }` and beats it, which specificity
+cannot separate because `@media` adds none. A build has neither problem:
+lightningcss deduplicates the pair and `orderCss` sorts the asset RULE BY RULE.
+
+How to tell this from a component bug, because they look identical: search
+`document.getElementById("barq-css").textContent` for the two class names and
+compare the index of the LAST occurrence of each. If the base rule is later, it
+is this. `packages/css/README.md` now states the divergence rather than claiming
+dev and the build agree.
+
+Closing it means a rule-level tier sort at run time, which is a second
+implementation of what `crates/barq-css`'s `tier_of` decides, and that parity is
+what its 34 tests exist to protect. It is a decision to take deliberately.
+
 ## Things that will bite
 
 - **The compiler PROVES reactivity; it does not guess.** A prop whose value

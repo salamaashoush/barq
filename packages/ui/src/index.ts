@@ -473,6 +473,7 @@ export {
 } from "./ui/sidebar.tsx";
 export { Skeleton } from "./ui/skeleton.tsx";
 export { Slider, type SliderProps } from "./ui/slider.tsx";
+export { toast, type ToastApi, Toaster, type ToasterProps } from "./ui/sonner.tsx";
 export { Spinner, type SpinnerProps } from "./ui/spinner.tsx";
 export { srOnly } from "./ui/sr-only.ts";
 export { Switch, type SwitchProps, type SwitchSize } from "./ui/switch.tsx";

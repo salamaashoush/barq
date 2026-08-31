@@ -197,6 +197,8 @@ import {
   Toggle,
   ToggleGroup,
   ToggleGroupItem,
+  Toaster,
+  toast,
   Tooltip,
   TooltipContent,
 } from "@barqjs/ui";
@@ -599,6 +601,45 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="Toast">
+        <div class={row}>
+          <Button variant="outline" onPress={() => toast("Saved")}>
+            Default
+          </Button>
+          <Button variant="outline" onPress={() => toast.success("Everything worked")}>
+            Success
+          </Button>
+          <Button
+            variant="outline"
+            onPress={() => toast.error("That did not work", { description: "Try again in a bit" })}
+          >
+            Error
+          </Button>
+          <Button
+            variant="outline"
+            onPress={() =>
+              toast("Deleted three files", {
+                action: { label: "Undo", onAction: () => toast.success("Restored") },
+              })
+            }
+          >
+            With an action
+          </Button>
+          <Button
+            variant="outline"
+            onPress={() =>
+              void toast.promise(new Promise((resolve) => setTimeout(resolve, 1200)), {
+                loading: "Saving",
+                success: "Saved",
+                error: "Failed",
+              })
+            }
+          >
+            Promise
+          </Button>
         </div>
       </Section>
 
@@ -1204,6 +1245,7 @@ function Designer() {
 
   return (
     <div class={designer} data-slot="designer">
+      <Toaster />
       <Customizer design={system} />
       <div class={panel} data-slot="preview">
         <div class={scroller}>{view() === "showcase" ? <Showcase /> : <Gallery />}</div>
