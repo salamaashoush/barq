@@ -36,6 +36,7 @@ import {
   type Incoming,
   isServer,
   provide,
+  Repeat,
   signal,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
@@ -55,7 +56,7 @@ import {
   today,
   type DateValue,
 } from "./date.ts";
-import { activeElement, ownerDocument } from "./dom.ts";
+import { activeElement, contains, ownerDocument } from "./dom.ts";
 import { focusRing } from "./focus.ts";
 import { dateFormatter, useLocale } from "./i18n.ts";
 import { focusSafely } from "./interactions/focusable.ts";
@@ -168,10 +169,18 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
   const isDisabled = (): boolean => access(options.isDisabled) === true;
   const isReadOnly = (): boolean => access(options.isReadOnly) === true;
 
-  const visibleRange = (): DateRange => ({
-    start: startOfMonth(focusedDate()),
-    end: endOfMonth(focusedDate()),
-  });
+  // The month on show, and it changes when the MONTH does.
+  //
+  // Written as a plain function reading `focusedDate()`, every consumer of it
+  // depended on the focused DAY: an arrow key re-ran `weekDates`, which hands
+  // `<For>` seven new `CalendarDate` objects a row, so all forty-two cells were
+  // destroyed and built again — and the one holding focus went with them. A
+  // real browser then leaves focus on `<body>`, which happy-dom does not, so no
+  // test saw it.
+  const visibleRange = computed<DateRange>(
+    () => ({ start: startOfMonth(focusedDate()), end: endOfMonth(focusedDate()) }),
+    { equals: (a, b) => isSameDay(a.start, b.start) && isSameDay(a.end, b.end) },
+  );
 
   const isCellDisabled = (date: CalendarDate): boolean => {
     if (isDisabled()) return true;
@@ -534,13 +543,36 @@ export function calendarGrid(
       "aria-labelledby": () => access(options["aria-labelledby"]),
       onKeyDown,
       onFocusIn: () => state.setFocused(true),
-      onFocusOut: () => state.setFocused(false),
+      // Removing the focused day fires `focusout` exactly as leaving the
+      // calendar does, and moving between months removes a row. Clearing here
+      // told the calendar it had lost focus in the middle of moving it, so the
+      // day it moved TO no longer wanted focus and it stayed on `<body>`. The
+      // question is answered a microtask later, against where focus actually
+      // is.
+      onFocusOut: (event: FocusEvent) => {
+        const grid = event.currentTarget as Element | null;
+        if (grid === null) {
+          state.setFocused(false);
+          return;
+        }
+        queueMicrotask(() => {
+          if (!contains(grid, activeElement(ownerDocument(grid)))) state.setFocused(false);
+        });
+      },
     },
   };
 }
 
 export interface CalendarCellOptions {
-  date: CalendarDate;
+  /**
+   * The day.
+   *
+   * An accessor, because a cell OUTLIVES the day it draws: the grid keys its
+   * rows and columns by position, so changing month moves 42 dates through 42
+   * elements that stay where they are. A cell that was rebuilt instead would
+   * be destroyed while it held focus.
+   */
+  date: MaybeAccessor<CalendarDate>;
   ref: ElementRef;
   /** Rendered to keep the grid rectangular, but belonging to another month. */
   isOutsideMonth?: MaybeAccessor<boolean | undefined>;
@@ -581,26 +613,27 @@ export function calendarCell(
   });
   const dayFormat = dateFormatter({ day: "numeric" });
 
-  const isOutside = (): boolean =>
-    access(options.isOutsideMonth) === true ||
-    !isSameMonth(options.date, state.visibleRange().start);
+  const date = (): CalendarDate => access(options.date);
 
-  const isDisabled = (): boolean => state.isCellDisabled(options.date) || isOutside();
-  const isUnavailable = (): boolean => state.isCellUnavailable(options.date);
+  const isOutside = (): boolean =>
+    access(options.isOutsideMonth) === true || !isSameMonth(date(), state.visibleRange().start);
+
+  const isDisabled = (): boolean => state.isCellDisabled(date()) || isOutside();
+  const isUnavailable = (): boolean => state.isCellUnavailable(date());
   const isSelectable = (): boolean => !isDisabled() && !isUnavailable();
-  const isSelected = (): boolean => state.isSelected(options.date) && isSelectable();
-  const isFocused = (): boolean => state.isCellFocused(options.date) && !isOutside();
-  const isTodayCell = (): boolean => isToday(options.date);
+  const isSelected = (): boolean => state.isSelected(date()) && isSelectable();
+  const isFocused = (): boolean => state.isCellFocused(date()) && !isOutside();
+  const isTodayCell = (): boolean => isToday(date());
 
   const highlighted = (): DateRange | null =>
     "highlightedRange" in state ? state.highlightedRange() : null;
   const isSelectionStart = (): boolean => {
     const range = highlighted();
-    return isSelected() && range !== null && isSameDay(options.date, range.start);
+    return isSelected() && range !== null && isSameDay(date(), range.start);
   };
   const isSelectionEnd = (): boolean => {
     const range = highlighted();
-    return isSelected() && range !== null && isSameDay(options.date, range.end);
+    return isSelected() && range !== null && isSameDay(date(), range.end);
   };
 
   if (!isServer) {
@@ -615,7 +648,7 @@ export function calendarCell(
   }
 
   const label = (): string => {
-    let text = labelFormat().format(options.date.toDate());
+    let text = labelFormat().format(date().toDate());
     if (isTodayCell()) text = `Today, ${text}`;
     if (isSelected()) text = `${text}, selected`;
     return text;
@@ -630,7 +663,7 @@ export function calendarCell(
     isToday: isTodayCell,
     isSelectionStart,
     isSelectionEnd,
-    formattedDate: () => dayFormat().format(options.date.toDate()),
+    formattedDate: () => dayFormat().format(date().toDate()),
     cellProps: {
       role: "gridcell",
       "aria-selected": () => isSelected() || undefined,
@@ -646,22 +679,18 @@ export function calendarCell(
       // The roving focus: one day in the Tab order, and it moves with the
       // arrows.
       tabIndex: () =>
-        isOutside()
-          ? undefined
-          : isFocused() || isSameDay(state.focusedDate(), options.date)
-            ? 0
-            : -1,
+        isOutside() ? undefined : isFocused() || isSameDay(state.focusedDate(), date()) ? 0 : -1,
       onPointerEnter: () => {
         // Drawing a range follows the pointer, so the highlight is what the
         // user would get by releasing here.
         if ("highlightDate" in state && state.anchorDate() !== null) {
-          state.highlightDate(options.date);
+          state.highlightDate(date());
         }
       },
       onClick: () => {
         if (isOutside()) return;
-        state.setFocusedDate(options.date);
-        state.selectDate(options.date);
+        state.setFocusedDate(date());
+        state.selectDate(date());
       },
     },
   };
@@ -852,12 +881,16 @@ function CalendarBody(incoming: Incoming<CalendarBodyProps>) {
               )}
             </For>
           </div>
+          {/* Keyed by POSITION, not by the day: `weekDates` builds seven new
+              `CalendarDate` objects every read, so keying by them destroyed
+              all forty-two cells whenever the month changed — with the one
+              holding focus among them. */}
           <For each={() => Array.from({ length: weeksInMonth() }, (_, week) => week)}>
             {(week: number) => (
               <div role="row">
-                <For each={() => weekDates(week)}>
-                  {(date: CalendarDate) => <CalendarCell date={date} />}
-                </For>
+                <Repeat count={7}>
+                  {(at: number) => <CalendarCell date={weekDates(week)[at] as CalendarDate} />}
+                </Repeat>
               </div>
             )}
           </For>
@@ -877,7 +910,6 @@ export interface CalendarCellComponentProps extends StyleProps {
 export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
   const domRef = makeRef<HTMLDivElement>();
   const { state } = useCalendar();
-  const date = props.date();
 
   const {
     cellProps,
@@ -891,7 +923,7 @@ export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
     isSelectionStart,
     isSelectionEnd,
     formattedDate,
-  } = calendarCell({ date, ref: domRef }, state);
+  } = calendarCell({ date: () => props.date(), ref: domRef }, state);
 
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();

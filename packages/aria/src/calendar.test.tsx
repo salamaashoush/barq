@@ -1,7 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
-import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
-import { Calendar, RangeCalendar, type DateRange } from "./calendar.tsx";
+import {
+  accessibleName,
+  expectNoAriaViolations,
+  render,
+  screen,
+  tick,
+  user,
+} from "@barqjs/testing";
+import {
+  Calendar,
+  calendarState,
+  RangeCalendar,
+  type CalendarState,
+  type DateRange,
+} from "./calendar.tsx";
 import { CalendarDate } from "./date.ts";
 
 /** March 2024: begins on a Friday, has 31 days, so six week rows. */
@@ -29,6 +42,11 @@ function Departure(
       onChange={props.onChange?.()}
     />
   );
+}
+
+/** Every day element in the first calendar on the page, in order. */
+function dayElements(): Element[] {
+  return [...document.querySelectorAll('[role="gridcell"] [role="button"]')];
 }
 
 /** A day by its accessible name, which is its whole date in the test locale. */
@@ -232,6 +250,76 @@ describe("Calendar", () => {
     const { container } = render(() => <Departure value={new CalendarDate(2024, 3, 15)} />);
     expectNoAriaViolations(container);
   });
+  test("the visible range is the same object while the month is", () => {
+    // Everything that reads it — the heading, the row count, whether a day is
+    // outside the month — depended on the focused DAY, so a keystroke
+    // invalidated the lot.
+    let state: CalendarState | undefined;
+    function Probe() {
+      state = calendarState({ defaultFocusedValue: MARCH });
+      return <span />;
+    }
+    render(() => <Probe />);
+
+    const before = state?.visibleRange();
+    state?.focusNextDay();
+    flush();
+    expect(state?.visibleRange()).toBe(before);
+
+    state?.focusNextPage();
+    flush();
+    expect(state?.visibleRange()).not.toBe(before);
+  });
+
+  test("an arrow key moves the focus without rebuilding the grid", () => {
+    // `weekDates` hands `<For>` seven new `CalendarDate` objects a row, and
+    // `visibleRange` read the focused DAY, so a single keystroke destroyed all
+    // forty-two cells — the one holding focus among them. A real browser then
+    // leaves focus on `<body>`; happy-dom lets a removed element keep it, so
+    // what this can check is that the elements are the same ones.
+    render(() => <Departure />);
+    const before = dayElements();
+
+    user.key("ArrowRight", { target: day("Thursday", 7, "March") });
+    flush();
+
+    const after = dayElements();
+    expect(after.length).toBe(before.length);
+    expect(after.every((node, at) => node === before[at])).toBe(true);
+  });
+
+  test("and neither does changing month", () => {
+    render(() => <Departure />);
+    const before = dayElements();
+
+    user.click(screen.getByRole("button", { name: "Next month" }));
+    flush();
+
+    // April 2024 needs five rows where March needed six, so the last row does
+    // go. Every cell above it is the element that was already there.
+    const after = dayElements();
+    expect(after.length).toBe(35);
+    expect(after.every((node, at) => node === before[at])).toBe(true);
+    expect(day("Monday", 1, "April")).toBeTruthy();
+  });
+
+  test("losing the focused day is not the calendar losing focus", async () => {
+    // Removing the focused element fires `focusout` exactly as leaving does.
+    // Answering it at once told the calendar it was unfocused in the middle of
+    // moving focus, and the day it moved TO no longer wanted it.
+    render(() => <Departure />);
+    const chosen = day("Thursday", 7, "March");
+    user.focus(chosen);
+    expect(chosen.getAttribute("data-focused")).toBe("");
+
+    user.blur(chosen);
+    expect(chosen.getAttribute("data-focused")).toBe("");
+
+    await tick();
+    flush();
+    expect(chosen.hasAttribute("data-focused")).toBe(false);
+  });
+
   test("a single day is neither end of a range, because there is none", () => {
     // A calendar that picks one day has no range, so a day that is selected is
     // not the start or the end of anything. `@barqjs/ui` reads that as the
