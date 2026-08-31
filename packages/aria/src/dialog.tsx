@@ -19,6 +19,7 @@
 
 import { type Accessor, type Child, type Incoming, effect, Portal, Show } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
+
 import { focusScope, type FocusScopeOptions } from "./focus.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import {
@@ -36,16 +37,17 @@ import {
   type OverlayTriggerState,
   type Placement,
 } from "./overlays.ts";
+import { presence } from "./presence.ts";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 export interface DialogOptions {
@@ -119,9 +121,14 @@ export function Dialog(props: Incoming<DialogComponentProps>) {
 
   provideDialog(titleProps);
 
-  const elementProps = mergeProps(dialogProps, styleProps(props), {
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    dialogProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <section {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
@@ -148,15 +155,19 @@ export interface HeadingComponentProps extends StyleProps {
 export function Heading(props: Incoming<HeadingComponentProps>) {
   const title = useDialogTitle();
 
-  const elementProps = mergeProps(styleProps(props), {
-    // The title names the dialog only when it says it is the title.
-    id: () =>
-      props.slot?.() === "title"
-        ? access(title?.id as MaybeAccessor<string | undefined>)
-        : props.id?.(),
-    "aria-level": () => props.level?.() ?? 3,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      // The title names the dialog only when it says it is the title.
+      id: () =>
+        props.slot?.() === "title"
+          ? access(title?.id as MaybeAccessor<string | undefined>)
+          : props.id?.(),
+      "aria-level": () => props.level?.() ?? 3,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return <h3 {...elementProps}>{props.children}</h3>;
 }
@@ -168,6 +179,16 @@ export interface ModalComponentProps extends StyleProps, OverlayOptions {
   /** @default true */
   isDismissable?: boolean;
   isKeyboardDismissDisabled?: boolean;
+  /**
+   * The class for the UNDERLAY — the element covering the page behind the
+   * dialog.
+   *
+   * `class` styles the dialog. The underlay is a second element with a second
+   * job, and a design system has to be able to dim the page: without this it
+   * could only be reached by a global rule on `[data-barq-underlay]`, which
+   * every modal on the page would then share.
+   */
+  underlayClass?: string;
   onOpenChange?: (isOpen: boolean) => void;
 }
 
@@ -188,9 +209,15 @@ export function Modal(props: Incoming<ModalComponentProps>) {
       onClose={state.close}
       isDismissable={props.isDismissable?.() !== false}
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
+      underlayClass={props.underlayClass?.()}
       class={props.class?.() ?? props.className?.()}
       style={props.style?.()}
-      data-testid={props["data-testid"]?.()}
+      // The global attributes, the global events and every `data-*` the caller
+      // gave THIS component, forwarded to the element the caller can see. They
+      // cannot be spread on `<ModalContents>` itself: it is a private component
+      // with its own props, and a `data-slot` landing there would be a prop it
+      // does not have rather than an attribute on the dialog.
+      domProps={filterDOMProps(options, { global: true })}
     >
       {props.children}
     </ModalContents>
@@ -202,21 +229,82 @@ interface ContentsProps extends StyleProps {
   onClose: () => void;
   isDismissable: boolean;
   isKeyboardDismissDisabled: boolean;
+  underlayClass?: string;
+  /** What `Modal` filtered out of its own props for the dialog's element. */
+  domProps?: DOMProps;
   children?: Child;
 }
 
 /**
- * The modal's body, mounted only while it is open.
+ * The modal's body, mounted while it is open and for as long as it takes to
+ * leave.
  *
- * A dialog that stays in the DOM while closed is a dialog a screen reader can
- * still find, so there is no hidden-but-present state to style.
+ * A dialog that stays in the DOM while CLOSED is a dialog a screen reader can
+ * still find, so there is no hidden-but-present state to style. `presence`
+ * holds it only while the stylesheet is still drawing it, marked `data-closed`
+ * — and when nothing is animating, that is no time at all.
  */
 function ModalContents(props: Incoming<ContentsProps>) {
+  // `<Show>`, not a bare `{() => …}`: a Cell at a component's root travels in
+  // the array its caller places, and an array hole is ONE effect — so the
+  // condition would become a dependency of whatever hole holds this component,
+  // and opening the modal would rebuild every sibling around it.
+  const target = usePortalTarget();
+  // The ref lives HERE and the focus scope does not. The scope has to be
+  // created with the content it contains, because its disposal is what restores
+  // focus; the ref only has to outlive the content so the exit can be measured.
   const domRef = makeRef<HTMLDivElement>();
+  const gate = presence({ isOpen: props.isOpen, ref: domRef });
+
+  return (
+    <Show when={gate.isPresent()}>
+      <Portal mount={portalContainer(target)}>
+        <ModalBody
+          domRef={domRef}
+          isExiting={gate.isExiting()}
+          onClose={props.onClose()}
+          isDismissable={props.isDismissable()}
+          isKeyboardDismissDisabled={props.isKeyboardDismissDisabled()}
+          underlayClass={props.underlayClass?.()}
+          domProps={props.domProps?.()}
+          class={props.class?.()}
+          style={props.style?.()}
+        >
+          {props.children}
+        </ModalBody>
+      </Portal>
+    </Show>
+  );
+}
+
+interface BodyProps extends StyleProps {
+  domRef: ReturnType<typeof makeRef<HTMLDivElement>>;
+  isExiting: boolean;
+  onClose: () => void;
+  isDismissable: boolean;
+  isKeyboardDismissDisabled: boolean;
+  underlayClass?: string;
+  domProps?: DOMProps;
+  children?: Child;
+}
+
+/**
+ * Inside the `<Show>`, and that is the whole reason it is a component.
+ *
+ * The focus scope has to be created WITH the content it contains: closing the
+ * modal disposes this subtree, and disposal is what restores focus to whatever
+ * opened it. Called one level up — in `ModalContents`, beside the `<Show>` —
+ * the scope outlives every open and close, so nothing was ever disposed and
+ * focus was left on `<body>`. No test saw it: happy-dom leaves `activeElement`
+ * on an element after it is removed, so the assertion passed for the wrong
+ * reason.
+ */
+function ModalBody(props: Incoming<BodyProps>) {
+  const domRef = props.domRef();
   const scope = focusScope({ contain: true, restoreFocus: true, autoFocus: true });
 
   const state: OverlayTriggerState = {
-    isOpen: () => props.isOpen(),
+    isOpen: () => true,
     setOpen: (open) => {
       if (!open) props.onClose()();
     },
@@ -234,28 +322,26 @@ function ModalContents(props: Incoming<ContentsProps>) {
     domRef,
   );
 
-  const elementProps = mergeProps(overlayProps, modalProps, styleProps(props), {
-    "data-testid": () => props["data-testid"]?.(),
-  });
-
-  // `<Show>`, not a bare `{() => …}`: a Cell at a component's root travels in
-  // the array its caller places, and an array hole is ONE effect — so the
-  // condition would become a dependency of whatever hole holds this component,
-  // and opening the modal would rebuild every sibling around it.
-  const target = usePortalTarget();
+  const elementProps = mergeProps(
+    overlayProps,
+    modalProps,
+    props.domProps?.() ?? null,
+    styleProps(props),
+  );
 
   return (
-    <Show when={props.isOpen()}>
-      <Portal mount={portalContainer(target)}>
-        <div {...underlayProps} data-barq-underlay>
-          <span hidden ref={scope.startRef} />
-          <div {...elementProps} ref={domRef.set}>
-            {props.children}
-          </div>
-          <span hidden ref={scope.endRef} />
-        </div>
-      </Portal>
-    </Show>
+    <div
+      {...underlayProps}
+      data-barq-underlay
+      data-closed={props.isExiting() ? "" : undefined}
+      class={props.underlayClass?.()}
+    >
+      <span hidden ref={scope.startRef} />
+      <div {...elementProps} data-closed={props.isExiting() ? "" : undefined} ref={domRef.set}>
+        {props.children}
+      </div>
+      <span hidden ref={scope.endRef} />
+    </div>
   );
 }
 
@@ -311,8 +397,6 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
     onClose: state.close,
   });
 
-  const scope = focusScope({ contain: true, restoreFocus: true, autoFocus: true });
-
   // A popover opened from INSIDE another one — a submenu — is portalled into
   // the outer popover's own container rather than into the body, so that the
   // two are one overlay as far as an outside press and `aria-hidden` are
@@ -341,10 +425,16 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
     return ariaHideOutside([element]);
   });
 
-  const elementProps = mergeProps(overlayProps, position.overlayProps, styleProps(props), {
-    "data-placement": position.placement,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    overlayProps,
+    position.overlayProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-placement": position.placement,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const target = usePortalTarget();
   const mount = (): Element | null =>
@@ -352,8 +442,10 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
       ? ((access(group) as Element | null) ?? portalContainer(target))
       : portalContainer(target);
 
+  const gate = presence({ isOpen: state.isOpen, ref: domRef });
+
   return (
-    <Show when={state.isOpen()}>
+    <Show when={gate.isPresent()}>
       <Portal mount={mount()}>
         {/* `display: contents` so the container lays nothing out. It exists to
             be a PLACE: what a nested popover portals into, and what
@@ -362,15 +454,47 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
             than its own, so a submenu three deep is still one group. */}
         <div ref={groupRef.set} style={{ display: "contents" }}>
           <PopoverGroupProvider value={nested && group !== null ? group : groupRef}>
-            <span hidden ref={scope.startRef} />
-            <div {...elementProps} ref={domRef.set}>
+            <PopoverBody elementProps={elementProps} domRef={domRef} isExiting={gate.isExiting()}>
               {props.children}
-            </div>
-            <span hidden ref={scope.endRef} />
+            </PopoverBody>
           </PopoverGroupProvider>
         </div>
       </Portal>
     </Show>
+  );
+}
+
+interface PopoverBodyProps {
+  elementProps: DOMProps;
+  domRef: ReturnType<typeof makeRef<HTMLDivElement>>;
+  isExiting: boolean;
+  children?: Child;
+}
+
+/**
+ * Inside the `<Show>`, for the same reason `ModalBody` is.
+ *
+ * The focus scope has to be created WITH the content it contains: closing the
+ * popover disposes this subtree, and disposal is what restores focus to the
+ * trigger. Called in `Popover`'s own body the scope outlives every open and
+ * close, so nothing is ever disposed and focus is left on `<body>`.
+ */
+function PopoverBody(props: Incoming<PopoverBodyProps>) {
+  const scope = focusScope({ contain: true, restoreFocus: true, autoFocus: true });
+  const domRef = props.domRef();
+
+  return (
+    <>
+      <span hidden ref={scope.startRef} />
+      <div
+        {...props.elementProps()}
+        data-closed={props.isExiting() ? "" : undefined}
+        ref={domRef.set}
+      >
+        {props.children}
+      </div>
+      <span hidden ref={scope.endRef} />
+    </>
   );
 }
 

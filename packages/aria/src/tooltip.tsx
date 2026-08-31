@@ -49,15 +49,15 @@ import {
 } from "./overlays.ts";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
+  type MaybeAccessor,
   mergeProps,
   provideTriggerSlot,
-  styleProps,
-  type DOMProps,
-  type MaybeAccessor,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -450,7 +450,7 @@ export function TooltipTrigger(props: Incoming<TooltipTriggerComponentProps>) {
     () => {
       provideTriggerSlot({
         props: triggerProps,
-        ref: triggerRef.set as (element: Element | null) => void,
+        ref: triggerRef.set,
       });
       return props.children;
     },
@@ -497,6 +497,7 @@ export function Tooltip(props: Incoming<TooltipComponentProps>) {
     tooltipProps,
     trigger.tooltipProps,
     position.overlayProps,
+    filterDOMProps(fromProps(props), { global: true }),
     styleProps(props),
     {
       "data-placement": position.placement,

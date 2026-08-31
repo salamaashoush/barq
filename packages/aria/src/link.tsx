@@ -20,13 +20,13 @@ import { numberFormatter } from "./i18n.ts";
 import {
   access,
   clamp,
+  type DOMProps,
   filterDOMProps,
   fromProps,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 export interface LinkOptions extends FocusableOptions {
@@ -254,14 +254,21 @@ export function Link(props: Incoming<LinkComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(linkProps, hoverProps, focusProps, styleProps(props), {
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": () => props.isDisabled?.() === true,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    linkProps,
+    hoverProps,
+    focusProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": () => props.isDisabled?.() === true,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <a {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
@@ -279,11 +286,16 @@ export function Separator(props: Incoming<SeparatorComponentProps>) {
   const options = fromProps(props);
   const { separatorProps } = separator({ ...(options as SeparatorOptions), elementType: "hr" });
 
-  const elementProps = mergeProps(separatorProps, styleProps(props), {
-    "data-orientation": () => props.orientation?.() ?? "horizontal",
-    "aria-orientation": () => (props.orientation?.() === "vertical" ? "vertical" : undefined),
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    separatorProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": () => props.orientation?.() ?? "horizontal",
+      "aria-orientation": () => (props.orientation?.() === "vertical" ? "vertical" : undefined),
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return <hr {...elementProps} />;
 }
@@ -315,11 +327,16 @@ export function ProgressBar(props: Incoming<ProgressBarComponentProps>) {
     options as ProgressBarOptions,
   );
 
-  const elementProps = mergeProps(progressBarProps, styleProps(props), {
-    "data-indeterminate": () => props.isIndeterminate?.() === true,
-    "data-percentage": () => (props.isIndeterminate?.() === true ? undefined : percentage()),
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    progressBarProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-indeterminate": () => props.isIndeterminate?.() === true,
+      "data-percentage": () => (props.isIndeterminate?.() === true ? undefined : percentage()),
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...elementProps}>
@@ -338,10 +355,15 @@ export function Meter(props: Incoming<MeterComponentProps>) {
     options as ProgressBarOptions,
   );
 
-  const elementProps = mergeProps(progressBarProps, styleProps(props), {
-    "data-percentage": percentage,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    progressBarProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-percentage": percentage,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...elementProps}>

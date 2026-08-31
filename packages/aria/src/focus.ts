@@ -297,17 +297,49 @@ export function focusableWalker(
  * scope-tree bookkeeping that must not subscribe to anything.
  */
 class ScopeNodes {
-  start: Element | null = null;
-  end: Element | null = null;
+  #start: Element | null = null;
+  #end: Element | null = null;
 
   #version = signal(0);
   #observer: MutationObserver | null = null;
 
+  /**
+   * The sentinels, and setting either one INVALIDATES the scope.
+   *
+   * They were plain fields, and the reactive read had no idea when they were
+   * filled in: `focusScope` creates its effects before the JSX that holds the
+   * sentinels is built, so the first read finds no scope, and nothing told it
+   * to look again. Under happy-dom the `watch()` bump happened to land after
+   * both refs had run; in a browser — where a portalled overlay's content is
+   * built a microtask later — it landed before, and the scope stayed empty for
+   * its whole life. An overlay then did not autofocus, did not contain Tab and
+   * did not close on Escape, with every test still green.
+   */
+  get start(): Element | null {
+    return this.#start;
+  }
+
+  set start(element: Element | null) {
+    if (this.#start === element) return;
+    this.#start = element;
+    this.bump();
+  }
+
+  get end(): Element | null {
+    return this.#end;
+  }
+
+  set end(element: Element | null) {
+    if (this.#end === element) return;
+    this.#end = element;
+    this.bump();
+  }
+
   get current(): Element[] | null {
-    if (this.start === null || this.end === null) return null;
+    if (this.#start === null || this.#end === null) return null;
     const between: Element[] = [];
-    let at = this.start.nextSibling;
-    while (at !== null && at !== this.end) {
+    let at = this.#start.nextSibling;
+    while (at !== null && at !== this.#end) {
       if (at.nodeType === Node.ELEMENT_NODE) between.push(at as Element);
       at = at.nextSibling;
     }
@@ -323,19 +355,48 @@ class ScopeNodes {
     this.#version.update((n) => n + 1);
   }
 
-  /** Re-read when the sentinels' parent gains or loses children. */
+  /**
+   * Re-read when the sentinels' parent gains or loses children.
+   *
+   * The sentinels may have no parent yet. A PORTALLED scope's content is built
+   * on a microtask after its marker connects, so `onMount` can run first — and
+   * a scope that gave up here never observed anything, never re-read itself,
+   * and stayed empty for its whole life. What that looked like: an overlay's
+   * `autoFocus` did nothing, `Escape` did nothing, and focus was not contained,
+   * in a real browser only. Under happy-dom the parent was already there, so
+   * every test passed.
+   *
+   * So it retries on a microtask until there is a parent to observe. BOUNDED:
+   * a scope whose sentinels never mount would otherwise queue a microtask that
+   * queues a microtask, which starves the event loop rather than failing.
+   */
   watch(): () => void {
-    const parent = this.start?.parentNode;
-    if (parent === null || parent === undefined || typeof MutationObserver === "undefined") {
+    if (typeof MutationObserver === "undefined") {
       this.bump();
       return () => {};
     }
 
-    this.#observer = new MutationObserver(() => this.bump());
-    this.#observer.observe(parent, { childList: true });
-    this.bump();
+    let cancelled = false;
+    // One microtask is what a portal defers by. The rest is slack.
+    let attempts = 4;
+
+    const attach = (): void => {
+      if (cancelled) return;
+      const parent = this.start?.parentNode;
+      if (parent === null || parent === undefined) {
+        this.bump();
+        if (attempts-- > 0) queueMicrotask(attach);
+        return;
+      }
+      this.#observer = new MutationObserver(() => this.bump());
+      this.#observer.observe(parent, { childList: true });
+      this.bump();
+    };
+
+    attach();
 
     return () => {
+      cancelled = true;
       this.#observer?.disconnect();
       this.#observer = null;
     };
@@ -852,11 +913,13 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
     install(owner, FocusScopeContext, () => value);
   }
 
-  containFocus(nodes, options);
-  restoreFocusOnDispose(nodes, options, restoreTo);
-  trackActiveScope(nodes, options);
-  autoFocusOnMount(nodes, options);
-
+  // FIRST, so it runs LAST. Cleanups run in reverse registration order, and
+  // this one takes the scope out of the tree — which is what
+  // `restoreFocusOnDispose` reads to find where focus came from. Registered
+  // after it, it ran first, `scopeTree.get(nodes)` was already undefined, and
+  // the restore gave up every time. Nothing caught it: happy-dom leaves
+  // `activeElement` on a removed element, so the assertion passed on the
+  // element that was already focused.
   tryCleanup(() => {
     const parentScope = scopeTree.get(nodes)?.parent?.nodes ?? null;
     if (
@@ -867,6 +930,11 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
     }
     scopeTree.remove(nodes);
   });
+
+  containFocus(nodes, options);
+  restoreFocusOnDispose(nodes, options, restoreTo);
+  trackActiveScope(nodes, options);
+  autoFocusOnMount(nodes, options);
 
   return { startRef, endRef, manager, refresh: () => nodes.bump() };
 }
@@ -1142,10 +1210,21 @@ function restoreFocusOnDispose(
     scopeNode.restoreTo = value ?? undefined;
   });
 
-  tryCleanup(() => {
+  /**
+   * Put focus back where it came from.
+   *
+   * Runs when the scope is DISPOSED, which is why an overlay has to create its
+   * scope with its content rather than beside it: `<Modal>` used to call
+   * `focusScope` in the component body and render the sentinels inside a
+   * `<Show>`, so closing removed the content and left the scope alive. Nothing
+   * was disposed, nothing restored, and focus stayed on `<body>` with the
+   * trigger unreachable — invisible under happy-dom, where removing the focused
+   * element leaves `activeElement` where it was.
+   */
+  const restore = (previous: Element[] | null): void => {
     if (access(options.restoreFocus) !== true) return;
 
-    const doc = ownerDocument(nodes.current?.[0]);
+    const doc = ownerDocument(previous?.[0] ?? nodes.current?.[0]);
     const scopeNode = scopeTree.get(nodes);
     const target = scopeNode?.restoreTo;
     const active = activeElement(doc);
@@ -1160,8 +1239,8 @@ function restoreFocusOnDispose(
       return;
     }
 
-    // The tree is about to lose these nodes, so the search has to run against
-    // a copy taken now.
+    // The tree may be about to lose these nodes, so the search runs against a
+    // copy taken now.
     const frozen = scopeTree.clone();
     requestAnimationFrame(() => {
       // Only when focus actually fell to the body. Anything else means
@@ -1193,7 +1272,9 @@ function restoreFocusOnDispose(
         at = at.parent;
       }
     });
-  });
+  };
+
+  tryCleanup(() => restore(null));
 }
 
 /**

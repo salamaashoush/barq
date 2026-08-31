@@ -35,19 +35,21 @@ import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/re
 import { button, type ButtonOptions } from "./button.tsx";
 import type { ItemAccessors, Key, Node } from "./collections.ts";
 import { buildCollection, type ListCollection } from "./collections.ts";
+import { exitDuration } from "./presence.ts";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import {
   access,
   controllable,
+  type DOMProps,
+  filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -176,12 +178,38 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
       return () => panel.removeEventListener("beforematch", onBeforeMatch);
     });
 
-    // `until-found`, not `true`: the panel stays searchable while it is shut.
+    /**
+     * `until-found`, not `true`: the panel stays searchable while it is shut.
+     *
+     * The attribute goes on only once the stylesheet has finished closing the
+     * panel. `hidden` stops the content being rendered AT ONCE, so setting it
+     * the moment the state flipped cancelled the collapse: a panel whose CSS
+     * transitions `grid-template-rows` opened over 200ms and then vanished in
+     * one frame, and the transition it was still running painted nothing.
+     *
+     * It is set synchronously in every other case — a panel that starts shut,
+     * one with no transition, and one under `prefers-reduced-motion` — so
+     * nothing flashes open on the first render.
+     */
+    let hasOpened = false;
     effect(() => {
       const panel = access(options.panelRef) as HTMLElement | null;
-      if (panel === null) return;
-      if (state.isExpanded()) panel.removeAttribute("hidden");
-      else panel.setAttribute("hidden", "until-found");
+      if (panel === null) return undefined;
+
+      const hide = (): void => panel.setAttribute("hidden", "until-found");
+      if (state.isExpanded()) {
+        hasOpened = true;
+        panel.removeAttribute("hidden");
+        return undefined;
+      }
+
+      const closing = hasOpened ? exitDuration(panel) : 0;
+      if (closing <= 0) {
+        hide();
+        return undefined;
+      }
+      const timer = setTimeout(hide, closing);
+      return () => clearTimeout(timer);
     });
   }
 
@@ -295,6 +323,7 @@ export function DisclosureButton(props: Incoming<DisclosureButtonComponentProps>
     { id: value.buttonProps.id },
     hoverProps,
     focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
     styleProps(props),
     {
       "data-expanded": value.state.isExpanded,
@@ -325,10 +354,15 @@ export interface DisclosurePanelComponentProps extends StyleProps {
 export function DisclosurePanel(props: Incoming<DisclosurePanelComponentProps>) {
   const value = useDisclosure();
 
-  const elementProps = mergeProps(value.panelProps, styleProps(props), {
-    "data-expanded": value.state.isExpanded,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    value.panelProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-expanded": value.state.isExpanded,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...elementProps} ref={mergeRefs(value.panelRef.set, props.ref?.())}>
@@ -406,9 +440,13 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
   const owner = getOwner();
   if (owner !== null) install(owner, DisclosureGroupContext, () => ({ state }));
 
-  const elementProps = mergeProps(styleProps(props), {
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const render = props.children as unknown as (scope: unknown, item: T) => Child;
 

@@ -31,17 +31,17 @@ import {
   type ValidationBehavior,
 } from "./validation.ts";
 import {
-  callback,
   access,
+  callback,
   controllable,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 export interface RadioGroupStateOptions {
@@ -434,14 +434,19 @@ export function RadioGroup(props: Incoming<RadioGroupComponentProps>) {
     install(owner, RadioGroupContext, () => value);
   }
 
-  const outerProps = mergeProps(radioGroupProps, styleProps(props), {
-    "data-disabled": state.isDisabled,
-    "data-readonly": state.isReadOnly,
-    "data-invalid": state.isInvalid,
-    "data-required": state.isRequired,
-    "data-orientation": () => props.orientation?.() ?? "vertical",
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const outerProps = mergeProps(
+    radioGroupProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-disabled": state.isDisabled,
+      "data-readonly": state.isReadOnly,
+      "data-invalid": state.isInvalid,
+      "data-required": state.isRequired,
+      "data-orientation": () => props.orientation?.() ?? "vertical",
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...outerProps}>
@@ -483,15 +488,21 @@ export function Radio(props: Incoming<RadioComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
-  const outerProps = mergeProps(labelProps, hoverProps, styleProps(props), {
-    "data-selected": isSelected,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const outerProps = mergeProps(
+    labelProps,
+    hoverProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-selected": isSelected,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <label {...outerProps}>

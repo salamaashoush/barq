@@ -57,15 +57,16 @@ import {
   type ValidationBehavior,
 } from "./validation.ts";
 import {
-  callback,
   access,
+  callback,
   controllable,
-  filterDOMProps,
-  mergeProps,
-  styleProps,
   type DOMProps,
+  filterDOMProps,
+  fromProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -810,11 +811,16 @@ export function DateField(props: Incoming<DateFieldComponentProps>) {
     state,
   );
 
-  const elementProps = mergeProps(fieldProps, styleProps(props), {
-    "data-disabled": () => props.isDisabled?.() === true,
-    "data-invalid": isInvalid,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    fieldProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-disabled": () => props.isDisabled?.() === true,
+      "data-invalid": isInvalid,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <DateFieldProvider value={{ state }}>

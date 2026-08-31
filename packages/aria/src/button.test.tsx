@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { flush, signal } from "@barqjs/core";
+import { context, flush, getOwner, provide, signal, type Child, type Incoming } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { Button, ToggleButton } from "./button.tsx";
+import { provideTriggerSlot } from "./utils.ts";
+
+/** Something for `provide` to carry; the slot is what the test is about. */
+const probe = context<number>(0);
 
 describe("Button", () => {
   test("is a button with an accessible name", () => {
@@ -137,5 +141,81 @@ describe("ToggleButton", () => {
   test("defaultSelected starts on", () => {
     render(() => <ToggleButton defaultSelected>Bold</ToggleButton>);
     expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+/**
+ * What a wrapper puts on the control it wraps.
+ *
+ * `provideTriggerSlot` is how `<TooltipTrigger>` and a dialog's trigger reach
+ * the button without an element of their own. It used to reach only half way:
+ * the props were merged onto the ELEMENT, where `onPress` is not a DOM event
+ * and became `addEventListener("press")`, and where `aria-haspopup` lost to the
+ * button's own accessor for that key — a function that yields `undefined` and
+ * is still a value as far as `mergeProps` can tell.
+ */
+describe("the trigger slot", () => {
+  function Wrap(props: Incoming<{ children?: Child; onPress?: () => void }>) {
+    const owner = getOwner();
+    if (owner === null) return <>{props.children}</>;
+    return provide(
+      owner,
+      probe,
+      () => 1,
+      () => {
+        provideTriggerSlot({
+          props: {
+            "aria-haspopup": "menu",
+            "aria-expanded": true,
+            "data-from-slot": "yes",
+            onPress: () => props.onPress?.()?.(),
+          },
+        });
+        return props.children;
+      },
+    ) as never;
+  }
+
+  test("its aria attributes reach the button", () => {
+    render(() => (
+      <Wrap>
+        <Button>Open</Button>
+      </Wrap>
+    ));
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-haspopup")).toBe("menu");
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(button.getAttribute("data-from-slot")).toBe("yes");
+  });
+
+  test("its onPress runs on a press", async () => {
+    const presses: string[] = [];
+    render(() => (
+      <Wrap onPress={() => presses.push("slot")}>
+        <Button>Open</Button>
+      </Wrap>
+    ));
+    await user.click(screen.getByRole("button"));
+    expect(presses).toEqual(["slot"]);
+  });
+
+  test("the button's own onPress runs as well, not instead", async () => {
+    const presses: string[] = [];
+    render(() => (
+      <Wrap onPress={() => presses.push("slot")}>
+        <Button onPress={() => presses.push("own")}>Open</Button>
+      </Wrap>
+    ));
+    await user.click(screen.getByRole("button"));
+    expect(presses.toSorted()).toEqual(["own", "slot"]);
+  });
+
+  test("the button's own aria-label is not overwritten by the slot", () => {
+    render(() => (
+      <Wrap>
+        <Button aria-label="Actions">Open</Button>
+      </Wrap>
+    ));
+    expect(screen.getByRole("button", { name: "Actions" })).toBeTruthy();
   });
 });

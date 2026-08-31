@@ -754,13 +754,19 @@ export function ComboBox<T>(props: Incoming<ComboBoxComponentProps<T>>) {
   const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled?.() });
   const { focusProps, isFocusVisible } = focusRing();
 
-  const inputElementProps = mergeProps(inputProps, focusProps, styleProps(props), {
-    "data-focus-visible": isFocusVisible,
-    "data-open": state.isOpen,
-    "data-disabled": () => props.isDisabled?.() === true,
-    "data-invalid": isInvalid,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const inputElementProps = mergeProps(
+    inputProps,
+    focusProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-focus-visible": isFocusVisible,
+      "data-open": state.isOpen,
+      "data-disabled": () => props.isDisabled?.() === true,
+      "data-invalid": isInvalid,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const buttonElementProps = mergeProps(buttonProps, hoverProps, {
     // The button names itself with "Show suggestions" AND the field's label,

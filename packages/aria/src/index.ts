@@ -300,6 +300,7 @@ export {
   topLayerProps,
   usePortalTarget,
 } from "./overlays.ts";
+export { exitDuration, presence, type PresenceOptions, type PresenceResult } from "./presence.ts";
 export {
   type FieldValidation,
   fieldValidation,
@@ -728,6 +729,7 @@ export {
   Slider,
   slider,
   type SliderComponentProps,
+  type SliderContextValue,
   type SliderOptions,
   SliderOutput,
   type SliderOutputComponentProps,

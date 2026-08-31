@@ -246,9 +246,17 @@ export interface ButtonComponentProps extends StyleProps {
  */
 export function Button(props: Incoming<ButtonComponentProps>) {
   const domRef = makeRef<HTMLButtonElement>();
-  const options = fromProps(props);
-  // What a tooltip or a menu wrapped around this button wants on it. FIRST, so
-  // the button's own props win a conflict and only the handlers accumulate.
+  // What a tooltip, a menu or a dialog wrapped around this button wants on it,
+  // merged into the button's OPTIONS rather than onto its element.
+  //
+  // Onto the element it could not work, and did not: `onPress` is not a DOM
+  // event, so a trigger's press handler became `addEventListener("press")` and
+  // never fired; and `aria-haspopup` lost to the button's own accessor for the
+  // same key, which yields `undefined` and is still a function, so `mergeProps`
+  // saw a value and kept it. Through the options both arrive where `button()`
+  // already knows what to do with them, and `mergeProps` chains the two
+  // `onPress` handlers instead of one replacing the other.
+  const options = mergeProps(fromProps(props), triggerSlot().props) as ButtonOptions;
   const slot = triggerSlot();
 
   const { buttonProps, isPressed } = button(options, domRef);
@@ -256,7 +264,6 @@ export function Button(props: Incoming<ButtonComponentProps>) {
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const elementProps = mergeProps(
-    slot.props,
     buttonProps,
     hoverProps,
     focusProps,
@@ -291,7 +298,9 @@ export interface ToggleButtonComponentProps extends Omit<ButtonComponentProps, "
  */
 export function ToggleButton(props: Incoming<ToggleButtonComponentProps>) {
   const domRef = makeRef<HTMLButtonElement>();
-  const options = fromProps(props);
+  // See `Button` for why the slot goes into the options and not onto the
+  // element.
+  const options = mergeProps(fromProps(props), triggerSlot().props) as ToggleButtonOptions;
   const slot = triggerSlot();
 
   const state = toggleState(options);
@@ -300,7 +309,6 @@ export function ToggleButton(props: Incoming<ToggleButtonComponentProps>) {
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const elementProps = mergeProps(
-    slot.props,
     buttonProps,
     hoverProps,
     focusProps,

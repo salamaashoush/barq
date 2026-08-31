@@ -66,13 +66,14 @@ import {
   access,
   callback,
   controllable,
-  filterDOMProps,
-  id,
-  mergeProps,
-  styleProps,
   type DOMProps,
+  filterDOMProps,
+  fromProps,
+  id,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -796,10 +797,15 @@ function CalendarBody(incoming: Incoming<CalendarBodyProps>) {
 
   const value: CalendarContextValue = { state, baseId };
 
-  const elementProps = mergeProps(calendarProps, styleProps(props), {
-    "data-disabled": () => props.isDisabled?.() === true,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    calendarProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-disabled": () => props.isDisabled?.() === true,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <CalendarProvider value={value}>
@@ -865,17 +871,24 @@ export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(buttonProps, hoverProps, focusProps, styleProps(props), {
-    "data-selected": isSelected,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-hovered": isHovered,
-    "data-disabled": isDisabled,
-    "data-unavailable": isUnavailable,
-    "data-outside-month": isOutsideVisibleRange,
-    "data-today": isTodayCell,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    buttonProps,
+    hoverProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-selected": isSelected,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-hovered": isHovered,
+      "data-disabled": isDisabled,
+      "data-unavailable": isUnavailable,
+      "data-outside-month": isOutsideVisibleRange,
+      "data-today": isTodayCell,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...cellProps}>

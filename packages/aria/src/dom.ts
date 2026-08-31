@@ -72,7 +72,18 @@ export function ownerDocument(target?: EventTarget | null): Document {
   if (isWindow(target)) return target.document;
   if (isDocument(target)) return target;
   const owned = (target as Node | null | undefined)?.ownerDocument;
-  return owned ?? (typeof document !== "undefined" ? document : (undefined as never));
+  const fallback = typeof document !== "undefined" ? document : (undefined as never);
+  // A node cloned from a `<template>` belongs to the INERT template document
+  // until it is inserted, and that document has no browsing context: its
+  // `activeElement` is null, its `defaultView` is null, and a listener added to
+  // it never fires. barq builds every element by cloning a template, so any
+  // question asked of a node before it is in the page was being asked of the
+  // wrong document — which is why an overlay's focus scope recorded `null` as
+  // the element to restore focus to, and gave the user back nothing when it
+  // closed. `defaultView` is the test the platform itself uses for "has a
+  // browsing context".
+  if (owned === null || owned === undefined) return fallback;
+  return owned.defaultView === null ? fallback : owned;
 }
 
 /** The window `target` lives in. See {@link ownerDocument}. */

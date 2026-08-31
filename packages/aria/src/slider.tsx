@@ -50,15 +50,15 @@ import { formReset } from "./toggle.ts";
 import {
   access,
   clamp,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
+  type MaybeAccessor,
   mergeProps,
   snapValueToStep,
-  styleProps,
-  type DOMProps,
-  type MaybeAccessor,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -690,7 +690,8 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
 // Components
 // ---------------------------------------------------------------------------
 
-interface SliderContextValue {
+/** What `useSlider` returns. Exported because it is the return type of an exported function. */
+export interface SliderContextValue {
   state: SliderState;
   baseId: Accessor<string>;
   trackRef: ReturnType<typeof makeRef<HTMLDivElement>>;
@@ -772,11 +773,16 @@ export function Slider(props: Incoming<SliderComponentProps>) {
     }));
   }
 
-  const elementProps = mergeProps(groupProps, styleProps(props), {
-    "data-orientation": state.orientation,
-    "data-disabled": state.isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    groupProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": state.orientation,
+      "data-disabled": state.isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...elementProps} ref={mergeRefs(props.ref?.())}>
@@ -805,9 +811,14 @@ export interface SliderOutputComponentProps extends StyleProps {
 export function SliderOutput(props: Incoming<SliderOutputComponentProps>) {
   const group = useSlider();
 
-  const elementProps = mergeProps(group.outputProps, styleProps(props), {
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    group.outputProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <output {...elementProps}>
@@ -834,11 +845,16 @@ export function SliderTrack(props: Incoming<SliderTrackComponentProps>) {
   const group = useSlider();
   const render = props.children as unknown as (scope: unknown, index: number) => Child;
 
-  const elementProps = mergeProps(props.trackProps?.() ?? {}, styleProps(props), {
-    "data-orientation": group.state.orientation,
-    "data-disabled": group.state.isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    props.trackProps?.() ?? {},
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": group.state.orientation,
+      "data-disabled": group.state.isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...elementProps} ref={mergeRefs(group.trackRef.set, props.ref?.())}>
@@ -888,14 +904,20 @@ export function SliderThumb(props: Incoming<SliderThumbComponentProps>) {
   const { focusProps, isFocusVisible } = focusRing();
   const { visuallyHiddenProps } = visuallyHidden();
 
-  const elementProps = mergeProps(thumbProps, hoverProps, styleProps(props), {
-    "data-dragging": isDragging,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-hovered": isHovered,
-    "data-disabled": isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    thumbProps,
+    hoverProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-dragging": isDragging,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-hovered": isHovered,
+      "data-disabled": isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const hiddenInputProps = mergeProps(inputProps, focusProps, {
     style: visuallyHiddenProps.style,

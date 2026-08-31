@@ -33,13 +33,13 @@ import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import { link, type LinkOptions } from "./link.tsx";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -172,9 +172,14 @@ export function Breadcrumbs<T>(props: Incoming<BreadcrumbsComponentProps<T>>) {
     }));
   }
 
-  const elementProps = mergeProps(navProps, styleProps(props), {
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    navProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const render = props.children as unknown as (scope: unknown, item: T) => Child;
 
@@ -254,14 +259,21 @@ export function Breadcrumb(props: Incoming<BreadcrumbComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(itemProps, hoverProps, focusProps, styleProps(props), {
-    "data-current": isCurrent,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    itemProps,
+    hoverProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-current": isCurrent,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <li>

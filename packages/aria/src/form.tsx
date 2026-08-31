@@ -24,7 +24,7 @@ import {
   type ValidationBehavior,
   type ValidationErrors,
 } from "./validation.ts";
-import { mergeProps, styleProps, type StyleProps } from "./utils.ts";
+import { filterDOMProps, fromProps, mergeProps, type StyleProps, styleProps } from "./utils.ts";
 
 export interface FormComponentProps extends StyleProps {
   children?: Child;
@@ -68,19 +68,23 @@ export function Form(props: Incoming<FormComponentProps>) {
     handler(new FormData(event.currentTarget as HTMLFormElement), event);
   };
 
-  const elementProps = mergeProps(styleProps(props), {
-    action: () => props.action?.(),
-    method: () => props.method?.(),
-    enctype: () => props.encType?.(),
-    target: () => props.target?.(),
-    autocomplete: () => props.autoComplete?.(),
-    novalidate: () => props.noValidate?.() === true || undefined,
-    "aria-label": () => props["aria-label"]?.(),
-    "aria-labelledby": () => props["aria-labelledby"]?.(),
-    "data-testid": () => props["data-testid"]?.(),
-    onSubmit,
-    onReset: (event: Event) => props.onReset?.()?.(event),
-  });
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      action: () => props.action?.(),
+      method: () => props.method?.(),
+      enctype: () => props.encType?.(),
+      target: () => props.target?.(),
+      autocomplete: () => props.autoComplete?.(),
+      novalidate: () => props.noValidate?.() === true || undefined,
+      "aria-label": () => props["aria-label"]?.(),
+      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      "data-testid": () => props["data-testid"]?.(),
+      onSubmit,
+      onReset: (event: Event) => props.onReset?.()?.(event),
+    },
+  );
 
   return (
     <form {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>

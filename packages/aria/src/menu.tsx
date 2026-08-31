@@ -66,14 +66,14 @@ import { useLocale } from "./i18n.ts";
 import { selectableItem, selectableList, type KeyboardDelegate } from "./selection.ts";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -1217,6 +1217,7 @@ export function MenuButton(props: Incoming<MenuButtonComponentProps>) {
     { id: menuTriggerValue.menuTriggerProps.id },
     hoverProps,
     focusProps,
+    filterDOMProps(options, { global: true }),
     styleProps(props),
     {
       "data-pressed": isPressed,
@@ -1399,14 +1400,19 @@ function MenuList<T>(listProps: Incoming<MenuListProps<T>>) {
     install(owner, MenuContext, () => value);
   }
 
-  const elementProps = mergeProps(menuProps, styleProps(props), {
-    id: () =>
-      access(
-        (submenu?.submenuProps.id ?? trigger?.menuProps.id) as MaybeAccessor<string | undefined>,
-      ),
-    "data-testid": () => props["data-testid"]?.(),
-    "data-empty": () => state.collection().size === 0,
-  });
+  const elementProps = mergeProps(
+    menuProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      id: () =>
+        access(
+          (submenu?.submenuProps.id ?? trigger?.menuProps.id) as MaybeAccessor<string | undefined>,
+        ),
+      "data-testid": () => props["data-testid"]?.(),
+      "data-empty": () => state.collection().size === 0,
+    },
+  );
 
   const render = props.children as unknown as (scope: unknown, item: T) => Child;
 
@@ -1469,15 +1475,22 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible: showsRing } = focusRing();
 
-  const elementProps = mergeProps(menuItemProps, hoverProps, focusProps, styleProps(props), {
-    "data-selected": isSelected,
-    "data-focused": isFocused,
-    "data-focus-visible": showsRing,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-disabled": isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    menuItemProps,
+    hoverProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-selected": isSelected,
+      "data-focused": isFocused,
+      "data-focus-visible": showsRing,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-disabled": isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <li {...elementProps} ref={mergeRefs(domRef.set, submenu?.triggerRef.set, props.ref?.())}>

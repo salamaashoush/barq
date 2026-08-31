@@ -166,6 +166,11 @@
       "bun": "./src/overlays.ts",
       "import": "./dist/overlays.js"
     },
+    "./presence": {
+      "types": "./dist/presence.d.ts",
+      "bun": "./src/presence.ts",
+      "import": "./dist/presence.js"
+    },
     "./platform": {
       "types": "./dist/platform.d.ts",
       "bun": "./src/platform.ts",

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { flush, signal, Show, type Incoming } from "@barqjs/core";
 import { render, screen, tick, user } from "@barqjs/testing";
 import { createFocusManager, focusRing, focusScope, focusableWalker } from "./focus.ts";
 import { setInteractionModality } from "./interactions/modality.ts";
@@ -232,5 +233,47 @@ describe("focusRing", () => {
     user.focus(screen.getByRole("button"));
 
     expect(screen.getByTestId("group").hasAttribute("data-focused")).toBe(true);
+  });
+});
+
+/**
+ * A scope whose sentinels arrive after its effects do.
+ *
+ * `focusScope` creates its effects in the component body, and the sentinels are
+ * refs on JSX built afterwards — later still when the content is inside a
+ * `<Show>` or a `<Portal>`. The scope's extent used to be read from two plain
+ * fields, so the first read found nothing and nothing told it to look again:
+ * the scope stayed empty for its whole life, and an overlay built that way
+ * neither autofocused, nor contained Tab, nor closed on Escape. It was
+ * invisible under happy-dom only because a bump happened to land after both
+ * refs had run.
+ */
+describe("a scope whose content appears later", () => {
+  function Late(props: Incoming<{ open: boolean }>) {
+    const scope = focusScope({ contain: true, autoFocus: true });
+    return (
+      <>
+        <button type="button">outside</button>
+        <Show when={props.open()}>
+          <span hidden ref={scope.startRef} />
+          <button type="button">inside first</button>
+          <button type="button">inside second</button>
+          <span hidden ref={scope.endRef} />
+        </Show>
+      </>
+    );
+  }
+
+  test("autofocus lands inside once the content is there", async () => {
+    const open = signal(false);
+    render(() => <Late open={open()} />);
+    expect(document.activeElement?.textContent).not.toBe("inside first");
+
+    open.set(true);
+    flush();
+    await tick();
+    flush();
+
+    expect(document.activeElement?.textContent).toBe("inside first");
   });
 });

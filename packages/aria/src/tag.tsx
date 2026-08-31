@@ -50,14 +50,14 @@ import {
 } from "./selection.ts";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -339,10 +339,15 @@ export function TagGroup<T>(props: Incoming<TagGroupComponentProps<T>>) {
     onRemove: () => props.onRemove?.(),
   };
 
-  const elementProps = mergeProps(gridProps, styleProps(props), {
-    "data-empty": () => state.collection().size === 0,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    gridProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-empty": () => state.collection().size === 0,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const render = props.children as unknown as (scope: unknown, item: T) => Child;
 
@@ -407,17 +412,24 @@ export function Tag(props: Incoming<TagComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(rowProps, hoverProps, focusProps, styleProps(props), {
-    "aria-label": () => props["aria-label"]?.(),
-    "data-selected": isSelected,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-disabled": isDisabled,
-    "data-removable": allowsRemoving,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    rowProps,
+    hoverProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "aria-label": () => props["aria-label"]?.(),
+      "data-selected": isSelected,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-disabled": isDisabled,
+      "data-removable": allowsRemoving,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const removeProps = computed(() =>
     mergeProps(buttonProps, { id: removeButtonProps.id, type: "button" }),

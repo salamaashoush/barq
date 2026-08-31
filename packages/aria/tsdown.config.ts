@@ -59,6 +59,7 @@ const modules = [
   "numberfield",
   "overlays",
   "platform",
+  "presence",
   "radio",
   "select",
   "selection",

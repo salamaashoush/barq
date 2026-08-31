@@ -28,13 +28,13 @@ import type { ElementRef } from "./interactions/press.ts";
 import type { Orientation } from "./selection.ts";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 export interface ToolbarOptions {
@@ -158,10 +158,15 @@ export function Toolbar(props: Incoming<ToolbarComponentProps>) {
 
   const { toolbarProps } = toolbar({ ...(options as unknown as ToolbarOptions), ref: domRef });
 
-  const elementProps = mergeProps(toolbarProps, styleProps(props), {
-    "data-orientation": () => props.orientation?.() ?? "horizontal",
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    toolbarProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": () => props.orientation?.() ?? "horizontal",
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>

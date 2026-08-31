@@ -66,12 +66,20 @@ Writing a component of your own on top of a hook, `fromProps(props)` turns `Inco
 There is no CSS. State is exposed as data attributes on the elements the components render, so a stylesheet selects on presence:
 
 ```css
-[data-selected] { background: canvas; }
-[data-focus-visible] { outline: 2px solid; }
-[data-disabled] { opacity: 0.5; }
+[data-selected] {
+  background: canvas;
+}
+[data-focus-visible] {
+  outline: 2px solid;
+}
+[data-disabled] {
+  opacity: 0.5;
+}
 ```
 
 The attributes are `data-selected`, `data-focused`, `data-focus-visible`, `data-hovered`, `data-pressed`, `data-disabled`, `data-readonly`, `data-invalid`, `data-required`, `data-open`, `data-placeholder`, `data-dragging`, `data-orientation`, `data-placement`, `data-empty` and `data-virtualized`. A boolean one is its **presence**: `data-pressed=""` when true and absent when false, so the selector is `[data-pressed]` and never `[data-pressed="true"]`.
+
+A component forwards what it has no opinion about: the global attributes (`dir`, `lang`, `hidden`, `inert`, `translate`), the global events, `id`, and anything `data-*`. That is what lets a design system put its own marker on the element it styles — `<Checkbox data-slot="checkbox">` reaches the `<label>` — without a wrapper element in the way. A prop the component owns never becomes an attribute, so `isDisabled` writes `data-disabled` and not `isdisabled="true"`.
 
 ## Overlays are portalled
 
@@ -117,21 +125,21 @@ Unlike react-aria there is no view recycling: `<For>` keys rows by item, so a ro
 
 ## What is here
 
-| module | what |
-| --- | --- |
-| `platform` | `isMac`, `isIOS`, `isWebKit`, … |
-| `dom` | ownership, shadow-safe `contains`/`activeElement`, `isFocusable`/`isTabbable`, `scrollIntoViewport` |
-| `utils` | `mergeProps`, `id`/`mergeIds`, `filterDOMProps`, `controllable`, `fromProps`, `callback`, `styleProps` |
-| `interactions` | `press`, `hover`, `focused`, `focusWithin`, `keyboard`, `longPress`, `move`, `interactOutside`, `scrollWheel`, `focusable`, `modality`/`focusVisible`, `openLink` |
-| `focus` | `FocusWalker`, `createFocusManager`, `focusScope`, `focusRing` |
-| `i18n` | `useLocale`, `collator`, `filter`, number/date/list formatters, `StringFormatter`, `NumberParser` |
-| `live` | `announce`, `visuallyHidden` |
-| `collections` | `Collection`, `ListCollection`, `Selection`, `SelectionManager`, `listState` |
-| `selection` | `ListKeyboardDelegate`, `typeSelect`, `selectableItem`, `selectableList`, `selectableCollection` |
-| `overlays` | `overlayTrigger`, `overlay`, `ariaHideOutside`, `preventScroll`, `overlayPosition`, `modalOverlay` |
-| `virtualizer` | `Layout`, `ListLayout`, `virtualizer`, `<Virtualizer>` |
-| `date` · `color` | barq's answers to `@internationalized/date` and `@react-stately/color` |
-| `validation` | `formValidationState`, `fieldValidation`, `formValidation` |
+| module           | what                                                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `platform`       | `isMac`, `isIOS`, `isWebKit`, …                                                                                                                                   |
+| `dom`            | ownership, shadow-safe `contains`/`activeElement`, `isFocusable`/`isTabbable`, `scrollIntoViewport`                                                               |
+| `utils`          | `mergeProps`, `id`/`mergeIds`, `filterDOMProps`, `controllable`, `fromProps`, `callback`, `styleProps`                                                            |
+| `interactions`   | `press`, `hover`, `focused`, `focusWithin`, `keyboard`, `longPress`, `move`, `interactOutside`, `scrollWheel`, `focusable`, `modality`/`focusVisible`, `openLink` |
+| `focus`          | `FocusWalker`, `createFocusManager`, `focusScope`, `focusRing`                                                                                                    |
+| `i18n`           | `useLocale`, `collator`, `filter`, number/date/list formatters, `StringFormatter`, `NumberParser`                                                                 |
+| `live`           | `announce`, `visuallyHidden`                                                                                                                                      |
+| `collections`    | `Collection`, `ListCollection`, `Selection`, `SelectionManager`, `listState`                                                                                      |
+| `selection`      | `ListKeyboardDelegate`, `typeSelect`, `selectableItem`, `selectableList`, `selectableCollection`                                                                  |
+| `overlays`       | `overlayTrigger`, `overlay`, `ariaHideOutside`, `preventScroll`, `overlayPosition`, `modalOverlay`                                                                |
+| `virtualizer`    | `Layout`, `ListLayout`, `virtualizer`, `<Virtualizer>`                                                                                                            |
+| `date` · `color` | barq's answers to `@internationalized/date` and `@react-stately/color`                                                                                            |
+| `validation`     | `formValidationState`, `fieldValidation`, `formValidation`                                                                                                        |
 
 Components: `Button` `ToggleButton` `Checkbox` `CheckboxGroup` `Switch` `RadioGroup` `Radio` `Link` `Separator` `ProgressBar` `Meter` `TextField` `SearchField` `NumberField` `ListBox` `Option` `Menu` `MenuTrigger` `SubmenuTrigger` `Select` `ComboBox` `GridList` `Table` `TagGroup` `Tabs` `Toolbar` `Breadcrumbs` `Disclosure` `Dialog` `Modal` `Popover` `Slider` `Calendar` `RangeCalendar` `DateField` `TimeField` `DatePicker` `ColorPicker` `ColorSlider` `ColorArea` `ColorWheel` `ColorField` `ColorSwatch` `Tooltip` `Form` `Virtualizer`.
 

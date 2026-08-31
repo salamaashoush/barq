@@ -39,6 +39,8 @@ import {
   targetElement,
   TOP_LAYER_ATTRIBUTE,
 } from "./dom.ts";
+import { resizeObserver } from "@barqjs/primitives/observers";
+
 import { focusWithin } from "./interactions/focus-events.ts";
 import { interactOutside } from "./interactions/interact-outside.ts";
 import type { ElementRef } from "./interactions/press.ts";
@@ -705,6 +707,19 @@ function boxOf(element: Element): Box {
   return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
 }
 
+/**
+ * Width and height before any transform.
+ *
+ * `getBoundingClientRect` reports what is PAINTED, which for anything mid-
+ * animation is the wrong number to place it by.
+ */
+function layoutSize(element: Element): { width: number; height: number } {
+  const html = element as HTMLElement;
+  return html.offsetWidth > 0 || html.offsetHeight > 0
+    ? { width: html.offsetWidth, height: html.offsetHeight }
+    : boxOf(element);
+}
+
 function place(
   target: Box,
   panel: Box,
@@ -782,7 +797,12 @@ export function overlayPosition(options: PositionOptions): PositionResult {
         : { top: 0, left: 0, width: view.innerWidth, height: view.innerHeight };
 
     const targetBox = boxOf(target);
-    const overlayBox = boxOf(element);
+    // The overlay's LAYOUT size, not its painted one. Every overlay here enters
+    // with `zoom-in-95`, so the first measurement caught it at 95% — a 288px
+    // popover measured 274 and was centred on that, then finished its animation
+    // 7px off its trigger and stayed there. A transform on the thing being
+    // placed must not decide where it goes.
+    const overlayBox = { top: 0, left: 0, ...layoutSize(element) };
     const offset = access(options.offset) ?? 0;
     const cross = access(options.crossOffset) ?? 0;
     const padding = access(options.containerPadding) ?? 12;
@@ -832,7 +852,10 @@ export function overlayPosition(options: PositionOptions): PositionResult {
 
     const arrow = access(options.arrowRef ?? undefined) as Element | null;
     if (arrow !== null && arrow !== undefined) {
-      const arrowBox = boxOf(arrow);
+      // The same reason, and one more: an arrow is a rotated square, so
+      // `getBoundingClientRect` reports the box the rotation sweeps out — 14.1px
+      // for a 10px arrow — which centred it 2px off its trigger.
+      const arrowBox = layoutSize(arrow);
       // Centred on the TARGET, not on the overlay: after a shift the two are
       // no longer aligned, and the arrow has to keep pointing at the trigger.
       if (axis === "top" || axis === "bottom") {
@@ -862,9 +885,27 @@ export function overlayPosition(options: PositionOptions): PositionResult {
       const onChange = (): void => update();
       view.addEventListener("resize", onChange);
       view.addEventListener("scroll", onChange, true);
+
+      // The FIRST measurement is taken the moment the ref resolves, which is
+      // before the browser has laid the overlay out: a popover measured 275px
+      // wide, was centred on that, and then rendered at 288px, sitting 7px off
+      // its trigger until something else forced a resize. Observing both boxes
+      // re-places it once the real sizes exist, and again whenever the content
+      // grows.
+      const stopTarget = resizeObserver(
+        () => access(options.targetRef) as Element | null,
+        onChange,
+      );
+      const stopOverlay = resizeObserver(
+        () => access(options.overlayRef) as Element | null,
+        onChange,
+      );
+
       return () => {
         view.removeEventListener("resize", onChange);
         view.removeEventListener("scroll", onChange, true);
+        stopTarget();
+        stopOverlay();
       };
     });
   }

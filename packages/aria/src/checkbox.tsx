@@ -32,13 +32,13 @@ import {
   access,
   callback,
   controllable,
+  type DOMProps,
   filterDOMProps,
   fromProps,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 export interface CheckboxOptions extends ToggleOptions {
@@ -288,18 +288,23 @@ export function Checkbox(props: Incoming<CheckboxComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
-  const outerProps = mergeProps(labelProps, hoverProps, styleProps(props), {
-    "data-selected": isSelected,
-    "data-indeterminate": () => props.isIndeterminate?.() === true,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": isDisabled,
-    "data-readonly": isReadOnly,
-    "data-invalid": isInvalid,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const outerProps = mergeProps(
+    labelProps,
+    hoverProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-selected": isSelected,
+      "data-indeterminate": () => props.isIndeterminate?.() === true,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": isDisabled,
+      "data-readonly": isReadOnly,
+      "data-invalid": isInvalid,
+    },
+  );
 
   return (
     <label {...outerProps}>
@@ -356,13 +361,18 @@ export function CheckboxGroup(props: Incoming<CheckboxGroupComponentProps>) {
 
   provideCheckboxGroup(state, options);
 
-  const outerProps = mergeProps(groupProps, styleProps(props), {
-    "data-disabled": state.isDisabled,
-    "data-readonly": state.isReadOnly,
-    "data-invalid": state.isInvalid,
-    "data-required": state.isRequired,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const outerProps = mergeProps(
+    groupProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-disabled": state.isDisabled,
+      "data-readonly": state.isReadOnly,
+      "data-invalid": state.isInvalid,
+      "data-required": state.isRequired,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...outerProps}>
@@ -420,16 +430,22 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
-  const outerProps = mergeProps(labelProps, hoverProps, styleProps(props), {
-    "data-selected": isSelected,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": isDisabled,
-    "data-readonly": isReadOnly,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const outerProps = mergeProps(
+    labelProps,
+    hoverProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-selected": isSelected,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": isDisabled,
+      "data-readonly": isReadOnly,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <label {...outerProps}>

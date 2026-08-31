@@ -56,14 +56,14 @@ import {
 } from "./selection.ts";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -512,10 +512,14 @@ export function Tabs<T>(props: Incoming<TabsComponentProps<T>>) {
     install(owner, TabsContext, () => value);
   }
 
-  const elementProps = mergeProps(styleProps(props), {
-    "data-orientation": () => props.orientation?.() ?? "horizontal",
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": () => props.orientation?.() ?? "horizontal",
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return <div {...elementProps}>{props.children}</div>;
 }
@@ -543,10 +547,15 @@ export function TabList<T>(props: Incoming<TabListComponentProps<T>>) {
     tabs.state,
   );
 
-  const elementProps = mergeProps(tabListProps, styleProps(props), {
-    "data-orientation": tabs.orientation,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    tabListProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": tabs.orientation,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const render = props.children as unknown as (scope: unknown, item: T) => Child;
 
@@ -592,16 +601,23 @@ export function Tab(props: Incoming<TabComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(tabProps, hoverProps, focusProps, styleProps(props), {
-    type: "button",
-    "data-selected": isSelected,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-disabled": isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    tabProps,
+    hoverProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      type: "button",
+      "data-selected": isSelected,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-disabled": isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <button {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
@@ -630,9 +646,14 @@ export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
     tabs.state,
   );
 
-  const elementProps = mergeProps(tabPanelProps, styleProps(props), {
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    tabPanelProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   // The children are a Block, and a Block that closes over the selected item
   // has to be REBUILT when the selection changes rather than re-read. `Show`

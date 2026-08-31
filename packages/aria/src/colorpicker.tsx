@@ -58,16 +58,18 @@ import {
 } from "./validation.ts";
 import type { Orientation } from "./selection.ts";
 import {
-  callback,
   access,
+  callback,
   clamp,
   controllable,
-  id,
-  mergeProps,
-  styleProps,
   type DOMProps,
+  filterDOMProps,
+  fromProps,
+  id,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -1088,9 +1090,13 @@ export function ColorPicker(props: Incoming<ColorPickerComponentProps>) {
     }));
   }
 
-  const elementProps = mergeProps(styleProps(props), {
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return <div {...elementProps}>{props.children}</div>;
 }
@@ -1144,12 +1150,18 @@ export function ColorSlider(props: Incoming<ColorSliderComponentProps>) {
   const { focusProps, isFocusVisible } = focusRing();
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
 
-  const elementProps = mergeProps(trackProps, hoverProps, styleProps(props), {
-    "data-orientation": state.orientation,
-    "data-dragging": state.isDragging,
-    "data-disabled": state.isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    trackProps,
+    hoverProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": state.orientation,
+      "data-dragging": state.isDragging,
+      "data-disabled": state.isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <>
@@ -1217,11 +1229,16 @@ export function ColorArea(props: Incoming<ColorAreaComponentProps>) {
   const { visuallyHiddenProps } = visuallyHidden();
   const { focusProps, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(colorAreaProps, styleProps(props), {
-    "data-dragging": state.isDragging,
-    "data-disabled": state.isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    colorAreaProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-dragging": state.isDragging,
+      "data-disabled": state.isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <div {...elementProps} ref={mergeRefs(containerRef.set, props.ref?.())}>
@@ -1301,17 +1318,23 @@ export function ColorWheel(props: Incoming<ColorWheelComponentProps>) {
   const { focusProps, isFocusVisible } = focusRing();
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
 
-  const elementProps = mergeProps(trackProps, hoverProps, styleProps(props), {
-    "data-dragging": state.isDragging,
-    "data-disabled": state.isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-    style: () => ({
-      position: "relative",
-      "touch-action": "none",
-      width: `${outerRadius() * 2}px`,
-      height: `${outerRadius() * 2}px`,
-    }),
-  });
+  const elementProps = mergeProps(
+    trackProps,
+    hoverProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-dragging": state.isDragging,
+      "data-disabled": state.isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+      style: () => ({
+        position: "relative",
+        "touch-action": "none",
+        width: `${outerRadius() * 2}px`,
+        height: `${outerRadius() * 2}px`,
+      }),
+    },
+  );
 
   return (
     <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref?.())}>
@@ -1391,11 +1414,17 @@ export function ColorField(props: Incoming<ColorFieldComponentProps>) {
 
   const { focusProps, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(inputProps, focusProps, styleProps(props), {
-    "data-focus-visible": isFocusVisible,
-    "data-invalid": isInvalid,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    inputProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-focus-visible": isFocusVisible,
+      "data-invalid": isInvalid,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <>

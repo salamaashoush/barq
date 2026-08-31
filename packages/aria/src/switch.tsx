@@ -22,7 +22,14 @@ import {
   type ToggleResult,
 } from "./toggle.ts";
 import type { ValidateFunction, ValidationBehavior } from "./validation.ts";
-import { callback, fromProps, mergeProps, styleProps, type StyleProps } from "./utils.ts";
+import {
+  callback,
+  filterDOMProps,
+  fromProps,
+  mergeProps,
+  styleProps,
+  type StyleProps,
+} from "./utils.ts";
 
 export interface SwitchOptions extends ToggleOptions {}
 
@@ -89,17 +96,22 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
-  const outerProps = mergeProps(labelProps, hoverProps, styleProps(props), {
-    "data-selected": isSelected,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": isDisabled,
-    "data-readonly": isReadOnly,
-    "data-invalid": isInvalid,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const outerProps = mergeProps(
+    labelProps,
+    hoverProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    {
+      "data-selected": isSelected,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": isDisabled,
+      "data-readonly": isReadOnly,
+      "data-invalid": isInvalid,
+    },
+  );
 
   return (
     <label {...outerProps}>

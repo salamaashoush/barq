@@ -49,13 +49,14 @@ import {
   access,
   callback,
   controllable,
-  filterDOMProps,
-  id,
-  mergeProps,
-  styleProps,
   type DOMProps,
+  filterDOMProps,
+  fromProps,
+  id,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -317,11 +318,16 @@ export function DatePicker(props: Incoming<DatePickerComponentProps>) {
   const owner = getOwner();
   if (owner !== null) install(owner, DatePickerContext, () => ({ state }));
 
-  const elementProps = mergeProps(groupProps, styleProps(props), {
-    "data-open": state.isOpen,
-    "data-disabled": () => props.isDisabled?.() === true,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    groupProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-open": state.isOpen,
+      "data-disabled": () => props.isDisabled?.() === true,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const triggerElementProps = mergeProps(trigger.buttonProps, hoverProps, focusProps, {
     id: buttonProps.id,
@@ -465,13 +471,17 @@ export function DateRangePicker(props: Incoming<DateRangePickerComponentProps>) 
     setValue(which === "start" ? { start: day, end: other } : { start: other, end: day });
   };
 
-  const elementProps = mergeProps(styleProps(props), {
-    role: "group",
-    "aria-labelledby": labelId,
-    "aria-disabled": () => isDisabled() || undefined,
-    "data-open": overlay.isOpen,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      role: "group",
+      "aria-labelledby": labelId,
+      "aria-disabled": () => isDisabled() || undefined,
+      "data-open": overlay.isOpen,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <>

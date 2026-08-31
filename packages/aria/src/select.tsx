@@ -65,16 +65,16 @@ import { overlayTriggerState, type OverlayTriggerState, type Placement } from ".
 import { ListKeyboardDelegate, typeSelect, type KeyboardDelegate } from "./selection.ts";
 import { formReset } from "./toggle.ts";
 import {
-  callback,
   access,
+  callback,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -516,10 +516,15 @@ export interface SelectValueComponentProps extends StyleProps {
 export function SelectValue(props: Incoming<SelectValueComponentProps>) {
   const picker = useSelect();
 
-  const elementProps = mergeProps(picker.valueProps, styleProps(props), {
-    "data-placeholder": () => picker.state.selectedItem() === null,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    picker.valueProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-placeholder": () => picker.state.selectedItem() === null,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   return (
     <span {...elementProps}>
@@ -560,6 +565,15 @@ export interface SelectComponentProps<T> extends StyleProps, ItemAccessors<T> {
   autoComplete?: string;
   /** @default "bottom start" */
   placement?: Placement;
+  /**
+   * The class for the LIST, inside the popover.
+   *
+   * `class` styles the trigger, which is the element a caller can see. The list
+   * is built inside a popover this component owns, so without this it could
+   * only be reached by a global rule — and a design system has to be able to
+   * draw the box the options sit in.
+   */
+  listClass?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLButtonElement>;
@@ -621,6 +635,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
     { id: triggerProps.id },
     hoverProps,
     focusProps,
+    filterDOMProps(options, { global: true }),
     styleProps(props),
     {
       "data-pressed": isPressed,
@@ -690,6 +705,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
         <SelectList
           options={listBoxOptions}
           ariaLabel={props["aria-label"]?.()}
+          listClass={props.listClass?.()}
           state={state}
           listRef={listRef}
           render={renderOption as unknown as (scope: unknown, item: unknown) => Child}
@@ -711,6 +727,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
 interface SelectListProps {
   options: DOMProps;
   ariaLabel?: string;
+  listClass?: string;
   state: SelectState<unknown>;
   listRef: ReturnType<typeof makeRef<HTMLUListElement>>;
   render: (scope: unknown, item: unknown) => Child;
@@ -742,6 +759,8 @@ function SelectList(props: Incoming<SelectListProps>) {
   const elementProps = mergeProps(listBoxProps, {
     id: options.id,
     "aria-labelledby": options["aria-labelledby"],
+    class: props.listClass,
+    "data-slot": "select-list",
   });
 
   return (

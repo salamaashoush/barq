@@ -64,14 +64,14 @@ import {
 } from "./selection.ts";
 import {
   access,
+  type DOMProps,
   filterDOMProps,
   fromProps,
   id,
-  mergeProps,
-  styleProps,
-  type DOMProps,
   type MaybeAccessor,
+  mergeProps,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -458,12 +458,17 @@ export function GridList<T>(props: Incoming<GridListComponentProps<T>>) {
     onAction: () => props.onAction?.(),
   };
 
-  const elementProps = mergeProps(gridProps, styleProps(props), {
-    "data-empty": () => state.collection().size === 0,
-    "data-virtualized": () => virtual !== null,
-    "data-testid": () => props["data-testid"]?.(),
-    style: () => (virtual === null ? props.style?.() : contentStyle(virtual.contentSize())),
-  });
+  const elementProps = mergeProps(
+    gridProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-empty": () => state.collection().size === 0,
+      "data-virtualized": () => virtual !== null,
+      "data-testid": () => props["data-testid"]?.(),
+      style: () => (virtual === null ? props.style?.() : contentStyle(virtual.contentSize())),
+    },
+  );
 
   const render = props.children as unknown as (scope: unknown, item: T) => Child;
 
@@ -529,22 +534,29 @@ export function GridListItem(props: Incoming<GridListItemComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
-  const elementProps = mergeProps(rowProps, hoverProps, focusProps, styleProps(props), {
-    "data-selected": isSelected,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-disabled": isDisabled,
-    "data-testid": () => props["data-testid"]?.(),
-    // Positioned by the LAYOUT: the rows above it are not rendered, so
-    // document flow has nothing to place it against.
-    style: () => {
-      if (virtual === null) return props.style?.();
-      const info = virtual.layout.getLayoutInfo(node.key);
-      return info === null ? props.style?.() : rowStyle(info);
+  const elementProps = mergeProps(
+    rowProps,
+    hoverProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-selected": isSelected,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-disabled": isDisabled,
+      "data-testid": () => props["data-testid"]?.(),
+      // Positioned by the LAYOUT: the rows above it are not rendered, so
+      // document flow has nothing to place it against.
+      style: () => {
+        if (virtual === null) return props.style?.();
+        const info = virtual.layout.getLayoutInfo(node.key);
+        return info === null ? props.style?.() : rowStyle(info);
+      },
     },
-  });
+  );
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>

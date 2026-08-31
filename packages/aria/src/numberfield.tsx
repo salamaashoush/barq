@@ -50,17 +50,19 @@ import {
 } from "./validation.ts";
 import { formReset } from "./toggle.ts";
 import {
-  callback,
   access,
+  callback,
   clamp,
   controllable,
+  type DOMProps,
+  filterDOMProps,
+  fromProps,
   id,
+  type MaybeAccessor,
   mergeProps,
   snapValueToStep,
-  styleProps,
-  type DOMProps,
-  type MaybeAccessor,
   type StyleProps,
+  styleProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -779,12 +781,18 @@ export function NumberField(props: Incoming<NumberFieldComponentProps>) {
   const owner = getOwner();
   if (owner !== null) install(owner, NumberFieldContext, () => ({ state }));
 
-  const elementProps = mergeProps(groupProps, hoverProps, styleProps(props), {
-    "data-hovered": isHovered,
-    "data-disabled": () => props.isDisabled?.() === true,
-    "data-invalid": isInvalid,
-    "data-testid": () => props["data-testid"]?.(),
-  });
+  const elementProps = mergeProps(
+    groupProps,
+    hoverProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-hovered": isHovered,
+      "data-disabled": () => props.isDisabled?.() === true,
+      "data-invalid": isInvalid,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
 
   const inputElementProps = mergeProps(inputProps, focusProps, {
     name: () => props.name?.(),

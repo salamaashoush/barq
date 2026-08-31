@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
@@ -184,5 +184,73 @@ describe("DisclosureGroup", () => {
   test("has no ARIA violations", () => {
     const { container } = render(() => <Accordion defaultExpandedKeys={["two"]} />);
     expectNoAriaViolations(container);
+  });
+});
+
+/**
+ * `hidden` stops content being rendered at once, so setting it the moment the
+ * state flips cancels whatever the stylesheet is collapsing. The panel used to
+ * vanish in one frame while the transition it was still running painted
+ * nothing, which is why the open direction animated and the close did not.
+ */
+describe("a panel the stylesheet animates shut", () => {
+  const realComputedStyle = globalThis.getComputedStyle;
+
+  afterEach(() => {
+    globalThis.getComputedStyle = realComputedStyle;
+  });
+
+  function withTransition(duration: string, delay = "0s"): void {
+    globalThis.getComputedStyle = (element: Element, pseudo?: string | null): CSSStyleDeclaration =>
+      new Proxy(realComputedStyle(element, pseudo ?? undefined), {
+        get(target, key: string | symbol): unknown {
+          if (key === "transitionDuration") return duration;
+          if (key === "transitionDelay") return delay;
+          if (key === "animationDuration") return "0s";
+          if (key === "animationDelay") return "0s";
+          const value = Reflect.get(target, key) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+  }
+
+  test("stays rendered until the transition has run", async () => {
+    withTransition("0.2s");
+    render(() => <Details defaultExpanded />);
+
+    await user.click(trigger());
+    flush();
+    expect(panel().hasAttribute("hidden")).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    expect(panel().getAttribute("hidden")).toBe("until-found");
+  });
+
+  test("a panel that starts shut is hidden at once, so nothing flashes open", () => {
+    withTransition("0.2s");
+    render(() => <Details />);
+    expect(panel().getAttribute("hidden")).toBe("until-found");
+  });
+
+  test("no transition means no wait", async () => {
+    withTransition("0s");
+    render(() => <Details defaultExpanded />);
+
+    await user.click(trigger());
+    flush();
+    expect(panel().getAttribute("hidden")).toBe("until-found");
+  });
+
+  test("re-opening cancels the pending hide", async () => {
+    withTransition("0.2s");
+    render(() => <Details defaultExpanded />);
+
+    await user.click(trigger());
+    flush();
+    await user.click(trigger());
+    flush();
+
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    expect(panel().hasAttribute("hidden")).toBe(false);
   });
 });

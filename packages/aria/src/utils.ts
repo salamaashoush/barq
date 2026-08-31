@@ -231,7 +231,15 @@ const LABELLING = new Set(["aria-label", "aria-labelledby", "aria-describedby", 
 
 const LINK = new Set(["href", "hrefLang", "target", "rel", "download", "ping", "referrerPolicy"]);
 
-const GLOBAL_ATTRS = new Set(["dir", "lang", "hidden", "inert", "translate"]);
+/**
+ * The global attributes a component forwards.
+ *
+ * `tabIndex` and `title` are as global as `dir` is, and both are load-bearing
+ * rather than decorative: an overlay with nothing focusable inside needs
+ * `tabIndex={-1}` on itself or a focus scope has nowhere to put focus, and
+ * Escape — whose handler is on the overlay — then never reaches it.
+ */
+const GLOBAL_ATTRS = new Set(["dir", "lang", "hidden", "inert", "translate", "tabIndex", "title"]);
 
 const GLOBAL_EVENTS = new Set([
   "onClick",
@@ -515,8 +523,22 @@ export function fromProps<P extends object>(props: { [K in keyof P]: () => P[K] 
 export interface TriggerSlot {
   /** Props for the control's own element. */
   props: DOMProps;
-  /** The control's element, for whatever anchors to or measures it. */
-  ref?: (element: Element | null) => void;
+  /**
+   * The control's element, for whatever anchors to or measures it.
+   *
+   * Method syntax, so the parameter is checked BIVARIANTLY. A ref created for
+   * an `HTMLButtonElement` is what a menu trigger has, and a property-shaped
+   * `(element: Element | null) => void` refuses it under
+   * `strictFunctionTypes` — every caller then wrote the same cast, which is a
+   * claim nobody was checking. The element handed here is the control's own,
+   * so the narrower ref is the right one and the widening was the fiction.
+   *
+   * `this: void` because it is passed as a VALUE — `mergeRefs(domRef.set,
+   * slot.ref)` — and a method referenced unbound is what `unbound-method`
+   * exists to catch. Declaring that it uses no `this` is the difference between
+   * silencing that and answering it.
+   */
+  ref?(this: void, element: Element | null): void;
 }
 
 const TriggerSlotContext = context<TriggerSlot | null>(null);
@@ -568,7 +590,23 @@ export interface StyleProps {
   className?: string;
   style?: Record<string, string | number | undefined>;
   id?: string;
-  "data-testid"?: string;
+  /**
+   * The global attributes, which every component forwards.
+   *
+   * Declared here rather than on each component because the runtime already
+   * treats them uniformly — `filterDOMProps(options, { global: true })` — and a
+   * type that refused what the component then wrote to the element was the
+   * inconsistency this removes.
+   */
+  dir?: "ltr" | "rtl" | "auto";
+  lang?: string;
+  hidden?: boolean;
+  inert?: boolean;
+  translate?: "yes" | "no";
+  tabIndex?: number;
+  title?: string;
+  /** Anything `data-*`, which is how a design system marks the elements it styles. */
+  readonly [attribute: `data-${string}`]: unknown;
 }
 
 /**
@@ -582,8 +620,16 @@ export function styleProps(props: {
   className?: () => string | undefined;
   style?: () => Record<string, string | number | undefined> | undefined;
 }): DOMProps {
-  return {
-    class: () => props.class?.() ?? props.className?.(),
-    style: () => props.style?.(),
-  };
+  const out: DOMProps = {};
+  // A key is only present when the caller GAVE it. Returning `style: () => …`
+  // unconditionally made this the last word on `style` in every merge that
+  // ends with it — `mergeProps` keeps the later value, and an accessor that
+  // yields `undefined` is still a value — so a popover with no `style` prop
+  // lost the `position: absolute` and the coordinates `overlayPosition` had
+  // just computed, and rendered in the document flow.
+  if (props.class !== undefined || props.className !== undefined) {
+    out.class = () => props.class?.() ?? props.className?.();
+  }
+  if (props.style !== undefined) out.style = () => props.style?.();
+  return out;
 }
