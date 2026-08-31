@@ -4,15 +4,56 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (187), ui-cli (46),
-lucide (17), aria (628), css (62), core (938) and primitives (246), and
-`cargo test` in `compiler-rs` (466). `bunx tsc --noEmit` is clean in ui, ui-cli
-and lucide, all three build, and `oxlint --type-aware --deny-warnings` is clean
-over `packages/ui` and `packages/aria`.
+Green on the current tree: `bun test` passes in ui (216), aria (630), core (938),
+router (519), primitives (246), start (192), server (122), testing (101),
+css (62), ui-cli (46), lucide (17) and query (15), and `cargo test` in
+`compiler-rs` (468). `bunx tsc --noEmit` is clean in ui, ui-cli and lucide, all
+three build, `bun run verify` reports 2224 of 2224 declarations present, and
+`oxlint --type-aware --deny-warnings` is clean over `packages/ui` and
+`packages/aria`.
+
+Thirteen commits on `feat/ui-package`, and the tree is clean. `packages/ui`,
+`packages/ui-cli` and `packages/lucide` were entirely untracked before them.
 
 `bun run ci` at the root still FAILS, on 30 findings in `packages/router`,
 `packages/server` and `packages/core`. Those are on HEAD's own content and
 predate this work.
+
+## Where to pick up
+
+Forty-four components. What is left of the classic registry, in value order:
+
+1. **ContextMenu** — a menu anchored to the pointer. `@barqjs/aria` has no
+   pointer-anchored trigger; everything else is `DropdownMenu`'s.
+2. **Calendar**, then **DatePicker** — aria has `calendar` and `datepicker`
+   state. shadcn's calendar CSS is written against `react-day-picker`'s DOM, so
+   the class list does not map one to one and that is the whole of the work.
+3. **InputOTP** — one input per character, with paste and arrow handling.
+4. **Sidebar** — big but mechanical: a context, a `Sheet` on narrow screens,
+   and a lot of layout.
+5. **NavigationMenu** — needs a viewport and an indicator aria has no shape for.
+6. **Toast** / **Sonner** — needs a Toast in `@barqjs/aria` first.
+7. **Carousel**, **Resizable**, **Drawer**, **Chart** — each wraps a third-party
+   engine (embla, react-resizable-panels, vaul, recharts). These are not
+   transcription. Decide whether to take the dependency or write the engine
+   before starting one.
+
+`Textarea` lives in `input.tsx`; `form.tsx` upstream is a react-hook-form
+adapter and has no place here. `attachment`, `bubble`, `message`,
+`message-scroller`, `marker` and `direction` belong to the NEW registry, not
+this one.
+
+## Two traps this session paid for twice
+
+- **A backtick inside a `css` block ends the template.** A comment mentioning
+  `w-[200px]` in backticks produced eight syntax errors twenty lines away. Notes
+  about CSS go above the `const`, not inside the block.
+- **Measure the box, do not just drive the component.** The combobox opened,
+  filtered, chose and reported correctly, and its list was 1265px wide under a
+  384px trigger. `width: 100%` on a PORTALLED element resolves against the
+  portal container. Every overlay is checked against its trigger now, and
+  `overlayPosition` publishes `--barq-trigger-width` for the ones that have to
+  match.
 
 ## Nothing animated OUT, and it was two different bugs
 
@@ -173,6 +214,11 @@ document and a removed element keeps focus.
 - **The new upstream.** `ui.shadcn.com` has moved to a registry whose look is
   in a stylesheet rather than in class lists, which `tools/css.ts` cannot
   transcribe. Nothing here targets it.
+- **`DisclosureGroupItem` and `Disclosure` declare `StyleProps` they cannot
+  honour.** They render no element, so a `class` handed to them vanishes. That
+  is what cost the accordion its dividers; the next consumer hits it too.
+- **The gallery is the only browser check.** It is opened by hand every time,
+  and every visual bug in this file was found that way.
 - **Server rendering.** Nothing here has been rendered through
   `@barqjs/server`. The CSS arrives through `collectCss`, which `@barqjs/start`
   already inlines, but no test covers a component's markup crossing the wire.

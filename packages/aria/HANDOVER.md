@@ -5,8 +5,9 @@ The package surface, its conventions and what is not implemented are in
 changes this package caused, the traps that cost a debugging session each, and
 what has not been re-run.
 
-Green on the current tree: `bun test` passes in aria (628), core (938),
-primitives (246) and css (62). `bunx tsc --noEmit` is clean in `packages/aria` and
+Green on the current tree: `bun test` passes in aria (630), core (938),
+router (519), primitives (246), start (192), server (122), testing (101),
+css (62) and query (15), and `cargo test` in `compiler-rs` (468). `bunx tsc --noEmit` is clean in `packages/aria` and
 `packages/testing`, `bun run build` succeeds in aria, and
 `oxlint --type-aware --deny-warnings` and `oxfmt --check` are both clean over
 `packages/aria` and `packages/testing`.
@@ -118,6 +119,20 @@ starts shut, one with no transition, and `prefers-reduced-motion`.
 same frame, because disposal is what restores it. That is what Radix and
 react-aria both do, and it was a deliberate choice rather than a consequence.
 
+## What `@barqjs/ui` still needs from here
+
+- **A pointer-anchored trigger**, for a context menu. `overlayPosition` takes a
+  target ELEMENT; a context menu is anchored to a point.
+- **A Toast**, which is the whole of what stands between the package and
+  `Sonner`.
+- **`DisclosureGroupItem` and `Disclosure` declare `StyleProps` they cannot
+  honour.** They render no element, so a `class` handed to them vanishes in
+  silence. `@barqjs/ui`'s accordion lost its dividers to it and now brings its
+  own element. Either they render one or the type stops promising.
+- **Sixteen components still overwrite a caller's `data-slot`** after the props
+  spread. `Button` and `Separator` were fixed because they blocked composition;
+  `Checkbox`, `Switch`, `Tabs`, `Select` and the rest are the same shape.
+
 ## Positioning was measuring the wrong box
 
 Three fixes in `overlayPosition`, all found by opening `@barqjs/ui`'s gallery.
@@ -130,6 +145,10 @@ Three fixes in `overlayPosition`, all found by opening `@barqjs/ui`'s gallery.
   `offsetWidth`/`offsetHeight`.
 - **The arrow was measured the same way**, and it is a rotated square, so its
   bounding box is 14.1px for a 10px arrow — 2px of error on top of the rest.
+- **The trigger's measurements are published** as `--barq-trigger-width` and
+  `--barq-trigger-height`. A portalled list cannot say `width: 100%`: 100%
+  resolves against the portal container, so a combobox opened a 1265px list
+  under a 384px trigger.
 - **Nothing re-measured.** A `ResizeObserver` on the trigger and on the overlay
   re-places it when either box actually changes, which is what content that
   grows after it opens needs.
