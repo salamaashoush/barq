@@ -91,3 +91,29 @@ describe("a component forwards what it has no opinion about", () => {
     expect(container.querySelector('[data-slot="radio"]')).not.toBeNull();
   });
 });
+
+/**
+ * A global EVENT is forwarded too, and the type says so now.
+ *
+ * `GLOBAL_EVENTS` has always reached the element, but `StyleProps` typed only
+ * the attributes, so a caller with a pointer handler to add had nowhere to put
+ * it and spread the props object instead. That is worse than nothing:
+ * `fromProps` unwraps a component prop by CALLING it, so a plain handler spread
+ * that way runs once, immediately, with no event.
+ */
+describe("a global event handler", () => {
+  test("reaches the element and is called with the event", () => {
+    const seen: string[] = [];
+    const { container } = render(() => (
+      <Separator
+        data-testid="rule"
+        onPointerEnter={(event: PointerEvent) => seen.push(event.type)}
+      />
+    ));
+
+    const rule = container.querySelector('[data-testid="rule"]') as HTMLElement;
+    expect(seen).toEqual([]);
+    rule.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false }));
+    expect(seen).toEqual(["pointerenter"]);
+  });
+});

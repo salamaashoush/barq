@@ -585,7 +585,54 @@ export function triggerSlot(): TriggerSlot {
  * What every headless component in this package accepts on top of its own
  * props: how it looks, and how a test finds it.
  */
-export interface StyleProps {
+/**
+ * The events every component forwards, typed.
+ *
+ * `filterDOMProps(options, { global: true })` passes `GLOBAL_EVENTS` through to
+ * the element, and until these were declared the type said otherwise: a caller
+ * with a pointer handler to add had nowhere to put it, and spreading a props
+ * OBJECT instead is worse than nothing, because `fromProps` unwraps a component
+ * prop by CALLING it. A plain handler spread that way runs once, immediately,
+ * with no event.
+ */
+export interface GlobalEvents {
+  onClick?: (event: MouseEvent) => void;
+  onAuxClick?: (event: MouseEvent) => void;
+  onContextMenu?: (event: MouseEvent) => void;
+  onDoubleClick?: (event: MouseEvent) => void;
+  onMouseDown?: (event: MouseEvent) => void;
+  onMouseEnter?: (event: MouseEvent) => void;
+  onMouseLeave?: (event: MouseEvent) => void;
+  onMouseMove?: (event: MouseEvent) => void;
+  onMouseOut?: (event: MouseEvent) => void;
+  onMouseOver?: (event: MouseEvent) => void;
+  onMouseUp?: (event: MouseEvent) => void;
+  onTouchCancel?: (event: TouchEvent) => void;
+  onTouchEnd?: (event: TouchEvent) => void;
+  onTouchMove?: (event: TouchEvent) => void;
+  onTouchStart?: (event: TouchEvent) => void;
+  onPointerDown?: (event: PointerEvent) => void;
+  onPointerMove?: (event: PointerEvent) => void;
+  onPointerUp?: (event: PointerEvent) => void;
+  onPointerCancel?: (event: PointerEvent) => void;
+  onPointerEnter?: (event: PointerEvent) => void;
+  onPointerLeave?: (event: PointerEvent) => void;
+  onPointerOver?: (event: PointerEvent) => void;
+  onPointerOut?: (event: PointerEvent) => void;
+  onGotPointerCapture?: (event: PointerEvent) => void;
+  onLostPointerCapture?: (event: PointerEvent) => void;
+  onScroll?: (event: Event) => void;
+  onWheel?: (event: WheelEvent) => void;
+  onAnimationStart?: (event: AnimationEvent) => void;
+  onAnimationEnd?: (event: AnimationEvent) => void;
+  onAnimationIteration?: (event: AnimationEvent) => void;
+  onTransitionCancel?: (event: TransitionEvent) => void;
+  onTransitionEnd?: (event: TransitionEvent) => void;
+  onTransitionRun?: (event: TransitionEvent) => void;
+  onTransitionStart?: (event: TransitionEvent) => void;
+}
+
+export interface StyleProps extends GlobalEvents {
   class?: string;
   className?: string;
   style?: Record<string, string | number | undefined>;

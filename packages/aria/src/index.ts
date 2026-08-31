@@ -81,6 +81,7 @@ export {
   provideTriggerSlot,
   roundToStepPrecision,
   snapValueToStep,
+  type GlobalEvents,
   type StyleProps,
   styleProps,
   toFixedNumber,
