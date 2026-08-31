@@ -6,8 +6,10 @@
  * question no headless DOM can answer.
  */
 
-import { render, signal, type Child, type Incoming } from "@barqjs/core";
-import { css, globalCss } from "@barqjs/css";
+import { For, render, signal, type Child, type Incoming } from "@barqjs/core";
+import { css, globalCss, layer } from "@barqjs/css";
+
+const ui = layer("barq.ui");
 import {
   Accordion,
   AccordionContent,
@@ -194,6 +196,7 @@ import "@barqjs/ui/theme/reset.ts";
 import { CalendarDate } from "@barqjs/aria/date";
 
 import { Customizer } from "./customizer.tsx";
+import { Showcase } from "./showcase.tsx";
 import { design } from "./params.ts";
 
 import { AtSign } from "@barqjs/lucide/icons/at-sign";
@@ -223,12 +226,13 @@ const designer = css`
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  min-height: 100dvh;
+  height: 100dvh;
   padding: 1.5rem;
+  box-sizing: border-box;
 
   @media (width >= 48rem) {
     flex-direction: row-reverse;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
   @media (width >= 96rem) {
@@ -237,11 +241,51 @@ const designer = css`
 `;
 
 const page = css`
-  flex: 1;
-  min-width: 0;
   display: grid;
   gap: 2.5rem;
-  padding-bottom: 4rem;
+  padding: 1.5rem;
+`;
+
+/**
+ * The preview is a FRAMED panel, which is shadcn's arrangement and is doing
+ * work: a muted surround and a ring separate what is being themed from the
+ * page around it, so a light theme on a light page still reads as a thing.
+ */
+const panel = css`
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-2xl);
+  background-color: var(--muted);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+  max-height: calc(100dvh - 3rem);
+`;
+
+const scroller = css`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--background);
+`;
+
+const switcher = css`
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: calc(var(--radius) + 4px);
+  background-color: color-mix(in oklab, var(--card) 90%, transparent);
+  padding: 0.25rem;
+  box-shadow:
+    0 20px 25px -5px rgb(0 0 0 / 0.1),
+    0 8px 10px -6px rgb(0 0 0 / 0.1);
+  backdrop-filter: blur(12px);
 `;
 
 const row = css`
@@ -1105,15 +1149,38 @@ function Gallery() {
   );
 }
 
+/** shadcn shows a composed screen first and the parts on demand. */
+const VIEWS = [
+  { id: "showcase", label: "01" },
+  { id: "gallery", label: "02" },
+];
+
 function Designer() {
   const system = design();
   // Whatever the URL asked for, on the page before anything is drawn.
   system.set({});
+  const view = signal("showcase");
 
   return (
     <div class={designer} data-slot="designer">
       <Customizer design={system} />
-      <Gallery />
+      <div class={panel} data-slot="preview">
+        <div class={scroller}>{view() === "showcase" ? <Showcase /> : <Gallery />}</div>
+        <div class={ui("dark", switcher)} data-slot="preview-switcher">
+          <For each={() => VIEWS}>
+            {(each: (typeof VIEWS)[number]) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                data-active={() => (view() === each.id ? "true" : "false")}
+                onPress={() => view.set(each.id)}
+              >
+                {each.label}
+              </Button>
+            )}
+          </For>
+        </div>
+      </div>
     </div>
   );
 }
