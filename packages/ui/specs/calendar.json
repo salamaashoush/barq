@@ -1,0 +1,15 @@
+{
+  "calendar": "group/calendar w-fit bg-background p-3 [--cell-size:--spacing(8)] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
+  "calendar-months": "relative flex flex-col gap-4 md:flex-row",
+  "calendar-month": "flex w-full flex-col gap-4",
+  "calendar-nav": "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
+  "calendar-nav-button": "size-(--cell-size) p-0 select-none aria-disabled:opacity-50 rtl:[&>svg]:rotate-180",
+  "calendar-month-caption": "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size)",
+  "calendar-caption-label": "text-sm font-medium select-none",
+  "calendar-month-grid": "w-full border-collapse",
+  "calendar-weekdays": "flex",
+  "calendar-weekday": "flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none",
+  "calendar-week": "mt-2 flex w-full",
+  "calendar-day": "group/day relative aspect-square h-full w-full p-0 text-center select-none [&:last-child[data-selected]_[data-slot=calendar-day-button]]:rounded-r-md [&:first-child[data-selected]_[data-slot=calendar-day-button]]:rounded-l-md data-[today]:rounded-md data-[today]:bg-accent data-[today]:text-accent-foreground data-[today]:data-[selected]:rounded-none data-[outside-month]:text-muted-foreground data-[outside-month]:aria-selected:text-muted-foreground data-[disabled]:text-muted-foreground data-[disabled]:opacity-50 data-[range-start]:rounded-l-md data-[range-start]:bg-accent data-[range-middle]:rounded-none data-[range-end]:rounded-r-md data-[range-end]:bg-accent",
+  "calendar-day-button": "flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none font-normal [[data-slot=calendar-day][data-focused]_&]:relative [[data-slot=calendar-day][data-focused]_&]:z-10 [[data-slot=calendar-day][data-focused]_&]:border-ring [[data-slot=calendar-day][data-focused]_&]:ring-[3px] [[data-slot=calendar-day][data-focused]_&]:ring-ring/50 data-[range-end]:rounded-md data-[range-end]:rounded-r-md data-[range-end]:bg-primary data-[range-end]:text-primary-foreground data-[range-middle]:rounded-none data-[range-middle]:bg-accent data-[range-middle]:text-accent-foreground data-[range-start]:rounded-md data-[range-start]:rounded-l-md data-[range-start]:bg-primary data-[range-start]:text-primary-foreground data-[selected-single]:bg-primary data-[selected-single]:text-primary-foreground dark:hover:text-accent-foreground [&>span]:text-xs [&>span]:opacity-70"
+}

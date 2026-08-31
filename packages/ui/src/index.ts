@@ -113,6 +113,14 @@ export {
   buttonVariants,
 } from "./ui/button.tsx";
 export {
+  Calendar,
+  CalendarDay,
+  type CalendarDayProps,
+  type CalendarProps,
+  RangeCalendar,
+  type RangeCalendarProps,
+} from "./ui/calendar.tsx";
+export {
   Card,
   CardAction,
   CardContent,

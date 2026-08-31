@@ -113,6 +113,11 @@
       "bun": "./src/ui/button.tsx",
       "import": "./dist/ui/button.js"
     },
+    "./calendar": {
+      "types": "./dist/ui/calendar.d.ts",
+      "bun": "./src/ui/calendar.tsx",
+      "import": "./dist/ui/calendar.js"
+    },
     "./card": {
       "types": "./dist/ui/card.d.ts",
       "bun": "./src/ui/card.tsx",

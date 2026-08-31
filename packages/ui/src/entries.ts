@@ -24,6 +24,7 @@ export const ENTRIES: readonly string[] = [
   "ui/breadcrumb.tsx",
   "ui/button-group.tsx",
   "ui/button.tsx",
+  "ui/calendar.tsx",
   "ui/card.tsx",
   "ui/checkbox.tsx",
   "ui/collapsible.tsx",

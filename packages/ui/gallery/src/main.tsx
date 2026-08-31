@@ -62,6 +62,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  Calendar,
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -127,6 +128,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
   Progress,
+  RangeCalendar,
   RadioGroup,
   RadioGroupItem,
   ScrollArea,
@@ -495,6 +497,13 @@ function Gallery() {
               )}
             </ContextMenuContent>
           </ContextMenu>
+        </div>
+      </Section>
+
+      <Section title="Calendar">
+        <div class={row}>
+          <Calendar aria-label="Departure" />
+          <RangeCalendar aria-label="Stay" />
         </div>
       </Section>
 
