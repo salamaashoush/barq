@@ -44,10 +44,15 @@ Four things about it are load-bearing.
   calendar day button falling back to `inline-flex` and a nav button growing its
   padding back. `variants` merges too now, so the `uiVariants` wrapper that
   used to supply it is gone and components call `variants` directly.
-- **`strictCss` is on, in both builds.** Every CSS diagnostic is an error, so a
-  call `@barqjs/css`'s runtime would have to evaluate fails the build rather
-  than shipping the object walk to every consumer in silence. This package folds
-  every object literal it writes and the flag is what keeps it that way.
+- **`strictCss` is on in all THREE places this package's sources are compiled**:
+  `tsdown.config.ts` for the published dist, `gallery/vite.config.ts`, and
+  `src/test-setup.ts` — because `bun test` runs the compiler too, over every
+  `.tsx` and over this package's `.ts`. Miss one and the suite compiles under
+  different rules from the build, so a call that fails one passes the other.
+  Every CSS diagnostic is an error, so a call `@barqjs/css`'s runtime would have
+  to evaluate fails rather than shipping the object walk to every consumer in
+  silence. The package folds every object literal it writes and the flag is what
+  keeps it that way.
 - **The layer is bound once a module.** `const ui = layer("barq.ui")`, and
   `layer` is a wrapper the COMPILER reads: it takes the literal in the module
   that names it, so the call site is `ui({ … })` and the layer is still folded

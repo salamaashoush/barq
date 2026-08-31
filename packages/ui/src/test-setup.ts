@@ -34,7 +34,13 @@ plugin({
   name: "barq",
   setup(build) {
     const load = (args: { path: string }) => {
-      const result = native.transform(readFileSync(args.path, "utf8"), { filename: args.path });
+      // `strictCss` here as well as in `tsdown.config.ts` and the gallery, or
+      // the suite compiles this package's sources under different rules from
+      // the build and a call that fails one passes the other.
+      const result = native.transform(readFileSync(args.path, "utf8"), {
+        filename: args.path,
+        strictCss: true,
+      });
       // The CSS a module produced has nowhere to go without a bundler, and
       // dropping it is how a suite ends up asserting on an empty stylesheet.
       // `cssRegistration` is the same two lines the Vite plugin appends in dev.
