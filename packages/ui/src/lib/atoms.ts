@@ -20,30 +20,19 @@
  * rather than a style: it reads the layer as a literal in the module that names
  * it, so a `ui` imported from here would leave all 192 calls to the runtime and
  * take the whole stylesheet into the JS bundle with them. This one is for the
- * merges the runtime does anyway, in `slot.ts` and in `uiVariants`.
+ * merges the runtime does anyway, in `slot.ts` and in `variants`.
  *
  * Merging is the other half. Concatenating leaves the order the rules happen to
  * sit in the stylesheet to decide; `ui` merges by property, so a later argument
  * wins because it is later. A caller's own class carries no property, so it has
  * nothing to merge against and survives whatever follows it.
+ *
+ * `variants` merges too, so this package no longer wraps it. It used to:
+ * joining let a `size` that sets `width` lose to its own `base`, which took the
+ * calendar's day buttons back to `inline-flex` and its month buttons back to a
+ * padding they had overridden. That is fixed where it was wrong.
  */
 
-import { layer, variants, type VariantFn, type VariantGroups, type VariantSpec } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 export const ui = layer("barq.ui");
-
-/**
- * `variants`, merged.
- *
- * `variants` JOINS its base, its variants and its compounds, which is right
- * for whole-block classes: the stylesheet decides between them, and the spec
- * is written knowing that. Atoms are merged instead — the last argument wins
- * per property — so a size that sets `width` over a base that sets `width`
- * has to go through `ui` or the two classes both apply and the sheet's order
- * decides. That is what took the calendar's day buttons back to `inline-flex`
- * and its month buttons back to a padding they had overridden.
- */
-export function uiVariants<G extends VariantGroups>(spec: VariantSpec<G>): VariantFn<G> {
-  const compose = variants(spec);
-  return (props) => ui(compose(props));
-}

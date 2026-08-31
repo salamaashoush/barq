@@ -1,12 +1,11 @@
 import type { Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps, type ButtonVariant } from "./button.tsx";
@@ -76,7 +75,7 @@ const root = ui(box.border, box.shadow, box.transition, box.outline, when.darkIn
 
 export type InputGroupAlign = "inline-start" | "inline-end" | "block-start" | "block-end";
 
-export const inputGroupAddonVariants = uiVariants({
+export const inputGroupAddonVariants = variants({
   base: ui(text.sm, text.medium, box.noSelect, {
     display: "flex",
     height: "auto",
@@ -146,7 +145,7 @@ export const inputGroupAddonVariants = uiVariants({
 
 export type InputGroupButtonSize = "xs" | "sm" | "icon-xs" | "icon-sm";
 
-export const inputGroupButtonVariants = uiVariants({
+export const inputGroupButtonVariants = variants({
   base: ui(text.sm, box.shadow, {
     display: "flex",
     alignItems: "center",

@@ -8,9 +8,11 @@
  * pair or the other.
  */
 
-import { createIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
-export const ringSlot = createIn("barq.ui", {
+const ui = layer("barq.ui");
+
+export const ringSlot = ui.create({
   focus: {
     "[data-focus-visible]": {
       borderColor: "var(--ring)",

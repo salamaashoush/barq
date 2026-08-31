@@ -9,14 +9,13 @@ import {
   type TabsComponentProps,
 } from "@barqjs/aria/tabs";
 import type { Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 
 const ui = layer("barq.ui");
 
@@ -148,7 +147,7 @@ const content = ui(box.outline, {
 
 export type TabsListVariant = "default" | "line";
 
-export const tabsListVariants = uiVariants({
+export const tabsListVariants = variants({
   base: ui({
     display: "inline-flex",
     width: "fit-content",

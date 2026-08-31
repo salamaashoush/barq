@@ -16,7 +16,7 @@
 
 import "./theme/base.ts";
 
-export { ui, uiVariants } from "./lib/atoms.ts";
+export { ui } from "./lib/atoms.ts";
 export {
   overlayFamily,
   type OverlayFamily,

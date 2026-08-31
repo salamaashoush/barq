@@ -10,9 +10,11 @@
  * whichever module a bundler happened to emit first.
  */
 
-import { createIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
-export const box = createIn("barq.ui", {
+const ui = layer("barq.ui");
+
+export const box = ui.create({
   /** `border`, whose style comes from the theme so a reset cannot take it. */
   border: {
     borderStyle: "var(--ui-border-style)",

@@ -1,10 +1,9 @@
 import type { Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -12,7 +11,7 @@ const ui = layer("barq.ui");
 
 export type AlertVariant = "default" | "destructive";
 
-export const alertVariants = uiVariants({
+export const alertVariants = variants({
   base: ui(box.border, text.sm, {
     position: "relative",
     display: "grid",

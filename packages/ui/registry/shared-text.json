@@ -11,7 +11,7 @@
     {
       "path": "lib/shared-text.ts",
       "type": "registry:lib",
-      "content": "/** Type: the two treatments almost every slot in the package wears. */\n\nimport { createIn } from \"@barqjs/css\";\n\nexport const text = createIn(\"barq.ui\", {\n  /** `text-sm`, which carries a line height with it. */\n  sm: {\n    fontSize: \"var(--text-sm)\",\n    lineHeight: \"var(--ui-leading, var(--text-sm--line-height))\",\n  },\n\n  /** `font-medium`, and the custom property a descendant reads it back from. */\n  medium: {\n    \"--ui-font-weight\": \"var(--font-weight-medium)\",\n    fontWeight: \"var(--font-weight-medium)\",\n  },\n});\n"
+      "content": "/** Type: the two treatments almost every slot in the package wears. */\n\nimport { layer } from \"@barqjs/css\";\n\nconst ui = layer(\"barq.ui\");\n\nexport const text = ui.create({\n  /** `text-sm`, which carries a line height with it. */\n  sm: {\n    fontSize: \"var(--text-sm)\",\n    lineHeight: \"var(--ui-leading, var(--text-sm--line-height))\",\n  },\n\n  /** `font-medium`, and the custom property a descendant reads it back from. */\n  medium: {\n    \"--ui-font-weight\": \"var(--font-weight-medium)\",\n    fontWeight: \"var(--font-weight-medium)\",\n  },\n});\n"
     }
   ]
 }

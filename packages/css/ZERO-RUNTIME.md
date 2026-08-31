@@ -57,7 +57,7 @@ Stubbing `build`'s object branch and rebuilding:
 | the same, object path removed | 420.55 KB   | 112.53 KB   | 90.16 KB    |
 | **difference**                | **4.34 KB** | **1.35 KB** | **1.15 KB** |
 
-That is `walk`, `apply`, `remove`, `atom`, `rule`, `atomKey`, `tierOf`,
+Removed with it go `walk`, `apply`, `remove`, `atom`, `rule`, `atomKey`, `tierOf`,
 `aboutSelf`, `expand`, `SHORTHANDS`, `UNEXPANDABLE` and `UNITLESS`. It is above
 the "under a kilobyte, stop" bar, and it is not large. What makes it worth doing
 is not the kilobyte; it is that a build currently has no way to know whether it
@@ -130,14 +130,14 @@ meaning what it meant.
 `build` an object at run time. `strictCss` proves that no _statically visible_
 object reaches the runtime, not that none does.
 
-So `strictCss` on its own removes nothing from a bundle: it makes the fact
+On its own the flag removes nothing from a bundle: it makes the fact
 checkable, and dropping the 4.34 KB is a second switch on top of it that nothing
 here has built yet. That is the honest order of the two, and the first is worth
 having without the second.
 
 ### 2. Global tier order, and why it is not a cascade layer
 
-This is the only correctness item on the list, and it is real. The fix is not
+The only correctness item on the list, and it is real. The fix is not
 the one the brief proposed, and a browser is what said so.
 
 Tier order settles the one pair specificity cannot: a base rule against the same
@@ -272,25 +272,37 @@ is statically readable and is not compiled.** The compiler already holds the
 and its rule can both be computed. That removes `createTheme`, `hash` and
 `register` from any bundle whose themes are local.
 
-### 5. `variants` — rejected, on three call sites
+### 5. `variants` — two bugs, and neither was the folding
 
-`variants` is 63 ns and every `@barqjs/ui` component goes through `uiVariants`.
-Folding a literal selection would need the compiler to read `uiVariants`, which
-is a wrapper of the package's own and therefore not one it reads — the same rule
-`layer` exists to work around.
+The item asked whether to fold a literal selection. That was the wrong question:
+a literal selection is a call you would have written as `ui(…)` anyway, and the
+dominant shape is a signal read, which nothing can fold. What `variants` needed
+was to stop being different from everything else.
 
-That is moot, because of the nineteen variant call sites outside tests,
-**three** pass a literal:
+It joined where the rest of the package merges — the exact bug atoms exist
+to remove, since two classes for one property both apply and the stylesheet
+decides. `@barqjs/ui` wrapped it in `uiVariants` to fix that, and the wrapper's
+comment records the cost: the calendar's day buttons fell back to `inline-flex`
+and its month buttons regained a padding they had overridden. It merges now, and
+the wrapper is gone. A whole-block arm is untouched, because a block's class
+carries no property and merges against itself.
+
+A boolean axis also took the default silently. `{ true: …, false: … }` is how an
+on/off variant is spelled, and `false` was both a legal key and the sentinel for
+"not chosen":
 
 ```
-badgeVariants({ variant: "outline" })
-buttonVariants({ variant: "outline" })
-buttonVariants({ variant: "ghost", size: "icon" })
+b({ loud: "false" })  -> OFF-arm   correct
+b({ loud: false })    -> ON-arm    the default, not the arm written for it
 ```
 
-The other sixteen pass a signal read (`props.variant?.()`), which is the point of
-a variant. Three calls times 63 ns is not a reason to teach the compiler a fifth
-wrapper shape.
+An arm is chosen by the TEXT of the value now, and a value the axis has no arm
+for falls to the default. One rule, both cases.
+
+Merging also cost it 17x at first. 65 ns joining, 1,110 ns merging, because it rebuilt
+the same `Map` every render. A selection is memoised — a spec has finitely many,
+since the axes are enumerated by hand — and it lands at **50 ns**, faster than
+the join it replaced.
 
 ### 6. Cross-module values — solved, by resolving the import
 

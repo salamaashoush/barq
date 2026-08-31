@@ -1,6 +1,6 @@
 import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
 import { Show, type Child, type Incoming } from "@barqjs/core";
-import { firstThatWorks, layer } from "@barqjs/css";
+import { firstThatWorks, layer, variants } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
 import "../theme/layers.ts";
@@ -8,7 +8,6 @@ import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { text } from "../lib/shared-text.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
@@ -89,7 +88,7 @@ const close = ui(box.transition, icon.plain, icon.sized, {
 
 export type SheetSide = "top" | "right" | "bottom" | "left";
 
-export const sheetVariants = uiVariants({
+export const sheetVariants = variants({
   base: ui(box.shadow, {
     position: "fixed",
     zIndex: "50",

@@ -8,9 +8,11 @@
  * ring.
  */
 
-import { createIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
-export const ring = createIn("barq.ui", {
+const ui = layer("barq.ui");
+
+export const ring = ui.create({
   focus: {
     ":focus-visible": {
       borderColor: "var(--ring)",

@@ -1,11 +1,10 @@
 import type { Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Separator, type SeparatorProps } from "./separator.tsx";
@@ -14,7 +13,7 @@ const ui = layer("barq.ui");
 
 export type ButtonGroupOrientation = "horizontal" | "vertical";
 
-export const buttonGroupVariants = uiVariants({
+export const buttonGroupVariants = variants({
   base: ui({
     display: "flex",
     width: "fit-content",

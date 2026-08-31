@@ -1,10 +1,9 @@
 import type { Incoming } from "@barqjs/core";
-import { firstThatWorks, layer } from "@barqjs/css";
+import { firstThatWorks, layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -74,7 +73,7 @@ const content = ui(text.sm, {
 
 export type EmptyMediaVariant = "default" | "icon";
 
-export const emptyMediaVariants = uiVariants({
+export const emptyMediaVariants = variants({
   base: ui(icon.plain, {
     marginBottom: "calc(var(--spacing) * 2)",
     display: "flex",

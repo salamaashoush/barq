@@ -259,7 +259,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "shared-box",
@@ -316,7 +315,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "shared-box",
@@ -358,7 +356,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "separator",
@@ -381,7 +378,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "shared-box",
         "shared-icon",
@@ -464,7 +460,8 @@
       "registryDependencies": [
         "layers",
         "shared-box",
-        "shared-when"
+        "shared-when",
+        "utils"
       ],
       "files": [
         "ui/collapsible.tsx"
@@ -603,7 +600,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "shared-icon",
@@ -623,7 +619,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "label",
         "layers",
         "props",
@@ -664,7 +659,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "button",
         "input",
         "layers",
@@ -709,7 +703,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "props",
         "separator",
@@ -954,7 +947,6 @@
         "@barqjs/lucide"
       ],
       "registryDependencies": [
-        "atoms",
         "button",
         "layers",
         "overlay",
@@ -1083,7 +1075,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "shared-box",
         "shared-icon",
@@ -1122,7 +1113,6 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
-        "atoms",
         "layers",
         "shared-box",
         "shared-icon",

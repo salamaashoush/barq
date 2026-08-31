@@ -1,8 +1,10 @@
 /** Type: the two treatments almost every slot in the package wears. */
 
-import { createIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
-export const text = createIn("barq.ui", {
+const ui = layer("barq.ui");
+
+export const text = ui.create({
   /** `text-sm`, which carries a line height with it. */
   sm: {
     fontSize: "var(--text-sm)",

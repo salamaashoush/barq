@@ -113,13 +113,26 @@ function sharedGroups(): Map<string, Set<string>> {
   for (const file of readdirSync(lib).toSorted()) {
     if (!/^shared-[\w-]+\.ts$/.test(file)) continue;
     const source = readFileSync(join(lib, file), "utf8");
-    const declared = /export const ([A-Za-z_$][\w$]*) = createIn\("barq\.ui", /.exec(source);
-    if (declared === null) continue;
+    // Either spelling of the same call: `createIn("barq.ui", …)` and the bound
+    // `layer("barq.ui").create(…)`.
+    const declared =
+      /export const ([A-Za-z_$][\w$]*) = (?:createIn\("barq\.ui",\s*|[A-Za-z_$][\w$]*\.create\()/.exec(
+        source,
+      );
+    // LOUD, not `continue`. A `shared-*.ts` this cannot read contributes no
+    // declarations and every spec asking for them then reports as missing —
+    // 512 of them when `createIn` became `ui.create`, with nothing saying why.
+    if (declared === null) {
+      throw new Error(
+        `[verify] ${file} declares no group this tool can read. It looks for ` +
+          `\`export const <name> = createIn("barq.ui", {\` or \`= <layer>.create({\`.`,
+      );
+    }
     const namespace = declared[1] ?? "";
     const open = source.indexOf("{", (declared.index ?? 0) + declared[0].length - 1);
     const close = matching(source, open);
 
-    // One level in: each entry of the `createIn` object is a group, and the
+    // One level in: each entry of the group object is a group, and the
     // group name is the key before its brace.
     let at = open + 1;
     while (at < close) {

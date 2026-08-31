@@ -5,9 +5,11 @@
  * `@barqjs/aria` hands it and the two met in nine files.
  */
 
-import { createIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 
-export const when = createIn("barq.ui", {
+const ui = layer("barq.ui");
+
+export const when = ui.create({
   /** Disabled, where the element is not meant to answer a pointer at all. */
   disabled: {
     "[data-disabled]": { pointerEvents: "none", opacity: "50%" },

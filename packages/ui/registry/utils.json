@@ -12,7 +12,7 @@
     {
       "path": "lib/utils.ts",
       "type": "registry:lib",
-      "content": "/**\n * `cn`, which shadcn's copied components all call.\n *\n * There it is `twMerge(clsx(…))`, and the `twMerge` half exists because two\n * Tailwind classes setting the same property are decided by the stylesheet\n * rather than by the call. That question is answered a layer up here: every\n * rule this package writes is inside `@layer barq.ui` and an application's is\n * not, so a caller's class wins whatever order the bundler chose. What is left\n * is the joining, which is `clsx`.\n *\n * When two classes of YOUR OWN conflict, `atoms` from `@barqjs/css` is the tool\n * that answers it: one class per property, merged by the call.\n */\n\nexport { clsx as cn } from \"@barqjs/css\";\nexport type { ClassValue } from \"@barqjs/css\";\n"
+      "content": "/**\n * `cn`, which shadcn's copied components all call.\n *\n * There it is `twMerge(clsx(…))`, and the `twMerge` half exists because two\n * Tailwind classes setting the same property are decided by the stylesheet\n * rather than by the call. `atoms` answers that question by construction: one\n * class per property, merged by the call, so the later argument wins because it\n * is later. That makes this closer to shadcn's `cn` than a plain join ever was.\n *\n * A class that is not one of ours — an application's own, arriving through a\n * `class` prop — carries no property to merge on, so it is kept as it is and\n * survives whatever follows it.\n */\n\nexport { atoms as cn } from \"@barqjs/css\";\nexport type { AtomInput as ClassValue } from \"@barqjs/css\";\n"
     }
   ]
 }

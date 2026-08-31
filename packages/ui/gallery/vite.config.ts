@@ -24,6 +24,6 @@ export default defineConfig({
       { find: /^@barqjs\/ui\/(.*)$/, replacement: `${from("../src")}/$1` },
     ],
   },
-  plugins: [barq()],
+  plugins: [barq({ strictCss: true })],
   server: { port: 5183 },
 });

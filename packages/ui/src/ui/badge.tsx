@@ -1,11 +1,10 @@
 import { Show, type Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -20,7 +19,7 @@ export type BadgeVariant = "default" | "secondary" | "destructive" | "outline" |
  * <button type="button" class={badgeVariants({ variant: "outline" })}>Draft</button>
  * ```
  */
-export const badgeVariants = uiVariants({
+export const badgeVariants = variants({
   base: ui(box.border, text.medium, box.transition, ring.focus, ring.invalid, ring.invalidDark, {
     display: "inline-flex",
     width: "fit-content",

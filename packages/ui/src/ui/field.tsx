@@ -1,9 +1,8 @@
 import { For, Show, type Incoming } from "@barqjs/core";
-import { firstThatWorks, layer } from "@barqjs/css";
+import { firstThatWorks, layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Label, type LabelProps } from "./label.tsx";
@@ -25,7 +24,7 @@ const fieldSet = ui({
 
 export type FieldLegendVariant = "legend" | "label";
 
-export const fieldLegendVariants = uiVariants({
+export const fieldLegendVariants = variants({
   base: ui(text.medium, {
     marginBottom: "calc(var(--spacing) * 3)",
   }),
@@ -55,7 +54,7 @@ const fieldGroup = ui({
 
 export type FieldOrientation = "vertical" | "horizontal" | "responsive";
 
-export const fieldVariants = uiVariants({
+export const fieldVariants = variants({
   base: ui({
     display: "flex",
     width: "100%",

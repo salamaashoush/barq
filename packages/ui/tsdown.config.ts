@@ -26,7 +26,19 @@ const barq = {
   name: "barq",
   transform(code: string, id: string): { code: string } | null {
     if (!/\.tsx?$/.test(id)) return null;
-    const result = native.transform(code, { filename: id });
+    // `strictCss`: every CSS decline is an error, so a call `@barqjs/css`'s
+    // runtime would have to evaluate fails the build. This package folds every
+    // object literal it writes, and the point of the flag is that it stays
+    // that way — a call that fell back would otherwise ship the object walk to
+    // every consumer in silence.
+    //
+    // No `cssImports` here, deliberately. This build hands the compiler one
+    // file at a time with no resolver, so an imported binding is opaque — which
+    // is why every module declares its own `layer("barq.ui")` rather than
+    // importing one. A binding that folds only under the Vite plugin would put
+    // this package's whole stylesheet inside the JS bundle for anyone building
+    // it another way.
+    const result = native.transform(code, { filename: id, strictCss: true });
     if (result.css === undefined || result.css === "") return { code: result.code };
     return {
       code:

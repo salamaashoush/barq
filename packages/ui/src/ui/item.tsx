@@ -1,12 +1,11 @@
 import { Show, type Incoming } from "@barqjs/core";
-import { firstThatWorks, layer } from "@barqjs/css";
+import { firstThatWorks, layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Separator, type SeparatorProps } from "./separator.tsx";
@@ -26,7 +25,7 @@ export type ItemVariant = "default" | "outline" | "muted";
 
 export type ItemSize = "default" | "sm";
 
-export const itemVariants = uiVariants({
+export const itemVariants = variants({
   base: ui(box.border, text.sm, box.outline, ring.focus, {
     display: "flex",
     flexWrap: "wrap",
@@ -90,7 +89,7 @@ export const itemVariants = uiVariants({
 
 export type ItemMediaVariant = "default" | "icon" | "image";
 
-export const itemMediaVariants = uiVariants({
+export const itemMediaVariants = variants({
   base: ui({
     display: "flex",
     flexShrink: "0",

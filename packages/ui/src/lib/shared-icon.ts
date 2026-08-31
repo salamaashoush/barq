@@ -1,8 +1,10 @@
 /** An icon inside a control, which the control sizes and colours. */
 
-import { createIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
-export const icon = createIn("barq.ui", {
+const ui = layer("barq.ui");
+
+export const icon = ui.create({
   /** Not a press target, and not squeezed. */
   plain: {
     "& svg": { pointerEvents: "none", flexShrink: "0" },

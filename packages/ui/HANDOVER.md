@@ -37,19 +37,27 @@ Four things about it are load-bearing.
 - **`atomsIn`, not `atoms`.** An atom is unlayered on purpose, so an
   application's own reset cannot beat it. A design system wants the opposite,
   and `@layer barq.ui` is the only thing that gives it without `!important`.
-- **`ui(a, b)` merges where `clsx(a, b)` concatenated.** Two atoms for one
+- **`ui(a, b)` merges where concatenating would not.** Two atoms for one
   property both apply and the stylesheet's order decides; merging by property
-  means the later argument wins because it is later. `uiVariants` is `variants`
-  with the same merge, and `uiProps` composes a caller's class the same way.
-  This is not cosmetic: it is what stopped a calendar day button falling back to
-  `inline-flex` and a nav button growing its padding back.
+  means the later argument wins because it is later. `uiProps` composes a
+  caller's class the same way. This is not cosmetic: it is what stopped a
+  calendar day button falling back to `inline-flex` and a nav button growing its
+  padding back. `variants` merges too now, so the `uiVariants` wrapper that
+  used to supply it is gone and components call `variants` directly.
+- **`strictCss` is on, in both builds.** Every CSS diagnostic is an error, so a
+  call `@barqjs/css`'s runtime would have to evaluate fails the build rather
+  than shipping the object walk to every consumer in silence. This package folds
+  every object literal it writes and the flag is what keeps it that way.
 - **The layer is bound once a module.** `const ui = layer("barq.ui")`, and
   `layer` is a wrapper the COMPILER reads: it takes the literal in the module
   that names it, so the call site is `ui({ … })` and the layer is still folded
   into every class name. A wrapper of one's own is not one it reads, and that
   cost this package a session: all 192 calls stayed on the runtime and the whole
   stylesheet travelled inside the JS bundle. A binding cannot cross a module
-  boundary, which is why every component declares its own.
+  boundary unless the integration resolves it, and `tsdown` hands the compiler
+  one file at a time with no resolver — so every module declares its own. A
+  binding that folded only under the Vite plugin would put the whole stylesheet
+  inside the JS bundle for anyone building this another way.
 - **A shorthand expands.** `borderWidth` is four longhands, so a test asserting
   on `border-width: 1px` has to name one of them, and a physical `padding: 0`
   does not cancel a logical `padding-block`.

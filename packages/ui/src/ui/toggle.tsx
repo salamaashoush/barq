@@ -3,7 +3,7 @@ import {
   type ToggleButtonComponentProps,
 } from "@barqjs/aria/button";
 import type { Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
@@ -11,14 +11,13 @@ import { icon } from "../lib/shared-icon.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { text } from "../lib/shared-text.ts";
-import { uiVariants } from "../lib/atoms.ts";
 
 const ui = layer("barq.ui");
 
 export type ToggleVariant = "default" | "outline";
 export type ToggleSize = "default" | "sm" | "lg";
 
-export const toggleVariants = uiVariants({
+export const toggleVariants = variants({
   base: ui(
     text.sm,
     text.medium,
