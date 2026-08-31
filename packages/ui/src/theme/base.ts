@@ -68,6 +68,7 @@ globalCss`
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
     --color-border: var(--border);
+    --card-spacing: calc(var(--spacing) * 5);
   }
 }
 `;

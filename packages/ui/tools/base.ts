@@ -134,9 +134,26 @@ async function main(): Promise<void> {
     });
   };
 
+  /**
+   * A token the styles read but declare on ONE element.
+   *
+   * `--card-spacing` is set by upstream's card rule itself
+   * (`[--card-spacing:--spacing(5)]`) and inherited by the header, the content
+   * and the footer. That works for a card and fails for a card PART used on its
+   * own: an undefined `var()` makes the declaration invalid at computed-value
+   * time and `padding-inline` takes its initial value, so every
+   * `<CardHeader>` outside a `<Card>` lost its padding the moment a style was
+   * picked. Measured in Chrome on `?style=maia`: nine headers, the eight inside
+   * a card at 24px and the one outside at 0.
+   *
+   * A default here is inherited from the root, so the card's own value still
+   * wins wherever there is a card. shadcn's own default is `--spacing(5)`.
+   */
+  const fallbacks = "  --card-spacing: calc(var(--spacing) * 5);";
+
   const parts = {
     preflight: print(await preflight()),
-    theme: `:root, :host {\n${theme}\n}`,
+    theme: `:root, :host {\n${theme}\n${fallbacks}\n}`,
     properties: print(dedupe(compiled.properties)),
     keyframes: print(dedupe(compiled.keyframes).filter((node) => !foreign(node))),
   };
