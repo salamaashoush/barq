@@ -2,13 +2,14 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const card = ui(shared.border, shared.shadow, {
+const card = ui(box.border, box.shadow, {
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 6)",
@@ -47,7 +48,7 @@ const title = ui({
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = ui(shared.textSm, {
+const description = ui(text.sm, {
   color: "var(--muted-foreground)",
 });
 

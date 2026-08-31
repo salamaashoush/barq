@@ -2,7 +2,9 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -67,7 +69,7 @@ export const buttonGroupVariants = uiVariants({
   defaults: { orientation: "horizontal" },
 });
 
-const text = ui(shared.border, shared.textSm, shared.fontMedium, shared.shadow, shared.svgSize, {
+const label = ui(box.border, text.sm, text.medium, box.shadow, icon.sized, {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
@@ -125,7 +127,7 @@ export function ButtonGroup(props: Incoming<ButtonGroupProps>) {
 
 /** A label welded into the group: a unit, a prefix, an icon that is not a button. */
 export function ButtonGroupText(props: Incoming<UiProps>) {
-  return <div {...uiProps("button-group-text", text, props)}>{props.children}</div>;
+  return <div {...uiProps("button-group-text", label, props)}>{props.children}</div>;
 }
 
 export interface ButtonGroupSeparatorProps extends SeparatorProps {}

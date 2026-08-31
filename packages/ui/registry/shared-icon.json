@@ -1,0 +1,17 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "shared-icon",
+  "type": "registry:lib",
+  "title": "Shared Icon",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/shared-icon.ts",
+      "type": "registry:lib",
+      "content": "/** An icon inside a control, which the control sizes and colours. */\n\nimport { createIn } from \"@barqjs/css\";\n\nexport const icon = createIn(\"barq.ui\", {\n  /** Not a press target, and not squeezed. */\n  plain: {\n    \"& svg\": { pointerEvents: \"none\", flexShrink: \"0\" },\n  },\n\n  /**\n   * `size-4` on an icon that has not been given a size of its own.\n   *\n   * shadcn's `[&_svg:not([class*='size-'])]:size-4`, which is how a caller\n   * overrides it: any `size-*` class on the icon takes the rule out.\n   */\n  sized: {\n    '& svg:not([class*=\"size-\"])': {\n      width: \"calc(var(--spacing) * 4)\",\n      height: \"calc(var(--spacing) * 4)\",\n    },\n  },\n\n  /** And the colour, on the same terms. */\n  muted: {\n    '& svg:not([class*=\"text-\"])': { color: \"var(--muted-foreground)\" },\n  },\n});\n"
+    }
+  ]
+}

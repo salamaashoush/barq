@@ -6,20 +6,22 @@ import { Check } from "@barqjs/lucide/icons/check";
 import { Minus } from "@barqjs/lucide/icons/minus";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
 
-const box = ui(
-  shared.border,
-  shared.shadow,
-  shared.transition,
-  shared.outlineNone,
-  shared.darkInput,
-  shared.focusRingData,
-  shared.disabledCursor,
-  shared.invalidRingSlot,
-  shared.invalidRingSlotDark,
+const control = ui(
+  box.border,
+  box.shadow,
+  box.transition,
+  box.outline,
+  when.darkInput,
+  ringSlot.focus,
+  when.disabledCursor,
+  ringSlot.invalid,
+  ringSlot.invalidDark,
   {
     display: "inline-grid",
     width: "calc(var(--spacing) * 4)",
@@ -84,7 +86,7 @@ export function Checkbox(props: Incoming<CheckboxProps>) {
     <AriaCheckbox
       {...props}
       data-slot={props["data-slot"]?.() ?? "checkbox"}
-      class={ui(box, props.class?.(), props.className?.())}
+      class={ui(control, props.class?.(), props.className?.())}
     >
       <span data-slot="checkbox-indicator" class={indicator}>
         <Show when={props.isIndeterminate?.() === true} fallback={<Check />}>

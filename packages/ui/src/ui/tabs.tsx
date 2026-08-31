@@ -12,7 +12,10 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 
 const ui = layer("barq.ui");
@@ -26,13 +29,13 @@ const root = ui({
 });
 
 const trigger = ui(
-  shared.border,
-  shared.textSm,
-  shared.fontMedium,
-  shared.transition,
-  shared.disabled,
-  shared.svgStatic,
-  shared.svgSize,
+  box.border,
+  text.sm,
+  text.medium,
+  box.transition,
+  when.disabled,
+  icon.plain,
+  icon.sized,
   {
     position: "relative",
     display: "inline-flex",
@@ -139,7 +142,7 @@ const trigger = ui(
   },
 );
 
-const content = ui(shared.outlineNone, {
+const content = ui(box.outline, {
   flex: "1",
 });
 

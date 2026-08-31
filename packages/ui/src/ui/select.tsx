@@ -10,26 +10,30 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
 const trigger = ui(
-  shared.border,
-  shared.textSm,
-  shared.shadow,
-  shared.transition,
-  shared.outlineNone,
-  shared.darkInput,
-  shared.focusRingData,
-  shared.disabledCursor,
-  shared.invalidRingSlot,
-  shared.invalidRingSlotDark,
-  shared.svgStatic,
-  shared.svgSize,
-  shared.svgMuted,
+  box.border,
+  text.sm,
+  box.shadow,
+  box.transition,
+  box.outline,
+  when.darkInput,
+  ringSlot.focus,
+  when.disabledCursor,
+  ringSlot.invalid,
+  ringSlot.invalidDark,
+  icon.plain,
+  icon.sized,
+  icon.muted,
   {
     display: "flex",
     width: "fit-content",
@@ -80,7 +84,7 @@ const trigger = ui(
  * publishes the same measurement; the plain `8rem` beside it is the fallback
  * for a browser without `max()`, and is what the transcription produced.
  */
-const list = ui(shared.border, shared.shadow, {
+const list = ui(box.border, box.shadow, {
   position: "relative",
   zIndex: "50",
   margin: "0px",
@@ -131,14 +135,14 @@ const list = ui(shared.border, shared.shadow, {
 });
 
 const item = ui(
-  shared.textSm,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.focused,
-  shared.disabled,
-  shared.svgStatic,
-  shared.svgSize,
-  shared.svgMuted,
+  text.sm,
+  box.outline,
+  box.noSelect,
+  when.focused,
+  when.disabled,
+  icon.plain,
+  icon.sized,
+  icon.muted,
   {
     position: "relative",
     display: "flex",

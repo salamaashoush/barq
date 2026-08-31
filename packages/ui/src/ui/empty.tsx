@@ -2,7 +2,8 @@ import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -40,7 +41,7 @@ const header = ui({
   textAlign: "center",
 });
 
-const title = ui(shared.fontMedium, {
+const title = ui(text.medium, {
   fontSize: "var(--text-lg)",
   lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
   "--ui-tracking": "var(--tracking-tight)",
@@ -60,7 +61,7 @@ const description = ui({
   },
 });
 
-const content = ui(shared.textSm, {
+const content = ui(text.sm, {
   display: "flex",
   width: "100%",
   maxWidth: "var(--container-sm)",
@@ -74,7 +75,7 @@ const content = ui(shared.textSm, {
 export type EmptyMediaVariant = "default" | "icon";
 
 export const emptyMediaVariants = uiVariants({
-  base: ui(shared.svgStatic, {
+  base: ui(icon.plain, {
     marginBottom: "calc(var(--spacing) * 2)",
     display: "flex",
     flexShrink: "0",

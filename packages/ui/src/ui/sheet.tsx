@@ -4,8 +4,10 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
 import "../theme/layers.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { text } from "../lib/shared-text.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -53,11 +55,11 @@ const title = ui({
   color: "var(--foreground)",
 });
 
-const description = ui(shared.textSm, {
+const description = ui(text.sm, {
   color: "var(--muted-foreground)",
 });
 
-const close = ui(shared.transition, shared.svgStatic, shared.svgSize, {
+const close = ui(box.transition, icon.plain, icon.sized, {
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
   right: "calc(var(--spacing) * 4)",
@@ -88,7 +90,7 @@ const close = ui(shared.transition, shared.svgStatic, shared.svgSize, {
 export type SheetSide = "top" | "right" | "bottom" | "left";
 
 export const sheetVariants = uiVariants({
-  base: ui(shared.shadow, {
+  base: ui(box.shadow, {
     position: "fixed",
     zIndex: "50",
     display: "flex",

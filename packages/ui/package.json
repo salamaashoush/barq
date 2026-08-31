@@ -63,10 +63,35 @@
       "bun": "./src/lib/props.ts",
       "import": "./dist/lib/props.js"
     },
-    "./shared": {
-      "types": "./dist/lib/shared.d.ts",
-      "bun": "./src/lib/shared.ts",
-      "import": "./dist/lib/shared.js"
+    "./shared-box": {
+      "types": "./dist/lib/shared-box.d.ts",
+      "bun": "./src/lib/shared-box.ts",
+      "import": "./dist/lib/shared-box.js"
+    },
+    "./shared-icon": {
+      "types": "./dist/lib/shared-icon.d.ts",
+      "bun": "./src/lib/shared-icon.ts",
+      "import": "./dist/lib/shared-icon.js"
+    },
+    "./shared-ring-slot": {
+      "types": "./dist/lib/shared-ring-slot.d.ts",
+      "bun": "./src/lib/shared-ring-slot.ts",
+      "import": "./dist/lib/shared-ring-slot.js"
+    },
+    "./shared-ring": {
+      "types": "./dist/lib/shared-ring.d.ts",
+      "bun": "./src/lib/shared-ring.ts",
+      "import": "./dist/lib/shared-ring.js"
+    },
+    "./shared-text": {
+      "types": "./dist/lib/shared-text.d.ts",
+      "bun": "./src/lib/shared-text.ts",
+      "import": "./dist/lib/shared-text.js"
+    },
+    "./shared-when": {
+      "types": "./dist/lib/shared-when.d.ts",
+      "bun": "./src/lib/shared-when.ts",
+      "import": "./dist/lib/shared-when.js"
     },
     "./slot": {
       "types": "./dist/lib/slot.d.ts",

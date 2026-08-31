@@ -3,8 +3,10 @@ import type { Child, Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { box } from "../lib/shared-box.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
@@ -70,7 +72,7 @@ const title = ui({
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = ui(shared.textSm, {
+const description = ui(text.sm, {
   color: "var(--muted-foreground)",
 });
 
@@ -97,7 +99,7 @@ const media = ui({
 export type AlertDialogSize = "default" | "sm";
 
 /** The size is an attribute the CSS reads, so there is one class and not two. */
-const content = ui(shared.border, shared.shadow, shared.outlineNone, shared.closing, {
+const content = ui(box.border, box.shadow, box.outline, when.closing, {
   position: "fixed",
   top: "50%",
   left: "50%",

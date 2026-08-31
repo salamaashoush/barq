@@ -10,11 +10,12 @@ import type { Incoming } from "@barqjs/core";
 import { clsx, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
 
-const trigger = ui(shared.outlineNone, shared.disabled, {
+const trigger = ui(box.outline, when.disabled, {
   "[data-focus-visible]": {
     "--ui-ring-shadow":
       "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",

@@ -99,16 +99,79 @@
       ]
     },
     {
-      "name": "shared",
+      "name": "shared-box",
       "type": "registry:lib",
-      "title": "Shared",
-      "description": "The treatments more than one component wears, written once.",
+      "title": "Shared Box",
+      "description": "The box: its edge, its shadow, its outline and how it moves.",
       "dependencies": [
         "@barqjs/css"
       ],
       "registryDependencies": [],
       "files": [
-        "lib/shared.ts"
+        "lib/shared-box.ts"
+      ]
+    },
+    {
+      "name": "shared-icon",
+      "type": "registry:lib",
+      "title": "Shared Icon",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/shared-icon.ts"
+      ]
+    },
+    {
+      "name": "shared-ring-slot",
+      "type": "registry:lib",
+      "title": "Shared Ring Slot",
+      "description": "The same rings, keyed off what `@barqjs/aria` writes.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/shared-ring-slot.ts"
+      ]
+    },
+    {
+      "name": "shared-ring",
+      "type": "registry:lib",
+      "title": "Shared Ring",
+      "description": "The ring, on an element the BROWSER decides the state of.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/shared-ring.ts"
+      ]
+    },
+    {
+      "name": "shared-text",
+      "type": "registry:lib",
+      "title": "Shared Text",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/shared-text.ts"
+      ]
+    },
+    {
+      "name": "shared-when",
+      "type": "registry:lib",
+      "title": "Shared When",
+      "description": "What a component looks like in a state something else put it in.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/shared-when.ts"
       ]
     },
     {
@@ -154,7 +217,10 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-ring-slot",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -175,7 +241,9 @@
         "layers",
         "overlay",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -194,7 +262,8 @@
         "atoms",
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -230,7 +299,8 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -249,7 +319,9 @@
         "atoms",
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-ring",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -268,7 +340,8 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
         "slot",
         "sr-only"
       ],
@@ -289,7 +362,9 @@
         "layers",
         "props",
         "separator",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -308,7 +383,10 @@
       "registryDependencies": [
         "atoms",
         "layers",
-        "shared"
+        "shared-box",
+        "shared-icon",
+        "shared-ring",
+        "shared-text"
       ],
       "files": [
         "ui/button.tsx"
@@ -328,7 +406,8 @@
       "registryDependencies": [
         "button",
         "layers",
-        "shared"
+        "shared-box",
+        "shared-text"
       ],
       "files": [
         "ui/calendar.tsx"
@@ -345,7 +424,8 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -364,7 +444,9 @@
       ],
       "registryDependencies": [
         "layers",
-        "shared"
+        "shared-box",
+        "shared-ring-slot",
+        "shared-when"
       ],
       "files": [
         "ui/checkbox.tsx"
@@ -381,7 +463,8 @@
       ],
       "registryDependencies": [
         "layers",
-        "shared"
+        "shared-box",
+        "shared-when"
       ],
       "files": [
         "ui/collapsible.tsx"
@@ -403,7 +486,10 @@
         "layers",
         "popover",
         "props",
-        "shared"
+        "shared-box",
+        "shared-icon",
+        "shared-text",
+        "shared-when"
       ],
       "files": [
         "ui/combobox.tsx"
@@ -424,7 +510,10 @@
         "dialog",
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-text",
+        "shared-when",
         "slot",
         "sr-only"
       ],
@@ -446,7 +535,10 @@
         "dropdown-menu",
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -468,7 +560,10 @@
         "layers",
         "overlay",
         "props",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-text",
+        "shared-when",
         "slot",
         "sr-only"
       ],
@@ -489,7 +584,10 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -508,7 +606,8 @@
         "atoms",
         "layers",
         "props",
-        "shared",
+        "shared-icon",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -529,7 +628,7 @@
         "layers",
         "props",
         "separator",
-        "shared",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -549,7 +648,8 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared"
+        "shared-box",
+        "shared-when"
       ],
       "files": [
         "ui/hover-card.tsx"
@@ -569,7 +669,10 @@
         "input",
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -588,7 +691,9 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-ring",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -608,7 +713,10 @@
         "layers",
         "props",
         "separator",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-ring",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -626,7 +734,8 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -644,7 +753,9 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -665,7 +776,9 @@
         "dropdown-menu",
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -684,7 +797,9 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-ring",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -724,7 +839,9 @@
         "layers",
         "overlay",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -743,7 +860,7 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared"
+        "shared-box"
       ],
       "files": [
         "ui/progress.tsx"
@@ -761,7 +878,9 @@
       ],
       "registryDependencies": [
         "layers",
-        "shared"
+        "shared-box",
+        "shared-ring-slot",
+        "shared-when"
       ],
       "files": [
         "ui/radio-group.tsx"
@@ -797,7 +916,11 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-ring-slot",
+        "shared-text",
+        "shared-when",
         "slot"
       ],
       "files": [
@@ -836,7 +959,9 @@
         "layers",
         "overlay",
         "props",
-        "shared",
+        "shared-box",
+        "shared-icon",
+        "shared-text",
         "slot",
         "sr-only"
       ],
@@ -872,7 +997,8 @@
       ],
       "registryDependencies": [
         "layers",
-        "shared"
+        "shared-box",
+        "shared-when"
       ],
       "files": [
         "ui/slider.tsx"
@@ -920,7 +1046,9 @@
       ],
       "registryDependencies": [
         "layers",
-        "shared"
+        "shared-box",
+        "shared-ring-slot",
+        "shared-when"
       ],
       "files": [
         "ui/switch.tsx"
@@ -937,7 +1065,8 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared",
+        "shared-box",
+        "shared-text",
         "slot"
       ],
       "files": [
@@ -956,7 +1085,10 @@
       "registryDependencies": [
         "atoms",
         "layers",
-        "shared"
+        "shared-box",
+        "shared-icon",
+        "shared-text",
+        "shared-when"
       ],
       "files": [
         "ui/tabs.tsx"
@@ -992,7 +1124,11 @@
       "registryDependencies": [
         "atoms",
         "layers",
-        "shared"
+        "shared-box",
+        "shared-icon",
+        "shared-ring",
+        "shared-ring-slot",
+        "shared-text"
       ],
       "files": [
         "ui/toggle.tsx"
@@ -1011,7 +1147,7 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared"
+        "shared-when"
       ],
       "files": [
         "ui/tooltip.tsx"

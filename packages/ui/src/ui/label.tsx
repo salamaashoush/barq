@@ -2,13 +2,15 @@ import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const label = ui(shared.fontMedium, shared.noSelect, shared.disabled, {
+const label = ui(text.medium, box.noSelect, when.disabled, {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",

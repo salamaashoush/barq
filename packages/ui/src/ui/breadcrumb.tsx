@@ -5,14 +5,15 @@ import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
 const ui = layer("barq.ui");
 
-const list = ui(shared.textSm, {
+const list = ui(text.sm, {
   margin: "0px",
   display: "flex",
   listStyleType: "none",
@@ -35,7 +36,7 @@ const item = ui({
   gap: "calc(var(--spacing) * 1.5)",
 });
 
-const link = ui(shared.transition, {
+const link = ui(box.transition, {
   transitionProperty:
     "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
   "@media (hover: hover)": {

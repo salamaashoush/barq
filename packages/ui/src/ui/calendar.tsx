@@ -29,7 +29,8 @@ import { ref as makeRef, mergeRefs } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import { buttonVariants, type ButtonVariant } from "./button.tsx";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { text } from "../lib/shared-text.ts";
 
 const ui = layer("barq.ui");
 
@@ -76,7 +77,7 @@ const nav = ui({
   gap: "var(--spacing)",
 });
 
-const navButton = ui(shared.noSelect, {
+const navButton = ui(box.noSelect, {
   width: "var(--cell-size)",
   height: "var(--cell-size)",
   padding: "0px",
@@ -99,7 +100,7 @@ const monthCaption = ui({
   paddingInline: "var(--cell-size)",
 });
 
-const captionLabel = ui(shared.textSm, shared.fontMedium, shared.noSelect);
+const captionLabel = ui(text.sm, text.medium, box.noSelect);
 
 const monthGrid = ui({
   width: "100%",
@@ -110,7 +111,7 @@ const weekdays = ui({
   display: "flex",
 });
 
-const weekday = ui(shared.noSelect, {
+const weekday = ui(box.noSelect, {
   flex: "1",
   borderRadius: "calc(var(--radius) - 2px)",
   fontSize: "0.8rem",
@@ -125,7 +126,7 @@ const week = ui({
   width: "100%",
 });
 
-const day = ui(shared.noSelect, {
+const day = ui(box.noSelect, {
   position: "relative",
   aspectRatio: "1 / 1",
   height: "100%",

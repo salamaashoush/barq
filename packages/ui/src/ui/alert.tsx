@@ -2,7 +2,8 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -12,7 +13,7 @@ const ui = layer("barq.ui");
 export type AlertVariant = "default" | "destructive";
 
 export const alertVariants = uiVariants({
-  base: ui(shared.border, shared.textSm, {
+  base: ui(box.border, text.sm, {
     position: "relative",
     display: "grid",
     width: "100%",
@@ -58,7 +59,7 @@ export const alertVariants = uiVariants({
   defaults: { variant: "default" },
 });
 
-const title = ui(shared.fontMedium, {
+const title = ui(text.medium, {
   gridColumnStart: "2",
   overflow: "hidden",
   display: "-webkit-box",
@@ -69,7 +70,7 @@ const title = ui(shared.fontMedium, {
   letterSpacing: "var(--tracking-tight)",
 });
 
-const description = ui(shared.textSm, {
+const description = ui(text.sm, {
   gridColumnStart: "2",
   display: "grid",
   justifyItems: "start",

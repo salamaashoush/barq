@@ -25,7 +25,10 @@ import { Search } from "@barqjs/lucide/icons/search";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog.tsx";
@@ -61,7 +64,7 @@ const inputIcon = ui({
   opacity: "50%",
 });
 
-const input = ui(shared.textSm, shared.outlineNone, shared.forcedColors, {
+const input = ui(text.sm, box.outline, box.forcedColors, {
   display: "flex",
   height: "calc(var(--spacing) * 10)",
   width: "100%",
@@ -89,7 +92,7 @@ const list = ui({
   padding: "0px",
 });
 
-const empty = ui(shared.textSm, {
+const empty = ui(text.sm, {
   paddingBlock: "calc(var(--spacing) * 6)",
   textAlign: "center",
 });
@@ -102,7 +105,7 @@ const group = ui({
   color: "var(--foreground)",
 });
 
-const groupLabel = ui(shared.fontMedium, {
+const groupLabel = ui(text.medium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-xs)",
@@ -119,15 +122,15 @@ const separator = ui({
 });
 
 const item = ui(
-  shared.textSm,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.forcedColors,
-  shared.focused,
-  shared.disabled,
-  shared.svgStatic,
-  shared.svgSize,
-  shared.svgMuted,
+  text.sm,
+  box.outline,
+  box.noSelect,
+  box.forcedColors,
+  when.focused,
+  when.disabled,
+  icon.plain,
+  icon.sized,
+  icon.muted,
   {
     position: "relative",
     display: "flex",

@@ -2,13 +2,14 @@ import { Show, signal, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const root = ui(shared.noSelect, {
+const root = ui(box.noSelect, {
   position: "relative",
   display: "flex",
   width: "calc(var(--spacing) * 8)",
@@ -33,7 +34,7 @@ const image = ui({
   objectFit: "cover",
 });
 
-const fallback = ui(shared.textSm, {
+const fallback = ui(text.sm, {
   display: "flex",
   width: "100%",
   height: "100%",
@@ -48,7 +49,7 @@ const fallback = ui(shared.textSm, {
   },
 });
 
-const badge = ui(shared.shadow, shared.noSelect, {
+const badge = ui(box.shadow, box.noSelect, {
   position: "absolute",
   right: "0px",
   bottom: "0px",

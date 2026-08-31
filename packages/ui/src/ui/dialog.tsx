@@ -6,8 +6,11 @@ import { X } from "@barqjs/lucide/icons/x";
 import { Button, type ButtonProps } from "./button.tsx";
 
 import "../theme/layers.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
@@ -32,7 +35,7 @@ const overlay = ui({
   },
 });
 
-const content = ui(shared.border, shared.shadow, shared.outlineNone, shared.closing, {
+const content = ui(box.border, box.shadow, box.outline, when.closing, {
   position: "fixed",
   top: "50%",
   left: "50%",
@@ -94,11 +97,11 @@ const title = ui({
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = ui(shared.textSm, {
+const description = ui(text.sm, {
   color: "var(--muted-foreground)",
 });
 
-const close = ui(shared.transition, shared.svgStatic, shared.svgSize, {
+const close = ui(box.transition, icon.plain, icon.sized, {
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
   right: "calc(var(--spacing) * 4)",

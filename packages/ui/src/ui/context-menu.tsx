@@ -13,7 +13,10 @@ import { layer } from "@barqjs/css";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import {
@@ -37,7 +40,7 @@ import {
 const ui = layer("barq.ui");
 
 /** shadcn's context menu names its labels in the body colour; a dropdown's inherit. */
-const label = ui(shared.textSm, shared.fontMedium, {
+const label = ui(text.sm, text.medium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   color: "var(--foreground)",
@@ -48,13 +51,13 @@ const label = ui(shared.textSm, shared.fontMedium, {
 
 /** And its submenu trigger has no gap, so the chevron's own margin is the whole of it. */
 const subTrigger = ui(
-  shared.textSm,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.focused,
-  shared.svgStatic,
-  shared.svgSize,
-  shared.svgMuted,
+  text.sm,
+  box.outline,
+  box.noSelect,
+  when.focused,
+  icon.plain,
+  icon.sized,
+  icon.muted,
   {
     display: "flex",
     cursor: "default",

@@ -2,7 +2,7 @@ import { For, Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -26,7 +26,7 @@ const fieldSet = ui({
 export type FieldLegendVariant = "legend" | "label";
 
 export const fieldLegendVariants = uiVariants({
-  base: ui(shared.fontMedium, {
+  base: ui(text.medium, {
     marginBottom: "calc(var(--spacing) * 3)",
   }),
   variants: {
@@ -35,7 +35,7 @@ export const fieldLegendVariants = uiVariants({
         fontSize: "var(--text-base)",
         lineHeight: "var(--ui-leading, var(--text-base--line-height))",
       }),
-      label: ui(shared.textSm),
+      label: ui(text.sm),
     },
   },
   defaults: { variant: "legend" },
@@ -159,7 +159,7 @@ const fieldLabel = ui({
   },
 });
 
-const fieldTitle = ui(shared.fontMedium, {
+const fieldTitle = ui(text.medium, {
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -206,7 +206,7 @@ const fieldDescription = ui({
   },
 });
 
-const fieldSeparator = ui(shared.textSm, {
+const fieldSeparator = ui(text.sm, {
   position: "relative",
   marginBlock: "calc(var(--spacing) * -2)",
   height: "calc(var(--spacing) * 5)",
@@ -231,7 +231,7 @@ const fieldSeparatorContent = ui({
   color: "var(--muted-foreground)",
 });
 
-const fieldError = ui(shared.textSm, {
+const fieldError = ui(text.sm, {
   "--ui-font-weight": "var(--font-weight-normal)",
   fontWeight: "var(--font-weight-normal)",
   color: "var(--destructive)",

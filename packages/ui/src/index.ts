@@ -25,7 +25,12 @@ export {
   type OverlayValue,
 } from "./lib/overlay.tsx";
 export { type UiProps } from "./lib/props.ts";
-export { shared } from "./lib/shared.ts";
+export { box } from "./lib/shared-box.ts";
+export { icon } from "./lib/shared-icon.ts";
+export { ringSlot } from "./lib/shared-ring-slot.ts";
+export { ring } from "./lib/shared-ring.ts";
+export { text } from "./lib/shared-text.ts";
+export { when } from "./lib/shared-when.ts";
 export { controlProps, uiProps } from "./lib/slot.ts";
 export { cn } from "./lib/utils.ts";
 export {

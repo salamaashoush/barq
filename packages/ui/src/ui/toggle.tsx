@@ -6,7 +6,11 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { ring } from "../lib/shared-ring.ts";
+import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 
 const ui = layer("barq.ui");
@@ -16,15 +20,15 @@ export type ToggleSize = "default" | "sm" | "lg";
 
 export const toggleVariants = uiVariants({
   base: ui(
-    shared.textSm,
-    shared.fontMedium,
-    shared.transition,
-    shared.outlineNone,
-    shared.invalidRing,
-    shared.invalidRingDark,
-    shared.focusRingData,
-    shared.svgStatic,
-    shared.svgSize,
+    text.sm,
+    text.medium,
+    box.transition,
+    box.outline,
+    ring.invalid,
+    ring.invalidDark,
+    ringSlot.focus,
+    icon.plain,
+    icon.sized,
     {
       display: "inline-flex",
       alignItems: "center",
@@ -54,7 +58,7 @@ export const toggleVariants = uiVariants({
       default: ui({
         backgroundColor: "transparent",
       }),
-      outline: ui(shared.border, shared.shadow, {
+      outline: ui(box.border, box.shadow, {
         borderColor: "var(--input)",
         backgroundColor: "transparent",
         "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",

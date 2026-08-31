@@ -2,7 +2,9 @@ import { Show, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { ring } from "../lib/shared-ring.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -19,36 +21,28 @@ export type BadgeVariant = "default" | "secondary" | "destructive" | "outline" |
  * ```
  */
 export const badgeVariants = uiVariants({
-  base: ui(
-    shared.border,
-    shared.fontMedium,
-    shared.transition,
-    shared.focusRing,
-    shared.invalidRing,
-    shared.invalidRingDark,
-    {
-      display: "inline-flex",
-      width: "fit-content",
-      flexShrink: "0",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "var(--spacing)",
-      overflow: "hidden",
-      borderRadius: "calc(infinity * 1px)",
-      borderColor: "transparent",
-      paddingInline: "calc(var(--spacing) * 2)",
-      paddingBlock: "calc(var(--spacing) * 0.5)",
-      fontSize: "var(--text-xs)",
-      lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-      whiteSpace: "nowrap",
-      transitionProperty: "color, box-shadow",
-      "& > svg": {
-        pointerEvents: "none",
-        width: "calc(var(--spacing) * 3)",
-        height: "calc(var(--spacing) * 3)",
-      },
+  base: ui(box.border, text.medium, box.transition, ring.focus, ring.invalid, ring.invalidDark, {
+    display: "inline-flex",
+    width: "fit-content",
+    flexShrink: "0",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "var(--spacing)",
+    overflow: "hidden",
+    borderRadius: "calc(infinity * 1px)",
+    borderColor: "transparent",
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "calc(var(--spacing) * 0.5)",
+    fontSize: "var(--text-xs)",
+    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+    whiteSpace: "nowrap",
+    transitionProperty: "color, box-shadow",
+    "& > svg": {
+      pointerEvents: "none",
+      width: "calc(var(--spacing) * 3)",
+      height: "calc(var(--spacing) * 3)",
     },
-  ),
+  }),
   variants: {
     variant: {
       default: ui({

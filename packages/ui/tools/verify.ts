@@ -100,27 +100,41 @@ function matching(source: string, open: number): number {
  * The shared treatments, by the name a component composes them under.
  *
  * A group's declarations belong to every call naming it, which is the whole
- * point of the group: `shared.focusRing` in a component IS that component
- * declaring the focus ring, and a spec asking for it has to find it there.
+ * point of the group: `ring.focus` in a component IS that component declaring
+ * the focus ring, and a spec asking for it has to find it there.
+ *
+ * Keyed `namespace.name`, and the namespace comes from the `export const` each
+ * `lib/shared-*.ts` carries, so a file added later needs no edit here.
  */
 function sharedGroups(): Map<string, Set<string>> {
-  const source = readFileSync(join(import.meta.dir, "../src/lib/shared.ts"), "utf8");
   const out = new Map<string, Set<string>>();
-  const open = source.indexOf("{", source.indexOf('createIn("barq.ui", '));
-  const close = matching(source, open);
+  const lib = join(import.meta.dir, "../src/lib");
 
-  // One level in: each entry of the `createIn` object is a group, and the group
-  // name is the key before its brace.
-  let at = open + 1;
-  while (at < close) {
-    const key = /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*\{/g;
-    key.lastIndex = at;
-    const found = key.exec(source);
-    if (found === null || (found.index ?? 0) >= close) break;
-    const body = (found.index ?? 0) + found[0].length - 1;
-    const end = matching(source, body);
-    out.set(found[1] ?? found[2] ?? "", declarationsIn(source.slice(body, end + 1)));
-    at = end + 1;
+  for (const file of readdirSync(lib).toSorted()) {
+    if (!/^shared-[\w-]+\.ts$/.test(file)) continue;
+    const source = readFileSync(join(lib, file), "utf8");
+    const declared = /export const ([A-Za-z_$][\w$]*) = createIn\("barq\.ui", /.exec(source);
+    if (declared === null) continue;
+    const namespace = declared[1] ?? "";
+    const open = source.indexOf("{", (declared.index ?? 0) + declared[0].length - 1);
+    const close = matching(source, open);
+
+    // One level in: each entry of the `createIn` object is a group, and the
+    // group name is the key before its brace.
+    let at = open + 1;
+    while (at < close) {
+      const key = /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*\{/g;
+      key.lastIndex = at;
+      const found = key.exec(source);
+      if (found === null || (found.index ?? 0) >= close) break;
+      const body = (found.index ?? 0) + found[0].length - 1;
+      const end = matching(source, body);
+      out.set(
+        `${namespace}.${found[1] ?? found[2] ?? ""}`,
+        declarationsIn(source.slice(body, end + 1)),
+      );
+      at = end + 1;
+    }
   }
   return out;
 }
@@ -159,7 +173,7 @@ function byCall(): Map<string, Set<string>> {
       const call = source.slice(from, to + 1);
       const held = declarationsIn(call);
       for (const [name, own] of groups) {
-        if (!call.includes(`shared.${name},`) && !call.includes(`shared.${name})`)) continue;
+        if (!call.includes(`${name},`) && !call.includes(`${name})`)) continue;
         for (const declaration of own) held.add(declaration);
       }
       if (held.size > 0) out.set(`${file}:${String(start.index)}`, held);

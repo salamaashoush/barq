@@ -10,7 +10,9 @@ import { layer } from "@barqjs/css";
 import { Circle } from "@barqjs/lucide/icons/circle";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
 
@@ -20,15 +22,15 @@ const items = ui({
 });
 
 const circle = ui(
-  shared.border,
-  shared.shadow,
-  shared.transition,
-  shared.outlineNone,
-  shared.darkInput,
-  shared.focusRingData,
-  shared.disabledCursor,
-  shared.invalidRingSlot,
-  shared.invalidRingSlotDark,
+  box.border,
+  box.shadow,
+  box.transition,
+  box.outline,
+  when.darkInput,
+  ringSlot.focus,
+  when.disabledCursor,
+  ringSlot.invalid,
+  ringSlot.invalidDark,
   {
     position: "relative",
     display: "inline-flex",

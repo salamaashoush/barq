@@ -12,12 +12,12 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { when } from "../lib/shared-when.ts";
 import type { UiProps } from "../lib/props.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui(shared.closing, {
+const content = ui(when.closing, {
   zIndex: "50",
   width: "fit-content",
   animation:

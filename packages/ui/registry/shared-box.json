@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "shared-box",
+  "type": "registry:lib",
+  "title": "Shared Box",
+  "description": "The box: its edge, its shadow, its outline and how it moves.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/shared-box.ts",
+      "type": "registry:lib",
+      "content": "/**\n * The box: its edge, its shadow, its outline and how it moves.\n *\n * `outline` and `forcedColors` are in one file and in this order on purpose.\n * `outline` sets `outline-style: none`; `forcedColors` sets\n * `outline: 2px solid transparent` under an `@media`, and a shorthand sets\n * `outline-style` too. They are different atoms with different keys, so both\n * apply to an element composing both and neither is more specific: the later\n * rule wins. One file makes that order a fact of this file rather than of\n * whichever module a bundler happened to emit first.\n */\n\nimport { createIn } from \"@barqjs/css\";\n\nexport const box = createIn(\"barq.ui\", {\n  /** `border`, whose style comes from the theme so a reset cannot take it. */\n  border: {\n    borderStyle: \"var(--ui-border-style)\",\n    borderWidth: \"1px\",\n  },\n\n  /**\n   * `shadow-xs`, and the four slots it shares the property with.\n   *\n   * Each of the five is a custom property some other utility sets on its own,\n   * and naming all five here is what lets a ring and a drop shadow coexist\n   * rather than replace each other.\n   */\n  shadow: {\n    boxShadow:\n      \"var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)\",\n  },\n\n  /** `outline-none`, both halves. */\n  outline: {\n    \"--ui-outline-style\": \"none\",\n    outlineStyle: \"none\",\n  },\n\n  /**\n   * A forced-colours mode paints its own outline, so the ring is given room.\n   *\n   * `2px solid transparent` rather than `none`: the mode substitutes a system\n   * colour for a transparent outline and removes nothing.\n   */\n  forcedColors: {\n    \"@media (forced-colors: active)\": { outline: \"2px solid transparent\", outlineOffset: \"2px\" },\n  },\n\n  /** `transition-… duration-… ease-…`, with the theme's defaults. */\n  transition: {\n    transitionTimingFunction: \"var(--ui-ease, var(--default-transition-timing-function))\",\n    transitionDuration: \"var(--ui-duration, var(--default-transition-duration))\",\n  },\n\n  /**\n   * `select-none`, and the prefix it still needs.\n   *\n   * `-webkit-user-select` has no camel-cased spelling that survives `kebab`,\n   * which is why it is quoted, and it is the half most likely to be forgotten.\n   */\n  noSelect: {\n    \"-webkit-user-select\": \"none\",\n    userSelect: \"none\",\n  },\n});\n"
+    }
+  ]
+}

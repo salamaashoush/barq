@@ -7,7 +7,10 @@ import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { Button } from "./button.tsx";
 import { Command, CommandItem } from "./command.tsx";
@@ -36,14 +39,14 @@ const content = ui({
 });
 
 const item = ui(
-  shared.textSm,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.forcedColors,
-  shared.focused,
-  shared.disabled,
-  shared.svgStatic,
-  shared.svgSize,
+  text.sm,
+  box.outline,
+  box.noSelect,
+  box.forcedColors,
+  when.focused,
+  when.disabled,
+  icon.plain,
+  icon.sized,
   {
     position: "relative",
     display: "flex",

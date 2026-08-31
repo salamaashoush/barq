@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "shared-when",
+  "type": "registry:lib",
+  "title": "Shared When",
+  "description": "What a component looks like in a state something else put it in.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/shared-when.ts",
+      "type": "registry:lib",
+      "content": "/**\n * What a component looks like in a state something else put it in.\n *\n * `when` and not `state`, because `state` is what a component calls the object\n * `@barqjs/aria` hands it and the two met in nine files.\n */\n\nimport { createIn, firstThatWorks } from \"@barqjs/css\";\n\nexport const when = createIn(\"barq.ui\", {\n  /** Disabled, where the element is not meant to answer a pointer at all. */\n  disabled: {\n    \"[data-disabled]\": { pointerEvents: \"none\", opacity: \"50%\" },\n  },\n\n  /** Disabled, where it is and says so. */\n  disabledCursor: {\n    \"[data-disabled]\": { cursor: \"not-allowed\", opacity: \"50%\" },\n  },\n\n  /** The highlight `@barqjs/aria` moves through a collection. */\n  focused: {\n    \"[data-focused]\": { backgroundColor: \"var(--accent)\", color: \"var(--accent-foreground)\" },\n  },\n\n  /** A translucent input surface in dark mode. */\n  darkInput: {\n    \":is(.dark *)\": {\n      backgroundColor: \"var(--input)\",\n      \"@supports (color: color-mix(in lab, red, red))\": {\n        backgroundColor: \"color-mix(in oklab, var(--input) 30%, transparent)\",\n      },\n    },\n  },\n\n  /**\n   * The exit animation every overlay in this package runs.\n   *\n   * `firstThatWorks` because `calc(0/100)` is the fallback a browser without\n   * the plain number keeps, which is CSS's own mechanism written the right way\n   * round.\n   */\n  closing: {\n    \"[data-closed]\": {\n      animation:\n        \"exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)\",\n      \"--ui-exit-opacity\": firstThatWorks(\"0\", \"calc(0/100)\"),\n      \"--ui-exit-scale\": firstThatWorks(\"0.95\", \"calc(95*1%)\"),\n    },\n  },\n});\n"
+    }
+  ]
+}

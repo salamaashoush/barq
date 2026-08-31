@@ -2,13 +2,14 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const kbd = ui(shared.fontMedium, shared.noSelect, {
+const kbd = ui(text.medium, box.noSelect, {
   pointerEvents: "none",
   display: "inline-flex",
   height: "calc(var(--spacing) * 5)",

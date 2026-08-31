@@ -3,17 +3,19 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
 
 const track = ui(
-  shared.border,
-  shared.shadow,
-  shared.transition,
-  shared.outlineNone,
-  shared.focusRingData,
-  shared.disabledCursor,
+  box.border,
+  box.shadow,
+  box.transition,
+  box.outline,
+  ringSlot.focus,
+  when.disabledCursor,
   {
     display: "inline-flex",
     flexShrink: "0",
@@ -45,7 +47,7 @@ const track = ui(
   },
 );
 
-const thumb = ui(shared.shadow, shared.transition, {
+const thumb = ui(box.shadow, box.transition, {
   pointerEvents: "none",
   display: "block",
   "--ui-translate-x": "0px",

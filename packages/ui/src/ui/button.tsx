@@ -3,7 +3,10 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { ring } from "../lib/shared-ring.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 
 const ui = layer("barq.ui");
@@ -33,15 +36,15 @@ export type ButtonSize =
  */
 export const buttonVariants = uiVariants({
   base: ui(
-    shared.textSm,
-    shared.fontMedium,
-    shared.transition,
-    shared.outlineNone,
-    shared.focusRing,
-    shared.invalidRing,
-    shared.invalidRingDark,
-    shared.svgStatic,
-    shared.svgSize,
+    text.sm,
+    text.medium,
+    box.transition,
+    box.outline,
+    ring.focus,
+    ring.invalid,
+    ring.invalidDark,
+    icon.plain,
+    icon.sized,
     {
       display: "inline-flex",
       flexShrink: "0",
@@ -105,7 +108,7 @@ export const buttonVariants = uiVariants({
           },
         },
       }),
-      outline: ui(shared.border, shared.shadow, {
+      outline: ui(box.border, box.shadow, {
         backgroundColor: "var(--background)",
         "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
         "@media (hover: hover)": {

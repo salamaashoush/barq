@@ -19,13 +19,16 @@ import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Circle } from "@barqjs/lucide/icons/circle";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui(shared.border, shared.shadow, {
+const content = ui(box.border, box.shadow, {
   zIndex: "50",
   margin: "0px",
   minWidth: "8rem",
@@ -77,14 +80,14 @@ const content = ui(shared.border, shared.shadow, {
 });
 
 const item = ui(
-  shared.textSm,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.focused,
-  shared.disabled,
-  shared.svgStatic,
-  shared.svgSize,
-  shared.svgMuted,
+  text.sm,
+  box.outline,
+  box.noSelect,
+  when.focused,
+  when.disabled,
+  icon.plain,
+  icon.sized,
+  icon.muted,
   {
     position: "relative",
     display: "flex",
@@ -120,13 +123,13 @@ const item = ui(
 );
 
 const checkItem = ui(
-  shared.textSm,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.focused,
-  shared.disabled,
-  shared.svgStatic,
-  shared.svgSize,
+  text.sm,
+  box.outline,
+  box.noSelect,
+  when.focused,
+  when.disabled,
+  icon.plain,
+  icon.sized,
   {
     position: "relative",
     display: "flex",
@@ -177,7 +180,7 @@ const radioIndicator = ui({
   },
 });
 
-const label = ui(shared.textSm, shared.fontMedium, {
+const label = ui(text.sm, text.medium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   "[data-inset]": {
@@ -204,13 +207,13 @@ const shortcut = ui({
 });
 
 const subTrigger = ui(
-  shared.textSm,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.focused,
-  shared.svgStatic,
-  shared.svgSize,
-  shared.svgMuted,
+  text.sm,
+  box.outline,
+  box.noSelect,
+  when.focused,
+  icon.plain,
+  icon.sized,
+  icon.muted,
   {
     display: "flex",
     cursor: "default",
@@ -241,7 +244,7 @@ const group = ui({
   padding: "0px",
 });
 
-const groupLabel = ui(shared.textSm, shared.fontMedium, {
+const groupLabel = ui(text.sm, text.medium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   color: "var(--muted-foreground)",

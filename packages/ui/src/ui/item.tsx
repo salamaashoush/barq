@@ -2,7 +2,10 @@ import { Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { icon } from "../lib/shared-icon.ts";
+import { ring } from "../lib/shared-ring.ts";
+import { text } from "../lib/shared-text.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -24,7 +27,7 @@ export type ItemVariant = "default" | "outline" | "muted";
 export type ItemSize = "default" | "sm";
 
 export const itemVariants = uiVariants({
-  base: ui(shared.border, shared.textSm, shared.outlineNone, shared.focusRing, {
+  base: ui(box.border, text.sm, box.outline, ring.focus, {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
@@ -108,7 +111,7 @@ export const itemMediaVariants = uiVariants({
       default: ui({
         backgroundColor: "transparent",
       }),
-      icon: ui(shared.border, shared.svgSize, {
+      icon: ui(box.border, icon.sized, {
         width: "calc(var(--spacing) * 8)",
         height: "calc(var(--spacing) * 8)",
         borderRadius: "calc(var(--radius) - 4px)",
@@ -140,7 +143,7 @@ const content = ui({
   },
 });
 
-const title = ui(shared.fontMedium, {
+const title = ui(text.medium, {
   display: "flex",
   width: "fit-content",
   alignItems: "center",

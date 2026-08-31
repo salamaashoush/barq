@@ -4,20 +4,22 @@ import { layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { ring } from "../lib/shared-ring.ts";
+import { when } from "../lib/shared-when.ts";
 import type { UiProps } from "../lib/props.ts";
 import { controlProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
 const control = ui(
-  shared.border,
-  shared.shadow,
-  shared.transition,
-  shared.outlineNone,
-  shared.focusRing,
-  shared.invalidRing,
-  shared.darkInput,
+  box.border,
+  box.shadow,
+  box.transition,
+  box.outline,
+  ring.focus,
+  ring.invalid,
+  when.darkInput,
   {
     height: "calc(var(--spacing) * 9)",
     width: "100%",

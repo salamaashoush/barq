@@ -4,14 +4,16 @@ import type { Child, Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { box } from "../lib/shared-box.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui(shared.border, shared.shadow, shared.outlineNone, shared.closing, {
+const content = ui(box.border, box.shadow, box.outline, when.closing, {
   zIndex: "50",
   width: "calc(var(--spacing) * 72)",
   animation:
@@ -54,13 +56,13 @@ const content = ui(shared.border, shared.shadow, shared.outlineNone, shared.clos
   },
 });
 
-const header = ui(shared.textSm, {
+const header = ui(text.sm, {
   display: "flex",
   flexDirection: "column",
   gap: "var(--spacing)",
 });
 
-const title = ui(shared.fontMedium);
+const title = ui(text.medium);
 
 const description = ui({
   color: "var(--muted-foreground)",

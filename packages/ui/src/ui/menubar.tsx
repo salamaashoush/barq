@@ -7,7 +7,9 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
@@ -36,7 +38,7 @@ import {
 
 const ui = layer("barq.ui");
 
-const bar = ui(shared.border, shared.shadow, {
+const bar = ui(box.border, box.shadow, {
   display: "flex",
   height: "calc(var(--spacing) * 9)",
   alignItems: "center",
@@ -48,12 +50,12 @@ const bar = ui(shared.border, shared.shadow, {
 });
 
 const trigger = ui(
-  shared.textSm,
-  shared.fontMedium,
-  shared.outlineNone,
-  shared.noSelect,
-  shared.forcedColors,
-  shared.focused,
+  text.sm,
+  text.medium,
+  box.outline,
+  box.noSelect,
+  box.forcedColors,
+  when.focused,
   {
     display: "flex",
     height: "auto",

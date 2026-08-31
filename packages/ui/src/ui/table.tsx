@@ -2,7 +2,8 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -14,7 +15,7 @@ const container = ui({
   overflowX: "auto",
 });
 
-const table = ui(shared.textSm, {
+const table = ui(text.sm, {
   width: "100%",
   captionSide: "bottom",
   borderCollapse: "collapse",
@@ -34,7 +35,7 @@ const body = ui({
   },
 });
 
-const footer = ui(shared.fontMedium, {
+const footer = ui(text.medium, {
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   backgroundColor: "var(--muted)",
@@ -47,7 +48,7 @@ const footer = ui(shared.fontMedium, {
   },
 });
 
-const row = ui(shared.transition, {
+const row = ui(box.transition, {
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
   "--ui-border-style": "solid",
@@ -69,7 +70,7 @@ const row = ui(shared.transition, {
   },
 });
 
-const head = ui(shared.fontMedium, {
+const head = ui(text.medium, {
   height: "calc(var(--spacing) * 10)",
   paddingInline: "calc(var(--spacing) * 2)",
   textAlign: "left",
@@ -90,7 +91,7 @@ const cell = ui({
   },
 });
 
-const caption = ui(shared.textSm, {
+const caption = ui(text.sm, {
   marginTop: "calc(var(--spacing) * 4)",
   color: "var(--muted-foreground)",
 });

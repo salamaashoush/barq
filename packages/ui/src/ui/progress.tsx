@@ -4,7 +4,7 @@ import { Show, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
 import type { UiProps } from "../lib/props.ts";
 
 const ui = layer("barq.ui");
@@ -21,7 +21,7 @@ const track = ui({
   },
 });
 
-const bar = ui(shared.transition, {
+const bar = ui(box.transition, {
   height: "100%",
   width: "100%",
   flex: "1",

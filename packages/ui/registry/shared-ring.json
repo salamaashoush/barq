@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "shared-ring",
+  "type": "registry:lib",
+  "title": "Shared Ring",
+  "description": "The ring, on an element the BROWSER decides the state of.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/shared-ring.ts",
+      "type": "registry:lib",
+      "content": "/**\n * The ring, on an element the BROWSER decides the state of.\n *\n * `:focus-visible` and `[aria-invalid]` are both the platform's, so a component\n * that hands its state to a native control wears these. One that lets\n * `@barqjs/aria` manage focus wears `ring-slot.ts` instead, and almost nothing\n * wears both: they are separate files so a button does not ship a menu item's\n * ring.\n */\n\nimport { createIn } from \"@barqjs/css\";\n\nexport const ring = createIn(\"barq.ui\", {\n  focus: {\n    \":focus-visible\": {\n      borderColor: \"var(--ring)\",\n      \"--ui-ring-shadow\":\n        \"var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)\",\n      boxShadow:\n        \"var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)\",\n      \"--ui-ring-color\": \"var(--ring)\",\n      \"@supports (color: color-mix(in lab, red, red))\": {\n        \"--ui-ring-color\": \"color-mix(in oklab, var(--ring) 50%, transparent)\",\n      },\n    },\n  },\n\n  /** `aria-invalid:` — the destructive border and ring. */\n  invalid: {\n    '[aria-invalid=\"true\"]': {\n      borderColor: \"var(--destructive)\",\n      \"--ui-ring-color\": \"var(--destructive)\",\n      \"@supports (color: color-mix(in lab, red, red))\": {\n        \"--ui-ring-color\": \"color-mix(in oklab, var(--destructive) 20%, transparent)\",\n      },\n    },\n  },\n\n  /** Its dark half, which is a different mix and a separate opt-in. */\n  invalidDark: {\n    ':is(.dark *)[aria-invalid=\"true\"]': {\n      \"--ui-ring-color\": \"var(--destructive)\",\n      \"@supports (color: color-mix(in lab, red, red))\": {\n        \"--ui-ring-color\": \"color-mix(in oklab, var(--destructive) 40%, transparent)\",\n      },\n    },\n  },\n});\n"
+    }
+  ]
+}

@@ -12,7 +12,10 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { when } from "../lib/shared-when.ts";
+import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -28,12 +31,12 @@ const item = ui({
 });
 
 const trigger = ui(
-  shared.textSm,
-  shared.fontMedium,
-  shared.transition,
-  shared.outlineNone,
-  shared.focusRingData,
-  shared.disabled,
+  text.sm,
+  text.medium,
+  box.transition,
+  box.outline,
+  ringSlot.focus,
+  when.disabled,
   {
     display: "flex",
     width: "100%",
@@ -74,7 +77,7 @@ const chevron = ui({
   "--ui-duration": "200ms",
 });
 
-const body = ui(shared.textSm, {
+const body = ui(text.sm, {
   paddingTop: "0px",
   paddingBottom: "calc(var(--spacing) * 4)",
 });

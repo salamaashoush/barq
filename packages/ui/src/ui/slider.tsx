@@ -11,11 +11,12 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { shared } from "../lib/shared.ts";
+import { box } from "../lib/shared-box.ts";
+import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
 
-const root = ui(shared.noSelect, {
+const root = ui(box.noSelect, {
   position: "relative",
   display: "flex",
   width: "100%",
@@ -47,7 +48,7 @@ const track = ui({
   },
 });
 
-const thumb = ui(shared.border, shared.shadow, shared.transition, shared.disabled, {
+const thumb = ui(box.border, box.shadow, box.transition, when.disabled, {
   position: "absolute",
   display: "block",
   width: "calc(var(--spacing) * 4)",
