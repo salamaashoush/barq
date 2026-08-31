@@ -9,7 +9,13 @@
 
 import "./base.ts";
 
-export { installTheme, themeCss, type ThemeSelection } from "./install.ts";
+export {
+  installTheme,
+  themeCss,
+  themeValues,
+  type ThemeSelection,
+  type ThemeValues,
+} from "./install.ts";
 export { chart, tokens, type TokenName } from "./tokens.ts";
 export {
   ACCENT_THEMES,

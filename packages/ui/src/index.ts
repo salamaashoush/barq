@@ -44,6 +44,8 @@ export {
   THEMES,
   type ThemeSelection,
   type ThemeTokens,
+  themeValues,
+  type ThemeValues,
   type TokenName,
   tokens,
 } from "./theme/index.ts";

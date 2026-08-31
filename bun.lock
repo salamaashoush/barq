@@ -29,6 +29,7 @@
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
         "@barqjs/primitives": ">=0.1.0",
+        "@barqjs/server": ">=0.1.0",
       },
     },
     "packages/benchmark": {
@@ -153,6 +154,7 @@
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/server": ">=0.1.0",
       },
     },
     "packages/primitives": {
@@ -313,6 +315,7 @@
         "@barqjs/css": ">=0.1.0",
         "@barqjs/lucide": ">=0.1.0",
         "@barqjs/primitives": ">=0.1.0",
+        "@barqjs/server": ">=0.1.0",
       },
     },
     "packages/ui-cli": {

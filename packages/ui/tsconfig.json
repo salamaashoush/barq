@@ -13,8 +13,12 @@
     "types": ["@types/bun"],
     "allowImportingTsExtensions": true,
     "exactOptionalPropertyTypes": false,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@barqjs/ui": ["./src/index.ts"],
+      "@barqjs/ui/*": ["./src/*"]
+    }
   },
-  "include": ["src/**/*", "tools/**/*", "types/**/*"],
+  "include": ["src/**/*", "tools/**/*", "types/**/*", "gallery/**/*"],
   "exclude": ["node_modules", "dist"]
 }

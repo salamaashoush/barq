@@ -6,7 +6,7 @@
  * question no headless DOM can answer.
  */
 
-import { render, signal } from "@barqjs/core";
+import { render, signal, type Child, type Incoming } from "@barqjs/core";
 import { css, globalCss } from "@barqjs/css";
 import {
   Accordion,
@@ -105,8 +105,6 @@ import {
   ItemMedia,
   ItemSeparator,
   ItemTitle,
-  ACCENT_THEMES,
-  installTheme,
   Kbd,
   KbdGroup,
   Label,
@@ -162,6 +160,8 @@ import {
   TooltipContent,
 } from "@barqjs/ui";
 import "@barqjs/ui/theme/reset.ts";
+import { Configurator } from "./configurator.tsx";
+
 import { AtSign } from "@barqjs/lucide/icons/at-sign";
 import { Bold } from "@barqjs/lucide/icons/bold";
 import { Copy } from "@barqjs/lucide/icons/copy";
@@ -169,8 +169,6 @@ import { FileText } from "@barqjs/lucide/icons/file-text";
 import { Search } from "@barqjs/lucide/icons/search";
 import { Inbox } from "@barqjs/lucide/icons/inbox";
 import { TriangleAlert } from "@barqjs/lucide/icons/triangle-alert";
-
-installTheme({ base: "neutral" });
 
 globalCss`
   body {
@@ -210,7 +208,7 @@ const heading = css`
   margin: 0 0 0.75rem;
 `;
 
-function Section(props: { title?: string; children?: unknown }) {
+function Section(props: Incoming<{ title?: string; children?: Child }>) {
   return (
     <section data-section={props.title?.()}>
       <h2 class={heading}>{props.title}</h2>
@@ -218,9 +216,6 @@ function Section(props: { title?: string; children?: unknown }) {
     </section>
   );
 }
-
-/** The seventeen accents, for switching theme with the page open. */
-const ACCENTS = ACCENT_THEMES.map((theme) => ({ id: theme.name, name: theme.title }));
 
 const SECTIONS = [
   { id: "overview", name: "Overview", body: "What it is" },
@@ -264,36 +259,11 @@ const FRUITS = [
 ];
 
 function Gallery() {
-  const dark = signal(false);
   const progress = signal(62);
 
   return (
     <main class={page} id="gallery">
-      <div class={row}>
-        <h1 style={{ margin: "0", "font-size": "1.5rem", "font-weight": "600" }}>@barqjs/ui</h1>
-        <span style={{ flex: "1" }} />
-        <Select
-          items={ACCENTS}
-          aria-label="Accent"
-          placeholder="Accent"
-          size="sm"
-          onSelectionChange={(key) => {
-            installTheme(
-              key === null ? { base: "neutral" } : { base: "neutral", accent: String(key) },
-            );
-          }}
-        >
-          {(entry: (typeof ACCENTS)[number]) => <SelectItem>{entry.name}</SelectItem>}
-        </Select>
-        <Switch
-          aria-label="Dark mode"
-          onChange={(on: boolean) => {
-            dark.set(on);
-            document.documentElement.classList.toggle("dark", on);
-          }}
-        />
-        <Label>Dark</Label>
-      </div>
+      <Configurator />
 
       <Section title="Button">
         <div class={row}>

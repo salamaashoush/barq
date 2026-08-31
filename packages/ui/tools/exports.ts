@@ -132,23 +132,25 @@ function main(): void {
   // CSS reads.
   manifest.sideEffects = ["./dist/theme/*.js", "./src/theme/*.ts"];
 
-  const entry = (name: string, file: string): Record<string, string> => ({
-    types: `./dist/${name}.d.ts`,
+  // SOURCE, under a `barq` condition, because no build can be right for every
+  // consumer: the same file emits `template()`/`spread` for the DOM and
+  // `html()`/`esc()` for a string render, and `hydratable` moves it again.
+  // `@barqjs/compiler/vite` puts `barq` first in every environment and compiles
+  // this package out of `node_modules`.
+  const entry = (file: string): Record<string, string> => ({
+    types: file,
+    barq: file,
     bun: file,
-    import: `./dist/${name}.js`,
   });
 
   manifest.exports = {
-    ".": { types: "./dist/index.d.ts", bun: "./src/index.ts", import: "./dist/index.js" },
-    "./theme": entry("theme/index", "./src/theme/index.ts"),
-    "./theme/reset": entry("theme/reset", "./src/theme/reset.ts"),
+    ".": entry("./src/index.ts"),
+    "./theme": entry("./src/theme/index.ts"),
+    "./theme/reset": entry("./src/theme/reset.ts"),
     ...Object.fromEntries(
       [...lib, ...ui].map((module_) => [
         `./${module_.name}`,
-        entry(
-          module_.file.startsWith("./lib/") ? `lib/${module_.name}` : `ui/${module_.name}`,
-          `./src/${module_.file.slice(2)}`,
-        ),
+        entry(`./src/${module_.file.slice(2)}`),
       ]),
     ),
     "./package.json": "./package.json",

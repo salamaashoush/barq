@@ -50,16 +50,8 @@ function resolve(theme: string | ThemeDefinition): ThemeDefinition {
   return found;
 }
 
-/**
- * A chosen radius REPLACES the base's own, rather than following it.
- *
- * Every base declares `radius` among its tokens, so appending wrote `--radius`
- * twice. The cascade took the second and the page was right, but `themeCss` is
- * also what a configurator shows someone to copy out.
- */
-function declarations(tokens: ThemeTokens, radius: string | undefined): string {
-  const all = radius === undefined ? tokens : { ...tokens, radius };
-  return Object.entries(all)
+function declarations(tokens: ThemeTokens): string {
+  return Object.entries(tokens)
     .map(([token, value]) => `  --${token}: ${value};`)
     .join("\n");
 }
@@ -77,20 +69,40 @@ function darkSelector(scope: string, dark: string): string {
   return `${dark} ${scope}, ${scope}${dark}`;
 }
 
-export function themeCss(selection: ThemeSelection): string {
+/** A selection resolved to the two token sets it stands for. */
+export interface ThemeValues {
+  readonly light: ThemeTokens;
+  readonly dark: ThemeTokens;
+}
+
+/**
+ * The tokens a selection comes to, before anything is done with them.
+ *
+ * `themeCss` is built from this, so a configurator showing the values and
+ * offering the CSS to copy is showing the CSS it offers. Doing the accent
+ * overlay a second time in the caller is how the two drift, and shadcn's own
+ * customiser has that shape: `getThemeCodeOKLCH` is a separate spelling of what
+ * the page is already displaying.
+ */
+export function themeValues(selection: ThemeSelection): ThemeValues {
   const base = resolve(selection.base);
   const accent = selection.accent === undefined ? undefined : resolve(selection.accent);
+  const radius = selection.radius;
+
+  const light = { ...base.light, ...accent?.light, ...(radius === undefined ? {} : { radius }) };
+  return { light, dark: { ...base.dark, ...accent?.dark } };
+}
+
+export function themeCss(selection: ThemeSelection): string {
   const scope = selection.scope ?? ":root";
   const dark = selection.dark ?? ".dark";
+  const { light, dark: night } = themeValues(selection);
 
-  const light = { ...base.light, ...accent?.light };
-  const night = { ...base.dark, ...accent?.dark };
-
-  const lightRule = `${scope} {\n${declarations(light, selection.radius)}\n}`;
+  const lightRule = `${scope} {\n${declarations(light)}\n}`;
   const darkRule =
     dark === "media"
-      ? `@media (prefers-color-scheme: dark) {\n  ${scope} {\n${declarations(night, undefined)}\n  }\n}`
-      : `${darkSelector(scope, dark)} {\n${declarations(night, undefined)}\n}`;
+      ? `@media (prefers-color-scheme: dark) {\n  ${scope} {\n${declarations(night)}\n  }\n}`
+      : `${darkSelector(scope, dark)} {\n${declarations(night)}\n}`;
 
   return `@layer barq.theme {\n${lightRule}\n${darkRule}\n}`;
 }

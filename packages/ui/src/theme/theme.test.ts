@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { collectCss } from "@barqjs/css";
 
-import { installTheme, themeCss } from "./install.ts";
+import { installTheme, themeCss, themeValues } from "./install.ts";
 import { ACCENT_THEMES, BASE_THEMES, findTheme, THEMES } from "./themes.ts";
 import { tokens } from "./tokens.ts";
 
@@ -63,6 +63,38 @@ describe("themeCss", () => {
     // twice. The cascade took the second and the page was right, but this is
     // also the text a configurator offers someone to copy out.
     expect(css.match(/--radius:/g)).toHaveLength(1);
+  });
+
+  test("themeValues is what themeCss is built from, so the two cannot disagree", () => {
+    // A configurator shows the values and offers the CSS. Resolving the accent
+    // overlay a second time in the caller is how those drift, which is the
+    // shape shadcn's own customiser has.
+    const selection = { base: "zinc", accent: "blue", radius: "0.45rem" } as const;
+    const { light, dark } = themeValues(selection);
+    const css = themeCss(selection);
+
+    for (const [token, value] of Object.entries(light)) {
+      expect(css, `--${token} is not in the CSS`).toContain(`--${token}: ${value};`);
+    }
+    for (const [token, value] of Object.entries(dark)) {
+      expect(css, `--${token} is not in the dark rule`).toContain(`--${token}: ${value};`);
+    }
+  });
+
+  test("an accent overlays its base rather than replacing the set", () => {
+    const { light } = themeValues({ base: "zinc", accent: "blue" });
+    const zinc = findTheme("zinc");
+    const blue = findTheme("blue");
+    expect(light["primary"]).toBe(blue?.light["primary"] as string);
+    expect(light["background"]).toBe(zinc?.light["background"] as string);
+  });
+
+  test("a chosen radius keeps the token's place rather than being appended", () => {
+    // Spreading a key that already exists updates the value and leaves the
+    // position, so `--radius` stays where the base declared it.
+    const base = Object.keys(themeValues({ base: "neutral" }).light);
+    const chosen = Object.keys(themeValues({ base: "neutral", radius: "0" }).light);
+    expect(chosen).toEqual(base);
   });
 
   test("a scoped theme is dark by an ancestor OR by itself", () => {
