@@ -4308,6 +4308,13 @@
       font-variant-numeric: var(--ui-ordinal,) var(--ui-slashed-zero,) var(--ui-numeric-figure,) var(--ui-numeric-spacing,) var(--ui-numeric-fraction,);
     }
 
+    [data-slot="resizable-handle"][data-variant="icon"] {
+      height: calc(var(--spacing) * 6);
+      width: var(--spacing);
+      border-radius: var(--radius);
+      background-color: var(--border);
+    }
+
     [data-slot="separator"] {
       flex-shrink: 0;
       background-color: var(--border);

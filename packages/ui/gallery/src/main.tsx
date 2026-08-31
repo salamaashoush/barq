@@ -148,6 +148,9 @@ import {
   PopoverTrigger,
   Progress,
   RangeCalendar,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
   RadioGroup,
   RadioGroupItem,
   ScrollArea,
@@ -601,6 +604,37 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="Resizable">
+        <div
+          style={{
+            height: "12rem",
+            width: "100%",
+            "max-width": "40rem",
+            border: "1px solid var(--border)",
+            "border-radius": "var(--radius)",
+            overflow: "hidden",
+          }}
+        >
+          <ResizablePanelGroup direction="horizontal">
+            <ResizablePanel defaultSize={30}>
+              <div style={{ padding: "1rem", "font-size": "0.875rem" }}>Sidebar</div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={70}>
+              <ResizablePanelGroup direction="vertical">
+                <ResizablePanel defaultSize={60}>
+                  <div style={{ padding: "1rem", "font-size": "0.875rem" }}>Editor</div>
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={40}>
+                  <div style={{ padding: "1rem", "font-size": "0.875rem" }}>Console</div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       </Section>
 

@@ -58,6 +58,7 @@ export const ENTRIES: readonly string[] = [
   "ui/popover.tsx",
   "ui/progress.tsx",
   "ui/radio-group.tsx",
+  "ui/resizable.tsx",
   "ui/scroll-area.tsx",
   "ui/select.tsx",
   "ui/separator.tsx",

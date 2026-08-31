@@ -406,6 +406,15 @@ export {
   type RadioGroupItemProps,
   type RadioGroupProps,
 } from "./ui/radio-group.tsx";
+export {
+  ResizableHandle,
+  type ResizableHandleProps,
+  ResizablePanel,
+  ResizablePanelGroup,
+  type ResizablePanelGroupProps,
+  type ResizablePanelProps,
+  type ResizeDirection,
+} from "./ui/resizable.tsx";
 export { ScrollArea, type ScrollAreaProps } from "./ui/scroll-area.tsx";
 export {
   Select,

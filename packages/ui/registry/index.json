@@ -961,6 +961,25 @@
       ]
     },
     {
+      "name": "resizable",
+      "type": "registry:ui",
+      "title": "Resizable",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/resizable.tsx"
+      ]
+    },
+    {
       "name": "scroll-area",
       "type": "registry:ui",
       "title": "Scroll Area",

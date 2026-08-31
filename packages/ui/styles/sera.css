@@ -3378,6 +3378,13 @@
       background-color: var(--foreground);
     }
 
+    [data-slot="resizable-handle"][data-variant="icon"] {
+      height: calc(var(--spacing) * 6);
+      width: var(--spacing);
+      border-radius: 0;
+      background-color: var(--border);
+    }
+
     [data-slot="select-trigger"] {
       gap: calc(var(--spacing) * 1.5);
       border-radius: 0;

@@ -241,7 +241,7 @@ what a stylesheet of your own selects:
 
 |                |                                                                                                                                                                                       |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Layout**     | `Card` `AspectRatio` `Separator` `ScrollArea` `Table` `Empty` `Item`                                                                                                                  |
+| **Layout**     | `Card` `AspectRatio` `Separator` `ScrollArea` `Table` `Empty` `Item` `Resizable`                                                                                                                  |
 | **Forms**      | `Button` `Input` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `Slider` `Select` `NativeSelect` `Combobox` `Toggle` `ToggleGroup` `Progress` `Field` `InputGroup` `ButtonGroup` `InputOTP` |
 | **Overlays**   | `Dialog` `AlertDialog` `Sheet` `Popover` `HoverCard` `Tooltip` `DropdownMenu` `ContextMenu` `Command`                                                                                 |
 | **Dates**      | `Calendar` `RangeCalendar` `DatePicker` `DateRangePicker`                                                                                                                             |
@@ -249,7 +249,7 @@ what a stylesheet of your own selects:
 | **Navigation** | `Breadcrumb` `Pagination` `Menubar` `Sidebar` `NavigationMenu`                                                                                                                                                   |
 | **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner` `Chart` `Toaster`                                                                                                                                   |
 
-Not built yet: `Carousel`, `Resizable` and `Drawer`.
+Not built yet: `Carousel` and `Drawer`.
 
 `DatePicker` is a composition rather than a transcription, because upstream
 ships no `date-picker.tsx`: shadcn documents a `<Popover>` around a `<Calendar>`

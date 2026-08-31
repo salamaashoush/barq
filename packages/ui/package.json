@@ -283,6 +283,11 @@
       "barq": "./src/ui/radio-group.tsx",
       "bun": "./src/ui/radio-group.tsx"
     },
+    "./resizable": {
+      "types": "./src/ui/resizable.tsx",
+      "barq": "./src/ui/resizable.tsx",
+      "bun": "./src/ui/resizable.tsx"
+    },
     "./scroll-area": {
       "types": "./src/ui/scroll-area.tsx",
       "barq": "./src/ui/scroll-area.tsx",
