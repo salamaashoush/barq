@@ -158,6 +158,11 @@
       "barq": "./src/ui/card.tsx",
       "bun": "./src/ui/card.tsx"
     },
+    "./carousel": {
+      "types": "./src/ui/carousel.tsx",
+      "barq": "./src/ui/carousel.tsx",
+      "bun": "./src/ui/carousel.tsx"
+    },
     "./chart": {
       "types": "./src/ui/chart.tsx",
       "barq": "./src/ui/chart.tsx",
@@ -414,5 +419,8 @@
   "peerDependenciesMeta": {},
   "engines": {
     "bun": ">=1.1.0"
+  },
+  "dependencies": {
+    "embla-carousel": "^8.6.0"
   }
 }

@@ -140,6 +140,17 @@ export {
   CardTitle,
 } from "./ui/card.tsx";
 export {
+  Carousel,
+  type CarouselApi,
+  type CarouselButtonProps,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  type CarouselOrientation,
+  CarouselPrevious,
+  type CarouselProps,
+} from "./ui/carousel.tsx";
+export {
   ChartBars,
   type ChartConfig,
   ChartContainer,

@@ -1,0 +1,13 @@
+{
+  "carousel": "relative",
+  "carousel-viewport": "overflow-hidden",
+  "carousel-content": "flex -ml-4",
+  "carousel-content-vertical": "-mt-4 flex-col",
+  "carousel-item": "min-w-0 shrink-0 grow-0 basis-full pl-4",
+  "carousel-item-vertical": "pt-4",
+  "carousel-button": "absolute size-8 rounded-full",
+  "carousel-previous-horizontal": "top-1/2 -left-12 -translate-y-1/2",
+  "carousel-previous-vertical": "-top-12 left-1/2 -translate-x-1/2 rotate-90",
+  "carousel-next-horizontal": "top-1/2 -right-12 -translate-y-1/2",
+  "carousel-next-vertical": "-bottom-12 left-1/2 -translate-x-1/2 rotate-90"
+}

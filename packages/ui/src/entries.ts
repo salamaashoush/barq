@@ -33,6 +33,7 @@ export const ENTRIES: readonly string[] = [
   "ui/button.tsx",
   "ui/calendar.tsx",
   "ui/card.tsx",
+  "ui/carousel.tsx",
   "ui/chart.tsx",
   "ui/checkbox.tsx",
   "ui/collapsible.tsx",

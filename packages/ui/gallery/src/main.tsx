@@ -42,6 +42,11 @@ import {
   ButtonGroupSeparator,
   ButtonGroupText,
   Card,
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
   CardAction,
   CardContent,
   CardDescription,
@@ -630,6 +635,34 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="Carousel">
+        <div style={{ width: "100%", "max-width": "24rem", "padding-inline": "3rem" }}>
+          <Carousel>
+            <CarouselContent>
+              {[1, 2, 3, 4, 5].map((each) => (
+                <CarouselItem>
+                  <Card>
+                    <CardContent
+                      style={{
+                        display: "flex",
+                        "aspect-ratio": "1 / 1",
+                        "align-items": "center",
+                        "justify-content": "center",
+                        padding: "1.5rem",
+                      }}
+                    >
+                      <span style={{ "font-size": "2rem", "font-weight": "600" }}>{each}</span>
+                    </CardContent>
+                  </Card>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselPrevious />
+            <CarouselNext />
+          </Carousel>
         </div>
       </Section>
 

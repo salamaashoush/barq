@@ -429,6 +429,27 @@
       ]
     },
     {
+      "name": "carousel",
+      "type": "registry:ui",
+      "title": "Carousel",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide",
+        "embla-carousel"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/carousel.tsx"
+      ]
+    },
+    {
       "name": "chart",
       "type": "registry:ui",
       "title": "Chart",
@@ -623,7 +644,6 @@
         "layers",
         "overlay",
         "props",
-        "shared-box",
         "shared-text",
         "slot"
       ],

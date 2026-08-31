@@ -247,13 +247,16 @@ what a stylesheet of your own selects:
 | **Dates**      | `Calendar` `RangeCalendar` `DatePicker` `DateRangePicker`                                                                                                                             |
 | **Disclosure** | `Accordion` `Collapsible` `Tabs`                                                                                                                                                      |
 | **Navigation** | `Breadcrumb` `Pagination` `Menubar` `Sidebar` `NavigationMenu`                                                                                                                                                   |
-| **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner` `Chart` `Toaster`                                                                                                                                   |
+| **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner` `Chart` `Toaster` `Carousel`                                                                                                                                   |
 
-Not built yet: `Carousel`.
 
 `DatePicker` is a composition rather than a transcription, because upstream
 ships no `date-picker.tsx`: shadcn documents a `<Popover>` around a `<Calendar>`
 and that is what this is.
+
+`Carousel` is the one component with a dependency outside this family:
+`embla-carousel`, the framework-agnostic core rather than the React wrapper
+shadcn uses. `barq-ui add carousel` names it as a package to install.
 
 ## Icons
 
