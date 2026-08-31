@@ -56,15 +56,13 @@ all survive that, because none of them is in the part being replaced. What the
 package ships is the result, as one class per DECLARATION:
 
 ```tsx
+const ui = layer("barq.ui");
+
 export const buttonVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui(text.sm, box.shadow, ring.focus, {
     display: "inline-flex",
     gap: "calc(var(--spacing) * 2)",
     borderRadius: "calc(var(--radius) - 2px)",
-    ":focus-visible": {
-      borderColor: "var(--ring)",
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
-    },
   }),
   // …
 });
@@ -75,9 +73,17 @@ one class rather than writing its own: 1,948 declarations across the package
 collapse to 433. The compiler folds the literal, so what ships is a class
 string and a stylesheet, with nothing computed at run time.
 
-The layer is what makes them lose to you, and it is why this is `atomsIn` and
-not `atoms`. An unlayered atom is built to WIN, which is right for an
-application styling itself and wrong for a library.
+`layer("barq.ui")` is what puts them in the layer, and the layer is what makes
+them lose to you: an unlayered atom is built to WIN, which is right for an
+application styling itself and wrong for a library. It is bound once a module
+rather than named at every call, because the compiler reads the layer as a
+literal in the module that names it.
+
+`text.sm`, `box.shadow` and `ring.focus` are shared TREATMENTS, in
+`src/lib/shared-*.ts`. The sheet deduplicated a declaration however many
+components wrote it; those files stop the SOURCE repeating it, and being
+separate files is what keeps a component from shipping rules it never
+composed.
 
 `tailwindcss` is a devDependency of this package for that tool and nothing else.
 Nothing it produces is imported at run time, the output is committed, and it

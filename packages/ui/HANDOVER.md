@@ -4,13 +4,17 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (296), aria (654), core (938),
+Green on the current tree: `bun test` passes in ui (302), aria (654), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
-css (76), ui-cli (47), lucide (17) and query (15), and `cargo test` in
-`compiler-rs` (472). `bunx tsc --noEmit` is clean in ui, ui-cli and lucide, all
-three build, `bun run verify` reports 2254 of 2254 declarations present, and
-`oxlint --type-aware --deny-warnings` is clean over `packages/ui` and
-`packages/aria`.
+css (81), ui-cli (47), lucide (17) and query (15), and `cargo test --workspace`
+in `compiler-rs` (481 + 24 + 30). `bunx tsc --noEmit` is clean in ui, ui-cli and
+lucide, all three build, `bun run verify` reports 2375 of 2375 declarations
+present, and `oxlint --type-aware --deny-warnings` is clean over `packages/ui`
+and `packages/aria`.
+
+`cargo test` alone runs the root package only, so the twenty-four parity tests
+in `crates/barq-css` never ran until the scripts asked for `--workspace`. They
+are what pins the class names against `@barqjs/css`'s runtime.
 
 Fifteen commits on `feat/ui-package`, and the tree is clean. `packages/ui`,
 `packages/ui-cli` and `packages/lucide` were entirely untracked before them.
@@ -39,18 +43,63 @@ Four things about it are load-bearing.
   with the same merge, and `uiProps` composes a caller's class the same way.
   This is not cosmetic: it is what stopped a calendar day button falling back to
   `inline-flex` and a nav button growing its padding back.
-- **The layer is written out at the call.** `atomsIn("barq.ui", { … })` and not
-  a helper, because the compiler folds by the name at the call site and reads
-  the layer as a literal. Through a wrapper all 192 blocks stayed on the runtime
-  and the whole stylesheet travelled inside the JS bundle.
+- **The layer is bound once a module.** `const ui = layer("barq.ui")`, and
+  `layer` is a wrapper the COMPILER reads: it takes the literal in the module
+  that names it, so the call site is `ui({ … })` and the layer is still folded
+  into every class name. A wrapper of one's own is not one it reads, and that
+  cost this package a session: all 192 calls stayed on the runtime and the whole
+  stylesheet travelled inside the JS bundle. A binding cannot cross a module
+  boundary, which is why every component declares its own.
 - **A shorthand expands.** `borderWidth` is four longhands, so a test asserting
   on `border-width: 1px` has to name one of them, and a physical `padding: 0`
   does not cancel a logical `padding-block`.
 
 `tools/atomize.ts` did the conversion from the blocks and is what a future
-transcription should go through. `tools/verify.ts` reads the literals directly
+transcription should go through. `tools/verify.ts` reads the CALLS directly
 now rather than the stylesheet, because a class is one declaration and
-`bestMatch` had nothing left to match on.
+`bestMatch` had nothing left to match on; it folds in the declarations of every
+`shared-*` group a call names, because a group IS that component declaring them.
+
+## The shared treatments are six files, and both halves of that matter
+
+The sheet was deduplicated and the source was not. `box-shadow:
+var(--ui-inset-shadow), …` was spelled out 52 times across the forty-six
+components and `text-sm` 43, so changing a shared treatment was 52 edits with
+nothing to say whether the fifty-third had been missed. `src/lib/shared-*.ts`
+names twenty-two of them, `createIn` folds each where it is declared, and 90
+calls compose one instead of repeating it: 2,452 declarations in the components
+down to 1,880, and 1,354 cross-file repeats down to 975.
+
+Three rules decide what belongs in a group, and they are the whole design.
+
+- **A group moves a WHOLE condition subtree or nothing.** `:focus-visible` sets
+  `--ui-ring-color` and an `@supports` overrides it; those two are ordered by
+  which was emitted last within the call, and split across modules they would be
+  ordered by which module was imported first. The `color-mix` would stop
+  applying and nothing would say so.
+- **A group goes FIRST in the call.** Merging keeps the last per property, so a
+  component that sets `border-width` after `box.border` still wins, which is
+  what a shared treatment has to allow.
+- **A file is a unit of shipping.** The compiler emits one stylesheet per
+  MODULE and a bundler drops a module nothing imports. One file holding all
+  twenty-two cost an application importing a single `Button` 3.19 KB of rules it
+  never composed, which is more than the whole extraction saved a full
+  application. Split by what travels together, that button pulls four files and
+  0.46 KB of overhead is left.
+
+There is one pair this arrangement can still get wrong, and `src/shared.test.ts`
+pins it. A group's rules are registered before any component's own, so a rule
+under an AT-RULE can be beaten by a later base rule for the same property, which
+specificity does not separate and the tier order only settles within one call.
+`box.forcedColors` is the only group that is such a rule, so it sits in one file
+with `box.outline`, after it. The general fix, if a second one ever appears, is
+a sub-layer per tier (`@layer barq.ui.base`, `@layer barq.ui.media`), which
+would make tier order global instead of per-call.
+
+The namespaces are short on purpose and two of them had to move: `text` and
+`box` collided with slot constants in three components, which `tsc` caught at
+once, and `state` shadowed the object `@barqjs/aria` hands a component in nine,
+which is why that one is `when`.
 
 ## What compression cost and what it bought
 
@@ -62,6 +111,10 @@ again:
 | `css` blocks, where this started | 133.4 KB | 13.89 KB | 11.13 KB |
 | atoms, first cut                 | 93.4 KB  | 18.85 KB | 16.20 KB |
 | atoms, after the naming work     | 93.2 KB  | 16.17 KB | 13.42 KB |
+| the same sheet, groups extracted | 87.5 KB  | 15.22 KB | 12.42 KB |
+
+The last row is the same 1,079 rules in a different order, so extraction bought
+nothing here and cost nothing: the sheet was already deduplicated.
 
 The entropy is all in the hashes and none in the readable part: blanking every
 hash takes brotli to 9.1 KB, while spelling the property as a two-character
@@ -74,16 +127,25 @@ a tier saves 0.3 KB and changes which of two same-tier atoms wins.
 
 ## Where to pick up
 
-**The source still repeats itself, even though the sheet does not.** 2,475
-declarations across the forty-six files, 494 distinct: `boxShadow: var(--ui-inset-shadow), …`
-is written out 52 times and `display: "flex"` 72. Changing a shared treatment
-is still 52 edits. `create()` in `@barqjs/css` builds named atom groups for
-exactly this, and doing it before the eight styles are re-sourced would stop
-the repetition being baked in eight times over.
+**What an application ships is already split per component**, and that was the
+open question. The compiler emits one stylesheet per MODULE and a bundler drops
+a module nothing imports, so one `Button` built through Vite carries 10.23 KB of
+CSS against the package's 87.5 KB, and the gallery, which uses all forty-six,
+carries 99.56 KB.
 
-**`atomsIn("barq.ui", …)` at 192 call sites is noisy.** The compiler needs a
-literal layer, so the fix is a wrapper the COMPILER knows rather than one the
-runtime provides.
+**The lever left is duplication ACROSS those stylesheets.** The gallery's asset
+is 99.56 KB where the deduplicated rule set is 87.5 KB: 12 KB is the same rule
+text emitted by two modules, which Vite has no reason to notice. Dropping a
+later duplicate is safe for the pair itself, since the two are identical, but it
+moves every rule after it — and a base rule against the same property under an
+`@media` is decided by order alone. That is the same pair `box.forcedColors`
+turns on, and the same answer: a sub-layer per tier first, then the dedup.
+
+**The remaining source repetition is not treatments.** `display: "flex"` 72
+times, `align-items: center` 59: single declarations shorter than any name for
+them. The long `box-shadow` is down from 52 spellings to 14, and every one of
+those is inside a condition a group cannot carry, because a group fixes its
+condition.
 
 Forty-six components. What is left of the classic registry, in value order:
 
