@@ -4,6 +4,7 @@
   "type": "registry:ui",
   "title": "Radio Group",
   "dependencies": [
+    "@barqjs/aria",
     "@barqjs/core",
     "@barqjs/css",
     "@barqjs/lucide"

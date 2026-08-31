@@ -5,6 +5,7 @@
   "title": "Slot",
   "description": "The props a component puts on its element.",
   "dependencies": [
+    "@barqjs/aria",
     "@barqjs/core"
   ],
   "registryDependencies": [

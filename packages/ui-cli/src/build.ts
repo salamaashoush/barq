@@ -12,8 +12,13 @@ import { dirname, join, relative, resolve } from "node:path";
 
 import type { ItemType, RegistryItem } from "./schema.ts";
 
+/**
+ * The same shape `@barqjs/ui`'s own `tools/registry.ts` uses, and for the same
+ * reason: what stands between the keyword and `from` is an import CLAUSE, so a
+ * multi-line import is one match rather than none.
+ */
 const IMPORT =
-  /(?:^|\n)\s*(?:import|export)\b[^;\n]*?\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']/g;
+  /(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?[\w*{}\s,$]+?\s*\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']/g;
 
 function specifiersIn(source: string): string[] {
   const out: string[] = [];

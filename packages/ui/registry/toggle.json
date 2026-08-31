@@ -4,6 +4,7 @@
   "type": "registry:ui",
   "title": "Toggle",
   "dependencies": [
+    "@barqjs/aria",
     "@barqjs/core",
     "@barqjs/css"
   ],

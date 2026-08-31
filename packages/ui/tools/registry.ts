@@ -60,9 +60,16 @@ const SCHEMA = "https://github.com/salamaashoush/barq/schema/registry-item.json"
  * `from` is required rather than "the first quoted string on the line", which
  * is what this used to be: `export type ButtonVariant = "default" | …` then
  * declared a dependency on a package called `default`.
+ *
+ * What stands between the keyword and `from` is an import CLAUSE and nothing
+ * else — names, braces, commas, `*`, whitespace. Matching "anything up to the
+ * end of the line" instead missed every import long enough to be wrapped, and
+ * that is most of them: `context-menu.tsx` declared no dependency on
+ * `@barqjs/aria` and none on `dropdown-menu`, so `add context-menu` wrote a
+ * file that imports a component the project does not have.
  */
 const IMPORT =
-  /(?:^|\n)\s*(?:import|export)\b[^;\n]*?\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']/g;
+  /(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?[\w*{}\s,$]+?\s*\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']/g;
 
 function specifiersIn(source: string): string[] {
   const out: string[] = [];

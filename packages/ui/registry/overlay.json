@@ -6,6 +6,7 @@
   "description": "The state a trigger and its overlay share, and the context that carries it.",
   "dependencies": [
     "@barqjs/aria",
+    "@barqjs/core",
     "@barqjs/primitives"
   ],
   "registryDependencies": [],

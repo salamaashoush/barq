@@ -243,6 +243,45 @@ describe.if(ready)("barq-ui", () => {
     );
   });
 
+  test("build sees an import that is wrapped over several lines", async () => {
+    // The regex behind this could not see past the end of a line, so a
+    // component whose import list was long enough to wrap declared none of it:
+    // in `@barqjs/ui` itself that cost fourteen items their dependencies, and
+    // `add context-menu` wrote a file importing a component the project did
+    // not have.
+    await barq(root, "init", "--yes");
+    await barq(root, "add", "badge");
+    mkdirSync(join(root, "src/components/ui"), { recursive: true });
+    writeFileSync(
+      join(root, "src/components/ui/panel.tsx"),
+      [
+        "import {",
+        "  Badge,",
+        "  type BadgeProps,",
+        '} from "./badge.tsx";',
+        "import {",
+        "  css,",
+        "  clsx,",
+        '} from "@barqjs/css";',
+        "",
+        "export function Panel() {",
+        "  return [Badge, css, clsx] as unknown as BadgeProps;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await barq(root, "build", "src/components");
+    expect(result.code).toBe(0);
+
+    const item = JSON.parse(file(root, "registry/panel.json")) as {
+      dependencies: string[];
+      registryDependencies: string[];
+    };
+    expect(item.dependencies).toContain("@barqjs/css");
+    expect(item.registryDependencies).toContain("badge");
+  });
+
   test("an unknown component names itself", async () => {
     await barq(root, "init", "--yes");
     const result = await barq(root, "add", "nonesuch");

@@ -4,11 +4,13 @@
   "type": "registry:ui",
   "title": "Menubar",
   "dependencies": [
+    "@barqjs/aria",
     "@barqjs/core",
     "@barqjs/css"
   ],
   "registryDependencies": [
     "button",
+    "dropdown-menu",
     "layers",
     "props",
     "slot"
