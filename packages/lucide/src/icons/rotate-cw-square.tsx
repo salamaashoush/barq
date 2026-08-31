@@ -1,0 +1,13 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function RotateCwSquare(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M12 5H6a2 2 0 0 0-2 2v3" />
+      <path d="m9 8 3-3-3-3" />
+      <path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+    </svg>
+  );
+}

@@ -1,0 +1,12 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function BookmarkCheck(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" />
+      <path d="m9 10 2 2 4-4" />
+    </svg>
+  );
+}

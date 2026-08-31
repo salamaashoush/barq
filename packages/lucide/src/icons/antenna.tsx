@@ -1,0 +1,16 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function Antenna(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M2 12 7 2" />
+      <path d="m7 12 5-10" />
+      <path d="m12 12 5-10" />
+      <path d="m17 12 5-10" />
+      <path d="M4.5 7h15" />
+      <path d="M12 16v6" />
+    </svg>
+  );
+}

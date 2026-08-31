@@ -1,0 +1,12 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function Mail(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7" />
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+    </svg>
+  );
+}

@@ -1,0 +1,14 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function Tent(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M3.5 21 14 3" />
+      <path d="M20.5 21 10 3" />
+      <path d="M15.5 21 12 15l-3.5 6" />
+      <path d="M2 21h20" />
+    </svg>
+  );
+}

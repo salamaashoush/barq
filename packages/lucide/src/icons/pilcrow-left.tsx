@@ -1,0 +1,15 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function PilcrowLeft(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M14 3v11" />
+      <path d="M14 9h-3a3 3 0 0 1 0-6h9" />
+      <path d="M18 3v11" />
+      <path d="M22 18H2l4-4" />
+      <path d="m6 22-4-4" />
+    </svg>
+  );
+}

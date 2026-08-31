@@ -1,0 +1,13 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function PlayingCards(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M14.832 8.445a1 1 0 00-1.589-.098l-2.075 3.098a1 1 0 000 1.11l2 3a1 1 0 001.664 0l2-3a1 1 0 000-1.11z" />
+      <path d="m7.18 20.827-5-11a2 2 0 01.993-2.647L7 5.44" />
+      <rect x="7" y="2" width="14" height="20" rx="2" />
+    </svg>
+  );
+}
