@@ -153,6 +153,25 @@ describe("Collapsible", () => {
       document.querySelector('[data-slot="collapsible-content"]')?.getAttribute("data-expanded"),
     ).toBe("");
   });
+
+  test("has an element of its own, so the slot and a class both land", () => {
+    // `@barqjs/aria`'s `<Disclosure>` renders nothing, so this used to be the
+    // accordion's missing-dividers bug again: `data-slot="collapsible"` was on
+    // no element at all and a `class` handed here vanished in silence. shadcn's
+    // is Radix's `Collapsible.Root`, which is a real `<div>`.
+    render(() => (
+      <Collapsible class="mine">
+        <CollapsibleTrigger>Details</CollapsibleTrigger>
+        <CollapsibleContent>Body</CollapsibleContent>
+      </Collapsible>
+    ));
+    const root = document.querySelector('[data-slot="collapsible"]');
+    expect(root, "nothing on the page carries the slot").not.toBeNull();
+    expect(root?.classList.contains("mine")).toBe(true);
+    // The trigger is INSIDE it, which is what makes the div a wrapper rather
+    // than a sibling.
+    expect(root?.querySelector('[data-slot="collapsible-trigger"]')).not.toBeNull();
+  });
 });
 
 describe("Tooltip", () => {

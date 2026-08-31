@@ -11,7 +11,9 @@ import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
+import { uiProps } from "../lib/slot.ts";
 import { cn } from "../lib/utils.ts";
+import type { UiProps } from "../lib/props.ts";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -47,7 +49,7 @@ const panel = ui({
   },
 });
 
-export interface CollapsibleProps extends DisclosureComponentProps {}
+export interface CollapsibleProps extends DisclosureComponentProps, UiProps {}
 
 /**
  * ```tsx
@@ -58,9 +60,25 @@ export interface CollapsibleProps extends DisclosureComponentProps {}
  * ```
  *
  * The panel stays in the document while collapsed, so find-in-page reaches it.
+ *
+ * The `<div>` is this component's own. `@barqjs/aria`'s `<Disclosure>` renders
+ * no element, and shadcn's is Radix's `Collapsible.Root`, which does: without
+ * one there is nothing on the page carrying `data-slot="collapsible"` and a
+ * `class` handed here went nowhere.
  */
 export function Collapsible(props: Incoming<CollapsibleProps>) {
-  return <Disclosure {...props} />;
+  return (
+    <div {...uiProps("collapsible", "", props)}>
+      <Disclosure
+        isExpanded={props.isExpanded?.()}
+        defaultExpanded={props.defaultExpanded?.()}
+        isDisabled={props.isDisabled?.()}
+        onExpandedChange={props.onExpandedChange?.()}
+      >
+        {props.children}
+      </Disclosure>
+    </div>
+  );
 }
 
 export interface CollapsibleTriggerProps extends DisclosureButtonComponentProps {}

@@ -263,7 +263,17 @@ export function useDisclosure(): DisclosureContextValue {
   return value;
 }
 
-export interface DisclosureComponentProps extends StyleProps {
+/**
+ * NO `StyleProps`, and that is the whole of what this component is.
+ *
+ * `<Disclosure>` renders no element — it is a provider, like every grouping
+ * component here — so a `class`, an `id` or a `data-*` handed to it has nothing
+ * to land on and vanishes in silence. It used to declare them anyway, and
+ * `@barqjs/ui`'s accordion lost its dividers to exactly that on
+ * `<DisclosureGroupItem>`. A consumer that needs an element brings its own
+ * around this one, which is what `<Collapsible>` and `<AccordionItem>` do.
+ */
+export interface DisclosureComponentProps {
   children?: Child;
   isExpanded?: boolean;
   defaultExpanded?: boolean;
@@ -465,7 +475,8 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
   );
 }
 
-export interface DisclosureGroupItemComponentProps extends StyleProps {
+/** No `StyleProps`, for the reason on {@link DisclosureComponentProps}. */
+export interface DisclosureGroupItemComponentProps {
   children?: Child;
   isDisabled?: boolean;
 }

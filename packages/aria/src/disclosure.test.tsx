@@ -136,6 +136,28 @@ function expandedNames(): string[] {
     .map((element: Element) => element.textContent ?? "");
 }
 
+describe("a provider renders no element, and its type says so", () => {
+  test("Disclosure puts nothing of its own between the button and the panel", () => {
+    // The type used to extend `StyleProps`, so a `class`, an `id` and every
+    // `data-*` were accepted and dropped in silence. `@barqjs/ui`'s accordion
+    // lost its dividers to exactly that on `<DisclosureGroupItem>`, and its
+    // `<Collapsible>` had nothing carrying `data-slot="collapsible"`.
+    //
+    // A consumer that needs an element brings its own around this one. This
+    // test is what stops the promise coming back: it pins that there is no
+    // element here to honour it with.
+    const host = document.createElement("div");
+    document.body.append(host);
+    render(() => <Details />, { container: host });
+
+    // The button and the panel, and nothing wrapping them.
+    expect(host.children.length).toBe(2);
+    for (const child of host.children) {
+      expect(child.getAttribute("class")).toBeNull();
+    }
+  });
+});
+
 describe("DisclosureGroup", () => {
   test("every section has its own button and panel", () => {
     render(() => <Accordion />);
