@@ -698,6 +698,26 @@
       ]
     },
     {
+      "name": "input-otp",
+      "type": "registry:ui",
+      "title": "Input Otp",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "shared-text",
+        "slot"
+      ],
+      "files": [
+        "ui/input-otp.tsx"
+      ]
+    },
+    {
       "name": "input",
       "type": "registry:ui",
       "title": "Input",

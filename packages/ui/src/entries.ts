@@ -45,6 +45,7 @@ export const ENTRIES: readonly string[] = [
   "ui/field.tsx",
   "ui/hover-card.tsx",
   "ui/input-group.tsx",
+  "ui/input-otp.tsx",
   "ui/input.tsx",
   "ui/item.tsx",
   "ui/kbd.tsx",

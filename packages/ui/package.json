@@ -217,6 +217,11 @@
       "barq": "./src/ui/input-group.tsx",
       "bun": "./src/ui/input-group.tsx"
     },
+    "./input-otp": {
+      "types": "./src/ui/input-otp.tsx",
+      "barq": "./src/ui/input-otp.tsx",
+      "bun": "./src/ui/input-otp.tsx"
+    },
     "./input": {
       "types": "./src/ui/input.tsx",
       "barq": "./src/ui/input.tsx",

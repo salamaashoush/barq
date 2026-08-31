@@ -291,6 +291,14 @@ export {
   InputGroupTextarea,
   type InputGroupTextareaProps,
 } from "./ui/input-group.tsx";
+export {
+  InputOTP,
+  InputOTPGroup,
+  type InputOTPProps,
+  InputOTPSeparator,
+  InputOTPSlot,
+  type InputOTPSlotProps,
+} from "./ui/input-otp.tsx";
 export { Input, type InputProps, Textarea, type TextareaProps } from "./ui/input.tsx";
 export {
   Item,
