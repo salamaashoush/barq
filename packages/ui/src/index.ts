@@ -131,6 +131,7 @@ export {
   CollapsibleTrigger,
   type CollapsibleTriggerProps,
 } from "./ui/collapsible.tsx";
+export { Combobox, type ComboboxProps } from "./ui/combobox.tsx";
 export {
   Command,
   CommandDialog,

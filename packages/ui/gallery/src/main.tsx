@@ -50,6 +50,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  Combobox,
   Command,
   CommandItem,
   CommandShortcut,
@@ -546,6 +547,18 @@ function Gallery() {
               </CommandItem>
             )}
           </Command>
+        </div>
+      </Section>
+
+      <Section title="Combobox">
+        <div class={stack}>
+          <Combobox
+            items={FRUITS}
+            placeholder="Select a fruit"
+            searchPlaceholder="Search fruit"
+            aria-label="Fruit"
+            label={(entry: (typeof FRUITS)[number]) => entry.name}
+          />
         </div>
       </Section>
 

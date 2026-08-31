@@ -438,7 +438,7 @@ export function CommandItem(props: Incoming<CommandItemProps>) {
   return (
     <Option
       {...props}
-      data-slot="command-item"
+      data-slot={props["data-slot"]?.() ?? "command-item"}
       class={clsx(item, props.class?.(), props.className?.())}
     >
       {props.children}

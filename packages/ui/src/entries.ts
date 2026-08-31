@@ -27,6 +27,7 @@ export const ENTRIES: readonly string[] = [
   "ui/card.tsx",
   "ui/checkbox.tsx",
   "ui/collapsible.tsx",
+  "ui/combobox.tsx",
   "ui/command.tsx",
   "ui/dialog.tsx",
   "ui/dropdown-menu.tsx",
@@ -57,5 +58,5 @@ export const ENTRIES: readonly string[] = [
   "ui/tabs.tsx",
   "ui/toggle-group.tsx",
   "ui/toggle.tsx",
-  "ui/tooltip.tsx"
+  "ui/tooltip.tsx",
 ];

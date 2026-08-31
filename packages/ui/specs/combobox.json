@@ -1,0 +1,6 @@
+{
+  "combobox-trigger": "w-full justify-between font-normal",
+  "combobox-content": "w-full p-0",
+  "combobox-item": "relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none is-focused:bg-accent is-focused:text-accent-foreground is-disabled:pointer-events-none is-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "combobox-item-indicator": "pointer-events-none absolute right-2 flex size-4 items-center justify-center"
+}

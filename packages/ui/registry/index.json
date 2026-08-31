@@ -322,6 +322,27 @@
       ]
     },
     {
+      "name": "combobox",
+      "type": "registry:ui",
+      "title": "Combobox",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "command",
+        "layers",
+        "popover",
+        "props"
+      ],
+      "files": [
+        "ui/combobox.tsx"
+      ]
+    },
+    {
       "name": "command",
       "type": "registry:ui",
       "title": "Command",

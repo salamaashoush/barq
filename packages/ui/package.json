@@ -128,6 +128,11 @@
       "bun": "./src/ui/collapsible.tsx",
       "import": "./dist/ui/collapsible.js"
     },
+    "./combobox": {
+      "types": "./dist/ui/combobox.d.ts",
+      "bun": "./src/ui/combobox.tsx",
+      "import": "./dist/ui/combobox.js"
+    },
     "./command": {
       "types": "./dist/ui/command.d.ts",
       "bun": "./src/ui/command.tsx",
