@@ -664,9 +664,18 @@ export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
       <Show when={tabs.state.selectedKey()} keyed>
-        {(scope: unknown) => {
+        {() => {
+          // `getOwner()`, the way `TabList` above does it. A keyed `Show` calls
+          // its slot with (scope, VALUE), and the compiler supplies the scope
+          // parameter itself — so a callback declaring ONE parameter binds it to
+          // the value, which here is the selected KEY. Naming that parameter
+          // `scope` and forwarding it handed `renderPanel` the string: every
+          // component in a panel that provides context died on
+          // `Cannot create property 'kids' on string`, which is `enter()` being
+          // given a key. `<Collapsible>` in a tab panel was enough to hit it.
+          const owner = getOwner();
           const selected = untrack(() => tabs.state.selectedItem());
-          return renderPanel(scope, selected === null ? undefined : (selected.value as T));
+          return renderPanel(owner, selected === null ? undefined : (selected.value as T));
         }}
       </Show>
     </div>

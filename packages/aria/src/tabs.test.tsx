@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming, signal } from "@barqjs/core";
+import {
+  context,
+  flush,
+  getContext,
+  getOwner,
+  provide,
+  signal,
+  type Child,
+  type Incoming,
+} from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { Tab, TabList, TabPanel, Tabs } from "./tabs.tsx";
@@ -39,6 +48,56 @@ function Sections(
     </Tabs>
   );
 }
+
+/**
+ * A panel is a SCOPE, and what proves it is a component that needs one.
+ *
+ * `<TabPanel>` named its `<Show keyed>` callback parameter `scope` and forwarded
+ * it. A keyed `Show` calls its slot with (scope, VALUE) and the compiler
+ * supplies the scope parameter itself, so a callback declaring one parameter
+ * binds it to the value — the selected KEY. `renderPanel` was therefore handed
+ * the string `"overview"` as its scope, and every component in a panel that
+ * provides context died inside `enter()` on
+ * `Cannot create property 'kids' on string`.
+ *
+ * Nothing caught it because a panel of PROSE needs no scope: the whole suite
+ * rendered `<p>{section.body}</p>` and passed. It takes a provider to see.
+ */
+describe("a panel is a scope", () => {
+  const Ctx = context<string | null>(null);
+
+  function Provider(props: Incoming<{ children?: Child }>) {
+    const owner = getOwner();
+    if (owner === null) return <>{props.children}</>;
+    return provide(
+      owner,
+      Ctx,
+      () => "provided",
+      () => props.children,
+    ) as never;
+  }
+
+  function Reader() {
+    return <span data-testid="read">{getContext(Ctx) ?? "missing"}</span>;
+  }
+
+  test("a component that provides context survives inside a panel", () => {
+    render(() => (
+      <Tabs items={SECTIONS}>
+        <TabList aria-label="History">{(section: Section) => <Tab>{section.name}</Tab>}</TabList>
+        <TabPanel>
+          {(section: Section) => (
+            <Provider>
+              <Reader />
+              <i>{section.name}</i>
+            </Provider>
+          )}
+        </TabPanel>
+      </Tabs>
+    ));
+    expect(screen.getByTestId("read").textContent).toBe("provided");
+  });
+});
 
 describe("Tabs", () => {
   test("is a named tablist of tabs with one panel", () => {
