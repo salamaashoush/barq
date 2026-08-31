@@ -17,7 +17,16 @@
  * the page is still there.
  */
 
-import { type Accessor, type Child, type Incoming, effect, Portal, Show } from "@barqjs/core";
+import {
+  type Accessor,
+  type Child,
+  type Incoming,
+  effect,
+  onCleanup,
+  Portal,
+  Show,
+  signal,
+} from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import { focusScope, type FocusScopeOptions } from "./focus.ts";
@@ -63,6 +72,19 @@ export interface DialogResult {
   dialogProps: DOMProps;
   /** For the heading that names the dialog. */
   titleProps: DOMProps;
+  /** For the element that describes it. */
+  descriptionProps: DOMProps;
+  /** The same id, for a component that builds its own props. */
+  descriptionId: Accessor<string>;
+  /**
+   * Whether a description is on screen, which is what makes the dialog point
+   * at one.
+   *
+   * A dialog that names an `aria-describedby` no element carries is announced
+   * with nothing where the description should be, so the attribute appears
+   * only once something has registered and goes again when it leaves.
+   */
+  readonly describe: (has: boolean) => void;
 }
 
 /**
@@ -74,17 +96,30 @@ export interface DialogResult {
  */
 export function dialog(options: DialogOptions = {}): DialogResult {
   const titleId = id();
+  const descriptionId = id();
+  // A count and not a flag: two descriptions is a mistake, but one leaving
+  // while the other stays must not take the attribute with it.
+  const described = signal(0);
   const labelled = (): string | undefined => access(options["aria-labelledby"]) ?? titleId();
 
   return {
     titleProps: { id: titleId },
+    descriptionProps: { id: descriptionId },
+    descriptionId,
+    describe: (has) => described.set(described() + (has ? 1 : -1)),
     dialogProps: mergeProps(filterDOMProps(options, { labelable: true }), {
       role: () => access(options.role) ?? "dialog",
       tabIndex: -1,
       "aria-label": () => access(options["aria-label"]),
       "aria-labelledby": () =>
         access(options["aria-label"]) === undefined ? labelled() : undefined,
-      "aria-describedby": () => access(options["aria-describedby"]),
+      // Only the fallback. `filterDOMProps` already forwarded the caller's
+      // own, and `mergeProps` COMBINES this attribute rather than replacing
+      // it, so returning it here again wrote it twice.
+      "aria-describedby": () =>
+        access(options["aria-describedby"]) === undefined && described() > 0
+          ? descriptionId()
+          : undefined,
     }),
   };
 }
@@ -118,9 +153,9 @@ export interface DialogComponentProps extends StyleProps {
 export function Dialog(props: Incoming<DialogComponentProps>) {
   const domRef = makeRef<HTMLElement>();
   const options = fromProps(props);
-  const { dialogProps, titleProps } = dialog(options);
+  const { dialogProps, titleProps, descriptionId, describe } = dialog(options);
 
-  provideDialog(titleProps);
+  provideDialog({ titleProps, descriptionId, describe });
 
   const elementProps = mergeProps(
     dialogProps,
@@ -595,16 +630,43 @@ export function PortalProvider(props: Incoming<PortalProviderComponentProps>) {
   return <>{props.children}</>;
 }
 
-const DialogTitleContext = context<DOMProps | null>(null);
+interface DialogSlots {
+  titleProps: DOMProps;
+  descriptionId: Accessor<string>;
+  readonly describe: (has: boolean) => void;
+}
 
-function provideDialog(titleProps: DOMProps): void {
+export interface DialogDescription {
+  readonly id: Accessor<string>;
+}
+
+const DialogSlotsContext = context<DialogSlots | null>(null);
+
+function provideDialog(slots: DialogSlots): void {
   const owner = getOwner();
-  if (owner !== null) install(owner, DialogTitleContext, () => titleProps);
+  if (owner !== null) install(owner, DialogSlotsContext, () => slots);
 }
 
 /** The props the enclosing dialog's title element must carry, if any. */
 export function useDialogTitle(): DOMProps | null {
-  return getContext(DialogTitleContext) ?? null;
+  return getContext(DialogSlotsContext)?.titleProps ?? null;
+}
+
+/**
+ * The props the enclosing dialog's description must carry, and the
+ * registration that makes the dialog point at it.
+ *
+ * Calling this is what turns `aria-describedby` on, and leaving turns it off
+ * again: a design system's `<DialogDescription>` is the only thing that knows
+ * a description exists, and without this the paragraph under the title is read
+ * only by someone who goes looking for it.
+ */
+export function useDialogDescription(): DialogDescription | null {
+  const slots = getContext(DialogSlotsContext);
+  if (slots === null || slots === undefined) return null;
+  slots.describe(true);
+  onCleanup(() => slots.describe(false));
+  return { id: slots.descriptionId };
 }
 
 export interface DialogTriggerValue {

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { type Incoming, signal } from "@barqjs/core";
+import { type Incoming, Show, signal } from "@barqjs/core";
 import { accessibleName, render, screen, tick, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import { ref } from "@barqjs/primitives/refs";
-import { Dialog, Heading, Modal, Popover } from "./dialog.tsx";
+import { Dialog, Heading, Modal, Popover, useDialogDescription } from "./dialog.tsx";
 
 /** The portal builds on a microtask after its marker connects. */
 async function settle(): Promise<void> {
@@ -159,7 +159,63 @@ describe("Dialog", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.hasAttribute("aria-labelledby")).toBe(false);
   });
+
+  test("a dialog with no description points at nothing", () => {
+    // An `aria-describedby` naming an id no element carries is announced as a
+    // gap where the description should be.
+    render(() => (
+      <Dialog aria-label="Named">
+        <p>Body</p>
+      </Dialog>
+    ));
+    expect(screen.getByRole("dialog").hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  test("a description registers itself, and the dialog points at it", () => {
+    render(() => (
+      <Dialog aria-label="Named">
+        <Description>Three files will be deleted.</Description>
+      </Dialog>
+    ));
+    const dialog = screen.getByRole("dialog");
+    const described = dialog.getAttribute("aria-describedby");
+    expect(described).not.toBeNull();
+    expect(document.getElementById(described ?? "")?.textContent).toBe(
+      "Three files will be deleted.",
+    );
+  });
+
+  test("an explicit aria-describedby wins, because the caller knows better", () => {
+    render(() => (
+      <Dialog aria-label="Named" aria-describedby="elsewhere">
+        <Description>Ignored</Description>
+      </Dialog>
+    ));
+    expect(screen.getByRole("dialog").getAttribute("aria-describedby")).toBe("elsewhere");
+  });
+
+  test("a description that leaves takes the attribute with it", async () => {
+    const showing = signal(true);
+    render(() => (
+      <Dialog aria-label="Named">
+        <Show when={showing()}>
+          <Description>Gone in a moment.</Description>
+        </Show>
+      </Dialog>
+    ));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.hasAttribute("aria-describedby")).toBe(true);
+    showing.set(false);
+    await tick();
+    expect(dialog.hasAttribute("aria-describedby")).toBe(false);
+  });
 });
+
+/** What a design system's `<DialogDescription>` is, minus the styling. */
+function Description(props: Incoming<{ children?: unknown }>) {
+  const described = useDialogDescription();
+  return <p id={described?.id()}>{props.children as never}</p>;
+}
 
 /**
  * A popover with no `style` prop of its own.
