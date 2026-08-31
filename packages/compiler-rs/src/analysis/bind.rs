@@ -131,7 +131,7 @@ pub fn classify<'a>(
         slot_forwards: Vec::new(),
         tagged: 0,
     };
-    binder.imports(program, &options.module_source);
+    binder.imports(program, &options.module_source, &options.server_source);
     binder.env.namespaces = binder.namespaces.clone();
     binder.exports(program);
     binder.visit_program(program);
@@ -297,16 +297,28 @@ fn is_root_mount(name: &str) -> bool {
     matches!(name, "render" | "hydrate" | "renderAndHydrate")
 }
 
+/// The server's four, which are the same position on the other backend.
+///
+/// Without this the callback took no scope, the root component was called with
+/// `null`, and every `each` and `branch` below it opened a scope parented to
+/// NOTHING. A provider installs on the ambient owner and its consumer inside a
+/// row then finds nothing: on the server every collection component in a design
+/// system — an accordion, a tab list, a menu — threw "must be rendered inside".
+fn is_server_mount(name: &str) -> bool {
+    matches!(name, "renderToString" | "renderToStringAsync" | "renderPage" | "renderToStream")
+}
+
 impl<'a> Binder<'_, 'a> {
     /// A flat scan over top-level statements, not a walk: `build_module_record`
     /// does not exist on oxc 0.143, and an import binding is an ordinary symbol
     /// anyway.
-    fn imports(&mut self, program: &Program<'a>, module_source: &str) {
+    fn imports(&mut self, program: &Program<'a>, module_source: &str, server_source: &str) {
         for statement in &program.body {
             let Statement::ImportDeclaration(declaration) = statement else { continue };
             let source = declaration.source.value.as_str();
             let is_runtime = source == module_source;
-            let mounts_from_here = is_runtime || mounts_roots(source);
+            let is_server = source == server_source;
+            let mounts_from_here = is_runtime || is_server || mounts_roots(source);
             if !is_runtime && !mounts_from_here {
                 continue;
             }
@@ -317,8 +329,13 @@ impl<'a> Binder<'_, 'a> {
                         let ModuleExportName::IdentifierName(name) = &imported.imported else {
                             continue;
                         };
+                        let mounts = if is_server {
+                            is_server_mount(name.name.as_str())
+                        } else {
+                            is_root_mount(name.name.as_str())
+                        };
                         if mounts_from_here
-                            && is_root_mount(name.name.as_str())
+                            && mounts
                             && let Some(symbol) = imported.local.symbol_id.get()
                         {
                             self.root_mounts.push(symbol);

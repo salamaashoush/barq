@@ -63,6 +63,7 @@ export {
   generateHydrationScript,
   getRenderData,
   renderPage,
+  type RootRender,
   renderToStream,
   renderToString,
   renderToStringAsync,

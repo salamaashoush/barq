@@ -1754,6 +1754,57 @@ render(() => <App />);
         );
     }
 
+    /// The server's renderers open a root too, and this one had been missed.
+    ///
+    /// `renderToString(() => <App/>)` is the same position as
+    /// `render(() => <App/>, host)`. Left uncompiled the arrow takes no scope,
+    /// so the root ran against the module-level `null` and every `each` and
+    /// `branch` under it opened a scope parented to NOTHING. A provider
+    /// installs on the ambient owner; its consumer inside a row found nothing,
+    /// and on the server an accordion, a tab list and a menu each threw "must
+    /// be rendered inside" while the client was fine.
+    #[test]
+    fn a_server_render_takes_a_scope_too() {
+        let source = r#"import { renderToString } from "@barqjs/server";
+export const page = () => renderToString(() => <App />);
+"#;
+        let output = compile(
+            source,
+            &ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("entry.tsx") },
+        )
+        .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
+        assert!(
+            output.code.contains("renderToString((_s$) =>"),
+            "the server root arrow did not take a scope:\n{}",
+            output.code
+        );
+        assert!(
+            !output.code.contains("const _s$ = null"),
+            "the root still fell back to the module-level null:\n{}",
+            output.code
+        );
+    }
+
+    /// Every one of them, since an application picks by what it needs.
+    #[test]
+    fn the_streaming_and_page_renderers_are_roots_as_well() {
+        for name in ["renderToStringAsync", "renderPage", "renderToStream"] {
+            let source = format!(
+                "import {{ {name} }} from \"@barqjs/server\";\nexport const page = () => {name}(() => <App />);\n"
+            );
+            let output = compile(
+                &source,
+                &ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("entry.tsx") },
+            )
+            .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
+            assert!(
+                output.code.contains(&format!("{name}((_s$) =>")),
+                "{name} did not take a scope:\n{}",
+                output.code
+            );
+        }
+    }
+
     /// A `render` that is NOT one of the framework's is left alone.
     #[test]
     fn a_local_render_is_not_a_root_mount() {

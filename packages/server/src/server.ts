@@ -53,14 +53,29 @@ import { createSeedEncoder, encodeSeed, serializationAdapters } from "./codec.ts
  * `@barqjs/testing` handed it the output of `html()`, which is the ordinary way
  * to write the server half of a hydration test.
  */
-export function renderToString(fn: () => JSXElement | SsrHtml): string {
+/**
+ * The root of a server render, which takes the scope it is given.
+ *
+ * `render` on the DOM backend has always handed its callback a scope; this did
+ * not, so the root component was called with `null` and every `each` and
+ * `branch` below it opened a scope parented to nothing. A provider installs on
+ * the ambient owner and its consumer inside a row found nothing, so on the
+ * server an accordion, a tab list and a menu each threw "must be rendered
+ * inside" — the client was fine and only the server was wrong.
+ *
+ * The parameter is optional so a hand-written caller — a test, a snippet, any
+ * module the compiler never saw — still type-checks with `() => <App />`.
+ */
+export type RootRender = (scope?: Scope) => JSXElement | SsrHtml;
+
+export function renderToString(fn: RootRender): string {
   let container: HTMLElement | null = null;
   let markup: string | null = null;
   let dispose!: () => void;
 
-  scope((d) => {
+  scope((d, owner) => {
     dispose = d;
-    const value = fn();
+    const value = fn(owner);
     // A module compiled by the SSR string backend already IS the markup, and
     // renders with no DOM at all. Anything else — a hand-written `createElement`
     // tree, a component from a module this compiler never saw — goes through the
@@ -91,7 +106,7 @@ export function renderToString(fn: () => JSXElement | SsrHtml): string {
  * boundaries resolve to content and keyed async values are recorded for
  * generateHydrationScript.
  */
-export async function renderToStringAsync(fn: () => JSXElement | SsrHtml): Promise<string> {
+export async function renderToStringAsync(fn: RootRender): Promise<string> {
   const { html } = await renderPage(fn);
   return html;
 }
@@ -106,7 +121,7 @@ let lastRenderData: Record<string, unknown> = {};
  * session's fetches.
  */
 export async function renderPage(
-  fn: () => JSXElement | SsrHtml,
+  fn: RootRender,
   options?: {
     nonce?: string;
     /**
@@ -152,9 +167,9 @@ export async function renderPage(
   const prev = setAsyncSession(session);
   const prevSink = setStreamSink(sink);
   try {
-    scope((d) => {
+    scope((d, owner) => {
       dispose = d;
-      const value = fn();
+      const value = fn(owner);
       if (isSsrHtml(value)) {
         stringMode = true;
         markup = value.t;
@@ -560,7 +575,7 @@ const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
  * that makes streaming worth doing.
  */
 export function renderToStream(
-  fn: () => JSXElement | SsrHtml,
+  fn: RootRender,
   options?: StreamOptions,
 ): ReadableStream<Uint8Array> {
   const session = options?.session ?? Symbol("stream-session");
@@ -724,9 +739,9 @@ export function renderToStream(
   const previousSession = setAsyncSession(session);
   const previousSink = setStreamSink(sink);
   try {
-    scope((d) => {
+    scope((d, owner) => {
       dispose = d;
-      const value = fn();
+      const value = fn(owner);
       shell = isSsrHtml(value) ? value.t : esc(value);
     }, true);
     flush();
