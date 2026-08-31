@@ -212,6 +212,60 @@ describe.if(ready)("barq-ui", () => {
     expect(file(root, "src/components/theme/theme.ts")).toContain("Neutral with Blue");
   });
 
+  test("a name init cannot resolve writes nothing at all", async () => {
+    // `init` writes the base styles first and reaches the theme last, so this
+    // used to leave four files on disk and no `components.json` beside them:
+    // a project too far in to `add` to, and too far in for `init` to be the
+    // first thing you run.
+    for (const bad of [
+      ["--theme", "nutral"],
+      ["--accent", "bleu"],
+      ["--radius", "potato"],
+    ]) {
+      const result = await barq(root, "init", "--yes", ...bad);
+      expect(result.code, `${bad.join(" ")} was accepted`).toBe(1);
+      expect(existsSync(join(root, "components.json"))).toBe(false);
+      expect(existsSync(join(root, "src/components/theme/base.ts"))).toBe(false);
+      expect(existsSync(join(root, "src/components/lib/utils.ts"))).toBe(false);
+    }
+  });
+
+  test("a rejected name says which ones exist, by kind", async () => {
+    const base = await barq(root, "init", "--yes", "--theme", "nutral");
+    expect(base.out).toContain("neutral");
+    expect(base.out).toContain("taupe");
+    // A base is not an accent: naming an accent as the base has to say so
+    // rather than listing all twenty-four and leaving the reader to guess.
+    expect(base.out).not.toContain("fuchsia");
+
+    const accent = await barq(root, "init", "--yes", "--accent", "bleu");
+    expect(accent.out).toContain("blue");
+    expect(accent.out).not.toContain("taupe");
+  });
+
+  test("an accent is a base's superior, not a base", async () => {
+    const result = await barq(root, "init", "--yes", "--theme", "blue");
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("no base theme");
+  });
+
+  test("a chosen radius replaces the base's own rather than following it", async () => {
+    await barq(root, "init", "--yes", "--radius", "0.45rem");
+    const theme = file(root, "src/components/theme/theme.ts");
+    // Every base declares `radius` among its tokens. Appending wrote it twice:
+    // the cascade took the second and the page was right, but the file is the
+    // project's to read and said two different things.
+    expect(theme.match(/--radius:/g)).toHaveLength(1);
+    expect(theme).toContain("--radius: 0.45rem;");
+  });
+
+  test("--dark writes the selector the project asked for", async () => {
+    await barq(root, "init", "--yes", "--dark", "media");
+    const theme = file(root, "src/components/theme/theme.ts");
+    expect(theme).toContain("@media (prefers-color-scheme: dark)");
+    expect(JSON.parse(file(root, "components.json"))["theme"]["dark"]).toBe("media");
+  });
+
   test("an unknown theme lists the ones that exist", async () => {
     await barq(root, "init", "--yes");
     const result = await barq(root, "theme", "chartreuse");

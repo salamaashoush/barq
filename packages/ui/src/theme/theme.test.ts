@@ -56,8 +56,13 @@ describe("themeCss", () => {
     expect(css).not.toContain(`--primary: ${neutral?.light["primary"]};`);
   });
 
-  test("radius overrides the base's own", () => {
-    expect(themeCss({ base: "neutral", radius: "0" })).toContain("--radius: 0;");
+  test("radius overrides the base's own rather than following it", () => {
+    const css = themeCss({ base: "neutral", radius: "0" });
+    expect(css).toContain("--radius: 0;");
+    // Every base declares `radius` among its tokens, so appending wrote it
+    // twice. The cascade took the second and the page was right, but this is
+    // also the text a configurator offers someone to copy out.
+    expect(css.match(/--radius:/g)).toHaveLength(1);
   });
 
   test("a scoped theme is dark by an ancestor OR by itself", () => {

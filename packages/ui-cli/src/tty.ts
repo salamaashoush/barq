@@ -39,10 +39,46 @@ export function paint(diff: string): string {
     .join("\n");
 }
 
+/** One line of a `choose` list: what is stored, and what is shown. */
+export interface Option {
+  readonly value: string;
+  readonly label: string;
+}
+
 export interface Ask {
   question(text: string, fallback: string): Promise<string>;
   confirm(text: string, fallback: boolean): Promise<boolean>;
+  choose(text: string, options: readonly Option[], fallback: string): Promise<string>;
   close(): void;
+}
+
+/**
+ * What one answer to a `choose` list means, or `undefined` to ask again.
+ *
+ * Separate from the reading so it can be tested without a terminal: this is
+ * where a list prompt is actually wrong or right, and the half above it is
+ * three lines of `readline`.
+ *
+ * A number picks a line and a name picks itself, because a person reading
+ * `1  Neutral` reasonably types either. An empty answer is the default, which
+ * is what makes the whole prompt skippable.
+ */
+export function pick(
+  answer: string,
+  options: readonly Option[],
+  fallback: string,
+): string | undefined {
+  const trimmed = answer.trim();
+  if (trimmed === "") return fallback;
+
+  // `Number("")` is 0 and `Number(" 2 ")` is 2, so the emptiness test above has
+  // to come first and the trim has to happen before this.
+  const index = Number(trimmed);
+  if (Number.isInteger(index) && index >= 1 && index <= options.length) {
+    return options[index - 1]?.value;
+  }
+
+  return options.find((option) => option.value === trimmed)?.value;
 }
 
 /**
@@ -71,6 +107,22 @@ export function ask(allowed = true): Ask {
         .toLowerCase();
       if (answer === "") return fallback;
       return answer.startsWith("y");
+    },
+    async choose(text, options, fallback) {
+      if (rl === null) return fallback;
+      const width = String(options.length).length;
+      say(text);
+      for (const [index, option] of options.entries()) {
+        const number = String(index + 1).padStart(width);
+        const mark = option.value === fallback ? cyan("›") : " ";
+        say(`  ${mark} ${dim(number)} ${option.label}`);
+      }
+      for (;;) {
+        const answer = await rl.question(`Which? ${dim(`(${fallback})`)} `);
+        const chosen = pick(answer, options, fallback);
+        if (chosen !== undefined) return chosen;
+        say(red(`  Not one of them. A number from 1 to ${String(options.length)}.`));
+      }
     },
     close() {
       rl?.close();

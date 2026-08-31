@@ -72,9 +72,14 @@ recomputed against where the files actually land, so any layout works and none
 of it depends on a `tsconfig` alias.
 
 **`theme`** is a base colour theme, optionally an accent over it, and the
-radius. `init` writes them into a `theme.ts` the barq compiler folds into a
-stylesheet, so an application that picks its theme once pays nothing at run
-time.
+radius. `init` asks for all three from a list, and writes them into a `theme.ts`
+the barq compiler folds into a stylesheet, so an application that picks its
+theme once pays nothing at run time.
+
+Each of the three has a flag, so `init` is scriptable: `--theme`, `--accent`,
+`--radius`, and `--dark <selector>` for the class dark mode is asked for by, or
+`--dark media` to follow the operating system. A name none of the themes has
+stops `init` before it writes anything, and says which names exist.
 
 ## A registry of your own
 

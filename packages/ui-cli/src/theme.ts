@@ -25,10 +25,18 @@ export interface ThemeDefinition {
   readonly dark: ThemeTokens;
 }
 
+/**
+ * A chosen radius REPLACES the base's own, rather than following it.
+ *
+ * Every base declares `radius` among its tokens, so appending wrote `--radius`
+ * twice. The cascade took the second one and the page was right, but the file
+ * is the project's to read and edit and said two different things.
+ */
 function declarations(tokens: ThemeTokens, radius: string | undefined, indent: string): string {
-  const out = Object.entries(tokens).map(([token, value]) => `${indent}--${token}: ${value};`);
-  if (radius !== undefined) out.push(`${indent}--radius: ${radius};`);
-  return out.join("\n");
+  const all = radius === undefined ? tokens : { ...tokens, radius };
+  return Object.entries(all)
+    .map(([token, value]) => `${indent}--${token}: ${value};`)
+    .join("\n");
 }
 
 export interface ThemeModuleOptions {
@@ -40,19 +48,77 @@ export interface ThemeModuleOptions {
   readonly resetPath: string;
 }
 
+export interface ResolvedTheme {
+  readonly base: ThemeDefinition;
+  readonly accent?: ThemeDefinition;
+  /** What to call the pair, for a message a person reads. */
+  readonly title: string;
+}
+
+/**
+ * A length, or a function that produces one.
+ *
+ * `--radius` is written into the project's own stylesheet, where a typo is a
+ * corner that silently stops being round. The units are CSS's absolute and
+ * relative lengths; the functions are the four that can stand where a length
+ * can, plus `var`, because a project layering this over tokens of its own is
+ * the case the plain token names exist for.
+ */
+const LENGTH =
+  /^(?:0|[+-]?(?:\d+\.?\d*|\.\d+)(?:px|rem|em|ex|ch|vw|vh|vmin|vmax|cm|mm|in|pt|pc|q)|(?:calc|clamp|min|max|var)\(.*\))$/i;
+
+function names(themes: readonly ThemeDefinition[], kind: ThemeDefinition["kind"]): string {
+  return themes
+    .filter((theme) => theme.kind === kind)
+    .map((theme) => theme.name)
+    .join(", ");
+}
+
+/**
+ * The chosen pair, looked up, or an error naming what does exist.
+ *
+ * Separate from `themeModule` so a caller can check a selection BEFORE it acts
+ * on it. `init` writes four files before it reaches the theme, and a mistyped
+ * `--theme` used to leave all four on disk with no `components.json` beside
+ * them — a project too far in to `add` to and too far in for `init` to be the
+ * first thing you run.
+ */
+export function resolveTheme(
+  choice: ThemeChoice,
+  themes: readonly ThemeDefinition[],
+): ResolvedTheme {
+  const base = themes.find((theme) => theme.name === choice.base && theme.kind === "base");
+  if (base === undefined) {
+    throw new Error(`no base theme named "${choice.base}". Try one of: ${names(themes, "base")}`);
+  }
+
+  const accent =
+    choice.accent === undefined
+      ? undefined
+      : themes.find((theme) => theme.name === choice.accent && theme.kind === "accent");
+  if (choice.accent !== undefined && accent === undefined) {
+    throw new Error(
+      `no accent theme named "${choice.accent}". Try one of: ${names(themes, "accent")}`,
+    );
+  }
+
+  if (choice.radius !== undefined && !LENGTH.test(choice.radius)) {
+    throw new Error(`--radius wants a CSS length, like 0.5rem or 8px, not "${choice.radius}"`);
+  }
+
+  return {
+    base,
+    ...(accent === undefined ? {} : { accent }),
+    title: accent === undefined ? base.title : `${base.title} with ${accent.title}`,
+  };
+}
+
 export function themeModule(
   choice: ThemeChoice,
   themes: readonly ThemeDefinition[],
   options: ThemeModuleOptions,
 ): string {
-  const base = themes.find((theme) => theme.name === choice.base);
-  if (base === undefined) throw new Error(`no theme named "${choice.base}"`);
-
-  const accent =
-    choice.accent === undefined ? undefined : themes.find((theme) => theme.name === choice.accent);
-  if (choice.accent !== undefined && accent === undefined) {
-    throw new Error(`no accent theme named "${choice.accent}"`);
-  }
+  const { base, accent, title } = resolveTheme(choice, themes);
 
   const light = { ...base.light, ...accent?.light };
   const dark = { ...base.dark, ...accent?.dark };
@@ -62,8 +128,6 @@ export function themeModule(
     darkSelector === "media"
       ? `  @media (prefers-color-scheme: dark) {\n    :root {\n${declarations(dark, undefined, "      ")}\n    }\n  }`
       : `  ${darkSelector} {\n${declarations(dark, undefined, "    ")}\n  }`;
-
-  const title = accent === undefined ? base.title : `${base.title} with ${accent.title}`;
 
   return `/**
  * The colour theme: ${title}.

@@ -28,9 +28,9 @@ import { hashOf, read, rewrite, targetOf } from "./files.ts";
 import { installCommand, installedPackages } from "./project.ts";
 import { localRegistry, resolveItems, sourceFor, type Source } from "./registry.ts";
 import { DEFAULT_PATHS, parseConfig, type Config, type RegistryItem } from "./schema.ts";
-import { themeModule, type ThemeDefinition } from "./theme.ts";
+import { resolveTheme, themeModule, type ThemeDefinition } from "./theme.ts";
 import { unified } from "./diff.ts";
-import { ask, bold, cyan, dim, green, paint, red, say, yellow } from "./tty.ts";
+import { ask, bold, cyan, dim, green, paint, red, say, yellow, type Option } from "./tty.ts";
 
 const HELP = `\
 Usage: barq-ui <command> [options]
@@ -52,6 +52,7 @@ Options:
       --theme <name>   init: the base colour theme
       --accent <name>  init: an accent over it
       --radius <len>   init: --radius
+      --dark <sel>     init: the dark-mode selector, or "media"
       --no-reset       init: do not install the CSS reset
   -h, --help           show this
 `;
@@ -68,6 +69,7 @@ interface Args {
   readonly theme?: string;
   readonly accent?: string;
   readonly radius?: string;
+  readonly dark?: string;
   readonly help: boolean;
 }
 
@@ -83,6 +85,7 @@ function parse(argv: readonly string[]): Args {
   let theme: string | undefined;
   let accent: string | undefined;
   let radius: string | undefined;
+  let dark: string | undefined;
   let help = false;
 
   const value = (index: number, flag: string): string => {
@@ -103,6 +106,7 @@ function parse(argv: readonly string[]): Args {
     else if (arg === "--theme") theme = value(++index, arg);
     else if (arg === "--accent") accent = value(++index, arg);
     else if (arg === "--radius") radius = value(++index, arg);
+    else if (arg === "--dark") dark = value(++index, arg);
     else if (arg.startsWith("--")) {
       const split = arg.indexOf("=");
       if (split < 0) throw new Error(`unknown option ${arg}`);
@@ -130,6 +134,7 @@ function parse(argv: readonly string[]): Args {
     theme,
     accent,
     radius,
+    dark,
     help,
   };
 }
@@ -179,6 +184,30 @@ function announce(root: string, items: readonly RegistryItem[], packages: readon
 // The theme data, which lives in the package rather than in the registry
 // ---------------------------------------------------------------------------
 
+/**
+ * What a list answers with when the answer is "leave it alone".
+ *
+ * A prompt has to return a string, and the config's `accent` and `radius` are
+ * both absent rather than empty when they are not chosen — an empty `--radius`
+ * would write `--radius: ;`.
+ */
+const NONE = "";
+
+const NO_ACCENT: Option = { value: NONE, label: dim("None, the base's own colours") };
+
+/** shadcn's own four, plus leaving whatever the base declares. */
+const RADII: readonly Option[] = [
+  { value: NONE, label: dim("The theme's own") },
+  { value: "0", label: "None" },
+  { value: "0.45rem", label: "Small" },
+  { value: "0.625rem", label: "Medium" },
+  { value: "0.875rem", label: "Large" },
+];
+
+function blank(answer: string): string | undefined {
+  return answer === NONE ? undefined : answer;
+}
+
 async function themes(cwd: string): Promise<ThemeDefinition[]> {
   const directory = localRegistry(cwd);
   if (directory !== undefined) {
@@ -211,16 +240,18 @@ async function init(args: Args): Promise<void> {
   const prompt = ask(!args.yes);
   try {
     const table = await themes(args.cwd);
-    const bases = table.filter((theme) => theme.kind === "base");
+    const options = (kind: ThemeDefinition["kind"]): Option[] =>
+      table
+        .filter((theme) => theme.kind === kind)
+        .map((theme) => ({ value: theme.name, label: theme.title }));
 
     const path = args.path ?? (await prompt.question("Where do components go?", DEFAULT_PATHS.ui));
-    const base =
-      args.theme ??
-      (await prompt.question(
-        `Colour theme? ${dim(bases.map((t) => t.name).join(", "))}`,
-        "neutral",
-      ));
-    const accent = args.accent;
+    const base = args.theme ?? (await prompt.choose("Colour theme?", options("base"), "neutral"));
+    const accent =
+      args.accent ??
+      blank(await prompt.choose("An accent over it?", [NO_ACCENT, ...options("accent")], NONE));
+    const radius = args.radius ?? blank(await prompt.choose("Corner radius?", RADII, NONE));
+    const reset = args.reset && (await prompt.confirm("Install the CSS reset?", true));
 
     const root = args.cwd;
     const parent = path.replace(/\/ui$/, "");
@@ -235,11 +266,17 @@ async function init(args: Args): Promise<void> {
       theme: {
         base,
         ...(accent === undefined ? {} : { accent }),
-        ...(args.radius === undefined ? {} : { radius: args.radius }),
+        ...(radius === undefined ? {} : { radius }),
+        ...(args.dark === undefined ? {} : { dark: args.dark }),
       },
-      reset: args.reset,
+      reset,
       items: {},
     });
+
+    // Before a single file is written. `init` writes the base styles first and
+    // reaches the theme last, so a mistyped `--theme` used to leave four files
+    // on disk and no `components.json` beside them.
+    resolveTheme(config.theme, table);
 
     const source = sourceFor(config, root);
     const wanted = ["base", "layers", ...(config.reset ? ["reset"] : []), "utils"];

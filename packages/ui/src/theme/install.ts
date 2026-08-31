@@ -50,10 +50,18 @@ function resolve(theme: string | ThemeDefinition): ThemeDefinition {
   return found;
 }
 
+/**
+ * A chosen radius REPLACES the base's own, rather than following it.
+ *
+ * Every base declares `radius` among its tokens, so appending wrote `--radius`
+ * twice. The cascade took the second and the page was right, but `themeCss` is
+ * also what a configurator shows someone to copy out.
+ */
 function declarations(tokens: ThemeTokens, radius: string | undefined): string {
-  const out = Object.entries(tokens).map(([token, value]) => `  --${token}: ${value};`);
-  if (radius !== undefined) out.push(`  --radius: ${radius};`);
-  return out.join("\n");
+  const all = radius === undefined ? tokens : { ...tokens, radius };
+  return Object.entries(all)
+    .map(([token, value]) => `  --${token}: ${value};`)
+    .join("\n");
 }
 
 /**
