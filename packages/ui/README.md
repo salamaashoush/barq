@@ -53,25 +53,31 @@ utility class was:
 
 Variants, at-rules, `:has()`, arbitrary selectors and the colour-mix fallbacks
 all survive that, because none of them is in the part being replaced. What the
-package ships is the result, as ordinary nested CSS:
+package ships is the result, as one class per DECLARATION:
 
 ```tsx
-export const buttonVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: inline-flex;
-      gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) - 2px);
-
-      &:focus-visible {
-        border-color: var(--ring);
-        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-      }
-    }
-  `,
+export const buttonVariants = uiVariants({
+  base: atomsIn("barq.ui", {
+    display: "inline-flex",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 2px)",
+    ":focus-visible": {
+      borderColor: "var(--ring)",
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
+  }),
   // …
 });
 ```
+
+An atom is one declaration, so every component that draws a 2px radius shares
+one class rather than writing its own: 1,948 declarations across the package
+collapse to 433. The compiler folds the literal, so what ships is a class
+string and a stylesheet, with nothing computed at run time.
+
+The layer is what makes them lose to you, and it is why this is `atomsIn` and
+not `atoms`. An unlayered atom is built to WIN, which is right for an
+application styling itself and wrong for a library.
 
 `tailwindcss` is a devDependency of this package for that tool and nothing else.
 Nothing it produces is imported at run time, the output is committed, and it
@@ -85,14 +91,11 @@ the specificity — so this works with no `!important` and no reasoning about
 which module the bundler emitted first:
 
 ```tsx
-<Button
-  class={css`
-    width: 100%;
-  `}
->
-  Save
-</Button>
+<Button class={atoms({ width: "100%" })}>Save</Button>
 ```
+
+The same declaration a component here already uses lands on the same class,
+which is what makes an application's own components cost nothing extra.
 
 The layers are declared once, in order:
 

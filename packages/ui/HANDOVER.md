@@ -4,10 +4,10 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (275), aria (648), core (938),
+Green on the current tree: `bun test` passes in ui (296), aria (654), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
-css (62), ui-cli (47), lucide (17) and query (15), and `cargo test` in
-`compiler-rs` (468). `bunx tsc --noEmit` is clean in ui, ui-cli and lucide, all
+css (76), ui-cli (47), lucide (17) and query (15), and `cargo test` in
+`compiler-rs` (472). `bunx tsc --noEmit` is clean in ui, ui-cli and lucide, all
 three build, `bun run verify` reports 2254 of 2254 declarations present, and
 `oxlint --type-aware --deny-warnings` is clean over `packages/ui` and
 `packages/aria`.
@@ -19,13 +19,76 @@ Fifteen commits on `feat/ui-package`, and the tree is clean. `packages/ui`,
 `packages/server` and `packages/core`. Those are on HEAD's own content and
 predate this work.
 
+## The look is atoms now, not `css` blocks
+
+Every `css` block became an `atomsIn("barq.ui", { … })` literal: one class per
+DECLARATION rather than one per slot. The reason is duplication — 1,948
+declarations across the forty-six components, 433 of them distinct — and the
+second reason is that an application writing its own component with the same
+declaration now lands on the same class, which is what Tailwind gives and a
+block cannot.
+
+Four things about it are load-bearing.
+
+- **`atomsIn`, not `atoms`.** An atom is unlayered on purpose, so an
+  application's own reset cannot beat it. A design system wants the opposite,
+  and `@layer barq.ui` is the only thing that gives it without `!important`.
+- **`ui(a, b)` merges where `clsx(a, b)` concatenated.** Two atoms for one
+  property both apply and the stylesheet's order decides; merging by property
+  means the later argument wins because it is later. `uiVariants` is `variants`
+  with the same merge, and `uiProps` composes a caller's class the same way.
+  This is not cosmetic: it is what stopped a calendar day button falling back to
+  `inline-flex` and a nav button growing its padding back.
+- **The layer is written out at the call.** `atomsIn("barq.ui", { … })` and not
+  a helper, because the compiler folds by the name at the call site and reads
+  the layer as a literal. Through a wrapper all 192 blocks stayed on the runtime
+  and the whole stylesheet travelled inside the JS bundle.
+- **A shorthand expands.** `borderWidth` is four longhands, so a test asserting
+  on `border-width: 1px` has to name one of them, and a physical `padding: 0`
+  does not cancel a logical `padding-block`.
+
+`tools/atomize.ts` did the conversion from the blocks and is what a future
+transcription should go through. `tools/verify.ts` reads the literals directly
+now rather than the stylesheet, because a class is one declaration and
+`bestMatch` had nothing left to match on.
+
+## What compression cost and what it bought
+
+Measured over the package's own sheet, and worth knowing before optimising it
+again:
+
+|                                  | raw      | gzip     | brotli   |
+| -------------------------------- | -------- | -------- | -------- |
+| `css` blocks, where this started | 133.4 KB | 13.89 KB | 11.13 KB |
+| atoms, first cut                 | 93.4 KB  | 18.85 KB | 16.20 KB |
+| atoms, after the naming work     | 93.2 KB  | 16.17 KB | 13.42 KB |
+
+The entropy is all in the hashes and none in the readable part: blanking every
+hash takes brotli to 9.1 KB, while spelling the property as a two-character
+code saves 0.36. That is why the suffix hashes the VALUE alone — 1,078 atoms
+share 265 suffixes — and why shortening the property name is not worth doing.
+
+Two levers were measured and rejected. A four-character condition hash saves
+0.4 KB and risks a silent collision across 257 conditions; sorting rules within
+a tier saves 0.3 KB and changes which of two same-tier atoms wins.
+
 ## Where to pick up
 
-Forty-five components. What is left of the classic registry, in value order:
+**The source still repeats itself, even though the sheet does not.** 2,475
+declarations across the forty-six files, 494 distinct: `boxShadow: var(--ui-inset-shadow), …`
+is written out 52 times and `display: "flex"` 72. Changing a shared treatment
+is still 52 edits. `create()` in `@barqjs/css` builds named atom groups for
+exactly this, and doing it before the eight styles are re-sourced would stop
+the repetition being baked in eight times over.
 
-1. **Calendar**, then **DatePicker** — aria has `calendar` and `datepicker`
-   state. shadcn's calendar CSS is written against `react-day-picker`'s DOM, so
-   the class list does not map one to one and that is the whole of the work.
+**`atomsIn("barq.ui", …)` at 192 call sites is noisy.** The compiler needs a
+literal layer, so the fix is a wrapper the COMPILER knows rather than one the
+runtime provides.
+
+Forty-six components. What is left of the classic registry, in value order:
+
+1. **DatePicker** — `Calendar` and `RangeCalendar` are built; the picker is
+   the popover around them, and aria has the `datepicker` state for it.
 2. **InputOTP** — one input per character, with paste and arrow handling.
 3. **Sidebar** — big but mechanical: a context, a `Sheet` on narrow screens,
    and a lot of layout.
@@ -244,7 +307,7 @@ document and a removed element keeps focus.
 
 ## What has not been done
 
-- **Components.** `Calendar`, `DatePicker`, `Toast`, `Sidebar`,
+- **Components.** `DatePicker`, `Toast`, `Sidebar`,
   `NavigationMenu`, `Carousel`, `Resizable`, `InputOTP`, `Drawer` and `Chart`.
   `Toast` needs new work in `@barqjs/aria`; the rest are transcription plus
   composition.
