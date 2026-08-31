@@ -204,10 +204,20 @@ almost all of it: `.a-color_x` is 0-1-0, `.a-color-h_y:hover` is 0-2-0,
 loses to every atom.
 
 The one pair specificity cannot separate is a base against the same property
-under an at-rule, since `@media` adds none. A module emits its atoms in tier
-order and that pair is decided. Ordering across modules is not needed: two atoms
-conflict only when merged, merging happens in one `atoms` call, and one call is
-in one module.
+under an at-rule, since `@media` adds none. The atom's **tier** decides that one,
+and a tier is an ORDER: `collectCss` sorts every rule it holds by it, and a
+production build runs `orderCss` over the concatenated asset so the bundle agrees
+with dev. Composing a group from another module used to invert such a pair,
+because that module's rules were registered first — measured on `@barqjs/ui`'s
+gallery, a calendar laid out in a column at 1280px because
+`@media (width >= 48rem) { flex-direction: row }` lost to a `column` a later
+module wrote.
+
+A tier is never a cascade layer, and that distinction is load-bearing. CSS
+decides by specificity first and order second; a layer decides before either. One
+sub-layer per tier was tried and moved 289 computed values on the same gallery,
+because a parent's `[data-variant="destructive"] &` at 0-2-0 stopped beating the
+child's own 0-1-0. Reordering moves 8, and all 8 are the pair above.
 
 Atoms **were** emitted into `@layer`. That gave ordering across modules and took
 away the thing atoms exist for, because a layered rule loses to an unlayered one
@@ -392,17 +402,31 @@ placeholders are legal in, and everything that widening lets through — `$var`,
 
 ## Diagnostics
 
-| code                                      | when                                                                          |
-| ----------------------------------------- | ----------------------------------------------------------------------------- |
-| [BARQ014](../compiler-rs/docs/BARQ014.md) | the block is not CSS this compiler can compile                                |
-| [BARQ015](../compiler-rs/docs/BARQ015.md) | an interpolation is known only at run time, so the block stays on the runtime |
-| [BARQ016](../compiler-rs/docs/BARQ016.md) | `atoms` has more than one conditional argument, so it stays on the runtime    |
+| code                                      | when                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------- |
+| [BARQ014](../compiler-rs/docs/BARQ014.md) | the block is not CSS this compiler can compile                                  |
+| [BARQ015](../compiler-rs/docs/BARQ015.md) | an interpolation is known only at run time, so the block stays on the runtime   |
+| [BARQ016](../compiler-rs/docs/BARQ016.md) | `atoms` has more than one conditional argument, so it stays on the runtime      |
+| [BARQ017](../compiler-rs/docs/BARQ017.md) | a style object could not be read, so `@barqjs/css`'s runtime evaluates the call |
+
+`strictCss: true` turns all four into errors. A build that passes with it on has
+no call left for the runtime to evaluate, which is the fact worth being able to
+check rather than assert; `@barqjs/ui` passes today. `ZERO-RUNTIME.md` measures
+what that is worth.
 
 ## What is compiled, and what is not
 
 Compiled away: `css`, `keyframes`, `globalCss`, `atoms`, `atomsIn`, `create`,
 `createIn`, a call through a `layer` binding, `firstThatWorks`, `props`,
-`defineVars`, `dynamic` (its class half).
+`defineVars`, `createTheme` over a token set the same module declares, and
+`dynamic` (its class half).
+
+A module-level `const` is a fact about the module rather than about the line it
+is on, so all of these fold wherever in the file the binding is written: a string,
+a number, a template with no substitutions, a binding naming another binding, a
+computed key, a layer name, a group and a token set. An array argument is the
+argument list it always meant (`atoms([base, active() && loud])`), and so is a
+spread of an array literal.
 
 Left to run, and why:
 
@@ -412,9 +436,10 @@ Left to run, and why:
 - **A dynamic value.** A colour from a signal is not knowable at build time,
   which is why it becomes a custom property.
 - **`clsx` and `cssVar`** are pure string functions over runtime values.
-- **`createTheme` on an imported token set**, and any interpolation naming
+- **`createTheme` on an IMPORTED token set**, and any interpolation naming
   another module. `transform` is per-file and holds no cross-file state, which
-  is what keeps dev and build identical.
+  is what keeps dev and build identical. A local token set compiles, and to the
+  class the runtime would have named.
 - **`atoms` with two or more conditional arguments** (`BARQ016`). Four outcomes,
   then eight, and a nested ternary over eight class strings is larger than the
   runtime call it replaces.

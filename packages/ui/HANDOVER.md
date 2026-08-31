@@ -4,10 +4,10 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (302), aria (654), core (938),
+Green on the current tree: `bun test` passes in ui (307), aria (654), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
-css (81), ui-cli (47), lucide (17) and query (15), and `cargo test --workspace`
-in `compiler-rs` (481 + 24 + 30). `bunx tsc --noEmit` is clean in ui, ui-cli and
+css (85), ui-cli (47), lucide (17) and query (15), and `cargo test --workspace`
+in `compiler-rs` (500 + 34 + 30). `bunx tsc --noEmit` is clean in ui, ui-cli and
 lucide, all three build, `bun run verify` reports 2375 of 2375 declarations
 present, and `oxlint --type-aware --deny-warnings` is clean over `packages/ui`
 and `packages/aria`.
@@ -87,14 +87,19 @@ Three rules decide what belongs in a group, and they are the whole design.
   application. Split by what travels together, that button pulls four files and
   0.46 KB of overhead is left.
 
-There is one pair this arrangement can still get wrong, and `src/shared.test.ts`
+There is one pair this arrangement could get wrong, and `src/shared.test.ts`
 pins it. A group's rules are registered before any component's own, so a rule
-under an AT-RULE can be beaten by a later base rule for the same property, which
-specificity does not separate and the tier order only settles within one call.
-`box.forcedColors` is the only group that is such a rule, so it sits in one file
-with `box.outline`, after it. The general fix, if a second one ever appears, is
-a sub-layer per tier (`@layer barq.ui.base`, `@layer barq.ui.media`), which
-would make tier order global instead of per-call.
+under an AT-RULE could be beaten by a later base rule for the same property,
+which specificity does not separate. Tier order settles it and the tier is now
+GLOBAL: `collectCss` has always sorted by it, and a production build runs
+`orderCss` over the concatenated asset so the bundle agrees. `box.forcedColors`
+still sits in one file with `box.outline` and after it, which costs nothing and
+says the intent locally.
+
+A sub-layer per tier is NOT the fix, and it was tried. A cascade layer overrides
+specificity where a tier only breaks a tie, so it moved 289 computed values on
+the gallery — a parent's `[data-variant="destructive"] &` at 0-2-0 stopped
+beating the child's own 0-1-0. `packages/css/ZERO-RUNTIME.md` has the numbers.
 
 The namespaces are short on purpose and two of them had to move: `text` and
 `box` collided with slot constants in three components, which `tsc` caught at
@@ -133,13 +138,13 @@ a module nothing imports, so one `Button` built through Vite carries 10.23 KB of
 CSS against the package's 87.5 KB, and the gallery, which uses all forty-six,
 carries 99.56 KB.
 
-**The lever left is duplication ACROSS those stylesheets.** The gallery's asset
-is 99.56 KB where the deduplicated rule set is 87.5 KB: 12 KB is the same rule
-text emitted by two modules, which Vite has no reason to notice. Dropping a
-later duplicate is safe for the pair itself, since the two are identical, but it
-moves every rule after it — and a base rule against the same property under an
-`@media` is decided by order alone. That is the same pair `box.forcedColors`
-turns on, and the same answer: a sub-layer per tier first, then the dedup.
+**Duplication across those stylesheets is not a lever, and that was measured
+wrong here.** The gallery's 99.56 KB against the deduplicated 87.5 KB is not
+12 KB of repeated rules: it is `barq.reset` (4.0 KB), `barq.base` (1.3 KB), 53
+`@property` declarations, 5 `@keyframes` and the gallery's own six rules. Before
+minification the 53 module stylesheets do hold 2,236 rules where 1,079 are
+distinct, but `build.cssMinify` is lightningcss and the shipped asset holds
+1,042 distinct of 1,053. There is nothing to write.
 
 **The remaining source repetition is not treatments.** `display: "flex"` 72
 times, `align-items: center` 59: single declarations shorter than any name for
@@ -256,6 +261,24 @@ compares against it exactly — every class list in `specs/` translated again,
 every declaration looked for in the class the component ships. 2000
 declarations, 0 missing. Re-syncing to the new upstream is a separate piece of
 work and a large one.
+
+## Three more the browser found, in the cascade rather than in a component
+
+`packages/css/ZERO-RUNTIME.md` has the method and the numbers. Each of these
+shipped in the stylesheet, on the element, and lost:
+
+1. **The calendar stacked at 1280px.** shadcn's `md:flex-row` is
+   `@media (width >= 48rem) { flex-direction: row }`, and a `flex-direction:
+column` a later module emitted beat it. Same specificity, so order decided,
+   and the order was import order. The breadcrumb's `sm:gap-2.5` and the dialog
+   header's `sm:text-left` were the same bug.
+2. **Three `@supports (color-mix(…))` colours never applied**, on `item`,
+   `checkbox` and `input-group-control`. Same shape.
+3. **`menubar.tsx`'s `"[data-expanded], &[data-open]"` painted every expanded
+   element on the page.** Both implementations substituted `&` with one
+   `replaceAll` over the whole condition, so the branch without one was left as
+   a bare `[data-expanded]`. It was giving an open accordion `--accent` three
+   sections away, and it survived only because it lost on order.
 
 ## Four more the browser found, and this is why you open it
 

@@ -11,10 +11,10 @@ lightningcss minification. `bunx vite build --config gallery/vite.config.ts`.
 
 ## What ships today
 
-| | raw | gzip | brotli |
-| --- | --- | --- | --- |
+|           | raw       | gzip      | brotli   |
+| --------- | --------- | --------- | -------- |
 | JS bundle | 424.89 KB | 113.91 KB | 91.31 KB |
-| CSS asset | 99.56 KB | 17.75 KB | 14.80 KB |
+| CSS asset | 99.56 KB  | 17.75 KB  | 14.80 KB |
 
 And after everything below: 425.10 KB / 113.99 / 91.30 of JS, 99.71 KB /
 17.50 / 14.67 of CSS. The point of the work is not the size, and the size says
@@ -23,13 +23,13 @@ so.
 The CSS asset is not one thing, and reading it as one is where the last session's
 largest number came from:
 
-| | bytes |
-| --- | --- |
-| `@layer barq.ui`, the components' atoms | 89,324 |
-| `@layer barq.reset` | 4,047 |
-| `@layer barq.base` | 1,271 |
-| 53 `@property`, 5 `@keyframes`, the gallery's own 6 rules | 4,848 |
-| layer wrappers and the layer declaration | 71 |
+|                                                           | bytes  |
+| --------------------------------------------------------- | ------ |
+| `@layer barq.ui`, the components' atoms                   | 89,324 |
+| `@layer barq.reset`                                       | 4,047  |
+| `@layer barq.base`                                        | 1,271  |
+| 53 `@property`, 5 `@keyframes`, the gallery's own 6 rules | 4,848  |
+| layer wrappers and the layer declaration                  | 71     |
 
 The package's own deduplicated rule set weighs 87.5 KB, and the asset weighs
 99.56 KB. **That 12 KB is the reset, the base layer, the `@property` block and
@@ -51,11 +51,11 @@ but the signature admits an object, so a bundler cannot drop the object half.
 
 Stubbing `build`'s object branch and rebuilding:
 
-| | raw | gzip | brotli |
-| --- | --- | --- | --- |
-| gallery JS, today | 424.89 KB | 113.91 KB | 91.31 KB |
-| the same, object path removed | 420.55 KB | 112.53 KB | 90.16 KB |
-| **difference** | **4.34 KB** | **1.35 KB** | **1.15 KB** |
+|                               | raw         | gzip        | brotli      |
+| ----------------------------- | ----------- | ----------- | ----------- |
+| gallery JS, today             | 424.89 KB   | 113.91 KB   | 91.31 KB    |
+| the same, object path removed | 420.55 KB   | 112.53 KB   | 90.16 KB    |
+| **difference**                | **4.34 KB** | **1.35 KB** | **1.15 KB** |
 
 That is `walk`, `apply`, `remove`, `atom`, `rule`, `atomKey`, `tierOf`,
 `aboutSelf`, `expand`, `SHORTHANDS`, `UNEXPANDABLE` and `UNITLESS`. It is above
@@ -74,13 +74,13 @@ Every other way the pass declines is silent. Compiled standalone, each of these
 produces no diagnostic and no CSS, and leaves the call for the runtime:
 
 ```ts
-atomsIn("barq.ui", { color: theme.brand })       // an unreadable value
-atomsIn(LAYER, { color: "red" })                 // a layer that is not a literal
-atomsIn("barq.ui", { [MIX]: { color: "red" } })  // a computed key
-atomsIn("barq.ui", ...rest)                      // a spread
-atomsIn("barq.ui", { boxShadow: SHADOW })        // SHADOW declared below this line
-atomsIn("barq.ui", { borderWidth: W })           // W is a template literal, not a string
-createTheme(theme, { brand: "#60a5fa" })         // never compiled at all
+atomsIn("barq.ui", { color: theme.brand }); // an unreadable value
+atomsIn(LAYER, { color: "red" }); // a layer that is not a literal
+atomsIn("barq.ui", { [MIX]: { color: "red" } }); // a computed key
+atomsIn("barq.ui", ...rest); // a spread
+atomsIn("barq.ui", { boxShadow: SHADOW }); // SHADOW declared below this line
+atomsIn("barq.ui", { borderWidth: W }); // W is a template literal, not a string
+createTheme(theme, { brand: "#60a5fa" }); // never compiled at all
 ```
 
 `createTheme` is worth calling out separately: it is not in `Tag::of`, so it is
@@ -101,8 +101,8 @@ the claim worth being able to check rather than assert.
 
 ### 1. A diagnostic for every decline, and `strictCss` on top of it
 
-**BARQ017**, a note: *a style object could not be read at compile time, so this
-call is evaluated at run time.* Raised at every site where an object literal
+**BARQ017**, a note: _a style object could not be read at compile time, so this
+call is evaluated at run time._ Raised at every site where an object literal
 fails to fold, and at BARQ016's site too.
 
 The line is drawn at the object, not at the call, and that is deliberate. Three
@@ -127,7 +127,7 @@ meaning what it meant.
 
 **The soundness gap, stated rather than hidden.** An opaque argument is typed
 `AtomStyles | string | …`, so a function returning a style object can still hand
-`build` an object at run time. `strictCss` proves that no *statically visible*
+`build` an object at run time. `strictCss` proves that no _statically visible_
 object reaches the runtime, not that none does.
 
 So `strictCss` on its own removes nothing from a bundle: it makes the fact
@@ -161,7 +161,7 @@ stopped beating the child's own 0-1-0 the moment the two sat in different
 sub-layers, and an `[data-selected]` at 0-2-0 lost to a `@media (hover: hover)`
 rule of the same specificity that it should have been ranked against by order.
 StyleX can group by priority into `@layer priority1 … priorityN` because every
-one of its selectors is one class plus a pseudo, so priority order *is* the
+one of its selectors is one class plus a pseudo, so priority order _is_ the
 intended order. barq's atoms carry `:is(.dark *)[data-invalid]` at 0-4-0 beside
 `.a-color_x` at 0-1-0, and flattening that is not an option.
 
@@ -170,12 +170,12 @@ concatenated asset, changes order and never specificity — which is exactly wha
 a tie-breaker is allowed to do. Every one of the eight is a rule under an at-rule
 that a later base rule was beating:
 
-| slot | on `main` | after | why |
-| --- | --- | --- | --- |
-| `calendar-months` | `flex-direction: column` | `row` | `@media (width >= 48rem)` lost, so the calendar stacked at 1280px |
-| `breadcrumb-list` | `gap: 6px` | `10px` | `@media (width >= 40rem)` lost, and three rects moved with it |
-| `dialog-header` | `text-align: center` | `left` | `@media (width >= 40rem)` lost |
-| `item`, `checkbox`, `input-group-control` | a solid colour | the `color-mix` | `@supports (color-mix(…))` lost |
+| slot                                      | on `main`                | after           | why                                                               |
+| ----------------------------------------- | ------------------------ | --------------- | ----------------------------------------------------------------- |
+| `calendar-months`                         | `flex-direction: column` | `row`           | `@media (width >= 48rem)` lost, so the calendar stacked at 1280px |
+| `breadcrumb-list`                         | `gap: 6px`               | `10px`          | `@media (width >= 40rem)` lost, and three rects moved with it     |
+| `dialog-header`                           | `text-align: center`     | `left`          | `@media (width >= 40rem)` lost                                    |
+| `item`, `checkbox`, `input-group-control` | a solid colour           | the `color-mix` | `@supports (color-mix(…))` lost                                   |
 
 The first three are shadcn's `md:flex-row`, `sm:gap-2.5` and `sm:text-left`. They
 are live visual bugs on `main`, and no test could have found them: the rule is in
@@ -229,11 +229,11 @@ are repeated text. That is real, and it is what the 12 KB figure was reaching
 for. But it never ships. `build.cssMinify` defaults to lightningcss, and the
 asset it produces holds **1,053 rules, 1,042 distinct, 1,761 duplicate bytes**.
 
-| | raw | gzip | brotli |
-| --- | --- | --- | --- |
-| all 2,236 rules concatenated | 162,974 | 20,933 | 14,511 |
-| the 1,079 distinct rules | 89,595 | 15,466 | 12,713 |
-| what `@layer barq.ui` weighs in the asset | 89,324 | | |
+|                                           | raw     | gzip   | brotli |
+| ----------------------------------------- | ------- | ------ | ------ |
+| all 2,236 rules concatenated              | 162,974 | 20,933 | 14,511 |
+| the 1,079 distinct rules                  | 89,595  | 15,466 | 12,713 |
+| what `@layer barq.ui` weighs in the asset | 89,324  |        |        |
 
 The shipped layer is the deduplicated set, three hundred bytes under it because
 lightningcss also shortens values. The 1,761 bytes it leaves are eleven rules
@@ -315,7 +315,7 @@ this project already rejected, written out in its own code.
 second Vite server and a `ViteNodeRunner`, then calls `runner.executeFile(path)`
 and reads the exports. There is no static analysis to defeat, which is why a
 `.css.ts` file may compute anything — and that is what the separate-file
-requirement buys: a file that is *executed at build time* is a different kind of
+requirement buys: a file that is _executed at build time_ is a different kind of
 file from one that ships, and the extension says so. Colocation cannot have it,
 because a component file cannot be executed at build time without executing the
 component.
