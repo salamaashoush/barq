@@ -18,7 +18,7 @@ use crate::analysis::symbol_of;
 use crate::codegen::{HELPER_COUNT, Helper};
 use crate::diag::Code;
 use crate::ir::{
-    Diag, Flow, HoistId, Hoisted, Keyed, Module, Region, Root, Site, SourceKind, Uids,
+    Diag, Flow, HoistId, Hoisted, Keyed, Module, React, Region, Root, Site, SourceKind, Uids,
 };
 use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, is_identifier_name};
@@ -510,7 +510,7 @@ impl<'a> Shaper<'a, '_> {
         if let Some(hoisted) = self.konst(&value, span) {
             return hoisted;
         }
-        if identity_matters(&value) {
+        if identity_matters(&value) && !self.rebuilds(&value) {
             let callee = self.helper(Helper::Cell, span);
             let arguments = ArenaVec::from_iter_in([Argument::from(value)], &self.allocator);
             return Expression::new_call_expression(
@@ -518,6 +518,28 @@ impl<'a> Shaper<'a, '_> {
             );
         }
         self.thunk(value, span, None)
+    }
+
+    /// A container literal whose CONTENTS move, so freezing it would freeze the
+    /// reads inside it.
+    ///
+    /// Case 5 above evaluates a value whose identity is observable exactly once.
+    /// That is right for a handler and wrong for `style={{ width: size() }}`:
+    /// the object was built at the call site, the consumer's effect re-read the
+    /// same frozen object forever, and the element never moved. The same
+    /// expression on an INTRINSIC element was already correct — `bindEffect`
+    /// over `() => ({ width: size() })` — so the two paths disagreed, and only
+    /// the component one was wrong.
+    ///
+    /// A function literal is deliberately not included. Its body is deferred, so
+    /// nothing inside it is read at the call site, and its identity is the thing
+    /// being passed.
+    fn rebuilds(&mut self, value: &Expression<'a>) -> bool {
+        let container = matches!(
+            strip_wrappers(value),
+            Expression::ArrayExpression(_) | Expression::ObjectExpression(_)
+        );
+        container && self.lift.rx(value).react == React::Reactive
     }
 
     /// Whether this expression, when evaluated, BUILDS DOM — a compiled unit's
@@ -1008,6 +1030,17 @@ pub(crate) fn is_handler_channel(name: &str) -> bool {
     rest.and_then(|rest| rest.chars().next()).is_some_and(char::is_uppercase)
 }
 
+/// The expression under the casts and parentheses that are not values.
+fn strip_wrappers<'e, 'a>(value: &'e Expression<'a>) -> &'e Expression<'a> {
+    match value {
+        Expression::ParenthesizedExpression(inner) => strip_wrappers(&inner.expression),
+        Expression::TSAsExpression(inner) => strip_wrappers(&inner.expression),
+        Expression::TSNonNullExpression(inner) => strip_wrappers(&inner.expression),
+        Expression::TSSatisfiesExpression(inner) => strip_wrappers(&inner.expression),
+        _ => value,
+    }
+}
+
 /// Whether a value's IDENTITY is observable to the consumer, so the Cell has to
 /// carry a value evaluated once rather than an expression evaluated per read.
 /// A handler compared across two reads is the case that matters, and the one
@@ -1187,6 +1220,40 @@ mod tests {
         // η-reduction is UNIVERSAL after M3, so an author-written `() => n()`
         // collapses to the accessor itself: the same Cell, one closure fewer.
         assert!(code.contains("fn: n"), "{code}");
+    }
+
+    /// Case 5's limit. A container literal is frozen for its IDENTITY, which is
+    /// right for a handler and was wrong for `style={{ width: size() }}`: the
+    /// object was built once at the call site and the consumer re-read the
+    /// frozen copy forever, so the element never moved. The same expression on
+    /// an INTRINSIC element was already a `bindEffect`, so the two paths
+    /// disagreed and only the component one was wrong.
+    #[test]
+    fn a_container_literal_holding_a_reactive_read_is_rebuilt_not_frozen() {
+        let code = emit(
+            "import { signal } from \"@barqjs/core\";\n\
+             const n = signal(0);\n\
+             const fixed = { a: 1 };\n\
+             export const V = () => (\n\
+               <>\n\
+                 <Box style={{ width: n() }} />\n\
+                 <Box list={[n(), 2]} />\n\
+                 <Box style={fixed} />\n\
+                 <Box onPress={(event) => n() + event} />\n\
+               </>\n\
+             );\n",
+        )
+        .code;
+        assert!(code.contains("style: () => ({ width: n() })"), "{code}");
+        assert!(code.contains("list: () => [n(), 2]"), "{code}");
+        // Nothing moves inside it, so it is still evaluated once.
+        assert!(
+            code.contains("style: () => fixed") || code.contains("style: _$cell(fixed)"),
+            "{code}"
+        );
+        // A function literal's body is deferred and its identity IS the value.
+        // A zero-arity one η-reduces instead, so this one takes a parameter.
+        assert!(code.contains("onPress: _$cell((event) => n() + event)"), "{code}");
     }
 
     /// C3.2. An opaque expression still crosses as a Cell: the ABI is TOTAL, so
