@@ -418,3 +418,20 @@ Left to run, and why:
 - **`atoms` with two or more conditional arguments** (`BARQ016`). Four outcomes,
   then eight, and a nested ternary over eight class strings is larger than the
   runtime call it replaces.
+- **The merge, when an argument is not readable here.** An imported group, a
+  caller's `class` prop, a function call: only the runtime knows what it holds.
+
+That last one is a merge and nothing more. Every literal argument beside it
+still folds, so the rules still reach the stylesheet rather than being
+registered from the JS bundle at import time, and what is left is
+`atoms(group, "a-color_x a-display_y")` over class strings:
+
+```ts
+import { shared } from "./shared.ts";
+
+const card = ui(shared.ring, { color: "red", display: "flex" });
+// ui(shared.ring, "a-color_296z6s a-display_18j4hje")
+```
+
+The one thing that does not fold beside an opaque argument is `null`, because a
+removal has to see what came before it. Written after one, the call stays whole.

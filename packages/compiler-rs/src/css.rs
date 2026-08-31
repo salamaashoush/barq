@@ -333,65 +333,119 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
 type Declaration = (String, String, Option<String>);
 
 /// One argument to `atoms`, once its declarations are known.
-struct Argument<'a> {
-    /// `Some` for `cond && { … }`, whose classes are only applied when it holds.
-    test: Option<Expression<'a>>,
+struct Argument {
+    /// Where it sits in the call, for taking a conditional's test back out.
+    at: usize,
+    /// `cond && { … }`, whose classes apply only when the test holds.
+    conditional: bool,
     declarations: Vec<Declaration>,
     /// Classes another `atoms` or `create` already produced, whose rules are
     /// already in the sheet. Only the key each name carries is needed to merge.
     atoms: Vec<barq_css::atoms::Atom>,
 }
 
+/// What one argument of the call turned out to be.
+enum Slot {
+    /// Read by this pass.
+    Known(Argument),
+    /// Only the runtime can merge it: an imported group, a prop, a call.
+    Opaque(usize),
+    /// `false`, `null` or `undefined`, which contribute nothing either way.
+    Dropped,
+}
+
+/// The call, rebuilt: runs of readable arguments folded, the rest left alone.
+enum Step {
+    Fold {
+        arguments: Vec<Argument>,
+        /// Whether a `null` in this run can be resolved here, which it can only
+        /// be when nothing opaque came before it.
+        removals_safe: bool,
+    },
+    Opaque(usize),
+}
+
 impl<'a> Css<'a, '_> {
     /// `atoms({ … })` as the class string it produces.
     ///
     /// `None` leaves the call for the runtime, which computes exactly this.
+    ///
+    /// One argument the pass cannot read no longer makes that all-or-nothing.
+    /// The literals around it fold anyway, so their rules reach the stylesheet
+    /// instead of being registered from the JS bundle at import time, and what
+    /// is left for the runtime is a merge over class strings. That is what lets
+    /// a treatment shared across a package be a group in another module.
     fn compile_atoms(
         &mut self,
         call: &mut oxc::ast::ast::CallExpression<'a>,
         span: Span,
         layer: &str,
     ) -> Option<Expression<'a>> {
-        let mut arguments: Vec<Argument<'a>> = Vec::new();
-        for argument in call.arguments.iter_mut() {
-            let expression = argument.as_expression_mut()?;
+        let mut slots: Vec<Slot> = Vec::new();
+        for (at, argument) in call.arguments.iter().enumerate() {
+            // A spread is not an argument list this pass can count through.
+            let expression = argument.as_expression()?;
             match crate::analysis::without_type_wrappers(expression) {
                 // `false && …` and friends: the argument contributes nothing and
                 // is not a value the compiler has to know.
-                Expression::NullLiteral(_) => continue,
-                Expression::BooleanLiteral(literal) if !literal.value => continue,
-                Expression::Identifier(identifier) if identifier.name == "undefined" => continue,
+                Expression::NullLiteral(_) => {
+                    slots.push(Slot::Dropped);
+                    continue;
+                }
+                Expression::BooleanLiteral(literal) if !literal.value => {
+                    slots.push(Slot::Dropped);
+                    continue;
+                }
+                Expression::Identifier(identifier) if identifier.name == "undefined" => {
+                    slots.push(Slot::Dropped);
+                    continue;
+                }
                 _ => {}
             }
-            arguments.push(match expression {
-                Expression::ObjectExpression(_) => Argument {
-                    test: None,
-                    declarations: self.declarations(expression)?,
-                    atoms: Vec::new(),
-                },
-                // `styles.root` — a group `create` already produced.
-                Expression::StaticMemberExpression(_) | Expression::StringLiteral(_) => Argument {
-                    test: None,
+            let read = match expression {
+                Expression::ObjectExpression(_) => {
+                    self.declarations(expression).map(|declarations| Argument {
+                        at,
+                        conditional: false,
+                        declarations,
+                        atoms: Vec::new(),
+                    })
+                }
+                // `styles.root`, a group `create` already produced; a class
+                // string; and a `const` in this module holding one.
+                Expression::StaticMemberExpression(_)
+                | Expression::StringLiteral(_)
+                | Expression::Identifier(_) => self.known(expression).map(|atoms| Argument {
+                    at,
+                    conditional: false,
                     declarations: Vec::new(),
-                    atoms: self.known(expression)?,
-                },
+                    atoms,
+                }),
                 Expression::LogicalExpression(logical)
                     if logical.operator == LogicalOperator::And =>
                 {
-                    let (declarations, atoms) = match &logical.right {
+                    match &logical.right {
                         Expression::ObjectExpression(_) => {
-                            (self.declarations(&logical.right)?, Vec::new())
+                            self.declarations(&logical.right).map(|declarations| Argument {
+                                at,
+                                conditional: true,
+                                declarations,
+                                atoms: Vec::new(),
+                            })
                         }
-                        other => (Vec::new(), self.known(other)?),
-                    };
-                    // The test is MOVED out of the argument rather than printed
-                    // back from source: it may be any expression, and a source
-                    // slice loses the symbols `bind` has already resolved in it.
-                    let placeholder = Expression::new_null_literal(logical.left.span(), &self.ast);
-                    let test = std::mem::replace(&mut logical.left, placeholder);
-                    Argument { test: Some(test), declarations, atoms }
+                        other => self.known(other).map(|atoms| Argument {
+                            at,
+                            conditional: true,
+                            declarations: Vec::new(),
+                            atoms,
+                        }),
+                    }
                 }
-                _ => return None,
+                _ => None,
+            };
+            slots.push(match read {
+                Some(argument) => Slot::Known(argument),
+                None => Slot::Opaque(at),
             });
         }
 
@@ -399,7 +453,10 @@ impl<'a> Css<'a, '_> {
         // costs one ternary. Two is four outcomes and three is eight, and a
         // nested ternary over eight class strings is larger than the runtime it
         // replaces — so past one, the runtime keeps the call.
-        let conditionals = arguments.iter().filter(|argument| argument.test.is_some()).count();
+        let conditionals = slots
+            .iter()
+            .filter(|slot| matches!(slot, Slot::Known(argument) if argument.conditional))
+            .count();
         if conditionals > 1 {
             self.reports.push(Report {
                 code: Code::Barq016,
@@ -413,28 +470,185 @@ impl<'a> Css<'a, '_> {
             return None;
         }
 
-        let with = Self::merge(&arguments, true, layer);
-        let Some(index) = arguments.iter().position(|argument| argument.test.is_some()) else {
+        // Readable arguments next to each other fold together. An opaque one
+        // breaks the run, because what it applies is what the argument after it
+        // replaces.
+        let mut steps: Vec<Step> = Vec::new();
+        let mut after_opaque = false;
+        for slot in slots {
+            match slot {
+                Slot::Dropped => {}
+                Slot::Opaque(at) => {
+                    steps.push(Step::Opaque(at));
+                    after_opaque = true;
+                }
+                Slot::Known(argument) => match steps.last_mut() {
+                    Some(Step::Fold { arguments, .. }) => arguments.push(argument),
+                    _ => steps.push(Step::Fold {
+                        arguments: vec![argument],
+                        // `{ color: null }` removes what an EARLIER argument
+                        // applied, and what an opaque one applied is not
+                        // knowable here. Folding the removal on its own would
+                        // drop it in silence.
+                        removals_safe: !after_opaque,
+                    }),
+                },
+            }
+        }
+        let unsafe_removal = steps.iter().any(|step| match step {
+            Step::Fold { arguments, removals_safe } => {
+                !removals_safe
+                    && arguments.iter().any(|argument| {
+                        argument.declarations.iter().any(|(.., value)| value.is_none())
+                    })
+            }
+            Step::Opaque(_) => false,
+        });
+        if unsafe_removal {
+            return None;
+        }
+
+        if let [Step::Fold { arguments, .. }] = steps.as_slice() {
+            return Some(self.fold(call, arguments, span, layer));
+        }
+        if !steps.iter().any(|step| matches!(step, Step::Fold { .. })) {
+            return None;
+        }
+
+        // Every rule this call produces, emitted in ONE tier-ordered pass. Tier
+        // order is the one thing specificity cannot give, and it holds within a
+        // call; emitting run by run would let a run's `@media` rule land before
+        // a later run's base rule for the same property.
+        let mut every: Vec<barq_css::atoms::Atom> = Vec::new();
+        let mut merged: Vec<(Vec<barq_css::atoms::Atom>, Option<Vec<barq_css::atoms::Atom>>)> =
+            Vec::new();
+        for step in &steps {
+            let Step::Fold { arguments, .. } = step else { continue };
+            let with = Self::merge(arguments, true, layer);
+            let without = arguments
+                .iter()
+                .any(|argument| argument.conditional)
+                .then(|| Self::merge(arguments, false, layer));
+            every.extend(with.iter().cloned());
+            if let Some(without) = &without {
+                every.extend(without.iter().cloned());
+            }
+            merged.push((with, without));
+        }
+        self.emit_rules(&every);
+
+        let old = std::mem::replace(&mut call.arguments, ArenaVec::new_in(&self.allocator));
+        let mut originals: Vec<Option<oxc::ast::ast::Argument<'a>>> =
+            old.into_iter().map(Some).collect();
+        let mut folded = merged.into_iter();
+
+        for step in &steps {
+            match step {
+                Step::Opaque(at) => {
+                    if let Some(argument) = originals.get_mut(*at).and_then(Option::take) {
+                        call.arguments.push(argument);
+                    }
+                }
+                Step::Fold { arguments, .. } => {
+                    let Some((with, without)) = folded.next() else { continue };
+                    let classes = Self::classes(&with);
+                    // A run that merged away to nothing is not an argument.
+                    if classes.is_empty() && without.is_none() {
+                        continue;
+                    }
+                    let expression = match without {
+                        None => Expression::new_string_literal(
+                            span,
+                            self.allocator.alloc_str(&classes),
+                            None,
+                            &self.ast,
+                        ),
+                        Some(without) => {
+                            let at = arguments
+                                .iter()
+                                .find(|argument| argument.conditional)
+                                .map(|argument| argument.at);
+                            let test = at
+                                .and_then(|at| originals.get_mut(at))
+                                .and_then(Option::as_mut)
+                                .and_then(|argument| self.take_test(argument));
+                            let Some(test) = test else { continue };
+                            self.ternary(span, test, &classes, &Self::classes(&without))
+                        }
+                    };
+                    call.arguments.push(oxc::ast::ast::Argument::from(expression));
+                }
+            }
+        }
+        None
+    }
+
+    /// A whole call's worth of readable arguments, as the one value they make.
+    fn fold(
+        &mut self,
+        call: &mut oxc::ast::ast::CallExpression<'a>,
+        arguments: &[Argument],
+        span: Span,
+        layer: &str,
+    ) -> Expression<'a> {
+        let with = Self::merge(arguments, true, layer);
+        let Some(conditional) = arguments.iter().find(|argument| argument.conditional) else {
             let all = self.emit_atoms(&with);
-            let text = self.allocator.alloc_str(&all);
-            return Some(Expression::new_string_literal(span, text, None, &self.ast));
+            return Expression::new_string_literal(
+                span,
+                self.allocator.alloc_str(&all),
+                None,
+                &self.ast,
+            );
         };
 
         // Both branches, because either can run — but only the atoms one of
         // them actually names.
-        let without_atoms = Self::merge(&arguments, false, layer);
+        let without_atoms = Self::merge(arguments, false, layer);
         let all = self.emit_atoms(&with);
         let without = self.emit_atoms(&without_atoms);
-        let test = arguments[index].test.take()?;
-        let consequent =
-            Expression::new_string_literal(span, self.allocator.alloc_str(&all), None, &self.ast);
-        let alternate = Expression::new_string_literal(
+        let test = call
+            .arguments
+            .get_mut(conditional.at)
+            .and_then(|argument| self.take_test(argument))
+            .unwrap_or_else(|| Expression::new_null_literal(span, &self.ast));
+        self.ternary(span, test, &all, &without)
+    }
+
+    /// `test ? "…" : "…"`.
+    fn ternary(
+        &self,
+        span: Span,
+        test: Expression<'a>,
+        consequent: &str,
+        alternate: &str,
+    ) -> Expression<'a> {
+        let consequent = Expression::new_string_literal(
             span,
-            self.allocator.alloc_str(&without),
+            self.allocator.alloc_str(consequent),
             None,
             &self.ast,
         );
-        Some(Expression::new_conditional_expression(span, test, consequent, alternate, &self.ast))
+        let alternate = Expression::new_string_literal(
+            span,
+            self.allocator.alloc_str(alternate),
+            None,
+            &self.ast,
+        );
+        Expression::new_conditional_expression(span, test, consequent, alternate, &self.ast)
+    }
+
+    /// The test out of `cond && { … }`, leaving the argument behind.
+    ///
+    /// Taken only once this pass has committed to folding. Taken up front, an
+    /// argument list the pass then declined kept `null && { … }`, which is a
+    /// conditional switched permanently off, and BARQ016 declines by design.
+    fn take_test(&self, argument: &mut oxc::ast::ast::Argument<'a>) -> Option<Expression<'a>> {
+        let Expression::LogicalExpression(logical) = argument.as_expression_mut()? else {
+            return None;
+        };
+        let placeholder = Expression::new_null_literal(logical.left.span(), &self.ast);
+        Some(std::mem::replace(&mut logical.left, placeholder))
     }
 
     /// An object literal from `(key, value)` pairs.
@@ -638,7 +852,7 @@ impl<'a> Css<'a, '_> {
             };
             let declarations = self.declarations(&property.value)?;
             let merged = Self::merge(
-                &[Argument { test: None, declarations, atoms: Vec::new() }],
+                &[Argument { at: 0, conditional: false, declarations, atoms: Vec::new() }],
                 true,
                 layer,
             );
@@ -679,14 +893,10 @@ impl<'a> Css<'a, '_> {
     /// here: an atom a later argument replaced is not in the result, and
     /// emitting as the walk went left `margin-top:0` in the stylesheet under a
     /// class no output referenced.
-    fn merge(
-        arguments: &[Argument<'_>],
-        conditional: bool,
-        layer: &str,
-    ) -> Vec<barq_css::atoms::Atom> {
+    fn merge(arguments: &[Argument], conditional: bool, layer: &str) -> Vec<barq_css::atoms::Atom> {
         let mut applied: Vec<barq_css::atoms::Atom> = Vec::new();
         for argument in arguments {
-            if argument.test.is_some() && !conditional {
+            if argument.conditional && !conditional {
                 continue;
             }
             for atom in argument.atoms.iter().cloned() {
@@ -715,10 +925,17 @@ impl<'a> Css<'a, '_> {
     }
 
     fn emit_atoms(&mut self, atoms: &[barq_css::atoms::Atom]) -> String {
-        // Emitted in TIER order, which is the one ordering specificity cannot
-        // give: `@media` adds none, so a base and the same property under one
-        // are separated by source order alone. A stable sort, so everything
-        // within a tier keeps the order the author wrote it in.
+        self.emit_rules(atoms);
+        Self::classes(atoms)
+    }
+
+    /// The rules, into this module's stylesheet.
+    ///
+    /// Emitted in TIER order, which is the one ordering specificity cannot
+    /// give: `@media` adds none, so a base and the same property under one are
+    /// separated by source order alone. A stable sort, so everything within a
+    /// tier keeps the order the author wrote it in.
+    fn emit_rules(&mut self, atoms: &[barq_css::atoms::Atom]) {
         let mut sorted: Vec<&barq_css::atoms::Atom> = atoms.iter().collect();
         sorted.sort_by_key(|atom| atom.tier);
         for atom in sorted {
@@ -726,6 +943,9 @@ impl<'a> Css<'a, '_> {
                 self.css.push_str(&atom.rule);
             }
         }
+    }
+
+    fn classes(atoms: &[barq_css::atoms::Atom]) -> String {
         atoms.iter().map(|atom| atom.class.as_str()).collect::<Vec<_>>().join(" ")
     }
 
@@ -739,6 +959,12 @@ impl<'a> Css<'a, '_> {
             Expression::StaticMemberExpression(member) => {
                 let symbol = crate::analysis::symbol_of(self.scoping, &member.object)?;
                 self.groups.get(&symbol)?.get(member.property.name.as_str())?.clone()
+            }
+            // A `const` in this module holding a class string, which is what
+            // every folded `atoms` call above it has become.
+            Expression::Identifier(_) => {
+                let symbol = crate::analysis::symbol_of(self.scoping, expression)?;
+                self.folded.get(&symbol)?.clone()
             }
             _ => return None,
         };
@@ -1472,6 +1698,75 @@ mod atom_tests {
         // part of an atom's identity.
         let plain = run("export const shared = create({ ring: { outlineWidth: \"3px\" } });");
         assert_ne!(out.code, plain.code);
+    }
+
+    /// A declined call keeps the conditionals it was declined for.
+    ///
+    /// The test of a `cond && { … }` was moved out of the AST while the
+    /// arguments were being read, before the pass knew whether it would fold.
+    /// BARQ016 declines two conditionals BY DESIGN, so every such call was left
+    /// with `null && { … }` twice: two conditionals switched permanently off,
+    /// and the runtime had no way to know.
+    #[test]
+    fn two_conditionals_keep_the_tests_they_are_declined_with() {
+        let out = run(
+            "declare const a: boolean;\n             declare const b: boolean;\n             export const cls = atoms({ color: \"red\" }, a && { color: \"blue\" }, b && { color: \"green\" });",
+        );
+        assert!(out.code.contains("a && {"), "{}", out.code);
+        assert!(out.code.contains("b && {"), "{}", out.code);
+        assert!(!out.code.contains("null &&"), "{}", out.code);
+    }
+
+    /// An argument this pass cannot read no longer takes its neighbours with it.
+    ///
+    /// It used to: one imported group in the call and the whole thing stayed on
+    /// the runtime, which registers its rules from the JS bundle at import
+    /// time. That is the module's entire stylesheet travelling as JavaScript,
+    /// and it is what a group shared across a package would have cost.
+    #[test]
+    fn an_opaque_argument_still_lets_its_neighbours_fold() {
+        let out = run(
+            "import { shared } from \"./shared.ts\";\n             export const cls = atoms(shared.ring, { color: \"red\", display: \"flex\" });",
+        );
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains("color:red"), "{css}");
+        assert!(css.contains("display:flex"), "{css}");
+        // The opaque argument is still first, so the literal still wins.
+        assert!(out.code.contains("atoms(shared.ring, \"a-color"), "{}", out.code);
+    }
+
+    /// And the conditional in such a call is still a ternary over two strings.
+    #[test]
+    fn an_opaque_argument_leaves_a_conditional_as_a_ternary() {
+        let out = run(
+            "import { shared } from \"./shared.ts\";\n             declare const a: boolean;\n             export const cls = atoms(shared.ring, { color: \"red\" }, a && { color: \"blue\" });",
+        );
+        assert!(out.code.contains("atoms(shared.ring, a ? \""), "{}", out.code);
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains("color:red"), "{css}");
+        assert!(css.contains("color:blue"), "{css}");
+    }
+
+    /// `null` REMOVES what an earlier argument applied, and what an opaque one
+    /// applied is not knowable here. Folding it alone would drop the removal in
+    /// silence, so the call stays whole.
+    #[test]
+    fn a_removal_after_an_opaque_argument_leaves_the_call_whole() {
+        let out = run(
+            "import { shared } from \"./shared.ts\";\n             export const cls = atoms(shared.ring, { color: null });",
+        );
+        assert!(out.code.contains("{ color: null }"), "{}", out.code);
+        assert_eq!(out.css, None);
+    }
+
+    /// A `const` holding a class string is one of ours: every folded call above
+    /// it became exactly that.
+    #[test]
+    fn a_const_holding_a_class_string_folds_like_the_call_that_made_it() {
+        let out = run(
+            "declare const a: boolean;\n             const base = atoms({ color: \"red\" });\n             const loud = atoms({ color: \"blue\" });\n             export const cls = atoms(base, a && loud);",
+        );
+        assert!(out.code.contains("a ? \"a-color_10cd4ul\" : \"a-color_i0tgik\""), "{}", out.code);
     }
 
     /// A layer that is not a literal cannot become part of a name, so the call
