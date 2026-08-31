@@ -355,4 +355,80 @@ describe("overlayPosition", () => {
     expect(observed.has(container.querySelector("button") as Element)).toBe(true);
     expect(observed.has(container.querySelector("div") as Element)).toBe(true);
   });
+  test("publishes the space it has to grow into, and where it grows from", () => {
+    // shadcn's `/create` picker is `w-[calc(var(--available-width)-1.5rem)]`
+    // with `origin-(--transform-origin)`, and neither can be answered by CSS:
+    // the popup is portalled to the body, so a percentage resolves against the
+    // page, and the origin depends on which side the overlay was placed on
+    // after a flip.
+    let position: PositionResult | undefined;
+
+    function Fixture() {
+      const targetRef = ref<HTMLElement>();
+      const overlayRef = ref<HTMLElement>();
+      position = overlayPosition({
+        targetRef,
+        overlayRef,
+        placement: "right top",
+        isOpen: true,
+        offset: 0,
+        containerPadding: 12,
+      });
+      return (
+        <>
+          <button
+            type="button"
+            ref={(node: HTMLElement) => {
+              box(node, { top: 100, left: 400, width: 80, height: 30 });
+              targetRef.set(node);
+            }}
+          >
+            Open
+          </button>
+          <div
+            ref={(node: HTMLElement) => {
+              box(node, { top: 0, left: 0, width: 200, height: 100 });
+              overlayRef.set(node);
+            }}
+          />
+        </>
+      );
+    }
+
+    render(() => <Fixture />);
+    flush();
+    position?.update();
+
+    const style = styleOf(position?.overlayProps);
+    // Placed to the right of a trigger ending at 480, in a 1024-wide window
+    // with 12px of padding: 1024 - 12 - 480.
+    expect(style["--barq-available-width"]).toBe(`${window.innerWidth - 12 - 480}px`);
+    // The overlay grows out of its own LEFT edge, at the trigger's vertical
+    // centre — 115 on the page, and the overlay's top is its trigger's top.
+    expect(style["--barq-transform-origin"]).toBe("0px 15px");
+  });
+
+  test("leaves the available box unset until there is a measurement", () => {
+    // An undefined `var()` invalidates the declaration reading it, so a rule
+    // sized off `--available-width` falls back to `auto`. A stand-in number
+    // would size the overlay wrongly and look deliberate.
+    let position: PositionResult | undefined;
+
+    function Fixture() {
+      position = overlayPosition({
+        targetRef: () => null,
+        overlayRef: () => null,
+        placement: "bottom",
+        isOpen: false,
+      });
+      return <div />;
+    }
+
+    render(() => <Fixture />);
+    flush();
+
+    const style = styleOf(position?.overlayProps);
+    expect(style["--barq-available-width"]).toBeUndefined();
+    expect(style["--barq-available-height"]).toBeUndefined();
+  });
 });

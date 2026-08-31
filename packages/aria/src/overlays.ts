@@ -48,6 +48,7 @@ import { isIOS, isWebKit } from "./platform.ts";
 import {
   access,
   chain,
+  clamp,
   controllable,
   id,
   mergeProps,
@@ -792,14 +793,20 @@ export function overlayPosition(options: PositionOptions): PositionResult {
     top: number;
     left: number;
     maxHeight: number;
+    maxWidth: number;
     targetWidth: number;
     targetHeight: number;
+    originX: number;
+    originY: number;
   }>({
     top: 0,
     left: 0,
     maxHeight: Number.POSITIVE_INFINITY,
+    maxWidth: Number.POSITIVE_INFINITY,
     targetWidth: 0,
     targetHeight: 0,
+    originX: 0,
+    originY: 0,
   });
   const arrowOffset = signal<number | undefined>(undefined);
   const resolvedAxis = signal<Axis>("bottom");
@@ -863,14 +870,47 @@ export function overlayPosition(options: PositionOptions): PositionResult {
           ? boundary.top + boundary.height - padding - (targetBox.top + targetBox.height + offset)
           : boundary.height - padding * 2;
 
+    // The same question along the other axis. A menu placed to the RIGHT has
+    // the space between its trigger and the boundary edge to grow into, and a
+    // popup asked to fill the available width has no other way to know it: the
+    // overlay is portalled to the body, so a percentage resolves against the
+    // page rather than against anything to do with the trigger.
+    const maxWidth =
+      axis === "left"
+        ? targetBox.left - offset - boundary.left - padding
+        : axis === "right"
+          ? boundary.left + boundary.width - padding - (targetBox.left + targetBox.width + offset)
+          : boundary.width - padding * 2;
+
+    // Where the overlay grows FROM: the point on its own edge nearest the
+    // trigger, so a scale animation appears to come out of the control that
+    // opened it rather than out of the overlay's own middle. After a cross-axis
+    // shift the two are no longer aligned, which is why this is measured from
+    // the trigger's centre and not from the overlay's.
+    const originX =
+      axis === "right"
+        ? 0
+        : axis === "left"
+          ? overlayBox.width
+          : clamp(targetBox.left + targetBox.width / 2 - placed.left, 0, overlayBox.width);
+    const originY =
+      axis === "bottom"
+        ? 0
+        : axis === "top"
+          ? overlayBox.height
+          : clamp(targetBox.top + targetBox.height / 2 - placed.top, 0, overlayBox.height);
+
     // The overlay is positioned relative to the page, so the scroll offset is
     // part of the answer.
     position.set({
       top: placed.top + view.scrollY,
       left: placed.left + view.scrollX,
       maxHeight: Math.max(0, maxHeight),
+      maxWidth: Math.max(0, maxWidth),
       targetWidth: targetBox.width,
       targetHeight: targetBox.height,
+      originX,
+      originY,
     });
     resolvedAxis.set(axis);
 
@@ -956,6 +996,23 @@ export function overlayPosition(options: PositionOptions): PositionResult {
           // to be as wide as its trigger came out as wide as the page.
           "--barq-trigger-width": `${current.targetWidth}px`,
           "--barq-trigger-height": `${current.targetHeight}px`,
+          // And what the overlay has to grow into, for one that sizes itself
+          // rather than its trigger. `max-height` above is the same number,
+          // applied; this is the number, for a rule that wants to compute with
+          // it — `w-[calc(var(--available-width)-1.5rem)]` is shadcn's.
+          //
+          // Left UNSET until there is a measurement rather than defaulted to
+          // something plausible: an undefined `var()` makes the declaration
+          // invalid at computed-value time, so the rule reading it falls back
+          // to `width: auto`, which is what an unmeasured overlay should be. A
+          // stand-in number would size it wrongly and look deliberate.
+          ...(Number.isFinite(current.maxWidth)
+            ? { "--barq-available-width": `${current.maxWidth}px` }
+            : {}),
+          ...(Number.isFinite(current.maxHeight)
+            ? { "--barq-available-height": `${current.maxHeight}px` }
+            : {}),
+          "--barq-transform-origin": `${current.originX}px ${current.originY}px`,
         };
       },
     },
