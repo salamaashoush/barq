@@ -140,11 +140,11 @@ they name the same thing. So `tools/styles.ts` rewrites `.cn-button` as
 They land in `@layer barq.style`, which is declared after `barq.ui`, so a style
 beats a component's own rules without either side counting specificity.
 
-Around 268 of upstream's 421 classes reach an element here. The rest name slots
-no component in this package renders — `attachment`, `bubble` and the other new
-registry components, and the ones still to build — and `bun run styles` prints
-that list rather than dropping them, because a style quietly missing a third of
-its rules looks like a style that does not work.
+391 of upstream's 421 classes reach an element here, and every one that names an
+element the pinned registry renders now does. `bun run styles` prints what is
+left in three lists rather than one number: the classes that name a component
+shadcn keeps outside `registry/new-york-v4/ui`, and the handful this package
+diverges from on purpose with the reason for each.
 
 ## Themes
 
@@ -283,19 +283,29 @@ give focus back, and a slider thumb that never left `left: 0`.
 
 ## Regenerating
 
-Three things are generated, and all three from a shadcn/ui checkout:
+Everything generated comes from a pinned shadcn/ui checkout, and the website is
+not the reference: it serves a newer registry whose look is in a stylesheet
+rather than in class lists, which `tools/css.ts` cannot transcribe.
 
 ```bash
-git clone --depth 1 https://github.com/shadcn-ui/ui ../ui
-bun run tools/themes.ts ../ui     # src/theme/themes.ts
-bun run tools/base.ts ../ui       # src/theme/base.ts, src/theme/reset.ts
+git clone --depth 1 https://github.com/shadcn-ui/ui ~/Workspace/vendor/ui
+
+bun run tools/themes.ts ~/Workspace/vendor/ui   # src/theme/themes.ts
+bun run tools/base.ts ~/Workspace/vendor/ui     # src/theme/base.ts, reset.ts
+bun run styles ~/Workspace/vendor/ui            # styles/*.css, the eight
 bun run tools/transcribe.ts --spec specs/button.json
+bun run exports                                 # src/index.ts and the exports map
+bun run registry                                # registry/
 ```
 
 `transcribe` prints the CSS for a class list; `specs/*.json` are the class lists
 copied out of shadcn's components, which is the provenance for every rule here.
-`bun run exports` regenerates the barrel and the `exports` map, and
-`bun run registry` rebuilds `registry/`.
+Never edit a generated file: `tools/exports.ts` was stale once and rewrote
+`package.json` to point at a `dist` that does not exist, and the fix is always
+the generator.
+
+**`PORTING.md` is the procedure** — adding or updating a component end to end,
+what to check at each step, and the traps that cost a session each.
 
 ## Checking it still matches
 
@@ -307,8 +317,13 @@ Every class list in `specs/` is translated again and each declaration it
 produces is looked for in the class the components actually ship. A rule that
 was never pasted, one lost to an edit and one whose value drifted are the same
 thing from outside — part of the look is missing — and no test that asserts on
-the rules it knows about will say so. Two thousand declarations, and the
-divergences are a named list in `tools/verify.ts` with the reason for each.
+the rules it knows about will say so. 3,611 declarations, and the divergences
+are a named list in `tools/verify.ts` with the reason for each.
+
+That checks TEXT. `tools/geometry.ts` checks what a browser computes: it puts a
+probe carrying upstream's own utility classes beside each element this package
+rendered and reports every property that differs. It found a rule landing on the
+wrong element, which `verify` called a success.
 
 ## License
 
