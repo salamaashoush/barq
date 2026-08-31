@@ -273,6 +273,53 @@ describe.if(ready)("barq-ui", () => {
     expect(result.out).toContain("neutral");
   });
 
+  test("a style is copied in, and only the one that was chosen", async () => {
+    // A style is 180 KB and somebody picks ONE. Copying it is the same trade
+    // the whole tool makes: what it writes is yours, and yours to edit.
+    const result = await barq(root, "init", "--yes", "--style", "lyra");
+    expect(result.code).toBe(0);
+    const written = file(root, "src/components/theme/style.css");
+    expect(written).toContain(".style-lyra");
+    expect(written.length).toBeGreaterThan(50_000);
+    expect(JSON.parse(file(root, "components.json"))["theme"]["style"]).toBe("lyra");
+    // The class is what applies it, so the output has to say so.
+    expect(result.out).toContain('class="style-lyra"');
+  });
+
+  test("a style targets data-slot, which is what the components already carry", async () => {
+    await barq(root, "init", "--yes", "--style", "nova");
+    const written = file(root, "src/components/theme/style.css");
+    // Upstream writes `.cn-button`; this package has put a `data-slot` on every
+    // element since before styles existed, so a style needs no component change.
+    expect(written).toContain('[data-slot="button"]');
+    expect(written).not.toContain(".cn-button");
+    // LAST layer, so a style beats the component's own rules without either
+    // side counting specificity.
+    expect(written).toContain("@layer barq.style");
+  });
+
+  test("style swaps it and records the choice", async () => {
+    await barq(root, "init", "--yes", "--style", "vega");
+    const result = await barq(root, "style", "sera");
+    expect(result.code).toBe(0);
+    expect(file(root, "src/components/theme/style.css")).toContain(".style-sera");
+    expect(JSON.parse(file(root, "components.json"))["theme"]["style"]).toBe("sera");
+  });
+
+  test("a style name nothing offers writes nothing and lists the eight", async () => {
+    const result = await barq(root, "init", "--yes", "--style", "nope");
+    expect(result.code).toBe(1);
+    expect(existsSync(join(root, "components.json"))).toBe(false);
+    expect(existsSync(join(root, "src/components/theme/style.css"))).toBe(false);
+    for (const name of ["vega", "nova", "lyra", "sera"]) expect(result.out).toContain(name);
+  });
+
+  test("no style asked for, no style written", async () => {
+    await barq(root, "init", "--yes");
+    expect(existsSync(join(root, "src/components/theme/style.css"))).toBe(false);
+    expect(JSON.parse(file(root, "components.json"))["theme"]["style"]).toBeUndefined();
+  });
+
   test("list marks what has been added", async () => {
     await barq(root, "init", "--yes");
     await barq(root, "add", "badge");

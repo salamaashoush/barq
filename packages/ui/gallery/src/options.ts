@@ -106,6 +106,22 @@ export const MONO: readonly Option[] = [
   { value: "courier", label: "Courier", css: '"Courier New", Courier, monospace' },
 ];
 
+/**
+ * shadcn's eight, and the swatch is deliberately absent: a style is a shape
+ * rather than a colour, so a dot would say nothing true about it.
+ */
+export const STYLES: readonly Option[] = [
+  { value: NONE, label: "None" },
+  { value: "vega", label: "Vega" },
+  { value: "nova", label: "Nova" },
+  { value: "maia", label: "Maia" },
+  { value: "lyra", label: "Lyra" },
+  { value: "mira", label: "Mira" },
+  { value: "luma", label: "Luma" },
+  { value: "sera", label: "Sera" },
+  { value: "rhea", label: "Rhea" },
+];
+
 export function labelOf(options: readonly Option[], value: string): string {
   return options.find((option) => option.value === value)?.label ?? value;
 }

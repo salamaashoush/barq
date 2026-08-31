@@ -29,6 +29,26 @@ export interface Source {
   readonly describe: string;
 }
 
+/** The directory `@barqjs/ui`'s own files are in, resolved from the PROJECT. */
+export function localPackage(cwd: string): string | undefined {
+  // `createRequire` from a path INSIDE the project, so resolution walks the
+  // project's own `node_modules` rather than this CLI's.
+  const require_ = createRequire(join(resolve(cwd), "package.json"));
+  try {
+    return dirname(require_.resolve("@barqjs/ui/package.json"));
+  } catch {
+    return undefined;
+  }
+}
+
+/** The eight stylesheets that package ships, by name. */
+export function localStyles(cwd: string): string | undefined {
+  const root = localPackage(cwd);
+  if (root === undefined) return undefined;
+  const directory = join(root, "styles");
+  return existsSync(directory) ? directory : undefined;
+}
+
 /** The directory `@barqjs/ui`'s registry is in, resolved from the project. */
 export function localRegistry(cwd: string): string | undefined {
   // `createRequire` from a path INSIDE the project, so resolution walks the

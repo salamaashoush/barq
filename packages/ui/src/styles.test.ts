@@ -66,15 +66,28 @@ describe("the generated stylesheets", () => {
       const sheet = readFileSync(join(STYLES, file), "utf8");
       const style = file.replace(/\.css$/, "");
 
-      expect(sheet).toContain("@layer barq.ui {");
+      // `barq.style` and not `barq.ui`: a style is a second opinion about how
+      // every component looks and has to beat the component's own rules, which
+      // a LATER layer does without either side counting specificity.
+      expect(sheet).toContain("@layer barq.style {");
       expect(sheet).toContain(`.style-${style} {`);
-      // Four hundred-odd classes, not an empty shell from a failed run.
-      const classes = [...sheet.matchAll(/^ {4}\.(cn-[a-z0-9-]+) \{$/gm)];
-      expect(classes.length).toBeGreaterThan(400);
+
+      // `[data-slot]` and not `.cn-*`. Upstream writes the look against a
+      // semantic class it puts on the element; this package has put a
+      // `data-slot` on every element since before styles existed, and they name
+      // the same thing — so a style needs no component change at all.
+      expect(sheet).toContain('[data-slot="button"] {');
+      expect(sheet).not.toContain(".cn-button {");
+
+      // Two hundred-odd rules, not an empty shell from a failed run. Fewer than
+      // the four hundred upstream declares, because a class naming a slot no
+      // component here renders reaches nothing and `tools/styles.ts` says which.
+      const rules = [...sheet.matchAll(/^ {4}\[data-slot="[a-z0-9-]+"\]/gm)];
+      expect(rules.length).toBeGreaterThan(150);
+
       // And the rules themselves, rather than the `@apply` they came from,
       // still reaching the theme. Not `--radius`: lyra rounds nothing.
       expect(sheet).not.toContain("@apply");
-      expect(sheet).toContain(".cn-button {");
       expect(sheet).toContain("var(--");
     });
   }

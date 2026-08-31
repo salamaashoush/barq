@@ -13,9 +13,10 @@
 import { signal, type Accessor } from "@barqjs/core";
 import { installTheme, type ThemeSelection } from "@barqjs/ui";
 
-import { ACCENTS, BASES, CHARTS, FONTS, MONO, RADII, type Option } from "./options.ts";
+import { ACCENTS, BASES, CHARTS, FONTS, MONO, RADII, STYLES, type Option } from "./options.ts";
 
 export interface Params {
+  readonly style: string;
   readonly base: string;
   readonly accent: string;
   readonly chart: string;
@@ -26,6 +27,7 @@ export interface Params {
 }
 
 export const DEFAULTS: Params = {
+  style: "none",
   base: "neutral",
   accent: "none",
   chart: "none",
@@ -50,6 +52,7 @@ function oneOf(options: readonly Option[], value: string | null, fallback: strin
 export function read(search: string): Params {
   const query = new URLSearchParams(search);
   return {
+    style: oneOf(STYLES, query.get("style"), DEFAULTS.style),
     base: oneOf(BASES, query.get("base"), DEFAULTS.base),
     accent: oneOf(ACCENTS, query.get("accent"), DEFAULTS.accent),
     chart: oneOf(CHARTS, query.get("chart"), DEFAULTS.chart),
@@ -63,7 +66,7 @@ export function read(search: string): Params {
 /** Only what differs from the default, so a shared link is short and readable. */
 export function write(params: Params): string {
   const query = new URLSearchParams();
-  for (const key of ["base", "accent", "chart", "radius", "font", "mono"] as const) {
+  for (const key of ["style", "base", "accent", "chart", "radius", "font", "mono"] as const) {
     if (params[key] !== DEFAULTS[key]) query.set(key, params[key]);
   }
   if (params.dark) query.set("dark", "1");
@@ -92,6 +95,27 @@ export function selectionOf(params: Params): ThemeSelection {
   };
 }
 
+/**
+ * The `barq-ui init` that reproduces what is on the screen.
+ *
+ * A configurator that only shows colours leaves the reader to translate them,
+ * and the translation is the part that goes wrong. Only what differs from the
+ * default is named, so the command is as short as the choice was.
+ */
+export function commandFor(params: Params): string {
+  const flags: string[] = [];
+  for (const [flag, key] of [
+    ["--style", "style"],
+    ["--theme", "base"],
+    ["--accent", "accent"],
+    ["--radius", "radius"],
+  ] as const) {
+    const value = params[key];
+    if (value !== DEFAULTS[key] && value !== NONE) flags.push(`${flag} ${value}`);
+  }
+  return `bunx @barqjs/ui-cli init${flags.length === 0 ? "" : " "}${flags.join(" ")}`;
+}
+
 export interface Design {
   readonly params: Accessor<Params>;
   /** The committed choice, which goes in the URL. */
@@ -114,12 +138,47 @@ export function design(): Design {
 
   const params = (): Params => ({ ...committed(), ...(hovered() ?? {}) });
 
+  /**
+   * A style is 180 KB, and somebody picks ONE.
+   *
+   * `import.meta.glob` gives Vite a chunk per file and this fetches only the
+   * chosen one, so opening the page costs one style rather than eight. The
+   * class goes on `<html>` once the sheet is actually there, or the components
+   * spend a frame with a style declared and not yet loaded.
+   */
+  const sheets = import.meta.glob("../../styles/*.css");
+  const loaded = new Set<string>();
+
+  const wearStyle = (name: string): void => {
+    if (typeof document === "undefined") return;
+    if (name === NONE) {
+      for (const each of STYLES) document.documentElement.classList.remove(`style-${each.value}`);
+      return;
+    }
+    const put = (): void => {
+      for (const each of STYLES) {
+        document.documentElement.classList.toggle(`style-${each.value}`, each.value === name);
+      }
+    };
+    if (loaded.has(name)) {
+      put();
+      return;
+    }
+    const load = sheets[`../../styles/${name}.css`];
+    if (load === undefined) return;
+    void load().then(() => {
+      loaded.add(name);
+      put();
+    });
+  };
+
   const apply = (): void => {
     const now = params();
     installTheme(selectionOf(now));
     if (typeof document !== "undefined") {
       document.documentElement.classList.toggle("dark", now.dark);
     }
+    wearStyle(now.style);
   };
 
   return {

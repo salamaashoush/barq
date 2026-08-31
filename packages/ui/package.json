@@ -22,7 +22,8 @@
   },
   "files": [
     "registry",
-    "src"
+    "src",
+    "styles"
   ],
   "type": "module",
   "sideEffects": [
@@ -362,7 +363,8 @@
     "registry": "bun run tools/registry.ts",
     "verify": "bun --preload ./src/test-setup.ts tools/verify.ts",
     "gallery": "vite --config gallery/vite.config.ts",
-    "prepublishOnly": "bun run registry"
+    "prepublishOnly": "bun run registry",
+    "styles": "bun run tools/styles.ts"
   },
   "devDependencies": {
     "@barqjs/aria": "workspace:*",

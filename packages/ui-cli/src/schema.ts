@@ -45,6 +45,12 @@ export interface RegistryIndex {
 }
 
 export interface ThemeChoice {
+  /**
+   * One of shadcn's eight component styles: `vega`, `nova`, `maia`, `lyra`,
+   * `mira`, `luma`, `sera`, `rhea`. A style is a second opinion about how every
+   * component looks, so a project picks ONE and pays for one.
+   */
+  readonly style?: string;
   /** A name from the registry's base themes. */
   readonly base: string;
   /** A name from its accent themes, layered over the base. */
@@ -189,6 +195,7 @@ export function parseConfig(value: unknown): Config {
       theme: text(paths["theme"] ?? DEFAULT_PATHS.theme, "components.json.paths.theme"),
     },
     theme: {
+      ...(typeof theme["style"] === "string" ? { style: theme["style"] } : {}),
       base: text(theme["base"] ?? "neutral", "components.json.theme.base"),
       ...(typeof theme["accent"] === "string" ? { accent: theme["accent"] } : {}),
       ...(typeof theme["radius"] === "string" ? { radius: theme["radius"] } : {}),

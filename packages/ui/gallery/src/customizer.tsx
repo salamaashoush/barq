@@ -34,9 +34,9 @@ import { Copy } from "@barqjs/lucide/icons/copy";
 import { Dices } from "@barqjs/lucide/icons/dices";
 import { RotateCcw } from "@barqjs/lucide/icons/rotate-ccw";
 
-import { ACCENTS, BASES, CHARTS, FONTS, MONO, RADII, type Option } from "./options.ts";
+import { ACCENTS, BASES, CHARTS, FONTS, MONO, RADII, STYLES, type Option } from "./options.ts";
 import { Picker } from "./picker.tsx";
-import { selectionOf, type Design, type Params } from "./params.ts";
+import { commandFor, selectionOf, type Design, type Params } from "./params.ts";
 
 const ui = layer("barq.ui");
 
@@ -101,6 +101,28 @@ const mode = css`
   white-space: nowrap;
 `;
 
+const command = css`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.625rem;
+  border-radius: var(--radius);
+  background: var(--muted);
+  min-width: 0;
+`;
+
+const commandText = css`
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  scrollbar-width: none;
+`;
+
 const code = css`
   max-height: 20rem;
   overflow: auto;
@@ -161,6 +183,7 @@ function Declarations(props: Incoming<{ tokens: Record<string, string> }>) {
 
 export function Customizer(props: Incoming<{ design: Design }>) {
   const took = signal(false);
+  const ran = signal(false);
   const showing = signal(false);
 
   const now = (): Params => props.design().params();
@@ -175,6 +198,7 @@ export function Customizer(props: Incoming<{ design: Design }>) {
 
   const randomise = (): void => {
     set({
+      style: pick(STYLES),
       base: pick(BASES),
       accent: pick(ACCENTS),
       chart: pick(CHARTS),
@@ -207,6 +231,14 @@ export function Customizer(props: Incoming<{ design: Design }>) {
 
       <CardContent>
         <div class={body}>
+          <Picker
+            label="Style"
+            options={STYLES}
+            value={now().style}
+            onPick={(value: string) => set({ style: value })}
+            onPreview={(value: string | null) => preview(value === null ? null : { style: value })}
+          />
+          <Separator />
           <Picker
             label="Base Color"
             options={BASES}
@@ -281,6 +313,25 @@ export function Customizer(props: Incoming<{ design: Design }>) {
           >
             {showing() ? "Hide CSS" : "Show CSS"}
           </Button>
+
+          {/* The command, because a configurator that only shows you colours
+              leaves you to translate them yourself. This is what you run. */}
+          <div class={command} data-slot="install-command">
+            <code class={commandText}>{commandFor(now())}</code>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Copy the command"
+              data-slot="copy-command"
+              onPress={() => {
+                void navigator.clipboard.writeText(commandFor(now()));
+                ran.set(true);
+                setTimeout(() => ran.set(false), 2000);
+              }}
+            >
+              {ran() ? <Check /> : <Copy />}
+            </Button>
+          </div>
 
           {showing() ? (
             <div class={code} data-slot="preset-code">

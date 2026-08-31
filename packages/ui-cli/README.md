@@ -22,6 +22,7 @@ barq-ui diff [name...]       what the registry has that your copy does not
 barq-ui sync [name...]       take the registry's version, keeping your edits
 barq-ui list                 what the registry offers
 barq-ui theme <name>         change the colour theme
+barq-ui style <name>         change the component style
 barq-ui build <dir>          turn a directory of components into a registry
 ```
 
@@ -76,7 +77,12 @@ radius. `init` asks for all three from a list, and writes them into a `theme.ts`
 the barq compiler folds into a stylesheet, so an application that picks its
 theme once pays nothing at run time.
 
-Each of the three has a flag, so `init` is scriptable: `--theme`, `--accent`,
+**`theme.style`** is one of shadcn's eight component styles, and it is opt-in:
+with none, you get this package's own look, which is shadcn's classic registry
+transcribed. Choosing one copies that stylesheet into your project, because a
+style is 180 KB and you picked one.
+
+Each of the four has a flag, so `init` is scriptable: `--style`, `--theme`, `--accent`,
 `--radius`, and `--dark <selector>` for the class dark mode is asked for by, or
 `--dark media` to follow the operating system. A name none of the themes has
 stops `init` before it writes anything, and says which names exist.

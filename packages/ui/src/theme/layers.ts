@@ -17,6 +17,14 @@
  * and `@layer barq.ui { … }` reaching the page before this statement would
  * put the components at the front.
  *
+ * `barq.style` is LAST, and a cascade layer overriding specificity is exactly
+ * what it is for here. One of shadcn's eight styles is a whole second opinion
+ * about how a component looks, and it has to beat the component's own rules
+ * whatever they weigh: `[data-slot="button"]` inside `.style-nova` is 0-2-0
+ * against an atom's 0-1-0 and would usually win, but an atom under a condition
+ * is 0-2-0 too and the tie would fall to import order. A later layer settles it
+ * without either side counting.
+ *
  * The cost, and it is real: an application whose own reset is unlayered beats
  * these components. `@layer` your reset, or import `./reset.ts` instead.
  */
@@ -24,5 +32,5 @@
 import { globalCss } from "@barqjs/css";
 
 globalCss`
-@layer barq.reset, barq.base, barq.theme, barq.ui;
+@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style;
 `;

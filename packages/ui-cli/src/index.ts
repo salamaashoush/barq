@@ -18,7 +18,7 @@
  * otherwise. Owning the code means the edit wins by default.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stdout } from "node:process";
 
@@ -26,7 +26,7 @@ import { applyItems, missingDependencies, type WrittenFile } from "./add.ts";
 import { CONFIG_FILE, requireConfig, SCHEMA_URL, writeConfig } from "./config.ts";
 import { hashOf, read, rewrite, targetOf } from "./files.ts";
 import { installCommand, installedPackages } from "./project.ts";
-import { localRegistry, resolveItems, sourceFor, type Source } from "./registry.ts";
+import { localRegistry, localStyles, resolveItems, sourceFor, type Source } from "./registry.ts";
 import { DEFAULT_PATHS, parseConfig, type Config, type RegistryItem } from "./schema.ts";
 import { resolveTheme, themeModule, type ThemeDefinition } from "./theme.ts";
 import { unified } from "./diff.ts";
@@ -41,6 +41,7 @@ Usage: barq-ui <command> [options]
   sync [name...]       take the registry's version, keeping your edits
   list                 what the registry offers
   theme <name>         change the colour theme
+  style <name>         change the component style
   build <dir>          turn a directory of components into a registry
 
 Options:
@@ -49,6 +50,7 @@ Options:
       --yes            take every default without asking
       --path <dir>     init: where components go
       --registry <url> init: a registry URL containing {name}
+      --style <name>   init: the component style (vega, nova, lyra, …)
       --theme <name>   init: the base colour theme
       --accent <name>  init: an accent over it
       --radius <len>   init: --radius
@@ -66,6 +68,7 @@ interface Args {
   readonly reset: boolean;
   readonly path?: string;
   readonly registry?: string;
+  readonly style?: string;
   readonly theme?: string;
   readonly accent?: string;
   readonly radius?: string;
@@ -82,6 +85,7 @@ function parse(argv: readonly string[]): Args {
   let reset = true;
   let path: string | undefined;
   let registry: string | undefined;
+  let style: string | undefined;
   let theme: string | undefined;
   let accent: string | undefined;
   let radius: string | undefined;
@@ -103,6 +107,7 @@ function parse(argv: readonly string[]): Args {
     else if (arg === "-c" || arg === "--cwd") cwd = value(++index, arg);
     else if (arg === "--path") path = value(++index, arg);
     else if (arg === "--registry") registry = value(++index, arg);
+    else if (arg === "--style") style = value(++index, arg);
     else if (arg === "--theme") theme = value(++index, arg);
     else if (arg === "--accent") accent = value(++index, arg);
     else if (arg === "--radius") radius = value(++index, arg);
@@ -131,6 +136,7 @@ function parse(argv: readonly string[]): Args {
     reset,
     path,
     registry,
+    style,
     theme,
     accent,
     radius,
@@ -208,6 +214,54 @@ function blank(answer: string): string | undefined {
   return answer === NONE ? undefined : answer;
 }
 
+/**
+ * The styles the installed package actually ships, read rather than listed.
+ *
+ * A style added upstream appears here without this file changing, and one that
+ * is missing from the install says so instead of writing a broken import.
+ */
+function styles(cwd: string): Option[] {
+  const directory = localStyles(cwd);
+  if (directory === undefined) return [];
+  return readdirSync(directory)
+    .filter((file) => file.endsWith(".css"))
+    .map((file) => file.replace(/\.css$/, ""))
+    .toSorted()
+    .map((name) => ({ value: name, label: name[0]?.toUpperCase() + name.slice(1) }));
+}
+
+/**
+ * The chosen style, copied into the project beside the theme.
+ *
+ * COPIED rather than imported from `node_modules`, for the reason the whole
+ * tool exists: what it writes is yours, and a style is 180 KB of ordinary CSS
+ * you may want to edit. A project pays for the one it picked.
+ */
+function writeStyle(root: string, config: Config, name: string, cwd: string): string {
+  const directory = localStyles(cwd);
+  if (directory === undefined) {
+    throw new Error(
+      "the component styles come from @barqjs/ui, and this install has none.\n" +
+        "Reinstall it, or leave `--style` off.",
+    );
+  }
+  const from = join(directory, `${name}.css`);
+  if (!existsSync(from)) {
+    throw new Error(
+      `no style named "${name}". Try one of: ${styles(cwd)
+        .map((each) => each.value)
+        .join(", ")}`,
+    );
+  }
+  const target = targetOf(config, root, {
+    path: "theme/style.css",
+    type: "registry:theme",
+    content: "",
+  });
+  writeFileSync(target, readFileSync(from, "utf8"));
+  return target;
+}
+
 async function themes(cwd: string): Promise<ThemeDefinition[]> {
   const directory = localRegistry(cwd);
   if (directory !== undefined) {
@@ -246,6 +300,22 @@ async function init(args: Args): Promise<void> {
         .map((theme) => ({ value: theme.name, label: theme.title }));
 
     const path = args.path ?? (await prompt.question("Where do components go?", DEFAULT_PATHS.ui));
+    // NONE first, and it is the default. This package's own look is shadcn's
+    // classic registry, transcribed; a style is one of eight SECOND opinions
+    // over it, 180 KB each. Defaulting to one would install a file nobody asked
+    // for and quietly replace the look the rest of the tool promises.
+    const available = styles(args.cwd);
+    const style =
+      args.style ??
+      (available.length === 0
+        ? undefined
+        : blank(
+            await prompt.choose(
+              "Component style?",
+              [{ value: NONE, label: dim("None, the components' own look") }, ...available],
+              NONE,
+            ),
+          ));
     const base = args.theme ?? (await prompt.choose("Colour theme?", options("base"), "neutral"));
     const accent =
       args.accent ??
@@ -264,6 +334,7 @@ async function init(args: Args): Promise<void> {
         theme: path.endsWith("/ui") ? `${parent}/theme` : `${path}/theme`,
       },
       theme: {
+        ...(style === undefined ? {} : { style }),
         base,
         ...(accent === undefined ? {} : { accent }),
         ...(radius === undefined ? {} : { radius }),
@@ -277,6 +348,11 @@ async function init(args: Args): Promise<void> {
     // reaches the theme last, so a mistyped `--theme` used to leave four files
     // on disk and no `components.json` beside them.
     resolveTheme(config.theme, table);
+    if (style !== undefined && !available.some((each) => each.value === style)) {
+      throw new Error(
+        `no style named "${style}". Try one of: ${available.map((each) => each.value).join(", ")}`,
+      );
+    }
 
     const source = sourceFor(config, root);
     const wanted = ["base", "layers", ...(config.reset ? ["reset"] : []), "utils"];
@@ -296,6 +372,7 @@ async function init(args: Args): Promise<void> {
     });
     const { write } = await import("./files.ts");
     write(themeFile, module_);
+    const styleFile = style === undefined ? undefined : writeStyle(root, config, style, args.cwd);
 
     const next: Config = {
       ...applied.config,
@@ -320,6 +397,12 @@ async function init(args: Args): Promise<void> {
     say();
     say(bold("Import the theme once, at your application's entry:"));
     say(`  import "./${config.paths.theme.replace(/^(\.\/)?/, "")}/theme.ts";`);
+    if (styleFile !== undefined && style !== undefined) {
+      say();
+      say(bold("And the style, with its class on the element it applies to:"));
+      say(`  import "./${config.paths.theme.replace(/^(\.\/)?/, "")}/style.css";`);
+      say(`  <html class="style-${style}">`);
+    }
 
     const missing = missingDependencies(items, installedPackages(root));
     announce(root, items, missing);
@@ -525,6 +608,30 @@ async function chooseTheme(args: Args): Promise<void> {
   say(`${green("Theme")} ${bold(chosen.title)} written to ${path.slice(root.length + 1)}.`);
 }
 
+/** `barq-ui style nova`, the shape `barq-ui theme` already has. */
+async function chooseStyle(args: Args): Promise<void> {
+  const name = args.rest[0] ?? args.style;
+  const { root, config } = requireConfig(args.cwd);
+  const available = styles(args.cwd);
+  if (available.length === 0) {
+    throw new Error("the component styles come from @barqjs/ui, and this install has none.");
+  }
+  if (name === undefined) {
+    throw new Error(`which style? ${available.map((each) => each.value).join(", ")}`);
+  }
+  if (!available.some((each) => each.value === name)) {
+    throw new Error(
+      `no style named "${name}". Try one of: ${available.map((each) => each.value).join(", ")}`,
+    );
+  }
+
+  const path = writeStyle(root, config, name, args.cwd);
+  writeConfig(root, { ...config, theme: { ...config.theme, style: name } });
+  say(`${green("Style")} ${bold(name)} written to ${path.slice(root.length + 1)}.`);
+  say(dim(`Put class="style-${name}" on the element it applies to.`));
+  await Promise.resolve();
+}
+
 async function build(args: Args): Promise<void> {
   const directory = args.rest[0];
   if (directory === undefined) throw new Error("which directory? `barq-ui build ./src/ui`");
@@ -545,6 +652,8 @@ async function main(): Promise<void> {
   switch (args.command) {
     case "init":
       return await init(args);
+    case "style":
+      return await chooseStyle(args);
     case "add":
       return await add(args);
     case "diff":

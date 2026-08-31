@@ -156,7 +156,9 @@ describe("installTheme", () => {
 describe("the base stylesheet", () => {
   test("the layer order is declared, and the scale is inside it", async () => {
     await import("./base.ts");
-    expect(collectCss()).toContain("@layer barq.reset, barq.base, barq.theme, barq.ui;");
+    expect(collectCss()).toContain(
+      "@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style;",
+    );
     expect(collectCss()).toContain("--spacing: 0.25rem");
   });
 

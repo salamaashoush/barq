@@ -114,6 +114,38 @@ components, because that is what an unlayered rule does. Put your reset in a
 layer, or import ours (`@barqjs/ui/theme/reset`), which is Tailwind's preflight
 and is what shadcn's components are written against.
 
+## Styles
+
+shadcn's eight, and a style is a different question from a theme. A theme is
+colour; a style is shape, weight and spacing, so `nova` and `lyra` are two
+opinions about what a button IS.
+
+```bash
+bunx @barqjs/ui-cli init --style lyra
+```
+
+That copies ONE of them into your project, because that is what you pay for.
+Each is around 180 KB of ordinary CSS, scoped by its own class:
+
+```html
+<html class="style-lyra">
+```
+
+**Your components need no change, and that is the whole trick.** Upstream writes
+a style against semantic classes it puts on every element (`.cn-button`); this
+package has put a `data-slot` on every element since before styles existed, and
+they name the same thing. So `tools/styles.ts` rewrites `.cn-button` as
+`[data-slot="button"]` and the eight stylesheets simply apply.
+
+They land in `@layer barq.style`, which is declared after `barq.ui`, so a style
+beats a component's own rules without either side counting specificity.
+
+Around 268 of upstream's 421 classes reach an element here. The rest name slots
+no component in this package renders — `attachment`, `bubble` and the other new
+registry components, and the ones still to build — and `bun run styles` prints
+that list rather than dropping them, because a style quietly missing a third of
+its rules looks like a style that does not work.
+
 ## Themes
 
 All twenty-four of shadcn's, as data. Seven **bases** declare the whole token
