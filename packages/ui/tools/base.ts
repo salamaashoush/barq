@@ -36,16 +36,42 @@ const BORDER_DEFAULTS = `*, ::after, ::before, ::backdrop, ::file-selector-butto
 /** Anything that could be a class. Tailwind decides which of them are. */
 const TOKEN = /[a-zA-Z0-9_@:/[\]().,%#*+~>&='"$!?|-]{2,}/g;
 
+/**
+ * Every class the components AND the styles use.
+ *
+ * The styles were missed, and the whole of `styles/` was built on tokens this
+ * theme did not define. An undefined `var()` makes the declaration invalid at
+ * computed-value time and the property falls back to its INITIAL value rather
+ * than to the rule underneath, so every `rounded-[min(var(--radius-4xl),24px)]`
+ * in all eight styles computed to a square corner. Measured in Chrome as
+ * `border-radius: 0px` on every card, button, input and popover the moment a
+ * style was picked.
+ */
 function candidates(checkout: string): string[] {
-  const directory = resolve(checkout, "apps/v4/registry/new-york-v4/ui");
   const found = new Set<string>();
-  for (const entry of readdirSync(directory)) {
-    if (!entry.endsWith(".tsx")) continue;
-    const source = readFileSync(join(directory, entry), "utf8");
+
+  const scan = (source: string): void => {
     for (const literal of source.match(/(["'`])(?:\\.|(?!\1)[\s\S])*\1/g) ?? []) {
       for (const token of literal.slice(1, -1).match(TOKEN) ?? []) found.add(token);
     }
+  };
+
+  const components = resolve(checkout, "apps/v4/registry/new-york-v4/ui");
+  for (const entry of readdirSync(components)) {
+    if (entry.endsWith(".tsx")) scan(readFileSync(join(components, entry), "utf8"));
   }
+
+  // The styles are `@apply` lists rather than string literals, so they are read
+  // as bare text: every word in one is a candidate and Tailwind decides.
+  const styles = resolve(checkout, "apps/v4/registry/styles");
+  for (const entry of readdirSync(styles)) {
+    if (!entry.startsWith("style-") || !entry.endsWith(".css")) continue;
+    const source = readFileSync(join(styles, entry), "utf8");
+    for (const [, list] of source.matchAll(/@apply\s+([^;]+);/g)) {
+      for (const token of (list ?? "").match(TOKEN) ?? []) found.add(token);
+    }
+  }
+
   return [...found].toSorted();
 }
 

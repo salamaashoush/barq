@@ -27,6 +27,7 @@ globalCss`
     --spacing: 0.25rem;
     --container-xs: 20rem;
     --container-sm: 24rem;
+    --container-md: 28rem;
     --container-lg: 32rem;
     --text-xs: 0.75rem;
     --text-xs--line-height: calc(1 / 0.75);
@@ -40,15 +41,27 @@ globalCss`
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
     --tracking-tight: -0.025em;
+    --tracking-normal: 0em;
+    --tracking-wide: 0.025em;
+    --tracking-wider: 0.05em;
     --tracking-widest: 0.1em;
     --leading-tight: 1.25;
     --leading-snug: 1.375;
     --leading-normal: 1.5;
     --leading-relaxed: 1.625;
     --radius-xs: 0.125rem;
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: 1rem;
+    --radius-3xl: 1.5rem;
+    --radius-4xl: 2rem;
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --animate-spin: spin 1s linear infinite;
     --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    --blur-xs: 4px;
+    --blur-sm: 8px;
+    --blur-2xl: 40px;
     --aspect-video: 16 / 9;
     --default-transition-duration: 150ms;
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -287,6 +300,42 @@ globalCss`
 @property --ui-content {
   syntax: "*";
   initial-value: "";
+  inherits: false;
+}
+@property --ui-backdrop-blur {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-brightness {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-contrast {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-grayscale {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-hue-rotate {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-invert {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-opacity {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-saturate {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-backdrop-sepia {
+  syntax: "*";
   inherits: false;
 }
 @property --ui-scale-x {
