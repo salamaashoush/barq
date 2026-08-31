@@ -357,7 +357,22 @@ impl<'a> Shaper<'a, '_> {
             // makes the Provider bug unrepresentable: there is no expression in
             // the emitted language meaning "children, already built".
             let builds = kids.iter().any(|kid| self.builds_dom(kid));
-            let value = if kids.len() == 1 {
+            // A lone child that CHOOSES which DOM to build cannot stay a lone
+            // child.
+            //
+            // `buildChild` untracks a Block on purpose, so `_$block((_s$) =>
+            // on() ? <A/> : <B/>)` picks its branch once and never again; a bare
+            // `() => …` tracks but captures the scope at the CALL site, which is
+            // the Provider bug. An ARRAY holding a function is neither: `insert`
+            // treats it as one live hole, and the thunk sits inside the Block,
+            // where `_s$` has already been rebound to the receiving scope. So
+            // this one case becomes the many-child case.
+            //
+            // `chooses_dom` and not "reactive": a plain `<Child />` is an opaque
+            // CALL, so any weaker test wrapped `<Ctx.Provider><Child /></…>` and
+            // took the child back out of its Block.
+            let lone_hole = kids.len() == 1 && kids.first().is_some_and(|kid| self.chooses_dom(kid));
+            let value = if kids.len() == 1 && !lone_hole {
                 kids.remove(0)
             } else {
                 // An opaque CALL among several children is wrapped here and
@@ -367,11 +382,28 @@ impl<'a> Shaper<'a, '_> {
                 // it — so a read left bare in the array is spent once and never
                 // subscribed. An array holding a FUNCTION is a live hole the
                 // runtime already knows how to keep.
+                //
+                // When the array is a BLOCK the per-element wrap is the ONLY
+                // thing that can keep a read live, because nothing re-runs the
+                // block. Without it one child that builds DOM froze every other
+                // child beside it: `<Comp><Icon />{label()}</Comp>` rendered
+                // `label()`'s first value and never moved again.
+                //
+                // A moving child is THUNKED, never branded as a Block of its
+                // own. A second Block shadows the `_s$` this one just rebound,
+                // which is the Provider bug from the other side: it stopped
+                // `<ContextMenuTrigger>` finding the `<ContextMenu>` that
+                // installed its context. A thunk CAPTURES that binding instead,
+                // so a construction inside it is built under the receiving
+                // scope and its condition is still a dependency of the hole.
                 let elements = kids
                     .into_iter()
                     .map(|kid| {
-                        let wrap = self.lift.rx(&kid).thunk == Thunk::Arrow;
-                        let kid = if wrap { self.thunk(kid, span, None) } else { kid };
+                        let rx = self.lift.rx(&kid);
+                        let moves = rx.thunk == Thunk::Arrow
+                            || self.chooses_dom(&kid)
+                            || (builds && rx.react != React::Static && !self.builds_dom(&kid));
+                        let kid = if moves { self.thunk(kid, span, None) } else { kid };
                         ArrayExpressionElement::from(kid)
                     })
                     .collect::<Vec<_>>();
@@ -578,9 +610,50 @@ impl<'a> Shaper<'a, '_> {
             Expression::TSAsExpression(inner) => self.builds_dom(&inner.expression),
             Expression::TSNonNullExpression(inner) => self.builds_dom(&inner.expression),
             Expression::TSSatisfiesExpression(inner) => self.builds_dom(&inner.expression),
+            // A CHOICE between two constructions is a construction. Stopping
+            // here made `<Comp>{on() ? <A/> : <B/>}{label()}</Comp>` a Cell over
+            // an array, so the branch was chosen once at the call site and
+            // `label()` was spent beside it. The verifier in `compile.rs` has
+            // always seen through these three (`builds_dom_eagerly`), so the
+            // pass that DECIDES and the pass that CHECKS disagreed, and only the
+            // deciding one was consulted.
+            Expression::ConditionalExpression(inner) => {
+                self.builds_dom(&inner.consequent) || self.builds_dom(&inner.alternate)
+            }
+            Expression::LogicalExpression(inner) => self.builds_dom(&inner.right),
+            Expression::SequenceExpression(inner) => {
+                inner.expressions.iter().any(|each| self.builds_dom(each))
+            }
+            // A CHOICE between two constructions is a construction. Stopping
+            // here made `<Comp>{on() ? <A/> : <B/>}{label()}</Comp>` a Cell over
+            // an array — the branch evaluated once at the call site and frozen —
+            // where `<Comp><A/>{label()}</Comp>` was correctly a Block. The
+            // verifier in `compile.rs` has always seen through these two
+            // (`builds_dom_eagerly`), so the pass that DECIDES and the pass that
+            // CHECKS disagreed, and only the deciding one was consulted.
             Expression::Identifier(identifier) => {
                 self.uids.root_index(identifier.name.as_str()).is_some()
             }
+            _ => false,
+        }
+    }
+
+    /// Whether this expression builds DOM only through a CHOICE — a ternary, a
+    /// `&&`, a comma — rather than being a construction written directly.
+    ///
+    /// That is the difference between `<Child />`, whose identity is fixed and
+    /// which belongs in a Block, and `on() ? <A /> : <B />`, whose identity is a
+    /// dependency of the hole that places it and which therefore has to stay a
+    /// live one. `builds_dom` answers true for both.
+    fn chooses_dom(&self, value: &Expression<'a>) -> bool {
+        match value {
+            Expression::ParenthesizedExpression(inner) => self.chooses_dom(&inner.expression),
+            Expression::TSAsExpression(inner) => self.chooses_dom(&inner.expression),
+            Expression::TSNonNullExpression(inner) => self.chooses_dom(&inner.expression),
+            Expression::TSSatisfiesExpression(inner) => self.chooses_dom(&inner.expression),
+            Expression::ConditionalExpression(_)
+            | Expression::LogicalExpression(_)
+            | Expression::SequenceExpression(_) => self.builds_dom(value),
             _ => false,
         }
     }
@@ -1321,6 +1394,74 @@ mod tests {
         )
         .code;
         assert!(code.contains("[() => label(), "), "{code}");
+    }
+
+    /// A CHOICE between two constructions is a construction.
+    ///
+    /// `builds_dom` decides whether a children array is a Block — deferred,
+    /// re-run, taking the receiving scope — or a Cell over a value built once at
+    /// the call site. It stopped at a `ConditionalExpression`, so a ternary over
+    /// two elements looked like it built nothing: `<Comp><A/>{label()}</Comp>`
+    /// was a Block and `<Comp>{on() ? <A/> : <B/>}{label()}</Comp>` was a frozen
+    /// Cell, and the branch never changed again however the signal moved. Found
+    /// in `@barqjs/ui`'s gallery, on a copy button that never said "Copied".
+    ///
+    /// `compile.rs`'s `builds_dom_eagerly` has always seen through all three of
+    /// these, so the pass that DECIDES and the pass that CHECKS disagreed.
+    #[test]
+    fn a_choice_between_two_constructions_still_builds_dom() {
+        let code = emit(
+            "import { signal } from \"@barqjs/core\";\n\
+             const on = signal(false);\n\
+             const label = () => \"x\";\n\
+             export const V = () => (\n\
+               <>\n\
+                 <Box>{on() ? <A /> : <B />}{label()}</Box>\n\
+                 <Box>{on() && <A />}{label()}</Box>\n\
+               </>\n\
+             );\n",
+        )
+        .code;
+        // A Block, exactly as the plain-element case already was. `_$cell([` is
+        // the frozen shape: the array built once, the branch chosen once.
+        assert!(!code.contains("_$cell(["), "{code}");
+        assert_eq!(code.matches("children: _$block((_s$) => [").count(), 2, "{code}");
+    }
+
+    /// A moving child stays a HOLE, however many siblings it has.
+    ///
+    /// The array goes into a Block once any child builds DOM, and `buildChild`
+    /// runs a Block untracked on purpose, so the per-element thunk is the only
+    /// thing that keeps a read alive in there. Without it one child that built
+    /// DOM froze every other child beside it: `<Comp><Icon />{label()}</Comp>`
+    /// rendered `label()`'s first value and never moved again.
+    ///
+    /// A construction written DIRECTLY is left bare — it is built under the
+    /// Block's own scope and its identity never changes. One reached through a
+    /// CHOICE is thunked, which is why a lone one becomes an array of one:
+    /// a Block around it would be untracked and a bare arrow would capture the
+    /// scope at the call site, which is the Provider bug.
+    #[test]
+    fn a_moving_child_is_a_hole_beside_a_sibling_that_builds() {
+        let code = emit(
+            "import { signal } from \"@barqjs/core\";\n\
+             const on = signal(false);\n\
+             export const V = () => (\n\
+               <>\n\
+                 <Box><Icon />{on() ? \"a\" : \"b\"}</Box>\n\
+                 <Box>{on() ? <A /> : <B />}</Box>\n\
+                 <Box><Icon /><Other /></Box>\n\
+               </>\n\
+             );\n",
+        )
+        .code;
+        // The read beside a construction is a live hole, and the construction
+        // beside it is untouched.
+        assert!(code.contains("[Icon(_s$, {}), () => on() ? \"a\" : \"b\"]"), "{code}");
+        // A lone CHOICE becomes an array of one, so `insert` sees a live hole.
+        assert!(code.contains("[() => on() ? A(_s$, {}) : B(_s$, {})]"), "{code}");
+        // Nothing moves here, so nothing is wrapped: two bare constructions.
+        assert!(code.contains("[Icon(_s$, {}), Other(_s$, {})]"), "{code}");
     }
 
     /// C3.2. An opaque expression still crosses as a Cell: the ABI is TOTAL, so
