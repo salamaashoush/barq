@@ -368,9 +368,29 @@ const CSS_QUERY = ".barq.css";
  * Keyed by module id, so re-evaluating the module replaces its rules.
  */
 export function cssRegistration(id: string, css: string, cssSource = DEFAULT_CSS_SOURCE): string {
+  return cssRegistrations([[id, css]], cssSource);
+}
+
+/**
+ * The same, for a module registering SEVERAL stylesheets.
+ *
+ * One import for all of them, because a module carries its own rules and the
+ * rules of everything it folded a value out of, and `cssRegistration` per
+ * sheet wrote `import { registerCss as _$registerCss }` twice — which is not a
+ * duplicate import a bundler dedupes but a redeclared binding, and the module
+ * failed to parse. Every component in `@barqjs/ui` that reaches a shared group
+ * is such a module, so dev served the package as a parse error.
+ */
+function cssRegistrations(
+  sheets: readonly (readonly [string, string])[],
+  cssSource = DEFAULT_CSS_SOURCE,
+): string {
+  if (sheets.length === 0) return "";
   return (
     `\nimport { registerCss as _$registerCss } from ${JSON.stringify(cssSource)};\n` +
-    `_$registerCss(${JSON.stringify(id)}, ${JSON.stringify(css)});\n`
+    sheets
+      .map(([id, css]) => `_$registerCss(${JSON.stringify(id)}, ${JSON.stringify(css)});\n`)
+      .join("")
   );
 }
 
@@ -1007,9 +1027,11 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // source map the compiler just produced.
       const mode = cssMode ?? (dev === true ? "inline" : "asset");
       let emitted = result.code;
+      // Collected rather than appended one at a time: they share an import.
+      const inline: [string, string][] = [];
       if (result.css != null && result.css !== "") {
         if (mode === "inline") {
-          emitted += cssRegistration(stylesheet, result.css, cssSource);
+          inline.push([stylesheet, result.css]);
         } else {
           const changed = cssByModule.get(stylesheet) !== result.css;
           cssByModule.set(stylesheet, result.css);
@@ -1034,12 +1056,14 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       for (const [path, sheet] of foldedAgainst) {
         const other = `${path}${CSS_QUERY}`;
         if (mode === "inline") {
-          emitted += cssRegistration(other, sheet, cssSource);
+          inline.push([other, sheet]);
           continue;
         }
         cssByModule.set(other, sheet);
         emitted += `\nimport ${JSON.stringify(other)};\n`;
       }
+
+      emitted += cssRegistrations(inline, cssSource);
 
       return {
         code: emitted,

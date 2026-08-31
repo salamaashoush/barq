@@ -521,6 +521,20 @@ export const c = ui({ padding: 4 });
     expect(code).toContain(`import "${join(DIR, "shared.ts")}.barq.css"`);
   });
 
+  test("its own rules and the folded ones share ONE import of registerCss", async () => {
+    // Two `cssRegistration` calls wrote the import twice, which is a
+    // REDECLARED binding rather than a duplicate import a bundler dedupes:
+    // "Identifier `_$registerCss` has already been declared", and the module
+    // never parsed. Every component reaching a shared group is such a module,
+    // so dev served the whole package as a parse error.
+    const { code } = await transform(barqVitePlugin({ dev: true }), CARD);
+    const imports = code.match(/import \{ registerCss as _\$registerCss \}/g) ?? [];
+    expect(imports).toHaveLength(1);
+    // And both stylesheets are still registered.
+    expect(code).toContain(`_$registerCss("${join(DIR, "card.tsx")}.barq.css"`);
+    expect(code).toContain(`_$registerCss("${join(DIR, "shared.ts")}.barq.css"`);
+  });
+
   test("and with it off, the call is left for the runtime", async () => {
     const { code } = await transform(barqVitePlugin({ resolveImports: false }), CARD);
     expect(code).toContain("atomsIn(");
