@@ -127,6 +127,11 @@ impl<'a> Classify<'a, '_> {
                 let rx = unit.exprs.rx(value);
                 let plan = match rx.react {
                     React::Static if !rx.live() => InsertPlan::Once,
+                    // An `Opaque` CALL has to be wrapped rather than passed
+                    // through: passing it through evaluates it, and the runtime
+                    // then has a value where the compiler meant it to have the
+                    // choice. Everything else `Opaque` stays unwrapped.
+                    React::Opaque if rx.thunk == Thunk::Arrow => InsertPlan::Live,
                     React::Opaque => InsertPlan::Opaque,
                     _ => InsertPlan::Live,
                 };
@@ -731,7 +736,14 @@ impl<'a> Lift<'a, '_> {
         if let Some(deps) = self.proven_reactive_parts(&call.callee, &call.arguments) {
             return Rx { react: React::Reactive, deps, cost: Cost::Expensive, ..Rx::OPAQUE };
         }
-        Rx { cost: Cost::Expensive, ..Rx::OPAQUE }
+        // `Thunk::Arrow` because EVALUATING a call is not free of consequence.
+        // `Opaque` means "emit it unwrapped and let the runtime decide", which
+        // is sound for a binding — `insert` sees a function and subscribes, or
+        // sees a value and does not. A call is different: unwrapping it means
+        // running it, and what reaches the runtime is a plain result with the
+        // reads already spent. `<div>{label()}<b/></div>` was applied once and
+        // never moved again.
+        Rx { cost: Cost::Expensive, thunk: Thunk::Arrow, ..Rx::OPAQUE }
     }
 
     /// The only calls the folder is allowed to evaluate: a whitelisted global
@@ -920,7 +932,18 @@ fn join<'a>(left: Rx<'a>, right: Rx<'a>) -> Rx<'a> {
         } else {
             Cost::Cheap
         },
-        thunk: Thunk::None,
+        // `Arrow` travels up. A container holding an opaque CALL cannot be
+        // evaluated once either: the call inside it is spent the moment the
+        // container is built, so `[label(), <b/>]` at a component's children
+        // froze exactly as `{label()}` did at a hole.
+        //
+        // `Eta` deliberately does not travel: it names a whole expression that
+        // was exactly `f()`, which a container never is.
+        thunk: if left.thunk == Thunk::Arrow || right.thunk == Thunk::Arrow {
+            Thunk::Arrow
+        } else {
+            Thunk::None
+        },
     }
 }
 

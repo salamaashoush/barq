@@ -18,7 +18,7 @@ use crate::analysis::symbol_of;
 use crate::codegen::{HELPER_COUNT, Helper};
 use crate::diag::Code;
 use crate::ir::{
-    Diag, Flow, HoistId, Hoisted, Keyed, Module, React, Region, Root, Site, SourceKind, Uids,
+    Diag, Flow, HoistId, Hoisted, Keyed, Module, React, Region, Root, Site, SourceKind, Thunk, Uids,
 };
 use crate::lower::entity;
 use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, is_identifier_name};
@@ -360,8 +360,21 @@ impl<'a> Shaper<'a, '_> {
             let value = if kids.len() == 1 {
                 kids.remove(0)
             } else {
-                let elements =
-                    kids.into_iter().map(ArrayExpressionElement::from).collect::<Vec<_>>();
+                // An opaque CALL among several children is wrapped here and
+                // nowhere else. The array goes into a BLOCK, and `buildChild`
+                // runs a block untracked on purpose — a component's
+                // construction must not be a dependency of the hole that places
+                // it — so a read left bare in the array is spent once and never
+                // subscribed. An array holding a FUNCTION is a live hole the
+                // runtime already knows how to keep.
+                let elements = kids
+                    .into_iter()
+                    .map(|kid| {
+                        let wrap = self.lift.rx(&kid).thunk == Thunk::Arrow;
+                        let kid = if wrap { self.thunk(kid, span, None) } else { kid };
+                        ArrayExpressionElement::from(kid)
+                    })
+                    .collect::<Vec<_>>();
                 let elements = ArenaVec::from_iter_in(elements, &self.allocator);
                 Expression::new_array_expression(span, elements, &self.ast)
             };
@@ -539,7 +552,15 @@ impl<'a> Shaper<'a, '_> {
             strip_wrappers(value),
             Expression::ArrayExpression(_) | Expression::ObjectExpression(_)
         );
-        container && self.lift.rx(value).react == React::Reactive
+        if !container {
+            return false;
+        }
+        let rx = self.lift.rx(value);
+        // Proven reactive, or holding an opaque CALL. The second is the one a
+        // children array hits: a call is `Opaque`, `join` is `max` and `Opaque`
+        // is the top, so the array is never `Reactive` however many moving
+        // parts it has.
+        rx.react == React::Reactive || rx.thunk == Thunk::Arrow
     }
 
     /// Whether this expression, when evaluated, BUILDS DOM — a compiled unit's
@@ -1254,6 +1275,52 @@ mod tests {
         // A function literal's body is deferred and its identity IS the value.
         // A zero-arity one η-reduces instead, so this one takes a parameter.
         assert!(code.contains("onPress: _$cell((event) => n() + event)"), "{code}");
+    }
+
+    /// An `Opaque` call at a HOLE is wrapped, not evaluated.
+    ///
+    /// `Opaque` means "emit it unwrapped and let the runtime decide", which is
+    /// sound for a binding — `insert` sees a function and subscribes, or sees a
+    /// value and does not. A call is different: unwrapping it means RUNNING it,
+    /// and what reaches the runtime is a plain result with the reads already
+    /// spent. `<div>{label()}<b/></div>` was applied once and never moved.
+    #[test]
+    fn an_opaque_call_at_a_hole_is_thunked_rather_than_spent() {
+        let code = emit(
+            "import { signal } from \"@barqjs/core\";\n\
+             const n = signal(0);\n\
+             const label = () => \"n\" + n();\n\
+             export const V = () => (\n\
+               <>\n\
+                 <div>{label()}</div>\n\
+                 <div>{label()}<b>x</b></div>\n\
+                 <div>{n()}<b>x</b></div>\n\
+               </>\n\
+             );\n",
+        )
+        .code;
+        // Both holes, alone and beside a sibling.
+        assert_eq!(code.matches("() => label()").count(), 2, "{code}");
+        // A proven accessor still η-reduces: no closure where none is needed.
+        assert!(code.contains("_$insert(_s$, _el$4, n, _el$5)"), "{code}");
+    }
+
+    /// The same call among a COMPONENT's children, where the array is a block.
+    ///
+    /// `buildChild` runs a block untracked on purpose — a component's
+    /// construction must not be a dependency of the hole that places it — so a
+    /// read left bare in the children array is spent once and never subscribed.
+    /// An array holding a FUNCTION is a live hole the runtime already keeps.
+    #[test]
+    fn an_opaque_call_among_a_components_children_is_its_own_hole() {
+        let code = emit(
+            "import { signal } from \"@barqjs/core\";\n\
+             const n = signal(0);\n\
+             const label = () => \"n\" + n();\n\
+             export const V = () => <Box>{label()}<b>y</b></Box>;\n",
+        )
+        .code;
+        assert!(code.contains("[() => label(), "), "{code}");
     }
 
     /// C3.2. An opaque expression still crosses as a Cell: the ABI is TOTAL, so
