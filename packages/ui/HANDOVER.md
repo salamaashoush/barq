@@ -4,11 +4,11 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (310), aria (661), core (938),
+Green on the current tree: `bun test` passes in ui (338), aria (662), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
 css (92), ui-cli (59), lucide (17) and query (15), and `cargo test --workspace`
 in `compiler-rs` (512 + 34 + 30). `bunx tsc --noEmit` is clean in ui, ui-cli and
-lucide, all three build, `bun run verify` reports 2375 of 2375 declarations
+lucide, all three build, `bun run verify` reports 2449 of 2449 declarations
 present, and `oxlint --type-aware --deny-warnings` is clean over `packages/ui`
 and `packages/aria`.
 
@@ -177,7 +177,7 @@ them. The long `box-shadow` is down from 52 spellings to 14, and every one of
 those is inside a condition a group cannot carry, because a group fixes its
 condition.
 
-Forty-six components. What is left of the classic registry, in value order:
+Forty-eight components. What is left of the classic registry, in value order:
 
 1. **DatePicker** — `Calendar` and `RangeCalendar` are built; the picker is
    the popover around them, and aria has the `datepicker` state for it.
@@ -469,6 +469,46 @@ assertion, which is why no existing test had it.
   `@barqjs/core`'s `CSSProperties` rather than in the gallery, and one was
   `Section` declaring plain props where barq hands a component Cells.
 
+## DatePicker and InputOTP, and what each cost
+
+**shadcn ships no `date-picker.tsx`.** It is a documented composition of three
+components upstream does ship, so this is that composition rather than a
+transcription, and the three an application already overrides are the three it
+is made of. The trigger reads its date through `Intl.DateTimeFormat` rather than
+`date-fns` for one `format(date, "PPP")` call, which is also what
+`@barqjs/aria` formats every date segment with. `@barqjs/aria`'s own
+`<DatePicker>` stays where it is: it puts a `<DateField>` with typed segments in
+the trigger, which is the better component for a form and is not this look.
+
+**`InputOTP` is one invisible input over the row, not one per box.** That is
+`input-otp`'s arrangement and the arrangement IS the component: an input per
+character takes one character of a six-character paste, gets
+`autocomplete="one-time-code"` filled into one field, and hands a screen reader
+six unlabelled boxes where there is one field. The engine is written here
+because `input-otp` is React to its foundations, a hook and a context with no
+part that survives leaving them.
+
+### Two traps, one of them a full debugging session each
+
+- **A `provide` callback that BUILDS closes over the wrong scope.** Every
+  working provider here returns `props.children` and builds nothing:
+  `provide(owner, Ctx, () => value, () => props.children)`. Write the elements
+  inside that callback instead and the compiler makes it a Block over the
+  scope at the CALL site, so the children go up beside the context rather than
+  under it. `InputOTP` rendered its container, its input and an EMPTY row, with
+  no error anywhere. The fix is a `Provider` component of its own around the
+  children, which is what `AccordionItem` and `DropdownMenuTrigger` already do.
+
+- **A positioned row swallows the click meant for the control behind it.** Every
+  `input-otp-slot` is `position: relative` for the caret it may hold, so the row
+  is POSITIONED and paints above the absolutely positioned input however the two
+  are ordered. Clicking a box left `document.activeElement` at `BODY` and the
+  component unusable with a mouse, while all sixteen of its tests passed. The
+  row is `aria-hidden` decoration and declines the pointer now. Playwright is
+  what says it is fixed, by REFUSING to click a slot: an element that takes no
+  pointer events fails its actionability check, so the test drives
+  `page.mouse.click(x, y)` at the box's centre the way a person does.
+
 ## Things that will bite
 
 - **The compiler PROVES reactivity; it does not guess.** A prop whose value
@@ -495,10 +535,12 @@ assertion, which is why no existing test had it.
 
 ## What has not been done
 
-- **Components.** `DatePicker`, `Toast`, `Sidebar`,
-  `NavigationMenu`, `Carousel`, `Resizable`, `InputOTP`, `Drawer` and `Chart`.
-  `Toast` needs new work in `@barqjs/aria`; the rest are transcription plus
-  composition.
+- **Components.** `Toast`, `Sidebar`, `NavigationMenu`, `Carousel`,
+  `Resizable`, `Drawer` and `Chart`. `Toast` needs new work in `@barqjs/aria`;
+  the rest are transcription plus composition. `Carousel`, `Resizable`,
+  `Drawer` and `Chart` each wrap a third-party engine upstream, and every one of
+  those engines is React, so the decision `InputOTP` already faced is the
+  decision each of them faces: write it, or leave it out.
 - **The new upstream.** `ui.shadcn.com` has moved to a registry whose look is
   in a stylesheet rather than in class lists, which `tools/css.ts` cannot
   transcribe. Nothing here targets it.
