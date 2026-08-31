@@ -848,6 +848,8 @@ export {
   type DrawerDragOptions,
 } from "./drawer.ts";
 
+export { messageScroller, type MessageScroller, type MessageScrollerOptions } from "./scroller.ts";
+
 export {
   navigationMenuState,
   type MotionDirection,

@@ -248,7 +248,7 @@ what a stylesheet of your own selects:
 | **Disclosure** | `Accordion` `Collapsible` `Tabs`                                                                                                                                                      |
 | **Navigation** | `Breadcrumb` `Pagination` `Menubar` `Sidebar` `NavigationMenu`                                                                                                                                                   |
 | **Display**    | `Alert` `Avatar` `AvatarGroup` `Badge` `Kbd` `Skeleton` `Spinner` `Chart` `Toaster` `Carousel`
-| **Chat**       | `Message` `Bubble` `Marker` `Attachment`                                                                                                                                   |
+| **Chat**       | `Message` `Bubble` `Marker` `Attachment` `MessageScroller`                                                                                                                                   |
 
 
 `DatePicker` is a composition rather than a transcription, because upstream

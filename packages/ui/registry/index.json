@@ -939,6 +939,27 @@
       ]
     },
     {
+      "name": "message-scroller",
+      "type": "registry:ui",
+      "title": "Message Scroller",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/message-scroller.tsx"
+      ]
+    },
+    {
       "name": "message",
       "type": "registry:ui",
       "title": "Message",

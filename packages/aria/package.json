@@ -185,6 +185,11 @@
       "barq": "./src/radio.tsx",
       "bun": "./src/radio.tsx"
     },
+    "./scroller": {
+      "types": "./src/scroller.ts",
+      "barq": "./src/scroller.ts",
+      "bun": "./src/scroller.ts"
+    },
     "./select": {
       "types": "./src/select.tsx",
       "barq": "./src/select.tsx",

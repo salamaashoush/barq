@@ -5821,6 +5821,10 @@
       }
     }
 
+    [data-slot="message-scroller-content"] {
+      gap: calc(var(--spacing) * 6);
+    }
+
     [data-slot="message"] {
       gap: calc(var(--spacing) * 1.5);
       font-size: var(--text-xs);

@@ -278,6 +278,11 @@
       "barq": "./src/ui/menubar.tsx",
       "bun": "./src/ui/menubar.tsx"
     },
+    "./message-scroller": {
+      "types": "./src/ui/message-scroller.tsx",
+      "barq": "./src/ui/message-scroller.tsx",
+      "bun": "./src/ui/message-scroller.tsx"
+    },
     "./message": {
       "types": "./src/ui/message.tsx",
       "barq": "./src/ui/message.tsx",

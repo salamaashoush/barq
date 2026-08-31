@@ -435,6 +435,15 @@ export {
   type MenubarTriggerProps,
 } from "./ui/menubar.tsx";
 export {
+  MessageScroller,
+  MessageScrollerButton,
+  type MessageScrollerButtonProps,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  type MessageScrollerProps,
+  MessageScrollerViewport,
+} from "./ui/message-scroller.tsx";
+export {
   Message,
   type MessageAlign,
   MessageAvatar,

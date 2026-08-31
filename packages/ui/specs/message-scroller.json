@@ -1,0 +1,11 @@
+{
+  "message-scroller": "relative flex size-full min-h-0 flex-col overflow-hidden",
+  "message-scroller-viewport": "size-full min-h-0 min-w-0 overflow-y-auto overscroll-contain",
+  "message-scroller-content": "flex h-max min-h-full flex-col gap-8",
+  "message-scroller-item": "min-w-0 shrink-0",
+  "message-scroller-button": "absolute -translate-x-1/2 border-border bg-background text-foreground transition-[translate,scale,opacity] duration-200",
+  "message-scroller-button-inactive": "pointer-events-none scale-95 opacity-0 duration-400",
+  "message-scroller-button-active": "translate-y-0 scale-100 opacity-100",
+  "message-scroller-button-direction-end": "bottom-4",
+  "message-scroller-button-direction-start": "top-4"
+}

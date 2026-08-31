@@ -28,7 +28,17 @@ import {
   AlertDialogTrigger,
   AlertTitle,
   AspectRatio,
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
   Avatar,
+  AvatarGroup,
+  AvatarGroupCount,
+  Bubble,
+  BubbleContent,
   AvatarFallback,
   Badge,
   Breadcrumb,
@@ -126,11 +136,23 @@ import {
   Kbd,
   KbdGroup,
   Label,
+  Marker,
+  MarkerContent,
   Menubar,
   MenubarContent,
   MenubarItem,
   MenubarMenu,
   MenubarTrigger,
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageHeader,
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerViewport,
   NativeSelect,
   NavigationMenu,
   NavigationMenuContent,
@@ -344,6 +366,15 @@ function Section(props: Incoming<{ title?: string; children?: Child }>) {
     </section>
   );
 }
+
+const CHAT = [
+  { who: "MK", name: "Mira", body: "Did the build go out?", at: "09:41", mine: false },
+  { who: "SA", name: "You", body: "Just now, yes.", at: "09:42", mine: true },
+  { who: "MK", name: "Mira", body: "Any regressions in the report?", at: "09:43", mine: false },
+  { who: "SA", name: "You", body: "None the suite caught.", at: "09:43", mine: true },
+  { who: "MK", name: "Mira", body: "Good. I will look this afternoon.", at: "09:44", mine: false },
+  { who: "SA", name: "You", body: "Thanks.", at: "09:45", mine: true },
+];
 
 const SECTIONS = [
   { id: "overview", name: "Overview", body: "What it is" },
@@ -635,6 +666,79 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="Chat">
+        <div class={stack} style={{ "max-width": "32rem", width: "100%" }}>
+          <div
+            style={{
+              height: "18rem",
+              border: "1px solid var(--border)",
+              "border-radius": "var(--radius)",
+              padding: "0.75rem",
+            }}
+          >
+            <MessageScroller>
+              <MessageScrollerViewport>
+                <MessageScrollerContent>
+                  {CHAT.map((turn) => (
+                    <MessageScrollerItem>
+                      <Message align={turn.mine ? "end" : "start"}>
+                        <MessageAvatar>{turn.who}</MessageAvatar>
+                        <MessageContent>
+                          <MessageHeader>{turn.name}</MessageHeader>
+                          <Bubble
+                            align={turn.mine ? "end" : "start"}
+                            variant={turn.mine ? "default" : "muted"}
+                          >
+                            <BubbleContent>{turn.body}</BubbleContent>
+                          </Bubble>
+                          <MessageFooter>{turn.at}</MessageFooter>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  ))}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <MessageScrollerButton />
+            </MessageScroller>
+          </div>
+
+          <Marker variant="separator">
+            <MarkerContent>Yesterday</MarkerContent>
+          </Marker>
+
+          <AttachmentGroup>
+            <Attachment>
+              <AttachmentMedia>
+                <FileText />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>report.pdf</AttachmentTitle>
+                <AttachmentDescription>2.4 MB</AttachmentDescription>
+              </AttachmentContent>
+            </Attachment>
+            <Attachment state="error">
+              <AttachmentMedia>
+                <FileText />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>notes.txt</AttachmentTitle>
+                <AttachmentDescription>Upload failed</AttachmentDescription>
+              </AttachmentContent>
+            </Attachment>
+          </AttachmentGroup>
+
+          <AvatarGroup>
+            <Avatar>
+              <AvatarFallback>SA</AvatarFallback>
+            </Avatar>
+            <Avatar>
+              <AvatarFallback>MK</AvatarFallback>
+            </Avatar>
+            <AvatarGroupCount>+3</AvatarGroupCount>
+          </AvatarGroup>
         </div>
       </Section>
 

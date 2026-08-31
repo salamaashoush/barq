@@ -27,6 +27,10 @@ import { createBuilder, parse, translate, type CssNode } from "./css.ts";
 const ALLOWED: Record<string, string> = {
   "wave6:slider-track:overflow":
     "the thumb is a CHILD of the track here, so `overflow: hidden` clipped it",
+  "message-scroller:message-scroller-button:transition-duration":
+    "`transition-[…]` and `duration-200` set the SAME property, and an atom " +
+    "is one declaration: the literal wins and the `var()` form it replaces " +
+    "cannot also be present",
 };
 
 /** Every declaration a tree contains, as `property: value`. */
