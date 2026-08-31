@@ -1595,6 +1595,33 @@ function allUnder(host: Node, nodes: readonly Node[]): boolean {
 }
 
 /**
+ * Whether the claiming run handed back nothing the DOM does not already hold.
+ *
+ * A nested region returns nothing at all, and that case has been handled since
+ * regions existed. An ARRAY of children is the same answer written differently:
+ * `[<Title/>, <Badge/>]` where the badge renders a `<Show>` produces
+ * `[element, undefined]`, because the branch claimed the server's span and
+ * needed no anchor to put it back. Testing only for a wholly nullish value let
+ * that array through to the reconciler, which saw one node where the claim held
+ * four and REMOVED the span — silently, with no mismatch recorded, because
+ * nothing about it was a mismatch.
+ *
+ * Measured on a card: the server wrote its badge and the hydrated page did not
+ * have one.
+ */
+function claimedItAll(produced: Child, taken: readonly Node[]): boolean {
+  if (produced === null || produced === undefined) return true;
+  if (!isArray(produced)) return false;
+  // An empty array is a hole that produced nothing, which is not the same as
+  // one that claimed: leave it to the reconciler.
+  if (produced.length === 0) return false;
+  return produced.every((entry) => {
+    if (entry === null || entry === undefined) return true;
+    return entry instanceof Node && taken.includes(entry);
+  });
+}
+
+/**
  * Apply `value` into `parent`, replacing whatever this hole rendered last time
  * (`current`), anchored before `marker` (null = end of parent). Returns the
  * nodes the hole now owns.
@@ -1821,7 +1848,7 @@ export function insert(
         // synthesised anchor to insert. Reconciling `null` against the claim
         // would remove the whole subtree the region just adopted; measured on a
         // router page as a `<div>shell:` with its route emptied out of it.
-        if (taken !== null && taken.length > 0 && (produced === null || produced === undefined)) {
+        if (taken !== null && taken.length > 0 && claimedItAll(produced, taken)) {
           current = taken;
         } else {
           if (claiming !== null) detectTextDrift(current, produced);

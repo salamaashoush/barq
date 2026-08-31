@@ -12,12 +12,15 @@ import {
   HYDRATE,
   Loading,
   NotReadyError,
+  block,
   boundary,
+  branch,
   computed,
   effect,
   element,
   flush,
   hydrate,
+  insert,
   runWithOwner,
   template,
   scope,
@@ -37,7 +40,14 @@ import {
   renderToStringAsync,
   swapDeferredRange,
 } from "./server.ts";
-import { type SsrHtml, boundary as ssrBoundary, esc, html as ssrHtml, ssrLoading } from "./ssr.ts";
+import {
+  type SsrHtml,
+  boundary as ssrBoundary,
+  branch as ssrBranch,
+  esc,
+  html as ssrHtml,
+  ssrLoading,
+} from "./ssr.ts";
 import { encodeSeed } from "./codec.ts";
 
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
@@ -1355,5 +1365,66 @@ describe("a seeded key that is still in flight", () => {
     expect(value()).toBe("refetched");
     expect(fetches, "abandoned is absent, not failed: it fetches").toBe(1);
     store(undefined);
+  });
+});
+
+/**
+ * The failure this pins looked like nothing at all: no mismatch, no recovery,
+ * and a node the server sent simply gone from the page.
+ */
+describe("a children array holding a claimed region", () => {
+  test("the region's nodes survive the walk beside a plain sibling", () => {
+    // `<Header><Title/><Badge/></Header>` where the badge renders a `<Show>`.
+    // The children Block produces `[element, undefined]`: the element is the
+    // title, and the branch claimed the server's span and needed no anchor to
+    // put it back. Testing only for a WHOLLY nullish value let that array
+    // through to the reconciler, which saw one node where the claim held four
+    // and removed the span.
+    const serverHalf = (): SsrHtml =>
+      ssrHtml(
+        `<div id="header">${esc([
+          ssrHtml(`<div id="title">Invoices</div>`),
+          ssrBranch(null, null, null, () => 0, [() => ssrHtml(`<span id="mark">New</span>`)], 5),
+        ])}</div>`,
+      );
+
+    const html = renderToString(serverHalf);
+    expect(html).toContain('<span id="mark">New</span>');
+    expect(html).toContain("<!--[-->");
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+    const served = container.querySelector("#mark");
+
+    const outer = template(`<div id="header"></div>`);
+    const title = template(`<div id="title">Invoices</div>`);
+    const mark = template(`<span id="mark">New</span>`);
+
+    hydrate(
+      ((s: never) => {
+        const host = outer() as HTMLElement;
+        insert(
+          s,
+          host,
+          block((inner: never) => [
+            title(),
+            branch(inner, null, null, () => 0, [block(() => mark())], 5),
+          ]),
+          null,
+          16,
+        );
+        return host;
+      }) as never,
+      container,
+    );
+    flush();
+
+    expect(container.querySelector("#mark")).not.toBeNull();
+    // The SAME node, not a rebuilt one: a replacement loses the focus, the
+    // scroll position and the selection that were on it.
+    expect(container.querySelector("#mark")).toBe(served);
+    expect(hydrate.report.mismatches).toEqual([]);
+    expect(hydrate.report.recovered).toBe(false);
   });
 });
