@@ -139,6 +139,26 @@ import {
   Select,
   SelectItem,
   Separator,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -505,6 +525,101 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="Sidebar">
+        <div
+          style={{
+            height: "22rem",
+            border: "1px solid var(--border)",
+            "border-radius": "var(--radius)",
+            overflow: "hidden",
+            position: "relative",
+            // `sidebar-container` is `position: fixed`, which resolves against
+            // the VIEWPORT unless an ancestor makes a containing block. Without
+            // this the demo sidebar covers the whole page rather than sitting in
+            // its box. A real application wants the viewport behaviour, which is
+            // why the component does not do this for itself.
+            transform: "translateZ(0)",
+          }}
+        >
+          {/* `min-h-svh` is right for a page shell and wrong in a box, so the
+              DEMO overrides it rather than the component softening it. */}
+          <SidebarProvider style={{ "min-height": "100%", height: "100%" }}>
+            <Sidebar collapsible="icon">
+              <SidebarHeader>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton size="lg">Acme Inc</SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarHeader>
+              <SidebarContent>
+                <SidebarGroup>
+                  <SidebarGroupLabel>Platform</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton isActive>
+                          <Inbox />
+                          <span>Inbox</span>
+                        </SidebarMenuButton>
+                        <SidebarMenuBadge>12</SidebarMenuBadge>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton>
+                          <FileText />
+                          <span>Drafts</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton>
+                          <Search />
+                          <span>Search</span>
+                        </SidebarMenuButton>
+                        <SidebarMenuSub>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton>Recent</SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton isActive>Saved</SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        </SidebarMenuSub>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+                <SidebarSeparator />
+                <SidebarGroup>
+                  <SidebarGroupLabel>Loading</SidebarGroupLabel>
+                  <SidebarMenu>
+                    <SidebarMenuSkeleton showIcon />
+                    <SidebarMenuSkeleton showIcon />
+                  </SidebarMenu>
+                </SidebarGroup>
+              </SidebarContent>
+              <SidebarFooter>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton>
+                      <AtSign />
+                      <span>Account</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarFooter>
+              <SidebarRail />
+            </Sidebar>
+            <SidebarInset>
+              <div class={row} style={{ padding: "0.75rem" }}>
+                <SidebarTrigger />
+                <span style={{ "font-size": "0.875rem", color: "var(--muted-foreground)" }}>
+                  Toggle it, or press Ctrl+B
+                </span>
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
         </div>
       </Section>
 

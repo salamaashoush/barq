@@ -60,6 +60,7 @@ export const ENTRIES: readonly string[] = [
   "ui/select.tsx",
   "ui/separator.tsx",
   "ui/sheet.tsx",
+  "ui/sidebar.tsx",
   "ui/skeleton.tsx",
   "ui/slider.tsx",
   "ui/spinner.tsx",

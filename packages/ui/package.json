@@ -292,6 +292,11 @@
       "barq": "./src/ui/sheet.tsx",
       "bun": "./src/ui/sheet.tsx"
     },
+    "./sidebar": {
+      "types": "./src/ui/sidebar.tsx",
+      "barq": "./src/ui/sidebar.tsx",
+      "bun": "./src/ui/sidebar.tsx"
+    },
     "./skeleton": {
       "types": "./src/ui/skeleton.tsx",
       "barq": "./src/ui/skeleton.tsx",

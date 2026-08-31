@@ -1006,6 +1006,30 @@
       ]
     },
     {
+      "name": "sidebar",
+      "type": "registry:ui",
+      "title": "Sidebar",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "input",
+        "layers",
+        "props",
+        "separator",
+        "sheet",
+        "skeleton",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/sidebar.tsx"
+      ]
+    },
+    {
       "name": "skeleton",
       "type": "registry:ui",
       "title": "Skeleton",
