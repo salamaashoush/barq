@@ -42,6 +42,7 @@ enum Tag {
     FirstThatWorks,
     Props,
     DefineVars,
+    CreateTheme,
     Dynamic,
 }
 
@@ -59,6 +60,7 @@ impl Tag {
             "firstThatWorks" => Tag::FirstThatWorks,
             "props" => Tag::Props,
             "defineVars" => Tag::DefineVars,
+            "createTheme" => Tag::CreateTheme,
             "dynamic" => Tag::Dynamic,
             _ => return None,
         })
@@ -199,6 +201,19 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
             Some(Expression::StringLiteral(literal)) => {
                 self.folded.insert(symbol, literal.value.to_string());
             }
+            // `` const W = `2px` ``. `text_of` already reads such a template
+            // where it stands, and a `const` holding one is the same value by
+            // another spelling — a formatter is what turns one into the other.
+            Some(Expression::TemplateLiteral(template)) if template.expressions.is_empty() => {
+                if let Some(quasi) = template.quasis.first() {
+                    let text = quasi
+                        .value
+                        .cooked
+                        .as_ref()
+                        .map_or_else(|| quasi.value.raw.to_string(), |cooked| cooked.to_string());
+                    self.folded.insert(symbol, text);
+                }
+            }
             Some(Expression::ObjectExpression(object)) => {
                 let mut group = FxHashMap::default();
                 for property in &object.properties {
@@ -243,6 +258,13 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                 // `atomsIn("barq.ui", …)`: the layer is the first argument and
                 // has to be a literal, because it becomes part of every name.
                 Some(Tag::AtomsIn) => {
+                    if Self::string_argument(call, 0).is_none() {
+                        // The layer joins every class name, so it cannot be
+                        // resolved later. `layer()` binds one per module for
+                        // exactly this reason.
+                        self.declined_layer(call, span);
+                        return;
+                    }
                     if let Some(layer) = Self::string_argument(call, 0) {
                         call.arguments.remove(0);
                         if let Some(replacement) = self.compile_atoms(call, span, &layer) {
@@ -257,18 +279,24 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     return;
                 }
                 Some(Tag::Create) => {
-                    if let Some(replacement) = self.compile_create(call, span, "") {
-                        *expression = replacement;
+                    match self.compile_create(call, span, "") {
+                        Some(replacement) => *expression = replacement,
+                        None => self.decline(span, GROUP_UNREADABLE),
                     }
                     return;
                 }
                 Some(Tag::CreateIn) => {
+                    if Self::string_argument(call, 0).is_none() {
+                        self.declined_layer(call, span);
+                        return;
+                    }
                     if let Some(layer) = Self::string_argument(call, 0) {
                         call.arguments.remove(0);
                         if let Some(replacement) = self.compile_create(call, span, &layer) {
                             *expression = replacement;
                             return;
                         }
+                        self.decline(span, GROUP_UNREADABLE);
                         let text = self.allocator.alloc_str(&layer);
                         let literal = Expression::new_string_literal(span, text, None, &self.ast);
                         call.arguments.insert(0, oxc::ast::ast::Argument::from(literal));
@@ -284,15 +312,35 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     }
                     return;
                 }
+                Some(Tag::CreateTheme) => {
+                    match self.compile_create_theme(call, span) {
+                        Some(replacement) => *expression = replacement,
+                        None => self.decline(
+                            span,
+                            "a theme reads the token set it overrides, and this one was not \
+                             declared in this module",
+                        ),
+                    }
+                    return;
+                }
                 Some(Tag::DefineVars) => {
-                    if let Some(replacement) = self.compile_define_vars(call, span) {
-                        *expression = replacement;
+                    match self.compile_define_vars(call, span) {
+                        Some(replacement) => *expression = replacement,
+                        None => self.decline(
+                            span,
+                            "a token's value is not a literal this compiler can read",
+                        ),
                     }
                     return;
                 }
                 Some(Tag::Dynamic) => {
-                    if let Some(replacement) = self.compile_dynamic(call, span) {
-                        *expression = replacement;
+                    match self.compile_dynamic(call, span) {
+                        Some(replacement) => *expression = replacement,
+                        None => self.decline(
+                            span,
+                            "a dynamic group's body must be an object literal of unconditional \
+                             declarations",
+                        ),
                     }
                     return;
                 }
@@ -316,15 +364,23 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
         // statement position, where deleting the statement is not available.
         // It stays on the runtime rather than being rewritten to a value it
         // never had.
+        let span = tagged.span;
         if tag == Tag::Global {
+            self.decline(
+                span,
+                "a `globalCss` outside statement position has no value to be rewritten to",
+            );
             return;
         }
-        let span = tagged.span;
         let Some(name) = self.compile(tag, &tagged.quasi, span) else { return };
         let name = self.allocator.alloc_str(&name);
         *expression = Expression::new_string_literal(span, name, None, &self.ast);
     }
 }
+
+/// What a group says when one of its style objects will not read.
+const GROUP_UNREADABLE: &str = "a group holds a value, a key or a nesting this compiler cannot \
+                                read";
 
 /// `(property, condition path, value)`, where `None` REMOVES what an earlier
 /// argument applied — StyleX's rule for `null`, and the reason it is one:
@@ -366,6 +422,55 @@ enum Step {
 }
 
 impl<'a> Css<'a, '_> {
+    /// One reason this call is going to the runtime, said out loud.
+    ///
+    /// The pass declined in seven different shapes and reported in two of them,
+    /// so a build had no way to know whether it was paying for `@barqjs/css`'s
+    /// object walk or using it. `strictCss` is the switch on top of this; the
+    /// note is the thing that had to exist first.
+    ///
+    /// Deliberately NOT raised for an argument the pass cannot read that is a
+    /// class STRING — an imported group, a `class` prop, a call. Those fold
+    /// their neighbours, put their rules in the stylesheet, and leave a merge
+    /// over strings behind, which reaches none of the machinery this is about.
+    /// Reporting them would fire 127 times in `@barqjs/ui` on the documented
+    /// idiom.
+    fn decline(&mut self, span: Span, reason: &str) {
+        self.reports.push(Report {
+            code: Code::Barq017,
+            message: format!(
+                "{reason}, so `@barqjs/css`'s runtime evaluates this call and its style objects \
+                 are walked in the browser"
+            ),
+            span,
+        });
+    }
+
+    /// `atomsIn` or `createIn` whose first argument is not a literal.
+    ///
+    /// Reported only when a style object is in the call, because a layer this
+    /// pass cannot read takes the WHOLE call to the runtime — objects and all —
+    /// where an opaque argument beside a literal layer takes only the merge.
+    fn declined_layer(&mut self, call: &oxc::ast::ast::CallExpression<'_>, span: Span) {
+        let holds_an_object = call.arguments.iter().any(|argument| {
+            let Some(expression) = argument.as_expression() else { return true };
+            match without_type_wrappers(expression) {
+                Expression::ObjectExpression(_) => true,
+                Expression::LogicalExpression(logical) => {
+                    matches!(without_type_wrappers(&logical.right), Expression::ObjectExpression(_))
+                }
+                _ => false,
+            }
+        });
+        if holds_an_object {
+            self.decline(
+                span,
+                "the layer joins every class name, so it has to be a literal in the module that \
+                 names it — bind it once with `layer()`",
+            );
+        }
+    }
+
     /// `atoms({ … })` as the class string it produces.
     ///
     /// `None` leaves the call for the runtime, which computes exactly this.
@@ -384,7 +489,17 @@ impl<'a> Css<'a, '_> {
         let mut slots: Vec<Slot> = Vec::new();
         for (at, argument) in call.arguments.iter().enumerate() {
             // A spread is not an argument list this pass can count through.
-            let expression = argument.as_expression()?;
+            let Some(expression) = argument.as_expression() else {
+                self.reports.push(Report {
+                    code: Code::Barq017,
+                    message: "a spread argument is not an argument list this compiler can count \
+                              through, so `@barqjs/css`'s runtime evaluates this call and its \
+                              style objects are walked in the browser"
+                        .to_string(),
+                    span,
+                });
+                return None;
+            };
             match crate::analysis::without_type_wrappers(expression) {
                 // `false && …` and friends: the argument contributes nothing and
                 // is not a value the compiler has to know.
@@ -402,9 +517,17 @@ impl<'a> Css<'a, '_> {
                 }
                 _ => {}
             }
+            // An object this pass cannot read is the one shape that costs the
+            // runtime's object walk, so it is the one that reports. A class
+            // string it cannot read is a merge and reports nothing.
+            let mut object_declined: Option<Span> = None;
             let read = match expression {
                 Expression::ObjectExpression(_) => {
-                    self.declarations(expression).map(|declarations| Argument {
+                    let read = self.declarations(expression);
+                    if read.is_none() {
+                        object_declined = Some(expression.span());
+                    }
+                    read.map(|declarations| Argument {
                         at,
                         conditional: false,
                         declarations,
@@ -426,7 +549,11 @@ impl<'a> Css<'a, '_> {
                 {
                     match &logical.right {
                         Expression::ObjectExpression(_) => {
-                            self.declarations(&logical.right).map(|declarations| Argument {
+                            let read = self.declarations(&logical.right);
+                            if read.is_none() {
+                                object_declined = Some(logical.right.span());
+                            }
+                            read.map(|declarations| Argument {
                                 at,
                                 conditional: true,
                                 declarations,
@@ -443,6 +570,13 @@ impl<'a> Css<'a, '_> {
                 }
                 _ => None,
             };
+            if let Some(at) = object_declined {
+                self.decline(
+                    at,
+                    "this style object holds a value, a key or a nesting this \
+                                  compiler cannot read",
+                );
+            }
             slots.push(match read {
                 Some(argument) => Slot::Known(argument),
                 None => Slot::Opaque(at),
@@ -505,6 +639,11 @@ impl<'a> Css<'a, '_> {
             Step::Opaque(_) => false,
         });
         if unsafe_removal {
+            self.decline(
+                span,
+                "a `null` removal has to see what came before it and an earlier argument is \
+                 opaque here",
+            );
             return None;
         }
 
@@ -729,7 +868,7 @@ impl<'a> Css<'a, '_> {
         let mut vars: Vec<(&'a str, Expression<'a>)> = Vec::new();
         for property in object.properties.iter_mut() {
             let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = key_name(&property.key)?;
+            let name = self.key_text(property)?;
             if is_condition(&name) {
                 return None;
             }
@@ -776,7 +915,7 @@ impl<'a> Css<'a, '_> {
         let mut tokens: Vec<(String, barq_css::atoms::TokenValue)> = Vec::new();
         for property in &object.properties {
             let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = key_name(&property.key)?;
+            let name = self.key_text(property)?;
             let value = match crate::analysis::without_type_wrappers(&property.value) {
                 Expression::NumericLiteral(literal) => {
                     barq_css::atoms::TokenValue::Number(literal.value)
@@ -822,6 +961,68 @@ impl<'a> Css<'a, '_> {
             })
             .collect();
         Some(self.object(span, built))
+    }
+
+    /// `createTheme(tokens, { brand: "#60a5fa" })` as the class that redeclares
+    /// them.
+    ///
+    /// Readable exactly when the token set is one THIS module declared, which
+    /// is what `defineVars` leaves behind in `groups`. Nothing else is needed:
+    /// the custom property's name is already inside the `var()` reference the
+    /// token set handed back, so a theme asks the call that declared it for
+    /// nothing. An imported token set is opaque here and stays on the runtime,
+    /// which is the per-file rule rather than a gap in it.
+    ///
+    /// The name is the runtime's, `r` prefix and all, and that is the point:
+    /// a theme this compiles and a theme the runtime built for an imported
+    /// token set are one rule under one class rather than two.
+    fn compile_create_theme(
+        &mut self,
+        call: &oxc::ast::ast::CallExpression<'a>,
+        span: Span,
+    ) -> Option<Expression<'a>> {
+        let [vars, values] = call.arguments.as_slice() else { return None };
+        let symbol = crate::analysis::symbol_of(self.scoping, vars.as_expression()?)?;
+        let tokens = self.groups.get(&symbol)?.clone();
+        let Expression::ObjectExpression(object) =
+            crate::analysis::without_type_wrappers(values.as_expression()?)
+        else {
+            return None;
+        };
+
+        let mut declarations = String::new();
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let token = self.key_text(property)?;
+            let value = match crate::analysis::without_type_wrappers(&property.value) {
+                // What an absent optional produces, and the runtime skips it.
+                Expression::Identifier(identifier) if identifier.name == "undefined" => continue,
+                // `String(8.0)` is `8`, whatever the source wrote, and the two
+                // sides have to hash the same text.
+                Expression::NumericLiteral(literal) => barq_css::atoms::number_text(literal.value),
+                other => self.text_of(other)?,
+            };
+            // A token the set does not carry has no property to redeclare, and
+            // the runtime's regex simply fails to match it.
+            let Some(property_name) = tokens
+                .get(&token)
+                .and_then(|reference| reference.strip_prefix("var("))
+                .and_then(|inside| inside.split([',', ')']).next())
+                .filter(|name| name.starts_with("--"))
+            else {
+                continue;
+            };
+            if !declarations.is_empty() {
+                declarations.push(';');
+            }
+            declarations.push_str(&format!("{property_name}:{value}"));
+        }
+
+        let name = format!("r{}", barq_css::atoms::hash32(&declarations));
+        if self.emitted.insert(name.clone()) {
+            self.css.push_str(&format!(".{name}{{{declarations}}}"));
+        }
+        Some(Expression::new_string_literal(span, self.allocator.alloc_str(&name), None, &self.ast))
     }
 
     /// `create({ root: { … }, child: { … } })` as an object of class strings.
@@ -1011,7 +1212,7 @@ impl<'a> Css<'a, '_> {
     ) -> Option<()> {
         for property in &object.properties {
             let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = key_name(&property.key)?;
+            let name = self.key_text(property)?;
             let value = crate::analysis::without_type_wrappers(&property.value);
 
             // A top-level condition key holds a whole style object.
@@ -1028,7 +1229,7 @@ impl<'a> Css<'a, '_> {
             };
             for entry in &conditions.properties {
                 let ObjectPropertyKind::ObjectProperty(entry) = entry else { return None };
-                let inner = key_name(&entry.key)?;
+                let inner = self.key_text(entry)?;
                 let where_ = if inner == "default" {
                     condition.to_string()
                 } else {
@@ -1064,7 +1265,7 @@ impl<'a> Css<'a, '_> {
     ) -> Option<()> {
         for entry in &object.properties {
             let ObjectPropertyKind::ObjectProperty(entry) = entry else { return None };
-            let inner = key_name(&entry.key)?;
+            let inner = self.key_text(entry)?;
             let where_ =
                 if inner == "default" { condition.to_string() } else { join(condition, &inner) };
             let value = crate::analysis::without_type_wrappers(&entry.value);
@@ -1209,6 +1410,20 @@ impl<'a> Css<'a, '_> {
             }
         }
         Some(source)
+    }
+
+    /// A property's key as text, computed or not.
+    ///
+    /// `[MIX]: { … }` is how a condition written once is used twice, and a
+    /// repeated `@supports (color: color-mix(…))` is long enough that spelling
+    /// it out is what people stop doing. The key resolves through the same
+    /// table an interpolation does, so it folds under the same rule: a
+    /// module-level `const`, declared above the use.
+    fn key_text(&self, property: &ObjectProperty<'_>) -> Option<String> {
+        if property.computed {
+            return property.key.as_expression().and_then(|key| self.text_of(key));
+        }
+        key_name(&property.key)
     }
 
     fn text_of(&self, expression: &Expression<'_>) -> Option<String> {
@@ -1898,6 +2113,191 @@ mod atom_tests {
         )
         .expect("compiles");
         assert_eq!(out.css, None);
+    }
+}
+
+#[cfg(test)]
+mod decline_tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::diag::{Code, Level};
+    use crate::options::{ResolvedOptions, TransformOptions};
+
+    const IMPORT: &str = "import { atoms, atomsIn, create, createIn, createTheme, defineVars, \
+                          dynamic, globalCss, layer, props } from \"@barqjs/css\";\n";
+
+    fn run(body: &str) -> CompileOutput {
+        compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
+            .expect("compiles")
+    }
+
+    fn codes(out: &CompileOutput) -> Vec<&'static str> {
+        out.warnings.iter().filter_map(|warning| warning.code).map(Code::as_str).collect()
+    }
+
+    /// Seven ways to decline and two of them reported, which is why a build had
+    /// no way to know whether it was paying for `@barqjs/css`'s object walk.
+    /// Every one of these leaves a style OBJECT for the runtime.
+    #[test]
+    fn every_way_a_style_object_reaches_the_runtime_says_so() {
+        let cases = [
+            ("an unreadable value", "export const a = atoms({ color: theme.brand });"),
+            (
+                "a layer that is not a literal",
+                "export const a = atomsIn(LAYER, { color: \"red\" });",
+            ),
+            ("a spread", "export const a = atoms(...rest);"),
+            (
+                "a const below its use",
+                "export const a = atoms({ color: LATER });\nconst LATER = \"red\";",
+            ),
+            (
+                "a group that will not read",
+                "export const a = create({ x: { color: theme.brand } });",
+            ),
+            ("a token that will not read", "export const a = defineVars({ brand: pick() });"),
+            ("a dynamic body that is not a literal", "export const a = dynamic((c) => build(c));"),
+            (
+                "createTheme over an imported token set",
+                "import { theme } from \"./t.ts\";\nexport const a = createTheme(theme, { brand: \"#fff\" });",
+            ),
+            (
+                "a removal after an opaque argument",
+                "export const a = atoms(other, { color: null });",
+            ),
+        ];
+        for (what, body) in cases {
+            assert!(codes(&run(body)).contains(&"BARQ017"), "{what}: {body}");
+        }
+    }
+
+    /// The line is at the OBJECT, not at the call. An argument this pass cannot
+    /// read that is a class string folds its neighbours, puts their rules in
+    /// the stylesheet and leaves a merge over strings — which reaches none of
+    /// the machinery BARQ017 is about. Reporting it would fire 127 times in
+    /// `@barqjs/ui` on the documented idiom.
+    #[test]
+    fn an_opaque_class_string_is_a_merge_and_reports_nothing() {
+        let out = run(
+            "import { shared } from \"./s.ts\";\nexport const a = atomsIn(\"barq.ui\", shared.ring, { color: \"red\" });",
+        );
+        assert!(out.code.contains("a-color_"), "the literal did not fold: {}", out.code);
+        assert!(codes(&out).is_empty(), "{:?}", codes(&out));
+    }
+
+    #[test]
+    fn a_call_that_folds_whole_reports_nothing() {
+        let out = run("export const a = atomsIn(\"barq.ui\", { color: \"red\", padding: 8 });");
+        assert!(codes(&out).is_empty(), "{:?}", codes(&out));
+    }
+
+    fn strict(body: &str) -> CompileOutput {
+        let options = TransformOptions {
+            filename: Some("s.tsx".to_string()),
+            strict_css: Some(true),
+            ..TransformOptions::default()
+        };
+        compile(&format!("{IMPORT}{body}"), &options.resolve()).expect("compiles")
+    }
+
+    /// The flag names a SET of codes, so a CSS code added later is covered
+    /// without the flag being edited.
+    #[test]
+    fn strict_css_makes_every_css_code_an_error() {
+        for body in [
+            "export const a = atoms({ color: theme.brand });",
+            "export const a = atoms({ color: \"red\" }, x() && { color: \"b\" }, y() && { padding: 8 });",
+        ] {
+            let out = strict(body);
+            assert!(
+                out.warnings.iter().any(|warning| warning.severity == Level::Error),
+                "{body}: {:?}",
+                codes(&out)
+            );
+        }
+    }
+
+    /// `checks` is per code and `strictCss` is per set, so the narrower one
+    /// wins. Without that, a project could turn the flag on and have no way
+    /// back for the one call it accepts.
+    #[test]
+    fn an_explicit_check_still_beats_strict_css() {
+        let options = TransformOptions {
+            filename: Some("s.tsx".to_string()),
+            strict_css: Some(true),
+            checks: Some(vec![vec!["BARQ017".to_string(), "note".to_string()]]),
+            ..TransformOptions::default()
+        };
+        let out = compile(
+            &format!("{IMPORT}export const a = atoms({{ color: theme.brand }});"),
+            &options.resolve(),
+        )
+        .expect("compiles");
+        assert!(out.warnings.iter().all(|warning| warning.severity == Level::Note), "{out:?}");
+    }
+
+    /// A folded call is what `strictCss` is FOR: `@barqjs/ui` sets it at zero
+    /// cost today, and this is the shape that says so.
+    #[test]
+    fn strict_css_costs_a_module_that_folds_nothing() {
+        let out = strict(
+            "const ui = layer(\"barq.ui\");\nexport const a = ui({ color: \"red\" });\nexport const g = createIn(\"barq.ui\", { r: { padding: 8 } });",
+        );
+        assert!(out.warnings.iter().all(|warning| warning.code.is_none()), "{:?}", codes(&out));
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::options::ResolvedOptions;
+
+    fn run(body: &str) -> CompileOutput {
+        compile(
+            &format!("import {{ createTheme, defineVars }} from \"@barqjs/css\";\n{body}"),
+            &ResolvedOptions::with_filename("s.tsx"),
+        )
+        .expect("compiles")
+    }
+
+    /// The class `@barqjs/css`'s own `createTheme` produces for the same
+    /// tokens, pinned. They MUST agree: a theme this compiles and a theme the
+    /// runtime builds for an imported token set are one rule under one class
+    /// or they are two copies of it.
+    #[test]
+    fn a_theme_over_a_local_token_set_is_the_class_the_runtime_names() {
+        let out = run(
+            "export const tokens = defineVars({ brand: \"rgb(59, 130, 246)\", pad: \"12px\" });\n\
+             export const brighter = createTheme(tokens, { brand: \"rgb(96, 165, 250)\" });",
+        );
+        assert!(out.code.contains("export const brighter = \"r162tj84\""), "{}", out.code);
+        assert!(!out.code.contains("createTheme("), "the call survived: {}", out.code);
+        assert_eq!(
+            out.css.as_deref(),
+            Some(
+                ":root{--brand-1xxjjr0:rgb(59, 130, 246);--pad-1xxjjr0:12px}\
+                 .r162tj84{--brand-1xxjjr0:rgb(96, 165, 250)}"
+            )
+        );
+    }
+
+    /// `String(8.0)` is `8` whatever the source wrote, and the two sides hash
+    /// the declaration TEXT.
+    #[test]
+    fn a_number_takes_the_text_the_runtime_would_print() {
+        let out = run("export const t = defineVars({ gap: \"0px\" });\n\
+             export const a = createTheme(t, { gap: 8.0 });");
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains(":8}"), "{css}");
+    }
+
+    /// The runtime skips a token the set does not carry, because the property
+    /// name lives in the reference and there is none to read.
+    #[test]
+    fn a_token_the_set_does_not_carry_is_skipped_like_the_runtime_skips_it() {
+        let out = run("export const t = defineVars({ brand: \"#000\" });\n\
+             export const a = createTheme(t, { brand: \"#fff\", nothing: \"#f00\" });");
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(!css.contains("#f00"), "{css}");
     }
 }
 

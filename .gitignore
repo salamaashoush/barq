@@ -42,3 +42,8 @@ packages/compiler-rs/index.d.ts
 # Browser-automation output. Regenerated on every run, and a debugging
 # session leaves a screenshot per step behind.
 .ferridriver/artifacts/
+
+# Third-party sources read from disk rather than fetched into a session.
+# Five upstream checkouts; the notes taken from them are in
+# packages/css/ZERO-RUNTIME.md, which is what ships.
+scratch/css-research/

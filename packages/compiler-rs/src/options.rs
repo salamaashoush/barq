@@ -228,6 +228,14 @@ pub struct TransformOptions {
     /// Per-code severity, `[[code, category]]`. `category` is one of `suppress`,
     /// `note`, `warning`, `error`. napi has no map type, so this is pairs.
     pub checks: Option<Vec<Vec<String>>>,
+    /// Every CSS diagnostic is an error, so a call `@barqjs/css`'s runtime
+    /// would have to evaluate fails the build instead.
+    ///
+    /// The point is what it makes provable rather than what it forbids: with
+    /// no call falling back, nothing reaches the runtime's object walk, and a
+    /// build can drop it. An explicit `checks` entry still wins over this.
+    /// @default false
+    pub strict_css: Option<bool>,
     /// The category every code takes when `checks` does not name it.
     pub default_category: Option<String>,
     /// Emit the static ownership tree alongside the
@@ -295,6 +303,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "interp",
     "diagnostics",
     "checks",
+    "strictCss",
     "defaultCategory",
     "ownership",
     "addresses",
@@ -343,6 +352,10 @@ pub struct ResolvedOptions {
     pub ownership: bool,
     pub addresses: bool,
     pub hydratable: bool,
+    /// Every CSS diagnostic is an error. Carried on the resolved options as
+    /// well as folded into `severities`, because the emission side reads it
+    /// too: a strict build has no reason to keep the call it just refused.
+    pub strict_css: bool,
     pub opt: Opt,
     /// Pass names the caller asked for that this build does not have. Carried
     /// rather than dropped so `compile` can warn: a knob that silently does
@@ -374,6 +387,7 @@ impl Default for ResolvedOptions {
             ownership: false,
             addresses: false,
             hydratable: false,
+            strict_css: false,
             opt: Opt::ALL,
             unknown_passes: Vec::new(),
             severities: crate::diag::Severities::default(),
@@ -406,6 +420,7 @@ impl TransformOptions {
                 (pair.next().unwrap_or_default(), pair.next().unwrap_or_default())
             })
             .collect();
+        let strict_css = self.strict_css.unwrap_or(false);
         let mut opt = Opt::level(self.optimize.unwrap_or(1));
         let mut unknown_passes = Vec::new();
         for pair in self.passes.unwrap_or_default() {
@@ -435,9 +450,14 @@ impl TransformOptions {
             ownership: self.ownership.unwrap_or(false),
             addresses: self.addresses.unwrap_or(false),
             hydratable: self.hydratable.unwrap_or(false),
+            strict_css,
             opt,
             unknown_passes,
-            severities: crate::diag::Severities::new(&checks, self.default_category.as_deref()),
+            severities: crate::diag::Severities::with_strict_css(
+                &checks,
+                self.default_category.as_deref(),
+                strict_css,
+            ),
         }
     }
 }

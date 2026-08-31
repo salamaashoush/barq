@@ -102,6 +102,7 @@ codes! {
     Barq014 = "BARQ014", Error, "a `css` block is not CSS this compiler can compile";
     Barq015 = "BARQ015", Note, "a `css` block interpolates a value known only at run time, so it stays on the runtime";
     Barq016 = "BARQ016", Note, "`atoms` has more than one conditional argument, so it stays on the runtime";
+    Barq017 = "BARQ017", Note, "a call this compiler could not fold, so `@barqjs/css`'s runtime evaluates it";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel
@@ -129,6 +130,15 @@ impl Code {
     fn escalates(self) -> bool {
         !matches!(self, Code::Barq008 | Code::Barq009)
     }
+
+    /// Whether `strictCss` speaks for this code.
+    ///
+    /// Named as a set rather than checked one code at a time, so a CSS code
+    /// added later is covered by the flag without the flag being edited — which
+    /// is the whole reason it is a flag and not three `checks` entries.
+    pub fn is_css(self) -> bool {
+        matches!(self, Code::Barq014 | Code::Barq015 | Code::Barq016 | Code::Barq017)
+    }
 }
 
 /// One resolution of "how loud is this code", shared by the compiler, the Vite
@@ -139,12 +149,25 @@ impl Code {
 pub struct Severities {
     checks: Vec<(Code, Category)>,
     default_category: Option<Category>,
+    /// Every CSS code is an error. The switch behind a build that intends to
+    /// drop `@barqjs/css`'s object walk: a call the compiler declines is the
+    /// only thing that still needs it, so a build that cannot tolerate one
+    /// says so here rather than discovering it in a bundle.
+    strict_css: bool,
     /// Codes named in `checks` that this build does not know. Reported once.
     pub unknown: Vec<String>,
 }
 
 impl Severities {
     pub fn new(checks: &[(String, String)], default_category: Option<&str>) -> Self {
+        Self::with_strict_css(checks, default_category, false)
+    }
+
+    pub fn with_strict_css(
+        checks: &[(String, String)],
+        default_category: Option<&str>,
+        strict_css: bool,
+    ) -> Self {
         let mut resolved = Vec::with_capacity(checks.len());
         let mut unknown = Vec::new();
         for (code, category) in checks {
@@ -163,23 +186,31 @@ impl Severities {
                 }
             },
         };
-        Self { checks: resolved, default_category, unknown }
+        Self { checks: resolved, default_category, strict_css, unknown }
     }
 
     /// `None` means suppressed. An explicit per-code entry wins over
-    /// `defaultCategory`, which wins over the code's own level — Angular's
-    /// shape (`extendedDiagnostics: { checks, defaultCategory }`).
+    /// `strictCss`, which wins over `defaultCategory`, which wins over the
+    /// code's own level — Angular's shape (`extendedDiagnostics: { checks,
+    /// defaultCategory }`) with one flag over the middle of it.
+    ///
+    /// `strictCss` sits above `defaultCategory` because it is the more
+    /// specific of the two: it names a set of codes where the other names all
+    /// of them.
     pub fn resolve(&self, code: Code) -> Option<Level> {
-        let category = self
+        let named = self
             .checks
             .iter()
             .rev()
             .find(|(candidate, _)| *candidate == code)
-            .map(|(_, category)| *category)
-            .or(self.default_category);
-        let level = match category {
+            .map(|(_, category)| *category);
+        let level = match named {
             Some(category) => category.level()?,
-            None => code.default_level(),
+            None if self.strict_css && code.is_css() => Level::Error,
+            None => match self.default_category {
+                Some(category) => category.level()?,
+                None => code.default_level(),
+            },
         };
         Some(if code.escalates() { level } else { level.min(Level::Warning) })
     }

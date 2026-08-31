@@ -120,6 +120,20 @@ export interface BarqCompilerOptions {
   cssSource?: string;
 
   /**
+   * Every CSS diagnostic is an error, so a call `@barqjs/css`'s runtime would
+   * have to evaluate fails the build.
+   *
+   * The point is what it makes provable rather than what it forbids. With no
+   * call falling back, nothing in the bundle reaches the runtime's object walk,
+   * and a build can drop it deliberately instead of shipping it because a
+   * bundler cannot prove it dead. `@barqjs/ui` passes with it on today.
+   *
+   * An explicit `checks` entry still wins, so one accepted call has a way back.
+   * @default false
+   */
+  strictCss?: boolean;
+
+  /**
    * Every route pattern in the project, which is what BARQ013 checks a
    * `<Link to>` against.
    *
@@ -246,6 +260,7 @@ export type BarqOptimisation =
 interface NativeTransformOptions {
   routerSource?: string;
   cssSource?: string;
+  strictCss?: boolean;
   routes?: readonly string[];
   moduleSource?: string;
   serverSource?: string;
@@ -305,11 +320,7 @@ const CSS_QUERY = ".barq.css";
  *
  * Keyed by module id, so re-evaluating the module replaces its rules.
  */
-export function cssRegistration(
-  id: string,
-  css: string,
-  cssSource = DEFAULT_CSS_SOURCE,
-): string {
+export function cssRegistration(id: string, css: string, cssSource = DEFAULT_CSS_SOURCE): string {
   return (
     `\nimport { registerCss as _$registerCss } from ${JSON.stringify(cssSource)};\n` +
     `_$registerCss(${JSON.stringify(id)}, ${JSON.stringify(css)});\n`
@@ -538,8 +549,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // A stylesheet lives in a `.ts` module with no JSX in it, so extension
       // alone would skip exactly the file the CSS is in. Naming the package is
       // the cheap gate; the compiler then resolves the tag by symbol.
-      const shouldTransform =
-        include.some((ext) => path.endsWith(ext)) || code.includes(cssSource);
+      const shouldTransform = include.some((ext) => path.endsWith(ext)) || code.includes(cssSource);
       if (!shouldTransform) return null;
 
       const isExcluded = exclude.some((pattern) => {
@@ -570,6 +580,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           clientSource: compilerOptions.clientSource,
           routerSource: compilerOptions.routerSource,
           cssSource: compilerOptions.cssSource,
+          strictCss: compilerOptions.strictCss,
           routes:
             typeof compilerOptions.routes === "function"
               ? compilerOptions.routes()

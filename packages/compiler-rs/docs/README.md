@@ -18,6 +18,7 @@ Every message the compiler can produce has a stable code, a level, and a page he
 | [BARQ014](BARQ014.md) | error | a `css` block is not CSS this compiler can compile |
 | [BARQ015](BARQ015.md) | note | a `css` block interpolates a value known only at run time, so it stays on the runtime |
 | [BARQ016](BARQ016.md) | note | `atoms` has more than one conditional argument, so it stays on the runtime |
+| [BARQ017](BARQ017.md) | note | a call this compiler could not fold, so `@barqjs/css`'s runtime evaluates it |
 
 BARQ001, BARQ002, BARQ003 and BARQ005 are the source-level rules. They run when
 `diagnostics` is on, which defaults to `dev`. BARQ004, BARQ010 and BARQ011 are
