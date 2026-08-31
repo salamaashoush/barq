@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
+import { collectCss } from "@barqjs/css";
 import { render, screen, user } from "@barqjs/testing";
 
 import { Combobox } from "./combobox.tsx";
@@ -87,6 +88,29 @@ describe("Combobox", () => {
     await user.click(screen.getAllByRole("option")[0]!);
     await settle();
     expect(picked).toEqual(["barq", null]);
+  });
+
+  test("the list is as wide as the trigger, not as wide as the page", async () => {
+    // `width: 100%` on a PORTALLED popover resolves against the body, so the
+    // list came out 1265px under a 384px trigger. `overlayPosition` publishes
+    // the measurement and the rule reads it.
+    render(() => <Fixture />);
+    await user.click(screen.getByRole("button"));
+    await settle();
+
+    const content = document.querySelector('[data-slot="combobox-content"]') as HTMLElement;
+    const rules = content.className
+      .split(" ")
+      .map((name) => {
+        const mentions = new RegExp(`\\.${name}(?![\\w-])`);
+        return collectCss()
+          .split("@layer barq.ui{")
+          .filter((chunk) => mentions.test(chunk))
+          .join("");
+      })
+      .join("");
+    expect(rules).toContain("width: var(--barq-trigger-width");
+    expect(rules).not.toContain("width: 100%");
   });
 
   test("the chosen entry is ticked", async () => {

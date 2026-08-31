@@ -158,6 +158,46 @@ describe("overlayPosition", () => {
     expect(leftOf(position)).toBeCloseTo(290, 1);
   });
 
+  test("publishes the trigger's measurements for an overlay that wants to match", () => {
+    // A portalled listbox cannot say `width: 100%`: 100% resolves against the
+    // portal container, which is the body, so a popover asked to be as wide as
+    // its trigger came out as wide as the page.
+    let position: PositionResult | undefined;
+
+    function Fixture() {
+      const targetRef = ref<HTMLElement>();
+      const overlayRef = ref<HTMLElement>();
+      position = overlayPosition({ targetRef, overlayRef, placement: "bottom", isOpen: true });
+      return (
+        <>
+          <button
+            type="button"
+            ref={(node: HTMLElement) => {
+              box(node, { top: 100, left: 400, width: 240, height: 36 });
+              targetRef.set(node);
+            }}
+          >
+            Open
+          </button>
+          <div
+            ref={(node: HTMLElement) => {
+              box(node, { top: 0, left: 0, width: 300, height: 40 });
+              overlayRef.set(node);
+            }}
+          />
+        </>
+      );
+    }
+
+    render(() => <Fixture />);
+    flush();
+    position?.update();
+
+    const style = styleOf(position?.overlayProps);
+    expect(style["--barq-trigger-width"]).toBe("240px");
+    expect(style["--barq-trigger-height"]).toBe("36px");
+  });
+
   test("re-places itself when the overlay's own box changes", () => {
     // The first measurement is taken the moment the ref resolves, before the
     // browser has laid the overlay out. A popover measured 275px wide, was

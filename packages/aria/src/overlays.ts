@@ -776,10 +776,18 @@ function fits(
  * trigger rather than sliding across the screen.
  */
 export function overlayPosition(options: PositionOptions): PositionResult {
-  const position = signal<{ top: number; left: number; maxHeight: number }>({
+  const position = signal<{
+    top: number;
+    left: number;
+    maxHeight: number;
+    targetWidth: number;
+    targetHeight: number;
+  }>({
     top: 0,
     left: 0,
     maxHeight: Number.POSITIVE_INFINITY,
+    targetWidth: 0,
+    targetHeight: 0,
   });
   const arrowOffset = signal<number | undefined>(undefined);
   const resolvedAxis = signal<Axis>("bottom");
@@ -847,6 +855,8 @@ export function overlayPosition(options: PositionOptions): PositionResult {
       top: placed.top + view.scrollY,
       left: placed.left + view.scrollX,
       maxHeight: Math.max(0, maxHeight),
+      targetWidth: targetBox.width,
+      targetHeight: targetBox.height,
     });
     resolvedAxis.set(axis);
 
@@ -925,6 +935,12 @@ export function overlayPosition(options: PositionOptions): PositionResult {
           top: `${current.top}px`,
           left: `${current.left}px`,
           maxHeight: Number.isFinite(current.maxHeight) ? `${current.maxHeight}px` : undefined,
+          // What the trigger measures, for an overlay that wants to match it.
+          // A listbox under a combobox is the case: `width: 100%` resolves
+          // against the PORTAL container, which is the body, so a popover asked
+          // to be as wide as its trigger came out as wide as the page.
+          "--barq-trigger-width": `${current.targetWidth}px`,
+          "--barq-trigger-height": `${current.targetHeight}px`,
         };
       },
     },

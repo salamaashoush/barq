@@ -116,12 +116,19 @@ const trigger = css`
   }
 `;
 
+/**
+ * shadcn puts min-w-[8rem] on the content and the trigger's width on the
+ * viewport inside it, so the list is the wider of the two. `overlayPosition`
+ * publishes the same measurement; the plain `8rem` beside it is the fallback
+ * for a browser without `max()`, and is what the transcription produced.
+ */
 const list = css`
   @layer barq.ui {
     position: relative;
     z-index: 50;
     margin: 0px;
     min-width: 8rem;
+    min-width: max(8rem, var(--barq-trigger-width, 0px));
     animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
       var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
       var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);

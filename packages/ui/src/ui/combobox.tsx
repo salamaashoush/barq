@@ -20,9 +20,17 @@ const trigger = css`
   }
 `;
 
+/**
+ * The TRIGGER's width, published by `overlayPosition`.
+ *
+ * shadcn asks for `w-[200px]` on both halves and leaves matching them to you.
+ * `width: 100%` cannot do it: the popover is portalled, so 100% resolves
+ * against the body and the list came out as wide as the page.
+ */
 const content = css`
   @layer barq.ui {
-    width: 100%;
+    width: var(--barq-trigger-width, auto);
+    min-width: var(--barq-trigger-width, auto);
     padding: 0px;
   }
 `;
