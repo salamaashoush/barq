@@ -30,9 +30,22 @@ const native = require_("@barqjs/compiler-rs") as {
 
 const ownTs = new RegExp(`^${import.meta.dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/.*\\.ts$`);
 
-plugin({
+/**
+ * The same transform, for a `Bun.build` of its own.
+ *
+ * `plugin()` registers with the test runner's loader and a `Bun.build` inside a
+ * test does not inherit it — so a suite that bundles this package would get raw
+ * JSX. `tree-shaking.test.ts` is that suite, and it now bundles the SOURCE,
+ * because source is what this package publishes.
+ */
+export const barqPlugin = {
   name: "barq",
-  setup(build) {
+  setup(build: {
+    onLoad(
+      filter: { filter: RegExp },
+      load: (args: { path: string }) => { contents: string; loader: "ts" | "tsx" },
+    ): void;
+  }) {
     const load = (args: { path: string }) => {
       // `strictCss` here as well as in `tsdown.config.ts` and the gallery, or
       // the suite compiles this package's sources under different rules from
@@ -54,7 +67,9 @@ plugin({
     build.onLoad({ filter: /\.tsx$/ }, load);
     build.onLoad({ filter: ownTs }, load);
   },
-});
+};
+
+plugin(barqPlugin);
 
 import * as testing from "@barqjs/testing";
 

@@ -8,15 +8,19 @@
  * reason: it is imported for its effect alone.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, test } from "bun:test";
 
-const root = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-const built = existsSync(root);
+import { barqPlugin } from "./test-setup.ts";
+
+// The SOURCE, because that is what this package publishes: a compiled build is
+// specific to one backend and one `hydratable`, so a consumer compiles it. This
+// bundles what a consumer's bundler would.
+const root = fileURLToPath(new URL("./index.ts", import.meta.url));
 const workspace = mkdtempSync(join(tmpdir(), "barq-ui-treeshake-"));
 
 afterAll(() => rmSync(workspace, { recursive: true, force: true }));
@@ -31,6 +35,7 @@ async function bundle(source: string): Promise<string> {
     entrypoints: [entry],
     target: "browser",
     minify: false,
+    plugins: [barqPlugin],
     external: [
       "@barqjs/core",
       "@barqjs/css",
@@ -43,7 +48,7 @@ async function bundle(source: string): Promise<string> {
   return await result.outputs[0]!.text();
 }
 
-describe.if(built)("tree shaking", () => {
+describe("tree shaking", () => {
   test("one component from the barrel does not bring the others' CSS", async () => {
     const out = await bundle(`
       import { Badge } from "<root>";

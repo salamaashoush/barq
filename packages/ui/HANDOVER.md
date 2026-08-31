@@ -44,6 +44,18 @@ Four things about it are load-bearing.
   calendar day button falling back to `inline-flex` and a nav button growing its
   padding back. `variants` merges too now, so the `uiVariants` wrapper that
   used to supply it is gone and components call `variants` directly.
+- **This package publishes SOURCE, not a build.** A compiled component is
+  specific to one backend AND one `hydratable`: the same file emits
+  `template()`/`spread` from `@barqjs/core` for the DOM and `html()`/`esc()`
+  from `@barqjs/server` for a string render, and `hydratable` moves it again —
+  three distinct outputs for a trivial component, measured. `hydratable` is a
+  decision the APPLICATION makes, so no pre-built artefact can be right for
+  every consumer, and the one that shipped was DOM-only: `node` resolved
+  `@barqjs/ui` to `dist/index.js` and an SSR render got template cloning. There
+  is no `tsdown` here now. `exports` carries a `barq` condition on the source,
+  `@barqjs/compiler/vite` puts that condition first in every environment and
+  compiles the package out of `node_modules`, and `@barqjs/server` is a peer
+  dependency because half the compilations need it.
 - **`strictCss` is on in all THREE places this package's sources are compiled**:
   `tsdown.config.ts` for the published dist, `gallery/vite.config.ts`, and
   `src/test-setup.ts` — because `bun test` runs the compiler too, over every

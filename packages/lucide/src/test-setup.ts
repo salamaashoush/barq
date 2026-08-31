@@ -19,15 +19,26 @@ const native = require_("@barqjs/compiler-rs") as {
   transform(code: string, options?: Record<string, unknown>): { code: string };
 };
 
-plugin({
+/**
+ * The same transform, for a `Bun.build` of its own: a build inside a test does
+ * not inherit the runner's loader, and this package publishes SOURCE.
+ */
+export const barqPlugin = {
   name: "barq",
-  setup(build) {
+  setup(build: {
+    onLoad(
+      filter: { filter: RegExp },
+      load: (args: { path: string }) => { contents: string; loader: "tsx" },
+    ): void;
+  }) {
     build.onLoad({ filter: /\.tsx$/ }, (args) => {
       const result = native.transform(readFileSync(args.path, "utf8"), { filename: args.path });
-      return { contents: result.code, loader: "tsx" };
+      return { contents: result.code, loader: "tsx" as const };
     });
   },
-});
+};
+
+plugin(barqPlugin);
 
 import * as testing from "@barqjs/testing";
 

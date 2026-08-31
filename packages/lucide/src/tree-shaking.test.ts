@@ -7,15 +7,19 @@
  * for.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, test } from "bun:test";
 
-const root = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-const built = existsSync(root);
+import { barqPlugin } from "./test-setup.ts";
+
+// The SOURCE, because that is what this package publishes: a compiled icon is
+// specific to one backend, so a consumer compiles it. This bundles what a
+// consumer's bundler would.
+const root = fileURLToPath(new URL("./index.ts", import.meta.url));
 const workspace = mkdtempSync(join(tmpdir(), "barq-lucide-treeshake-"));
 
 afterAll(() => rmSync(workspace, { recursive: true, force: true }));
@@ -30,6 +34,7 @@ async function bundle(source: string): Promise<string> {
     entrypoints: [entry],
     target: "browser",
     minify: false,
+    plugins: [barqPlugin],
     external: ["@barqjs/core"],
   });
   if (!result.success) throw new AggregateError(result.logs, "the probe did not build");
@@ -43,7 +48,7 @@ const ELSEWHERE = [
   "M9 3v18", // panel-left
 ];
 
-describe.if(built)("tree shaking", () => {
+describe("tree shaking", () => {
   test("one icon from the barrel brings no others", async () => {
     const out = await bundle(`
       import { Check } from "<root>";
@@ -69,7 +74,7 @@ describe.if(built)("tree shaking", () => {
   });
 
   test("the deep path is the same component by a shorter route", async () => {
-    const deep = fileURLToPath(new URL("../dist/icons/check.js", import.meta.url));
+    const deep = fileURLToPath(new URL("./icons/check.tsx", import.meta.url));
     const out = await bundle(`
       import { Check } from "${deep.replaceAll("\\", "\\\\")}";
       globalThis.probe = Check;

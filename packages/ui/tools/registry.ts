@@ -30,6 +30,8 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { THEMES } from "../src/theme/themes.ts";
+
 const root = resolve(import.meta.dir, "..");
 
 export type ItemType = "registry:ui" | "registry:lib" | "registry:theme";
@@ -208,7 +210,16 @@ function main(): void {
     )}\n`,
   );
 
-  process.stdout.write(`${built.length} items -> registry/\n`);
+  // The colour themes, as DATA beside the items.
+  //
+  // `barq-ui init` used to `import()` them out of this package's `dist`, which
+  // stopped existing when the package began publishing source: a compiled build
+  // is specific to one backend and one `hydratable`, so there is nothing for a
+  // CLI to import. A table of colours needs no compiling, and `registry/` is
+  // already the channel the CLI reads.
+  writeFileSync(join(out, "themes.json"), `${JSON.stringify(THEMES, null, 2)}\n`);
+
+  process.stdout.write(`${built.length} items and ${THEMES.length} themes -> registry/\n`);
 }
 
 main();

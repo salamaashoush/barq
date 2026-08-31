@@ -21,7 +21,6 @@
     "directory": "packages/ui"
   },
   "files": [
-    "dist",
     "registry",
     "src"
   ],
@@ -30,322 +29,320 @@
     "./dist/theme/*.js",
     "./src/theme/*.ts"
   ],
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "bun": "./src/index.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "barq": "./src/index.ts",
+      "bun": "./src/index.ts"
     },
     "./theme": {
-      "types": "./dist/theme/index.d.ts",
-      "bun": "./src/theme/index.ts",
-      "import": "./dist/theme/index.js"
+      "types": "./src/theme/index.ts",
+      "barq": "./src/theme/index.ts",
+      "bun": "./src/theme/index.ts"
     },
     "./theme/reset": {
-      "types": "./dist/theme/reset.d.ts",
-      "bun": "./src/theme/reset.ts",
-      "import": "./dist/theme/reset.js"
+      "types": "./src/theme/reset.ts",
+      "barq": "./src/theme/reset.ts",
+      "bun": "./src/theme/reset.ts"
     },
     "./atoms": {
-      "types": "./dist/lib/atoms.d.ts",
-      "bun": "./src/lib/atoms.ts",
-      "import": "./dist/lib/atoms.js"
+      "types": "./src/lib/atoms.ts",
+      "barq": "./src/lib/atoms.ts",
+      "bun": "./src/lib/atoms.ts"
     },
     "./overlay": {
-      "types": "./dist/lib/overlay.d.ts",
-      "bun": "./src/lib/overlay.tsx",
-      "import": "./dist/lib/overlay.js"
+      "types": "./src/lib/overlay.tsx",
+      "barq": "./src/lib/overlay.tsx",
+      "bun": "./src/lib/overlay.tsx"
     },
     "./props": {
-      "types": "./dist/lib/props.d.ts",
-      "bun": "./src/lib/props.ts",
-      "import": "./dist/lib/props.js"
+      "types": "./src/lib/props.ts",
+      "barq": "./src/lib/props.ts",
+      "bun": "./src/lib/props.ts"
     },
     "./shared-box": {
-      "types": "./dist/lib/shared-box.d.ts",
-      "bun": "./src/lib/shared-box.ts",
-      "import": "./dist/lib/shared-box.js"
+      "types": "./src/lib/shared-box.ts",
+      "barq": "./src/lib/shared-box.ts",
+      "bun": "./src/lib/shared-box.ts"
     },
     "./shared-icon": {
-      "types": "./dist/lib/shared-icon.d.ts",
-      "bun": "./src/lib/shared-icon.ts",
-      "import": "./dist/lib/shared-icon.js"
+      "types": "./src/lib/shared-icon.ts",
+      "barq": "./src/lib/shared-icon.ts",
+      "bun": "./src/lib/shared-icon.ts"
     },
     "./shared-ring-slot": {
-      "types": "./dist/lib/shared-ring-slot.d.ts",
-      "bun": "./src/lib/shared-ring-slot.ts",
-      "import": "./dist/lib/shared-ring-slot.js"
+      "types": "./src/lib/shared-ring-slot.ts",
+      "barq": "./src/lib/shared-ring-slot.ts",
+      "bun": "./src/lib/shared-ring-slot.ts"
     },
     "./shared-ring": {
-      "types": "./dist/lib/shared-ring.d.ts",
-      "bun": "./src/lib/shared-ring.ts",
-      "import": "./dist/lib/shared-ring.js"
+      "types": "./src/lib/shared-ring.ts",
+      "barq": "./src/lib/shared-ring.ts",
+      "bun": "./src/lib/shared-ring.ts"
     },
     "./shared-text": {
-      "types": "./dist/lib/shared-text.d.ts",
-      "bun": "./src/lib/shared-text.ts",
-      "import": "./dist/lib/shared-text.js"
+      "types": "./src/lib/shared-text.ts",
+      "barq": "./src/lib/shared-text.ts",
+      "bun": "./src/lib/shared-text.ts"
     },
     "./shared-when": {
-      "types": "./dist/lib/shared-when.d.ts",
-      "bun": "./src/lib/shared-when.ts",
-      "import": "./dist/lib/shared-when.js"
+      "types": "./src/lib/shared-when.ts",
+      "barq": "./src/lib/shared-when.ts",
+      "bun": "./src/lib/shared-when.ts"
     },
     "./slot": {
-      "types": "./dist/lib/slot.d.ts",
-      "bun": "./src/lib/slot.ts",
-      "import": "./dist/lib/slot.js"
+      "types": "./src/lib/slot.ts",
+      "barq": "./src/lib/slot.ts",
+      "bun": "./src/lib/slot.ts"
     },
     "./utils": {
-      "types": "./dist/lib/utils.d.ts",
-      "bun": "./src/lib/utils.ts",
-      "import": "./dist/lib/utils.js"
+      "types": "./src/lib/utils.ts",
+      "barq": "./src/lib/utils.ts",
+      "bun": "./src/lib/utils.ts"
     },
     "./accordion": {
-      "types": "./dist/ui/accordion.d.ts",
-      "bun": "./src/ui/accordion.tsx",
-      "import": "./dist/ui/accordion.js"
+      "types": "./src/ui/accordion.tsx",
+      "barq": "./src/ui/accordion.tsx",
+      "bun": "./src/ui/accordion.tsx"
     },
     "./alert-dialog": {
-      "types": "./dist/ui/alert-dialog.d.ts",
-      "bun": "./src/ui/alert-dialog.tsx",
-      "import": "./dist/ui/alert-dialog.js"
+      "types": "./src/ui/alert-dialog.tsx",
+      "barq": "./src/ui/alert-dialog.tsx",
+      "bun": "./src/ui/alert-dialog.tsx"
     },
     "./alert": {
-      "types": "./dist/ui/alert.d.ts",
-      "bun": "./src/ui/alert.tsx",
-      "import": "./dist/ui/alert.js"
+      "types": "./src/ui/alert.tsx",
+      "barq": "./src/ui/alert.tsx",
+      "bun": "./src/ui/alert.tsx"
     },
     "./aspect-ratio": {
-      "types": "./dist/ui/aspect-ratio.d.ts",
-      "bun": "./src/ui/aspect-ratio.tsx",
-      "import": "./dist/ui/aspect-ratio.js"
+      "types": "./src/ui/aspect-ratio.tsx",
+      "barq": "./src/ui/aspect-ratio.tsx",
+      "bun": "./src/ui/aspect-ratio.tsx"
     },
     "./avatar": {
-      "types": "./dist/ui/avatar.d.ts",
-      "bun": "./src/ui/avatar.tsx",
-      "import": "./dist/ui/avatar.js"
+      "types": "./src/ui/avatar.tsx",
+      "barq": "./src/ui/avatar.tsx",
+      "bun": "./src/ui/avatar.tsx"
     },
     "./badge": {
-      "types": "./dist/ui/badge.d.ts",
-      "bun": "./src/ui/badge.tsx",
-      "import": "./dist/ui/badge.js"
+      "types": "./src/ui/badge.tsx",
+      "barq": "./src/ui/badge.tsx",
+      "bun": "./src/ui/badge.tsx"
     },
     "./breadcrumb": {
-      "types": "./dist/ui/breadcrumb.d.ts",
-      "bun": "./src/ui/breadcrumb.tsx",
-      "import": "./dist/ui/breadcrumb.js"
+      "types": "./src/ui/breadcrumb.tsx",
+      "barq": "./src/ui/breadcrumb.tsx",
+      "bun": "./src/ui/breadcrumb.tsx"
     },
     "./button-group": {
-      "types": "./dist/ui/button-group.d.ts",
-      "bun": "./src/ui/button-group.tsx",
-      "import": "./dist/ui/button-group.js"
+      "types": "./src/ui/button-group.tsx",
+      "barq": "./src/ui/button-group.tsx",
+      "bun": "./src/ui/button-group.tsx"
     },
     "./button": {
-      "types": "./dist/ui/button.d.ts",
-      "bun": "./src/ui/button.tsx",
-      "import": "./dist/ui/button.js"
+      "types": "./src/ui/button.tsx",
+      "barq": "./src/ui/button.tsx",
+      "bun": "./src/ui/button.tsx"
     },
     "./calendar": {
-      "types": "./dist/ui/calendar.d.ts",
-      "bun": "./src/ui/calendar.tsx",
-      "import": "./dist/ui/calendar.js"
+      "types": "./src/ui/calendar.tsx",
+      "barq": "./src/ui/calendar.tsx",
+      "bun": "./src/ui/calendar.tsx"
     },
     "./card": {
-      "types": "./dist/ui/card.d.ts",
-      "bun": "./src/ui/card.tsx",
-      "import": "./dist/ui/card.js"
+      "types": "./src/ui/card.tsx",
+      "barq": "./src/ui/card.tsx",
+      "bun": "./src/ui/card.tsx"
     },
     "./checkbox": {
-      "types": "./dist/ui/checkbox.d.ts",
-      "bun": "./src/ui/checkbox.tsx",
-      "import": "./dist/ui/checkbox.js"
+      "types": "./src/ui/checkbox.tsx",
+      "barq": "./src/ui/checkbox.tsx",
+      "bun": "./src/ui/checkbox.tsx"
     },
     "./collapsible": {
-      "types": "./dist/ui/collapsible.d.ts",
-      "bun": "./src/ui/collapsible.tsx",
-      "import": "./dist/ui/collapsible.js"
+      "types": "./src/ui/collapsible.tsx",
+      "barq": "./src/ui/collapsible.tsx",
+      "bun": "./src/ui/collapsible.tsx"
     },
     "./combobox": {
-      "types": "./dist/ui/combobox.d.ts",
-      "bun": "./src/ui/combobox.tsx",
-      "import": "./dist/ui/combobox.js"
+      "types": "./src/ui/combobox.tsx",
+      "barq": "./src/ui/combobox.tsx",
+      "bun": "./src/ui/combobox.tsx"
     },
     "./command": {
-      "types": "./dist/ui/command.d.ts",
-      "bun": "./src/ui/command.tsx",
-      "import": "./dist/ui/command.js"
+      "types": "./src/ui/command.tsx",
+      "barq": "./src/ui/command.tsx",
+      "bun": "./src/ui/command.tsx"
     },
     "./context-menu": {
-      "types": "./dist/ui/context-menu.d.ts",
-      "bun": "./src/ui/context-menu.tsx",
-      "import": "./dist/ui/context-menu.js"
+      "types": "./src/ui/context-menu.tsx",
+      "barq": "./src/ui/context-menu.tsx",
+      "bun": "./src/ui/context-menu.tsx"
     },
     "./dialog": {
-      "types": "./dist/ui/dialog.d.ts",
-      "bun": "./src/ui/dialog.tsx",
-      "import": "./dist/ui/dialog.js"
+      "types": "./src/ui/dialog.tsx",
+      "barq": "./src/ui/dialog.tsx",
+      "bun": "./src/ui/dialog.tsx"
     },
     "./dropdown-menu": {
-      "types": "./dist/ui/dropdown-menu.d.ts",
-      "bun": "./src/ui/dropdown-menu.tsx",
-      "import": "./dist/ui/dropdown-menu.js"
+      "types": "./src/ui/dropdown-menu.tsx",
+      "barq": "./src/ui/dropdown-menu.tsx",
+      "bun": "./src/ui/dropdown-menu.tsx"
     },
     "./empty": {
-      "types": "./dist/ui/empty.d.ts",
-      "bun": "./src/ui/empty.tsx",
-      "import": "./dist/ui/empty.js"
+      "types": "./src/ui/empty.tsx",
+      "barq": "./src/ui/empty.tsx",
+      "bun": "./src/ui/empty.tsx"
     },
     "./field": {
-      "types": "./dist/ui/field.d.ts",
-      "bun": "./src/ui/field.tsx",
-      "import": "./dist/ui/field.js"
+      "types": "./src/ui/field.tsx",
+      "barq": "./src/ui/field.tsx",
+      "bun": "./src/ui/field.tsx"
     },
     "./hover-card": {
-      "types": "./dist/ui/hover-card.d.ts",
-      "bun": "./src/ui/hover-card.tsx",
-      "import": "./dist/ui/hover-card.js"
+      "types": "./src/ui/hover-card.tsx",
+      "barq": "./src/ui/hover-card.tsx",
+      "bun": "./src/ui/hover-card.tsx"
     },
     "./input-group": {
-      "types": "./dist/ui/input-group.d.ts",
-      "bun": "./src/ui/input-group.tsx",
-      "import": "./dist/ui/input-group.js"
+      "types": "./src/ui/input-group.tsx",
+      "barq": "./src/ui/input-group.tsx",
+      "bun": "./src/ui/input-group.tsx"
     },
     "./input": {
-      "types": "./dist/ui/input.d.ts",
-      "bun": "./src/ui/input.tsx",
-      "import": "./dist/ui/input.js"
+      "types": "./src/ui/input.tsx",
+      "barq": "./src/ui/input.tsx",
+      "bun": "./src/ui/input.tsx"
     },
     "./item": {
-      "types": "./dist/ui/item.d.ts",
-      "bun": "./src/ui/item.tsx",
-      "import": "./dist/ui/item.js"
+      "types": "./src/ui/item.tsx",
+      "barq": "./src/ui/item.tsx",
+      "bun": "./src/ui/item.tsx"
     },
     "./kbd": {
-      "types": "./dist/ui/kbd.d.ts",
-      "bun": "./src/ui/kbd.tsx",
-      "import": "./dist/ui/kbd.js"
+      "types": "./src/ui/kbd.tsx",
+      "barq": "./src/ui/kbd.tsx",
+      "bun": "./src/ui/kbd.tsx"
     },
     "./label": {
-      "types": "./dist/ui/label.d.ts",
-      "bun": "./src/ui/label.tsx",
-      "import": "./dist/ui/label.js"
+      "types": "./src/ui/label.tsx",
+      "barq": "./src/ui/label.tsx",
+      "bun": "./src/ui/label.tsx"
     },
     "./menubar": {
-      "types": "./dist/ui/menubar.d.ts",
-      "bun": "./src/ui/menubar.tsx",
-      "import": "./dist/ui/menubar.js"
+      "types": "./src/ui/menubar.tsx",
+      "barq": "./src/ui/menubar.tsx",
+      "bun": "./src/ui/menubar.tsx"
     },
     "./native-select": {
-      "types": "./dist/ui/native-select.d.ts",
-      "bun": "./src/ui/native-select.tsx",
-      "import": "./dist/ui/native-select.js"
+      "types": "./src/ui/native-select.tsx",
+      "barq": "./src/ui/native-select.tsx",
+      "bun": "./src/ui/native-select.tsx"
     },
     "./pagination": {
-      "types": "./dist/ui/pagination.d.ts",
-      "bun": "./src/ui/pagination.tsx",
-      "import": "./dist/ui/pagination.js"
+      "types": "./src/ui/pagination.tsx",
+      "barq": "./src/ui/pagination.tsx",
+      "bun": "./src/ui/pagination.tsx"
     },
     "./popover": {
-      "types": "./dist/ui/popover.d.ts",
-      "bun": "./src/ui/popover.tsx",
-      "import": "./dist/ui/popover.js"
+      "types": "./src/ui/popover.tsx",
+      "barq": "./src/ui/popover.tsx",
+      "bun": "./src/ui/popover.tsx"
     },
     "./progress": {
-      "types": "./dist/ui/progress.d.ts",
-      "bun": "./src/ui/progress.tsx",
-      "import": "./dist/ui/progress.js"
+      "types": "./src/ui/progress.tsx",
+      "barq": "./src/ui/progress.tsx",
+      "bun": "./src/ui/progress.tsx"
     },
     "./radio-group": {
-      "types": "./dist/ui/radio-group.d.ts",
-      "bun": "./src/ui/radio-group.tsx",
-      "import": "./dist/ui/radio-group.js"
+      "types": "./src/ui/radio-group.tsx",
+      "barq": "./src/ui/radio-group.tsx",
+      "bun": "./src/ui/radio-group.tsx"
     },
     "./scroll-area": {
-      "types": "./dist/ui/scroll-area.d.ts",
-      "bun": "./src/ui/scroll-area.tsx",
-      "import": "./dist/ui/scroll-area.js"
+      "types": "./src/ui/scroll-area.tsx",
+      "barq": "./src/ui/scroll-area.tsx",
+      "bun": "./src/ui/scroll-area.tsx"
     },
     "./select": {
-      "types": "./dist/ui/select.d.ts",
-      "bun": "./src/ui/select.tsx",
-      "import": "./dist/ui/select.js"
+      "types": "./src/ui/select.tsx",
+      "barq": "./src/ui/select.tsx",
+      "bun": "./src/ui/select.tsx"
     },
     "./separator": {
-      "types": "./dist/ui/separator.d.ts",
-      "bun": "./src/ui/separator.tsx",
-      "import": "./dist/ui/separator.js"
+      "types": "./src/ui/separator.tsx",
+      "barq": "./src/ui/separator.tsx",
+      "bun": "./src/ui/separator.tsx"
     },
     "./sheet": {
-      "types": "./dist/ui/sheet.d.ts",
-      "bun": "./src/ui/sheet.tsx",
-      "import": "./dist/ui/sheet.js"
+      "types": "./src/ui/sheet.tsx",
+      "barq": "./src/ui/sheet.tsx",
+      "bun": "./src/ui/sheet.tsx"
     },
     "./skeleton": {
-      "types": "./dist/ui/skeleton.d.ts",
-      "bun": "./src/ui/skeleton.tsx",
-      "import": "./dist/ui/skeleton.js"
+      "types": "./src/ui/skeleton.tsx",
+      "barq": "./src/ui/skeleton.tsx",
+      "bun": "./src/ui/skeleton.tsx"
     },
     "./slider": {
-      "types": "./dist/ui/slider.d.ts",
-      "bun": "./src/ui/slider.tsx",
-      "import": "./dist/ui/slider.js"
+      "types": "./src/ui/slider.tsx",
+      "barq": "./src/ui/slider.tsx",
+      "bun": "./src/ui/slider.tsx"
     },
     "./spinner": {
-      "types": "./dist/ui/spinner.d.ts",
-      "bun": "./src/ui/spinner.tsx",
-      "import": "./dist/ui/spinner.js"
+      "types": "./src/ui/spinner.tsx",
+      "barq": "./src/ui/spinner.tsx",
+      "bun": "./src/ui/spinner.tsx"
     },
     "./sr-only": {
-      "types": "./dist/ui/sr-only.d.ts",
-      "bun": "./src/ui/sr-only.ts",
-      "import": "./dist/ui/sr-only.js"
+      "types": "./src/ui/sr-only.ts",
+      "barq": "./src/ui/sr-only.ts",
+      "bun": "./src/ui/sr-only.ts"
     },
     "./switch": {
-      "types": "./dist/ui/switch.d.ts",
-      "bun": "./src/ui/switch.tsx",
-      "import": "./dist/ui/switch.js"
+      "types": "./src/ui/switch.tsx",
+      "barq": "./src/ui/switch.tsx",
+      "bun": "./src/ui/switch.tsx"
     },
     "./table": {
-      "types": "./dist/ui/table.d.ts",
-      "bun": "./src/ui/table.tsx",
-      "import": "./dist/ui/table.js"
+      "types": "./src/ui/table.tsx",
+      "barq": "./src/ui/table.tsx",
+      "bun": "./src/ui/table.tsx"
     },
     "./tabs": {
-      "types": "./dist/ui/tabs.d.ts",
-      "bun": "./src/ui/tabs.tsx",
-      "import": "./dist/ui/tabs.js"
+      "types": "./src/ui/tabs.tsx",
+      "barq": "./src/ui/tabs.tsx",
+      "bun": "./src/ui/tabs.tsx"
     },
     "./toggle-group": {
-      "types": "./dist/ui/toggle-group.d.ts",
-      "bun": "./src/ui/toggle-group.tsx",
-      "import": "./dist/ui/toggle-group.js"
+      "types": "./src/ui/toggle-group.tsx",
+      "barq": "./src/ui/toggle-group.tsx",
+      "bun": "./src/ui/toggle-group.tsx"
     },
     "./toggle": {
-      "types": "./dist/ui/toggle.d.ts",
-      "bun": "./src/ui/toggle.tsx",
-      "import": "./dist/ui/toggle.js"
+      "types": "./src/ui/toggle.tsx",
+      "barq": "./src/ui/toggle.tsx",
+      "bun": "./src/ui/toggle.tsx"
     },
     "./tooltip": {
-      "types": "./dist/ui/tooltip.d.ts",
-      "bun": "./src/ui/tooltip.tsx",
-      "import": "./dist/ui/tooltip.js"
+      "types": "./src/ui/tooltip.tsx",
+      "barq": "./src/ui/tooltip.tsx",
+      "bun": "./src/ui/tooltip.tsx"
     },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsdown",
-    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
-    "prepublishOnly": "bun run registry && bun run build",
     "exports": "bun run tools/exports.ts",
     "registry": "bun run tools/registry.ts",
     "verify": "bun --preload ./src/test-setup.ts tools/verify.ts",
-    "gallery": "vite --config gallery/vite.config.ts"
+    "gallery": "vite --config gallery/vite.config.ts",
+    "prepublishOnly": "bun run registry"
   },
   "devDependencies": {
     "@barqjs/aria": "workspace:*",
@@ -369,8 +366,10 @@
     "@barqjs/core": ">=0.1.0",
     "@barqjs/css": ">=0.1.0",
     "@barqjs/lucide": ">=0.1.0",
-    "@barqjs/primitives": ">=0.1.0"
+    "@barqjs/primitives": ">=0.1.0",
+    "@barqjs/server": ">=0.1.0"
   },
+  "peerDependenciesMeta": {},
   "engines": {
     "bun": ">=1.1.0"
   }

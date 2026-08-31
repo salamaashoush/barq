@@ -31,7 +31,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const cli = join(here, "../src/index.ts");
 const ui = join(here, "../../ui");
 const ready =
-  existsSync(join(ui, "registry/index.json")) && existsSync(join(ui, "dist/theme/index.js"));
+  existsSync(join(ui, "registry/index.json")) && existsSync(join(ui, "src/theme/index.ts"));
 
 const workspaces: string[] = [];
 

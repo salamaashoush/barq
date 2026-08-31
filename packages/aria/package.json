@@ -23,243 +23,239 @@
     "directory": "packages/aria"
   },
   "files": [
-    "dist",
     "src"
   ],
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "bun": "./src/index.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "barq": "./src/index.ts",
+      "bun": "./src/index.ts"
     },
     "./breadcrumbs": {
-      "types": "./dist/breadcrumbs.d.ts",
-      "bun": "./src/breadcrumbs.tsx",
-      "import": "./dist/breadcrumbs.js"
+      "types": "./src/breadcrumbs.tsx",
+      "barq": "./src/breadcrumbs.tsx",
+      "bun": "./src/breadcrumbs.tsx"
     },
     "./button": {
-      "types": "./dist/button.d.ts",
-      "bun": "./src/button.tsx",
-      "import": "./dist/button.js"
+      "types": "./src/button.tsx",
+      "barq": "./src/button.tsx",
+      "bun": "./src/button.tsx"
     },
     "./calendar": {
-      "types": "./dist/calendar.d.ts",
-      "bun": "./src/calendar.tsx",
-      "import": "./dist/calendar.js"
+      "types": "./src/calendar.tsx",
+      "barq": "./src/calendar.tsx",
+      "bun": "./src/calendar.tsx"
     },
     "./checkbox": {
-      "types": "./dist/checkbox.d.ts",
-      "bun": "./src/checkbox.tsx",
-      "import": "./dist/checkbox.js"
+      "types": "./src/checkbox.tsx",
+      "barq": "./src/checkbox.tsx",
+      "bun": "./src/checkbox.tsx"
     },
     "./collections": {
-      "types": "./dist/collections.d.ts",
-      "bun": "./src/collections.ts",
-      "import": "./dist/collections.js"
+      "types": "./src/collections.ts",
+      "barq": "./src/collections.ts",
+      "bun": "./src/collections.ts"
     },
     "./color": {
-      "types": "./dist/color.d.ts",
-      "bun": "./src/color.ts",
-      "import": "./dist/color.js"
+      "types": "./src/color.ts",
+      "barq": "./src/color.ts",
+      "bun": "./src/color.ts"
     },
     "./colorpicker": {
-      "types": "./dist/colorpicker.d.ts",
-      "bun": "./src/colorpicker.tsx",
-      "import": "./dist/colorpicker.js"
+      "types": "./src/colorpicker.tsx",
+      "barq": "./src/colorpicker.tsx",
+      "bun": "./src/colorpicker.tsx"
     },
     "./combobox": {
-      "types": "./dist/combobox.d.ts",
-      "bun": "./src/combobox.tsx",
-      "import": "./dist/combobox.js"
+      "types": "./src/combobox.tsx",
+      "barq": "./src/combobox.tsx",
+      "bun": "./src/combobox.tsx"
     },
     "./date": {
-      "types": "./dist/date.d.ts",
-      "bun": "./src/date.ts",
-      "import": "./dist/date.js"
+      "types": "./src/date.ts",
+      "barq": "./src/date.ts",
+      "bun": "./src/date.ts"
     },
     "./datefield": {
-      "types": "./dist/datefield.d.ts",
-      "bun": "./src/datefield.tsx",
-      "import": "./dist/datefield.js"
+      "types": "./src/datefield.tsx",
+      "barq": "./src/datefield.tsx",
+      "bun": "./src/datefield.tsx"
     },
     "./datepicker": {
-      "types": "./dist/datepicker.d.ts",
-      "bun": "./src/datepicker.tsx",
-      "import": "./dist/datepicker.js"
+      "types": "./src/datepicker.tsx",
+      "barq": "./src/datepicker.tsx",
+      "bun": "./src/datepicker.tsx"
     },
     "./dialog": {
-      "types": "./dist/dialog.d.ts",
-      "bun": "./src/dialog.tsx",
-      "import": "./dist/dialog.js"
+      "types": "./src/dialog.tsx",
+      "barq": "./src/dialog.tsx",
+      "bun": "./src/dialog.tsx"
     },
     "./disclosure": {
-      "types": "./dist/disclosure.d.ts",
-      "bun": "./src/disclosure.tsx",
-      "import": "./dist/disclosure.js"
+      "types": "./src/disclosure.tsx",
+      "barq": "./src/disclosure.tsx",
+      "bun": "./src/disclosure.tsx"
     },
     "./dom": {
-      "types": "./dist/dom.d.ts",
-      "bun": "./src/dom.ts",
-      "import": "./dist/dom.js"
+      "types": "./src/dom.ts",
+      "barq": "./src/dom.ts",
+      "bun": "./src/dom.ts"
     },
     "./focus": {
-      "types": "./dist/focus.d.ts",
-      "bun": "./src/focus.ts",
-      "import": "./dist/focus.js"
+      "types": "./src/focus.ts",
+      "barq": "./src/focus.ts",
+      "bun": "./src/focus.ts"
     },
     "./form": {
-      "types": "./dist/form.d.ts",
-      "bun": "./src/form.tsx",
-      "import": "./dist/form.js"
+      "types": "./src/form.tsx",
+      "barq": "./src/form.tsx",
+      "bun": "./src/form.tsx"
     },
     "./gridlist": {
-      "types": "./dist/gridlist.d.ts",
-      "bun": "./src/gridlist.tsx",
-      "import": "./dist/gridlist.js"
+      "types": "./src/gridlist.tsx",
+      "barq": "./src/gridlist.tsx",
+      "bun": "./src/gridlist.tsx"
     },
     "./i18n": {
-      "types": "./dist/i18n.d.ts",
-      "bun": "./src/i18n.ts",
-      "import": "./dist/i18n.js"
+      "types": "./src/i18n.ts",
+      "barq": "./src/i18n.ts",
+      "bun": "./src/i18n.ts"
     },
     "./interactions": {
-      "types": "./dist/interactions.d.ts",
-      "bun": "./src/interactions.ts",
-      "import": "./dist/interactions.js"
+      "types": "./src/interactions.ts",
+      "barq": "./src/interactions.ts",
+      "bun": "./src/interactions.ts"
     },
     "./label": {
-      "types": "./dist/label.d.ts",
-      "bun": "./src/label.ts",
-      "import": "./dist/label.js"
+      "types": "./src/label.ts",
+      "barq": "./src/label.ts",
+      "bun": "./src/label.ts"
     },
     "./link": {
-      "types": "./dist/link.d.ts",
-      "bun": "./src/link.tsx",
-      "import": "./dist/link.js"
+      "types": "./src/link.tsx",
+      "barq": "./src/link.tsx",
+      "bun": "./src/link.tsx"
     },
     "./listbox": {
-      "types": "./dist/listbox.d.ts",
-      "bun": "./src/listbox.tsx",
-      "import": "./dist/listbox.js"
+      "types": "./src/listbox.tsx",
+      "barq": "./src/listbox.tsx",
+      "bun": "./src/listbox.tsx"
     },
     "./live": {
-      "types": "./dist/live.d.ts",
-      "bun": "./src/live.ts",
-      "import": "./dist/live.js"
+      "types": "./src/live.ts",
+      "barq": "./src/live.ts",
+      "bun": "./src/live.ts"
     },
     "./menu": {
-      "types": "./dist/menu.d.ts",
-      "bun": "./src/menu.tsx",
-      "import": "./dist/menu.js"
+      "types": "./src/menu.tsx",
+      "barq": "./src/menu.tsx",
+      "bun": "./src/menu.tsx"
     },
     "./numberfield": {
-      "types": "./dist/numberfield.d.ts",
-      "bun": "./src/numberfield.tsx",
-      "import": "./dist/numberfield.js"
+      "types": "./src/numberfield.tsx",
+      "barq": "./src/numberfield.tsx",
+      "bun": "./src/numberfield.tsx"
     },
     "./overlays": {
-      "types": "./dist/overlays.d.ts",
-      "bun": "./src/overlays.ts",
-      "import": "./dist/overlays.js"
+      "types": "./src/overlays.ts",
+      "barq": "./src/overlays.ts",
+      "bun": "./src/overlays.ts"
     },
     "./presence": {
-      "types": "./dist/presence.d.ts",
-      "bun": "./src/presence.ts",
-      "import": "./dist/presence.js"
+      "types": "./src/presence.ts",
+      "barq": "./src/presence.ts",
+      "bun": "./src/presence.ts"
     },
     "./platform": {
-      "types": "./dist/platform.d.ts",
-      "bun": "./src/platform.ts",
-      "import": "./dist/platform.js"
+      "types": "./src/platform.ts",
+      "barq": "./src/platform.ts",
+      "bun": "./src/platform.ts"
     },
     "./radio": {
-      "types": "./dist/radio.d.ts",
-      "bun": "./src/radio.tsx",
-      "import": "./dist/radio.js"
+      "types": "./src/radio.tsx",
+      "barq": "./src/radio.tsx",
+      "bun": "./src/radio.tsx"
     },
     "./select": {
-      "types": "./dist/select.d.ts",
-      "bun": "./src/select.tsx",
-      "import": "./dist/select.js"
+      "types": "./src/select.tsx",
+      "barq": "./src/select.tsx",
+      "bun": "./src/select.tsx"
     },
     "./selection": {
-      "types": "./dist/selection.d.ts",
-      "bun": "./src/selection.ts",
-      "import": "./dist/selection.js"
+      "types": "./src/selection.ts",
+      "barq": "./src/selection.ts",
+      "bun": "./src/selection.ts"
     },
     "./slider": {
-      "types": "./dist/slider.d.ts",
-      "bun": "./src/slider.tsx",
-      "import": "./dist/slider.js"
+      "types": "./src/slider.tsx",
+      "barq": "./src/slider.tsx",
+      "bun": "./src/slider.tsx"
     },
     "./switch": {
-      "types": "./dist/switch.d.ts",
-      "bun": "./src/switch.tsx",
-      "import": "./dist/switch.js"
+      "types": "./src/switch.tsx",
+      "barq": "./src/switch.tsx",
+      "bun": "./src/switch.tsx"
     },
     "./table": {
-      "types": "./dist/table.d.ts",
-      "bun": "./src/table.tsx",
-      "import": "./dist/table.js"
+      "types": "./src/table.tsx",
+      "barq": "./src/table.tsx",
+      "bun": "./src/table.tsx"
     },
     "./tabs": {
-      "types": "./dist/tabs.d.ts",
-      "bun": "./src/tabs.tsx",
-      "import": "./dist/tabs.js"
+      "types": "./src/tabs.tsx",
+      "barq": "./src/tabs.tsx",
+      "bun": "./src/tabs.tsx"
     },
     "./tag": {
-      "types": "./dist/tag.d.ts",
-      "bun": "./src/tag.tsx",
-      "import": "./dist/tag.js"
+      "types": "./src/tag.tsx",
+      "barq": "./src/tag.tsx",
+      "bun": "./src/tag.tsx"
     },
     "./textfield": {
-      "types": "./dist/textfield.d.ts",
-      "bun": "./src/textfield.tsx",
-      "import": "./dist/textfield.js"
+      "types": "./src/textfield.tsx",
+      "barq": "./src/textfield.tsx",
+      "bun": "./src/textfield.tsx"
     },
     "./toggle": {
-      "types": "./dist/toggle.d.ts",
-      "bun": "./src/toggle.ts",
-      "import": "./dist/toggle.js"
+      "types": "./src/toggle.ts",
+      "barq": "./src/toggle.ts",
+      "bun": "./src/toggle.ts"
     },
     "./toolbar": {
-      "types": "./dist/toolbar.d.ts",
-      "bun": "./src/toolbar.tsx",
-      "import": "./dist/toolbar.js"
+      "types": "./src/toolbar.tsx",
+      "barq": "./src/toolbar.tsx",
+      "bun": "./src/toolbar.tsx"
     },
     "./tooltip": {
-      "types": "./dist/tooltip.d.ts",
-      "bun": "./src/tooltip.tsx",
-      "import": "./dist/tooltip.js"
+      "types": "./src/tooltip.tsx",
+      "barq": "./src/tooltip.tsx",
+      "bun": "./src/tooltip.tsx"
     },
     "./utils": {
-      "types": "./dist/utils.d.ts",
-      "bun": "./src/utils.ts",
-      "import": "./dist/utils.js"
+      "types": "./src/utils.ts",
+      "barq": "./src/utils.ts",
+      "bun": "./src/utils.ts"
     },
     "./validation": {
-      "types": "./dist/validation.d.ts",
-      "bun": "./src/validation.ts",
-      "import": "./dist/validation.js"
+      "types": "./src/validation.ts",
+      "barq": "./src/validation.ts",
+      "bun": "./src/validation.ts"
     },
     "./virtualizer": {
-      "types": "./dist/virtualizer.d.ts",
-      "bun": "./src/virtualizer.tsx",
-      "import": "./dist/virtualizer.js"
+      "types": "./src/virtualizer.tsx",
+      "barq": "./src/virtualizer.tsx",
+      "bun": "./src/virtualizer.tsx"
     },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsdown",
-    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "test:coverage": "bun test --coverage",
-    "prepublishOnly": "bun run build"
+    "test:coverage": "bun test --coverage"
   },
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
@@ -273,9 +269,11 @@
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",
-    "@barqjs/primitives": ">=0.1.0"
+    "@barqjs/primitives": ">=0.1.0",
+    "@barqjs/server": ">=0.1.0"
   },
   "engines": {
     "bun": ">=1.1.0"
-  }
+  },
+  "peerDependenciesMeta": {}
 }

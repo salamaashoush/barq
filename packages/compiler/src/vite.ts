@@ -1,5 +1,7 @@
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import type { Plugin, TransformResult, ViteDevServer } from "vite";
 
 const NATIVE_PACKAGE = "@barqjs/compiler-rs";
@@ -133,6 +135,23 @@ export interface BarqCompilerOptions {
    * @default false
    */
   strictCss?: boolean;
+
+  /**
+   * Compile the packages that publish source, out of `node_modules`.
+   *
+   * A barq package cannot ship a build: the same component emits
+   * `template()`/`spread` for the DOM and `html()`/`esc()` for a string render,
+   * and `hydratable` moves it again — three outputs, and `hydratable` is the
+   * application's decision. So `@barqjs/aria`, `@barqjs/ui` and `@barqjs/lucide`
+   * publish source under a `barq` export condition, this plugin resolves that
+   * condition first in every environment, and each environment compiles it for
+   * itself. That is `vite-plugin-solid`'s arrangement, for the same reason.
+   *
+   * Off makes this build treat them as opaque dependencies, which is only right
+   * if something else has already compiled them.
+   * @default true
+   */
+  compilePackages?: boolean;
 
   /**
    * Fold values a module imports from another file: a design token, a shared
@@ -445,6 +464,124 @@ function passPairs(passes: BarqCompilerOptions["passes"]): string[][] | undefine
   return Object.entries(passes).map(([name, on]) => [name, on ? "on" : "off"]);
 }
 
+/**
+ * The export condition a barq package publishes its SOURCE under.
+ *
+ * A compiled component is backend-specific: the same file emits
+ * `template()`/`spread` from `@barqjs/core` for the DOM and `html()`/`esc()`
+ * from `@barqjs/server` for a string render, and `hydratable` moves it again —
+ * three distinct outputs for a trivial component. `hydratable` is a decision
+ * the APPLICATION makes, so a library cannot pre-compile for it, and a library
+ * that pre-compiles for one backend is silently wrong on the other.
+ *
+ * So a barq package ships source and the consumer's build compiles it, once
+ * per environment. That is what `vite-plugin-solid` does with its `solid`
+ * condition, and for the same reason: `generate: "dom" | "ssr"` is our `ssr`
+ * flag under another name.
+ */
+export const BARQ_CONDITION = "barq";
+
+/** Whether a package publishes its source under {@link BARQ_CONDITION}. */
+function publishesSource(exports: unknown): boolean {
+  if (exports === null || typeof exports !== "object") return false;
+  for (const [key, value] of Object.entries(exports as Record<string, unknown>)) {
+    if (key === BARQ_CONDITION) return true;
+    if (publishesSource(value)) return true;
+  }
+  return false;
+}
+
+/**
+ * The barq packages a project depends on, by name.
+ *
+ * Vite EXTERNALISES a dependency in the SSR environment, so node would be
+ * handed the `.ts` the condition resolved to and refuse it. They have to be
+ * bundled, which means naming them.
+ *
+ * One level past the direct dependencies, because a barq package depends on
+ * barq packages — `@barqjs/ui` on `@barqjs/aria` on `@barqjs/core`.
+ */
+function barqPackages(root: string): string[] {
+  const found = new Set<string>();
+  const seen = new Set<string>();
+  const require_ = createRequire(join(root, "package.json"));
+
+  const visit = (from: string, depth: number): void => {
+    if (depth < 0 || seen.has(from)) return;
+    seen.add(from);
+    let manifest: {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    try {
+      manifest = JSON.parse(readFileSync(from, "utf8")) as typeof manifest;
+    } catch {
+      return;
+    }
+    for (const name of [
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.devDependencies ?? {}),
+    ]) {
+      let resolved: string;
+      try {
+        resolved = require_.resolve(`${name}/package.json`);
+      } catch {
+        continue;
+      }
+      let theirs: { exports?: unknown };
+      try {
+        theirs = JSON.parse(readFileSync(resolved, "utf8")) as typeof theirs;
+      } catch {
+        continue;
+      }
+      if (publishesSource(theirs.exports)) {
+        found.add(name);
+        visit(resolved, depth - 1);
+      }
+    }
+  };
+
+  visit(join(root, "package.json"), 2);
+  return [...found];
+}
+
+/**
+ * The nearest `package.json` above a file, and whether it is a barq package.
+ *
+ * Cached by directory: a build asks this once per module and the answer is a
+ * fact about the package, not the file.
+ */
+function inBarqPackage(file: string, cache: Map<string, boolean>): boolean {
+  let at = dirname(file);
+  const walked: string[] = [];
+  for (let up = 0; up < 24; up++) {
+    const hit = cache.get(at);
+    if (hit !== undefined) {
+      for (const dir of walked) cache.set(dir, hit);
+      return hit;
+    }
+    walked.push(at);
+    const manifest = join(at, "package.json");
+    if (existsSync(manifest)) {
+      let answer = false;
+      try {
+        answer = publishesSource(
+          (JSON.parse(readFileSync(manifest, "utf8")) as { exports?: unknown }).exports,
+        );
+      } catch {
+        answer = false;
+      }
+      for (const dir of walked) cache.set(dir, answer);
+      return answer;
+    }
+    const next = dirname(at);
+    if (next === at) break;
+    at = next;
+  }
+  for (const dir of walked) cache.set(dir, false);
+  return false;
+}
+
 export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   const {
     include = [".tsx", ".jsx"],
@@ -452,6 +589,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     overlay = "warning",
     cssMode,
     resolveImports = true,
+    compilePackages = true,
     ...compilerOptions
   } = options;
 
@@ -460,6 +598,9 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
    * mtime so an edit is a different key and a build reads each file once.
    */
   const exportsByFile = new Map<string, string[][]>();
+
+  /** Whether a directory sits in a package that publishes its source. */
+  const barqPackageCache = new Map<string, boolean>();
 
   // The compiler's dev-mode diagnostics are advice about runtime behaviour, so
   // they belong on a dev build and nowhere else. Deriving it from Vite means the
@@ -492,8 +633,38 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     name: "barq-compiler",
     enforce: "pre",
 
-    config(_config, env) {
+    config(config: { root?: string; resolve?: { noExternal?: unknown } }, env) {
       if (dev === undefined) dev = env.command === "serve" || env.mode !== "production";
+
+      // A barq package ships SOURCE, so Vite must not externalise it: node
+      // would be handed the `.ts` the condition resolved to and refuse it.
+      // Named rather than matched, because "a package that publishes source"
+      // is a fact about its manifest and not about its name.
+      const bundled = compilePackages ? barqPackages(config.root ?? process.cwd()) : [];
+      if (bundled.length > 0) {
+        config.resolve ??= {};
+        const already = config.resolve.noExternal;
+        if (already !== true) {
+          config.resolve.noExternal = [
+            ...(Array.isArray(already) ? (already as unknown[]) : already ? [already] : []),
+            ...bundled,
+          ];
+        }
+      }
+    },
+
+    /**
+     * `barq` first, in EVERY environment.
+     *
+     * The client build and the SSR build both have to reach the same source and
+     * compile it for themselves, so the condition goes in front of Vite's own
+     * defaults on both. Putting it on the client alone is how a library ends up
+     * pre-compiled for the DOM and served to a server render.
+     */
+    configEnvironment(_name: string, config: { resolve?: { conditions?: string[] } }) {
+      if (!compilePackages) return;
+      config.resolve ??= {};
+      config.resolve.conditions = [BARQ_CONDITION, ...(config.resolve.conditions ?? [])];
     },
 
     // A server-function id is derived relative to the project root, so an id
@@ -631,12 +802,15 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       const shouldTransform = include.some((ext) => path.endsWith(ext)) || code.includes(cssSource);
       if (!shouldTransform) return null;
 
-      const isExcluded = exclude.some((pattern) => {
-        if (typeof pattern === "string") {
-          return id.includes(pattern);
-        }
-        return pattern.test(id);
-      });
+      // `node_modules` is excluded by default and a barq package inside it is
+      // not: it published SOURCE precisely so this build would compile it, for
+      // this environment. Skipping it leaves JSX in the graph and the module
+      // fails to parse — or worse, another plugin lowers it with different
+      // semantics.
+      const isExcluded =
+        exclude.some((pattern) =>
+          typeof pattern === "string" ? id.includes(pattern) : pattern.test(id),
+        ) && !(compilePackages && inBarqPackage(path, barqPackageCache));
       if (isExcluded) return null;
 
       const compiler = loadNativeCompiler();

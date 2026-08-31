@@ -13,12 +13,18 @@
  * wrong place; two announcer regions mean a screen reader hears everything
  * twice; two overlay stacks mean Escape closes nothing.
  *
- * INVISIBLE IN THE WORKSPACE. Bun resolution takes every `@barqjs/*` import to
- * `src/`, where there is one copy by construction, so this has to run against
- * `dist` and needs the package built.
+ * This package publishes SOURCE — a compiled component is specific to one
+ * backend and one `hydratable`, so a consumer compiles it — and every entry
+ * therefore resolves to one file on disk. That is what makes the property hold,
+ * and this is what says it still does: two entries reached separately must hand
+ * back the same binding and touch the same module state.
+ *
+ * It used to run against `dist` and skip when the package was not built. When
+ * `dist` stopped existing the whole file went quiet rather than failing, which
+ * is the worse of the two.
  */
 
-import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "bun:test";
@@ -70,15 +76,28 @@ const ENTRIES = [
   "virtualizer",
 ] as const;
 
-const distOf = (entry: string): string =>
-  fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));
+/**
+ * Where an entry actually lives, out of the export map rather than guessed.
+ *
+ * Half of these are `.tsx`, and the map is the published surface — so reading
+ * it here means the test checks the entries a consumer can reach rather than a
+ * list that has to be kept in step by hand.
+ */
+const manifest = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+) as { exports: Record<string, { barq?: string }> };
 
-const built = ENTRIES.every((entry) => existsSync(distOf(entry)));
+const entryOf = (entry: string): string => {
+  const key = entry === "index" ? "." : `./${entry}`;
+  const source = manifest.exports[key]?.barq;
+  if (source === undefined) throw new Error(`${key} is not in the export map`);
+  return fileURLToPath(new URL(`../${source}`, import.meta.url));
+};
 
-describe.if(built)("the published entries share one runtime", () => {
+describe("the published entries share one runtime", () => {
   test("a name exported by two entries is the SAME binding in both", async () => {
     const loaded = await Promise.all(
-      ENTRIES.map(async (entry) => [entry, await import(distOf(entry))] as const),
+      ENTRIES.map(async (entry) => [entry, await import(entryOf(entry))] as const),
     );
 
     const split: string[] = [];
@@ -100,11 +119,11 @@ describe.if(built)("the published entries share one runtime", () => {
   });
 
   test("the announcer reached through two entries is one region", async () => {
-    const root = (await import(distOf("index"))) as unknown as {
+    const root = (await import(entryOf("index"))) as unknown as {
       announce: (message: string) => void;
       destroyAnnouncer: () => void;
     };
-    const live = (await import(distOf("live"))) as typeof root;
+    const live = (await import(entryOf("live"))) as typeof root;
 
     // Counted as a DELTA. Other suites in this process announce and do not
     // always tear down, so the absolute number says nothing.
@@ -124,12 +143,12 @@ describe.if(built)("the published entries share one runtime", () => {
   });
 
   test("the root barrel re-exports every entry's own names", async () => {
-    const root = (await import(distOf("index"))) as Record<string, unknown>;
+    const root = (await import(entryOf("index"))) as Record<string, unknown>;
 
     const missing: string[] = [];
     for (const entry of ENTRIES) {
       if (entry === "index") continue;
-      const module_ = (await import(distOf(entry))) as Record<string, unknown>;
+      const module_ = (await import(entryOf(entry))) as Record<string, unknown>;
       for (const name of Object.keys(module_)) {
         if (!(name in root)) missing.push(`${entry}: ${name}`);
       }

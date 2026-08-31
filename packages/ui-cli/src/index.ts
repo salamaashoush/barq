@@ -18,7 +18,8 @@
  * otherwise. Owning the code means the edit wins by default.
  */
 
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { stdout } from "node:process";
 
 import { applyItems, missingDependencies, type WrittenFile } from "./add.ts";
@@ -182,10 +183,19 @@ async function themes(cwd: string): Promise<ThemeDefinition[]> {
   const directory = localRegistry(cwd);
   if (directory !== undefined) {
     // `@barqjs/ui` is installed, so its own table is the authority.
-    const module_ = (await import(`${directory}/../dist/theme/index.js`)) as {
-      THEMES: ThemeDefinition[];
-    };
-    return module_.THEMES;
+    //
+    // Read as DATA, not imported as a module. That package publishes source
+    // rather than a build — a compiled component is specific to one backend and
+    // one `hydratable`, so there is nothing here to `import()` — and a table of
+    // colours never needed compiling anyway.
+    const file = join(directory, "themes.json");
+    if (existsSync(file)) {
+      return JSON.parse(readFileSync(file, "utf8")) as ThemeDefinition[];
+    }
+    throw new Error(
+      `the colour themes come from @barqjs/ui, and ${file} is missing.\n` +
+        "Reinstall it, or write the theme file by hand.",
+    );
   }
   throw new Error(
     "the colour themes come from @barqjs/ui, which is not installed here.\n" +
