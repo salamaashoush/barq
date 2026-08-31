@@ -2,6 +2,7 @@ import { Show, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -18,58 +19,36 @@ export type BadgeVariant = "default" | "secondary" | "destructive" | "outline" |
  * ```
  */
 export const badgeVariants = uiVariants({
-  base: ui({
-    display: "inline-flex",
-    width: "fit-content",
-    flexShrink: "0",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "var(--spacing)",
-    overflow: "hidden",
-    borderRadius: "calc(infinity * 1px)",
-    borderStyle: "var(--ui-border-style)",
-    borderWidth: "1px",
-    borderColor: "transparent",
-    paddingInline: "calc(var(--spacing) * 2)",
-    paddingBlock: "calc(var(--spacing) * 0.5)",
-    fontSize: "var(--text-xs)",
-    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-    "--ui-font-weight": "var(--font-weight-medium)",
-    fontWeight: "var(--font-weight-medium)",
-    whiteSpace: "nowrap",
-    transitionProperty: "color, box-shadow",
-    transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-    transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-    ":focus-visible": {
-      borderColor: "var(--ring)",
-      "--ui-ring-shadow":
-        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-      boxShadow:
-        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-      "--ui-ring-color": "var(--ring)",
-      "@supports (color: color-mix(in lab, red, red))": {
-        "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+  base: ui(
+    shared.border,
+    shared.fontMedium,
+    shared.transition,
+    shared.focusRing,
+    shared.invalidRing,
+    shared.invalidRingDark,
+    {
+      display: "inline-flex",
+      width: "fit-content",
+      flexShrink: "0",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "var(--spacing)",
+      overflow: "hidden",
+      borderRadius: "calc(infinity * 1px)",
+      borderColor: "transparent",
+      paddingInline: "calc(var(--spacing) * 2)",
+      paddingBlock: "calc(var(--spacing) * 0.5)",
+      fontSize: "var(--text-xs)",
+      lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+      whiteSpace: "nowrap",
+      transitionProperty: "color, box-shadow",
+      "& > svg": {
+        pointerEvents: "none",
+        width: "calc(var(--spacing) * 3)",
+        height: "calc(var(--spacing) * 3)",
       },
     },
-    '[aria-invalid="true"]': {
-      borderColor: "var(--destructive)",
-      "--ui-ring-color": "var(--destructive)",
-      "@supports (color: color-mix(in lab, red, red))": {
-        "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
-      },
-    },
-    ':is(.dark *)[aria-invalid="true"]': {
-      "--ui-ring-color": "var(--destructive)",
-      "@supports (color: color-mix(in lab, red, red))": {
-        "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
-      },
-    },
-    "& > svg": {
-      pointerEvents: "none",
-      width: "calc(var(--spacing) * 3)",
-      height: "calc(var(--spacing) * 3)",
-    },
-  }),
+  ),
   variants: {
     variant: {
       default: ui({
@@ -181,7 +160,7 @@ export interface BadgeProps extends UiProps {
  */
 export function Badge(props: Incoming<BadgeProps>) {
   const className = (): string => badgeVariants({ variant: props.variant?.() });
-  const shared = (): Record<string, unknown> => ({
+  const common = (): Record<string, unknown> => ({
     ...uiProps("badge", className, props),
     "data-variant": props.variant?.() ?? "default",
   });
@@ -189,9 +168,9 @@ export function Badge(props: Incoming<BadgeProps>) {
   return (
     <Show
       when={props.href?.() !== undefined}
-      fallback={<span {...shared()}>{props.children}</span>}
+      fallback={<span {...common()}>{props.children}</span>}
     >
-      <a {...shared()} href={props.href?.()} target={props.target?.()} rel={props.rel?.()}>
+      <a {...common()} href={props.href?.()} target={props.target?.()} rel={props.rel?.()}>
         {props.children}
       </a>
     </Show>

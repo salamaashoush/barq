@@ -12,11 +12,12 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui({
+const content = ui(shared.closing, {
   zIndex: "50",
   width: "fit-content",
   animation:
@@ -49,12 +50,6 @@ const content = ui({
   },
   "[data-skip-animation]": {
     animation: "none",
-  },
-  "[data-closed]": {
-    animation:
-      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
-    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
   },
   '[data-closed][data-placement="bottom"]': {
     "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",

@@ -57,65 +57,110 @@ function kebab(property: string): string {
   return property.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 }
 
+/** Every `property: "value"` in a piece of source, at any depth. */
+function declarationsIn(text: string): Set<string> {
+  const held = new Set<string>();
+
+  for (const [, quoted, bare, value] of text.matchAll(
+    /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*"((?:[^"\\]|\\.)*)"/g,
+  )) {
+    held.add(canonical(`${kebab(quoted ?? bare ?? "")}: ${value ?? ""}`));
+  }
+
+  // A fallback is the same property twice, and its own values hold commas
+  // and parentheses — `var(--a, var(--b))` — so the call is scanned to its
+  // matching close and the quoted strings taken from inside it.
+  for (const call of text.matchAll(/(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*firstThatWorks\(/g)) {
+    const from = (call.index ?? 0) + call[0].length;
+    let unclosed = 1;
+    let to = from;
+    for (; to < text.length && unclosed > 0; to++) {
+      if (text[to] === "(") unclosed++;
+      else if (text[to] === ")") unclosed--;
+    }
+    const property = kebab(call[1] ?? call[2] ?? "");
+    for (const [, one] of text.slice(from, to - 1).matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+      held.add(canonical(`${property}: ${one ?? ""}`));
+    }
+  }
+  return held;
+}
+
+/** The matching close brace for the `{` at `open`. */
+function matching(source: string, open: number): number {
+  let depth = 0;
+  for (let at = open; at < source.length; at++) {
+    if (source[at] === "{") depth++;
+    else if (source[at] === "}" && --depth === 0) return at;
+  }
+  return source.length;
+}
+
 /**
- * The components, as a declaration set per `ui({ … })` literal.
+ * The shared treatments, by the name a component composes them under.
  *
- * Per LITERAL and not per sheet, because a declaration as ordinary as
+ * A group's declarations belong to every call naming it, which is the whole
+ * point of the group: `shared.focusRing` in a component IS that component
+ * declaring the focus ring, and a spec asking for it has to find it there.
+ */
+function sharedGroups(): Map<string, Set<string>> {
+  const source = readFileSync(join(import.meta.dir, "../src/lib/shared.ts"), "utf8");
+  const out = new Map<string, Set<string>>();
+  const open = source.indexOf("{", source.indexOf('createIn("barq.ui", '));
+  const close = matching(source, open);
+
+  // One level in: each entry of the `createIn` object is a group, and the group
+  // name is the key before its brace.
+  let at = open + 1;
+  while (at < close) {
+    const key = /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*\{/g;
+    key.lastIndex = at;
+    const found = key.exec(source);
+    if (found === null || (found.index ?? 0) >= close) break;
+    const body = (found.index ?? 0) + found[0].length - 1;
+    const end = matching(source, body);
+    out.set(found[1] ?? found[2] ?? "", declarationsIn(source.slice(body, end + 1)));
+    at = end + 1;
+  }
+  return out;
+}
+
+/**
+ * The components, as a declaration set per `ui(…)` call.
+ *
+ * Per CALL and not per sheet, because a declaration as ordinary as
  * `overflow: hidden` appears in five components: searching the whole package
  * for it says every spec matches and proves nothing. It used to be per CLASS,
  * read back out of the stylesheet, which said the same thing — until a class
  * became one declaration and the question stopped having an answer there.
  *
- * The literal is read rather than evaluated. Its keys are properties or
+ * The call is read rather than evaluated. A literal's keys are properties or
  * conditions, and a condition's value is a block, so a flat scan for
- * `key: "value"` finds every declaration at every depth and no condition.
- *
- * `atomsIn("barq.ui", { … })` and not the `ui` helper around it, because that
- * is the shape the compiler folds: an identifier for the layer is not a literal
- * and the call would stay on the runtime.
+ * `key: "value"` finds every declaration at every depth and no condition; a
+ * `shared.x` argument brings that group's declarations with it.
  */
-function byLiteral(): Map<string, Set<string>> {
+function byCall(): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
+  const groups = sharedGroups();
   const dir = join(import.meta.dir, "../src/ui");
 
   for (const file of readdirSync(dir).toSorted()) {
     if (!/\.tsx?$/.test(file) || file.includes(".test.")) continue;
     const source = readFileSync(join(dir, file), "utf8");
 
-    for (const start of source.matchAll(/\batomsIn\("[\w.]+", \{/g)) {
-      const open = (start.index ?? 0) + start[0].length - 1;
-      let depth = 0;
-      let at = open;
-      for (; at < source.length; at++) {
-        if (source[at] === "{") depth++;
-        else if (source[at] === "}" && --depth === 0) break;
+    for (const start of source.matchAll(/\bui\(/g)) {
+      const from = (start.index ?? 0) + start[0].length - 1;
+      let unclosed = 0;
+      let to = from;
+      for (; to < source.length; to++) {
+        if (source[to] === "(") unclosed++;
+        else if (source[to] === ")" && --unclosed === 0) break;
       }
-      const literal = source.slice(open, at + 1);
-      const held = new Set<string>();
-
-      for (const [, quoted, bare, value] of literal.matchAll(
-        /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*"((?:[^"\\]|\\.)*)"/g,
-      )) {
-        held.add(canonical(`${kebab(quoted ?? bare ?? "")}: ${value ?? ""}`));
-      }
-
-      // A fallback is the same property twice, and its own values hold commas
-      // and parentheses — `var(--a, var(--b))` — so the call is scanned to its
-      // matching close and the quoted strings taken from inside it.
-      for (const call of literal.matchAll(
-        /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*firstThatWorks\(/g,
-      )) {
-        const from = (call.index ?? 0) + call[0].length;
-        let unclosed = 1;
-        let to = from;
-        for (; to < literal.length && unclosed > 0; to++) {
-          if (literal[to] === "(") unclosed++;
-          else if (literal[to] === ")") unclosed--;
-        }
-        const property = kebab(call[1] ?? call[2] ?? "");
-        for (const [, one] of literal.slice(from, to - 1).matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
-          held.add(canonical(`${property}: ${one ?? ""}`));
-        }
+      const call = source.slice(from, to + 1);
+      const held = declarationsIn(call);
+      for (const [name, own] of groups) {
+        if (!call.includes(`shared.${name},`) && !call.includes(`shared.${name})`)) continue;
+        for (const declaration of own) held.add(declaration);
       }
       if (held.size > 0) out.set(`${file}:${String(start.index)}`, held);
     }
@@ -144,7 +189,7 @@ async function main(): Promise<void> {
   const specs = join(import.meta.dir, "../specs");
   const build = await createBuilder();
 
-  const sheet = byLiteral();
+  const sheet = byCall();
 
   let checked = 0;
   let missing = 0;

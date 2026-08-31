@@ -13,6 +13,7 @@ import { layer } from "@barqjs/css";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import {
@@ -36,13 +37,9 @@ import {
 const ui = layer("barq.ui");
 
 /** shadcn's context menu names its labels in the body colour; a dropdown's inherit. */
-const label = ui({
+const label = ui(shared.textSm, shared.fontMedium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   color: "var(--foreground)",
   "[data-inset]": {
     paddingLeft: "calc(var(--spacing) * 8)",
@@ -50,42 +47,30 @@ const label = ui({
 });
 
 /** And its submenu trigger has no gap, so the chevron's own margin is the whole of it. */
-const subTrigger = ui({
-  display: "flex",
-  cursor: "default",
-  alignItems: "center",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "[data-inset]": {
-    paddingLeft: "calc(var(--spacing) * 8)",
+const subTrigger = ui(
+  shared.textSm,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.focused,
+  shared.svgStatic,
+  shared.svgSize,
+  shared.svgMuted,
+  {
+    display: "flex",
+    cursor: "default",
+    alignItems: "center",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    "[data-inset]": {
+      paddingLeft: "calc(var(--spacing) * 8)",
+    },
+    "[data-open]": {
+      backgroundColor: "var(--accent)",
+      color: "var(--accent-foreground)",
+    },
   },
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "[data-open]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  '& svg:not([class*="text-"])': {
-    color: "var(--muted-foreground)",
-  },
-});
+);
 
 const subChevron = ui({
   marginLeft: "auto",

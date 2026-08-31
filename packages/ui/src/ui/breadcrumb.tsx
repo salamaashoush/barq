@@ -5,13 +5,14 @@ import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
 const ui = layer("barq.ui");
 
-const list = ui({
+const list = ui(shared.textSm, {
   margin: "0px",
   display: "flex",
   listStyleType: "none",
@@ -19,8 +20,6 @@ const list = ui({
   alignItems: "center",
   gap: "calc(var(--spacing) * 1.5)",
   padding: "0px",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   overflowWrap: "break-word",
   color: "var(--muted-foreground)",
   "@media (width >= 40rem)": {
@@ -36,11 +35,9 @@ const item = ui({
   gap: "calc(var(--spacing) * 1.5)",
 });
 
-const link = ui({
+const link = ui(shared.transition, {
   transitionProperty:
     "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
   "@media (hover: hover)": {
     ":hover": {
       color: "var(--foreground)",

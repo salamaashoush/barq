@@ -2,25 +2,22 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const card = ui({
+const card = ui(shared.border, shared.shadow, {
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 6)",
   borderRadius: "calc(var(--radius) + 4px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   backgroundColor: "var(--card)",
   paddingBlock: "calc(var(--spacing) * 6)",
   color: "var(--card-foreground)",
   "--ui-shadow":
     "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
 });
 
 const header = ui({
@@ -50,9 +47,7 @@ const title = ui({
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = ui({
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+const description = ui(shared.textSm, {
   color: "var(--muted-foreground)",
 });
 

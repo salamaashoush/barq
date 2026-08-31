@@ -2,12 +2,13 @@ import { Show, signal, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const root = ui({
+const root = ui(shared.noSelect, {
   position: "relative",
   display: "flex",
   width: "calc(var(--spacing) * 8)",
@@ -15,8 +16,6 @@ const root = ui({
   flexShrink: "0",
   overflow: "hidden",
   borderRadius: "calc(infinity * 1px)",
-  "-webkit-user-select": "none",
-  userSelect: "none",
   '[data-size="lg"]': {
     width: "calc(var(--spacing) * 10)",
     height: "calc(var(--spacing) * 10)",
@@ -34,7 +33,7 @@ const image = ui({
   objectFit: "cover",
 });
 
-const fallback = ui({
+const fallback = ui(shared.textSm, {
   display: "flex",
   width: "100%",
   height: "100%",
@@ -42,8 +41,6 @@ const fallback = ui({
   justifyContent: "center",
   borderRadius: "calc(infinity * 1px)",
   backgroundColor: "var(--muted)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
   '[data-size="sm"] &': {
     fontSize: "var(--text-xs)",
@@ -51,7 +48,7 @@ const fallback = ui({
   },
 });
 
-const badge = ui({
+const badge = ui(shared.shadow, shared.noSelect, {
   position: "absolute",
   right: "0px",
   bottom: "0px",
@@ -64,11 +61,7 @@ const badge = ui({
   color: "var(--primary-foreground)",
   "--ui-ring-shadow":
     "var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   "--ui-ring-color": "var(--background)",
-  "-webkit-user-select": "none",
-  userSelect: "none",
   '[data-size="default"] &': {
     width: "calc(var(--spacing) * 2.5)",
     height: "calc(var(--spacing) * 2.5)",

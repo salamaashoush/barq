@@ -7,6 +7,7 @@ import { Button, type ButtonProps } from "./button.tsx";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
@@ -31,7 +32,7 @@ const overlay = ui({
   },
 });
 
-const content = ui({
+const content = ui(shared.border, shared.shadow, shared.outlineNone, shared.closing, {
   position: "fixed",
   top: "50%",
   left: "50%",
@@ -46,30 +47,18 @@ const content = ui({
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
   gap: "calc(var(--spacing) * 4)",
   borderRadius: "var(--radius)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   backgroundColor: "var(--background)",
   padding: "calc(var(--spacing) * 6)",
   "--ui-shadow":
     "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   "--ui-duration": "200ms",
   transitionDuration: "200ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   "@media (width >= 40rem)": {
     "&": {
       maxWidth: "var(--container-lg)",
     },
-  },
-  "[data-closed]": {
-    animation:
-      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
-    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
   },
 });
 
@@ -105,13 +94,11 @@ const title = ui({
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = ui({
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+const description = ui(shared.textSm, {
   color: "var(--muted-foreground)",
 });
 
-const close = ui({
+const close = ui(shared.transition, shared.svgStatic, shared.svgSize, {
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
   right: "calc(var(--spacing) * 4)",
@@ -119,8 +106,6 @@ const close = ui({
   opacity: "70%",
   "--ui-ring-offset-color": "var(--background)",
   transitionProperty: "opacity",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
   "@media (hover: hover)": {
     ":hover": {
       opacity: "100%",
@@ -138,14 +123,6 @@ const close = ui({
   },
   "[data-disabled]": {
     pointerEvents: "none",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
   },
 });
 

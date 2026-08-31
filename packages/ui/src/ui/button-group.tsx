@@ -2,6 +2,7 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -66,28 +67,16 @@ export const buttonGroupVariants = uiVariants({
   defaults: { orientation: "horizontal" },
 });
 
-const text = ui({
+const text = ui(shared.border, shared.textSm, shared.fontMedium, shared.shadow, shared.svgSize, {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
   borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   backgroundColor: "var(--muted)",
   paddingInline: "calc(var(--spacing) * 4)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   "& svg": {
     pointerEvents: "none",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
   },
 });
 

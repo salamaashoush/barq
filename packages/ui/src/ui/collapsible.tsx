@@ -10,12 +10,11 @@ import type { Incoming } from "@barqjs/core";
 import { clsx, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 
 const ui = layer("barq.ui");
 
-const trigger = ui({
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
+const trigger = ui(shared.outlineNone, shared.disabled, {
   "[data-focus-visible]": {
     "--ui-ring-shadow":
       "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
@@ -25,10 +24,6 @@ const trigger = ui({
     "@supports (color: color-mix(in lab, red, red))": {
       "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
     },
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
   },
 });
 

@@ -2,6 +2,7 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -10,84 +11,77 @@ import { Input, Textarea, type InputProps, type TextareaProps } from "./input.ts
 
 const ui = layer("barq.ui");
 
-const root = ui({
-  position: "relative",
-  display: "flex",
-  height: "calc(var(--spacing) * 9)",
-  width: "100%",
-  minWidth: "0px",
-  alignItems: "center",
-  borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "var(--input)",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "color, box-shadow",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  ':has(:is([data-slot="input-group-control"]:focus-visible))': {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+const root = ui(
+  shared.border,
+  shared.shadow,
+  shared.transition,
+  shared.outlineNone,
+  shared.darkInput,
+  {
+    position: "relative",
+    display: "flex",
+    height: "calc(var(--spacing) * 9)",
+    width: "100%",
+    minWidth: "0px",
+    alignItems: "center",
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderColor: "var(--input)",
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    transitionProperty: "color, box-shadow",
+    ':has(:is([data-slot="input-group-control"]:focus-visible))': {
+      borderColor: "var(--ring)",
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+      "--ui-ring-color": "var(--ring)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+      },
+    },
+    ':has(:is([data-slot][aria-invalid="true"]))': {
+      borderColor: "var(--destructive)",
+      "--ui-ring-color": "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
+      },
+    },
+    ':has(> [data-align="block-end"])': {
+      height: "auto",
+      flexDirection: "column",
+    },
+    ':has(> [data-align="block-start"])': {
+      height: "auto",
+      flexDirection: "column",
+    },
+    ":has(> textarea)": {
+      height: "auto",
+    },
+    ':is(.dark *):has(:is([data-slot][aria-invalid="true"]))': {
+      "--ui-ring-color": "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+      },
+    },
+    ':has(> [data-align="block-end"]) > input': {
+      paddingTop: "calc(var(--spacing) * 3)",
+    },
+    ':has(> [data-align="block-start"]) > input': {
+      paddingBottom: "calc(var(--spacing) * 3)",
+    },
+    ':has(> [data-align="inline-end"]) > input': {
+      paddingRight: "calc(var(--spacing) * 2)",
+    },
+    ':has(> [data-align="inline-start"]) > input': {
+      paddingLeft: "calc(var(--spacing) * 2)",
     },
   },
-  ':has(:is([data-slot][aria-invalid="true"]))': {
-    borderColor: "var(--destructive)",
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
-    },
-  },
-  ':has(> [data-align="block-end"])': {
-    height: "auto",
-    flexDirection: "column",
-  },
-  ':has(> [data-align="block-start"])': {
-    height: "auto",
-    flexDirection: "column",
-  },
-  ":has(> textarea)": {
-    height: "auto",
-  },
-  ":is(.dark *)": {
-    backgroundColor: "var(--input)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
-    },
-  },
-  ':is(.dark *):has(:is([data-slot][aria-invalid="true"]))': {
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
-    },
-  },
-  ':has(> [data-align="block-end"]) > input': {
-    paddingTop: "calc(var(--spacing) * 3)",
-  },
-  ':has(> [data-align="block-start"]) > input': {
-    paddingBottom: "calc(var(--spacing) * 3)",
-  },
-  ':has(> [data-align="inline-end"]) > input': {
-    paddingRight: "calc(var(--spacing) * 2)",
-  },
-  ':has(> [data-align="inline-start"]) > input': {
-    paddingLeft: "calc(var(--spacing) * 2)",
-  },
-});
+);
 
 export type InputGroupAlign = "inline-start" | "inline-end" | "block-start" | "block-end";
 
 export const inputGroupAddonVariants = uiVariants({
-  base: ui({
+  base: ui(shared.textSm, shared.fontMedium, shared.noSelect, {
     display: "flex",
     height: "auto",
     cursor: "text",
@@ -95,13 +89,7 @@ export const inputGroupAddonVariants = uiVariants({
     justifyContent: "center",
     gap: "calc(var(--spacing) * 2)",
     paddingBlock: "calc(var(--spacing) * 1.5)",
-    fontSize: "var(--text-sm)",
-    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-    "--ui-font-weight": "var(--font-weight-medium)",
-    fontWeight: "var(--font-weight-medium)",
     color: "var(--muted-foreground)",
-    "-webkit-user-select": "none",
-    userSelect: "none",
     "& > kbd": {
       borderRadius: "calc(var(--radius) - 5px)",
     },
@@ -163,15 +151,11 @@ export const inputGroupAddonVariants = uiVariants({
 export type InputGroupButtonSize = "xs" | "sm" | "icon-xs" | "icon-sm";
 
 export const inputGroupButtonVariants = uiVariants({
-  base: ui({
+  base: ui(shared.textSm, shared.shadow, {
     display: "flex",
     alignItems: "center",
     gap: "calc(var(--spacing) * 2)",
-    fontSize: "var(--text-sm)",
-    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
     "--ui-shadow": "0 0 #0000",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   }),
   variants: {
     size: {
@@ -219,31 +203,23 @@ export const inputGroupButtonVariants = uiVariants({
   defaults: { size: "xs" },
 });
 
-const text = ui({
+const text = ui(shared.textSm, shared.svgSize, {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
   "& svg": {
     pointerEvents: "none",
   },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
 });
 
-const control = ui({
+const control = ui(shared.shadow, {
   flex: "1",
   borderRadius: "0",
   borderStyle: "var(--ui-border-style)",
   borderWidth: "0px",
   backgroundColor: "transparent",
   "--ui-shadow": "0 0 #0000",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   ":focus-visible": {
     "--ui-ring-shadow":
       "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
@@ -255,7 +231,7 @@ const control = ui({
   },
 });
 
-const controlTextarea = ui({
+const controlTextarea = ui(shared.shadow, {
   flex: "1",
   resize: "none",
   borderRadius: "0",
@@ -264,8 +240,6 @@ const controlTextarea = ui({
   backgroundColor: "transparent",
   paddingBlock: "calc(var(--spacing) * 3)",
   "--ui-shadow": "0 0 #0000",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   ":focus-visible": {
     "--ui-ring-shadow":
       "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",

@@ -4,66 +4,44 @@ import { layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { controlProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const control = ui({
-  height: "calc(var(--spacing) * 9)",
-  width: "100%",
-  borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "var(--input)",
-  backgroundColor: "transparent",
-  paddingInline: "calc(var(--spacing) * 3)",
-  paddingBlock: "var(--spacing)",
-  fontSize: "var(--text-base)",
-  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "color, box-shadow",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  ":focus-visible": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+const control = ui(
+  shared.border,
+  shared.shadow,
+  shared.transition,
+  shared.outlineNone,
+  shared.focusRing,
+  shared.invalidRing,
+  shared.darkInput,
+  {
+    height: "calc(var(--spacing) * 9)",
+    width: "100%",
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderColor: "var(--input)",
+    backgroundColor: "transparent",
+    paddingInline: "calc(var(--spacing) * 3)",
+    paddingBlock: "var(--spacing)",
+    fontSize: "var(--text-base)",
+    lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    transitionProperty: "color, box-shadow",
+    ":disabled": {
+      cursor: "not-allowed",
+      opacity: "50%",
+    },
+    "@media (width >= 48rem)": {
+      "&": {
+        fontSize: "var(--text-sm)",
+        lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+      },
     },
   },
-  ":disabled": {
-    cursor: "not-allowed",
-    opacity: "50%",
-  },
-  '[aria-invalid="true"]': {
-    borderColor: "var(--destructive)",
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
-    },
-  },
-  "@media (width >= 48rem)": {
-    "&": {
-      fontSize: "var(--text-sm)",
-      lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-    },
-  },
-  ":is(.dark *)": {
-    backgroundColor: "var(--input)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
-    },
-  },
-});
+);
 
 /**
  * The platform's own `<select>`, styled.

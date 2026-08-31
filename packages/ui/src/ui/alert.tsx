@@ -2,6 +2,7 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -11,7 +12,7 @@ const ui = layer("barq.ui");
 export type AlertVariant = "default" | "destructive";
 
 export const alertVariants = uiVariants({
-  base: ui({
+  base: ui(shared.border, shared.textSm, {
     position: "relative",
     display: "grid",
     width: "100%",
@@ -19,12 +20,8 @@ export const alertVariants = uiVariants({
     alignItems: "flex-start",
     rowGap: "calc(var(--spacing) * 0.5)",
     borderRadius: "var(--radius)",
-    borderStyle: "var(--ui-border-style)",
-    borderWidth: "1px",
     paddingInline: "calc(var(--spacing) * 4)",
     paddingBlock: "calc(var(--spacing) * 3)",
-    fontSize: "var(--text-sm)",
-    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
     ":has(> svg)": {
       gridTemplateColumns: "calc(var(--spacing) * 4) 1fr",
       columnGap: "calc(var(--spacing) * 3)",
@@ -61,26 +58,22 @@ export const alertVariants = uiVariants({
   defaults: { variant: "default" },
 });
 
-const title = ui({
+const title = ui(shared.fontMedium, {
   gridColumnStart: "2",
   overflow: "hidden",
   display: "-webkit-box",
   "-webkit-box-orient": "vertical",
   "-webkit-line-clamp": "1",
   minHeight: "calc(var(--spacing) * 4)",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   "--ui-tracking": "var(--tracking-tight)",
   letterSpacing: "var(--tracking-tight)",
 });
 
-const description = ui({
+const description = ui(shared.textSm, {
   gridColumnStart: "2",
   display: "grid",
   justifyItems: "start",
   gap: "var(--spacing)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
   "& p": {
     "--ui-leading": "var(--leading-relaxed)",

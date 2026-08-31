@@ -2,6 +2,7 @@ import { For, Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -25,10 +26,8 @@ const fieldSet = ui({
 export type FieldLegendVariant = "legend" | "label";
 
 export const fieldLegendVariants = uiVariants({
-  base: ui({
+  base: ui(shared.fontMedium, {
     marginBottom: "calc(var(--spacing) * 3)",
-    "--ui-font-weight": "var(--font-weight-medium)",
-    fontWeight: "var(--font-weight-medium)",
   }),
   variants: {
     variant: {
@@ -36,10 +35,7 @@ export const fieldLegendVariants = uiVariants({
         fontSize: "var(--text-base)",
         lineHeight: "var(--ui-leading, var(--text-base--line-height))",
       }),
-      label: ui({
-        fontSize: "var(--text-sm)",
-        lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-      }),
+      label: ui(shared.textSm),
     },
   },
   defaults: { variant: "legend" },
@@ -163,7 +159,7 @@ const fieldLabel = ui({
   },
 });
 
-const fieldTitle = ui({
+const fieldTitle = ui(shared.fontMedium, {
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -174,8 +170,6 @@ const fieldTitle = ui({
     "var(--ui-leading, var(--text-sm--line-height))",
   ),
   "--ui-leading": "var(--leading-snug)",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   '[data-slot="field"][data-disabled] &': {
     opacity: "50%",
   },
@@ -212,12 +206,10 @@ const fieldDescription = ui({
   },
 });
 
-const fieldSeparator = ui({
+const fieldSeparator = ui(shared.textSm, {
   position: "relative",
   marginBlock: "calc(var(--spacing) * -2)",
   height: "calc(var(--spacing) * 5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   '[data-slot="field-group"][data-variant="outline"] &': {
     marginBottom: "calc(var(--spacing) * -2)",
   },
@@ -239,9 +231,7 @@ const fieldSeparatorContent = ui({
   color: "var(--muted-foreground)",
 });
 
-const fieldError = ui({
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+const fieldError = ui(shared.textSm, {
   "--ui-font-weight": "var(--font-weight-normal)",
   fontWeight: "var(--font-weight-normal)",
   color: "var(--destructive)",

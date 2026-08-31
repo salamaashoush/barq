@@ -2,6 +2,7 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -13,12 +14,10 @@ const container = ui({
   overflowX: "auto",
 });
 
-const table = ui({
+const table = ui(shared.textSm, {
   width: "100%",
   captionSide: "bottom",
   borderCollapse: "collapse",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
 const header = ui({
@@ -35,12 +34,10 @@ const body = ui({
   },
 });
 
-const footer = ui({
+const footer = ui(shared.fontMedium, {
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   backgroundColor: "var(--muted)",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   "@supports (color: color-mix(in lab, red, red))": {
     backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
   },
@@ -50,15 +47,13 @@ const footer = ui({
   },
 });
 
-const row = ui({
+const row = ui(shared.transition, {
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
   "--ui-border-style": "solid",
   borderStyle: "solid",
   transitionProperty:
     "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
   "@media (hover: hover)": {
     ":hover": {
       backgroundColor: "var(--muted)",
@@ -74,13 +69,11 @@ const row = ui({
   },
 });
 
-const head = ui({
+const head = ui(shared.fontMedium, {
   height: "calc(var(--spacing) * 10)",
   paddingInline: "calc(var(--spacing) * 2)",
   textAlign: "left",
   verticalAlign: "middle",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   whiteSpace: "nowrap",
   color: "var(--foreground)",
   ':has([role="checkbox"])': {
@@ -97,10 +90,8 @@ const cell = ui({
   },
 });
 
-const caption = ui({
+const caption = ui(shared.textSm, {
   marginTop: "calc(var(--spacing) * 4)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
 });
 

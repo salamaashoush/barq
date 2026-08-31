@@ -7,6 +7,7 @@ import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { Button } from "./button.tsx";
 import { Command, CommandItem } from "./command.tsx";
@@ -34,44 +35,28 @@ const content = ui({
   padding: "0px",
 });
 
-const item = ui({
-  position: "relative",
-  display: "flex",
-  width: "100%",
-  cursor: "default",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  paddingRight: "calc(var(--spacing) * 8)",
-  paddingLeft: "calc(var(--spacing) * 2)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "@media (forced-colors: active)": {
-    outline: "2px solid transparent",
-    outlineOffset: "2px",
+const item = ui(
+  shared.textSm,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.forcedColors,
+  shared.focused,
+  shared.disabled,
+  shared.svgStatic,
+  shared.svgSize,
+  {
+    position: "relative",
+    display: "flex",
+    width: "100%",
+    cursor: "default",
+    alignItems: "center",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    paddingRight: "calc(var(--spacing) * 8)",
+    paddingLeft: "calc(var(--spacing) * 2)",
   },
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-});
+);
 
 const indicator = ui({
   pointerEvents: "none",

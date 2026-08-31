@@ -19,12 +19,13 @@ import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Circle } from "@barqjs/lucide/icons/circle";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui({
+const content = ui(shared.border, shared.shadow, {
   zIndex: "50",
   margin: "0px",
   minWidth: "8rem",
@@ -34,15 +35,11 @@ const content = ui({
   overflowX: "hidden",
   overflowY: "auto",
   borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   backgroundColor: "var(--popover)",
   padding: "var(--spacing)",
   color: "var(--popover-foreground)",
   "--ui-shadow":
     "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   '[data-placement="bottom"] &': {
@@ -79,97 +76,69 @@ const content = ui({
   },
 });
 
-const item = ui({
-  position: "relative",
-  display: "flex",
-  cursor: "default",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "[data-inset]": {
+const item = ui(
+  shared.textSm,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.focused,
+  shared.disabled,
+  shared.svgStatic,
+  shared.svgSize,
+  shared.svgMuted,
+  {
+    position: "relative",
+    display: "flex",
+    cursor: "default",
+    alignItems: "center",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    "[data-inset]": {
+      paddingLeft: "calc(var(--spacing) * 8)",
+    },
+    '[data-variant="destructive"]': {
+      color: "var(--destructive)",
+    },
+    '[data-variant="destructive"][data-focused]': {
+      backgroundColor: "var(--destructive)",
+      color: "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--destructive) 10%, transparent)",
+      },
+    },
+    ':is(.dark *)[data-variant="destructive"][data-focused]': {
+      backgroundColor: "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
+      },
+    },
+    '[data-variant="destructive"] > svg': {
+      color: "var(--destructive)",
+    },
+  },
+);
+
+const checkItem = ui(
+  shared.textSm,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.focused,
+  shared.disabled,
+  shared.svgStatic,
+  shared.svgSize,
+  {
+    position: "relative",
+    display: "flex",
+    cursor: "default",
+    alignItems: "center",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    paddingRight: "calc(var(--spacing) * 2)",
     paddingLeft: "calc(var(--spacing) * 8)",
   },
-  '[data-variant="destructive"]': {
-    color: "var(--destructive)",
-  },
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  '[data-variant="destructive"][data-focused]': {
-    backgroundColor: "var(--destructive)",
-    color: "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--destructive) 10%, transparent)",
-    },
-  },
-  ':is(.dark *)[data-variant="destructive"][data-focused]': {
-    backgroundColor: "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
-    },
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  '& svg:not([class*="text-"])': {
-    color: "var(--muted-foreground)",
-  },
-  '[data-variant="destructive"] > svg': {
-    color: "var(--destructive)",
-  },
-});
-
-const checkItem = ui({
-  position: "relative",
-  display: "flex",
-  cursor: "default",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  paddingRight: "calc(var(--spacing) * 2)",
-  paddingLeft: "calc(var(--spacing) * 8)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-});
+);
 
 const indicator = ui({
   pointerEvents: "none",
@@ -208,13 +177,9 @@ const radioIndicator = ui({
   },
 });
 
-const label = ui({
+const label = ui(shared.textSm, shared.fontMedium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   "[data-inset]": {
     paddingLeft: "calc(var(--spacing) * 8)",
   },
@@ -238,43 +203,31 @@ const shortcut = ui({
   color: "var(--muted-foreground)",
 });
 
-const subTrigger = ui({
-  display: "flex",
-  cursor: "default",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "[data-inset]": {
-    paddingLeft: "calc(var(--spacing) * 8)",
+const subTrigger = ui(
+  shared.textSm,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.focused,
+  shared.svgStatic,
+  shared.svgSize,
+  shared.svgMuted,
+  {
+    display: "flex",
+    cursor: "default",
+    alignItems: "center",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    "[data-inset]": {
+      paddingLeft: "calc(var(--spacing) * 8)",
+    },
+    "[data-open]": {
+      backgroundColor: "var(--accent)",
+      color: "var(--accent-foreground)",
+    },
   },
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "[data-open]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  '& svg:not([class*="text-"])': {
-    color: "var(--muted-foreground)",
-  },
-});
+);
 
 const subChevron = ui({
   marginLeft: "auto",
@@ -288,13 +241,9 @@ const group = ui({
   padding: "0px",
 });
 
-const groupLabel = ui({
+const groupLabel = ui(shared.textSm, shared.fontMedium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   color: "var(--muted-foreground)",
 });
 

@@ -2,6 +2,7 @@ import { Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -23,16 +24,12 @@ export type ItemVariant = "default" | "outline" | "muted";
 export type ItemSize = "default" | "sm";
 
 export const itemVariants = uiVariants({
-  base: ui({
+  base: ui(shared.border, shared.textSm, shared.outlineNone, shared.focusRing, {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
     borderRadius: "calc(var(--radius) - 2px)",
-    borderStyle: "var(--ui-border-style)",
-    borderWidth: "1px",
     borderColor: "transparent",
-    fontSize: "var(--text-sm)",
-    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
     transitionProperty:
       "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
     transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
@@ -41,19 +38,6 @@ export const itemVariants = uiVariants({
       "var(--ui-duration, var(--default-transition-duration))",
     ),
     "--ui-duration": "100ms",
-    "--ui-outline-style": "none",
-    outlineStyle: "none",
-    ":focus-visible": {
-      borderColor: "var(--ring)",
-      "--ui-ring-shadow":
-        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-      boxShadow:
-        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-      "--ui-ring-color": "var(--ring)",
-      "@supports (color: color-mix(in lab, red, red))": {
-        "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
-      },
-    },
     "a&": {
       transitionProperty:
         "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
@@ -124,17 +108,11 @@ export const itemMediaVariants = uiVariants({
       default: ui({
         backgroundColor: "transparent",
       }),
-      icon: ui({
+      icon: ui(shared.border, shared.svgSize, {
         width: "calc(var(--spacing) * 8)",
         height: "calc(var(--spacing) * 8)",
         borderRadius: "calc(var(--radius) - 4px)",
-        borderStyle: "var(--ui-border-style)",
-        borderWidth: "1px",
         backgroundColor: "var(--muted)",
-        '& svg:not([class*="size-"])': {
-          width: "calc(var(--spacing) * 4)",
-          height: "calc(var(--spacing) * 4)",
-        },
       }),
       image: ui({
         width: "calc(var(--spacing) * 10)",
@@ -162,7 +140,7 @@ const content = ui({
   },
 });
 
-const title = ui({
+const title = ui(shared.fontMedium, {
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -173,8 +151,6 @@ const title = ui({
     "var(--ui-leading, var(--text-sm--line-height))",
   ),
   "--ui-leading": "var(--leading-snug)",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
 });
 
 const description = ui({
@@ -269,15 +245,15 @@ export interface ItemProps extends UiProps {
 export function Item(props: Incoming<ItemProps>) {
   const className = (): string =>
     itemVariants({ variant: props.variant?.(), size: props.size?.() });
-  const shared = (): Record<string, unknown> => ({
+  const common = (): Record<string, unknown> => ({
     ...uiProps("item", className, props),
     "data-variant": props.variant?.() ?? "default",
     "data-size": props.size?.() ?? "default",
   });
 
   return (
-    <Show when={props.href?.() !== undefined} fallback={<div {...shared()}>{props.children}</div>}>
-      <a {...shared()} href={props.href?.()}>
+    <Show when={props.href?.() !== undefined} fallback={<div {...common()}>{props.children}</div>}>
+      <a {...common()} href={props.href?.()}>
         {props.children}
       </a>
     </Show>

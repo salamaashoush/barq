@@ -16,7 +16,7 @@
     {
       "path": "ui/skeleton.tsx",
       "type": "registry:ui",
-      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { atomsIn } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\nimport { uiProps } from \"../lib/slot.ts\";\n\nconst skeleton = atomsIn(\"barq.ui\", {\n  animation: \"var(--animate-pulse)\",\n  borderRadius: \"calc(var(--radius) - 2px)\",\n  backgroundColor: \"var(--accent)\",\n});\n\n/**\n * ```tsx\n * <Skeleton class={css`width: 12rem; height: 1rem`} />\n * ```\n *\n * It has no size of its own: a skeleton is the shape of whatever has not\n * arrived, so the caller gives it one.\n */\nexport function Skeleton(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"skeleton\", skeleton, props)}>{props.children}</div>;\n}\n"
+      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { layer } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\nimport { uiProps } from \"../lib/slot.ts\";\n\nconst ui = layer(\"barq.ui\");\n\nconst skeleton = ui({\n  animation: \"var(--animate-pulse)\",\n  borderRadius: \"calc(var(--radius) - 2px)\",\n  backgroundColor: \"var(--accent)\",\n});\n\n/**\n * ```tsx\n * <Skeleton class={css`width: 12rem; height: 1rem`} />\n * ```\n *\n * It has no size of its own: a skeleton is the shape of whatever has not\n * arrived, so the caller gives it one.\n */\nexport function Skeleton(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"skeleton\", skeleton, props)}>{props.children}</div>;\n}\n"
     }
   ]
 }

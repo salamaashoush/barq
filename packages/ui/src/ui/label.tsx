@@ -2,26 +2,19 @@ import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const label = ui({
+const label = ui(shared.fontMedium, shared.noSelect, shared.disabled, {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
   fontSize: "var(--text-sm)",
   lineHeight: firstThatWorks("1", "var(--ui-leading, var(--text-sm--line-height))"),
   "--ui-leading": "1",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
   "[data-disabled] &": {
     pointerEvents: "none",
     opacity: "50%",

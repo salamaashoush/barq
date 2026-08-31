@@ -7,6 +7,7 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
@@ -35,49 +36,37 @@ import {
 
 const ui = layer("barq.ui");
 
-const bar = ui({
+const bar = ui(shared.border, shared.shadow, {
   display: "flex",
   height: "calc(var(--spacing) * 9)",
   alignItems: "center",
   gap: "var(--spacing)",
   borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   backgroundColor: "var(--background)",
   padding: "var(--spacing)",
   "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
 });
 
-const trigger = ui({
-  display: "flex",
-  height: "auto",
-  alignItems: "center",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "var(--spacing)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "@media (forced-colors: active)": {
-    outline: "2px solid transparent",
-    outlineOffset: "2px",
+const trigger = ui(
+  shared.textSm,
+  shared.fontMedium,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.forcedColors,
+  shared.focused,
+  {
+    display: "flex",
+    height: "auto",
+    alignItems: "center",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "var(--spacing)",
+    "[data-expanded], &[data-open]": {
+      backgroundColor: "var(--accent)",
+      color: "var(--accent-foreground)",
+    },
   },
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "[data-expanded], &[data-open]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-});
+);
 
 /** shadcn's menubar opens wider than a dropdown does. */
 const wide = ui({

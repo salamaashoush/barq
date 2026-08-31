@@ -25,6 +25,7 @@ import { Search } from "@barqjs/lucide/icons/search";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog.tsx";
@@ -60,7 +61,7 @@ const inputIcon = ui({
   opacity: "50%",
 });
 
-const input = ui({
+const input = ui(shared.textSm, shared.outlineNone, shared.forcedColors, {
   display: "flex",
   height: "calc(var(--spacing) * 10)",
   width: "100%",
@@ -69,14 +70,6 @@ const input = ui({
   borderWidth: "0px",
   backgroundColor: "transparent",
   paddingBlock: "calc(var(--spacing) * 3)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "@media (forced-colors: active)": {
-    outline: "2px solid transparent",
-    outlineOffset: "2px",
-  },
   "::placeholder": {
     color: "var(--muted-foreground)",
   },
@@ -96,11 +89,9 @@ const list = ui({
   padding: "0px",
 });
 
-const empty = ui({
+const empty = ui(shared.textSm, {
   paddingBlock: "calc(var(--spacing) * 6)",
   textAlign: "center",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
 const group = ui({
@@ -111,13 +102,11 @@ const group = ui({
   color: "var(--foreground)",
 });
 
-const groupLabel = ui({
+const groupLabel = ui(shared.fontMedium, {
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-xs)",
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   color: "var(--muted-foreground)",
 });
 
@@ -129,45 +118,27 @@ const separator = ui({
   backgroundColor: "var(--border)",
 });
 
-const item = ui({
-  position: "relative",
-  display: "flex",
-  cursor: "default",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "@media (forced-colors: active)": {
-    outline: "2px solid transparent",
-    outlineOffset: "2px",
+const item = ui(
+  shared.textSm,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.forcedColors,
+  shared.focused,
+  shared.disabled,
+  shared.svgStatic,
+  shared.svgSize,
+  shared.svgMuted,
+  {
+    position: "relative",
+    display: "flex",
+    cursor: "default",
+    alignItems: "center",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
   },
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  '& svg:not([class*="text-"])': {
-    color: "var(--muted-foreground)",
-  },
-});
+);
 
 const shortcut = ui({
   marginLeft: "auto",

@@ -2,6 +2,7 @@ import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -39,11 +40,9 @@ const header = ui({
   textAlign: "center",
 });
 
-const title = ui({
+const title = ui(shared.fontMedium, {
   fontSize: "var(--text-lg)",
   lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   "--ui-tracking": "var(--tracking-tight)",
   letterSpacing: "var(--tracking-tight)",
 });
@@ -61,7 +60,7 @@ const description = ui({
   },
 });
 
-const content = ui({
+const content = ui(shared.textSm, {
   display: "flex",
   width: "100%",
   maxWidth: "var(--container-sm)",
@@ -69,24 +68,18 @@ const content = ui({
   flexDirection: "column",
   alignItems: "center",
   gap: "calc(var(--spacing) * 4)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   textWrap: "balance",
 });
 
 export type EmptyMediaVariant = "default" | "icon";
 
 export const emptyMediaVariants = uiVariants({
-  base: ui({
+  base: ui(shared.svgStatic, {
     marginBottom: "calc(var(--spacing) * 2)",
     display: "flex",
     flexShrink: "0",
     alignItems: "center",
     justifyContent: "center",
-    "& svg": {
-      pointerEvents: "none",
-      flexShrink: "0",
-    },
   }),
   variants: {
     variant: {

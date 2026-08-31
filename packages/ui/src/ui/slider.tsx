@@ -11,17 +11,16 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 
 const ui = layer("barq.ui");
 
-const root = ui({
+const root = ui(shared.noSelect, {
   position: "relative",
   display: "flex",
   width: "100%",
   touchAction: "none",
   alignItems: "center",
-  "-webkit-user-select": "none",
-  userSelect: "none",
   '[data-orientation="vertical"]': {
     height: "100%",
     minHeight: "calc(var(--spacing) * 44)",
@@ -48,24 +47,18 @@ const track = ui({
   },
 });
 
-const thumb = ui({
+const thumb = ui(shared.border, shared.shadow, shared.transition, shared.disabled, {
   position: "absolute",
   display: "block",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
   flexShrink: "0",
   borderRadius: "calc(infinity * 1px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   borderColor: "var(--primary)",
   backgroundColor: "var(--background)",
   "--ui-shadow":
     "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   transitionProperty: "color, box-shadow",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
   "@media (hover: hover)": {
     ":hover": {
       "--ui-ring-shadow":
@@ -81,10 +74,6 @@ const thumb = ui({
       "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
     "--ui-outline-style": "none",
     outlineStyle: "none",
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
   },
 });
 

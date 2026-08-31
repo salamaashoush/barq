@@ -16,6 +16,7 @@
 
 import "./theme/base.ts";
 
+export { ui, uiVariants } from "./lib/atoms.ts";
 export {
   overlayFamily,
   type OverlayFamily,
@@ -24,6 +25,7 @@ export {
   type OverlayValue,
 } from "./lib/overlay.tsx";
 export { type UiProps } from "./lib/props.ts";
+export { shared } from "./lib/shared.ts";
 export { controlProps, uiProps } from "./lib/slot.ts";
 export { cn } from "./lib/utils.ts";
 export {

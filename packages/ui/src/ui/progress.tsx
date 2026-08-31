@@ -4,6 +4,7 @@ import { Show, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 
 const ui = layer("barq.ui");
@@ -20,14 +21,12 @@ const track = ui({
   },
 });
 
-const bar = ui({
+const bar = ui(shared.transition, {
   height: "100%",
   width: "100%",
   flex: "1",
   backgroundColor: "var(--primary)",
   transitionProperty: "all",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
 });
 
 export interface ProgressProps extends UiProps {

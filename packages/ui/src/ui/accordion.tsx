@@ -12,6 +12,7 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -26,50 +27,35 @@ const item = ui({
   },
 });
 
-const trigger = ui({
-  display: "flex",
-  width: "100%",
-  flex: "1",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "calc(var(--spacing) * 4)",
-  borderRadius: "calc(var(--radius) - 2px)",
-  backgroundColor: "transparent",
-  paddingBlock: "calc(var(--spacing) * 4)",
-  textAlign: "left",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
-  transitionProperty: "all",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "@media (hover: hover)": {
-    ":hover": {
-      textDecorationLine: "underline",
+const trigger = ui(
+  shared.textSm,
+  shared.fontMedium,
+  shared.transition,
+  shared.outlineNone,
+  shared.focusRingData,
+  shared.disabled,
+  {
+    display: "flex",
+    width: "100%",
+    flex: "1",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "calc(var(--spacing) * 4)",
+    borderRadius: "calc(var(--radius) - 2px)",
+    backgroundColor: "transparent",
+    paddingBlock: "calc(var(--spacing) * 4)",
+    textAlign: "left",
+    transitionProperty: "all",
+    "@media (hover: hover)": {
+      ":hover": {
+        textDecorationLine: "underline",
+      },
+    },
+    '[data-expanded] > [data-slot="accordion-chevron"]': {
+      rotate: "180deg",
     },
   },
-  "[data-focus-visible]": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
-    },
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
-  '[data-expanded] > [data-slot="accordion-chevron"]': {
-    rotate: "180deg",
-  },
-});
+);
 
 const chevron = ui({
   pointerEvents: "none",
@@ -88,11 +74,9 @@ const chevron = ui({
   "--ui-duration": "200ms",
 });
 
-const body = ui({
+const body = ui(shared.textSm, {
   paddingTop: "0px",
   paddingBottom: "calc(var(--spacing) * 4)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
 /**

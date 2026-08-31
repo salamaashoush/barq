@@ -29,6 +29,7 @@ import { ref as makeRef, mergeRefs } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import { buttonVariants, type ButtonVariant } from "./button.tsx";
+import { shared } from "../lib/shared.ts";
 
 const ui = layer("barq.ui");
 
@@ -75,17 +76,12 @@ const nav = ui({
   gap: "var(--spacing)",
 });
 
-const navButton = ui({
+const navButton = ui(shared.noSelect, {
   width: "var(--cell-size)",
   height: "var(--cell-size)",
-  // `p-0` is the physical padding, and the button's own size sets the LOGICAL
-  // one. Two different properties for one side of a box do not merge, so the
-  // physical zero left `padding-block: 8px` standing and the arrows grew.
   padding: "0px",
   paddingBlock: "0px",
   paddingInline: "0px",
-  "-webkit-user-select": "none",
-  userSelect: "none",
   '[aria-disabled="true"]': {
     opacity: "50%",
   },
@@ -103,14 +99,7 @@ const monthCaption = ui({
   paddingInline: "var(--cell-size)",
 });
 
-const captionLabel = ui({
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-});
+const captionLabel = ui(shared.textSm, shared.fontMedium, shared.noSelect);
 
 const monthGrid = ui({
   width: "100%",
@@ -121,15 +110,13 @@ const weekdays = ui({
   display: "flex",
 });
 
-const weekday = ui({
+const weekday = ui(shared.noSelect, {
   flex: "1",
   borderRadius: "calc(var(--radius) - 2px)",
   fontSize: "0.8rem",
   "--ui-font-weight": "var(--font-weight-normal)",
   fontWeight: "var(--font-weight-normal)",
   color: "var(--muted-foreground)",
-  "-webkit-user-select": "none",
-  userSelect: "none",
 });
 
 const week = ui({
@@ -138,15 +125,13 @@ const week = ui({
   width: "100%",
 });
 
-const day = ui({
+const day = ui(shared.noSelect, {
   position: "relative",
   aspectRatio: "1 / 1",
   height: "100%",
   width: "100%",
   padding: "0px",
   textAlign: "center",
-  "-webkit-user-select": "none",
-  userSelect: "none",
   "[data-disabled]": {
     color: "var(--muted-foreground)",
     opacity: "50%",

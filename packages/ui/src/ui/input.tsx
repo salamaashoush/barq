@@ -3,160 +3,105 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { controlProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const input = ui({
-  height: "calc(var(--spacing) * 9)",
-  width: "100%",
-  minWidth: "0px",
-  borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "var(--input)",
-  backgroundColor: "transparent",
-  paddingInline: "calc(var(--spacing) * 3)",
-  paddingBlock: "var(--spacing)",
-  fontSize: "var(--text-base)",
-  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "color, box-shadow",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "::selection": {
-    backgroundColor: firstThatWorks("var(--primary)", "var(--primary)"),
-    color: firstThatWorks("var(--primary-foreground)", "var(--primary-foreground)"),
-  },
-  "::file-selector-button": {
-    display: "inline-flex",
-    height: "calc(var(--spacing) * 7)",
-    borderStyle: "var(--ui-border-style)",
-    borderWidth: "0px",
+const input = ui(
+  shared.border,
+  shared.shadow,
+  shared.transition,
+  shared.outlineNone,
+  shared.focusRing,
+  shared.invalidRing,
+  shared.darkInput,
+  shared.invalidRingDark,
+  {
+    height: "calc(var(--spacing) * 9)",
+    width: "100%",
+    minWidth: "0px",
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderColor: "var(--input)",
     backgroundColor: "transparent",
-    fontSize: "var(--text-sm)",
-    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-    "--ui-font-weight": "var(--font-weight-medium)",
-    fontWeight: "var(--font-weight-medium)",
-    color: "var(--foreground)",
-  },
-  "::placeholder": {
-    color: "var(--muted-foreground)",
-  },
-  ":focus-visible": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    paddingInline: "calc(var(--spacing) * 3)",
+    paddingBlock: "var(--spacing)",
+    fontSize: "var(--text-base)",
+    lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    transitionProperty: "color, box-shadow",
+    "::selection": {
+      backgroundColor: firstThatWorks("var(--primary)", "var(--primary)"),
+      color: firstThatWorks("var(--primary-foreground)", "var(--primary-foreground)"),
     },
-  },
-  ":disabled": {
-    pointerEvents: "none",
-    cursor: "not-allowed",
-    opacity: "50%",
-  },
-  '[aria-invalid="true"]': {
-    borderColor: "var(--destructive)",
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
-    },
-  },
-  "@media (width >= 48rem)": {
-    "&": {
+    "::file-selector-button": {
+      display: "inline-flex",
+      height: "calc(var(--spacing) * 7)",
+      borderStyle: "var(--ui-border-style)",
+      borderWidth: "0px",
+      backgroundColor: "transparent",
       fontSize: "var(--text-sm)",
       lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+      "--ui-font-weight": "var(--font-weight-medium)",
+      fontWeight: "var(--font-weight-medium)",
+      color: "var(--foreground)",
+    },
+    "::placeholder": {
+      color: "var(--muted-foreground)",
+    },
+    ":disabled": {
+      pointerEvents: "none",
+      cursor: "not-allowed",
+      opacity: "50%",
+    },
+    "@media (width >= 48rem)": {
+      "&": {
+        fontSize: "var(--text-sm)",
+        lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+      },
     },
   },
-  ":is(.dark *)": {
-    backgroundColor: "var(--input)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
-    },
-  },
-  ':is(.dark *)[aria-invalid="true"]': {
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
-    },
-  },
-});
+);
 
-const textarea = ui({
-  display: "flex",
-  fieldSizing: "content",
-  minHeight: "calc(var(--spacing) * 16)",
-  width: "100%",
-  borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "var(--input)",
-  backgroundColor: "transparent",
-  paddingInline: "calc(var(--spacing) * 3)",
-  paddingBlock: "calc(var(--spacing) * 2)",
-  fontSize: "var(--text-base)",
-  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "color, box-shadow",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "::placeholder": {
-    color: "var(--muted-foreground)",
-  },
-  ":focus-visible": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+const textarea = ui(
+  shared.border,
+  shared.shadow,
+  shared.transition,
+  shared.outlineNone,
+  shared.focusRing,
+  shared.invalidRing,
+  shared.darkInput,
+  shared.invalidRingDark,
+  {
+    display: "flex",
+    fieldSizing: "content",
+    minHeight: "calc(var(--spacing) * 16)",
+    width: "100%",
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderColor: "var(--input)",
+    backgroundColor: "transparent",
+    paddingInline: "calc(var(--spacing) * 3)",
+    paddingBlock: "calc(var(--spacing) * 2)",
+    fontSize: "var(--text-base)",
+    lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    transitionProperty: "color, box-shadow",
+    "::placeholder": {
+      color: "var(--muted-foreground)",
+    },
+    ":disabled": {
+      cursor: "not-allowed",
+      opacity: "50%",
+    },
+    "@media (width >= 48rem)": {
+      "&": {
+        fontSize: "var(--text-sm)",
+        lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+      },
     },
   },
-  ":disabled": {
-    cursor: "not-allowed",
-    opacity: "50%",
-  },
-  '[aria-invalid="true"]': {
-    borderColor: "var(--destructive)",
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
-    },
-  },
-  "@media (width >= 48rem)": {
-    "&": {
-      fontSize: "var(--text-sm)",
-      lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-    },
-  },
-  ":is(.dark *)": {
-    backgroundColor: "var(--input)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
-    },
-  },
-  ':is(.dark *)[aria-invalid="true"]': {
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
-    },
-  },
-});
+);
 
 export interface InputProps extends UiProps {
   type?: string;

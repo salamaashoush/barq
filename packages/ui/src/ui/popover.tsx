@@ -5,29 +5,24 @@ import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui({
+const content = ui(shared.border, shared.shadow, shared.outlineNone, shared.closing, {
   zIndex: "50",
   width: "calc(var(--spacing) * 72)",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
   borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   backgroundColor: "var(--popover)",
   padding: "calc(var(--spacing) * 4)",
   color: "var(--popover-foreground)",
   "--ui-shadow":
     "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   '[data-placement="bottom"]': {
     transformOrigin: "top",
@@ -45,12 +40,6 @@ const content = ui({
     transformOrigin: "bottom",
     "--ui-enter-translate-y": "calc(2*var(--spacing))",
   },
-  "[data-closed]": {
-    animation:
-      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
-    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
-  },
   '[data-closed][data-placement="bottom"]': {
     "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
   },
@@ -65,18 +54,13 @@ const content = ui({
   },
 });
 
-const header = ui({
+const header = ui(shared.textSm, {
   display: "flex",
   flexDirection: "column",
   gap: "var(--spacing)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
-const title = ui({
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
-});
+const title = ui(shared.fontMedium);
 
 const description = ui({
   color: "var(--muted-foreground)",

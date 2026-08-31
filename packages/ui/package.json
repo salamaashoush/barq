@@ -48,6 +48,11 @@
       "bun": "./src/theme/reset.ts",
       "import": "./dist/theme/reset.js"
     },
+    "./atoms": {
+      "types": "./dist/lib/atoms.d.ts",
+      "bun": "./src/lib/atoms.ts",
+      "import": "./dist/lib/atoms.js"
+    },
     "./overlay": {
       "types": "./dist/lib/overlay.d.ts",
       "bun": "./src/lib/overlay.tsx",
@@ -57,6 +62,11 @@
       "types": "./dist/lib/props.d.ts",
       "bun": "./src/lib/props.ts",
       "import": "./dist/lib/props.js"
+    },
+    "./shared": {
+      "types": "./dist/lib/shared.d.ts",
+      "bun": "./src/lib/shared.ts",
+      "import": "./dist/lib/shared.js"
     },
     "./slot": {
       "types": "./dist/lib/slot.d.ts",

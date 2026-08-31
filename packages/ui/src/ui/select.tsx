@@ -10,108 +10,69 @@ import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const trigger = ui({
-  display: "flex",
-  width: "fit-content",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "var(--input)",
-  backgroundColor: "transparent",
-  paddingInline: "calc(var(--spacing) * 3)",
-  paddingBlock: "calc(var(--spacing) * 2)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  whiteSpace: "nowrap",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "color, box-shadow",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  '[data-size="default"]': {
-    height: "calc(var(--spacing) * 9)",
-  },
-  '[data-size="sm"]': {
-    height: "calc(var(--spacing) * 8)",
-  },
-  ":is(.dark *)": {
-    backgroundColor: "var(--input)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+const trigger = ui(
+  shared.border,
+  shared.textSm,
+  shared.shadow,
+  shared.transition,
+  shared.outlineNone,
+  shared.darkInput,
+  shared.focusRingData,
+  shared.disabledCursor,
+  shared.invalidRingSlot,
+  shared.invalidRingSlotDark,
+  shared.svgStatic,
+  shared.svgSize,
+  shared.svgMuted,
+  {
+    display: "flex",
+    width: "fit-content",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderColor: "var(--input)",
+    backgroundColor: "transparent",
+    paddingInline: "calc(var(--spacing) * 3)",
+    paddingBlock: "calc(var(--spacing) * 2)",
+    whiteSpace: "nowrap",
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    transitionProperty: "color, box-shadow",
+    '[data-size="default"]': {
+      height: "calc(var(--spacing) * 9)",
     },
-  },
-  "@media (hover: hover)": {
-    ":is(.dark *):hover": {
-      backgroundColor: "var(--input)",
+    '[data-size="sm"]': {
+      height: "calc(var(--spacing) * 8)",
     },
-    "@supports (color: color-mix(in lab, red, red))": {
+    "@media (hover: hover)": {
       ":is(.dark *):hover": {
-        backgroundColor: "color-mix(in oklab, var(--input) 50%, transparent)",
+        backgroundColor: "var(--input)",
+      },
+      "@supports (color: color-mix(in lab, red, red))": {
+        ":is(.dark *):hover": {
+          backgroundColor: "color-mix(in oklab, var(--input) 50%, transparent)",
+        },
       },
     },
-  },
-  "[data-focus-visible]": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    "[data-placeholder]": {
+      color: "var(--muted-foreground)",
+    },
+    '& > [data-slot="select-value"]': {
+      overflow: "hidden",
+      display: firstThatWorks("flex", "-webkit-box"),
+      "-webkit-box-orient": "vertical",
+      "-webkit-line-clamp": "1",
+      alignItems: "center",
+      gap: "calc(var(--spacing) * 2)",
     },
   },
-  "[data-disabled]": {
-    cursor: "not-allowed",
-    opacity: "50%",
-  },
-  "[data-invalid]": {
-    borderColor: "var(--destructive)",
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
-    },
-  },
-  ":is(.dark *)[data-invalid]": {
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
-    },
-  },
-  "[data-placeholder]": {
-    color: "var(--muted-foreground)",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  '& svg:not([class*="text-"])': {
-    color: "var(--muted-foreground)",
-  },
-  '& > [data-slot="select-value"]': {
-    overflow: "hidden",
-    display: firstThatWorks("flex", "-webkit-box"),
-    "-webkit-box-orient": "vertical",
-    "-webkit-line-clamp": "1",
-    alignItems: "center",
-    gap: "calc(var(--spacing) * 2)",
-  },
-});
+);
 
 /**
  * shadcn puts min-w-[8rem] on the content and the trigger's width on the
@@ -119,7 +80,7 @@ const trigger = ui({
  * publishes the same measurement; the plain `8rem` beside it is the fallback
  * for a browser without `max()`, and is what the transcription produced.
  */
-const list = ui({
+const list = ui(shared.border, shared.shadow, {
   position: "relative",
   zIndex: "50",
   margin: "0px",
@@ -130,15 +91,11 @@ const list = ui({
   overflowX: "hidden",
   overflowY: "auto",
   borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
   backgroundColor: "var(--popover)",
   padding: "var(--spacing)",
   color: "var(--popover-foreground)",
   "--ui-shadow":
     "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   '[data-placement="bottom"] &': {
@@ -173,43 +130,28 @@ const list = ui({
   },
 });
 
-const item = ui({
-  position: "relative",
-  display: "flex",
-  width: "100%",
-  cursor: "default",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 4px)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  paddingRight: "calc(var(--spacing) * 8)",
-  paddingLeft: "calc(var(--spacing) * 2)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  "-webkit-user-select": "none",
-  userSelect: "none",
-  "[data-focused]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
+const item = ui(
+  shared.textSm,
+  shared.outlineNone,
+  shared.noSelect,
+  shared.focused,
+  shared.disabled,
+  shared.svgStatic,
+  shared.svgSize,
+  shared.svgMuted,
+  {
+    position: "relative",
+    display: "flex",
+    width: "100%",
+    cursor: "default",
+    alignItems: "center",
+    gap: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(var(--radius) - 4px)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    paddingRight: "calc(var(--spacing) * 8)",
+    paddingLeft: "calc(var(--spacing) * 2)",
   },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  '& svg:not([class*="text-"])': {
-    color: "var(--muted-foreground)",
-  },
-});
+);
 
 const indicator = ui({
   position: "absolute",

@@ -10,6 +10,7 @@ import { layer } from "@barqjs/css";
 import { Circle } from "@barqjs/lucide/icons/circle";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 
 const ui = layer("barq.ui");
 
@@ -18,63 +19,32 @@ const items = ui({
   gap: "calc(var(--spacing) * 3)",
 });
 
-const circle = ui({
-  position: "relative",
-  display: "inline-flex",
-  aspectRatio: "1 / 1",
-  width: "calc(var(--spacing) * 4)",
-  height: "calc(var(--spacing) * 4)",
-  flexShrink: "0",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: "calc(infinity * 1px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "var(--input)",
-  color: "var(--primary)",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "color, box-shadow",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  ":is(.dark *)": {
-    backgroundColor: "var(--input)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
-    },
+const circle = ui(
+  shared.border,
+  shared.shadow,
+  shared.transition,
+  shared.outlineNone,
+  shared.darkInput,
+  shared.focusRingData,
+  shared.disabledCursor,
+  shared.invalidRingSlot,
+  shared.invalidRingSlotDark,
+  {
+    position: "relative",
+    display: "inline-flex",
+    aspectRatio: "1 / 1",
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+    flexShrink: "0",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "calc(infinity * 1px)",
+    borderColor: "var(--input)",
+    color: "var(--primary)",
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    transitionProperty: "color, box-shadow",
   },
-  "[data-focus-visible]": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
-    },
-  },
-  "[data-disabled]": {
-    cursor: "not-allowed",
-    opacity: "50%",
-  },
-  "[data-invalid]": {
-    borderColor: "var(--destructive)",
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
-    },
-  },
-  ":is(.dark *)[data-invalid]": {
-    "--ui-ring-color": "var(--destructive)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
-    },
-  },
-});
+);
 
 const indicator = ui({
   position: "relative",

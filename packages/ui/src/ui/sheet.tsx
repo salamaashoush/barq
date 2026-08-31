@@ -5,6 +5,7 @@ import { X } from "@barqjs/lucide/icons/x";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -52,13 +53,11 @@ const title = ui({
   color: "var(--foreground)",
 });
 
-const description = ui({
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+const description = ui(shared.textSm, {
   color: "var(--muted-foreground)",
 });
 
-const close = ui({
+const close = ui(shared.transition, shared.svgStatic, shared.svgSize, {
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
   right: "calc(var(--spacing) * 4)",
@@ -66,8 +65,6 @@ const close = ui({
   opacity: "70%",
   "--ui-ring-offset-color": "var(--background)",
   transitionProperty: "opacity",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
   "@media (hover: hover)": {
     ":hover": {
       opacity: "100%",
@@ -86,20 +83,12 @@ const close = ui({
   "[data-disabled]": {
     pointerEvents: "none",
   },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
 });
 
 export type SheetSide = "top" | "right" | "bottom" | "left";
 
 export const sheetVariants = uiVariants({
-  base: ui({
+  base: ui(shared.shadow, {
     position: "fixed",
     zIndex: "50",
     display: "flex",
@@ -110,8 +99,6 @@ export const sheetVariants = uiVariants({
     backgroundColor: "var(--background)",
     "--ui-shadow":
       "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
     transitionProperty:
       "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events",
     transitionTimingFunction: firstThatWorks(

@@ -12,6 +12,7 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import { uiVariants } from "../lib/atoms.ts";
 
 const ui = layer("barq.ui");
@@ -24,135 +25,122 @@ const root = ui({
   },
 });
 
-const trigger = ui({
-  position: "relative",
-  display: "inline-flex",
-  height: "calc(100% - 1px)",
-  flex: "1",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "calc(var(--spacing) * 1.5)",
-  borderRadius: "calc(var(--radius) - 2px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "transparent",
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "var(--spacing)",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
-  whiteSpace: "nowrap",
-  color: "var(--foreground)",
-  transitionProperty: "all",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "@supports (color: color-mix(in lab, red, red))": {
-    color: "color-mix(in oklab, var(--foreground) 60%, transparent)",
-  },
-  "::after": {
-    content: "var(--ui-content)",
-    position: "absolute",
-    backgroundColor: "var(--foreground)",
-    opacity: "0%",
-    transitionProperty: "opacity",
-    transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-    transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  },
-  "@media (hover: hover)": {
-    ":hover": {
-      color: "var(--foreground)",
-    },
-    ":is(.dark *):hover": {
-      color: "var(--foreground)",
-    },
-  },
-  ":is(.dark *)": {
-    color: "var(--muted-foreground)",
-  },
-  "[data-selected]": {
-    backgroundColor: "var(--background)",
-    color: "var(--foreground)",
-  },
-  ":is(.dark *)[data-selected]": {
-    borderColor: "var(--input)",
-    backgroundColor: "var(--input)",
-    color: "var(--foreground)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
-    },
-  },
-  "[data-focus-visible]": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    outlineStyle: "var(--ui-outline-style)",
-    outlineWidth: "1px",
-    outlineColor: "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
-    },
-  },
-  "[data-disabled]": {
-    pointerEvents: "none",
-    opacity: "50%",
-  },
-  "& svg": {
-    pointerEvents: "none",
-    flexShrink: "0",
-  },
-  '& svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  '[data-slot="tabs-list"][data-variant="default"] &[data-selected]': {
-    "--ui-shadow":
-      "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  },
-  '[data-slot="tabs-list"][data-variant="line"] &': {
-    backgroundColor: "transparent",
-  },
-  '[data-slot="tabs-list"][data-variant="line"] &[data-selected]': {
-    backgroundColor: "transparent",
-    "--ui-shadow": "0 0 #0000",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  },
-  '[data-slot="tabs-list"][data-variant="line"] &[data-selected]::after': {
-    content: "var(--ui-content)",
-    opacity: "100%",
-  },
-  '[data-slot="tabs-list"][data-variant="line"] &:is(.dark *)[data-selected]': {
+const trigger = ui(
+  shared.border,
+  shared.textSm,
+  shared.fontMedium,
+  shared.transition,
+  shared.disabled,
+  shared.svgStatic,
+  shared.svgSize,
+  {
+    position: "relative",
+    display: "inline-flex",
+    height: "calc(100% - 1px)",
+    flex: "1",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "calc(var(--spacing) * 1.5)",
+    borderRadius: "calc(var(--radius) - 2px)",
     borderColor: "transparent",
-    backgroundColor: "transparent",
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "var(--spacing)",
+    whiteSpace: "nowrap",
+    color: "var(--foreground)",
+    transitionProperty: "all",
+    "@supports (color: color-mix(in lab, red, red))": {
+      color: "color-mix(in oklab, var(--foreground) 60%, transparent)",
+    },
+    "::after": {
+      content: "var(--ui-content)",
+      position: "absolute",
+      backgroundColor: "var(--foreground)",
+      opacity: "0%",
+      transitionProperty: "opacity",
+      transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+      transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+    },
+    "@media (hover: hover)": {
+      ":hover": {
+        color: "var(--foreground)",
+      },
+      ":is(.dark *):hover": {
+        color: "var(--foreground)",
+      },
+    },
+    ":is(.dark *)": {
+      color: "var(--muted-foreground)",
+    },
+    "[data-selected]": {
+      backgroundColor: "var(--background)",
+      color: "var(--foreground)",
+    },
+    ":is(.dark *)[data-selected]": {
+      borderColor: "var(--input)",
+      backgroundColor: "var(--input)",
+      color: "var(--foreground)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+      },
+    },
+    "[data-focus-visible]": {
+      borderColor: "var(--ring)",
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+      "--ui-ring-color": "var(--ring)",
+      outlineStyle: "var(--ui-outline-style)",
+      outlineWidth: "1px",
+      outlineColor: "var(--ring)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+      },
+    },
+    '[data-slot="tabs-list"][data-variant="default"] &[data-selected]': {
+      "--ui-shadow":
+        "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    },
+    '[data-slot="tabs-list"][data-variant="line"] &': {
+      backgroundColor: "transparent",
+    },
+    '[data-slot="tabs-list"][data-variant="line"] &[data-selected]': {
+      backgroundColor: "transparent",
+      "--ui-shadow": "0 0 #0000",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    },
+    '[data-slot="tabs-list"][data-variant="line"] &[data-selected]::after': {
+      content: "var(--ui-content)",
+      opacity: "100%",
+    },
+    '[data-slot="tabs-list"][data-variant="line"] &:is(.dark *)[data-selected]': {
+      borderColor: "transparent",
+      backgroundColor: "transparent",
+    },
+    '[data-slot="tabs"][data-orientation="horizontal"] &::after': {
+      content: "var(--ui-content)",
+      insetInline: "0px",
+      bottom: "-5px",
+      height: "calc(var(--spacing) * 0.5)",
+    },
+    '[data-slot="tabs"][data-orientation="vertical"] &': {
+      width: "100%",
+      justifyContent: "flex-start",
+    },
+    '[data-slot="tabs"][data-orientation="vertical"] &::after': {
+      content: "var(--ui-content)",
+      insetBlock: "0px",
+      right: "calc(var(--spacing) * -1)",
+      width: "calc(var(--spacing) * 0.5)",
+    },
   },
-  '[data-slot="tabs"][data-orientation="horizontal"] &::after': {
-    content: "var(--ui-content)",
-    insetInline: "0px",
-    bottom: "-5px",
-    height: "calc(var(--spacing) * 0.5)",
-  },
-  '[data-slot="tabs"][data-orientation="vertical"] &': {
-    width: "100%",
-    justifyContent: "flex-start",
-  },
-  '[data-slot="tabs"][data-orientation="vertical"] &::after': {
-    content: "var(--ui-content)",
-    insetBlock: "0px",
-    right: "calc(var(--spacing) * -1)",
-    width: "calc(var(--spacing) * 0.5)",
-  },
-});
+);
 
-const content = ui({
+const content = ui(shared.outlineNone, {
   flex: "1",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
 });
 
 export type TabsListVariant = "default" | "line";

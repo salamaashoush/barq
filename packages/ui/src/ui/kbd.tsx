@@ -2,12 +2,13 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const kbd = ui({
+const kbd = ui(shared.fontMedium, shared.noSelect, {
   pointerEvents: "none",
   display: "inline-flex",
   height: "calc(var(--spacing) * 5)",
@@ -22,11 +23,7 @@ const kbd = ui({
   fontFamily: "var(--font-sans)",
   fontSize: "var(--text-xs)",
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-  "--ui-font-weight": "var(--font-weight-medium)",
-  fontWeight: "var(--font-weight-medium)",
   color: "var(--muted-foreground)",
-  "-webkit-user-select": "none",
-  userSelect: "none",
   '& svg:not([class*="size-"])': {
     width: "calc(var(--spacing) * 3)",
     height: "calc(var(--spacing) * 3)",

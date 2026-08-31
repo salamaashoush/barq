@@ -3,63 +3,49 @@ import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { shared } from "../lib/shared.ts";
 
 const ui = layer("barq.ui");
 
-const track = ui({
-  display: "inline-flex",
-  flexShrink: "0",
-  alignItems: "center",
-  borderRadius: "calc(infinity * 1px)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
-  borderColor: "transparent",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "all",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
-  "--ui-outline-style": "none",
-  outlineStyle: "none",
-  '[data-size="default"]': {
-    height: "1.15rem",
-    width: "calc(var(--spacing) * 8)",
-  },
-  '[data-size="sm"]': {
-    height: "calc(var(--spacing) * 3.5)",
-    width: "calc(var(--spacing) * 6)",
-  },
-  "[data-selected]": {
-    backgroundColor: "var(--primary)",
-  },
-  ":not([data-selected])": {
-    backgroundColor: "var(--input)",
-  },
-  ":is(.dark *):not([data-selected])": {
-    backgroundColor: "var(--input)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--input) 80%, transparent)",
+const track = ui(
+  shared.border,
+  shared.shadow,
+  shared.transition,
+  shared.outlineNone,
+  shared.focusRingData,
+  shared.disabledCursor,
+  {
+    display: "inline-flex",
+    flexShrink: "0",
+    alignItems: "center",
+    borderRadius: "calc(infinity * 1px)",
+    borderColor: "transparent",
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    transitionProperty: "all",
+    '[data-size="default"]': {
+      height: "1.15rem",
+      width: "calc(var(--spacing) * 8)",
+    },
+    '[data-size="sm"]': {
+      height: "calc(var(--spacing) * 3.5)",
+      width: "calc(var(--spacing) * 6)",
+    },
+    "[data-selected]": {
+      backgroundColor: "var(--primary)",
+    },
+    ":not([data-selected])": {
+      backgroundColor: "var(--input)",
+    },
+    ":is(.dark *):not([data-selected])": {
+      backgroundColor: "var(--input)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--input) 80%, transparent)",
+      },
     },
   },
-  "[data-focus-visible]": {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
-    },
-  },
-  "[data-disabled]": {
-    cursor: "not-allowed",
-    opacity: "50%",
-  },
-});
+);
 
-const thumb = ui({
+const thumb = ui(shared.shadow, shared.transition, {
   pointerEvents: "none",
   display: "block",
   "--ui-translate-x": "0px",
@@ -68,11 +54,7 @@ const thumb = ui({
   backgroundColor: "var(--background)",
   "--ui-ring-shadow":
     "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   transitionProperty: "transform, translate, scale, rotate",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
   ":is(.dark *):not([data-selected] *)": {
     backgroundColor: "var(--foreground)",
   },
