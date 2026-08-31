@@ -140,6 +140,17 @@ const THEME = `
 @custom-variant is-empty (&[data-empty]);
 @custom-variant is-dragging (&[data-dragging]);
 
+/* shadcn defines this in apps/v4/app/globals.css, and three of its own
+ * scrollers use it. Without it those class lists translate to nothing. */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @custom-variant data-horizontal {
   &:where([data-orientation="horizontal"]) {
     @slot;
