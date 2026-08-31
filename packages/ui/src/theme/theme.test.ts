@@ -167,4 +167,26 @@ describe("the base stylesheet", () => {
     await import("./reset.ts");
     expect(collectCss()).toContain("box-sizing: border-box");
   });
+
+  // The customizer's popup is written in shadcn's raw palette rather than in
+  // the semantic tokens, deliberately: it is chrome, and chrome that changes
+  // colour with the theme it is configuring stops being a fixed point. None of
+  // these reached `:root` while `tools/base.ts` read only the components and
+  // the styles, so `background-color: color-mix(in oklab, var(--color-neutral-950) …)`
+  // was invalid at computed-value time and the popup painted as bare text.
+  test("the palette the /create page reads is declared", async () => {
+    await import("./base.ts");
+    const sheet = collectCss();
+    for (const token of [
+      "--color-neutral-100",
+      "--color-neutral-400",
+      "--color-neutral-600",
+      "--color-neutral-700",
+      "--color-neutral-800",
+      "--color-neutral-950",
+      "--blur-xl",
+    ]) {
+      expect(sheet).toContain(`${token}:`);
+    }
+  });
 });

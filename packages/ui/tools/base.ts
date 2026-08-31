@@ -37,7 +37,7 @@ const BORDER_DEFAULTS = `*, ::after, ::before, ::backdrop, ::file-selector-butto
 const TOKEN = /[a-zA-Z0-9_@:/[\]().,%#*+~>&='"$!?|-]{2,}/g;
 
 /**
- * Every class the components AND the styles use.
+ * Every class the components, the styles AND the `/create` page use.
  *
  * The styles were missed, and the whole of `styles/` was built on tokens this
  * theme did not define. An undefined `var()` makes the declaration invalid at
@@ -46,6 +46,13 @@ const TOKEN = /[a-zA-Z0-9_@:/[\]().,%#*+~>&='"$!?|-]{2,}/g;
  * in all eight styles computed to a square corner. Measured in Chrome as
  * `border-radius: 0px` on every card, button, input and popover the moment a
  * style was picked.
+ *
+ * The `/create` page was missed the same way and for the same reason: the
+ * gallery's customizer is a port of it, and its picker popup is written in
+ * `bg-neutral-950/80 text-neutral-100 backdrop-blur-xl` — a palette the
+ * components never name, because they use the semantic tokens. None of
+ * `--color-neutral-*` or `--blur-xl` reached `:root`, so the popup's background
+ * and blur were invalid at computed-value time and it painted as bare text.
  */
 function candidates(checkout: string): string[] {
   const found = new Set<string>();
@@ -56,10 +63,16 @@ function candidates(checkout: string): string[] {
     }
   };
 
-  const components = resolve(checkout, "apps/v4/registry/new-york-v4/ui");
-  for (const entry of readdirSync(components)) {
-    if (entry.endsWith(".tsx")) scan(readFileSync(join(components, entry), "utf8"));
-  }
+  const scanTree = (root: string): void => {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      const path = join(root, entry.name);
+      if (entry.isDirectory()) scanTree(path);
+      else if (entry.name.endsWith(".tsx")) scan(readFileSync(path, "utf8"));
+    }
+  };
+
+  scanTree(resolve(checkout, "apps/v4/registry/new-york-v4/ui"));
+  scanTree(resolve(checkout, "apps/v4/app/(app)/(create)"));
 
   // The styles are `@apply` lists rather than string literals, so they are read
   // as bare text: every word in one is a candidate and Tailwind decides.

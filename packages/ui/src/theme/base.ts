@@ -22,6 +22,13 @@ globalCss`
   :root, :host {
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --color-neutral-100: oklch(97% 0 none);
+    --color-neutral-400: oklch(70.8% 0 none);
+    --color-neutral-600: oklch(43.9% 0 none);
+    --color-neutral-700: oklch(37.1% 0 none);
+    --color-neutral-800: oklch(26.9% 0 none);
+    --color-neutral-900: oklch(20.5% 0 none);
+    --color-neutral-950: oklch(14.5% 0 none);
     --color-black: #000;
     --color-white: #fff;
     --spacing: 0.25rem;
@@ -37,9 +44,14 @@ globalCss`
     --text-base--line-height: calc(1.5 / 1);
     --text-lg: 1.125rem;
     --text-lg--line-height: calc(1.75 / 1.125);
+    --text-xl: 1.25rem;
+    --text-xl--line-height: calc(1.75 / 1.25);
+    --text-2xl: 1.5rem;
+    --text-2xl--line-height: calc(2 / 1.5);
     --font-weight-normal: 400;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
+    --font-weight-bold: 700;
     --tracking-tight: -0.025em;
     --tracking-normal: 0em;
     --tracking-wide: 0.025em;
@@ -61,6 +73,7 @@ globalCss`
     --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     --blur-xs: 4px;
     --blur-sm: 8px;
+    --blur-xl: 24px;
     --blur-2xl: 40px;
     --aspect-video: 16 / 9;
     --default-transition-duration: 150ms;
@@ -290,19 +303,6 @@ globalCss`
   inherits: false;
   initial-value: solid;
 }
-@property --ui-duration {
-  syntax: "*";
-  inherits: false;
-}
-@property --ui-ease {
-  syntax: "*";
-  inherits: false;
-}
-@property --ui-content {
-  syntax: "*";
-  initial-value: "";
-  inherits: false;
-}
 @property --ui-backdrop-blur {
   syntax: "*";
   inherits: false;
@@ -337,6 +337,19 @@ globalCss`
 }
 @property --ui-backdrop-sepia {
   syntax: "*";
+  inherits: false;
+}
+@property --ui-duration {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-ease {
+  syntax: "*";
+  inherits: false;
+}
+@property --ui-content {
+  syntax: "*";
+  initial-value: "";
   inherits: false;
 }
 @property --ui-scale-x {
