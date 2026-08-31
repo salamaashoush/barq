@@ -58,7 +58,13 @@ import {
   type ValidateFunction,
   type ValidationBehavior,
 } from "./validation.ts";
-import { listBox, ListBoxProvider, Option, provideItemNode } from "./listbox.tsx";
+import {
+  listBox,
+  ListBoxProvider,
+  Option,
+  provideItemNode,
+  provideItemRender,
+} from "./listbox.tsx";
 import { visuallyHidden } from "./live.ts";
 import { menuTrigger } from "./menu.tsx";
 import { overlayTriggerState, type OverlayTriggerState, type Placement } from "./overlays.ts";
@@ -773,6 +779,8 @@ function SelectList(props: Incoming<SelectListProps>) {
     class: props.listClass,
     "data-slot": () => props.listSlot?.() ?? "select-list",
   });
+
+  provideItemRender(render);
 
   return (
     <ListBoxProvider

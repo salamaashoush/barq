@@ -564,7 +564,9 @@
         "shared-box",
         "shared-icon",
         "shared-text",
-        "shared-when"
+        "shared-when",
+        "slot",
+        "sr-only"
       ],
       "files": [
         "ui/combobox.tsx"

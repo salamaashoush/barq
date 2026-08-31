@@ -240,6 +240,17 @@ export interface ListBoxContextValue {
 const ListBoxContext = context<ListBoxContextValue | null>(null);
 const ItemNodeContext = context<Node<unknown> | null>(null);
 
+type ItemRender = (scope: unknown, item: unknown) => Child;
+
+/**
+ * The list's own item callback, so a SECTION can render its children with it.
+ *
+ * A section's options are built by the same callback as every other option;
+ * without this a caller would have to pass the callback to `<Section>` by hand
+ * at every use, and the two could disagree.
+ */
+const ItemRenderContext = context<ItemRender | null>(null);
+
 /**
  * Make `<Option>` usable inside something that is not a `<ListBox>`.
  *
@@ -270,6 +281,12 @@ export function provideItemNode(node: Node<unknown>): void {
   if (owner !== null) install(owner, ItemNodeContext, () => node);
 }
 
+/** The item callback the enclosing list builds its rows with. */
+export function provideItemRender(render: ItemRender): void {
+  const owner = getOwner();
+  if (owner !== null) install(owner, ItemRenderContext, () => render);
+}
+
 export function useListBox(): ListBoxContextValue {
   const value = getContext(ListBoxContext);
   if (value === null || value === undefined) {
@@ -285,6 +302,72 @@ export function useItemNode(): Node<unknown> {
     throw new Error("An Option must be rendered inside its ListBox's item callback.");
   }
   return node;
+}
+
+export interface SectionComponentProps extends Omit<StyleProps, "title"> {
+  /** The heading. A section without one is a box a screen reader cannot name. */
+  title?: Child;
+  "aria-label"?: string;
+  /** The heading element's own slot, for a design system naming it. */
+  titleSlot?: string;
+  /** And its class, since `class` styles the section rather than the heading. */
+  titleClass?: string;
+  "data-slot"?: string;
+  children?: Child;
+}
+
+/**
+ * A run of options under a heading.
+ *
+ * Rendered from the item callback like any other row: a section arrives there
+ * as its own node, and this reads the node it was given rather than being told
+ * what is in it.
+ *
+ * `role="group"` on a nested `<ul>` with `aria-labelledby` pointing at the
+ * heading, which is what lets a screen reader say "Fruit, group, 3 items". The
+ * heading is `role="presentation"` because a `<li>` inside a listbox that is
+ * not an option is one the list would otherwise count.
+ *
+ * Keyboard traversal needs nothing here: the collection links keys in document
+ * order ACROSS section boundaries, so Down from the last option of one section
+ * already reaches the first of the next.
+ */
+export function Section(props: Incoming<SectionComponentProps>) {
+  const node = useItemNode();
+  const render = getContext(ItemRenderContext);
+  if (render === null || render === undefined) {
+    throw new Error("A Section must be rendered inside its list's item callback.");
+  }
+
+  // The hook, not a second copy of it: `listBoxSection` already decides that
+  // the wrapper is presentational, that the heading names the group rather
+  // than joining it, and that a section with no heading gets no dangling
+  // `aria-labelledby`.
+  const { itemProps, headingProps, groupProps } = listBoxSection({
+    heading: () => (props.title?.() === undefined ? undefined : "titled"),
+    "aria-label": () => props["aria-label"]?.(),
+  });
+
+  return (
+    <li {...itemProps} {...styleProps(props)} data-slot={props["data-slot"]?.() ?? "section"}>
+      <span
+        {...headingProps}
+        data-slot={props.titleSlot?.() ?? "section-title"}
+        class={props.titleClass?.()}
+      >
+        {props.title}
+      </span>
+      <ul {...groupProps}>
+        <For each={() => [...node.childNodes]}>
+          {(child: Node<unknown>) => {
+            provideItemNode(child);
+            return render(getOwner(), child.value);
+          }}
+        </For>
+      </ul>
+      {props.children}
+    </li>
+  );
 }
 
 export interface ListBoxComponentProps<T> extends StyleProps, ItemAccessors<T> {
@@ -386,6 +469,8 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
       .map((info: LayoutInfo) => collection.getItem(info.key))
       .filter((node: Node<T> | null): node is Node<T> => node !== null);
   };
+
+  provideItemRender(render as unknown as (scope: unknown, item: unknown) => Child);
 
   return (
     <>

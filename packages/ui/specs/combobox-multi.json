@@ -1,0 +1,10 @@
+{
+  "combobox-chips": "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-transparent bg-clip-padding px-2.5 py-1.5 text-sm shadow-xs transition-[color,box-shadow]",
+  "combobox-chips-focus": "border-ring ring-[3px] ring-ring/50",
+  "combobox-chips-invalid": "border-destructive ring-[3px] ring-destructive/20",
+  "combobox-chips-has-chip": "px-1.5",
+  "combobox-chip": "flex h-[calc(--spacing(5.5))] w-fit items-center justify-center gap-1 rounded-sm bg-muted px-1.5 text-xs font-medium whitespace-nowrap text-foreground",
+  "combobox-chip-disabled": "pointer-events-none cursor-not-allowed opacity-50",
+  "combobox-chip-has-remove": "pr-0",
+  "combobox-chip-remove": "-ml-1 opacity-50"
+}

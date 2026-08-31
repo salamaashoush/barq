@@ -633,6 +633,9 @@ export {
   type OptionOptions,
   type OptionResult,
   provideItemNode,
+  provideItemRender,
+  Section,
+  type SectionComponentProps,
   useItemNode,
   useListBox,
 } from "./listbox.tsx";

@@ -208,7 +208,7 @@ export {
   CollapsibleTrigger,
   type CollapsibleTriggerProps,
 } from "./ui/collapsible.tsx";
-export { Combobox, type ComboboxProps } from "./ui/combobox.tsx";
+export { Combobox, ComboboxLabel, type ComboboxProps, ComboboxSeparator } from "./ui/combobox.tsx";
 export {
   Command,
   CommandDialog,
@@ -507,6 +507,8 @@ export {
 export { ScrollArea, type ScrollAreaProps } from "./ui/scroll-area.tsx";
 export {
   Select,
+  SelectGroup,
+  type SelectGroupProps,
   SelectItem,
   type SelectItemProps,
   SelectLabel,

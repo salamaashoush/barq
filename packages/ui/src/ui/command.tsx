@@ -6,6 +6,7 @@ import {
   ListBoxProvider,
   Option,
   provideItemNode,
+  provideItemRender,
   type ListBoxContextValue,
 } from "@barqjs/aria/listbox";
 import type { ItemAccessors, Key, Node } from "@barqjs/aria/collections";
@@ -184,6 +185,14 @@ export interface CommandProps<T> extends UiProps, ItemAccessors<T> {
   children: (item: T) => Child;
   /** Rendered instead of the list when the text matches nothing. */
   empty?: Child;
+  /**
+   * The empty state's own slot.
+   *
+   * A combobox is a command in a popover, and a style names that command's
+   * empty state after the combobox. Without this the rule would have to select
+   * every `command-empty` on the page.
+   */
+  emptySlot?: string;
   placeholder?: string;
   value?: string;
   defaultValue?: string;
@@ -258,6 +267,9 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
   if (owner !== null) install(owner, CommandContext, () => value);
 
   const render = props.children as unknown as (scope: unknown, item: T | null) => Child;
+  // So a `<Section>` in that callback builds its own options with it, rather
+  // than the caller passing the callback down by hand at every use.
+  provideItemRender(render as unknown as (scope: unknown, item: unknown) => Child);
   const isEmpty = (): boolean => [...state.collection()].length === 0;
 
   return (
@@ -276,7 +288,7 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
           </CommandList>
         }
       >
-        <div data-slot="command-empty" class={empty}>
+        <div data-slot={props.emptySlot?.() ?? "command-empty"} class={empty}>
           {props.empty?.() ?? "No results found."}
         </div>
       </Show>

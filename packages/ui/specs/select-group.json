@@ -1,0 +1,5 @@
+{
+  "select-group": "scroll-my-1 p-1",
+  "combobox-label": "px-2 py-1.5 text-xs font-medium text-muted-foreground",
+  "combobox-separator": "-mx-1 my-1 h-px bg-border"
+}

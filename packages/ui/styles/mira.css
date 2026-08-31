@@ -1176,6 +1176,14 @@
       }
     }
 
+    [data-slot="combobox-label"] {
+      padding-inline: calc(var(--spacing) * 2);
+      padding-block: calc(var(--spacing) * 1.5);
+      font-size: var(--text-xs);
+      line-height: var(--ui-leading, var(--text-xs--line-height));
+      color: var(--muted-foreground);
+    }
+
     [data-slot="combobox-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
@@ -1216,6 +1224,20 @@
       justify-content: center;
     }
 
+    [data-slot="combobox-empty"] {
+      display: none;
+      width: 100%;
+      justify-content: center;
+      padding-block: calc(var(--spacing) * 2);
+      text-align: center;
+      font-size: var(--text-xs);
+      line-height: var(--leading-relaxed);
+      color: var(--muted-foreground);
+      &:is(:where(.group\/combobox-content)[data-empty] *) {
+        display: flex;
+      }
+    }
+
     [data-slot="combobox-content"] {
       -ms-overflow-style: none;
       scrollbar-width: none;
@@ -1231,6 +1253,16 @@
       }
     }
 
+    [data-slot="combobox-separator"] {
+      margin-inline: calc(var(--spacing) * -1);
+      margin-block: var(--spacing);
+      height: 1px;
+      background-color: var(--border);
+      @supports (color: color-mix(in lab, red, red)) {
+        background-color: color-mix(in oklab, var(--border) 50%, transparent);
+      }
+    }
+
     [data-slot="combobox-trigger"] {
       & svg:not([class*='size-']) {
         width: calc(var(--spacing) * 3.5);
@@ -1242,6 +1274,101 @@
       width: calc(var(--spacing) * 3.5);
       height: calc(var(--spacing) * 3.5);
       color: var(--muted-foreground);
+    }
+
+    [data-slot="combobox-chips"] {
+      display: flex;
+      min-height: calc(var(--spacing) * 7);
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--spacing);
+      border-radius: calc(var(--radius) - 2px);
+      border-style: var(--ui-border-style);
+      border-width: 1px;
+      border-color: var(--input);
+      background-color: var(--input);
+      @supports (color: color-mix(in lab, red, red)) {
+        background-color: color-mix(in oklab, var(--input) 20%, transparent);
+      }
+      background-clip: padding-box;
+      padding-inline: calc(var(--spacing) * 2);
+      padding-block: calc(var(--spacing) * 0.5);
+      font-size: var(--text-xs);
+      line-height: var(--leading-relaxed);
+      transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to;
+      transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
+      transition-duration: var(--ui-duration, var(--default-transition-duration));
+      &:focus-within {
+        border-color: var(--ring);
+        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+        box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+        --ui-ring-color: var(--ring);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--ring) 30%, transparent);
+        }
+      }
+      &:has([aria-invalid="true"]) {
+        border-color: var(--destructive);
+        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+        box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+        --ui-ring-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--destructive) 20%, transparent);
+        }
+      }
+      &:has([data-slot="combobox-chip"]) {
+        padding-inline: var(--spacing);
+      }
+      &:is(.dark *) {
+        background-color: var(--input);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--input) 30%, transparent);
+        }
+      }
+      &:is(.dark *):has([aria-invalid="true"]) {
+        border-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          border-color: color-mix(in oklab, var(--destructive) 50%, transparent);
+        }
+        --ui-ring-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--destructive) 40%, transparent);
+        }
+      }
+    }
+
+    [data-slot="combobox-chip"] {
+      display: flex;
+      height: calc(calc(var(--spacing) * 4.75));
+      width: fit-content;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing);
+      border-radius: calc(var(--radius-sm) - 2px);
+      background-color: var(--muted-foreground);
+      @supports (color: color-mix(in lab, red, red)) {
+        background-color: color-mix(in oklab, var(--muted-foreground) 10%, transparent);
+      }
+      padding-inline: calc(var(--spacing) * 1.5);
+      font-size: var(--text-xs);
+      line-height: var(--leading-relaxed);
+      --ui-font-weight: var(--font-weight-medium);
+      font-weight: var(--font-weight-medium);
+      white-space: nowrap;
+      color: var(--foreground);
+      &:has([data-slot="combobox-chip-remove"]) {
+        padding-right: 0px;
+      }
+    }
+
+    [data-slot="combobox-chip-remove"] {
+      margin-left: calc(var(--spacing) * -1);
+      opacity: 50%;
+      @media (hover: hover) {
+        &:hover {
+          opacity: 100%;
+        }
+      }
     }
 
     [data-slot="command"] {
@@ -3931,6 +4058,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+
+    [data-slot="select-group"] {
+      scroll-margin-block: var(--spacing);
+      padding: var(--spacing);
     }
 
     [data-slot="select-separator"] {

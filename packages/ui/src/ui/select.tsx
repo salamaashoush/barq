@@ -1,11 +1,11 @@
-import type { OptionComponentProps } from "@barqjs/aria/listbox";
+import { Section, type OptionComponentProps } from "@barqjs/aria/listbox";
 import {
   Option,
   Select as AriaSelect,
   SelectValue,
   type SelectComponentProps,
 } from "@barqjs/aria/select";
-import type { Incoming } from "@barqjs/core";
+import type { Child, Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 
@@ -280,6 +280,43 @@ export function SelectLabel(props: Incoming<UiProps>) {
 
 export function SelectSeparator(props: Incoming<UiProps>) {
   return <li {...uiProps("select-separator", separator, props)} role="separator" />;
+}
+
+const group = ui({
+  scrollMarginBlock: "var(--spacing)",
+  padding: "var(--spacing)",
+});
+
+export interface SelectGroupProps extends Omit<UiProps, "title"> {
+  /** The heading over the run. */
+  title?: Child;
+}
+
+/**
+ * A run of options under a heading.
+ *
+ * Rendered from the item callback like an option is: give the select
+ * `getChildren` and each group arrives there as its own value.
+ *
+ * ```tsx
+ * <Select items={groups} getChildren={(group) => group.options}>
+ *   {(value) =>
+ *     value.options === undefined
+ *       ? <SelectItem>{value.name}</SelectItem>
+ *       : <SelectGroup title={value.name} />}
+ * </Select>
+ * ```
+ */
+export function SelectGroup(props: Incoming<SelectGroupProps>) {
+  return (
+    <Section
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "select-group"}
+      titleSlot="select-label"
+      titleClass={label}
+      class={ui(group, props.class?.(), props.className?.())}
+    />
+  );
 }
 
 export { SelectValue };

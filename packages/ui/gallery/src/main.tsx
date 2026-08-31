@@ -182,6 +182,7 @@ import {
   RadioGroupItem,
   ScrollArea,
   Select,
+  SelectGroup,
   SelectItem,
   Separator,
   Sidebar,
@@ -366,6 +367,18 @@ function Section(props: Incoming<{ title?: string; children?: Child }>) {
     </section>
   );
 }
+
+const PRODUCE = [
+  {
+    id: "fruit",
+    name: "Fruit",
+    options: [
+      { id: "apple", name: "Apple" },
+      { id: "pear", name: "Pear" },
+    ],
+  },
+  { id: "veg", name: "Veg", options: [{ id: "leek", name: "Leek" }] },
+];
 
 const CHAT = [
   { who: "MK", name: "Mira", body: "Did the build go out?", at: "09:41", mine: false },
@@ -666,6 +679,34 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="Grouped and multiple">
+        <div class={row} style={{ "align-items": "flex-start" }}>
+          <Combobox
+            multiple
+            items={FRUITS}
+            placeholder="Pick a few"
+            aria-label="Fruits"
+            label={(entry: (typeof FRUITS)[number]) => entry.name}
+          />
+          <Select
+            items={PRODUCE}
+            aria-label="Produce"
+            placeholder="Pick one"
+            getChildren={(group: { options?: unknown[] }) =>
+              group.options as { id: string; name: string; options?: unknown[] }[] | undefined
+            }
+          >
+            {(value: { id: string; name: string; options?: unknown[] }) =>
+              value.options === undefined ? (
+                <SelectItem>{value.name}</SelectItem>
+              ) : (
+                <SelectGroup title={value.name} />
+              )
+            }
+          </Select>
         </div>
       </Section>
 

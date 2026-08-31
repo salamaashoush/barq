@@ -4,7 +4,7 @@ import { render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
-import { Select, SelectItem } from "./select.tsx";
+import { Select, SelectGroup, SelectItem } from "./select.tsx";
 
 async function settle(): Promise<void> {
   flush();
@@ -113,5 +113,50 @@ describe("Select", () => {
     const rules = rulesFor(mark.className);
     expect(rules).toContain("svg{display: none}");
     expect(rules).toContain("[data-selected] .");
+  });
+
+  test("a group is a heading and a run of options built by the same callback", async () => {
+    // Passing the callback to each group by hand is how the two come to
+    // disagree about what an option looks like.
+    const GROUPS = [
+      { id: "fruit", name: "Fruit", options: [{ id: "apple", name: "Apple" }] },
+      { id: "veg", name: "Veg", options: [{ id: "leek", name: "Leek" }] },
+    ];
+    render(() => (
+      <Select
+        items={GROUPS}
+        aria-label="Produce"
+        placeholder="Pick one"
+        getChildren={(group: { options?: unknown[] }) =>
+          group.options as { id: string; name: string; options?: unknown[] }[] | undefined
+        }
+      >
+        {(value: { id: string; name: string; options?: unknown[] }) =>
+          value.options === undefined ? (
+            <SelectItem>{value.name}</SelectItem>
+          ) : (
+            <SelectGroup title={value.name} />
+          )
+        }
+      </Select>
+    ));
+    await user.click(screen.getByRole("button", { name: /Pick one/ }));
+    await settle();
+
+    expect(screen.getAllByRole("option").map((each) => each.textContent)).toEqual([
+      "Apple",
+      "Leek",
+    ]);
+    const groups = screen.getAllByRole("group");
+    expect(groups).toHaveLength(2);
+    const named = groups[0]?.getAttribute("aria-labelledby");
+    expect(document.getElementById(named ?? "")?.textContent).toBe("Fruit");
+    // The heading is a `select-label`, which is the slot a style names.
+    const heading = document.querySelector('[data-slot="select-label"]');
+    expect(heading).not.toBeNull();
+    // Styled like a `<SelectLabel>`, because it IS one: a heading at the
+    // list's own font size reads as an option.
+    expect(rulesFor(heading?.className ?? "")).toContain("font-size: var(--text-xs)");
+    expect(document.querySelector('[data-slot="select-group"]')).not.toBeNull();
   });
 });

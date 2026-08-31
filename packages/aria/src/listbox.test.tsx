@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { flush, type Incoming, signal } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
-import { ListBox, Option } from "./listbox.tsx";
+import { ListBox, Option, Section } from "./listbox.tsx";
 
 interface Fruit {
   id: string;
@@ -241,5 +241,75 @@ describe("ListBox", () => {
   test("has no ARIA violations", () => {
     const { container } = render(() => <Fruits />);
     expectNoAriaViolations(container);
+  });
+});
+
+describe("a section", () => {
+  const GROUPS = [
+    {
+      id: "fruit",
+      name: "Fruit",
+      options: [
+        { id: "apple", name: "Apple" },
+        { id: "pear", name: "Pear" },
+      ],
+    },
+    { id: "veg", name: "Veg", options: [{ id: "leek", name: "Leek" }] },
+  ];
+
+  function Grouped() {
+    return (
+      <ListBox
+        items={GROUPS}
+        aria-label="Produce"
+        selectionMode="single"
+        getChildren={(group: { options?: unknown[] }) =>
+          group.options as { id: string; name: string; options?: unknown[] }[] | undefined
+        }
+      >
+        {(value: { id: string; name: string; options?: unknown[] }) =>
+          value.options === undefined ? (
+            <Option>{value.name}</Option>
+          ) : (
+            <Section title={value.name} />
+          )
+        }
+      </ListBox>
+    );
+  }
+
+  test("the options inside are built by the list's own callback", () => {
+    // Passing the callback to each section by hand is how the two come to
+    // disagree about what an option looks like.
+    render(() => <Grouped />);
+    expect(screen.getAllByRole("option").map((each) => each.textContent)).toEqual([
+      "Apple",
+      "Pear",
+      "Leek",
+    ]);
+  });
+
+  test("it is a group a screen reader can name", () => {
+    render(() => <Grouped />);
+    const groups = screen.getAllByRole("group");
+    expect(groups).toHaveLength(2);
+    const named = groups[0]?.getAttribute("aria-labelledby");
+    expect(named).not.toBeNull();
+    expect(document.getElementById(named ?? "")?.textContent).toBe("Fruit");
+  });
+
+  test("the wrapper is not itself an option, or the list would count it", () => {
+    render(() => <Grouped />);
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+  });
+
+  test("Down from the last of one section reaches the first of the next", async () => {
+    // The collection links keys in document order ACROSS section boundaries,
+    // so this needs nothing from the section itself.
+    render(() => <Grouped />);
+    const list = screen.getByRole("listbox");
+    list.focus();
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(document.activeElement?.textContent).toBe("Leek");
   });
 });
