@@ -138,6 +138,14 @@ jobs:
         continue-on-error: true
         run: bun run --cwd packages/kitchen-sink typecheck
 
+      # The gallery is where every visual bug in @barqjs/ui was found, and a
+      # gallery that does not build finds nothing. The suite cannot see this:
+      # `bun test` compiles each module on its own, and what breaks here is the
+      # graph — a missing export condition, a style that reaches no element, a
+      # module the bundler cannot resolve.
+      - name: Component gallery — build
+        run: bun run --cwd packages/ui gallery:build
+
   build:
     name: Build
     runs-on: ubuntu-latest
