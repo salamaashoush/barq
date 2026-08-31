@@ -556,6 +556,16 @@ export interface CalendarCellResult {
   isUnavailable: Accessor<boolean>;
   isOutsideVisibleRange: Accessor<boolean>;
   isToday: Accessor<boolean>;
+  /**
+   * The first and last day of the range this cell is in, if it is in one.
+   *
+   * Both are false in a calendar that selects a single day: there is no range,
+   * so there are no ends to it. A range's three positions — its two ends and
+   * everything between — are what a stylesheet needs to round the corners of
+   * one selection and not of the days inside it.
+   */
+  isSelectionStart: Accessor<boolean>;
+  isSelectionEnd: Accessor<boolean>;
   formattedDate: Accessor<string>;
 }
 
@@ -582,6 +592,17 @@ export function calendarCell(
   const isFocused = (): boolean => state.isCellFocused(options.date) && !isOutside();
   const isTodayCell = (): boolean => isToday(options.date);
 
+  const highlighted = (): DateRange | null =>
+    "highlightedRange" in state ? state.highlightedRange() : null;
+  const isSelectionStart = (): boolean => {
+    const range = highlighted();
+    return isSelected() && range !== null && isSameDay(options.date, range.start);
+  };
+  const isSelectionEnd = (): boolean => {
+    const range = highlighted();
+    return isSelected() && range !== null && isSameDay(options.date, range.end);
+  };
+
   if (!isServer) {
     // The state decides which day is focused; the DOM follows it, so the
     // arrows move focus without every cell having to watch the keyboard.
@@ -607,6 +628,8 @@ export function calendarCell(
     isUnavailable,
     isOutsideVisibleRange: isOutside,
     isToday: isTodayCell,
+    isSelectionStart,
+    isSelectionEnd,
     formattedDate: () => dayFormat().format(options.date.toDate()),
     cellProps: {
       role: "gridcell",
@@ -865,6 +888,8 @@ export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
     isUnavailable,
     isOutsideVisibleRange,
     isToday: isTodayCell,
+    isSelectionStart,
+    isSelectionEnd,
     formattedDate,
   } = calendarCell({ date, ref: domRef }, state);
 
@@ -886,6 +911,8 @@ export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
       "data-unavailable": isUnavailable,
       "data-outside-month": isOutsideVisibleRange,
       "data-today": isTodayCell,
+      "data-selection-start": isSelectionStart,
+      "data-selection-end": isSelectionEnd,
       "data-testid": () => props["data-testid"]?.(),
     },
   );

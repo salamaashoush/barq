@@ -232,6 +232,20 @@ describe("Calendar", () => {
     const { container } = render(() => <Departure value={new CalendarDate(2024, 3, 15)} />);
     expectNoAriaViolations(container);
   });
+  test("a single day is neither end of a range, because there is none", () => {
+    // A calendar that picks one day has no range, so a day that is selected is
+    // not the start or the end of anything. `@barqjs/ui` reads that as the
+    // difference between a lone day and one end of a stay.
+    render(() => <Departure />);
+
+    user.click(day("Monday", 11, "March"));
+    flush();
+
+    const chosen = day("Monday", 11, "March");
+    expect(chosen.getAttribute("data-selected")).toBe("");
+    expect(chosen.hasAttribute("data-selection-start")).toBe(false);
+    expect(chosen.hasAttribute("data-selection-end")).toBe(false);
+  });
 });
 
 describe("RangeCalendar", () => {
@@ -288,6 +302,27 @@ describe("RangeCalendar", () => {
     expect(day("Tuesday", 12, "March").getAttribute("data-selected")).toBe("");
     expect(day("Wednesday", 13, "March").getAttribute("data-selected")).toBe("");
     expect(day("Thursday", 14, "March").hasAttribute("data-selected")).toBe(false);
+  });
+
+  test("the two ends of the range say so, and the days between do not", () => {
+    // Which day is an END of the range is the whole of how a stylesheet rounds
+    // one selection: square where the range continues, rounded where it stops.
+    render(() => <Stay />);
+
+    user.click(day("Monday", 11, "March"));
+    user.click(day("Wednesday", 13, "March"));
+    flush();
+
+    const start = day("Monday", 11, "March");
+    const middle = day("Tuesday", 12, "March");
+    const end = day("Wednesday", 13, "March");
+
+    expect(start.getAttribute("data-selection-start")).toBe("");
+    expect(start.hasAttribute("data-selection-end")).toBe(false);
+    expect(middle.hasAttribute("data-selection-start")).toBe(false);
+    expect(middle.hasAttribute("data-selection-end")).toBe(false);
+    expect(end.getAttribute("data-selection-end")).toBe("");
+    expect(end.hasAttribute("data-selection-start")).toBe(false);
   });
 
   test("Escape abandons a range half drawn", () => {
