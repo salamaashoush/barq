@@ -18,7 +18,7 @@ import {
   type VoidProps,
   signal,
 } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { atoms, css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
 
 // ============================================================================
@@ -33,7 +33,7 @@ interface CardProps {
 
 function Card(props: PropsWithChildren<CardProps>) {
   return (
-    <div class={() => clsx(cardStyle, props.variant?.() === "highlight" && highlightStyle)}>
+    <div class={() => atoms(cardStyle, props.variant?.() === "highlight" && highlightStyle)}>
       <h4>{props.title()}</h4>
       <div>{props.children}</div>
     </div>

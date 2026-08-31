@@ -16,7 +16,7 @@
  * anywhere left to go wrong: the CSS is a build asset, and `<HeadContent />`
  * was already linking the client build's stylesheets.
  *
- * `clsx` and `cssVar` also moved, unchanged — they never touched goober, and
+ * The class helpers also moved, unchanged — they never touched goober, and
  * they belong beside the thing that produces the class names they join.
  *
  * What is left is four pure string functions over a token object. They are the

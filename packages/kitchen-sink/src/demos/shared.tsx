@@ -3,7 +3,7 @@
  */
 
 import { type Child, For, type Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { atoms, css } from "@barqjs/css";
 
 // Demo section container
 export function DemoSection(props: Incoming<{ children: Child }>) {
@@ -41,12 +41,13 @@ export function Button(
       type="button"
       class={() => {
         const variant = getVariant();
-        return clsx(buttonBaseStyle, {
-          [buttonPrimaryStyle]: variant === "primary",
-          [buttonSecondaryStyle]: variant === "secondary",
-          [buttonDangerStyle]: variant === "danger",
-          [buttonDisabledStyle]: isDisabled(),
-        });
+        return atoms(
+          buttonBaseStyle,
+          variant === "primary" && buttonPrimaryStyle,
+          variant === "secondary" && buttonSecondaryStyle,
+          variant === "danger" && buttonDangerStyle,
+          isDisabled() && buttonDisabledStyle,
+        );
       }}
       onClick={props.onClick?.()}
       disabled={isDisabled()}

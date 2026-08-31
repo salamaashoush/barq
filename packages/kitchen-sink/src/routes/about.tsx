@@ -13,9 +13,8 @@ function About() {
     <section>
       <h2>About</h2>
       <p>
-        This page was written to disk at build time by the same handler that
-        serves a live request, with <code>stream: false</code> — which is a
-        different renderer, not a buffered stream.
+        This page was written to disk at build time by the same handler that serves a live request,
+        with <code>stream: false</code> — which is a different renderer, not a buffered stream.
       </p>
     </section>
   );

@@ -42,35 +42,102 @@ import { Route as DocsChar123VersionChar125GuideRoute } from "./routes/docs.{-$v
  * decides those, and a route that disagrees is already refused by the id check.
  */
 export const routeTree: AnyRouteDefinition[] = [
-  { ...rootRoute.options, id: "__root__", path: "/", src: "/src/routes/__root.tsx", children: [
-    { ...IndexRoute.options, id: "/", path: "", src: "/src/routes/index.tsx", prerender: true },
-    { ...AboutRoute.options, id: "/about", path: "about", src: "/src/routes/about.tsx", prerender: true },
-    { ...AdminRoute.options, id: "/admin", path: "admin", src: "/src/routes/admin.tsx" },
-    { ...AsyncRoute.options, id: "/async", path: "async", src: "/src/routes/async.tsx" },
-    { ...ClientonlyRoute.options, id: "/clientonly", path: "clientonly", src: "/src/routes/clientonly.tsx" },
-    { ...ComponentsRoute.options, id: "/components", path: "components", src: "/src/routes/components.tsx" },
-    { ...ControlRoute.options, id: "/control", path: "control", src: "/src/routes/control.tsx" },
-    { ...CssRoute.options, id: "/css", path: "css", src: "/src/routes/css.tsx" },
-    { ...HooksRoute.options, id: "/hooks", path: "hooks", src: "/src/routes/hooks.tsx", ssr: false },
-    { ...JsxTypesRoute.options, id: "/jsx-types", path: "jsx-types", src: "/src/routes/jsx-types.tsx" },
-    { ...LinksRoute.options, id: "/links", path: "links", src: "/src/routes/links.tsx" },
-    { ...QueryRoute.options, id: "/query", path: "query", src: "/src/routes/query.tsx", ssr: "data-only" },
-    { ...RoutingRoute.options, id: "/routing", path: "routing", src: "/src/routes/routing.tsx", ssr: false },
-    { ...ShopRoute.options, id: "/shop", path: "shop", src: "/src/routes/shop.tsx", children: [
-      { ...ShopIndexRoute.options, id: "/shop/", path: "", src: "/src/routes/shop.index.tsx" }
-    ] },
-    { ...SignalsRoute.options, id: "/signals", path: "signals", src: "/src/routes/signals.tsx" },
-    { ...StoreRoute.options, id: "/store", path: "store", src: "/src/routes/store.tsx" },
-    { ...ApiHealthRoute.options, id: "/api/health", path: "api/health", src: "/src/routes/api/health.ts", component: Outlet as never },
-    { ...ReportChar123nameChar125DotcsvRoute.options, id: "/report/{$name}.csv", path: "report/{$name}.csv", src: "/src/routes/report.{$name}[.]csv.tsx" },
-    { ...DocsChar123VersionChar125GuideRoute.options, id: "/docs/{-$version}/guide", path: "docs/{-$version}/guide", src: "/src/routes/docs.{-$version}.guide.tsx" }
-  ] }
+  {
+    ...rootRoute.options,
+    id: "__root__",
+    path: "/",
+    src: "/src/routes/__root.tsx",
+    children: [
+      { ...IndexRoute.options, id: "/", path: "", src: "/src/routes/index.tsx", prerender: true },
+      {
+        ...AboutRoute.options,
+        id: "/about",
+        path: "about",
+        src: "/src/routes/about.tsx",
+        prerender: true,
+      },
+      { ...AdminRoute.options, id: "/admin", path: "admin", src: "/src/routes/admin.tsx" },
+      { ...AsyncRoute.options, id: "/async", path: "async", src: "/src/routes/async.tsx" },
+      {
+        ...ClientonlyRoute.options,
+        id: "/clientonly",
+        path: "clientonly",
+        src: "/src/routes/clientonly.tsx",
+      },
+      {
+        ...ComponentsRoute.options,
+        id: "/components",
+        path: "components",
+        src: "/src/routes/components.tsx",
+      },
+      { ...ControlRoute.options, id: "/control", path: "control", src: "/src/routes/control.tsx" },
+      { ...CssRoute.options, id: "/css", path: "css", src: "/src/routes/css.tsx" },
+      {
+        ...HooksRoute.options,
+        id: "/hooks",
+        path: "hooks",
+        src: "/src/routes/hooks.tsx",
+        ssr: false,
+      },
+      {
+        ...JsxTypesRoute.options,
+        id: "/jsx-types",
+        path: "jsx-types",
+        src: "/src/routes/jsx-types.tsx",
+      },
+      { ...LinksRoute.options, id: "/links", path: "links", src: "/src/routes/links.tsx" },
+      {
+        ...QueryRoute.options,
+        id: "/query",
+        path: "query",
+        src: "/src/routes/query.tsx",
+        ssr: "data-only",
+      },
+      {
+        ...RoutingRoute.options,
+        id: "/routing",
+        path: "routing",
+        src: "/src/routes/routing.tsx",
+        ssr: false,
+      },
+      {
+        ...ShopRoute.options,
+        id: "/shop",
+        path: "shop",
+        src: "/src/routes/shop.tsx",
+        children: [
+          { ...ShopIndexRoute.options, id: "/shop/", path: "", src: "/src/routes/shop.index.tsx" },
+        ],
+      },
+      { ...SignalsRoute.options, id: "/signals", path: "signals", src: "/src/routes/signals.tsx" },
+      { ...StoreRoute.options, id: "/store", path: "store", src: "/src/routes/store.tsx" },
+      {
+        ...ApiHealthRoute.options,
+        id: "/api/health",
+        path: "api/health",
+        src: "/src/routes/api/health.ts",
+        component: Outlet as never,
+      },
+      {
+        ...ReportChar123nameChar125DotcsvRoute.options,
+        id: "/report/{$name}.csv",
+        path: "report/{$name}.csv",
+        src: "/src/routes/report.{$name}[.]csv.tsx",
+      },
+      {
+        ...DocsChar123VersionChar125GuideRoute.options,
+        id: "/docs/{-$version}/guide",
+        path: "docs/{-$version}/guide",
+        src: "/src/routes/docs.{-$version}.guide.tsx",
+      },
+    ],
+  },
 ];
 
 export default routeTree;
 
 export interface FileRoutesById {
-  "__root__": typeof rootRoute;
+  __root__: typeof rootRoute;
   "/": typeof IndexRoute;
   "/about": typeof AboutRoute;
   "/admin": typeof AdminRoute;
@@ -95,9 +162,49 @@ export interface FileRoutesById {
 
 export interface FileRouteTypes {
   /** Every route id, layouts included — what `useMatch` and `Link`'s `to` address. */
-  id: "__root__" | "/" | "/about" | "/admin" | "/async" | "/clientonly" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/shop/" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
+  id:
+    | "__root__"
+    | "/"
+    | "/about"
+    | "/admin"
+    | "/async"
+    | "/clientonly"
+    | "/components"
+    | "/control"
+    | "/css"
+    | "/hooks"
+    | "/jsx-types"
+    | "/links"
+    | "/query"
+    | "/routing"
+    | "/shop"
+    | "/shop/"
+    | "/signals"
+    | "/store"
+    | "/api/health"
+    | "/report/{$name}.csv"
+    | "/docs/{-$version}/guide";
   /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */
-  fullPaths: "/" | "/about" | "/admin" | "/async" | "/clientonly" | "/components" | "/control" | "/css" | "/hooks" | "/jsx-types" | "/links" | "/query" | "/routing" | "/shop" | "/signals" | "/store" | "/api/health" | "/report/{$name}.csv" | "/docs/{-$version}/guide";
+  fullPaths:
+    | "/"
+    | "/about"
+    | "/admin"
+    | "/async"
+    | "/clientonly"
+    | "/components"
+    | "/control"
+    | "/css"
+    | "/hooks"
+    | "/jsx-types"
+    | "/links"
+    | "/query"
+    | "/routing"
+    | "/shop"
+    | "/signals"
+    | "/store"
+    | "/api/health"
+    | "/report/{$name}.csv"
+    | "/docs/{-$version}/guide";
   fileRoutesById: FileRoutesById;
 }
 

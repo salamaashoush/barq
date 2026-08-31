@@ -1,23 +1,15 @@
 /**
  * CSS-in-JS Demo
- * Tests: css, styled, keyframe, globalCss, clsx, variants, createTheme, token, cssVar, defineVars
+ * Tests: css, styled, keyframe, globalCss, atoms, variants, createTheme, token, globalVars, defineVars
  */
 
 import { For, type Incoming, signal } from "@barqjs/core";
-import {
-  type DesignTokens,
-  createTheme,
-  defineVars,
-  token,
-  variants,
-} from "../styles";
+import { type DesignTokens, createTheme, defineVars, token, variants } from "../styles";
 import {
   atoms,
-  clsx,
   create,
   createTheme as createCssTheme,
   css,
-  cssVar,
   defineVars as defineTokens,
   dynamic,
   firstThatWorks,
@@ -111,7 +103,7 @@ function StyledDemo() {
   // sit in, so the compiler refuses it (BARQ014) instead of guessing; written
   // as two classes, both compile and the choice is an ordinary ternary.
   const Card = (props: Incoming<{ variant: "primary" | "secondary"; children: string }>) => (
-    <div class={clsx(cardBase, props.variant() === "primary" ? cardPrimary : cardSecondary)}>
+    <div class={atoms(cardBase, props.variant() === "primary" ? cardPrimary : cardSecondary)}>
       {props.children}
     </div>
   );
@@ -212,7 +204,7 @@ function KeyframeDemo() {
   );
 }
 
-// clsx utility
+// atoms: composing classes
 function ClsxDemo() {
   const active = signal(false);
   const disabled = signal(false);
@@ -245,13 +237,16 @@ function ClsxDemo() {
   `;
 
   const computedClass = () =>
-    clsx(baseClass, active() && activeClass, disabled() && disabledClass, {
-      [smClass]: size() === "sm",
-      [lgClass]: size() === "lg",
-    });
+    atoms(
+      baseClass,
+      active() && activeClass,
+      disabled() && disabledClass,
+      size() === "sm" && smClass,
+      size() === "lg" && lgClass,
+    );
 
   return (
-    <DemoCard title="clsx - Class Composition">
+    <DemoCard title="atoms - class composition">
       <div class={buttonRowStyle}>
         <Button onClick={() => active.update((a) => !a)}>Toggle Active</Button>
         <Button onClick={() => disabled.update((d) => !d)}>Toggle Disabled</Button>
@@ -474,7 +469,7 @@ function CssVarDemo() {
     });
 
   return (
-    <DemoCard title="cssVar & defineVars">
+    <DemoCard title="defineVars & globalVars">
       <input
         type="range"
         min="0"
@@ -503,12 +498,12 @@ function CssVarDemo() {
                   return [key.trim(), val?.trim()];
                 }),
             ),
-            background: cssVar("primary-color"),
+            background: "var(--primary-color)",
             color: "white",
           };
         }}
       >
-        <p>Background uses {cssVar("primary-color")}</p>
+        <p>Background uses var(--primary-color)</p>
       </div>
 
       <pre class={previewStyle}>{getVars}</pre>
@@ -577,7 +572,7 @@ const noteStyle = css`
  * `atoms` and `create`: one class per declaration, merged by property.
  *
  * The last argument wins per property, which is the difference from
- * `clsx(base, variant)` — there the stylesheet's order decides, here the
+ * `atoms(base, variant)` — there the stylesheet's order decides, here the
  * call's does. Every id here is asserted against a real browser.
  */
 const cardStyles = create({
@@ -621,8 +616,7 @@ function AtomsDemo() {
       </div>
       <Button onClick={() => loud.update((on) => !on)}>Toggle variant</Button>
       <p class={noteStyle}>
-        Compiled: every class above is a string literal in the bundle, and the CSS is a build
-        asset.
+        Compiled: every class above is a string literal in the bundle, and the CSS is a build asset.
       </p>
     </DemoCard>
   );
@@ -653,8 +647,8 @@ function TokensDemo() {
         </div>
       </div>
       <p class={noteStyle}>
-        A token crosses a module boundary as a `var()` string, so nothing has to resolve an
-        import at build time.
+        A token crosses a module boundary as a `var()` string, so nothing has to resolve an import
+        at build time.
       </p>
     </DemoCard>
   );

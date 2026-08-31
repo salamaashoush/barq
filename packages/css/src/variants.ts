@@ -23,8 +23,16 @@ import { atoms } from "./atoms.ts";
 
 export type VariantGroups = Record<string, Record<string, string>>;
 
+/**
+ * Which arm of each axis, or nothing to take the default.
+ *
+ * A value is looked up by its TEXT, so a boolean axis — `{ true: …, false: … }`,
+ * which is how an on/off variant is spelled — is selected with a boolean.
+ * `null` and `undefined` mean "not chosen" and fall to the default; so does any
+ * value the axis has no arm for.
+ */
 export type VariantSelection<G extends VariantGroups> = {
-  readonly [K in keyof G]?: keyof G[K] | false | null | undefined;
+  readonly [K in keyof G]?: keyof G[K] | boolean | null | undefined;
 };
 
 export interface VariantSpec<G extends VariantGroups> {
@@ -68,14 +76,31 @@ export type VariantFn<G extends VariantGroups> = (props?: VariantSelection<G>) =
 export function variants<G extends VariantGroups>(spec: VariantSpec<G>): VariantFn<G> {
   const groups = Object.keys(spec.variants) as (keyof G)[];
 
+  // One entry per SELECTION, and a spec has finitely many: the product of its
+  // axes, which is small by construction because a variant set is enumerated by
+  // hand. A component re-rendering asks for the same selection over and over,
+  // and merging it again each time is the whole cost.
+  const composed = new Map<string, string>();
+
   return (props) => {
     const chosen = {} as Record<keyof G, string | undefined>;
     for (const group of groups) {
       const asked = props?.[group];
+      // By TEXT, so `{ loud: false }` selects the `false` arm of a boolean
+      // axis. It used to mean "not chosen": `false` was the sentinel AND a
+      // legal key, so an off state silently took the default instead of the
+      // arm written for it.
+      const named =
+        asked === null || asked === undefined ? undefined : String(asked);
       const value =
-        asked === false || asked === null || asked === undefined ? spec.defaults?.[group] : asked;
+        named !== undefined && Object.hasOwn(spec.variants[group] ?? {}, named)
+          ? named
+          : spec.defaults?.[group];
       chosen[group] = value === undefined ? undefined : String(value);
     }
+    const key = groups.map((group) => chosen[group] ?? "\u0000").join("|");
+    const hit = composed.get(key);
+    if (hit !== undefined) return hit;
 
     const out: string[] = [];
     if (spec.base !== undefined && spec.base !== "") out.push(spec.base);
@@ -85,15 +110,19 @@ export function variants<G extends VariantGroups>(spec: VariantSpec<G>): Variant
       const className = spec.variants[group]?.[value];
       if (className !== undefined && className !== "") out.push(className);
     }
-    // Last, so a combination wins over the single-axis classes it refines.
+    // Last, so a combination wins over the single-axis classes it refines. A
+    // `when` entry that names no value is not a condition, so it matches.
     for (const rule of spec.compound ?? []) {
       const matches = Object.entries(rule.when).every(
-        ([group, value]) => chosen[group as keyof G] === String(value),
+        ([group, value]) =>
+          value === null || value === undefined || chosen[group as keyof G] === String(value),
       );
       if (matches && rule.use !== "") out.push(rule.use);
     }
     // Base first, then the axes, then the compounds — and merged, so the later
     // one wins per property rather than both applying.
-    return atoms(...out);
+    const merged = atoms(...out);
+    composed.set(key, merged);
+    return merged;
   };
 }

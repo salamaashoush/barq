@@ -12,7 +12,6 @@ import {
   firstThatWorks,
   globalCss,
   layer,
-  mergeable,
   props,
   propsIn,
   dynamicIn,
@@ -126,11 +125,17 @@ describe("atoms", () => {
     expect(ruleFor(left)).toBe(`.${left}{padding-left:2px}`);
   });
 
-  test("a shorthand that cannot be expanded by counting is refused, by name", () => {
-    expect(mergeable("border")).toBe(false);
-    expect(mergeable("background")).toBe(false);
-    expect(mergeable("margin")).toBe(true);
-    expect(mergeable("marginTop")).toBe(true);
+  test("a shorthand that cannot be expanded by counting is left whole", () => {
+    // `border: 1px solid red` puts three values in three sub-properties BY
+    // TYPE, so counting them cannot say which longhand each belongs to.
+    // Expanding it wrongly is worse than not expanding it, so it stays one
+    // atom — and a later `border-color` therefore does not replace it.
+    const whole = atoms({ border: "1px solid red" }).split(" ");
+    expect(whole).toHaveLength(1);
+    expect(ruleFor(whole[0] ?? "")).toBe(`.${whole[0]}{border:1px solid red}`);
+    expect(atoms({ border: "1px solid red" }, { borderColor: "blue" }).split(" ")).toHaveLength(5);
+    // Where one that CAN be counted expands and merges per side.
+    expect(atoms({ margin: "1px" }, { marginTop: "2px" }).split(" ")).toHaveLength(4);
   });
 
   test("conditions get their own key, so `:hover` does not replace the base", () => {

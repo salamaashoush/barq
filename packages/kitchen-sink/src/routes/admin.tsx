@@ -22,10 +22,10 @@ function Admin() {
     <section>
       <h2>Admin</h2>
       <p>
-        This route declares <code>middleware: [requireSession]</code>, and the
-        build refuses to ship unless every server function it can reach carries
-        the same closure. Remove <code>.middleware([requireSession])</code> from{" "}
-        <code>data/admin.ts</code> and <code>vite build</code> fails naming both.
+        This route declares <code>middleware: [requireSession]</code>, and the build refuses to ship
+        unless every server function it can reach carries the same closure. Remove{" "}
+        <code>.middleware([requireSession])</code> from <code>data/admin.ts</code> and{" "}
+        <code>vite build</code> fails naming both.
       </p>
       <Loading fallback={<p>Loading admin…</p>}>
         <dl>

@@ -37,7 +37,6 @@ export {
   dynamicIn,
   firstThatWorks,
   layer,
-  mergeable,
   props,
   propsIn,
 } from "./atoms.ts";
@@ -66,15 +65,6 @@ export type { VariantFn, VariantGroups, VariantSelection, VariantSpec } from "./
 export { collectCss, registerCss, setCssSink } from "./sheet.ts";
 
 export type CssValue = string | number | false | null | undefined;
-
-export type ClassValue =
-  | string
-  | number
-  | false
-  | null
-  | undefined
-  | ClassValue[]
-  | Record<string, unknown>;
 
 const compiled = new Map<string, string>();
 
@@ -256,27 +246,4 @@ export function globalCss(strings: TemplateStringsArray, ...values: CssValue[]):
   const rules: string[] = [];
   emit(source, "", [], rules);
   register(`g${hash(source)}`, rules.join(""));
-}
-
-/** `var(--name)`, or `var(--name, fallback)`. */
-export function cssVar(name: string, fallback?: string): string {
-  const property = name.startsWith("--") ? name : `--${name}`;
-  return fallback === undefined ? `var(${property})` : `var(${property}, ${fallback})`;
-}
-
-/** Class names from strings, arrays and `{ name: on }` maps. */
-export function clsx(...inputs: ClassValue[]): string {
-  const out: string[] = [];
-  for (const input of inputs) {
-    if (input === false || input === null || input === undefined || input === "") continue;
-    if (typeof input === "string" || typeof input === "number") {
-      out.push(String(input));
-    } else if (Array.isArray(input)) {
-      const nested = clsx(...input);
-      if (nested !== "") out.push(nested);
-    } else {
-      for (const [name, on] of Object.entries(input)) if (on) out.push(name);
-    }
-  }
-  return out.join(" ");
 }

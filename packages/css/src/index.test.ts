@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { clsx, collectCss, css, cssVar, globalCss, keyframes, registerCss } from "./index.ts";
+import { collectCss, css, globalCss, keyframes, registerCss } from "./index.ts";
 
 /** The rules a block registered, without its class name in the way. */
 function rulesFor(name: string): string {
@@ -144,20 +144,6 @@ describe("keyframes and globalCss", () => {
       color: red;
     `;
     expect(collectCss()).toContain(`@import "probe.css";.${name}{color: red}`);
-  });
-});
-
-describe("helpers", () => {
-  test("cssVar accepts a name with or without the dashes", () => {
-    expect(cssVar("bg")).toBe("var(--bg)");
-    expect(cssVar("--bg")).toBe("var(--bg)");
-    expect(cssVar("bg", "red")).toBe("var(--bg, red)");
-  });
-
-  test("clsx takes strings, arrays and maps", () => {
-    expect(clsx("a", false, null, undefined, "", "b")).toBe("a b");
-    expect(clsx(["a", ["b", "c"]])).toBe("a b c");
-    expect(clsx({ a: true, b: 0, c: "yes" })).toBe("a c");
   });
 });
 

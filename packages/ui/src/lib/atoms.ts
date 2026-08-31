@@ -22,11 +22,10 @@
  * take the whole stylesheet into the JS bundle with them. This one is for the
  * merges the runtime does anyway, in `slot.ts` and in `uiVariants`.
  *
- * Merging is the other half. `clsx` concatenates, and which class wins is then
- * decided by the order the rules happen to sit in the stylesheet; `ui` merges
- * by property, so a later argument wins because it is later. A caller's own
- * class is still appended with `clsx` — it is not atomic and has nothing to
- * merge against.
+ * Merging is the other half. Concatenating leaves the order the rules happen to
+ * sit in the stylesheet to decide; `ui` merges by property, so a later argument
+ * wins because it is later. A caller's own class carries no property, so it has
+ * nothing to merge against and survives whatever follows it.
  */
 
 import { layer, variants, type VariantFn, type VariantGroups, type VariantSpec } from "@barqjs/css";

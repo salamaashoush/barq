@@ -1,10 +1,11 @@
 /**
  * One class per declaration, merged by property.
  *
- * `clsx(base, variant)` composes CLASSES, and which one wins is decided by the
- * order the two blocks were written in the stylesheet — not by the order they
- * were passed. That is the bug every design system hits at scale: a `variant`
- * that loses to its own `base` because a bundler put them the other way round.
+ * Concatenating classes composes BLOCKS, and which one wins is then decided by
+ * the order they were written in the stylesheet — not by the order they were
+ * passed. That is the bug every design system hits at scale: a `variant` that
+ * loses to its own `base` because a bundler put them the other way round. It is
+ * why there is no `clsx` here: one way to compose, and it answers the question.
  *
  * An atom is one property, so "which wins" is answerable without the cascade:
  * the class carries its property in its own name (`a-color_1n4k2p0`), and
@@ -16,7 +17,7 @@
 
 import type * as CSS from "csstype";
 
-import { UNEXPANDABLE, expand } from "./shorthands.ts";
+import { expand } from "./shorthands.ts";
 import { hash, register } from "./sheet.ts";
 
 export type AtomValue = string | number | false | null | undefined | Fallback;
@@ -431,8 +432,7 @@ export type AtomInput = AtomStyles | string | false | null | undefined;
  *
  * One class per DECLARATION, not per block, so `which of these wins` is
  * answerable without the cascade — the class carries its property in its own
- * name and merging keeps the last per key. Passing order decides, always,
- * which is the thing `clsx` cannot give you.
+ * name and merging keeps the last per key. Passing order decides, always.
  *
  * An argument may be a style object, a class string another call produced, an
  * array of either, or `false`/`null`/`undefined`. `null` as a VALUE removes
@@ -550,18 +550,6 @@ function build(into: string, styles: (AtomInput | readonly AtomInput[])[]): stri
     walk(applied, style, "default", into);
   }
   return [...applied.values()].join(" ");
-}
-
-/**
- * Whether a shorthand can take part in a merge at all.
- *
- * `border: 1px solid red` puts three values in three sub-properties BY TYPE, so
- * counting them cannot say which longhand each belongs to. Expanding it wrongly
- * is worse than not expanding it, so `atoms` leaves it whole and this reports
- * that a later `border-color` will not replace it.
- */
-export function mergeable(property: string): boolean {
-  return !UNEXPANDABLE.has(kebab(property));
 }
 
 /**

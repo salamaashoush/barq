@@ -66,10 +66,11 @@ needs build-level aggregation for, and it is why this package does not need it.
 
 ## Atoms
 
-`clsx(base, variant)` composes classes, and which one wins is decided by the
-order the two blocks were written in the stylesheet, not the order they were
-passed. That is the bug every design system hits at scale: a variant that loses
-to its own base because the bundler ordered the rules that way.
+Concatenating classes composes blocks, and which one wins is then decided by the
+order they were written in the stylesheet, not the order they were passed. That
+is the bug every design system hits at scale: a variant that loses to its own
+base because the bundler ordered the rules that way. It is why there is no
+`clsx` here — one way to compose, and it answers the question.
 
 An atom is one property, so the question is answerable without the cascade:
 
@@ -128,15 +129,9 @@ atoms({ position: firstThatWorks("sticky", "-webkit-sticky", "fixed") });
 A shorthand whose values go to sub-properties **by type** rather than by
 position cannot be expanded by counting them: `border: 1px solid red` puts three
 values in three sub-properties, and which one each belongs to is decided by
-parsing, not by counting. Those are left whole rather than half-expanded, and
-`mergeable` says so:
-
-```ts
-import { mergeable } from "@barqjs/css";
-
-mergeable("border"); // false — a later `border-color` will not replace it
-mergeable("marginTop"); // true
-```
+parsing, not by counting. Those are left whole rather than half-expanded, so a later `border-color` does
+not replace a `border`, where a later `margin-top` does replace one side of a
+`margin`.
 
 That refusal is the whole of the size difference against StyleX's 900-line
 `application-order.js`, and it is a refusal rather than a guess.
@@ -400,20 +395,6 @@ this, and is what `@barqjs/ui` does: `tokens.ts` there is hand-written
 `"var(--primary)"` rather than `defineVars`, so an application can bring its own
 `:root` and the package is not a closed system.
 
-## Two helpers the compiler is not involved in
-
-`clsx` CONCATENATES, where `atoms` merges. Two atoms for one property both
-survive it and the stylesheet's order decides between them, which is the bug
-atoms exist to remove — so it is for composing a caller's own class, not for
-composing styles.
-
-```ts
-import { clsx, cssVar } from "@barqjs/css";
-
-clsx("card", { active: true, disabled: false }, ["extra"]); // "card active extra"
-cssVar("panel-bg", "#1e293b"); // "var(--panel-bg, #1e293b)"
-```
-
 ## How the CSS reaches the page
 
 The compiler produces a module's stylesheet; the integration decides how it
@@ -475,20 +456,18 @@ Everything a consumer may rely on, in one list. Anything not here is
 shorthand map exist so the compiler and this package can be checked against each
 other, and none of them is stable.
 
-|                                           |                                                |
-| ----------------------------------------- | ---------------------------------------------- |
-| `css`, `keyframes`, `globalCss`           | a block, an animation, whole rules             |
-| `atoms`, `atomsIn`                        | declarations as classes, merged                |
-| `create`, `createIn`                      | a named set of those                           |
-| `props`, `propsIn`                        | the `class` and `style` an element takes       |
-| `dynamic`, `dynamicIn`                    | a group whose values arrive at run time        |
-| `layer`                                   | all five above, with one layer bound           |
-| `variants`                                | a class per combination, merged                |
-| `defineVars`, `globalVars`, `createTheme` | tokens as custom properties                    |
-| `firstThatWorks`                          | a declaration repeated, best last              |
-| `mergeable`                               | whether a shorthand can take part in a merge   |
-| `clsx`, `cssVar`                          | string helpers the compiler is not involved in |
-| `collectCss`, `registerCss`, `setCssSink` | the registry, for a server render              |
+|                                           |                                              |
+| ----------------------------------------- | -------------------------------------------- |
+| `css`, `keyframes`, `globalCss`           | a block, an animation, whole rules           |
+| `atoms`, `atomsIn`                        | declarations as classes, merged              |
+| `create`, `createIn`                      | a named set of those                         |
+| `props`, `propsIn`                        | the `class` and `style` an element takes     |
+| `dynamic`, `dynamicIn`                    | a group whose values arrive at run time      |
+| `layer`                                   | all five above, with one layer bound         |
+| `variants`                                | a class per combination, merged and memoised |
+| `defineVars`, `globalVars`, `createTheme` | tokens as custom properties                  |
+| `firstThatWorks`                          | a declaration repeated, best last            |
+| `collectCss`, `registerCss`, `setCssSink` | the registry, for a server render            |
 
 Every one of the pairs reads the same: the bare name is unlayered, the `…In`
 name takes a cascade layer as its first argument, and `layer(name)` binds that
@@ -538,11 +517,10 @@ spread of an array literal.
 Left to run, and why:
 
 - **`variants`** emits no CSS at all. Its arms are compiled blocks; the function
-  joins their class strings, and a selection is made at run time because that is
-  the point. 63 ns.
+  merges their class strings, and a selection is made at run time because that
+  is the point. 50 ns, memoised per selection — a spec has finitely many.
 - **A dynamic value.** A colour from a signal is not knowable at build time,
   which is why it becomes a custom property.
-- **`clsx` and `cssVar`** are pure string functions over runtime values.
 - **A value from a module the integration cannot resolve.** See below: with
   `@barqjs/compiler/vite` an imported token, group or layer binding folds, and
   what is left is a specifier nothing on disk answers for.

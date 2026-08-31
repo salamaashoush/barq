@@ -7,7 +7,7 @@
  */
 
 import { For, Show, signal } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { atoms, css } from "@barqjs/css";
 import type { Cell } from "@barqjs/core";
 import {
   type Guard,
@@ -304,19 +304,19 @@ export function PostsList(props: RouteProps<PostsData | undefined>) {
 
       <div class={filterBarStyle}>
         <button
-          class={clsx(filterBtnStyle, currentCategory() === "all" && filterBtnActiveStyle)}
+          class={atoms(filterBtnStyle, currentCategory() === "all" && filterBtnActiveStyle)}
           onClick={() => setSearchParams({})}
         >
           All
         </button>
         <button
-          class={clsx(filterBtnStyle, currentCategory() === "tutorial" && filterBtnActiveStyle)}
+          class={atoms(filterBtnStyle, currentCategory() === "tutorial" && filterBtnActiveStyle)}
           onClick={() => setSearchParams({ category: "tutorial" })}
         >
           Tutorials
         </button>
         <button
-          class={clsx(filterBtnStyle, currentCategory() === "advanced" && filterBtnActiveStyle)}
+          class={atoms(filterBtnStyle, currentCategory() === "advanced" && filterBtnActiveStyle)}
           onClick={() => setSearchParams({ category: "advanced" })}
         >
           Advanced

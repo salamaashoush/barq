@@ -7,10 +7,11 @@ import {
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
 import type { Incoming } from "@barqjs/core";
-import { clsx, layer } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
+import { cn } from "../lib/utils.ts";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -79,7 +80,7 @@ export interface CollapsibleContentProps extends DisclosurePanelComponentProps {
 export function CollapsibleContent(props: Incoming<CollapsibleContentProps>) {
   return (
     <DisclosurePanel {...props} data-slot="collapsible-content" class={panel}>
-      <div class={clsx(props.class?.(), props.className?.())}>{props.children}</div>
+      <div class={cn(props.class?.(), props.className?.())}>{props.children}</div>
     </DisclosurePanel>
   );
 }
