@@ -168,7 +168,8 @@ import {
 import "@barqjs/ui/theme/reset.ts";
 import { CalendarDate } from "@barqjs/aria/date";
 
-import { Configurator } from "./configurator.tsx";
+import { Customizer } from "./customizer.tsx";
+import { design } from "./params.ts";
 
 import { AtSign } from "@barqjs/lucide/icons/at-sign";
 import { Bold } from "@barqjs/lucide/icons/bold";
@@ -186,12 +187,36 @@ globalCss`
   }
 `;
 
+/**
+ * shadcn's `/create` layout: the preview and the customizer side by side, the
+ * customizer docked on the RIGHT. `flex-row-reverse` rather than putting it
+ * second in the markup, because the reading order is the preview and the tab
+ * order should be the controls.
+ */
+const designer = css`
+  --customizer-width: 13rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-height: 100dvh;
+  padding: 1.5rem;
+
+  @media (width >= 48rem) {
+    flex-direction: row-reverse;
+    align-items: flex-start;
+  }
+
+  @media (width >= 96rem) {
+    --customizer-width: 15rem;
+  }
+`;
+
 const page = css`
-  max-width: 68rem;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 6rem;
+  flex: 1;
+  min-width: 0;
   display: grid;
   gap: 2.5rem;
+  padding-bottom: 4rem;
 `;
 
 const row = css`
@@ -271,8 +296,6 @@ function Gallery() {
 
   return (
     <main class={page} id="gallery">
-      <Configurator />
-
       <Section title="Button">
         <div class={row}>
           <Button>Default</Button>
@@ -910,4 +933,17 @@ function Gallery() {
   );
 }
 
-render(() => <Gallery />, document.getElementById("app")!);
+function Designer() {
+  const system = design();
+  // Whatever the URL asked for, on the page before anything is drawn.
+  system.set({});
+
+  return (
+    <div class={designer} data-slot="designer">
+      <Customizer design={system} />
+      <Gallery />
+    </div>
+  );
+}
+
+render(() => <Designer />, document.getElementById("app")!);

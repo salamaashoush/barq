@@ -29,6 +29,22 @@ export interface ThemeSelection {
   /** `--radius`, if the base's own value is not what you want. */
   readonly radius?: string;
   /**
+   * The five-step chart ramp, taken from a DIFFERENT theme than the accent.
+   *
+   * shadcn's configurator separates these because a chart's colours and a
+   * button's are not the same decision: a blue primary with a warm ramp is a
+   * combination someone reaches for, and folding the two lost it.
+   */
+  readonly chart?: string | ThemeDefinition;
+  /**
+   * `--font-sans` and `--font-mono`, which every component reads through
+   * `--default-font-family`. A stack, not a family: nothing here loads a font.
+   */
+  readonly fonts?: {
+    readonly sans?: string;
+    readonly mono?: string;
+  };
+  /**
    * Where the light values land.
    *
    * @default ":root"
@@ -84,13 +100,52 @@ export interface ThemeValues {
  * customiser has that shape: `getThemeCodeOKLCH` is a separate spelling of what
  * the page is already displaying.
  */
+const CHART = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"] as const;
+
+/** The ramp alone, out of whichever theme was named for it. */
+function ramp(theme: ThemeDefinition, mode: "light" | "dark"): ThemeTokens {
+  const from = theme[mode];
+  const out: Record<string, string> = {};
+  for (const token of CHART) {
+    const value = from[token];
+    if (value !== undefined) out[token] = value;
+  }
+  return out;
+}
+
+function fontTokens(fonts: ThemeSelection["fonts"]): ThemeTokens {
+  if (fonts === undefined) return {};
+  return {
+    ...(fonts.sans === undefined ? {} : { "font-sans": fonts.sans }),
+    ...(fonts.mono === undefined ? {} : { "font-mono": fonts.mono }),
+  };
+}
+
 export function themeValues(selection: ThemeSelection): ThemeValues {
   const base = resolve(selection.base);
   const accent = selection.accent === undefined ? undefined : resolve(selection.accent);
+  const chart = selection.chart === undefined ? undefined : resolve(selection.chart);
   const radius = selection.radius;
+  const fonts = fontTokens(selection.fonts);
 
-  const light = { ...base.light, ...accent?.light, ...(radius === undefined ? {} : { radius }) };
-  return { light, dark: { ...base.dark, ...accent?.dark } };
+  // Order is the whole of it: the base declares everything, the accent replaces
+  // what it names, the chart replaces the ramp the accent just set, and the
+  // radius replaces the token the base declared. Spreading a key that is
+  // already there updates the value and keeps its PLACE, so the list a person
+  // copies out reads in the order the base wrote it.
+  const light = {
+    ...base.light,
+    ...accent?.light,
+    ...(chart === undefined ? {} : ramp(chart, "light")),
+    ...(radius === undefined ? {} : { radius }),
+    ...fonts,
+  };
+  const dark = {
+    ...base.dark,
+    ...accent?.dark,
+    ...(chart === undefined ? {} : ramp(chart, "dark")),
+  };
+  return { light, dark };
 }
 
 export function themeCss(selection: ThemeSelection): string {

@@ -97,6 +97,24 @@ describe("themeCss", () => {
     expect(chosen).toEqual(base);
   });
 
+  test("a chart ramp comes from its own theme, over the accent's", () => {
+    // A blue primary with a warm ramp is a combination someone reaches for, and
+    // folding the two decisions into one loses it.
+    const { light } = themeValues({ base: "neutral", accent: "blue", chart: "amber" });
+    const blue = findTheme("blue");
+    const amber = findTheme("amber");
+    expect(light["primary"]).toBe(blue?.light["primary"] as string);
+    expect(light["chart-1"]).toBe(amber?.light["chart-1"] as string);
+    expect(light["chart-1"]).not.toBe(blue?.light["chart-1"] as string);
+  });
+
+  test("a font stack replaces the token every component reads", () => {
+    const css = themeCss({ base: "neutral", fonts: { sans: "Georgia, serif" } });
+    expect(css).toContain("--font-sans: Georgia, serif;");
+    // `--font-mono` was not asked for, so the base's own survives untouched.
+    expect(css).not.toContain("--font-mono:");
+  });
+
   test("a scoped theme is dark by an ancestor OR by itself", () => {
     const css = themeCss({ base: "neutral", scope: ".panel" });
     expect(css).toContain(".panel {");
