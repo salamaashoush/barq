@@ -250,7 +250,12 @@
       "barq": "./src/virtualizer.tsx",
       "bun": "./src/virtualizer.tsx"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./navigation": {
+      "types": "./src/navigation.ts",
+      "barq": "./src/navigation.ts",
+      "bun": "./src/navigation.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

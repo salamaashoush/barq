@@ -828,6 +828,13 @@ export {
   useTabNode,
   useTabs,
 } from "./tabs.tsx";
+
+export {
+  navigationMenuState,
+  type MotionDirection,
+  type NavigationMenuState,
+  type NavigationMenuStateOptions,
+} from "./navigation.ts";
 export {
   Tag,
   tag,

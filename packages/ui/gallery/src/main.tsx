@@ -127,6 +127,14 @@ import {
   MenubarMenu,
   MenubarTrigger,
   NativeSelect,
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuIndicator,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+  NavigationMenuViewport,
   Pagination,
   PaginationContent,
   PaginationItem,
@@ -591,6 +599,39 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="NavigationMenu">
+        <div class={row} style={{ "min-height": "12rem", "align-items": "flex-start" }}>
+          <NavigationMenu>
+            <NavigationMenuList>
+              <NavigationMenuItem value="products">
+                <NavigationMenuTrigger>Products</NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <NavigationMenuLink href="#" isActive>
+                    Analytics
+                  </NavigationMenuLink>
+                  <NavigationMenuLink href="#">Reporting</NavigationMenuLink>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+              <NavigationMenuItem value="solutions">
+                <NavigationMenuTrigger>Solutions</NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <NavigationMenuLink href="#">For teams</NavigationMenuLink>
+                  <NavigationMenuLink href="#">For enterprise</NavigationMenuLink>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+              <NavigationMenuItem value="pricing">
+                <NavigationMenuTrigger>Pricing</NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <NavigationMenuLink href="#">Plans</NavigationMenuLink>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+            </NavigationMenuList>
+            <NavigationMenuIndicator />
+            <NavigationMenuViewport />
+          </NavigationMenu>
         </div>
       </Section>
 

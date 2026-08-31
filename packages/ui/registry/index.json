@@ -861,6 +861,26 @@
       ]
     },
     {
+      "name": "navigation-menu",
+      "type": "registry:ui",
+      "title": "Navigation Menu",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/navigation-menu.tsx"
+      ]
+    },
+    {
       "name": "pagination",
       "type": "registry:ui",
       "title": "Pagination",

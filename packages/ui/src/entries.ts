@@ -53,6 +53,7 @@ export const ENTRIES: readonly string[] = [
   "ui/label.tsx",
   "ui/menubar.tsx",
   "ui/native-select.tsx",
+  "ui/navigation-menu.tsx",
   "ui/pagination.tsx",
   "ui/popover.tsx",
   "ui/progress.tsx",

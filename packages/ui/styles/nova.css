@@ -2783,6 +2783,243 @@
       }
     }
 
+    [data-slot="navigation-menu"] {
+      max-width: max-content;
+    }
+
+    [data-slot="navigation-menu-list"] {
+      gap: 0px;
+    }
+
+    [data-slot="navigation-menu-trigger"] {
+      border-radius: var(--radius);
+      padding-inline: calc(var(--spacing) * 2.5);
+      padding-block: calc(var(--spacing) * 1.5);
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+      --ui-font-weight: var(--font-weight-medium);
+      font-weight: var(--font-weight-medium);
+      transition-property: all;
+      transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
+      transition-duration: var(--ui-duration, var(--default-transition-duration));
+      @media (hover: hover) {
+        &:hover {
+          background-color: var(--muted);
+        }
+      }
+      &:focus {
+        background-color: var(--muted);
+      }
+      &:focus-visible {
+        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+        box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+        --ui-ring-color: var(--ring);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
+        }
+        outline-style: var(--ui-outline-style);
+        outline-width: 1px;
+      }
+      &:disabled {
+        opacity: 50%;
+      }
+      &[data-popup-open] {
+        background-color: var(--muted);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+        }
+      }
+      @media (hover: hover) {
+        &[data-popup-open]:hover {
+          background-color: var(--muted);
+        }
+      }
+      &:where([data-state="open"]), &:where([data-open]:not([data-open="false"])) {
+        background-color: var(--muted);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+        }
+      }
+      @media (hover: hover) {
+        :is(&:where([data-state="open"]), .data-open\:hover\:bg-muted:where([data-open]:not([data-open="false"]))):hover {
+          background-color: var(--muted);
+        }
+      }
+      :is(&:where([data-state="open"]), .data-open\:focus\:bg-muted:where([data-open]:not([data-open="false"]))):focus {
+        background-color: var(--muted);
+      }
+    }
+
+    [data-slot="navigation-menu-link"] {
+      display: flex;
+      align-items: center;
+      gap: calc(var(--spacing) * 2);
+      border-radius: var(--radius);
+      padding: calc(var(--spacing) * 2);
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+      transition-property: all;
+      transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
+      transition-duration: var(--ui-duration, var(--default-transition-duration));
+      --ui-outline-style: none;
+      outline-style: none;
+      @media (hover: hover) {
+        &:hover {
+          background-color: var(--muted);
+        }
+      }
+      &:focus {
+        background-color: var(--muted);
+      }
+      &:focus-visible {
+        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+        box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+        --ui-ring-color: var(--ring);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
+        }
+        outline-style: var(--ui-outline-style);
+        outline-width: 1px;
+      }
+      :where([data-slot="navigation-menu-content"]) & {
+        border-radius: calc(var(--radius) - 2px);
+      }
+      &:where([data-state="active"]), &:where([data-active]:not([data-active="false"])) {
+        background-color: var(--muted);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+        }
+      }
+      @media (hover: hover) {
+        :is(&:where([data-state="active"]), .data-active\:hover\:bg-muted:where([data-active]:not([data-active="false"]))):hover {
+          background-color: var(--muted);
+        }
+      }
+      :is(&:where([data-state="active"]), .data-active\:focus\:bg-muted:where([data-active]:not([data-active="false"]))):focus {
+        background-color: var(--muted);
+      }
+      & svg:not([class*='size-']) {
+        width: calc(var(--spacing) * 4);
+        height: calc(var(--spacing) * 4);
+      }
+    }
+
+    [data-slot="navigation-menu-trigger"][data-variant="icon"] {
+      position: relative;
+      top: 1px;
+      margin-left: var(--spacing);
+      width: calc(var(--spacing) * 3);
+      height: calc(var(--spacing) * 3);
+      transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;
+      transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
+      transition-duration: var(--ui-duration, var(--default-transition-duration));
+      --ui-duration: 300ms;
+      transition-duration: 300ms;
+      &:is(:where(.group\/navigation-menu-trigger)[data-popup-open] *) {
+        rotate: 180deg;
+      }
+      &:is(:is(:where(.group\/navigation-menu-trigger):where([data-state="open"]), :where(.group\/navigation-menu-trigger):where([data-open]:not([data-open="false"]))) *) {
+        rotate: 180deg;
+      }
+    }
+
+    [data-slot="navigation-menu-content"] {
+      padding: var(--spacing);
+      --ui-ease: cubic-bezier(0.22,1,0.36,1);
+      transition-timing-function: cubic-bezier(0.22,1,0.36,1);
+      &:is(:where(.group\/navigation-menu)[data-viewport="false"] *) {
+        border-radius: var(--radius);
+        background-color: var(--popover);
+        color: var(--popover-foreground);
+        --ui-shadow: 0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
+        box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+        --ui-ring-color: var(--foreground);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--foreground) 10%, transparent);
+        }
+        --ui-duration: 300ms;
+        transition-duration: 300ms;
+      }
+      &[data-motion="from-end"] {
+        --ui-enter-translate-x: calc(52*var(--spacing));
+      }
+      &[data-motion="from-start"] {
+        --ui-enter-translate-x: calc(52*var(--spacing)*-1);
+      }
+      &[data-motion="to-end"] {
+        --ui-exit-translate-x: calc(52*var(--spacing));
+      }
+      &[data-motion="to-start"] {
+        --ui-exit-translate-x: calc(52*var(--spacing)*-1);
+      }
+      &[data-motion^="from-"] {
+        animation: enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-enter-opacity: 0;
+      }
+      &[data-motion^="to-"] {
+        animation: exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-exit-opacity: 0;
+      }
+      &:is(:where(.group\/navigation-menu)[data-viewport="false"] *):where([data-state="open"]), &:is(:where(.group\/navigation-menu)[data-viewport="false"] *):where([data-open]:not([data-open="false"])) {
+        animation: enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-enter-opacity: calc(0/100);
+        --ui-enter-opacity: 0;
+        --ui-enter-scale: calc(95*1%);
+        --ui-enter-scale: .95;
+      }
+      &:is(:where(.group\/navigation-menu)[data-viewport="false"] *):where([data-state="closed"]), &:is(:where(.group\/navigation-menu)[data-viewport="false"] *):where([data-closed]:not([data-closed="false"])) {
+        animation: exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-exit-opacity: calc(0/100);
+        --ui-exit-opacity: 0;
+        --ui-exit-scale: calc(95*1%);
+        --ui-exit-scale: .95;
+      }
+    }
+
+    [data-slot="navigation-menu-viewport"] {
+      border-radius: var(--radius);
+      background-color: var(--popover);
+      color: var(--popover-foreground);
+      --ui-shadow: 0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
+      box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+      --ui-ring-color: var(--foreground);
+      @supports (color: color-mix(in lab, red, red)) {
+        --ui-ring-color: color-mix(in oklab, var(--foreground) 10%, transparent);
+      }
+      --ui-duration: 100ms;
+      transition-duration: 100ms;
+      &:where([data-state="open"]), &:where([data-open]:not([data-open="false"])) {
+        animation: enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-enter-scale: calc(90*1%);
+        --ui-enter-scale: .9;
+      }
+      &:where([data-state="closed"]), &:where([data-closed]:not([data-closed="false"])) {
+        animation: exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-exit-scale: calc(90*1%);
+        --ui-exit-scale: .9;
+      }
+    }
+
+    [data-slot="navigation-menu-indicator"] {
+      &[data-state="hidden"] {
+        animation: exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-exit-opacity: 0;
+      }
+      &[data-state="visible"] {
+        animation: enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
+        --ui-enter-opacity: 0;
+      }
+    }
+
+    [data-slot="navigation-menu-indicator-arrow"] {
+      border-top-left-radius: calc(var(--radius) - 4px);
+      background-color: var(--border);
+      --ui-shadow: 0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
+      box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+    }
+
     [data-slot="native-select"] {
       height: calc(var(--spacing) * 8);
       width: 100%;

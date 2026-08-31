@@ -258,6 +258,11 @@
       "barq": "./src/ui/native-select.tsx",
       "bun": "./src/ui/native-select.tsx"
     },
+    "./navigation-menu": {
+      "types": "./src/ui/navigation-menu.tsx",
+      "barq": "./src/ui/navigation-menu.tsx",
+      "bun": "./src/ui/navigation-menu.tsx"
+    },
     "./pagination": {
       "types": "./src/ui/pagination.tsx",
       "barq": "./src/ui/pagination.tsx",

@@ -366,6 +366,19 @@ export {
 } from "./ui/menubar.tsx";
 export { NativeSelect, type NativeSelectProps } from "./ui/native-select.tsx";
 export {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuIndicator,
+  NavigationMenuItem,
+  type NavigationMenuItemProps,
+  NavigationMenuLink,
+  type NavigationMenuLinkProps,
+  NavigationMenuList,
+  type NavigationMenuProps,
+  NavigationMenuTrigger,
+  NavigationMenuViewport,
+} from "./ui/navigation-menu.tsx";
+export {
   Pagination,
   PaginationContent,
   type PaginationEdgeProps,
