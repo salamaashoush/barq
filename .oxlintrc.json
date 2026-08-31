@@ -16,6 +16,12 @@
     "no-shadow": ["error", { "allow": ["scope", "owner", "element", "context"] }],
     "no-unmodified-loop-condition": "error",
 
+    // `globalCss\`…\`` is a statement, and that IS the API: the tag registers
+    // the rules and returns nothing. `@barqjs/css`'s own README writes it that
+    // way, so the alternative to this option is a dead binding in every module
+    // that declares a stylesheet.
+    "no-unused-expressions": ["error", { "allowTaggedTemplates": true }],
+
     "no-unused-vars": "error",
     "no-console": "off",
     "eqeqeq": "error",
@@ -55,6 +61,14 @@
     "@typescript-eslint/no-unsafe-type-assertion": "off",
     "@typescript-eslint/no-unsafe-argument": "warn",
 
+    // A `.css.ts` module has nothing to export: it registers rules, and the
+    // import is how a component says "the layer order has to be declared before
+    // mine". `@barqjs/ui` has one per component, and the alternative — a dead
+    // binding and a `void` beside it — is noise standing in for the same claim.
+    "import/no-unassigned-import": [
+      "error",
+      { "allow": ["**/layers.ts", "**/base.ts", "**/reset.ts", "**/register-dom.ts"] }
+    ],
     "import/no-cycle": "error",
     "import/no-self-import": "error",
     "import/group-exports": "off",

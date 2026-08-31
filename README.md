@@ -73,6 +73,11 @@ click updates that one text node.
 | [`@barqjs/testing`](./packages/testing#readme) | rendering, routes, hydration and the RPC wire, under test |
 | [`@barqjs/compiler`](./packages/compiler) | the Vite plugin |
 | [`@barqjs/primitives`](./packages/primitives#readme) | scheduling, events, observers, browser APIs, collections, motion |
+| [`@barqjs/aria`](./packages/aria#readme) | accessible interactions, state and headless components |
+| [`@barqjs/css`](./packages/css#readme) | nested CSS and atomic styles, compiled to a stylesheet |
+| [`@barqjs/ui`](./packages/ui#readme) | shadcn/ui's components and every one of its themes |
+| [`@barqjs/ui-cli`](./packages/ui-cli#readme) | `barq-ui add button`, and `sync` that keeps your edits |
+| [`@barqjs/lucide`](./packages/lucide#readme) | every lucide icon, as a barq component |
 | [`@barqjs/query`](./packages/query#readme) | the TanStack Query adapter |
 | [`create-barq`](./packages/create-barq#readme) | `bun create barq my-app` |
 
